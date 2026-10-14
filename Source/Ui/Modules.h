@@ -5,18 +5,23 @@
 #include "EnvelopeView.h"
 #include "StepSequencer.h"
 
-// Rubrikraden: logotyp och uppspelningsstatus (DAW eller egen klocka, tempo, takt, tonart).
+// Rubrikraden: logotyp, presetmeny och uppspelningsstatus (DAW eller egen klocka, tempo,
+// takt, tonart).
 class HeaderBar : public juce::Component, private juce::Timer
 {
 public:
-    HeaderBar (const TransportStatus& status, const juce::String& subtitle);
+    HeaderBar (PluginBase& processor, const juce::String& subtitle);
     void paint (juce::Graphics&) override;
+    void resized() override;
 
 private:
-    void timerCallback() override { repaint(); }
+    void timerCallback() override;
+    void updatePresetText();
+    void showPresetMenu();
 
-    const TransportStatus& status;
+    PluginBase& processor;
     juce::String subtitle;
+    juce::TextButton presetButton;
 };
 
 // Kicken: kurvor för pitch- och amplitud-envelope, rattar och plats för en klicksampling.

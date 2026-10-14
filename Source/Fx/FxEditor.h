@@ -18,7 +18,7 @@ private:
     FruitLookAndFeel lookAndFeel; // först: måste leva längre än komponenterna som ritas med den
     FxProcessor& processor;
 
-    HeaderBar header { processor.transportStatus, "FX" };
+    HeaderBar header { processor, "FX" };
     KickModule kick { processor };
     GateModule gate { processor };
     PatternModule pattern { processor, Theme::gate, "GATE", false };

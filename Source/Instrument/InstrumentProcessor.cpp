@@ -40,6 +40,7 @@ void InstrumentProcessor::prepareToPlay (double sampleRate, int)
     prepareBase (sampleRate);
     kick.prepare (sampleRate);
     bass.prepare (sampleRate);
+    ducker.prepare (sampleRate);
 
     patternActive = false;
     masterGain.reset (sampleRate, 0.02);
@@ -242,8 +243,8 @@ void InstrumentProcessor::renderSamples (int startSample, int endSample)
     {
         const auto kickSample = kick.nextSample();
 
-        // Basen trycks undan exakt så mycket som kicken låter just nu.
-        const auto bassSample = bass.nextSample() * (1.0f - duckAmount * kick.getEnvelope());
+        // Basen trycks undan så mycket som kicken låter just nu.
+        const auto bassSample = bass.nextSample() * ducker.next (kick.getEnvelope(), duckAmount);
 
         mainOut.add (i, kickSample + bassSample);
         kickOut.add (i, kickSample);

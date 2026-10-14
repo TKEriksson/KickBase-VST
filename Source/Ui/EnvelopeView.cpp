@@ -12,6 +12,34 @@ EnvelopeView::EnvelopeView (double displaySecondsIn) : displaySeconds (displaySe
     startTimerHz (30); // följer med när parametrar ändras via rattar eller automation
 }
 
+void EnvelopeView::timerCallback()
+{
+    // Rita bara om när kurvorna ändrats (via rattar, handtag eller automation).
+    if (onBeforePaint)
+        onBeforePaint();
+
+    const auto current = signature();
+    if (current != lastSignature)
+    {
+        lastSignature = current;
+        repaint();
+    }
+}
+
+float EnvelopeView::signature() const
+{
+    auto sum = 0.0f;
+    for (const auto& handle : handles)
+    {
+        const auto p = handle.position();
+        sum += p.x * 7919.0f + p.y * 104729.0f;
+    }
+    for (const auto& curve : curves)
+        for (const auto fraction : { 0.0025, 0.01, 0.05, 0.25, 1.0 })
+            sum += curve.valueAt (fraction * displaySeconds) * 31.0f;
+    return sum;
+}
+
 juce::Rectangle<float> EnvelopeView::plotArea() const
 {
     return getLocalBounds().toFloat().reduced (8.0f, 10.0f);

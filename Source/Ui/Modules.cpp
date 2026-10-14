@@ -1,4 +1,5 @@
 #include "Modules.h"
+#include "../Core/Presets.h"
 
 namespace
 {
@@ -32,16 +33,54 @@ namespace
 }
 
 //==============================================================================
-HeaderBar::HeaderBar (const TransportStatus& statusIn, const juce::String& subtitleIn)
-    : status (statusIn), subtitle (subtitleIn)
+HeaderBar::HeaderBar (PluginBase& p, const juce::String& subtitleIn)
+    : processor (p), subtitle (subtitleIn)
 {
+    presetButton.setTooltip ("Factory presets (sound + pattern)");
+    presetButton.onClick = [this] { showPresetMenu(); };
+    addAndMakeVisible (presetButton);
+    updatePresetText();
     startTimerHz (15);
+}
+
+void HeaderBar::updatePresetText()
+{
+    const auto text = processor.getPresetName() + juce::String::fromUTF8 ("  \xe2\x96\xbe"); // "  " + liten pil nedåt
+    if (presetButton.getButtonText() != text)
+        presetButton.setButtonText (text);
+}
+
+void HeaderBar::timerCallback()
+{
+    updatePresetText();
+    repaint();
+}
+
+void HeaderBar::showPresetMenu()
+{
+    juce::PopupMenu menu;
+    menu.addSectionHeader ("PRESETS");
+    for (int i = 0; i < Presets::count(); ++i)
+        menu.addItem (i + 1, Presets::name (i), true, Presets::name (i) == processor.getPresetName());
+
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&presetButton), [this] (int result)
+    {
+        if (result > 0)
+            processor.loadPreset (result - 1);
+    });
+}
+
+void HeaderBar::resized()
+{
+    const auto subtitleWidth = subtitle.isEmpty() ? 0 : 40;
+    presetButton.setBounds (14 + 160 + subtitleWidth, 9, 180, getHeight() - 18);
 }
 
 void HeaderBar::paint (juce::Graphics& g)
 {
+    const auto& status = processor.transportStatus;
     auto area = getLocalBounds().reduced (14, 0);
-    Theme::paintLogo (g, area.removeFromLeft (320), subtitle);
+    Theme::paintLogo (g, area.removeFromLeft (400), subtitle);
 
     // Från höger: tonart, takt.slag, tempo och en lampa som visar om DAW:en styr.
     const auto keyNote = status.keyNote.load();

@@ -69,8 +69,15 @@ void BassSynth::noteOn (int semitones, float newVelocity, int gateSamples, bool 
     {
         logFrequency = targetLogFrequency;
         gliding = false;
-        phase = 0.0;    // samma startfas varje slag ger ett jämnt, tight anslag
-        subPhase = 0.0;
+
+        // Samma startfas varje slag ger ett jämnt, tight anslag. Men om förra tonen fortfarande
+        // hörs skulle ett fashopp knäppa, så då fortsätter fasen där den är.
+        if (ampLevel < 0.05f)
+        {
+            phase = 0.0;
+            subPhase = 0.0;
+        }
+
         noteTime = 0.0;
         velocity = newVelocity;
         stage = Stage::attack; // attacken börjar från nuvarande nivå, så inget knäpp

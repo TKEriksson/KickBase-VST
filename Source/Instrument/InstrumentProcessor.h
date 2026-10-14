@@ -2,6 +2,7 @@
 
 #include <array>
 #include "../Core/BassSynth.h"
+#include "../Core/Ducker.h"
 #include "../Core/KickEngine.h"
 #include "../Core/PluginBase.h"
 #include "../Core/StepScheduler.h"
@@ -48,6 +49,7 @@ private:
     StepScheduler scheduler;
     KickEngine kick;
     BassSynth bass;
+    Ducker ducker;
 
     std::array<bool, 128> heldNotes {};
     int numHeldNotes = 0;

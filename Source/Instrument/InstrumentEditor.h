@@ -18,7 +18,7 @@ private:
     FruitLookAndFeel lookAndFeel; // först: måste leva längre än komponenterna som ritas med den
     InstrumentProcessor& processor;
 
-    HeaderBar header { processor.transportStatus, {} };
+    HeaderBar header { processor, {} };
     KickModule kick { processor };
     BassModule bass { processor };
     PatternModule pattern { processor, Theme::bass, "BASS", true };

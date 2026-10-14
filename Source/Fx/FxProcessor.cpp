@@ -30,6 +30,7 @@ void FxProcessor::prepareToPlay (double sampleRate, int)
     prepareBase (sampleRate);
     kick.prepare (sampleRate);
     gate.prepare (sampleRate);
+    ducker.prepare (sampleRate);
 }
 
 bool FxProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -91,7 +92,7 @@ void FxProcessor::processSamples (juce::AudioBuffer<float>& buffer, int startSam
     {
         const auto kickSample = kick.nextSample() * masterGain;
         const auto gateLevel = gate.next (! active || ! gateOn);
-        const auto duck = 1.0f - duckAmount * kick.getEnvelope();
+        const auto duck = ducker.next (kick.getEnvelope(), duckAmount);
         const auto inputGain = gateLevel * duck * inputLevel;
 
         for (int ch = 0; ch < buffer.getNumChannels(); ++ch)

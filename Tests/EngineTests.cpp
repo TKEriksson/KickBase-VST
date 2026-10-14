@@ -1,6 +1,7 @@
 // Tester för ljudmotorerna och mönstret.
 
 #include "../Source/Core/BassSynth.h"
+#include "../Source/Core/Ducker.h"
 #include "../Source/Core/KickEngine.h"
 #include "../Source/Core/Pattern.h"
 #include "../Source/Core/StepGate.h"
@@ -173,6 +174,50 @@ namespace
         check (peakOf (audio, (size_t) stepSamples, (size_t) stepSamples + 2000) > 0.5f, "ingen dipp vid glidet");
     }
 
+    void testBassRetriggerWithoutClick()
+    {
+        std::puts ("Bas: nytt slag medan det förra klingar ger inget hopp");
+        BassSynth bass;
+        bass.prepare (rate);
+        BassParams p;
+        p.cutoffHz = 20000.0f;
+        p.envAmount = 0.0f;
+        p.drive = 0.0f;
+        p.sub = 0.0f;
+        p.wave = BassWave::sine;
+        bass.setParams (p);
+
+        // Gate längre än steget: andra slaget kommer medan det första fortfarande hörs.
+        const auto step = (int) (rate * 0.05);
+        auto previous = 0.0f, maxJump = 0.0f;
+        for (int i = 0; i < step * 3; ++i)
+        {
+            if (i % step == 0)
+                bass.noteOn (i == step ? 5 : 0, 1.0f, step * 2, false);
+            const auto s = bass.nextSample();
+            if (i > 0)
+                maxJump = std::max (maxJump, std::abs (s - previous));
+            previous = s;
+        }
+        // En sinus i 65-90 Hz ändras högst ~0.012 per sample; ett fashopp vore mycket större.
+        check (maxJump < 0.05f, "största hopp mellan samples", maxJump);
+    }
+
+    void testDuckerIsSmooth()
+    {
+        std::puts ("Ducking: glider ner på ungefär en millisekund");
+        Ducker ducker;
+        ducker.prepare (rate);
+
+        const auto first = ducker.next (1.0f, 0.8f);
+        check (first > 0.95f, "inget hopp på första samplet", first);
+
+        auto gain = first;
+        for (int i = 0; i < (int) (rate * 0.01); ++i)
+            gain = ducker.next (1.0f, 0.8f);
+        check (std::abs (gain - 0.2f) < 0.01f, "når 1 - amount", gain);
+    }
+
     void testGate()
     {
         std::puts ("Gate: öppnar, stänger och släpper igenom när DAW:en står");
@@ -238,6 +283,8 @@ void runEngineTests()
     testKickRetriggerFades();
     testBassPitchAndRelease();
     testBassSlide();
+    testBassRetriggerWithoutClick();
+    testDuckerIsSmooth();
     testGate();
     testPatternTemplatesAndSaving();
 }

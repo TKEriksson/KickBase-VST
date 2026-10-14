@@ -1,4 +1,5 @@
 #include "PluginBase.h"
+#include "Presets.h"
 
 namespace
 {
@@ -31,6 +32,7 @@ juce::Optional<juce::AudioPlayHead::PositionInfo> PluginBase::getHostPosition() 
 void PluginBase::getStateInformation (juce::MemoryBlock& destData)
 {
     auto state = apvts.copyState();
+    state.setProperty ("preset", presetName, nullptr);
     state.appendChild (pattern.toValueTree(), nullptr);
     state.appendChild (clickToValueTree(), nullptr);
 
@@ -45,6 +47,7 @@ void PluginBase::setStateInformation (const void* data, int sizeInBytes)
         return;
 
     auto state = juce::ValueTree::fromXml (*xml);
+    presetName = state.getProperty ("preset", "Init").toString();
 
     if (auto patternTree = state.getChildWithName (Pattern::treeType); patternTree.isValid())
     {
@@ -75,6 +78,13 @@ void PluginBase::applyPatternTemplate (PatternTemplate t)
     if (auto* gridParam = apvts.getParameter (ParamID::bassGrid))
         gridParam->setValueNotifyingHost (gridParam->convertTo0to1 ((float) grid));
 
+    patternChanged();
+}
+
+void PluginBase::loadPreset (int index)
+{
+    Presets::apply (index, apvts, pattern);
+    presetName = Presets::name (index);
     patternChanged();
 }
 

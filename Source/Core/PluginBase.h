@@ -36,6 +36,11 @@ public:
     // Fyller mönstret från en mall och ställer basens rutnät därefter.
     void applyPatternTemplate (PatternTemplate t);
 
+    // Fabrikspresets. Bara i plugin:ets egen meny, inte som VST3-"programs": en värd kan
+    // sätta program-parametern när ett projekt laddas och skulle då skriva över det sparade.
+    void loadPreset (int index);
+    juce::String getPresetName() const { return presetName; }
+
     // Klicksampling. Anropas från gränssnittet (message thread).
     bool loadClickSample (const juce::File& file);
     void clearClickSample();
@@ -71,6 +76,8 @@ private:
     juce::AudioBuffer<float> clickOriginal;
     double clickOriginalRate = 0.0;
     juce::String clickName;
+
+    juce::String presetName { "Init" }; // bara message thread
 
     double currentSampleRate = 44100.0;
     std::atomic<ClickSample*> activeClick { nullptr };

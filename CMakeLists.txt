@@ -33,6 +33,7 @@ set(CORE_SOURCES
 set(PLUGIN_SOURCES
     ${CORE_SOURCES}
     Source/Core/Params.cpp
+    Source/Core/Presets.cpp
     Source/Core/PluginBase.cpp
     Source/Ui/FruitLookAndFeel.cpp
     Source/Ui/EnvelopeView.cpp

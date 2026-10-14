@@ -45,7 +45,8 @@ public:
     void mouseDoubleClick (const juce::MouseEvent&) override;
 
 private:
-    void timerCallback() override { repaint(); }
+    void timerCallback() override;
+    float signature() const;
 
     juce::Rectangle<float> plotArea() const;
     float timeToX (double seconds) const;
@@ -58,6 +59,7 @@ private:
     std::vector<Curve> curves;
     std::vector<Handle> handles;
 
+    float lastSignature = -1.0f;
     int hoveredHandle = -1, draggedHandle = -1;
     juce::Point<float> dragStart;
     float startX = 0.0f, startY = 0.0f; // parametrarnas normaliserade värden när draget började

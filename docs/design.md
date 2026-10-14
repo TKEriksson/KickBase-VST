@@ -4,8 +4,9 @@ En VST3-synth för kick och rullande bas i psytrance. Kick och bas byggs i **sam
 så att de kan låta perfekt ihop: exakt ducking, gemensam stämning och fasjustering ner på
 sample-nivå, något som separata plugins inte kan göra.
 
-Status: steg 1 (tempo-synk, instrument + FX) klart och provat i FL Studio, inklusive
-FX-versionen i en mixerplats. Nästa: steg 2, kickmotorn.
+Status: steg 1 provat i FL Studio. Steg 2–6 byggda natten 14–15 okt 2026 (gren
+`natt-kick-och-bas`): automatiskt testade, renderade offline och validerade med pluginval,
+men **inte provade i FL Studio än**.
 
 ## Grundmodell
 
@@ -31,8 +32,8 @@ FX-versionen i en mixerplats. Nästa: steg 2, kickmotorn.
 
 ## Bas
 
-- **Stegsekvenser** med valbar upplösning per mönster: 1/16 (rullande, galopp) eller
-  1/16T (trioler).
+- **Stegsekvenser** med valbar upplösning per mönster: 1/16 (rullande, galopp), 1/8T
+  (K-B-B per slag) eller 1/16T. Varje rutnät har sitt eget sparade mönster.
 - **Per steg:** på/av, tonhöjd relativt tonarten (t.ex. +12), slide till nästa steg
   (303-stil), gate-längd, velocity.
 - **Ljud:** oscillator → filter, där varje basslag har en egen kort filter-envelope (det
@@ -42,8 +43,9 @@ FX-versionen i en mixerplats. Nästa: steg 2, kickmotorn.
 
 - Ducking av basen under kicken, sample-exakt, utan extern sidechain.
 - Kickens svans och basen stäms mot samma tonart.
-- Fasjustering där kick och bas möts.
-- Separata utgångar (kick / bas) så de kan mixas på egna kanaler.
+- Fasjustering där kick och bas möts: basens oscillator startar i samma fas varje slag.
+- Separata utgångar (kick / bas) så de kan mixas på egna kanaler. Huvudutgången har alltid
+  hela mixen, så att inget blir tyst om DAW:en aktiverar alla utgångar.
 
 ## Ljud från en annan synth (effektversion)
 
@@ -61,6 +63,10 @@ i mixerns effektplatser. Därför byggs samma kod som **två plugins**:
 Båda versionerna delar sequencer, kickmotor och ducking. Allt som ska låta perfekt ihop
 finns alltså fortfarande i ett och samma plugin.
 
+När DAW:en står still släpper FX-versionen igenom ljudet orört och spelar ingen kick (annars
+skulle ett stoppat projekt loopa en kick i all oändlighet). Instrumentet går däremot på egen
+klocka när en ton spelas med transporten stoppad, så att det kan provspelas.
+
 ## Utseende och känsla
 
 Inspiration: Polyverse Manipulator (som Tobias har och gillar). Inspiration, inte kopia –
@@ -73,24 +79,33 @@ egen identitet, inga lånade logotyper eller grafik.
 - Stegsekvenser som går att klicka och dra i, med tydlig markering av var uppspelningen är.
 - Byggs som en egen JUCE `LookAndFeel` plus egna komponenter för kurvor och steg.
 
+## Presets
+
+Fabrikspresets (ljud + mönster) finns i plugin:ets egen meny. De exponeras medvetet **inte**
+som VST3-"programs": en värd kan sätta program-parametern när ett projekt laddas och skulle
+då skriva över det sparade ljudet. Mönsterlängden behålls när ett preset laddas.
+
 ## Senare / idéer
 
 - One-shot-sampling som basljud (stäms om per steg; glide begränsad).
-- Variationer (t.ex. fill var åttonde takt), presets.
+- Variationer (t.ex. fill var åttonde takt).
+- Egna användarpresets (spara/ladda fil).
+- Kickens pitch-envelope med fler punkter; LFO/modulering på basens filter.
 
-## Öppna frågor
+## Beslut
 
-- Bädda in inladdade samplingar i projektet eller peka på fil? (Lutar åt att bädda in.)
+- Inladdade klicksamplingar **bäddas in** i projektet (max 2 s, mono), så att projektet
+  fungerar även om filen flyttas.
+- Gränssnittets texter är på engelska (som i andra plugins); koden kommenteras på svenska.
 
 ## Byggordning
 
 Varje steg ska gå att höra och testa för sig.
 
-1. **Tempo-synk + två versioner:** läs BPM och taktposition. Instrumentet spelar ett klick per
-   fjärdedel medan en ton hålls; FX-versionen gate:ar inkommande ljud på fjärdedelar.
-   Provas i FL Studio för att bekräfta routingen innan resten byggs.
-2. **Kickmotor** med fast 4/4.
-3. **Kickens stegsekvenser** i gränssnittet.
-4. **Basmotor** med stegsekvenser, tonhöjd/slide per steg och filter-envelope per slag.
-5. **Kick + bas:** ducking, fas, stämning.
-6. **Utbyggnad:** trioler, samplat klick, kort-ton-inställning, separata utgångar, presets.
+1. ✅ **Tempo-synk + två versioner** (provat i FL Studio).
+2. ✅ **Kickmotor.**
+3. ✅ **Kickens stegsekvenser** i gränssnittet.
+4. ✅ **Basmotor** med stegsekvenser, tonhöjd/slide per steg och filter-envelope per slag.
+5. ✅ **Kick + bas:** ducking efter kickens envelope, fas, stämning.
+6. ✅ **Utbyggnad:** trioler, samplat klick, Note End, separata utgångar, presets.
+7. **Nästa:** prova allt i FL Studio och finjustera ljudet efter öra.

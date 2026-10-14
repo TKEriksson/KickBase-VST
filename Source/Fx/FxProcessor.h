@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../Core/Ducker.h"
 #include "../Core/KickEngine.h"
 #include "../Core/PluginBase.h"
 #include "../Core/StepGate.h"
@@ -27,6 +28,7 @@ private:
     StepScheduler scheduler;
     KickEngine kick;
     StepGate gate;
+    Ducker ducker;
 
     // Läses en gång per block.
     bool active = false, kickOn = true, gateOn = true;

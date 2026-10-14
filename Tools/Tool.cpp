@@ -1,7 +1,7 @@
 // Utvecklingsverktyg: renderar ljud offline och tar skärmbilder av gränssnittet, så att
 // pluginsen kan kontrolleras utan DAW.
 //
-//   MyOwnFruitTool render   instrument|fx <ut.wav> [bpm] [takter] [ton]
+//   MyOwnFruitTool render   instrument|fx <ut.wav> [bpm] [takter] [ton] [preset]
 //   MyOwnFruitTool snapshot instrument|fx <ut.png>
 
 #include <juce_audio_formats/juce_audio_formats.h>
@@ -109,9 +109,14 @@ namespace
         std::printf ("Skrev %s\n", file.getFullPathName().toRawUTF8());
     }
 
-    int render (const juce::String& kind, const juce::File& outFile, double bpm, int bars, int note)
+    int render (const juce::String& kind, const juce::File& outFile, double bpm, int bars, int note, int preset)
     {
         auto processor = createProcessor (kind);
+        if (preset >= 0)
+        {
+            processor->loadPreset (preset);
+            std::printf ("Preset: %s\n", processor->getPresetName().toRawUTF8());
+        }
         processor->setPlayConfigDetails (kind == "fx" ? 2 : 0, 2, renderRate, blockSize);
         processor->prepareToPlay (renderRate, blockSize);
 
@@ -231,7 +236,8 @@ int main (int argc, char* argv[])
         const auto bpm = argc > 4 ? juce::String (argv[4]).getDoubleValue() : 145.0;
         const auto bars = argc > 5 ? juce::String (argv[5]).getIntValue() : 2;
         const auto note = argc > 6 ? juce::String (argv[6]).getIntValue() : 66; // F#4
-        return render (kind, outFile, bpm, bars, note);
+        const auto preset = argc > 7 ? juce::String (argv[7]).getIntValue() : -1;
+        return render (kind, outFile, bpm, bars, note, preset);
     }
 
     if (command == "snapshot")
