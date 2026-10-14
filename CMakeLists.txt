@@ -20,6 +20,25 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(JUCE)
 
+set(CORE_SOURCES
+    Source/Core/TransportClock.cpp
+)
+
+# Gemensamt för alla mål: samma definitioner och flaggor.
+function(myownfruit_configure target)
+    target_compile_definitions(${target} PUBLIC
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_VST3_CAN_REPLACE_VST2=0
+    )
+    target_link_libraries(${target} PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_lto_flags
+        juce::juce_recommended_warning_flags
+    )
+endfunction()
+
+# MyOwnFruit: instrumentet som läggs i Channel Rack. Spelar mönstret när en ton hålls.
 juce_add_plugin(MyOwnFruit
     COMPANY_NAME "Tobias Eriksson"
     BUNDLE_ID com.tobiaseriksson.myownfruit
@@ -37,23 +56,42 @@ juce_add_plugin(MyOwnFruit
 )
 
 target_sources(MyOwnFruit PRIVATE
-    Source/PluginProcessor.cpp
-    Source/PluginEditor.cpp
-    Source/SynthVoice.cpp
+    ${CORE_SOURCES}
+    Source/Instrument/InstrumentProcessor.cpp
+    Source/Instrument/InstrumentEditor.cpp
+)
+target_link_libraries(MyOwnFruit PRIVATE juce::juce_audio_utils)
+myownfruit_configure(MyOwnFruit)
+
+# MyOwnFruit FX: effekten som läggs i mixern och hackar upp ljudet från en annan synth.
+juce_add_plugin(MyOwnFruitFX
+    COMPANY_NAME "Tobias Eriksson"
+    BUNDLE_ID com.tobiaseriksson.myownfruitfx
+    PLUGIN_MANUFACTURER_CODE Tbes
+    PLUGIN_CODE Mofx
+    FORMATS VST3
+    PRODUCT_NAME "MyOwnFruit FX"
+    IS_SYNTH FALSE
+    NEEDS_MIDI_INPUT FALSE
+    NEEDS_MIDI_OUTPUT FALSE
+    IS_MIDI_EFFECT FALSE
+    EDITOR_WANTS_KEYBOARD_FOCUS FALSE
+    COPY_PLUGIN_AFTER_BUILD FALSE
 )
 
-target_compile_definitions(MyOwnFruit PUBLIC
-    JUCE_WEB_BROWSER=0
-    JUCE_USE_CURL=0
-    JUCE_VST3_CAN_REPLACE_VST2=0
+target_sources(MyOwnFruitFX PRIVATE
+    ${CORE_SOURCES}
+    Source/Fx/FxProcessor.cpp
+    Source/Fx/FxEditor.cpp
 )
+target_link_libraries(MyOwnFruitFX PRIVATE juce::juce_audio_processors)
+myownfruit_configure(MyOwnFruitFX)
 
-target_link_libraries(MyOwnFruit
-    PRIVATE
-        juce::juce_audio_utils
-        juce::juce_dsp
-    PUBLIC
-        juce::juce_recommended_config_flags
-        juce::juce_recommended_lto_flags
-        juce::juce_recommended_warning_flags
+# Tester för kärnan (ingen plugin, bara ett konsolprogram). Körs av build.bat.
+juce_add_console_app(MyOwnFruitTests PRODUCT_NAME "MyOwnFruitTests")
+target_sources(MyOwnFruitTests PRIVATE
+    ${CORE_SOURCES}
+    Tests/TransportClockTests.cpp
 )
+target_link_libraries(MyOwnFruitTests PRIVATE juce::juce_audio_basics)
+myownfruit_configure(MyOwnFruitTests)

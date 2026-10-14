@@ -18,5 +18,9 @@ cmake -S "%~dp0." -B "%~dp0build\%CONFIG%" -G Ninja -DCMAKE_BUILD_TYPE=%CONFIG% 
 cmake --build "%~dp0build\%CONFIG%" || exit /b 1
 
 echo.
-echo Klart! VST3: build\%CONFIG%\MyOwnFruit_artefacts\%CONFIG%\VST3\MyOwnFruit.vst3
-echo        App:  build\%CONFIG%\MyOwnFruit_artefacts\%CONFIG%\Standalone\MyOwnFruit.exe
+"%~dp0build\%CONFIG%\MyOwnFruitTests_artefacts\%CONFIG%\MyOwnFruitTests.exe" || exit /b 1
+
+echo.
+echo Klart! Instrument: build\%CONFIG%\MyOwnFruit_artefacts\%CONFIG%\VST3\MyOwnFruit.vst3
+echo        Effekt:     build\%CONFIG%\MyOwnFruitFX_artefacts\%CONFIG%\VST3\MyOwnFruit FX.vst3
+echo        App:        build\%CONFIG%\MyOwnFruit_artefacts\%CONFIG%\Standalone\MyOwnFruit.exe
