@@ -1,0 +1,8 @@
+{
+    // IntelliSense läser flaggor och makron från bygget som build.bat skapar.
+    "C_Cpp.default.compileCommands": "${workspaceFolder}/build/Release/compile_commands.json",
+
+    // Vi bygger med build.bat; låt inte CMake Tools konfigurera ett eget bygge bredvid.
+    "cmake.configureOnOpen": false,
+    "cmake.configureOnEdit": false
+}
