@@ -10,10 +10,25 @@ struct StepCursor
 {
     explicit StepCursor (double stepsPerQuarterIn) : stepsPerQuarter (stepsPerQuarterIn) {}
 
-    double stepsPerQuarter; // 1 = fjärdedelar, 4 = sextondelar, 6 = sextondelstrioler
+    double stepsPerQuarter; // 1 = fjärdedelar, 4 = sextondelar, 3 = åttondelstrioler, 6 = sextondelstrioler
     double lastFiredPpq = -std::numeric_limits<double>::infinity();
     double lastEndPpq = -std::numeric_limits<double>::infinity(); // där förra anropet slutade
     int generation = -1;
+};
+
+// Var ett steg ligger: vilken takt (räknat från låtens början, eller från första tonen när
+// den egna klockan går) och vilket steg i takten.
+struct StepPosition
+{
+    int stepInBar = 0;
+    juce::int64 bar = 0;
+
+    // Stegets plats i ett mönster som är `patternBars` takter långt.
+    int stepInPattern (int stepsPerBar, int patternBars) const
+    {
+        const auto barInPattern = (int) (((bar % patternBars) + patternBars) % patternBars);
+        return barInPattern * stepsPerBar + stepInBar;
+    }
 };
 
 // Håller reda på var i takten vi är, sample för sample.
@@ -33,18 +48,18 @@ public:
     // Anropas i början av varje block med det DAW:en rapporterar (getPlayHead()->getPosition()).
     void beginBlock (const juce::Optional<juce::AudioPlayHead::PositionInfo>& position, int numSamples);
 
-    // Startar om den egna klockan så att ett slag börjar på sample `sampleOffset` i blocket.
+    // Startar om den egna klockan så att takt 0 börjar på sample `sampleOffset` i blocket.
     // Gör ingenting när DAW:en spelar, eftersom DAW:ens taktstreck då bestämmer.
     void restartFreeRunAt (int sampleOffset);
 
-    // Anropar callback (sampleOffset, stepInBar) för varje stepgräns i [startSample, endSample).
+    // Anropar callback (sampleOffset, StepPosition) för varje stepgräns i [startSample, endSample).
     template <typename Callback>
     void forEachStep (StepCursor& cursor, int startSample, int endSample, Callback&& callback) const;
 
     // Om en stepgräns passerades högst `toleranceSamples` före `sampleOffset` utan att spelas,
-    // markeras den som spelad och dess plats i takten returneras. Används när en ton börjar
-    // en aning efter taktstrecket, så att första slaget ändå kommer med.
-    std::optional<int> takeStepJustPassed (StepCursor& cursor, int sampleOffset, int toleranceSamples) const;
+    // markeras den som spelad och dess position returneras. Används när en ton börjar en
+    // aning efter taktstrecket, så att första slaget ändå kommer med.
+    std::optional<StepPosition> takeStepJustPassed (StepCursor& cursor, int sampleOffset, int toleranceSamples) const;
 
     bool isFollowingHost() const      { return followingHost; }
     double getBpm() const             { return bpm; }
@@ -53,11 +68,15 @@ public:
     double getBarLengthPpq() const    { return barLengthPpq; }
     double getSamplesPerQuarter() const { return 1.0 / ppqPerSample; }
 
+    // Taktnumret vid blockets början, och var en given takt börjar i ppq.
+    juce::int64 getBarIndex() const   { return barIndex; }
+    double getPpqOfBar (juce::int64 bar) const { return barStartPpq + (double) (bar - barIndex) * barLengthPpq; }
+
 private:
     static constexpr double epsilon = 1.0e-9;
 
     void syncCursor (StepCursor& cursor, double fromPpq) const;
-    int stepInBar (juce::int64 stepFromBarStart, double stepsPerQuarter) const;
+    StepPosition positionOf (juce::int64 stepFromBarStart, double stepsPerQuarter) const;
 
     double sampleRate = 44100.0;
     double bpm = fallbackBpm;
@@ -65,6 +84,7 @@ private:
     double blockStartPpq = 0.0;
     double barStartPpq = 0.0;
     double barLengthPpq = 4.0;
+    juce::int64 barIndex = 0;
     int blockSize = 0;
     bool followingHost = false;
     int generation = 0; // ökas vid omstart så att alla StepCursor glömmer vad de spelat
@@ -99,6 +119,6 @@ void TransportClock::forEachStep (StepCursor& cursor, int startSample, int endSa
         cursor.lastFiredPpq = stepPpq;
 
         const auto offset = startSample + (int) std::round ((stepPpq - fromPpq) / ppqPerSample);
-        callback (juce::jlimit (startSample, endSample - 1, offset), stepInBar (step, spq));
+        callback (juce::jlimit (startSample, endSample - 1, offset), positionOf (step, spq));
     }
 }

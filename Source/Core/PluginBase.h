@@ -1,16 +1,18 @@
 #pragma once
 
+#include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_audio_processors/juce_audio_processors.h>
+#include "KickEngine.h"
+#include "Params.h"
+#include "Pattern.h"
 #include "TransportStatus.h"
 
-// Det som instrumentet och FX-versionen har gemensamt: parametrar, sparat läge och klockan.
+// Det som instrumentet och FX-versionen har gemensamt: parametrar, mönster, klicksampling,
+// sparat läge och klockan.
 class PluginBase : public juce::AudioProcessor
 {
 public:
-    PluginBase (const BusesProperties& buses, juce::AudioProcessorValueTreeState::ParameterLayout layout)
-        : AudioProcessor (buses), apvts (*this, nullptr, "Parameters", std::move (layout))
-    {
-    }
+    PluginBase (const BusesProperties& buses, juce::AudioProcessorValueTreeState::ParameterLayout layout);
 
     void releaseResources() override {}
     bool hasEditor() const override { return true; }
@@ -25,33 +27,53 @@ public:
     const juce::String getProgramName (int) override { return {}; }
     void changeProgramName (int, const juce::String&) override {}
 
-    void getStateInformation (juce::MemoryBlock& destData) override
-    {
-        if (auto xml = apvts.copyState().createXml())
-            copyXmlToBinary (*xml, destData);
-    }
+    void getStateInformation (juce::MemoryBlock& destData) override;
+    void setStateInformation (const void* data, int sizeInBytes) override;
 
-    void setStateInformation (const void* data, int sizeInBytes) override
-    {
-        if (auto xml = getXmlFromBinary (data, sizeInBytes))
-            if (xml->hasTagName (apvts.state.getType()))
-                apvts.replaceState (juce::ValueTree::fromXml (*xml));
-    }
+    // Anropas av gränssnittet när mönstret ändrats, så att DAW:en vet att projektet ändrats.
+    void patternChanged();
+
+    // Fyller mönstret från en mall och ställer basens rutnät därefter.
+    void applyPatternTemplate (PatternTemplate t);
+
+    // Klicksampling. Anropas från gränssnittet (message thread).
+    bool loadClickSample (const juce::File& file);
+    void clearClickSample();
+    juce::String getClickSampleName() const;
 
     juce::AudioProcessorValueTreeState apvts;
+    Pattern pattern;
     TransportStatus transportStatus;
+    std::atomic<int> patternVersion { 0 }; // ökas när mönstret ändras, så att gränssnittet ritar om
 
 protected:
+    // Anropas i prepareToPlay i underklasserna.
+    void prepareBase (double sampleRate);
+
     // Läser DAW:ens position. Får bara anropas från processBlock.
-    juce::Optional<juce::AudioPlayHead::PositionInfo> getHostPosition() const
-    {
-        if (auto* hostPlayHead = getPlayHead())
-            return hostPlayHead->getPosition();
+    juce::Optional<juce::AudioPlayHead::PositionInfo> getHostPosition() const;
 
-        return juce::nullopt;
-    }
+    // Klicksamplingen som ljudtråden ska använda just nu (kan vara nullptr).
+    const ClickSample* getActiveClickSample() const { return activeClick.load(); }
 
-    float getParam (const char* paramID) const { return apvts.getRawParameterValue (paramID)->load(); }
-
+    ParamRefs params;
     TransportClock clock;
+
+private:
+    void setClickOriginal (juce::AudioBuffer<float> audio, double rate, const juce::String& name);
+    void rebuildClickForSampleRate();
+    juce::ValueTree clickToValueTree() const;
+    void clickFromValueTree (const juce::ValueTree& tree);
+
+    // Originalet sparas i projektet; en omsamplad kopia spelas. Bara message thread och
+    // prepareToPlay rör originalet, därför låset (aldrig på ljudtråden).
+    juce::CriticalSection clickLock;
+    juce::AudioBuffer<float> clickOriginal;
+    double clickOriginalRate = 0.0;
+    juce::String clickName;
+
+    double currentSampleRate = 44100.0;
+    std::atomic<ClickSample*> activeClick { nullptr };
+    std::unique_ptr<ClickSample> ownedClick;
+    std::unique_ptr<ClickSample> retiredClick; // föregående, ljudtråden kan läsa den ett block till
 };

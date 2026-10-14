@@ -3,16 +3,16 @@
 
 namespace
 {
-    constexpr auto gateLengthID = "gateLength";
-
-    constexpr double gateRampSeconds = 0.002;
+    constexpr double slideOverlap = 1.05;
 
     juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     {
-        juce::AudioProcessorValueTreeState::ParameterLayout layout;
-        // Andel av steget som gaten är öppen.
-        layout.add (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { gateLengthID, 1 }, "Gate Length",
-                                                                 juce::NormalisableRange<float> (0.05f, 1.0f, 0.01f), 0.5f));
+        Params::Layout layout;
+        Params::addPatternParams (layout, false);
+        Params::addKickParams (layout);
+        Params::addBassCommonParams (layout, 1.0f);
+        Params::addFxParams (layout);
+        Params::addMasterParams (layout);
         return layout;
     }
 }
@@ -27,10 +27,9 @@ FxProcessor::FxProcessor()
 
 void FxProcessor::prepareToPlay (double sampleRate, int)
 {
-    clock.prepare (sampleRate);
-    gateSamplesLeft = 0;
-    gateLevel = 0.0f;
-    gateRampStep = (float) (1.0 / (gateRampSeconds * sampleRate));
+    prepareBase (sampleRate);
+    kick.prepare (sampleRate);
+    gate.prepare (sampleRate);
 }
 
 bool FxProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -50,43 +49,76 @@ void FxProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuff
     for (auto ch = getTotalNumInputChannels(); ch < getTotalNumOutputChannels(); ++ch)
         buffer.clear (ch, 0, numSamples);
 
-    const auto gateLength = (double) getParam (gateLengthID);
-    const auto samplesPerStep = clock.getSamplesPerQuarter() / quarterCursor.stepsPerQuarter;
+    const auto key = params.getChoice (ParamID::fxKey);
+    const auto patternBars = Params::barsFromChoice (params.getChoice (ParamID::patternBars));
+    scheduler.setGrid ((BassGrid) params.getChoice (ParamID::bassGrid));
+    kick.setParams (params.readKick (key));
+    kick.setClickSample (getActiveClickSample());
+    gate.setTimes (params.get (ParamID::gateAttack), params.get (ParamID::gateRelease));
 
-    auto processedUpTo = 0;
-    clock.forEachStep (quarterCursor, 0, numSamples, [&] (int offset, int)
+    active = clock.isFollowingHost();
+    kickOn = params.getBool (ParamID::kickOn);
+    gateOn = params.getBool (ParamID::bassOn);
+    duckAmount = params.get (ParamID::duckAmount);
+    gateScale = params.get (ParamID::bassGate);
+    inputLevel = params.get (ParamID::bassLevel) * params.get (ParamID::gain);
+
+    auto position = 0;
+    if (active)
     {
-        applyGate (buffer, processedUpTo, offset);
-        gateSamplesLeft = (int) (gateLength * samplesPerStep);
-        processedUpTo = offset;
-    });
-    applyGate (buffer, processedUpTo, numSamples);
+        scheduler.collect (clock, pattern, patternBars, 0, numSamples, std::numeric_limits<double>::infinity());
+        for (const auto& event : scheduler)
+        {
+            processSamples (buffer, position, event.offset);
+            handleEvent (event);
+            position = event.offset;
+        }
+    }
+    processSamples (buffer, position, numSamples);
 
     transportStatus.publish (clock);
+    transportStatus.keyNote = 60 + key;
+    transportStatus.patternActive = active;
+    transportStatus.kickStep = active ? scheduler.getLastKickStep() : -1;
+    transportStatus.bassStep = active ? scheduler.getLastBassStep() : -1;
 }
 
-void FxProcessor::applyGate (juce::AudioBuffer<float>& buffer, int startSample, int endSample)
+void FxProcessor::processSamples (juce::AudioBuffer<float>& buffer, int startSample, int endSample)
 {
+    const auto masterGain = params.get (ParamID::gain);
+
     for (int i = startSample; i < endSample; ++i)
     {
-        const auto target = gateSamplesLeft > 0 ? 1.0f : 0.0f;
-        gateLevel = target > gateLevel ? std::min (target, gateLevel + gateRampStep)
-                                       : std::max (target, gateLevel - gateRampStep);
-
-        if (gateSamplesLeft > 0)
-            --gateSamplesLeft;
+        const auto kickSample = kick.nextSample() * masterGain;
+        const auto gateLevel = gate.next (! active || ! gateOn);
+        const auto duck = 1.0f - duckAmount * kick.getEnvelope();
+        const auto inputGain = gateLevel * duck * inputLevel;
 
         for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
-            buffer.setSample (ch, i, buffer.getSample (ch, i) * gateLevel);
+            buffer.setSample (ch, i, buffer.getSample (ch, i) * inputGain + kickSample);
     }
+}
+
+void FxProcessor::handleEvent (const StepEvent& event)
+{
+    if (event.type == StepEvent::Type::kick)
+    {
+        if (kickOn)
+            kick.trigger (1.0f);
+        return;
+    }
+
+    const auto grid = scheduler.getGrid();
+    const auto& step = pattern.bassStep (grid, event.step);
+    const auto samplesPerStep = clock.getSamplesPerQuarter() / Pattern::bassStepsPerQuarter (grid);
+
+    // Slide håller gaten öppen in i nästa steg, så att de flyter ihop.
+    const auto gateSamples = step.slide.load() ? (int) (samplesPerStep * slideOverlap)
+                                               : std::max (1, (int) (step.gate.load() * gateScale * samplesPerStep));
+    gate.open (step.velocity.load(), gateSamples);
 }
 
 juce::AudioProcessorEditor* FxProcessor::createEditor()
 {
     return new FxEditor (*this);
-}
-
-juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
-{
-    return new FxProcessor();
 }

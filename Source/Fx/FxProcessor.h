@@ -1,9 +1,13 @@
 #pragma once
 
+#include "../Core/KickEngine.h"
 #include "../Core/PluginBase.h"
+#include "../Core/StepGate.h"
+#include "../Core/StepScheduler.h"
 
-// MyOwnFruit FX: läggs på mixerkanalen där en annan synth hamnar och hackar upp dess ljud
-// efter mönstret. Steg 1: gate:ar på varje fjärdedel.
+// MyOwnFruit FX: läggs på mixerkanalen där en annan synth hamnar. Synthens ljud gate:as av
+// basmönstret och duckas under en egen kick, som läggs till i utgången.
+// När DAW:en står still släpps ljudet igenom orört och ingen kick spelas.
 class FxProcessor : public PluginBase
 {
 public:
@@ -17,13 +21,16 @@ public:
     bool acceptsMidi() const override { return false; }
 
 private:
-    void applyGate (juce::AudioBuffer<float>& buffer, int startSample, int endSample);
+    void processSamples (juce::AudioBuffer<float>& buffer, int startSample, int endSample);
+    void handleEvent (const StepEvent& event);
 
-    StepCursor quarterCursor { 1.0 };
+    StepScheduler scheduler;
+    KickEngine kick;
+    StepGate gate;
 
-    int gateSamplesLeft = 0; // hur länge gaten är öppen till
-    float gateLevel = 0.0f;  // 0..1, glider mot målet för att undvika knäppar
-    float gateRampStep = 0.0f;
+    // Läses en gång per block.
+    bool active = false, kickOn = true, gateOn = true;
+    float duckAmount = 0.8f, gateScale = 1.0f, inputLevel = 1.0f;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FxProcessor)
 };

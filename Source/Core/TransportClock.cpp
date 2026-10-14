@@ -36,13 +36,15 @@ void TransportClock::beginBlock (const juce::Optional<juce::AudioPlayHead::Posit
         if (const auto hostBarStart = position->getPpqPositionOfLastBarStart(); hostBarStart.hasValue())
             barStartPpq = *hostBarStart;
         else
-            barStartPpq = std::floor (blockStartPpq / barLengthPpq) * barLengthPpq;
+            barStartPpq = std::floor (blockStartPpq / barLengthPpq + epsilon) * barLengthPpq;
     }
     else
     {
         blockStartPpq = continuedPpq;
-        barStartPpq = std::floor (blockStartPpq / barLengthPpq) * barLengthPpq;
+        barStartPpq = std::floor (blockStartPpq / barLengthPpq + epsilon) * barLengthPpq;
     }
+
+    barIndex = (juce::int64) std::llround (barStartPpq / barLengthPpq);
 }
 
 void TransportClock::restartFreeRunAt (int sampleOffset)
@@ -52,10 +54,11 @@ void TransportClock::restartFreeRunAt (int sampleOffset)
 
     blockStartPpq = -sampleOffset * ppqPerSample;
     barStartPpq = 0.0;
+    barIndex = 0;
     ++generation;
 }
 
-std::optional<int> TransportClock::takeStepJustPassed (StepCursor& cursor, int sampleOffset, int toleranceSamples) const
+std::optional<StepPosition> TransportClock::takeStepJustPassed (StepCursor& cursor, int sampleOffset, int toleranceSamples) const
 {
     const auto spq = cursor.stepsPerQuarter;
     const auto ppq = getPpqAt (sampleOffset);
@@ -69,7 +72,7 @@ std::optional<int> TransportClock::takeStepJustPassed (StepCursor& cursor, int s
         return std::nullopt;
 
     cursor.lastFiredPpq = stepPpq;
-    return stepInBar (step, spq);
+    return positionOf (step, spq);
 }
 
 void TransportClock::syncCursor (StepCursor& cursor, double fromPpq) const
@@ -83,8 +86,14 @@ void TransportClock::syncCursor (StepCursor& cursor, double fromPpq) const
     }
 }
 
-int TransportClock::stepInBar (juce::int64 stepFromBarStart, double stepsPerQuarter) const
+StepPosition TransportClock::positionOf (juce::int64 stepFromBarStart, double stepsPerQuarter) const
 {
     const auto stepsPerBar = std::max ((juce::int64) 1, (juce::int64) std::floor (barLengthPpq * stepsPerQuarter + epsilon));
-    return (int) (((stepFromBarStart % stepsPerBar) + stepsPerBar) % stepsPerBar);
+
+    // Golvdivision, så att steg före taktens början hamnar i föregående takt.
+    auto barOffset = stepFromBarStart / stepsPerBar;
+    if (stepFromBarStart % stepsPerBar < 0)
+        --barOffset;
+
+    return { (int) (stepFromBarStart - barOffset * stepsPerBar), barIndex + barOffset };
 }

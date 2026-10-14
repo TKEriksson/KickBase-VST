@@ -1,0 +1,257 @@
+#include "EnvelopeView.h"
+
+namespace
+{
+    constexpr float handleRadius = 5.0f;
+    constexpr float grabDistance = 12.0f;
+    constexpr float dragSensitivity = 1.0f; // hela bredden/höjden = hela parameterns omfång
+}
+
+EnvelopeView::EnvelopeView (double displaySecondsIn) : displaySeconds (displaySecondsIn)
+{
+    startTimerHz (30); // följer med när parametrar ändras via rattar eller automation
+}
+
+juce::Rectangle<float> EnvelopeView::plotArea() const
+{
+    return getLocalBounds().toFloat().reduced (8.0f, 10.0f);
+}
+
+float EnvelopeView::timeToX (double seconds) const
+{
+    const auto area = plotArea();
+    const auto fraction = std::sqrt (juce::jlimit (0.0, 1.0, seconds / displaySeconds));
+    return area.getX() + (float) fraction * area.getWidth();
+}
+
+float EnvelopeView::valueToY (float value) const
+{
+    const auto area = plotArea();
+    return area.getBottom() - juce::jlimit (0.0f, 1.0f, value) * area.getHeight();
+}
+
+juce::Point<float> EnvelopeView::handlePoint (const Handle& handle) const
+{
+    const auto p = handle.position();
+    return { timeToX (p.x), valueToY (p.y) };
+}
+
+void EnvelopeView::paint (juce::Graphics& g)
+{
+    if (onBeforePaint)
+        onBeforePaint();
+
+    const auto bounds = getLocalBounds().toFloat();
+    g.setColour (Theme::knobBodyDark.withAlpha (0.7f));
+    g.fillRoundedRectangle (bounds, 6.0f);
+
+    // Rutnät: lodräta linjer vid jämna tider.
+    const auto area = plotArea();
+    g.setFont (Theme::font (9.0f));
+    for (const auto ms : { 10, 50, 100, 200, 400, 800, 1600 })
+    {
+        if (ms / 1000.0 > displaySeconds)
+            break;
+
+        const auto x = timeToX (ms / 1000.0);
+        g.setColour (Theme::grid);
+        g.drawVerticalLine ((int) x, area.getY(), area.getBottom());
+        g.setColour (Theme::textDim.withAlpha (0.6f));
+        g.drawText (juce::String (ms) + "ms", (int) x + 2, (int) area.getY() - 9, 40, 10, juce::Justification::left);
+    }
+    g.setColour (Theme::grid);
+    g.drawHorizontalLine ((int) area.getBottom(), area.getX(), area.getRight());
+
+    // Kurvorna. Samplas tätare i början där skalan är utdragen.
+    constexpr int numPoints = 240;
+    for (const auto& curve : curves)
+    {
+        juce::Path path;
+        for (int i = 0; i <= numPoints; ++i)
+        {
+            const auto fraction = (double) i / numPoints;
+            const auto seconds = fraction * fraction * displaySeconds;
+            const juce::Point<float> point { timeToX (seconds), valueToY (curve.valueAt (seconds)) };
+
+            if (i == 0)
+                path.startNewSubPath (point);
+            else
+                path.lineTo (point);
+        }
+
+        if (curve.filled)
+        {
+            auto fill = path;
+            fill.lineTo (area.getRight(), area.getBottom());
+            fill.lineTo (area.getX(), area.getBottom());
+            fill.closeSubPath();
+            g.setGradientFill (juce::ColourGradient (curve.colour.withAlpha (0.35f), 0.0f, area.getY(),
+                                                     curve.colour.withAlpha (0.02f), 0.0f, area.getBottom(), false));
+            g.fillPath (fill);
+        }
+
+        g.setColour (curve.colour.withAlpha (0.25f));
+        g.strokePath (path, juce::PathStrokeType (5.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        g.setColour (curve.colour);
+        g.strokePath (path, juce::PathStrokeType (1.8f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    }
+
+    // Kurvornas namn nere till höger (tidsetiketterna ligger överst).
+    auto legend = getLocalBounds().reduced (10, 12).removeFromBottom (12);
+    g.setFont (Theme::font (10.0f, true));
+    for (auto it = curves.rbegin(); it != curves.rend(); ++it)
+    {
+        if (it->name.isEmpty())
+            continue;
+        g.setColour (it->colour);
+        g.drawText (it->name, legend.removeFromRight (60), juce::Justification::right);
+    }
+
+    // Handtagen.
+    for (int i = 0; i < (int) handles.size(); ++i)
+    {
+        const auto point = handlePoint (handles[(size_t) i]);
+        const auto active = i == hoveredHandle || i == draggedHandle;
+        const auto radius = active ? handleRadius + 2.0f : handleRadius;
+
+        g.setColour (handles[(size_t) i].colour.withAlpha (active ? 0.35f : 0.2f));
+        g.fillEllipse (juce::Rectangle<float> (radius * 3.0f, radius * 3.0f).withCentre (point));
+        g.setColour (Theme::knobBodyDark);
+        g.fillEllipse (juce::Rectangle<float> (radius * 2.0f, radius * 2.0f).withCentre (point));
+        g.setColour (handles[(size_t) i].colour);
+        g.drawEllipse (juce::Rectangle<float> (radius * 2.0f, radius * 2.0f).withCentre (point), 2.0f);
+    }
+
+    // Värdet för handtaget under musen.
+    const auto shown = draggedHandle >= 0 ? draggedHandle : hoveredHandle;
+    if (shown >= 0)
+    {
+        const auto text = describe (handles[(size_t) shown]);
+        const auto point = handlePoint (handles[(size_t) shown]);
+        g.setFont (Theme::font (11.0f, true));
+        const auto width = (float) juce::GlyphArrangement::getStringWidthInt (Theme::font (11.0f, true), text) + 12.0f;
+        auto box = juce::Rectangle<float> (width, 18.0f).withCentre (point.translated (0.0f, -18.0f));
+        box = box.constrainedWithin (bounds.reduced (2.0f));
+        g.setColour (Theme::knobBodyDark.withAlpha (0.95f));
+        g.fillRoundedRectangle (box, 4.0f);
+        g.setColour (handles[(size_t) shown].colour);
+        g.drawRoundedRectangle (box, 4.0f, 1.0f);
+        g.setColour (Theme::text);
+        g.drawText (text, box, juce::Justification::centred);
+    }
+}
+
+juce::String EnvelopeView::describe (const Handle& handle) const
+{
+    juce::StringArray parts;
+    for (auto* parameter : { handle.xParam, handle.yParam })
+        if (parameter != nullptr)
+            parts.add (parameter->getName (32).fromLastOccurrenceOf ("Kick ", false, false)
+                                            .fromLastOccurrenceOf ("Bass ", false, false)
+                       + " " + parameter->getCurrentValueAsText());
+    return parts.joinIntoString ("   ");
+}
+
+int EnvelopeView::handleAt (juce::Point<float> point) const
+{
+    auto best = -1;
+    auto bestDistance = grabDistance;
+    for (int i = 0; i < (int) handles.size(); ++i)
+    {
+        const auto distance = handlePoint (handles[(size_t) i]).getDistanceFrom (point);
+        if (distance < bestDistance)
+        {
+            bestDistance = distance;
+            best = i;
+        }
+    }
+    return best;
+}
+
+void EnvelopeView::mouseMove (const juce::MouseEvent& event)
+{
+    const auto hovered = handleAt (event.position);
+    if (hovered != hoveredHandle)
+    {
+        hoveredHandle = hovered;
+        setMouseCursor (hovered >= 0 ? juce::MouseCursor::DraggingHandCursor : juce::MouseCursor::NormalCursor);
+        repaint();
+    }
+}
+
+void EnvelopeView::mouseExit (const juce::MouseEvent&)
+{
+    hoveredHandle = -1;
+    repaint();
+}
+
+void EnvelopeView::mouseDown (const juce::MouseEvent& event)
+{
+    draggedHandle = handleAt (event.position);
+    if (draggedHandle < 0)
+        return;
+
+    const auto& handle = handles[(size_t) draggedHandle];
+    dragStart = event.position;
+    startX = handle.xParam != nullptr ? handle.xParam->getValue() : 0.0f;
+    startY = handle.yParam != nullptr ? handle.yParam->getValue() : 0.0f;
+
+    for (auto* parameter : { handle.xParam, handle.yParam })
+        if (parameter != nullptr)
+            parameter->beginChangeGesture();
+}
+
+void EnvelopeView::mouseDrag (const juce::MouseEvent& event)
+{
+    if (draggedHandle < 0)
+        return;
+
+    const auto& handle = handles[(size_t) draggedHandle];
+    const auto area = plotArea();
+    const auto delta = event.position - dragStart;
+    const auto fine = event.mods.isShiftDown() ? 0.2f : 1.0f; // shift = finjustering
+
+    if (handle.xParam != nullptr)
+        handle.xParam->setValueNotifyingHost (juce::jlimit (0.0f, 1.0f, startX + delta.x / area.getWidth() * dragSensitivity * fine));
+
+    if (handle.yParam != nullptr)
+    {
+        const auto dy = -delta.y / area.getHeight() * dragSensitivity * fine * (handle.invertY ? -1.0f : 1.0f);
+        handle.yParam->setValueNotifyingHost (juce::jlimit (0.0f, 1.0f, startY + dy));
+    }
+
+    repaint();
+}
+
+void EnvelopeView::mouseUp (const juce::MouseEvent&)
+{
+    if (draggedHandle < 0)
+        return;
+
+    const auto& handle = handles[(size_t) draggedHandle];
+    for (auto* parameter : { handle.xParam, handle.yParam })
+        if (parameter != nullptr)
+            parameter->endChangeGesture();
+
+    draggedHandle = -1;
+    repaint();
+}
+
+void EnvelopeView::mouseDoubleClick (const juce::MouseEvent& event)
+{
+    // Dubbelklick på ett handtag återställer dess parametrar.
+    const auto index = handleAt (event.position);
+    if (index < 0)
+        return;
+
+    const auto& handle = handles[(size_t) index];
+    for (auto* parameter : { handle.xParam, handle.yParam })
+    {
+        if (parameter != nullptr)
+        {
+            parameter->beginChangeGesture();
+            parameter->setValueNotifyingHost (parameter->getDefaultValue());
+            parameter->endChangeGesture();
+        }
+    }
+}

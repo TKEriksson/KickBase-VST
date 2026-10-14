@@ -2,26 +2,17 @@
 // precis en gång, oavsett hur DAW:en delar upp ljudet i block.
 
 #include "../Source/Core/TransportClock.h"
-#include <cstdio>
+#include "TestUtils.h"
+#include <cmath>
 #include <vector>
 
 namespace
 {
-    int failures = 0;
-
-    void check (bool condition, const char* what, long long detail = 0)
-    {
-        if (! condition)
-        {
-            std::printf ("  FEL: %s (%lld)\n", what, detail);
-            ++failures;
-        }
-    }
-
     struct Step
     {
         long long sample; // absolut sample sedan testets början
         int stepInBar;
+        juce::int64 bar;
     };
 
     juce::AudioPlayHead::PositionInfo hostPosition (double bpm, double ppq, juce::Optional<double> barStart = {})
@@ -50,7 +41,7 @@ namespace
             const auto ppq = startPpq + done * ppqPerSample;
             const auto barStart = hostGivesBarStart ? juce::Optional<double> (std::floor (ppq / 4.0) * 4.0) : juce::nullopt;
             clock.beginBlock (hostPosition (bpm, ppq, barStart), blockSize);
-            clock.forEachStep (cursor, 0, blockSize, [&] (int offset, int inBar) { steps.push_back ({ done + offset, inBar }); });
+            clock.forEachStep (cursor, 0, blockSize, [&] (int offset, StepPosition pos) { steps.push_back ({ done + offset, pos.stepInBar, pos.bar }); });
         }
         return steps;
     }
@@ -66,7 +57,24 @@ namespace
         {
             check (steps[i].sample == (long long) i * 24000, "slagets sample", steps[i].sample);
             check (steps[i].stepInBar == (int) (i % 4), "slagets plats i takten", steps[i].stepInBar);
+            check (steps[i].bar == (juce::int64) (i / 4), "slagets takt", steps[i].bar);
         }
+    }
+
+    void testPatternPosition()
+    {
+        std::puts ("Mönsterposition: 2 takters mönster loopar, start i takt 3");
+        // Start på ppq 8 = takt 3 (index 2), som är första takten i ett 2-taktsmönster.
+        const auto steps = runHost (48000.0, 120.0, 8.0, 512, 48000 * 4, 4.0);
+        check (steps.size() == 32, "antal sextondelar", (long long) steps.size());
+
+        for (size_t i = 0; i < steps.size(); ++i)
+        {
+            const auto inPattern = StepPosition { steps[i].stepInBar, steps[i].bar }.stepInPattern (16, 2);
+            check (inPattern == (int) (i % 32), "steg i mönstret", inPattern);
+        }
+
+        check (StepPosition { 3, -1 }.stepInPattern (16, 2) == 19, "negativ takt");
     }
 
     void testStepOnBlockBoundaryFiresOnce()
@@ -115,7 +123,7 @@ namespace
 
         // Blocket börjar på ppq 3.9 i takt 1 (barStart 0) och går över taktstrecket på ppq 4.
         clock.beginBlock (hostPosition (120.0, 3.9, 0.0), 4800);
-        clock.forEachStep (cursor, 0, 4800, [&] (int, int step) { inBar.push_back (step); });
+        clock.forEachStep (cursor, 0, 4800, [&] (int, StepPosition pos) { inBar.push_back (pos.stepInBar); });
 
         check (inBar.size() == 1 && inBar[0] == 0, "steget efter taktstrecket är ettan", inBar.empty() ? -1 : inBar[0]);
     }
@@ -129,9 +137,9 @@ namespace
         int count = 0;
 
         clock.beginBlock (hostPosition (120.0, 0.0, 0.0), 512);
-        clock.forEachStep (cursor, 0, 512, [&] (int, int) { ++count; });
+        clock.forEachStep (cursor, 0, 512, [&] (int, StepPosition) { ++count; });
         clock.beginBlock (hostPosition (120.0, 0.0, 0.0), 512); // DAW:en loopar till början
-        clock.forEachStep (cursor, 0, 512, [&] (int, int) { ++count; });
+        clock.forEachStep (cursor, 0, 512, [&] (int, StepPosition) { ++count; });
 
         check (count == 2, "ettan spelas i båda varven", count);
     }
@@ -147,12 +155,12 @@ namespace
         // Transporten står still och DAW:en anger inget tempo.
         clock.beginBlock (juce::nullopt, 512);
         clock.restartFreeRunAt (100);
-        clock.forEachStep (cursor, 100, 512, [&] (int offset, int) { samples.push_back (offset); });
+        clock.forEachStep (cursor, 100, 512, [&] (int offset, StepPosition) { samples.push_back (offset); });
 
         for (long long done = 512; done < 48000; done += 512)
         {
             clock.beginBlock (juce::nullopt, 512);
-            clock.forEachStep (cursor, 0, 512, [&] (int offset, int) { samples.push_back (done + offset); });
+            clock.forEachStep (cursor, 0, 512, [&] (int offset, StepPosition) { samples.push_back (done + offset); });
         }
 
         const auto samplesPerQuarter = 48000.0 * 60.0 / 140.0;
@@ -167,10 +175,10 @@ namespace
         clock.beginBlock (juce::nullopt, 512);
         clock.restartFreeRunAt (0);
         int count = 0;
-        clock.forEachStep (cursor, 0, 512, [&] (int, int) { ++count; });
+        clock.forEachStep (cursor, 0, 512, [&] (int, StepPosition) { ++count; });
         clock.beginBlock (juce::nullopt, 512);
         clock.restartFreeRunAt (10);
-        clock.forEachStep (cursor, 10, 512, [&] (int, int) { ++count; });
+        clock.forEachStep (cursor, 10, 512, [&] (int, StepPosition) { ++count; });
         check (count == 2, "omstart spelar ettan igen", count);
     }
 
@@ -186,11 +194,11 @@ namespace
         clock.beginBlock (hostPosition (120.0, 20 * ppqPerSample, 0.0), 512);
 
         const auto step = clock.takeStepJustPassed (cursor, 0, 144);
-        check (step.has_value() && *step == 0, "ettan tas");
+        check (step.has_value() && step->stepInBar == 0, "ettan tas");
         check (! clock.takeStepJustPassed (cursor, 0, 144).has_value(), "ettan tas bara en gång");
 
         int count = 0;
-        clock.forEachStep (cursor, 0, 512, [&] (int, int) { ++count; });
+        clock.forEachStep (cursor, 0, 512, [&] (int, StepPosition) { ++count; });
         check (count == 0, "ettan spelas inte igen i blocket", count);
 
         StepCursor other { 1.0 };
@@ -198,9 +206,10 @@ namespace
     }
 }
 
-int main()
+void runTransportClockTests()
 {
     testQuartersAt120Bpm();
+    testPatternPosition();
     testStepOnBlockBoundaryFiresOnce();
     testStartMidBeat();
     testSixteenthsWrapAtBar();
@@ -208,13 +217,4 @@ int main()
     testLoopJumpBack();
     testFreeRunRestart();
     testStepJustPassed();
-
-    if (failures > 0)
-    {
-        std::printf ("\n%d test(er) misslyckades\n", failures);
-        return 1;
-    }
-
-    std::puts ("\nAlla tester gick igenom");
-    return 0;
 }

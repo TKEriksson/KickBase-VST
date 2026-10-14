@@ -3,31 +3,45 @@
 InstrumentEditor::InstrumentEditor (InstrumentProcessor& p)
     : AudioProcessorEditor (&p), processor (p)
 {
-    addAndMakeVisible (transportDisplay);
-    keyboard.setOctaveForMiddleC (5); // samma tonnamn som FL Studio och displayen (mittens C = C5)
-    addAndMakeVisible (keyboard);
+    setLookAndFeel (&lookAndFeel);
 
-    setSize (640, 340);
+    for (auto* component : std::initializer_list<juce::Component*> { &header, &kick, &bass, &pattern, &mix, &keyboard })
+        addAndMakeVisible (component);
+
+    keyboard.setOctaveForMiddleC (5); // samma tonnamn som FL Studio (mittens C = C5)
+    keyboard.setKeyWidth (14.0f);
+    keyboard.setLowestVisibleKey (24);
+
+    setSize (1060, 740);
+}
+
+InstrumentEditor::~InstrumentEditor()
+{
+    setLookAndFeel (nullptr);
 }
 
 void InstrumentEditor::paint (juce::Graphics& g)
 {
-    g.fillAll (juce::Colour (0xff1e1f26));
-
-    g.setColour (juce::Colours::orange);
-    g.setFont (juce::FontOptions (24.0f, juce::Font::bold));
-    g.drawText ("MyOwnFruit", 16, 10, 300, 32, juce::Justification::centredLeft);
+    Theme::paintBackground (g, getLocalBounds());
 }
 
 void InstrumentEditor::resized()
 {
-    auto area = getLocalBounds().reduced (16);
-    area.removeFromTop (44);
+    auto area = getLocalBounds().reduced (10);
 
-    keyboard.setBounds (area.removeFromBottom (80));
-    area.removeFromBottom (12);
+    header.setBounds (area.removeFromTop (44));
+    area.removeFromTop (4);
 
-    transportDisplay.setBounds (area.removeFromLeft (260));
-    area.removeFromLeft (16);
-    gain.setBounds (area.removeFromLeft (100));
+    keyboard.setBounds (area.removeFromBottom (54));
+    area.removeFromBottom (10);
+
+    auto top = area.removeFromTop (370);
+    kick.setBounds (top.removeFromLeft (top.getWidth() / 2 - 5));
+    top.removeFromLeft (10);
+    bass.setBounds (top);
+    area.removeFromTop (10);
+
+    mix.setBounds (area.removeFromRight (190));
+    area.removeFromRight (10);
+    pattern.setBounds (area);
 }

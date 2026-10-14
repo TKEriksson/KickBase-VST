@@ -20,8 +20,34 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(JUCE)
 
+# Ljudkärnan: klocka, mönster och motorer. Inget gränssnitt, går att testa fristående.
 set(CORE_SOURCES
     Source/Core/TransportClock.cpp
+    Source/Core/Pattern.cpp
+    Source/Core/KickEngine.cpp
+    Source/Core/BassSynth.cpp
+    Source/Core/StepScheduler.cpp
+)
+
+# Plugin-delarna som båda pluginsen delar, inklusive gränssnittet.
+set(PLUGIN_SOURCES
+    ${CORE_SOURCES}
+    Source/Core/Params.cpp
+    Source/Core/PluginBase.cpp
+    Source/Ui/FruitLookAndFeel.cpp
+    Source/Ui/EnvelopeView.cpp
+    Source/Ui/StepSequencer.cpp
+    Source/Ui/Modules.cpp
+)
+
+set(INSTRUMENT_SOURCES
+    Source/Instrument/InstrumentProcessor.cpp
+    Source/Instrument/InstrumentEditor.cpp
+)
+
+set(FX_SOURCES
+    Source/Fx/FxProcessor.cpp
+    Source/Fx/FxEditor.cpp
 )
 
 # Gemensamt för alla mål: samma definitioner och flaggor.
@@ -33,9 +59,15 @@ function(myownfruit_configure target)
     )
     target_link_libraries(${target} PUBLIC
         juce::juce_recommended_config_flags
-        juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags
     )
+endfunction()
+
+# Link-time optimization ger snabbare plugins men tar flera minuter att länka,
+# så bara pluginsen får det (inte tester och verktyg).
+function(myownfruit_configure_plugin target)
+    myownfruit_configure(${target})
+    target_link_libraries(${target} PUBLIC juce::juce_recommended_lto_flags)
 endfunction()
 
 # MyOwnFruit: instrumentet som läggs i Channel Rack. Spelar mönstret när en ton hålls.
@@ -56,12 +88,12 @@ juce_add_plugin(MyOwnFruit
 )
 
 target_sources(MyOwnFruit PRIVATE
-    ${CORE_SOURCES}
-    Source/Instrument/InstrumentProcessor.cpp
-    Source/Instrument/InstrumentEditor.cpp
+    ${PLUGIN_SOURCES}
+    ${INSTRUMENT_SOURCES}
+    Source/Instrument/InstrumentEntry.cpp
 )
-target_link_libraries(MyOwnFruit PRIVATE juce::juce_audio_utils)
-myownfruit_configure(MyOwnFruit)
+target_link_libraries(MyOwnFruit PRIVATE juce::juce_audio_utils juce::juce_dsp)
+myownfruit_configure_plugin(MyOwnFruit)
 
 # MyOwnFruit FX: effekten som läggs i mixern och hackar upp ljudet från en annan synth.
 juce_add_plugin(MyOwnFruitFX
@@ -80,18 +112,32 @@ juce_add_plugin(MyOwnFruitFX
 )
 
 target_sources(MyOwnFruitFX PRIVATE
-    ${CORE_SOURCES}
-    Source/Fx/FxProcessor.cpp
-    Source/Fx/FxEditor.cpp
+    ${PLUGIN_SOURCES}
+    ${FX_SOURCES}
+    Source/Fx/FxEntry.cpp
 )
-target_link_libraries(MyOwnFruitFX PRIVATE juce::juce_audio_processors)
-myownfruit_configure(MyOwnFruitFX)
+target_link_libraries(MyOwnFruitFX PRIVATE juce::juce_audio_utils juce::juce_dsp)
+myownfruit_configure_plugin(MyOwnFruitFX)
 
 # Tester för kärnan (ingen plugin, bara ett konsolprogram). Körs av build.bat.
 juce_add_console_app(MyOwnFruitTests PRODUCT_NAME "MyOwnFruitTests")
 target_sources(MyOwnFruitTests PRIVATE
     ${CORE_SOURCES}
     Tests/TransportClockTests.cpp
+    Tests/EngineTests.cpp
+    Tests/TestMain.cpp
 )
-target_link_libraries(MyOwnFruitTests PRIVATE juce::juce_audio_basics)
+target_link_libraries(MyOwnFruitTests PRIVATE juce::juce_audio_basics juce::juce_dsp juce::juce_data_structures)
 myownfruit_configure(MyOwnFruitTests)
+
+# Utvecklingsverktyg: renderar ljud offline och tar skärmbilder av gränssnittet.
+juce_add_console_app(MyOwnFruitTool PRODUCT_NAME "MyOwnFruitTool")
+target_sources(MyOwnFruitTool PRIVATE
+    ${PLUGIN_SOURCES}
+    ${INSTRUMENT_SOURCES}
+    ${FX_SOURCES}
+    Tools/Tool.cpp
+)
+target_compile_definitions(MyOwnFruitTool PRIVATE JucePlugin_Name="MyOwnFruit")
+target_link_libraries(MyOwnFruitTool PRIVATE juce::juce_audio_utils juce::juce_dsp)
+myownfruit_configure(MyOwnFruitTool)

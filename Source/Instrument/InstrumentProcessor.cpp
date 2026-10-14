@@ -3,37 +3,63 @@
 
 namespace
 {
-    constexpr auto gainID = "gain";
-
-    // En ton som börjar så här mycket efter ett taktslag räknas som "på slaget".
+    // En ton som börjar så här mycket efter ett steg räknas som "på steget".
     constexpr double noteOnToleranceSeconds = 0.003;
+
+    // Ett steg med slide hålls lite längre än steget, så att nästa steg hinner glida in.
+    constexpr double slideOverlap = 1.05;
 
     juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     {
-        juce::AudioProcessorValueTreeState::ParameterLayout layout;
-        layout.add (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { gainID, 1 }, "Gain", 0.0f, 1.0f, 0.5f));
+        Params::Layout layout;
+        Params::addPatternParams (layout, true);
+        Params::addKickParams (layout);
+        Params::addBassCommonParams (layout, 0.7f);
+        Params::addBassSynthParams (layout);
+        Params::addMasterParams (layout);
         return layout;
+    }
+
+    bool isMonoOrStereo (const juce::AudioChannelSet& set)
+    {
+        return set == juce::AudioChannelSet::mono() || set == juce::AudioChannelSet::stereo();
     }
 }
 
 InstrumentProcessor::InstrumentProcessor()
-    : PluginBase (BusesProperties().withOutput ("Output", juce::AudioChannelSet::stereo(), true), createLayout())
+    : PluginBase (BusesProperties()
+                      .withOutput ("Main", juce::AudioChannelSet::stereo(), true)
+                      .withOutput ("Kick", juce::AudioChannelSet::stereo(), false)
+                      .withOutput ("Bass", juce::AudioChannelSet::stereo(), false),
+                  createLayout())
 {
 }
 
 void InstrumentProcessor::prepareToPlay (double sampleRate, int)
 {
-    clock.prepare (sampleRate);
-    click.prepare (sampleRate);
+    prepareBase (sampleRate);
+    kick.prepare (sampleRate);
+    bass.prepare (sampleRate);
 
-    gain.reset (sampleRate, 0.02);
-    gain.setCurrentAndTargetValue (getParam (gainID));
+    patternActive = false;
+    masterGain.reset (sampleRate, 0.02);
+    masterGain.setCurrentAndTargetValue (params.get (ParamID::gain));
 }
 
 bool InstrumentProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
-    const auto& out = layouts.getMainOutputChannelSet();
-    return out == juce::AudioChannelSet::mono() || out == juce::AudioChannelSet::stereo();
+    if (! isMonoOrStereo (layouts.getMainOutputChannelSet()))
+        return false;
+
+    // Kick- och basutgångarna är frivilliga.
+    for (int bus = 1; bus < layouts.outputBuses.size(); ++bus)
+    {
+        const auto& set = layouts.outputBuses[bus];
+        if (! set.isDisabled() && ! isMonoOrStereo (set))
+            return false;
+    }
+
+    return layouts.inputBuses.isEmpty();
 }
 
 void InstrumentProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
@@ -44,23 +70,63 @@ void InstrumentProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
     const auto numSamples = buffer.getNumSamples();
     keyboardState.processNextMidiBuffer (midi, 0, numSamples, true);
     clock.beginBlock (getHostPosition(), numSamples);
+    readBlockParams();
+
+    // Var kick och bas ska skrivas. Huvudutgången får alltid hela mixen; kick- och
+    // basutgångarna får dessutom sin del var om DAW:en aktiverat dem.
+    auto assign = [&] (Output& out, int busIndex)
+    {
+        out.numChannels = 0;
+        if (auto* bus = getBus (false, busIndex); bus != nullptr && bus->isEnabled())
+        {
+            auto busBuffer = getBusBuffer (buffer, false, busIndex);
+            out.numChannels = std::min (2, busBuffer.getNumChannels());
+            for (int ch = 0; ch < out.numChannels; ++ch)
+                out.channels[(size_t) ch] = busBuffer.getWritePointer (ch);
+        }
+    };
+    assign (mainOut, 0);
+    assign (kickOut, 1);
+    assign (bassOut, 2);
 
     // Dela upp blocket vid varje MIDI-händelse så att toner börjar och slutar på rätt sample.
     int position = 0;
     for (const auto metadata : midi)
     {
         const auto eventPosition = juce::jlimit (0, numSamples, metadata.samplePosition);
-        renderSegment (buffer, position, eventPosition);
+        renderSegment (position, eventPosition);
         handleMidi (metadata.getMessage(), eventPosition);
         position = eventPosition;
     }
-    renderSegment (buffer, position, numSamples);
+    renderSegment (position, numSamples);
 
-    gain.setTargetValue (getParam (gainID));
-    gain.applyGain (buffer, numSamples);
+    masterGain.setTargetValue (params.get (ParamID::gain));
+    masterGain.applyGain (buffer, numSamples);
 
     transportStatus.publish (clock);
-    transportStatus.heldNote = numHeldNotes > 0 ? currentNote : -1;
+    transportStatus.keyNote = currentNote;
+    transportStatus.patternActive = patternActive;
+    transportStatus.kickStep = patternActive ? scheduler.getLastKickStep() : -1;
+    transportStatus.bassStep = patternActive ? scheduler.getLastBassStep() : -1;
+}
+
+void InstrumentProcessor::readBlockParams()
+{
+    patternBars = Params::barsFromChoice (params.getChoice (ParamID::patternBars));
+    scheduler.setGrid ((BassGrid) params.getChoice (ParamID::bassGrid));
+    kickOn = params.getBool (ParamID::kickOn);
+    bassOn = params.getBool (ParamID::bassOn);
+    duckAmount = params.get (ParamID::duckAmount);
+    bassGateScale = params.get (ParamID::bassGate);
+    noteEnd = (NoteEnd) params.getChoice (ParamID::noteEnd);
+    kick.setClickSample (getActiveClickSample());
+    refreshEngineParams();
+}
+
+void InstrumentProcessor::refreshEngineParams()
+{
+    kick.setParams (params.readKick (keyPitchClass()));
+    bass.setParams (params.readBass (keyPitchClass()));
 }
 
 void InstrumentProcessor::handleMidi (const juce::MidiMessage& message, int sampleOffset)
@@ -75,18 +141,12 @@ void InstrumentProcessor::handleMidi (const juce::MidiMessage& message, int samp
             heldNotes[(size_t) note] = true;
             ++numHeldNotes;
         }
+
         currentNote = note;
+        refreshEngineParams(); // ny tonart från och med nu
 
         if (wasSilent)
-        {
-            // Utan DAW-transport börjar den egna klockan på första tonen.
-            clock.restartFreeRunAt (sampleOffset);
-
-            // Med DAW-transport: kom tonen en aning efter slaget? Spela slaget ändå.
-            const auto tolerance = (int) (noteOnToleranceSeconds * getSampleRate());
-            if (const auto step = clock.takeStepJustPassed (quarterCursor, sampleOffset, tolerance))
-                triggerClick (*step);
-        }
+            startPattern (sampleOffset);
     }
     else if (message.isNoteOff())
     {
@@ -94,58 +154,127 @@ void InstrumentProcessor::handleMidi (const juce::MidiMessage& message, int samp
         if (heldNotes[(size_t) note])
         {
             heldNotes[(size_t) note] = false;
-            --numHeldNotes;
+            if (--numHeldNotes == 0)
+                stopPattern (sampleOffset);
         }
     }
     else if (message.isAllNotesOff() || message.isAllSoundOff())
     {
-        heldNotes.fill (false);
-        numHeldNotes = 0;
-    }
-}
-
-void InstrumentProcessor::renderSegment (juce::AudioBuffer<float>& buffer, int startSample, int endSample)
-{
-    auto renderedUpTo = startSample;
-
-    if (numHeldNotes > 0)
-    {
-        clock.forEachStep (quarterCursor, startSample, endSample, [&] (int offset, int stepInBar)
+        if (numHeldNotes > 0)
         {
-            renderClick (buffer, renderedUpTo, offset);
-            triggerClick (stepInBar);
-            renderedUpTo = offset;
-        });
+            heldNotes.fill (false);
+            numHeldNotes = 0;
+            stopPattern (sampleOffset);
+        }
     }
-
-    // Klicket klingar ut även efter att tonen släppts.
-    renderClick (buffer, renderedUpTo, endSample);
 }
 
-void InstrumentProcessor::renderClick (juce::AudioBuffer<float>& buffer, int startSample, int endSample)
+void InstrumentProcessor::startPattern (int sampleOffset)
+{
+    // Utan DAW-transport börjar den egna klockan på första tonen. Är mönstret fortfarande
+    // igång (det spelar klart efter förra tonen) fortsätter det i samma takt.
+    if (! patternActive)
+        clock.restartFreeRunAt (sampleOffset);
+
+    patternActive = true;
+    stopAtPpq = std::numeric_limits<double>::infinity();
+
+    // Kom tonen en aning efter steget? Spela steget ändå.
+    const auto tolerance = (int) (noteOnToleranceSeconds * getSampleRate());
+    scheduler.collectJustPassed (clock, pattern, patternBars, sampleOffset, tolerance);
+    for (const auto& event : scheduler)
+        handleEvent (event);
+}
+
+void InstrumentProcessor::stopPattern (int sampleOffset)
+{
+    if (noteEnd == NoteEnd::cut)
+    {
+        patternActive = false;
+        bass.release();
+        return; // kicken klingar ut av sig själv
+    }
+
+    // Vilken takt tonen släpptes i. En ton som slutar precis på ett taktstreck räknas
+    // till takten före, så att den inte spelar en takt för mycket.
+    const auto ppq = clock.getPpqAt (sampleOffset);
+    const auto bar = clock.getBarIndex()
+                   + (juce::int64) std::floor ((ppq - clock.getBarStartPpq()) / clock.getBarLengthPpq() - 1.0e-6);
+
+    if (noteEnd == NoteEnd::finishBar)
+    {
+        stopAtPpq = clock.getPpqOfBar (bar + 1);
+    }
+    else
+    {
+        const auto patternStart = bar - (((bar % patternBars) + patternBars) % patternBars);
+        stopAtPpq = clock.getPpqOfBar (patternStart + patternBars);
+    }
+}
+
+void InstrumentProcessor::renderSegment (int startSample, int endSample)
+{
+    if (endSample <= startSample)
+        return;
+
+    auto position = startSample;
+
+    if (patternActive)
+    {
+        scheduler.collect (clock, pattern, patternBars, startSample, endSample, stopAtPpq);
+        for (const auto& event : scheduler)
+        {
+            renderSamples (position, event.offset);
+            handleEvent (event);
+            position = event.offset;
+        }
+    }
+
+    renderSamples (position, endSample);
+
+    if (patternActive && clock.getPpqAt (endSample) >= stopAtPpq)
+        patternActive = false;
+}
+
+void InstrumentProcessor::renderSamples (int startSample, int endSample)
 {
     for (int i = startSample; i < endSample; ++i)
     {
-        const auto sample = click.nextSample();
-        for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
-            buffer.setSample (ch, i, sample);
+        const auto kickSample = kick.nextSample();
+
+        // Basen trycks undan exakt så mycket som kicken låter just nu.
+        const auto bassSample = bass.nextSample() * (1.0f - duckAmount * kick.getEnvelope());
+
+        mainOut.add (i, kickSample + bassSample);
+        kickOut.add (i, kickSample);
+        bassOut.add (i, bassSample);
     }
 }
 
-void InstrumentProcessor::triggerClick (int stepInBar)
+void InstrumentProcessor::handleEvent (const StepEvent& event)
 {
-    // Tonens tonklass i oktav 5 (C5 = 523 Hz), en oktav upp och starkare på ettan.
-    const auto isDownbeat = stepInBar == 0;
-    const auto note = 72 + currentNote % 12 + (isDownbeat ? 12 : 0);
-    click.trigger (juce::MidiMessage::getMidiNoteInHertz (note), isDownbeat ? 1.0f : 0.6f);
+    if (event.type == StepEvent::Type::kick)
+    {
+        if (kickOn)
+            kick.trigger (1.0f);
+        return;
+    }
+
+    if (! bassOn)
+        return;
+
+    const auto grid = scheduler.getGrid();
+    const auto& step = pattern.bassStep (grid, event.step);
+    const auto samplesPerStep = clock.getSamplesPerQuarter() / Pattern::bassStepsPerQuarter (grid);
+    const auto slide = step.slide.load();
+
+    const auto gateSamples = slide ? (int) (samplesPerStep * slideOverlap)
+                                   : std::max (1, (int) (step.gate.load() * bassGateScale * samplesPerStep));
+
+    bass.noteOn (step.pitch.load(), step.velocity.load(), gateSamples, slide);
 }
 
 juce::AudioProcessorEditor* InstrumentProcessor::createEditor()
 {
     return new InstrumentEditor (*this);
-}
-
-juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
-{
-    return new InstrumentProcessor();
 }

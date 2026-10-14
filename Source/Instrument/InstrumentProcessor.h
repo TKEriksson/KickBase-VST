@@ -1,41 +1,13 @@
 #pragma once
 
 #include <array>
+#include "../Core/BassSynth.h"
+#include "../Core/KickEngine.h"
 #include "../Core/PluginBase.h"
+#include "../Core/StepScheduler.h"
 
-// Ett kort sinusklick. Platshållare tills kickmotorn finns (steg 2).
-struct Click
-{
-    void prepare (double sampleRate)
-    {
-        twoPiOverSampleRate = juce::MathConstants<double>::twoPi / sampleRate;
-        decay = (float) std::exp (-1.0 / (0.03 * sampleRate)); // ~30 ms
-    }
-
-    void trigger (double frequency, float newLevel)
-    {
-        phase = 0.0;
-        phaseIncrement = frequency * twoPiOverSampleRate;
-        level = newLevel;
-    }
-
-    float nextSample()
-    {
-        if (level < 1.0e-4f)
-            return 0.0f;
-
-        const auto sample = (float) std::sin (phase) * level;
-        phase += phaseIncrement;
-        level *= decay;
-        return sample;
-    }
-
-    double twoPiOverSampleRate = 0.0, phase = 0.0, phaseIncrement = 0.0;
-    float level = 0.0f, decay = 0.0f;
-};
-
-// MyOwnFruit (instrument): spelar mönstret så länge en ton hålls i DAW:en.
-// Steg 1: ett klick på varje fjärdedel, stämt efter tonen och högre på ettan.
+// MyOwnFruit (instrument): spelar kick och bas efter mönstret så länge en ton hålls i DAW:en.
+// Tonen bestämmer tonarten; DAW:ens taktstreck bestämmer var stegen hamnar.
 class InstrumentProcessor : public PluginBase
 {
 public:
@@ -51,19 +23,47 @@ public:
     juce::MidiKeyboardState keyboardState;
 
 private:
-    void handleMidi (const juce::MidiMessage& message, int sampleOffset);
-    void renderSegment (juce::AudioBuffer<float>& buffer, int startSample, int endSample);
-    void renderClick (juce::AudioBuffer<float>& buffer, int startSample, int endSample);
-    void triggerClick (int stepInBar);
+    struct Output
+    {
+        std::array<float*, 2> channels {};
+        int numChannels = 0;
 
-    StepCursor quarterCursor { 1.0 };
-    Click click;
+        void add (int sample, float value) const
+        {
+            for (int ch = 0; ch < numChannels; ++ch)
+                channels[(size_t) ch][sample] += value;
+        }
+    };
+
+    void readBlockParams();
+    void refreshEngineParams();
+    void handleMidi (const juce::MidiMessage& message, int sampleOffset);
+    void startPattern (int sampleOffset);
+    void stopPattern (int sampleOffset);
+    void renderSegment (int startSample, int endSample);
+    void renderSamples (int startSample, int endSample);
+    void handleEvent (const StepEvent& event);
+    int keyPitchClass() const { return currentNote >= 0 ? currentNote % 12 : 0; }
+
+    StepScheduler scheduler;
+    KickEngine kick;
+    BassSynth bass;
 
     std::array<bool, 128> heldNotes {};
     int numHeldNotes = 0;
-    int currentNote = -1; // senast anslagna ton som fortfarande hålls; bestämmer tonarten
+    int currentNote = -1; // senast anslagna ton; bestämmer tonarten
 
-    juce::SmoothedValue<float> gain;
+    bool patternActive = false;
+    double stopAtPpq = std::numeric_limits<double>::infinity();
+
+    // Läses en gång per block.
+    int patternBars = 1;
+    bool kickOn = true, bassOn = true;
+    float duckAmount = 0.8f, bassGateScale = 1.0f;
+    NoteEnd noteEnd = NoteEnd::cut;
+
+    Output mainOut, kickOut, bassOut;
+    juce::SmoothedValue<float> masterGain;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (InstrumentProcessor)
 };
