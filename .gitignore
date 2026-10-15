@@ -2,3 +2,6 @@ build/
 .vs/
 .vscode/*
 !.vscode/settings.json
+
+# Referenslåtar för analys (upphovsrättsskyddade, bara lokalt)
+reference/

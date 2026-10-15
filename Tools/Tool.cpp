@@ -1,7 +1,8 @@
 // Utvecklingsverktyg: renderar ljud offline och tar skärmbilder av gränssnittet, så att
 // pluginsen kan kontrolleras utan DAW.
 //
-//   MyOwnFruitTool render   instrument|fx <ut.wav> [bpm] [takter] [ton] [preset] [effektpreset]
+//   MyOwnFruitTool render   instrument|fx <ut.wav> [bpm] [takter] [ton eller toner, t.ex. 66,64,61,59] [preset] [effektpreset]
+//   (flera toner: en per takt, bytet sker exakt på taktstrecket)
 //   MyOwnFruitTool snapshot instrument|fx <ut.png> [flik]
 //   MyOwnFruitTool presettest
 
@@ -110,7 +111,7 @@ namespace
         std::printf ("Skrev %s\n", file.getFullPathName().toRawUTF8());
     }
 
-    int render (const juce::String& kind, const juce::File& outFile, double bpm, int bars, int note, int preset, int effectPreset)
+    int render (const juce::String& kind, const juce::File& outFile, double bpm, int bars, const juce::Array<int>& notes, int preset, int effectPreset)
     {
         auto processor = createProcessor (kind);
         if (preset >= 0)
@@ -167,10 +168,17 @@ namespace
             }
             else
             {
-                if (done == 0)
-                    midi.addEvent (juce::MidiMessage::noteOn (1, note, (juce::uint8) 100), 0);
-                if (noteSamples >= done && noteSamples < done + n)
-                    midi.addEvent (juce::MidiMessage::noteOff (1, note), noteSamples - done);
+                // En ton per takt; vid taktstrecket släpps förra tonen och nästa slås an på samma sample.
+                for (int bar = 0; bar <= bars; ++bar)
+                {
+                    const auto at = (int) (bar * samplesPerBar);
+                    if (at < done || at >= done + n)
+                        continue;
+                    if (bar > 0)
+                        midi.addEvent (juce::MidiMessage::noteOff (1, notes[(bar - 1) % notes.size()]), at - done);
+                    if (bar < bars)
+                        midi.addEvent (juce::MidiMessage::noteOn (1, notes[bar % notes.size()], (juce::uint8) 100), at - done);
+                }
             }
 
             processor->processBlock (block, midi);
@@ -281,10 +289,12 @@ int main (int argc, char* argv[])
     {
         const auto bpm = argc > 4 ? juce::String (argv[4]).getDoubleValue() : 145.0;
         const auto bars = argc > 5 ? juce::String (argv[5]).getIntValue() : 2;
-        const auto note = argc > 6 ? juce::String (argv[6]).getIntValue() : 66; // F#4
+        juce::Array<int> notes;
+        for (const auto& token : juce::StringArray::fromTokens (argc > 6 ? juce::String (argv[6]) : juce::String ("66"), ",", {}))
+            notes.add (token.getIntValue()); // 66 = F#5 i FL
         const auto preset = argc > 7 ? juce::String (argv[7]).getIntValue() : -1;
         const auto effectPreset = argc > 8 ? juce::String (argv[8]).getIntValue() : -1;
-        return render (kind, outFile, bpm, bars, note, preset, effectPreset);
+        return render (kind, outFile, bpm, bars, notes, preset, effectPreset);
     }
 
     if (command == "snapshot")

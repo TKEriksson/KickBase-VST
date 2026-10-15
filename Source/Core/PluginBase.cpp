@@ -36,10 +36,10 @@ KickParams PluginBase::readModulatedKick (int keyPitchClass) const
     return p;
 }
 
-BassParams PluginBase::readModulatedBass (int keyPitchClass) const
+BassParams PluginBase::readModulatedBass (int rootMidiNote) const
 {
     using Dest = Modulation::Destination;
-    auto p = params.readBass (keyPitchClass);
+    auto p = params.readBass (rootMidiNote);
     p.cutoffHz = modulator.apply (Dest::bassCutoff, p.cutoffHz);
     p.resonance = modulator.apply (Dest::bassResonance, p.resonance);
     p.envAmount = modulator.apply (Dest::bassEnvAmount, p.envAmount);

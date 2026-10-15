@@ -16,6 +16,7 @@ namespace ParamID
 
     // Kick
     inline constexpr auto kickOn          = "kickOn";
+    inline constexpr auto kickKeyFollow   = "kickKeyFollow";
     inline constexpr auto kickTune        = "kickTune";
     inline constexpr auto kickPitch       = "kickPitch";
     inline constexpr auto kickPitchTime   = "kickPitchTime";
@@ -77,6 +78,14 @@ namespace Params
 
     juce::StringArray keyNames();
     float midiToHz (float midiNote);
+
+    // Kickens svans för en tonart: tonens namn i registret A#0..A1 (29-55 Hz), så att
+    // kicken aldrig hamnar orimligt högt eller lågt oavsett tonart.
+    int kickTailMidiNote (int keyPitchClass);
+
+    // Basens grundton för en ton från DAW:en: samma tonnamn två oktaver ner (FL:s C5 -> C2),
+    // så att en basgång som går nedåt i pianorullen också går nedåt i basen.
+    int bassRootMidiNote (int dawNote);
     int barsFromChoice (int choiceIndex); // 0, 1, 2 -> 1, 2, 4 takter
 }
 
@@ -92,7 +101,7 @@ public:
     int getChoice (const char* paramID) const { return (int) get (paramID); }
 
     KickParams readKick (int keyPitchClass) const;
-    BassParams readBass (int keyPitchClass) const;
+    BassParams readBass (int rootMidiNote) const; // rootMidiNote före Octave och Tune
 
 private:
     struct Entry

@@ -158,7 +158,7 @@ void InstrumentProcessor::readBlockParams()
 void InstrumentProcessor::refreshEngineParams()
 {
     kick.setParams (readModulatedKick (keyPitchClass()));
-    bass.setParams (readModulatedBass (keyPitchClass()));
+    bass.setParams (readModulatedBass (bassRootNote()));
 }
 
 void InstrumentProcessor::handleMidi (const juce::MidiMessage& message, int sampleOffset)
@@ -203,9 +203,10 @@ void InstrumentProcessor::handleMidi (const juce::MidiMessage& message, int samp
 
 void InstrumentProcessor::startPattern (int sampleOffset)
 {
-    // Utan DAW-transport börjar den egna klockan på första tonen. Är mönstret fortfarande
-    // igång (det spelar klart efter förra tonen) fortsätter det i samma takt.
-    if (! patternActive)
+    // Utan DAW-transport börjar den egna klockan om på tonen, men bara efter en paus på mer
+    // än en takt. Kommer nästa ton snabbare (man spelar en basgång) fortsätter den i takt.
+    const auto pause = clock.getPpqAt (sampleOffset) - stoppedAtPpq;
+    if (! patternActive && pause > clock.getBarLengthPpq())
         clock.restartFreeRunAt (sampleOffset);
 
     patternActive = true;
@@ -223,6 +224,7 @@ void InstrumentProcessor::stopPattern (int sampleOffset)
     if (noteEnd == NoteEnd::cut)
     {
         patternActive = false;
+        stoppedAtPpq = clock.getPpqAt (sampleOffset);
         bass.release();
         return; // kicken klingar ut av sig själv
     }
@@ -265,7 +267,10 @@ void InstrumentProcessor::renderSegment (int startSample, int endSample)
     renderSamples (position, endSample);
 
     if (patternActive && clock.getPpqAt (endSample) >= stopAtPpq)
+    {
         patternActive = false;
+        stoppedAtPpq = stopAtPpq;
+    }
 }
 
 void InstrumentProcessor::renderSamples (int startSample, int endSample)

@@ -87,7 +87,7 @@ public:
 protected:
     // Läser kickens och basens parametrar, med LFO-modulering.
     KickParams readModulatedKick (int keyPitchClass) const;
-    BassParams readModulatedBass (int keyPitchClass) const;
+    BassParams readModulatedBass (int rootMidiNote) const;
 
 private:
     void setClickOriginal (juce::AudioBuffer<float> audio, double rate, const juce::String& name);

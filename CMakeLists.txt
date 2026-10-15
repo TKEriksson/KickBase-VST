@@ -137,6 +137,7 @@ target_sources(MyOwnFruitTests PRIVATE
     Tests/EngineTests.cpp
     Tests/MasterTests.cpp
     Tests/ModulationTests.cpp
+    Source/Core/Params.cpp
     Source/Core/Master.cpp
     Tests/TestMain.cpp
 )

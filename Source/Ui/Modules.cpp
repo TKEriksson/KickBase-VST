@@ -90,9 +90,12 @@ void HeaderBar::paint (juce::Graphics& g)
 //==============================================================================
 KickModule::KickModule (PluginBase& p)
     : ModulePanel ("KICK", Theme::kick, &p.apvts, ParamID::kickOn), processor (p), refs (p.apvts),
+      keyMode (p.apvts, ParamID::kickKeyFollow, "KEY"),
       presets (p, Presets::Section::kick, Theme::kick)
 {
     addAndMakeVisible (presets);
+    keyMode.box.setTooltip ("Follow: the kick is tuned to the note's key. Fixed: it stays on C1 + TUNE whatever the note.");
+    addAndMakeVisible (keyMode);
     envelope.onBeforePaint = [this] { current = refs.readKick (0); };
 
     envelope.addCurve ({ [this] (double t) { return KickEngine::pitchEnvelopeAt (current, t) * current.pitchSemis / 72.0f; },
@@ -217,7 +220,9 @@ void KickModule::resized()
     auto first = pointers (knobs, 0, 7);
     auto second = pointers (knobs, 7, 13);
     layoutRow (first, row1);
-    layoutRow (second, row2.withTrimmedRight (row2.getWidth() / 7));
+    const auto cell = row2.getWidth() / 7;
+    keyMode.setBounds (row2.removeFromRight (cell).reduced (4, 14));
+    layoutRow (second, row2);
 }
 
 //==============================================================================
@@ -228,7 +233,7 @@ BassModule::BassModule (PluginBase& p)
       presets (p, Presets::Section::bass, Theme::bass)
 {
     addAndMakeVisible (presets);
-    envelope.onBeforePaint = [this] { current = refs.readBass (0); };
+    envelope.onBeforePaint = [this] { current = refs.readBass (36); };
 
     envelope.addCurve ({ [this] (double t) { return BassSynth::filterEnvelopeAt (current, t) * current.envAmount / 8.0f; },
                          Theme::bass, true, "FILTER" });

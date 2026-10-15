@@ -47,6 +47,7 @@ private:
 
     EnvelopeView envelope { 0.4 };
     std::vector<std::unique_ptr<KnobComponent>> knobs;
+    ChoiceComponent keyMode;
     PresetButton presets;
 
     juce::Label sampleLabel;

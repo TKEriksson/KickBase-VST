@@ -73,6 +73,8 @@ namespace Params
     void addKickParams (Layout& layout)
     {
         layout.add (std::make_unique<AudioParameterBool> (ParameterID { ParamID::kickOn, 1 }, "Kick On", true));
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::kickKeyFollow, 1 }, "Kick Key",
+                                                            StringArray { "Fixed", "Follow" }, 1));
         layout.add (floatParam (ParamID::kickTune, "Kick Tune", NormalisableRange<float> (-12.0f, 12.0f, 0.01f), 0.0f,
                                 [] (float v) { return formatSemis (v, 2); }));
         layout.add (floatParam (ParamID::kickPitch, "Kick Pitch", NormalisableRange<float> (0.0f, 72.0f, 0.1f), 42.0f,
@@ -142,6 +144,20 @@ namespace Params
         return 440.0f * std::exp2 ((midiNote - 69.0f) / 12.0f);
     }
 
+    int kickTailMidiNote (int keyPitchClass)
+    {
+        constexpr int lowest = 22; // A#0
+        auto note = 24 + ((keyPitchClass % 12) + 12) % 12;
+        if (note > lowest + 11)
+            note -= 12;
+        return note;
+    }
+
+    int bassRootMidiNote (int dawNote)
+    {
+        return dawNote - 24;
+    }
+
     int barsFromChoice (int choiceIndex)
     {
         return choiceIndex <= 0 ? 1 : (choiceIndex == 1 ? 2 : 4);
@@ -170,7 +186,10 @@ float ParamRefs::get (const char* paramID) const
 KickParams ParamRefs::readKick (int keyPitchClass) const
 {
     KickParams p;
-    p.tailHz        = Params::midiToHz (24.0f + (float) keyPitchClass + get (ParamID::kickTune)); // oktav 1
+    // Fixed: kicken stannar på C1 + Tune oavsett ton (som en kick i en riktig låt brukar).
+    const auto follow = getChoice (ParamID::kickKeyFollow) == 1;
+    const auto tail = follow ? Params::kickTailMidiNote (keyPitchClass) : 24;
+    p.tailHz        = Params::midiToHz ((float) tail + get (ParamID::kickTune));
     p.pitchSemis    = get (ParamID::kickPitch);
     p.pitchTimeMs   = get (ParamID::kickPitchTime);
     p.pitchCurve    = get (ParamID::kickPitchCurve);
@@ -186,10 +205,10 @@ KickParams ParamRefs::readKick (int keyPitchClass) const
     return p;
 }
 
-BassParams ParamRefs::readBass (int keyPitchClass) const
+BassParams ParamRefs::readBass (int rootMidiNote) const
 {
     BassParams p;
-    p.rootHz     = Params::midiToHz (36.0f + (float) keyPitchClass + 12.0f * get (ParamID::bassOctave) + get (ParamID::bassTune)); // oktav 2
+    p.rootHz     = Params::midiToHz ((float) rootMidiNote + 12.0f * get (ParamID::bassOctave) + get (ParamID::bassTune));
     p.wave       = (BassWave) getChoice (ParamID::bassWave);
     p.sub        = get (ParamID::bassSub);
     p.cutoffHz   = get (ParamID::bassCutoff);

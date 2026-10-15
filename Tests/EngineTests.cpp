@@ -3,6 +3,7 @@
 #include "../Source/Core/BassSynth.h"
 #include "../Source/Core/Ducker.h"
 #include "../Source/Core/KickEngine.h"
+#include "../Source/Core/Params.h"
 #include "../Source/Core/Pattern.h"
 #include "../Source/Core/StepGate.h"
 #include "TestUtils.h"
@@ -291,8 +292,26 @@ namespace
     }
 }
 
+namespace
+{
+    void testKeyMapping()
+    {
+        std::puts ("Tonart: basen följer tonens oktav, kicken håller sig i sitt register");
+        check (Params::bassRootMidiNote (60) == 36, "FL:s C5 ger C2 i basen", Params::bassRootMidiNote (60));
+        check (Params::bassRootMidiNote (59) < Params::bassRootMidiNote (60), "en ton nedåt går nedåt i basen");
+        check (Params::bassRootMidiNote (72) == 48, "C6 ger C3", Params::bassRootMidiNote (72));
+
+        for (int pc = 0; pc < 12; ++pc)
+        {
+            const auto note = Params::kickTailMidiNote (pc);
+            check (note >= 22 && note <= 33 && note % 12 == (pc + 12) % 12, "kickens svans i A#0..A1 med rätt tonnamn", note);
+        }
+    }
+}
+
 void runEngineTests()
 {
+    testKeyMapping();
     testKickLandsOnKey();
     testKickRetriggerFades();
     testBassPitchAndRelease();

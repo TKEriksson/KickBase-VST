@@ -55,6 +55,7 @@ private:
     void finishBlock (int numSamples);
     void ensureScratchSize (int numSamples);
     int keyPitchClass() const { return currentNote >= 0 ? currentNote % 12 : 0; }
+    int bassRootNote() const  { return Params::bassRootMidiNote (currentNote >= 0 ? currentNote : 60); }
 
     StepScheduler scheduler;
     KickEngine kick;
@@ -73,6 +74,7 @@ private:
 
     bool patternActive = false;
     double stopAtPpq = std::numeric_limits<double>::infinity();
+    double stoppedAtPpq = -std::numeric_limits<double>::infinity(); // när mönstret senast tystnade
 
     // Läses en gång per block.
     int patternBars = 1;
