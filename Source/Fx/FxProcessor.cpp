@@ -14,6 +14,7 @@ namespace
         Params::addFxParams (layout);
         Effects::addParameters (layout);
         Sidechain::addParameters (layout);
+        Modulation::addParameters (layout);
         MasterSection::addParameters (layout);
         Params::addMasterParams (layout);
         return layout;
@@ -35,6 +36,7 @@ void FxProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     gate.prepare (sampleRate);
     ducker.prepare (sampleRate);
     effects.prepare (sampleRate, samplesPerBlock);
+    effects.setModulator (&modulator);
     master.prepare (sampleRate, 2);
     setLatencySamples (master.getLatencySamples());
     ensureScratchSize (samplesPerBlock);
@@ -66,6 +68,7 @@ void FxProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuff
     const auto numSamples = buffer.getNumSamples();
     ensureScratchSize (numSamples);
     clock.beginBlock (getHostPosition(), numSamples);
+    modulator.update (clock.getPpqAt (0));
 
     for (auto ch = getTotalNumInputChannels(); ch < getTotalNumOutputChannels(); ++ch)
         buffer.clear (ch, 0, numSamples);
@@ -73,14 +76,14 @@ void FxProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuff
     const auto key = params.getChoice (ParamID::fxKey);
     const auto patternBars = Params::barsFromChoice (params.getChoice (ParamID::patternBars));
     scheduler.setGrid ((BassGrid) params.getChoice (ParamID::bassGrid));
-    kick.setParams (params.readKick (key));
+    kick.setParams (readModulatedKick (key));
     kick.setClickSample (getActiveClickSample());
     gate.setTimes (params.get (ParamID::gateAttack), params.get (ParamID::gateRelease));
 
     active = clock.isFollowingHost();
     kickOn = params.getBool (ParamID::kickOn);
     gateOn = params.getBool (ParamID::bassOn);
-    duckAmount = params.get (ParamID::duckAmount);
+    duckAmount = modulator.apply (Modulation::Destination::duckAmount, params.get (ParamID::duckAmount));
     gateScale = params.get (ParamID::bassGate);
     inputLevel = params.get (ParamID::bassLevel) * params.get (ParamID::gain);
 

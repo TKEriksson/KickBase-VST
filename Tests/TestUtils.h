@@ -21,3 +21,4 @@ void check (bool condition, const char* what, Detail detail = {})
 void runTransportClockTests();
 void runEngineTests();
 void runMasterTests();
+void runModulationTests();

@@ -11,6 +11,7 @@ InstrumentEditor::InstrumentEditor (InstrumentProcessor& p)
     lower.addTab ("PATTERN", Theme::pattern, pattern);
     lower.addTab ("EFFECTS", Theme::effects, effects);
     lower.addTab ("SIDECHAIN", Theme::mix, sidechain);
+    lower.addTab ("LFO", Theme::lfo, lfo);
     lower.addTab ("MASTER", Theme::master, masterPage);
 
     keyboard.setOctaveForMiddleC (5); // samma tonnamn som FL Studio (mittens C = C5)

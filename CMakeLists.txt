@@ -28,6 +28,7 @@ set(CORE_SOURCES
     Source/Core/BassSynth.cpp
     Source/Core/StepScheduler.cpp
     Source/Core/Sidechain.cpp
+    Source/Core/Modulation.cpp
 )
 
 # Plugin-delarna som båda pluginsen delar, inklusive gränssnittet.
@@ -46,6 +47,7 @@ set(PLUGIN_SOURCES
     Source/Ui/EffectsPage.cpp
     Source/Ui/SidechainPage.cpp
     Source/Ui/MasterPage.cpp
+    Source/Ui/LfoPage.cpp
 )
 
 set(INSTRUMENT_SOURCES
@@ -134,6 +136,7 @@ target_sources(MyOwnFruitTests PRIVATE
     Tests/TransportClockTests.cpp
     Tests/EngineTests.cpp
     Tests/MasterTests.cpp
+    Tests/ModulationTests.cpp
     Source/Core/Master.cpp
     Tests/TestMain.cpp
 )

@@ -262,6 +262,22 @@ namespace
         return presets;
     }
 
+    // Destinationernas index: se Modulation::Destination.
+    const std::vector<Preset>& lfoPresets()
+    {
+        static const std::vector<Preset> presets {
+            { "Off", {} },
+            { "Filter Wobble 1/8", { { "lfo1On", 1 }, { "lfo1Shape", 0 }, { "lfo1Rate", 4 }, { "lfo1DestA", 1 }, { "lfo1AmountA", 0.25f } } },
+            { "Slow Sweep 4 Bars", { { "lfo1On", 1 }, { "lfo1Shape", 1 }, { "lfo1Rate", 10 }, { "lfo1DestA", 1 }, { "lfo1AmountA", 0.35f },
+                                     { "lfo1DestB", 3 }, { "lfo1AmountB", 0.2f } } },
+            { "Echo Throws", { { "lfo1On", 1 }, { "lfo1Shape", 4 }, { "lfo1Rate", 8 }, { "lfo1DestA", 12 }, { "lfo1AmountA", 0.4f } } },
+            { "Random Grit 1/16", { { "lfo1On", 1 }, { "lfo1Shape", 5 }, { "lfo1Rate", 2 }, { "lfo1DestA", 4 }, { "lfo1AmountA", 0.3f },
+                                    { "lfo2On", 1 }, { "lfo2Shape", 5 }, { "lfo2Rate", 2 }, { "lfo2DestA", 2 }, { "lfo2AmountA", 0.2f } } },
+            { "Pumping Level", { { "lfo1On", 1 }, { "lfo1Shape", 2 }, { "lfo1Rate", 6 }, { "lfo1DestA", 5 }, { "lfo1AmountA", 0.3f } } },
+        };
+        return presets;
+    }
+
     const std::vector<Preset>& listFor (Section section, bool effectVersion)
     {
         if (Presets::isSingleEffect (section))
@@ -276,6 +292,7 @@ namespace
             case Section::effects:   return effectChainPresets();
             case Section::sidechain: return sidechainPresets();
             case Section::master:    return masterPresets();
+            case Section::lfo:       return lfoPresets();
             default:                 break;
         }
         return fullPresets();
@@ -295,6 +312,7 @@ namespace Presets
             case Section::effects:   return "Effects";
             case Section::sidechain: return "Sidechain";
             case Section::master:    return "Master";
+            case Section::lfo:       return "LFO";
             default:                 break;
         }
         if (isSingleEffect (section))
@@ -324,6 +342,8 @@ namespace Presets
                 return id.startsWith ("sc") || id == ParamID::duckAmount;
             case Section::master:
                 return id.startsWith ("master");
+            case Section::lfo:
+                return id.startsWith ("lfo");
             default:
                 break;
         }

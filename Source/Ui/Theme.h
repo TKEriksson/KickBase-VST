@@ -23,6 +23,7 @@ namespace Theme
     inline const juce::Colour gate    { 0xffb98cff };
     inline const juce::Colour effects { 0xffffc857 };
     inline const juce::Colour master  { 0xffff6b6b };
+    inline const juce::Colour lfo     { 0xff5ef2d6 };
 
     inline juce::Font font (float height, bool bold = false)
     {

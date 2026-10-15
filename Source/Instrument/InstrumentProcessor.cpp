@@ -18,6 +18,7 @@ namespace
         Params::addBassSynthParams (layout);
         Effects::addParameters (layout);
         Sidechain::addParameters (layout);
+        Modulation::addParameters (layout);
         MasterSection::addParameters (layout);
         Params::addMasterParams (layout);
         return layout;
@@ -45,6 +46,7 @@ void InstrumentProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     bass.prepare (sampleRate);
     ducker.prepare (sampleRate);
     effects.prepare (sampleRate, samplesPerBlock);
+    effects.setModulator (&modulator);
     master.prepare (sampleRate, 2);
     setLatencySamples (master.getLatencySamples());
     ensureScratchSize (samplesPerBlock);
@@ -79,6 +81,7 @@ void InstrumentProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
     ensureScratchSize (numSamples);
     keyboardState.processNextMidiBuffer (midi, 0, numSamples, true);
     clock.beginBlock (getHostPosition(), numSamples);
+    modulator.update (clock.getPpqAt (0));
     readBlockParams();
 
     // Var kick och bas ska skrivas. Huvudutgången får alltid hela mixen; kick- och
@@ -139,7 +142,7 @@ void InstrumentProcessor::readBlockParams()
     scheduler.setGrid ((BassGrid) params.getChoice (ParamID::bassGrid));
     kickOn = params.getBool (ParamID::kickOn);
     bassOn = params.getBool (ParamID::bassOn);
-    duckAmount = params.get (ParamID::duckAmount);
+    duckAmount = modulator.apply (Modulation::Destination::duckAmount, params.get (ParamID::duckAmount));
     bassGateScale = params.get (ParamID::bassGate);
     noteEnd = (NoteEnd) params.getChoice (ParamID::noteEnd);
     kick.setClickSample (getActiveClickSample());
@@ -154,8 +157,8 @@ void InstrumentProcessor::readBlockParams()
 
 void InstrumentProcessor::refreshEngineParams()
 {
-    kick.setParams (params.readKick (keyPitchClass()));
-    bass.setParams (params.readBass (keyPitchClass()));
+    kick.setParams (readModulatedKick (keyPitchClass()));
+    bass.setParams (readModulatedBass (keyPitchClass()));
 }
 
 void InstrumentProcessor::handleMidi (const juce::MidiMessage& message, int sampleOffset)

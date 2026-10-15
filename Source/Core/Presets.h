@@ -12,9 +12,9 @@
 namespace Presets
 {
     // Effects är hela effektkedjan (inklusive ordningen); filter ... reverb är en effekt var.
-    enum class Section { full, kick, bass, pattern, sidechain, master, effects,
+    enum class Section { full, kick, bass, pattern, sidechain, master, lfo, effects,
                          filter, distortion, eq, chorus, phaser, echo, reverb };
-    constexpr int numSections = 14;
+    constexpr int numSections = 15;
 
     inline Section effectSection (EffectType type) { return (Section) ((int) Section::filter + (int) type); }
     inline bool isSingleEffect (Section section)   { return (int) section >= (int) Section::filter; }

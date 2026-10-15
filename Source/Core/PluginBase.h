@@ -5,6 +5,7 @@
 #include "Effects.h"
 #include "KickEngine.h"
 #include "Master.h"
+#include "Modulation.h"
 #include "Params.h"
 #include "Pattern.h"
 #include "Presets.h"
@@ -79,6 +80,14 @@ protected:
 
     ParamRefs params;
     TransportClock clock;
+
+public:
+    Modulator modulator { apvts }; // public: gränssnittet visar LFO:ernas fas
+
+protected:
+    // Läser kickens och basens parametrar, med LFO-modulering.
+    KickParams readModulatedKick (int keyPitchClass) const;
+    BassParams readModulatedBass (int keyPitchClass) const;
 
 private:
     void setClickOriginal (juce::AudioBuffer<float> audio, double rate, const juce::String& name);

@@ -38,6 +38,20 @@ namespace
         return (float) (1.0 - std::exp (-MathConstants<double>::twoPi * hz / sampleRate));
     }
 
+    using Dest = Modulation::Destination;
+
+    // Basklass för effekterna: läser en parameter, med LFO-modulering om den finns.
+    struct ModulatedEffect
+    {
+        const Modulator* modulator = nullptr;
+
+        float get (std::atomic<float>* parameter, Dest destination) const
+        {
+            const auto value = parameter->load();
+            return modulator != nullptr ? modulator->apply (destination, value) : value;
+        }
+    };
+
     // Läser en parameter som skapats av Effects::addParameters.
     std::atomic<float>* raw (AudioProcessorValueTreeState& apvts, EffectType type, const char* suffix)
     {
@@ -217,7 +231,7 @@ void EffectOrder::fromString (const String& text)
 //==============================================================================
 namespace
 {
-    struct FilterFx
+    struct FilterFx : ModulatedEffect
     {
         static constexpr int chunk = 32; // cutoff uppdateras var 32:a sample
 
@@ -243,14 +257,14 @@ namespace
         {
             const auto filterType = (dsp::StateVariableTPTFilterType) jlimit (0, 2, (int) type->load());
             const auto steep = slope->load() >= 0.5f;
-            const auto q = 0.5f * std::pow (20.0f, reso->load());
+            const auto q = 0.5f * std::pow (20.0f, get (reso, Dest::filterReso));
             const auto wet = mix->load();
 
             first.setType (filterType);
             second.setType (filterType);
             first.setResonance (steep ? 0.707f : q);
             second.setResonance (q);
-            smoothedCutoff.setTargetValue (cutoff->load());
+            smoothedCutoff.setTargetValue (get (cutoff, Dest::filterCutoff));
 
             for (int start = 0; start < numSamples; start += chunk)
             {
@@ -274,7 +288,7 @@ namespace
         }
     };
 
-    struct DistortionFx
+    struct DistortionFx : ModulatedEffect
     {
         std::atomic<float>* mode; std::atomic<float>* drive; std::atomic<float>* tone; std::atomic<float>* mix;
         std::array<OnePole, 2> toneFilters;
@@ -288,7 +302,7 @@ namespace
         void process (AudioBuffer<float>& buffer, int numSamples)
         {
             const auto m = (int) mode->load();
-            const auto amount = drive->load();
+            const auto amount = get (drive, Dest::distDrive);
             const auto wet = mix->load();
             const auto gain = std::pow (10.0f, amount * 1.5f); // upp till ~30 gånger (+30 dB)
             const auto toneCoefficient = onePoleCoefficient (tone->load(), sampleRate);
@@ -387,7 +401,7 @@ namespace
         }
     };
 
-    struct ChorusFx
+    struct ChorusFx : ModulatedEffect
     {
         std::atomic<float>* rate; std::atomic<float>* depth; std::atomic<float>* delay; std::atomic<float>* feedback; std::atomic<float>* mix;
         dsp::Chorus<float> chorus;
@@ -401,13 +415,13 @@ namespace
             chorus.setDepth (depth->load());
             chorus.setCentreDelay (delay->load());
             chorus.setFeedback (feedback->load());
-            chorus.setMix (mix->load());
+            chorus.setMix (get (mix, Dest::chorusMix));
             auto block = dsp::AudioBlock<float> (buffer).getSubBlock (0, (size_t) numSamples);
             chorus.process (dsp::ProcessContextReplacing<float> (block));
         }
     };
 
-    struct PhaserFx
+    struct PhaserFx : ModulatedEffect
     {
         std::atomic<float>* rate; std::atomic<float>* depth; std::atomic<float>* freq; std::atomic<float>* feedback; std::atomic<float>* mix;
         dsp::Phaser<float> phaser;
@@ -421,13 +435,13 @@ namespace
             phaser.setDepth (depth->load());
             phaser.setCentreFrequency (freq->load());
             phaser.setFeedback (feedback->load());
-            phaser.setMix (mix->load());
+            phaser.setMix (get (mix, Dest::phaserMix));
             auto block = dsp::AudioBlock<float> (buffer).getSubBlock (0, (size_t) numSamples);
             phaser.process (dsp::ProcessContextReplacing<float> (block));
         }
     };
 
-    struct EchoFx
+    struct EchoFx : ModulatedEffect
     {
         std::atomic<float>* time; std::atomic<float>* feedback; std::atomic<float>* pingPong;
         std::atomic<float>* lowCut; std::atomic<float>* highCut; std::atomic<float>* mix;
@@ -458,8 +472,8 @@ namespace
         void process (AudioBuffer<float>& buffer, int numSamples)
         {
             delaySamples.setTargetValue (targetDelay());
-            const auto fb = feedback->load();
-            const auto wet = mix->load();
+            const auto fb = get (feedback, Dest::echoFeedback);
+            const auto wet = get (mix, Dest::echoMix);
             const auto pong = pingPong->load() >= 0.5f;
             const auto lowCoefficient = onePoleCoefficient (lowCut->load(), sampleRate);
             const auto highCoefficient = onePoleCoefficient (highCut->load(), sampleRate);
@@ -496,7 +510,7 @@ namespace
         }
     };
 
-    struct ReverbFx
+    struct ReverbFx : ModulatedEffect
     {
         std::atomic<float>* size; std::atomic<float>* damping; std::atomic<float>* width; std::atomic<float>* lowCut; std::atomic<float>* mix;
 
@@ -534,8 +548,9 @@ namespace
             lowCutFilter.process (dsp::ProcessContextReplacing<float> (block));
             reverb.process (dsp::ProcessContextReplacing<float> (block));
 
+            const auto wet = get (mix, Dest::reverbMix);
             for (int ch = 0; ch < channels; ++ch)
-                buffer.addFrom (ch, 0, wetBuffer, ch, 0, numSamples, mix->load());
+                buffer.addFrom (ch, 0, wetBuffer, ch, 0, numSamples, wet);
         }
     };
 }
@@ -670,6 +685,16 @@ void EffectChain::update (double bpm)
         }
         impl->wasOn[(size_t) i] = isOn;
     }
+}
+
+void EffectChain::setModulator (const Modulator* modulator)
+{
+    impl->filter.modulator = modulator;
+    impl->distortion.modulator = modulator;
+    impl->chorus.modulator = modulator;
+    impl->phaser.modulator = modulator;
+    impl->echo.modulator = modulator;
+    impl->reverb.modulator = modulator;
 }
 
 bool EffectChain::hasActive (bool postGate) const

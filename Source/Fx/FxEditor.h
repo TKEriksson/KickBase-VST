@@ -4,6 +4,7 @@
 #include "FxProcessor.h"
 #include "../Ui/FruitLookAndFeel.h"
 #include "../Ui/EffectsPage.h"
+#include "../Ui/LfoPage.h"
 #include "../Ui/MasterPage.h"
 #include "../Ui/SidechainPage.h"
 #include "../Ui/Modules.h"
@@ -29,6 +30,7 @@ private:
     PatternModule pattern { processor, Theme::gate, "GATE", false };
     EffectsPage effects { processor };
     SidechainPage sidechain { processor };
+    LfoPage lfo { processor };
     MasterPage masterPage { processor };
     MixModule mix { processor, false };
     juce::TooltipWindow tooltips { this, 700 };

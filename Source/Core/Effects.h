@@ -4,6 +4,7 @@
 #include <juce_dsp/juce_dsp.h>
 #include <array>
 #include <atomic>
+#include "Modulation.h"
 
 // Basens effekter. Varje effekt finns en gång, med egna parametrar; ordningen och om den
 // ligger före eller efter gaten väljs av användaren.
@@ -56,6 +57,9 @@ public:
 
     // Läser parametrarna. Anropas en gång per block, före process.
     void update (double bpm);
+
+    // LFO-modulering av effekternas rattar (kan vara nullptr).
+    void setModulator (const Modulator* modulator);
 
     // Kör de påslagna effekterna som ligger före (postGate = false) eller efter gaten,
     // i ordningen `order`. `buffer` är stereo.

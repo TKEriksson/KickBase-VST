@@ -5,6 +5,7 @@ int main()
     runTransportClockTests();
     runEngineTests();
     runMasterTests();
+    runModulationTests();
 
     if (testFailures() > 0)
     {

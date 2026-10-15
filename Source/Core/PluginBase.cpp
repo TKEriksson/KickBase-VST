@@ -27,6 +27,34 @@ void PluginBase::prepareBase (double sampleRate)
     rebuildClickForSampleRate();
 }
 
+KickParams PluginBase::readModulatedKick (int keyPitchClass) const
+{
+    using Dest = Modulation::Destination;
+    auto p = params.readKick (keyPitchClass);
+    p.pitchSemis = modulator.apply (Dest::kickPitch, p.pitchSemis);
+    p.decayMs = modulator.apply (Dest::kickDecay, p.decayMs);
+    return p;
+}
+
+BassParams PluginBase::readModulatedBass (int keyPitchClass) const
+{
+    using Dest = Modulation::Destination;
+    auto p = params.readBass (keyPitchClass);
+    p.cutoffHz = modulator.apply (Dest::bassCutoff, p.cutoffHz);
+    p.resonance = modulator.apply (Dest::bassResonance, p.resonance);
+    p.envAmount = modulator.apply (Dest::bassEnvAmount, p.envAmount);
+    p.drive = modulator.apply (Dest::bassDrive, p.drive);
+    p.level = modulator.apply (Dest::bassLevel, p.level);
+
+    // Tune ingår redan i rootHz; lägg bara på skillnaden.
+    if (modulator.isModulated (Dest::bassTune))
+    {
+        const auto tune = params.get (ParamID::bassTune);
+        p.rootHz *= std::exp2 ((modulator.apply (Dest::bassTune, tune) - tune) / 12.0f);
+    }
+    return p;
+}
+
 juce::Optional<juce::AudioPlayHead::PositionInfo> PluginBase::getHostPosition() const
 {
     if (auto* hostPlayHead = getPlayHead())
