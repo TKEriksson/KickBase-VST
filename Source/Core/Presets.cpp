@@ -172,6 +172,25 @@ namespace
                 { "masterDrive", 5.0f }, { "masterClip", 0.3f } },
               PatternTemplate::rolling, { { 1, 7, false }, { 9, 7, false } } },
 
+            // Gorovich - Pinball (145 BPM): rullande sextondelar på E med en basgång per takt,
+            // relativt E: D# F F(oktav) | E E E | F F F | E E E. Lång kick (-6 dB vid ~77 ms),
+            // kort svagt klick. Spela E4 i pianorullen.
+            { "Pinball (Gorovich style)",
+              { { kickKeyFollow, 1 }, { kickTune, 0.3f }, { kickPitch, 24.0f }, { kickPitchTime, 8.0f }, { kickPitchCurve, 2.5f },
+                { kickHold, 25.0f }, { kickDecay, 170.0f }, { kickDecayCurve, 1.5f }, { kickClick, 0.1f }, { kickClickLength, 1.5f },
+                { kickDrive, 0.35f },
+                { bassSub, 0.3f }, { bassSubOctave, 1 }, { bassOsc2Wave, 0 }, { bassOsc2Level, 0.3f }, { bassOsc2Semi, 12.0f },
+                { bassOsc2Detune, 10.0f }, { bassCutoff, 450.0f }, { bassResonance, 0.4f }, { bassEnvAmount, 4.5f }, { bassEnvDecay, 70.0f },
+                { bassKeyTrack, 0.5f }, { bassAttack, 1.0f }, { bassDecay, 80.0f }, { bassSustain, 0.3f }, { bassRelease, 8.0f },
+                { bassDrive, 0.4f }, { duckAmount, 0.85f },
+                { "fxDistOn", 1 }, { "fxDistDrive", 0.2f }, { "fxDistTone", 8000.0f },
+                { "masterDrive", 5.0f }, { "masterClip", 0.3f } },
+              PatternTemplate::rolling,
+              { { 1, -1, false }, { 2, 1, false }, { 3, 13, false },
+                { 5, 0, false }, { 6, 0, false }, { 7, 0, false },
+                { 9, 1, false }, { 10, 1, false }, { 11, 1, false },
+                { 13, 0, false }, { 14, 0, false }, { 15, 0, false } } },
+
             // Dekel - Bear Line (135,5 BPM): lång kick (-6 dB vid ~80 ms) med klassiskt svep på
             // ~12 ms. Galopp (K . B B): kvinten (B) kort på tredje sextondelen, grundtonen (E)
             // längre på den fjärde. Ljust anslag som mörknar (filter-envelope).
