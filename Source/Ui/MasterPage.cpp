@@ -42,8 +42,21 @@ void LevelMeter::paint (juce::Graphics& g)
 MasterPage::MasterPage (PluginBase& p)
     : presets (p, Presets::Section::master, Theme::master),
       output ([&p] { return p.getMasterSection().outputPeakDb.load(); }, -36.0f, 0.0f, false, Theme::mix, "OUT"),
-      reduction ([&p] { return p.getMasterSection().gainReductionDb.load(); }, -12.0f, 0.0f, true, Theme::master, "GR")
+      reduction ([&p] { return p.getMasterSection().gainReductionDb.load(); }, -12.0f, 0.0f, true, Theme::master, "GR"),
+      scope (p, { { &p.getMasterSection().inputTap, 2, juce::Colours::white.withAlpha (0.6f), false, "INTO LIMITER" },
+                  { &p.getMasterSection().outputTap, 2, Theme::master, true, "OUTPUT" } }),
+      gainScope (p, { { &p.getMasterSection().gainTap, 0, Theme::master, true, "GAIN" } }, ScopeView::Mode::gainReduction)
 {
+    scope.setTooltip ("MAXIMIZER SCOPE - Live: the signal going into the limiter (white outline) and what comes out (red). "
+                      "Where the white sticks out above the red lines (the ceiling), the limiter is pushing it down.");
+    gainScope.setTooltip ("GAIN REDUCTION - How much the limiter turns the signal down, over time.");
+    scope.guideLevel = [&p]
+    {
+        const auto* ceiling = p.apvts.getRawParameterValue ("masterCeiling");
+        return juce::Decibels::decibelsToGain (ceiling->load());
+    };
+    addAndMakeVisible (scope);
+    addAndMakeVisible (gainScope);
     addAndMakeVisible (presets);
 
     power.setColour (juce::ToggleButton::tickColourId, Theme::master);
@@ -88,9 +101,21 @@ void MasterPage::resized()
     auto meters = area.removeFromRight (110);
     output.setBounds (meters.removeFromLeft (55));
     reduction.setBounds (meters);
+    area.removeFromRight (10);
 
-    auto row = area.withHeight (std::min (area.getHeight(), 100));
-    const auto width = std::min (100, row.getWidth() / (int) knobs.size());
-    for (auto& knob : knobs)
-        knob->setBounds (row.removeFromLeft (width));
+    // Rattarna i två rader till vänster, vågformerna till höger om dem.
+    auto knobArea = area.removeFromLeft (310);
+    area.removeFromLeft (10);
+    const auto rowHeight = knobArea.getHeight() / 2;
+    auto top = knobArea.removeFromTop (rowHeight);
+    const auto cell = top.getWidth() / 3;
+    for (size_t i = 0; i < knobs.size(); ++i)
+    {
+        auto& row = i < 3 ? top : knobArea;
+        knobs[i]->setBounds (row.removeFromLeft (cell));
+    }
+
+    scope.setBounds (area.removeFromTop (area.getHeight() * 7 / 10));
+    area.removeFromTop (4);
+    gainScope.setBounds (area);
 }

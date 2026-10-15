@@ -3,6 +3,7 @@
 #include "../Core/PluginBase.h"
 #include "Components.h"
 #include "PresetButton.h"
+#include "Scopes.h"
 
 // Redigerar duckkurvan. Visar basens volym efter en kick: överst = full volym, nederst = tyst.
 // Dra punkter, dubbelklicka för att lägga till, högerklicka för att ta bort, och dra i
@@ -53,4 +54,5 @@ private:
     ChoiceComponent mode, length;
     std::vector<std::unique_ptr<KnobComponent>> depths; // en per baslager
     DuckCurveView curve;
+    ScopeView scope;
 };

@@ -16,6 +16,7 @@ FxEditor::FxEditor (FxProcessor& p)
     tools.addTab ("SIDECHAIN", Theme::mix, sidechain);
     tools.addTab ("LFO", Theme::lfo, lfo);
     tools.addTab ("MASTER", Theme::master, masterPage);
+    tools.addTab ("SOUNDSTAGE", Theme::mix, soundstage);
 
     setSize (1060, 830);
 }

@@ -7,6 +7,7 @@
 #include "../Ui/LfoPage.h"
 #include "../Ui/MasterPage.h"
 #include "../Ui/SidechainPage.h"
+#include "../Ui/SoundstagePage.h"
 #include "../Ui/Modules.h"
 #include "../Ui/TabbedPanel.h"
 
@@ -34,6 +35,7 @@ private:
     SidechainPage sidechain { processor };
     LfoPage lfo { processor };
     MasterPage masterPage { processor };
+    SoundstagePage soundstage { processor };
     InfoBar info;
     juce::TooltipWindow tooltips { this, 1200 };
 

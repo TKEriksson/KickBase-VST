@@ -3,6 +3,7 @@
 #include "../Core/PluginBase.h"
 #include "Components.h"
 #include "PresetButton.h"
+#include "Scopes.h"
 
 // Lodrät mätare i dB.
 class LevelMeter : public juce::Component, private juce::Timer
@@ -36,4 +37,5 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> powerAttachment;
     std::vector<std::unique_ptr<KnobComponent>> knobs;
     LevelMeter output, reduction;
+    ScopeView scope, gainScope;
 };

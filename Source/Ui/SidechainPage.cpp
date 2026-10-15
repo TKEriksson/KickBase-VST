@@ -276,9 +276,14 @@ SidechainPage::SidechainPage (PluginBase& p)
     : presets (p, Presets::Section::sidechain, Theme::mix),
       mode (p.apvts, "scMode", "MODE"),
       length (p.apvts, "scLength", "LENGTH"),
-      curve (p)
+      curve (p),
+      scope (p, { { &p.bassBeforeDuckTap, 2, juce::Colours::white.withAlpha (0.6f), false, "BASS BEFORE" },
+                  { &p.bassAfterDuckTap, 2, Theme::bass, true, "BASS DUCKED" },
+                  { &p.kickTap, 2, Theme::kick, true, "KICK" } })
 {
-    for (auto* c : std::initializer_list<juce::Component*> { &presets, &mode, &length, &curve })
+    scope.setTooltip ("SIDECHAIN SCOPE - Live: the kick (orange), the bass before the sidechain (white outline) and after it (blue). "
+                      "The blue is the bass the kick lets through: watch it being cut away under each kick.");
+    for (auto* c : std::initializer_list<juce::Component*> { &presets, &mode, &length, &curve, &scope })
         addAndMakeVisible (c);
 
     const auto numLayers = p.isEffectVersion() ? 1 : ParamID::numBassLayers;
@@ -312,5 +317,7 @@ void SidechainPage::resized()
         const auto row = (int) i / 2, col = (int) i % 2;
         depths[i]->setBounds (knobColumn.getX() + col * cell, knobColumn.getY() + row * 86, cell, 82);
     }
-    curve.setBounds (area);
+    curve.setBounds (area.removeFromLeft (area.getWidth() * 4 / 10));
+    area.removeFromLeft (8);
+    scope.setBounds (area);
 }

@@ -98,6 +98,8 @@ namespace Help
             { "masterOn", "Turns the master section on or off." },
             { "masterDrive", "Pushes the level into the limiter: louder, but too much flattens the punch." },
             { "masterClip", "Soft clipping before the limiter: adds loudness and grit." },
+            { "masterWidth", "Stereo width of the whole mix: 0 % = mono, 100 % = unchanged, 200 % = extra wide." },
+            { "masterMonoBelow", "Makes everything below this frequency mono, so the low end stays tight and centred. Off = unchanged." },
             { "masterCeiling", "The highest peak level the output may reach." },
             { "masterRelease", "How fast the limiter lets go after a peak. Short = louder but can pump." },
 

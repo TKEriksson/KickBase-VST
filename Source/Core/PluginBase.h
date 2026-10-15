@@ -10,6 +10,7 @@
 #include "Pattern.h"
 #include "Presets.h"
 #include "Sidechain.h"
+#include "SignalTap.h"
 #include "TransportStatus.h"
 
 // Det som instrumentet och FX-versionen har gemensamt: parametrar, mönster, klicksampling,
@@ -70,6 +71,9 @@ public:
     juce::AudioProcessorValueTreeState apvts;
     Pattern pattern;
     SidechainCurve sidechainCurve;
+
+    // Vad gränssnittet ritar i realtid: kicken, och basen före och efter duckningen under kicken.
+    SignalTap kickTap, bassBeforeDuckTap, bassAfterDuckTap;
 
     // Kickens pitch-envelope (halvtoner över svansen, upp till 0,5 s) och volym-envelope
     // (upp till 2 s), redigeras i KICK-fliken.

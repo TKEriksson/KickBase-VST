@@ -55,6 +55,8 @@ set(PLUGIN_SOURCES
     Source/Ui/Help.cpp
     Source/Ui/OscPanel.cpp
     Source/Ui/KickDisplay.cpp
+    Source/Ui/Scopes.cpp
+    Source/Ui/SoundstagePage.cpp
 )
 
 set(INSTRUMENT_SOURCES

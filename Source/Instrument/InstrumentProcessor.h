@@ -72,7 +72,7 @@ private:
 
     // Blockets mellanresultat: kick, hur mycket basen ska duckas (före varje lagers mängd),
     // varje baslagers källa och amplitud (en kanal per lager), och basens summa (stereo).
-    juce::AudioBuffer<float> kickBuffer, duckBuffer, layerBuffer, amplitudeBuffer, bassBuffer;
+    juce::AudioBuffer<float> kickBuffer, duckBuffer, layerBuffer, amplitudeBuffer, bassBuffer, tapBuffer;
 
     std::array<bool, 128> heldNotes {};
     int numHeldNotes = 0;

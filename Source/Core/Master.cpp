@@ -10,7 +10,9 @@ MasterSection::MasterSection (juce::AudioProcessorValueTreeState& apvts)
       driveDb (apvts.getRawParameterValue ("masterDrive")),
       clip (apvts.getRawParameterValue ("masterClip")),
       ceilingDb (apvts.getRawParameterValue ("masterCeiling")),
-      releaseMs (apvts.getRawParameterValue ("masterRelease"))
+      releaseMs (apvts.getRawParameterValue ("masterRelease")),
+      width (apvts.getRawParameterValue ("masterWidth")),
+      monoBelowHz (apvts.getRawParameterValue ("masterMonoBelow"))
 {
     jassert (on != nullptr && driveDb != nullptr && clip != nullptr && ceilingDb != nullptr && releaseMs != nullptr);
 }
@@ -31,6 +33,15 @@ void MasterSection::addParameters (juce::AudioProcessorValueTreeState::Parameter
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "masterCeiling", 1 }, "Master Ceiling",
                                                        NormalisableRange<float> (-12.0f, 0.0f, 0.1f), -0.3f,
                                                        AudioParameterFloatAttributes().withStringFromValueFunction (db)));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "masterWidth", 1 }, "Master Width",
+                                                       NormalisableRange<float> (0.0f, 2.0f, 0.001f), 1.0f,
+                                                       AudioParameterFloatAttributes().withStringFromValueFunction (
+                                                           [] (float v, int) { return String (roundToInt (v * 100.0f)) + " %"; })));
+    NormalisableRange<float> monoRange (20.0f, 400.0f, 1.0f);
+    monoRange.setSkewForCentre (100.0f);
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "masterMonoBelow", 1 }, "Master Mono Below", monoRange, 100.0f,
+                                                       AudioParameterFloatAttributes().withStringFromValueFunction (
+                                                           [] (float v, int) { return v <= 21.0f ? String ("Off") : String (roundToInt (v)) + " Hz"; })));
     NormalisableRange<float> release (5.0f, 500.0f, 0.1f);
     release.setSkewForCentre (80.0f);
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "masterRelease", 1 }, "Master Release", release, 60.0f,
@@ -55,6 +66,7 @@ void MasterSection::prepare (double newSampleRate, int numChannels)
 
 void MasterSection::reset()
 {
+    sideState.fill (0.0f);
     dcInput.assign ((size_t) channels, 0.0f);
     dcOutput.assign ((size_t) channels, 0.0f);
     for (auto& line : delayLines)
@@ -78,8 +90,32 @@ void MasterSection::process (juce::AudioBuffer<float>& buffer, int numSamples)
 
     auto peak = 0.0f, lowestGain = 1.0f;
 
+    // Stereobredd: sidosignalen (L-R) skalas, och under gränsfrekvensen blir den noll, så att
+    // basen är mono. Av när mastern är av eller bara en kanal finns.
+    const auto stereo = enabled && numChannels >= 2;
+    const auto widthGain = width->load();
+    const auto monoHz = monoBelowHz->load();
+    const auto splitMono = monoHz > 21.0f;
+    const auto sideCoefficient = (float) (1.0 - std::exp (-juce::MathConstants<double>::twoPi * monoHz / sampleRate));
+
     for (int i = 0; i < numSamples; ++i)
     {
+        if (stereo && (widthGain != 1.0f || splitMono))
+        {
+            const auto left = buffer.getSample (0, i), right = buffer.getSample (1, i);
+            const auto mid = 0.5f * (left + right);
+            auto side = 0.5f * (left - right);
+            if (splitMono)
+            {
+                sideState[0] += (side - sideState[0]) * sideCoefficient;
+                sideState[1] += (sideState[0] - sideState[1]) * sideCoefficient;
+                side -= sideState[1]; // bara det över gränsfrekvensen finns kvar
+            }
+            side *= widthGain;
+            buffer.setSample (0, i, mid + side);
+            buffer.setSample (1, i, mid - side);
+        }
+
         // 1. DC-filter, drive och soft clip (tanh, blandat med det rena ljudet efter clip-mängd).
         auto inputPeak = 0.0f;
         for (int ch = 0; ch < numChannels; ++ch)
@@ -96,6 +132,7 @@ void MasterSection::process (juce::AudioBuffer<float>& buffer, int numSamples)
             buffer.setSample (ch, i, x);
             inputPeak = std::max (inputPeak, std::abs (x));
         }
+        inputTap.push (buffer.getSample (0, i), buffer.getSample (std::min (1, numChannels - 1), i));
 
         // 2. Vilken förstärkning toppen kräver, med release: sjunker direkt, stiger långsamt.
         const auto target = enabled && inputPeak > ceiling ? ceiling / inputPeak : 1.0f;
@@ -124,6 +161,8 @@ void MasterSection::process (juce::AudioBuffer<float>& buffer, int numSamples)
             buffer.setSample (ch, i, y);
             peak = std::max (peak, std::abs (y));
         }
+        outputTap.push (buffer.getSample (0, i), buffer.getSample (std::min (1, numChannels - 1), i));
+        gainTap.push (enabled ? gain : 1.0f);
 
         lowestGain = std::min (lowestGain, enabled ? gain : 1.0f);
         writeIndex = readIndex;

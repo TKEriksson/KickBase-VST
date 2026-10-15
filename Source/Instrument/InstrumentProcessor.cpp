@@ -321,6 +321,8 @@ void InstrumentProcessor::finishBlock (int numSamples)
     const auto* duckData = duckBuffer.getReadPointer (0);
     bassBuffer.clear (0, numSamples);
     effects.beginBlock (numSamples, clock.getBpm(), clock.getPpqAt (0));
+    tapBuffer.clear (0, numSamples);
+    tapBuffer.clear (1, numSamples);
 
     for (int layer = 0; layer < numLayers; ++layer)
     {
@@ -329,8 +331,15 @@ void InstrumentProcessor::finishBlock (int numSamples)
         auto& ducker = duckers[(size_t) layer];
         const auto amount = duckAmounts[(size_t) layer];
 
+        auto* before = tapBuffer.getWritePointer (0);
+        auto* after = tapBuffer.getWritePointer (1);
         for (int i = 0; i < numSamples; ++i)
-            data[i] *= amplitude[i] * ducker.next (duckData[i], amount);
+        {
+            const auto level = data[i] * amplitude[i];
+            data[i] = level * ducker.next (duckData[i], amount);
+            before[i] += level;
+            after[i] += data[i];
+        }
 
         // Kanal A-C: amount av ljudet går genom kanalen, resten torrt.
         const auto channel = (int) params.bass (layer, BassField::fxChannel) - 1;
@@ -347,6 +356,13 @@ void InstrumentProcessor::finishBlock (int numSamples)
     }
 
     effects.process (numSamples, duckData, bassBuffer);
+
+    for (int i = 0; i < numSamples; ++i)
+    {
+        kickTap.push (kickBuffer.getSample (0, i));
+        bassBeforeDuckTap.push (tapBuffer.getSample (0, i));
+        bassAfterDuckTap.push (tapBuffer.getSample (1, i));
+    }
 
     const auto* kickData = kickBuffer.getReadPointer (0);
     const auto* left = bassBuffer.getReadPointer (0);
@@ -368,6 +384,7 @@ void InstrumentProcessor::ensureScratchSize (int numSamples)
     kickBuffer.setSize (1, numSamples, false, true, true);
     duckBuffer.setSize (1, numSamples, false, true, true);
     layerBuffer.setSize (numLayers, numSamples, false, true, true);
+    tapBuffer.setSize (2, numSamples, false, true, true);
     amplitudeBuffer.setSize (numLayers, numSamples, false, true, true);
     bassBuffer.setSize (2, numSamples, false, true, true);
 }

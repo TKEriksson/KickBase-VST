@@ -126,6 +126,10 @@ void FxProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuff
         synthBuffer.applyGain (1.0f - amountToChannel);
     }
 
+    // För gränssnittets vågformer: synthen före duckningen (mono-summa).
+    for (int i = 0; i < numSamples; ++i)
+        bassBeforeDuckTap.push (0.5f * (synthBuffer.getSample (0, i) + synthBuffer.getSample (1, i)));
+
     // Kickens envelope per sample (före duckern) till kanalernas duckning.
     duckRawBuffer.copyFrom (0, 0, duckBuffer, 0, 0, numSamples);
     auto* duckData = duckBuffer.getWritePointer (0);
@@ -134,6 +138,12 @@ void FxProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuff
 
     for (int ch = 0; ch < 2; ++ch)
         juce::FloatVectorOperations::multiply (synthBuffer.getWritePointer (ch), duckData, numSamples);
+
+    for (int i = 0; i < numSamples; ++i)
+    {
+        kickTap.push (kickBuffer.getSample (0, i));
+        bassAfterDuckTap.push (0.5f * (synthBuffer.getSample (0, i) + synthBuffer.getSample (1, i)));
+    }
 
     effects.process (numSamples, duckRawBuffer.getReadPointer (0), synthBuffer);
 

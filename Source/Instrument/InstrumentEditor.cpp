@@ -18,6 +18,7 @@ InstrumentEditor::InstrumentEditor (InstrumentProcessor& p)
     tools.addTab ("SIDECHAIN", Theme::mix, sidechain);
     tools.addTab ("LFO", Theme::lfo, lfo);
     tools.addTab ("MASTER", Theme::master, masterPage);
+    tools.addTab ("SOUNDSTAGE", Theme::mix, soundstage);
 
     keyboard.setOctaveForMiddleC (5); // samma tonnamn som FL Studio (mittens C = C5)
     keyboard.setKeyWidth (14.0f);

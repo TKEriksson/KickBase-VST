@@ -3,8 +3,11 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <atomic>
 #include <vector>
+#include <array>
+#include "SignalTap.h"
 
-// Mastersektionen: drive, soft clip och en limiter med lookahead och tak (ceiling).
+// Mastersektionen: stereobredd (med mono under en frekvens), drive, soft clip och en limiter
+// med lookahead och tak (ceiling).
 //
 // Limitern tittar `lookaheadSamples` framåt: ljudet fördröjs så mycket och förstärkningen
 // hinner sänkas mjukt innan en topp når utgången. Fördröjningen rapporteras som latens
@@ -29,6 +32,10 @@ public:
     std::atomic<float> outputPeakDb { -100.0f };
     std::atomic<float> gainReductionDb { 0.0f };
 
+    // Vad gränssnittet ritar: ljudet in i limitern (efter bredd, drive och clip), ut ur den,
+    // och limiterns förstärkning (i båda kanalerna) sample för sample.
+    SignalTap inputTap, outputTap, gainTap;
+
     static void addParameters (juce::AudioProcessorValueTreeState::ParameterLayout& layout);
 
 private:
@@ -37,6 +44,11 @@ private:
     std::atomic<float>* clip;
     std::atomic<float>* ceilingDb;
     std::atomic<float>* releaseMs;
+    std::atomic<float>* width;
+    std::atomic<float>* monoBelowHz;
+
+    // Sidosignalens lågpass (två poler) för mono under gränsfrekvensen.
+    std::array<float, 4> sideState {};
 
     double sampleRate = 44100.0;
     int lookahead = 72;
