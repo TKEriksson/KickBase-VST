@@ -2,6 +2,7 @@
 
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_audio_processors/juce_audio_processors.h>
+#include "Effects.h"
 #include "KickEngine.h"
 #include "Params.h"
 #include "Pattern.h"
@@ -36,6 +37,9 @@ public:
     // Anropas av gränssnittet när mönstret ändrats, så att DAW:en vet att projektet ändrats.
     void patternChanged();
 
+    // Som patternChanged, för annat som sparas utan att vara en parameter (t.ex. effektordningen).
+    void markStateChanged();
+
     // Presets per del (se Presets.h). Bara i plugin:ets egen meny, inte som VST3-"programs":
     // en värd kan sätta program-parametern när ett projekt laddas och skulle då skriva över
     // det sparade. Anropas från gränssnittet (message thread).
@@ -52,8 +56,10 @@ public:
 
     juce::AudioProcessorValueTreeState apvts;
     Pattern pattern;
+    EffectOrder effectOrder;
     TransportStatus transportStatus;
     std::atomic<int> patternVersion { 0 }; // ökas när mönstret ändras, så att gränssnittet ritar om
+    int selectedTab = 0;                   // gränssnittets valda flik, så att den finns kvar när fönstret öppnas igen
 
 protected:
     // Anropas i prepareToPlay i underklasserna.
@@ -84,7 +90,7 @@ private:
     void resetSectionToDefaults (Presets::Section section);
 
     const bool effectVersion;
-    std::array<juce::String, Presets::numSections> presetNames { "Init", "Default", "Default", "Rolling" }; // bara message thread
+    std::array<juce::String, Presets::numSections> presetNames; // bara message thread
 
     double currentSampleRate = 44100.0;
     std::atomic<ClickSample*> activeClick { nullptr };

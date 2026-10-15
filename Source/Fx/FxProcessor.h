@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../Core/Ducker.h"
+#include "../Core/Effects.h"
 #include "../Core/KickEngine.h"
 #include "../Core/PluginBase.h"
 #include "../Core/StepGate.h"
@@ -22,13 +23,18 @@ public:
     bool acceptsMidi() const override { return false; }
 
 private:
-    void processSamples (juce::AudioBuffer<float>& buffer, int startSample, int endSample);
+    void renderSamples (int startSample, int endSample);
     void handleEvent (const StepEvent& event);
+    void ensureScratchSize (int numSamples);
 
     StepScheduler scheduler;
     KickEngine kick;
     StepGate gate;
     Ducker ducker;
+    EffectChain effects { apvts };
+
+    // Blockets mellanresultat: kick, kickens envelope, gatens nivå och synthens ljud (stereo).
+    juce::AudioBuffer<float> kickBuffer, envelopeBuffer, gateBuffer, synthBuffer;
 
     // Läses en gång per block.
     bool active = false, kickOn = true, gateOn = true;

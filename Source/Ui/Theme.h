@@ -21,6 +21,7 @@ namespace Theme
     inline const juce::Colour pattern { 0xffff5fa8 };
     inline const juce::Colour mix     { 0xff8cf5a6 };
     inline const juce::Colour gate    { 0xffb98cff };
+    inline const juce::Colour effects { 0xffffc857 };
 
     inline juce::Font font (float height, bool bold = false)
     {

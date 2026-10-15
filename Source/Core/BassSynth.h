@@ -37,7 +37,16 @@ public:
     void noteOn (int semitones, float velocity, int gateSamples, bool slide);
     void release();
 
-    float nextSample();
+    // Basen i två delar, så att effekter kan läggas före eller efter gaten:
+    // källan (oscillator + filter + drive) och amplituden (envelope * velocity * level).
+    struct Output
+    {
+        float source = 0.0f;
+        float amplitude = 0.0f;
+    };
+
+    Output next();
+    float nextSample() { const auto o = next(); return o.source * o.amplitude; }
     bool isActive() const { return stage != Stage::idle; }
 
     // Filter-envelopens form (0..1) efter `seconds`. Används även av gränssnittet.

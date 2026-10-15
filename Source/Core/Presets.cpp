@@ -12,10 +12,18 @@ namespace
         bool slide;
     };
 
+    // Ett parametervärde. Konstruktorn tar float, så att heltal som 1 blir float vid anropet.
+    struct Value
+    {
+        Value (const char* idIn, float valueIn) : id (idIn), value (valueIn) {}
+        const char* id;
+        float value;
+    };
+
     struct Preset
     {
         const char* name;
-        std::vector<std::pair<const char*, float>> values;
+        std::vector<Value> values;
         PatternTemplate pattern = PatternTemplate::rolling; // bara Full och Pattern
         std::vector<StepTweak> tweaks;                      // bara sextondelsmönster
     };
@@ -143,14 +151,101 @@ namespace
         return presets;
     }
 
+    // Effekternas parameter-ID skrivs ut i sin helhet här (se Effects::addParameters).
+    const std::vector<Preset>& effectPresets (EffectType type)
+    {
+        static const std::vector<Preset> filter {
+            { "Default", {} },
+            { "Warm Low Pass",   { { "fxFilterOn", 1 }, { "fxFilterCutoff", 900.0f }, { "fxFilterReso", 0.3f } } },
+            { "Thin High Pass",  { { "fxFilterOn", 1 }, { "fxFilterType", 1 }, { "fxFilterCutoff", 250.0f }, { "fxFilterReso", 0.1f } } },
+            { "Band Pass Talk",  { { "fxFilterOn", 1 }, { "fxFilterType", 2 }, { "fxFilterCutoff", 1200.0f }, { "fxFilterReso", 0.6f } } },
+            { "Acid Resonance",  { { "fxFilterOn", 1 }, { "fxFilterCutoff", 450.0f }, { "fxFilterReso", 0.8f } } },
+        };
+        static const std::vector<Preset> distortion {
+            { "Default", {} },
+            { "Warm Saturation", { { "fxDistOn", 1 }, { "fxDistDrive", 0.25f }, { "fxDistTone", 6000.0f } } },
+            { "Hard Clip",       { { "fxDistOn", 1 }, { "fxDistMode", 1 }, { "fxDistDrive", 0.6f }, { "fxDistTone", 7000.0f } } },
+            { "Folded",          { { "fxDistOn", 1 }, { "fxDistMode", 2 }, { "fxDistDrive", 0.5f }, { "fxDistTone", 5000.0f }, { "fxDistMix", 0.6f } } },
+            { "Lo-Fi Crush",     { { "fxDistOn", 1 }, { "fxDistMode", 3 }, { "fxDistDrive", 0.6f }, { "fxDistTone", 7000.0f }, { "fxDistMix", 0.7f } } },
+        };
+        static const std::vector<Preset> eq {
+            { "Default", {} },
+            { "Psy Bass", { { "fxEqOn", 1 }, { "fxEqLow", 2.0f }, { "fxEqMidFreq", 300.0f }, { "fxEqMid", -3.0f }, { "fxEqHigh", 2.0f } } },
+            { "Scooped",  { { "fxEqOn", 1 }, { "fxEqMidFreq", 600.0f }, { "fxEqMid", -6.0f } } },
+            { "Bright",   { { "fxEqOn", 1 }, { "fxEqHigh", 6.0f } } },
+            { "Thin",     { { "fxEqOn", 1 }, { "fxEqLow", -8.0f } } },
+        };
+        static const std::vector<Preset> chorus {
+            { "Default", {} },
+            { "Subtle Width", { { "fxChorusOn", 1 }, { "fxChorusRate", 0.5f }, { "fxChorusDepth", 0.2f }, { "fxChorusMix", 0.25f } } },
+            { "Wide",         { { "fxChorusOn", 1 }, { "fxChorusRate", 0.9f }, { "fxChorusDepth", 0.5f }, { "fxChorusMix", 0.5f } } },
+            { "Flanger",      { { "fxChorusOn", 1 }, { "fxChorusDelay", 2.0f }, { "fxChorusFeedback", 0.7f }, { "fxChorusDepth", 0.6f }, { "fxChorusMix", 0.5f } } },
+        };
+        static const std::vector<Preset> phaser {
+            { "Default", {} },
+            { "Slow Sweep",  { { "fxPhaserOn", 1 }, { "fxPhaserRate", 0.1f }, { "fxPhaserDepth", 0.8f }, { "fxPhaserFeedback", 0.5f }, { "fxPhaserMix", 0.5f } } },
+            { "Fast Wobble", { { "fxPhaserOn", 1 }, { "fxPhaserRate", 3.0f }, { "fxPhaserDepth", 0.5f }, { "fxPhaserMix", 0.4f } } },
+            { "Psychedelic", { { "fxPhaserOn", 1 }, { "fxPhaserRate", 0.25f }, { "fxPhaserDepth", 1.0f }, { "fxPhaserFeedback", 0.85f },
+                               { "fxPhaserFreq", 600.0f }, { "fxPhaserMix", 0.6f } } },
+        };
+        static const std::vector<Preset> echo {
+            { "Default", {} },
+            { "Ping Pong 3/16", { { "fxEchoOn", 1 }, { "fxEchoTime", 5 }, { "fxEchoFeedback", 0.45f }, { "fxEchoPingPong", 1 }, { "fxEchoMix", 0.3f } } },
+            { "Straight 1/8",   { { "fxEchoOn", 1 }, { "fxEchoTime", 4 }, { "fxEchoFeedback", 0.35f }, { "fxEchoPingPong", 0 }, { "fxEchoMix", 0.25f } } },
+            { "Dub 1/4",        { { "fxEchoOn", 1 }, { "fxEchoTime", 6 }, { "fxEchoFeedback", 0.6f }, { "fxEchoHighCut", 2500.0f }, { "fxEchoMix", 0.35f } } },
+            { "Triplet Bounce", { { "fxEchoOn", 1 }, { "fxEchoTime", 3 }, { "fxEchoFeedback", 0.4f }, { "fxEchoPingPong", 1 }, { "fxEchoMix", 0.3f } } },
+        };
+        static const std::vector<Preset> reverb {
+            { "Default", {} },
+            { "Small Room",   { { "fxReverbOn", 1 }, { "fxReverbSize", 0.25f }, { "fxReverbDamping", 0.6f }, { "fxReverbMix", 0.15f } } },
+            { "Big Hall",     { { "fxReverbOn", 1 }, { "fxReverbSize", 0.9f }, { "fxReverbDamping", 0.4f }, { "fxReverbLowCut", 400.0f }, { "fxReverbMix", 0.3f } } },
+            { "Gated Reverb", { { "fxReverbOn", 1 }, { "fxReverbPost", 0 }, { "fxReverbSize", 0.7f }, { "fxReverbMix", 0.45f } } },
+        };
+
+        switch (type)
+        {
+            case EffectType::filter:     return filter;
+            case EffectType::distortion: return distortion;
+            case EffectType::eq:         return eq;
+            case EffectType::chorus:     return chorus;
+            case EffectType::phaser:     return phaser;
+            case EffectType::echo:       return echo;
+            case EffectType::reverb:     return reverb;
+        }
+        return filter;
+    }
+
+    const std::vector<Preset>& effectChainPresets()
+    {
+        static const std::vector<Preset> presets {
+            { "Default (all off)", {} },
+            { "Psy Glue",     { { "fxEqOn", 1 }, { "fxEqLow", 2.0f }, { "fxEqMidFreq", 300.0f }, { "fxEqMid", -3.0f }, { "fxEqHigh", 2.0f },
+                                { "fxDistOn", 1 }, { "fxDistDrive", 0.2f }, { "fxDistTone", 7000.0f } } },
+            { "Spacey",       { { "fxEchoOn", 1 }, { "fxEchoTime", 5 }, { "fxEchoFeedback", 0.45f }, { "fxEchoMix", 0.25f },
+                                { "fxReverbOn", 1 }, { "fxReverbSize", 0.8f }, { "fxReverbLowCut", 400.0f }, { "fxReverbMix", 0.2f } } },
+            { "Gated Psy",    { { "fxReverbOn", 1 }, { "fxReverbPost", 0 }, { "fxReverbSize", 0.7f }, { "fxReverbMix", 0.4f },
+                                { "fxFilterOn", 1 }, { "fxFilterCutoff", 1500.0f }, { "fxFilterReso", 0.3f } } },
+            { "Acid Squelch", { { "fxFilterOn", 1 }, { "fxFilterCutoff", 500.0f }, { "fxFilterReso", 0.75f },
+                                { "fxDistOn", 1 }, { "fxDistMode", 1 }, { "fxDistDrive", 0.45f } } },
+            { "Wide Phase",   { { "fxPhaserOn", 1 }, { "fxPhaserRate", 0.15f }, { "fxPhaserDepth", 0.7f }, { "fxPhaserMix", 0.4f },
+                                { "fxChorusOn", 1 }, { "fxChorusDepth", 0.25f }, { "fxChorusMix", 0.3f } } },
+        };
+        return presets;
+    }
+
     const std::vector<Preset>& listFor (Section section, bool effectVersion)
     {
+        if (Presets::isSingleEffect (section))
+            return effectPresets (Presets::effectOf (section));
+
         switch (section)
         {
             case Section::full:    return fullPresets();
             case Section::kick:    return kickPresets();
             case Section::bass:    return effectVersion ? gatePresets() : bassPresets();
             case Section::pattern: return patternPresets();
+            case Section::effects: return effectChainPresets();
+            default:               break;
         }
         return fullPresets();
     }
@@ -166,6 +261,13 @@ namespace Presets
             case Section::kick:    return "Kick";
             case Section::bass:    return "Bass";
             case Section::pattern: return "Pattern";
+            case Section::effects: return "Effects";
+            default:               break;
+        }
+        if (isSingleEffect (section))
+        {
+            const auto name = Effects::name (effectOf (section));
+            return name.substring (0, 1) + name.substring (1).toLowerCase();
         }
         return {};
     }
@@ -183,8 +285,12 @@ namespace Presets
                     || id == ParamID::gateAttack || id == ParamID::gateRelease;
             case Section::pattern:
                 return id == ParamID::patternBars || id == ParamID::bassGrid || id == ParamID::bassGate || id == ParamID::noteEnd;
+            case Section::effects:
+                return Effects::isEffectParameter (id);
+            default:
+                break;
         }
-        return false;
+        return isSingleEffect (section) && id.startsWith (Effects::parameterPrefix (effectOf (section)));
     }
 
     juce::File folder (Section section, bool effectVersion)
@@ -195,8 +301,11 @@ namespace Presets
         else if (section == Section::bass)
             name = effectVersion ? "Gate" : "Bass";
 
-        return juce::File::getSpecialLocation (juce::File::userDocumentsDirectory)
-            .getChildFile ("MyOwnFruit").getChildFile ("Presets").getChildFile (name);
+        auto root = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory)
+                        .getChildFile ("MyOwnFruit").getChildFile ("Presets");
+        if (isSingleEffect (section))
+            root = root.getChildFile ("Effects");
+        return root.getChildFile (name);
     }
 
     int factoryCount (Section section, bool effectVersion)

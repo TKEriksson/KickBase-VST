@@ -1,8 +1,8 @@
 // Utvecklingsverktyg: renderar ljud offline och tar skärmbilder av gränssnittet, så att
 // pluginsen kan kontrolleras utan DAW.
 //
-//   MyOwnFruitTool render   instrument|fx <ut.wav> [bpm] [takter] [ton] [preset]
-//   MyOwnFruitTool snapshot instrument|fx <ut.png>
+//   MyOwnFruitTool render   instrument|fx <ut.wav> [bpm] [takter] [ton] [preset] [effektpreset]
+//   MyOwnFruitTool snapshot instrument|fx <ut.png> [flik]
 //   MyOwnFruitTool presettest
 
 #include <juce_audio_formats/juce_audio_formats.h>
@@ -110,13 +110,18 @@ namespace
         std::printf ("Skrev %s\n", file.getFullPathName().toRawUTF8());
     }
 
-    int render (const juce::String& kind, const juce::File& outFile, double bpm, int bars, int note, int preset)
+    int render (const juce::String& kind, const juce::File& outFile, double bpm, int bars, int note, int preset, int effectPreset)
     {
         auto processor = createProcessor (kind);
         if (preset >= 0)
         {
             processor->loadFactoryPreset (Presets::Section::full, preset);
             std::printf ("Preset: %s\n", processor->getPresetName (Presets::Section::full).toRawUTF8());
+        }
+        if (effectPreset >= 0)
+        {
+            processor->loadFactoryPreset (Presets::Section::effects, effectPreset);
+            std::printf ("Effekter: %s\n", processor->getPresetName (Presets::Section::effects).toRawUTF8());
         }
         processor->setPlayConfigDetails (kind == "fx" ? 2 : 0, 2, renderRate, blockSize);
         processor->prepareToPlay (renderRate, blockSize);
@@ -229,11 +234,12 @@ namespace
         return ok ? 0 : 1;
     }
 
-    int snapshot (const juce::String& kind, const juce::File& outFile)
+    int snapshot (const juce::String& kind, const juce::File& outFile, int tab)
     {
         juce::ScopedJuceInitialiser_GUI gui;
 
         auto processor = createProcessor (kind);
+        processor->selectedTab = tab;
         processor->setPlayConfigDetails (kind == "fx" ? 2 : 0, 2, renderRate, blockSize);
         processor->prepareToPlay (renderRate, blockSize);
 
@@ -277,11 +283,12 @@ int main (int argc, char* argv[])
         const auto bars = argc > 5 ? juce::String (argv[5]).getIntValue() : 2;
         const auto note = argc > 6 ? juce::String (argv[6]).getIntValue() : 66; // F#4
         const auto preset = argc > 7 ? juce::String (argv[7]).getIntValue() : -1;
-        return render (kind, outFile, bpm, bars, note, preset);
+        const auto effectPreset = argc > 8 ? juce::String (argv[8]).getIntValue() : -1;
+        return render (kind, outFile, bpm, bars, note, preset, effectPreset);
     }
 
     if (command == "snapshot")
-        return snapshot (kind, outFile);
+        return snapshot (kind, outFile, argc > 4 ? juce::String (argv[4]).getIntValue() : 0);
 
     std::puts ("Okänt kommando");
     return 1;

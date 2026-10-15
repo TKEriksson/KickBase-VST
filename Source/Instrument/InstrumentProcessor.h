@@ -3,6 +3,7 @@
 #include <array>
 #include "../Core/BassSynth.h"
 #include "../Core/Ducker.h"
+#include "../Core/Effects.h"
 #include "../Core/KickEngine.h"
 #include "../Core/PluginBase.h"
 #include "../Core/StepScheduler.h"
@@ -29,10 +30,15 @@ private:
         std::array<float*, 2> channels {};
         int numChannels = 0;
 
-        void add (int sample, float value) const
+        void add (int sample, float left, float right) const
         {
-            for (int ch = 0; ch < numChannels; ++ch)
-                channels[(size_t) ch][sample] += value;
+            if (numChannels == 1)
+                channels[0][sample] += 0.5f * (left + right);
+            else if (numChannels == 2)
+            {
+                channels[0][sample] += left;
+                channels[1][sample] += right;
+            }
         }
     };
 
@@ -44,12 +50,18 @@ private:
     void renderSegment (int startSample, int endSample);
     void renderSamples (int startSample, int endSample);
     void handleEvent (const StepEvent& event);
+    void finishBlock (int numSamples);
+    void ensureScratchSize (int numSamples);
     int keyPitchClass() const { return currentNote >= 0 ? currentNote % 12 : 0; }
 
     StepScheduler scheduler;
     KickEngine kick;
     BassSynth bass;
     Ducker ducker;
+    EffectChain effects { apvts };
+
+    // Blockets mellanresultat: kick, kickens envelope, basens källa (stereo) och amplitud.
+    juce::AudioBuffer<float> kickBuffer, envelopeBuffer, bassBuffer, amplitudeBuffer;
 
     std::array<bool, 128> heldNotes {};
     int numHeldNotes = 0;

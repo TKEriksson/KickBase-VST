@@ -5,8 +5,11 @@ FxEditor::FxEditor (FxProcessor& p)
 {
     setLookAndFeel (&lookAndFeel);
 
-    for (auto* component : std::initializer_list<juce::Component*> { &header, &kick, &gate, &pattern, &mix })
+    for (auto* component : std::initializer_list<juce::Component*> { &header, &kick, &gate, &lower, &mix })
         addAndMakeVisible (component);
+
+    lower.addTab ("PATTERN", Theme::pattern, pattern);
+    lower.addTab ("EFFECTS", Theme::effects, effects);
 
     setSize (1060, 676);
 }
@@ -36,5 +39,5 @@ void FxEditor::resized()
 
     mix.setBounds (area.removeFromRight (190));
     area.removeFromRight (10);
-    pattern.setBounds (area);
+    lower.setBounds (area);
 }

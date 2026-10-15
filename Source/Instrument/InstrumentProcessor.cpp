@@ -16,6 +16,7 @@ namespace
         Params::addKickParams (layout);
         Params::addBassCommonParams (layout, 0.7f);
         Params::addBassSynthParams (layout);
+        Effects::addParameters (layout);
         Params::addMasterParams (layout);
         return layout;
     }
@@ -35,12 +36,14 @@ InstrumentProcessor::InstrumentProcessor()
 {
 }
 
-void InstrumentProcessor::prepareToPlay (double sampleRate, int)
+void InstrumentProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     prepareBase (sampleRate);
     kick.prepare (sampleRate);
     bass.prepare (sampleRate);
     ducker.prepare (sampleRate);
+    effects.prepare (sampleRate, samplesPerBlock);
+    ensureScratchSize (samplesPerBlock);
 
     patternActive = false;
     masterGain.reset (sampleRate, 0.02);
@@ -69,6 +72,7 @@ void InstrumentProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
     buffer.clear();
 
     const auto numSamples = buffer.getNumSamples();
+    ensureScratchSize (numSamples);
     keyboardState.processNextMidiBuffer (midi, 0, numSamples, true);
     clock.beginBlock (getHostPosition(), numSamples);
     readBlockParams();
@@ -100,6 +104,7 @@ void InstrumentProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
         position = eventPosition;
     }
     renderSegment (position, numSamples);
+    finishBlock (numSamples);
 
     masterGain.setTargetValue (params.get (ParamID::gain));
     masterGain.applyGain (buffer, numSamples);
@@ -239,17 +244,63 @@ void InstrumentProcessor::renderSegment (int startSample, int endSample)
 
 void InstrumentProcessor::renderSamples (int startSample, int endSample)
 {
+    auto* kickData = kickBuffer.getWritePointer (0);
+    auto* envelopeData = envelopeBuffer.getWritePointer (0);
+    auto* sourceData = bassBuffer.getWritePointer (0);
+    auto* amplitudeData = amplitudeBuffer.getWritePointer (0);
+
     for (int i = startSample; i < endSample; ++i)
     {
-        const auto kickSample = kick.nextSample();
+        kickData[i] = kick.nextSample();
+        envelopeData[i] = kick.getEnvelope();
 
-        // Basen trycks undan så mycket som kicken låter just nu.
-        const auto bassSample = bass.nextSample() * ducker.next (kick.getEnvelope(), duckAmount);
-
-        mainOut.add (i, kickSample + bassSample);
-        kickOut.add (i, kickSample);
-        bassOut.add (i, bassSample);
+        const auto b = bass.next();
+        sourceData[i] = b.source;
+        amplitudeData[i] = b.amplitude;
     }
+}
+
+void InstrumentProcessor::finishBlock (int numSamples)
+{
+    // Basen: källa -> effekter före gaten -> gate (amplitud) -> effekter efter -> ducking.
+    bassBuffer.copyFrom (1, 0, bassBuffer, 0, 0, numSamples);
+
+    effects.update (clock.getBpm());
+    effects.process (bassBuffer, numSamples, false, effectOrder);
+
+    for (int ch = 0; ch < 2; ++ch)
+        juce::FloatVectorOperations::multiply (bassBuffer.getWritePointer (ch), amplitudeBuffer.getReadPointer (0), numSamples);
+
+    effects.process (bassBuffer, numSamples, true, effectOrder);
+
+    const auto* kickData = kickBuffer.getReadPointer (0);
+    const auto* envelopeData = envelopeBuffer.getReadPointer (0);
+    auto* left = bassBuffer.getWritePointer (0);
+    auto* right = bassBuffer.getWritePointer (1);
+
+    for (int i = 0; i < numSamples; ++i)
+    {
+        // Basen (och dess ekon och reverb) trycks undan så mycket som kicken låter just nu.
+        const auto duck = ducker.next (envelopeData[i], duckAmount);
+        left[i] *= duck;
+        right[i] *= duck;
+
+        mainOut.add (i, kickData[i] + left[i], kickData[i] + right[i]);
+        kickOut.add (i, kickData[i], kickData[i]);
+        bassOut.add (i, left[i], right[i]);
+    }
+}
+
+void InstrumentProcessor::ensureScratchSize (int numSamples)
+{
+    // Allokerar bara om DAW:en skickar ett större block än den lovade i prepareToPlay.
+    if (kickBuffer.getNumSamples() >= numSamples)
+        return;
+
+    kickBuffer.setSize (1, numSamples, false, true, true);
+    envelopeBuffer.setSize (1, numSamples, false, true, true);
+    amplitudeBuffer.setSize (1, numSamples, false, true, true);
+    bassBuffer.setSize (2, numSamples, false, true, true);
 }
 
 void InstrumentProcessor::handleEvent (const StepEvent& event)

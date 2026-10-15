@@ -32,6 +32,7 @@ set(CORE_SOURCES
 # Plugin-delarna som båda pluginsen delar, inklusive gränssnittet.
 set(PLUGIN_SOURCES
     ${CORE_SOURCES}
+    Source/Core/Effects.cpp
     Source/Core/Params.cpp
     Source/Core/Presets.cpp
     Source/Core/PluginBase.cpp
@@ -40,6 +41,7 @@ set(PLUGIN_SOURCES
     Source/Ui/StepSequencer.cpp
     Source/Ui/Modules.cpp
     Source/Ui/PresetButton.cpp
+    Source/Ui/EffectsPage.cpp
 )
 
 set(INSTRUMENT_SOURCES

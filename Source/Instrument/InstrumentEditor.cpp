@@ -5,8 +5,11 @@ InstrumentEditor::InstrumentEditor (InstrumentProcessor& p)
 {
     setLookAndFeel (&lookAndFeel);
 
-    for (auto* component : std::initializer_list<juce::Component*> { &header, &kick, &bass, &pattern, &mix, &keyboard })
+    for (auto* component : std::initializer_list<juce::Component*> { &header, &kick, &bass, &lower, &mix, &keyboard })
         addAndMakeVisible (component);
+
+    lower.addTab ("PATTERN", Theme::pattern, pattern);
+    lower.addTab ("EFFECTS", Theme::effects, effects);
 
     keyboard.setOctaveForMiddleC (5); // samma tonnamn som FL Studio (mittens C = C5)
     keyboard.setKeyWidth (14.0f);
@@ -43,5 +46,5 @@ void InstrumentEditor::resized()
 
     mix.setBounds (area.removeFromRight (190));
     area.removeFromRight (10);
-    pattern.setBounds (area);
+    lower.setBounds (area);
 }

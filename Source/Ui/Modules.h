@@ -91,8 +91,8 @@ private:
     juce::Label help;
 };
 
-// Mönstret: längd, rutnät, mallar och stegsekvenseraren.
-class PatternModule : public ModulePanel
+// Mönstret: längd, rutnät, presets och stegsekvenseraren. En sida i flikpanelen.
+class PatternModule : public juce::Component
 {
 public:
     PatternModule (PluginBase& processor, juce::Colour bassAccent, const juce::String& bassName, bool showPitchLane);

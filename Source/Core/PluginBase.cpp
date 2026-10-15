@@ -15,6 +15,9 @@ PluginBase::PluginBase (const BusesProperties& buses, juce::AudioProcessorValueT
       params (apvts),
       effectVersion (isEffect)
 {
+    presetNames.fill ("Default");
+    presetNames[(size_t) Presets::Section::full] = "Init";
+    presetNames[(size_t) Presets::Section::pattern] = "Rolling";
 }
 
 void PluginBase::prepareBase (double sampleRate)
@@ -35,6 +38,7 @@ juce::Optional<juce::AudioPlayHead::PositionInfo> PluginBase::getHostPosition() 
 void PluginBase::getStateInformation (juce::MemoryBlock& destData)
 {
     auto state = apvts.copyState();
+    state.setProperty ("effectOrder", effectOrder.toString(), nullptr);
     for (int i = 0; i < Presets::numSections; ++i)
         state.setProperty (presetProperty ((Presets::Section) i), presetNames[(size_t) i], nullptr);
     state.appendChild (pattern.toValueTree(), nullptr);
@@ -51,6 +55,7 @@ void PluginBase::setStateInformation (const void* data, int sizeInBytes)
         return;
 
     auto state = juce::ValueTree::fromXml (*xml);
+    effectOrder.fromString (state.getProperty ("effectOrder").toString());
     for (int i = 0; i < Presets::numSections; ++i)
         presetNames[(size_t) i] = state.getProperty (presetProperty ((Presets::Section) i), presetNames[(size_t) i]).toString();
 
@@ -73,6 +78,11 @@ void PluginBase::setStateInformation (const void* data, int sizeInBytes)
 void PluginBase::patternChanged()
 {
     ++patternVersion;
+    markStateChanged();
+}
+
+void PluginBase::markStateChanged()
+{
     updateHostDisplay (ChangeDetails().withNonParameterStateChanged (true));
 }
 
@@ -86,6 +96,9 @@ void PluginBase::resetSectionToDefaults (Presets::Section section)
 void PluginBase::loadFactoryPreset (Presets::Section section, int index)
 {
     Presets::applyFactory (section, effectVersion, index, apvts, pattern);
+
+    if (section == Presets::Section::full || section == Presets::Section::effects)
+        effectOrder.reset();
 
     if (section == Presets::Section::full)
     {
@@ -115,6 +128,9 @@ bool PluginBase::saveUserPreset (Presets::Section section, const juce::String& n
     root.setAttribute ("section", Presets::sectionName (section));
     root.setAttribute ("plugin", effectVersion ? "fx" : "instrument");
     root.setAttribute ("version", 1);
+
+    if (section == Presets::Section::full || section == Presets::Section::effects)
+        root.setAttribute ("effectOrder", effectOrder.toString());
 
     // Värden sparas i parameterns egen enhet (ms, Hz ...) i stället för 0..1, så att filen
     // fortfarande stämmer om ett omfång ändras senare.
@@ -154,6 +170,9 @@ bool PluginBase::loadUserPreset (Presets::Section section, const juce::File& fil
     // Delen till standard först: parametrar som saknas i filen (t.ex. nya sedan presetet
     // sparades) får sitt standardvärde i stället för att ärvas från förra ljudet.
     resetSectionToDefaults (section);
+
+    if (section == Presets::Section::full || section == Presets::Section::effects)
+        effectOrder.fromString (xml->getStringAttribute ("effectOrder"));
 
     if (const auto* paramsXml = xml->getChildByName ("Params"))
     {

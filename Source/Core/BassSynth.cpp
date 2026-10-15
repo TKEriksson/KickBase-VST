@@ -123,10 +123,10 @@ float BassSynth::oscillator (double t, double dt) const
     return 0.0f;
 }
 
-float BassSynth::nextSample()
+BassSynth::Output BassSynth::next()
 {
     if (stage == Stage::idle)
-        return 0.0f;
+        return {};
 
     // Gate: när tonens tid är slut börjar release, om den inte väntar på en slide.
     if (gateRemaining > 0 && --gateRemaining == 0)
@@ -152,7 +152,7 @@ float BassSynth::nextSample()
             {
                 stage = Stage::idle;
                 ampLevel = 0.0f;
-                return 0.0f;
+                return {};
             }
             break;
         case Stage::idle:
@@ -188,5 +188,6 @@ float BassSynth::nextSample()
     sample = filter2.processSample (0, filter1.processSample (0, sample));
     noteTime += 1.0 / sampleRate;
 
-    return softClip (sample * ampLevel * velocity, params.drive) * params.level;
+    // Drive verkar på källan (före gaten), så att distorsionen låter likadant oavsett envelope.
+    return { softClip (sample, params.drive), ampLevel * velocity * params.level };
 }

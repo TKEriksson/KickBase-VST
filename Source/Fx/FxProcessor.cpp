@@ -12,6 +12,7 @@ namespace
         Params::addKickParams (layout);
         Params::addBassCommonParams (layout, 1.0f);
         Params::addFxParams (layout);
+        Effects::addParameters (layout);
         Params::addMasterParams (layout);
         return layout;
     }
@@ -25,12 +26,26 @@ FxProcessor::FxProcessor()
 {
 }
 
-void FxProcessor::prepareToPlay (double sampleRate, int)
+void FxProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     prepareBase (sampleRate);
     kick.prepare (sampleRate);
     gate.prepare (sampleRate);
     ducker.prepare (sampleRate);
+    effects.prepare (sampleRate, samplesPerBlock);
+    ensureScratchSize (samplesPerBlock);
+}
+
+void FxProcessor::ensureScratchSize (int numSamples)
+{
+    // Allokerar bara om DAW:en skickar ett större block än den lovade i prepareToPlay.
+    if (kickBuffer.getNumSamples() >= numSamples)
+        return;
+
+    kickBuffer.setSize (1, numSamples, false, true, true);
+    envelopeBuffer.setSize (1, numSamples, false, true, true);
+    gateBuffer.setSize (1, numSamples, false, true, true);
+    synthBuffer.setSize (2, numSamples, false, true, true);
 }
 
 bool FxProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -45,6 +60,7 @@ void FxProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuff
     juce::ScopedNoDenormals noDenormals;
 
     const auto numSamples = buffer.getNumSamples();
+    ensureScratchSize (numSamples);
     clock.beginBlock (getHostPosition(), numSamples);
 
     for (auto ch = getTotalNumInputChannels(); ch < getTotalNumOutputChannels(); ++ch)
@@ -70,12 +86,45 @@ void FxProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuff
         scheduler.collect (clock, pattern, patternBars, 0, numSamples, std::numeric_limits<double>::infinity());
         for (const auto& event : scheduler)
         {
-            processSamples (buffer, position, event.offset);
+            renderSamples (position, event.offset);
             handleEvent (event);
             position = event.offset;
         }
     }
-    processSamples (buffer, position, numSamples);
+    renderSamples (position, numSamples);
+
+    // Synthens ljud: effekter före gaten -> gate -> effekter efter -> ducking -> + kick.
+    const auto inputChannels = std::min (2, getTotalNumInputChannels());
+    for (int ch = 0; ch < 2; ++ch)
+        synthBuffer.copyFrom (ch, 0, buffer, std::min (ch, std::max (0, inputChannels - 1)), 0, numSamples);
+
+    effects.update (clock.getBpm());
+    effects.process (synthBuffer, numSamples, false, effectOrder);
+
+    for (int ch = 0; ch < 2; ++ch)
+        juce::FloatVectorOperations::multiply (synthBuffer.getWritePointer (ch), gateBuffer.getReadPointer (0), numSamples);
+
+    effects.process (synthBuffer, numSamples, true, effectOrder);
+
+    const auto masterGain = params.get (ParamID::gain);
+    const auto* kickData = kickBuffer.getReadPointer (0);
+    const auto* envelopeData = envelopeBuffer.getReadPointer (0);
+
+    for (int i = 0; i < numSamples; ++i)
+    {
+        const auto duck = ducker.next (envelopeData[i], duckAmount) * inputLevel;
+        const auto kickSample = kickData[i] * masterGain;
+        const auto left = synthBuffer.getSample (0, i) * duck + kickSample;
+        const auto right = synthBuffer.getSample (1, i) * duck + kickSample;
+
+        if (buffer.getNumChannels() == 1)
+            buffer.setSample (0, i, 0.5f * (left + right));
+        else
+        {
+            buffer.setSample (0, i, left);
+            buffer.setSample (1, i, right);
+        }
+    }
 
     transportStatus.publish (clock);
     transportStatus.keyNote = 60 + key;
@@ -84,19 +133,17 @@ void FxProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuff
     transportStatus.bassStep = active ? scheduler.getLastBassStep() : -1;
 }
 
-void FxProcessor::processSamples (juce::AudioBuffer<float>& buffer, int startSample, int endSample)
+void FxProcessor::renderSamples (int startSample, int endSample)
 {
-    const auto masterGain = params.get (ParamID::gain);
+    auto* kickData = kickBuffer.getWritePointer (0);
+    auto* envelopeData = envelopeBuffer.getWritePointer (0);
+    auto* gateData = gateBuffer.getWritePointer (0);
 
     for (int i = startSample; i < endSample; ++i)
     {
-        const auto kickSample = kick.nextSample() * masterGain;
-        const auto gateLevel = gate.next (! active || ! gateOn);
-        const auto duck = ducker.next (kick.getEnvelope(), duckAmount);
-        const auto inputGain = gateLevel * duck * inputLevel;
-
-        for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
-            buffer.setSample (ch, i, buffer.getSample (ch, i) * inputGain + kickSample);
+        kickData[i] = kick.nextSample();
+        envelopeData[i] = kick.getEnvelope();
+        gateData[i] = gate.next (! active || ! gateOn);
     }
 }
 

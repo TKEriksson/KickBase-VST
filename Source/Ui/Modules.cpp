@@ -368,8 +368,7 @@ void GateModule::resized()
 
 //==============================================================================
 PatternModule::PatternModule (PluginBase& p, juce::Colour bassAccent, const juce::String& bassName, bool showPitchLane)
-    : ModulePanel ("PATTERN", Theme::pattern),
-      length (p.apvts, ParamID::patternBars, "LENGTH"),
+    : length (p.apvts, ParamID::patternBars, "LENGTH"),
       grid (p.apvts, ParamID::bassGrid, "BASS GRID"),
       presets (p, Presets::Section::pattern, Theme::pattern),
       sequencer (p, bassAccent, bassName)
@@ -408,8 +407,7 @@ void PatternModule::selectLane (StepSequencer::Lane lane)
 
 void PatternModule::resized()
 {
-    ModulePanel::resized();
-    auto area = getContentBounds();
+    auto area = getLocalBounds();
 
     auto column = area.removeFromLeft (120);
     area.removeFromLeft (10);
