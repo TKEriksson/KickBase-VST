@@ -3,6 +3,7 @@
 #include "../Core/PluginBase.h"
 #include "Components.h"
 #include "EnvelopeView.h"
+#include "PresetButton.h"
 #include "StepSequencer.h"
 
 // Rubrikraden: logotyp, presetmeny och uppspelningsstatus (DAW eller egen klocka, tempo,
@@ -15,13 +16,11 @@ public:
     void resized() override;
 
 private:
-    void timerCallback() override;
-    void updatePresetText();
-    void showPresetMenu();
+    void timerCallback() override { repaint(); }
 
     PluginBase& processor;
     juce::String subtitle;
-    juce::TextButton presetButton;
+    PresetButton presets;
 };
 
 // Kicken: kurvor för pitch- och amplitud-envelope, rattar och plats för en klicksampling.
@@ -48,6 +47,7 @@ private:
 
     EnvelopeView envelope { 0.4 };
     std::vector<std::unique_ptr<KnobComponent>> knobs;
+    PresetButton presets;
 
     juce::Label sampleLabel;
     juce::TextButton loadButton { "Load" }, clearButton { "X" };
@@ -70,6 +70,7 @@ private:
     EnvelopeView envelope { 0.5 };
     ChoiceComponent wave;
     std::vector<std::unique_ptr<KnobComponent>> knobs;
+    PresetButton presets;
 };
 
 // Gaten (bara FX-versionen): formar ljudet från den andra synthen.
@@ -86,6 +87,7 @@ private:
     EnvelopeView envelope { 0.25 };
     ChoiceComponent key;
     std::vector<std::unique_ptr<KnobComponent>> knobs;
+    PresetButton presets;
     juce::Label help;
 };
 
@@ -97,12 +99,10 @@ public:
     void resized() override;
 
 private:
-    void showTemplateMenu();
     void selectLane (StepSequencer::Lane lane);
 
-    PluginBase& processor;
     ChoiceComponent length, grid;
-    juce::TextButton templateButton { "Templates" };
+    PresetButton presets;
     std::vector<std::pair<std::unique_ptr<juce::TextButton>, StepSequencer::Lane>> laneButtons;
     StepSequencer sequencer;
 };

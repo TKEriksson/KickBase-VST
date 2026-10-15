@@ -1,16 +1,19 @@
 #include "PluginBase.h"
-#include "Presets.h"
 
 namespace
 {
     constexpr double maxClickSeconds = 2.0;
     const juce::Identifier clickTreeType { "ClickSample" };
+    const juce::String presetFileExtension { ".mofp" };
+
+    juce::String presetProperty (Presets::Section section) { return "preset" + Presets::sectionName (section); }
 }
 
-PluginBase::PluginBase (const BusesProperties& buses, juce::AudioProcessorValueTreeState::ParameterLayout layout)
+PluginBase::PluginBase (const BusesProperties& buses, juce::AudioProcessorValueTreeState::ParameterLayout layout, bool isEffect)
     : AudioProcessor (buses),
       apvts (*this, nullptr, "Parameters", std::move (layout)),
-      params (apvts)
+      params (apvts),
+      effectVersion (isEffect)
 {
 }
 
@@ -32,7 +35,8 @@ juce::Optional<juce::AudioPlayHead::PositionInfo> PluginBase::getHostPosition() 
 void PluginBase::getStateInformation (juce::MemoryBlock& destData)
 {
     auto state = apvts.copyState();
-    state.setProperty ("preset", presetName, nullptr);
+    for (int i = 0; i < Presets::numSections; ++i)
+        state.setProperty (presetProperty ((Presets::Section) i), presetNames[(size_t) i], nullptr);
     state.appendChild (pattern.toValueTree(), nullptr);
     state.appendChild (clickToValueTree(), nullptr);
 
@@ -47,7 +51,8 @@ void PluginBase::setStateInformation (const void* data, int sizeInBytes)
         return;
 
     auto state = juce::ValueTree::fromXml (*xml);
-    presetName = state.getProperty ("preset", "Init").toString();
+    for (int i = 0; i < Presets::numSections; ++i)
+        presetNames[(size_t) i] = state.getProperty (presetProperty ((Presets::Section) i), presetNames[(size_t) i]).toString();
 
     if (auto patternTree = state.getChildWithName (Pattern::treeType); patternTree.isValid())
     {
@@ -71,21 +76,113 @@ void PluginBase::patternChanged()
     updateHostDisplay (ChangeDetails().withNonParameterStateChanged (true));
 }
 
-void PluginBase::applyPatternTemplate (PatternTemplate t)
+void PluginBase::resetSectionToDefaults (Presets::Section section)
 {
-    const auto grid = pattern.applyTemplate (t);
+    for (auto* p : getParameters())
+        if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p); ranged != nullptr && Presets::belongsTo (section, ranged->getParameterID()))
+            Presets::setParameter (*ranged, ranged->getDefaultValue());
+}
 
-    if (auto* gridParam = apvts.getParameter (ParamID::bassGrid))
-        gridParam->setValueNotifyingHost (gridParam->convertTo0to1 ((float) grid));
+void PluginBase::loadFactoryPreset (Presets::Section section, int index)
+{
+    Presets::applyFactory (section, effectVersion, index, apvts, pattern);
 
+    if (section == Presets::Section::full)
+    {
+        clearClickSample();
+        presetNames.fill ({}); // delarna kommer inte längre från sina egna presets
+    }
+
+    presetNames[(size_t) section] = Presets::factoryName (section, effectVersion, index);
     patternChanged();
 }
 
-void PluginBase::loadPreset (int index)
+juce::Array<juce::File> PluginBase::getUserPresets (Presets::Section section) const
 {
-    Presets::apply (index, apvts, pattern);
-    presetName = Presets::name (index);
+    auto files = Presets::folder (section, effectVersion).findChildFiles (juce::File::findFiles, false, "*" + presetFileExtension);
+    files.sort();
+    return files;
+}
+
+bool PluginBase::saveUserPreset (Presets::Section section, const juce::String& name)
+{
+    const auto fileName = juce::File::createLegalFileName (name.trim());
+    const auto directory = Presets::folder (section, effectVersion);
+    if (fileName.isEmpty() || directory.createDirectory().failed())
+        return false;
+
+    juce::XmlElement root ("MyOwnFruitPreset");
+    root.setAttribute ("section", Presets::sectionName (section));
+    root.setAttribute ("plugin", effectVersion ? "fx" : "instrument");
+    root.setAttribute ("version", 1);
+
+    // Värden sparas i parameterns egen enhet (ms, Hz ...) i stället för 0..1, så att filen
+    // fortfarande stämmer om ett omfång ändras senare.
+    auto* paramsXml = root.createNewChildElement ("Params");
+    for (auto* p : getParameters())
+    {
+        auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p);
+        if (ranged == nullptr || ! Presets::belongsTo (section, ranged->getParameterID()))
+            continue;
+
+        auto* entry = paramsXml->createNewChildElement ("Param");
+        entry->setAttribute ("id", ranged->getParameterID());
+        entry->setAttribute ("value", (double) ranged->convertFrom0to1 (ranged->getValue()));
+    }
+
+    if (section == Presets::Section::full || section == Presets::Section::pattern)
+        root.addChildElement (pattern.toValueTree().createXml().release());
+
+    if (section == Presets::Section::full || section == Presets::Section::kick)
+        root.addChildElement (clickToValueTree().createXml().release());
+
+    if (! root.writeTo (directory.getChildFile (fileName + presetFileExtension)))
+        return false;
+
+    presetNames[(size_t) section] = fileName;
+    updateHostDisplay (ChangeDetails().withNonParameterStateChanged (true));
+    return true;
+}
+
+bool PluginBase::loadUserPreset (Presets::Section section, const juce::File& file)
+{
+    const auto xml = juce::XmlDocument::parse (file);
+    if (xml == nullptr || ! xml->hasTagName ("MyOwnFruitPreset")
+        || xml->getStringAttribute ("section") != Presets::sectionName (section))
+        return false;
+
+    // Delen till standard först: parametrar som saknas i filen (t.ex. nya sedan presetet
+    // sparades) får sitt standardvärde i stället för att ärvas från förra ljudet.
+    resetSectionToDefaults (section);
+
+    if (const auto* paramsXml = xml->getChildByName ("Params"))
+    {
+        for (const auto* entry : paramsXml->getChildIterator())
+        {
+            const auto id = entry->getStringAttribute ("id");
+            if (auto* parameter = apvts.getParameter (id); parameter != nullptr && Presets::belongsTo (section, id))
+                Presets::setParameter (*parameter, parameter->convertTo0to1 ((float) entry->getDoubleAttribute ("value")));
+        }
+    }
+
+    if (section == Presets::Section::full || section == Presets::Section::pattern)
+        if (const auto* patternXml = xml->getChildByName (Pattern::treeType))
+            pattern.fromValueTree (juce::ValueTree::fromXml (*patternXml));
+
+    if (section == Presets::Section::full || section == Presets::Section::kick)
+    {
+        if (const auto* clickXml = xml->getChildByName (clickTreeType))
+            clickFromValueTree (juce::ValueTree::fromXml (*clickXml));
+        else
+            setClickOriginal ({}, 0.0, {});
+    }
+
+    if (section == Presets::Section::full)
+        presetNames.fill ({});
+
+    presetNames[(size_t) section] = file.getFileNameWithoutExtension();
     patternChanged();
+    return true;
 }
 
 bool PluginBase::loadClickSample (const juce::File& file)

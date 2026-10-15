@@ -5,6 +5,7 @@
 #include "KickEngine.h"
 #include "Params.h"
 #include "Pattern.h"
+#include "Presets.h"
 #include "TransportStatus.h"
 
 // Det som instrumentet och FX-versionen har gemensamt: parametrar, mönster, klicksampling,
@@ -12,7 +13,9 @@
 class PluginBase : public juce::AudioProcessor
 {
 public:
-    PluginBase (const BusesProperties& buses, juce::AudioProcessorValueTreeState::ParameterLayout layout);
+    PluginBase (const BusesProperties& buses, juce::AudioProcessorValueTreeState::ParameterLayout layout, bool effectVersion);
+
+    bool isEffectVersion() const { return effectVersion; }
 
     void releaseResources() override {}
     bool hasEditor() const override { return true; }
@@ -33,13 +36,14 @@ public:
     // Anropas av gränssnittet när mönstret ändrats, så att DAW:en vet att projektet ändrats.
     void patternChanged();
 
-    // Fyller mönstret från en mall och ställer basens rutnät därefter.
-    void applyPatternTemplate (PatternTemplate t);
-
-    // Fabrikspresets. Bara i plugin:ets egen meny, inte som VST3-"programs": en värd kan
-    // sätta program-parametern när ett projekt laddas och skulle då skriva över det sparade.
-    void loadPreset (int index);
-    juce::String getPresetName() const { return presetName; }
+    // Presets per del (se Presets.h). Bara i plugin:ets egen meny, inte som VST3-"programs":
+    // en värd kan sätta program-parametern när ett projekt laddas och skulle då skriva över
+    // det sparade. Anropas från gränssnittet (message thread).
+    void loadFactoryPreset (Presets::Section section, int index);
+    bool saveUserPreset (Presets::Section section, const juce::String& name);
+    bool loadUserPreset (Presets::Section section, const juce::File& file);
+    juce::Array<juce::File> getUserPresets (Presets::Section section) const;
+    juce::String getPresetName (Presets::Section section) const { return presetNames[(size_t) section]; }
 
     // Klicksampling. Anropas från gränssnittet (message thread).
     bool loadClickSample (const juce::File& file);
@@ -77,7 +81,10 @@ private:
     double clickOriginalRate = 0.0;
     juce::String clickName;
 
-    juce::String presetName { "Init" }; // bara message thread
+    void resetSectionToDefaults (Presets::Section section);
+
+    const bool effectVersion;
+    std::array<juce::String, Presets::numSections> presetNames { "Init", "Default", "Default", "Rolling" }; // bara message thread
 
     double currentSampleRate = 44100.0;
     std::atomic<ClickSample*> activeClick { nullptr };

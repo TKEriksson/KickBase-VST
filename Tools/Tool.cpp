@@ -3,6 +3,7 @@
 //
 //   MyOwnFruitTool render   instrument|fx <ut.wav> [bpm] [takter] [ton] [preset]
 //   MyOwnFruitTool snapshot instrument|fx <ut.png>
+//   MyOwnFruitTool presettest
 
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_audio_utils/juce_audio_utils.h>
@@ -114,8 +115,8 @@ namespace
         auto processor = createProcessor (kind);
         if (preset >= 0)
         {
-            processor->loadPreset (preset);
-            std::printf ("Preset: %s\n", processor->getPresetName().toRawUTF8());
+            processor->loadFactoryPreset (Presets::Section::full, preset);
+            std::printf ("Preset: %s\n", processor->getPresetName (Presets::Section::full).toRawUTF8());
         }
         processor->setPlayConfigDetails (kind == "fx" ? 2 : 0, 2, renderRate, blockSize);
         processor->prepareToPlay (renderRate, blockSize);
@@ -192,6 +193,42 @@ namespace
         return 0;
     }
 
+    // Sparar ett kickpreset, ändrar ljudet, laddar presetet och kontrollerar värdena.
+    // Testfilen tas bort efteråt.
+    int presetTest()
+    {
+        InstrumentProcessor processor;
+        auto* pitch = processor.apvts.getParameter (ParamID::kickPitch);
+        auto* cutoff = processor.apvts.getParameter (ParamID::bassCutoff);
+
+        pitch->setValueNotifyingHost (pitch->convertTo0to1 (55.0f));
+        cutoff->setValueNotifyingHost (cutoff->convertTo0to1 (1000.0f));
+
+        const auto name = juce::String ("__presettest__");
+        if (! processor.saveUserPreset (Presets::Section::kick, name))
+        {
+            std::puts ("FEL: kunde inte spara");
+            return 1;
+        }
+
+        const auto file = Presets::folder (Presets::Section::kick, false).getChildFile (name + ".mofp");
+        pitch->setValueNotifyingHost (pitch->convertTo0to1 (20.0f));
+        cutoff->setValueNotifyingHost (cutoff->convertTo0to1 (500.0f));
+
+        const auto loaded = processor.loadUserPreset (Presets::Section::kick, file);
+        const auto pitchBack = pitch->convertFrom0to1 (pitch->getValue());
+        const auto cutoffAfter = cutoff->convertFrom0to1 (cutoff->getValue());
+        file.deleteFile();
+
+        std::printf ("laddad %d, kick pitch %.2f (väntat 55), bas cutoff %.1f (väntat 500, orörd)\n",
+                     loaded ? 1 : 0, pitchBack, cutoffAfter);
+
+        const auto ok = loaded && std::abs (pitchBack - 55.0f) < 0.1f && std::abs (cutoffAfter - 500.0f) < 1.0f
+                     && processor.getPresetName (Presets::Section::kick) == name;
+        std::puts (ok ? "Presettest OK" : "FEL: presettest");
+        return ok ? 0 : 1;
+    }
+
     int snapshot (const juce::String& kind, const juce::File& outFile)
     {
         juce::ScopedJuceInitialiser_GUI gui;
@@ -220,6 +257,9 @@ namespace
 
 int main (int argc, char* argv[])
 {
+    if (argc == 2 && juce::String (argv[1]) == "presettest")
+        return presetTest();
+
     if (argc < 4)
     {
         std::puts ("Användning:\n"

@@ -39,6 +39,7 @@ set(PLUGIN_SOURCES
     Source/Ui/EnvelopeView.cpp
     Source/Ui/StepSequencer.cpp
     Source/Ui/Modules.cpp
+    Source/Ui/PresetButton.cpp
 )
 
 set(INSTRUMENT_SOURCES

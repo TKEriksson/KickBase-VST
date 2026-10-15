@@ -11,7 +11,7 @@ namespace ParamID
 {
     // Mönster
     inline constexpr auto patternBars = "patternBars";
-    inline constexpr auto bassGrid    = "bassGrid";
+    inline constexpr auto bassGrid    = "bassDivision"; // "bassGrid" användes när listan bara hade tre val
     inline constexpr auto noteEnd     = "noteEnd";
 
     // Kick

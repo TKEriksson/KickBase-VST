@@ -21,7 +21,7 @@ FxProcessor::FxProcessor()
     : PluginBase (BusesProperties()
                       .withInput ("Input", juce::AudioChannelSet::stereo(), true)
                       .withOutput ("Output", juce::AudioChannelSet::stereo(), true),
-                  createLayout())
+                  createLayout(), true)
 {
 }
 

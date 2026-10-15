@@ -64,7 +64,7 @@ namespace Params
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::patternBars, 1 }, "Pattern Length",
                                                             StringArray { "1 bar", "2 bars", "4 bars" }, 0));
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::bassGrid, 1 }, "Bass Grid",
-                                                            Pattern::gridNames(), 0));
+                                                            Pattern::gridNames(), (int) BassGrid::sixteenth));
         if (includeNoteEnd)
             layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::noteEnd, 1 }, "Note End",
                                                                 StringArray { "Cut", "Finish bar", "Finish pattern" }, 0));

@@ -5,11 +5,15 @@
 #include <atomic>
 
 // Basens rutnät. Kicken går alltid i sextondelar.
+// Ordningen är den som visas i listan; ändras den måste Pattern::fromValueTree konvertera.
 enum class BassGrid
 {
-    sixteenth,        // 16 steg per takt: rullande, galopp
+    quarter,          //  4 steg per takt
+    eighth,           //  8 steg per takt
     eighthTriplet,    // 12 steg per takt: K-B-B per slag
-    sixteenthTriplet  // 24 steg per takt
+    sixteenth,        // 16 steg per takt: rullande, galopp
+    sixteenthTriplet, // 24 steg per takt
+    thirtySecond      // 32 steg per takt
 };
 
 enum class PatternTemplate { rolling, galloping, triplet, offbeat, clear };
@@ -20,8 +24,8 @@ struct Pattern
 {
     static constexpr int maxBars = 4;
     static constexpr int kickStepsPerBar = 16;
-    static constexpr int maxBassStepsPerBar = 24;
-    static constexpr int numGrids = 3;
+    static constexpr int maxBassStepsPerBar = 32;
+    static constexpr int numGrids = 6;
     static constexpr int maxKickSteps = maxBars * kickStepsPerBar;
     static constexpr int maxBassSteps = maxBars * maxBassStepsPerBar;
     static constexpr int minPitch = -24;
@@ -29,7 +33,7 @@ struct Pattern
 
     static int bassStepsPerBar (BassGrid grid);
     static double bassStepsPerQuarter (BassGrid grid);
-    static juce::StringArray gridNames()     { return { "1/16", "1/8 T", "1/16 T" }; }
+    static juce::StringArray gridNames()     { return { "1/4", "1/8", "1/8 T", "1/16", "1/16 T", "1/32" }; }
     static juce::StringArray templateNames() { return { "Rolling", "Galloping", "Triplet", "Offbeat", "Clear" }; }
 
     struct BassStep
@@ -55,6 +59,7 @@ struct Pattern
     void fromValueTree (const juce::ValueTree& tree);
 
     static inline const juce::Identifier treeType { "Pattern" };
+    static constexpr int currentVersion = 2;
 
 private:
     std::array<std::atomic<bool>, maxKickSteps> kick {};

@@ -274,6 +274,20 @@ namespace
         check (std::abs (loadedStep.gate - 0.33f) < 1.0e-4f && std::abs (loadedStep.velocity - 0.25f) < 1.0e-4f,
                "basstegets gate/velocity sparas");
         check (loaded.bassStep (BassGrid::eighthTriplet, 4).on, "andra rutnät sparas också");
+
+        // Version 1 hade rutnäten i ordningen 1/16, 1/8 T, 1/16 T.
+        juce::ValueTree old (Pattern::treeType);
+        juce::ValueTree oldBass ("Bass");
+        oldBass.setProperty ("grid", 0, nullptr);
+        oldBass.setProperty ("on", "0,1,0,1", nullptr);
+        old.appendChild (oldBass, nullptr);
+
+        Pattern migrated;
+        migrated.applyTemplate (PatternTemplate::clear);
+        migrated.fromValueTree (old);
+        check (migrated.bassStep (BassGrid::sixteenth, 1).on && migrated.bassStep (BassGrid::sixteenth, 3).on
+                   && ! migrated.bassStep (BassGrid::quarter, 1).on,
+               "gammalt 1/16-mönster hamnar i 1/16");
     }
 }
 

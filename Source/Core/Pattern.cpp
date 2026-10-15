@@ -4,9 +4,12 @@ int Pattern::bassStepsPerBar (BassGrid grid)
 {
     switch (grid)
     {
-        case BassGrid::sixteenth:        return 16;
+        case BassGrid::quarter:          return 4;
+        case BassGrid::eighth:           return 8;
         case BassGrid::eighthTriplet:    return 12;
+        case BassGrid::sixteenth:        return 16;
         case BassGrid::sixteenthTriplet: return 24;
+        case BassGrid::thirtySecond:     return 32;
     }
     return 16;
 }
@@ -80,6 +83,7 @@ namespace
 juce::ValueTree Pattern::toValueTree() const
 {
     juce::ValueTree tree (treeType);
+    tree.setProperty ("version", currentVersion, nullptr);
     tree.setProperty ("kick", join<int> (maxKickSteps, [this] (int i) { return kick[(size_t) i].load() ? 1 : 0; }), nullptr);
 
     for (int g = 0; g < numGrids; ++g)
@@ -107,9 +111,19 @@ void Pattern::fromValueTree (const juce::ValueTree& tree)
     for (int i = 0; i < maxKickSteps && i < kicks.size(); ++i)
         kick[(size_t) i] = kicks[i].getIntValue() != 0;
 
+    // Version 1 hade bara rutnäten 1/16, 1/8 T och 1/16 T, i den ordningen.
+    const auto version = (int) tree.getProperty ("version", 1);
+    auto gridIndex = [version] (int stored)
+    {
+        if (version >= 2)
+            return stored;
+        constexpr BassGrid oldOrder[] { BassGrid::sixteenth, BassGrid::eighthTriplet, BassGrid::sixteenthTriplet };
+        return juce::isPositiveAndBelow (stored, 3) ? (int) oldOrder[stored] : -1;
+    };
+
     for (const auto& child : tree)
     {
-        const auto g = (int) child["grid"];
+        const auto g = gridIndex ((int) child["grid"]);
         if (! child.hasType ("Bass") || g < 0 || g >= numGrids)
             continue;
 

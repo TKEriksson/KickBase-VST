@@ -31,7 +31,7 @@ InstrumentProcessor::InstrumentProcessor()
                       .withOutput ("Main", juce::AudioChannelSet::stereo(), true)
                       .withOutput ("Kick", juce::AudioChannelSet::stereo(), false)
                       .withOutput ("Bass", juce::AudioChannelSet::stereo(), false),
-                  createLayout())
+                  createLayout(), false)
 {
 }
 

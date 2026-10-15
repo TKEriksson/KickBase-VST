@@ -1,9 +1,15 @@
 #include "Modules.h"
-#include "../Core/Presets.h"
 
 namespace
 {
     constexpr int knobRowHeight = 74;
+    constexpr int presetButtonWidth = 150;
+
+    // Modulens presetknapp, uppe till höger i rubriken.
+    juce::Rectangle<int> presetBounds (const juce::Component& module)
+    {
+        return { module.getWidth() - 10 - presetButtonWidth, 5, presetButtonWidth, 20 };
+    }
 
     juce::RangedAudioParameter* param (PluginBase& processor, const char* id)
     {
@@ -34,46 +40,16 @@ namespace
 
 //==============================================================================
 HeaderBar::HeaderBar (PluginBase& p, const juce::String& subtitleIn)
-    : processor (p), subtitle (subtitleIn)
+    : processor (p), subtitle (subtitleIn), presets (p, Presets::Section::full, Theme::pattern)
 {
-    presetButton.setTooltip ("Factory presets (sound + pattern)");
-    presetButton.onClick = [this] { showPresetMenu(); };
-    addAndMakeVisible (presetButton);
-    updatePresetText();
+    addAndMakeVisible (presets);
     startTimerHz (15);
-}
-
-void HeaderBar::updatePresetText()
-{
-    const auto text = processor.getPresetName() + juce::String::fromUTF8 ("  \xe2\x96\xbe"); // "  " + liten pil nedåt
-    if (presetButton.getButtonText() != text)
-        presetButton.setButtonText (text);
-}
-
-void HeaderBar::timerCallback()
-{
-    updatePresetText();
-    repaint();
-}
-
-void HeaderBar::showPresetMenu()
-{
-    juce::PopupMenu menu;
-    menu.addSectionHeader ("PRESETS");
-    for (int i = 0; i < Presets::count(); ++i)
-        menu.addItem (i + 1, Presets::name (i), true, Presets::name (i) == processor.getPresetName());
-
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&presetButton), [this] (int result)
-    {
-        if (result > 0)
-            processor.loadPreset (result - 1);
-    });
 }
 
 void HeaderBar::resized()
 {
     const auto subtitleWidth = subtitle.isEmpty() ? 0 : 40;
-    presetButton.setBounds (14 + 160 + subtitleWidth, 9, 180, getHeight() - 18);
+    presets.setBounds (14 + 160 + subtitleWidth, 9, 200, getHeight() - 18);
 }
 
 void HeaderBar::paint (juce::Graphics& g)
@@ -113,8 +89,10 @@ void HeaderBar::paint (juce::Graphics& g)
 
 //==============================================================================
 KickModule::KickModule (PluginBase& p)
-    : ModulePanel ("KICK", Theme::kick, &p.apvts, ParamID::kickOn), processor (p), refs (p.apvts)
+    : ModulePanel ("KICK", Theme::kick, &p.apvts, ParamID::kickOn), processor (p), refs (p.apvts),
+      presets (p, Presets::Section::kick, Theme::kick)
 {
+    addAndMakeVisible (presets);
     envelope.onBeforePaint = [this] { current = refs.readKick (0); };
 
     envelope.addCurve ({ [this] (double t) { return KickEngine::pitchEnvelopeAt (current, t) * current.pitchSemis / 72.0f; },
@@ -221,6 +199,7 @@ void KickModule::paintOverChildren (juce::Graphics& g)
 void KickModule::resized()
 {
     ModulePanel::resized();
+    presets.setBounds (presetBounds (*this));
     auto area = getContentBounds();
 
     auto sampleRow = area.removeFromBottom (22);
@@ -245,8 +224,10 @@ void KickModule::resized()
 BassModule::BassModule (PluginBase& p)
     : ModulePanel ("BASS", Theme::bass, &p.apvts, ParamID::bassOn),
       refs (p.apvts),
-      wave (p.apvts, ParamID::bassWave, "WAVE")
+      wave (p.apvts, ParamID::bassWave, "WAVE"),
+      presets (p, Presets::Section::bass, Theme::bass)
 {
+    addAndMakeVisible (presets);
     envelope.onBeforePaint = [this] { current = refs.readBass (0); };
 
     envelope.addCurve ({ [this] (double t) { return BassSynth::filterEnvelopeAt (current, t) * current.envAmount / 8.0f; },
@@ -305,6 +286,7 @@ float BassModule::ampValueAt (double seconds) const
 void BassModule::resized()
 {
     ModulePanel::resized();
+    presets.setBounds (presetBounds (*this));
     auto area = getContentBounds();
 
     auto row2 = area.removeFromBottom (knobRowHeight);
@@ -325,8 +307,10 @@ void BassModule::resized()
 GateModule::GateModule (PluginBase& p)
     : ModulePanel ("GATE", Theme::gate, &p.apvts, ParamID::bassOn),
       refs (p.apvts),
-      key (p.apvts, ParamID::fxKey, "KEY")
+      key (p.apvts, ParamID::fxKey, "KEY"),
+      presets (p, Presets::Section::bass, Theme::gate)
 {
+    addAndMakeVisible (presets);
     envelope.onBeforePaint = [this]
     {
         attackMs = refs.get (ParamID::gateAttack);
@@ -368,6 +352,7 @@ GateModule::GateModule (PluginBase& p)
 void GateModule::resized()
 {
     ModulePanel::resized();
+    presets.setBounds (presetBounds (*this));
     auto area = getContentBounds();
 
     help.setBounds (area.removeFromBottom (48));
@@ -384,17 +369,14 @@ void GateModule::resized()
 //==============================================================================
 PatternModule::PatternModule (PluginBase& p, juce::Colour bassAccent, const juce::String& bassName, bool showPitchLane)
     : ModulePanel ("PATTERN", Theme::pattern),
-      processor (p),
       length (p.apvts, ParamID::patternBars, "LENGTH"),
       grid (p.apvts, ParamID::bassGrid, "BASS GRID"),
+      presets (p, Presets::Section::pattern, Theme::pattern),
       sequencer (p, bassAccent, bassName)
 {
     addAndMakeVisible (length);
     addAndMakeVisible (grid);
-
-    templateButton.setTooltip ("Fill the pattern from a template");
-    templateButton.onClick = [this] { showTemplateMenu(); };
-    addAndMakeVisible (templateButton);
+    addAndMakeVisible (presets);
 
     std::vector<std::pair<juce::String, StepSequencer::Lane>> lanes { { "VEL", StepSequencer::Lane::velocity },
                                                                       { "GATE", StepSequencer::Lane::gate } };
@@ -424,20 +406,6 @@ void PatternModule::selectLane (StepSequencer::Lane lane)
         button->setToggleState (buttonLane == lane, juce::dontSendNotification);
 }
 
-void PatternModule::showTemplateMenu()
-{
-    juce::PopupMenu menu;
-    const auto names = Pattern::templateNames();
-    for (int i = 0; i < names.size(); ++i)
-        menu.addItem (i + 1, names[i]);
-
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&templateButton), [this] (int result)
-    {
-        if (result > 0)
-            processor.applyPatternTemplate ((PatternTemplate) (result - 1));
-    });
-}
-
 void PatternModule::resized()
 {
     ModulePanel::resized();
@@ -449,7 +417,7 @@ void PatternModule::resized()
     column.removeFromTop (4);
     grid.setBounds (column.removeFromTop (40));
     column.removeFromTop (8);
-    templateButton.setBounds (column.removeFromTop (24));
+    presets.setBounds (column.removeFromTop (24));
     column.removeFromTop (10);
 
     // Lane-knapparna två och två.

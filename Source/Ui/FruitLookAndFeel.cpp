@@ -15,6 +15,15 @@ FruitLookAndFeel::FruitLookAndFeel()
     setColour (juce::TooltipWindow::backgroundColourId, Theme::knobBodyDark);
     setColour (juce::TooltipWindow::textColourId, Theme::text);
     setColour (juce::TooltipWindow::outlineColourId, Theme::panelBorder);
+    setColour (juce::AlertWindow::backgroundColourId, Theme::knobBodyDark);
+    setColour (juce::AlertWindow::textColourId, Theme::text);
+    setColour (juce::AlertWindow::outlineColourId, Theme::panelBorder);
+    setColour (juce::TextEditor::backgroundColourId, Theme::knobBody);
+    setColour (juce::TextEditor::textColourId, Theme::text);
+    setColour (juce::TextEditor::outlineColourId, Theme::panelBorder);
+    setColour (juce::TextEditor::focusedOutlineColourId, Theme::pattern);
+    setColour (juce::TextEditor::highlightColourId, Theme::pattern.withAlpha (0.4f));
+    setColour (juce::CaretComponent::caretColourId, Theme::text);
     setColour (juce::MidiKeyboardComponent::whiteNoteColourId, juce::Colour (0xffc9cbe6));
     setColour (juce::MidiKeyboardComponent::blackNoteColourId, Theme::knobBodyDark);
     setColour (juce::MidiKeyboardComponent::keySeparatorLineColourId, Theme::knobBodyDark);
