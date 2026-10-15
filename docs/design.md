@@ -26,7 +26,8 @@ men **inte provade i FL Studio än**.
 
 - **Stegsekvenser** som FL Studios Channel Rack: 16 steg per takt, klicka ut slagen.
 - **Syntetiserad kropp:** sinus med pitch-envelope (startfrekvens, kurva, tid) som landar
-  på tonarten; amplitud-envelope; drive.
+  på tonarten, plus ett andra långsamt svep (glide); amplitud-envelope; drive. KEY = Follow
+  stämmer svansen efter tonen (A#0-A1), Fixed håller den på C1 + TUNE.
 - **Klicklager:** syntetiserat klick, eller en inladdad sampling (WAV/AIFF/FLAC, dra och
   släpp) som spelas över de första millisekunderna.
 
@@ -36,8 +37,13 @@ men **inte provade i FL Studio än**.
   (K-B-B per slag) eller 1/16T. Varje rutnät har sitt eget sparade mönster.
 - **Per steg:** på/av, tonhöjd relativt tonarten (t.ex. +12), slide till nästa steg
   (303-stil), gate-längd, velocity.
-- **Ljud:** oscillator → filter, där varje basslag har en egen kort filter-envelope (det
-  plockiga psy-ljudet). Inställbar glide-tid.
+- **Ljud:** två oscillatorer med steglös form (sinus → triangel → såg → fyrkant, pulsbredd),
+  sub (samma oktav eller en ner), brus och FM (oscillator 2 fasmodulerar oscillator 1, med en
+  extra mängd som följer filter-envelopen) → filter (LP24/LP12/band/high, keytrack) där varje
+  basslag har en egen kort filter-envelope (det plockiga psy-ljudet) → drive. ADSR och glide.
+- **Lärdom från referenslåtarna:** riktiga psy-basar är mörkare än man tror (övertonerna från
+  den femte och uppåt ligger 20-30 dB under grundtonen), tonerna fyller ofta hela steget och
+  formas av amp-envelopen, och kickens svans ligger ofta 2-3 halvtoner över basens grundton.
 
 ## Kick + bas tillsammans
 
@@ -112,4 +118,7 @@ Varje steg ska gå att höra och testa för sig.
 8. ✅ **Effekter** (7 st, PRE/POST gate, valbar ordning) i en EFFECTS-flik.
 9. ✅ **SIDECHAIN** (ritbar duckkurva) och **MASTER** (drive, clip, lookahead-limiter).
 10. ✅ **LFO:er** (2 st, tempo-synkade, två mål var).
-11. **Nästa:** prova allt i FL Studio och finjustera ljud och presets efter öra.
+11. ✅ **Bassynt v2** (två oscillatorer, FM, filtertyper), kickens glide, analysverktyg och
+    presets anpassade mot referenslåtar (`fitbeat`), WAV-export.
+12. **Nästa:** effektplatser (upp till 15, valfri effekt per plats, samma effekt flera gånger)
+    och fler effekttyper; prova allt i FL Studio och finjustera efter öra.

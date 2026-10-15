@@ -22,6 +22,7 @@ namespace Modulation
         kickPitch, kickDecay,
         filterCutoff, filterReso, distDrive, echoMix, echoFeedback, reverbMix, phaserMix, chorusMix,
         duckAmount,
+        bassShape, bassOsc2Shape, bassOsc2Level, bassFm, bassPulseWidth,
         count
     };
 

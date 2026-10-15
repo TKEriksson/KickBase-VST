@@ -44,6 +44,7 @@ void MasterSection::prepare (double newSampleRate, int numChannels)
     channels = std::max (1, numChannels);
     lookahead = std::max (2, (int) std::round (lookaheadSeconds * sampleRate));
 
+    dcCoefficient = (float) (1.0 - juce::MathConstants<double>::twoPi * 5.0 / sampleRate);
     delayLines.assign ((size_t) channels, std::vector<float> ((size_t) lookahead, 0.0f));
     minWindow.assign ((size_t) lookahead, 1.0f);
     boxWindow.assign ((size_t) lookahead, 1.0f);
@@ -54,6 +55,8 @@ void MasterSection::prepare (double newSampleRate, int numChannels)
 
 void MasterSection::reset()
 {
+    dcInput.assign ((size_t) channels, 0.0f);
+    dcOutput.assign ((size_t) channels, 0.0f);
     for (auto& line : delayLines)
         std::fill (line.begin(), line.end(), 0.0f);
     std::fill (minWindow.begin(), minWindow.end(), 1.0f);
@@ -77,14 +80,17 @@ void MasterSection::process (juce::AudioBuffer<float>& buffer, int numSamples)
 
     for (int i = 0; i < numSamples; ++i)
     {
-        // 1. Drive och soft clip (tanh, blandat med det rena ljudet efter clip-mängd).
+        // 1. DC-filter, drive och soft clip (tanh, blandat med det rena ljudet efter clip-mängd).
         auto inputPeak = 0.0f;
         for (int ch = 0; ch < numChannels; ++ch)
         {
             auto x = buffer.getSample (ch, i);
             if (enabled)
             {
-                x *= driveGain;
+                const auto blocked = x - dcInput[(size_t) ch] + dcCoefficient * dcOutput[(size_t) ch];
+                dcInput[(size_t) ch] = x;
+                dcOutput[(size_t) ch] = blocked;
+                x = blocked * driveGain;
                 x += (std::tanh (x) - x) * clipAmount;
             }
             buffer.setSample (ch, i, x);

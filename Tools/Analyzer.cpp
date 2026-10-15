@@ -1,8 +1,12 @@
 #include "Analyzer.h"
+#include "../Source/Core/BassSynth.h"
+#include "../Source/Core/KickEngine.h"
+#include "../Source/Core/Ducker.h"
 #include <juce_dsp/juce_dsp.h>
 #include <algorithm>
 #include <cstdio>
 #include <map>
+#include <random>
 
 namespace
 {
@@ -133,7 +137,8 @@ namespace
     // Grundtonen med YIN (de Cheveigné & Kawahara 2002): skillnadsfunktion med kumulativ
     // medelnormalisering. Klarar korta fönster med bara ett par perioder, där vanlig
     // autokorrelation ofta väljer fel oktav. `confidence` är 1 - normaliserad skillnad.
-    double detectPitch (const Signal& x, int start, int length, float& confidence, double minHz = 30.0, double maxHz = 400.0)
+    double detectPitch (const Signal& x, int start, int length, float& confidence, double minHz = 30.0, double maxHz = 400.0,
+                        float minConfidence = 0.5f)
     {
         confidence = 0.0f;
         start = std::max (0, start);
@@ -188,7 +193,7 @@ namespace
         }
 
         confidence = (float) std::max (0.0, 1.0 - cmnd[(size_t) best]);
-        if (confidence < 0.5f)
+        if (confidence < minConfidence)
             return 0.0;
 
         // Parabolisk interpolation runt minimumet.
@@ -441,9 +446,26 @@ namespace
             const auto ratioDb = toDb (rms (high, start, end)) - lowDb;
             const auto seconds = offsetSeconds + start / analysisRate;
 
-            std::printf ("  %2d:%02d  bas %6.1f dB  diskant %+6.1f dB  %s\n",
-                         (int) seconds / 60, (int) seconds % 60, lowDb, ratioDb,
-                         lowDb > -30.0f && ratioDb < -18.0f ? "<- mest kick+bas" : "");
+            // Basenergi mellan kickarna (sista 60 % av varje slag) jämfört med kickens del (första 20 %).
+            // Mycket lågt = bara kick spelar; partiet kan användas för att mäta kicken rent.
+            double kickPart = 0.0, betweenPart = 0.0;
+            for (auto beat = b; beat < b + beatsPerBlock; ++beat)
+            {
+                const auto onset = (int) beats.onsets[beat];
+                const auto length = (int) beats.samplesPerBeat;
+                kickPart += std::pow (rms (low, onset, onset + length / 5), 2.0f);
+                betweenPart += std::pow (rms (low, onset + (2 * length) / 5, onset + length), 2.0f);
+            }
+            const auto betweenDb = toDb ((float) std::sqrt (betweenPart / beatsPerBlock)) - toDb ((float) std::sqrt (kickPart / beatsPerBlock));
+
+            const char* label = "";
+            if (lowDb > -30.0f && betweenDb < -18.0f)
+                label = "<- bara kick";
+            else if (lowDb > -30.0f && ratioDb < -18.0f)
+                label = "<- mest kick+bas";
+
+            std::printf ("  %2d:%02d  bas %6.1f dB  diskant %+6.1f dB  mellan kickarna %+6.1f dB  %s\n",
+                         (int) seconds / 60, (int) seconds % 60, lowDb, ratioDb, betweenDb, label);
 
             // Bästa partiet: stark bas, lite diskant. 8 takter (två block) när det går.
             if (lowDb > -30.0f && ratioDb < bestScore)
@@ -690,7 +712,7 @@ namespace
             for (int b = section.firstBeat + position; b < section.firstBeat + section.numBeats; b += 4, ++count)
             {
                 const auto start = (int) std::round (beats.onsets[(size_t) b]);
-                for (int i = 0; i < length && start + i < (int) bass.size(); ++i)
+                for (int i = std::max (0, -start); i < length && start + i < (int) bass.size(); ++i)
                     average[(size_t) i] += bass[(size_t) (start + i)];
             }
             if (count == 0)
@@ -715,6 +737,112 @@ namespace
             }
             std::puts ("");
         }
+    }
+
+    //==============================================================================
+    // Basens klang: övertonernas styrka (1-24) relativt grundtonen, tidigt i tonen och lite
+    // senare (filter-envelopen). Mäts på medelslagen per position, på steg med säker tonhöjd.
+
+    std::vector<float> harmonicProfile (const Signal& x, int start, int length, double f0, int numHarmonics)
+    {
+        int order = 1;
+        while ((1 << order) < std::max (length * 4, 8192))
+            ++order;
+        const auto size = 1 << order;
+        juce::dsp::FFT fft (order);
+
+        std::vector<float> data ((size_t) size * 2, 0.0f);
+        for (int i = 0; i < length && start + i < (int) x.size(); ++i)
+        {
+            const auto hann = 0.5f - 0.5f * std::cos (juce::MathConstants<float>::twoPi * (float) i / (float) (length - 1));
+            data[(size_t) i] = x[(size_t) (start + i)] * hann;
+        }
+        fft.performFrequencyOnlyForwardTransform (data.data());
+
+        const auto binHz = analysisRate / size;
+        std::vector<float> levels;
+        for (int k = 1; k <= numHarmonics; ++k)
+        {
+            const auto hz = k * f0;
+            if (hz > analysisRate * 0.45)
+                break;
+            // Starkaste binen inom ±3 % av övertonen (tonen kan vara lite ostämd).
+            auto peak = 0.0f;
+            for (auto bin = (int) (hz * 0.97 / binHz); bin <= (int) (hz * 1.03 / binHz) + 1 && bin < size / 2; ++bin)
+                peak = std::max (peak, data[(size_t) bin]);
+            levels.push_back (peak);
+        }
+        return levels;
+    }
+
+    void analyzeBassTimbre (const Signal& x, const Beats& beats, const Section& section)
+    {
+        std::puts ("\nBASENS KLANG (overtoner relativt grundtonen, dB; medel over steg med saker tonhojd)");
+        const auto bass = bandpass (x, 35.0, 350.0);
+        const auto sixteenth = beats.samplesPerBeat / 4.0;
+        const auto length = (int) beats.samplesPerBeat;
+        constexpr int numHarmonics = 24;
+
+        // Två fönster i tonen: tidigt (8-40 ms) och senare (40-80 ms).
+        const int windows[2][2] { { 8, 40 }, { 40, 80 } };
+        std::vector<double> sums[2] { std::vector<double> (numHarmonics, 0.0), std::vector<double> (numHarmonics, 0.0) };
+        std::vector<int> counts[2] { std::vector<int> (numHarmonics, 0), std::vector<int> (numHarmonics, 0) };
+        int usedSteps = 0;
+
+        for (int position = 0; position < 4; ++position)
+        {
+            Signal raw ((size_t) length, 0.0f), filtered ((size_t) length, 0.0f);
+            int count = 0;
+            for (int b = section.firstBeat + position; b < section.firstBeat + section.numBeats; b += 4, ++count)
+            {
+                const auto start = (int) std::round (beats.onsets[(size_t) b]);
+                for (int i = std::max (0, -start); i < length && start + i < (int) x.size(); ++i)
+                {
+                    raw[(size_t) i] += x[(size_t) (start + i)];
+                    filtered[(size_t) i] += bass[(size_t) (start + i)];
+                }
+            }
+            if (count == 0)
+                continue;
+
+            for (int step = 1; step < 4; ++step)
+            {
+                const auto stepStart = (int) (step * sixteenth);
+                float confidence = 0.0f;
+                const auto f0 = detectPitch (filtered, stepStart + (int) (0.006 * analysisRate), (int) (sixteenth - 0.012 * analysisRate), confidence);
+                if (f0 <= 0.0 || confidence < 0.8f)
+                    continue;
+
+                ++usedSteps;
+                for (int w = 0; w < 2; ++w)
+                {
+                    const auto from = stepStart + (int) (windows[w][0] * 0.001 * analysisRate);
+                    const auto to = std::min (stepStart + (int) (windows[w][1] * 0.001 * analysisRate), (int) ((step + 1) * sixteenth));
+                    const auto levels = harmonicProfile (raw, from, to - from, f0, numHarmonics);
+                    if (levels.empty() || levels[0] <= 0.0f)
+                        continue;
+                    for (size_t k = 0; k < levels.size(); ++k)
+                    {
+                        sums[w][k] += toDb (levels[k]) - toDb (levels[0]);
+                        ++counts[w][k];
+                    }
+                }
+            }
+        }
+
+        std::printf ("  (%d steg)\n  overton:  ", usedSteps);
+        for (int k = 1; k <= numHarmonics; ++k)
+            std::printf ("%4d", k);
+        for (int w = 0; w < 2; ++w)
+        {
+            std::printf ("\n  %2d-%2d ms: ", windows[w][0], windows[w][1]);
+            for (int k = 0; k < numHarmonics; ++k)
+                if (counts[w][(size_t) k] > 0)
+                    std::printf ("%4.0f", sums[w][(size_t) k] / counts[w][(size_t) k]);
+                else
+                    std::printf ("   .");
+        }
+        std::puts ("");
     }
 
     //==============================================================================
@@ -805,6 +933,10 @@ int analyzeFile (const juce::File& file, double startSeconds, double endSeconds)
     analyzeKick (average, sixteenth);
     analyzeBassSteps (average, sixteenth);
     analyzeBeatPositions (x, beats, section);
+    analyzeBassTimbre (x, beats, section);
     analyzeBassline (x, beats, section);
     return 0;
 }
+
+#include "AnalyzerFit.inl"
+#include "AnalyzerFitBeat.inl"

@@ -24,6 +24,9 @@ public:
     const MasterSection& getMasterSection() const override { return master; }
     bool acceptsMidi() const override { return false; }
 
+protected:
+    std::unique_ptr<PluginBase> createOfflineCopy() const override { return std::make_unique<FxProcessor>(); }
+
 private:
     void renderSamples (int startSample, int endSample);
     void handleEvent (const StepEvent& event);

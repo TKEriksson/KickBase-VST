@@ -24,6 +24,17 @@ namespace
 
     String formatPercent (float value) { return String (roundToInt (value * 100.0f)) + " %"; }
 
+    // Oscillatorns form: 0 sinus, 1 triangel, 2 sågtand, 3 fyrkant, blandningar emellan.
+    String formatShape (float value)
+    {
+        static const char* names[] { "Sine", "Tri", "Saw", "Sq" };
+        const auto lower = std::min (2, (int) value);
+        const auto mix = value - (float) lower;
+        if (mix < 0.02f) return names[lower];
+        if (mix > 0.98f) return names[lower + 1];
+        return String (names[lower]) + ">" + names[lower + 1] + " " + String (roundToInt (mix * 100.0f)) + "%";
+    }
+
     // Omfång där `centre` hamnar mitt på ratten, så att små värden får mer av vandringen.
     NormalisableRange<float> skewed (float min, float max, float centre, float interval = 0.0f)
     {
@@ -108,13 +119,16 @@ namespace Params
         layout.add (std::make_unique<AudioParameterInt> (ParameterID { ParamID::bassOctave, 1 }, "Bass Octave", -2, 1, 0));
         layout.add (floatParam (ParamID::bassTune, "Bass Tune", NormalisableRange<float> (-12.0f, 12.0f, 0.01f), 0.0f,
                                 [] (float v) { return formatSemis (v, 2); }));
-        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::bassWave, 1 }, "Bass Wave",
-                                                            StringArray { "Saw", "Square", "Triangle", "Sine" }, 0));
+        layout.add (floatParam (ParamID::bassShape, "Bass Shape", NormalisableRange<float> (0.0f, 3.0f, 0.001f), 2.0f, formatShape));
+        layout.add (floatParam (ParamID::bassPulseWidth, "Bass Pulse Width", NormalisableRange<float> (0.05f, 0.95f, 0.001f), 0.5f, formatPercent));
+        layout.add (percent (ParamID::bassNoise, "Bass Noise", 0.0f));
         layout.add (percent (ParamID::bassSub, "Bass Sub", 0.3f));
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::bassSubOctave, 1 }, "Bass Sub Octave",
                                                             StringArray { "-1 oct", "0 oct" }, 0));
-        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::bassOsc2Wave, 1 }, "Bass Osc2 Wave",
-                                                            StringArray { "Saw", "Square", "Triangle", "Sine" }, 0));
+        layout.add (floatParam (ParamID::bassOsc2Shape, "Bass Osc2 Shape", NormalisableRange<float> (0.0f, 3.0f, 0.001f), 2.0f, formatShape));
+        layout.add (floatParam (ParamID::bassOsc2Pw, "Bass Osc2 Pulse Width", NormalisableRange<float> (0.05f, 0.95f, 0.001f), 0.5f, formatPercent));
+        layout.add (percent (ParamID::bassFm, "Bass FM", 0.0f));
+        layout.add (percent (ParamID::bassFmEnv, "Bass FM Env", 0.0f));
         layout.add (percent (ParamID::bassOsc2Level, "Bass Osc2 Level", 0.0f));
         layout.add (floatParam (ParamID::bassOsc2Semi, "Bass Osc2 Semi", NormalisableRange<float> (-24.0f, 24.0f, 1.0f), 0.0f,
                                 [] (float v) { return formatSemis (v, 0); }));
@@ -226,10 +240,15 @@ BassParams ParamRefs::readBass (int rootMidiNote) const
 {
     BassParams p;
     p.rootHz     = Params::midiToHz ((float) rootMidiNote + 12.0f * get (ParamID::bassOctave) + get (ParamID::bassTune));
-    p.wave       = (BassWave) getChoice (ParamID::bassWave);
+    p.shape      = get (ParamID::bassShape);
+    p.pulseWidth = get (ParamID::bassPulseWidth);
+    p.noise      = get (ParamID::bassNoise);
     p.sub        = get (ParamID::bassSub);
     p.subOctave  = getChoice (ParamID::bassSubOctave) == 1 ? 0 : -1;
-    p.osc2Wave   = (BassWave) getChoice (ParamID::bassOsc2Wave);
+    p.osc2Shape  = get (ParamID::bassOsc2Shape);
+    p.osc2PulseWidth = get (ParamID::bassOsc2Pw);
+    p.fmAmount   = get (ParamID::bassFm);
+    p.fmEnvAmount = get (ParamID::bassFmEnv);
     p.osc2Level  = get (ParamID::bassOsc2Level);
     p.osc2Semis  = get (ParamID::bassOsc2Semi);
     p.osc2Detune = get (ParamID::bassOsc2Detune);

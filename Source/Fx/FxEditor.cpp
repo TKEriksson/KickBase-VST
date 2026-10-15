@@ -14,7 +14,7 @@ FxEditor::FxEditor (FxProcessor& p)
     lower.addTab ("LFO", Theme::lfo, lfo);
     lower.addTab ("MASTER", Theme::master, masterPage);
 
-    setSize (1060, 676);
+    setSize (1060, 736);
 }
 
 FxEditor::~FxEditor()
@@ -34,7 +34,7 @@ void FxEditor::resized()
     header.setBounds (area.removeFromTop (44));
     area.removeFromTop (4);
 
-    auto top = area.removeFromTop (370);
+    auto top = area.removeFromTop (430);
     kick.setBounds (top.removeFromLeft (top.getWidth() / 2 - 5));
     top.removeFromLeft (10);
     gate.setBounds (top);

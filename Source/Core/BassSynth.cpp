@@ -3,6 +3,7 @@
 namespace
 {
     constexpr double filterAttackSeconds = 0.001;
+    constexpr float maxFmIndex = 8.0f; // FM-mängd 1 = modulationsindex 8 (mycket övertoner)
 
     // Mjukar upp vågformens hopp så att höga toner inte viker ner som falska övertoner.
     double polyBlep (double t, double dt)
@@ -27,6 +28,22 @@ namespace
 
         const auto gain = 1.0f + drive * 9.0f;
         return std::tanh (gain * x) / std::tanh (gain);
+    }
+
+    float waveform (int index, double t, double dt, double pulseWidth)
+    {
+        switch (index)
+        {
+            case 0: return (float) std::sin (juce::MathConstants<double>::twoPi * t);
+            case 1: return (float) (1.0 - 4.0 * std::abs (t - 0.5));
+            case 2: return (float) (2.0 * t - 1.0 - polyBlep (t, dt));
+            default:
+            {
+                // Fyrkant med pulsbredd; medelvärdet dras bort så att smal puls inte ger DC.
+                auto square = (t < pulseWidth ? 1.0 : -1.0) + polyBlep (t, dt) - polyBlep (std::fmod (t + 1.0 - pulseWidth, 1.0), dt);
+                return (float) (square - (2.0 * pulseWidth - 1.0));
+            }
+        }
     }
 }
 
@@ -112,16 +129,18 @@ double BassSynth::coefficientFor (double milliseconds, double rate)
     return 1.0 - std::exp (std::log (0.001) / (std::max (0.1, milliseconds) * 0.001 * rate));
 }
 
-float BassSynth::oscillator (BassWave wave, double t, double dt)
+float BassSynth::oscillator (float shape, float pulseWidth, double t, double dt)
 {
-    switch (wave)
-    {
-        case BassWave::saw:      return (float) (2.0 * t - 1.0 - polyBlep (t, dt));
-        case BassWave::square:   return (float) ((t < 0.5 ? 1.0 : -1.0) + polyBlep (t, dt) - polyBlep (std::fmod (t + 0.5, 1.0), dt));
-        case BassWave::triangle: return (float) (1.0 - 4.0 * std::abs (t - 0.5));
-        case BassWave::sine:     return (float) std::sin (juce::MathConstants<double>::twoPi * t);
-    }
-    return 0.0f;
+    // Blanda de två närmaste vågformerna: 0 sinus, 1 triangel, 2 sågtand, 3 fyrkant.
+    const auto s = juce::jlimit (0.0f, 3.0f, shape);
+    const auto lower = std::min (2, (int) s);
+    const auto mix = s - (float) lower;
+    const auto pw = (double) juce::jlimit (0.05f, 0.95f, pulseWidth);
+
+    const auto a = waveform (lower, t, dt, pw);
+    if (mix <= 0.0f)
+        return a;
+    return a + (waveform (lower + 1, t, dt, pw) - a) * mix;
 }
 
 BassSynth::Output BassSynth::next()
@@ -166,14 +185,24 @@ BassSynth::Output BassSynth::next()
 
     const auto frequency = std::exp2 (logFrequency);
     const auto dt = frequency / sampleRate;
-
-    auto sample = oscillator (params.wave, phase, dt);
-    sample += params.sub * (float) std::sin (juce::MathConstants<double>::twoPi * subPhase);
-
-    // Andra oscillatorn: egen vågform, halvtoner och detune.
     const auto dt2 = dt * std::exp2 ((params.osc2Semis + params.osc2Detune * 0.01f) / 12.0f);
-    if (params.osc2Level > 0.0f)
-        sample += params.osc2Level * oscillator (params.osc2Wave, phase2, dt2);
+    const auto envelope = filterEnvelopeAt (params, noteTime);
+
+    // Oscillator 2: hörs med sin nivå och modulerar oscillator 1 med FM (fasmodulering).
+    const auto osc2 = oscillator (params.osc2Shape, params.osc2PulseWidth, phase2, dt2);
+    const auto fmIndex = maxFmIndex * (params.fmAmount + params.fmEnvAmount * envelope);
+    auto modulatedPhase = phase;
+    if (fmIndex > 0.0f)
+    {
+        modulatedPhase += fmIndex * osc2 / juce::MathConstants<double>::twoPi;
+        modulatedPhase -= std::floor (modulatedPhase);
+    }
+
+    auto sample = oscillator (params.shape, params.pulseWidth, modulatedPhase, dt);
+    sample += params.osc2Level * osc2;
+    sample += params.sub * (float) std::sin (juce::MathConstants<double>::twoPi * subPhase);
+    if (params.noise > 0.0f)
+        sample += params.noise * (random.nextFloat() * 2.0f - 1.0f);
 
     phase += dt;
     phase -= std::floor (phase);
@@ -185,7 +214,7 @@ BassSynth::Output BassSynth::next()
     // Filter: grundcutoff öppnas av envelopen, mer ju hårdare steget slås an.
     const auto envDepth = params.envAmount * (1.0f - params.velToEnv + params.velToEnv * velocity);
     const auto keyFollow = params.keyTrack > 0.0f ? std::pow ((float) frequency / 65.41f, params.keyTrack) : 1.0f;
-    const auto cutoff = params.cutoffHz * keyFollow * std::exp2 (envDepth * filterEnvelopeAt (params, noteTime));
+    const auto cutoff = params.cutoffHz * keyFollow * std::exp2 (envDepth * envelope);
     const auto clampedCutoff = juce::jlimit (20.0f, (float) sampleRate * 0.45f, cutoff);
     const auto q = 0.5f * std::pow (16.0f, params.resonance);
 

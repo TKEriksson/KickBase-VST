@@ -42,10 +42,15 @@ namespace ParamID
     // Bassynt (instrument)
     inline constexpr auto bassOctave    = "bassOctave";
     inline constexpr auto bassTune      = "bassTune";
-    inline constexpr auto bassWave      = "bassWave";
+    inline constexpr auto bassShape     = "bassShape";      // ersätter valet "bassWave"
+    inline constexpr auto bassPulseWidth = "bassPulseWidth";
+    inline constexpr auto bassNoise     = "bassNoise";
     inline constexpr auto bassSub       = "bassSub";
     inline constexpr auto bassSubOctave = "bassSubOctave";
-    inline constexpr auto bassOsc2Wave  = "bassOsc2Wave";
+    inline constexpr auto bassOsc2Shape = "bassOsc2Shape";  // ersätter valet "bassOsc2Wave"
+    inline constexpr auto bassOsc2Pw    = "bassOsc2Pw";
+    inline constexpr auto bassFm        = "bassFm";
+    inline constexpr auto bassFmEnv     = "bassFmEnv";
     inline constexpr auto bassOsc2Level = "bassOsc2Level";
     inline constexpr auto bassOsc2Semi  = "bassOsc2Semi";
     inline constexpr auto bassOsc2Detune = "bassOsc2Detune";

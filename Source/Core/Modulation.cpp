@@ -8,7 +8,8 @@ namespace Modulation
                  "Kick Pitch", "Kick Decay",
                  "FX Filter Cutoff", "FX Filter Reso", "FX Dist Drive", "FX Echo Mix", "FX Echo Feedback",
                  "FX Reverb Mix", "FX Phaser Mix", "FX Chorus Mix",
-                 "Duck Depth" };
+                 "Duck Depth",
+                 "Bass Shape", "Bass Osc2 Shape", "Bass Osc2 Level", "Bass FM", "Bass Pulse Width" };
     }
 
     const char* destinationParamID (Destination destination)
@@ -32,6 +33,11 @@ namespace Modulation
             case Destination::phaserMix:     return "fxPhaserMix";
             case Destination::chorusMix:     return "fxChorusMix";
             case Destination::duckAmount:    return "duckAmount";
+            case Destination::bassShape:     return "bassShape";
+            case Destination::bassOsc2Shape: return "bassOsc2Shape";
+            case Destination::bassOsc2Level: return "bassOsc2Level";
+            case Destination::bassFm:        return "bassFm";
+            case Destination::bassPulseWidth: return "bassPulseWidth";
             case Destination::none:
             case Destination::count:         break;
         }

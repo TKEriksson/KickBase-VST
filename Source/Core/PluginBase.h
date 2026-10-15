@@ -55,6 +55,11 @@ public:
     juce::Array<juce::File> getUserPresets (Presets::Section section) const;
     juce::String getPresetName (Presets::Section section) const { return presetNames[(size_t) section]; }
 
+    // Renderar ljudet offline till en WAV-fil som loopar: bars takter i DAW:ens senaste tempo och
+    // med den senaste tonen. Kick eller bas ensam stänger av den andra. Anropas från gränssnittet.
+    enum class ExportPart { full, kick, bass };
+    bool exportWav (const juce::File& file, ExportPart part, int bars);
+
     // Klicksampling. Anropas från gränssnittet (message thread).
     bool loadClickSample (const juce::File& file);
     void clearClickSample();
@@ -69,6 +74,9 @@ public:
     int selectedTab = 0;                   // gränssnittets valda flik, så att den finns kvar när fönstret öppnas igen
 
 protected:
+    // En ny processor av samma slag, som exporten spelar med en kopia av inställningarna.
+    virtual std::unique_ptr<PluginBase> createOfflineCopy() const = 0;
+
     // Anropas i prepareToPlay i underklasserna.
     void prepareBase (double sampleRate);
 

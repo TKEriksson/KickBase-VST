@@ -54,6 +54,12 @@ När DAW:en står still släpps ljudet igenom orört och ingen kick spelas.
 **Presets:** varje del (hela pluginet, kick, bas, mönster, effektkedjan, varje effekt, sidechain,
 LFO, master) har en egen presetmeny med fabrikspresets, egna presets, "Save preset..." och
 "Open preset folder". Egna presets sparas som filer under `Dokument\MyOwnFruit\Presets\`.
+De fyra "(... style)"-presetsen är anpassade mot referenslåtar med `fitbeat` (se nedan); spela
+dem i låtens tempo och med tonen som står i kommentaren i `Presets.cpp` (E4 eller G4).
+
+**EXPORT** (instrumentet): exporterar kicken, basen, hela mixen eller alla tre som WAV-loopar på
+4, 8 eller 16 takter, i DAW:ens senaste tempo och med den senast spelade tonen. Filerna föreslås
+under `Dokument\MyOwnFruit\Exports\`.
 
 **Gränssnittet:**
 - Dra i handtagen i kurvorna för att forma envelopes (shift = finjustering, dubbelklick = återställ).
@@ -67,12 +73,25 @@ LFO, master) har en egen presetmeny med fabrikspresets, egna presets, "Save pres
 `MyOwnFruitTool` (byggs tillsammans med pluginsen) testar utan DAW:
 
 ```
-MyOwnFruitTool render   instrument|fx <ut.wav> [bpm] [takter] [ton] [preset]
-MyOwnFruitTool snapshot instrument|fx <ut.png>
+MyOwnFruitTool render      instrument|fx <ut.wav> [bpm] [takter] [ton] [preset, t.ex. 16+k3+b5]
+MyOwnFruitTool export      <ut.wav> full|kick|bass <takter> [bpm] [ton] [preset]
+MyOwnFruitTool snapshot    instrument|fx <ut.png> [flik]
+MyOwnFruitTool analyze     <ljudfil> [start] [slut]
+MyOwnFruitTool fitbeat     <ljudfil> <start> <slut> rolling|galloping|triplet|offbeat
+MyOwnFruitTool comparebeat <ljudfil> <start> <slut> <mönster> <rendering.wav>
 ```
 
-`render` skriver en WAV och en PNG med vågformen och skriver ut toppvärde per sextondel.
-`snapshot` sparar en skärmbild av gränssnittet.
+- `render` skriver en WAV och en PNG med vågformen och skriver ut toppvärde per sextondel.
+- `export` gör samma sak som EXPORT-knappen.
+- `snapshot` sparar en skärmbild av gränssnittet.
+- `analyze` mäter en låt (eller en rendering): tempo, kickens svep, svans och envelope, basgången
+  sextondel för sextondel och basens övertoner.
+- `fitbeat` söker kick-, bas- och mixinställningar som låter som ett parti av en låt (analys
+  genom syntes): ett medelslag per position i takten jämförs med vår kick + bas i tre band,
+  kickens svep och basens övertoner. Skriver ut värdena i pluginets parametrar. Tar ~15 minuter.
+- `comparebeat` mäter en rendering av ett preset på samma sätt och visar hur nära den kommer.
+
+Referenslåtar läggs i `research/` (ignoreras av git och får inte checkas in).
 
 ## Struktur
 

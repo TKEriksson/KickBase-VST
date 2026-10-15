@@ -2,28 +2,29 @@
 // pluginsen kan kontrolleras utan DAW.
 //
 //   MyOwnFruitTool render   instrument|fx <ut.wav> [bpm] [takter] [ton eller toner, t.ex. 66,64,61,59] [preset] [effektpreset]
-//   (flera toner: en per takt, bytet sker exakt på taktstrecket)
+//   (flera toner: en per takt, bytet sker exakt på taktstrecket; preset kan följas av kick- och
+//   baspreset, t.ex. 16+k3+b5 = helpreset 16, sedan kickpreset 3 och baspreset 5)
+//   MyOwnFruitTool export   <ut.wav> full|kick|bass <takter> [bpm] [ton] [preset]   (som EXPORT-knappen)
 //   MyOwnFruitTool snapshot instrument|fx <ut.png> [flik]
 //   MyOwnFruitTool presettest
 //   MyOwnFruitTool analyze  <ljudfil> [start-sekund] [slut-sekund]
+//   MyOwnFruitTool fitbass  <ljudfil> <start> <slut> [steg per slag]
+//   MyOwnFruitTool fitkick  <ljudfil> <start> <slut>
+//   MyOwnFruitTool fitbeat  <ljudfil> <start> <slut> [rolling|galloping|triplet|offbeat]
+//   MyOwnFruitTool comparebeat <ljudfil> <start> <slut> <mönster> <rendering.wav>
 
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_audio_utils/juce_audio_utils.h>
 #include "../Source/Fx/FxProcessor.h"
+#include "../Source/Core/OfflineRender.h"
 #include "../Source/Instrument/InstrumentProcessor.h"
 #include "Analyzer.h"
 #include <cstdio>
 
 namespace
 {
-    constexpr double renderRate = 48000.0;
+    constexpr double renderRate = 44100.0; // samma som referenslåtarna, så att analysen jämför lika
     constexpr int blockSize = 512;
-
-    struct FakePlayHead : juce::AudioPlayHead
-    {
-        PositionInfo info;
-        juce::Optional<PositionInfo> getPosition() const override { return info; }
-    };
 
     std::unique_ptr<PluginBase> createProcessor (const juce::String& kind)
     {
@@ -32,7 +33,7 @@ namespace
         return std::make_unique<InstrumentProcessor>();
     }
 
-    void printStats (const juce::AudioBuffer<float>& audio, double bpm)
+    void printStats (const juce::AudioBuffer<float>& audio, double bpm, double rate = renderRate)
     {
         auto peak = 0.0f;
         auto sumSquares = 0.0, dc = 0.0;
@@ -53,7 +54,7 @@ namespace
                      peak, juce::Decibels::gainToDecibels (peak), std::sqrt (sumSquares / n), dc / n, nonFinite);
 
         // Toppvärde per sextondel, så att mönstret syns som text.
-        const auto samplesPerSixteenth = renderRate * 60.0 / bpm / 4.0;
+        const auto samplesPerSixteenth = rate * 60.0 / bpm / 4.0;
         const auto numSteps = (int) (n / samplesPerSixteenth);
         std::puts ("Topp per sextondel (en rad per takt, 0-9):");
         for (int step = 0; step < numSteps; ++step)
@@ -113,97 +114,86 @@ namespace
         std::printf ("Skrev %s\n", file.getFullPathName().toRawUTF8());
     }
 
-    int render (const juce::String& kind, const juce::File& outFile, double bpm, int bars, const juce::Array<int>& notes, int preset, int effectPreset)
+    int render (const juce::String& kind, const juce::File& outFile, double bpm, int bars, const juce::Array<int>& notes,
+                const juce::String& presets, int effectPreset)
     {
         auto processor = createProcessor (kind);
-        if (preset >= 0)
+        for (const auto& token : juce::StringArray::fromTokens (presets, "+", {}))
         {
-            processor->loadFactoryPreset (Presets::Section::full, preset);
-            std::printf ("Preset: %s\n", processor->getPresetName (Presets::Section::full).toRawUTF8());
+            auto section = Presets::Section::full;
+            auto index = token;
+            if (token.startsWithIgnoreCase ("k")) { section = Presets::Section::kick; index = token.substring (1); }
+            if (token.startsWithIgnoreCase ("b")) { section = Presets::Section::bass; index = token.substring (1); }
+            if (index.isEmpty() || index.getIntValue() < 0)
+                continue;
+            processor->loadFactoryPreset (section, index.getIntValue());
+            std::printf ("%s: %s\n", Presets::sectionName (section).toRawUTF8(), processor->getPresetName (section).toRawUTF8());
         }
         if (effectPreset >= 0)
         {
             processor->loadFactoryPreset (Presets::Section::effects, effectPreset);
             std::printf ("Effekter: %s\n", processor->getPresetName (Presets::Section::effects).toRawUTF8());
         }
-        processor->setPlayConfigDetails (kind == "fx" ? 2 : 0, 2, renderRate, blockSize);
-        processor->prepareToPlay (renderRate, blockSize);
+        OfflineRender::Settings settings;
+        settings.sampleRate = renderRate;
+        settings.blockSize = blockSize;
+        settings.bpm = bpm;
+        settings.bars = bars;
+        settings.notes = notes;
+        settings.extraBars = 1; // en takt efter tonen
 
-        FakePlayHead playHead;
-        playHead.info.setIsPlaying (true);
-        playHead.info.setBpm (bpm);
-        playHead.info.setTimeSignature (juce::AudioPlayHead::TimeSignature { 4, 4 });
-        processor->setPlayHead (&playHead);
-
-        const auto samplesPerBar = renderRate * 60.0 / bpm * 4.0;
-        const auto noteSamples = (int) (bars * samplesPerBar);
-        const auto totalSamples = noteSamples + (int) samplesPerBar; // en takt efter tonen
-        juce::AudioBuffer<float> output (2, totalSamples);
-        output.clear();
-
-        juce::AudioBuffer<float> block (2, blockSize);
+        // FX-versionen: låtsas-Serum, en hållen sågtand i 55 Hz.
         double inputPhase = 0.0;
-
-        for (int done = 0; done < totalSamples; done += blockSize)
+        settings.fillInput = [&inputPhase] (juce::AudioBuffer<float>& block, int)
         {
-            const auto n = std::min (blockSize, totalSamples - done);
-            block.setSize (2, n, false, false, true);
-            block.clear();
-
-            const auto ppq = done / renderRate * bpm / 60.0;
-            playHead.info.setPpqPosition (ppq);
-            playHead.info.setPpqPositionOfLastBarStart (std::floor (ppq / 4.0) * 4.0);
-            playHead.info.setTimeInSamples (done);
-
-            juce::MidiBuffer midi;
-            if (kind == "fx")
+            for (int i = 0; i < block.getNumSamples(); ++i)
             {
-                // Låtsas-Serum: en hållen sågtand i 55 Hz.
-                for (int i = 0; i < n; ++i)
-                {
-                    const auto s = (float) (2.0 * inputPhase - 1.0) * 0.5f;
-                    block.setSample (0, i, s);
-                    block.setSample (1, i, s);
-                    inputPhase += 55.0 / renderRate;
-                    inputPhase -= std::floor (inputPhase);
-                }
+                const auto s = (float) (2.0 * inputPhase - 1.0) * 0.5f;
+                for (int ch = 0; ch < block.getNumChannels(); ++ch)
+                    block.setSample (ch, i, s);
+                inputPhase += 55.0 / renderRate;
+                inputPhase -= std::floor (inputPhase);
             }
-            else
-            {
-                // En ton per takt; vid taktstrecket släpps förra tonen och nästa slås an på samma sample.
-                for (int bar = 0; bar <= bars; ++bar)
-                {
-                    const auto at = (int) (bar * samplesPerBar);
-                    if (at < done || at >= done + n)
-                        continue;
-                    if (bar > 0)
-                        midi.addEvent (juce::MidiMessage::noteOff (1, notes[(bar - 1) % notes.size()]), at - done);
-                    if (bar < bars)
-                        midi.addEvent (juce::MidiMessage::noteOn (1, notes[bar % notes.size()], (juce::uint8) 100), at - done);
-                }
-            }
+        };
 
-            processor->processBlock (block, midi);
-            for (int ch = 0; ch < 2; ++ch)
-                output.copyFrom (ch, done, block, ch, 0, n);
-        }
-
+        const auto output = OfflineRender::render (*processor, settings);
         printStats (output, bpm);
         writeWaveformImage (output, bpm, outFile.withFileExtension ("png"));
 
-        outFile.deleteFile();
-        juce::WavAudioFormat wav;
-        std::unique_ptr<juce::OutputStream> stream (outFile.createOutputStream());
-        auto writer = wav.createWriterFor (stream, juce::AudioFormatWriterOptions{}
-                                                       .withSampleRate (renderRate)
-                                                       .withNumChannels (2)
-                                                       .withBitsPerSample (24));
-        if (writer == nullptr)
+        if (! OfflineRender::writeWav (output, renderRate, outFile))
         {
             std::puts ("Kunde inte skriva WAV");
             return 1;
         }
-        writer->writeFromAudioSampleBuffer (output, 0, output.getNumSamples());
+        std::printf ("Skrev %s\n", outFile.getFullPathName().toRawUTF8());
+        return 0;
+    }
+
+    // Provar pluginets WAV-export, som gränssnittets EXPORT-knapp.
+    int exportPart (const juce::File& outFile, const juce::String& part, int bars, double bpm, int note, int preset)
+    {
+        InstrumentProcessor processor;
+        if (preset >= 0)
+            processor.loadFactoryPreset (Presets::Section::full, preset);
+        processor.transportStatus.bpm = bpm;
+        processor.transportStatus.keyNote = note;
+        const auto which = part == "kick" ? PluginBase::ExportPart::kick
+                         : (part == "bass" ? PluginBase::ExportPart::bass : PluginBase::ExportPart::full);
+        if (! processor.exportWav (outFile, which, bars))
+        {
+            std::puts ("Exporten misslyckades");
+            return 1;
+        }
+
+        juce::AudioFormatManager formats;
+        formats.registerBasicFormats();
+        std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (outFile));
+        if (reader == nullptr)
+            return 1;
+        juce::AudioBuffer<float> audio ((int) reader->numChannels, (int) reader->lengthInSamples);
+        reader->read (&audio, 0, audio.getNumSamples(), 0, true, true);
+        std::printf ("%.2f s, %.0f Hz. ", audio.getNumSamples() / reader->sampleRate, reader->sampleRate);
+        printStats (audio, bpm, reader->sampleRate);
         std::printf ("Skrev %s\n", outFile.getFullPathName().toRawUTF8());
         return 0;
     }
@@ -276,6 +266,33 @@ int main (int argc, char* argv[])
     if (argc == 2 && juce::String (argv[1]) == "presettest")
         return presetTest();
 
+    if (argc >= 5 && (juce::String (argv[1]) == "fitbass" || juce::String (argv[1]) == "fitkick"
+                      || juce::String (argv[1]) == "fitbeat" || juce::String (argv[1]) == "comparebeat"))
+    {
+        juce::ScopedJuceInitialiser_GUI juce; // Windows Media-avkodaren behöver JUCE:s meddelandesystem
+        const auto file = juce::File::getCurrentWorkingDirectory().getChildFile (juce::String (argv[2]));
+        const auto start = juce::String (argv[3]).getDoubleValue();
+        const auto end = juce::String (argv[4]).getDoubleValue();
+        if (juce::String (argv[1]) == "fitkick")
+            return fitKick (file, start, end);
+        if (juce::String (argv[1]) == "fitbeat")
+            return fitBeat (file, start, end, argc > 5 ? juce::String (argv[5]) : juce::String ("rolling"));
+        if (juce::String (argv[1]) == "comparebeat" && argc > 6)
+            return compareBeat (file, start, end, juce::String (argv[5]),
+                                juce::File::getCurrentWorkingDirectory().getChildFile (juce::String (argv[6])));
+        return fitBass (file, start, end, argc > 5 ? juce::String (argv[5]).getIntValue() : 4);
+    }
+
+    if (argc >= 5 && juce::String (argv[1]) == "export")
+    {
+        juce::ScopedJuceInitialiser_GUI juce;
+        const auto file = juce::File::getCurrentWorkingDirectory().getChildFile (juce::String (argv[2]));
+        return exportPart (file, juce::String (argv[3]), juce::String (argv[4]).getIntValue(),
+                           argc > 5 ? juce::String (argv[5]).getDoubleValue() : 145.0,
+                           argc > 6 ? juce::String (argv[6]).getIntValue() : 60,
+                           argc > 7 ? juce::String (argv[7]).getIntValue() : -1);
+    }
+
     if (argc >= 3 && juce::String (argv[1]) == "analyze")
     {
         juce::ScopedJuceInitialiser_GUI juce; // Windows Media-avkodaren behöver JUCE:s meddelandesystem
@@ -303,7 +320,7 @@ int main (int argc, char* argv[])
         juce::Array<int> notes;
         for (const auto& token : juce::StringArray::fromTokens (argc > 6 ? juce::String (argv[6]) : juce::String ("66"), ",", {}))
             notes.add (token.getIntValue()); // 66 = F#5 i FL
-        const auto preset = argc > 7 ? juce::String (argv[7]).getIntValue() : -1;
+        const auto preset = argc > 7 ? juce::String (argv[7]) : juce::String();
         const auto effectPreset = argc > 8 ? juce::String (argv[8]).getIntValue() : -1;
         return render (kind, outFile, bpm, bars, notes, preset, effectPreset);
     }

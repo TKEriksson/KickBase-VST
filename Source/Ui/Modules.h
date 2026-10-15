@@ -17,10 +17,14 @@ public:
 
 private:
     void timerCallback() override { repaint(); }
+    void showExportMenu();
+    void chooseExportTarget (int part, int bars); // part: 0-2 = PluginBase::ExportPart, 3 = alla tre
 
     PluginBase& processor;
     juce::String subtitle;
     PresetButton presets;
+    juce::TextButton exportButton { "EXPORT" }; // bara i instrumentet
+    std::unique_ptr<juce::FileChooser> chooser;
 };
 
 // Kicken: kurvor för pitch- och amplitud-envelope, rattar och plats för en klicksampling.
@@ -70,7 +74,7 @@ private:
 
     EnvelopeView envelope { 0.5 };
     std::vector<std::unique_ptr<juce::Component>> controls;
-    std::vector<std::vector<juce::Component*>> rows; // OSC, FILTER, AMP
+    std::vector<std::vector<juce::Component*>> rows; // OSC 1, OSC 2 + FM, FILTER, AMP
     PresetButton presets;
 };
 

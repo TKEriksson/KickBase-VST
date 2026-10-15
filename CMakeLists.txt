@@ -36,6 +36,7 @@ set(PLUGIN_SOURCES
     ${CORE_SOURCES}
     Source/Core/Effects.cpp
     Source/Core/Master.cpp
+    Source/Core/OfflineRender.cpp
     Source/Core/Params.cpp
     Source/Core/Presets.cpp
     Source/Core/PluginBase.cpp

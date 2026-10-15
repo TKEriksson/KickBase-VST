@@ -43,6 +43,13 @@ HeaderBar::HeaderBar (PluginBase& p, const juce::String& subtitleIn)
     : processor (p), subtitle (subtitleIn), presets (p, Presets::Section::full, Theme::pattern)
 {
     addAndMakeVisible (presets);
+    if (! processor.isEffectVersion())
+    {
+        exportButton.setTooltip ("Export the kick, the bass or the full mix as a looping WAV file, "
+                                 "at the current tempo and with the last played note.");
+        exportButton.onClick = [this] { showExportMenu(); };
+        addAndMakeVisible (exportButton);
+    }
     startTimerHz (15);
 }
 
@@ -50,6 +57,74 @@ void HeaderBar::resized()
 {
     const auto subtitleWidth = subtitle.isEmpty() ? 0 : 40;
     presets.setBounds (14 + 160 + subtitleWidth, 9, 200, getHeight() - 18);
+    exportButton.setBounds (presets.getRight() + 10, 9, 76, getHeight() - 18);
+}
+
+void HeaderBar::showExportMenu()
+{
+    juce::PopupMenu menu;
+    const char* names[] { "Full mix", "Kick", "Bass", "Kick + bass + full mix (3 files)" };
+    for (int part = 0; part < 4; ++part)
+    {
+        juce::PopupMenu lengths;
+        for (const auto bars : { 4, 8, 16 })
+            lengths.addItem (1 + part * 100 + bars, juce::String (bars) + " bars");
+        menu.addSubMenu (names[part], lengths);
+    }
+
+    juce::Component::SafePointer<HeaderBar> safeThis (this);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&exportButton), [safeThis] (int result)
+    {
+        if (safeThis != nullptr && result > 0)
+            safeThis->chooseExportTarget ((result - 1) / 100, (result - 1) % 100);
+    });
+}
+
+void HeaderBar::chooseExportTarget (int part, int bars)
+{
+    const juce::String partNames[] { "Full", "Kick", "Bass" };
+    const auto baseName = "MyOwnFruit " + juce::String (bars) + " bars "
+                        + juce::String (juce::roundToInt (processor.transportStatus.bpm.load())) + " BPM";
+    auto folder = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("MyOwnFruit").getChildFile ("Exports");
+    folder.createDirectory();
+
+    auto report = [] (bool ok, const juce::String& where)
+    {
+        if (! ok)
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Export failed", "Could not write " + where);
+    };
+
+    juce::Component::SafePointer<HeaderBar> safeThis (this);
+    if (part == 3)
+    {
+        chooser = std::make_unique<juce::FileChooser> ("Choose a folder for the three WAV files", folder);
+        chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
+                              [safeThis, bars, baseName, partNames, report] (const juce::FileChooser& fc)
+        {
+            const auto directory = fc.getResult();
+            if (safeThis == nullptr || directory == juce::File())
+                return;
+            for (int i = 0; i < 3; ++i)
+            {
+                const auto file = directory.getChildFile (baseName + " " + partNames[i] + ".wav");
+                report (safeThis->processor.exportWav (file, (PluginBase::ExportPart) i, bars), file.getFullPathName());
+            }
+        });
+        return;
+    }
+
+    chooser = std::make_unique<juce::FileChooser> ("Export " + partNames[part] + " as WAV",
+                                                   folder.getChildFile (baseName + " " + partNames[part] + ".wav"), "*.wav");
+    chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles
+                              | juce::FileBrowserComponent::warnAboutOverwriting,
+                          [safeThis, part, bars, report] (const juce::FileChooser& fc)
+    {
+        const auto file = fc.getResult();
+        if (safeThis == nullptr || file == juce::File())
+            return;
+        const auto wav = file.withFileExtension ("wav");
+        report (safeThis->processor.exportWav (wav, (PluginBase::ExportPart) part, bars), wav.getFullPathName());
+    });
 }
 
 void HeaderBar::paint (juce::Graphics& g)
@@ -260,7 +335,7 @@ BassModule::BassModule (PluginBase& p)
                           param (p, ParamID::bassRelease), nullptr, false, Theme::text });
     addAndMakeVisible (envelope);
 
-    // Tre rader: OSC, FILTER och AMP. Valrutor och rattar blandas i samma rad.
+    // Fyra rader: OSC 1, OSC 2 + FM, FILTER och AMP. Valrutor och rattar blandas i samma rad.
     auto knob = [&] (const char* id, const char* name) -> juce::Component*
     {
         controls.push_back (std::make_unique<KnobComponent> (p.apvts, id, name, Theme::bass));
@@ -274,10 +349,12 @@ BassModule::BassModule (PluginBase& p)
         return controls.back().get();
     };
 
-    rows.push_back ({ choice (ParamID::bassWave, "WAVE"), knob (ParamID::bassOctave, "OCTAVE"), knob (ParamID::bassTune, "TUNE"),
-                      knob (ParamID::bassSub, "SUB"), choice (ParamID::bassSubOctave, "SUB OCT"),
-                      choice (ParamID::bassOsc2Wave, "OSC 2"), knob (ParamID::bassOsc2Level, "O2 LEVEL"),
-                      knob (ParamID::bassOsc2Semi, "O2 SEMI"), knob (ParamID::bassOsc2Detune, "DETUNE") });
+    rows.push_back ({ knob (ParamID::bassShape, "SHAPE"), knob (ParamID::bassPulseWidth, "PW"), knob (ParamID::bassOctave, "OCTAVE"),
+                      knob (ParamID::bassTune, "TUNE"), knob (ParamID::bassSub, "SUB"), choice (ParamID::bassSubOctave, "SUB OCT"),
+                      knob (ParamID::bassNoise, "NOISE") });
+    rows.push_back ({ knob (ParamID::bassOsc2Shape, "O2 SHAPE"), knob (ParamID::bassOsc2Pw, "O2 PW"), knob (ParamID::bassOsc2Level, "O2 LEVEL"),
+                      knob (ParamID::bassOsc2Semi, "O2 SEMI"), knob (ParamID::bassOsc2Detune, "DETUNE"), knob (ParamID::bassFm, "FM"),
+                      knob (ParamID::bassFmEnv, "FM ENV") });
     rows.push_back ({ choice (ParamID::bassFilterType, "FILTER"), knob (ParamID::bassCutoff, "CUTOFF"),
                       knob (ParamID::bassResonance, "RESO"), knob (ParamID::bassEnvAmount, "ENV AMT"),
                       knob (ParamID::bassEnvDecay, "ENV DEC"), knob (ParamID::bassVelToEnv, "VEL>ENV"),
@@ -314,7 +391,7 @@ void BassModule::resized()
     presets.setBounds (presetBounds (*this));
     auto area = getContentBounds();
 
-    constexpr int rowHeight = 66;
+    constexpr int rowHeight = 62;
     std::vector<juce::Rectangle<int>> rowAreas;
     for (size_t r = 0; r < rows.size(); ++r)
         rowAreas.insert (rowAreas.begin(), area.removeFromBottom (rowHeight));

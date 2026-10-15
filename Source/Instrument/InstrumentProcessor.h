@@ -26,6 +26,9 @@ public:
 
     juce::MidiKeyboardState keyboardState;
 
+protected:
+    std::unique_ptr<PluginBase> createOfflineCopy() const override { return std::make_unique<InstrumentProcessor>(); }
+
 private:
     struct Output
     {

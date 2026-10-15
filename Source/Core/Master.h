@@ -42,6 +42,11 @@ private:
     int lookahead = 72;
     int channels = 2;
 
+    // DC-filter (högpass ~5 Hz) per kanal: korta bastoner som börjar i samma fas varje gång
+    // har ett litet medelvärde som annars äter headroom.
+    std::vector<float> dcInput, dcOutput;
+    float dcCoefficient = 0.999f;
+
     // Fördröjning (ringbuffert) per kanal, och limiterns mellansteg.
     std::vector<std::vector<float>> delayLines;
     std::vector<float> minWindow, boxWindow;

@@ -18,7 +18,7 @@ InstrumentEditor::InstrumentEditor (InstrumentProcessor& p)
     keyboard.setKeyWidth (14.0f);
     keyboard.setLowestVisibleKey (24);
 
-    setSize (1060, 740);
+    setSize (1060, 800);
 }
 
 InstrumentEditor::~InstrumentEditor()
@@ -41,7 +41,7 @@ void InstrumentEditor::resized()
     keyboard.setBounds (area.removeFromBottom (54));
     area.removeFromBottom (10);
 
-    auto top = area.removeFromTop (370);
+    auto top = area.removeFromTop (430);
     kick.setBounds (top.removeFromLeft (top.getWidth() / 2 - 5));
     top.removeFromLeft (10);
     bass.setBounds (top);

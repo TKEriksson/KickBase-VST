@@ -1,4 +1,5 @@
 #include "PluginBase.h"
+#include "OfflineRender.h"
 
 namespace
 {
@@ -45,6 +46,11 @@ BassParams PluginBase::readModulatedBass (int rootMidiNote) const
     p.envAmount = modulator.apply (Dest::bassEnvAmount, p.envAmount);
     p.drive = modulator.apply (Dest::bassDrive, p.drive);
     p.level = modulator.apply (Dest::bassLevel, p.level);
+    p.shape = modulator.apply (Dest::bassShape, p.shape);
+    p.osc2Shape = modulator.apply (Dest::bassOsc2Shape, p.osc2Shape);
+    p.osc2Level = modulator.apply (Dest::bassOsc2Level, p.osc2Level);
+    p.fmAmount = modulator.apply (Dest::bassFm, p.fmAmount);
+    p.pulseWidth = modulator.apply (Dest::bassPulseWidth, p.pulseWidth);
 
     // Tune ingår redan i rootHz; lägg bara på skillnaden.
     if (modulator.isModulated (Dest::bassTune))
@@ -248,6 +254,46 @@ bool PluginBase::loadUserPreset (Presets::Section section, const juce::File& fil
     presetNames[(size_t) section] = file.getFileNameWithoutExtension();
     patternChanged();
     return true;
+}
+
+bool PluginBase::exportWav (const juce::File& file, ExportPart part, int bars)
+{
+    auto copy = createOfflineCopy();
+    juce::MemoryBlock state;
+    getStateInformation (state);
+    copy->setStateInformation (state.getData(), (int) state.getSize());
+
+    auto turnOff = [&copy] (const char* id)
+    {
+        if (auto* parameter = copy->apvts.getParameter (id))
+            parameter->setValueNotifyingHost (0.0f);
+    };
+    if (part == ExportPart::kick)
+        turnOff (ParamID::bassOn);
+    if (part == ExportPart::bass)
+        turnOff (ParamID::kickOn);
+
+    // Fyra takters förrulle: mönstret och LFO:erna börjar om var fjärde takt, så loopen börjar
+    // på mönstrets början med förra varvets svansar. En takt extra täcker masterns latens.
+    constexpr int preRoll = 4;
+    OfflineRender::Settings settings;
+    settings.sampleRate = currentSampleRate > 0.0 ? currentSampleRate : 48000.0;
+    settings.bpm = transportStatus.bpm.load();
+    const auto note = transportStatus.keyNote.load();
+    settings.notes = { note >= 0 ? note : 60 };
+    settings.bars = preRoll + bars + 1;
+    const auto audio = OfflineRender::render (*copy, settings);
+
+    const auto samplesPerBar = settings.sampleRate * 60.0 / settings.bpm * 4.0;
+    const auto start = (int) std::round (preRoll * samplesPerBar) + copy->getLatencySamples();
+    const auto length = (int) std::round (bars * samplesPerBar);
+    if (start + length > audio.getNumSamples())
+        return false;
+
+    juce::AudioBuffer<float> loop (audio.getNumChannels(), length);
+    for (int ch = 0; ch < audio.getNumChannels(); ++ch)
+        loop.copyFrom (ch, 0, audio, ch, start, length);
+    return OfflineRender::writeWav (loop, settings.sampleRate, file);
 }
 
 bool PluginBase::loadClickSample (const juce::File& file)
