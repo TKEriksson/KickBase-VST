@@ -13,7 +13,9 @@ public:
     explicit TabbedPanel (int* rememberedTab = nullptr)
         : remembered (rememberedTab), initialTab (rememberedTab != nullptr ? *rememberedTab : 0) {}
 
-    void addTab (const juce::String& name, juce::Colour accent, juce::Component& page)
+    // `headerExtras` (t.ex. sidans på/av-knapp och presetknapp) visas till höger i flikraden
+    // när fliken är vald, så att sidan inte behöver en egen rubrikrad.
+    void addTab (const juce::String& name, juce::Colour accent, juce::Component& page, juce::Component* headerExtras = nullptr)
     {
         auto button = std::make_unique<juce::TextButton> (name);
         button->setColour (juce::TextButton::buttonOnColourId, accent);
@@ -21,7 +23,9 @@ public:
         button->onClick = [this, index] { setCurrentTab (index); };
         addAndMakeVisible (*button);
         addChildComponent (page);
-        tabs.push_back ({ std::move (button), &page, accent });
+        if (headerExtras != nullptr)
+            addChildComponent (headerExtras);
+        tabs.push_back ({ std::move (button), &page, accent, headerExtras });
 
         // initialTab, inte *remembered: den skrivs över när de första flikarna läggs till.
         setCurrentTab (juce::jmin (initialTab, (int) tabs.size() - 1));
@@ -37,6 +41,8 @@ public:
         {
             tabs[(size_t) i].button->setToggleState (i == current, juce::dontSendNotification);
             tabs[(size_t) i].page->setVisible (i == current);
+            if (auto* extras = tabs[(size_t) i].headerExtras)
+                extras->setVisible (i == current);
         }
         repaint();
     }
@@ -59,6 +65,10 @@ public:
     void resized() override
     {
         auto header = getLocalBounds().removeFromTop (headerHeight).reduced (10, 4).withTrimmedTop (2);
+        const auto extrasArea = header.removeFromRight (200);
+        for (auto& tab : tabs)
+            if (tab.headerExtras != nullptr)
+                tab.headerExtras->setBounds (extrasArea);
         const auto count = std::max (1, (int) tabs.size());
         const auto width = std::min (110, (header.getWidth() - 6 * (count - 1)) / count);
         for (auto& tab : tabs)
@@ -78,6 +88,7 @@ private:
         std::unique_ptr<juce::TextButton> button;
         juce::Component* page;
         juce::Colour accent;
+        juce::Component* headerExtras;
     };
 
     std::vector<Tab> tabs;

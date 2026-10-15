@@ -169,13 +169,35 @@ public:
         }
     }
 
-    // Ytan under rubriken där modulens innehåll placeras.
-    juce::Rectangle<int> getContentBounds() const { return getLocalBounds().reduced (10).withTrimmedTop (headerHeight - 4); }
+    // Ytan där modulens innehåll placeras (under rubriken, eller hela ytan i en flik).
+    juce::Rectangle<int> getContentBounds() const
+    {
+        return embedded ? getLocalBounds().reduced (2, 0) : getLocalBounds().reduced (10).withTrimmedTop (headerHeight - 4);
+    }
 
     juce::Colour getAccent() const { return accent; }
+    bool isEmbedded() const { return embedded; }
+
+    // I en flikpanel: ingen egen rubrik (fliken heter likadant). På/av-knappen och presetknappen
+    // flyttas till komponenten som returneras, som flikpanelen visar i flikraden.
+    juce::Component* embedInTab()
+    {
+        embedded = true;
+        if (power != nullptr)
+            headerControls.addAndMakeVisible (*power);
+        if (headerPreset != nullptr)
+            headerControls.addAndMakeVisible (*headerPreset);
+        headerControls.power = power.get();
+        headerControls.preset = headerPreset;
+        repaint();
+        return &headerControls;
+    }
 
     void paint (juce::Graphics& g) override
     {
+        if (embedded)
+            return; // flikpanelen ritar bakgrunden och fliken visar namnet
+
         const auto bounds = getLocalBounds().toFloat().reduced (0.5f);
         g.setColour (Theme::panel);
         g.fillRoundedRectangle (bounds, 8.0f);
@@ -192,11 +214,34 @@ public:
 
     void resized() override
     {
-        if (power != nullptr)
+        if (power != nullptr && ! embedded)
             power->setBounds (8, 4, 24, 22);
     }
 
+protected:
+    // Presetknappen som flyttas till flikraden i en flikpanel (se embedInTab).
+    void setHeaderPreset (juce::Component* preset) { headerPreset = preset; }
+
 private:
+    struct HeaderControls : juce::Component
+    {
+        juce::Component* power = nullptr;
+        juce::Component* preset = nullptr;
+
+        void resized() override
+        {
+            auto area = getLocalBounds();
+            if (power != nullptr)
+                power->setBounds (area.removeFromLeft (24));
+            area.removeFromLeft (8);
+            if (preset != nullptr)
+                preset->setBounds (area);
+        }
+    };
+
+    HeaderControls headerControls;
+    juce::Component* headerPreset = nullptr;
+    bool embedded = false;
     juce::String title;
     juce::Colour accent;
     std::unique_ptr<juce::ToggleButton> power;

@@ -2,6 +2,7 @@
 
 #include "../Core/PluginBase.h"
 #include "Components.h"
+#include "OscPanel.h"
 #include "EnvelopeView.h"
 #include "PresetButton.h"
 #include "StepSequencer.h"
@@ -77,8 +78,9 @@ private:
     float ampValueAt (double seconds) const;
 
     EnvelopeView envelope { 0.5 };
+    std::unique_ptr<OscPanel> oscA, oscB;
     std::vector<std::unique_ptr<juce::Component>> controls;
-    ControlGroups groups; // OSC 1, SUB, OSC 2, FM, FILTER, FILTER ENV, AMP ...
+    ControlGroups groups; // PITCH, SUB, NOISE, FILTER, FILTER ENV, VOLUME ENV, WARP ENV, DRIVE, SLIDE, OUT
     PresetButton presets;
 };
 
@@ -121,8 +123,9 @@ private:
     PresetButton presets;
     std::vector<std::pair<std::unique_ptr<juce::TextButton>, StepSequencer::Lane>> laneButtons;
     StepSequencer sequencer;
+    std::vector<std::unique_ptr<juce::TextButton>> layerButtons; // BASS 1-3: vilket lager som redigeras
     std::vector<std::unique_ptr<ChoiceComponent>> grids; // ett per lager, bara det valda syns
-    std::vector<std::unique_ptr<KnobComponent>> gates;
+    std::vector<std::unique_ptr<KnobComponent>> gates, slides;
     juce::TextButton fillButton { "FILL..." };
     int shownLayer = 0;
 };

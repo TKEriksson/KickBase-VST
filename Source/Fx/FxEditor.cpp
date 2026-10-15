@@ -8,16 +8,16 @@ FxEditor::FxEditor (FxProcessor& p)
     for (auto* component : std::initializer_list<juce::Component*> { &header, &synths, &tools, &info })
         addAndMakeVisible (component);
 
-    synths.addTab ("KICK", Theme::kick, kick);
-    synths.addTab ("GATE", Theme::gate, gate);
+    synths.addTab ("PATTERN", Theme::pattern, pattern);
+    synths.addTab ("KICK", Theme::kick, kick, kick.embedInTab());
+    synths.addTab ("GATE", Theme::gate, gate, gate.embedInTab());
 
-    tools.addTab ("PATTERN", Theme::pattern, pattern);
     tools.addTab ("EFFECTS", Theme::effects, effects);
     tools.addTab ("SIDECHAIN", Theme::mix, sidechain);
     tools.addTab ("LFO", Theme::lfo, lfo);
     tools.addTab ("MASTER", Theme::master, masterPage);
 
-    setSize (1060, 850);
+    setSize (1060, 830);
 }
 
 FxEditor::~FxEditor()
@@ -37,7 +37,7 @@ void FxEditor::resized()
     area.removeFromTop (4);
     info.setBounds (area.removeFromBottom (22));
     area.removeFromBottom (6);
-    synths.setBounds (area.removeFromTop (490));
+    synths.setBounds (area.removeFromTop (520));
     area.removeFromTop (6);
     tools.setBounds (area);
 }

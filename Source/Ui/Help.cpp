@@ -9,6 +9,9 @@ namespace Help
         auto paramID = rawID;
         if (paramID.startsWith ("bass") && paramID.length() > 4 && juce::CharacterFunctions::isDigit (paramID[4]))
             paramID = "bass" + paramID.substring (5);
+        // OSC B har samma förklaringar som OSC A.
+        if (paramID.startsWith ("bassB") && paramID.length() > 5 && juce::CharacterFunctions::isUpperCase (paramID[5]))
+            paramID = "bassA" + paramID.substring (5);
 
         static const std::map<juce::String, juce::String> texts {
             // Mönster och mix
@@ -41,20 +44,22 @@ namespace Help
             // Bas: oscillator 1
             { "bassOctave", "Moves the whole bass up or down in octaves." },
             { "bassTune", "Fine tunes the bass in semitones." },
-            { "bassShape", "Waveform of oscillator 1, morphing smoothly: sine (0) -> triangle (1) -> saw (2) -> square (3)." },
-            { "bassPulseWidth", "Width of the square wave (when SHAPE is near square). Away from 50 % = thinner, nasal tone." },
+            { "bassATable", "Which wavetable the oscillator plays: Basic (sine-triangle-saw-square), PWM, Sync, Harmonics, FM, Growl, Fold, Formant, Digital, Phase Dist." },
+            { "bassAPos", "Position in the wavetable: which of its waveforms plays. Drag an LFO here to sweep through them for movement." },
+            { "bassALevel", "How loud this oscillator is. OSC B at 0 is silent but can still frequency-modulate OSC A (WARP: FM)." },
+            { "bassASemi", "Pitch in semitones (+12 = an octave up, +7 = a fifth)." },
+            { "bassAFine", "Fine tuning in cents." },
+            { "bassAUnison", "Number of stacked, slightly detuned voices. More = wider and fatter (use carefully in the low end)." },
+            { "bassADetune", "How far apart the unison voices are tuned." },
+            { "bassABlend", "Level of the outer unison voices compared to the centre one." },
+            { "bassAWarp", "Bends the waveform before it is played: Sync (screaming), Bend, PWM (narrower), Mirror, FM (B) = OSC B modulates OSC A." },
+            { "bassAWarpAmount", "How much the WARP mode changes the waveform." },
+            { "bassAPhase", "Where in the waveform each note starts. The same start every note gives a tight, punchy attack." },
+            { "bassARandom", "Randomises the start phase per note: looser and more analog, less punchy." },
+            { "bassWarpEnv", "Extra warp on OSC A at the start of each note, following the filter envelope: a bright, digital 'knock' that fades." },
             { "bassSub", "Level of a pure sine sub under the bass, for weight in the low end." },
             { "bassSubOctave", "Sub in the same octave as the bass, or one octave lower (careful: very low notes get inaudible)." },
             { "bassNoise", "Adds white noise before the filter, for air and grit in the attack." },
-
-            // Oscillator 2 och FM
-            { "bassOsc2Shape", "Waveform of oscillator 2: sine -> triangle -> saw -> square." },
-            { "bassOsc2Pw", "Width of oscillator 2's square wave." },
-            { "bassOsc2Level", "How loud oscillator 2 is mixed in. At 0 it is silent but can still do FM." },
-            { "bassOsc2Semi", "Oscillator 2's pitch in semitones from oscillator 1 (+12 = an octave up)." },
-            { "bassOsc2Detune", "Detunes oscillator 2 in cents, for a thicker, beating sound." },
-            { "bassFm", "Oscillator 2 frequency-modulates oscillator 1: metallic, digital harmonics." },
-            { "bassFmEnv", "Extra FM at the start of each note, following the filter envelope: a bright 'knock' that fades." },
 
             // Filter
             { "bassFilterType", "Filter type. LP 24 = smooth and dark (classic psy), LP 12 = brighter, Band and High for thin sounds." },

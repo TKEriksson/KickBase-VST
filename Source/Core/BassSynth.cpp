@@ -3,23 +3,6 @@
 namespace
 {
     constexpr double filterAttackSeconds = 0.001;
-    constexpr float maxFmIndex = 8.0f; // FM-mängd 1 = modulationsindex 8 (mycket övertoner)
-
-    // Mjukar upp vågformens hopp så att höga toner inte viker ner som falska övertoner.
-    double polyBlep (double t, double dt)
-    {
-        if (t < dt)
-        {
-            t /= dt;
-            return t + t - t * t - 1.0;
-        }
-        if (t > 1.0 - dt)
-        {
-            t = (t - 1.0) / dt;
-            return t * t + t + t + 1.0;
-        }
-        return 0.0;
-    }
 
     float softClip (float x, float drive)
     {
@@ -30,26 +13,13 @@ namespace
         return std::tanh (gain * x) / std::tanh (gain);
     }
 
-    float waveform (int index, double t, double dt, double pulseWidth)
-    {
-        switch (index)
-        {
-            case 0: return (float) std::sin (juce::MathConstants<double>::twoPi * t);
-            case 1: return (float) (1.0 - 4.0 * std::abs (t - 0.5));
-            case 2: return (float) (2.0 * t - 1.0 - polyBlep (t, dt));
-            default:
-            {
-                // Fyrkant med pulsbredd; medelvärdet dras bort så att smal puls inte ger DC.
-                auto square = (t < pulseWidth ? 1.0 : -1.0) + polyBlep (t, dt) - polyBlep (std::fmod (t + 1.0 - pulseWidth, 1.0), dt);
-                return (float) (square - (2.0 * pulseWidth - 1.0));
-            }
-        }
-    }
+    double wrap (double phase) { return phase - std::floor (phase); }
 }
 
 void BassSynth::prepare (double newSampleRate)
 {
     sampleRate = newSampleRate;
+    Wavetables::count(); // bygg tabellerna här (inte på ljudtråden)
 
     for (auto* filter : { &filter1, &filter2 })
     {
@@ -68,6 +38,63 @@ void BassSynth::reset()
     slideHeld = false;
     filter1.reset();
     filter2.reset();
+}
+
+double BassSynth::warpPhase (WarpMode mode, float amount, double phase, float fmInput)
+{
+    const auto a = (double) juce::jlimit (0.0f, 1.0f, amount);
+    if (a <= 0.0)
+        return phase;
+
+    switch (mode)
+    {
+        case WarpMode::sync:   return wrap (phase * (1.0 + 7.0 * a));
+        case WarpMode::bend:   return std::pow (phase, 1.0 + 4.0 * a);
+        case WarpMode::pwm:
+        {
+            const auto w = 0.5 - 0.48 * a;
+            return phase < w ? 0.5 * phase / w : 0.5 + 0.5 * (phase - w) / (1.0 - w);
+        }
+        case WarpMode::mirror:
+        {
+            const auto mirrored = phase < 0.5 ? phase * 2.0 : 2.0 - phase * 2.0;
+            return wrap (phase + a * (mirrored * 0.5 - phase));
+        }
+        case WarpMode::fm:     return wrap (phase + a * 2.0 * fmInput);
+        case WarpMode::off:    break;
+    }
+    return phase;
+}
+
+void BassSynth::Oscillator::retrigger (const OscParams& p, juce::Random& rng)
+{
+    for (auto& ph : phases)
+        ph = wrap (p.phase + p.randomPhase * rng.nextDouble());
+}
+
+float BassSynth::Oscillator::next (const OscParams& p, double frequency, double rate, float warpAmount, float fmInput)
+{
+    const auto& table = Wavetables::get (p.table);
+    const auto voices = juce::jlimit (1, maxUnison, p.unison);
+    const auto base = frequency * std::exp2 ((p.semis + p.fineCents * 0.01f) / 12.0f);
+
+    // Sidostämmorna sprids jämnt ±detune; mittstämman (eller de två mittersta) har full nivå.
+    auto sum = 0.0f, gainSum = 0.0f;
+    for (int v = 0; v < voices; ++v)
+    {
+        const auto spread = voices > 1 ? (double) v / (voices - 1) * 2.0 - 1.0 : 0.0;
+        const auto hz = base * std::exp2 (spread * p.detuneCents / 1200.0);
+        const auto centre = voices == 1 || std::abs (spread) < 1.0 / voices + 1.0e-6;
+        const auto gain = centre ? 1.0f : p.blend;
+
+        auto& phase = phases[(size_t) v];
+        const auto warped = warpPhase (p.warp, warpAmount, phase, fmInput);
+        sum += gain * table.sample (p.position, warped, rate * 0.5 / std::max (1.0, hz));
+        gainSum += gain * gain;
+
+        phase = wrap (phase + hz / rate);
+    }
+    return sum / std::sqrt (std::max (1.0f, gainSum));
 }
 
 void BassSynth::noteOn (int semitones, float newVelocity, int gateSamples, bool slide)
@@ -91,9 +118,9 @@ void BassSynth::noteOn (int semitones, float newVelocity, int gateSamples, bool 
         // hörs skulle ett fashopp knäppa, så då fortsätter fasen där den är.
         if (ampLevel < 0.05f)
         {
-            phase = 0.0;
+            oscA.retrigger (params.oscA, random);
+            oscB.retrigger (params.oscB, random);
             subPhase = 0.0;
-            phase2 = 0.0;
         }
 
         noteTime = 0.0;
@@ -127,20 +154,6 @@ double BassSynth::coefficientFor (double milliseconds, double rate)
 {
     // Andel av avståndet till målet per sample, så att -60 dB nås efter `milliseconds`.
     return 1.0 - std::exp (std::log (0.001) / (std::max (0.1, milliseconds) * 0.001 * rate));
-}
-
-float BassSynth::oscillator (float shape, float pulseWidth, double t, double dt)
-{
-    // Blanda de två närmaste vågformerna: 0 sinus, 1 triangel, 2 sågtand, 3 fyrkant.
-    const auto s = juce::jlimit (0.0f, 3.0f, shape);
-    const auto lower = std::min (2, (int) s);
-    const auto mix = s - (float) lower;
-    const auto pw = (double) juce::jlimit (0.05f, 0.95f, pulseWidth);
-
-    const auto a = waveform (lower, t, dt, pw);
-    if (mix <= 0.0f)
-        return a;
-    return a + (waveform (lower + 1, t, dt, pw) - a) * mix;
 }
 
 BassSynth::Output BassSynth::next()
@@ -184,32 +197,21 @@ BassSynth::Output BassSynth::next()
         logFrequency += (targetLogFrequency - logFrequency) * coefficientFor (params.glideMs, sampleRate);
 
     const auto frequency = std::exp2 (logFrequency);
-    const auto dt = frequency / sampleRate;
-    const auto dt2 = dt * std::exp2 ((params.osc2Semis + params.osc2Detune * 0.01f) / 12.0f);
     const auto envelope = filterEnvelopeAt (params, noteTime);
 
-    // Oscillator 2: hörs med sin nivå och modulerar oscillator 1 med FM (fasmodulering).
-    const auto osc2 = oscillator (params.osc2Shape, params.osc2PulseWidth, phase2, dt2);
-    const auto fmIndex = maxFmIndex * (params.fmAmount + params.fmEnvAmount * envelope);
-    auto modulatedPhase = phase;
-    if (fmIndex > 0.0f)
-    {
-        modulatedPhase += fmIndex * osc2 / juce::MathConstants<double>::twoPi;
-        modulatedPhase -= std::floor (modulatedPhase);
-    }
+    // OSC B först: den kan frekvensmodulera OSC A (warp FM). Warp env lägger till warp på A
+    // i början av varje ton.
+    const auto bNeeded = params.oscB.level > 0.0f || params.oscA.warp == WarpMode::fm;
+    const auto b = bNeeded ? oscB.next (params.oscB, frequency, sampleRate, params.oscB.warpAmount, 0.0f) : 0.0f;
+    const auto warpA = params.oscA.warpAmount + params.warpEnv * envelope;
+    const auto a = params.oscA.level > 0.0f ? oscA.next (params.oscA, frequency, sampleRate, warpA, b) : 0.0f;
 
-    auto sample = oscillator (params.shape, params.pulseWidth, modulatedPhase, dt);
-    sample += params.osc2Level * osc2;
+    auto sample = a * params.oscA.level + b * params.oscB.level;
     sample += params.sub * (float) std::sin (juce::MathConstants<double>::twoPi * subPhase);
     if (params.noise > 0.0f)
         sample += params.noise * (random.nextFloat() * 2.0f - 1.0f);
 
-    phase += dt;
-    phase -= std::floor (phase);
-    phase2 += dt2;
-    phase2 -= std::floor (phase2);
-    subPhase += params.subOctave == 0 ? dt : dt * 0.5;
-    subPhase -= std::floor (subPhase);
+    subPhase = wrap (subPhase + (params.subOctave == 0 ? frequency : frequency * 0.5) / sampleRate);
 
     // Filter: grundcutoff öppnas av envelopen, mer ju hårdare steget slås an.
     const auto envDepth = params.envAmount * (1.0f - params.velToEnv + params.velToEnv * velocity);

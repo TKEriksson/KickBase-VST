@@ -406,18 +406,17 @@ int fitBeat (const juce::File& file, double start, double end, const juce::Strin
         k.drive = uniform (0.0f, 0.8f);
 
         auto& b = c.bass;
-        b.shape = uniform (0.0f, 3.0f);
-        b.pulseWidth = uniform (0.1f, 0.9f);
+        b.oscA.position = uniform (0.0f, 1.0f);
         b.sub = uniform (0.0f, 0.8f);
         b.subOctave = 0;
         b.noise = chance (0.7f) ? 0.0f : uniform (0.0f, 0.1f);
-        b.osc2Shape = uniform (0.0f, 3.0f);
-        b.osc2PulseWidth = uniform (0.1f, 0.9f);
-        b.osc2Level = chance (0.3f) ? 0.0f : uniform (0.0f, 0.8f);
-        b.osc2Semis = semitoneChoices[std::uniform_int_distribution<int> (0, 4) (rng)];
-        b.osc2Detune = uniform (0.0f, 15.0f);
-        b.fmAmount = chance (0.4f) ? 0.0f : uniform (0.0f, 0.6f);
-        b.fmEnvAmount = chance (0.4f) ? 0.0f : uniform (0.0f, 0.6f);
+        b.oscB.position = uniform (0.0f, 1.0f);
+        b.oscB.level = chance (0.3f) ? 0.0f : uniform (0.0f, 0.8f);
+        b.oscB.semis = semitoneChoices[std::uniform_int_distribution<int> (0, 4) (rng)];
+        b.oscB.fineCents = uniform (0.0f, 15.0f);
+        b.oscA.warp = WarpMode::fm;
+        b.oscA.warpAmount = chance (0.4f) ? 0.0f : uniform (0.0f, 0.6f);
+        b.warpEnv = chance (0.4f) ? 0.0f : uniform (0.0f, 0.6f);
         b.filterType = chance (0.5f) ? BassFilterType::lowpass24 : BassFilterType::lowpass12;
         b.cutoffHz = logUniform (40.0f, 2500.0f);
         b.resonance = uniform (0.0f, 0.7f);
@@ -468,10 +467,10 @@ int fitBeat (const juce::File& file, double start, double end, const juce::Strin
                   { &k.holdMs, 0.0f, 120.0f, false }, { &k.decayMs, 40.0f, 600.0f, true }, { &k.decayCurve, 0.8f, 5.0f, true },
                   { &k.clickLevel, 0.0f, 0.8f, false }, { &k.clickLengthMs, 1.0f, 10.0f, false }, { &k.clickToneHz, 1500.0f, 16000.0f, true },
                   { &k.drive, 0.0f, 1.0f, false },
-                  { &b.shape, 0.0f, 3.0f, false }, { &b.pulseWidth, 0.05f, 0.95f, false }, { &b.sub, 0.0f, 1.0f, false },
-                  { &b.noise, 0.0f, 0.15f, false }, { &b.osc2Shape, 0.0f, 3.0f, false }, { &b.osc2PulseWidth, 0.05f, 0.95f, false },
-                  { &b.osc2Level, 0.0f, 1.0f, false }, { &b.osc2Detune, 0.0f, 50.0f, false }, { &b.fmAmount, 0.0f, 1.0f, false },
-                  { &b.fmEnvAmount, 0.0f, 1.0f, false }, { &b.cutoffHz, 30.0f, 8000.0f, true }, { &b.resonance, 0.0f, 1.0f, false },
+                  { &b.oscA.position, 0.0f, 1.0f, false }, { &b.sub, 0.0f, 1.0f, false },
+                  { &b.noise, 0.0f, 0.15f, false }, { &b.oscB.position, 0.0f, 1.0f, false },
+                  { &b.oscB.level, 0.0f, 1.0f, false }, { &b.oscB.fineCents, 0.0f, 50.0f, false }, { &b.oscA.warpAmount, 0.0f, 1.0f, false },
+                  { &b.warpEnv, 0.0f, 1.0f, false }, { &b.cutoffHz, 30.0f, 8000.0f, true }, { &b.resonance, 0.0f, 1.0f, false },
                   { &b.envAmount, 0.0f, 8.0f, false }, { &b.envDecayMs, 5.0f, 1000.0f, true }, { &b.drive, 0.0f, 1.0f, false },
                   { &b.attackMs, 0.05f, 50.0f, true }, { &b.decayMs, 5.0f, 2000.0f, true }, { &b.sustain, 0.0f, 1.0f, false },
                   { &b.releaseMs, 1.0f, 300.0f, true },

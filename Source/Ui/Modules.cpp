@@ -167,6 +167,7 @@ KickModule::KickModule (PluginBase& p)
       keyMode (p.apvts, ParamID::kickKeyFollow, "KEY"),
       presets (p, Presets::Section::kick, Theme::kick)
 {
+    setHeaderPreset (&presets);
     addAndMakeVisible (presets);
     keyMode.box.setTooltip ("Follow: the kick is tuned to the note's key. Fixed: it stays on C1 + TUNE whatever the note.");
     addAndMakeVisible (keyMode);
@@ -287,7 +288,8 @@ void KickModule::paintOverChildren (juce::Graphics& g)
 void KickModule::resized()
 {
     ModulePanel::resized();
-    presets.setBounds (presetBounds (*this));
+    if (! isEmbedded())
+        presets.setBounds (presetBounds (*this));
     auto area = getContentBounds();
 
     // Nedersta raden: KEY-väljaren (etikett + ruta) och klicksamplingen bredvid.
@@ -320,6 +322,7 @@ BassModule::BassModule (PluginBase& p, int layerIn)
     auto id = [this] (F f) { return ParamID::bass (layer, f); };
     const auto accent = Theme::layerColour (layer);
 
+    setHeaderPreset (&presets);
     addAndMakeVisible (presets);
     envelope.onBeforePaint = [this] { current = refs.readBass (layer, 36); };
 
@@ -344,7 +347,11 @@ BassModule::BassModule (PluginBase& p, int layerIn)
                           param (p, id (F::release)), nullptr, false, Theme::text });
     addAndMakeVisible (envelope);
 
-    // Fyra rader: OSC 1, OSC 2 + FM, FILTER och AMP. Valrutor och rattar blandas i samma rad.
+    oscA = std::make_unique<OscPanel> (p, layer, 0, accent);
+    oscB = std::make_unique<OscPanel> (p, layer, 1, accent);
+    addAndMakeVisible (*oscA);
+    addAndMakeVisible (*oscB);
+
     auto knob = [&] (const juce::String& paramID, const char* name) -> juce::Component*
     {
         controls.push_back (std::make_unique<KnobComponent> (p.apvts, paramID, name, accent));
@@ -358,22 +365,18 @@ BassModule::BassModule (PluginBase& p, int layerIn)
         return controls.back().get();
     };
 
-    // Grupperade efter vad de gör, i signalens ordning: oscillatorer -> filter -> volym.
-    groups.addRow ({ { "OSC 1", { knob (id (F::shape), "SHAPE"), knob (id (F::pulseWidth), "PW"),
-                                  knob (id (F::octave), "OCTAVE"), knob (id (F::tune), "TUNE") } },
+    // Under oscillatorerna, i signalens ordning: tonhöjd, sub/brus, filter -> volym och utgång.
+    groups.addRow ({ { "PITCH", { knob (id (F::octave), "OCTAVE"), knob (id (F::tune), "TUNE") } },
                      { "SUB", { knob (id (F::sub), "LEVEL"), choice (id (F::subOctave), "OCTAVE") } },
-                     { "NOISE", { knob (id (F::noise), "LEVEL") } } });
-    groups.addRow ({ { "OSC 2", { knob (id (F::osc2Shape), "SHAPE"), knob (id (F::osc2Pw), "PW"),
-                                  knob (id (F::osc2Level), "LEVEL"), knob (id (F::osc2Semi), "SEMI"),
-                                  knob (id (F::osc2Detune), "DETUNE") } },
-                     { "FM (OSC 2 > OSC 1)", { knob (id (F::fm), "AMOUNT"), knob (id (F::fmEnv), "ATTACK") } } });
-    groups.addRow ({ { "FILTER", { choice (id (F::filterType), "TYPE"), knob (id (F::cutoff), "CUTOFF"),
+                     { "NOISE", { knob (id (F::noise), "LEVEL") } },
+                     { "FILTER", { choice (id (F::filterType), "TYPE"), knob (id (F::cutoff), "CUTOFF"),
                                    knob (id (F::resonance), "RESO"), knob (id (F::keyTrack), "KEYTRK") } },
                      { "FILTER ENVELOPE", { knob (id (F::envAmount), "AMOUNT"), knob (id (F::envDecay), "DECAY"),
-                                            knob (id (F::velToEnv), "VEL") } },
-                     { "DRIVE", { knob (id (F::drive), "AMOUNT") } } });
+                                            knob (id (F::velToEnv), "VEL") } } });
     groups.addRow ({ { "VOLUME ENVELOPE", { knob (id (F::attack), "ATTACK"), knob (id (F::decay), "DECAY"),
                                             knob (id (F::sustain), "SUSTAIN"), knob (id (F::release), "RELEASE") } },
+                     { "WARP ENV", { knob (id (F::warpEnv), "AMOUNT") } },
+                     { "DRIVE", { knob (id (F::drive), "AMOUNT") } },
                      { "SLIDE", { knob (id (F::glide), "TIME") } },
                      { "LAYER OUT", { knob (id (F::level), "LEVEL"), knob (id (F::duck), "DUCK"), knob (id (F::gate), "GATE") } } });
 }
@@ -403,14 +406,21 @@ float BassModule::ampValueAt (double seconds) const
 void BassModule::resized()
 {
     ModulePanel::resized();
-    presets.setBounds (presetBounds (*this));
+    if (! isEmbedded())
+        presets.setBounds (presetBounds (*this));
     auto area = getContentBounds();
 
-    const auto rowHeight = juce::jlimit (56, 84, (area.getHeight() - 160) / groups.numRows() - ControlGroups::titleHeight - 3);
-    const auto groupsHeight = groups.numRows() * (ControlGroups::titleHeight + rowHeight + 3);
-    groups.layout (area.removeFromBottom (groupsHeight), rowHeight);
-    area.removeFromBottom (4);
-    envelope.setBounds (area);
+    // Överst de två oscillatorerna, under dem kurvorna (filter + volym) och rattarna.
+    auto oscRow = area.removeFromTop (juce::jlimit (160, 240, area.getHeight() / 2));
+    oscA->setBounds (oscRow.removeFromLeft (oscRow.getWidth() / 2 - 3));
+    oscRow.removeFromLeft (6);
+    oscB->setBounds (oscRow);
+    area.removeFromTop (6);
+
+    envelope.setBounds (area.removeFromLeft (220).reduced (0, 2));
+    area.removeFromLeft (6);
+    const auto rowHeight = juce::jlimit (50, 84, area.getHeight() / groups.numRows() - ControlGroups::titleHeight - 3);
+    groups.layout (area, rowHeight);
 }
 
 //==============================================================================
@@ -420,6 +430,7 @@ GateModule::GateModule (PluginBase& p)
       key (p.apvts, ParamID::fxKey, "KEY"),
       presets (p, Presets::Section::bass, Theme::gate)
 {
+    setHeaderPreset (&presets);
     addAndMakeVisible (presets);
     envelope.onBeforePaint = [this]
     {
@@ -464,7 +475,8 @@ GateModule::GateModule (PluginBase& p)
 void GateModule::resized()
 {
     ModulePanel::resized();
-    presets.setBounds (presetBounds (*this));
+    if (! isEmbedded())
+        presets.setBounds (presetBounds (*this));
     auto area = getContentBounds();
 
     help.setBounds (area.removeFromBottom (48));
@@ -517,11 +529,27 @@ PatternModule::PatternModule (PluginBase& p, bool isInstrument)
     const auto numLayers = instrument ? ParamID::numBassLayers : 1;
     for (int layer = 0; layer < numLayers; ++layer)
     {
+        const auto colour = instrument ? Theme::layerColour (layer) : Theme::gate;
         grids.push_back (std::make_unique<ChoiceComponent> (p.apvts, ParamID::bass (layer, BassField::grid), "GRID"));
-        gates.push_back (std::make_unique<KnobComponent> (p.apvts, ParamID::bass (layer, BassField::gate), "GATE",
-                                                          instrument ? Theme::layerColour (layer) : Theme::gate));
+        gates.push_back (std::make_unique<KnobComponent> (p.apvts, ParamID::bass (layer, BassField::gate), "GATE", colour));
         addChildComponent (*grids.back());
         addChildComponent (*gates.back());
+
+        if (instrument)
+        {
+            slides.push_back (std::make_unique<KnobComponent> (p.apvts, ParamID::bass (layer, BassField::glide), "SLIDE", colour));
+            slides.back()->setDescription ("How long this layer takes to glide between notes on steps with SLIDE on.");
+            addChildComponent (*slides.back());
+
+            auto button = std::make_unique<juce::TextButton> ("BASS " + juce::String (layer + 1));
+            button->setColour (juce::TextButton::buttonOnColourId, colour.withAlpha (0.55f));
+            button->setColour (juce::TextButton::textColourOffId, colour);
+            button->setTooltip ("BASS " + juce::String (layer + 1) + " - Edit this layer: the lane (velocity, gate, pitch, slide), "
+                                "its grid, gate, slide time and FILL apply to the selected layer.");
+            button->onClick = [this, layer] { sequencer.selectLayer (layer); showLayer (layer); };
+            addAndMakeVisible (*button);
+            layerButtons.push_back (std::move (button));
+        }
     }
 
     fillButton.setTooltip ("FILL - Fill the selected layer with a rhythm (rolling, galloping, triplets, offbeat) or clear it.");
@@ -548,6 +576,10 @@ void PatternModule::showLayer (int layer)
     {
         grids[i]->setVisible ((int) i == layer);
         gates[i]->setVisible ((int) i == layer);
+        if (i < slides.size())
+            slides[i]->setVisible ((int) i == layer);
+        if (i < layerButtons.size())
+            layerButtons[i]->setToggleState ((int) i == layer, juce::dontSendNotification);
     }
     repaint();
 }
@@ -589,11 +621,11 @@ void PatternModule::resized()
 {
     auto area = getLocalBounds();
 
-    // Två smala kolumner till vänster: mönstrets längd/slut/presets och lane-knapparna,
-    // sedan det valda lagrets rutnät, gate och mallar.
+    // Två smala kolumner till vänster: mönstrets längd/slut/presets och vilket lager som
+    // redigeras, sedan lanet och det valda lagrets rutnät, gate, slide och mallar.
     auto first = area.removeFromLeft (130);
     area.removeFromLeft (8);
-    auto second = area.removeFromLeft (130);
+    auto second = area.removeFromLeft (150);
     area.removeFromLeft (12);
 
     length.setBounds (first.removeFromTop (40));
@@ -604,26 +636,36 @@ void PatternModule::resized()
         first.removeFromTop (6);
     }
     presets.setBounds (first.removeFromTop (24));
-    first.removeFromTop (8);
-    for (size_t i = 0; i < laneButtons.size(); i += 2)
+    first.removeFromTop (12);
+    for (auto& button : layerButtons)
     {
-        auto row = first.removeFromTop (24);
-        laneButtons[i].first->setBounds (row.removeFromLeft (row.getWidth() / 2 - 2));
-        if (i + 1 < laneButtons.size())
-            laneButtons[i + 1].first->setBounds (row.withTrimmedLeft (4));
+        button->setBounds (first.removeFromTop (24));
         first.removeFromTop (4);
     }
 
     second.removeFromTop (18); // rubriken med lagrets namn
-    const auto gridArea = second.removeFromTop (40);
-    second.removeFromTop (4);
-    auto gateRow = second.removeFromTop (70);
-    const auto fillArea = gateRow.removeFromRight (62).withSizeKeepingCentre (62, 24);
     for (auto& grid : grids)
-        grid->setBounds (gridArea);
+        grid->setBounds (second.getX(), second.getY(), second.getWidth(), 40);
+    second.removeFromTop (44);
+
+    for (size_t i = 0; i < laneButtons.size(); i += 2)
+    {
+        auto row = second.removeFromTop (24);
+        laneButtons[i].first->setBounds (row.removeFromLeft (row.getWidth() / 2 - 2));
+        if (i + 1 < laneButtons.size())
+            laneButtons[i + 1].first->setBounds (row.withTrimmedLeft (4));
+        second.removeFromTop (4);
+    }
+    second.removeFromTop (4);
+
+    auto knobRow = second.removeFromTop (72);
+    const auto half = knobRow.getWidth() / 2;
     for (auto& gate : gates)
-        gate->setBounds (gateRow);
-    fillButton.setBounds (fillArea);
+        gate->setBounds (slides.empty() ? knobRow.withSizeKeepingCentre (half, knobRow.getHeight()) : knobRow.withWidth (half));
+    for (auto& slide : slides)
+        slide->setBounds (knobRow.withTrimmedLeft (half));
+    second.removeFromTop (4);
+    fillButton.setBounds (second.removeFromTop (24));
 
     sequencer.setBounds (area);
 }

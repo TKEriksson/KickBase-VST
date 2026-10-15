@@ -28,10 +28,10 @@ private:
 
     HeaderBar header { processor, {} };
     TabbedPanel synths { &processor.selectedSynthTab };
+    PatternModule pattern { processor, true };
     KickModule kick { processor };
     BassModule bass1 { processor, 0 }, bass2 { processor, 1 }, bass3 { processor, 2 };
     TabbedPanel tools { &processor.selectedTab };
-    PatternModule pattern { processor, true };
     EffectsPage effects { processor };
     SidechainPage sidechain { processor };
     LfoPage lfo { processor };

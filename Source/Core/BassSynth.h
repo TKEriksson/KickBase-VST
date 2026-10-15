@@ -1,28 +1,39 @@
 #pragma once
 
 #include <juce_dsp/juce_dsp.h>
+#include <array>
+#include "Wavetable.h"
 
 enum class BassFilterType { lowpass24, lowpass12, bandpass, highpass };
 
-// Inställningarna för bassynten. Tider i millisekunder.
-//
-// Oscillatorernas form är steglös: 0 = sinus, 1 = triangel, 2 = sågtand, 3 = fyrkant, och
-// värden emellan blandar de två närmaste (t.ex. 2,5 = hälften sågtand, hälften fyrkant).
+// Hur fasen förvrängs innan wavetablen läses (Serums "warp").
+enum class WarpMode { off, sync, bend, pwm, mirror, fm };
+
+// En wavetable-oscillator.
+struct OscParams
+{
+    int table = 0;            // Wavetables::get
+    float position = 2.0f / 3.0f; // 0..1 genom tabellen (Basic: 0 sinus, 1/3 triangel, 2/3 såg, 1 fyrkant)
+    float level = 1.0f;       // 0..1
+    float semis = 0.0f;       // halvtoner
+    float fineCents = 0.0f;
+    int unison = 1;           // 1..7 stämmor
+    float detuneCents = 12.0f;// sidostämmornas avstånd
+    float blend = 0.5f;       // sidostämmornas nivå
+    WarpMode warp = WarpMode::off;
+    float warpAmount = 0.0f;  // 0..1
+    float phase = 0.0f;       // startfas 0..1
+    float randomPhase = 0.0f; // 0 = samma fas varje ton (tight), 1 = slumpad
+};
+
 struct BassParams
 {
     float rootHz = 65.4f;        // tonartens grundton i basens oktav
-    float shape = 2.0f;          // oscillator 1: form 0..3
-    float pulseWidth = 0.5f;     // fyrkantens pulsbredd, 0,05..0,95
+    OscParams oscA, oscB;
+    float warpEnv = 0.0f;        // extra warp på OSC A i början av varje ton (följer filter-envelopen)
     float sub = 0.3f;            // sinus, 0..1
-    int subOctave = -1;          // 0 = samma oktav som grundtonen, -1 = en oktav ner
+    int subOctave = 0;           // 0 = samma oktav som grundtonen, -1 = en oktav ner
     float noise = 0.0f;          // vitt brus före filtret, 0..1
-    float osc2Shape = 2.0f;      // oscillator 2: form 0..3
-    float osc2PulseWidth = 0.5f;
-    float osc2Level = 0.0f;      // andra oscillatorn, 0..1
-    float osc2Semis = 0.0f;      // halvtoner från första oscillatorn
-    float osc2Detune = 0.0f;     // cent, för tjockare ljud
-    float fmAmount = 0.0f;       // oscillator 2 frekvensmodulerar oscillator 1, 0..1
-    float fmEnvAmount = 0.0f;    // extra FM i början av varje ton (följer filter-envelopen), 0..1
     BassFilterType filterType = BassFilterType::lowpass24;
     float keyTrack = 0.0f;       // 0..1: hur mycket cutoff följer tonhöjden (1 = helt, från C2)
     float cutoffHz = 300.0f;
@@ -37,12 +48,16 @@ struct BassParams
     float glideMs = 60.0f;
     float drive = 0.2f;          // 0..1
     float level = 0.7f;
+
+    BassParams() { oscB.level = 0.0f; }
 };
 
 // Monofonisk bassynt som spelas steg för steg av sequencern.
 class BassSynth
 {
 public:
+    static constexpr int maxUnison = 7;
+
     void prepare (double sampleRate);
     void reset();
     void setParams (const BassParams& newParams) { params = newParams; }
@@ -67,8 +82,17 @@ public:
     // Filter-envelopens form (0..1) efter `seconds`. Används även av gränssnittet.
     static float filterEnvelopeAt (const BassParams& p, double seconds);
 
-    // En oscillator med steglös form (0..3) vid fas t (0..1), med polyBLEP mot vikning.
-    static float oscillator (float shape, float pulseWidth, double t, double dt);
+    // Fasen efter warp (för gränssnittets bild och för oscillatorn). `fmInput` -1..1.
+    static double warpPhase (WarpMode mode, float amount, double phase, float fmInput);
+
+    // En wavetable-oscillator med unison. next() ger signalen utan nivå (OSC B kan modulera A
+    // även när den själv är tyst).
+    struct Oscillator
+    {
+        std::array<double, maxUnison> phases {};
+        void retrigger (const OscParams& p, juce::Random& random);
+        float next (const OscParams& p, double frequency, double sampleRate, float warpAmount, float fmInput);
+    };
 
 private:
     enum class Stage { idle, attack, decay, release };
@@ -78,7 +102,8 @@ private:
     BassParams params;
     double sampleRate = 44100.0;
 
-    double phase = 0.0, subPhase = 0.0, phase2 = 0.0;
+    Oscillator oscA, oscB;
+    double subPhase = 0.0;
     double logFrequency = 0.0, targetLogFrequency = 0.0; // log2(Hz), så att glide låter jämnt
     bool gliding = false;
 

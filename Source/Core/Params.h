@@ -49,8 +49,10 @@ namespace ParamID
 enum class BassField
 {
     on, level, gate, duck, grid,                                  // lagrets utgång och mönster
-    octave, tune, shape, pulseWidth, noise, sub, subOctave,       // oscillator 1, sub, brus
-    osc2Shape, osc2Pw, fm, fmEnv, osc2Level, osc2Semi, osc2Detune, // oscillator 2 och FM
+    octave, tune,
+    aTable, aPos, aLevel, aSemi, aFine, aUnison, aDetune, aBlend, aWarp, aWarpAmount, aPhase, aRandom, // OSC A
+    bTable, bPos, bLevel, bSemi, bFine, bUnison, bDetune, bBlend, bWarp, bWarpAmount, bPhase, bRandom, // OSC B
+    warpEnv, sub, subOctave, noise,
     filterType, keyTrack, cutoff, resonance, envAmount, envDecay, velToEnv,
     attack, decay, sustain, release, glide, drive,
     count
@@ -59,6 +61,10 @@ enum class BassField
 namespace ParamID
 {
     constexpr int numBassLayers = 3;
+    constexpr int oscFieldCount = 12; // fält per oscillator (aTable ... aRandom)
+
+    // Samma fält för OSC A (osc 0) eller OSC B (osc 1): oscField (1, BassField::aPos) = bPos.
+    inline BassField oscField (int osc, BassField aField) { return (BassField) ((int) aField + osc * oscFieldCount); }
     juce::String bass (int layer, BassField field);   // "bass1Cutoff" ...
     const char* bassFieldName (BassField field);      // "Cutoff" ...
 }

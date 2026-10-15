@@ -25,16 +25,6 @@ namespace
 
     String formatPercent (float value) { return String (roundToInt (value * 100.0f)) + " %"; }
 
-    // Oscillatorns form: 0 sinus, 1 triangel, 2 sågtand, 3 fyrkant, blandningar emellan.
-    String formatShape (float value)
-    {
-        static const char* names[] { "Sine", "Tri", "Saw", "Sq" };
-        const auto lower = std::min (2, (int) value);
-        const auto mix = value - (float) lower;
-        if (mix < 0.02f) return names[lower];
-        if (mix > 0.98f) return names[lower + 1];
-        return String (names[lower]) + ">" + names[lower + 1] + " " + String (roundToInt (mix * 100.0f)) + "%";
-    }
 
     // Omfång där `centre` hamnar mitt på ratten, så att små värden får mer av vandringen.
     NormalisableRange<float> skewed (float min, float max, float centre, float interval = 0.0f)
@@ -74,8 +64,10 @@ namespace ParamID
     const char* bassFieldName (BassField field)
     {
         static const char* names[] { "On", "Level", "Gate", "Duck", "Grid",
-                                     "Octave", "Tune", "Shape", "PulseWidth", "Noise", "Sub", "SubOctave",
-                                     "Osc2Shape", "Osc2Pw", "Fm", "FmEnv", "Osc2Level", "Osc2Semi", "Osc2Detune",
+                                     "Octave", "Tune",
+                                     "ATable", "APos", "ALevel", "ASemi", "AFine", "AUnison", "ADetune", "ABlend", "AWarp", "AWarpAmount", "APhase", "ARandom",
+                                     "BTable", "BPos", "BLevel", "BSemi", "BFine", "BUnison", "BDetune", "BBlend", "BWarp", "BWarpAmount", "BPhase", "BRandom",
+                                     "WarpEnv", "Sub", "SubOctave", "Noise",
                                      "FilterType", "KeyTrack", "Cutoff", "Resonance", "EnvAmount", "EnvDecay", "VelToEnv",
                                      "Attack", "Decay", "Sustain", "Release", "Glide", "Drive" };
         static_assert (std::size (names) == (size_t) BassField::count);
@@ -147,21 +139,34 @@ namespace Params
         layout.add (std::make_unique<AudioParameterInt> (ParameterID { id (F::octave), 1 }, title + "Octave", -2, 1, 0));
         layout.add (floatParam (id (F::tune), title + "Tune", NormalisableRange<float> (-12.0f, 12.0f, 0.01f), 0.0f,
                                 [] (float v) { return formatSemis (v, 2); }));
-        layout.add (floatParam (id (F::shape), title + "Shape", NormalisableRange<float> (0.0f, 3.0f, 0.001f), 2.0f, formatShape));
-        layout.add (floatParam (id (F::pulseWidth), title + "Pulse Width", NormalisableRange<float> (0.05f, 0.95f, 0.001f), 0.5f, formatPercent));
-        layout.add (percent (id (F::noise), title + "Noise", 0.0f));
+        // OSC A och OSC B: wavetable, position, nivå, stämning, unison, warp och fas.
+        for (int osc = 0; osc < 2; ++osc)
+        {
+            auto oid = [&] (F f) { return id (ParamID::oscField (osc, f)); };
+            const auto oscTitle = title + (osc == 0 ? "Osc A " : "Osc B ");
+            layout.add (std::make_unique<AudioParameterChoice> (ParameterID { oid (F::aTable), 1 }, oscTitle + "Table", Wavetables::names(), 0));
+            layout.add (floatParam (oid (F::aPos), oscTitle + "Position", NormalisableRange<float> (0.0f, 1.0f, 0.001f), osc == 0 ? 2.0f / 3.0f : 0.0f, formatPercent));
+            layout.add (percent (oid (F::aLevel), oscTitle + "Level", osc == 0 ? 1.0f : 0.0f));
+            layout.add (floatParam (oid (F::aSemi), oscTitle + "Semi", NormalisableRange<float> (-24.0f, 24.0f, 1.0f), 0.0f,
+                                    [] (float v) { return formatSemis (v, 0); }));
+            layout.add (floatParam (oid (F::aFine), oscTitle + "Fine", NormalisableRange<float> (-100.0f, 100.0f, 0.1f), 0.0f,
+                                    [] (float v) { return (v > 0.0f ? "+" : "") + String (v, 1) + " ct"; }));
+            layout.add (std::make_unique<AudioParameterInt> (ParameterID { oid (F::aUnison), 1 }, oscTitle + "Unison", 1, 7, 1));
+            layout.add (floatParam (oid (F::aDetune), oscTitle + "Detune", skewed (0.0f, 100.0f, 20.0f, 0.1f), 12.0f,
+                                    [] (float v) { return String (v, 1) + " ct"; }));
+            layout.add (percent (oid (F::aBlend), oscTitle + "Blend", 0.5f));
+            layout.add (std::make_unique<AudioParameterChoice> (ParameterID { oid (F::aWarp), 1 }, oscTitle + "Warp",
+                                                                osc == 0 ? StringArray { "Off", "Sync", "Bend", "PWM", "Mirror", "FM (B)" }
+                                                                         : StringArray { "Off", "Sync", "Bend", "PWM", "Mirror" }, 0));
+            layout.add (percent (oid (F::aWarpAmount), oscTitle + "Warp Amount", 0.0f));
+            layout.add (percent (oid (F::aPhase), oscTitle + "Phase", 0.0f));
+            layout.add (percent (oid (F::aRandom), oscTitle + "Random Phase", 0.0f));
+        }
+        layout.add (percent (id (F::warpEnv), title + "Warp Env", 0.0f));
         layout.add (percent (id (F::sub), title + "Sub", 0.3f));
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::subOctave), 1 }, title + "Sub Octave",
                                                             StringArray { "-1 oct", "0 oct" }, 1));
-        layout.add (floatParam (id (F::osc2Shape), title + "Osc2 Shape", NormalisableRange<float> (0.0f, 3.0f, 0.001f), 2.0f, formatShape));
-        layout.add (floatParam (id (F::osc2Pw), title + "Osc2 Pulse Width", NormalisableRange<float> (0.05f, 0.95f, 0.001f), 0.5f, formatPercent));
-        layout.add (percent (id (F::fm), title + "FM", 0.0f));
-        layout.add (percent (id (F::fmEnv), title + "FM Env", 0.0f));
-        layout.add (percent (id (F::osc2Level), title + "Osc2 Level", 0.0f));
-        layout.add (floatParam (id (F::osc2Semi), title + "Osc2 Semi", NormalisableRange<float> (-24.0f, 24.0f, 1.0f), 0.0f,
-                                [] (float v) { return formatSemis (v, 0); }));
-        layout.add (floatParam (id (F::osc2Detune), title + "Osc2 Detune", NormalisableRange<float> (0.0f, 50.0f, 0.1f), 0.0f,
-                                [] (float v) { return String (v, 1) + " ct"; }));
+        layout.add (percent (id (F::noise), title + "Noise", 0.0f));
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::filterType), 1 }, title + "Filter Type",
                                                             StringArray { "LP 24", "LP 12", "Band", "High" }, 0));
         layout.add (percent (id (F::keyTrack), title + "Key Track", 0.0f));
@@ -298,18 +303,27 @@ BassParams ParamRefs::readBass (int layer, int rootMidiNote) const
 
     BassParams p;
     p.rootHz     = Params::midiToHz ((float) rootMidiNote + 12.0f * get (F::octave) + get (F::tune));
-    p.shape      = get (F::shape);
-    p.pulseWidth = get (F::pulseWidth);
+    for (int osc = 0; osc < 2; ++osc)
+    {
+        auto oget = [&] (F f) { return get (ParamID::oscField (osc, f)); };
+        auto& o = osc == 0 ? p.oscA : p.oscB;
+        o.table       = (int) oget (F::aTable);
+        o.position    = oget (F::aPos);
+        o.level       = oget (F::aLevel);
+        o.semis       = oget (F::aSemi);
+        o.fineCents   = oget (F::aFine);
+        o.unison      = (int) oget (F::aUnison);
+        o.detuneCents = oget (F::aDetune);
+        o.blend       = oget (F::aBlend);
+        o.warp        = (WarpMode) (int) oget (F::aWarp);
+        o.warpAmount  = oget (F::aWarpAmount);
+        o.phase       = oget (F::aPhase);
+        o.randomPhase = oget (F::aRandom);
+    }
+    p.warpEnv    = get (F::warpEnv);
     p.noise      = get (F::noise);
     p.sub        = get (F::sub);
     p.subOctave  = (int) get (F::subOctave) == 1 ? 0 : -1;
-    p.osc2Shape  = get (F::osc2Shape);
-    p.osc2PulseWidth = get (F::osc2Pw);
-    p.fmAmount   = get (F::fm);
-    p.fmEnvAmount = get (F::fmEnv);
-    p.osc2Level  = get (F::osc2Level);
-    p.osc2Semis  = get (F::osc2Semi);
-    p.osc2Detune = get (F::osc2Detune);
     p.filterType = (BassFilterType) (int) get (F::filterType);
     p.keyTrack   = get (F::keyTrack);
     p.cutoffHz   = get (F::cutoff);

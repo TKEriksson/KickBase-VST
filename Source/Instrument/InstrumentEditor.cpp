@@ -8,12 +8,12 @@ InstrumentEditor::InstrumentEditor (InstrumentProcessor& p)
     for (auto* component : std::initializer_list<juce::Component*> { &header, &synths, &tools, &info, &keyboard })
         addAndMakeVisible (component);
 
-    synths.addTab ("KICK", Theme::kick, kick);
-    synths.addTab ("BASS 1", Theme::layerColour (0), bass1);
-    synths.addTab ("BASS 2", Theme::layerColour (1), bass2);
-    synths.addTab ("BASS 3", Theme::layerColour (2), bass3);
+    synths.addTab ("PATTERN", Theme::pattern, pattern);
+    synths.addTab ("KICK", Theme::kick, kick, kick.embedInTab());
+    synths.addTab ("BASS 1", Theme::layerColour (0), bass1, bass1.embedInTab());
+    synths.addTab ("BASS 2", Theme::layerColour (1), bass2, bass2.embedInTab());
+    synths.addTab ("BASS 3", Theme::layerColour (2), bass3, bass3.embedInTab());
 
-    tools.addTab ("PATTERN", Theme::pattern, pattern);
     tools.addTab ("EFFECTS", Theme::effects, effects);
     tools.addTab ("SIDECHAIN", Theme::mix, sidechain);
     tools.addTab ("LFO", Theme::lfo, lfo);
@@ -48,7 +48,7 @@ void InstrumentEditor::resized()
     info.setBounds (area.removeFromBottom (22));
     area.removeFromBottom (6);
 
-    synths.setBounds (area.removeFromTop (490));
+    synths.setBounds (area.removeFromTop (520));
     area.removeFromTop (6);
     tools.setBounds (area);
 }

@@ -26,6 +26,7 @@ set(CORE_SOURCES
     Source/Core/Pattern.cpp
     Source/Core/KickEngine.cpp
     Source/Core/BassSynth.cpp
+    Source/Core/Wavetable.cpp
     Source/Core/StepScheduler.cpp
     Source/Core/Sidechain.cpp
     Source/Core/Modulation.cpp
@@ -51,6 +52,7 @@ set(PLUGIN_SOURCES
     Source/Ui/LfoPage.cpp
     Source/Ui/Components.cpp
     Source/Ui/Help.cpp
+    Source/Ui/OscPanel.cpp
 )
 
 set(INSTRUMENT_SOURCES

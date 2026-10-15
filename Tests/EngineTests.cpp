@@ -116,7 +116,7 @@ namespace
 
         BassParams p;
         p.rootHz = 65.41f; // C2
-        p.shape = 0.0f; // sinus
+        p.oscA.position = 0.0f; // sinus (Basic-tabellens början)
         p.sub = 0.0f;
         p.cutoffHz = 20000.0f;
         p.envAmount = 0.0f;
@@ -143,7 +143,7 @@ namespace
 
         BassParams p;
         p.rootHz = 55.0f;
-        p.shape = 0.0f; // sinus
+        p.oscA.position = 0.0f; // sinus (Basic-tabellens början)
         p.sub = 0.0f;
         p.cutoffHz = 20000.0f;
         p.envAmount = 0.0f;
@@ -185,7 +185,7 @@ namespace
         p.envAmount = 0.0f;
         p.drive = 0.0f;
         p.sub = 0.0f;
-        p.shape = 0.0f; // sinus
+        p.oscA.position = 0.0f; // sinus (Basic-tabellens början)
         bass.setParams (p);
 
         // Gate längre än steget: andra slaget kommer medan det första fortfarande hörs.

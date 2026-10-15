@@ -128,9 +128,10 @@ namespace
     void printBass (const BassCandidate& c)
     {
         const auto& p = c.params;
-        std::printf ("  shape %.2f  pw %.2f  sub %.2f (oct %d)  noise %.2f\n", p.shape, p.pulseWidth, p.sub, p.subOctave, p.noise);
-        std::printf ("  osc2: shape %.2f  pw %.2f  level %.2f  semi %.0f  detune %.1f  fm %.2f  fmEnv %.2f\n",
-                     p.osc2Shape, p.osc2PulseWidth, p.osc2Level, p.osc2Semis, p.osc2Detune, p.fmAmount, p.fmEnvAmount);
+        std::printf ("  osc A: %s pos %.2f  |  osc B: %s pos %.2f  level %.2f  semi %.0f  fine %.1f ct\n",
+                     Wavetables::get (p.oscA.table).getName().toRawUTF8(), p.oscA.position,
+                     Wavetables::get (p.oscB.table).getName().toRawUTF8(), p.oscB.position, p.oscB.level, p.oscB.semis, p.oscB.fineCents);
+        std::printf ("  warp FM %.2f  warp env %.2f  sub %.2f (oct %d)  noise %.2f\n", p.oscA.warpAmount, p.warpEnv, p.sub, p.subOctave, p.noise);
         std::printf ("  filter: %s  cutoff %.0f Hz  reso %.2f  env %.2f oct  envDecay %.0f ms  drive %.2f\n",
                      p.filterType == BassFilterType::lowpass24 ? "LP24" : "LP12", p.cutoffHz, p.resonance, p.envAmount, p.envDecayMs, p.drive);
         std::printf ("  amp: attack %.1f  decay %.0f  sustain %.2f  release %.1f ms  gate %.2f av steget\n",
@@ -263,18 +264,17 @@ int fitBass (const juce::File& file, double start, double end, int stepsPerBeat)
     {
         BassCandidate c;
         auto& p = c.params;
-        p.shape = uniform (0.0f, 3.0f);
-        p.pulseWidth = uniform (0.1f, 0.9f);
+        p.oscA.position = uniform (0.0f, 1.0f);
         p.sub = uniform (0.0f, 0.8f);
         p.subOctave = 0; // grundtonen mäts här; en sub en oktav under syns inte i mätningen
         p.noise = uniform (0.0f, 1.0f) < 0.7f ? 0.0f : uniform (0.0f, 0.2f);
-        p.osc2Shape = uniform (0.0f, 3.0f);
-        p.osc2PulseWidth = uniform (0.1f, 0.9f);
-        p.osc2Level = uniform (0.0f, 1.0f) < 0.3f ? 0.0f : uniform (0.0f, 0.8f);
-        p.osc2Semis = semitoneChoices[std::uniform_int_distribution<int> (0, 4) (rng)];
-        p.osc2Detune = uniform (0.0f, 15.0f);
-        p.fmAmount = uniform (0.0f, 1.0f) < 0.4f ? 0.0f : uniform (0.0f, 0.6f);
-        p.fmEnvAmount = uniform (0.0f, 1.0f) < 0.4f ? 0.0f : uniform (0.0f, 0.6f);
+        p.oscB.position = uniform (0.0f, 1.0f);
+        p.oscB.level = uniform (0.0f, 1.0f) < 0.3f ? 0.0f : uniform (0.0f, 0.8f);
+        p.oscB.semis = semitoneChoices[std::uniform_int_distribution<int> (0, 4) (rng)];
+        p.oscB.fineCents = uniform (0.0f, 15.0f);
+        p.oscA.warp = WarpMode::fm;
+        p.oscA.warpAmount = uniform (0.0f, 1.0f) < 0.4f ? 0.0f : uniform (0.0f, 0.6f);
+        p.warpEnv = uniform (0.0f, 1.0f) < 0.4f ? 0.0f : uniform (0.0f, 0.6f);
         p.filterType = uniform (0.0f, 1.0f) < 0.5f ? BassFilterType::lowpass24 : BassFilterType::lowpass12;
         p.cutoffHz = logUniform (40.0f, 2500.0f);
         p.resonance = uniform (0.0f, 0.7f);
@@ -307,10 +307,10 @@ int fitBass (const juce::File& file, double start, double end, int stepsPerBeat)
     std::printf ("  basta efter %d slumpforsok: fel %.0f\n", numRandom, bestError);
 
     auto& p = best.params;
-    refine ({ { &p.shape, 0.0f, 3.0f, false }, { &p.pulseWidth, 0.05f, 0.95f, false }, { &p.sub, 0.0f, 1.0f, false },
-              { &p.noise, 0.0f, 0.5f, false }, { &p.osc2Shape, 0.0f, 3.0f, false }, { &p.osc2PulseWidth, 0.05f, 0.95f, false },
-              { &p.osc2Level, 0.0f, 1.0f, false }, { &p.osc2Detune, 0.0f, 50.0f, false }, { &p.fmAmount, 0.0f, 1.0f, false },
-              { &p.fmEnvAmount, 0.0f, 1.0f, false }, { &p.cutoffHz, 30.0f, 8000.0f, true }, { &p.resonance, 0.0f, 1.0f, false },
+    refine ({ { &p.oscA.position, 0.0f, 1.0f, false }, { &p.sub, 0.0f, 1.0f, false },
+              { &p.noise, 0.0f, 0.5f, false }, { &p.oscB.position, 0.0f, 1.0f, false },
+              { &p.oscB.level, 0.0f, 1.0f, false }, { &p.oscB.fineCents, 0.0f, 50.0f, false }, { &p.oscA.warpAmount, 0.0f, 1.0f, false },
+              { &p.warpEnv, 0.0f, 1.0f, false }, { &p.cutoffHz, 30.0f, 8000.0f, true }, { &p.resonance, 0.0f, 1.0f, false },
               { &p.envAmount, 0.0f, 8.0f, false }, { &p.envDecayMs, 5.0f, 1000.0f, true }, { &p.drive, 0.0f, 1.0f, false },
               { &p.attackMs, 0.05f, 50.0f, true }, { &p.decayMs, 5.0f, 2000.0f, true }, { &p.sustain, 0.0f, 1.0f, false },
               { &p.releaseMs, 1.0f, 300.0f, true }, { &best.gate, 0.1f, 1.0f, false } },
