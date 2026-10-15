@@ -25,10 +25,11 @@ private:
     FxProcessor& processor;
 
     HeaderBar header { processor, "FX" };
-    TabbedPanel tabs { &processor.selectedTab };
-    PatternModule pattern { processor, false };
+    TabbedPanel synths { &processor.selectedSynthTab };
     KickModule kick { processor };
     GateModule gate { processor };
+    TabbedPanel tools { &processor.selectedTab };
+    PatternModule pattern { processor, false };
     EffectsPage effects { processor };
     SidechainPage sidechain { processor };
     LfoPage lfo { processor };

@@ -590,34 +590,36 @@ void PatternModule::resized()
 {
     auto area = getLocalBounds();
 
-    auto column = area.removeFromLeft (140);
+    // Två smala kolumner till vänster: mönstrets längd/slut/presets och lane-knapparna,
+    // sedan det valda lagrets rutnät, gate och mallar.
+    auto first = area.removeFromLeft (130);
+    area.removeFromLeft (8);
+    auto second = area.removeFromLeft (130);
     area.removeFromLeft (12);
-    length.setBounds (column.removeFromTop (40));
-    column.removeFromTop (4);
+
+    length.setBounds (first.removeFromTop (40));
+    first.removeFromTop (4);
     if (noteEnd != nullptr)
     {
-        noteEnd->setBounds (column.removeFromTop (40));
-        column.removeFromTop (6);
+        noteEnd->setBounds (first.removeFromTop (40));
+        first.removeFromTop (6);
     }
-    presets.setBounds (column.removeFromTop (24));
-    column.removeFromTop (10);
-
-    // Lane-knapparna två och två.
+    presets.setBounds (first.removeFromTop (24));
+    first.removeFromTop (8);
     for (size_t i = 0; i < laneButtons.size(); i += 2)
     {
-        auto row = column.removeFromTop (24);
+        auto row = first.removeFromTop (24);
         laneButtons[i].first->setBounds (row.removeFromLeft (row.getWidth() / 2 - 2));
         if (i + 1 < laneButtons.size())
             laneButtons[i + 1].first->setBounds (row.withTrimmedLeft (4));
-        column.removeFromTop (4);
+        first.removeFromTop (4);
     }
 
-    // Det valda lagrets rutnät, gate och mallar.
-    column.removeFromTop (22);
-    const auto gridArea = column.removeFromTop (40);
-    column.removeFromTop (4);
-    auto gateRow = column.removeFromTop (70);
-    const auto fillArea = gateRow.removeFromRight (66).withSizeKeepingCentre (66, 24);
+    second.removeFromTop (18); // rubriken med lagrets namn
+    const auto gridArea = second.removeFromTop (40);
+    second.removeFromTop (4);
+    auto gateRow = second.removeFromTop (70);
+    const auto fillArea = gateRow.removeFromRight (62).withSizeKeepingCentre (62, 24);
     for (auto& grid : grids)
         grid->setBounds (gridArea);
     for (auto& gate : gates)

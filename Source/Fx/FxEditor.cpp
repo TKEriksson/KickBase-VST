@@ -5,18 +5,19 @@ FxEditor::FxEditor (FxProcessor& p)
 {
     setLookAndFeel (&lookAndFeel);
 
-    for (auto* component : std::initializer_list<juce::Component*> { &header, &tabs, &info })
+    for (auto* component : std::initializer_list<juce::Component*> { &header, &synths, &tools, &info })
         addAndMakeVisible (component);
 
-    tabs.addTab ("PATTERN", Theme::pattern, pattern);
-    tabs.addTab ("KICK", Theme::kick, kick);
-    tabs.addTab ("GATE", Theme::gate, gate);
-    tabs.addTab ("EFFECTS", Theme::effects, effects);
-    tabs.addTab ("SIDECHAIN", Theme::mix, sidechain);
-    tabs.addTab ("LFO", Theme::lfo, lfo);
-    tabs.addTab ("MASTER", Theme::master, masterPage);
+    synths.addTab ("KICK", Theme::kick, kick);
+    synths.addTab ("GATE", Theme::gate, gate);
 
-    setSize (1060, 700);
+    tools.addTab ("PATTERN", Theme::pattern, pattern);
+    tools.addTab ("EFFECTS", Theme::effects, effects);
+    tools.addTab ("SIDECHAIN", Theme::mix, sidechain);
+    tools.addTab ("LFO", Theme::lfo, lfo);
+    tools.addTab ("MASTER", Theme::master, masterPage);
+
+    setSize (1060, 850);
 }
 
 FxEditor::~FxEditor()
@@ -36,5 +37,7 @@ void FxEditor::resized()
     area.removeFromTop (4);
     info.setBounds (area.removeFromBottom (22));
     area.removeFromBottom (6);
-    tabs.setBounds (area);
+    synths.setBounds (area.removeFromTop (490));
+    area.removeFromTop (6);
+    tools.setBounds (area);
 }

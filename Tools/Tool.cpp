@@ -239,7 +239,8 @@ namespace
         juce::ScopedJuceInitialiser_GUI gui;
 
         auto processor = createProcessor (kind);
-        processor->selectedTab = tab;
+        processor->selectedTab = tab % 10;       // nedre panelen
+        processor->selectedSynthTab = tab / 10; // övre panelen (tiotal)
         processor->setPlayConfigDetails (kind == "fx" ? 2 : 0, 2, renderRate, blockSize);
         processor->prepareToPlay (renderRate, blockSize);
 

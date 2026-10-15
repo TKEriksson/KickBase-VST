@@ -72,7 +72,8 @@ public:
     SidechainCurve sidechainCurve;
     TransportStatus transportStatus;
     std::atomic<int> patternVersion { 0 }; // ökas när mönstret ändras, så att gränssnittet ritar om
-    int selectedTab = 0;                   // gränssnittets valda flik, så att den finns kvar när fönstret öppnas igen
+    int selectedTab = 0;                   // gränssnittets valda flikar (nedre och övre panelen), så att de
+    int selectedSynthTab = 0;              // finns kvar när fönstret öppnas igen
 
 protected:
     // En ny processor av samma slag, som exporten spelar med en kopia av inställningarna.
