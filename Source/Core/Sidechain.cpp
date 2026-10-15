@@ -114,7 +114,5 @@ namespace Sidechain
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { "scMode", 1 }, "Sidechain Mode",
                                                             StringArray { "Kick envelope", "Curve" }, 0));
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { "scLength", 1 }, "Sidechain Length", lengthNames(), 0));
-        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { "scPosition", 1 }, "Sidechain Position",
-                                                            StringArray { "After effects", "Before effects" }, 0));
     }
 }

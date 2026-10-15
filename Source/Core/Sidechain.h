@@ -81,7 +81,7 @@ private:
 namespace Sidechain
 {
     enum class Mode { kickEnvelope, curve };
-    enum class Position { afterEffects, beforeEffects };
+
 
     juce::StringArray lengthNames();                      // "Kick", "1/16", ...
     double lengthInQuarters (int index);                   // 0 för "Kick" (kickens egen längd)

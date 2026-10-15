@@ -8,9 +8,10 @@ struct StepEvent
 {
     enum class Type { kick, bass };
 
-    int offset;   // sample i blocket
+    int offset;     // sample i blocket
     Type type;
-    int step;     // steg i mönstret
+    int step;       // steg i mönstret
+    int layer = 0;  // baslager (bara för bas)
 };
 
 // Tar reda på vilka kick- och bassteg som ska spelas i en del av ett block.
@@ -18,8 +19,11 @@ struct StepEvent
 class StepScheduler
 {
 public:
-    void setGrid (BassGrid newGrid);
-    BassGrid getGrid() const { return grid; }
+    void setGrid (int layer, BassGrid newGrid);
+    BassGrid getGrid (int layer) const { return grids[(size_t) layer]; }
+
+    // Hur många baslager som spelas (FX-versionen: 1).
+    void setNumLayers (int n) { numLayers = juce::jlimit (1, Pattern::numLayers, n); }
 
     // Samlar händelser i [startSample, endSample), sorterade efter sample (kick före bas
     // på samma sample). Steg på eller efter `stopAtPpq` hoppas över.
@@ -34,19 +38,21 @@ public:
     const StepEvent* end() const   { return events.data() + numEvents; }
 
     // Senast passerade steg i mönstret, för gränssnittets uppspelningsmarkör.
-    int getLastKickStep() const { return lastKickStep; }
-    int getLastBassStep() const { return lastBassStep; }
+    int getLastKickStep() const          { return lastKickStep; }
+    int getLastBassStep (int layer) const { return lastBassSteps[(size_t) layer]; }
 
 private:
     void addKick (const Pattern& pattern, int patternBars, int offset, StepPosition position);
-    void addBass (const Pattern& pattern, int patternBars, int offset, StepPosition position);
+    void addBass (int layer, const Pattern& pattern, int patternBars, int offset, StepPosition position);
     void add (StepEvent event);
 
-    BassGrid grid = BassGrid::sixteenth;
+    int numLayers = Pattern::numLayers;
+    std::array<BassGrid, Pattern::numLayers> grids { BassGrid::sixteenth, BassGrid::sixteenth, BassGrid::sixteenth };
     StepCursor kickCursor { (double) Pattern::kickStepsPerBar / 4.0 };
-    StepCursor bassCursor { Pattern::bassStepsPerQuarter (BassGrid::sixteenth) };
+    std::array<StepCursor, Pattern::numLayers> bassCursors { StepCursor { 4.0 }, StepCursor { 4.0 }, StepCursor { 4.0 } };
 
-    std::array<StepEvent, 256> events {};
+    std::array<StepEvent, 512> events {};
     int numEvents = 0;
-    int lastKickStep = -1, lastBassStep = -1;
+    int lastKickStep = -1;
+    std::array<int, Pattern::numLayers> lastBassSteps { -1, -1, -1 };
 };

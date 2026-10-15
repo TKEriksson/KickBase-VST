@@ -3,20 +3,25 @@
 #include "../Core/PluginBase.h"
 #include "Theme.h"
 
-// Stegsekvenseraren: en rad för kicken, en för basen och ett "lane" under där basstegens
-// velocity, gate-längd, tonhöjd eller slide ritas och dras i.
+// Stegsekvenseraren: en rad för kicken, en per baslager och ett "lane" under där det valda
+// lagrets velocity, gate-längd, tonhöjd eller slide ritas och dras i.
 //
-// Raderna är tidsjusterade: kicken har alltid 16 steg per takt, basen 16, 12 eller 24
-// beroende på rutnät, men en takt tar lika stor bredd i båda.
-class StepSequencer : public juce::Component, private juce::Timer
+// Raderna är tidsjusterade: kicken har alltid 16 steg per takt, varje baslager sitt eget
+// rutnät (16, 12, 24 ...), men en takt tar lika stor bredd i alla.
+class StepSequencer : public juce::Component, public juce::SettableTooltipClient, private juce::Timer
 {
 public:
     enum class Lane { velocity, gate, pitch, slide };
 
-    StepSequencer (PluginBase& processor, juce::Colour bassAccent, const juce::String& bassName);
+    // `layerNames`: en rad per baslager (FX-versionen: bara gaten).
+    StepSequencer (PluginBase& processor, juce::StringArray layerNames, std::vector<juce::Colour> layerColours);
 
     void setLane (Lane newLane) { lane = newLane; repaint(); }
     Lane getLane() const        { return lane; }
+
+    void selectLayer (int layer);
+    int getSelectedLayer() const { return selectedLayer; }
+    std::function<void (int)> onLayerSelected;
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -28,41 +33,47 @@ public:
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 
 private:
-    enum class Target { none, kick, bass, lane };
+    enum class Target { none, kick, bass, lane, label };
 
     void timerCallback() override;
 
+    int numLayers() const { return layerNames.size(); }
     int bars() const;
-    BassGrid grid() const;
+    BassGrid grid (int layer) const;
     int kickSteps() const { return bars() * Pattern::kickStepsPerBar; }
-    int bassSteps() const { return bars() * Pattern::bassStepsPerBar (grid()); }
+    int bassSteps (int layer) const { return bars() * Pattern::bassStepsPerBar (grid (layer)); }
 
-    Target targetAt (juce::Point<int> point) const;
+    Target targetAt (juce::Point<int> point, int& layer) const;
     int stepAt (int x, int numSteps) const;
     juce::Rectangle<float> stepBounds (juce::Rectangle<int> row, int step, int numSteps) const;
 
     void paintGrid (juce::Graphics&, juce::Rectangle<int> area) const;
     void paintToggleRow (juce::Graphics&, juce::Rectangle<int> row, int numSteps, juce::Colour colour,
-                         int playingStep, const std::function<bool (int)>& isOn) const;
+                         int playingStep, const std::function<bool (int)>& isOn, bool dimmed) const;
     void paintLane (juce::Graphics&) const;
 
     void editAt (juce::Point<int> point, bool firstEvent);
     float laneValueAt (int y) const;
     juce::String laneName() const;
     juce::String describeStep (int step) const;
+    Pattern::BassStep& selectedStep (int step) const;
 
     PluginBase& processor;
-    juce::Colour bassColour;
-    juce::String bassName;
+    juce::StringArray layerNames;
+    std::vector<juce::Colour> layerColours;
     Lane lane = Lane::velocity;
+    int selectedLayer = 0;
 
-    juce::Rectangle<int> labelColumn, kickRow, bassRow, laneArea;
+    juce::Rectangle<int> labelColumn, kickRow, laneArea;
+    std::vector<juce::Rectangle<int>> bassRows;
 
     Target dragTarget = Target::none;
+    int dragLayer = 0;
     bool paintOn = true;        // vad ett drag över av/på-steg sätter
     int dragStartPitch = 0, dragStartY = 0, dragPitch = 0;
     bool edited = false;
     int hoverStep = -1;
 
-    int lastKickStep = -2, lastBassStep = -2, lastBars = 0, lastGrid = -1, lastVersion = -1;
+    int lastKickStep = -2, lastBars = 0, lastVersion = -1;
+    std::array<int, Pattern::numLayers> lastBassSteps { -2, -2, -2 }, lastGrids { -1, -1, -1 };
 };

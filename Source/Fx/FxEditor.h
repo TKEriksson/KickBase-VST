@@ -25,15 +25,14 @@ private:
     FxProcessor& processor;
 
     HeaderBar header { processor, "FX" };
+    TabbedPanel tabs { &processor.selectedTab };
+    PatternModule pattern { processor, false };
     KickModule kick { processor };
     GateModule gate { processor };
-    TabbedPanel lower { &processor.selectedTab };
-    PatternModule pattern { processor, Theme::gate, "GATE", false };
     EffectsPage effects { processor };
     SidechainPage sidechain { processor };
     LfoPage lfo { processor };
     MasterPage masterPage { processor };
-    MixModule mix { processor, false };
     InfoBar info;
     juce::TooltipWindow tooltips { this, 1200 };
 

@@ -11,7 +11,7 @@ namespace
         return { module.getWidth() - 10 - presetButtonWidth, 5, presetButtonWidth, 20 };
     }
 
-    juce::RangedAudioParameter* param (PluginBase& processor, const char* id)
+    juce::RangedAudioParameter* param (PluginBase& processor, const juce::String& id)
     {
         auto* parameter = processor.apvts.getParameter (id);
         jassert (parameter != nullptr);
@@ -19,7 +19,7 @@ namespace
     }
 
     void addKnobs (juce::Component& parent, std::vector<std::unique_ptr<KnobComponent>>& knobs, PluginBase& processor,
-                   juce::Colour accent, std::initializer_list<std::pair<const char*, const char*>> specs)
+                   juce::Colour accent, std::initializer_list<std::pair<juce::String, const char*>> specs)
     {
         for (const auto& [id, name] : specs)
         {
@@ -302,7 +302,8 @@ void KickModule::resized()
     sampleLabel.setBounds (sampleRow);
     area.removeFromBottom (4);
 
-    constexpr int rowHeight = 60;
+    // Rattarna växer med utrymmet; kurvorna får minst 150 px.
+    const auto rowHeight = juce::jlimit (56, 90, (area.getHeight() - 150) / groups.numRows() - ControlGroups::titleHeight - 3);
     const auto groupsHeight = groups.numRows() * (ControlGroups::titleHeight + rowHeight + 3);
     groups.layout (area.removeFromBottom (groupsHeight), rowHeight);
     area.removeFromBottom (4);
@@ -310,67 +311,72 @@ void KickModule::resized()
 }
 
 //==============================================================================
-BassModule::BassModule (PluginBase& p)
-    : ModulePanel ("BASS", Theme::bass, &p.apvts, ParamID::bassOn),
+BassModule::BassModule (PluginBase& p, int layerIn)
+    : ModulePanel ("BASS " + juce::String (layerIn + 1), Theme::layerColour (layerIn), &p.apvts, ParamID::bass (layerIn, BassField::on)),
+      layer (layerIn),
       refs (p.apvts),
-      presets (p, Presets::Section::bass, Theme::bass)
+      presets (p, Presets::Section::bass, Theme::layerColour (layerIn), layerIn)
 {
+    using F = BassField;
+    auto id = [this] (F f) { return ParamID::bass (layer, f); };
+    const auto accent = Theme::layerColour (layer);
+
     addAndMakeVisible (presets);
-    envelope.onBeforePaint = [this] { current = refs.readBass (36); };
+    envelope.onBeforePaint = [this] { current = refs.readBass (layer, 36); };
 
     envelope.addCurve ({ [this] (double t) { return BassSynth::filterEnvelopeAt (current, t) * current.envAmount / 8.0f; },
-                         Theme::bass, true, "FILTER" });
+                         accent, true, "FILTER" });
     envelope.addCurve ({ [this] (double t) { return ampValueAt (t); }, Theme::text.withAlpha (0.8f), false, "AMP" });
 
     envelope.addHandle ({ [this] { return juce::Point<float> (0.0015f, current.envAmount / 8.0f); },
-                          nullptr, param (p, ParamID::bassEnvAmount), false, Theme::bass });
+                          nullptr, param (p, id (F::envAmount)), false, accent });
     envelope.addHandle ({ [this] {
                               const auto t = current.envDecayMs * 0.001 / 3.0;
                               return juce::Point<float> ((float) t, BassSynth::filterEnvelopeAt (current, t) * current.envAmount / 8.0f); },
-                          param (p, ParamID::bassEnvDecay), nullptr, false, Theme::bass });
+                          param (p, id (F::envDecay)), nullptr, false, accent });
 
     envelope.addHandle ({ [this] { return juce::Point<float> (current.attackMs * 0.001f, 1.0f); },
-                          param (p, ParamID::bassAttack), nullptr, false, Theme::text });
+                          param (p, id (F::attack)), nullptr, false, Theme::text });
     envelope.addHandle ({ [this] {
                               const auto t = (current.attackMs + current.decayMs * 0.5f) * 0.001;
                               return juce::Point<float> ((float) t, ampValueAt (t)); },
-                          param (p, ParamID::bassDecay), param (p, ParamID::bassSustain), false, Theme::text });
+                          param (p, id (F::decay)), param (p, id (F::sustain)), false, Theme::text });
     envelope.addHandle ({ [this] { return juce::Point<float> (0.18f + current.releaseMs * 0.001f, 0.0f); },
-                          param (p, ParamID::bassRelease), nullptr, false, Theme::text });
+                          param (p, id (F::release)), nullptr, false, Theme::text });
     addAndMakeVisible (envelope);
 
     // Fyra rader: OSC 1, OSC 2 + FM, FILTER och AMP. Valrutor och rattar blandas i samma rad.
-    auto knob = [&] (const char* id, const char* name) -> juce::Component*
+    auto knob = [&] (const juce::String& paramID, const char* name) -> juce::Component*
     {
-        controls.push_back (std::make_unique<KnobComponent> (p.apvts, id, name, Theme::bass));
+        controls.push_back (std::make_unique<KnobComponent> (p.apvts, paramID, name, accent));
         addAndMakeVisible (*controls.back());
         return controls.back().get();
     };
-    auto choice = [&] (const char* id, const char* name) -> juce::Component*
+    auto choice = [&] (const juce::String& paramID, const char* name) -> juce::Component*
     {
-        controls.push_back (std::make_unique<ChoiceComponent> (p.apvts, id, name));
+        controls.push_back (std::make_unique<ChoiceComponent> (p.apvts, paramID, name));
         addAndMakeVisible (*controls.back());
         return controls.back().get();
     };
 
     // Grupperade efter vad de gör, i signalens ordning: oscillatorer -> filter -> volym.
-    groups.addRow ({ { "OSC 1", { knob (ParamID::bassShape, "SHAPE"), knob (ParamID::bassPulseWidth, "PW"),
-                                  knob (ParamID::bassOctave, "OCTAVE"), knob (ParamID::bassTune, "TUNE") } },
-                     { "SUB", { knob (ParamID::bassSub, "LEVEL"), choice (ParamID::bassSubOctave, "OCTAVE") } },
-                     { "NOISE", { knob (ParamID::bassNoise, "LEVEL") } } });
-    groups.addRow ({ { "OSC 2", { knob (ParamID::bassOsc2Shape, "SHAPE"), knob (ParamID::bassOsc2Pw, "PW"),
-                                  knob (ParamID::bassOsc2Level, "LEVEL"), knob (ParamID::bassOsc2Semi, "SEMI"),
-                                  knob (ParamID::bassOsc2Detune, "DETUNE") } },
-                     { "FM (OSC 2 > OSC 1)", { knob (ParamID::bassFm, "AMOUNT"), knob (ParamID::bassFmEnv, "ATTACK") } } });
-    groups.addRow ({ { "FILTER", { choice (ParamID::bassFilterType, "TYPE"), knob (ParamID::bassCutoff, "CUTOFF"),
-                                   knob (ParamID::bassResonance, "RESO"), knob (ParamID::bassKeyTrack, "KEYTRK") } },
-                     { "FILTER ENVELOPE", { knob (ParamID::bassEnvAmount, "AMOUNT"), knob (ParamID::bassEnvDecay, "DECAY"),
-                                            knob (ParamID::bassVelToEnv, "VEL") } },
-                     { "DRIVE", { knob (ParamID::bassDrive, "AMOUNT") } } });
-    groups.addRow ({ { "VOLUME ENVELOPE", { knob (ParamID::bassAttack, "ATTACK"), knob (ParamID::bassDecay, "DECAY"),
-                                            knob (ParamID::bassSustain, "SUSTAIN"), knob (ParamID::bassRelease, "RELEASE") } },
-                     { "SLIDE", { knob (ParamID::bassGlide, "TIME") } },
-                     { "OUT", { knob (ParamID::bassLevel, "LEVEL") } } });
+    groups.addRow ({ { "OSC 1", { knob (id (F::shape), "SHAPE"), knob (id (F::pulseWidth), "PW"),
+                                  knob (id (F::octave), "OCTAVE"), knob (id (F::tune), "TUNE") } },
+                     { "SUB", { knob (id (F::sub), "LEVEL"), choice (id (F::subOctave), "OCTAVE") } },
+                     { "NOISE", { knob (id (F::noise), "LEVEL") } } });
+    groups.addRow ({ { "OSC 2", { knob (id (F::osc2Shape), "SHAPE"), knob (id (F::osc2Pw), "PW"),
+                                  knob (id (F::osc2Level), "LEVEL"), knob (id (F::osc2Semi), "SEMI"),
+                                  knob (id (F::osc2Detune), "DETUNE") } },
+                     { "FM (OSC 2 > OSC 1)", { knob (id (F::fm), "AMOUNT"), knob (id (F::fmEnv), "ATTACK") } } });
+    groups.addRow ({ { "FILTER", { choice (id (F::filterType), "TYPE"), knob (id (F::cutoff), "CUTOFF"),
+                                   knob (id (F::resonance), "RESO"), knob (id (F::keyTrack), "KEYTRK") } },
+                     { "FILTER ENVELOPE", { knob (id (F::envAmount), "AMOUNT"), knob (id (F::envDecay), "DECAY"),
+                                            knob (id (F::velToEnv), "VEL") } },
+                     { "DRIVE", { knob (id (F::drive), "AMOUNT") } } });
+    groups.addRow ({ { "VOLUME ENVELOPE", { knob (id (F::attack), "ATTACK"), knob (id (F::decay), "DECAY"),
+                                            knob (id (F::sustain), "SUSTAIN"), knob (id (F::release), "RELEASE") } },
+                     { "SLIDE", { knob (id (F::glide), "TIME") } },
+                     { "LAYER OUT", { knob (id (F::level), "LEVEL"), knob (id (F::duck), "DUCK"), knob (id (F::gate), "GATE") } } });
 }
 
 float BassModule::ampValueAt (double seconds) const
@@ -401,7 +407,7 @@ void BassModule::resized()
     presets.setBounds (presetBounds (*this));
     auto area = getContentBounds();
 
-    constexpr int rowHeight = 56;
+    const auto rowHeight = juce::jlimit (56, 84, (area.getHeight() - 160) / groups.numRows() - ControlGroups::titleHeight - 3);
     const auto groupsHeight = groups.numRows() * (ControlGroups::titleHeight + rowHeight + 3);
     groups.layout (area.removeFromBottom (groupsHeight), rowHeight);
     area.removeFromBottom (4);
@@ -410,7 +416,7 @@ void BassModule::resized()
 
 //==============================================================================
 GateModule::GateModule (PluginBase& p)
-    : ModulePanel ("GATE", Theme::gate, &p.apvts, ParamID::bassOn),
+    : ModulePanel ("GATE", Theme::gate, &p.apvts, ParamID::bass (0, BassField::on)),
       refs (p.apvts),
       key (p.apvts, ParamID::fxKey, "KEY"),
       presets (p, Presets::Section::bass, Theme::gate)
@@ -443,7 +449,9 @@ GateModule::GateModule (PluginBase& p)
 
     addAndMakeVisible (key);
     addKnobs (*this, knobs, p, Theme::gate, {
-        { ParamID::gateAttack, "ATTACK" }, { ParamID::gateRelease, "RELEASE" }, { ParamID::bassLevel, "LEVEL" } });
+        { ParamID::gateAttack, "ATTACK" }, { ParamID::gateRelease, "RELEASE" } });
+    knobs.push_back (std::make_unique<KnobComponent> (p.apvts, ParamID::bass (0, BassField::level), "LEVEL", Theme::gate));
+    addAndMakeVisible (*knobs.back());
 
     help.setText ("Put MyOwnFruit FX on the mixer track of your bass synth. The synth is gated by the "
                   "gate steps and ducked under the kick. When the DAW is stopped, audio passes through untouched.",
@@ -472,19 +480,26 @@ void GateModule::resized()
 }
 
 //==============================================================================
-PatternModule::PatternModule (PluginBase& p, juce::Colour bassAccent, const juce::String& bassName, bool showPitchLane)
-    : length (p.apvts, ParamID::patternBars, "LENGTH"),
-      grid (p.apvts, ParamID::bassGrid, "BASS GRID"),
+PatternModule::PatternModule (PluginBase& p, bool isInstrument)
+    : processor (p), instrument (isInstrument),
+      length (p.apvts, ParamID::patternBars, "LENGTH"),
       presets (p, Presets::Section::pattern, Theme::pattern),
-      sequencer (p, bassAccent, bassName)
+      sequencer (p,
+                 isInstrument ? juce::StringArray { "BASS 1", "BASS 2", "BASS 3" } : juce::StringArray { "GATE" },
+                 isInstrument ? std::vector<juce::Colour> { Theme::layerColour (0), Theme::layerColour (1), Theme::layerColour (2) }
+                              : std::vector<juce::Colour> { Theme::gate })
 {
     addAndMakeVisible (length);
-    addAndMakeVisible (grid);
     addAndMakeVisible (presets);
+    if (instrument)
+    {
+        noteEnd = std::make_unique<ChoiceComponent> (p.apvts, ParamID::noteEnd, "NOTE END");
+        addAndMakeVisible (*noteEnd);
+    }
 
     std::vector<std::pair<juce::String, StepSequencer::Lane>> lanes { { "VEL", StepSequencer::Lane::velocity },
                                                                       { "GATE", StepSequencer::Lane::gate } };
-    if (showPitchLane)
+    if (instrument)
         lanes.push_back ({ "PITCH", StepSequencer::Lane::pitch });
     lanes.push_back ({ "SLIDE", StepSequencer::Lane::slide });
 
@@ -493,14 +508,31 @@ PatternModule::PatternModule (PluginBase& p, juce::Colour bassAccent, const juce
         auto button = std::make_unique<juce::TextButton> (name);
         button->setClickingTogglesState (false);
         button->setColour (juce::TextButton::buttonOnColourId, Theme::pattern);
+        button->setTooltip (name + " - Shows the selected layer's " + name.toLowerCase() + " per step in the lane under the rows.");
         const auto laneCopy = lane;
         button->onClick = [this, laneCopy] { selectLane (laneCopy); };
         addAndMakeVisible (*button);
         laneButtons.emplace_back (std::move (button), lane);
     }
 
+    const auto numLayers = instrument ? ParamID::numBassLayers : 1;
+    for (int layer = 0; layer < numLayers; ++layer)
+    {
+        grids.push_back (std::make_unique<ChoiceComponent> (p.apvts, ParamID::bass (layer, BassField::grid), "GRID"));
+        gates.push_back (std::make_unique<KnobComponent> (p.apvts, ParamID::bass (layer, BassField::gate), "GATE",
+                                                          instrument ? Theme::layerColour (layer) : Theme::gate));
+        addChildComponent (*grids.back());
+        addChildComponent (*gates.back());
+    }
+
+    fillButton.setTooltip ("FILL - Fill the selected layer with a rhythm (rolling, galloping, triplets, offbeat) or clear it.");
+    fillButton.onClick = [this] { showFillMenu(); };
+    addAndMakeVisible (fillButton);
+
+    sequencer.onLayerSelected = [this] (int layer) { showLayer (layer); };
     addAndMakeVisible (sequencer);
     selectLane (StepSequencer::Lane::velocity);
+    showLayer (0);
 }
 
 void PatternModule::selectLane (StepSequencer::Lane lane)
@@ -510,16 +542,63 @@ void PatternModule::selectLane (StepSequencer::Lane lane)
         button->setToggleState (buttonLane == lane, juce::dontSendNotification);
 }
 
+void PatternModule::showLayer (int layer)
+{
+    shownLayer = layer;
+    for (size_t i = 0; i < grids.size(); ++i)
+    {
+        grids[i]->setVisible ((int) i == layer);
+        gates[i]->setVisible ((int) i == layer);
+    }
+    repaint();
+}
+
+void PatternModule::showFillMenu()
+{
+    juce::PopupMenu menu;
+    const auto names = Pattern::templateNames();
+    for (int i = 0; i < names.size(); ++i)
+        menu.addItem (i + 1, names[i]);
+
+    juce::Component::SafePointer<PatternModule> safeThis (this);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&fillButton), [safeThis] (int result)
+    {
+        if (safeThis == nullptr || result <= 0)
+            return;
+        auto& p = safeThis->processor;
+        const auto layer = safeThis->shownLayer;
+        const auto grid = p.pattern.applyLayerTemplate (layer, (PatternTemplate) (result - 1));
+        if (auto* gridParam = p.apvts.getParameter (ParamID::bass (layer, BassField::grid)))
+            Presets::setParameter (*gridParam, gridParam->convertTo0to1 ((float) grid));
+        p.patternChanged();
+    });
+}
+
+void PatternModule::paint (juce::Graphics& g)
+{
+    // Rubrik för det valda lagrets inställningar.
+    if (! grids.empty())
+    {
+        const auto area = grids[(size_t) shownLayer]->getBounds().withHeight (14).translated (0, -18);
+        g.setFont (Theme::font (11.0f, true));
+        g.setColour (instrument ? Theme::layerColour (shownLayer) : Theme::gate);
+        g.drawText (instrument ? "BASS " + juce::String (shownLayer + 1) : juce::String ("GATE"), area, juce::Justification::centredLeft);
+    }
+}
+
 void PatternModule::resized()
 {
     auto area = getLocalBounds();
 
-    auto column = area.removeFromLeft (120);
-    area.removeFromLeft (10);
+    auto column = area.removeFromLeft (140);
+    area.removeFromLeft (12);
     length.setBounds (column.removeFromTop (40));
     column.removeFromTop (4);
-    grid.setBounds (column.removeFromTop (40));
-    column.removeFromTop (8);
+    if (noteEnd != nullptr)
+    {
+        noteEnd->setBounds (column.removeFromTop (40));
+        column.removeFromTop (6);
+    }
     presets.setBounds (column.removeFromTop (24));
     column.removeFromTop (10);
 
@@ -533,34 +612,17 @@ void PatternModule::resized()
         column.removeFromTop (4);
     }
 
+    // Det valda lagrets rutnät, gate och mallar.
+    column.removeFromTop (22);
+    const auto gridArea = column.removeFromTop (40);
+    column.removeFromTop (4);
+    auto gateRow = column.removeFromTop (70);
+    const auto fillArea = gateRow.removeFromRight (66).withSizeKeepingCentre (66, 24);
+    for (auto& grid : grids)
+        grid->setBounds (gridArea);
+    for (auto& gate : gates)
+        gate->setBounds (gateRow);
+    fillButton.setBounds (fillArea);
+
     sequencer.setBounds (area);
-}
-
-//==============================================================================
-MixModule::MixModule (PluginBase& p, bool showNoteEnd)
-    : ModulePanel ("MIX", Theme::mix)
-{
-    addKnobs (*this, knobs, p, Theme::mix, { { ParamID::bassGate, "GATE" }, { ParamID::gain, "MASTER" } });
-
-    if (showNoteEnd)
-    {
-        noteEnd = std::make_unique<ChoiceComponent> (p.apvts, ParamID::noteEnd, "NOTE END");
-        addAndMakeVisible (*noteEnd);
-    }
-}
-
-void MixModule::resized()
-{
-    ModulePanel::resized();
-    auto area = getContentBounds();
-
-    if (noteEnd != nullptr)
-    {
-        noteEnd->setBounds (area.removeFromBottom (40));
-        area.removeFromBottom (6);
-    }
-
-    auto top = area.removeFromTop (area.getHeight() / 2);
-    knobs[0]->setBounds (top.withSizeKeepingCentre (top.getWidth() / 2, top.getHeight()));
-    knobs[1]->setBounds (area.withSizeKeepingCentre (area.getWidth() / 2, area.getHeight()));
 }

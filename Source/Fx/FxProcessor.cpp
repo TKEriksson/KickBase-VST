@@ -10,7 +10,7 @@ namespace
         Params::Layout layout;
         Params::addPatternParams (layout, false);
         Params::addKickParams (layout);
-        Params::addBassCommonParams (layout, 1.0f);
+        Params::addBassCommonParams (layout, 0, 1.0f); // gaten är lager 1
         Params::addFxParams (layout);
         Effects::addParameters (layout);
         Sidechain::addParameters (layout);
@@ -27,6 +27,7 @@ FxProcessor::FxProcessor()
                       .withOutput ("Output", juce::AudioChannelSet::stereo(), true),
                   createLayout(), true)
 {
+    scheduler.setNumLayers (1);
 }
 
 void FxProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
@@ -75,20 +76,19 @@ void FxProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuff
 
     const auto key = params.getChoice (ParamID::fxKey);
     const auto patternBars = Params::barsFromChoice (params.getChoice (ParamID::patternBars));
-    scheduler.setGrid ((BassGrid) params.getChoice (ParamID::bassGrid));
+    scheduler.setGrid (0, (BassGrid) (int) params.bass (0, BassField::grid));
     kick.setParams (readModulatedKick (key));
     kick.setClickSample (getActiveClickSample());
     gate.setTimes (params.get (ParamID::gateAttack), params.get (ParamID::gateRelease));
 
     active = clock.isFollowingHost();
     kickOn = params.getBool (ParamID::kickOn);
-    gateOn = params.getBool (ParamID::bassOn);
-    duckAmount = params.get (ParamID::duckAmount); // med LFO-modulering
-    gateScale = params.get (ParamID::bassGate);
-    inputLevel = params.get (ParamID::bassLevel) * params.get (ParamID::gain);
+    gateOn = params.bass (0, BassField::on) >= 0.5f;
+    duckAmount = params.bass (0, BassField::duck); // med LFO-modulering
+    gateScale = params.bass (0, BassField::gate);
+    inputLevel = params.bass (0, BassField::level) * params.get (ParamID::gain);
 
     useCurve = (Sidechain::Mode) params.getChoice ("scMode") == Sidechain::Mode::curve;
-    const auto duckBeforeEffects = (Sidechain::Position) params.getChoice ("scPosition") == Sidechain::Position::beforeEffects;
     const auto lengthQuarters = Sidechain::lengthInQuarters (params.getChoice ("scLength"));
     duckLengthSamples = lengthQuarters > 0.0 ? lengthQuarters * clock.getSamplesPerQuarter()
                                              : KickEngine::lengthSeconds (params.readKick (key)) * getSampleRate();
@@ -122,14 +122,10 @@ void FxProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuff
     for (int ch = 0; ch < 2; ++ch)
         juce::FloatVectorOperations::multiply (synthBuffer.getWritePointer (ch), gateBuffer.getReadPointer (0), numSamples);
 
-    if (duckBeforeEffects)
-        for (int ch = 0; ch < 2; ++ch)
-            juce::FloatVectorOperations::multiply (synthBuffer.getWritePointer (ch), duckData, numSamples);
-
     effects.process (synthBuffer, numSamples, true, effectOrder);
 
-    if (! duckBeforeEffects)
-        for (int ch = 0; ch < 2; ++ch)
+    // Efter effekterna, så att även ekon och reverbsvansar duckas under kicken.
+    for (int ch = 0; ch < 2; ++ch)
             juce::FloatVectorOperations::multiply (synthBuffer.getWritePointer (ch), duckData, numSamples);
 
     const auto masterGain = params.get (ParamID::gain);
@@ -156,7 +152,7 @@ void FxProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuff
     transportStatus.keyNote = 60 + key;
     transportStatus.patternActive = active;
     transportStatus.kickStep = active ? scheduler.getLastKickStep() : -1;
-    transportStatus.bassStep = active ? scheduler.getLastBassStep() : -1;
+    transportStatus.bassSteps[0] = active ? scheduler.getLastBassStep (0) : -1;
 }
 
 void FxProcessor::renderSamples (int startSample, int endSample)
@@ -184,8 +180,8 @@ void FxProcessor::handleEvent (const StepEvent& event)
         return;
     }
 
-    const auto grid = scheduler.getGrid();
-    const auto& step = pattern.bassStep (grid, event.step);
+    const auto grid = scheduler.getGrid (0);
+    const auto& step = pattern.bassStep (0, grid, event.step);
     const auto samplesPerStep = clock.getSamplesPerQuarter() / Pattern::bassStepsPerQuarter (grid);
 
     // Slide håller gaten öppen in i nästa steg, så att de flyter ihop.

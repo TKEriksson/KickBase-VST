@@ -14,8 +14,11 @@ namespace
         Params::Layout layout;
         Params::addPatternParams (layout, true);
         Params::addKickParams (layout);
-        Params::addBassCommonParams (layout, 0.7f);
-        Params::addBassSynthParams (layout);
+        for (int layer = 0; layer < Pattern::numLayers; ++layer)
+        {
+            Params::addBassCommonParams (layout, layer, 0.7f);
+            Params::addBassSynthParams (layout, layer);
+        }
         Effects::addParameters (layout);
         Sidechain::addParameters (layout);
         Modulation::addParameters (layout);
@@ -34,7 +37,9 @@ InstrumentProcessor::InstrumentProcessor()
     : PluginBase (BusesProperties()
                       .withOutput ("Main", juce::AudioChannelSet::stereo(), true)
                       .withOutput ("Kick", juce::AudioChannelSet::stereo(), false)
-                      .withOutput ("Bass", juce::AudioChannelSet::stereo(), false),
+                      .withOutput ("Bass 1", juce::AudioChannelSet::stereo(), false)
+                      .withOutput ("Bass 2", juce::AudioChannelSet::stereo(), false)
+                      .withOutput ("Bass 3", juce::AudioChannelSet::stereo(), false),
                   createLayout(), false)
 {
 }
@@ -43,8 +48,10 @@ void InstrumentProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     prepareBase (sampleRate);
     kick.prepare (sampleRate);
-    bass.prepare (sampleRate);
-    ducker.prepare (sampleRate);
+    for (auto& bass : basses)
+        bass.prepare (sampleRate);
+    for (auto& ducker : duckers)
+        ducker.prepare (sampleRate);
     effects.prepare (sampleRate, samplesPerBlock);
     effects.setModulator (&modulator);
     master.prepare (sampleRate, 2);
@@ -61,7 +68,7 @@ bool InstrumentProcessor::isBusesLayoutSupported (const BusesLayout& layouts) co
     if (! isMonoOrStereo (layouts.getMainOutputChannelSet()))
         return false;
 
-    // Kick- och basutgångarna är frivilliga.
+    // Kick- och baslagrens utgångar är frivilliga.
     for (int bus = 1; bus < layouts.outputBuses.size(); ++bus)
     {
         const auto& set = layouts.outputBuses[bus];
@@ -99,7 +106,8 @@ void InstrumentProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
     };
     assign (mainOut, 0);
     assign (kickOut, 1);
-    assign (bassOut, 2);
+    for (int layer = 0; layer < numLayers; ++layer)
+        assign (layerOuts[(size_t) layer], 2 + layer);
 
     // Dela upp blocket vid varje MIDI-händelse så att toner börjar och slutar på rätt sample.
     int position = 0;
@@ -120,7 +128,7 @@ void InstrumentProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
     // mycket som limiterns lookahead, så att de ligger i synk med huvudutgången.
     auto mainBus = getBusBuffer (buffer, false, 0);
     master.process (mainBus, numSamples);
-    for (int bus = 1; bus <= 2; ++bus)
+    for (int bus = 1; bus < getBusCount (false); ++bus)
     {
         if (auto* b = getBus (false, bus); b != nullptr && b->isEnabled())
         {
@@ -133,23 +141,26 @@ void InstrumentProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
     transportStatus.keyNote = currentNote;
     transportStatus.patternActive = patternActive;
     transportStatus.kickStep = patternActive ? scheduler.getLastKickStep() : -1;
-    transportStatus.bassStep = patternActive ? scheduler.getLastBassStep() : -1;
+    for (int layer = 0; layer < numLayers; ++layer)
+        transportStatus.bassSteps[(size_t) layer] = patternActive ? scheduler.getLastBassStep (layer) : -1;
 }
 
 void InstrumentProcessor::readBlockParams()
 {
     patternBars = Params::barsFromChoice (params.getChoice (ParamID::patternBars));
-    scheduler.setGrid ((BassGrid) params.getChoice (ParamID::bassGrid));
     kickOn = params.getBool (ParamID::kickOn);
-    bassOn = params.getBool (ParamID::bassOn);
-    duckAmount = params.get (ParamID::duckAmount); // med LFO-modulering
-    bassGateScale = params.get (ParamID::bassGate);
+    for (int layer = 0; layer < numLayers; ++layer)
+    {
+        scheduler.setGrid (layer, (BassGrid) (int) params.bass (layer, BassField::grid));
+        layerOn[(size_t) layer] = params.bass (layer, BassField::on) >= 0.5f;
+        duckAmounts[(size_t) layer] = params.bass (layer, BassField::duck); // med LFO-modulering
+        gateScales[(size_t) layer] = params.bass (layer, BassField::gate);
+    }
     noteEnd = (NoteEnd) params.getChoice (ParamID::noteEnd);
     kick.setClickSample (getActiveClickSample());
     refreshEngineParams();
 
     sidechainMode = (Sidechain::Mode) params.getChoice ("scMode");
-    sidechainPosition = (Sidechain::Position) params.getChoice ("scPosition");
     const auto lengthQuarters = Sidechain::lengthInQuarters (params.getChoice ("scLength"));
     duckLengthSamples = lengthQuarters > 0.0 ? lengthQuarters * clock.getSamplesPerQuarter()
                                              : KickEngine::lengthSeconds (params.readKick (0)) * getSampleRate();
@@ -158,7 +169,8 @@ void InstrumentProcessor::readBlockParams()
 void InstrumentProcessor::refreshEngineParams()
 {
     kick.setParams (readModulatedKick (keyPitchClass()));
-    bass.setParams (readModulatedBass (bassRootNote()));
+    for (int layer = 0; layer < numLayers; ++layer)
+        basses[(size_t) layer].setParams (readModulatedBass (layer, bassRootNote()));
 }
 
 void InstrumentProcessor::handleMidi (const juce::MidiMessage& message, int sampleOffset)
@@ -225,7 +237,8 @@ void InstrumentProcessor::stopPattern (int sampleOffset)
     {
         patternActive = false;
         stoppedAtPpq = clock.getPpqAt (sampleOffset);
-        bass.release();
+        for (auto& bass : basses)
+            bass.release();
         return; // kicken klingar ut av sig själv
     }
 
@@ -277,8 +290,6 @@ void InstrumentProcessor::renderSamples (int startSample, int endSample)
 {
     auto* kickData = kickBuffer.getWritePointer (0);
     auto* duckData = duckBuffer.getWritePointer (0);
-    auto* sourceData = bassBuffer.getWritePointer (0);
-    auto* amplitudeData = amplitudeBuffer.getWritePointer (0);
     const auto useCurve = sidechainMode == Sidechain::Mode::curve;
 
     for (int i = startSample; i < endSample; ++i)
@@ -286,41 +297,48 @@ void InstrumentProcessor::renderSamples (int startSample, int endSample)
         kickData[i] = kick.nextSample();
         const auto curveValue = duckCurve.next (sidechainCurve, duckLengthSamples);
         duckData[i] = useCurve ? curveValue : kick.getEnvelope();
+    }
 
-        const auto b = bass.next();
-        sourceData[i] = b.source;
-        amplitudeData[i] = b.amplitude;
+    for (int layer = 0; layer < numLayers; ++layer)
+    {
+        auto& bass = basses[(size_t) layer];
+        auto* sourceData = layerBuffer.getWritePointer (layer);
+        auto* amplitudeData = amplitudeBuffer.getWritePointer (layer);
+        for (int i = startSample; i < endSample; ++i)
+        {
+            const auto b = bass.next();
+            sourceData[i] = b.source;
+            amplitudeData[i] = b.amplitude;
+        }
     }
 }
 
 void InstrumentProcessor::finishBlock (int numSamples)
 {
-    // Basen: källa -> effekter före gaten -> gate (amplitud) -> effekter efter, med
-    // ducking antingen före eller efter effekterna efter gaten.
-    bassBuffer.copyFrom (1, 0, bassBuffer, 0, 0, numSamples);
+    // Varje baslager: källa * amplitud (envelope) * ducking med lagrets egen mängd. Lagren
+    // summeras och går genom effekterna; varje lagers egen utgång får lagret före effekterna.
+    const auto* duckData = duckBuffer.getReadPointer (0);
+    bassBuffer.clear (0, numSamples);
 
-    // Ducknivå -> förstärkning, sample för sample.
-    auto* duckData = duckBuffer.getWritePointer (0);
-    for (int i = 0; i < numSamples; ++i)
-        duckData[i] = ducker.next (duckData[i], duckAmount);
+    for (int layer = 0; layer < numLayers; ++layer)
+    {
+        auto* data = layerBuffer.getWritePointer (layer);
+        const auto* amplitude = amplitudeBuffer.getReadPointer (layer);
+        auto& ducker = duckers[(size_t) layer];
+        const auto amount = duckAmounts[(size_t) layer];
+
+        for (int i = 0; i < numSamples; ++i)
+            data[i] *= amplitude[i] * ducker.next (duckData[i], amount);
+
+        bassBuffer.addFrom (0, 0, data, numSamples);
+        bassBuffer.addFrom (1, 0, data, numSamples);
+        for (int i = 0; i < numSamples; ++i)
+            layerOuts[(size_t) layer].add (i, data[i], data[i]);
+    }
 
     effects.update (clock.getBpm());
     effects.process (bassBuffer, numSamples, false, effectOrder);
-
-    for (int ch = 0; ch < 2; ++ch)
-        juce::FloatVectorOperations::multiply (bassBuffer.getWritePointer (ch), amplitudeBuffer.getReadPointer (0), numSamples);
-
-    const auto duckBeforeEffects = sidechainPosition == Sidechain::Position::beforeEffects;
-    if (duckBeforeEffects)
-        for (int ch = 0; ch < 2; ++ch)
-            juce::FloatVectorOperations::multiply (bassBuffer.getWritePointer (ch), duckData, numSamples);
-
     effects.process (bassBuffer, numSamples, true, effectOrder);
-
-    // Efter effekterna duckas även ekon och reverbsvansar under kicken.
-    if (! duckBeforeEffects)
-        for (int ch = 0; ch < 2; ++ch)
-            juce::FloatVectorOperations::multiply (bassBuffer.getWritePointer (ch), duckData, numSamples);
 
     const auto* kickData = kickBuffer.getReadPointer (0);
     const auto* left = bassBuffer.getReadPointer (0);
@@ -330,7 +348,6 @@ void InstrumentProcessor::finishBlock (int numSamples)
     {
         mainOut.add (i, kickData[i] + left[i], kickData[i] + right[i]);
         kickOut.add (i, kickData[i], kickData[i]);
-        bassOut.add (i, left[i], right[i]);
     }
 }
 
@@ -342,7 +359,8 @@ void InstrumentProcessor::ensureScratchSize (int numSamples)
 
     kickBuffer.setSize (1, numSamples, false, true, true);
     duckBuffer.setSize (1, numSamples, false, true, true);
-    amplitudeBuffer.setSize (1, numSamples, false, true, true);
+    layerBuffer.setSize (numLayers, numSamples, false, true, true);
+    amplitudeBuffer.setSize (numLayers, numSamples, false, true, true);
     bassBuffer.setSize (2, numSamples, false, true, true);
 }
 
@@ -357,18 +375,19 @@ void InstrumentProcessor::handleEvent (const StepEvent& event)
         return;
     }
 
-    if (! bassOn)
+    const auto layer = event.layer;
+    if (! layerOn[(size_t) layer])
         return;
 
-    const auto grid = scheduler.getGrid();
-    const auto& step = pattern.bassStep (grid, event.step);
+    const auto grid = scheduler.getGrid (layer);
+    const auto& step = pattern.bassStep (layer, grid, event.step);
     const auto samplesPerStep = clock.getSamplesPerQuarter() / Pattern::bassStepsPerQuarter (grid);
     const auto slide = step.slide.load();
 
     const auto gateSamples = slide ? (int) (samplesPerStep * slideOverlap)
-                                   : std::max (1, (int) (step.gate.load() * bassGateScale * samplesPerStep));
+                                   : std::max (1, (int) (step.gate.load() * gateScales[(size_t) layer] * samplesPerStep));
 
-    bass.noteOn (step.pitch.load(), step.velocity.load(), gateSamples, slide);
+    basses[(size_t) layer].noteOn (step.pitch.load(), step.velocity.load(), gateSamples, slide);
 }
 
 juce::AudioProcessorEditor* InstrumentProcessor::createEditor()

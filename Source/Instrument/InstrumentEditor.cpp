@@ -5,20 +5,24 @@ InstrumentEditor::InstrumentEditor (InstrumentProcessor& p)
 {
     setLookAndFeel (&lookAndFeel);
 
-    for (auto* component : std::initializer_list<juce::Component*> { &header, &kick, &bass, &lower, &mix, &info, &keyboard })
+    for (auto* component : std::initializer_list<juce::Component*> { &header, &tabs, &info, &keyboard })
         addAndMakeVisible (component);
 
-    lower.addTab ("PATTERN", Theme::pattern, pattern);
-    lower.addTab ("EFFECTS", Theme::effects, effects);
-    lower.addTab ("SIDECHAIN", Theme::mix, sidechain);
-    lower.addTab ("LFO", Theme::lfo, lfo);
-    lower.addTab ("MASTER", Theme::master, masterPage);
+    tabs.addTab ("PATTERN", Theme::pattern, pattern);
+    tabs.addTab ("KICK", Theme::kick, kick);
+    tabs.addTab ("BASS 1", Theme::layerColour (0), bass1);
+    tabs.addTab ("BASS 2", Theme::layerColour (1), bass2);
+    tabs.addTab ("BASS 3", Theme::layerColour (2), bass3);
+    tabs.addTab ("EFFECTS", Theme::effects, effects);
+    tabs.addTab ("SIDECHAIN", Theme::mix, sidechain);
+    tabs.addTab ("LFO", Theme::lfo, lfo);
+    tabs.addTab ("MASTER", Theme::master, masterPage);
 
     keyboard.setOctaveForMiddleC (5); // samma tonnamn som FL Studio (mittens C = C5)
     keyboard.setKeyWidth (14.0f);
     keyboard.setLowestVisibleKey (24);
 
-    setSize (1060, 830);
+    setSize (1060, 760);
 }
 
 InstrumentEditor::~InstrumentEditor()
@@ -38,18 +42,10 @@ void InstrumentEditor::resized()
     header.setBounds (area.removeFromTop (44));
     area.removeFromTop (4);
 
-    keyboard.setBounds (area.removeFromBottom (54));
+    keyboard.setBounds (area.removeFromBottom (50));
     area.removeFromBottom (6);
     info.setBounds (area.removeFromBottom (22));
-    area.removeFromBottom (8);
+    area.removeFromBottom (6);
 
-    auto top = area.removeFromTop (430);
-    kick.setBounds (top.removeFromLeft (top.getWidth() / 2 - 5));
-    top.removeFromLeft (10);
-    bass.setBounds (top);
-    area.removeFromTop (10);
-
-    mix.setBounds (area.removeFromRight (190));
-    area.removeFromRight (10);
-    lower.setBounds (area);
+    tabs.setBounds (area);
 }

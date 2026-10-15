@@ -30,6 +30,7 @@ struct Pattern
     static constexpr int maxBassSteps = maxBars * maxBassStepsPerBar;
     static constexpr int minPitch = -24;
     static constexpr int maxPitch = 24;
+    static constexpr int numLayers = 3; // baslager med var sitt mönster (FX-versionen använder bara det första)
 
     static int bassStepsPerBar (BassGrid grid);
     static double bassStepsPerQuarter (BassGrid grid);
@@ -47,21 +48,28 @@ struct Pattern
 
     Pattern() { applyTemplate (PatternTemplate::rolling); }
 
-    std::atomic<bool>& kickStep (int index)                { return kick[(size_t) index]; }
-    BassStep& bassStep (BassGrid grid, int index)          { return bass[(size_t) grid][(size_t) index]; }
-    const BassStep& bassStep (BassGrid grid, int index) const { return bass[(size_t) grid][(size_t) index]; }
-    bool isKickOn (int index) const                        { return kick[(size_t) index].load(); }
+    std::atomic<bool>& kickStep (int index) { return kick[(size_t) index]; }
+    bool isKickOn (int index) const         { return kick[(size_t) index].load(); }
 
-    // Fyller mönstret enligt en mall. Returnerar det rutnät mallen är skriven för.
+    BassStep& bassStep (int layer, BassGrid grid, int index)             { return bass[(size_t) layer][(size_t) grid][(size_t) index]; }
+    const BassStep& bassStep (int layer, BassGrid grid, int index) const { return bass[(size_t) layer][(size_t) grid][(size_t) index]; }
+
+    // Fyller hela mönstret enligt en mall: kicken och första baslagret, övriga lager töms.
+    // Returnerar det rutnät mallen är skriven för.
     BassGrid applyTemplate (PatternTemplate t);
+
+    // Fyller bara ett baslager enligt en mall (kicken och andra lager orörda).
+    BassGrid applyLayerTemplate (int layer, PatternTemplate t);
 
     juce::ValueTree toValueTree() const;
     void fromValueTree (const juce::ValueTree& tree);
 
     static inline const juce::Identifier treeType { "Pattern" };
-    static constexpr int currentVersion = 2;
+    static constexpr int currentVersion = 3; // 3: baslager
 
 private:
+    void clearLayer (int layer);
+
     std::array<std::atomic<bool>, maxKickSteps> kick {};
-    std::array<std::array<BassStep, maxBassSteps>, numGrids> bass;
+    std::array<std::array<std::array<BassStep, maxBassSteps>, numGrids>, numLayers> bass;
 };

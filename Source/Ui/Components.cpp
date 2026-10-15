@@ -50,7 +50,7 @@ PluginBase* findProcessor (const juce::Component& component)
 }
 
 //==============================================================================
-KnobComponent::KnobComponent (juce::AudioProcessorValueTreeState& apvts, const char* paramID, const juce::String& nameIn, juce::Colour accentIn)
+KnobComponent::KnobComponent (juce::AudioProcessorValueTreeState& apvts, const juce::String& paramID, const juce::String& nameIn, juce::Colour accentIn)
     : name (nameIn), accent (accentIn)
 {
     slider.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
@@ -98,20 +98,20 @@ void KnobComponent::resized()
 
 juce::Point<float> KnobComponent::knobCentre() const
 {
-    return slider.getBounds().toFloat().reduced (4.0f).getCentre();
+    return slider.getBounds().toFloat().reduced (Theme::knobRingMargin).getCentre();
 }
 
 float KnobComponent::trackRadius() const
 {
     // Samma mått som FruitLookAndFeel::drawRotarySlider.
-    const auto bounds = slider.getBounds().toFloat().reduced (4.0f);
+    const auto bounds = slider.getBounds().toFloat().reduced (Theme::knobRingMargin);
     return std::min (bounds.getWidth(), bounds.getHeight()) / 2.0f - 3.0f;
 }
 
 float KnobComponent::ringRadius (int ring) const
 {
-    // Första ringen precis utanför värdebågen (syns även på små rattar), övriga innanför den.
-    return ring == 0 ? trackRadius() + 3.5f : trackRadius() - 4.5f - 4.0f * (float) (ring - 1);
+    // Alla ringar ligger utanför värdebågen, i marginalen runt ratten.
+    return trackRadius() + 4.5f + 3.0f * (float) ring;
 }
 
 int KnobComponent::parameterIndex() const
@@ -146,10 +146,9 @@ int KnobComponent::ringAt (juce::Point<float> position) const
     if (list.empty())
         return -1;
 
-    // Ytterkanten (där ringarna ligger) styr mängden; mitten styr värdet som vanligt.
+    // Bara utanför värdebågen styr man en LFO-ring; ratten och bågen styr alltid värdet.
     const auto distance = position.getDistanceFrom (knobCentre());
-    const auto innermost = (list.size() > 1 ? ringRadius ((int) list.size() - 1) : trackRadius() - 4.0f) - 2.5f;
-    if (distance < innermost || distance > trackRadius() + 6.0f)
+    if (distance < trackRadius() + 2.0f || distance > ringRadius ((int) list.size() - 1) + 3.0f)
         return -1;
 
     auto best = 0;
@@ -364,7 +363,7 @@ void KnobComponent::ModSlider::mouseExit (const juce::MouseEvent& e)
 }
 
 //==============================================================================
-ChoiceComponent::ChoiceComponent (juce::AudioProcessorValueTreeState& apvts, const char* paramID, const juce::String& name)
+ChoiceComponent::ChoiceComponent (juce::AudioProcessorValueTreeState& apvts, const juce::String& paramID, const juce::String& name)
 {
     box.parameter = apvts.getParameter (paramID);
     if (box.parameter != nullptr)
@@ -461,18 +460,14 @@ void ControlGroups::layout (juce::Rectangle<int> area, int rowHeight)
 {
     frames.clear();
 
-    size_t columns = 1;
     for (const auto& row : rows)
     {
+        // Varje rad fyller hela bredden.
         size_t count = 0;
         for (const auto& group : row)
             count += group.controls.size();
-        columns = std::max (columns, count);
-    }
-    const auto cellWidth = area.getWidth() / (int) columns;
+        const auto cellWidth = area.getWidth() / (int) std::max ((size_t) 1, count);
 
-    for (const auto& row : rows)
-    {
         auto rowArea = area.removeFromTop (titleHeight + rowHeight);
         area.removeFromTop (3);
         for (const auto& group : row)

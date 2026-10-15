@@ -60,16 +60,19 @@ private:
     int keyPitchClass() const { return currentNote >= 0 ? currentNote % 12 : 0; }
     int bassRootNote() const  { return Params::bassRootMidiNote (currentNote >= 0 ? currentNote : 60); }
 
+    static constexpr int numLayers = Pattern::numLayers;
+
     StepScheduler scheduler;
     KickEngine kick;
-    BassSynth bass;
-    Ducker ducker;
+    std::array<BassSynth, numLayers> basses;
+    std::array<Ducker, numLayers> duckers;
     EffectChain effects { apvts };
     DuckCurvePlayer duckCurve;
     MasterSection master { apvts };
 
-    // Blockets mellanresultat: kick, hur mycket basen ska duckas, basens källa (stereo) och amplitud.
-    juce::AudioBuffer<float> kickBuffer, duckBuffer, bassBuffer, amplitudeBuffer;
+    // Blockets mellanresultat: kick, hur mycket basen ska duckas (före varje lagers mängd),
+    // varje baslagers källa och amplitud (en kanal per lager), och basens summa (stereo).
+    juce::AudioBuffer<float> kickBuffer, duckBuffer, layerBuffer, amplitudeBuffer, bassBuffer;
 
     std::array<bool, 128> heldNotes {};
     int numHeldNotes = 0;
@@ -81,14 +84,15 @@ private:
 
     // Läses en gång per block.
     int patternBars = 1;
-    bool kickOn = true, bassOn = true;
-    float duckAmount = 0.8f, bassGateScale = 1.0f;
+    bool kickOn = true;
+    std::array<bool, numLayers> layerOn { true, true, true };
+    std::array<float, numLayers> duckAmounts { 0.8f, 0.8f, 0.8f }, gateScales { 1.0f, 1.0f, 1.0f };
     Sidechain::Mode sidechainMode = Sidechain::Mode::kickEnvelope;
-    Sidechain::Position sidechainPosition = Sidechain::Position::afterEffects;
     double duckLengthSamples = 1.0;
     NoteEnd noteEnd = NoteEnd::cut;
 
-    Output mainOut, kickOut, bassOut;
+    Output mainOut, kickOut;
+    std::array<Output, numLayers> layerOuts;
     juce::SmoothedValue<float> masterGain;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (InstrumentProcessor)

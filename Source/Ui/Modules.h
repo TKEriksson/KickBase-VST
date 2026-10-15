@@ -62,15 +62,16 @@ private:
     bool dragHover = false;
 };
 
-// Bassynten (bara instrumentet): filter- och amplitud-envelope och rattar.
+// Ett baslager (bara instrumentet): filter- och amplitud-envelope och rattar.
 class BassModule : public ModulePanel
 {
 public:
-    explicit BassModule (PluginBase& processor);
+    BassModule (PluginBase& processor, int layer);
     void resized() override;
     void paint (juce::Graphics& g) override { ModulePanel::paint (g); groups.paint (g, getAccent()); }
 
 private:
+    const int layer;
     ParamRefs refs;
     BassParams current;
     float ampValueAt (double seconds) const;
@@ -99,31 +100,29 @@ private:
     juce::Label help;
 };
 
-// Mönstret: längd, rutnät, presets och stegsekvenseraren. En sida i flikpanelen.
+// Mönstret (en egen flik): längd, presets, stegsekvenseraren med en rad per baslager, och
+// det valda lagrets rutnät, gate och mallar.
 class PatternModule : public juce::Component
 {
 public:
-    PatternModule (PluginBase& processor, juce::Colour bassAccent, const juce::String& bassName, bool showPitchLane);
+    PatternModule (PluginBase& processor, bool instrument);
     void resized() override;
+    void paint (juce::Graphics&) override;
 
 private:
     void selectLane (StepSequencer::Lane lane);
+    void showLayer (int layer);
+    void showFillMenu();
 
-    ChoiceComponent length, grid;
+    PluginBase& processor;
+    const bool instrument;
+    ChoiceComponent length;
+    std::unique_ptr<ChoiceComponent> noteEnd;
     PresetButton presets;
     std::vector<std::pair<std::unique_ptr<juce::TextButton>, StepSequencer::Lane>> laneButtons;
     StepSequencer sequencer;
-};
-
-// Mixen: gate-längd, master och (för instrumentet) vad som händer när tonen släpps.
-// (Duckningen ställs i SIDECHAIN-fliken.)
-class MixModule : public ModulePanel
-{
-public:
-    MixModule (PluginBase& processor, bool showNoteEnd);
-    void resized() override;
-
-private:
-    std::vector<std::unique_ptr<KnobComponent>> knobs;
-    std::unique_ptr<ChoiceComponent> noteEnd;
+    std::vector<std::unique_ptr<ChoiceComponent>> grids; // ett per lager, bara det valda syns
+    std::vector<std::unique_ptr<KnobComponent>> gates;
+    juce::TextButton fillButton { "FILL..." };
+    int shownLayer = 0;
 };

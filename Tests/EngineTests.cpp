@@ -248,17 +248,17 @@ namespace
 
         check (pattern.applyTemplate (PatternTemplate::rolling) == BassGrid::sixteenth, "Rolling är i sextondelar");
         check (pattern.isKickOn (0) && ! pattern.isKickOn (1) && pattern.isKickOn (4), "kick på fjärdedelar");
-        check (! pattern.bassStep (BassGrid::sixteenth, 0).on && pattern.bassStep (BassGrid::sixteenth, 1).on
-                   && pattern.bassStep (BassGrid::sixteenth, 3).on && ! pattern.bassStep (BassGrid::sixteenth, 4).on,
+        check (! pattern.bassStep (0, BassGrid::sixteenth, 0).on && pattern.bassStep (0, BassGrid::sixteenth, 1).on
+                   && pattern.bassStep (0, BassGrid::sixteenth, 3).on && ! pattern.bassStep (0, BassGrid::sixteenth, 4).on,
                "Rolling: K B B B");
 
         check (pattern.applyTemplate (PatternTemplate::triplet) == BassGrid::eighthTriplet, "Triplet är i åttondelstrioler");
-        check (! pattern.bassStep (BassGrid::eighthTriplet, 3).on && pattern.bassStep (BassGrid::eighthTriplet, 4).on,
+        check (! pattern.bassStep (0, BassGrid::eighthTriplet, 3).on && pattern.bassStep (0, BassGrid::eighthTriplet, 4).on,
                "Triplet: K B B");
 
         // Ändra några steg och kontrollera att allt överlever spara/läsa.
         pattern.kickStep (7) = true;
-        auto& step = pattern.bassStep (BassGrid::sixteenthTriplet, 50);
+        auto& step = pattern.bassStep (0, BassGrid::sixteenthTriplet, 50);
         step.on = true;
         step.pitch = -12;
         step.slide = true;
@@ -270,11 +270,11 @@ namespace
         loaded.fromValueTree (pattern.toValueTree());
 
         check (loaded.isKickOn (7) && loaded.isKickOn (0) && ! loaded.isKickOn (1), "kickstegen sparas");
-        const auto& loadedStep = loaded.bassStep (BassGrid::sixteenthTriplet, 50);
+        const auto& loadedStep = loaded.bassStep (0, BassGrid::sixteenthTriplet, 50);
         check (loadedStep.on && loadedStep.pitch == -12 && loadedStep.slide, "basstegets på/ton/slide sparas");
         check (std::abs (loadedStep.gate - 0.33f) < 1.0e-4f && std::abs (loadedStep.velocity - 0.25f) < 1.0e-4f,
                "basstegets gate/velocity sparas");
-        check (loaded.bassStep (BassGrid::eighthTriplet, 4).on, "andra rutnät sparas också");
+        check (loaded.bassStep (0, BassGrid::eighthTriplet, 4).on, "andra rutnät sparas också");
 
         // Version 1 hade rutnäten i ordningen 1/16, 1/8 T, 1/16 T.
         juce::ValueTree old (Pattern::treeType);
@@ -286,8 +286,8 @@ namespace
         Pattern migrated;
         migrated.applyTemplate (PatternTemplate::clear);
         migrated.fromValueTree (old);
-        check (migrated.bassStep (BassGrid::sixteenth, 1).on && migrated.bassStep (BassGrid::sixteenth, 3).on
-                   && ! migrated.bassStep (BassGrid::quarter, 1).on,
+        check (migrated.bassStep (0, BassGrid::sixteenth, 1).on && migrated.bassStep (0, BassGrid::sixteenth, 3).on
+                   && ! migrated.bassStep (0, BassGrid::quarter, 1).on,
                "gammalt 1/16-mönster hamnar i 1/16");
     }
 }

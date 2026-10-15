@@ -13,7 +13,6 @@ namespace ParamID
 {
     // Mönster
     inline constexpr auto patternBars = "patternBars";
-    inline constexpr auto bassGrid    = "bassDivision"; // "bassGrid" användes när listan bara hade tre val
     inline constexpr auto noteEnd     = "noteEnd";
 
     // Kick
@@ -35,40 +34,7 @@ namespace ParamID
     inline constexpr auto kickDrive       = "kickDrive";
     inline constexpr auto kickLevel       = "kickLevel";
 
-    // Bas, gemensamt för instrument och FX
-    inline constexpr auto bassOn     = "bassOn";
-    inline constexpr auto bassLevel  = "bassLevel";
-    inline constexpr auto bassGate   = "bassGate";
-    inline constexpr auto duckAmount = "duckAmount";
-
-    // Bassynt (instrument)
-    inline constexpr auto bassOctave    = "bassOctave";
-    inline constexpr auto bassTune      = "bassTune";
-    inline constexpr auto bassShape     = "bassShape";      // ersätter valet "bassWave"
-    inline constexpr auto bassPulseWidth = "bassPulseWidth";
-    inline constexpr auto bassNoise     = "bassNoise";
-    inline constexpr auto bassSub       = "bassSub";
-    inline constexpr auto bassSubOctave = "bassSubOctave";
-    inline constexpr auto bassOsc2Shape = "bassOsc2Shape";  // ersätter valet "bassOsc2Wave"
-    inline constexpr auto bassOsc2Pw    = "bassOsc2Pw";
-    inline constexpr auto bassFm        = "bassFm";
-    inline constexpr auto bassFmEnv     = "bassFmEnv";
-    inline constexpr auto bassOsc2Level = "bassOsc2Level";
-    inline constexpr auto bassOsc2Semi  = "bassOsc2Semi";
-    inline constexpr auto bassOsc2Detune = "bassOsc2Detune";
-    inline constexpr auto bassFilterType = "bassFilterType";
-    inline constexpr auto bassKeyTrack  = "bassKeyTrack";
-    inline constexpr auto bassCutoff    = "bassCutoff";
-    inline constexpr auto bassResonance = "bassResonance";
-    inline constexpr auto bassEnvAmount = "bassEnvAmount";
-    inline constexpr auto bassEnvDecay  = "bassEnvDecay";
-    inline constexpr auto bassVelToEnv  = "bassVelToEnv";
-    inline constexpr auto bassAttack    = "bassAttack";
-    inline constexpr auto bassDecay     = "bassDecay";
-    inline constexpr auto bassSustain   = "bassSustain";
-    inline constexpr auto bassRelease   = "bassRelease";
-    inline constexpr auto bassGlide     = "bassGlide";
-    inline constexpr auto bassDrive     = "bassDrive";
+    // Baslagren: se ParamID::bass (lager, fält) nedan.
 
     // FX
     inline constexpr auto fxKey       = "fxKey";
@@ -79,6 +45,24 @@ namespace ParamID
     inline constexpr auto gain = "gain";
 }
 
+// Varje baslagers parametrar. ID:t är "bass" + lagrets nummer + fältets namn, t.ex. "bass2Cutoff".
+enum class BassField
+{
+    on, level, gate, duck, grid,                                  // lagrets utgång och mönster
+    octave, tune, shape, pulseWidth, noise, sub, subOctave,       // oscillator 1, sub, brus
+    osc2Shape, osc2Pw, fm, fmEnv, osc2Level, osc2Semi, osc2Detune, // oscillator 2 och FM
+    filterType, keyTrack, cutoff, resonance, envAmount, envDecay, velToEnv,
+    attack, decay, sustain, release, glide, drive,
+    count
+};
+
+namespace ParamID
+{
+    constexpr int numBassLayers = 3;
+    juce::String bass (int layer, BassField field);   // "bass1Cutoff" ...
+    const char* bassFieldName (BassField field);      // "Cutoff" ...
+}
+
 enum class NoteEnd { cut, finishBar, finishPattern };
 
 namespace Params
@@ -87,8 +71,8 @@ namespace Params
 
     void addPatternParams (Layout& layout, bool includeNoteEnd);
     void addKickParams (Layout& layout);
-    void addBassCommonParams (Layout& layout, float defaultLevel);
-    void addBassSynthParams (Layout& layout);
+    void addBassCommonParams (Layout& layout, int layer, float defaultLevel);
+    void addBassSynthParams (Layout& layout, int layer);
     void addFxParams (Layout& layout);
     void addMasterParams (Layout& layout);
 
@@ -120,8 +104,11 @@ public:
     bool getBool (const char* paramID) const  { return get (paramID) >= 0.5f; }
     int getChoice (const char* paramID) const { return (int) get (paramID); }
 
+    // Ett baslagers parameter, utan namnuppslag (index räknade i konstruktorn).
+    float bass (int layer, BassField field) const;
+
     KickParams readKick (int keyPitchClass) const;
-    BassParams readBass (int rootMidiNote) const; // rootMidiNote före Octave och Tune
+    BassParams readBass (int layer, int rootMidiNote) const; // rootMidiNote före Octave och Tune
 
 private:
     struct Entry
@@ -131,6 +118,9 @@ private:
         int index; // plats i processorns parameterlista (samma som Modulator använder)
     };
 
+    float valueOf (const Entry& entry) const;
+
     std::vector<Entry> entries; // byggs en gång i konstruktorn, ändras aldrig efter det
+    std::array<std::array<int, (size_t) BassField::count>, ParamID::numBassLayers> bassEntries {}; // index i entries, -1 = saknas
     const Modulator* modulator = nullptr;
 };

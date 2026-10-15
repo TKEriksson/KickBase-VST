@@ -49,11 +49,12 @@ public:
     // Presets per del (se Presets.h). Bara i plugin:ets egen meny, inte som VST3-"programs":
     // en värd kan sätta program-parametern när ett projekt laddas och skulle då skriva över
     // det sparade. Anropas från gränssnittet (message thread).
-    void loadFactoryPreset (Presets::Section section, int index);
-    bool saveUserPreset (Presets::Section section, const juce::String& name);
-    bool loadUserPreset (Presets::Section section, const juce::File& file);
+    // `layer` gäller Bass (vilket baslager presetet laddas i eller sparas från).
+    void loadFactoryPreset (Presets::Section section, int index, int layer = 0);
+    bool saveUserPreset (Presets::Section section, const juce::String& name, int layer = 0);
+    bool loadUserPreset (Presets::Section section, const juce::File& file, int layer = 0);
     juce::Array<juce::File> getUserPresets (Presets::Section section) const;
-    juce::String getPresetName (Presets::Section section) const { return presetNames[(size_t) section]; }
+    juce::String getPresetName (Presets::Section section, int layer = 0) const;
 
     // Renderar ljudet offline till en WAV-fil som loopar: bars takter i DAW:ens senaste tempo och
     // med den senaste tonen. Kick eller bas ensam stänger av den andra. Anropas från gränssnittet.
@@ -97,7 +98,7 @@ public:
 protected:
     // Läser kickens och basens parametrar, med LFO-modulering.
     KickParams readModulatedKick (int keyPitchClass) const;
-    BassParams readModulatedBass (int rootMidiNote) const;
+    BassParams readModulatedBass (int layer, int rootMidiNote) const;
 
 private:
     void setClickOriginal (juce::AudioBuffer<float> audio, double rate, const juce::String& name);
@@ -112,10 +113,12 @@ private:
     double clickOriginalRate = 0.0;
     juce::String clickName;
 
-    void resetSectionToDefaults (Presets::Section section);
+    void resetSectionToDefaults (Presets::Section section, int layer);
+    juce::String& presetNameSlot (Presets::Section section, int layer);
 
     const bool effectVersion;
     std::array<juce::String, Presets::numSections> presetNames; // bara message thread
+    std::array<juce::String, ParamID::numBassLayers> bassPresetNames;
 
     double currentSampleRate = 44100.0;
     std::atomic<ClickSample*> activeClick { nullptr };

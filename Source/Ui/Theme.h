@@ -25,12 +25,23 @@ namespace Theme
     inline const juce::Colour master  { 0xffff6b6b };
     inline const juce::Colour lfo     { 0xff5ef2d6 };
 
+    // Baslagren: blå, violett och mint, så att raderna i mönstret skiljs åt.
+    inline juce::Colour layerColour (int index)
+    {
+        const juce::Colour colours[] { bass, juce::Colour (0xff8f9bff), juce::Colour (0xff5fffb0) };
+        return colours[juce::jlimit (0, 2, index)];
+    }
+
     // Varje LFO har en egen färg, så att man ser vilken LFO som rör en ratt.
     inline juce::Colour lfoColour (int index)
     {
         const juce::Colour colours[] { lfo, juce::Colour (0xffc6ff5e), juce::Colour (0xffff7ad9) };
         return colours[juce::jlimit (0, 2, index)];
     }
+
+    // Marginal runt rattarna där LFO-ringarna ritas (utanför värdebågen, så att de inte
+    // är i vägen när man vrider på ratten).
+    inline constexpr float knobRingMargin = 8.0f;
 
     inline juce::Font font (float height, bool bold = false)
     {

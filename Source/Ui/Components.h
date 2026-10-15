@@ -20,7 +20,7 @@ PluginBase* findProcessor (const juce::Component& component);
 class KnobComponent : public juce::Component, public juce::DragAndDropTarget, private juce::Timer
 {
 public:
-    KnobComponent (juce::AudioProcessorValueTreeState& apvts, const char* paramID, const juce::String& name, juce::Colour accent);
+    KnobComponent (juce::AudioProcessorValueTreeState& apvts, const juce::String& paramID, const juce::String& name, juce::Colour accent);
     ~KnobComponent() override;
 
     void resized() override;
@@ -92,7 +92,7 @@ private:
 class ChoiceComponent : public juce::Component
 {
 public:
-    ChoiceComponent (juce::AudioProcessorValueTreeState& apvts, const char* paramID, const juce::String& name);
+    ChoiceComponent (juce::AudioProcessorValueTreeState& apvts, const juce::String& paramID, const juce::String& name);
 
     void resized() override;
 
@@ -123,8 +123,8 @@ private:
     juce::String text;
 };
 
-// Rattar i grupper med rubrik (OSC 1, FILTER ...): grupperna läggs i rader, och alla rader delas
-// i lika många kolumner så att rattarna linjerar. Ritar gruppernas ramar och rubriker.
+// Rattar i grupper med rubrik (OSC 1, FILTER ...): grupperna läggs i rader som var och en fyller
+// hela bredden. Ritar gruppernas ramar och rubriker.
 class ControlGroups
 {
 public:
@@ -156,10 +156,10 @@ public:
     static constexpr int headerHeight = 28;
 
     ModulePanel (const juce::String& titleIn, juce::Colour accentIn,
-                 juce::AudioProcessorValueTreeState* apvts = nullptr, const char* powerParamID = nullptr)
+                 juce::AudioProcessorValueTreeState* apvts = nullptr, const juce::String& powerParamID = {})
         : title (titleIn), accent (accentIn)
     {
-        if (apvts != nullptr && powerParamID != nullptr)
+        if (apvts != nullptr && powerParamID.isNotEmpty())
         {
             power = std::make_unique<juce::ToggleButton>();
             power->setColour (juce::ToggleButton::tickColourId, accent);

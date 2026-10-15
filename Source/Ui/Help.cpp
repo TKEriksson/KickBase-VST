@@ -3,16 +3,22 @@
 
 namespace Help
 {
-    juce::String forParameter (const juce::String& paramID)
+    juce::String forParameter (const juce::String& rawID)
     {
+        // Baslagrens parametrar har samma förklaring i alla lager.
+        auto paramID = rawID;
+        if (paramID.startsWith ("bass") && paramID.length() > 4 && juce::CharacterFunctions::isDigit (paramID[4]))
+            paramID = "bass" + paramID.substring (5);
+
         static const std::map<juce::String, juce::String> texts {
             // Mönster och mix
             { "patternBars", "How many bars the pattern lasts before it repeats." },
-            { "bassDivision", "The bass step grid: 1/16 for rolling basses, 1/8 T for triplet (K-B-B) grooves, and more." },
             { "noteEnd", "What happens when the DAW note ends in the middle of the pattern: stop at once, finish the bar or finish the whole pattern." },
-            { "bassGate", "Scales the length of every bass step. Lower = shorter, punchier notes." },
+            { "bassGate", "Scales the length of every step in this layer. Lower = shorter, punchier notes." },
             { "gain", "Output volume of the whole plugin." },
-            { "duckAmount", "Sidechain depth: how far the bass is pushed down while the kick plays. 0 % = no ducking." },
+            { "bassDuck", "Sidechain depth for this layer: how far it is pushed down while the kick plays. 0 % = no ducking." },
+            { "bassOn", "Turns this bass layer on or off." },
+            { "bassGrid", "This layer's step grid: 1/16 for rolling basses, 1/8 T for triplet (K-B-B) grooves, and more." },
 
             // Kick
             { "kickKeyFollow", "Follow: the kick's tail is tuned to the note you play. Fixed: it stays on C1 + TUNE whatever the note." },

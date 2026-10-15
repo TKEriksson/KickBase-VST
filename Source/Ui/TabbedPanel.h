@@ -59,9 +59,11 @@ public:
     void resized() override
     {
         auto header = getLocalBounds().removeFromTop (headerHeight).reduced (10, 4).withTrimmedTop (2);
+        const auto count = std::max (1, (int) tabs.size());
+        const auto width = std::min (110, (header.getWidth() - 6 * (count - 1)) / count);
         for (auto& tab : tabs)
         {
-            tab.button->setBounds (header.removeFromLeft (96));
+            tab.button->setBounds (header.removeFromLeft (width));
             header.removeFromLeft (6);
         }
 

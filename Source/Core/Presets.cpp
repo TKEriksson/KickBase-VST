@@ -169,8 +169,28 @@ namespace Presets
         return {};
     }
 
-    bool belongsTo (Section section, const juce::String& id)
+    int bassLayerOf (const juce::String& id)
     {
+        if (! id.startsWith ("bass") || id.length() < 5 || ! juce::CharacterFunctions::isDigit (id[4]))
+            return -1;
+        const auto layer = id[4] - '1';
+        return juce::isPositiveAndBelow (layer, ParamID::numBassLayers) ? layer : -1;
+    }
+
+    juce::String toBassLayer (const juce::String& id, int layer)
+    {
+        return bassLayerOf (id) >= 0 ? "bass" + juce::String (layer + 1) + id.substring (5) : id;
+    }
+
+    bool belongsTo (Section section, const juce::String& id, int layer)
+    {
+        // Ett baslagers fält som hör till mönstret eller sidechainen snarare än till ljudet.
+        auto isLayerField = [&id] (BassField field)
+        {
+            const auto l = bassLayerOf (id);
+            return l >= 0 && id == ParamID::bass (l, field);
+        };
+
         switch (section)
         {
             case Section::full:
@@ -178,14 +198,15 @@ namespace Presets
             case Section::kick:
                 return id.startsWith ("kick");
             case Section::bass:
-                return (id.startsWith ("bass") && id != ParamID::bassOn && id != ParamID::bassGate && id != ParamID::bassGrid)
+                return (bassLayerOf (id) == layer && ! isLayerField (BassField::on) && ! isLayerField (BassField::gate)
+                        && ! isLayerField (BassField::duck) && ! isLayerField (BassField::grid))
                     || id == ParamID::gateAttack || id == ParamID::gateRelease;
             case Section::pattern:
-                return id == ParamID::patternBars || id == ParamID::bassGrid || id == ParamID::bassGate || id == ParamID::noteEnd;
+                return id == ParamID::patternBars || id == ParamID::noteEnd || isLayerField (BassField::grid) || isLayerField (BassField::gate);
             case Section::effects:
                 return Effects::isEffectParameter (id);
             case Section::sidechain:
-                return id.startsWith ("sc") || id == ParamID::duckAmount;
+                return id.startsWith ("sc") || isLayerField (BassField::duck);
             case Section::master:
                 return id.startsWith ("master");
             case Section::lfo:
@@ -230,7 +251,7 @@ namespace Presets
     }
 
     void applyFactory (Section section, bool effectVersion, int index,
-                       juce::AudioProcessorValueTreeState& apvts, Pattern& pattern, SidechainCurve& curve)
+                       juce::AudioProcessorValueTreeState& apvts, Pattern& pattern, SidechainCurve& curve, int layer)
     {
         const auto& list = listFor (section, effectVersion);
         if (! juce::isPositiveAndBelow (index, (int) list.size()))
@@ -245,14 +266,15 @@ namespace Presets
             for (auto* p : apvts.processor.getParameters())
             {
                 auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p);
-                if (ranged == nullptr || ! belongsTo (section, ranged->getParameterID()) || ranged->getParameterID() == ParamID::patternBars)
+                if (ranged == nullptr || ! belongsTo (section, ranged->getParameterID(), layer) || ranged->getParameterID() == ParamID::patternBars)
                     continue;
                 setParameter (*ranged, ranged->getDefaultValue());
             }
         }
 
+        // Basens presets skrivs för lager 1 och flyttas till det lager de laddas i.
         for (const auto& [id, value] : preset.values)
-            if (auto* parameter = apvts.getParameter (id))
+            if (auto* parameter = apvts.getParameter (section == Section::bass ? toBassLayer (id, layer) : juce::String (id)))
                 setParameter (*parameter, parameter->convertTo0to1 (value));
 
         if (section == Section::full || section == Section::sidechain)
@@ -272,7 +294,7 @@ namespace Presets
         {
             for (int bar = 0; bar < Pattern::maxBars; ++bar)
             {
-                auto& step = pattern.bassStep (grid, bar * Pattern::bassStepsPerBar (grid) + tweak.step);
+                auto& step = pattern.bassStep (0, grid, bar * Pattern::bassStepsPerBar (grid) + tweak.step);
                 step.on = true;
                 step.pitch = tweak.pitch;
                 step.slide = tweak.slide;
@@ -281,7 +303,7 @@ namespace Presets
             }
         }
 
-        if (auto* gridParam = apvts.getParameter (ParamID::bassGrid))
+        if (auto* gridParam = apvts.getParameter (ParamID::bass (0, BassField::grid)))
             setParameter (*gridParam, gridParam->convertTo0to1 ((float) grid));
     }
 }

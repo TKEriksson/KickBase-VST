@@ -204,7 +204,7 @@ namespace
     {
         InstrumentProcessor processor;
         auto* pitch = processor.apvts.getParameter (ParamID::kickPitch);
-        auto* cutoff = processor.apvts.getParameter (ParamID::bassCutoff);
+        auto* cutoff = processor.apvts.getParameter (ParamID::bass (0, BassField::cutoff));
 
         pitch->setValueNotifyingHost (pitch->convertTo0to1 (55.0f));
         cutoff->setValueNotifyingHost (cutoff->convertTo0to1 (1000.0f));
@@ -254,8 +254,8 @@ namespace
                         return i;
                 return -1;
             };
-            processor->modRoutes.add (0, indexOf ("bassCutoff"), 0.35f);
-            processor->modRoutes.add (1, indexOf ("bassCutoff"), -0.2f);
+            processor->modRoutes.add (0, indexOf ("bass1Cutoff"), 0.35f);
+            processor->modRoutes.add (1, indexOf ("bass1Cutoff"), -0.2f);
             processor->modRoutes.add (2, indexOf ("kickPitch"), 0.25f);
         }
 

@@ -18,6 +18,7 @@ PluginBase::PluginBase (const BusesProperties& buses, juce::AudioProcessorValueT
 {
     params.setModulator (&modulator); // ljudtrådens parametrar läses med LFO-modulering
     presetNames.fill ("Default");
+    bassPresetNames.fill ("Default");
     presetNames[(size_t) Presets::Section::full] = "Init";
     presetNames[(size_t) Presets::Section::pattern] = "Rolling";
 }
@@ -31,7 +32,19 @@ void PluginBase::prepareBase (double sampleRate)
 
 // params läser med modulering (se konstruktorn), så kick och bas får LFO:erna härifrån.
 KickParams PluginBase::readModulatedKick (int keyPitchClass) const { return params.readKick (keyPitchClass); }
-BassParams PluginBase::readModulatedBass (int rootMidiNote) const  { return params.readBass (rootMidiNote); }
+BassParams PluginBase::readModulatedBass (int layer, int rootMidiNote) const { return params.readBass (layer, rootMidiNote); }
+
+juce::String& PluginBase::presetNameSlot (Presets::Section section, int layer)
+{
+    return section == Presets::Section::bass ? bassPresetNames[(size_t) juce::jlimit (0, ParamID::numBassLayers - 1, layer)]
+                                             : presetNames[(size_t) section];
+}
+
+juce::String PluginBase::getPresetName (Presets::Section section, int layer) const
+{
+    return section == Presets::Section::bass ? bassPresetNames[(size_t) juce::jlimit (0, ParamID::numBassLayers - 1, layer)]
+                                             : presetNames[(size_t) section];
+}
 
 juce::Optional<juce::AudioPlayHead::PositionInfo> PluginBase::getHostPosition() const
 {
@@ -47,6 +60,8 @@ void PluginBase::getStateInformation (juce::MemoryBlock& destData)
     state.setProperty ("effectOrder", effectOrder.toString(), nullptr);
     for (int i = 0; i < Presets::numSections; ++i)
         state.setProperty (presetProperty ((Presets::Section) i), presetNames[(size_t) i], nullptr);
+    for (int layer = 0; layer < ParamID::numBassLayers; ++layer)
+        state.setProperty ("presetBass" + juce::String (layer + 1), bassPresetNames[(size_t) layer], nullptr);
     state.appendChild (pattern.toValueTree(), nullptr);
     state.appendChild (clickToValueTree(), nullptr);
     state.appendChild (sidechainCurve.toValueTree(), nullptr);
@@ -66,6 +81,8 @@ void PluginBase::setStateInformation (const void* data, int sizeInBytes)
     effectOrder.fromString (state.getProperty ("effectOrder").toString());
     for (int i = 0; i < Presets::numSections; ++i)
         presetNames[(size_t) i] = state.getProperty (presetProperty ((Presets::Section) i), presetNames[(size_t) i]).toString();
+    for (int layer = 0; layer < ParamID::numBassLayers; ++layer)
+        bassPresetNames[(size_t) layer] = state.getProperty ("presetBass" + juce::String (layer + 1), bassPresetNames[(size_t) layer]).toString();
 
     if (auto patternTree = state.getChildWithName (Pattern::treeType); patternTree.isValid())
     {
@@ -104,16 +121,16 @@ void PluginBase::markStateChanged()
     updateHostDisplay (ChangeDetails().withNonParameterStateChanged (true));
 }
 
-void PluginBase::resetSectionToDefaults (Presets::Section section)
+void PluginBase::resetSectionToDefaults (Presets::Section section, int layer)
 {
     for (auto* p : getParameters())
-        if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p); ranged != nullptr && Presets::belongsTo (section, ranged->getParameterID()))
+        if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p); ranged != nullptr && Presets::belongsTo (section, ranged->getParameterID(), layer))
             Presets::setParameter (*ranged, ranged->getDefaultValue());
 }
 
-void PluginBase::loadFactoryPreset (Presets::Section section, int index)
+void PluginBase::loadFactoryPreset (Presets::Section section, int index, int layer)
 {
-    Presets::applyFactory (section, effectVersion, index, apvts, pattern, sidechainCurve);
+    Presets::applyFactory (section, effectVersion, index, apvts, pattern, sidechainCurve, layer);
 
     if (section == Presets::Section::full || section == Presets::Section::effects)
         effectOrder.reset();
@@ -125,9 +142,10 @@ void PluginBase::loadFactoryPreset (Presets::Section section, int index)
     {
         clearClickSample();
         presetNames.fill ({}); // delarna kommer inte längre från sina egna presets
+        bassPresetNames.fill ({});
     }
 
-    presetNames[(size_t) section] = Presets::factoryName (section, effectVersion, index);
+    presetNameSlot (section, layer) = Presets::factoryName (section, effectVersion, index);
     patternChanged();
 }
 
@@ -138,7 +156,7 @@ juce::Array<juce::File> PluginBase::getUserPresets (Presets::Section section) co
     return files;
 }
 
-bool PluginBase::saveUserPreset (Presets::Section section, const juce::String& name)
+bool PluginBase::saveUserPreset (Presets::Section section, const juce::String& name, int layer)
 {
     const auto fileName = juce::File::createLegalFileName (name.trim());
     const auto directory = Presets::folder (section, effectVersion);
@@ -159,11 +177,13 @@ bool PluginBase::saveUserPreset (Presets::Section section, const juce::String& n
     for (auto* p : getParameters())
     {
         auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p);
-        if (ranged == nullptr || ! Presets::belongsTo (section, ranged->getParameterID()))
+        if (ranged == nullptr || ! Presets::belongsTo (section, ranged->getParameterID(), layer))
             continue;
 
+        // Basens presets sparas som lager 1, så att de kan laddas i vilket lager som helst.
         auto* entry = paramsXml->createNewChildElement ("Param");
-        entry->setAttribute ("id", ranged->getParameterID());
+        entry->setAttribute ("id", section == Presets::Section::bass ? Presets::toBassLayer (ranged->getParameterID(), 0)
+                                                                     : ranged->getParameterID());
         entry->setAttribute ("value", (double) ranged->convertFrom0to1 (ranged->getValue()));
     }
 
@@ -182,12 +202,12 @@ bool PluginBase::saveUserPreset (Presets::Section section, const juce::String& n
     if (! root.writeTo (directory.getChildFile (fileName + presetFileExtension)))
         return false;
 
-    presetNames[(size_t) section] = fileName;
+    presetNameSlot (section, layer) = fileName;
     updateHostDisplay (ChangeDetails().withNonParameterStateChanged (true));
     return true;
 }
 
-bool PluginBase::loadUserPreset (Presets::Section section, const juce::File& file)
+bool PluginBase::loadUserPreset (Presets::Section section, const juce::File& file, int layer)
 {
     const auto xml = juce::XmlDocument::parse (file);
     if (xml == nullptr || ! xml->hasTagName ("MyOwnFruitPreset")
@@ -196,7 +216,7 @@ bool PluginBase::loadUserPreset (Presets::Section section, const juce::File& fil
 
     // Delen till standard först: parametrar som saknas i filen (t.ex. nya sedan presetet
     // sparades) får sitt standardvärde i stället för att ärvas från förra ljudet.
-    resetSectionToDefaults (section);
+    resetSectionToDefaults (section, layer);
 
     if (section == Presets::Section::full || section == Presets::Section::effects)
         effectOrder.fromString (xml->getStringAttribute ("effectOrder"));
@@ -205,8 +225,10 @@ bool PluginBase::loadUserPreset (Presets::Section section, const juce::File& fil
     {
         for (const auto* entry : paramsXml->getChildIterator())
         {
-            const auto id = entry->getStringAttribute ("id");
-            if (auto* parameter = apvts.getParameter (id); parameter != nullptr && Presets::belongsTo (section, id))
+            auto id = entry->getStringAttribute ("id");
+            if (section == Presets::Section::bass)
+                id = Presets::toBassLayer (id, layer);
+            if (auto* parameter = apvts.getParameter (id); parameter != nullptr && Presets::belongsTo (section, id, layer))
                 Presets::setParameter (*parameter, parameter->convertTo0to1 ((float) entry->getDoubleAttribute ("value")));
         }
     }
@@ -240,9 +262,12 @@ bool PluginBase::loadUserPreset (Presets::Section section, const juce::File& fil
     }
 
     if (section == Presets::Section::full)
+    {
         presetNames.fill ({});
+        bassPresetNames.fill ({});
+    }
 
-    presetNames[(size_t) section] = file.getFileNameWithoutExtension();
+    presetNameSlot (section, layer) = file.getFileNameWithoutExtension();
     patternChanged();
     return true;
 }
@@ -260,7 +285,8 @@ bool PluginBase::exportWav (const juce::File& file, ExportPart part, int bars)
             parameter->setValueNotifyingHost (0.0f);
     };
     if (part == ExportPart::kick)
-        turnOff (ParamID::bassOn);
+        for (int layer = 0; layer < ParamID::numBassLayers; ++layer)
+            turnOff (ParamID::bass (layer, BassField::on).toRawUTF8());
     if (part == ExportPart::bass)
         turnOff (ParamID::kickOn);
 

@@ -50,7 +50,7 @@ public:
 
 private:
     PresetButton presets;
-    ChoiceComponent mode, length, position;
-    KnobComponent depth;
+    ChoiceComponent mode, length;
+    std::vector<std::unique_ptr<KnobComponent>> depths; // en per baslager
     DuckCurveView curve;
 };

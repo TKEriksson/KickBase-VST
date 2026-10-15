@@ -19,18 +19,9 @@ double Pattern::bassStepsPerQuarter (BassGrid grid)
     return bassStepsPerBar (grid) / 4.0;
 }
 
-BassGrid Pattern::applyTemplate (PatternTemplate t)
+void Pattern::clearLayer (int layer)
 {
-    // Kick på varje fjärdedel i alla mallar utom Clear.
-    for (int i = 0; i < maxKickSteps; ++i)
-        kick[(size_t) i] = t != PatternTemplate::clear && i % 4 == 0;
-
-    auto grid = BassGrid::sixteenth;
-    if (t == PatternTemplate::triplet)
-        grid = BassGrid::eighthTriplet;
-
-    // Nollställ alla rutnät, och fyll sedan mallens.
-    for (auto& steps : bass)
+    for (auto& steps : bass[(size_t) layer])
     {
         for (auto& step : steps)
         {
@@ -41,9 +32,30 @@ BassGrid Pattern::applyTemplate (PatternTemplate t)
             step.velocity = 0.8f;
         }
     }
+}
+
+BassGrid Pattern::applyTemplate (PatternTemplate t)
+{
+    // Kick på varje fjärdedel i alla mallar utom Clear.
+    for (int i = 0; i < maxKickSteps; ++i)
+        kick[(size_t) i] = t != PatternTemplate::clear && i % 4 == 0;
+
+    for (int layer = 1; layer < numLayers; ++layer)
+        clearLayer (layer);
+    return applyLayerTemplate (0, t);
+}
+
+BassGrid Pattern::applyLayerTemplate (int layer, PatternTemplate t)
+{
+    auto grid = BassGrid::sixteenth;
+    if (t == PatternTemplate::triplet)
+        grid = BassGrid::eighthTriplet;
+
+    // Nollställ lagrets alla rutnät, och fyll sedan mallens.
+    clearLayer (layer);
 
     const auto perQuarter = (int) bassStepsPerQuarter (grid);
-    auto& steps = bass[(size_t) grid];
+    auto& steps = bass[(size_t) layer][(size_t) grid];
 
     for (int i = 0; i < maxBars * bassStepsPerBar (grid); ++i)
     {
@@ -86,10 +98,12 @@ juce::ValueTree Pattern::toValueTree() const
     tree.setProperty ("version", currentVersion, nullptr);
     tree.setProperty ("kick", join<int> (maxKickSteps, [this] (int i) { return kick[(size_t) i].load() ? 1 : 0; }), nullptr);
 
+    for (int layer = 0; layer < numLayers; ++layer)
     for (int g = 0; g < numGrids; ++g)
     {
-        const auto& steps = bass[(size_t) g];
+        const auto& steps = bass[(size_t) layer][(size_t) g];
         juce::ValueTree child ("Bass");
+        child.setProperty ("layer", layer, nullptr);
         child.setProperty ("grid", g, nullptr);
         child.setProperty ("on",       join<int>   (maxBassSteps, [&] (int i) { return steps[(size_t) i].on.load() ? 1 : 0; }), nullptr);
         child.setProperty ("pitch",    join<int>   (maxBassSteps, [&] (int i) { return steps[(size_t) i].pitch.load(); }), nullptr);
@@ -124,10 +138,11 @@ void Pattern::fromValueTree (const juce::ValueTree& tree)
     for (const auto& child : tree)
     {
         const auto g = gridIndex ((int) child["grid"]);
-        if (! child.hasType ("Bass") || g < 0 || g >= numGrids)
+        const auto layer = (int) child.getProperty ("layer", 0);
+        if (! child.hasType ("Bass") || g < 0 || g >= numGrids || ! juce::isPositiveAndBelow (layer, numLayers))
             continue;
 
-        auto& steps = bass[(size_t) g];
+        auto& steps = bass[(size_t) layer][(size_t) g];
         const auto on = split (child["on"]), pitch = split (child["pitch"]), slide = split (child["slide"]);
         const auto gate = split (child["gate"]), velocity = split (child["velocity"]);
 

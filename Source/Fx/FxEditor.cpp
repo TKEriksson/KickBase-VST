@@ -5,16 +5,18 @@ FxEditor::FxEditor (FxProcessor& p)
 {
     setLookAndFeel (&lookAndFeel);
 
-    for (auto* component : std::initializer_list<juce::Component*> { &header, &kick, &gate, &lower, &mix, &info })
+    for (auto* component : std::initializer_list<juce::Component*> { &header, &tabs, &info })
         addAndMakeVisible (component);
 
-    lower.addTab ("PATTERN", Theme::pattern, pattern);
-    lower.addTab ("EFFECTS", Theme::effects, effects);
-    lower.addTab ("SIDECHAIN", Theme::mix, sidechain);
-    lower.addTab ("LFO", Theme::lfo, lfo);
-    lower.addTab ("MASTER", Theme::master, masterPage);
+    tabs.addTab ("PATTERN", Theme::pattern, pattern);
+    tabs.addTab ("KICK", Theme::kick, kick);
+    tabs.addTab ("GATE", Theme::gate, gate);
+    tabs.addTab ("EFFECTS", Theme::effects, effects);
+    tabs.addTab ("SIDECHAIN", Theme::mix, sidechain);
+    tabs.addTab ("LFO", Theme::lfo, lfo);
+    tabs.addTab ("MASTER", Theme::master, masterPage);
 
-    setSize (1060, 766);
+    setSize (1060, 700);
 }
 
 FxEditor::~FxEditor()
@@ -30,19 +32,9 @@ void FxEditor::paint (juce::Graphics& g)
 void FxEditor::resized()
 {
     auto area = getLocalBounds().reduced (10);
-    info.setBounds (area.removeFromBottom (22));
-    area.removeFromBottom (8);
-
     header.setBounds (area.removeFromTop (44));
     area.removeFromTop (4);
-
-    auto top = area.removeFromTop (430);
-    kick.setBounds (top.removeFromLeft (top.getWidth() / 2 - 5));
-    top.removeFromLeft (10);
-    gate.setBounds (top);
-    area.removeFromTop (10);
-
-    mix.setBounds (area.removeFromRight (190));
-    area.removeFromRight (10);
-    lower.setBounds (area);
+    info.setBounds (area.removeFromBottom (22));
+    area.removeFromBottom (6);
+    tabs.setBounds (area);
 }

@@ -8,7 +8,8 @@
 class PresetButton : public juce::Component, private juce::Timer
 {
 public:
-    PresetButton (PluginBase& processor, Presets::Section section, juce::Colour accent);
+    // `layer`: vilket baslager presetet gäller (bara Bass).
+    PresetButton (PluginBase& processor, Presets::Section section, juce::Colour accent, int layer = 0);
     ~PresetButton() override;
 
     void resized() override { button.setBounds (getLocalBounds()); }
@@ -21,6 +22,7 @@ private:
 
     PluginBase& processor;
     const Presets::Section section;
+    const int layer;
     juce::TextButton button;
 
     // Spara-dialogen lånar editorns LookAndFeel och måste stängas om editorn stängs.

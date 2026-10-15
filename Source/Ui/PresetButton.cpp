@@ -13,8 +13,8 @@ namespace
     const juce::String arrow = juce::String::fromUTF8 ("  \xe2\x96\xbe"); // "  " + liten pil nedåt
 }
 
-PresetButton::PresetButton (PluginBase& p, Presets::Section sectionIn, juce::Colour accent)
-    : processor (p), section (sectionIn)
+PresetButton::PresetButton (PluginBase& p, Presets::Section sectionIn, juce::Colour accent, int layerIn)
+    : processor (p), section (sectionIn), layer (layerIn)
 {
     button.setColour (juce::TextButton::buttonOnColourId, accent);
     button.setTooltip (Presets::sectionName (section) + " presets");
@@ -36,7 +36,7 @@ PresetButton::~PresetButton()
 
 void PresetButton::updateText()
 {
-    const auto name = processor.getPresetName (section);
+    const auto name = processor.getPresetName (section, layer);
     const auto text = (name.isEmpty() ? juce::String ("Preset") : name) + arrow;
     if (button.getButtonText() != text)
         button.setButtonText (text);
@@ -45,7 +45,7 @@ void PresetButton::updateText()
 void PresetButton::showMenu()
 {
     const auto effectVersion = processor.isEffectVersion();
-    const auto current = processor.getPresetName (section);
+    const auto current = processor.getPresetName (section, layer);
     const auto userPresets = processor.getUserPresets (section);
 
     juce::PopupMenu menu;
@@ -74,9 +74,9 @@ void PresetButton::showMenu()
                         [this, userPresets] (int result)
     {
         if (result >= userBase && result < userBase + userPresets.size())
-            processor.loadUserPreset (section, userPresets[result - userBase]);
+            processor.loadUserPreset (section, userPresets[result - userBase], layer);
         else if (result >= factoryBase && result < userBase)
-            processor.loadFactoryPreset (section, result - factoryBase);
+            processor.loadFactoryPreset (section, result - factoryBase, layer);
         else if (result == saveId)
             askForNameAndSave();
         else if (result == openFolderId)
@@ -97,7 +97,7 @@ void PresetButton::askForNameAndSave()
     window->setLookAndFeel (&getLookAndFeel());
     saveDialog = window;
 
-    const auto current = processor.getPresetName (section);
+    const auto current = processor.getPresetName (section, layer);
     window->addTextEditor ("name", current.isEmpty() ? juce::String ("My preset") : current);
     window->addButton ("Save", 1, juce::KeyPress (juce::KeyPress::returnKey));
     window->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
@@ -109,7 +109,7 @@ void PresetButton::askForNameAndSave()
             return;
 
         const auto name = window->getTextEditorContents ("name");
-        if (! safeThis->processor.saveUserPreset (safeThis->section, name))
+        if (! safeThis->processor.saveUserPreset (safeThis->section, name, safeThis->layer))
             juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Could not save preset",
                                                     "Check that the name is valid: " + name);
         safeThis->updateText();

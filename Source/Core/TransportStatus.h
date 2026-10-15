@@ -1,7 +1,9 @@
 #pragma once
 
+#include <array>
 #include <atomic>
 #include <cmath>
+#include "Pattern.h"
 #include "TransportClock.h"
 
 // Det gränssnittet visar om uppspelningen. Skrivs från ljudtråden och läses av editorn,
@@ -15,7 +17,7 @@ struct TransportStatus
     std::atomic<int> keyNote { -1 };      // tonen som bestämmer tonarten, -1 = ingen
     std::atomic<bool> patternActive { false };
     std::atomic<int> kickStep { -1 };     // steg i mönstret som spelas nu, för markören
-    std::atomic<int> bassStep { -1 };
+    std::array<std::atomic<int>, Pattern::numLayers> bassSteps { -1, -1, -1 };
 
     void publish (const TransportClock& clock)
     {

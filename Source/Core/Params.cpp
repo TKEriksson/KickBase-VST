@@ -45,7 +45,7 @@ namespace
     }
 
     template <typename Formatter>
-    std::unique_ptr<AudioParameterFloat> floatParam (const char* id, const String& name, NormalisableRange<float> range,
+    std::unique_ptr<AudioParameterFloat> floatParam (const String& id, const String& name, NormalisableRange<float> range,
                                                      float defaultValue, Formatter format)
     {
         return std::make_unique<AudioParameterFloat> (
@@ -53,19 +53,38 @@ namespace
             AudioParameterFloatAttributes().withStringFromValueFunction ([format] (float v, int) { return format (v); }));
     }
 
-    auto ms (float min, float max, float centre, float def, const char* id, const String& name)
+    auto ms (float min, float max, float centre, float def, const String& id, const String& name)
     {
         return floatParam (id, name, skewed (min, max, centre, 0.01f), def, formatMs);
     }
 
-    auto percent (const char* id, const String& name, float def)
+    auto percent (const String& id, const String& name, float def)
     {
         return floatParam (id, name, NormalisableRange<float> (0.0f, 1.0f, 0.001f), def, formatPercent);
     }
 
-    auto curve (const char* id, const String& name, float def)
+    auto curve (const String& id, const String& name, float def)
     {
         return floatParam (id, name, skewed (0.2f, 8.0f, 1.5f, 0.01f), def, [] (float v) { return String (v, 2); });
+    }
+}
+
+namespace ParamID
+{
+    const char* bassFieldName (BassField field)
+    {
+        static const char* names[] { "On", "Level", "Gate", "Duck", "Grid",
+                                     "Octave", "Tune", "Shape", "PulseWidth", "Noise", "Sub", "SubOctave",
+                                     "Osc2Shape", "Osc2Pw", "Fm", "FmEnv", "Osc2Level", "Osc2Semi", "Osc2Detune",
+                                     "FilterType", "KeyTrack", "Cutoff", "Resonance", "EnvAmount", "EnvDecay", "VelToEnv",
+                                     "Attack", "Decay", "Sustain", "Release", "Glide", "Drive" };
+        static_assert (std::size (names) == (size_t) BassField::count);
+        return names[(size_t) field];
+    }
+
+    juce::String bass (int layer, BassField field)
+    {
+        return "bass" + juce::String (layer + 1) + bassFieldName (field);
     }
 }
 
@@ -75,8 +94,6 @@ namespace Params
     {
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::patternBars, 1 }, "Pattern Length",
                                                             StringArray { "1 bar", "2 bars", "4 bars" }, 0));
-        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::bassGrid, 1 }, "Bass Grid",
-                                                            Pattern::gridNames(), (int) BassGrid::sixteenth));
         if (includeNoteEnd)
             layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::noteEnd, 1 }, "Note End",
                                                                 StringArray { "Cut", "Finish bar", "Finish pattern" }, 0));
@@ -107,49 +124,59 @@ namespace Params
         layout.add (percent (ParamID::kickLevel, "Kick Level", 0.8f));
     }
 
-    void addBassCommonParams (Layout& layout, float defaultLevel)
+    void addBassCommonParams (Layout& layout, int layer, float defaultLevel)
     {
-        layout.add (std::make_unique<AudioParameterBool> (ParameterID { ParamID::bassOn, 1 }, "Bass On", true));
-        layout.add (percent (ParamID::bassLevel, "Bass Level", defaultLevel));
-        layout.add (floatParam (ParamID::bassGate, "Bass Gate", NormalisableRange<float> (0.05f, 1.0f, 0.001f), 1.0f, formatPercent));
-        layout.add (percent (ParamID::duckAmount, "Duck Amount", 0.8f));
+        using F = BassField;
+        auto id = [layer] (F f) { return ParamID::bass (layer, f); };
+        const auto title = "Bass " + String (layer + 1) + " ";
+
+        layout.add (std::make_unique<AudioParameterBool> (ParameterID { id (F::on), 1 }, title + "On", true));
+        layout.add (percent (id (F::level), title + "Level", defaultLevel));
+        layout.add (floatParam (id (F::gate), title + "Gate", NormalisableRange<float> (0.05f, 1.0f, 0.001f), 1.0f, formatPercent));
+        layout.add (percent (id (F::duck), title + "Duck", 0.8f));
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::grid), 1 }, title + "Grid",
+                                                            Pattern::gridNames(), (int) BassGrid::sixteenth));
     }
 
-    void addBassSynthParams (Layout& layout)
+    void addBassSynthParams (Layout& layout, int layer)
     {
-        layout.add (std::make_unique<AudioParameterInt> (ParameterID { ParamID::bassOctave, 1 }, "Bass Octave", -2, 1, 0));
-        layout.add (floatParam (ParamID::bassTune, "Bass Tune", NormalisableRange<float> (-12.0f, 12.0f, 0.01f), 0.0f,
+        using F = BassField;
+        auto id = [layer] (F f) { return ParamID::bass (layer, f); };
+        const auto title = "Bass " + String (layer + 1) + " ";
+
+        layout.add (std::make_unique<AudioParameterInt> (ParameterID { id (F::octave), 1 }, title + "Octave", -2, 1, 0));
+        layout.add (floatParam (id (F::tune), title + "Tune", NormalisableRange<float> (-12.0f, 12.0f, 0.01f), 0.0f,
                                 [] (float v) { return formatSemis (v, 2); }));
-        layout.add (floatParam (ParamID::bassShape, "Bass Shape", NormalisableRange<float> (0.0f, 3.0f, 0.001f), 2.0f, formatShape));
-        layout.add (floatParam (ParamID::bassPulseWidth, "Bass Pulse Width", NormalisableRange<float> (0.05f, 0.95f, 0.001f), 0.5f, formatPercent));
-        layout.add (percent (ParamID::bassNoise, "Bass Noise", 0.0f));
-        layout.add (percent (ParamID::bassSub, "Bass Sub", 0.3f));
-        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::bassSubOctave, 1 }, "Bass Sub Octave",
-                                                            StringArray { "-1 oct", "0 oct" }, 0));
-        layout.add (floatParam (ParamID::bassOsc2Shape, "Bass Osc2 Shape", NormalisableRange<float> (0.0f, 3.0f, 0.001f), 2.0f, formatShape));
-        layout.add (floatParam (ParamID::bassOsc2Pw, "Bass Osc2 Pulse Width", NormalisableRange<float> (0.05f, 0.95f, 0.001f), 0.5f, formatPercent));
-        layout.add (percent (ParamID::bassFm, "Bass FM", 0.0f));
-        layout.add (percent (ParamID::bassFmEnv, "Bass FM Env", 0.0f));
-        layout.add (percent (ParamID::bassOsc2Level, "Bass Osc2 Level", 0.0f));
-        layout.add (floatParam (ParamID::bassOsc2Semi, "Bass Osc2 Semi", NormalisableRange<float> (-24.0f, 24.0f, 1.0f), 0.0f,
+        layout.add (floatParam (id (F::shape), title + "Shape", NormalisableRange<float> (0.0f, 3.0f, 0.001f), 2.0f, formatShape));
+        layout.add (floatParam (id (F::pulseWidth), title + "Pulse Width", NormalisableRange<float> (0.05f, 0.95f, 0.001f), 0.5f, formatPercent));
+        layout.add (percent (id (F::noise), title + "Noise", 0.0f));
+        layout.add (percent (id (F::sub), title + "Sub", 0.3f));
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::subOctave), 1 }, title + "Sub Octave",
+                                                            StringArray { "-1 oct", "0 oct" }, 1));
+        layout.add (floatParam (id (F::osc2Shape), title + "Osc2 Shape", NormalisableRange<float> (0.0f, 3.0f, 0.001f), 2.0f, formatShape));
+        layout.add (floatParam (id (F::osc2Pw), title + "Osc2 Pulse Width", NormalisableRange<float> (0.05f, 0.95f, 0.001f), 0.5f, formatPercent));
+        layout.add (percent (id (F::fm), title + "FM", 0.0f));
+        layout.add (percent (id (F::fmEnv), title + "FM Env", 0.0f));
+        layout.add (percent (id (F::osc2Level), title + "Osc2 Level", 0.0f));
+        layout.add (floatParam (id (F::osc2Semi), title + "Osc2 Semi", NormalisableRange<float> (-24.0f, 24.0f, 1.0f), 0.0f,
                                 [] (float v) { return formatSemis (v, 0); }));
-        layout.add (floatParam (ParamID::bassOsc2Detune, "Bass Osc2 Detune", NormalisableRange<float> (0.0f, 50.0f, 0.1f), 0.0f,
+        layout.add (floatParam (id (F::osc2Detune), title + "Osc2 Detune", NormalisableRange<float> (0.0f, 50.0f, 0.1f), 0.0f,
                                 [] (float v) { return String (v, 1) + " ct"; }));
-        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::bassFilterType, 1 }, "Bass Filter Type",
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::filterType), 1 }, title + "Filter Type",
                                                             StringArray { "LP 24", "LP 12", "Band", "High" }, 0));
-        layout.add (percent (ParamID::bassKeyTrack, "Bass Key Track", 0.0f));
-        layout.add (floatParam (ParamID::bassCutoff, "Bass Cutoff", skewed (20.0f, 20000.0f, 600.0f, 0.1f), 300.0f, formatHz));
-        layout.add (percent (ParamID::bassResonance, "Bass Resonance", 0.3f));
-        layout.add (floatParam (ParamID::bassEnvAmount, "Bass Env Amount", NormalisableRange<float> (0.0f, 8.0f, 0.01f), 4.0f,
+        layout.add (percent (id (F::keyTrack), title + "Key Track", 0.0f));
+        layout.add (floatParam (id (F::cutoff), title + "Cutoff", skewed (20.0f, 20000.0f, 600.0f, 0.1f), 300.0f, formatHz));
+        layout.add (percent (id (F::resonance), title + "Resonance", 0.3f));
+        layout.add (floatParam (id (F::envAmount), title + "Env Amount", NormalisableRange<float> (0.0f, 8.0f, 0.01f), 4.0f,
                                 [] (float v) { return String (v, 1) + " oct"; }));
-        layout.add (ms (5.0f, 1000.0f, 150.0f, 120.0f, ParamID::bassEnvDecay, "Bass Env Decay"));
-        layout.add (percent (ParamID::bassVelToEnv, "Bass Vel > Env", 0.5f));
-        layout.add (ms (0.0f, 50.0f, 5.0f, 1.0f, ParamID::bassAttack, "Bass Attack"));
-        layout.add (ms (5.0f, 2000.0f, 200.0f, 200.0f, ParamID::bassDecay, "Bass Decay"));
-        layout.add (percent (ParamID::bassSustain, "Bass Sustain", 0.6f));
-        layout.add (ms (1.0f, 300.0f, 30.0f, 15.0f, ParamID::bassRelease, "Bass Release"));
-        layout.add (ms (1.0f, 500.0f, 80.0f, 60.0f, ParamID::bassGlide, "Bass Glide"));
-        layout.add (percent (ParamID::bassDrive, "Bass Drive", 0.2f));
+        layout.add (ms (5.0f, 1000.0f, 150.0f, 120.0f, id (F::envDecay), title + "Env Decay"));
+        layout.add (percent (id (F::velToEnv), title + "Vel > Env", 0.5f));
+        layout.add (ms (0.0f, 50.0f, 5.0f, 1.0f, id (F::attack), title + "Attack"));
+        layout.add (ms (5.0f, 2000.0f, 200.0f, 200.0f, id (F::decay), title + "Decay"));
+        layout.add (percent (id (F::sustain), title + "Sustain", 0.6f));
+        layout.add (ms (1.0f, 300.0f, 30.0f, 15.0f, id (F::release), title + "Release"));
+        layout.add (ms (1.0f, 500.0f, 80.0f, 60.0f, id (F::glide), title + "Glide"));
+        layout.add (percent (id (F::drive), title + "Drive", 0.2f));
     }
 
     void addFxParams (Layout& layout)
@@ -202,13 +229,39 @@ ParamRefs::ParamRefs (juce::AudioProcessorValueTreeState& apvts)
         if (auto* withId = dynamic_cast<juce::AudioProcessorParameterWithID*> (parameters[i]))
             entries.push_back ({ withId->paramID, apvts.getRawParameterValue (withId->paramID), i });
     }
+
+    // Baslagrens parametrar slås upp en gång här, så att ljudtråden läser dem med index.
+    for (int layer = 0; layer < ParamID::numBassLayers; ++layer)
+    {
+        for (int f = 0; f < (int) BassField::count; ++f)
+        {
+            auto& slot = bassEntries[(size_t) layer][(size_t) f];
+            slot = -1;
+            const auto id = ParamID::bass (layer, (BassField) f);
+            for (size_t e = 0; e < entries.size(); ++e)
+                if (entries[e].id == id)
+                    slot = (int) e;
+        }
+    }
+}
+
+float ParamRefs::valueOf (const Entry& entry) const
+{
+    return modulator != nullptr ? modulator->apply (entry.index, entry.value->load()) : entry.value->load();
+}
+
+float ParamRefs::bass (int layer, BassField field) const
+{
+    const auto index = bassEntries[(size_t) layer][(size_t) field];
+    jassert (index >= 0); // parametern finns inte i det här pluginet
+    return index >= 0 ? valueOf (entries[(size_t) index]) : 0.0f;
 }
 
 float ParamRefs::get (const char* paramID) const
 {
     for (const auto& entry : entries)
         if (entry.id == paramID) // jämför utan att allokera
-            return modulator != nullptr ? modulator->apply (entry.index, entry.value->load()) : entry.value->load();
+            return valueOf (entry);
 
     jassertfalse; // okänt parameter-ID
     return 0.0f;
@@ -238,35 +291,38 @@ KickParams ParamRefs::readKick (int keyPitchClass) const
     return p;
 }
 
-BassParams ParamRefs::readBass (int rootMidiNote) const
+BassParams ParamRefs::readBass (int layer, int rootMidiNote) const
 {
+    using F = BassField;
+    auto get = [this, layer] (F f) { return bass (layer, f); };
+
     BassParams p;
-    p.rootHz     = Params::midiToHz ((float) rootMidiNote + 12.0f * get (ParamID::bassOctave) + get (ParamID::bassTune));
-    p.shape      = get (ParamID::bassShape);
-    p.pulseWidth = get (ParamID::bassPulseWidth);
-    p.noise      = get (ParamID::bassNoise);
-    p.sub        = get (ParamID::bassSub);
-    p.subOctave  = getChoice (ParamID::bassSubOctave) == 1 ? 0 : -1;
-    p.osc2Shape  = get (ParamID::bassOsc2Shape);
-    p.osc2PulseWidth = get (ParamID::bassOsc2Pw);
-    p.fmAmount   = get (ParamID::bassFm);
-    p.fmEnvAmount = get (ParamID::bassFmEnv);
-    p.osc2Level  = get (ParamID::bassOsc2Level);
-    p.osc2Semis  = get (ParamID::bassOsc2Semi);
-    p.osc2Detune = get (ParamID::bassOsc2Detune);
-    p.filterType = (BassFilterType) getChoice (ParamID::bassFilterType);
-    p.keyTrack   = get (ParamID::bassKeyTrack);
-    p.cutoffHz   = get (ParamID::bassCutoff);
-    p.resonance  = get (ParamID::bassResonance);
-    p.envAmount  = get (ParamID::bassEnvAmount);
-    p.envDecayMs = get (ParamID::bassEnvDecay);
-    p.velToEnv   = get (ParamID::bassVelToEnv);
-    p.attackMs   = get (ParamID::bassAttack);
-    p.decayMs    = get (ParamID::bassDecay);
-    p.sustain    = get (ParamID::bassSustain);
-    p.releaseMs  = get (ParamID::bassRelease);
-    p.glideMs    = get (ParamID::bassGlide);
-    p.drive      = get (ParamID::bassDrive);
-    p.level      = get (ParamID::bassLevel);
+    p.rootHz     = Params::midiToHz ((float) rootMidiNote + 12.0f * get (F::octave) + get (F::tune));
+    p.shape      = get (F::shape);
+    p.pulseWidth = get (F::pulseWidth);
+    p.noise      = get (F::noise);
+    p.sub        = get (F::sub);
+    p.subOctave  = (int) get (F::subOctave) == 1 ? 0 : -1;
+    p.osc2Shape  = get (F::osc2Shape);
+    p.osc2PulseWidth = get (F::osc2Pw);
+    p.fmAmount   = get (F::fm);
+    p.fmEnvAmount = get (F::fmEnv);
+    p.osc2Level  = get (F::osc2Level);
+    p.osc2Semis  = get (F::osc2Semi);
+    p.osc2Detune = get (F::osc2Detune);
+    p.filterType = (BassFilterType) (int) get (F::filterType);
+    p.keyTrack   = get (F::keyTrack);
+    p.cutoffHz   = get (F::cutoff);
+    p.resonance  = get (F::resonance);
+    p.envAmount  = get (F::envAmount);
+    p.envDecayMs = get (F::envDecay);
+    p.velToEnv   = get (F::velToEnv);
+    p.attackMs   = get (F::attack);
+    p.decayMs    = get (F::decay);
+    p.sustain    = get (F::sustain);
+    p.releaseMs  = get (F::release);
+    p.glideMs    = get (F::glide);
+    p.drive      = get (F::drive);
+    p.level      = get (F::level);
     return p;
 }

@@ -38,7 +38,7 @@ void FruitLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int wi
                                          float rotaryStartAngle, float rotaryEndAngle, juce::Slider& slider)
 {
     const auto accent = slider.findColour (juce::Slider::rotarySliderFillColourId);
-    const auto bounds = juce::Rectangle<int> (x, y, width, height).toFloat().reduced (4.0f);
+    const auto bounds = juce::Rectangle<int> (x, y, width, height).toFloat().reduced (Theme::knobRingMargin);
     const auto radius = std::min (bounds.getWidth(), bounds.getHeight()) / 2.0f;
     const auto centre = bounds.getCentre();
     const auto arcRadius = radius - 3.0f;

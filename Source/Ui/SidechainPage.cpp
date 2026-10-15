@@ -17,7 +17,7 @@ bool DuckCurveView::curveMode() const
 
 float DuckCurveView::depth() const
 {
-    return processor.apvts.getRawParameterValue (ParamID::duckAmount)->load();
+    return processor.apvts.getRawParameterValue (ParamID::bass (0, BassField::duck))->load(); // kurvan visar lager 1
 }
 
 void DuckCurveView::timerCallback()
@@ -280,14 +280,19 @@ SidechainPage::SidechainPage (PluginBase& p)
     : presets (p, Presets::Section::sidechain, Theme::mix),
       mode (p.apvts, "scMode", "MODE"),
       length (p.apvts, "scLength", "LENGTH"),
-      position (p.apvts, "scPosition", "DUCK"),
-      depth (p.apvts, ParamID::duckAmount, "DEPTH", Theme::mix),
       curve (p)
 {
-    for (auto* c : std::initializer_list<juce::Component*> { &presets, &mode, &length, &position, &depth, &curve })
+    for (auto* c : std::initializer_list<juce::Component*> { &presets, &mode, &length, &curve })
         addAndMakeVisible (c);
 
-    position.box.setTooltip ("After effects: echo and reverb tails duck too. Before effects: tails ring through.");
+    const auto numLayers = p.isEffectVersion() ? 1 : ParamID::numBassLayers;
+    for (int layer = 0; layer < numLayers; ++layer)
+    {
+        const auto name = p.isEffectVersion() ? juce::String ("DEPTH") : "BASS " + juce::String (layer + 1);
+        depths.push_back (std::make_unique<KnobComponent> (p.apvts, ParamID::bass (layer, BassField::duck), name,
+                                                           p.isEffectVersion() ? Theme::mix : Theme::layerColour (layer)));
+        addAndMakeVisible (*depths.back());
+    }
 }
 
 void SidechainPage::resized()
@@ -295,7 +300,7 @@ void SidechainPage::resized()
     auto area = getLocalBounds();
     auto column = area.removeFromLeft (130);
     area.removeFromLeft (10);
-    auto knobColumn = area.removeFromLeft (90);
+    auto knobColumn = area.removeFromLeft (depths.size() > 1 ? 160 : 90);
     area.removeFromLeft (10);
 
     presets.setBounds (column.removeFromTop (24));
@@ -303,9 +308,13 @@ void SidechainPage::resized()
     mode.setBounds (column.removeFromTop (40));
     column.removeFromTop (2);
     length.setBounds (column.removeFromTop (40));
-    column.removeFromTop (2);
-    position.setBounds (column.removeFromTop (40));
 
-    depth.setBounds (knobColumn.removeFromTop (100));
+    // Djupet per lager, två och två.
+    const auto cell = depths.size() > 1 ? knobColumn.getWidth() / 2 : knobColumn.getWidth();
+    for (size_t i = 0; i < depths.size(); ++i)
+    {
+        const auto row = (int) i / 2, col = (int) i % 2;
+        depths[i]->setBounds (knobColumn.getX() + col * cell, knobColumn.getY() + row * 86, cell, 82);
+    }
     curve.setBounds (area);
 }

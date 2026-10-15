@@ -52,7 +52,8 @@ MasterPage::MasterPage (PluginBase& p)
     powerAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, "masterOn", power);
 
     for (const auto& [id, name] : std::initializer_list<std::pair<const char*, const char*>> {
-             { "masterDrive", "DRIVE" }, { "masterClip", "CLIP" }, { "masterCeiling", "CEILING" }, { "masterRelease", "RELEASE" } })
+             { "masterDrive", "DRIVE" }, { "masterClip", "CLIP" }, { "masterCeiling", "CEILING" }, { "masterRelease", "RELEASE" },
+             { ParamID::gain, "OUTPUT" } })
     {
         knobs.push_back (std::make_unique<KnobComponent> (p.apvts, id, name, Theme::master));
         addAndMakeVisible (*knobs.back());

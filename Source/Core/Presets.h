@@ -22,8 +22,15 @@ namespace Presets
 
     juce::String sectionName (Section section);
 
-    // Hör parametern till den här delen? (Full innehåller alla.)
-    bool belongsTo (Section section, const juce::String& paramID);
+    // Hör parametern till den här delen? (Full innehåller alla.) `layer` gäller Bass: ett
+    // baslagers ljud (inte dess på/av, gate, duck och rutnät, som hör till mönster/sidechain).
+    bool belongsTo (Section section, const juce::String& paramID, int layer = 0);
+
+    // Vilket baslager ett parameter-ID hör till ("bass2Cutoff" -> 1), eller -1.
+    int bassLayerOf (const juce::String& paramID);
+
+    // Samma parameter i ett annat baslager ("bass1Cutoff", 2 -> "bass3Cutoff").
+    juce::String toBassLayer (const juce::String& paramID, int layer);
 
     // Mappen där användarens presets för delen sparas. Full och Bass har en mapp per plugin,
     // eftersom instrumentet och FX-versionen har olika parametrar där.
@@ -35,7 +42,7 @@ namespace Presets
     // Sätter delens parametrar till fabrikspresetets värden (övriga i delen till standard) och,
     // för Full och Pattern, fyller mönstret. Rutnätet sätts via parametern.
     void applyFactory (Section section, bool effectVersion, int index,
-                       juce::AudioProcessorValueTreeState& apvts, Pattern& pattern, SidechainCurve& curve);
+                       juce::AudioProcessorValueTreeState& apvts, Pattern& pattern, SidechainCurve& curve, int layer = 0);
 
     // Sätter en parameter som en användare skulle: med gest, så att DAW:en kan spela in den.
     void setParameter (juce::RangedAudioParameter& parameter, float normalisedValue);
