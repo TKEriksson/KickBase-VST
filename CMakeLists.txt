@@ -85,12 +85,12 @@ endfunction()
 
 # MyOwnFruit: instrumentet som läggs i Channel Rack. Spelar mönstret när en ton hålls.
 juce_add_plugin(MyOwnFruit
-    COMPANY_NAME "Tobias Eriksson"
+    COMPANY_NAME "TKDEV"
     BUNDLE_ID com.tobiaseriksson.myownfruit
     PLUGIN_MANUFACTURER_CODE Tbes
     PLUGIN_CODE Mofr
     FORMATS VST3 Standalone
-    PRODUCT_NAME "MyOwnFruit"
+    PRODUCT_NAME "Kickbase"
     IS_SYNTH TRUE
     NEEDS_MIDI_INPUT TRUE
     NEEDS_MIDI_OUTPUT FALSE
@@ -110,12 +110,12 @@ myownfruit_configure_plugin(MyOwnFruit)
 
 # MyOwnFruit FX: effekten som läggs i mixern och hackar upp ljudet från en annan synth.
 juce_add_plugin(MyOwnFruitFX
-    COMPANY_NAME "Tobias Eriksson"
+    COMPANY_NAME "TKDEV"
     BUNDLE_ID com.tobiaseriksson.myownfruitfx
     PLUGIN_MANUFACTURER_CODE Tbes
     PLUGIN_CODE Mofx
     FORMATS VST3
-    PRODUCT_NAME "MyOwnFruit FX"
+    PRODUCT_NAME "Kickbase FX"
     IS_SYNTH FALSE
     NEEDS_MIDI_INPUT FALSE
     NEEDS_MIDI_OUTPUT FALSE
@@ -156,6 +156,6 @@ target_sources(MyOwnFruitTool PRIVATE
     Tools/Tool.cpp
     Tools/Analyzer.cpp
 )
-target_compile_definitions(MyOwnFruitTool PRIVATE JucePlugin_Name="MyOwnFruit")
+target_compile_definitions(MyOwnFruitTool PRIVATE JucePlugin_Name="Kickbase")
 target_link_libraries(MyOwnFruitTool PRIVATE juce::juce_audio_utils juce::juce_dsp)
 myownfruit_configure(MyOwnFruitTool)

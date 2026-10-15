@@ -1,5 +1,5 @@
 @echo off
-rem Bygger MyOwnFruit med MSVC + Ninja (CMake och Ninja foljer med Visual Studio Build Tools).
+rem Bygger Kickbase med MSVC + Ninja (CMake och Ninja foljer med Visual Studio Build Tools).
 rem Anvandning: build.bat [Debug|Release]   (standard: Release)
 
 setlocal
@@ -21,6 +21,6 @@ echo.
 "%~dp0build\%CONFIG%\MyOwnFruitTests_artefacts\%CONFIG%\MyOwnFruitTests.exe" || exit /b 1
 
 echo.
-echo Klart! Instrument: build\%CONFIG%\MyOwnFruit_artefacts\%CONFIG%\VST3\MyOwnFruit.vst3
-echo        Effekt:     build\%CONFIG%\MyOwnFruitFX_artefacts\%CONFIG%\VST3\MyOwnFruit FX.vst3
-echo        App:        build\%CONFIG%\MyOwnFruit_artefacts\%CONFIG%\Standalone\MyOwnFruit.exe
+echo Klart! Instrument: build\%CONFIG%\MyOwnFruit_artefacts\%CONFIG%\VST3\Kickbase.vst3
+echo        Effekt:     build\%CONFIG%\MyOwnFruitFX_artefacts\%CONFIG%\VST3\Kickbase FX.vst3
+echo        App:        build\%CONFIG%\MyOwnFruit_artefacts\%CONFIG%\Standalone\Kickbase.exe

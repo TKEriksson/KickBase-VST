@@ -1,10 +1,10 @@
-# MyOwnFruit
+# Kickbase
 
 VST3-plugins för kick och rullande bas i psytrance, byggda med [JUCE](https://juce.com) 8.
 
-- **MyOwnFruit** (instrument): kick + bassynt som spelar ett mönster så länge en ton hålls i
+- **Kickbase** (instrument): kick + tre baslager som spelar ett mönster så länge en ton hålls i
   DAW:en. Tonen bestämmer tonarten, DAW:ens taktstreck var stegen hamnar.
-- **MyOwnFruit FX** (effekt): läggs på mixerkanalen där en annan synth (t.ex. Serum) hamnar.
+- **Kickbase FX** (effekt): läggs på mixerkanalen där en annan synth (t.ex. Serum) hamnar.
   Synthens ljud gate:as av mönstret och duckas under en egen kick.
 
 Designen finns i [docs/design.md](docs/design.md).
@@ -53,13 +53,13 @@ När DAW:en står still släpps ljudet igenom orört och ingen kick spelas.
 
 **Presets:** varje del (hela pluginet, kick, bas, mönster, effektkedjan, varje effekt, sidechain,
 LFO, master) har en egen presetmeny med fabrikspresets, egna presets, "Save preset..." och
-"Open preset folder". Egna presets sparas som filer under `Dokument\MyOwnFruit\Presets\`.
+"Open preset folder". Egna presets sparas som filer under `Dokument\Kickbase\Presets\`.
 De fyra "(... style)"-presetsen är anpassade mot referenslåtar med `fitbeat` (se nedan); spela
 dem i låtens tempo och med tonen som står i kommentaren i `Presets.cpp` (E4 eller G4).
 
 **EXPORT** (instrumentet): exporterar kicken, basen, hela mixen eller alla tre som WAV-loopar på
 4, 8 eller 16 takter, i DAW:ens senaste tempo och med den senast spelade tonen. Filerna föreslås
-under `Dokument\MyOwnFruit\Exports\`.
+under `Dokument\Kickbase\Exports\`.
 
 **Gränssnittet:**
 - Dra i handtagen i kurvorna för att forma envelopes (shift = finjustering, dubbelklick = återställ).

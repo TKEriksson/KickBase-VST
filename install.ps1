@@ -1,4 +1,4 @@
-# Installerar MyOwnFruit och MyOwnFruit FX i C:\Program Files\Common Files\VST3.
+# Installerar Kickbase och Kickbase FX i C:\Program Files\Common Files\VST3.
 # Kör i en PowerShell som administratör:  .\install.ps1  (eller .\install.ps1 RelWithDebInfo)
 
 param([string]$Config = "Release")
@@ -26,9 +26,18 @@ if (Test-Path $stray) {
     Remove-Item -Recurse -Force (Join-Path $vst3 "Contents")
 }
 
+# Pluginet hette tidigare MyOwnFruit: ta bort de gamla så att FL inte visar båda.
+foreach ($old in @("MyOwnFruit.vst3", "MyOwnFruit FX.vst3")) {
+    $oldPath = Join-Path $vst3 $old
+    if (Test-Path $oldPath) {
+        Write-Host "Tar bort gamla $oldPath"
+        Remove-Item -Recurse -Force $oldPath
+    }
+}
+
 $plugins = @(
-    @{ Name = "MyOwnFruit.vst3";    Source = "$build\MyOwnFruit_artefacts\$Config\VST3\MyOwnFruit.vst3" },
-    @{ Name = "MyOwnFruit FX.vst3"; Source = "$build\MyOwnFruitFX_artefacts\$Config\VST3\MyOwnFruit FX.vst3" }
+    @{ Name = "Kickbase.vst3";    Source = "$build\MyOwnFruit_artefacts\$Config\VST3\Kickbase.vst3" },
+    @{ Name = "Kickbase FX.vst3"; Source = "$build\MyOwnFruitFX_artefacts\$Config\VST3\Kickbase FX.vst3" }
 )
 
 foreach ($plugin in $plugins) {

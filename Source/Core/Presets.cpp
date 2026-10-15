@@ -226,7 +226,7 @@ namespace Presets
             name = effectVersion ? "Gate" : "Bass";
 
         auto root = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory)
-                        .getChildFile ("MyOwnFruit").getChildFile ("Presets");
+                        .getChildFile ("Kickbase").getChildFile ("Presets");
         if (isSingleEffect (section))
             root = root.getChildFile ("Effects");
         return root.getChildFile (name);

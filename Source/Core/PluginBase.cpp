@@ -163,7 +163,7 @@ bool PluginBase::saveUserPreset (Presets::Section section, const juce::String& n
     if (fileName.isEmpty() || directory.createDirectory().failed())
         return false;
 
-    juce::XmlElement root ("MyOwnFruitPreset");
+    juce::XmlElement root ("KickbasePreset");
     root.setAttribute ("section", Presets::sectionName (section));
     root.setAttribute ("plugin", effectVersion ? "fx" : "instrument");
     root.setAttribute ("version", 1);
@@ -210,7 +210,7 @@ bool PluginBase::saveUserPreset (Presets::Section section, const juce::String& n
 bool PluginBase::loadUserPreset (Presets::Section section, const juce::File& file, int layer)
 {
     const auto xml = juce::XmlDocument::parse (file);
-    if (xml == nullptr || ! xml->hasTagName ("MyOwnFruitPreset")
+    if (xml == nullptr || ! xml->hasTagName ("KickbasePreset")
         || xml->getStringAttribute ("section") != Presets::sectionName (section))
         return false;
 

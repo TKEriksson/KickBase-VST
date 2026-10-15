@@ -55,8 +55,7 @@ HeaderBar::HeaderBar (PluginBase& p, const juce::String& subtitleIn)
 
 void HeaderBar::resized()
 {
-    const auto subtitleWidth = subtitle.isEmpty() ? 0 : 40;
-    presets.setBounds (14 + 160 + subtitleWidth, 9, 200, getHeight() - 18);
+    presets.setBounds (14 + Theme::logoWidth (subtitle) + 24, 9, 200, getHeight() - 18);
     exportButton.setBounds (presets.getRight() + 10, 9, 76, getHeight() - 18);
 }
 
@@ -83,9 +82,9 @@ void HeaderBar::showExportMenu()
 void HeaderBar::chooseExportTarget (int part, int bars)
 {
     const juce::String partNames[] { "Full", "Kick", "Bass" };
-    const auto baseName = "MyOwnFruit " + juce::String (bars) + " bars "
+    const auto baseName = "Kickbase " + juce::String (bars) + " bars "
                         + juce::String (juce::roundToInt (processor.transportStatus.bpm.load())) + " BPM";
-    auto folder = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("MyOwnFruit").getChildFile ("Exports");
+    auto folder = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("Kickbase").getChildFile ("Exports");
     folder.createDirectory();
 
     auto report = [] (bool ok, const juce::String& where)
@@ -453,7 +452,7 @@ GateModule::GateModule (PluginBase& p)
     knobs.push_back (std::make_unique<KnobComponent> (p.apvts, ParamID::bass (0, BassField::level), "LEVEL", Theme::gate));
     addAndMakeVisible (*knobs.back());
 
-    help.setText ("Put MyOwnFruit FX on the mixer track of your bass synth. The synth is gated by the "
+    help.setText ("Put Kickbase FX on the mixer track of your bass synth. The synth is gated by the "
                   "gate steps and ducked under the kick. When the DAW is stopped, audio passes through untouched.",
                   juce::dontSendNotification);
     help.setFont (Theme::font (11.0f));
