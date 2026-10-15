@@ -22,14 +22,14 @@ JUCE laddas ner automatiskt första gången. `build.bat` kör testerna efter byg
 
 ## Installera
 
-Stäng DAW:en och kopiera båda mapparna till `C:\Program Files\Common Files\VST3\` (kräver admin):
+Stäng FL Studio och kör i en PowerShell som administratör, i projektmappen:
 
 ```powershell
-$b = "build\Release"
-Copy-Item -Recurse -Force "$b\MyOwnFruit_artefacts\Release\VST3\MyOwnFruit.vst3" "C:\Program Files\Common Files\VST3\"
-Copy-Item -Recurse -Force "$b\MyOwnFruitFX_artefacts\Release\VST3\MyOwnFruit FX.vst3" "C:\Program Files\Common Files\VST3\"
+powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
+Skriptet kopierar båda pluginsen till `C:\Program Files\Common Files\VST3\`, tar bort gamla
+kopior och städar bort en felplacerad `VST3\Contents`-mapp om en tidigare kopiering hamnat fel.
 Scanna sedan om plugins i DAW:en. Instrumentet finns också som fristående app:
 `build\Release\MyOwnFruit_artefacts\Release\Standalone\MyOwnFruit.exe`.
 
