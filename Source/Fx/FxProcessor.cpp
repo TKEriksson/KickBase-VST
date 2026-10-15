@@ -13,6 +13,8 @@ namespace
         Params::addBassCommonParams (layout, 1.0f);
         Params::addFxParams (layout);
         Effects::addParameters (layout);
+        Sidechain::addParameters (layout);
+        MasterSection::addParameters (layout);
         Params::addMasterParams (layout);
         return layout;
     }
@@ -33,6 +35,8 @@ void FxProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     gate.prepare (sampleRate);
     ducker.prepare (sampleRate);
     effects.prepare (sampleRate, samplesPerBlock);
+    master.prepare (sampleRate, 2);
+    setLatencySamples (master.getLatencySamples());
     ensureScratchSize (samplesPerBlock);
 }
 
@@ -43,7 +47,7 @@ void FxProcessor::ensureScratchSize (int numSamples)
         return;
 
     kickBuffer.setSize (1, numSamples, false, true, true);
-    envelopeBuffer.setSize (1, numSamples, false, true, true);
+    duckBuffer.setSize (1, numSamples, false, true, true);
     gateBuffer.setSize (1, numSamples, false, true, true);
     synthBuffer.setSize (2, numSamples, false, true, true);
 }
@@ -80,6 +84,12 @@ void FxProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuff
     gateScale = params.get (ParamID::bassGate);
     inputLevel = params.get (ParamID::bassLevel) * params.get (ParamID::gain);
 
+    useCurve = (Sidechain::Mode) params.getChoice ("scMode") == Sidechain::Mode::curve;
+    const auto duckBeforeEffects = (Sidechain::Position) params.getChoice ("scPosition") == Sidechain::Position::beforeEffects;
+    const auto lengthQuarters = Sidechain::lengthInQuarters (params.getChoice ("scLength"));
+    duckLengthSamples = lengthQuarters > 0.0 ? lengthQuarters * clock.getSamplesPerQuarter()
+                                             : KickEngine::lengthSeconds (params.readKick (key)) * getSampleRate();
+
     auto position = 0;
     if (active)
     {
@@ -98,24 +108,35 @@ void FxProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuff
     for (int ch = 0; ch < 2; ++ch)
         synthBuffer.copyFrom (ch, 0, buffer, std::min (ch, std::max (0, inputChannels - 1)), 0, numSamples);
 
+    // Ducknivå -> förstärkning, sample för sample.
+    auto* duckData = duckBuffer.getWritePointer (0);
+    for (int i = 0; i < numSamples; ++i)
+        duckData[i] = ducker.next (duckData[i], duckAmount);
+
     effects.update (clock.getBpm());
     effects.process (synthBuffer, numSamples, false, effectOrder);
 
     for (int ch = 0; ch < 2; ++ch)
         juce::FloatVectorOperations::multiply (synthBuffer.getWritePointer (ch), gateBuffer.getReadPointer (0), numSamples);
 
+    if (duckBeforeEffects)
+        for (int ch = 0; ch < 2; ++ch)
+            juce::FloatVectorOperations::multiply (synthBuffer.getWritePointer (ch), duckData, numSamples);
+
     effects.process (synthBuffer, numSamples, true, effectOrder);
+
+    if (! duckBeforeEffects)
+        for (int ch = 0; ch < 2; ++ch)
+            juce::FloatVectorOperations::multiply (synthBuffer.getWritePointer (ch), duckData, numSamples);
 
     const auto masterGain = params.get (ParamID::gain);
     const auto* kickData = kickBuffer.getReadPointer (0);
-    const auto* envelopeData = envelopeBuffer.getReadPointer (0);
 
     for (int i = 0; i < numSamples; ++i)
     {
-        const auto duck = ducker.next (envelopeData[i], duckAmount) * inputLevel;
         const auto kickSample = kickData[i] * masterGain;
-        const auto left = synthBuffer.getSample (0, i) * duck + kickSample;
-        const auto right = synthBuffer.getSample (1, i) * duck + kickSample;
+        const auto left = synthBuffer.getSample (0, i) * inputLevel + kickSample;
+        const auto right = synthBuffer.getSample (1, i) * inputLevel + kickSample;
 
         if (buffer.getNumChannels() == 1)
             buffer.setSample (0, i, 0.5f * (left + right));
@@ -125,6 +146,8 @@ void FxProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuff
             buffer.setSample (1, i, right);
         }
     }
+
+    master.process (buffer, numSamples);
 
     transportStatus.publish (clock);
     transportStatus.keyNote = 60 + key;
@@ -136,13 +159,14 @@ void FxProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuff
 void FxProcessor::renderSamples (int startSample, int endSample)
 {
     auto* kickData = kickBuffer.getWritePointer (0);
-    auto* envelopeData = envelopeBuffer.getWritePointer (0);
+    auto* duckData = duckBuffer.getWritePointer (0);
     auto* gateData = gateBuffer.getWritePointer (0);
 
     for (int i = startSample; i < endSample; ++i)
     {
         kickData[i] = kick.nextSample();
-        envelopeData[i] = kick.getEnvelope();
+        const auto curveValue = duckCurve.next (sidechainCurve, duckLengthSamples);
+        duckData[i] = useCurve ? curveValue : kick.getEnvelope();
         gateData[i] = gate.next (! active || ! gateOn);
     }
 }
@@ -151,6 +175,7 @@ void FxProcessor::handleEvent (const StepEvent& event)
 {
     if (event.type == StepEvent::Type::kick)
     {
+        duckCurve.trigger(); // duckkurvan följer kickstegen även när kicken är avstängd
         if (kickOn)
             kick.trigger (1.0f);
         return;

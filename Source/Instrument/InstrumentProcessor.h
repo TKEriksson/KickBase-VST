@@ -5,6 +5,7 @@
 #include "../Core/Ducker.h"
 #include "../Core/Effects.h"
 #include "../Core/KickEngine.h"
+#include "../Core/Master.h"
 #include "../Core/PluginBase.h"
 #include "../Core/StepScheduler.h"
 
@@ -20,6 +21,7 @@ public:
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
 
     juce::AudioProcessorEditor* createEditor() override;
+    const MasterSection& getMasterSection() const override { return master; }
     bool acceptsMidi() const override { return true; }
 
     juce::MidiKeyboardState keyboardState;
@@ -59,9 +61,11 @@ private:
     BassSynth bass;
     Ducker ducker;
     EffectChain effects { apvts };
+    DuckCurvePlayer duckCurve;
+    MasterSection master { apvts };
 
-    // Blockets mellanresultat: kick, kickens envelope, basens källa (stereo) och amplitud.
-    juce::AudioBuffer<float> kickBuffer, envelopeBuffer, bassBuffer, amplitudeBuffer;
+    // Blockets mellanresultat: kick, hur mycket basen ska duckas, basens källa (stereo) och amplitud.
+    juce::AudioBuffer<float> kickBuffer, duckBuffer, bassBuffer, amplitudeBuffer;
 
     std::array<bool, 128> heldNotes {};
     int numHeldNotes = 0;
@@ -74,6 +78,9 @@ private:
     int patternBars = 1;
     bool kickOn = true, bassOn = true;
     float duckAmount = 0.8f, bassGateScale = 1.0f;
+    Sidechain::Mode sidechainMode = Sidechain::Mode::kickEnvelope;
+    Sidechain::Position sidechainPosition = Sidechain::Position::afterEffects;
+    double duckLengthSamples = 1.0;
     NoteEnd noteEnd = NoteEnd::cut;
 
     Output mainOut, kickOut, bassOut;

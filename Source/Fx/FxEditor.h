@@ -4,6 +4,8 @@
 #include "FxProcessor.h"
 #include "../Ui/FruitLookAndFeel.h"
 #include "../Ui/EffectsPage.h"
+#include "../Ui/MasterPage.h"
+#include "../Ui/SidechainPage.h"
 #include "../Ui/Modules.h"
 #include "../Ui/TabbedPanel.h"
 
@@ -26,6 +28,8 @@ private:
     TabbedPanel lower { &processor.selectedTab };
     PatternModule pattern { processor, Theme::gate, "GATE", false };
     EffectsPage effects { processor };
+    SidechainPage sidechain { processor };
+    MasterPage masterPage { processor };
     MixModule mix { processor, false };
     juce::TooltipWindow tooltips { this, 700 };
 

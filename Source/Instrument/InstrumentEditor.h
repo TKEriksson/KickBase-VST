@@ -4,6 +4,8 @@
 #include "InstrumentProcessor.h"
 #include "../Ui/FruitLookAndFeel.h"
 #include "../Ui/EffectsPage.h"
+#include "../Ui/MasterPage.h"
+#include "../Ui/SidechainPage.h"
 #include "../Ui/Modules.h"
 #include "../Ui/TabbedPanel.h"
 
@@ -26,6 +28,8 @@ private:
     TabbedPanel lower { &processor.selectedTab };
     PatternModule pattern { processor, Theme::bass, "BASS", true };
     EffectsPage effects { processor };
+    SidechainPage sidechain { processor };
+    MasterPage masterPage { processor };
     MixModule mix { processor, true };
     juce::MidiKeyboardComponent keyboard { processor.keyboardState, juce::MidiKeyboardComponent::horizontalKeyboard };
     juce::TooltipWindow tooltips { this, 700 };

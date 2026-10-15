@@ -4,6 +4,7 @@ int main()
 {
     runTransportClockTests();
     runEngineTests();
+    runMasterTests();
 
     if (testFailures() > 0)
     {

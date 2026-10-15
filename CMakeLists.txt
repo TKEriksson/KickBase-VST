@@ -27,12 +27,14 @@ set(CORE_SOURCES
     Source/Core/KickEngine.cpp
     Source/Core/BassSynth.cpp
     Source/Core/StepScheduler.cpp
+    Source/Core/Sidechain.cpp
 )
 
 # Plugin-delarna som båda pluginsen delar, inklusive gränssnittet.
 set(PLUGIN_SOURCES
     ${CORE_SOURCES}
     Source/Core/Effects.cpp
+    Source/Core/Master.cpp
     Source/Core/Params.cpp
     Source/Core/Presets.cpp
     Source/Core/PluginBase.cpp
@@ -42,6 +44,8 @@ set(PLUGIN_SOURCES
     Source/Ui/Modules.cpp
     Source/Ui/PresetButton.cpp
     Source/Ui/EffectsPage.cpp
+    Source/Ui/SidechainPage.cpp
+    Source/Ui/MasterPage.cpp
 )
 
 set(INSTRUMENT_SOURCES
@@ -129,9 +133,11 @@ target_sources(MyOwnFruitTests PRIVATE
     ${CORE_SOURCES}
     Tests/TransportClockTests.cpp
     Tests/EngineTests.cpp
+    Tests/MasterTests.cpp
+    Source/Core/Master.cpp
     Tests/TestMain.cpp
 )
-target_link_libraries(MyOwnFruitTests PRIVATE juce::juce_audio_basics juce::juce_dsp juce::juce_data_structures)
+target_link_libraries(MyOwnFruitTests PRIVATE juce::juce_audio_processors juce::juce_dsp)
 myownfruit_configure(MyOwnFruitTests)
 
 # Utvecklingsverktyg: renderar ljud offline och tar skärmbilder av gränssnittet.

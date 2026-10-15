@@ -3,6 +3,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "Effects.h"
 #include "Pattern.h"
+#include "Sidechain.h"
 
 // Presets: fabrikspresets i koden och användarens egna som filer.
 //
@@ -11,8 +12,9 @@
 namespace Presets
 {
     // Effects är hela effektkedjan (inklusive ordningen); filter ... reverb är en effekt var.
-    enum class Section { full, kick, bass, pattern, effects, filter, distortion, eq, chorus, phaser, echo, reverb };
-    constexpr int numSections = 12;
+    enum class Section { full, kick, bass, pattern, sidechain, master, effects,
+                         filter, distortion, eq, chorus, phaser, echo, reverb };
+    constexpr int numSections = 14;
 
     inline Section effectSection (EffectType type) { return (Section) ((int) Section::filter + (int) type); }
     inline bool isSingleEffect (Section section)   { return (int) section >= (int) Section::filter; }
@@ -33,7 +35,7 @@ namespace Presets
     // Sätter delens parametrar till fabrikspresetets värden (övriga i delen till standard) och,
     // för Full och Pattern, fyller mönstret. Rutnätet sätts via parametern.
     void applyFactory (Section section, bool effectVersion, int index,
-                       juce::AudioProcessorValueTreeState& apvts, Pattern& pattern);
+                       juce::AudioProcessorValueTreeState& apvts, Pattern& pattern, SidechainCurve& curve);
 
     // Sätter en parameter som en användare skulle: med gest, så att DAW:en kan spela in den.
     void setParameter (juce::RangedAudioParameter& parameter, float normalisedValue);

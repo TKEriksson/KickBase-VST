@@ -17,6 +17,8 @@ namespace
         Params::addBassCommonParams (layout, 0.7f);
         Params::addBassSynthParams (layout);
         Effects::addParameters (layout);
+        Sidechain::addParameters (layout);
+        MasterSection::addParameters (layout);
         Params::addMasterParams (layout);
         return layout;
     }
@@ -43,6 +45,8 @@ void InstrumentProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     bass.prepare (sampleRate);
     ducker.prepare (sampleRate);
     effects.prepare (sampleRate, samplesPerBlock);
+    master.prepare (sampleRate, 2);
+    setLatencySamples (master.getLatencySamples());
     ensureScratchSize (samplesPerBlock);
 
     patternActive = false;
@@ -109,6 +113,19 @@ void InstrumentProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
     masterGain.setTargetValue (params.get (ParamID::gain));
     masterGain.applyGain (buffer, numSamples);
 
+    // Mastern (maximizer/limiter) på huvudutgången. Kick- och basutgångarna fördröjs lika
+    // mycket som limiterns lookahead, så att de ligger i synk med huvudutgången.
+    auto mainBus = getBusBuffer (buffer, false, 0);
+    master.process (mainBus, numSamples);
+    for (int bus = 1; bus <= 2; ++bus)
+    {
+        if (auto* b = getBus (false, bus); b != nullptr && b->isEnabled())
+        {
+            auto busBuffer = getBusBuffer (buffer, false, bus);
+            master.delayOnly (busBuffer, numSamples, bus - 1);
+        }
+    }
+
     transportStatus.publish (clock);
     transportStatus.keyNote = currentNote;
     transportStatus.patternActive = patternActive;
@@ -127,6 +144,12 @@ void InstrumentProcessor::readBlockParams()
     noteEnd = (NoteEnd) params.getChoice (ParamID::noteEnd);
     kick.setClickSample (getActiveClickSample());
     refreshEngineParams();
+
+    sidechainMode = (Sidechain::Mode) params.getChoice ("scMode");
+    sidechainPosition = (Sidechain::Position) params.getChoice ("scPosition");
+    const auto lengthQuarters = Sidechain::lengthInQuarters (params.getChoice ("scLength"));
+    duckLengthSamples = lengthQuarters > 0.0 ? lengthQuarters * clock.getSamplesPerQuarter()
+                                             : KickEngine::lengthSeconds (params.readKick (0)) * getSampleRate();
 }
 
 void InstrumentProcessor::refreshEngineParams()
@@ -245,14 +268,16 @@ void InstrumentProcessor::renderSegment (int startSample, int endSample)
 void InstrumentProcessor::renderSamples (int startSample, int endSample)
 {
     auto* kickData = kickBuffer.getWritePointer (0);
-    auto* envelopeData = envelopeBuffer.getWritePointer (0);
+    auto* duckData = duckBuffer.getWritePointer (0);
     auto* sourceData = bassBuffer.getWritePointer (0);
     auto* amplitudeData = amplitudeBuffer.getWritePointer (0);
+    const auto useCurve = sidechainMode == Sidechain::Mode::curve;
 
     for (int i = startSample; i < endSample; ++i)
     {
         kickData[i] = kick.nextSample();
-        envelopeData[i] = kick.getEnvelope();
+        const auto curveValue = duckCurve.next (sidechainCurve, duckLengthSamples);
+        duckData[i] = useCurve ? curveValue : kick.getEnvelope();
 
         const auto b = bass.next();
         sourceData[i] = b.source;
@@ -262,8 +287,14 @@ void InstrumentProcessor::renderSamples (int startSample, int endSample)
 
 void InstrumentProcessor::finishBlock (int numSamples)
 {
-    // Basen: källa -> effekter före gaten -> gate (amplitud) -> effekter efter -> ducking.
+    // Basen: källa -> effekter före gaten -> gate (amplitud) -> effekter efter, med
+    // ducking antingen före eller efter effekterna efter gaten.
     bassBuffer.copyFrom (1, 0, bassBuffer, 0, 0, numSamples);
+
+    // Ducknivå -> förstärkning, sample för sample.
+    auto* duckData = duckBuffer.getWritePointer (0);
+    for (int i = 0; i < numSamples; ++i)
+        duckData[i] = ducker.next (duckData[i], duckAmount);
 
     effects.update (clock.getBpm());
     effects.process (bassBuffer, numSamples, false, effectOrder);
@@ -271,20 +302,24 @@ void InstrumentProcessor::finishBlock (int numSamples)
     for (int ch = 0; ch < 2; ++ch)
         juce::FloatVectorOperations::multiply (bassBuffer.getWritePointer (ch), amplitudeBuffer.getReadPointer (0), numSamples);
 
+    const auto duckBeforeEffects = sidechainPosition == Sidechain::Position::beforeEffects;
+    if (duckBeforeEffects)
+        for (int ch = 0; ch < 2; ++ch)
+            juce::FloatVectorOperations::multiply (bassBuffer.getWritePointer (ch), duckData, numSamples);
+
     effects.process (bassBuffer, numSamples, true, effectOrder);
 
+    // Efter effekterna duckas även ekon och reverbsvansar under kicken.
+    if (! duckBeforeEffects)
+        for (int ch = 0; ch < 2; ++ch)
+            juce::FloatVectorOperations::multiply (bassBuffer.getWritePointer (ch), duckData, numSamples);
+
     const auto* kickData = kickBuffer.getReadPointer (0);
-    const auto* envelopeData = envelopeBuffer.getReadPointer (0);
-    auto* left = bassBuffer.getWritePointer (0);
-    auto* right = bassBuffer.getWritePointer (1);
+    const auto* left = bassBuffer.getReadPointer (0);
+    const auto* right = bassBuffer.getReadPointer (1);
 
     for (int i = 0; i < numSamples; ++i)
     {
-        // Basen (och dess ekon och reverb) trycks undan så mycket som kicken låter just nu.
-        const auto duck = ducker.next (envelopeData[i], duckAmount);
-        left[i] *= duck;
-        right[i] *= duck;
-
         mainOut.add (i, kickData[i] + left[i], kickData[i] + right[i]);
         kickOut.add (i, kickData[i], kickData[i]);
         bassOut.add (i, left[i], right[i]);
@@ -298,7 +333,7 @@ void InstrumentProcessor::ensureScratchSize (int numSamples)
         return;
 
     kickBuffer.setSize (1, numSamples, false, true, true);
-    envelopeBuffer.setSize (1, numSamples, false, true, true);
+    duckBuffer.setSize (1, numSamples, false, true, true);
     amplitudeBuffer.setSize (1, numSamples, false, true, true);
     bassBuffer.setSize (2, numSamples, false, true, true);
 }
@@ -307,6 +342,8 @@ void InstrumentProcessor::handleEvent (const StepEvent& event)
 {
     if (event.type == StepEvent::Type::kick)
     {
+        // Duckkurvan följer kickstegen även när kicken är avstängd (pump utan kick).
+        duckCurve.trigger();
         if (kickOn)
             kick.trigger (1.0f);
         return;

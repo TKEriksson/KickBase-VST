@@ -3,6 +3,7 @@
 #include "../Core/Ducker.h"
 #include "../Core/Effects.h"
 #include "../Core/KickEngine.h"
+#include "../Core/Master.h"
 #include "../Core/PluginBase.h"
 #include "../Core/StepGate.h"
 #include "../Core/StepScheduler.h"
@@ -20,6 +21,7 @@ public:
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
 
     juce::AudioProcessorEditor* createEditor() override;
+    const MasterSection& getMasterSection() const override { return master; }
     bool acceptsMidi() const override { return false; }
 
 private:
@@ -32,13 +34,17 @@ private:
     StepGate gate;
     Ducker ducker;
     EffectChain effects { apvts };
+    DuckCurvePlayer duckCurve;
+    MasterSection master { apvts };
 
-    // Blockets mellanresultat: kick, kickens envelope, gatens nivå och synthens ljud (stereo).
-    juce::AudioBuffer<float> kickBuffer, envelopeBuffer, gateBuffer, synthBuffer;
+    // Blockets mellanresultat: kick, hur mycket synthen ska duckas, gatens nivå och synthens ljud (stereo).
+    juce::AudioBuffer<float> kickBuffer, duckBuffer, gateBuffer, synthBuffer;
 
     // Läses en gång per block.
     bool active = false, kickOn = true, gateOn = true;
     float duckAmount = 0.8f, gateScale = 1.0f, inputLevel = 1.0f;
+    bool useCurve = false;
+    double duckLengthSamples = 1.0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FxProcessor)
 };

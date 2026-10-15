@@ -10,6 +10,8 @@ FxEditor::FxEditor (FxProcessor& p)
 
     lower.addTab ("PATTERN", Theme::pattern, pattern);
     lower.addTab ("EFFECTS", Theme::effects, effects);
+    lower.addTab ("SIDECHAIN", Theme::mix, sidechain);
+    lower.addTab ("MASTER", Theme::master, masterPage);
 
     setSize (1060, 676);
 }

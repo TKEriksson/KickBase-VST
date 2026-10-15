@@ -4,9 +4,11 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "Effects.h"
 #include "KickEngine.h"
+#include "Master.h"
 #include "Params.h"
 #include "Pattern.h"
 #include "Presets.h"
+#include "Sidechain.h"
 #include "TransportStatus.h"
 
 // Det som instrumentet och FX-versionen har gemensamt: parametrar, mönster, klicksampling,
@@ -17,6 +19,9 @@ public:
     PluginBase (const BusesProperties& buses, juce::AudioProcessorValueTreeState::ParameterLayout layout, bool effectVersion);
 
     bool isEffectVersion() const { return effectVersion; }
+
+    // Mastersektionen ägs av underklassen (den behöver bara finnas där ljudet bearbetas).
+    virtual const MasterSection& getMasterSection() const = 0;
 
     void releaseResources() override {}
     bool hasEditor() const override { return true; }
@@ -57,6 +62,7 @@ public:
     juce::AudioProcessorValueTreeState apvts;
     Pattern pattern;
     EffectOrder effectOrder;
+    SidechainCurve sidechainCurve;
     TransportStatus transportStatus;
     std::atomic<int> patternVersion { 0 }; // ökas när mönstret ändras, så att gränssnittet ritar om
     int selectedTab = 0;                   // gränssnittets valda flik, så att den finns kvar när fönstret öppnas igen

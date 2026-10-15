@@ -43,6 +43,7 @@ void PluginBase::getStateInformation (juce::MemoryBlock& destData)
         state.setProperty (presetProperty ((Presets::Section) i), presetNames[(size_t) i], nullptr);
     state.appendChild (pattern.toValueTree(), nullptr);
     state.appendChild (clickToValueTree(), nullptr);
+    state.appendChild (sidechainCurve.toValueTree(), nullptr);
 
     if (auto xml = state.createXml())
         copyXmlToBinary (*xml, destData);
@@ -72,6 +73,12 @@ void PluginBase::setStateInformation (const void* data, int sizeInBytes)
         state.removeChild (clickTree, nullptr);
     }
 
+    if (auto curveTree = state.getChildWithName (SidechainCurve::treeType); curveTree.isValid())
+    {
+        sidechainCurve.fromValueTree (curveTree);
+        state.removeChild (curveTree, nullptr);
+    }
+
     apvts.replaceState (state);
 }
 
@@ -95,7 +102,7 @@ void PluginBase::resetSectionToDefaults (Presets::Section section)
 
 void PluginBase::loadFactoryPreset (Presets::Section section, int index)
 {
-    Presets::applyFactory (section, effectVersion, index, apvts, pattern);
+    Presets::applyFactory (section, effectVersion, index, apvts, pattern, sidechainCurve);
 
     if (section == Presets::Section::full || section == Presets::Section::effects)
         effectOrder.reset();
@@ -152,6 +159,9 @@ bool PluginBase::saveUserPreset (Presets::Section section, const juce::String& n
     if (section == Presets::Section::full || section == Presets::Section::kick)
         root.addChildElement (clickToValueTree().createXml().release());
 
+    if (section == Presets::Section::full || section == Presets::Section::sidechain)
+        root.addChildElement (sidechainCurve.toValueTree().createXml().release());
+
     if (! root.writeTo (directory.getChildFile (fileName + presetFileExtension)))
         return false;
 
@@ -194,6 +204,14 @@ bool PluginBase::loadUserPreset (Presets::Section section, const juce::File& fil
             clickFromValueTree (juce::ValueTree::fromXml (*clickXml));
         else
             setClickOriginal ({}, 0.0, {});
+    }
+
+    if (section == Presets::Section::full || section == Presets::Section::sidechain)
+    {
+        if (const auto* curveXml = xml->getChildByName (SidechainCurve::treeType))
+            sidechainCurve.fromValueTree (juce::ValueTree::fromXml (*curveXml));
+        else
+            sidechainCurve.reset();
     }
 
     if (section == Presets::Section::full)

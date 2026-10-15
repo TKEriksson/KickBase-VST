@@ -26,6 +26,7 @@ namespace
         std::vector<Value> values;
         PatternTemplate pattern = PatternTemplate::rolling; // bara Full och Pattern
         std::vector<StepTweak> tweaks;                      // bara sextondelsmönster
+        std::vector<SidechainCurve::Point> curve;           // bara Sidechain; tom = standardkurvan
     };
 
     using namespace ParamID;
@@ -233,6 +234,34 @@ namespace
         return presets;
     }
 
+    const std::vector<Preset>& sidechainPresets()
+    {
+        static const std::vector<Preset> presets {
+            { "Follow Kick", { { "scMode", 0 } } },
+            { "Classic Pump", { { "scMode", 1 }, { "scLength", 4 }, { "duckAmount", 0.9f } }, PatternTemplate::rolling, {},
+              { { 0.0f, 1.0f, 0.0f }, { 0.05f, 1.0f, -0.5f }, { 1.0f, 0.0f, 0.0f } } },
+            { "Tight 1/16", { { "scMode", 1 }, { "scLength", 1 }, { "duckAmount", 0.85f } }, PatternTemplate::rolling, {},
+              { { 0.0f, 1.0f, 0.0f }, { 0.4f, 0.9f, -0.4f }, { 1.0f, 0.0f, 0.0f } } },
+            { "Soft 1/8", { { "scMode", 1 }, { "scLength", 2 }, { "duckAmount", 0.7f } }, PatternTemplate::rolling, {},
+              { { 0.0f, 1.0f, 0.3f }, { 1.0f, 0.0f, 0.0f } } },
+            { "Hold Then Release", { { "scMode", 1 }, { "scLength", 3 }, { "duckAmount", 1.0f } }, PatternTemplate::rolling, {},
+              { { 0.0f, 1.0f, 0.0f }, { 0.45f, 1.0f, 0.5f }, { 1.0f, 0.0f, 0.0f } } },
+        };
+        return presets;
+    }
+
+    const std::vector<Preset>& masterPresets()
+    {
+        static const std::vector<Preset> presets {
+            { "Clean", {} },
+            { "Gentle Glue", { { "masterDrive", 2.0f }, { "masterClip", 0.15f }, { "masterRelease", 150.0f } } },
+            { "Loud",        { { "masterDrive", 6.0f }, { "masterClip", 0.3f } } },
+            { "Smash",       { { "masterDrive", 12.0f }, { "masterClip", 0.6f }, { "masterRelease", 40.0f } } },
+            { "Bypass",      { { "masterOn", 0 } } },
+        };
+        return presets;
+    }
+
     const std::vector<Preset>& listFor (Section section, bool effectVersion)
     {
         if (Presets::isSingleEffect (section))
@@ -244,8 +273,10 @@ namespace
             case Section::kick:    return kickPresets();
             case Section::bass:    return effectVersion ? gatePresets() : bassPresets();
             case Section::pattern: return patternPresets();
-            case Section::effects: return effectChainPresets();
-            default:               break;
+            case Section::effects:   return effectChainPresets();
+            case Section::sidechain: return sidechainPresets();
+            case Section::master:    return masterPresets();
+            default:                 break;
         }
         return fullPresets();
     }
@@ -261,8 +292,10 @@ namespace Presets
             case Section::kick:    return "Kick";
             case Section::bass:    return "Bass";
             case Section::pattern: return "Pattern";
-            case Section::effects: return "Effects";
-            default:               break;
+            case Section::effects:   return "Effects";
+            case Section::sidechain: return "Sidechain";
+            case Section::master:    return "Master";
+            default:                 break;
         }
         if (isSingleEffect (section))
         {
@@ -287,6 +320,10 @@ namespace Presets
                 return id == ParamID::patternBars || id == ParamID::bassGrid || id == ParamID::bassGate || id == ParamID::noteEnd;
             case Section::effects:
                 return Effects::isEffectParameter (id);
+            case Section::sidechain:
+                return id.startsWith ("sc") || id == ParamID::duckAmount;
+            case Section::master:
+                return id.startsWith ("master");
             default:
                 break;
         }
@@ -327,7 +364,7 @@ namespace Presets
     }
 
     void applyFactory (Section section, bool effectVersion, int index,
-                       juce::AudioProcessorValueTreeState& apvts, Pattern& pattern)
+                       juce::AudioProcessorValueTreeState& apvts, Pattern& pattern, SidechainCurve& curve)
     {
         const auto& list = listFor (section, effectVersion);
         if (! juce::isPositiveAndBelow (index, (int) list.size()))
@@ -351,6 +388,14 @@ namespace Presets
         for (const auto& [id, value] : preset.values)
             if (auto* parameter = apvts.getParameter (id))
                 setParameter (*parameter, parameter->convertTo0to1 (value));
+
+        if (section == Section::full || section == Section::sidechain)
+        {
+            if (preset.curve.empty())
+                curve.reset();
+            else
+                curve.setPoints (preset.curve);
+        }
 
         if (section != Section::full && section != Section::pattern)
             return;
