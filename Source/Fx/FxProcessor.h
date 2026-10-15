@@ -36,12 +36,12 @@ private:
     KickEngine kick;
     StepGate gate;
     Ducker ducker;
-    EffectChain effects { apvts };
+    EffectRack effects { apvts };
     DuckCurvePlayer duckCurve;
     MasterSection master { apvts };
 
     // Blockets mellanresultat: kick, hur mycket synthen ska duckas, gatens nivå och synthens ljud (stereo).
-    juce::AudioBuffer<float> kickBuffer, duckBuffer, gateBuffer, synthBuffer;
+    juce::AudioBuffer<float> kickBuffer, duckBuffer, duckRawBuffer, gateBuffer, synthBuffer;
 
     // Läses en gång per block.
     bool active = false, kickOn = true, gateOn = true;

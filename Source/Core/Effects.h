@@ -6,67 +6,123 @@
 #include <atomic>
 #include "Modulation.h"
 
-// Basens effekter. Varje effekt finns en gång, med egna parametrar; ordningen och om den
-// ligger före eller efter gaten väljs av användaren.
-enum class EffectType { filter, distortion, eq, chorus, phaser, echo, reverb };
-constexpr int numEffects = 7;
+// Effektkanaler, som i FL Studios mixer: tre kanaler (A, B, C) med fem platser var. Varje plats
+// har en effekttyp (eller Off) och sex rattar vars betydelse beror på typen. Samma effekt kan
+// ligga i flera platser och kanaler; platserna körs i ordning 1, 2, 3 ...
+//
+// Varje baslager väljer en kanal och hur mycket av dess ljud som går genom den. Kanalen har
+// egen nivå och egen duckning under kicken.
+//
+// Rattarna är parametrar 0..1 (så att parameteruppsättningen är fast, som VST3 kräver);
+// Effects::knobs(typ) säger vad de betyder och hur de räknas om till riktiga enheter.
+enum class EffectType { off, filter, distortion, eq, chorus, phaser, echo, reverb,
+                        compressor, gate, comb, ringMod, bitcrusher, autoFilter, count };
+constexpr int numEffectTypes = (int) EffectType::count; // inklusive Off
+constexpr int numEffectChannels = 3;
+constexpr int slotsPerChannel = 5;
+constexpr int knobsPerSlot = 6;
 
 namespace Effects
 {
-    juce::String name (EffectType type);         // "FILTER" ...
-    juce::String parameterPrefix (EffectType type); // "fxFilter" ... (alla effektens parameter-ID börjar så)
+    juce::StringArray typeNames();                // "Off", "Filter", ... (som i typlistan)
+    juce::String name (EffectType type);          // "FILTER" ...
+    juce::String shortName (EffectType type);     // "FILT" ... (platsknapparna)
+    juce::String channelName (int channel);       // "A", "B", "C"
+
+    // Parameter-ID: "fxA2Type", "fxA2P1" ... "fxA2P6" (platserna räknas från 1 i ID:t) och
+    // kanalens "fxALevel", "fxADuck".
+    juce::String slotParamID (int channel, int slot, const juce::String& suffix);
+    juce::String knobParamID (int channel, int slot, int knob);
+    juce::String channelParamID (int channel, const juce::String& suffix);
     bool isEffectParameter (const juce::String& paramID);
 
-    // Tempo-synkade tider för echo, i fjärdedelar.
-    juce::StringArray echoTimeNames();
-    double echoTimeInQuarters (int index);
+    // En ratt i en effekttyp.
+    struct Knob
+    {
+        enum class Unit { plain, percent, hz, ms, db, ratio, bits, times, octaves };
+
+        juce::String name;
+        float min = 0.0f, max = 1.0f;
+        float centre = 0.0f;           // skev skala med detta värde i mitten (0 = linjär)
+        float defaultValue = 0.0f;
+        Unit unit = Unit::plain;
+        juce::StringArray choices;     // inte tom = val (värdet är indexet)
+
+        bool isChoice() const { return ! choices.isEmpty(); }
+        float fromNormalised (float normalised) const;
+        float toNormalised (float value) const;
+        juce::String text (float value) const;
+    };
+
+    const std::vector<Knob>& knobs (EffectType type);
+
+    // Tempo-synkade tider (echo, gate, auto filter), i fjärdedelar.
+    juce::StringArray syncNames();
+    double syncInQuarters (int index);
 
     void addParameters (juce::AudioProcessorValueTreeState::ParameterLayout& layout);
+
+    // Sätter en plats till en effekttyp med typens standardrattar (med gest, som en användare).
+    void setSlotType (juce::AudioProcessorValueTreeState& apvts, int channel, int slot, EffectType type);
+
+    // Flyttar platsen `from` till `to` i kanalen (de mellan flyttas ett steg), med alla parametrar.
+    void moveSlot (juce::AudioProcessorValueTreeState& apvts, int channel, int from, int to);
+
+    EffectType slotType (const juce::AudioProcessorValueTreeState& apvts, int channel, int slot);
 }
 
-// Effekternas ordning. Gränssnittet skriver, ljudtråden läser (atomiskt, inga lås).
-struct EffectOrder
-{
-    EffectOrder() { reset(); }
-
-    void reset()
-    {
-        for (int i = 0; i < numEffects; ++i)
-            slots[(size_t) i] = i;
-    }
-
-    EffectType at (int slot) const { return (EffectType) slots[(size_t) slot].load(); }
-
-    // Flyttar effekten på plats `from` till plats `to`.
-    void move (int from, int to);
-
-    juce::String toString() const;
-    void fromString (const juce::String& text);
-
-    std::array<std::atomic<int>, numEffects> slots;
-};
-
+// En effektkanal: platserna i ordning.
 class EffectChain
 {
 public:
-    explicit EffectChain (juce::AudioProcessorValueTreeState& apvts);
+    EffectChain (juce::AudioProcessorValueTreeState& apvts, int channel);
     ~EffectChain();
 
     void prepare (double sampleRate, int maxBlockSize);
     void reset();
 
-    // Läser parametrarna. Anropas en gång per block, före process.
-    void update (double bpm);
+    // Läser parametrarna. Anropas en gång per block, före process. `ppq` är positionen i
+    // fjärdedelar vid blockets början (för de tempo-synkade effekterna).
+    void update (double bpm, double ppq);
 
     // LFO-modulering av effekternas rattar (kan vara nullptr).
     void setModulator (const Modulator* modulator);
 
-    // Kör de påslagna effekterna som ligger före (postGate = false) eller efter gaten,
-    // i ordningen `order`. `buffer` är stereo.
-    void process (juce::AudioBuffer<float>& buffer, int numSamples, bool postGate, const EffectOrder& order);
+    // Kör kanalens påslagna platser. `buffer` är stereo.
+    void process (juce::AudioBuffer<float>& buffer, int numSamples);
 
-    // Finns det någon påslagen effekt på den sidan av gaten?
-    bool hasActive (bool postGate) const;
+    // Finns det någon påslagen effekt i kanalen?
+    bool hasActive() const;
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> impl;
+};
+
+// De tre effektkanalerna och routingen till dem. Lager (eller FX-versionens synth) skickar ljud
+// till en kanal med `send`; `process` kör kanalernas effekter, duckar dem under kicken och lägger
+// resultatet (kanalens nivå) på mixen.
+class EffectRack
+{
+public:
+    explicit EffectRack (juce::AudioProcessorValueTreeState& apvts);
+    ~EffectRack();
+
+    void prepare (double sampleRate, int maxBlockSize);
+    void setModulator (const Modulator* modulator);
+
+    // Börja ett block: töm kanalernas ingångar och läs parametrarna.
+    void beginBlock (int numSamples, double bpm, double ppq);
+
+    // Har kanalen några påslagna effekter? (Annars skickas inget dit: ljudet går orört vidare.)
+    bool isActive (int channel) const;
+
+    // Lägger `amount` av ljudet på kanalens ingång.
+    void send (int channel, const float* left, const float* right, int numSamples, float amount);
+
+    // Kör kanalerna och adderar dem till `mix` (stereo). `kickEnvelope` är kickens envelope per
+    // sample (0..1) som kanalernas duckning följer.
+    void process (int numSamples, const float* kickEnvelope, juce::AudioBuffer<float>& mix);
 
 private:
     struct Impl;

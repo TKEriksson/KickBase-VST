@@ -66,7 +66,7 @@ private:
     KickEngine kick;
     std::array<BassSynth, numLayers> basses;
     std::array<Ducker, numLayers> duckers;
-    EffectChain effects { apvts };
+    EffectRack effects { apvts };
     DuckCurvePlayer duckCurve;
     MasterSection master { apvts };
 

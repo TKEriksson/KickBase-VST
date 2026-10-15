@@ -63,7 +63,7 @@ namespace ParamID
 {
     const char* bassFieldName (BassField field)
     {
-        static const char* names[] { "On", "Level", "Gate", "Duck", "Grid",
+        static const char* names[] { "On", "Level", "Gate", "Duck", "Grid", "FxChannel", "FxAmount",
                                      "Octave", "Tune",
                                      "ATable", "APos", "ALevel", "ASemi", "AFine", "AUnison", "ADetune", "ABlend", "AWarp", "AWarpAmount", "APhase", "ARandom",
                                      "BTable", "BPos", "BLevel", "BSemi", "BFine", "BUnison", "BDetune", "BBlend", "BWarp", "BWarpAmount", "BPhase", "BRandom",
@@ -129,6 +129,9 @@ namespace Params
         layout.add (percent (id (F::duck), title + "Duck", 0.8f));
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::grid), 1 }, title + "Grid",
                                                             Pattern::gridNames(), (int) BassGrid::sixteenth));
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::fxChannel), 1 }, title + "FX Channel",
+                                                            StringArray { "None", "A", "B", "C" }, 0));
+        layout.add (percent (id (F::fxAmount), title + "FX Amount", 1.0f));
     }
 
     void addBassSynthParams (Layout& layout, int layer)

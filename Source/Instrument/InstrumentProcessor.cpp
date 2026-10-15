@@ -315,10 +315,12 @@ void InstrumentProcessor::renderSamples (int startSample, int endSample)
 
 void InstrumentProcessor::finishBlock (int numSamples)
 {
-    // Varje baslager: källa * amplitud (envelope) * ducking med lagrets egen mängd. Lagren
-    // summeras och går genom effekterna; varje lagers egen utgång får lagret före effekterna.
+    // Varje baslager: källa * amplitud (envelope) * ducking med lagrets egen mängd. Lagret går
+    // sedan (helt eller delvis) genom sin effektkanal; varje lagers egen utgång får lagret
+    // utan effekter.
     const auto* duckData = duckBuffer.getReadPointer (0);
     bassBuffer.clear (0, numSamples);
+    effects.beginBlock (numSamples, clock.getBpm(), clock.getPpqAt (0));
 
     for (int layer = 0; layer < numLayers; ++layer)
     {
@@ -330,15 +332,21 @@ void InstrumentProcessor::finishBlock (int numSamples)
         for (int i = 0; i < numSamples; ++i)
             data[i] *= amplitude[i] * ducker.next (duckData[i], amount);
 
-        bassBuffer.addFrom (0, 0, data, numSamples);
-        bassBuffer.addFrom (1, 0, data, numSamples);
+        // Kanal A-C: amount av ljudet går genom kanalen, resten torrt.
+        const auto channel = (int) params.bass (layer, BassField::fxChannel) - 1;
+        const auto amountToChannel = params.bass (layer, BassField::fxAmount);
+        const auto routed = channel >= 0 && effects.isActive (channel);
+        if (routed)
+            effects.send (channel, data, nullptr, numSamples, amountToChannel);
+        const auto dryGain = routed ? 1.0f - amountToChannel : 1.0f;
+
+        bassBuffer.addFrom (0, 0, data, numSamples, dryGain);
+        bassBuffer.addFrom (1, 0, data, numSamples, dryGain);
         for (int i = 0; i < numSamples; ++i)
             layerOuts[(size_t) layer].add (i, data[i], data[i]);
     }
 
-    effects.update (clock.getBpm());
-    effects.process (bassBuffer, numSamples, false, effectOrder);
-    effects.process (bassBuffer, numSamples, true, effectOrder);
+    effects.process (numSamples, duckData, bassBuffer);
 
     const auto* kickData = kickBuffer.getReadPointer (0);
     const auto* left = bassBuffer.getReadPointer (0);

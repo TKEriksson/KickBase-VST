@@ -3,7 +3,8 @@
 //
 //   MyOwnFruitTool render   instrument|fx <ut.wav> [bpm] [takter] [ton eller toner, t.ex. 66,64,61,59] [preset] [effektpreset]
 //   (flera toner: en per takt, bytet sker exakt på taktstrecket; preset kan följas av kick- och
-//   baspreset, t.ex. 16+k3+b5 = helpreset 16, sedan kickpreset 3 och baspreset 5)
+//   baspreset, t.ex. 16+k3+b5 = helpreset 16, sedan kickpreset 3 och baspreset 5; p:id=värde sätter
+//   en parameter, t.ex. p:fxA1Type=2+p:bass1FxChannel=1)
 //   MyOwnFruitTool export   <ut.wav> full|kick|bass <takter> [bpm] [ton] [preset]   (som EXPORT-knappen)
 //   MyOwnFruitTool snapshot instrument|fx <ut.png> [flik] [mod]   (mod = med exempel-LFO-kopplingar)
 //   MyOwnFruitTool presettest
@@ -120,6 +121,18 @@ namespace
         auto processor = createProcessor (kind);
         for (const auto& token : juce::StringArray::fromTokens (presets, "+", {}))
         {
+            // p:id=värde sätter en parameter (i dess egen enhet), t.ex. p:fxA1Type=2.
+            if (token.startsWith ("p:"))
+            {
+                const auto id = token.substring (2).upToFirstOccurrenceOf ("=", false, false);
+                const auto value = token.fromFirstOccurrenceOf ("=", false, false).getFloatValue();
+                if (auto* parameter = processor->apvts.getParameter (id))
+                    parameter->setValueNotifyingHost (parameter->convertTo0to1 (value));
+                else
+                    std::printf ("Okänd parameter: %s\n", id.toRawUTF8());
+                continue;
+            }
+
             auto section = Presets::Section::full;
             auto index = token;
             if (token.startsWithIgnoreCase ("k")) { section = Presets::Section::kick; index = token.substring (1); }

@@ -51,6 +51,7 @@ void FxProcessor::ensureScratchSize (int numSamples)
 
     kickBuffer.setSize (1, numSamples, false, true, true);
     duckBuffer.setSize (1, numSamples, false, true, true);
+    duckRawBuffer.setSize (1, numSamples, false, true, true);
     gateBuffer.setSize (1, numSamples, false, true, true);
     synthBuffer.setSize (2, numSamples, false, true, true);
 }
@@ -111,22 +112,30 @@ void FxProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuff
     for (int ch = 0; ch < 2; ++ch)
         synthBuffer.copyFrom (ch, 0, buffer, std::min (ch, std::max (0, inputChannels - 1)), 0, numSamples);
 
-    // Ducknivå -> förstärkning, sample för sample.
+    // Gate, sedan (helt eller delvis) genom effektkanalen, och ducking under kicken.
+    for (int ch = 0; ch < 2; ++ch)
+        juce::FloatVectorOperations::multiply (synthBuffer.getWritePointer (ch), gateBuffer.getReadPointer (0), numSamples);
+
+    effects.beginBlock (numSamples, clock.getBpm(), clock.getPpqAt (0));
+    const auto channel = (int) params.bass (0, BassField::fxChannel) - 1;
+    const auto amountToChannel = params.bass (0, BassField::fxAmount);
+    const auto routed = channel >= 0 && effects.isActive (channel);
+    if (routed)
+    {
+        effects.send (channel, synthBuffer.getReadPointer (0), synthBuffer.getReadPointer (1), numSamples, amountToChannel);
+        synthBuffer.applyGain (1.0f - amountToChannel);
+    }
+
+    // Kickens envelope per sample (före duckern) till kanalernas duckning.
+    duckRawBuffer.copyFrom (0, 0, duckBuffer, 0, 0, numSamples);
     auto* duckData = duckBuffer.getWritePointer (0);
     for (int i = 0; i < numSamples; ++i)
         duckData[i] = ducker.next (duckData[i], duckAmount);
 
-    effects.update (clock.getBpm());
-    effects.process (synthBuffer, numSamples, false, effectOrder);
-
     for (int ch = 0; ch < 2; ++ch)
-        juce::FloatVectorOperations::multiply (synthBuffer.getWritePointer (ch), gateBuffer.getReadPointer (0), numSamples);
+        juce::FloatVectorOperations::multiply (synthBuffer.getWritePointer (ch), duckData, numSamples);
 
-    effects.process (synthBuffer, numSamples, true, effectOrder);
-
-    // Efter effekterna, så att även ekon och reverbsvansar duckas under kicken.
-    for (int ch = 0; ch < 2; ++ch)
-            juce::FloatVectorOperations::multiply (synthBuffer.getWritePointer (ch), duckData, numSamples);
+    effects.process (numSamples, duckRawBuffer.getReadPointer (0), synthBuffer);
 
     const auto masterGain = params.get (ParamID::gain);
     const auto* kickData = kickBuffer.getReadPointer (0);

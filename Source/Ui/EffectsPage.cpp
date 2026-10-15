@@ -1,272 +1,347 @@
 #include "EffectsPage.h"
+#include "Help.h"
 
 namespace
 {
-    constexpr int rowHeight = 20;
-    constexpr int listTop = 30;   // under kedjans presetknapp
-    constexpr int listWidth = 250;
-
-    juce::String title (EffectType type) { return Effects::name (type); }
-
-    juce::RangedAudioParameter* effectParam (PluginBase& processor, EffectType type, const char* suffix)
+    void setNormalised (juce::AudioProcessorValueTreeState& apvts, const juce::String& id, float normalised)
     {
-        return processor.apvts.getParameter (Effects::parameterPrefix (type) + suffix);
+        if (auto* parameter = apvts.getParameter (id))
+        {
+            parameter->beginChangeGesture();
+            parameter->setValueNotifyingHost (normalised);
+            parameter->endChangeGesture();
+        }
     }
 }
 
 //==============================================================================
-EffectSlotList::EffectSlotList (PluginBase& p) : processor (p)
+EffectSlotStrip::EffectSlotStrip (PluginBase& p) : processor (p)
 {
+    setTooltip ("SLOTS - The channel's effects, run in order 1 to 5. Click a slot to edit it, right-click to choose its effect, "
+                "drag a slot sideways to change the order.");
     startTimerHz (10); // följer med presets och automation
 }
 
-juce::Rectangle<int> EffectSlotList::rowBounds (int slot) const
+juce::Rectangle<int> EffectSlotStrip::tileBounds (int slot) const
 {
-    return { 0, slot * rowHeight, getWidth(), rowHeight - 2 };
+    const auto width = getWidth() / slotsPerChannel;
+    return { slot * width, 0, width - 4, getHeight() };
 }
 
-juce::Rectangle<int> EffectSlotList::powerArea (int slot) const    { return rowBounds (slot).withX (18).withWidth (22); }
-juce::Rectangle<int> EffectSlotList::positionArea (int slot) const { return rowBounds (slot).removeFromRight (48).reduced (2, 2); }
-
-int EffectSlotList::rowAt (int y) const
+int EffectSlotStrip::slotAt (int x) const
 {
-    return juce::jlimit (0, numEffects - 1, y / rowHeight);
+    return juce::jlimit (0, slotsPerChannel - 1, x / std::max (1, getWidth() / slotsPerChannel));
 }
 
-void EffectSlotList::paint (juce::Graphics& g)
+void EffectSlotStrip::paint (juce::Graphics& g)
 {
-    for (int slot = 0; slot < numEffects; ++slot)
+    for (int slot = 0; slot < slotsPerChannel; ++slot)
     {
-        const auto type = processor.effectOrder.at (slot);
-        const auto row = rowBounds (slot).toFloat();
-        const auto on = effectParam (processor, type, "On")->getValue() >= 0.5f;
-        const auto post = effectParam (processor, type, "Post")->getValue() >= 0.5f;
-        const auto isSelected = type == selected;
+        const auto type = Effects::slotType (processor.apvts, channel, slot);
+        const auto tile = tileBounds (slot).toFloat();
+        const auto on = type != EffectType::off;
+        const auto isSelected = slot == selected;
 
-        g.setColour (isSelected ? Theme::effects.withAlpha (0.18f) : Theme::knobBodyDark.withAlpha (0.7f));
-        g.fillRoundedRectangle (row, 4.0f);
-        if (isSelected)
-        {
-            g.setColour (Theme::effects.withAlpha (0.7f));
-            g.drawRoundedRectangle (row.reduced (0.5f), 4.0f, 1.0f);
-        }
+        g.setColour (isSelected ? Theme::effects.withAlpha (0.2f) : Theme::knobBodyDark.withAlpha (0.7f));
+        g.fillRoundedRectangle (tile, 5.0f);
+        g.setColour (isSelected ? Theme::effects.withAlpha (0.8f) : Theme::panelBorder.withAlpha (on ? 0.9f : 0.5f));
+        g.drawRoundedRectangle (tile.reduced (0.5f), 5.0f, isSelected ? 1.5f : 1.0f);
 
-        // Greppytan (dra för att flytta) och platsnummer.
-        g.setColour (Theme::textDim.withAlpha (0.6f));
+        g.setColour (Theme::textDim.withAlpha (0.7f));
         g.setFont (Theme::font (9.0f, true));
-        g.drawText (juce::String (slot + 1), row.withWidth (16.0f), juce::Justification::centred);
+        g.drawText (juce::String (slot + 1), tile.reduced (6.0f, 2.0f), juce::Justification::topLeft);
 
-        // På/av-lampa.
-        const auto lamp = powerArea (slot).toFloat().withSizeKeepingCentre (10.0f, 10.0f);
-        g.setColour (on ? Theme::effects : Theme::textDim.withAlpha (0.35f));
-        if (on)
-            g.fillEllipse (lamp);
-        else
-            g.drawEllipse (lamp, 1.5f);
-
-        g.setColour (on ? Theme::text : Theme::textDim);
+        g.setColour (on ? Theme::effects : Theme::textDim.withAlpha (0.45f));
         g.setFont (Theme::font (12.0f, true));
-        g.drawText (title (type), row.withTrimmedLeft (44.0f).withTrimmedRight (52.0f), juce::Justification::centredLeft);
-
-        // PRE / POST.
-        const auto pill = positionArea (slot).toFloat();
-        const auto pillColour = post ? Theme::bass : Theme::kick;
-        g.setColour (pillColour.withAlpha (on ? 0.25f : 0.1f));
-        g.fillRoundedRectangle (pill, 3.0f);
-        g.setColour (pillColour.withAlpha (on ? 1.0f : 0.5f));
-        g.setFont (Theme::font (10.0f, true));
-        g.drawText (post ? "POST" : "PRE", pill, juce::Justification::centred);
+        g.drawText (on ? Effects::name (type) : juce::String ("EMPTY"), tile.reduced (4.0f, 0.0f), juce::Justification::centred);
     }
 }
 
-void EffectSlotList::toggle (juce::RangedAudioParameter* parameter)
+void EffectSlotStrip::showTypeMenu (int slot)
 {
-    Presets::setParameter (*parameter, parameter->getValue() >= 0.5f ? 0.0f : 1.0f);
-    repaint();
+    juce::PopupMenu menu;
+    const auto names = Effects::typeNames();
+    const auto current = (int) Effects::slotType (processor.apvts, channel, slot);
+    for (int i = 0; i < names.size(); ++i)
+        menu.addItem (i + 1, i == 0 ? juce::String ("Empty (off)") : names[i], true, i == current);
+
+    const auto channelCopy = channel;
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this), [this, slot, channelCopy] (int result)
+    {
+        if (result > 0)
+        {
+            Effects::setSlotType (processor.apvts, channelCopy, slot, (EffectType) (result - 1));
+            selected = slot;
+            if (onSelect)
+                onSelect (slot);
+            repaint();
+        }
+    });
 }
 
-void EffectSlotList::mouseDown (const juce::MouseEvent& event)
+void EffectSlotStrip::mouseDown (const juce::MouseEvent& event)
 {
-    dragged = false;
-    dragSlot = -1;
-
-    if (event.y >= numEffects * rowHeight)
-        return;
-
-    const auto slot = rowAt (event.y);
-    const auto type = processor.effectOrder.at (slot);
-
-    if (powerArea (slot).expanded (2).contains (event.getPosition()))
-        toggle (effectParam (processor, type, "On"));
-    else if (positionArea (slot).contains (event.getPosition()))
-        toggle (effectParam (processor, type, "Post"));
-    else
-        dragSlot = slot;
-
-    selected = type;
+    dragSlot = slotAt (event.x);
+    selected = dragSlot;
     if (onSelect)
-        onSelect (type);
+        onSelect (dragSlot);
+    if (event.mods.isPopupMenu())
+    {
+        showTypeMenu (dragSlot);
+        dragSlot = -1;
+    }
     repaint();
 }
 
-void EffectSlotList::mouseDrag (const juce::MouseEvent& event)
+void EffectSlotStrip::mouseDrag (const juce::MouseEvent& event)
 {
     if (dragSlot < 0)
         return;
 
-    // Flytta effekten när musen passerar en annan rad.
-    const auto target = rowAt (event.y);
+    // Flytta platsen när musen passerar en annan; alla dess inställningar följer med.
+    const auto target = slotAt (event.x);
     if (target != dragSlot)
     {
-        processor.effectOrder.move (dragSlot, target);
-        dragSlot = target;
-        dragged = true;
+        Effects::moveSlot (processor.apvts, channel, dragSlot, target);
+        dragSlot = selected = target;
+        if (onSelect)
+            onSelect (target);
         repaint();
     }
 }
 
-void EffectSlotList::mouseUp (const juce::MouseEvent&)
+void EffectSlotStrip::mouseUp (const juce::MouseEvent&)
 {
-    if (dragged)
-        processor.markStateChanged();
-
     dragSlot = -1;
 }
 
 //==============================================================================
-EffectControls::EffectControls (PluginBase& p, EffectType type)
-    : presets (p, Presets::effectSection (type), Theme::effects)
+// En valruta bland rattarna (t.ex. filtertyp), kopplad till en av platsens parametrar.
+class EffectSlotEditor::ChoiceKnob : public juce::Component
 {
-    addAndMakeVisible (presets);
+public:
+    ChoiceKnob (PluginBase& p, const juce::String& paramID, const Effects::Knob& knobIn)
+        : processor (p), id (paramID), knob (knobIn)
+    {
+        label.setText (knob.name, juce::dontSendNotification);
+        label.setFont (Theme::font (11.0f, true));
+        label.setColour (juce::Label::textColourId, Theme::textDim);
+        addAndMakeVisible (label);
 
-    const auto prefix = Effects::parameterPrefix (type);
-    auto knob = [&] (const char* suffix, const char* name)
-    {
-        controls.push_back (std::make_unique<KnobComponent> (p.apvts, (prefix + suffix).toRawUTF8(), name, Theme::effects));
-        addAndMakeVisible (*controls.back());
-    };
-    auto choice = [&] (const char* suffix, const char* name)
-    {
-        controls.push_back (std::make_unique<ChoiceComponent> (p.apvts, (prefix + suffix).toRawUTF8(), name));
-        addAndMakeVisible (*controls.back());
-    };
-
-    switch (type)
-    {
-        case EffectType::filter:
-            choice ("Type", "TYPE"); choice ("Slope", "SLOPE");
-            knob ("Cutoff", "CUTOFF"); knob ("Reso", "RESO"); knob ("Mix", "MIX");
-            break;
-        case EffectType::distortion:
-            choice ("Mode", "MODE");
-            knob ("Drive", "DRIVE"); knob ("Tone", "TONE"); knob ("Mix", "MIX");
-            break;
-        case EffectType::eq:
-            knob ("Low", "LOW"); knob ("MidFreq", "MID FREQ"); knob ("Mid", "MID"); knob ("High", "HIGH");
-            break;
-        case EffectType::chorus:
-            knob ("Rate", "RATE"); knob ("Depth", "DEPTH"); knob ("Delay", "DELAY"); knob ("Feedback", "FEEDBACK"); knob ("Mix", "MIX");
-            break;
-        case EffectType::phaser:
-            knob ("Rate", "RATE"); knob ("Depth", "DEPTH"); knob ("Freq", "FREQ"); knob ("Feedback", "FEEDBACK"); knob ("Mix", "MIX");
-            break;
-        case EffectType::echo:
-            choice ("Time", "TIME");
-            knob ("Feedback", "FEEDBACK"); knob ("LowCut", "LOW CUT"); knob ("HighCut", "HIGH CUT"); knob ("Mix", "MIX");
-            toggleButton = std::make_unique<juce::TextButton> ("PING PONG");
-            toggleButton->setClickingTogglesState (true);
-            toggleButton->setColour (juce::TextButton::buttonOnColourId, Theme::effects);
-            addAndMakeVisible (*toggleButton);
-            toggleAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, (prefix + "PingPong").toRawUTF8(), *toggleButton);
-            break;
-        case EffectType::reverb:
-            knob ("Size", "SIZE"); knob ("Damping", "DAMPING"); knob ("Width", "WIDTH"); knob ("LowCut", "LOW CUT"); knob ("Mix", "MIX");
-            break;
+        for (int i = 0; i < knob.choices.size(); ++i)
+            box.addItem (knob.choices[i], i + 1);
+        box.setTooltip (knob.name + " - " + Help::forEffectKnob (knob.name));
+        box.onChange = [this]
+        {
+            if (! updating)
+                setNormalised (processor.apvts, id, knob.toNormalised ((float) box.getSelectedItemIndex()));
+        };
+        addAndMakeVisible (box);
+        refresh();
     }
+
+    void refresh()
+    {
+        if (auto* raw = processor.apvts.getRawParameterValue (id))
+        {
+            const auto index = juce::roundToInt (knob.fromNormalised (raw->load()));
+            if (box.getSelectedItemIndex() != index)
+            {
+                updating = true;
+                box.setSelectedItemIndex (index, juce::dontSendNotification);
+                updating = false;
+            }
+        }
+    }
+
+    void resized() override
+    {
+        auto area = getLocalBounds();
+        label.setBounds (area.removeFromTop (14));
+        box.setBounds (area.removeFromTop (24));
+    }
+
+private:
+    PluginBase& processor;
+    juce::String id;
+    Effects::Knob knob;
+    juce::Label label;
+    juce::ComboBox box;
+    bool updating = false;
+};
+
+EffectSlotEditor::EffectSlotEditor (PluginBase& p) : processor (p)
+{
+    typeLabel.setText ("EFFECT", juce::dontSendNotification);
+    typeLabel.setFont (Theme::font (11.0f, true));
+    typeLabel.setColour (juce::Label::textColourId, Theme::textDim);
+    addAndMakeVisible (typeLabel);
+
+    const auto names = Effects::typeNames();
+    for (int i = 0; i < names.size(); ++i)
+        typeBox.addItem (i == 0 ? juce::String ("Empty (off)") : names[i], i + 1);
+    typeBox.setTooltip ("EFFECT - Which effect this slot runs. Choosing a new effect loads its default settings.");
+    typeBox.onChange = [this]
+    {
+        if (! updatingType)
+            Effects::setSlotType (processor.apvts, channel, slot, (EffectType) typeBox.getSelectedItemIndex());
+    };
+    addAndMakeVisible (typeBox);
+
+    startTimerHz (10);
 }
 
-void EffectControls::resized()
+void EffectSlotEditor::setSlot (int newChannel, int newSlot)
+{
+    channel = newChannel;
+    slot = newSlot;
+    shownType = EffectType::count;
+    rebuild();
+}
+
+void EffectSlotEditor::timerCallback()
+{
+    if (Effects::slotType (processor.apvts, channel, slot) != shownType)
+        rebuild();
+    for (auto& control : controls)
+        if (auto* choice = dynamic_cast<ChoiceKnob*> (control.get()))
+            choice->refresh();
+}
+
+void EffectSlotEditor::rebuild()
+{
+    shownType = Effects::slotType (processor.apvts, channel, slot);
+    updatingType = true;
+    typeBox.setSelectedItemIndex ((int) shownType, juce::dontSendNotification);
+    updatingType = false;
+
+    controls.clear();
+    const auto& list = Effects::knobs (shownType);
+    for (size_t k = 0; k < list.size() && k < (size_t) knobsPerSlot; ++k)
+    {
+        const auto& knob = list[k];
+        const auto id = Effects::knobParamID (channel, slot, (int) k);
+
+        if (knob.isChoice())
+            controls.push_back (std::make_unique<ChoiceKnob> (processor, id, knob));
+        else
+        {
+            auto control = std::make_unique<KnobComponent> (processor.apvts, id, knob.name, Theme::effects);
+            control->slider.textFromValueFunction = [knob] (double v) { return knob.text (knob.fromNormalised ((float) v)); };
+            control->setDescription (Help::forEffectKnob (knob.name));
+            controls.push_back (std::move (control));
+        }
+        addAndMakeVisible (*controls.back());
+    }
+    resized();
+    repaint();
+}
+
+void EffectSlotEditor::resized()
 {
     auto area = getLocalBounds();
-    auto header = area.removeFromTop (24);
-    presets.setBounds (header.removeFromRight (160));
+    auto first = area.removeFromLeft (130);
+    typeLabel.setBounds (first.removeFromTop (14));
+    typeBox.setBounds (first.removeFromTop (24));
+    area.removeFromLeft (8);
 
-    // Valrutor och knappar får en smal kolumn till vänster, rattarna delar resten.
-    auto column = area.removeFromLeft (110);
+    // Valrutor får en smal kolumn, rattarna delar resten.
     std::vector<juce::Component*> knobs;
     for (auto& control : controls)
     {
-        if (dynamic_cast<ChoiceComponent*> (control.get()) != nullptr)
+        if (dynamic_cast<ChoiceKnob*> (control.get()) != nullptr)
         {
-            control->setBounds (column.removeFromTop (42));
-            column.removeFromTop (4);
+            control->setBounds (first.removeFromTop (42).withTrimmedTop (4));
+            first.removeFromTop (2);
         }
         else
             knobs.push_back (control.get());
     }
-    if (toggleButton != nullptr)
-        toggleButton->setBounds (column.removeFromTop (24).withWidth (100));
 
-    const auto knobWidth = std::min (90, area.getWidth() / std::max (1, (int) knobs.size()));
-    auto row = area.withHeight (std::min (area.getHeight(), 92));
-    for (auto* k : knobs)
-        k->setBounds (row.removeFromLeft (knobWidth));
+    const auto width = knobs.empty() ? 0 : std::min (96, area.getWidth() / (int) knobs.size());
+    for (auto* knob : knobs)
+        knob->setBounds (area.removeFromLeft (width));
 }
 
 //==============================================================================
 EffectsPage::EffectsPage (PluginBase& p)
-    : processor (p), chainPresets (p, Presets::Section::effects, Theme::effects), slots (p)
+    : processor (p), presets (p, Presets::Section::effects, Theme::effects), strip (p), editor (p)
 {
-    addAndMakeVisible (chainPresets);
-    addAndMakeVisible (slots);
+    addAndMakeVisible (presets);
 
-    for (int i = 0; i < numEffects; ++i)
+    for (int ch = 0; ch < numEffectChannels; ++ch)
     {
-        pages.push_back (std::make_unique<EffectControls> (p, (EffectType) i));
-        addChildComponent (*pages.back());
+        auto& button = channelButtons[(size_t) ch];
+        button.setButtonText ("FX " + Effects::channelName (ch));
+        button.setColour (juce::TextButton::buttonOnColourId, Theme::effects.withAlpha (0.55f));
+        button.setTooltip ("FX CHANNEL " + Effects::channelName (ch) + " - A mixer channel for effects. Each bass layer picks a channel "
+                           "and how much of its sound goes through it (FX SEND on the bass page).");
+        button.onClick = [this, ch] { selectChannel (ch); };
+        addAndMakeVisible (button);
+
+        levels.push_back (std::make_unique<KnobComponent> (p.apvts, Effects::channelParamID (ch, "Level"), "LEVEL", Theme::effects));
+        ducks.push_back (std::make_unique<KnobComponent> (p.apvts, Effects::channelParamID (ch, "Duck"), "DUCK", Theme::effects));
+        levels.back()->setDescription ("Volume of this channel's effect output.");
+        ducks.back()->setDescription ("How much this channel is ducked under the kick (tails too), so reverb and echo don't blur the kick.");
+        addChildComponent (*levels.back());
+        addChildComponent (*ducks.back());
     }
 
-    slots.onSelect = [this] (EffectType type) { select (type); };
-    select (EffectType::filter);
+    strip.onSelect = [this] (int s) { selectSlot (s); };
+    addAndMakeVisible (strip);
+    addAndMakeVisible (editor);
+
+    selectChannel (0);
 }
 
-void EffectsPage::select (EffectType type)
+void EffectsPage::selectChannel (int newChannel)
 {
-    selected = type;
-    slots.setSelected (type);
-    for (int i = 0; i < numEffects; ++i)
-        pages[(size_t) i]->setVisible (i == (int) type);
-    repaint();
+    channel = newChannel;
+    for (int ch = 0; ch < numEffectChannels; ++ch)
+    {
+        channelButtons[(size_t) ch].setToggleState (ch == channel, juce::dontSendNotification);
+        levels[(size_t) ch]->setVisible (ch == channel);
+        ducks[(size_t) ch]->setVisible (ch == channel);
+    }
+    strip.setChannel (channel);
+    selectSlot (slot);
 }
 
-void EffectsPage::paint (juce::Graphics& g)
+void EffectsPage::selectSlot (int newSlot)
 {
-    // Rubrik för den valda effekten.
-    auto right = getLocalBounds().withTrimmedLeft (listWidth + 16);
-    g.setColour (Theme::effects);
-    g.setFont (Theme::font (13.0f, true));
-    g.drawText (title (selected), right.withHeight (24), juce::Justification::centredLeft);
-
-    g.setColour (Theme::textDim);
-    g.setFont (Theme::font (11.0f, true));
-    g.drawText ("CHAIN", getLocalBounds().withHeight (24), juce::Justification::centredLeft);
-
-    // Var effekterna hamnar i förhållande till gaten.
-    g.setFont (Theme::font (10.0f));
-    g.drawText ("PRE = before the gate (gets chopped by it), POST = after (tails ring out). Drag a row to reorder.",
-                right.removeFromBottom (14), juce::Justification::centredLeft);
+    slot = newSlot;
+    strip.setSelected (slot);
+    editor.setSlot (channel, slot);
 }
+
+void EffectsPage::paint (juce::Graphics&) {}
 
 void EffectsPage::resized()
 {
     auto area = getLocalBounds();
-    auto list = area.removeFromLeft (listWidth);
-    area.removeFromLeft (16);
 
-    chainPresets.setBounds (list.removeFromTop (24).withTrimmedLeft (50));
-    list.removeFromTop (listTop - 24);
-    slots.setBounds (list);
+    auto left = area.removeFromLeft (74);
+    const auto buttonHeight = std::min (34, (left.getHeight() - 8) / numEffectChannels);
+    for (auto& button : channelButtons)
+    {
+        button.setBounds (left.removeFromTop (buttonHeight));
+        left.removeFromTop (4);
+    }
+    area.removeFromLeft (10);
 
-    for (auto& page : pages)
-        page->setBounds (area);
+    auto knobs = area.removeFromLeft (170);
+    const auto half = knobs.getWidth() / 2;
+    for (int ch = 0; ch < numEffectChannels; ++ch)
+    {
+        levels[(size_t) ch]->setBounds (knobs.withWidth (half));
+        ducks[(size_t) ch]->setBounds (knobs.withTrimmedLeft (half));
+    }
+    area.removeFromLeft (10);
+
+    auto top = area.removeFromTop (30);
+    presets.setBounds (top.removeFromRight (150).withTrimmedBottom (4));
+    top.removeFromRight (8);
+    strip.setBounds (top);
+    area.removeFromTop (6);
+    editor.setBounds (area);
 }

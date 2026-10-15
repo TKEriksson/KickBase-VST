@@ -78,12 +78,6 @@ namespace
         return presets;
     }
 
-    const std::vector<Preset>& effectPresets (EffectType)
-    {
-        static const std::vector<Preset> presets { { "Default", {} } };
-        return presets;
-    }
-
     const std::vector<Preset>& effectChainPresets()
     {
         static const std::vector<Preset> presets { { "Default (all off)", {} } };
@@ -126,9 +120,6 @@ namespace
 
     const std::vector<Preset>& listFor (Section section, bool effectVersion)
     {
-        if (Presets::isSingleEffect (section))
-            return effectPresets (Presets::effectOf (section));
-
         switch (section)
         {
             case Section::full:    return fullPresets();
@@ -160,11 +151,6 @@ namespace Presets
             case Section::master:    return "Master";
             case Section::lfo:       return "LFO";
             default:                 break;
-        }
-        if (isSingleEffect (section))
-        {
-            const auto name = Effects::name (effectOf (section));
-            return name.substring (0, 1) + name.substring (1).toLowerCase();
         }
         return {};
     }
@@ -199,12 +185,13 @@ namespace Presets
                 return id.startsWith ("kick");
             case Section::bass:
                 return (bassLayerOf (id) == layer && ! isLayerField (BassField::on) && ! isLayerField (BassField::gate)
-                        && ! isLayerField (BassField::duck) && ! isLayerField (BassField::grid))
+                        && ! isLayerField (BassField::duck) && ! isLayerField (BassField::grid)
+                        && ! isLayerField (BassField::fxChannel) && ! isLayerField (BassField::fxAmount))
                     || id == ParamID::gateAttack || id == ParamID::gateRelease;
             case Section::pattern:
                 return id == ParamID::patternBars || id == ParamID::noteEnd || isLayerField (BassField::grid) || isLayerField (BassField::gate);
             case Section::effects:
-                return Effects::isEffectParameter (id);
+                return Effects::isEffectParameter (id) || isLayerField (BassField::fxChannel) || isLayerField (BassField::fxAmount);
             case Section::sidechain:
                 return id.startsWith ("sc") || isLayerField (BassField::duck);
             case Section::master:
@@ -214,7 +201,7 @@ namespace Presets
             default:
                 break;
         }
-        return isSingleEffect (section) && id.startsWith (Effects::parameterPrefix (effectOf (section)));
+        return false;
     }
 
     juce::File folder (Section section, bool effectVersion)
@@ -227,8 +214,6 @@ namespace Presets
 
         auto root = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory)
                         .getChildFile ("Kickbase").getChildFile ("Presets");
-        if (isSingleEffect (section))
-            root = root.getChildFile ("Effects");
         return root.getChildFile (name);
     }
 

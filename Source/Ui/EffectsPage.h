@@ -4,14 +4,16 @@
 #include "Components.h"
 #include "PresetButton.h"
 
-// Listan över effektplatserna: på/av, före/efter gaten, och dra för att ändra ordning.
-class EffectSlotList : public juce::Component, private juce::Timer
+// En kanals fem platser: klicka för att välja, dra i sidled för att byta ordning, högerklicka
+// för att välja effekt direkt.
+class EffectSlotStrip : public juce::Component, public juce::SettableTooltipClient, private juce::Timer
 {
 public:
-    explicit EffectSlotList (PluginBase& processor);
+    explicit EffectSlotStrip (PluginBase& processor);
 
-    std::function<void (EffectType)> onSelect;
-    void setSelected (EffectType type) { selected = type; repaint(); }
+    std::function<void (int)> onSelect;
+    void setChannel (int newChannel) { channel = newChannel; repaint(); }
+    void setSelected (int slot) { selected = slot; repaint(); }
 
     void paint (juce::Graphics&) override;
     void mouseDown (const juce::MouseEvent&) override;
@@ -20,34 +22,41 @@ public:
 
 private:
     void timerCallback() override { repaint(); }
-
-    int rowAt (int y) const;
-    juce::Rectangle<int> rowBounds (int slot) const;
-    juce::Rectangle<int> powerArea (int slot) const;
-    juce::Rectangle<int> positionArea (int slot) const;
-    void toggle (juce::RangedAudioParameter* parameter);
+    int slotAt (int x) const;
+    juce::Rectangle<int> tileBounds (int slot) const;
+    void showTypeMenu (int slot);
 
     PluginBase& processor;
-    EffectType selected = EffectType::filter;
+    int channel = 0, selected = 0;
     int dragSlot = -1;
-    bool dragged = false;
 };
 
-// En effekts rattar.
-class EffectControls : public juce::Component
+// Den valda platsens effekttyp och rattar. Rattarna byts ut när typen ändras.
+class EffectSlotEditor : public juce::Component, private juce::Timer
 {
 public:
-    EffectControls (PluginBase& processor, EffectType type);
+    explicit EffectSlotEditor (PluginBase& processor);
+
+    void setSlot (int channel, int slot);
     void resized() override;
 
 private:
+    class ChoiceKnob;
+
+    void timerCallback() override;
+    void rebuild();
+
+    PluginBase& processor;
+    int channel = 0, slot = 0;
+    EffectType shownType = EffectType::count; // tvingar fram en första uppbyggnad
+    bool updatingType = false;
+
+    juce::Label typeLabel;
+    juce::ComboBox typeBox;
     std::vector<std::unique_ptr<juce::Component>> controls;
-    PresetButton presets;
-    std::unique_ptr<juce::TextButton> toggleButton;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> toggleAttachment;
 };
 
-// Fliken EFFECTS: platslistan till vänster, den valda effektens rattar till höger.
+// Fliken EFFECTS: kanalvalet, kanalens nivå och duckning, platsraden och den valda platsens rattar.
 class EffectsPage : public juce::Component
 {
 public:
@@ -56,11 +65,14 @@ public:
     void resized() override;
 
 private:
-    void select (EffectType type);
+    void selectChannel (int channel);
+    void selectSlot (int slot);
 
     PluginBase& processor;
-    PresetButton chainPresets;
-    EffectSlotList slots;
-    std::vector<std::unique_ptr<EffectControls>> pages;
-    EffectType selected = EffectType::filter;
+    int channel = 0, slot = 0;
+    PresetButton presets;
+    std::array<juce::TextButton, numEffectChannels> channelButtons;
+    std::vector<std::unique_ptr<KnobComponent>> levels, ducks; // en per kanal, bara vald syns
+    EffectSlotStrip strip;
+    EffectSlotEditor editor;
 };

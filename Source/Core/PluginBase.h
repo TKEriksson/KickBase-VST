@@ -69,7 +69,6 @@ public:
 
     juce::AudioProcessorValueTreeState apvts;
     Pattern pattern;
-    EffectOrder effectOrder;
     SidechainCurve sidechainCurve;
 
     // Kickens pitch-envelope (halvtoner över svansen, upp till 0,5 s) och volym-envelope

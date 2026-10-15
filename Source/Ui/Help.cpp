@@ -21,6 +21,12 @@ namespace Help
             { "gain", "Output volume of the whole plugin." },
             { "bassDuck", "Sidechain depth for this layer: how far it is pushed down while the kick plays. 0 % = no ducking." },
             { "bassOn", "Turns this bass layer on or off." },
+            { "bassFxChannel", "Which effect channel (A, B or C) this layer sends its sound through. None = no effects." },
+            { "bassFxAmount", "How much of this layer goes through its effect channel (the rest stays dry)." },
+            { "fxALevel", "Volume of this effect channel's output." }, { "fxBLevel", "Volume of this effect channel's output." },
+            { "fxCLevel", "Volume of this effect channel's output." },
+            { "fxADuck", "How much this channel is ducked under the kick." }, { "fxBDuck", "How much this channel is ducked under the kick." },
+            { "fxCDuck", "How much this channel is ducked under the kick." },
             { "bassGrid", "This layer's step grid: 1/16 for rolling basses, 1/8 T for triplet (K-B-B) grooves, and more." },
 
             // Kick
@@ -126,6 +132,48 @@ namespace Help
                     return text;
 
         return {};
+    }
+
+    juce::String forEffectKnob (const juce::String& name)
+    {
+        static const std::map<juce::String, juce::String> texts {
+            { "TYPE", "Which kind of filter: low pass keeps the lows, high pass the highs, band pass a band around the frequency." },
+            { "SLOPE", "How steeply the filter cuts: 24 dB/oct is stronger than 12 dB/oct." },
+            { "MODE", "The distortion's character: Soft, Hard, Fold (wavefolder) or Crush." },
+            { "CUTOFF", "The filter's frequency." },
+            { "RESO", "Boost around the filter frequency: squelchy at high values." },
+            { "DRIVE", "How hard the signal is pushed into the distortion." },
+            { "TONE", "Brightness after the distortion." },
+            { "MIX", "How much of the effect you hear compared to the untouched signal." },
+            { "LOW", "Boost or cut the low end (below ~120 Hz)." },
+            { "MID FREQ", "The frequency the MID band works on." },
+            { "MID", "Boost or cut the middle band." },
+            { "HIGH", "Boost or cut the highs (above ~6 kHz)." },
+            { "RATE", "Speed of the movement (or, on gates and auto filters, how often it repeats, synced to the tempo)." },
+            { "DEPTH", "How much the effect moves." },
+            { "DELAY", "Base delay of the effect in milliseconds." },
+            { "FEEDBACK", "How much of the output is fed back: more repeats or a stronger effect." },
+            { "FREQ", "The effect's frequency (phaser centre, comb pitch or ring modulator frequency)." },
+            { "TIME", "Delay time, synced to the tempo." },
+            { "PING PONG", "Echoes bounce between left and right." },
+            { "LOW CUT", "Removes low end from the effect so the bass stays tight." },
+            { "HIGH CUT", "Removes highs from the effect for a darker sound." },
+            { "SIZE", "Size of the room." },
+            { "DAMPING", "How fast the highs die out." },
+            { "WIDTH", "Stereo width of the effect." },
+            { "THRESHOLD", "The level above which the compressor starts reducing the volume." },
+            { "RATIO", "How strongly the compressor reduces what is above the threshold." },
+            { "ATTACK", "How fast the compressor reacts." },
+            { "RELEASE", "How fast the compressor lets go." },
+            { "MAKEUP", "Volume added after compression." },
+            { "LENGTH", "How long the gate stays open in each repeat." },
+            { "SMOOTH", "How soft the gate's edges are (longer = less clicky)." },
+            { "SHIFT", "Moves the gate pattern within the beat." },
+            { "BITS", "Number of bits: fewer = rougher and more distorted." },
+            { "DOWNSAMPLE", "Lowers the sample rate for a digital, aliased sound." },
+        };
+        const auto found = texts.find (name);
+        return found != texts.end() ? found->second : name;
     }
 
     juce::String modulationHint()

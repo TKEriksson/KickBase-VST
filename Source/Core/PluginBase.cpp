@@ -72,7 +72,6 @@ juce::Optional<juce::AudioPlayHead::PositionInfo> PluginBase::getHostPosition() 
 void PluginBase::getStateInformation (juce::MemoryBlock& destData)
 {
     auto state = apvts.copyState();
-    state.setProperty ("effectOrder", effectOrder.toString(), nullptr);
     for (int i = 0; i < Presets::numSections; ++i)
         state.setProperty (presetProperty ((Presets::Section) i), presetNames[(size_t) i], nullptr);
     for (int layer = 0; layer < ParamID::numBassLayers; ++layer)
@@ -95,7 +94,6 @@ void PluginBase::setStateInformation (const void* data, int sizeInBytes)
         return;
 
     auto state = juce::ValueTree::fromXml (*xml);
-    effectOrder.fromString (state.getProperty ("effectOrder").toString());
     for (int i = 0; i < Presets::numSections; ++i)
         presetNames[(size_t) i] = state.getProperty (presetProperty ((Presets::Section) i), presetNames[(size_t) i]).toString();
     for (int layer = 0; layer < ParamID::numBassLayers; ++layer)
@@ -160,9 +158,6 @@ void PluginBase::loadFactoryPreset (Presets::Section section, int index, int lay
 {
     Presets::applyFactory (section, effectVersion, index, apvts, pattern, sidechainCurve, layer);
 
-    if (section == Presets::Section::full || section == Presets::Section::effects)
-        effectOrder.reset();
-
     if (section == Presets::Section::full || section == Presets::Section::lfo)
         modRoutes.clear();
 
@@ -201,9 +196,6 @@ bool PluginBase::saveUserPreset (Presets::Section section, const juce::String& n
     root.setAttribute ("section", Presets::sectionName (section));
     root.setAttribute ("plugin", effectVersion ? "fx" : "instrument");
     root.setAttribute ("version", 1);
-
-    if (section == Presets::Section::full || section == Presets::Section::effects)
-        root.setAttribute ("effectOrder", effectOrder.toString());
 
     // Värden sparas i parameterns egen enhet (ms, Hz ...) i stället för 0..1, så att filen
     // fortfarande stämmer om ett omfång ändras senare.
@@ -255,9 +247,6 @@ bool PluginBase::loadUserPreset (Presets::Section section, const juce::File& fil
     // Delen till standard först: parametrar som saknas i filen (t.ex. nya sedan presetet
     // sparades) får sitt standardvärde i stället för att ärvas från förra ljudet.
     resetSectionToDefaults (section, layer);
-
-    if (section == Presets::Section::full || section == Presets::Section::effects)
-        effectOrder.fromString (xml->getStringAttribute ("effectOrder"));
 
     if (const auto* paramsXml = xml->getChildByName ("Params"))
     {

@@ -360,6 +360,7 @@ BassModule::BassModule (PluginBase& p, int layerIn)
                      { "WARP ENV", { knob (id (F::warpEnv), "AMOUNT") } },
                      { "DRIVE", { knob (id (F::drive), "AMOUNT") } },
                      { "SLIDE", { knob (id (F::glide), "TIME") } },
+                     { "FX SEND", { choice (id (F::fxChannel), "CHANNEL"), knob (id (F::fxAmount), "AMOUNT") } },
                      { "LAYER OUT", { knob (id (F::level), "LEVEL"), knob (id (F::duck), "DUCK"), knob (id (F::gate), "GATE") } } });
 }
 

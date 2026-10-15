@@ -11,14 +11,9 @@
 // t.ex. kan byta kick utan att röra basen, eller ladda ett echo utan att röra reverbet.
 namespace Presets
 {
-    // Effects är hela effektkedjan (inklusive ordningen); filter ... reverb är en effekt var.
-    enum class Section { full, kick, bass, pattern, sidechain, master, lfo, effects,
-                         filter, distortion, eq, chorus, phaser, echo, reverb };
-    constexpr int numSections = 15;
-
-    inline Section effectSection (EffectType type) { return (Section) ((int) Section::filter + (int) type); }
-    inline bool isSingleEffect (Section section)   { return (int) section >= (int) Section::filter; }
-    inline EffectType effectOf (Section section)   { return (EffectType) ((int) section - (int) Section::filter); }
+    // Effects är hela effektracket: alla kanaler och vilken kanal varje baslager skickar till.
+    enum class Section { full, kick, bass, pattern, sidechain, master, lfo, effects };
+    constexpr int numSections = 8;
 
     juce::String sectionName (Section section);
 
