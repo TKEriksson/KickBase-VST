@@ -5,7 +5,7 @@ FxEditor::FxEditor (FxProcessor& p)
 {
     setLookAndFeel (&lookAndFeel);
 
-    for (auto* component : std::initializer_list<juce::Component*> { &header, &kick, &gate, &lower, &mix })
+    for (auto* component : std::initializer_list<juce::Component*> { &header, &kick, &gate, &lower, &mix, &info })
         addAndMakeVisible (component);
 
     lower.addTab ("PATTERN", Theme::pattern, pattern);
@@ -14,7 +14,7 @@ FxEditor::FxEditor (FxProcessor& p)
     lower.addTab ("LFO", Theme::lfo, lfo);
     lower.addTab ("MASTER", Theme::master, masterPage);
 
-    setSize (1060, 736);
+    setSize (1060, 766);
 }
 
 FxEditor::~FxEditor()
@@ -30,6 +30,8 @@ void FxEditor::paint (juce::Graphics& g)
 void FxEditor::resized()
 {
     auto area = getLocalBounds().reduced (10);
+    info.setBounds (area.removeFromBottom (22));
+    area.removeFromBottom (8);
 
     header.setBounds (area.removeFromTop (44));
     area.removeFromTop (4);

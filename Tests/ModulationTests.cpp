@@ -61,31 +61,44 @@ namespace
     {
         std::puts ("LFO: modulering i parameterns skala");
         DummyProcessor processor;
-        Modulator modulator (processor.apvts);
+        ModRoutes routes;
+        Modulator modulator (processor.apvts, routes);
+        const auto cutoff = modulator.indexOf ("bassCutoff");
+        check (cutoff >= 0, "parametern hittas");
 
         modulator.update (0.0);
-        check (! modulator.isModulated (Modulation::Destination::bassCutoff), "avstängd LFO modulerar inte");
-        check (modulator.apply (Modulation::Destination::bassCutoff, 500.0f) == 500.0f, "orörd utan modulering");
+        check (modulator.apply (cutoff, 500.0f) == 500.0f, "orörd utan kopplingar");
 
-        processor.set ("lfo1On", 1.0f);
         processor.set ("lfo1Shape", 4.0f);  // fyrkant
         processor.set ("lfo1Rate", 6.0f);   // 1/4
-        processor.set ("lfo1DestA", (float) Modulation::Destination::bassCutoff);
-        processor.set ("lfo1AmountA", 0.2f);
+        check (routes.add (0, cutoff, 0.2f) == 0, "kopplingen läggs i första platsen");
+        check (routes.add (0, cutoff, 0.5f) == 0, "samma koppling två gånger blir en");
 
         modulator.update (0.1); // första halvan av perioden: +1
-        const auto up = modulator.apply (Modulation::Destination::bassCutoff, 500.0f);
+        const auto up = modulator.apply (cutoff, 500.0f);
         check (std::abs (up - 700.0f) < 1.0f, "+20 % av omfånget", up);
+        check (std::abs (modulator.currentOffset (cutoff) - 0.2f) < 1.0e-5f, "gränssnittet ser moduleringen");
 
         modulator.update (0.6); // andra halvan: -1
-        const auto down = modulator.apply (Modulation::Destination::bassCutoff, 500.0f);
+        const auto down = modulator.apply (cutoff, 500.0f);
         check (std::abs (down - 300.0f) < 1.0f, "-20 % av omfånget", down);
 
-        // Mål som inte finns i pluginet (t.ex. effekter här) ignoreras.
-        processor.set ("lfo1DestB", (float) Modulation::Destination::reverbMix);
-        processor.set ("lfo1AmountB", 0.5f);
+        processor.set ("lfo1On", 0.0f);
         modulator.update (0.1);
-        check (! modulator.isModulated (Modulation::Destination::reverbMix), "saknat mål ignoreras");
+        check (modulator.apply (cutoff, 500.0f) == 500.0f, "avstängd LFO modulerar inte");
+
+        processor.set ("lfo1On", 1.0f);
+        routes.remove (0);
+        modulator.update (0.1);
+        check (modulator.apply (cutoff, 500.0f) == 500.0f, "borttagen koppling modulerar inte");
+
+        // Sparas med parameterns ID och läses tillbaka.
+        routes.add (2, cutoff, -0.3f);
+        const auto tree = routes.toValueTree (processor.getParameters());
+        routes.clear();
+        routes.fromValueTree (tree, processor.getParameters());
+        const auto found = routes.find (2, cutoff);
+        check (found >= 0 && std::abs (routes.routes[(size_t) found].amount.load() + 0.3f) < 1.0e-5f, "sparas och läses tillbaka");
     }
 }
 

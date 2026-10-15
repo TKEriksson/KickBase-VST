@@ -142,7 +142,7 @@ void InstrumentProcessor::readBlockParams()
     scheduler.setGrid ((BassGrid) params.getChoice (ParamID::bassGrid));
     kickOn = params.getBool (ParamID::kickOn);
     bassOn = params.getBool (ParamID::bassOn);
-    duckAmount = modulator.apply (Modulation::Destination::duckAmount, params.get (ParamID::duckAmount));
+    duckAmount = params.get (ParamID::duckAmount); // med LFO-modulering
     bassGateScale = params.get (ParamID::bassGate);
     noteEnd = (NoteEnd) params.getChoice (ParamID::noteEnd);
     kick.setClickSample (getActiveClickSample());

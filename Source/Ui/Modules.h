@@ -33,6 +33,7 @@ class KickModule : public ModulePanel, public juce::FileDragAndDropTarget, priva
 public:
     explicit KickModule (PluginBase& processor);
     void resized() override;
+    void paint (juce::Graphics& g) override { ModulePanel::paint (g); groups.paint (g, getAccent()); }
     void paintOverChildren (juce::Graphics&) override;
 
     bool isInterestedInFileDrag (const juce::StringArray& files) override;
@@ -51,6 +52,7 @@ private:
 
     EnvelopeView envelope { 0.4 };
     std::vector<std::unique_ptr<KnobComponent>> knobs;
+    ControlGroups groups; // PITCH, GLIDE, AMP, CLICK ...
     ChoiceComponent keyMode;
     PresetButton presets;
 
@@ -66,6 +68,7 @@ class BassModule : public ModulePanel
 public:
     explicit BassModule (PluginBase& processor);
     void resized() override;
+    void paint (juce::Graphics& g) override { ModulePanel::paint (g); groups.paint (g, getAccent()); }
 
 private:
     ParamRefs refs;
@@ -74,7 +77,7 @@ private:
 
     EnvelopeView envelope { 0.5 };
     std::vector<std::unique_ptr<juce::Component>> controls;
-    std::vector<std::vector<juce::Component*>> rows; // OSC 1, OSC 2 + FM, FILTER, AMP
+    ControlGroups groups; // OSC 1, SUB, OSC 2, FM, FILTER, FILTER ENV, AMP ...
     PresetButton presets;
 };
 
@@ -112,7 +115,8 @@ private:
     StepSequencer sequencer;
 };
 
-// Mixen: ducking, gate-längd, master och (för instrumentet) vad som händer när tonen släpps.
+// Mixen: gate-längd, master och (för instrumentet) vad som händer när tonen släpps.
+// (Duckningen ställs i SIDECHAIN-fliken.)
 class MixModule : public ModulePanel
 {
 public:

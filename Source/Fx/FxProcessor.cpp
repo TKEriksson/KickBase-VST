@@ -83,7 +83,7 @@ void FxProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuff
     active = clock.isFollowingHost();
     kickOn = params.getBool (ParamID::kickOn);
     gateOn = params.getBool (ParamID::bassOn);
-    duckAmount = modulator.apply (Modulation::Destination::duckAmount, params.get (ParamID::duckAmount));
+    duckAmount = params.get (ParamID::duckAmount); // med LFO-modulering
     gateScale = params.get (ParamID::bassGate);
     inputLevel = params.get (ParamID::bassLevel) * params.get (ParamID::gain);
 

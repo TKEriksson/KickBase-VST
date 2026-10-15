@@ -1,4 +1,5 @@
 #include "Params.h"
+#include "Modulation.h"
 
 namespace
 {
@@ -195,10 +196,11 @@ namespace Params
 
 ParamRefs::ParamRefs (juce::AudioProcessorValueTreeState& apvts)
 {
-    for (auto* parameter : apvts.processor.getParameters())
+    const auto& parameters = apvts.processor.getParameters();
+    for (int i = 0; i < parameters.size(); ++i)
     {
-        if (auto* withId = dynamic_cast<juce::AudioProcessorParameterWithID*> (parameter))
-            entries.push_back ({ withId->paramID, apvts.getRawParameterValue (withId->paramID) });
+        if (auto* withId = dynamic_cast<juce::AudioProcessorParameterWithID*> (parameters[i]))
+            entries.push_back ({ withId->paramID, apvts.getRawParameterValue (withId->paramID), i });
     }
 }
 
@@ -206,7 +208,7 @@ float ParamRefs::get (const char* paramID) const
 {
     for (const auto& entry : entries)
         if (entry.id == paramID) // jämför utan att allokera
-            return entry.value->load();
+            return modulator != nullptr ? modulator->apply (entry.index, entry.value->load()) : entry.value->load();
 
     jassertfalse; // okänt parameter-ID
     return 0.0f;

@@ -5,7 +5,7 @@ InstrumentEditor::InstrumentEditor (InstrumentProcessor& p)
 {
     setLookAndFeel (&lookAndFeel);
 
-    for (auto* component : std::initializer_list<juce::Component*> { &header, &kick, &bass, &lower, &mix, &keyboard })
+    for (auto* component : std::initializer_list<juce::Component*> { &header, &kick, &bass, &lower, &mix, &info, &keyboard })
         addAndMakeVisible (component);
 
     lower.addTab ("PATTERN", Theme::pattern, pattern);
@@ -18,7 +18,7 @@ InstrumentEditor::InstrumentEditor (InstrumentProcessor& p)
     keyboard.setKeyWidth (14.0f);
     keyboard.setLowestVisibleKey (24);
 
-    setSize (1060, 800);
+    setSize (1060, 830);
 }
 
 InstrumentEditor::~InstrumentEditor()
@@ -39,7 +39,9 @@ void InstrumentEditor::resized()
     area.removeFromTop (4);
 
     keyboard.setBounds (area.removeFromBottom (54));
-    area.removeFromBottom (10);
+    area.removeFromBottom (6);
+    info.setBounds (area.removeFromBottom (22));
+    area.removeFromBottom (8);
 
     auto top = area.removeFromTop (430);
     kick.setBounds (top.removeFromLeft (top.getWidth() / 2 - 5));

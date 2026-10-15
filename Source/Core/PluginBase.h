@@ -90,7 +90,9 @@ protected:
     TransportClock clock;
 
 public:
-    Modulator modulator { apvts }; // public: gränssnittet visar LFO:ernas fas
+    // LFO-kopplingarna (gränssnittet lägger till och tar bort) och modulatorn som räknar ut dem.
+    ModRoutes modRoutes;
+    Modulator modulator { apvts, modRoutes };
 
 protected:
     // Läser kickens och basens parametrar, med LFO-modulering.

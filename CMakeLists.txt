@@ -49,6 +49,8 @@ set(PLUGIN_SOURCES
     Source/Ui/SidechainPage.cpp
     Source/Ui/MasterPage.cpp
     Source/Ui/LfoPage.cpp
+    Source/Ui/Components.cpp
+    Source/Ui/Help.cpp
 )
 
 set(INSTRUMENT_SOURCES

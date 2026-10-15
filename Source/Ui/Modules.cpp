@@ -198,14 +198,22 @@ KickModule::KickModule (PluginBase& p)
     addAndMakeVisible (envelope);
 
     addKnobs (*this, knobs, p, Theme::kick, {
-        { ParamID::kickTune, "TUNE" }, { ParamID::kickPitch, "PITCH" }, { ParamID::kickPitchTime, "P.TIME" },
-        { ParamID::kickPitchCurve, "P.CURVE" }, { ParamID::kickClick, "CLICK" }, { ParamID::kickClickLength, "CLK LEN" },
-        { ParamID::kickClickTone, "CLK TONE" },
+        { ParamID::kickTune, "TUNE" }, { ParamID::kickPitch, "PITCH" }, { ParamID::kickPitchTime, "TIME" },
+        { ParamID::kickPitchCurve, "CURVE" }, { ParamID::kickClick, "LEVEL" }, { ParamID::kickClickLength, "LENGTH" },
+        { ParamID::kickClickTone, "TONE" },
         { ParamID::kickAttack, "ATTACK" }, { ParamID::kickHold, "HOLD" }, { ParamID::kickDecay, "DECAY" },
-        { ParamID::kickDecayCurve, "D.CURVE" }, { ParamID::kickGlide, "GLIDE" }, { ParamID::kickGlideTime, "G.TIME" },
-        { ParamID::kickDrive, "DRIVE" }, { ParamID::kickLevel, "LEVEL" } });
-    knobs[11]->slider.setTooltip ("Glide: a second, slow pitch drop on top of the fast one (how far above the tail it starts)");
-    knobs[12]->slider.setTooltip ("Glide time: how long the slow pitch drop takes to reach the tail");
+        { ParamID::kickDecayCurve, "CURVE" }, { ParamID::kickGlide, "AMOUNT" }, { ParamID::kickGlideTime, "TIME" },
+        { ParamID::kickDrive, "AMOUNT" }, { ParamID::kickLevel, "LEVEL" } });
+
+    auto k = [this] (std::initializer_list<int> indices)
+    {
+        std::vector<juce::Component*> result;
+        for (auto i : indices)
+            result.push_back (knobs[(size_t) i].get());
+        return result;
+    };
+    groups.addRow ({ { "KEY", k ({ 0 }) }, { "PITCH SWEEP", k ({ 1, 2, 3 }) }, { "SLOW GLIDE", k ({ 11, 12 }) }, { "DRIVE", k ({ 13 }) } });
+    groups.addRow ({ { "VOLUME ENVELOPE", k ({ 7, 8, 9, 10 }) }, { "CLICK", k ({ 4, 5, 6 }) }, { "OUT", k ({ 14 }) } });
 
     sampleLabel.setFont (Theme::font (11.0f));
     sampleLabel.setColour (juce::Label::textColourId, Theme::textDim);
@@ -294,15 +302,11 @@ void KickModule::resized()
     sampleLabel.setBounds (sampleRow);
     area.removeFromBottom (4);
 
-    auto row2 = area.removeFromBottom (knobRowHeight);
-    auto row1 = area.removeFromBottom (knobRowHeight);
-    area.removeFromBottom (6);
+    constexpr int rowHeight = 60;
+    const auto groupsHeight = groups.numRows() * (ControlGroups::titleHeight + rowHeight + 3);
+    groups.layout (area.removeFromBottom (groupsHeight), rowHeight);
+    area.removeFromBottom (4);
     envelope.setBounds (area);
-
-    auto first = pointers (knobs, 0, 7);
-    auto second = pointers (knobs, 7, 15);
-    layoutRow (first, row1);
-    layoutRow (second, row2);
 }
 
 //==============================================================================
@@ -349,18 +353,24 @@ BassModule::BassModule (PluginBase& p)
         return controls.back().get();
     };
 
-    rows.push_back ({ knob (ParamID::bassShape, "SHAPE"), knob (ParamID::bassPulseWidth, "PW"), knob (ParamID::bassOctave, "OCTAVE"),
-                      knob (ParamID::bassTune, "TUNE"), knob (ParamID::bassSub, "SUB"), choice (ParamID::bassSubOctave, "SUB OCT"),
-                      knob (ParamID::bassNoise, "NOISE") });
-    rows.push_back ({ knob (ParamID::bassOsc2Shape, "O2 SHAPE"), knob (ParamID::bassOsc2Pw, "O2 PW"), knob (ParamID::bassOsc2Level, "O2 LEVEL"),
-                      knob (ParamID::bassOsc2Semi, "O2 SEMI"), knob (ParamID::bassOsc2Detune, "DETUNE"), knob (ParamID::bassFm, "FM"),
-                      knob (ParamID::bassFmEnv, "FM ENV") });
-    rows.push_back ({ choice (ParamID::bassFilterType, "FILTER"), knob (ParamID::bassCutoff, "CUTOFF"),
-                      knob (ParamID::bassResonance, "RESO"), knob (ParamID::bassEnvAmount, "ENV AMT"),
-                      knob (ParamID::bassEnvDecay, "ENV DEC"), knob (ParamID::bassVelToEnv, "VEL>ENV"),
-                      knob (ParamID::bassKeyTrack, "KEYTRK"), knob (ParamID::bassDrive, "DRIVE") });
-    rows.push_back ({ knob (ParamID::bassAttack, "ATTACK"), knob (ParamID::bassDecay, "DECAY"), knob (ParamID::bassSustain, "SUSTAIN"),
-                      knob (ParamID::bassRelease, "RELEASE"), knob (ParamID::bassGlide, "GLIDE"), knob (ParamID::bassLevel, "LEVEL") });
+    // Grupperade efter vad de gör, i signalens ordning: oscillatorer -> filter -> volym.
+    groups.addRow ({ { "OSC 1", { knob (ParamID::bassShape, "SHAPE"), knob (ParamID::bassPulseWidth, "PW"),
+                                  knob (ParamID::bassOctave, "OCTAVE"), knob (ParamID::bassTune, "TUNE") } },
+                     { "SUB", { knob (ParamID::bassSub, "LEVEL"), choice (ParamID::bassSubOctave, "OCTAVE") } },
+                     { "NOISE", { knob (ParamID::bassNoise, "LEVEL") } } });
+    groups.addRow ({ { "OSC 2", { knob (ParamID::bassOsc2Shape, "SHAPE"), knob (ParamID::bassOsc2Pw, "PW"),
+                                  knob (ParamID::bassOsc2Level, "LEVEL"), knob (ParamID::bassOsc2Semi, "SEMI"),
+                                  knob (ParamID::bassOsc2Detune, "DETUNE") } },
+                     { "FM (OSC 2 > OSC 1)", { knob (ParamID::bassFm, "AMOUNT"), knob (ParamID::bassFmEnv, "ATTACK") } } });
+    groups.addRow ({ { "FILTER", { choice (ParamID::bassFilterType, "TYPE"), knob (ParamID::bassCutoff, "CUTOFF"),
+                                   knob (ParamID::bassResonance, "RESO"), knob (ParamID::bassKeyTrack, "KEYTRK") } },
+                     { "FILTER ENVELOPE", { knob (ParamID::bassEnvAmount, "AMOUNT"), knob (ParamID::bassEnvDecay, "DECAY"),
+                                            knob (ParamID::bassVelToEnv, "VEL") } },
+                     { "DRIVE", { knob (ParamID::bassDrive, "AMOUNT") } } });
+    groups.addRow ({ { "VOLUME ENVELOPE", { knob (ParamID::bassAttack, "ATTACK"), knob (ParamID::bassDecay, "DECAY"),
+                                            knob (ParamID::bassSustain, "SUSTAIN"), knob (ParamID::bassRelease, "RELEASE") } },
+                     { "SLIDE", { knob (ParamID::bassGlide, "TIME") } },
+                     { "OUT", { knob (ParamID::bassLevel, "LEVEL") } } });
 }
 
 float BassModule::ampValueAt (double seconds) const
@@ -391,31 +401,11 @@ void BassModule::resized()
     presets.setBounds (presetBounds (*this));
     auto area = getContentBounds();
 
-    constexpr int rowHeight = 62;
-    std::vector<juce::Rectangle<int>> rowAreas;
-    for (size_t r = 0; r < rows.size(); ++r)
-        rowAreas.insert (rowAreas.begin(), area.removeFromBottom (rowHeight));
+    constexpr int rowHeight = 56;
+    const auto groupsHeight = groups.numRows() * (ControlGroups::titleHeight + rowHeight + 3);
+    groups.layout (area.removeFromBottom (groupsHeight), rowHeight);
     area.removeFromBottom (4);
     envelope.setBounds (area);
-
-    // Alla rader delas i lika många celler (den längsta radens antal), så att kolumnerna linjerar.
-    size_t columns = 0;
-    for (const auto& row : rows)
-        columns = std::max (columns, row.size());
-
-    for (size_t r = 0; r < rows.size(); ++r)
-    {
-        auto rowArea = rowAreas[r];
-        const auto cellWidth = rowArea.getWidth() / (int) columns;
-        for (auto* control : rows[r])
-        {
-            auto cell = rowArea.removeFromLeft (cellWidth);
-            if (dynamic_cast<ChoiceComponent*> (control) != nullptr)
-                control->setBounds (cell.reduced (2, 0).withSizeKeepingCentre (cell.getWidth() - 4, 40));
-            else
-                control->setBounds (cell);
-        }
-    }
 }
 
 //==============================================================================
@@ -550,14 +540,11 @@ void PatternModule::resized()
 MixModule::MixModule (PluginBase& p, bool showNoteEnd)
     : ModulePanel ("MIX", Theme::mix)
 {
-    addKnobs (*this, knobs, p, Theme::mix, { { ParamID::duckAmount, "DUCK" }, { ParamID::bassGate, "GATE" }, { ParamID::gain, "MASTER" } });
-    knobs[0]->slider.setTooltip ("How much the bass ducks under the kick");
-    knobs[1]->slider.setTooltip ("Scales the gate length of all bass steps");
+    addKnobs (*this, knobs, p, Theme::mix, { { ParamID::bassGate, "GATE" }, { ParamID::gain, "MASTER" } });
 
     if (showNoteEnd)
     {
         noteEnd = std::make_unique<ChoiceComponent> (p.apvts, ParamID::noteEnd, "NOTE END");
-        noteEnd->box.setTooltip ("What happens when the DAW note ends mid-pattern");
         addAndMakeVisible (*noteEnd);
     }
 }
@@ -574,7 +561,6 @@ void MixModule::resized()
     }
 
     auto top = area.removeFromTop (area.getHeight() / 2);
-    knobs[0]->setBounds (top.removeFromLeft (top.getWidth() / 2));
-    knobs[1]->setBounds (top);
-    knobs[2]->setBounds (area.withSizeKeepingCentre (area.getWidth() / 2, area.getHeight()));
+    knobs[0]->setBounds (top.withSizeKeepingCentre (top.getWidth() / 2, top.getHeight()));
+    knobs[1]->setBounds (area.withSizeKeepingCentre (area.getWidth() / 2, area.getHeight()));
 }

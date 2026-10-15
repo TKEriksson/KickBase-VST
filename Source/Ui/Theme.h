@@ -25,6 +25,13 @@ namespace Theme
     inline const juce::Colour master  { 0xffff6b6b };
     inline const juce::Colour lfo     { 0xff5ef2d6 };
 
+    // Varje LFO har en egen färg, så att man ser vilken LFO som rör en ratt.
+    inline juce::Colour lfoColour (int index)
+    {
+        const juce::Colour colours[] { lfo, juce::Colour (0xffc6ff5e), juce::Colour (0xffff7ad9) };
+        return colours[juce::jlimit (0, 2, index)];
+    }
+
     inline juce::Font font (float height, bool bold = false)
     {
         return juce::Font (juce::FontOptions (height, bold ? juce::Font::bold : juce::Font::plain));

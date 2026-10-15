@@ -16,6 +16,7 @@ PluginBase::PluginBase (const BusesProperties& buses, juce::AudioProcessorValueT
       params (apvts),
       effectVersion (isEffect)
 {
+    params.setModulator (&modulator); // ljudtrådens parametrar läses med LFO-modulering
     presetNames.fill ("Default");
     presetNames[(size_t) Presets::Section::full] = "Init";
     presetNames[(size_t) Presets::Section::pattern] = "Rolling";
@@ -28,38 +29,9 @@ void PluginBase::prepareBase (double sampleRate)
     rebuildClickForSampleRate();
 }
 
-KickParams PluginBase::readModulatedKick (int keyPitchClass) const
-{
-    using Dest = Modulation::Destination;
-    auto p = params.readKick (keyPitchClass);
-    p.pitchSemis = modulator.apply (Dest::kickPitch, p.pitchSemis);
-    p.decayMs = modulator.apply (Dest::kickDecay, p.decayMs);
-    return p;
-}
-
-BassParams PluginBase::readModulatedBass (int rootMidiNote) const
-{
-    using Dest = Modulation::Destination;
-    auto p = params.readBass (rootMidiNote);
-    p.cutoffHz = modulator.apply (Dest::bassCutoff, p.cutoffHz);
-    p.resonance = modulator.apply (Dest::bassResonance, p.resonance);
-    p.envAmount = modulator.apply (Dest::bassEnvAmount, p.envAmount);
-    p.drive = modulator.apply (Dest::bassDrive, p.drive);
-    p.level = modulator.apply (Dest::bassLevel, p.level);
-    p.shape = modulator.apply (Dest::bassShape, p.shape);
-    p.osc2Shape = modulator.apply (Dest::bassOsc2Shape, p.osc2Shape);
-    p.osc2Level = modulator.apply (Dest::bassOsc2Level, p.osc2Level);
-    p.fmAmount = modulator.apply (Dest::bassFm, p.fmAmount);
-    p.pulseWidth = modulator.apply (Dest::bassPulseWidth, p.pulseWidth);
-
-    // Tune ingår redan i rootHz; lägg bara på skillnaden.
-    if (modulator.isModulated (Dest::bassTune))
-    {
-        const auto tune = params.get (ParamID::bassTune);
-        p.rootHz *= std::exp2 ((modulator.apply (Dest::bassTune, tune) - tune) / 12.0f);
-    }
-    return p;
-}
+// params läser med modulering (se konstruktorn), så kick och bas får LFO:erna härifrån.
+KickParams PluginBase::readModulatedKick (int keyPitchClass) const { return params.readKick (keyPitchClass); }
+BassParams PluginBase::readModulatedBass (int rootMidiNote) const  { return params.readBass (rootMidiNote); }
 
 juce::Optional<juce::AudioPlayHead::PositionInfo> PluginBase::getHostPosition() const
 {
@@ -78,6 +50,7 @@ void PluginBase::getStateInformation (juce::MemoryBlock& destData)
     state.appendChild (pattern.toValueTree(), nullptr);
     state.appendChild (clickToValueTree(), nullptr);
     state.appendChild (sidechainCurve.toValueTree(), nullptr);
+    state.appendChild (modRoutes.toValueTree (getParameters()), nullptr);
 
     if (auto xml = state.createXml())
         copyXmlToBinary (*xml, destData);
@@ -113,6 +86,10 @@ void PluginBase::setStateInformation (const void* data, int sizeInBytes)
         state.removeChild (curveTree, nullptr);
     }
 
+    modRoutes.fromValueTree (state.getChildWithName (ModRoutes::treeType), getParameters());
+    if (auto routesTree = state.getChildWithName (ModRoutes::treeType); routesTree.isValid())
+        state.removeChild (routesTree, nullptr);
+
     apvts.replaceState (state);
 }
 
@@ -140,6 +117,9 @@ void PluginBase::loadFactoryPreset (Presets::Section section, int index)
 
     if (section == Presets::Section::full || section == Presets::Section::effects)
         effectOrder.reset();
+
+    if (section == Presets::Section::full || section == Presets::Section::lfo)
+        modRoutes.clear();
 
     if (section == Presets::Section::full)
     {
@@ -196,6 +176,9 @@ bool PluginBase::saveUserPreset (Presets::Section section, const juce::String& n
     if (section == Presets::Section::full || section == Presets::Section::sidechain)
         root.addChildElement (sidechainCurve.toValueTree().createXml().release());
 
+    if (section == Presets::Section::full || section == Presets::Section::lfo)
+        root.addChildElement (modRoutes.toValueTree (getParameters()).createXml().release());
+
     if (! root.writeTo (directory.getChildFile (fileName + presetFileExtension)))
         return false;
 
@@ -246,6 +229,14 @@ bool PluginBase::loadUserPreset (Presets::Section section, const juce::File& fil
             sidechainCurve.fromValueTree (juce::ValueTree::fromXml (*curveXml));
         else
             sidechainCurve.reset();
+    }
+
+    if (section == Presets::Section::full || section == Presets::Section::lfo)
+    {
+        if (const auto* routesXml = xml->getChildByName (ModRoutes::treeType))
+            modRoutes.fromValueTree (juce::ValueTree::fromXml (*routesXml), getParameters());
+        else
+            modRoutes.clear();
     }
 
     if (section == Presets::Section::full)

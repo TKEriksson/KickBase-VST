@@ -3,78 +3,150 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "Theme.h"
 
-// En ratt med namn under, kopplad till en parameter. Dubbelklick återställer standardvärdet.
-class KnobComponent : public juce::Component
+class PluginBase;
+
+// Högerklicksmenyn för en parameter: `menu` (egna val) följt av DAW:ens val, t.ex. FL Studios
+// "Create automation clip" och "Link to controller" (lyssna efter en MIDI-ratt).
+void showParameterMenu (juce::Component& source, juce::RangedAudioParameter& parameter, juce::PopupMenu menu);
+
+// Processorn som komponenten tillhör (via editorn), eller nullptr.
+PluginBase* findProcessor (const juce::Component& component);
+
+// En ratt med namn under, kopplad till en parameter.
+//
+// - Dubbelklick återställer standardvärdet, högerklick visar menyn (DAW-automation m.m.).
+// - Dra en LFO hit (från LFO-fliken) för att modulera ratten. Varje koppling visas som en ring
+//   i LFO:ns färg; dra i ringen för att ändra mängden. En prick visar var ratten är just nu.
+class KnobComponent : public juce::Component, public juce::DragAndDropTarget, private juce::Timer
 {
 public:
-    KnobComponent (juce::AudioProcessorValueTreeState& apvts, const char* paramID, const juce::String& name, juce::Colour accent)
+    KnobComponent (juce::AudioProcessorValueTreeState& apvts, const char* paramID, const juce::String& name, juce::Colour accent);
+    ~KnobComponent() override;
+
+    void resized() override;
+    void paintOverChildren (juce::Graphics&) override;
+
+    bool isInterestedInDragSource (const SourceDetails&) override;
+    void itemDragEnter (const SourceDetails&) override { dropHover = true; repaint(); }
+    void itemDragExit (const SourceDetails&) override  { dropHover = false; repaint(); }
+    void itemDropped (const SourceDetails&) override;
+
+    // Beskrivning som visas när musen är över ratten (och i inforaden).
+    void setDescription (const juce::String& text);
+
+    class ModSlider : public juce::Slider
     {
-        slider.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
-        slider.setTextBoxStyle (juce::Slider::NoTextBox, true, 0, 0);
-        slider.setColour (juce::Slider::rotarySliderFillColourId, accent);
-        slider.setPopupDisplayEnabled (false, false, nullptr);
-        addAndMakeVisible (slider);
+    public:
+        explicit ModSlider (KnobComponent& o) : owner (o) {}
+        void mouseDown (const juce::MouseEvent&) override;
+        void mouseDrag (const juce::MouseEvent&) override;
+        void mouseUp (const juce::MouseEvent&) override;
+        void mouseMove (const juce::MouseEvent&) override;
+        void mouseExit (const juce::MouseEvent&) override;
 
-        label.setText (name, juce::dontSendNotification);
-        label.setJustificationType (juce::Justification::centred);
-        label.setFont (Theme::font (11.0f, true));
-        label.setColour (juce::Label::textColourId, Theme::textDim);
-        label.setInterceptsMouseClicks (false, false);
-        addAndMakeVisible (label);
+    private:
+        KnobComponent& owner;
+    };
 
-        attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (apvts, paramID, slider);
-
-        if (auto* parameter = apvts.getParameter (paramID))
-        {
-            slider.setDoubleClickReturnValue (true, parameter->convertFrom0to1 (parameter->getDefaultValue()));
-            slider.setTooltip (parameter->getName (64));
-        }
-    }
-
-    void resized() override
-    {
-        auto area = getLocalBounds();
-        label.setBounds (area.removeFromBottom (14));
-        slider.setBounds (area);
-    }
-
-    juce::Slider slider;
+    ModSlider slider { *this };
 
 private:
+    friend class ModSlider;
+
+    struct Ring
+    {
+        int route;   // plats i ModRoutes
+        int source;  // LFO
+        float amount;
+    };
+
+    void timerCallback() override;
+    std::vector<Ring> rings() const;
+    int parameterIndex() const;
+    int ringAt (juce::Point<float> position) const; // index i rings(), eller -1
+    float ringRadius (int ring) const;
+    juce::Point<float> knobCentre() const;
+    float trackRadius() const;
+    void showMenu();
+    void updateTooltip (int hoveredRing);
+
     juce::Label label;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> attachment;
+    juce::RangedAudioParameter* parameter = nullptr;
+    juce::String name, description;
+    juce::Colour accent;
+    bool modulatable = false;
+    bool dropHover = false;
+
+    int dragRing = -1;        // ringen som dras, index i rings()
+    int dragRoute = -1;
+    float dragStartAmount = 0.0f;
+    float dragStartY = 0.0f;
+    int lastRoutesVersion = -1;
+    mutable int cachedIndex = -1;
+    float lastOffset = 0.0f;
 };
 
 // En liten rullgardinslista med etikett ovanför, kopplad till en valparameter.
+// Högerklick visar menyn med DAW:ens val.
 class ChoiceComponent : public juce::Component
 {
 public:
-    ChoiceComponent (juce::AudioProcessorValueTreeState& apvts, const char* paramID, const juce::String& name)
+    ChoiceComponent (juce::AudioProcessorValueTreeState& apvts, const char* paramID, const juce::String& name);
+
+    void resized() override;
+
+    class Box : public juce::ComboBox
     {
-        if (auto* parameter = apvts.getParameter (paramID))
-            box.addItemList (parameter->getAllValueStrings(), 1);
-        addAndMakeVisible (box);
+    public:
+        juce::RangedAudioParameter* parameter = nullptr;
+        void mouseDown (const juce::MouseEvent&) override;
+    };
 
-        label.setText (name, juce::dontSendNotification);
-        label.setFont (Theme::font (11.0f, true));
-        label.setColour (juce::Label::textColourId, Theme::textDim);
-        addAndMakeVisible (label);
-
-        attachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (apvts, paramID, box);
-    }
-
-    void resized() override
-    {
-        auto area = getLocalBounds();
-        label.setBounds (area.removeFromTop (14));
-        box.setBounds (area.removeFromTop (24));
-    }
-
-    juce::ComboBox box;
+    Box box;
 
 private:
     juce::Label label;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> attachment;
+};
+
+// Raden längst ner som alltid förklarar det musen är över (tooltip-texten för kontrollen
+// under musen, eller en allmän tips-text).
+class InfoBar : public juce::Component, private juce::Timer
+{
+public:
+    InfoBar();
+    void paint (juce::Graphics&) override;
+
+private:
+    void timerCallback() override;
+    juce::String text;
+};
+
+// Rattar i grupper med rubrik (OSC 1, FILTER ...): grupperna läggs i rader, och alla rader delas
+// i lika många kolumner så att rattarna linjerar. Ritar gruppernas ramar och rubriker.
+class ControlGroups
+{
+public:
+    struct Group
+    {
+        juce::String title;
+        std::vector<juce::Component*> controls;
+        juce::String description; // visas när musen är över rubriken (via ägarens tooltip)
+    };
+
+    void addRow (std::vector<Group> row) { rows.push_back (std::move (row)); }
+    int numRows() const { return (int) rows.size(); }
+
+    // Lägger ut raderna i `area` (uppifrån). Valrutor (ChoiceComponent) centreras på höjden.
+    void layout (juce::Rectangle<int> area, int rowHeight);
+    void paint (juce::Graphics& g, juce::Colour accent) const;
+
+    static constexpr int titleHeight = 12;
+
+private:
+    std::vector<std::vector<Group>> rows;
+    std::vector<std::pair<juce::Rectangle<int>, juce::String>> frames; // beräknas i layout
 };
 
 // En panel med rubrik i modulens färg och (valfritt) en på/av-knapp kopplad till en parameter.
@@ -91,7 +163,7 @@ public:
         {
             power = std::make_unique<juce::ToggleButton>();
             power->setColour (juce::ToggleButton::tickColourId, accent);
-            power->setTooltip ("On/Off");
+            power->setTooltip ("Turns the " + titleIn.toLowerCase() + " on or off");
             addAndMakeVisible (*power);
             powerAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (*apvts, powerParamID, *power);
         }

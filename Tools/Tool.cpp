@@ -5,7 +5,7 @@
 //   (flera toner: en per takt, bytet sker exakt på taktstrecket; preset kan följas av kick- och
 //   baspreset, t.ex. 16+k3+b5 = helpreset 16, sedan kickpreset 3 och baspreset 5)
 //   MyOwnFruitTool export   <ut.wav> full|kick|bass <takter> [bpm] [ton] [preset]   (som EXPORT-knappen)
-//   MyOwnFruitTool snapshot instrument|fx <ut.png> [flik]
+//   MyOwnFruitTool snapshot instrument|fx <ut.png> [flik] [mod]   (mod = med exempel-LFO-kopplingar)
 //   MyOwnFruitTool presettest
 //   MyOwnFruitTool analyze  <ljudfil> [start-sekund] [slut-sekund]
 //   MyOwnFruitTool fitbass  <ljudfil> <start> <slut> [steg per slag]
@@ -234,7 +234,7 @@ namespace
         return ok ? 0 : 1;
     }
 
-    int snapshot (const juce::String& kind, const juce::File& outFile, int tab)
+    int snapshot (const juce::String& kind, const juce::File& outFile, int tab, bool withModulation)
     {
         juce::ScopedJuceInitialiser_GUI gui;
 
@@ -242,6 +242,22 @@ namespace
         processor->selectedTab = tab;
         processor->setPlayConfigDetails (kind == "fx" ? 2 : 0, 2, renderRate, blockSize);
         processor->prepareToPlay (renderRate, blockSize);
+
+        if (withModulation)
+        {
+            // Exempelkopplingar, så att LFO-ringarna syns på bilden.
+            const auto& parameters = processor->getParameters();
+            auto indexOf = [&parameters] (const char* id)
+            {
+                for (int i = 0; i < parameters.size(); ++i)
+                    if (auto* p = dynamic_cast<juce::AudioProcessorParameterWithID*> (parameters[i]); p != nullptr && p->paramID == id)
+                        return i;
+                return -1;
+            };
+            processor->modRoutes.add (0, indexOf ("bassCutoff"), 0.35f);
+            processor->modRoutes.add (1, indexOf ("bassCutoff"), -0.2f);
+            processor->modRoutes.add (2, indexOf ("kickPitch"), 0.25f);
+        }
 
         std::unique_ptr<juce::AudioProcessorEditor> editor (processor->createEditorAndMakeActive());
         const auto image = editor->createComponentSnapshot (editor->getLocalBounds(), true, 1.0f);
@@ -326,7 +342,7 @@ int main (int argc, char* argv[])
     }
 
     if (command == "snapshot")
-        return snapshot (kind, outFile, argc > 4 ? juce::String (argv[4]).getIntValue() : 0);
+        return snapshot (kind, outFile, argc > 4 ? juce::String (argv[4]).getIntValue() : 0, argc > 5 && juce::String (argv[5]) == "mod");
 
     std::puts ("Okänt kommando");
     return 1;

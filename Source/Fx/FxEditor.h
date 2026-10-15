@@ -10,7 +10,8 @@
 #include "../Ui/Modules.h"
 #include "../Ui/TabbedPanel.h"
 
-class FxEditor : public juce::AudioProcessorEditor
+// DragAndDropContainer: LFO:er dras till rattarna.
+class FxEditor : public juce::AudioProcessorEditor, public juce::DragAndDropContainer
 {
 public:
     explicit FxEditor (FxProcessor&);
@@ -33,7 +34,8 @@ private:
     LfoPage lfo { processor };
     MasterPage masterPage { processor };
     MixModule mix { processor, false };
-    juce::TooltipWindow tooltips { this, 700 };
+    InfoBar info;
+    juce::TooltipWindow tooltips { this, 1200 };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FxEditor)
 };

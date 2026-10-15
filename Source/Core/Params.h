@@ -5,6 +5,8 @@
 #include "KickEngine.h"
 #include "Pattern.h"
 
+class Modulator;
+
 // Parameter-ID:n samlade på ett ställe. Ändra inte ett ID när det väl använts:
 // sparade projekt och automation i DAW:en pekar på det.
 namespace ParamID
@@ -110,6 +112,10 @@ class ParamRefs
 public:
     explicit ParamRefs (juce::AudioProcessorValueTreeState& apvts);
 
+    // Med en modulator läser get() värdena med LFO-modulering (ljudtråden); utan läser den
+    // dem orörda (t.ex. gränssnittets kurvor).
+    void setModulator (const Modulator* m) { modulator = m; }
+
     float get (const char* paramID) const;
     bool getBool (const char* paramID) const  { return get (paramID) >= 0.5f; }
     int getChoice (const char* paramID) const { return (int) get (paramID); }
@@ -122,7 +128,9 @@ private:
     {
         juce::String id;
         std::atomic<float>* value;
+        int index; // plats i processorns parameterlista (samma som Modulator använder)
     };
 
     std::vector<Entry> entries; // byggs en gång i konstruktorn, ändras aldrig efter det
+    const Modulator* modulator = nullptr;
 };

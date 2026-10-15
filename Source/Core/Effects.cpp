@@ -38,17 +38,15 @@ namespace
         return (float) (1.0 - std::exp (-MathConstants<double>::twoPi * hz / sampleRate));
     }
 
-    using Dest = Modulation::Destination;
-
-    // Basklass för effekterna: läser en parameter, med LFO-modulering om den finns.
+    // Basklass för effekterna: läser en parameter, med LFO-modulering om en LFO dragits dit.
     struct ModulatedEffect
     {
         const Modulator* modulator = nullptr;
 
-        float get (std::atomic<float>* parameter, Dest destination) const
+        float get (std::atomic<float>* parameter) const
         {
             const auto value = parameter->load();
-            return modulator != nullptr ? modulator->apply (destination, value) : value;
+            return modulator != nullptr ? modulator->applyRaw (parameter, value) : value;
         }
     };
 
@@ -248,23 +246,23 @@ namespace
             first.prepare (spec);
             second.prepare (spec);
             smoothedCutoff.reset (spec.sampleRate, 0.03);
-            smoothedCutoff.setCurrentAndTargetValue (cutoff->load());
+            smoothedCutoff.setCurrentAndTargetValue (get (cutoff));
         }
 
         void reset() { first.reset(); second.reset(); }
 
         void process (AudioBuffer<float>& buffer, int numSamples)
         {
-            const auto filterType = (dsp::StateVariableTPTFilterType) jlimit (0, 2, (int) type->load());
-            const auto steep = slope->load() >= 0.5f;
-            const auto q = 0.5f * std::pow (20.0f, get (reso, Dest::filterReso));
-            const auto wet = mix->load();
+            const auto filterType = (dsp::StateVariableTPTFilterType) jlimit (0, 2, (int) get (type));
+            const auto steep = get (slope) >= 0.5f;
+            const auto q = 0.5f * std::pow (20.0f, get (reso));
+            const auto wet = get (mix);
 
             first.setType (filterType);
             second.setType (filterType);
             first.setResonance (steep ? 0.707f : q);
             second.setResonance (q);
-            smoothedCutoff.setTargetValue (get (cutoff, Dest::filterCutoff));
+            smoothedCutoff.setTargetValue (get (cutoff));
 
             for (int start = 0; start < numSamples; start += chunk)
             {
@@ -301,11 +299,11 @@ namespace
 
         void process (AudioBuffer<float>& buffer, int numSamples)
         {
-            const auto m = (int) mode->load();
-            const auto amount = get (drive, Dest::distDrive);
-            const auto wet = mix->load();
+            const auto m = (int) get (mode);
+            const auto amount = get (drive);
+            const auto wet = get (mix);
             const auto gain = std::pow (10.0f, amount * 1.5f); // upp till ~30 gånger (+30 dB)
-            const auto toneCoefficient = onePoleCoefficient (tone->load(), sampleRate);
+            const auto toneCoefficient = onePoleCoefficient (get (tone), sampleRate);
 
             // Crush: färre bitar och lägre samplingsfrekvens ju mer drive.
             const auto levels = std::pow (2.0f, 16.0f - amount * 13.0f);
@@ -341,7 +339,7 @@ namespace
         }
     };
 
-    struct EqFx
+    struct EqFx : ModulatedEffect
     {
         std::atomic<float>* low; std::atomic<float>* midFreq; std::atomic<float>* mid; std::atomic<float>* high;
         std::array<dsp::IIR::Filter<float>, 2> lowFilters, midFilters, highFilters;
@@ -374,7 +372,7 @@ namespace
         void updateCoefficients()
         {
             using Array = dsp::IIR::ArrayCoefficients<float>;
-            const auto l = low->load(), mf = midFreq->load(), m = mid->load(), h = high->load();
+            const auto l = get (low), mf = get (midFreq), m = get (mid), h = get (high);
 
             if (l != lastLow)
                 for (auto& f : lowFilters)
@@ -411,11 +409,11 @@ namespace
 
         void process (AudioBuffer<float>& buffer, int numSamples)
         {
-            chorus.setRate (rate->load());
-            chorus.setDepth (depth->load());
-            chorus.setCentreDelay (delay->load());
-            chorus.setFeedback (feedback->load());
-            chorus.setMix (get (mix, Dest::chorusMix));
+            chorus.setRate (get (rate));
+            chorus.setDepth (get (depth));
+            chorus.setCentreDelay (get (delay));
+            chorus.setFeedback (get (feedback));
+            chorus.setMix (get (mix));
             auto block = dsp::AudioBlock<float> (buffer).getSubBlock (0, (size_t) numSamples);
             chorus.process (dsp::ProcessContextReplacing<float> (block));
         }
@@ -431,11 +429,11 @@ namespace
 
         void process (AudioBuffer<float>& buffer, int numSamples)
         {
-            phaser.setRate (rate->load());
-            phaser.setDepth (depth->load());
-            phaser.setCentreFrequency (freq->load());
-            phaser.setFeedback (feedback->load());
-            phaser.setMix (get (mix, Dest::phaserMix));
+            phaser.setRate (get (rate));
+            phaser.setDepth (get (depth));
+            phaser.setCentreFrequency (get (freq));
+            phaser.setFeedback (get (feedback));
+            phaser.setMix (get (mix));
             auto block = dsp::AudioBlock<float> (buffer).getSubBlock (0, (size_t) numSamples);
             phaser.process (dsp::ProcessContextReplacing<float> (block));
         }
@@ -465,18 +463,18 @@ namespace
 
         float targetDelay() const
         {
-            const auto seconds = Effects::echoTimeInQuarters ((int) time->load()) * 60.0 / bpm;
+            const auto seconds = Effects::echoTimeInQuarters ((int) get (time)) * 60.0 / bpm;
             return (float) jlimit (1.0, sampleRate * 3.9, seconds * sampleRate);
         }
 
         void process (AudioBuffer<float>& buffer, int numSamples)
         {
             delaySamples.setTargetValue (targetDelay());
-            const auto fb = get (feedback, Dest::echoFeedback);
-            const auto wet = get (mix, Dest::echoMix);
-            const auto pong = pingPong->load() >= 0.5f;
-            const auto lowCoefficient = onePoleCoefficient (lowCut->load(), sampleRate);
-            const auto highCoefficient = onePoleCoefficient (highCut->load(), sampleRate);
+            const auto fb = get (feedback);
+            const auto wet = get (mix);
+            const auto pong = get (pingPong) >= 0.5f;
+            const auto lowCoefficient = onePoleCoefficient (get (lowCut), sampleRate);
+            const auto highCoefficient = onePoleCoefficient (get (highCut), sampleRate);
             const auto stereo = buffer.getNumChannels() > 1;
 
             for (int i = 0; i < numSamples; ++i)
@@ -531,13 +529,13 @@ namespace
         void process (AudioBuffer<float>& buffer, int numSamples)
         {
             dsp::Reverb::Parameters p;
-            p.roomSize = size->load();
-            p.damping = damping->load();
-            p.width = width->load();
+            p.roomSize = get (size);
+            p.damping = get (damping);
+            p.width = get (width);
             p.wetLevel = 1.0f;
             p.dryLevel = 0.0f;
             reverb.setParameters (p);
-            lowCutFilter.setCutoffFrequency (lowCut->load());
+            lowCutFilter.setCutoffFrequency (get (lowCut));
 
             // Bara det som går in i reverbet låg-kapas: basens botten förblir torr och tight.
             const auto channels = std::min (buffer.getNumChannels(), wetBuffer.getNumChannels());
@@ -548,7 +546,7 @@ namespace
             lowCutFilter.process (dsp::ProcessContextReplacing<float> (block));
             reverb.process (dsp::ProcessContextReplacing<float> (block));
 
-            const auto wet = get (mix, Dest::reverbMix);
+            const auto wet = get (mix);
             for (int ch = 0; ch < channels; ++ch)
                 buffer.addFrom (ch, 0, wetBuffer, ch, 0, numSamples, wet);
         }
@@ -690,6 +688,7 @@ void EffectChain::update (double bpm)
 void EffectChain::setModulator (const Modulator* modulator)
 {
     impl->filter.modulator = modulator;
+    impl->eq.modulator = modulator;
     impl->distortion.modulator = modulator;
     impl->chorus.modulator = modulator;
     impl->phaser.modulator = modulator;

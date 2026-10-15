@@ -10,7 +10,8 @@
 #include "../Ui/Modules.h"
 #include "../Ui/TabbedPanel.h"
 
-class InstrumentEditor : public juce::AudioProcessorEditor
+// DragAndDropContainer: LFO:er dras till rattarna.
+class InstrumentEditor : public juce::AudioProcessorEditor, public juce::DragAndDropContainer
 {
 public:
     explicit InstrumentEditor (InstrumentProcessor&);
@@ -34,7 +35,8 @@ private:
     MasterPage masterPage { processor };
     MixModule mix { processor, true };
     juce::MidiKeyboardComponent keyboard { processor.keyboardState, juce::MidiKeyboardComponent::horizontalKeyboard };
-    juce::TooltipWindow tooltips { this, 700 };
+    InfoBar info;
+    juce::TooltipWindow tooltips { this, 1200 };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (InstrumentEditor)
 };

@@ -17,7 +17,7 @@ void LfoDisplay::paint (juce::Graphics& g)
 
     const auto shape = (int) processor.apvts.getRawParameterValue (Modulation::paramID (index, "Shape"))->load();
     const auto on = processor.apvts.getRawParameterValue (Modulation::paramID (index, "On"))->load() >= 0.5f;
-    const auto colour = on ? Theme::lfo : Theme::textDim;
+    const auto colour = on ? Theme::lfoColour (index) : Theme::textDim;
 
     // En period av formen (random ritas som fyra slumpsteg).
     juce::Path path;
@@ -47,41 +47,143 @@ void LfoDisplay::paint (juce::Graphics& g)
 }
 
 //==============================================================================
+LfoDragHandle::LfoDragHandle (int lfoIndex) : index (lfoIndex)
+{
+    setMouseCursor (juce::MouseCursor::DraggingHandCursor);
+    setTooltip ("DRAG - Drag this onto any knob (kick, bass or effects) to let " + Modulation::sourceName (index)
+                + " move it. Then drag the coloured ring on the knob to set how much.");
+}
+
+void LfoDragHandle::paint (juce::Graphics& g)
+{
+    const auto colour = Theme::lfoColour (index);
+    auto bounds = getLocalBounds().toFloat().reduced (1.0f);
+    g.setColour (colour.withAlpha (isMouseOver() ? 0.35f : 0.18f));
+    g.fillRoundedRectangle (bounds, 4.0f);
+    g.setColour (colour);
+    g.drawRoundedRectangle (bounds, 4.0f, 1.2f);
+
+    // Ett kors med pilar, som i Massive.
+    auto icon = bounds.removeFromLeft (bounds.getHeight()).reduced (4.0f);
+    const auto c = icon.getCentre();
+    const auto r = icon.getWidth() / 2.0f;
+    g.drawLine (c.x - r, c.y, c.x + r, c.y, 1.6f);
+    g.drawLine (c.x, c.y - r, c.x, c.y + r, 1.6f);
+    g.fillEllipse (juce::Rectangle<float> (4.0f, 4.0f).withCentre (c));
+
+    g.setFont (Theme::font (10.5f, true));
+    g.drawText ("DRAG TO A KNOB", bounds, juce::Justification::centred);
+}
+
+void LfoDragHandle::mouseDrag (const juce::MouseEvent&)
+{
+    if (auto* container = juce::DragAndDropContainer::findParentDragContainerFor (this))
+    {
+        if (! container->isDragAndDropActive())
+        {
+            // Bilden som följer musen: en liten bricka i LFO:ns färg.
+            juce::Image image (juce::Image::ARGB, 64, 22, true);
+            {
+                juce::Graphics g (image);
+                g.setColour (Theme::lfoColour (index));
+                g.fillRoundedRectangle (0.0f, 0.0f, 64.0f, 22.0f, 5.0f);
+                g.setColour (Theme::knobBodyDark);
+                g.setFont (Theme::font (12.0f, true));
+                g.drawText (Modulation::sourceName (index), 0, 0, 64, 22, juce::Justification::centred);
+            }
+            container->startDragging ("lfo:" + juce::String (index), this, juce::ScaledImage (image));
+        }
+    }
+}
+
+//==============================================================================
+LfoTargets::LfoTargets (PluginBase& p, int lfoIndex) : processor (p), index (lfoIndex)
+{
+    startTimerHz (5);
+}
+
+juce::String LfoTargets::describe() const
+{
+    juce::StringArray parts;
+    const auto& parameters = processor.getParameters();
+    for (const auto& route : processor.modRoutes.routes)
+    {
+        const auto target = route.target.load();
+        if (route.source.load() != index || ! juce::isPositiveAndBelow (target, parameters.size()))
+            continue;
+        const auto amount = route.amount.load();
+        parts.add (parameters[target]->getName (40) + " " + (amount > 0.0f ? "+" : "")
+                   + juce::String (juce::roundToInt (amount * 100.0f)) + "%");
+    }
+    return parts.joinIntoString (", ");
+}
+
+void LfoTargets::timerCallback()
+{
+    const auto newText = describe();
+    if (newText != text)
+    {
+        text = newText;
+        setTooltip (text.isEmpty() ? juce::String()
+                                   : Modulation::sourceName (index) + " MOVES - " + text + ". Right-click to remove one.");
+        repaint();
+    }
+}
+
+void LfoTargets::paint (juce::Graphics& g)
+{
+    g.setFont (Theme::font (10.5f));
+    g.setColour (text.isEmpty() ? Theme::textDim.withAlpha (0.6f) : Theme::text);
+    g.drawFittedText (text.isEmpty() ? juce::String ("Not connected to any knob yet") : juce::String::fromUTF8 ("\xe2\x86\x92 ") + text,
+                      getLocalBounds(), juce::Justification::centredLeft, 2, 0.8f);
+}
+
+void LfoTargets::mouseDown (const juce::MouseEvent&)
+{
+    juce::PopupMenu menu;
+    const auto& parameters = processor.getParameters();
+    for (int r = 0; r < Modulation::maxRoutes; ++r)
+    {
+        const auto& route = processor.modRoutes.routes[(size_t) r];
+        const auto target = route.target.load();
+        if (route.source.load() != index || ! juce::isPositiveAndBelow (target, parameters.size()))
+            continue;
+        menu.addItem ("Remove " + parameters[target]->getName (40), [this, r]
+        {
+            processor.modRoutes.remove (r);
+            processor.markStateChanged();
+        });
+    }
+    if (menu.getNumItems() > 0)
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this));
+}
+
+//==============================================================================
 LfoPanel::LfoPanel (PluginBase& p, int lfoIndex)
     : index (lfoIndex),
       shape (p.apvts, Modulation::paramID (lfoIndex, "Shape").toRawUTF8(), "SHAPE"),
       rate (p.apvts, Modulation::paramID (lfoIndex, "Rate").toRawUTF8(), "RATE"),
-      display (p, lfoIndex)
+      display (p, lfoIndex),
+      handle (lfoIndex),
+      targets (p, lfoIndex)
 {
-    power.setColour (juce::ToggleButton::tickColourId, Theme::lfo);
-    power.setTooltip ("LFO on/off");
+    power.setColour (juce::ToggleButton::tickColourId, Theme::lfoColour (lfoIndex));
+    power.setTooltip (Modulation::sourceName (lfoIndex) + " - turns the LFO on or off (its connections stay)");
     addAndMakeVisible (power);
     powerAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
         p.apvts, Modulation::paramID (lfoIndex, "On"), power);
 
-    addAndMakeVisible (shape);
-    addAndMakeVisible (rate);
-    addAndMakeVisible (display);
-
-    for (int r = 0; r < Modulation::routesPerLfo; ++r)
-    {
-        const auto letter = juce::String::charToString ((juce::juce_wchar) ('A' + r));
-        destinations.push_back (std::make_unique<ChoiceComponent> (
-            p.apvts, Modulation::paramID (lfoIndex, ("Dest" + letter).toRawUTF8()).toRawUTF8(), "TARGET " + letter));
-        amounts.push_back (std::make_unique<KnobComponent> (
-            p.apvts, Modulation::paramID (lfoIndex, ("Amount" + letter).toRawUTF8()).toRawUTF8(), "AMOUNT", Theme::lfo));
-        addAndMakeVisible (*destinations.back());
-        addAndMakeVisible (*amounts.back());
-    }
+    for (auto* c : std::initializer_list<juce::Component*> { &shape, &rate, &display, &handle, &targets })
+        addAndMakeVisible (c);
 }
 
 void LfoPanel::paint (juce::Graphics& g)
 {
     g.setColour (Theme::knobBodyDark.withAlpha (0.35f));
     g.fillRoundedRectangle (getLocalBounds().toFloat(), 6.0f);
-    g.setColour (Theme::lfo);
+    g.setColour (Theme::lfoColour (index));
     g.setFont (Theme::font (13.0f, true));
-    g.drawText ("LFO " + juce::String (index + 1), getLocalBounds().withHeight (24).withTrimmedLeft (32), juce::Justification::centredLeft);
+    g.drawText (Modulation::sourceName (index), getLocalBounds().withHeight (26).withTrimmedLeft (32), juce::Justification::centredLeft);
 }
 
 void LfoPanel::resized()
@@ -89,34 +191,29 @@ void LfoPanel::resized()
     auto area = getLocalBounds().reduced (6);
     auto header = area.removeFromTop (20);
     power.setBounds (header.removeFromLeft (24));
+    handle.setBounds (header.removeFromRight (124));
     area.removeFromTop (4);
 
-    auto left = area.removeFromLeft (92);
+    targets.setBounds (area.removeFromBottom (28));
+    area.removeFromBottom (2);
+
+    auto left = area.removeFromLeft (84);
     shape.setBounds (left.removeFromTop (40));
     left.removeFromTop (4);
     rate.setBounds (left.removeFromTop (40));
     area.removeFromLeft (6);
-
-    auto right = area.removeFromRight (170);
-    area.removeFromRight (6);
     display.setBounds (area);
-
-    const auto rowHeight = right.getHeight() / Modulation::routesPerLfo;
-    for (int r = 0; r < Modulation::routesPerLfo; ++r)
-    {
-        auto row = right.removeFromTop (rowHeight);
-        amounts[(size_t) r]->setBounds (row.removeFromRight (62));
-        destinations[(size_t) r]->setBounds (row.withSizeKeepingCentre (row.getWidth() - 4, 40));
-    }
 }
 
 //==============================================================================
-LfoPage::LfoPage (PluginBase& p)
-    : presets (p, Presets::Section::lfo, Theme::lfo), first (p, 0), second (p, 1)
+LfoPage::LfoPage (PluginBase& p) : presets (p, Presets::Section::lfo, Theme::lfo)
 {
     addAndMakeVisible (presets);
-    addAndMakeVisible (first);
-    addAndMakeVisible (second);
+    for (int i = 0; i < Modulation::numLfos; ++i)
+    {
+        panels.push_back (std::make_unique<LfoPanel> (p, i));
+        addAndMakeVisible (*panels.back());
+    }
 }
 
 void LfoPage::resized()
@@ -125,8 +222,11 @@ void LfoPage::resized()
     presets.setBounds (area.removeFromTop (22).removeFromRight (160));
     area.removeFromTop (4);
 
-    const auto half = (area.getWidth() - 10) / 2;
-    first.setBounds (area.removeFromLeft (half));
-    area.removeFromLeft (10);
-    second.setBounds (area);
+    const auto gap = 8;
+    const auto width = (area.getWidth() - gap * (Modulation::numLfos - 1)) / Modulation::numLfos;
+    for (auto& panel : panels)
+    {
+        panel->setBounds (area.removeFromLeft (width));
+        area.removeFromLeft (gap);
+    }
 }

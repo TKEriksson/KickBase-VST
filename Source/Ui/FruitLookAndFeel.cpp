@@ -80,10 +80,10 @@ void FruitLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int wi
 
     // Värdet mitt i ratten.
     g.setColour (Theme::text);
-    g.setFont (Theme::font (juce::jlimit (9.0f, 13.0f, bodyRadius * 0.42f)));
+    g.setFont (Theme::font (juce::jlimit (8.0f, 13.0f, bodyRadius * 0.42f)));
     g.drawFittedText (slider.getTextFromValue (slider.getValue()),
-                      juce::Rectangle<float> (bodyRadius * 1.7f, bodyRadius).withCentre (centre).toNearestInt(),
-                      juce::Justification::centred, 1, 0.8f);
+                      juce::Rectangle<float> (bodyRadius * 1.9f, bodyRadius).withCentre (centre).toNearestInt(),
+                      juce::Justification::centred, 1, 0.5f); // små rattar: krymp texten hellre än att kapa den
 }
 
 void FruitLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButton& button, bool highlighted, bool)
