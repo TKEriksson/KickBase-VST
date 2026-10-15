@@ -5,11 +5,13 @@
 //   (flera toner: en per takt, bytet sker exakt på taktstrecket)
 //   MyOwnFruitTool snapshot instrument|fx <ut.png> [flik]
 //   MyOwnFruitTool presettest
+//   MyOwnFruitTool analyze  <ljudfil> [start-sekund] [slut-sekund]
 
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_audio_utils/juce_audio_utils.h>
 #include "../Source/Fx/FxProcessor.h"
 #include "../Source/Instrument/InstrumentProcessor.h"
+#include "Analyzer.h"
 #include <cstdio>
 
 namespace
@@ -273,6 +275,15 @@ int main (int argc, char* argv[])
 {
     if (argc == 2 && juce::String (argv[1]) == "presettest")
         return presetTest();
+
+    if (argc >= 3 && juce::String (argv[1]) == "analyze")
+    {
+        juce::ScopedJuceInitialiser_GUI juce; // Windows Media-avkodaren behöver JUCE:s meddelandesystem
+        const auto file = juce::File::getCurrentWorkingDirectory().getChildFile (juce::String (argv[2]));
+        const auto start = argc > 3 ? juce::String (argv[3]).getDoubleValue() : -1.0;
+        const auto end = argc > 4 ? juce::String (argv[4]).getDoubleValue() : -1.0;
+        return analyzeFile (file, start, end);
+    }
 
     if (argc < 4)
     {

@@ -151,6 +151,7 @@ target_sources(MyOwnFruitTool PRIVATE
     ${INSTRUMENT_SOURCES}
     ${FX_SOURCES}
     Tools/Tool.cpp
+    Tools/Analyzer.cpp
 )
 target_compile_definitions(MyOwnFruitTool PRIVATE JucePlugin_Name="MyOwnFruit")
 target_link_libraries(MyOwnFruitTool PRIVATE juce::juce_audio_utils juce::juce_dsp)
