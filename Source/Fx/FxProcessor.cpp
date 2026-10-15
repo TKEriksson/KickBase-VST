@@ -91,7 +91,7 @@ void FxProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuff
     useCurve = (Sidechain::Mode) params.getChoice ("scMode") == Sidechain::Mode::curve;
     const auto lengthQuarters = Sidechain::lengthInQuarters (params.getChoice ("scLength"));
     duckLengthSamples = lengthQuarters > 0.0 ? lengthQuarters * clock.getSamplesPerQuarter()
-                                             : KickEngine::lengthSeconds (params.readKick (key)) * getSampleRate();
+                                             : KickEngine::lengthSeconds (readModulatedKick (key)) * getSampleRate();
 
     auto position = 0;
     if (active)

@@ -3,11 +3,29 @@
 #include <juce_dsp/juce_dsp.h>
 #include <array>
 #include <memory>
+#include "NodeEnvelope.h"
 
 // Inställningarna för kicken. Tider i millisekunder.
+//
+// Pluginet formar kicken med två envelopes av fria punkter (pitch och volym, som i Kick 3).
+// Utan dem (nullptr) används den enkla modellen nedan (svep + glide, attack/hold/decay), som
+// analysverktygen söker i.
 struct KickParams
 {
     float tailHz = 44.0f;       // svansens frekvens = tonarten
+
+    const NodeEnvelope* pitchEnv = nullptr; // halvtoner över svansen över tid
+    const NodeEnvelope* ampEnv = nullptr;   // volym 0..1 över tid; kicken slutar vid sista punkten
+    float pitchAmount = 1.0f;   // skalar pitch-envelopen
+    float lengthScale = 1.0f;   // sträcker båda envelopernas tid
+    float startPhase = 0.0f;    // kroppens startfas, 0..1
+    float harmonics = 0.0f;     // övertoner på kroppen, 0..1
+    float harmonicsDecayMs = 60.0f;
+    float harmonicsTilt = 1.0f; // hur fort övertonerna avtar uppåt (högre = mörkare)
+    int clipMode = 0;           // drive: 0 mjuk, 1 hård, 2 rör (osymmetrisk)
+    float highCutHz = 20000.0f; // lågpass på kicken (tämjer klicket)
+
+    // Den enkla modellen:
     float pitchSemis = 42.0f;   // hur högt över svansen svepet börjar
     float pitchTimeMs = 45.0f;  // hur lång tid svepet tar
     float pitchCurve = 3.0f;    // 1 = rak linje, högre = snabbare fall i början
@@ -47,6 +65,9 @@ public:
     // Nuvarande amplitud-envelope (0..1). Basen duckas efter den.
     float getEnvelope() const { return envelope; }
 
+    // Den senaste kickens ljud spelas av gränssnittet för att rita vågformen (se render).
+    static juce::AudioBuffer<float> render (const KickParams& p, const ClickSample* click, double sampleRate);
+
     // Envelopernas form, utan tillstånd. Används även av gränssnittet för att rita kurvorna.
     static float amplitudeAt (const KickParams& p, double seconds);
     static float pitchEnvelopeAt (const KickParams& p, double seconds);
@@ -76,5 +97,6 @@ private:
     double sampleRate = 44100.0;
     float fadeStep = 0.0f;
     float envelope = 0.0f;
+    juce::dsp::StateVariableTPTFilter<float> highCut;
     juce::Random random;
 };

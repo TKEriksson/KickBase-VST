@@ -2,6 +2,7 @@
 
 #include "../Core/PluginBase.h"
 #include "Components.h"
+#include "KickDisplay.h"
 #include "OscPanel.h"
 #include "EnvelopeView.h"
 #include "PresetButton.h"
@@ -28,7 +29,7 @@ private:
     std::unique_ptr<juce::FileChooser> chooser;
 };
 
-// Kicken: kurvor för pitch- och amplitud-envelope, rattar och plats för en klicksampling.
+// Kicken: vågformen med pitch- och volymnoder, rattar för kroppen, klicket och drive, och plats för en klicksampling.
 class KickModule : public ModulePanel, public juce::FileDragAndDropTarget, private juce::Timer
 {
 public:
@@ -48,12 +49,10 @@ private:
     void updateSampleLabel();
 
     PluginBase& processor;
-    ParamRefs refs;
-    KickParams current; // läses före varje omritning av kurvorna
 
-    EnvelopeView envelope { 0.4 };
-    std::vector<std::unique_ptr<KnobComponent>> knobs;
-    ControlGroups groups; // PITCH, GLIDE, AMP, CLICK ...
+    KickDisplay display;
+    std::vector<std::unique_ptr<juce::Component>> controls;
+    ControlGroups groups; // KEY, PITCH, LENGTH, BODY, CLICK, DRIVE, OUT
     ChoiceComponent keyMode;
     PresetButton presets;
 

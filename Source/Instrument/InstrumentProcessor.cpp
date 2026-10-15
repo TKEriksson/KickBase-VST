@@ -163,7 +163,7 @@ void InstrumentProcessor::readBlockParams()
     sidechainMode = (Sidechain::Mode) params.getChoice ("scMode");
     const auto lengthQuarters = Sidechain::lengthInQuarters (params.getChoice ("scLength"));
     duckLengthSamples = lengthQuarters > 0.0 ? lengthQuarters * clock.getSamplesPerQuarter()
-                                             : KickEngine::lengthSeconds (params.readKick (0)) * getSampleRate();
+                                             : KickEngine::lengthSeconds (readModulatedKick (0)) * getSampleRate();
 }
 
 void InstrumentProcessor::refreshEngineParams()

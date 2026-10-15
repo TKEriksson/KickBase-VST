@@ -65,11 +65,20 @@ public:
     bool loadClickSample (const juce::File& file);
     void clearClickSample();
     juce::String getClickSampleName() const;
+    const ClickSample* clickForDisplay() const { return getActiveClickSample(); } // message thread
 
     juce::AudioProcessorValueTreeState apvts;
     Pattern pattern;
     EffectOrder effectOrder;
     SidechainCurve sidechainCurve;
+
+    // Kickens pitch-envelope (halvtoner över svansen, upp till 0,5 s) och volym-envelope
+    // (upp till 2 s), redigeras i KICK-fliken.
+    NodeEnvelope kickPitchEnv { 0.5f, 72.0f, { { 0.0f, 42.0f, -0.6f }, { 0.045f, 0.0f, 0.0f } } };
+    NodeEnvelope kickAmpEnv { 2.0f, 1.0f, { { 0.0f, 0.0f, 0.0f }, { 0.0004f, 1.0f, 0.0f }, { 0.015f, 1.0f, -0.5f }, { 0.155f, 0.0f, 0.0f } } };
+
+    // Kickens inställningar som de är just nu, utan LFO (för gränssnittets bilder).
+    KickParams kickForDisplay (int keyPitchClass) const;
     TransportStatus transportStatus;
     std::atomic<int> patternVersion { 0 }; // ökas när mönstret ändras, så att gränssnittet ritar om
     int selectedTab = 0;                   // gränssnittets valda flikar (nedre och övre panelen), så att de
@@ -89,6 +98,7 @@ protected:
     const ClickSample* getActiveClickSample() const { return activeClick.load(); }
 
     ParamRefs params;
+    ParamRefs displayParams { apvts }; // utan modulering, för gränssnittet
     TransportClock clock;
 
 public:

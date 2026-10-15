@@ -8,6 +8,7 @@ namespace
     const juce::String presetFileExtension { ".mofp" };
 
     juce::String presetProperty (Presets::Section section) { return "preset" + Presets::sectionName (section); }
+    const juce::Identifier kickPitchType { "KickPitchEnvelope" }, kickAmpType { "KickAmpEnvelope" };
 }
 
 PluginBase::PluginBase (const BusesProperties& buses, juce::AudioProcessorValueTreeState::ParameterLayout layout, bool isEffect)
@@ -31,7 +32,21 @@ void PluginBase::prepareBase (double sampleRate)
 }
 
 // params läser med modulering (se konstruktorn), så kick och bas får LFO:erna härifrån.
-KickParams PluginBase::readModulatedKick (int keyPitchClass) const { return params.readKick (keyPitchClass); }
+KickParams PluginBase::readModulatedKick (int keyPitchClass) const
+{
+    auto p = params.readKick (keyPitchClass);
+    p.pitchEnv = &kickPitchEnv;
+    p.ampEnv = &kickAmpEnv;
+    return p;
+}
+
+KickParams PluginBase::kickForDisplay (int keyPitchClass) const
+{
+    auto p = displayParams.readKick (keyPitchClass);
+    p.pitchEnv = &kickPitchEnv;
+    p.ampEnv = &kickAmpEnv;
+    return p;
+}
 BassParams PluginBase::readModulatedBass (int layer, int rootMidiNote) const { return params.readBass (layer, rootMidiNote); }
 
 juce::String& PluginBase::presetNameSlot (Presets::Section section, int layer)
@@ -66,6 +81,8 @@ void PluginBase::getStateInformation (juce::MemoryBlock& destData)
     state.appendChild (clickToValueTree(), nullptr);
     state.appendChild (sidechainCurve.toValueTree(), nullptr);
     state.appendChild (modRoutes.toValueTree (getParameters()), nullptr);
+    state.appendChild (kickPitchEnv.toValueTree (kickPitchType), nullptr);
+    state.appendChild (kickAmpEnv.toValueTree (kickAmpType), nullptr);
 
     if (auto xml = state.createXml())
         copyXmlToBinary (*xml, destData);
@@ -103,6 +120,17 @@ void PluginBase::setStateInformation (const void* data, int sizeInBytes)
         state.removeChild (curveTree, nullptr);
     }
 
+    for (auto [envelope, type] : { std::pair<NodeEnvelope*, juce::Identifier> { &kickPitchEnv, kickPitchType }, { &kickAmpEnv, kickAmpType } })
+    {
+        if (auto tree = state.getChildWithName (type); tree.isValid())
+        {
+            envelope->fromValueTree (tree);
+            state.removeChild (tree, nullptr);
+        }
+        else
+            envelope->reset();
+    }
+
     modRoutes.fromValueTree (state.getChildWithName (ModRoutes::treeType), getParameters());
     if (auto routesTree = state.getChildWithName (ModRoutes::treeType); routesTree.isValid())
         state.removeChild (routesTree, nullptr);
@@ -137,6 +165,12 @@ void PluginBase::loadFactoryPreset (Presets::Section section, int index, int lay
 
     if (section == Presets::Section::full || section == Presets::Section::lfo)
         modRoutes.clear();
+
+    if (section == Presets::Section::full || section == Presets::Section::kick)
+    {
+        kickPitchEnv.reset();
+        kickAmpEnv.reset();
+    }
 
     if (section == Presets::Section::full)
     {
@@ -191,7 +225,11 @@ bool PluginBase::saveUserPreset (Presets::Section section, const juce::String& n
         root.addChildElement (pattern.toValueTree().createXml().release());
 
     if (section == Presets::Section::full || section == Presets::Section::kick)
+    {
         root.addChildElement (clickToValueTree().createXml().release());
+        root.addChildElement (kickPitchEnv.toValueTree (kickPitchType).createXml().release());
+        root.addChildElement (kickAmpEnv.toValueTree (kickAmpType).createXml().release());
+    }
 
     if (section == Presets::Section::full || section == Presets::Section::sidechain)
         root.addChildElement (sidechainCurve.toValueTree().createXml().release());
@@ -243,6 +281,14 @@ bool PluginBase::loadUserPreset (Presets::Section section, const juce::File& fil
             clickFromValueTree (juce::ValueTree::fromXml (*clickXml));
         else
             setClickOriginal ({}, 0.0, {});
+
+        for (auto [envelope, type] : { std::pair<NodeEnvelope*, juce::Identifier> { &kickPitchEnv, kickPitchType }, { &kickAmpEnv, kickAmpType } })
+        {
+            if (const auto* envelopeXml = xml->getChildByName (type))
+                envelope->fromValueTree (juce::ValueTree::fromXml (*envelopeXml));
+            else
+                envelope->reset();
+        }
     }
 
     if (section == Presets::Section::full || section == Presets::Section::sidechain)

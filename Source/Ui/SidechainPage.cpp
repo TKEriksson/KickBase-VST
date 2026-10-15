@@ -116,11 +116,7 @@ void DuckCurveView::paint (juce::Graphics& g)
         else
         {
             // Kickens envelope över kickens längd (ungefärlig form för visning).
-            KickParams kp;
-            kp.attackMs = processor.apvts.getRawParameterValue (ParamID::kickAttack)->load();
-            kp.holdMs = processor.apvts.getRawParameterValue (ParamID::kickHold)->load();
-            kp.decayMs = processor.apvts.getRawParameterValue (ParamID::kickDecay)->load();
-            kp.decayCurve = processor.apvts.getRawParameterValue (ParamID::kickDecayCurve)->load();
+            const auto kp = processor.kickForDisplay (0);
             duck = KickEngine::amplitudeAt (kp, x * KickEngine::lengthSeconds (kp));
         }
 

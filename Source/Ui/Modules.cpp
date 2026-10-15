@@ -163,57 +163,39 @@ void HeaderBar::paint (juce::Graphics& g)
 
 //==============================================================================
 KickModule::KickModule (PluginBase& p)
-    : ModulePanel ("KICK", Theme::kick, &p.apvts, ParamID::kickOn), processor (p), refs (p.apvts),
+    : ModulePanel ("KICK", Theme::kick, &p.apvts, ParamID::kickOn), processor (p),
       keyMode (p.apvts, ParamID::kickKeyFollow, "KEY"),
-      presets (p, Presets::Section::kick, Theme::kick)
+      presets (p, Presets::Section::kick, Theme::kick),
+      display (p)
 {
     setHeaderPreset (&presets);
     addAndMakeVisible (presets);
-    keyMode.box.setTooltip ("Follow: the kick is tuned to the note's key. Fixed: it stays on C1 + TUNE whatever the note.");
     addAndMakeVisible (keyMode);
-    envelope.onBeforePaint = [this] { current = refs.readKick (0); };
+    addAndMakeVisible (display);
 
-    envelope.addCurve ({ [this] (double t) { return KickEngine::pitchSemitonesAt (current, t) / 72.0f; },
-                         Theme::text.withAlpha (0.8f), false, "PITCH" });
-    envelope.addCurve ({ [this] (double t) { return KickEngine::amplitudeAt (current, t); }, Theme::kick, true, "AMP" });
-
-    const auto pitchColour = Theme::text;
-    envelope.addHandle ({ [this] { return juce::Point<float> (0.0f, KickEngine::pitchSemitonesAt (current, 0.0) / 72.0f); },
-                          nullptr, param (p, ParamID::kickPitch), false, pitchColour });
-    envelope.addHandle ({ [this] { return juce::Point<float> (current.pitchTimeMs * 0.001f, 0.0f); },
-                          param (p, ParamID::kickPitchTime), nullptr, false, pitchColour });
-    envelope.addHandle ({ [this] {
-                              const auto t = current.pitchTimeMs * 0.0005;
-                              return juce::Point<float> ((float) t, KickEngine::pitchSemitonesAt (current, t) / 72.0f); },
-                          nullptr, param (p, ParamID::kickPitchCurve), true, pitchColour });
-
-    envelope.addHandle ({ [this] { return juce::Point<float> ((current.attackMs + current.holdMs) * 0.001f, 1.0f); },
-                          param (p, ParamID::kickHold), nullptr, false, Theme::kick });
-    envelope.addHandle ({ [this] { return juce::Point<float> ((float) KickEngine::lengthSeconds (current), 0.0f); },
-                          param (p, ParamID::kickDecay), nullptr, false, Theme::kick });
-    envelope.addHandle ({ [this] {
-                              const auto t = (current.attackMs + current.holdMs + current.decayMs * 0.5f) * 0.001;
-                              return juce::Point<float> ((float) t, KickEngine::amplitudeAt (current, t)); },
-                          nullptr, param (p, ParamID::kickDecayCurve), true, Theme::kick });
-    addAndMakeVisible (envelope);
-
-    addKnobs (*this, knobs, p, Theme::kick, {
-        { ParamID::kickTune, "TUNE" }, { ParamID::kickPitch, "PITCH" }, { ParamID::kickPitchTime, "TIME" },
-        { ParamID::kickPitchCurve, "CURVE" }, { ParamID::kickClick, "LEVEL" }, { ParamID::kickClickLength, "LENGTH" },
-        { ParamID::kickClickTone, "TONE" },
-        { ParamID::kickAttack, "ATTACK" }, { ParamID::kickHold, "HOLD" }, { ParamID::kickDecay, "DECAY" },
-        { ParamID::kickDecayCurve, "CURVE" }, { ParamID::kickGlide, "AMOUNT" }, { ParamID::kickGlideTime, "TIME" },
-        { ParamID::kickDrive, "AMOUNT" }, { ParamID::kickLevel, "LEVEL" } });
-
-    auto k = [this] (std::initializer_list<int> indices)
+    auto knob = [&] (const char* id, const char* name) -> juce::Component*
     {
-        std::vector<juce::Component*> result;
-        for (auto i : indices)
-            result.push_back (knobs[(size_t) i].get());
-        return result;
+        controls.push_back (std::make_unique<KnobComponent> (p.apvts, id, name, Theme::kick));
+        addAndMakeVisible (*controls.back());
+        return controls.back().get();
     };
-    groups.addRow ({ { "KEY", k ({ 0 }) }, { "PITCH SWEEP", k ({ 1, 2, 3 }) }, { "SLOW GLIDE", k ({ 11, 12 }) }, { "DRIVE", k ({ 13 }) } });
-    groups.addRow ({ { "VOLUME ENVELOPE", k ({ 7, 8, 9, 10 }) }, { "CLICK", k ({ 4, 5, 6 }) }, { "OUT", k ({ 14 }) } });
+    auto choice = [&] (const char* id, const char* name) -> juce::Component*
+    {
+        controls.push_back (std::make_unique<ChoiceComponent> (p.apvts, id, name));
+        addAndMakeVisible (*controls.back());
+        return controls.back().get();
+    };
+
+    // I signalens ordning: stämning och form (envelopena ritas i displayen), kroppens övertoner,
+    // klicket, drive och utgång.
+    groups.addRow ({ { "TUNING", { knob (ParamID::kickTune, "TUNE") } },
+                     { "ENVELOPES", { knob (ParamID::kickPitchAmount, "PITCH AMT"), knob (ParamID::kickLength, "LENGTH") } },
+                     { "BODY", { knob (ParamID::kickPhase, "PHASE"), knob (ParamID::kickHarmonics, "HARMONICS"),
+                                 knob (ParamID::kickHarmDecay, "H. DECAY"), knob (ParamID::kickHarmTilt, "H. TILT") } },
+                     { "CLICK", { knob (ParamID::kickClick, "LEVEL"), knob (ParamID::kickClickLength, "LENGTH"),
+                                  knob (ParamID::kickClickTone, "TONE") } },
+                     { "DRIVE", { choice (ParamID::kickClipMode, "MODE"), knob (ParamID::kickDrive, "AMOUNT") } },
+                     { "OUT", { knob (ParamID::kickHighCut, "HIGH CUT"), knob (ParamID::kickLevel, "LEVEL") } } });
 
     sampleLabel.setFont (Theme::font (11.0f));
     sampleLabel.setColour (juce::Label::textColourId, Theme::textDim);
@@ -303,12 +285,12 @@ void KickModule::resized()
     sampleLabel.setBounds (sampleRow);
     area.removeFromBottom (4);
 
-    // Rattarna växer med utrymmet; kurvorna får minst 150 px.
-    const auto rowHeight = juce::jlimit (56, 90, (area.getHeight() - 150) / groups.numRows() - ControlGroups::titleHeight - 3);
+    // En rad rattar under displayen, som får resten av höjden.
+    const auto rowHeight = juce::jlimit (60, 100, area.getHeight() / 3 - ControlGroups::titleHeight - 3);
     const auto groupsHeight = groups.numRows() * (ControlGroups::titleHeight + rowHeight + 3);
     groups.layout (area.removeFromBottom (groupsHeight), rowHeight);
     area.removeFromBottom (4);
-    envelope.setBounds (area);
+    display.setBounds (area);
 }
 
 //==============================================================================

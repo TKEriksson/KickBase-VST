@@ -203,10 +203,10 @@ namespace
     int presetTest()
     {
         InstrumentProcessor processor;
-        auto* pitch = processor.apvts.getParameter (ParamID::kickPitch);
+        auto* pitch = processor.apvts.getParameter (ParamID::kickTune);
         auto* cutoff = processor.apvts.getParameter (ParamID::bass (0, BassField::cutoff));
 
-        pitch->setValueNotifyingHost (pitch->convertTo0to1 (55.0f));
+        pitch->setValueNotifyingHost (pitch->convertTo0to1 (5.0f));
         cutoff->setValueNotifyingHost (cutoff->convertTo0to1 (1000.0f));
 
         const auto name = juce::String ("__presettest__");
@@ -217,7 +217,7 @@ namespace
         }
 
         const auto file = Presets::folder (Presets::Section::kick, false).getChildFile (name + ".mofp");
-        pitch->setValueNotifyingHost (pitch->convertTo0to1 (20.0f));
+        pitch->setValueNotifyingHost (pitch->convertTo0to1 (-3.0f));
         cutoff->setValueNotifyingHost (cutoff->convertTo0to1 (500.0f));
 
         const auto loaded = processor.loadUserPreset (Presets::Section::kick, file);
@@ -225,10 +225,10 @@ namespace
         const auto cutoffAfter = cutoff->convertFrom0to1 (cutoff->getValue());
         file.deleteFile();
 
-        std::printf ("laddad %d, kick pitch %.2f (väntat 55), bas cutoff %.1f (väntat 500, orörd)\n",
+        std::printf ("laddad %d, kick tune %.2f (väntat 5), bas cutoff %.1f (väntat 500, orörd)\n",
                      loaded ? 1 : 0, pitchBack, cutoffAfter);
 
-        const auto ok = loaded && std::abs (pitchBack - 55.0f) < 0.1f && std::abs (cutoffAfter - 500.0f) < 1.0f
+        const auto ok = loaded && std::abs (pitchBack - 5.0f) < 0.02f && std::abs (cutoffAfter - 500.0f) < 1.0f
                      && processor.getPresetName (Presets::Section::kick) == name;
         std::puts (ok ? "Presettest OK" : "FEL: presettest");
         return ok ? 0 : 1;

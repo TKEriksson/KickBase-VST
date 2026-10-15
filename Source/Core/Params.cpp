@@ -98,21 +98,22 @@ namespace Params
                                                             StringArray { "Fixed", "Follow" }, 1));
         layout.add (floatParam (ParamID::kickTune, "Kick Tune", NormalisableRange<float> (-12.0f, 12.0f, 0.01f), 0.0f,
                                 [] (float v) { return formatSemis (v, 2); }));
-        layout.add (floatParam (ParamID::kickPitch, "Kick Pitch", NormalisableRange<float> (0.0f, 72.0f, 0.1f), 42.0f,
-                                [] (float v) { return formatSemis (v, 1); }));
-        layout.add (ms (2.0f, 300.0f, 50.0f, 45.0f, ParamID::kickPitchTime, "Kick Pitch Time"));
-        layout.add (curve (ParamID::kickPitchCurve, "Kick Pitch Curve", 3.0f));
-        layout.add (floatParam (ParamID::kickGlide, "Kick Glide", NormalisableRange<float> (0.0f, 24.0f, 0.01f), 0.0f,
-                                [] (float v) { return formatSemis (v, 1); }));
-        layout.add (ms (5.0f, 400.0f, 80.0f, 80.0f, ParamID::kickGlideTime, "Kick Glide Time"));
-        layout.add (ms (0.0f, 10.0f, 1.0f, 0.3f, ParamID::kickAttack, "Kick Attack"));
-        layout.add (ms (0.0f, 200.0f, 40.0f, 15.0f, ParamID::kickHold, "Kick Hold"));
-        layout.add (ms (10.0f, 1500.0f, 250.0f, 140.0f, ParamID::kickDecay, "Kick Decay"));
-        layout.add (curve (ParamID::kickDecayCurve, "Kick Decay Curve", 2.0f));
+        // Pitch- och volym-envelopen ritas i KICK-fliken; rattarna skalar dem.
+        layout.add (floatParam (ParamID::kickPitchAmount, "Kick Pitch Amount", NormalisableRange<float> (0.0f, 2.0f, 0.001f), 1.0f, formatPercent));
+        layout.add (floatParam (ParamID::kickLength, "Kick Length", skewed (0.25f, 3.0f, 1.0f, 0.001f), 1.0f, formatPercent));
+        layout.add (floatParam (ParamID::kickPhase, "Kick Phase", NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.0f,
+                                [] (float v) { return String (roundToInt (v * 360.0f)) + juce::String::fromUTF8 ("\xc2\xb0"); }));
+        layout.add (percent (ParamID::kickHarmonics, "Kick Harmonics", 0.0f));
+        layout.add (ms (5.0f, 500.0f, 60.0f, 60.0f, ParamID::kickHarmDecay, "Kick Harmonics Decay"));
+        layout.add (floatParam (ParamID::kickHarmTilt, "Kick Harmonics Tilt", NormalisableRange<float> (0.3f, 3.0f, 0.01f), 1.0f,
+                                [] (float v) { return String (v, 2); }));
         layout.add (percent (ParamID::kickClick, "Kick Click", 0.3f));
         layout.add (ms (1.0f, 30.0f, 6.0f, 6.0f, ParamID::kickClickLength, "Kick Click Length"));
         layout.add (floatParam (ParamID::kickClickTone, "Kick Click Tone", skewed (500.0f, 16000.0f, 4000.0f, 1.0f), 5000.0f, formatHz));
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::kickClipMode, 1 }, "Kick Clip Mode",
+                                                            StringArray { "Soft", "Hard", "Tube" }, 0));
         layout.add (percent (ParamID::kickDrive, "Kick Drive", 0.2f));
+        layout.add (floatParam (ParamID::kickHighCut, "Kick High Cut", skewed (500.0f, 20000.0f, 4000.0f, 1.0f), 20000.0f, formatHz));
         layout.add (percent (ParamID::kickLevel, "Kick Level", 0.8f));
     }
 
@@ -279,19 +280,19 @@ KickParams ParamRefs::readKick (int keyPitchClass) const
     const auto follow = getChoice (ParamID::kickKeyFollow) == 1;
     const auto tail = follow ? Params::kickTailMidiNote (keyPitchClass) : 24;
     p.tailHz        = Params::midiToHz ((float) tail + get (ParamID::kickTune));
-    p.pitchSemis    = get (ParamID::kickPitch);
-    p.pitchTimeMs   = get (ParamID::kickPitchTime);
-    p.pitchCurve    = get (ParamID::kickPitchCurve);
-    p.glideSemis    = get (ParamID::kickGlide);
-    p.glideTimeMs   = get (ParamID::kickGlideTime);
-    p.attackMs      = get (ParamID::kickAttack);
-    p.holdMs        = get (ParamID::kickHold);
-    p.decayMs       = get (ParamID::kickDecay);
-    p.decayCurve    = get (ParamID::kickDecayCurve);
+    // Envelopernas punkter ägs av processorn och kopplas in av PluginBase.
+    p.pitchAmount   = get (ParamID::kickPitchAmount);
+    p.lengthScale   = get (ParamID::kickLength);
+    p.startPhase    = get (ParamID::kickPhase);
+    p.harmonics     = get (ParamID::kickHarmonics);
+    p.harmonicsDecayMs = get (ParamID::kickHarmDecay);
+    p.harmonicsTilt = get (ParamID::kickHarmTilt);
     p.clickLevel    = get (ParamID::kickClick);
     p.clickLengthMs = get (ParamID::kickClickLength);
     p.clickToneHz   = get (ParamID::kickClickTone);
+    p.clipMode      = getChoice (ParamID::kickClipMode);
     p.drive         = get (ParamID::kickDrive);
+    p.highCutHz     = get (ParamID::kickHighCut);
     p.level         = get (ParamID::kickLevel);
     return p;
 }

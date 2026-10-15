@@ -4,14 +4,25 @@ namespace
 {
     constexpr double fadeOutSeconds = 0.003;
 
-    float softClip (float x, float drive)
+    // Drive: mjuk (tanh), hård klippning eller rör (osymmetrisk, ger jämna övertoner).
+    // Normaliserad så att toppvärdet 1 förblir ungefär 1 oavsett drive.
+    float clip (float x, float drive, int mode)
     {
         if (drive <= 0.0f)
             return x;
 
-        // tanh, normaliserad så att toppvärdet 1 förblir 1 oavsett drive.
         const auto gain = 1.0f + drive * 9.0f;
-        return std::tanh (gain * x) / std::tanh (gain);
+        switch (mode)
+        {
+            case 1: return juce::jlimit (-1.0f, 1.0f, gain * x) / std::min (1.0f, gain);
+            case 2:
+            {
+                constexpr float bias = 0.3f;
+                const auto y = std::tanh (gain * x + bias) - std::tanh (bias);
+                return y / (std::tanh (gain + bias) - std::tanh (bias));
+            }
+            default: return std::tanh (gain * x) / std::tanh (gain);
+        }
     }
 }
 
@@ -26,6 +37,9 @@ void KickEngine::prepare (double newSampleRate)
         voice.clickFilter.setType (juce::dsp::StateVariableTPTFilterType::bandpass);
         voice.clickFilter.setResonance (0.8f);
     }
+    highCut.prepare ({ sampleRate, 512, 1 });
+    highCut.setType (juce::dsp::StateVariableTPTFilterType::lowpass);
+    highCut.setResonance (0.7071f);
 
     reset();
 }
@@ -37,6 +51,7 @@ void KickEngine::reset()
         voice.active = false;
         voice.clickFilter.reset();
     }
+    highCut.reset();
     envelope = 0.0f;
 }
 
@@ -69,7 +84,13 @@ float KickEngine::nextSample()
     const auto& current = voices[currentVoice];
     envelope = current.active ? amplitudeAt (params, current.time) * current.fade : 0.0f;
 
-    return softClip (out, params.drive) * params.level;
+    auto y = clip (out, params.drive, params.clipMode);
+    if (params.highCutHz < 19000.0f)
+    {
+        highCut.setCutoffFrequency (juce::jlimit (200.0f, (float) sampleRate * 0.45f, params.highCutHz));
+        y = highCut.processSample (0, y);
+    }
+    return y * params.level;
 }
 
 float KickEngine::renderVoice (Voice& voice)
@@ -86,7 +107,23 @@ float KickEngine::renderVoice (Voice& voice)
     // Kropp: sinus vars frekvens sveper ner till tailHz: ett snabbt svep (pitch) och ett
     // långsamt (glide) ovanpå varandra.
     const auto frequency = params.tailHz * std::exp2 (pitchSemitonesAt (params, t) / 12.0f);
-    const auto body = (float) std::sin (juce::MathConstants<double>::twoPi * voice.phase) * amplitude;
+    constexpr auto twoPi = juce::MathConstants<double>::twoPi;
+    auto body = (float) std::sin (twoPi * (voice.phase + params.startPhase));
+
+    // Övertoner 2-9 på kroppen (följer svepet), som klingar av för sig.
+    if (params.harmonics > 0.0f)
+    {
+        auto sum = 0.0f, norm = 0.0f;
+        for (int n = 2; n <= 9; ++n)
+        {
+            const auto gain = std::pow ((float) n, -params.harmonicsTilt);
+            sum += gain * (float) std::sin (twoPi * n * (voice.phase + params.startPhase));
+            norm += gain;
+        }
+        const auto decay = (float) std::exp (-t / std::max (0.001, params.harmonicsDecayMs * 0.001));
+        body += params.harmonics * decay * sum / std::max (1.0f, norm);
+    }
+    body *= amplitude;
     voice.phase += frequency / sampleRate;
     voice.phase -= std::floor (voice.phase);
 
@@ -118,6 +155,9 @@ float KickEngine::renderVoice (Voice& voice)
 
 float KickEngine::amplitudeAt (const KickParams& p, double seconds)
 {
+    if (p.ampEnv != nullptr)
+        return seconds >= lengthSeconds (p) ? 0.0f : p.ampEnv->lookup (seconds / std::max (0.05f, p.lengthScale));
+
     const auto attack = p.attackMs * 0.001;
     const auto hold = p.holdMs * 0.001;
     const auto decay = std::max (0.001, p.decayMs * 0.001);
@@ -153,10 +193,31 @@ float KickEngine::glideEnvelopeAt (const KickParams& p, double seconds)
 
 float KickEngine::pitchSemitonesAt (const KickParams& p, double seconds)
 {
+    if (p.pitchEnv != nullptr)
+        return p.pitchEnv->lookup (seconds / std::max (0.05f, p.lengthScale)) * p.pitchAmount;
+
     return p.pitchSemis * pitchEnvelopeAt (p, seconds) + p.glideSemis * glideEnvelopeAt (p, seconds);
 }
 
 double KickEngine::lengthSeconds (const KickParams& p)
 {
+    if (p.ampEnv != nullptr)
+        return p.ampEnv->endSeconds() * std::max (0.05f, p.lengthScale);
     return (p.attackMs + p.holdMs + p.decayMs) * 0.001;
+}
+
+juce::AudioBuffer<float> KickEngine::render (const KickParams& p, const ClickSample* click, double sampleRate)
+{
+    KickEngine engine;
+    engine.prepare (sampleRate);
+    auto params = p;
+    params.level = 1.0f;
+    engine.setParams (params);
+    engine.setClickSample (click);
+    engine.trigger (1.0f);
+
+    juce::AudioBuffer<float> audio (1, std::max (1, (int) ((lengthSeconds (params) + 0.01) * sampleRate)));
+    for (int i = 0; i < audio.getNumSamples(); ++i)
+        audio.setSample (0, i, engine.nextSample());
+    return audio;
 }

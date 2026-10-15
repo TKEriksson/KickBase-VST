@@ -19,19 +19,18 @@ namespace ParamID
     inline constexpr auto kickOn          = "kickOn";
     inline constexpr auto kickKeyFollow   = "kickKeyFollow";
     inline constexpr auto kickTune        = "kickTune";
-    inline constexpr auto kickPitch       = "kickPitch";
-    inline constexpr auto kickPitchTime   = "kickPitchTime";
-    inline constexpr auto kickPitchCurve  = "kickPitchCurve";
-    inline constexpr auto kickGlide       = "kickGlide";
-    inline constexpr auto kickGlideTime   = "kickGlideTime";
-    inline constexpr auto kickAttack      = "kickAttack";
-    inline constexpr auto kickHold        = "kickHold";
-    inline constexpr auto kickDecay       = "kickDecay";
-    inline constexpr auto kickDecayCurve  = "kickDecayCurve";
+    inline constexpr auto kickPitchAmount = "kickPitchAmount"; // skalar pitch-envelopen
+    inline constexpr auto kickLength      = "kickLength";      // sträcker envelopernas tid
+    inline constexpr auto kickPhase       = "kickPhase";
+    inline constexpr auto kickHarmonics   = "kickHarmonics";
+    inline constexpr auto kickHarmDecay   = "kickHarmDecay";
+    inline constexpr auto kickHarmTilt    = "kickHarmTilt";
     inline constexpr auto kickClick       = "kickClick";
     inline constexpr auto kickClickLength = "kickClickLength";
     inline constexpr auto kickClickTone   = "kickClickTone";
+    inline constexpr auto kickClipMode    = "kickClipMode";
     inline constexpr auto kickDrive       = "kickDrive";
+    inline constexpr auto kickHighCut     = "kickHighCut";
     inline constexpr auto kickLevel       = "kickLevel";
 
     // Baslagren: se ParamID::bass (lager, fält) nedan.
