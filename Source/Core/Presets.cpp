@@ -138,6 +138,53 @@ namespace
                 { "fxChorusOn", 1 }, { "fxChorusRate", 0.9f }, { "fxChorusDepth", 0.4f }, { "fxChorusMix", 0.35f },
                 { "fxEchoOn", 1 }, { "fxEchoTime", 6 }, { "fxEchoFeedback", 0.5f }, { "fxEchoHighCut", 3000.0f }, { "fxEchoMix", 0.25f } },
               PatternTemplate::offbeat },
+
+            // Inspirerade av låtar Tobias gillar. Byggda från stilens kännetecken, inte från
+            // att ha lyssnat på låtarna: startpunkter att justera efter öra.
+
+            // Astrix-stil full-on: kort, hårt klickande kick; tight, plockig K-B-B-B-bas med
+            // snabb filter-envelope; oktavhopp i slutet av takten; hård sidechain; mycket energi.
+            { "Bungee Jump (Astrix style)",
+              { { kickPitch, 50.0f }, { kickPitchTime, 30.0f }, { kickPitchCurve, 3.5f }, { kickHold, 8.0f }, { kickDecay, 115.0f },
+                { kickDecayCurve, 2.4f }, { kickClick, 0.55f }, { kickClickLength, 4.0f }, { kickClickTone, 7000.0f }, { kickDrive, 0.4f },
+                { bassSub, 0.25f }, { bassCutoff, 200.0f }, { bassResonance, 0.35f }, { bassEnvAmount, 5.0f }, { bassEnvDecay, 75.0f },
+                { bassVelToEnv, 0.6f }, { bassAttack, 0.5f }, { bassDecay, 90.0f }, { bassSustain, 0.25f }, { bassRelease, 8.0f },
+                { bassDrive, 0.3f }, { bassGate, 0.85f },
+                { "fxEqOn", 1 }, { "fxEqLow", 2.0f }, { "fxEqMidFreq", 300.0f }, { "fxEqMid", -3.0f }, { "fxEqHigh", 3.0f },
+                { "fxDistOn", 1 }, { "fxDistDrive", 0.2f }, { "fxDistTone", 7000.0f },
+                { "scMode", 1 }, { "scLength", 1 }, { duckAmount, 0.9f },
+                { "masterDrive", 5.0f }, { "masterClip", 0.3f } },
+              PatternTemplate::rolling, { { 14, 12, false }, { 15, 12, false } },
+              { { 0.0f, 1.0f, 0.0f }, { 0.35f, 0.95f, -0.5f }, { 1.0f, 0.0f, 0.0f } } },
+
+            // Mörk, digital full-on: fyrkantsbas med hög resonans och kort envelope, bitcrush för
+            // det digitala, slumpad rörelse i filtret, distad kick.
+            { "Digital (Gorovich style)",
+              { { kickPitch, 46.0f }, { kickPitchTime, 34.0f }, { kickDecay, 130.0f }, { kickDrive, 0.6f }, { kickClick, 0.4f },
+                { kickClickTone, 5000.0f },
+                { bassWave, 1.0f }, { bassSub, 0.2f }, { bassCutoff, 160.0f }, { bassResonance, 0.55f }, { bassEnvAmount, 6.0f },
+                { bassEnvDecay, 60.0f }, { bassDecay, 80.0f }, { bassSustain, 0.2f }, { bassRelease, 6.0f }, { bassDrive, 0.45f },
+                { "fxDistOn", 1 }, { "fxDistMode", 3 }, { "fxDistDrive", 0.35f }, { "fxDistTone", 9000.0f }, { "fxDistMix", 0.4f },
+                { "fxPhaserOn", 1 }, { "fxPhaserRate", 0.2f }, { "fxPhaserDepth", 0.5f }, { "fxPhaserMix", 0.2f },
+                { "lfo1On", 1 }, { "lfo1Shape", 5 }, { "lfo1Rate", 2 }, { "lfo1DestA", 3 }, { "lfo1AmountA", 0.2f },
+                { duckAmount, 0.85f },
+                { "masterDrive", 6.0f }, { "masterClip", 0.35f } },
+              PatternTemplate::rolling, { { 7, -12, false }, { 15, 12, false } } },
+
+            // Progressiv psy: djupare kick med längre svans, groovig triolbas med glide och mer
+            // sustain, luft från reverb och echo, långsam filtersvep, mjukare sidechain.
+            { "Bearline (Dekel style)",
+              { { kickTune, -1.0f }, { kickPitch, 38.0f }, { kickPitchTime, 55.0f }, { kickHold, 20.0f }, { kickDecay, 190.0f },
+                { kickDecayCurve, 1.7f }, { kickClick, 0.2f }, { kickClickTone, 3500.0f }, { kickDrive, 0.2f },
+                { bassSub, 0.4f }, { bassCutoff, 320.0f }, { bassResonance, 0.25f }, { bassEnvAmount, 3.0f }, { bassEnvDecay, 130.0f },
+                { bassDecay, 160.0f }, { bassSustain, 0.55f }, { bassRelease, 20.0f }, { bassGlide, 60.0f },
+                { "fxReverbOn", 1 }, { "fxReverbSize", 0.7f }, { "fxReverbLowCut", 400.0f }, { "fxReverbMix", 0.15f },
+                { "fxEchoOn", 1 }, { "fxEchoTime", 5 }, { "fxEchoFeedback", 0.35f }, { "fxEchoMix", 0.15f },
+                { "lfo1On", 1 }, { "lfo1Shape", 1 }, { "lfo1Rate", 9 }, { "lfo1DestA", 1 }, { "lfo1AmountA", 0.2f },
+                { "scMode", 1 }, { "scLength", 2 }, { duckAmount, 0.75f },
+                { "masterDrive", 2.0f }, { "masterClip", 0.15f }, { "masterRelease", 120.0f } },
+              PatternTemplate::triplet, {},
+              { { 0.0f, 1.0f, 0.3f }, { 1.0f, 0.0f, 0.0f } } },
         };
         return presets;
     }
