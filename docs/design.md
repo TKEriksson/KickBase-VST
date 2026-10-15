@@ -108,4 +108,8 @@ Varje steg ska gå att höra och testa för sig.
 4. ✅ **Basmotor** med stegsekvenser, tonhöjd/slide per steg och filter-envelope per slag.
 5. ✅ **Kick + bas:** ducking efter kickens envelope, fas, stämning.
 6. ✅ **Utbyggnad:** trioler, samplat klick, Note End, separata utgångar, presets.
-7. **Nästa:** prova allt i FL Studio och finjustera ljudet efter öra.
+7. ✅ **Egna presets** per del (fil per preset under Dokument\MyOwnFruit\Presets), fler rutnät.
+8. ✅ **Effekter** (7 st, PRE/POST gate, valbar ordning) i en EFFECTS-flik.
+9. ✅ **SIDECHAIN** (ritbar duckkurva) och **MASTER** (drive, clip, lookahead-limiter).
+10. ✅ **LFO:er** (2 st, tempo-synkade, två mål var).
+11. **Nästa:** prova allt i FL Studio och finjustera ljud och presets efter öra.

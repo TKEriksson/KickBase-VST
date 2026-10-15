@@ -42,12 +42,24 @@ bestämmer vad som händer när tonen tar slut mitt i ett mönster.
 **FX-versionen:** lägg den i en effektplats på synthens mixerkanal och välj tonart (KEY).
 När DAW:en står still släpps ljudet igenom orört och ingen kick spelas.
 
+**Flikarna** under kick och bas:
+- **PATTERN:** stegsekvenseraren, mönsterlängd, basens rutnät (1/4 till 1/32, trioler).
+- **EFFECTS:** filter, distortion, EQ, chorus, phaser, echo (ping-pong) och reverb. Varje effekt
+  ligger PRE (före gaten, klipps av den) eller POST (efter, svansar klingar ut); dra raderna för ordningen.
+- **SIDECHAIN:** ducka basen efter kickens envelope eller en egen kurva (dra punkter, dubbelklicka
+  för att lägga till, högerklicka för att ta bort, dra i romberna för att böja).
+- **LFO:** två tempo-synkade LFO:er med två mål var.
+- **MASTER:** drive, soft clip och limiter med tak, plus mätare.
+
+**Presets:** varje del (hela pluginet, kick, bas, mönster, effektkedjan, varje effekt, sidechain,
+LFO, master) har en egen presetmeny med fabrikspresets, egna presets, "Save preset..." och
+"Open preset folder". Egna presets sparas som filer under `Dokument\MyOwnFruit\Presets\`.
+
 **Gränssnittet:**
 - Dra i handtagen i kurvorna för att forma envelopes (shift = finjustering, dubbelklick = återställ).
 - Klicka/dra i stegen för att slå på/av. Välj VEL/GATE/PITCH/SLIDE för basstegens lane:
   dra i staplarna, skrolla för tonhöjd, högerklicka för att återställa ett steg.
 - Dra in en WAV på kickmodulen (eller LOAD) för att använda en sampling som klick.
-- Presets (ljud + mönster) finns i menyn bredvid logotypen, mönstermallar under TEMPLATES.
 - Instrumentet har separata kick- och basutgångar utöver huvudutgången (som alltid har hela mixen).
 
 ## Utvecklingsverktyg
