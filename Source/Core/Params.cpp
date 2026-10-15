@@ -81,6 +81,9 @@ namespace Params
                                 [] (float v) { return formatSemis (v, 1); }));
         layout.add (ms (2.0f, 300.0f, 50.0f, 45.0f, ParamID::kickPitchTime, "Kick Pitch Time"));
         layout.add (curve (ParamID::kickPitchCurve, "Kick Pitch Curve", 3.0f));
+        layout.add (floatParam (ParamID::kickGlide, "Kick Glide", NormalisableRange<float> (0.0f, 24.0f, 0.01f), 0.0f,
+                                [] (float v) { return formatSemis (v, 1); }));
+        layout.add (ms (5.0f, 400.0f, 80.0f, 80.0f, ParamID::kickGlideTime, "Kick Glide Time"));
         layout.add (ms (0.0f, 10.0f, 1.0f, 0.3f, ParamID::kickAttack, "Kick Attack"));
         layout.add (ms (0.0f, 200.0f, 40.0f, 15.0f, ParamID::kickHold, "Kick Hold"));
         layout.add (ms (10.0f, 1500.0f, 250.0f, 140.0f, ParamID::kickDecay, "Kick Decay"));
@@ -108,6 +111,18 @@ namespace Params
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::bassWave, 1 }, "Bass Wave",
                                                             StringArray { "Saw", "Square", "Triangle", "Sine" }, 0));
         layout.add (percent (ParamID::bassSub, "Bass Sub", 0.3f));
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::bassSubOctave, 1 }, "Bass Sub Octave",
+                                                            StringArray { "-1 oct", "0 oct" }, 0));
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::bassOsc2Wave, 1 }, "Bass Osc2 Wave",
+                                                            StringArray { "Saw", "Square", "Triangle", "Sine" }, 0));
+        layout.add (percent (ParamID::bassOsc2Level, "Bass Osc2 Level", 0.0f));
+        layout.add (floatParam (ParamID::bassOsc2Semi, "Bass Osc2 Semi", NormalisableRange<float> (-24.0f, 24.0f, 1.0f), 0.0f,
+                                [] (float v) { return formatSemis (v, 0); }));
+        layout.add (floatParam (ParamID::bassOsc2Detune, "Bass Osc2 Detune", NormalisableRange<float> (0.0f, 50.0f, 0.1f), 0.0f,
+                                [] (float v) { return String (v, 1) + " ct"; }));
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::bassFilterType, 1 }, "Bass Filter Type",
+                                                            StringArray { "LP 24", "LP 12", "Band", "High" }, 0));
+        layout.add (percent (ParamID::bassKeyTrack, "Bass Key Track", 0.0f));
         layout.add (floatParam (ParamID::bassCutoff, "Bass Cutoff", skewed (20.0f, 20000.0f, 600.0f, 0.1f), 300.0f, formatHz));
         layout.add (percent (ParamID::bassResonance, "Bass Resonance", 0.3f));
         layout.add (floatParam (ParamID::bassEnvAmount, "Bass Env Amount", NormalisableRange<float> (0.0f, 8.0f, 0.01f), 4.0f,
@@ -193,6 +208,8 @@ KickParams ParamRefs::readKick (int keyPitchClass) const
     p.pitchSemis    = get (ParamID::kickPitch);
     p.pitchTimeMs   = get (ParamID::kickPitchTime);
     p.pitchCurve    = get (ParamID::kickPitchCurve);
+    p.glideSemis    = get (ParamID::kickGlide);
+    p.glideTimeMs   = get (ParamID::kickGlideTime);
     p.attackMs      = get (ParamID::kickAttack);
     p.holdMs        = get (ParamID::kickHold);
     p.decayMs       = get (ParamID::kickDecay);
@@ -211,6 +228,13 @@ BassParams ParamRefs::readBass (int rootMidiNote) const
     p.rootHz     = Params::midiToHz ((float) rootMidiNote + 12.0f * get (ParamID::bassOctave) + get (ParamID::bassTune));
     p.wave       = (BassWave) getChoice (ParamID::bassWave);
     p.sub        = get (ParamID::bassSub);
+    p.subOctave  = getChoice (ParamID::bassSubOctave) == 1 ? 0 : -1;
+    p.osc2Wave   = (BassWave) getChoice (ParamID::bassOsc2Wave);
+    p.osc2Level  = get (ParamID::bassOsc2Level);
+    p.osc2Semis  = get (ParamID::bassOsc2Semi);
+    p.osc2Detune = get (ParamID::bassOsc2Detune);
+    p.filterType = (BassFilterType) getChoice (ParamID::bassFilterType);
+    p.keyTrack   = get (ParamID::bassKeyTrack);
     p.cutoffHz   = get (ParamID::bassCutoff);
     p.resonance  = get (ParamID::bassResonance);
     p.envAmount  = get (ParamID::bassEnvAmount);

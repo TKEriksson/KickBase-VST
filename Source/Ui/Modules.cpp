@@ -98,18 +98,18 @@ KickModule::KickModule (PluginBase& p)
     addAndMakeVisible (keyMode);
     envelope.onBeforePaint = [this] { current = refs.readKick (0); };
 
-    envelope.addCurve ({ [this] (double t) { return KickEngine::pitchEnvelopeAt (current, t) * current.pitchSemis / 72.0f; },
+    envelope.addCurve ({ [this] (double t) { return KickEngine::pitchSemitonesAt (current, t) / 72.0f; },
                          Theme::text.withAlpha (0.8f), false, "PITCH" });
     envelope.addCurve ({ [this] (double t) { return KickEngine::amplitudeAt (current, t); }, Theme::kick, true, "AMP" });
 
     const auto pitchColour = Theme::text;
-    envelope.addHandle ({ [this] { return juce::Point<float> (0.0f, current.pitchSemis / 72.0f); },
+    envelope.addHandle ({ [this] { return juce::Point<float> (0.0f, KickEngine::pitchSemitonesAt (current, 0.0) / 72.0f); },
                           nullptr, param (p, ParamID::kickPitch), false, pitchColour });
     envelope.addHandle ({ [this] { return juce::Point<float> (current.pitchTimeMs * 0.001f, 0.0f); },
                           param (p, ParamID::kickPitchTime), nullptr, false, pitchColour });
     envelope.addHandle ({ [this] {
                               const auto t = current.pitchTimeMs * 0.0005;
-                              return juce::Point<float> ((float) t, KickEngine::pitchEnvelopeAt (current, t) * current.pitchSemis / 72.0f); },
+                              return juce::Point<float> ((float) t, KickEngine::pitchSemitonesAt (current, t) / 72.0f); },
                           nullptr, param (p, ParamID::kickPitchCurve), true, pitchColour });
 
     envelope.addHandle ({ [this] { return juce::Point<float> ((current.attackMs + current.holdMs) * 0.001f, 1.0f); },
@@ -127,7 +127,10 @@ KickModule::KickModule (PluginBase& p)
         { ParamID::kickPitchCurve, "P.CURVE" }, { ParamID::kickClick, "CLICK" }, { ParamID::kickClickLength, "CLK LEN" },
         { ParamID::kickClickTone, "CLK TONE" },
         { ParamID::kickAttack, "ATTACK" }, { ParamID::kickHold, "HOLD" }, { ParamID::kickDecay, "DECAY" },
-        { ParamID::kickDecayCurve, "D.CURVE" }, { ParamID::kickDrive, "DRIVE" }, { ParamID::kickLevel, "LEVEL" } });
+        { ParamID::kickDecayCurve, "D.CURVE" }, { ParamID::kickGlide, "GLIDE" }, { ParamID::kickGlideTime, "G.TIME" },
+        { ParamID::kickDrive, "DRIVE" }, { ParamID::kickLevel, "LEVEL" } });
+    knobs[11]->slider.setTooltip ("Glide: a second, slow pitch drop on top of the fast one (how far above the tail it starts)");
+    knobs[12]->slider.setTooltip ("Glide time: how long the slow pitch drop takes to reach the tail");
 
     sampleLabel.setFont (Theme::font (11.0f));
     sampleLabel.setColour (juce::Label::textColourId, Theme::textDim);
@@ -205,7 +208,11 @@ void KickModule::resized()
     presets.setBounds (presetBounds (*this));
     auto area = getContentBounds();
 
-    auto sampleRow = area.removeFromBottom (22);
+    // Nedersta raden: KEY-väljaren (etikett + ruta) och klicksamplingen bredvid.
+    auto bottom = area.removeFromBottom (40);
+    keyMode.setBounds (bottom.removeFromLeft (110));
+    bottom.removeFromLeft (10);
+    auto sampleRow = bottom.removeFromBottom (24);
     clearButton.setBounds (sampleRow.removeFromRight (24));
     sampleRow.removeFromRight (4);
     loadButton.setBounds (sampleRow.removeFromRight (50));
@@ -218,10 +225,8 @@ void KickModule::resized()
     envelope.setBounds (area);
 
     auto first = pointers (knobs, 0, 7);
-    auto second = pointers (knobs, 7, 13);
+    auto second = pointers (knobs, 7, 15);
     layoutRow (first, row1);
-    const auto cell = row2.getWidth() / 7;
-    keyMode.setBounds (row2.removeFromRight (cell).reduced (4, 14));
     layoutRow (second, row2);
 }
 
@@ -229,7 +234,6 @@ void KickModule::resized()
 BassModule::BassModule (PluginBase& p)
     : ModulePanel ("BASS", Theme::bass, &p.apvts, ParamID::bassOn),
       refs (p.apvts),
-      wave (p.apvts, ParamID::bassWave, "WAVE"),
       presets (p, Presets::Section::bass, Theme::bass)
 {
     addAndMakeVisible (presets);
@@ -256,14 +260,30 @@ BassModule::BassModule (PluginBase& p)
                           param (p, ParamID::bassRelease), nullptr, false, Theme::text });
     addAndMakeVisible (envelope);
 
-    addAndMakeVisible (wave);
-    addKnobs (*this, knobs, p, Theme::bass, {
-        { ParamID::bassOctave, "OCTAVE" }, { ParamID::bassTune, "TUNE" }, { ParamID::bassSub, "SUB" },
-        { ParamID::bassCutoff, "CUTOFF" }, { ParamID::bassResonance, "RESO" }, { ParamID::bassEnvAmount, "ENV AMT" },
-        { ParamID::bassEnvDecay, "ENV DEC" },
-        { ParamID::bassVelToEnv, "VEL>ENV" }, { ParamID::bassAttack, "ATTACK" }, { ParamID::bassDecay, "DECAY" },
-        { ParamID::bassSustain, "SUSTAIN" }, { ParamID::bassRelease, "RELEASE" }, { ParamID::bassGlide, "GLIDE" },
-        { ParamID::bassDrive, "DRIVE" }, { ParamID::bassLevel, "LEVEL" } });
+    // Tre rader: OSC, FILTER och AMP. Valrutor och rattar blandas i samma rad.
+    auto knob = [&] (const char* id, const char* name) -> juce::Component*
+    {
+        controls.push_back (std::make_unique<KnobComponent> (p.apvts, id, name, Theme::bass));
+        addAndMakeVisible (*controls.back());
+        return controls.back().get();
+    };
+    auto choice = [&] (const char* id, const char* name) -> juce::Component*
+    {
+        controls.push_back (std::make_unique<ChoiceComponent> (p.apvts, id, name));
+        addAndMakeVisible (*controls.back());
+        return controls.back().get();
+    };
+
+    rows.push_back ({ choice (ParamID::bassWave, "WAVE"), knob (ParamID::bassOctave, "OCTAVE"), knob (ParamID::bassTune, "TUNE"),
+                      knob (ParamID::bassSub, "SUB"), choice (ParamID::bassSubOctave, "SUB OCT"),
+                      choice (ParamID::bassOsc2Wave, "OSC 2"), knob (ParamID::bassOsc2Level, "O2 LEVEL"),
+                      knob (ParamID::bassOsc2Semi, "O2 SEMI"), knob (ParamID::bassOsc2Detune, "DETUNE") });
+    rows.push_back ({ choice (ParamID::bassFilterType, "FILTER"), knob (ParamID::bassCutoff, "CUTOFF"),
+                      knob (ParamID::bassResonance, "RESO"), knob (ParamID::bassEnvAmount, "ENV AMT"),
+                      knob (ParamID::bassEnvDecay, "ENV DEC"), knob (ParamID::bassVelToEnv, "VEL>ENV"),
+                      knob (ParamID::bassKeyTrack, "KEYTRK"), knob (ParamID::bassDrive, "DRIVE") });
+    rows.push_back ({ knob (ParamID::bassAttack, "ATTACK"), knob (ParamID::bassDecay, "DECAY"), knob (ParamID::bassSustain, "SUSTAIN"),
+                      knob (ParamID::bassRelease, "RELEASE"), knob (ParamID::bassGlide, "GLIDE"), knob (ParamID::bassLevel, "LEVEL") });
 }
 
 float BassModule::ampValueAt (double seconds) const
@@ -294,18 +314,31 @@ void BassModule::resized()
     presets.setBounds (presetBounds (*this));
     auto area = getContentBounds();
 
-    auto row2 = area.removeFromBottom (knobRowHeight);
-    auto row1 = area.removeFromBottom (knobRowHeight);
-    area.removeFromBottom (6);
-    envelope.setBounds (area.withTrimmedBottom (22));
+    constexpr int rowHeight = 66;
+    std::vector<juce::Rectangle<int>> rowAreas;
+    for (size_t r = 0; r < rows.size(); ++r)
+        rowAreas.insert (rowAreas.begin(), area.removeFromBottom (rowHeight));
+    area.removeFromBottom (4);
+    envelope.setBounds (area);
 
-    // Första raden: vågform + sju rattar. Andra raden: åtta rattar.
-    const auto cell = row1.getWidth() / 8;
-    wave.setBounds (row1.removeFromLeft (cell).reduced (2, 14));
-    auto first = pointers (knobs, 0, 7);
-    auto second = pointers (knobs, 7, 15);
-    layoutRow (first, row1);
-    layoutRow (second, row2);
+    // Alla rader delas i lika många celler (den längsta radens antal), så att kolumnerna linjerar.
+    size_t columns = 0;
+    for (const auto& row : rows)
+        columns = std::max (columns, row.size());
+
+    for (size_t r = 0; r < rows.size(); ++r)
+    {
+        auto rowArea = rowAreas[r];
+        const auto cellWidth = rowArea.getWidth() / (int) columns;
+        for (auto* control : rows[r])
+        {
+            auto cell = rowArea.removeFromLeft (cellWidth);
+            if (dynamic_cast<ChoiceComponent*> (control) != nullptr)
+                control->setBounds (cell.reduced (2, 0).withSizeKeepingCentre (cell.getWidth() - 4, 40));
+            else
+                control->setBounds (cell);
+        }
+    }
 }
 
 //==============================================================================

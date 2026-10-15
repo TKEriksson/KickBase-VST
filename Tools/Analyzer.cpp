@@ -143,7 +143,7 @@ namespace
         if (maxLag <= minLag + 2)
             return 0.0;
 
-        const auto window = length - maxLag;
+        const auto window = length - maxLag - 1; // tau går upp till maxLag + 1
         const auto* data = x.data() + start;
 
         std::vector<double> d ((size_t) maxLag + 2, 0.0);

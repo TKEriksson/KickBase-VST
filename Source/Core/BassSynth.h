@@ -3,13 +3,21 @@
 #include <juce_dsp/juce_dsp.h>
 
 enum class BassWave { saw, square, triangle, sine };
+enum class BassFilterType { lowpass24, lowpass12, bandpass, highpass };
 
 // Inställningarna för bassynten. Tider i millisekunder.
 struct BassParams
 {
     float rootHz = 65.4f;        // tonartens grundton i basens oktav
     BassWave wave = BassWave::saw;
-    float sub = 0.3f;            // sinus en oktav ner, 0..1
+    float sub = 0.3f;            // sinus, 0..1
+    int subOctave = -1;          // 0 = samma oktav som grundtonen, -1 = en oktav ner
+    BassWave osc2Wave = BassWave::saw;
+    float osc2Level = 0.0f;      // andra oscillatorn, 0..1
+    float osc2Semis = 0.0f;      // halvtoner från första oscillatorn
+    float osc2Detune = 0.0f;     // cent, för tjockare ljud
+    BassFilterType filterType = BassFilterType::lowpass24;
+    float keyTrack = 0.0f;       // 0..1: hur mycket cutoff följer tonhöjden (1 = helt, från C2)
     float cutoffHz = 300.0f;
     float resonance = 0.3f;      // 0..1
     float envAmount = 4.0f;      // hur många oktaver filtret öppnas av envelopen
@@ -55,13 +63,13 @@ public:
 private:
     enum class Stage { idle, attack, decay, release };
 
-    float oscillator (double phaseIn, double increment) const;
+    static float oscillator (BassWave wave, double phaseIn, double increment);
     static double coefficientFor (double milliseconds, double sampleRate);
 
     BassParams params;
     double sampleRate = 44100.0;
 
-    double phase = 0.0, subPhase = 0.0;
+    double phase = 0.0, subPhase = 0.0, phase2 = 0.0;
     double logFrequency = 0.0, targetLogFrequency = 0.0; // log2(Hz), så att glide låter jämnt
     bool gliding = false;
 

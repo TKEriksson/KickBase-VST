@@ -83,8 +83,9 @@ float KickEngine::renderVoice (Voice& voice)
         return 0.0f;
     }
 
-    // Kropp: sinus vars frekvens sveper från tailHz * 2^(pitchSemis/12) ner till tailHz.
-    const auto frequency = params.tailHz * std::exp2 (params.pitchSemis / 12.0f * pitchEnvelopeAt (params, t));
+    // Kropp: sinus vars frekvens sveper ner till tailHz: ett snabbt svep (pitch) och ett
+    // långsamt (glide) ovanpå varandra.
+    const auto frequency = params.tailHz * std::exp2 (pitchSemitonesAt (params, t) / 12.0f);
     const auto body = (float) std::sin (juce::MathConstants<double>::twoPi * voice.phase) * amplitude;
     voice.phase += frequency / sampleRate;
     voice.phase -= std::floor (voice.phase);
@@ -142,6 +143,17 @@ float KickEngine::pitchEnvelopeAt (const KickParams& p, double seconds)
         return 0.0f;
 
     return (float) std::pow (1.0 - seconds / time, (double) p.pitchCurve);
+}
+
+float KickEngine::glideEnvelopeAt (const KickParams& p, double seconds)
+{
+    const auto time = std::max (0.001, p.glideTimeMs * 0.001);
+    return seconds >= time ? 0.0f : (float) (1.0 - seconds / time);
+}
+
+float KickEngine::pitchSemitonesAt (const KickParams& p, double seconds)
+{
+    return p.pitchSemis * pitchEnvelopeAt (p, seconds) + p.glideSemis * glideEnvelopeAt (p, seconds);
 }
 
 double KickEngine::lengthSeconds (const KickParams& p)

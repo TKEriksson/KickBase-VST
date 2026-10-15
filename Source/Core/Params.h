@@ -21,6 +21,8 @@ namespace ParamID
     inline constexpr auto kickPitch       = "kickPitch";
     inline constexpr auto kickPitchTime   = "kickPitchTime";
     inline constexpr auto kickPitchCurve  = "kickPitchCurve";
+    inline constexpr auto kickGlide       = "kickGlide";
+    inline constexpr auto kickGlideTime   = "kickGlideTime";
     inline constexpr auto kickAttack      = "kickAttack";
     inline constexpr auto kickHold        = "kickHold";
     inline constexpr auto kickDecay       = "kickDecay";
@@ -42,6 +44,13 @@ namespace ParamID
     inline constexpr auto bassTune      = "bassTune";
     inline constexpr auto bassWave      = "bassWave";
     inline constexpr auto bassSub       = "bassSub";
+    inline constexpr auto bassSubOctave = "bassSubOctave";
+    inline constexpr auto bassOsc2Wave  = "bassOsc2Wave";
+    inline constexpr auto bassOsc2Level = "bassOsc2Level";
+    inline constexpr auto bassOsc2Semi  = "bassOsc2Semi";
+    inline constexpr auto bassOsc2Detune = "bassOsc2Detune";
+    inline constexpr auto bassFilterType = "bassFilterType";
+    inline constexpr auto bassKeyTrack  = "bassKeyTrack";
     inline constexpr auto bassCutoff    = "bassCutoff";
     inline constexpr auto bassResonance = "bassResonance";
     inline constexpr auto bassEnvAmount = "bassEnvAmount";

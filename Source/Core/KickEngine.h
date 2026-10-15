@@ -11,6 +11,8 @@ struct KickParams
     float pitchSemis = 42.0f;   // hur högt över svansen svepet börjar
     float pitchTimeMs = 45.0f;  // hur lång tid svepet tar
     float pitchCurve = 3.0f;    // 1 = rak linje, högre = snabbare fall i början
+    float glideSemis = 0.0f;    // andra, långsamma svepet: börjar så här högt över svansen
+    float glideTimeMs = 80.0f;  // och glider ner till svansen på så här lång tid
     float attackMs = 0.3f;
     float holdMs = 15.0f;
     float decayMs = 140.0f;
@@ -48,6 +50,8 @@ public:
     // Envelopernas form, utan tillstånd. Används även av gränssnittet för att rita kurvorna.
     static float amplitudeAt (const KickParams& p, double seconds);
     static float pitchEnvelopeAt (const KickParams& p, double seconds);
+    static float glideEnvelopeAt (const KickParams& p, double seconds);
+    static float pitchSemitonesAt (const KickParams& p, double seconds); // båda svepen, halvtoner över svansen
     static double lengthSeconds (const KickParams& p);
 
 private:

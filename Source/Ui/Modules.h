@@ -69,8 +69,8 @@ private:
     float ampValueAt (double seconds) const;
 
     EnvelopeView envelope { 0.5 };
-    ChoiceComponent wave;
-    std::vector<std::unique_ptr<KnobComponent>> knobs;
+    std::vector<std::unique_ptr<juce::Component>> controls;
+    std::vector<std::vector<juce::Component*>> rows; // OSC, FILTER, AMP
     PresetButton presets;
 };
 

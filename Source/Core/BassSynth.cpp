@@ -76,6 +76,7 @@ void BassSynth::noteOn (int semitones, float newVelocity, int gateSamples, bool 
         {
             phase = 0.0;
             subPhase = 0.0;
+            phase2 = 0.0;
         }
 
         noteTime = 0.0;
@@ -111,9 +112,9 @@ double BassSynth::coefficientFor (double milliseconds, double rate)
     return 1.0 - std::exp (std::log (0.001) / (std::max (0.1, milliseconds) * 0.001 * rate));
 }
 
-float BassSynth::oscillator (double t, double dt) const
+float BassSynth::oscillator (BassWave wave, double t, double dt)
 {
-    switch (params.wave)
+    switch (wave)
     {
         case BassWave::saw:      return (float) (2.0 * t - 1.0 - polyBlep (t, dt));
         case BassWave::square:   return (float) ((t < 0.5 ? 1.0 : -1.0) + polyBlep (t, dt) - polyBlep (std::fmod (t + 0.5, 1.0), dt));
@@ -166,26 +167,44 @@ BassSynth::Output BassSynth::next()
     const auto frequency = std::exp2 (logFrequency);
     const auto dt = frequency / sampleRate;
 
-    auto sample = oscillator (phase, dt);
+    auto sample = oscillator (params.wave, phase, dt);
     sample += params.sub * (float) std::sin (juce::MathConstants<double>::twoPi * subPhase);
+
+    // Andra oscillatorn: egen vågform, halvtoner och detune.
+    const auto dt2 = dt * std::exp2 ((params.osc2Semis + params.osc2Detune * 0.01f) / 12.0f);
+    if (params.osc2Level > 0.0f)
+        sample += params.osc2Level * oscillator (params.osc2Wave, phase2, dt2);
 
     phase += dt;
     phase -= std::floor (phase);
-    subPhase += dt * 0.5;
+    phase2 += dt2;
+    phase2 -= std::floor (phase2);
+    subPhase += params.subOctave == 0 ? dt : dt * 0.5;
     subPhase -= std::floor (subPhase);
 
     // Filter: grundcutoff öppnas av envelopen, mer ju hårdare steget slås an.
     const auto envDepth = params.envAmount * (1.0f - params.velToEnv + params.velToEnv * velocity);
-    const auto cutoff = params.cutoffHz * std::exp2 (envDepth * filterEnvelopeAt (params, noteTime));
+    const auto keyFollow = params.keyTrack > 0.0f ? std::pow ((float) frequency / 65.41f, params.keyTrack) : 1.0f;
+    const auto cutoff = params.cutoffHz * keyFollow * std::exp2 (envDepth * filterEnvelopeAt (params, noteTime));
     const auto clampedCutoff = juce::jlimit (20.0f, (float) sampleRate * 0.45f, cutoff);
     const auto q = 0.5f * std::pow (16.0f, params.resonance);
 
-    filter1.setCutoffFrequency (clampedCutoff);
-    filter1.setResonance (0.707f);
+    // LP 24 = två lågpass efter varandra; övriga typer ett filter (12 dB).
+    using Type = juce::dsp::StateVariableTPTFilterType;
+    const auto type = params.filterType == BassFilterType::bandpass ? Type::bandpass
+                    : params.filterType == BassFilterType::highpass ? Type::highpass
+                                                                    : Type::lowpass;
+    filter2.setType (type);
     filter2.setCutoffFrequency (clampedCutoff);
     filter2.setResonance (q);
 
-    sample = filter2.processSample (0, filter1.processSample (0, sample));
+    if (params.filterType == BassFilterType::lowpass24)
+    {
+        filter1.setCutoffFrequency (clampedCutoff);
+        filter1.setResonance (0.707f);
+        sample = filter1.processSample (0, sample);
+    }
+    sample = filter2.processSample (0, sample);
     noteTime += 1.0 / sampleRate;
 
     // Drive verkar på källan (före gaten), så att distorsionen låter likadant oavsett envelope.

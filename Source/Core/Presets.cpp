@@ -7,9 +7,10 @@ namespace
 
     struct StepTweak
     {
-        int step;      // steg i takten (upprepas i alla takter)
-        int pitch;     // halvtoner
+        int step;          // steg i takten (upprepas i alla takter), i mallens rutnät
+        int pitch;         // halvtoner
         bool slide;
+        float gate = -1.0f; // gate-längd 0..1, eller -1 = mallens
     };
 
     // Ett parametervärde. Konstruktorn tar float, så att heltal som 1 blir float vid anropet.
@@ -25,7 +26,7 @@ namespace
         const char* name;
         std::vector<Value> values;
         PatternTemplate pattern = PatternTemplate::rolling; // bara Full och Pattern
-        std::vector<StepTweak> tweaks;                      // bara sextondelsmönster
+        std::vector<StepTweak> tweaks;                      // i mallens rutnät
         std::vector<SidechainCurve::Point> curve;           // bara Sidechain; tom = standardkurvan
     };
 
@@ -139,52 +140,52 @@ namespace
                 { "fxEchoOn", 1 }, { "fxEchoTime", 6 }, { "fxEchoFeedback", 0.5f }, { "fxEchoHighCut", 3000.0f }, { "fxEchoMix", 0.25f } },
               PatternTemplate::offbeat },
 
-            // Inspirerade av låtar Tobias gillar. Byggda från stilens kännetecken, inte från
-            // att ha lyssnat på låtarna: startpunkter att justera efter öra.
+            // Byggda från mätningar av referenslåtarna med MyOwnFruitTool analyze (tempo, kickens
+            // svep, svans och längd, basgångens rutnät och toner). Spela i låtens tempo; tonen i
+            // pianorullen: E4 för de två första (bas E på 41 Hz), G4 för Digital.
 
-            // Astrix-stil full-on: kort, hårt klickande kick; tight, plockig K-B-B-B-bas med
-            // snabb filter-envelope; oktavhopp i slutet av takten; hård sidechain; mycket energi.
+            // Captain Hook & Astrix - Bungee Jump (138 BPM): lång kick med snabbt svep ner till
+            // ~60 Hz och sedan långsam glidning mot ~45 Hz, svagt klick. Basen i åttondelstrioler
+            // (K-B-B) på E, med D# på slag 3. Ljusare bas än våra tidigare presets.
             { "Bungee Jump (Astrix style)",
-              { { kickPitch, 50.0f }, { kickPitchTime, 30.0f }, { kickPitchCurve, 3.5f }, { kickHold, 8.0f }, { kickDecay, 115.0f },
-                { kickDecayCurve, 2.4f }, { kickClick, 0.55f }, { kickClickLength, 4.0f }, { kickClickTone, 7000.0f }, { kickDrive, 0.4f },
-                { bassSub, 0.25f }, { bassCutoff, 200.0f }, { bassResonance, 0.35f }, { bassEnvAmount, 5.0f }, { bassEnvDecay, 75.0f },
-                { bassVelToEnv, 0.6f }, { bassAttack, 0.5f }, { bassDecay, 90.0f }, { bassSustain, 0.25f }, { bassRelease, 8.0f },
-                { bassDrive, 0.3f }, { bassGate, 0.85f },
-                { "fxEqOn", 1 }, { "fxEqLow", 2.0f }, { "fxEqMidFreq", 300.0f }, { "fxEqMid", -3.0f }, { "fxEqHigh", 3.0f },
-                { "fxDistOn", 1 }, { "fxDistDrive", 0.2f }, { "fxDistTone", 7000.0f },
-                { "scMode", 1 }, { "scLength", 1 }, { duckAmount, 0.9f },
-                { "masterDrive", 5.0f }, { "masterClip", 0.3f } },
-              PatternTemplate::rolling, { { 14, 12, false }, { 15, 12, false } },
-              { { 0.0f, 1.0f, 0.0f }, { 0.35f, 0.95f, -0.5f }, { 1.0f, 0.0f, 0.0f } } },
+              { { kickKeyFollow, 1 }, { kickTune, 1.5f }, { kickPitch, 18.0f }, { kickPitchTime, 6.0f }, { kickPitchCurve, 1.5f },
+                { kickGlide, 5.0f }, { kickGlideTime, 75.0f }, { kickAttack, 0.3f }, { kickHold, 40.0f }, { kickDecay, 160.0f },
+                { kickDecayCurve, 1.5f }, { kickClick, 0.12f }, { kickClickLength, 1.0f }, { kickClickTone, 6000.0f }, { kickDrive, 0.25f },
+                { bassSub, 0.35f }, { bassSubOctave, 1 }, { bassOsc2Wave, 0 }, { bassOsc2Level, 0.35f }, { bassOsc2Semi, 12.0f },
+                { bassOsc2Detune, 8.0f }, { bassCutoff, 700.0f }, { bassResonance, 0.2f }, { bassEnvAmount, 3.0f }, { bassEnvDecay, 90.0f },
+                { bassVelToEnv, 0.3f }, { bassKeyTrack, 0.5f }, { bassAttack, 4.0f }, { bassDecay, 120.0f }, { bassSustain, 0.45f },
+                { bassRelease, 15.0f }, { bassDrive, 0.35f }, { bassLevel, 0.75f }, { bassGate, 0.75f },
+                { "masterDrive", 3.0f }, { "masterClip", 0.2f } },
+              PatternTemplate::triplet, { { 8, -1, false } } },
 
-            // Mörk, digital full-on: fyrkantsbas med hög resonans och kort envelope, bitcrush för
-            // det digitala, slumpad rörelse i filtret, distad kick.
+            // Gorovich - Digital Pussy (145 BPM): kort svep (~4 ms) och svagt klick, rullande
+            // sextondelar på G med kvinten (D) på andra sextondelen i slag 1 och 3.
             { "Digital (Gorovich style)",
-              { { kickPitch, 46.0f }, { kickPitchTime, 34.0f }, { kickDecay, 130.0f }, { kickDrive, 0.6f }, { kickClick, 0.4f },
-                { kickClickTone, 5000.0f },
-                { bassWave, 1.0f }, { bassSub, 0.2f }, { bassCutoff, 160.0f }, { bassResonance, 0.55f }, { bassEnvAmount, 6.0f },
-                { bassEnvDecay, 60.0f }, { bassDecay, 80.0f }, { bassSustain, 0.2f }, { bassRelease, 6.0f }, { bassDrive, 0.45f },
-                { "fxDistOn", 1 }, { "fxDistMode", 3 }, { "fxDistDrive", 0.35f }, { "fxDistTone", 9000.0f }, { "fxDistMix", 0.4f },
-                { "fxPhaserOn", 1 }, { "fxPhaserRate", 0.2f }, { "fxPhaserDepth", 0.5f }, { "fxPhaserMix", 0.2f },
-                { "lfo1On", 1 }, { "lfo1Shape", 5 }, { "lfo1Rate", 2 }, { "lfo1DestA", 3 }, { "lfo1AmountA", 0.2f },
-                { duckAmount, 0.85f },
-                { "masterDrive", 6.0f }, { "masterClip", 0.35f } },
-              PatternTemplate::rolling, { { 7, -12, false }, { 15, 12, false } } },
+              { { kickKeyFollow, 1 }, { kickTune, 0.5f }, { kickPitch, 24.0f }, { kickPitchTime, 8.0f }, { kickPitchCurve, 2.5f },
+                { kickHold, 10.0f }, { kickDecay, 120.0f }, { kickDecayCurve, 2.2f }, { kickClick, 0.1f }, { kickClickLength, 1.0f },
+                { kickDrive, 0.4f },
+                { bassSub, 0.25f }, { bassSubOctave, 1 }, { bassOsc2Wave, 0 }, { bassOsc2Level, 0.3f }, { bassOsc2Semi, 12.0f },
+                { bassOsc2Detune, 10.0f }, { bassCutoff, 450.0f }, { bassResonance, 0.45f }, { bassEnvAmount, 4.5f }, { bassEnvDecay, 70.0f },
+                { bassKeyTrack, 0.5f }, { bassAttack, 1.0f }, { bassDecay, 80.0f }, { bassSustain, 0.3f }, { bassRelease, 8.0f },
+                { bassDrive, 0.45f }, { duckAmount, 0.85f },
+                { "fxDistOn", 1 }, { "fxDistDrive", 0.2f }, { "fxDistTone", 8000.0f },
+                { "masterDrive", 5.0f }, { "masterClip", 0.3f } },
+              PatternTemplate::rolling, { { 1, 7, false }, { 9, 7, false } } },
 
-            // Progressiv psy: djupare kick med längre svans, groovig triolbas med glide och mer
-            // sustain, luft från reverb och echo, långsam filtersvep, mjukare sidechain.
+            // Dekel - Bear Line (135,5 BPM): lång kick (-6 dB vid ~80 ms) med klassiskt svep på
+            // ~12 ms. Galopp (K . B B): kvinten (B) kort på tredje sextondelen, grundtonen (E)
+            // längre på den fjärde. Ljust anslag som mörknar (filter-envelope).
             { "Bearline (Dekel style)",
-              { { kickTune, -1.0f }, { kickPitch, 38.0f }, { kickPitchTime, 55.0f }, { kickHold, 20.0f }, { kickDecay, 190.0f },
-                { kickDecayCurve, 1.7f }, { kickClick, 0.2f }, { kickClickTone, 3500.0f }, { kickDrive, 0.2f },
-                { bassSub, 0.4f }, { bassCutoff, 320.0f }, { bassResonance, 0.25f }, { bassEnvAmount, 3.0f }, { bassEnvDecay, 130.0f },
-                { bassDecay, 160.0f }, { bassSustain, 0.55f }, { bassRelease, 20.0f }, { bassGlide, 60.0f },
-                { "fxReverbOn", 1 }, { "fxReverbSize", 0.7f }, { "fxReverbLowCut", 400.0f }, { "fxReverbMix", 0.15f },
-                { "fxEchoOn", 1 }, { "fxEchoTime", 5 }, { "fxEchoFeedback", 0.35f }, { "fxEchoMix", 0.15f },
-                { "lfo1On", 1 }, { "lfo1Shape", 1 }, { "lfo1Rate", 9 }, { "lfo1DestA", 1 }, { "lfo1AmountA", 0.2f },
-                { "scMode", 1 }, { "scLength", 2 }, { duckAmount, 0.75f },
+              { { kickKeyFollow, 1 }, { kickPitch, 32.0f }, { kickPitchTime, 14.0f }, { kickPitchCurve, 2.5f }, { kickHold, 30.0f },
+                { kickDecay, 190.0f }, { kickDecayCurve, 1.4f }, { kickClick, 0.25f }, { kickClickLength, 1.0f }, { kickClickTone, 5000.0f },
+                { kickDrive, 0.2f },
+                { bassSub, 0.3f }, { bassSubOctave, 1 }, { bassOsc2Wave, 1 }, { bassOsc2Level, 0.25f }, { bassOsc2Semi, 12.0f },
+                { bassCutoff, 500.0f }, { bassResonance, 0.3f }, { bassEnvAmount, 4.0f }, { bassEnvDecay, 120.0f }, { bassKeyTrack, 0.4f },
+                { bassAttack, 2.0f }, { bassDecay, 150.0f }, { bassSustain, 0.5f }, { bassRelease, 25.0f },
                 { "masterDrive", 2.0f }, { "masterClip", 0.15f }, { "masterRelease", 120.0f } },
-              PatternTemplate::triplet, {},
-              { { 0.0f, 1.0f, 0.3f }, { 1.0f, 0.0f, 0.0f } } },
+              PatternTemplate::galloping,
+              { { 2, 7, false, 0.45f }, { 6, 7, false, 0.45f }, { 10, 7, false, 0.45f }, { 14, 7, false, 0.45f },
+                { 3, 0, false, 0.9f }, { 7, 0, false, 0.9f }, { 11, 0, false, 0.9f }, { 15, 0, false, 0.9f } } },
         };
         return presets;
     }
@@ -541,10 +542,12 @@ namespace Presets
         {
             for (int bar = 0; bar < Pattern::maxBars; ++bar)
             {
-                auto& step = pattern.bassStep (BassGrid::sixteenth, bar * Pattern::bassStepsPerBar (BassGrid::sixteenth) + tweak.step);
+                auto& step = pattern.bassStep (grid, bar * Pattern::bassStepsPerBar (grid) + tweak.step);
                 step.on = true;
                 step.pitch = tweak.pitch;
                 step.slide = tweak.slide;
+                if (tweak.gate >= 0.0f)
+                    step.gate = tweak.gate;
             }
         }
 
