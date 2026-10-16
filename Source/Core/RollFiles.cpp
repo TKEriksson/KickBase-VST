@@ -1,4 +1,6 @@
 #include "RollFiles.h"
+#include "Params.h"
+#include "Presets.h"
 
 namespace RollFiles
 {
@@ -21,6 +23,18 @@ namespace RollFiles
         while ((1 << choice) < bars && choice < 6)
             ++choice;
         return choice;
+    }
+
+    void applyLength (juce::AudioProcessorValueTreeState& apvts, int layer, int bars)
+    {
+        const auto total = std::max (Params::readPatternLengths (apvts).total, bars);
+        auto set = [&apvts] (const char* id, int choice)
+        {
+            if (auto* parameter = apvts.getParameter (id))
+                Presets::setParameter (*parameter, parameter->convertTo0to1 ((float) choice));
+        };
+        set (ParamID::patternBars, barsToChoice (total));
+        set (ParamID::rowBars (1 + layer), bars >= total ? 0 : barsToChoice (bars) + 1);
     }
 
     bool save (const Pattern& pattern, int layer, int bars, BassGrid grid, const juce::File& file)

@@ -1024,8 +1024,7 @@ var ToolLayer::pianoRollFiles (const juce::String& tool, const var& args)
     {
         if (auto* gridParameter = findParameter (processor, ParamID::bass (layer, BassField::grid)))
             Presets::setParameter (*gridParameter, gridParameter->convertTo0to1 ((float) grid));
-        if (auto* barsParameter = findParameter (processor, ParamID::patternBars))
-            Presets::setParameter (*barsParameter, barsParameter->convertTo0to1 ((float) RollFiles::barsToChoice (newBars)));
+        RollFiles::applyLength (processor.apvts, layer, newBars);
         processor.patternChanged();
     };
 

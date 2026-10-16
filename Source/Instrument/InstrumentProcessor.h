@@ -90,7 +90,7 @@ private:
     double stoppedAtPpq = -std::numeric_limits<double>::infinity(); // när mönstret senast tystnade
 
     // Läses en gång per block.
-    int patternBars = 1;
+    PatternLengths lengths;
     bool kickOn = true;
     std::array<bool, numLayers> layerOn { true, true, true };
     std::array<float, numLayers> duckAmounts { 0.8f, 0.8f, 0.8f }, gateScales { 1.0f, 1.0f, 1.0f };

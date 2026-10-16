@@ -47,7 +47,7 @@ private:
     // Läses en gång per block.
     bool active = false, kickOn = true, gateOn = true;
     float duckAmount = 0.8f, gateScale = 1.0f, inputLevel = 1.0f;
-    int patternBars = 1;
+    PatternLengths lengths;
     bool useCurve = false;
     double duckLengthSamples = 1.0;
 

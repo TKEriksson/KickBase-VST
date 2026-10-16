@@ -562,6 +562,12 @@ PatternModule::PatternModule (PluginBase& p, bool isInstrument)
 {
     addAndMakeVisible (length);
     addAndMakeVisible (presets);
+    loopButton.setClickingTogglesState (true);
+    loopButton.setColour (juce::TextButton::buttonOnColourId, Theme::pattern.withAlpha (0.7f));
+    loopButton.setTooltip ("LOOP ROWS - Each row (kick, bass 1-3) can have its own length (the box next to its name). On: a row that is shorter than the "
+                           "pattern repeats until the longest row has played out. Off: it plays once and is silent until the pattern starts over.");
+    loopAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, ParamID::rowLoop, loopButton);
+    addAndMakeVisible (loopButton);
     if (instrument)
     {
         noteEnd = std::make_unique<ChoiceComponent> (p.apvts, ParamID::noteEnd, "NOTE END");
@@ -832,6 +838,8 @@ void PatternModule::resized()
         noteEnd->setBounds (first.removeFromTop (40));
         first.removeFromTop (6);
     }
+    loopButton.setBounds (first.removeFromTop (24));
+    first.removeFromTop (6);
     presets.setBounds (first.removeFromTop (24));
     first.removeFromTop (12);
     for (auto& button : layerButtons)

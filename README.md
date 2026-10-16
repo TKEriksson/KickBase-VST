@@ -76,6 +76,7 @@ under `Dokument\Kickbase\Exports\`.
   Ctrl + skroll = zoom, Shift + skroll = tid. Remsan längst ner är velocity.
 - **PRESET** i pianorullen sparar lagrets pianorulle som en fil (`Dokument\Kickbase\Presets\Piano Roll`) och laddar sparade i valfritt lager.
   **MIDI** exporterar pianorullen som en MIDI-fil eller importerar en MIDI-fil till lagret (glide-toner exporteras som vanliga toner).
+- **Längd per rad**: rutan bredvid radens namn (kick, bas 1-3) ger raden en egen längd (1-64 takter; Pattern = hela mönstret). En kortare rad loopar tills den längsta har spelat klart (visas som dämpade kopior), eller spelar en gång om **LOOP ROWS** är av. Mönstret kan vara upp till 64 takter; stegvyn visas fyra takter i taget (< >), och **FOLLOW** låter stegvyn och pianorullen bläddra med när låten spelas.
 - Raderna i PATTERN har små rattar för volym och FX-send, som FL Studios Channel Rack.
 - Dra in en WAV på kickmodulen (eller LOAD) för att använda en sampling som klick.
 - Instrumentet har separata kick- och basutgångar utöver huvudutgången (som alltid har hela mixen).

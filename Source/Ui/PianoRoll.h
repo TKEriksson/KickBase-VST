@@ -102,7 +102,7 @@ private:
 
     // Verktygsraden.
     juce::TextButton snapButton { "SNAP" }, smallerButton { "-" }, biggerButton { "+" }, allButton { "ALL" }, deleteButton { "DEL" },
-                     glideButton { "GLIDE" }, presetButton { "PRESET" }, midiButton { "MIDI" };
+                     glideButton { "GLIDE" }, followButton { "FOLLOW" }, presetButton { "PRESET" }, midiButton { "MIDI" };
     std::unique_ptr<juce::FileChooser> chooser;
     juce::Component::SafePointer<juce::AlertWindow> saveDialog;
     juce::Rectangle<float> infoArea;

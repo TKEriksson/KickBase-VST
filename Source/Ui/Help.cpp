@@ -28,7 +28,12 @@ namespace Help
 
         static const std::map<juce::String, juce::String> texts {
             // Mönster och mix
-            { "patternBars", "How many bars the pattern lasts before it repeats." },
+            { "patternBars", "How many bars the pattern lasts before it repeats (1 to 64). Rows can be shorter: see the length box next to each row's name." },
+            { "rowLoop", "On: a row that is shorter than the pattern repeats until the longest row has played out. Off: it plays once and is then silent." },
+            { "rowBarsKick", "The kick row's own length in bars. Pattern = as long as the whole pattern." },
+            { "rowBarsBass1", "Bass 1's own length in bars. Pattern = as long as the whole pattern." },
+            { "rowBarsBass2", "Bass 2's own length in bars. Pattern = as long as the whole pattern." },
+            { "rowBarsBass3", "Bass 3's own length in bars. Pattern = as long as the whole pattern." },
             { "noteEnd", "What happens when the DAW note ends in the middle of the pattern: stop at once, finish the bar or finish the whole pattern." },
             { "bassGate", "LENGTH - scales the length of every note in this layer. Lower = shorter, punchier notes." },
             { "bassGateOn", "Turns this layer's GATE on: a separate on/off rhythm (its own grid) that chops the layer's sound. It does not change the notes." },

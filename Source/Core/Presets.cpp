@@ -219,7 +219,7 @@ namespace Presets
                         && ! isLayerField (BassField::gateDepth) && ! isLayerField (BassField::gateSmooth))
                     || id == ParamID::gateAttack || id == ParamID::gateRelease;
             case Section::pattern:
-                return id == ParamID::patternBars || id == ParamID::noteEnd || isLayerField (BassField::grid) || isLayerField (BassField::gate)
+                return id == ParamID::patternBars || id == ParamID::noteEnd || id == ParamID::rowLoop || id.startsWith ("rowBars") || isLayerField (BassField::grid) || isLayerField (BassField::gate)
                     || isLayerField (BassField::gateOn) || isLayerField (BassField::gateGrid)
                     || isLayerField (BassField::gateDepth) || isLayerField (BassField::gateSmooth);
             case Section::effects:
@@ -284,6 +284,8 @@ namespace Presets
             {
                 auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p);
                 if (ranged == nullptr || ! belongsTo (section, ranged->getParameterID(), layer) || ranged->getParameterID() == ParamID::patternBars)
+                    continue;
+                if (ranged->getParameterID() == ParamID::rowLoop || ranged->getParameterID().startsWith ("rowBars"))
                     continue;
                 setParameter (*ranged, ranged->getDefaultValue());
             }

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <juce_audio_basics/juce_audio_basics.h>
+#include <juce_audio_processors/juce_audio_processors.h>
 #include "Pattern.h"
 
 // Pianorullar som filer: egna "piano roll"-presets (ett lagers toner, som kan laddas i vilket lager som helst) och
@@ -26,4 +26,8 @@ namespace RollFiles
     bool importMidi (Pattern& pattern, int layer, const juce::File& file, int rootMidiNote, int& bars);
 
     int barsToChoice (int bars);
+
+    // Efter att en pianorulle på `bars` takter lagts i ett lager: mönstret blir minst så långt (det kortas aldrig),
+    // och lagrets rad får rullens längd om den är kortare än mönstret.
+    void applyLength (juce::AudioProcessorValueTreeState& apvts, int layer, int bars);
 }

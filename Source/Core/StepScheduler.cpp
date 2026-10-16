@@ -1,6 +1,6 @@
 #include "StepScheduler.h"
 
-void StepScheduler::collect (const TransportClock& clock, const Pattern& pattern, int patternBars,
+void StepScheduler::collect (const TransportClock& clock, const Pattern& pattern, const PatternLengths& lengths,
                              int startSample, int endSample, double stopAtPpq)
 {
     numEvents = 0;
@@ -10,7 +10,7 @@ void StepScheduler::collect (const TransportClock& clock, const Pattern& pattern
     clock.forEachStep (kickCursor, startSample, endSample, [&] (int offset, StepPosition position)
     {
         if (beforeStop (offset))
-            addKick (pattern, patternBars, offset, position);
+            addKick (pattern, lengths, offset, position);
     });
 
     for (int layer = 0; layer < numLayers; ++layer)
@@ -18,39 +18,41 @@ void StepScheduler::collect (const TransportClock& clock, const Pattern& pattern
         clock.forEachStep (bassCursors[(size_t) layer], startSample, endSample, [&] (int offset, StepPosition position)
         {
             if (beforeStop (offset))
-                addBass (layer, pattern, patternBars, offset, position);
+                addBass (layer, pattern, lengths, offset, position);
         });
     }
 }
 
-void StepScheduler::collectJustPassed (const TransportClock& clock, const Pattern& pattern, int patternBars,
+void StepScheduler::collectJustPassed (const TransportClock& clock, const Pattern& pattern, const PatternLengths& lengths,
                                        int sampleOffset, int toleranceSamples)
 {
     numEvents = 0;
 
     if (const auto position = clock.takeStepJustPassed (kickCursor, sampleOffset, toleranceSamples))
-        addKick (pattern, patternBars, sampleOffset, *position);
+        addKick (pattern, lengths, sampleOffset, *position);
 
     for (int layer = 0; layer < numLayers; ++layer)
         if (const auto position = clock.takeStepJustPassed (bassCursors[(size_t) layer], sampleOffset, toleranceSamples))
-            addBass (layer, pattern, patternBars, sampleOffset, *position);
+            addBass (layer, pattern, lengths, sampleOffset, *position);
 }
 
-void StepScheduler::addKick (const Pattern& pattern, int patternBars, int offset, StepPosition position)
+void StepScheduler::addKick (const Pattern& pattern, const PatternLengths& lengths, int offset, StepPosition position)
 {
-    const auto step = position.stepInPattern (Pattern::kickStepsPerBar, patternBars);
+    const auto barInRow = lengths.barInRow (0, position.bar);
+    const auto step = barInRow < 0 ? -1 : barInRow * Pattern::kickStepsPerBar + position.stepInBar;
     lastKickStep = step;
 
-    if (pattern.isKickOn (step))
+    if (step >= 0 && pattern.isKickOn (step))
         add ({ offset, StepEvent::Type::kick, step });
 }
 
-void StepScheduler::addBass (int layer, const Pattern& pattern, int patternBars, int offset, StepPosition position)
+void StepScheduler::addBass (int layer, const Pattern& pattern, const PatternLengths& lengths, int offset, StepPosition position)
 {
-    const auto tick = position.stepInPattern (Pattern::ticksPerBar, patternBars);
+    const auto barInRow = lengths.barInRow (1 + layer, position.bar);
+    const auto tick = barInRow < 0 ? -1 : barInRow * Pattern::ticksPerBar + position.stepInBar;
     lastBassSteps[(size_t) layer] = tick;
 
-    if (pattern.note (layer, tick).on.load())
+    if (tick >= 0 && pattern.note (layer, tick).on.load())
         add ({ offset, StepEvent::Type::bass, tick, layer });
 }
 

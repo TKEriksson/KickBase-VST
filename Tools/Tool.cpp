@@ -290,7 +290,19 @@ namespace
         processor->selectedFxView = tab / 100 % 10;   // EFFECTS-vyn (hundratal)
         processor->pianoRollOpen = tab / 1000 % 10 > 0; // pianorullen i stället för stegen (tusental)
         processor->selectedPatternMode = tab / 10000 % 10; // 1 = GATE-läget (tiotusental)
-        if (tab / 100000 > 0)
+        if (tab / 1000000 > 0)
+        {
+            // Exempel: 16 takter, bas 1 på 4 takter och bas 2 på 1 takt (miljontal).
+            auto set = [&processor] (const char* id, int choice)
+            {
+                if (auto* p = processor->apvts.getParameter (id))
+                    p->setValueNotifyingHost (p->convertTo0to1 ((float) choice));
+            };
+            set (ParamID::patternBars, 4);
+            set (ParamID::rowBars (1), 3);
+            set (ParamID::rowBars (2), 1);
+        }
+        if (tab / 100000 % 10 > 0)
         {
             // Exempel: lager 2 som pianorulle, med en lång ton och en glide-ton (hundratusental).
             processor->pattern.addNote (1, 0, 288, 0);

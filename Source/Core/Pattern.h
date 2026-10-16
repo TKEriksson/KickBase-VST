@@ -20,6 +20,31 @@ enum class BassGrid
     sixtyFourth         // 64 steg per takt
 };
 
+// Mönstrets längd: hela mönstret (`total`) och varje rads egen längd (kicken är rad 0, sedan baslagren; 0 = hela
+// mönstret). En rad som är kortare än mönstret loopar (`loop`) eller spelar en gång och tystnar tills mönstret börjar om.
+struct PatternLengths
+{
+    int total = 1;
+    bool loop = true;
+    std::array<int, 4> rows { 0, 0, 0, 0 };
+
+    int barsOf (int row) const
+    {
+        const auto r = rows[(size_t) juce::jlimit (0, 3, row)];
+        return r <= 0 ? total : std::min (r, total);
+    }
+
+    // Takten inom radens egen längd, eller -1 när raden är tyst (spelar en gång och är klar).
+    int barInRow (int row, juce::int64 bar) const
+    {
+        const auto inPattern = (int) (((bar % total) + total) % total);
+        const auto rowBars = barsOf (row);
+        if (! loop && inPattern >= rowBars)
+            return -1;
+        return inPattern % rowBars;
+    }
+};
+
 enum class PatternTemplate { rolling, galloping, triplet, offbeat, clear };
 
 // Stegen i mönstret. Gränssnittet skriver och ljudtråden läser, därför är varje fält atomiskt:

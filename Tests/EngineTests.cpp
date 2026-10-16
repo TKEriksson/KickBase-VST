@@ -353,6 +353,34 @@ namespace
 
 namespace
 {
+    void testRowLengths()
+    {
+        std::puts("Mönster: egen längd per rad, loop och 64 takter");
+        PatternLengths lengths;
+        lengths.total = 8;
+        lengths.rows = { 0, 2, 3, 0 }; // kick: hela mönstret, bas 1: 2 takter, bas 2: 3 (rymmer inte jämnt), bas 3: hela
+        check (lengths.barsOf (0) == 8 && lengths.barsOf (1) == 2 && lengths.barsOf (2) == 3 && lengths.barsOf (3) == 8, "radens längd", lengths.barsOf (2));
+        check (lengths.barInRow (1, 0) == 0 && lengths.barInRow (1, 3) == 1 && lengths.barInRow (1, 9) == 1, "en kortare rad loopar");
+        check (lengths.barInRow (0, 11) == 3, "hela mönstret räknas modulo mönsterlängden", lengths.barInRow (0, 11));
+        check (lengths.barInRow (1, -1) == 1, "negativ takt");
+        lengths.loop = false;
+        check (lengths.barInRow (1, 1) == 1 && lengths.barInRow (1, 2) == -1 && lengths.barInRow (1, 8) == 0, "utan loop spelar raden en gång och tystnar");
+        lengths.rows = { 0, 99, 0, 0 };
+        check (lengths.barsOf (1) == 8, "en rad kan inte vara längre än mönstret");
+
+        check (Params::barsFromChoice (6) == 64 && Params::barsFromChoice (0) == 1 && Params::barsFromChoice (99) == 64, "mönsterlängder 1 ... 64");
+        check (Params::rowBarsFromChoice (0) == 0 && Params::rowBarsFromChoice (1) == 1 && Params::rowBarsFromChoice (7) == 64, "radlängder");
+
+        Pattern pattern;
+        const auto lastTick = Pattern::maxTicks - 1;
+        pattern.addNote (0, lastTick, 4, 90, 0.5f);
+        pattern.addNote (1, 5000, 24, -90, 0.5f);
+        Pattern loaded;
+        loaded.fromValueTree (pattern.toValueTree());
+        check (loaded.note (0, lastTick).on && loaded.note (0, lastTick).pitch == 90, "en ton i sista takten av 64 sparas", loaded.note (0, lastTick).pitch.load());
+        check (loaded.note (1, 5000).on && loaded.note (1, 5000).pitch == -90, "tonhöjd ±90 sparas");
+    }
+
     void testGateAndPianoRollFlag()
     {
         std::puts ("Mönster: gate-steg och pianorullsmarkering sparas per lager");
@@ -387,4 +415,5 @@ void runEngineTests()
     testPatternTemplatesAndSaving();
     testUserWavetable();
     testGateAndPianoRollFlag();
+    testRowLengths();
 }

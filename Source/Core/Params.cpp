@@ -79,6 +79,12 @@ namespace ParamID
     {
         return "bass" + juce::String (layer + 1) + bassFieldName (field);
     }
+
+    const char* rowBars (int row)
+    {
+        static const char* names[] { "rowBarsKick", "rowBarsBass1", "rowBarsBass2", "rowBarsBass3" };
+        return names[juce::jlimit (0, 3, row)];
+    }
 }
 
 namespace Params
@@ -87,6 +93,13 @@ namespace Params
     {
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::patternBars, 1 }, "Pattern Length",
                                                             StringArray { "1 bar", "2 bars", "4 bars", "8 bars", "16 bars", "32 bars", "64 bars" }, 0));
+        juce::StringArray rowLengths { "Pattern" };
+        for (int bars = 1; bars <= Pattern::maxBars; bars *= 2)
+            rowLengths.add (juce::String (bars) + (bars == 1 ? " bar" : " bars"));
+        for (int row = 0; row < 4; ++row)
+            layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::rowBars (row), 1 },
+                                                                row == 0 ? juce::String ("Kick Length") : "Bass " + juce::String (row) + " Length", rowLengths, 0));
+        layout.add (std::make_unique<AudioParameterBool> (ParameterID { ParamID::rowLoop, 1 }, "Loop Shorter Rows", true));
         if (includeNoteEnd)
             layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::noteEnd, 1 }, "Note End",
                                                                 StringArray { "Cut", "Finish bar", "Finish pattern" }, 0));
@@ -243,6 +256,11 @@ namespace Params
     int barsFromChoice (int choiceIndex)
     {
         return 1 << juce::jlimit (0, 6, choiceIndex); // 1, 2, 4 ... 64 takter
+    }
+
+    int rowBarsFromChoice (int choiceIndex)
+    {
+        return choiceIndex <= 0 ? 0 : 1 << juce::jlimit (0, 6, choiceIndex - 1);
     }
 }
 

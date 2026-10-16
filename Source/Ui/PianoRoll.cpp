@@ -38,6 +38,12 @@ PianoRoll::PianoRoll (PluginBase& p, std::vector<juce::Colour> colours) : proces
                            "Glide notes are exported as ordinary notes.");
     midiButton.onClick = [this] { showMidiMenu(); };
 
+    followButton.setClickingTogglesState (true);
+    followButton.setToggleState (processor.followPlayhead.load(), juce::dontSendNotification);
+    followButton.setColour (juce::TextButton::buttonOnColourId, Theme::pattern);
+    followButton.setTooltip ("FOLLOW - On: the view flips to the bars that play, so you follow the song. Off: stay where you are.");
+    followButton.onClick = [this] { processor.followPlayhead = followButton.getToggleState(); };
+
     glideButton.setClickingTogglesState (true);
     glideButton.setColour (juce::TextButton::buttonOnColourId, Theme::pattern);
     glideButton.setTooltip ("GLIDE - On: the notes you draw are glide notes. A glide note does not play a new note: it glides the note that is "
@@ -61,7 +67,7 @@ PianoRoll::PianoRoll (PluginBase& p, std::vector<juce::Colour> colours) : proces
     deleteButton.setTooltip ("DELETE - Deletes the selected notes (Delete key).");
     deleteButton.onClick = [this] { deleteSelected(); };
 
-    for (auto* c : std::initializer_list<juce::Component*> { &snapButton, &gridBox, &smallerButton, &biggerButton, &allButton, &deleteButton, &glideButton, &presetButton, &midiButton, &hBar, &vBar })
+    for (auto* c : std::initializer_list<juce::Component*> { &snapButton, &gridBox, &smallerButton, &biggerButton, &allButton, &deleteButton, &glideButton, &followButton, &presetButton, &midiButton, &hBar, &vBar })
         addAndMakeVisible (c);
     hBar.addListener (this);
     vBar.addListener (this);
@@ -95,7 +101,7 @@ void PianoRoll::setLayer (int newLayer)
 
 int PianoRoll::bars() const
 {
-    return Params::barsFromChoice ((int) processor.apvts.getRawParameterValue (ParamID::patternBars)->load());
+    return Params::readPatternLengths (processor.apvts).barsOf (1 + layer); // radens egen längd
 }
 
 BassGrid PianoRoll::grid() const
@@ -175,8 +181,7 @@ void PianoRoll::afterLoad (int bars, BassGrid newGrid)
 {
     if (auto* gridParameter = processor.apvts.getParameter (ParamID::bass (layer, BassField::grid)))
         Presets::setParameter (*gridParameter, gridParameter->convertTo0to1 ((float) newGrid));
-    if (auto* barsParameter = processor.apvts.getParameter (ParamID::patternBars))
-        Presets::setParameter (*barsParameter, barsParameter->convertTo0to1 ((float) RollFiles::barsToChoice (bars)));
+    RollFiles::applyLength (processor.apvts, layer, bars);
     selection.clear();
     processor.patternChanged();
     repaint();
@@ -342,7 +347,9 @@ void PianoRoll::resized()
     deleteButton.setBounds (tools.removeFromLeft (38));
     tools.removeFromLeft (10);
     glideButton.setBounds (tools.removeFromLeft (56));
-    infoArea = juce::Rectangle<float> ((float) glideButton.getRight() + 10.0f, toolbarArea.getY(), std::max (0.0f, (float) (midiButton.getX() - glideButton.getRight()) - 18.0f), toolbarArea.getHeight());
+    tools.removeFromLeft (4);
+    followButton.setBounds (tools.removeFromLeft (64));
+    infoArea = juce::Rectangle<float> ((float) followButton.getRight() + 10.0f, toolbarArea.getY(), std::max (0.0f, (float) (midiButton.getX() - followButton.getRight()) - 18.0f), toolbarArea.getHeight());
 
     const auto first = pixelsPerTick == 1.0f && scrollTicks == 0.0f;
     if (first)
@@ -361,7 +368,20 @@ void PianoRoll::timerCallback()
     auto changed = false;
     auto update = [&changed] (int& last, int now) { if (last != now) { last = now; changed = true; } };
     update (lastVersion, processor.patternVersion.load());
-    update (lastPlayTick, processor.transportStatus.bassSteps[(size_t) layer].load() / 6); // var 6:e tick räcker
+    const auto playTick = processor.transportStatus.bassSteps[(size_t) layer].load();
+    update (lastPlayTick, playTick / 6); // var 6:e tick räcker
+
+    // FOLLOW: när uppspelningen lämnar bilden bläddrar vyn till de takter som spelar.
+    followButton.setToggleState (processor.followPlayhead.load(), juce::dontSendNotification);
+    if (processor.followPlayhead.load() && playTick >= 0 && pixelsPerTick > 0.0f)
+    {
+        const auto visibleTicks = gridArea.getWidth() / pixelsPerTick;
+        if ((float) playTick < scrollTicks || (float) playTick >= scrollTicks + visibleTicks)
+        {
+            scrollTicks = std::floor ((float) playTick / visibleTicks) * visibleTicks;
+            changed = true;
+        }
+    }
     if (bars() != lastBars)
     {
         // Ny mönsterlängd: visa hela mönstret igen.

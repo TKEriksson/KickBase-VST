@@ -139,6 +139,8 @@ private:
     StepSequencer sequencer;
     PianoRoll pianoRoll;
     juce::TextButton patternTab { "PATTERN" }, gateTab { "GATE" };
+    juce::TextButton loopButton { "LOOP ROWS" };
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> loopAttachment;
     juce::TextButton pianoButton { "PIANO ROLL" };
     std::vector<std::unique_ptr<juce::TextButton>> layerButtons; // BASS 1-3: vilket lager som redigeras
 

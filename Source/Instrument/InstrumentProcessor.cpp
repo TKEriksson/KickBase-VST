@@ -159,7 +159,7 @@ void InstrumentProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
 
 void InstrumentProcessor::readBlockParams()
 {
-    patternBars = Params::barsFromChoice (params.getChoice (ParamID::patternBars));
+    lengths = Params::readPatternLengthsWith ([this] (const char* id) { return params.get (id); });
     kickOn = params.getBool (ParamID::kickOn);
     for (int layer = 0; layer < numLayers; ++layer)
     {
@@ -237,7 +237,7 @@ void InstrumentProcessor::startPattern (int sampleOffset)
 
     // Kom tonen en aning efter steget? Spela steget ändå.
     const auto tolerance = (int) (noteOnToleranceSeconds * getSampleRate());
-    scheduler.collectJustPassed (clock, pattern, patternBars, sampleOffset, tolerance);
+    scheduler.collectJustPassed (clock, pattern, lengths, sampleOffset, tolerance);
     for (const auto& event : scheduler)
         handleEvent (event);
 }
@@ -265,8 +265,8 @@ void InstrumentProcessor::stopPattern (int sampleOffset)
     }
     else
     {
-        const auto patternStart = bar - (((bar % patternBars) + patternBars) % patternBars);
-        stopAtPpq = clock.getPpqOfBar (patternStart + patternBars);
+        const auto patternStart = bar - (((bar % lengths.total) + lengths.total) % lengths.total);
+        stopAtPpq = clock.getPpqOfBar (patternStart + lengths.total);
     }
 }
 
@@ -279,7 +279,7 @@ void InstrumentProcessor::renderSegment (int startSample, int endSample)
 
     if (patternActive)
     {
-        scheduler.collect (clock, pattern, patternBars, startSample, endSample, stopAtPpq);
+        scheduler.collect (clock, pattern, lengths, startSample, endSample, stopAtPpq);
         for (const auto& event : scheduler)
         {
             renderSamples (position, event.offset);
@@ -367,8 +367,8 @@ void InstrumentProcessor::finishBlock (int numSamples)
                 const auto barLength = clock.getBarLengthPpq();
                 const auto bar = clock.getBarIndex() + (juce::int64) std::floor ((ppq - clock.getBarStartPpq()) / barLength);
                 const auto inBar = juce::jlimit (0.0, 0.999999, (ppq - clock.getPpqOfBar (bar)) / barLength);
-                const auto barInPattern = (int) (((bar % patternBars) + patternBars) % patternBars);
-                gateTarget = pattern.isGateStepOn (layer, barInPattern * gateStepsPerBar + (int) (inBar * gateStepsPerBar)) ? 1.0f : gateClosed;
+                const auto barInRow = lengths.barInRow (1 + layer, bar); // -1: raden är klar och tyst, gaten rör inget
+                gateTarget = barInRow < 0 || pattern.isGateStepOn (layer, barInRow * gateStepsPerBar + (int) (inBar * gateStepsPerBar)) ? 1.0f : gateClosed;
             }
             gateGainRef += (gateTarget - gateGainRef) * gateCoefficient[(size_t) layer];
 
@@ -474,7 +474,7 @@ void InstrumentProcessor::handleEvent (const StepEvent& event)
     if (note.slide.load() && basses[(size_t) layer].glideTo (note.pitch.load(), std::max (1, (int) (note.length.load() * samplesPerTick))))
         return;
 
-    const auto holdTicks = pattern.holdTicks (layer, event.step, patternBars * Pattern::ticksPerBar, gateScales[(size_t) layer]);
+    const auto holdTicks = pattern.holdTicks (layer, event.step, lengths.total * Pattern::ticksPerBar, gateScales[(size_t) layer]);
     const auto gateSamples = std::max (1, (int) (holdTicks * samplesPerTick));
 
     basses[(size_t) layer].noteOn (note.pitch.load(), note.velocity.load(), gateSamples);

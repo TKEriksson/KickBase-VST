@@ -49,6 +49,7 @@ private:
 
     int numLayers() const { return layerNames.size(); }
     int bars() const;
+    PatternLengths lengths() const { return Params::readPatternLengths (processor.apvts); }
 
     // Ett mönster på mer än fyra takter visas en sida (fyra takter) i taget; sidknapparna byter sida.
     static constexpr int barsPerPage = 4;
@@ -62,15 +63,24 @@ private:
     int bassSteps (int layer) const { return viewBars() * Pattern::bassStepsPerBar (grid (layer)); }
     BassGrid gateGrid (int layer) const;
     int gateSteps (int layer) const { return viewBars() * Pattern::bassStepsPerBar (gateGrid (layer)); }
+
+    // Radens egna längd i steg (kortare än mönstret när raden har en egen längd): efter den loopar eller tystnar raden.
+    int kickOwnSteps (const PatternLengths& l) const            { return l.barsOf (0) * Pattern::kickStepsPerBar; }
+    int bassOwnSteps (const PatternLengths& l, int layer) const { return l.barsOf (1 + layer) * Pattern::bassStepsPerBar (grid (layer)); }
+    int gateOwnSteps (const PatternLengths& l, int layer) const { return l.barsOf (1 + layer) * Pattern::bassStepsPerBar (gateGrid (layer)); }
+    int laneStepAt (int x) const { const auto l = lengths(); return stepAt (x, bassSteps (selectedLayer), bassOwnSteps (l, selectedLayer)); }
     bool isCustom (int layer) const { return processor.pattern.isCustom (layer); }
 
     Target targetAt (juce::Point<int> point, int& layer) const;
-    int stepAt (int x, int numSteps) const;
+    // Stegets plats i radens eget mönster (loopade kopior räknas om till originalet), eller -1 i en tyst del av en rad
+    // som inte loopar. `numSteps` är de synliga stegen.
+    int stepAt (int x, int numSteps, int ownSteps) const;
     juce::Rectangle<float> stepBounds (juce::Rectangle<int> row, int step, int numSteps) const;
 
     void paintGrid (juce::Graphics&, juce::Rectangle<int> area) const;
     // `numSteps` är de synliga stegen; `offset` är sidans första steg, som läggs till vid frågor och `playingStep`.
-    void paintToggleRow (juce::Graphics&, juce::Rectangle<int> row, int numSteps, int offset, juce::Colour colour,
+    // `ownSteps`: radens egen längd; efter den visas raden som dämpade kopior (loop) eller tom. `playingStep` är radens eget steg.
+    void paintToggleRow (juce::Graphics&, juce::Rectangle<int> row, int numSteps, int offset, int ownSteps, bool loops, juce::Colour colour,
                          int playingStep, const std::function<bool (int)>& isOn, bool dimmed) const;
     void paintLane (juce::Graphics&) const;
     void paintMiniature (juce::Graphics&, juce::Rectangle<int> row, int layer, juce::Colour colour, int playTick, bool dimmed) const;
@@ -105,7 +115,9 @@ private:
     Mode mode = Mode::notes;
     int selectedLayer = 0;
     int page = 0;
-    juce::TextButton previousPageButton { "<" }, nextPageButton { ">" };
+    juce::TextButton previousPageButton { "<" }, nextPageButton { ">" }, followButton { "FOLLOW" };
+    std::vector<std::unique_ptr<juce::ComboBox>> lengthBoxes; // radens längd: [0] kick, sedan baslagren
+    std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment>> lengthAttachments;
     juce::Rectangle<int> pageArea;
 
     juce::Rectangle<int> labelColumn, kickRow, laneArea;

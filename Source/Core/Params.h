@@ -14,6 +14,10 @@ namespace ParamID
     // Mönster
     inline constexpr auto patternBars = "patternBars";
     inline constexpr auto noteEnd     = "noteEnd";
+    inline constexpr auto rowLoop     = "rowLoop"; // rader som är kortare än mönstret loopar
+
+    // Radens egen längd: 0 = kicken, 1-3 = baslager (val 0 = hela mönstret, sedan 1 ... 64 takter).
+    const char* rowBars (int row);
 
     // Kick
     inline constexpr auto kickOn          = "kickOn";
@@ -95,6 +99,24 @@ namespace Params
     // så att en basgång som går nedåt i pianorullen också går nedåt i basen.
     int bassRootMidiNote (int dawNote);
     int barsFromChoice (int choiceIndex); // 0 ... 6 -> 1, 2, 4, 8, 16, 32, 64 takter
+    int rowBarsFromChoice (int choiceIndex); // 0 = hela mönstret (0), 1 ... 7 -> 1, 2 ... 64 takter
+
+    // Mönsterlängderna ur parametrarna. `get` ger ett parameters värde från dess ID (ParamRefs eller apvts).
+    template <typename Getter>
+    PatternLengths readPatternLengthsWith (Getter&& get)
+    {
+        PatternLengths lengths;
+        lengths.total = barsFromChoice ((int) get (ParamID::patternBars));
+        lengths.loop = get (ParamID::rowLoop) >= 0.5f;
+        for (int row = 0; row < 4; ++row)
+            lengths.rows[(size_t) row] = rowBarsFromChoice ((int) get (ParamID::rowBars (row)));
+        return lengths;
+    }
+
+    inline PatternLengths readPatternLengths (const juce::AudioProcessorValueTreeState& apvts)
+    {
+        return readPatternLengthsWith ([&apvts] (const char* id) { return apvts.getRawParameterValue (id)->load(); });
+    }
 }
 
 // Cachade pekare till parametrarnas värden, så att ljudtråden kan läsa dem utan att

@@ -24,11 +24,11 @@ public:
 
     // Samlar händelser i [startSample, endSample), sorterade efter sample (kick före bas
     // på samma sample). Steg på eller efter `stopAtPpq` hoppas över.
-    void collect (const TransportClock& clock, const Pattern& pattern, int patternBars,
+    void collect (const TransportClock& clock, const Pattern& pattern, const PatternLengths& lengths,
                   int startSample, int endSample, double stopAtPpq);
 
     // Samlar steg som passerades precis före `sampleOffset` (se TransportClock::takeStepJustPassed).
-    void collectJustPassed (const TransportClock& clock, const Pattern& pattern, int patternBars,
+    void collectJustPassed (const TransportClock& clock, const Pattern& pattern, const PatternLengths& lengths,
                             int sampleOffset, int toleranceSamples);
 
     const StepEvent* begin() const { return events.data(); }
@@ -39,8 +39,8 @@ public:
     int getLastBassStep (int layer) const { return lastBassSteps[(size_t) layer]; }
 
 private:
-    void addKick (const Pattern& pattern, int patternBars, int offset, StepPosition position);
-    void addBass (int layer, const Pattern& pattern, int patternBars, int offset, StepPosition position);
+    void addKick (const Pattern& pattern, const PatternLengths& lengths, int offset, StepPosition position);
+    void addBass (int layer, const Pattern& pattern, const PatternLengths& lengths, int offset, StepPosition position);
     void add (StepEvent event);
 
     int numLayers = Pattern::numLayers;

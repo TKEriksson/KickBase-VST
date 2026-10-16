@@ -76,7 +76,7 @@ void FxProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuff
         buffer.clear (ch, 0, numSamples);
 
     const auto key = params.getChoice (ParamID::fxKey);
-    patternBars = Params::barsFromChoice (params.getChoice (ParamID::patternBars));
+    lengths = Params::readPatternLengthsWith ([this] (const char* id) { return params.get (id); });
     kick.setParams (readModulatedKick (key));
     kick.setClickSample (getActiveClickSample());
     gate.setTimes (params.get (ParamID::gateAttack), params.get (ParamID::gateRelease));
@@ -96,7 +96,7 @@ void FxProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuff
     auto position = 0;
     if (active)
     {
-        scheduler.collect (clock, pattern, patternBars, 0, numSamples, std::numeric_limits<double>::infinity());
+        scheduler.collect (clock, pattern, lengths, 0, numSamples, std::numeric_limits<double>::infinity());
         for (const auto& event : scheduler)
         {
             renderSamples (position, event.offset);
@@ -209,7 +209,7 @@ void FxProcessor::handleEvent (const StepEvent& event)
     const auto samplesPerTick = clock.getSamplesPerQuarter() / Pattern::ticksPerQuarter;
 
     // Slide håller gaten öppen in i nästa ton, så att de flyter ihop.
-    const auto holdTicks = pattern.holdTicks (0, event.step, patternBars * Pattern::ticksPerBar, gateScale);
+    const auto holdTicks = pattern.holdTicks (0, event.step, lengths.total * Pattern::ticksPerBar, gateScale);
     gate.open (note.velocity.load(), std::max (1, (int) (holdTicks * samplesPerTick)));
 }
 
