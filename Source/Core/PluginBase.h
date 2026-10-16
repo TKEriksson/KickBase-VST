@@ -129,6 +129,17 @@ public:
     // där rad 0-2 = baslager och 3 = kicken; samma anrop igen avbryter). `previewingLayer` visar vilken rad som spelas, -1 = ingen.
     static int previewRequest (int noteLayer) { return 100 + noteLayer; }
     std::atomic<int> previewingLayer { -1 };
+
+    // Pianorullens urklipp (gränssnittet): kopierade toner, relativt den första, och var nästa inklistring börjar som standard
+    // (där de kopierade slutar, och efter en inklistring där den slutar).
+    struct NoteClipboard
+    {
+        struct Note { int dt = 0, length = 24, pitch = 0; float velocity = 0.8f; bool slide = false; };
+        std::vector<Note> notes;
+        int span = 0;          // hela de kopierade tonernas längd i ticks
+        int nextStart = -1;    // var nästa inklistring börjar, -1 = vid vyns början
+    } noteClipboard;
+    bool snapshotPaste = false; // bara för skärmbildsverktyget: pianorullen startar med en inklistring
     std::atomic<int> previewNote { 60 }; // tonen som LISTEN och förhandsspelningen spelar (MIDI, C5 = 60 som i FL)
 
     // Instrumentets tangentbord (för LISTEN-knappen som spelar C5), eller nullptr i FX-versionen.

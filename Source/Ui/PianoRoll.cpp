@@ -3,7 +3,7 @@
 
 namespace
 {
-    constexpr float keyWidth = 46.0f, toolbarHeight = 22.0f, rulerHeight = 16.0f, velocityHeight = 40.0f, edgeGrab = 6.0f, barSize = 11.0f;
+    constexpr float keyWidth = 46.0f, toolbarHeight = 46.0f, rulerHeight = 16.0f, velocityHeight = 40.0f, edgeGrab = 6.0f, barSize = 11.0f;
     constexpr float maxPixelsPerTick = 3.0f;
 
     // jlimit kräver lägsta <= högsta; här kan intervallet vara tomt (då vinner det lägsta).
@@ -26,8 +26,9 @@ namespace
 PianoRoll::PianoRoll (PluginBase& p, std::vector<juce::Colour> colours) : processor (p), layerColours (std::move (colours))
 {
     setWantsKeyboardFocus (true);
-    setTooltip ("PIANO ROLL - Click in an empty spot to add a note (drag to move it), drag a note's right edge to change its length. "
-                "Shift + click selects several notes (or Shift + drag a box, or Ctrl + A for all): selected notes move, stretch and delete together. "
+    setTooltip ("PIANO ROLL - PENCIL: click in an empty spot to add a note (drag to move it), drag a note's right edge to change its length. "
+                "SELECT: drag a box in an empty spot, like on the desktop (Shift + drag does this with any tool). ERASER: click or drag over notes to remove them. "
+                "Selected notes move, stretch and delete together; Ctrl + C copies them and Ctrl + V pastes (choose where, then Enter). "
                 "Right-click a note to delete it. With GLIDE on, the notes you draw are glide notes (pink): they glide the sounding note to their pitch "
                 "during their own length, then the pitch stays. Double-click a note to turn glide on/off for it. "
                 "Scroll = pitch, Ctrl + scroll = zoom, Shift + scroll = move in time. The strip at the bottom is velocity.");
@@ -43,6 +44,42 @@ PianoRoll::PianoRoll (PluginBase& p, std::vector<juce::Colour> colours) : proces
     followButton.setColour (juce::TextButton::buttonOnColourId, Theme::pattern);
     followButton.setTooltip ("FOLLOW - On: the view flips to the bars that play, so you follow the song. Off: stay where you are.");
     followButton.onClick = [this] { processor.followPlayhead = followButton.getToggleState(); };
+
+    for (auto* button : { &drawButton, &selectButton, &eraseButton, &copyButton, &pasteButton, &pasteOkButton, &pasteCancelButton, &listenButton })
+    {
+        button->setMouseClickGrabsKeyboardFocus (false); // Enter och Esc ska gå till pianorullen, inte till knappen
+        button->setWantsKeyboardFocus (false);
+    }
+    drawButton.setTooltip ("PENCIL - Click in an empty spot to draw a note, drag a note to move it, drag its right edge to change its length.");
+    selectButton.setTooltip ("SELECT - Drag a box in an empty spot to select the notes it touches, like selecting icons on the desktop. "
+                             "(Holding Shift does the same with any tool.) Then move, copy or delete them together.");
+    eraseButton.setTooltip ("ERASER - Click a note, or drag across several, to remove them.");
+    drawButton.onClick = [this] { setTool (Tool::draw); };
+    selectButton.onClick = [this] { setTool (Tool::select); };
+    eraseButton.onClick = [this] { setTool (Tool::erase); };
+    for (auto* button : { &drawButton, &selectButton, &eraseButton })
+        button->setColour (juce::TextButton::buttonOnColourId, Theme::pattern);
+
+    copyButton.setTooltip ("COPY - Copies the selected notes (Ctrl + C). Then PASTE (Ctrl + V) to place them, by default right after the ones you copied.");
+    copyButton.onClick = [this] { copySelection (false); grabKeyboardFocus(); };
+    pasteButton.setTooltip ("PASTE - Shows the copied notes (in another colour with a red border) right after the ones you copied. Click or drag to choose "
+                            "where they go, then OK (Enter) to place them or CANCEL (Esc).");
+    pasteButton.onClick = [this] { startPaste(); grabKeyboardFocus(); };
+    pasteOkButton.setButtonText (juce::String::fromUTF8 ("\xE2\x9C\x93  OK"));
+    pasteOkButton.setTooltip ("OK - Places the pasted notes where they are shown (Enter).");
+    pasteOkButton.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff2f7d4a));
+    pasteOkButton.onClick = [this] { commitPaste(); grabKeyboardFocus(); };
+    pasteCancelButton.setButtonText (juce::String::fromUTF8 ("\xE2\x9C\x95  CANCEL"));
+    pasteCancelButton.setTooltip ("CANCEL - Throws the paste away (Esc).");
+    pasteCancelButton.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff8a2f35));
+    pasteCancelButton.onClick = [this] { cancelPaste(); grabKeyboardFocus(); };
+    listenButton.setTooltip ("LISTEN - Plays this piano roll once, on its own, with the note chosen next to LISTEN in the top bar (C5 by default). "
+                             "Click again to stop.");
+    listenButton.onClick = [this] { processor.requestAudition (PluginBase::previewRequest (layer)); };
+    copyButton.setVisible (false);
+    pasteButton.setVisible (false);
+    pasteOkButton.setVisible (false);
+    pasteCancelButton.setVisible (false);
 
     glideButton.setClickingTogglesState (true);
     glideButton.setColour (juce::TextButton::buttonOnColourId, Theme::pattern);
@@ -67,7 +104,8 @@ PianoRoll::PianoRoll (PluginBase& p, std::vector<juce::Colour> colours) : proces
     deleteButton.setTooltip ("DELETE - Deletes the selected notes (Delete key).");
     deleteButton.onClick = [this] { deleteSelected(); };
 
-    for (auto* c : std::initializer_list<juce::Component*> { &snapButton, &gridBox, &smallerButton, &biggerButton, &allButton, &deleteButton, &glideButton, &followButton, &presetButton, &midiButton, &hBar, &vBar })
+    for (auto* c : std::initializer_list<juce::Component*> { &snapButton, &gridBox, &smallerButton, &biggerButton, &allButton, &deleteButton, &glideButton, &followButton, &presetButton, &midiButton, &drawButton, &selectButton, &eraseButton,
+                                                                 &copyButton, &pasteButton, &pasteOkButton, &pasteCancelButton, &listenButton, &hBar, &vBar })
         addAndMakeVisible (c);
     hBar.addListener (this);
     vBar.addListener (this);
@@ -77,6 +115,8 @@ PianoRoll::PianoRoll (PluginBase& p, std::vector<juce::Colour> colours) : proces
     vBar.setSingleStepSize (1.0);
 
     attachGridBox();
+    updateToolButtons();
+    updateToolbarVisibility();
     startTimerHz (30);
 }
 
@@ -317,6 +357,212 @@ void PianoRoll::showMidiMenu()
     });
 }
 
+PianoRoll::Tool PianoRoll::effectiveTool() const
+{
+    return (shiftHeld || drag == Drag::box) ? Tool::select : tool;
+}
+
+void PianoRoll::setTool (Tool newTool)
+{
+    tool = newTool;
+    updateToolButtons();
+    updateCursor (getMouseXYRelative().toFloat(), hoverEdge);
+    grabKeyboardFocus();
+}
+
+void PianoRoll::updateToolButtons()
+{
+    const auto effective = effectiveTool();
+    drawButton.setToggleState (effective == Tool::draw, juce::dontSendNotification);
+    selectButton.setToggleState (effective == Tool::select, juce::dontSendNotification);
+    eraseButton.setToggleState (effective == Tool::erase, juce::dontSendNotification);
+}
+
+void PianoRoll::updateToolbarVisibility()
+{
+    const auto hasClipboard = ! processor.noteClipboard.notes.empty();
+    copyButton.setVisible (! pasting && ! selection.empty());   // bara när något är markerat
+    pasteButton.setVisible (! pasting && hasClipboard);
+    pasteOkButton.setVisible (pasting);
+    pasteCancelButton.setVisible (pasting);
+}
+
+void PianoRoll::updateCursor (juce::Point<float> position, bool onNoteEdge)
+{
+    if (! gridArea.contains (position))
+    {
+        setMouseCursor (juce::MouseCursor::NormalCursor);
+        return;
+    }
+    if (pasting)
+    {
+        setMouseCursor (juce::MouseCursor::DraggingHandCursor);
+        return;
+    }
+    switch (effectiveTool())
+    {
+        case Tool::draw:   setMouseCursor (onNoteEdge ? juce::MouseCursor (juce::MouseCursor::LeftRightResizeCursor) : pencilCursor); break;
+        case Tool::erase:  setMouseCursor (eraserCursor); break;
+        case Tool::select: setMouseCursor (onNoteEdge ? juce::MouseCursor::LeftRightResizeCursor
+                                                      : hoverTick >= 0 ? juce::MouseCursor::NormalCursor : juce::MouseCursor::CrosshairCursor); break;
+    }
+}
+
+void PianoRoll::flash (const juce::String& text)
+{
+    flashText = text;
+    flashUntil = juce::Time::getMillisecondCounterHiRes() + 2500.0;
+    repaint();
+}
+
+void PianoRoll::eraseBetween (juce::Point<float> from, juce::Point<float> to)
+{
+    // Genom hela sträckan, så att inget hoppas över när musen rör sig snabbt.
+    const auto steps = std::max (1, (int) (from.getDistanceFrom (to) / 3.0f));
+    for (int i = 0; i <= steps; ++i)
+    {
+        const auto point = from + (to - from) * ((float) i / (float) steps);
+        if (! gridArea.contains (point))
+            continue;
+        bool edge = false;
+        if (const auto tick = noteAtPoint (point, edge); tick >= 0)
+        {
+            processor.pattern.removeNote (layer, tick);
+            selection.erase (tick);
+            edited = true;
+        }
+    }
+    repaint();
+}
+
+void PianoRoll::copySelection (bool cut)
+{
+    if (selection.empty())
+        return;
+
+    const auto notes = readNotes();
+    auto first = std::numeric_limits<int>::max(), last = 0;
+    for (const auto tick : selection)
+        if (const auto found = notes.find (tick); found != notes.end())
+        {
+            first = std::min (first, tick);
+            last = std::max (last, tick + found->second.length);
+        }
+    if (first == std::numeric_limits<int>::max())
+        return;
+
+    auto& clip = processor.noteClipboard;
+    clip.notes.clear();
+    for (const auto tick : selection)
+        if (const auto found = notes.find (tick); found != notes.end())
+            clip.notes.push_back ({ tick - first, found->second.length, found->second.pitch, found->second.velocity, found->second.slide });
+
+    // Nästa inklistring börjar där de kopierade slutar (avrundat uppåt till ett steg i rutnätet).
+    const auto step = std::max (1, snapTicks());
+    clip.span = ((last - first + step - 1) / step) * step;
+    clip.nextStart = first + clip.span;
+
+    const auto count = (int) clip.notes.size();
+    if (cut)
+        deleteSelected();
+    flash ((cut ? "Cut " : "Copied ") + juce::String (count) + (count == 1 ? " note" : " notes"));
+}
+
+void PianoRoll::startPaste()
+{
+    auto& clip = processor.noteClipboard;
+    if (clip.notes.empty() || pasting)
+        return;
+
+    pasting = true;
+    selection.clear();
+    pasteShift = 0;
+    pasteStart = clip.nextStart >= 0 ? clip.nextStart : snapped (xToTicks (gridArea.getX()));
+    pasteStart = clampSafe (pasteStart, 0, std::max (0, totalTicks() - 1));
+
+    // Visa var inklistringen börjar.
+    const auto x = ticksToX ((float) pasteStart);
+    if (x < gridArea.getX() || x > gridArea.getRight() - 40.0f)
+    {
+        scrollTicks = (float) pasteStart - 24.0f;
+        clampView();
+    }
+    updateToolbarVisibility();
+    updateCursor (getMouseXYRelative().toFloat(), false);
+    repaint();
+}
+
+void PianoRoll::movePasteTo (juce::Point<float> position)
+{
+    pasteStart = clampSafe (snapped (xToTicks (position.x) - pasteGrabTicks), 0, std::max (0, totalTicks() - 1));
+
+    // Dra uppåt eller nedåt flyttar också tonhöjden, men inte så att något hamnar utanför.
+    auto lowest = Pattern::maxPitch, highest = Pattern::minPitch;
+    for (const auto& n : processor.noteClipboard.notes)
+    {
+        lowest = std::min (lowest, n.pitch);
+        highest = std::max (highest, n.pitch);
+    }
+    pasteShift = clampSafe (pasteGrabShift + (yToPitch (position.y) - pasteGrabRow), Pattern::minPitch - lowest, Pattern::maxPitch - highest);
+    repaint();
+}
+
+juce::Rectangle<float> PianoRoll::ghostBounds() const
+{
+    juce::Rectangle<float> bounds;
+    auto first = true;
+    for (const auto& n : processor.noteClipboard.notes)
+    {
+        const auto tick = pasteStart + n.dt;
+        const auto rect = juce::Rectangle<float> (ticksToX ((float) tick), pitchToY (juce::jlimit (Pattern::minPitch, Pattern::maxPitch, n.pitch + pasteShift)),
+                                                  std::max (3.0f, ticksToX ((float) (tick + n.length)) - ticksToX ((float) tick)), rowHeight());
+        bounds = first ? rect : bounds.getUnion (rect);
+        first = false;
+    }
+    return bounds;
+}
+
+void PianoRoll::commitPaste()
+{
+    if (! pasting)
+        return;
+
+    auto& clip = processor.noteClipboard;
+    std::set<int> placed;
+    auto skipped = 0;
+    for (const auto& n : clip.notes)
+    {
+        const auto tick = pasteStart + n.dt;
+        if (tick < 0 || tick >= totalTicks())
+        {
+            ++skipped;
+            continue;
+        }
+        processor.pattern.addNote (layer, tick, std::min (n.length, Pattern::maxTicks - tick),
+                                   juce::jlimit (Pattern::minPitch, Pattern::maxPitch, n.pitch + pasteShift), n.velocity, n.slide);
+        placed.insert (tick);
+    }
+
+    pasting = false;
+    selection = placed;
+    clip.nextStart = pasteStart + clip.span; // nästa inklistring hamnar efter den här
+    commit();
+    updateToolbarVisibility();
+    updateCursor (getMouseXYRelative().toFloat(), false);
+    flash ("Pasted " + juce::String ((int) placed.size()) + (placed.size() == 1 ? " note" : " notes")
+           + (skipped > 0 ? " (" + juce::String (skipped) + " outside the pattern were skipped)" : juce::String()));
+}
+
+void PianoRoll::cancelPaste()
+{
+    if (! pasting)
+        return;
+    pasting = false;
+    updateToolbarVisibility();
+    updateCursor (getMouseXYRelative().toFloat(), false);
+    flash ("Paste cancelled");
+}
+
 void PianoRoll::commit()
 {
     processor.pattern.setCustom (layer, true); // lagret visas nu som pianorulle i stället för stegknappar
@@ -351,34 +597,64 @@ void PianoRoll::resized()
     vBar.setBounds (juce::Rectangle<float> (gridArea.getRight(), gridArea.getY(), barSize, gridArea.getHeight()).toNearestInt());
     hBar.setBounds (juce::Rectangle<float> (gridArea.getX(), gridArea.getBottom() + 1.0f, gridArea.getWidth(), barSize).toNearestInt());
 
-    // Verktygsraden: SNAP, rutnät, radhöjd, markera alla, ta bort.
-    auto tools = toolbarArea.toNearestInt().reduced (2, 1);
-    presetButton.setBounds (tools.removeFromRight (62));
-    tools.removeFromRight (4);
-    midiButton.setBounds (tools.removeFromRight (48));
-    tools.removeFromRight (8);
-    snapButton.setBounds (tools.removeFromLeft (50));
-    tools.removeFromLeft (4);
-    gridBox.setBounds (tools.removeFromLeft (76));
-    tools.removeFromLeft (10);
-    smallerButton.setBounds (tools.removeFromLeft (24));
-    tools.removeFromLeft (2);
-    biggerButton.setBounds (tools.removeFromLeft (24));
-    tools.removeFromLeft (10);
-    allButton.setBounds (tools.removeFromLeft (38));
-    tools.removeFromLeft (2);
-    deleteButton.setBounds (tools.removeFromLeft (38));
-    tools.removeFromLeft (10);
-    glideButton.setBounds (tools.removeFromLeft (56));
-    tools.removeFromLeft (4);
-    followButton.setBounds (tools.removeFromLeft (64));
-    infoArea = juce::Rectangle<float> ((float) followButton.getRight() + 10.0f, toolbarArea.getY(), std::max (0.0f, (float) (midiButton.getX() - followButton.getRight()) - 18.0f), toolbarArea.getHeight());
+    // Verktygsraden i två rader. Överst: verktygen (penna, markera, sudd), markera alla, ta bort, kopiera/klistra in och LISTEN.
+    // Under: SNAP, rutnät, radhöjd, GLIDE, FOLLOW och längst till höger MIDI och PRESET.
+    auto toolRows = toolbarArea.toNearestInt();
+    auto top = toolRows.removeFromTop (toolRows.getHeight() / 2).reduced (2, 1);
+    auto bottom = toolRows.reduced (2, 1);
+
+    drawButton.setBounds (top.removeFromLeft (62));
+    top.removeFromLeft (2);
+    selectButton.setBounds (top.removeFromLeft (62));
+    top.removeFromLeft (2);
+    eraseButton.setBounds (top.removeFromLeft (62));
+    top.removeFromLeft (10);
+    allButton.setBounds (top.removeFromLeft (38));
+    top.removeFromLeft (2);
+    deleteButton.setBounds (top.removeFromLeft (38));
+    top.removeFromLeft (10);
+    const auto slotA = top.removeFromLeft (66);
+    top.removeFromLeft (2);
+    const auto slotB = top.removeFromLeft (88);
+    copyButton.setBounds (slotA);
+    pasteOkButton.setBounds (slotA);
+    pasteButton.setBounds (slotB);
+    pasteCancelButton.setBounds (slotB);
+    top.removeFromLeft (10);
+    listenButton.setBounds (top.removeFromLeft (62));
+    infoArea = juce::Rectangle<float> ((float) listenButton.getRight() + 10.0f, (float) top.getY() - 1.0f,
+                                       std::max (0.0f, (float) (top.getRight() - listenButton.getRight()) - 10.0f), 22.0f);
+
+    presetButton.setBounds (bottom.removeFromRight (62));
+    bottom.removeFromRight (4);
+    midiButton.setBounds (bottom.removeFromRight (48));
+    snapButton.setBounds (bottom.removeFromLeft (50));
+    bottom.removeFromLeft (4);
+    gridBox.setBounds (bottom.removeFromLeft (76));
+    bottom.removeFromLeft (10);
+    smallerButton.setBounds (bottom.removeFromLeft (24));
+    bottom.removeFromLeft (2);
+    biggerButton.setBounds (bottom.removeFromLeft (24));
+    bottom.removeFromLeft (10);
+    glideButton.setBounds (bottom.removeFromLeft (56));
+    bottom.removeFromLeft (4);
+    followButton.setBounds (bottom.removeFromLeft (64));
 
     const auto first = pixelsPerTick == 1.0f && scrollTicks == 0.0f;
     if (first)
     {
         fitToWidth();
         topPitch = (float) visibleRows() * 0.5f; // grundtonen i mitten
+        if (processor.snapshotPaste)
+        {
+            // Skärmbildsverktyget: markera de första tonerna, kopiera och börja klistra in.
+            const auto notes = readNotes();
+            for (const auto& [tick, data] : notes)
+                if (selection.size() < 4)
+                    selection.insert (tick);
+            copySelection (false);
+            startPaste();
+        }
     }
     clampView();
 }
@@ -390,6 +666,25 @@ void PianoRoll::timerCallback()
 
     auto changed = false;
     auto update = [&changed] (int& last, int now) { if (last != now) { last = now; changed = true; } };
+
+    // Skift hålls ner: MARKERA-knappen trycks in och muspekaren blir ett kryss. Knapparna följer läget och urklippet.
+    const auto shiftNow = juce::ModifierKeys::getCurrentModifiersRealtime().isShiftDown();
+    if (shiftNow != shiftHeld)
+    {
+        shiftHeld = shiftNow;
+        updateCursor (getMouseXYRelative().toFloat(), hoverEdge);
+    }
+    updateToolButtons();
+    updateToolbarVisibility();
+    const auto previewing = processor.previewingLayer.load() == layer;
+    listenButton.setButtonText (previewing ? "STOP" : "LISTEN");
+    listenButton.setToggleState (previewing, juce::dontSendNotification);
+    if (flashText.isNotEmpty() && juce::Time::getMillisecondCounterHiRes() > flashUntil)
+    {
+        flashText = {};
+        changed = true;
+    }
+
     update (lastVersion, processor.patternVersion.load());
     const auto playTick = playTickNow();
     update (lastPlayTick, playTick / 6); // var 6:e tick räcker
@@ -675,6 +970,37 @@ void PianoRoll::paint (juce::Graphics& g)
             g.drawRect (rect, 1.0f);
         }
 
+        // Inklistring: de kopierade tonerna som ett spöke (annan färg, röd kant) där de hamnar om man bekräftar.
+        if (pasting)
+        {
+            const auto& clip = processor.noteClipboard;
+            const juce::Colour ghostFill (0xffffa347), ghostBorder (0xffff3b3b);
+            for (const auto& n : clip.notes)
+            {
+                const auto tick = pasteStart + n.dt;
+                if (tick >= totalTicks())
+                    continue;
+                const auto x0 = ticksToX ((float) tick), x1 = ticksToX ((float) (tick + n.length));
+                const auto b = juce::Rectangle<float> (x0, pitchToY (juce::jlimit (Pattern::minPitch, Pattern::maxPitch, n.pitch + pasteShift)),
+                                                       std::max (3.0f, x1 - x0), rowHeight()).reduced (0.0f, 0.5f);
+                g.setColour (ghostFill.withAlpha (0.8f));
+                g.fillRoundedRectangle (b, 2.5f);
+                g.setColour (ghostBorder);
+                g.drawRoundedRectangle (b, 2.5f, 1.8f);
+            }
+            const auto frame = ghostBounds().expanded (3.0f);
+            g.setColour (ghostBorder.withAlpha (0.55f));
+            g.drawRect (frame, 1.0f);
+
+            const auto banner = juce::Rectangle<float> (gridArea.getX(), gridArea.getY(), gridArea.getWidth(), 16.0f);
+            g.setColour (ghostBorder.withAlpha (0.85f));
+            g.fillRect (banner);
+            g.setColour (juce::Colours::white);
+            g.setFont (Theme::font (10.5f, true));
+            g.drawText ("PASTING " + juce::String ((int) clip.notes.size()) + " NOTES  -  click or drag to choose where  -  OK / Enter places them,  CANCEL / Esc cancels",
+                        banner.reduced (8.0f, 0.0f), juce::Justification::centredLeft);
+        }
+
         // Uppspelningsmarkören.
         const auto playTick = playTickNow();
         if (playTick >= 0)
@@ -733,7 +1059,8 @@ void PianoRoll::paint (juce::Graphics& g)
     g.setColour (colour);
     g.drawText (layerName(), infoArea.withWidth (86.0f), juce::Justification::centredLeft);
     g.setColour (Theme::text);
-    const auto info = hoverTick >= 0 ? describe (hoverTick)
+    const auto info = flashText.isNotEmpty() ? flashText
+                    : hoverTick >= 0 ? describe (hoverTick)
                     : selection.empty() ? juce::String()
                                         : juce::String ((int) selection.size()) + " selected";
     g.drawText (info, infoArea.withTrimmedLeft (88.0f), juce::Justification::centredRight);
@@ -774,10 +1101,11 @@ void PianoRoll::setHover (int tick)
 void PianoRoll::mouseMove (const juce::MouseEvent& event)
 {
     bool edge = false;
-    const auto tick = gridArea.contains (event.position) ? noteAtPoint (event.position, edge) : -1;
+    const auto tick = gridArea.contains (event.position) && ! pasting ? noteAtPoint (event.position, edge) : -1;
     hoverEdge = edge;
-    setMouseCursor (edge ? juce::MouseCursor::LeftRightResizeCursor : juce::MouseCursor::NormalCursor);
+    shiftHeld = event.mods.isShiftDown();
     setHover (tick);
+    updateCursor (event.position, edge);
 }
 
 void PianoRoll::mouseExit (const juce::MouseEvent&) { setHover (-1); }
@@ -788,6 +1116,24 @@ void PianoRoll::mouseDown (const juce::MouseEvent& event)
     edited = false;
     drag = Drag::none;
     dragTick = -1;
+
+    // Inklistring: ett klick eller drag väljer var tonerna hamnar (spöket följer musen).
+    if (pasting)
+    {
+        if (! gridArea.contains (event.position))
+            return;
+        if (event.mods.isPopupMenu())
+        {
+            cancelPaste();
+            return;
+        }
+        pasteGrabTicks = ghostBounds().contains (event.position) ? xToTicks (event.position.x) - (float) pasteStart : 0.0f;
+        pasteGrabRow = yToPitch (event.position.y);
+        pasteGrabShift = pasteShift;
+        drag = Drag::paste;
+        movePasteTo (event.position);
+        return;
+    }
 
     if (velocityArea.contains (event.position))
     {
@@ -854,6 +1200,17 @@ void PianoRoll::mouseDown (const juce::MouseEvent& event)
         return;
     }
 
+    const auto currentTool = event.mods.isShiftDown() ? Tool::select : effectiveTool();
+
+    // Sudd: ta bort tonen under musen, och alla man drar över.
+    if (currentTool == Tool::erase)
+    {
+        drag = Drag::erase;
+        lastErasePoint = event.position;
+        eraseBetween (event.position, event.position);
+        return;
+    }
+
     if (tick >= 0)
     {
         if (tick != justCreatedTick)
@@ -885,12 +1242,14 @@ void PianoRoll::mouseDown (const juce::MouseEvent& event)
         return;
     }
 
-    // Skift + dra i tomt: markeringsruta.
-    if (event.mods.isShiftDown())
+    // MARKERA-verktyget, eller skift: dra en ruta i tomt (skift lägger till i markeringen, annars ersätter rutan den).
+    if (currentTool == Tool::select)
     {
         drag = Drag::box;
         boxStart = boxEnd = event.position;
-        boxBase = selection;
+        boxBase = event.mods.isShiftDown() ? selection : std::set<int>();
+        selection = boxBase;
+        repaint();
         return;
     }
 
@@ -919,6 +1278,18 @@ void PianoRoll::mouseDrag (const juce::MouseEvent& event)
         return;
 
     auto& pattern = processor.pattern;
+
+    if (drag == Drag::paste)
+    {
+        movePasteTo (event.position);
+        return;
+    }
+    if (drag == Drag::erase)
+    {
+        eraseBetween (lastErasePoint, event.position);
+        lastErasePoint = event.position;
+        return;
+    }
 
     if (drag == Drag::box)
     {
@@ -1039,6 +1410,32 @@ void PianoRoll::mouseDoubleClick (const juce::MouseEvent& event)
 bool PianoRoll::keyPressed (const juce::KeyPress& key)
 {
     const auto mods = key.getModifiers();
+    const auto ctrl = mods.isCtrlDown() || mods.isCommandDown();
+
+    // Inklistring pågår: Enter bekräftar, Esc avbryter. Skrollning och zoom fungerar som vanligt.
+    if (pasting)
+    {
+        if (key == juce::KeyPress::returnKey)
+            commitPaste();
+        else if (key == juce::KeyPress::escapeKey)
+            cancelPaste();
+        return true;
+    }
+    if (ctrl && (key.getKeyCode() == 'C' || key.getKeyCode() == 'c'))
+    {
+        copySelection (false);
+        return true;
+    }
+    if (ctrl && (key.getKeyCode() == 'X' || key.getKeyCode() == 'x'))
+    {
+        copySelection (true);
+        return true;
+    }
+    if (ctrl && (key.getKeyCode() == 'V' || key.getKeyCode() == 'v'))
+    {
+        startPaste();
+        return true;
+    }
     if ((mods.isCtrlDown() || mods.isCommandDown()) && (key.getKeyCode() == 'A' || key.getKeyCode() == 'a'))
     {
         selectAll();

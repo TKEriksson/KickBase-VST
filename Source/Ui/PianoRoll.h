@@ -4,13 +4,19 @@
 #include <set>
 #include "../Core/PluginBase.h"
 #include "Theme.h"
+#include "Cursors.h"
 
 // Pianorullen för ett baslager, som i FL Studio: tonerna ligger fritt i tiden (1/4 ... 1/64 och
 // trioler) och i höjd, ±96 halvtoner från tonarten.
 //
-// - Klicka i tomt: ny ton (dra för att flytta den). Dra i en tons högerkant: längd.
-// - Skift + klick på en ton: lägg till/ta bort i markeringen. Skift + dra i tomt: markera med en ruta.
+// Tre verktyg (knapparna överst): PENNA (klicka i tomt: ny ton; dra för att flytta den; dra en tons högerkant: längd),
+// MARKERA (dra en ruta i tomt, som på skrivbordet; klicka på en ton) och SUDD (klicka eller dra över toner för att ta bort dem).
+// Skift + klick/dra gör att MARKERA-knappen trycks in och markerar med en ruta, vilket verktyg som än är valt.
+// - Skift + klick på en ton: lägg till/ta bort i markeringen.
 //   Ctrl + A markerar alla. Markerade toner flyttas, förlängs och tas bort tillsammans.
+// - Kopiera (Ctrl + C eller COPY, syns när något är markerat) och klistra in (Ctrl + V eller PASTE): de inklistrade tonerna visas
+//   med annan färg och röd kant, först där de kopierade slutar. Klicka eller dra för att välja var; OK (Enter) lägger dem dit,
+//   CANCEL (Esc) avbryter. Ctrl + X klipper ut.
 // - Högerklicka på en ton: ta bort. GLIDE-knappen: de toner man ritar blir glide-toner (som slide-toner i FL Studio):
 //   en glide-ton slår inte an utan glider tonen som klingar till sin tonhöjd under sin egen längd, och tonen blir kvar
 //   där tills den slutar. Dubbelklicka på en ton: glide på/av för den.
@@ -41,7 +47,8 @@ public:
     bool keyPressed (const juce::KeyPress&) override;
 
 private:
-    enum class Drag { none, move, resize, velocity, box };
+    enum class Drag { none, move, resize, velocity, box, erase, paste };
+    enum class Tool { draw, select, erase };
 
     struct NoteData
     {
@@ -85,6 +92,21 @@ private:
     void deleteSelected();
     void moveSelected (int deltaTicks, int deltaPitch);
     void changeRowHeight (float delta);
+
+    // Verktyg, urklipp och inklistring.
+    Tool effectiveTool() const;                      // skift gör att MARKERA gäller
+    void setTool (Tool newTool);
+    void updateToolButtons();
+    void updateToolbarVisibility();
+    void updateCursor (juce::Point<float> position, bool onNoteEdge);
+    void eraseBetween (juce::Point<float> from, juce::Point<float> to);
+    void copySelection (bool cut);
+    void startPaste();
+    void movePasteTo (juce::Point<float> position);
+    void commitPaste();
+    void cancelPaste();
+    juce::Rectangle<float> ghostBounds() const;
+    void flash (const juce::String& text);
     void showPresetMenu();
     void showMidiMenu();
     void askForNameAndSave();
@@ -105,7 +127,20 @@ private:
 
     // Verktygsraden.
     juce::TextButton snapButton { "SNAP" }, smallerButton { "-" }, biggerButton { "+" }, allButton { "ALL" }, deleteButton { "DEL" },
-                     glideButton { "GLIDE" }, followButton { "FOLLOW" }, presetButton { "PRESET" }, midiButton { "MIDI" };
+                     glideButton { "GLIDE" }, followButton { "FOLLOW" }, presetButton { "PRESET" }, midiButton { "MIDI" },
+                     drawButton { "PENCIL" }, selectButton { "SELECT" }, eraseButton { "ERASER" }, copyButton { "COPY" },
+                     pasteButton { "PASTE" }, pasteOkButton { "OK" }, pasteCancelButton { "CANCEL" }, listenButton { "LISTEN" };
+    Tool tool = Tool::draw;
+    bool shiftHeld = false;
+    juce::MouseCursor pencilCursor = Cursors::pencil(), eraserCursor = Cursors::eraser();
+
+    // Inklistring: de kopierade tonerna visas som ett spöke som man flyttar innan man bekräftar.
+    bool pasting = false;
+    int pasteStart = 0, pasteShift = 0, pasteGrabRow = 0, pasteGrabShift = 0;
+    float pasteGrabTicks = 0.0f;
+    juce::Point<float> lastErasePoint;
+    juce::String flashText;
+    double flashUntil = 0.0;
     std::unique_ptr<juce::FileChooser> chooser;
     juce::Component::SafePointer<juce::AlertWindow> saveDialog;
     juce::Rectangle<float> infoArea;
