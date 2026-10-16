@@ -2,8 +2,11 @@
 
 namespace
 {
-    constexpr float keyWidth = 46.0f, toolbarHeight = 22.0f, rulerHeight = 16.0f, velocityHeight = 40.0f, edgeGrab = 6.0f;
+    constexpr float keyWidth = 46.0f, toolbarHeight = 22.0f, rulerHeight = 16.0f, velocityHeight = 40.0f, edgeGrab = 6.0f, barSize = 11.0f;
     constexpr float maxPixelsPerTick = 3.0f;
+
+    // jlimit kräver lägsta <= högsta; här kan intervallet vara tomt (då vinner det lägsta).
+    int clampSafe (int value, int lowest, int highest) { return std::max (lowest, std::min (highest, value)); }
 
     bool isBlackKey (int pitchClass)
     {
@@ -44,8 +47,14 @@ PianoRoll::PianoRoll (PluginBase& p, std::vector<juce::Colour> colours) : proces
     deleteButton.setTooltip ("DELETE - Deletes the selected notes (Delete key).");
     deleteButton.onClick = [this] { deleteSelected(); };
 
-    for (auto* c : std::initializer_list<juce::Component*> { &snapButton, &gridBox, &smallerButton, &biggerButton, &allButton, &deleteButton })
+    for (auto* c : std::initializer_list<juce::Component*> { &snapButton, &gridBox, &smallerButton, &biggerButton, &allButton, &deleteButton, &hBar, &vBar })
         addAndMakeVisible (c);
+    hBar.addListener (this);
+    vBar.addListener (this);
+    hBar.setAutoHide (false);
+    vBar.setAutoHide (false);
+    hBar.setSingleStepSize (24.0);
+    vBar.setSingleStepSize (1.0);
 
     attachGridBox();
     startTimerHz (30);
@@ -119,6 +128,27 @@ void PianoRoll::clampView()
     topPitch = juce::jlimit ((float) Pattern::minPitch + rows - 1.0f, (float) Pattern::maxPitch, topPitch);
     if (rows > (float) (Pattern::maxPitch - Pattern::minPitch + 1))
         topPitch = (float) Pattern::maxPitch;
+
+    updateScrollBars();
+}
+
+void PianoRoll::updateScrollBars()
+{
+    hBar.setRangeLimits (0.0, (double) std::max (1, totalTicks()), juce::dontSendNotification);
+    hBar.setCurrentRange (scrollTicks, (double) (gridArea.getWidth() / std::max (0.01f, pixelsPerTick)), juce::dontSendNotification);
+
+    vBar.setRangeLimits (0.0, (double) (Pattern::maxPitch - Pattern::minPitch + 1), juce::dontSendNotification);
+    vBar.setCurrentRange ((double) (Pattern::maxPitch - topPitch), (double) visibleRows(), juce::dontSendNotification);
+}
+
+void PianoRoll::scrollBarMoved (juce::ScrollBar* bar, double newRangeStart)
+{
+    if (bar == &hBar)
+        scrollTicks = (float) newRangeStart;
+    else
+        topPitch = (float) Pattern::maxPitch - (float) newRangeStart;
+    clampView();
+    repaint();
 }
 
 void PianoRoll::changeRowHeight (float delta)
@@ -134,10 +164,12 @@ void PianoRoll::resized()
 {
     auto area = getLocalBounds().toFloat();
     toolbarArea = area.removeFromTop (toolbarHeight);
-    keyArea = area.withWidth (keyWidth).withTrimmedTop (rulerHeight).withTrimmedBottom (velocityHeight + 4.0f);
-    rulerArea = area.withTrimmedLeft (keyWidth).withHeight (rulerHeight);
-    velocityArea = area.withTrimmedLeft (keyWidth).removeFromBottom (velocityHeight);
-    gridArea = area.withTrimmedLeft (keyWidth).withTrimmedTop (rulerHeight).withTrimmedBottom (velocityHeight + 4.0f);
+    keyArea = area.withWidth (keyWidth).withTrimmedTop (rulerHeight).withTrimmedBottom (velocityHeight + 4.0f + barSize);
+    rulerArea = area.withTrimmedLeft (keyWidth).withTrimmedRight (barSize).withHeight (rulerHeight);
+    velocityArea = area.withTrimmedLeft (keyWidth).withTrimmedRight (barSize).removeFromBottom (velocityHeight);
+    gridArea = area.withTrimmedLeft (keyWidth).withTrimmedRight (barSize).withTrimmedTop (rulerHeight).withTrimmedBottom (velocityHeight + 4.0f + barSize);
+    vBar.setBounds (juce::Rectangle<float> (gridArea.getRight(), gridArea.getY(), barSize, gridArea.getHeight()).toNearestInt());
+    hBar.setBounds (juce::Rectangle<float> (gridArea.getX(), gridArea.getBottom() + 1.0f, gridArea.getWidth(), barSize).toNearestInt());
 
     // Verktygsraden: SNAP, rutnät, radhöjd, markera alla, ta bort.
     auto tools = toolbarArea.toNearestInt().reduced (2, 1);
@@ -171,7 +203,14 @@ void PianoRoll::timerCallback()
     auto update = [&changed] (int& last, int now) { if (last != now) { last = now; changed = true; } };
     update (lastVersion, processor.patternVersion.load());
     update (lastPlayTick, processor.transportStatus.bassSteps[(size_t) layer].load() / 6); // var 6:e tick räcker
-    update (lastBars, bars());
+    if (bars() != lastBars)
+    {
+        // Ny mönsterlängd: visa hela mönstret igen.
+        if (lastBars != 0)
+            fitToWidth();
+        lastBars = bars();
+        changed = true;
+    }
     update (lastGrid, (int) grid());
     if (changed)
     {
@@ -220,14 +259,15 @@ void PianoRoll::applyNotes (const NoteMap& target)
 void PianoRoll::pruneSelection()
 {
     for (auto it = selection.begin(); it != selection.end();)
-        it = (*it >= Pattern::maxTicks || ! processor.pattern.note (layer, *it).on.load()) ? selection.erase (it) : std::next (it);
+        it = (*it < 0 || *it >= totalTicks() || ! processor.pattern.note (layer, *it).on.load()) ? selection.erase (it) : std::next (it);
 }
 
 void PianoRoll::selectAll()
 {
     selection.clear();
     for (const auto& [tick, data] : readNotes())
-        selection.insert (tick);
+        if (tick < totalTicks()) // bara det som hör till mönstret
+            selection.insert (tick);
     repaint();
 }
 
@@ -257,8 +297,8 @@ void PianoRoll::moveSelected (int deltaTicks, int deltaPitch)
         minPitch = std::min (minPitch, notes[tick].pitch);
         maxPitch = std::max (maxPitch, notes[tick].pitch);
     }
-    deltaTicks = juce::jlimit (-minTick, totalTicks() - 1 - maxTick, deltaTicks);
-    deltaPitch = juce::jlimit (Pattern::minPitch - minPitch, Pattern::maxPitch - maxPitch, deltaPitch);
+    deltaTicks = clampSafe (deltaTicks, -minTick, totalTicks() - 1 - maxTick);
+    deltaPitch = clampSafe (deltaPitch, Pattern::minPitch - minPitch, Pattern::maxPitch - maxPitch);
 
     NoteMap target;
     for (const auto& [tick, data] : notes)
@@ -280,7 +320,8 @@ void PianoRoll::moveSelected (int deltaTicks, int deltaPitch)
 
 juce::Rectangle<float> PianoRoll::noteBounds (int tick) const
 {
-    const auto& n = processor.pattern.note (layer, tick);
+    jassert (juce::isPositiveAndBelow (tick, Pattern::maxTicks));
+    const auto& n = processor.pattern.note (layer, juce::jlimit (0, Pattern::maxTicks - 1, tick));
     const auto x0 = ticksToX ((float) tick);
     const auto x1 = ticksToX ((float) (tick + n.length.load()));
     return { x0, pitchToY (n.pitch.load()), std::max (3.0f, x1 - x0), rowHeight() };
@@ -713,8 +754,8 @@ void PianoRoll::mouseDrag (const juce::MouseEvent& event)
         minPitch = std::min (minPitch, dragSnapshot[tick].pitch);
         maxPitch = std::max (maxPitch, dragSnapshot[tick].pitch);
     }
-    deltaTicks = juce::jlimit (-minTick, totalTicks() - 1 - maxTick, deltaTicks);
-    deltaPitch = juce::jlimit (Pattern::minPitch - minPitch, Pattern::maxPitch - maxPitch, deltaPitch);
+    deltaTicks = clampSafe (deltaTicks, -minTick, totalTicks() - 1 - maxTick);
+    deltaPitch = clampSafe (deltaPitch, Pattern::minPitch - minPitch, Pattern::maxPitch - maxPitch);
 
     // Bygg om från början av draget: de omarkerade orörda, de markerade på sin nya plats (de vinner vid krock).
     NoteMap target;

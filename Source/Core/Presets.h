@@ -2,6 +2,7 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "Effects.h"
+#include "NodeEnvelope.h"
 #include "Pattern.h"
 #include "Sidechain.h"
 
@@ -38,6 +39,24 @@ namespace Presets
     // för Full och Pattern, fyller mönstret. Rutnätet sätts via parametern.
     void applyFactory (Section section, bool effectVersion, int index,
                        juce::AudioProcessorValueTreeState& apvts, Pattern& pattern, SidechainCurve& curve, int layer = 0);
+
+    // Det ett fabrikspreset har utöver parametrar och mönster: kickens fria envelopes (pitch och volym,
+    // tomma = standardkurvorna) och LFO-kopplingar (LFO 0-2 till en parameter, mängd -1..1).
+    struct Extras
+    {
+        struct Route
+        {
+            int source = 0;
+            juce::String paramID;
+            float amount = 0.0f;
+        };
+
+        std::vector<NodeEnvelope::Point> pitchEnv, ampEnv;
+        std::vector<Route> routes;
+    };
+
+    // Nullptr om presetet saknas.
+    const Extras* factoryExtras (Section section, bool effectVersion, int index);
 
     // Sätter en parameter som en användare skulle: med gest, så att DAW:en kan spela in den.
     void setParameter (juce::RangedAudioParameter& parameter, float normalisedValue);

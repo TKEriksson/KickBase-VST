@@ -284,6 +284,28 @@ void PluginBase::loadFactoryPreset (Presets::Section section, int index, int lay
         kickAmpEnv.reset();
     }
 
+    // Kickens envelopes och LFO-kopplingar som presetet har med sig.
+    if (const auto* extras = Presets::factoryExtras (section, effectVersion, index);
+        extras != nullptr && (section == Presets::Section::full || section == Presets::Section::kick))
+    {
+        if (! extras->pitchEnv.empty())
+            kickPitchEnv.setPoints (extras->pitchEnv);
+        if (! extras->ampEnv.empty())
+            kickAmpEnv.setPoints (extras->ampEnv);
+
+        if (section == Presets::Section::full)
+        {
+            const auto& parameters = getParameters();
+            for (const auto& route : extras->routes)
+                for (int i = 0; i < parameters.size(); ++i)
+                    if (auto* withId = dynamic_cast<juce::AudioProcessorParameterWithID*> (parameters[i]); withId != nullptr && withId->paramID == route.paramID)
+                    {
+                        modRoutes.add (route.source, i, route.amount);
+                        break;
+                    }
+        }
+    }
+
     if (section == Presets::Section::full)
     {
         clearClickSample();

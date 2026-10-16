@@ -16,7 +16,7 @@
 // - Skroll: tonhöjd. Ctrl + skroll: zooma i tid. Shift + skroll: flytta i tid.
 // - Verktygsraden: SNAP av/på, rutnätet (snap) 1/4 ... 1/64, radhöjd, markera alla och ta bort.
 // - Remsan längst ner är velocity: dra i en tons stapel.
-class PianoRoll : public juce::Component, public juce::SettableTooltipClient, private juce::Timer
+class PianoRoll : public juce::Component, public juce::SettableTooltipClient, private juce::Timer, private juce::ScrollBar::Listener
 {
 public:
     PianoRoll (PluginBase& processor, std::vector<juce::Colour> layerColours);
@@ -46,6 +46,8 @@ private:
     using NoteMap = std::map<int, NoteData>; // starttick -> ton
 
     void timerCallback() override;
+    void scrollBarMoved (juce::ScrollBar* bar, double newRangeStart) override;
+    void updateScrollBars();
 
     int bars() const;
     int totalTicks() const { return bars() * Pattern::ticksPerBar; }
@@ -88,6 +90,7 @@ private:
     // Verktygsraden.
     juce::TextButton snapButton { "SNAP" }, smallerButton { "-" }, biggerButton { "+" }, allButton { "ALL" }, deleteButton { "DEL" };
     juce::ComboBox gridBox;
+    juce::ScrollBar hBar { false }, vBar { true }; // tid och tonhöjd
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> gridAttachment;
     bool snapEnabled = true;
 

@@ -60,8 +60,9 @@ struct Pattern
     std::atomic<bool>& kickStep (int index) { return kick[(size_t) index]; }
     bool isKickOn (int index) const         { return kick[(size_t) index].load(); }
 
-    Note& note (int layer, int tick)             { return notes[(size_t) layer][(size_t) tick]; }
-    const Note& note (int layer, int tick) const { return notes[(size_t) layer][(size_t) tick]; }
+    // Index utanför mönstret hamnar vid närmaste kant i stället för utanför minnet.
+    Note& note (int layer, int tick)             { return notes[(size_t) juce::jlimit (0, numLayers - 1, layer)][(size_t) juce::jlimit (0, maxTicks - 1, tick)]; }
+    const Note& note (int layer, int tick) const { return notes[(size_t) juce::jlimit (0, numLayers - 1, layer)][(size_t) juce::jlimit (0, maxTicks - 1, tick)]; }
 
     // Första tonen som startar i [fromTick, toTick), eller -1.
     int firstNoteIn (int layer, int fromTick, int toTick) const;

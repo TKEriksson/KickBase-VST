@@ -13,11 +13,13 @@ namespace
         float gate = -1.0f; // gate-längd 0..1, eller -1 = mallens
     };
 
-    // Ett parametervärde. Konstruktorn tar float, så att heltal som 1 blir float vid anropet.
+    // Ett parametervärde i parameterns egna enheter (Hz, dB, ... eller valets nummer). Konstruktorn tar
+    // float, så att heltal som 1 blir float vid anropet.
     struct Value
     {
         Value (const char* idIn, float valueIn) : id (idIn), value (valueIn) {}
-        const char* id;
+        Value (std::string idIn, float valueIn) : id (std::move (idIn)), value (valueIn) {}
+        std::string id;
         float value;
     };
 
@@ -28,28 +30,15 @@ namespace
         PatternTemplate pattern = PatternTemplate::rolling; // bara Full och Pattern
         std::vector<StepTweak> tweaks;                      // i mallens rutnät
         std::vector<SidechainCurve::Point> curve;           // bara Sidechain; tom = standardkurvan
+        Presets::Extras extras;                             // bara Full och Kick: kickens envelopes; Full: LFO-kopplingar
     };
 
     using namespace ParamID;
 
-    // Fabrikspresets byggs om när synten är klar; tills dess bara utgångslägen.
-    const std::vector<Preset>& fullPresets()
-    {
-        static const std::vector<Preset> presets { { "Init", {} } };
-        return presets;
-    }
-
-    const std::vector<Preset>& kickPresets()
-    {
-        static const std::vector<Preset> presets { { "Default", {} } };
-        return presets;
-    }
-
-    const std::vector<Preset>& bassPresets()
-    {
-        static const std::vector<Preset> presets { { "Default", {} } };
-        return presets;
-    }
+    // Fabrikspresets: själva ljuden ligger i PresetData.inl (full, kick, bass och effects).
+    const std::vector<Preset>& fullPresets();
+    const std::vector<Preset>& kickPresets();
+    const std::vector<Preset>& bassPresets();
 
     // FX-versionens "Bass" är gaten.
     const std::vector<Preset>& gatePresets()
@@ -78,11 +67,7 @@ namespace
         return presets;
     }
 
-    const std::vector<Preset>& effectChainPresets()
-    {
-        static const std::vector<Preset> presets { { "Default (all off)", {} } };
-        return presets;
-    }
+    const std::vector<Preset>& effectChainPresets();
 
     const std::vector<Preset>& sidechainPresets()
     {
@@ -136,8 +121,16 @@ namespace
     }
 }
 
+#include "PresetData.inl"
+
 namespace Presets
 {
+    const Extras* factoryExtras (Section section, bool effectVersion, int index)
+    {
+        const auto& list = listFor (section, effectVersion);
+        return juce::isPositiveAndBelow (index, (int) list.size()) ? &list[(size_t) index].extras : nullptr;
+    }
+
     juce::String sectionName (Section section)
     {
         switch (section)

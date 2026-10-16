@@ -20,6 +20,7 @@
 #include "../Source/Core/OfflineRender.h"
 #include "../Source/Instrument/InstrumentProcessor.h"
 #include "Analyzer.h"
+#include <juce_dsp/juce_dsp.h>
 #include <cstdio>
 
 namespace
@@ -115,6 +116,12 @@ namespace
         std::printf ("Skrev %s\n", file.getFullPathName().toRawUTF8());
     }
 
+}
+
+#include "PresetAudit.inl"
+
+namespace
+{
     int render (const juce::String& kind, const juce::File& outFile, double bpm, int bars, const juce::Array<int>& notes,
                 const juce::String& presets, int effectPreset)
     {
@@ -193,6 +200,7 @@ namespace
         const auto output = OfflineRender::render (*processor, settings);
         printStats (output, bpm);
         writeWaveformImage (output, bpm, outFile.withFileExtension ("png"));
+        writeSpectrogram (output, renderRate, bpm, outFile.withFileExtension ("spec.png"));
 
         if (! OfflineRender::writeWav (output, renderRate, outFile))
         {
@@ -321,6 +329,19 @@ int main (int argc, char* argv[])
 {
     if (argc == 2 && juce::String (argv[1]) == "presettest")
         return presetTest();
+
+    // params [instrument|fx]: parameterregistret.
+    if (argc >= 2 && juce::String (argv[1]) == "params")
+        return dumpParameters (argc > 2 ? juce::String (argv[2]) : juce::String ("instrument"));
+
+    // audit <del> [nummer] [png-mapp] [bpm]: renderar och mäter fabrikspresets (full, kick, bass, effects).
+    if (argc >= 3 && juce::String (argv[1]) == "audit")
+    {
+        juce::ScopedJuceInitialiser_GUI gui;
+        const auto only = argc > 3 && juce::String (argv[3]) != "all" ? juce::String (argv[3]).getIntValue() : -1;
+        const auto folder = argc > 4 ? juce::File::getCurrentWorkingDirectory().getChildFile (juce::String (argv[4])) : juce::File();
+        return auditPresets (juce::String (argv[2]), only, folder, argc > 5 ? juce::String (argv[5]).getDoubleValue() : 145.0);
+    }
 
     if (argc >= 5 && (juce::String (argv[1]) == "fitbass" || juce::String (argv[1]) == "fitkick"
                       || juce::String (argv[1]) == "fitbeat" || juce::String (argv[1]) == "comparebeat"))
