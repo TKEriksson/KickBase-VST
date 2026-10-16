@@ -20,6 +20,8 @@ build.bat RelWithDebInfo     # snabbare att bygga under utveckling
 build.bat RelWithDebInfo all # bygger också utvecklingsverktygen (KickbaseMcp / MyOwnFruitTool) och KickbaseHostTest
 ```
 
+I PowerShell skriver du `.uild.bat RelWithDebInfo` (med `.\` framför); i vanliga kommandotolken räcker `build.bat RelWithDebInfo`.
+
 JUCE laddas ner automatiskt första gången. `build.bat` kör testerna efter bygget. Utan `all` byggs bara det som behövs för att
 prova: instrumentet, FX-pluginet och testerna.
 
