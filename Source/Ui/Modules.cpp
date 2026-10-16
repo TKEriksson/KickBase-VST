@@ -1058,37 +1058,232 @@ PatternModule::PatternModule (PluginBase& p, bool isInstrument)
     startTimerHz (8);
 }
 
-void PatternModule::timerCallback()
+juce::String PatternModule::rowName (int row) const
 {
-    // Görs en pianorulle kortare (själv, eller för att totalen blev kortare) tas tonerna efter det nya slutet bort, så att de inte ligger
-    // kvar dolda och dyker upp igen när den förlängs.
-    if (instrument)
+    const auto layer = row == 0 ? Pattern::kickLayer : row - 1;
+    return layer == Pattern::kickLayer ? juce::String ("KICK") : instrument ? processor.getLayerName (layer) : juce::String ("GATE");
+}
+
+void PatternModule::extendRow (int row, int beforeBars, int nowBars, bool repeat)
+{
+    auto& pattern = processor.pattern;
+    const auto layer = row == 0 ? Pattern::kickLayer : row - 1;
+    const auto oldTicks = beforeBars * Pattern::ticksPerBar, newTicks = nowBars * Pattern::ticksPerBar;
+    for (int tick = oldTicks; tick < newTicks && tick < Pattern::maxTicks; ++tick)
     {
-        const auto lengthsNow = Params::readPatternLengths (processor.apvts);
+        auto& note = pattern.note (layer, tick);
+        const auto& source = pattern.note (layer, tick % oldTicks);
+        if (repeat && source.on.load())
+        {
+            note.length = source.length.load();
+            note.pitch = source.pitch.load();
+            note.velocity = source.velocity.load();
+            note.slide = source.slide.load();
+            note.on = true;
+        }
+        else
+            note.on = false;
+    }
+    if (layer != Pattern::kickLayer)
+    {
+        const auto stepsPerBar = Pattern::bassStepsPerBar ((BassGrid) juce::jlimit (0, Pattern::numGrids - 1,
+            (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, BassField::gateGrid))->load()));
+        const auto oldSteps = beforeBars * stepsPerBar, newSteps = nowBars * stepsPerBar;
+        for (int step = oldSteps; step < newSteps && step < Pattern::maxGateSteps; ++step)
+            pattern.gateStep (layer, step) = repeat ? pattern.isGateStepOn (layer, step % oldSteps) : true;
+    }
+    processor.patternChanged();
+}
+
+void PatternModule::trimRow (int row, int bars)
+{
+    const auto layer = row == 0 ? Pattern::kickLayer : row - 1;
+    const auto limit = bars * Pattern::ticksPerBar;
+    for (int tick = 0; tick < Pattern::maxTicks; ++tick)
+    {
+        auto& note = processor.pattern.note (layer, tick);
+        if (! note.on.load())
+            continue;
+        if (tick >= limit)
+            note.on = false;
+        else if (tick + note.length.load() > limit)
+            note.length = limit - tick; // en ton som går över slutet kortas
+    }
+    processor.patternChanged();
+}
+
+void PatternModule::restoreChoices (const std::array<int, 5>& choices)
+{
+    const char* ids[] { ParamID::patternBars, ParamID::rowBars (0), ParamID::rowBars (1), ParamID::rowBars (2), ParamID::rowBars (3) };
+    for (size_t i = 0; i < 5; ++i)
+        if (choices[i] >= 0)
+            if (auto* parameter = processor.apvts.getParameter (ids[i]))
+                Presets::setParameter (*parameter, parameter->convertTo0to1 ((float) choices[i]));
+    const auto restored = Params::readPatternLengths (processor.apvts);
+    for (int row = 0; row < 4; ++row)
+        lastRowBars[(size_t) row] = restored.barsOf (row);
+    lastPatternVersion = processor.patternVersion.load();
+}
+
+// Längdändringar. Förkortas en rad (själv, eller för att totalen blev kortare) tas det som inte får plats bort, med en bekräftelse först
+// om något går förlorat (toner som bara är en upprepning av det som blir kvar tas bort utan fråga). Förlängs en rad får man frågan om
+// upprepningen ska kopieras in i de nya takterna. Avbryter man går längderna tillbaka. Görs inget när ett helt projekt eller preset laddas.
+void PatternModule::checkLengthChanges()
+{
+    if (confirmOpen)
+        return;
+
+    auto& apvts = processor.apvts;
+    auto choiceOf = [&apvts] (const char* id) { return (int) std::round (apvts.getRawParameterValue (id)->load()); };
+    const std::array<int, 5> choices { choiceOf (ParamID::patternBars), choiceOf (ParamID::rowBars (0)), choiceOf (ParamID::rowBars (1)),
+                                       choiceOf (ParamID::rowBars (2)), choiceOf (ParamID::rowBars (3)) };
+    const auto lengthsNow = Params::readPatternLengths (apvts);
+    auto& pattern = processor.pattern;
+    const auto layerOf = [] (int row) { return row == 0 ? Pattern::kickLayer : row - 1; };
+
+    const auto fresh = lastRowBars[0] < 0 || processor.patternVersion.load() != lastPatternVersion;
+    std::vector<int> shrunk, grown;
+    if (! fresh)
         for (int row = 0; row < 4; ++row)
         {
-            const auto layer = row == 0 ? Pattern::kickLayer : row - 1;
-            const auto bars = lengthsNow.barsOf (row);
-            if (lastRowBars[(size_t) row] > bars && processor.pattern.isCustom (layer))
-            {
-                const auto limit = bars * Pattern::ticksPerBar;
-                for (int tick = 0; tick < Pattern::maxTicks; ++tick)
+            if (lengthsNow.barsOf (row) > lastRowBars[(size_t) row])
+                grown.push_back (row);
+            else if (lengthsNow.barsOf (row) < lastRowBars[(size_t) row])
+                shrunk.push_back (row);
+        }
+
+    const auto previousChoices = lastChoices;
+    const auto previousBars = lastRowBars;
+    std::array<int, 4> nowBars {};
+    for (int row = 0; row < 4; ++row)
+        nowBars[(size_t) row] = lengthsNow.barsOf (row);
+
+    juce::Component::SafePointer<PatternModule> safeThis (this);
+
+    if (! grown.empty())
+    {
+        // Har någon av de förlängda raderna toner som kan upprepas? Då frågar vi; annars töms bara det nya.
+        std::vector<int> withNotes;
+        for (const auto row : grown)
+            for (int tick = 0; tick < previousBars[(size_t) row] * Pattern::ticksPerBar; ++tick)
+                if (pattern.note (layerOf (row), tick).on.load())
                 {
-                    auto& note = processor.pattern.note (layer, tick);
-                    if (! note.on.load())
-                        continue;
-                    if (tick >= limit)
-                        note.on = false;
-                    else if (tick + note.length.load() > limit)
-                        note.length = limit - tick; // en ton som går över slutet kortas
+                    withNotes.push_back (row);
+                    break;
                 }
-                processor.patternChanged();
-            }
-            lastRowBars[(size_t) row] = bars;
+
+        if (withNotes.empty())
+        {
+            for (const auto row : grown)
+                extendRow (row, previousBars[(size_t) row], nowBars[(size_t) row], false);
+        }
+        else
+        {
+            juce::String message;
+            for (const auto row : withNotes)
+                message << "  " << rowName (row) << ": " << previousBars[(size_t) row] << " -> " << nowBars[(size_t) row] << " bars\n";
+            message = "These rows are now longer:\n\n" + message + "\nCopy what they play (the repeat) into the new bars?\n"
+                      "Yes = copy it, No = leave the new bars empty, Cancel = keep the old length.";
+
+            confirmOpen = true;
+            juce::AlertWindow::showAsync (juce::MessageBoxOptions::makeOptionsYesNoCancel (juce::MessageBoxIconType::QuestionIcon, "Longer pattern", message,
+                                                                                            "Copy", "Leave empty", "Cancel"),
+                                          [safeThis, grown, withNotes, previousBars, nowBars, previousChoices] (int choice)
+            {
+                if (safeThis == nullptr)
+                    return;
+                if (choice == 0)
+                {
+                    safeThis->restoreChoices (previousChoices); // Avbryt
+                }
+                else
+                {
+                    for (const auto row : grown)
+                        safeThis->extendRow (row, previousBars[(size_t) row], nowBars[(size_t) row],
+                                             choice == 1 && std::find (withNotes.begin(), withNotes.end(), row) != withNotes.end());
+                    for (int row = 0; row < 4; ++row)
+                        safeThis->lastRowBars[(size_t) row] = nowBars[(size_t) row];
+                    safeThis->lastPatternVersion = safeThis->processor.patternVersion.load();
+                }
+                safeThis->confirmOpen = false;
+            });
         }
     }
 
-    // Lanerna är för stegmönstret: avstängda för ett lager som redigerats i pianorullen.
+    if (! shrunk.empty())
+    {
+        // Vad går förlorat? Toner efter det nya slutet som inte bara är en upprepning av det som finns kvar.
+        struct Loss { int row; int bars; int notes; };
+        std::vector<Loss> losses;
+        for (const auto row : shrunk)
+        {
+            const auto layer = layerOf (row);
+            const auto limit = nowBars[(size_t) row] * Pattern::ticksPerBar, oldTicks = previousBars[(size_t) row] * Pattern::ticksPerBar;
+            auto count = 0;
+            auto differs = false;
+            for (int tick = limit; tick < oldTicks && tick < Pattern::maxTicks; ++tick)
+            {
+                const auto& note = pattern.note (layer, tick);
+                const auto& again = pattern.note (layer, tick % limit);
+                if (note.on.load())
+                    ++count;
+                if (note.on.load() != again.on.load()
+                    || (note.on.load() && (note.length.load() != again.length.load() || note.pitch.load() != again.pitch.load()
+                                           || note.slide.load() != again.slide.load() || std::abs (note.velocity.load() - again.velocity.load()) > 0.001f)))
+                    differs = true;
+            }
+            if (count > 0 && differs)
+                losses.push_back ({ row, nowBars[(size_t) row], count });
+        }
+
+        if (losses.empty())
+        {
+            for (const auto row : shrunk)
+                trimRow (row, nowBars[(size_t) row]); // bara upprepningar: inget går förlorat
+        }
+        else if (! confirmOpen)
+        {
+            juce::String message = "Shortening removes notes that do not fit any more:\n\n";
+            for (const auto& loss : losses)
+                message << "  " << rowName (loss.row) << ": " << loss.notes << (loss.notes == 1 ? " note" : " notes") << " after bar " << loss.bars << "\n";
+            message << "\nThis can't be undone. Shorten anyway?";
+
+            confirmOpen = true;
+            juce::AlertWindow::showAsync (juce::MessageBoxOptions::makeOptionsOkCancel (juce::MessageBoxIconType::WarningIcon, "Shorten the pattern",
+                                                                                         message, "Shorten", "Cancel"),
+                                          [safeThis, shrunk, nowBars, previousChoices] (int choice)
+            {
+                if (safeThis == nullptr)
+                    return;
+                if (choice == 1)
+                {
+                    for (const auto row : shrunk)
+                        safeThis->trimRow (row, nowBars[(size_t) row]);
+                    for (int row = 0; row < 4; ++row)
+                        safeThis->lastRowBars[(size_t) row] = nowBars[(size_t) row];
+                    safeThis->lastPatternVersion = safeThis->processor.patternVersion.load();
+                }
+                else
+                {
+                    safeThis->restoreChoices (previousChoices); // Avbryt: tillbaka till de längder som gällde innan
+                }
+                safeThis->confirmOpen = false;
+            });
+        }
+    }
+
+    if (! confirmOpen)
+    {
+        lastRowBars = nowBars;
+        lastChoices = choices;
+    }
+    lastPatternVersion = processor.patternVersion.load();
+}
+
+void PatternModule::timerCallback()
+{
+    checkLengthChanges();
+
     // (Kickens toner spelar hela sitt ljud, så deras längd gör inget.)
     const auto custom = processor.pattern.isCustom (shownLayer);
     for (auto& [button, lane] : laneButtons)

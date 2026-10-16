@@ -242,6 +242,49 @@ namespace
         return 0;
     }
 
+    // Längdändringar i gränssnittet: förkortas en rad vars innehåll bara är en upprepning tas det bort utan fråga, och längderna
+    // följer varandra (totalen är minst den längsta raden). Dialogerna (som frågar när något går förlorat) testas inte här.
+    int lengthTest()
+    {
+        juce::ScopedJuceInitialiser_GUI gui;
+        const auto owner = std::make_unique<InstrumentProcessor>();
+        auto& processor = *owner;
+        processor.setPlayConfigDetails (0, 2, renderRate, blockSize);
+        processor.prepareToPlay (renderRate, blockSize);
+        std::unique_ptr<juce::AudioProcessorEditor> editor (processor.createEditorAndMakeActive());
+
+        auto runFor = [] (int milliseconds) { juce::MessageManager::getInstance()->runDispatchLoopUntil (milliseconds); };
+        auto setChoice = [&processor] (const char* id, int index)
+        {
+            auto* parameter = processor.apvts.getParameter (id);
+            parameter->setValueNotifyingHost (parameter->convertTo0to1 ((float) index));
+        };
+
+        runFor (300); // grundnivån
+        auto failed = false;
+        auto check = [&failed] (bool ok, const char* what) { std::printf ("%s: %s\n", ok ? "ok" : "FEL", what); failed |= ! ok; };
+
+        // Init: totalt 2 takter, kicken på fjärdedelar i alla takter. Kicken kortas till 1 takt: bara en upprepning försvinner.
+        const auto& kickAt = [&processor] (int tick) { return processor.pattern.note (Pattern::kickLayer, tick).on.load(); };
+        check (kickAt (0) && kickAt (Pattern::ticksPerBar), "kicken har toner i takt 2 från början");
+        setChoice (ParamID::rowBars (0), 1); // 1 bar
+        runFor (400);
+        check (kickAt (0) && ! kickAt (Pattern::ticksPerBar) && ! kickAt (Pattern::ticksPerBar + Pattern::ticksPerQuarter), "kortare kick: upprepningen i takt 2 togs bort utan fråga");
+
+        // En rad längre än totalen höjer totalen.
+        setChoice (ParamID::rowBars (2), 4); // 8 bars (index 4 = 8 takter)
+        runFor (400);
+        const auto totalIndex = (int) std::round (processor.apvts.getRawParameterValue (ParamID::patternBars)->load());
+        check (totalIndex >= 3, "totalen höjdes till minst den längsta raden (8 takter)");
+
+        // Förlängningen gör att en fråga (kopiera upprepningen?) har öppnats: stäng den innan editorn tas bort.
+        juce::ModalComponentManager::getInstance()->cancelAllModalComponents();
+        runFor (200);
+        editor.reset();
+        std::puts (failed ? "FEL: längdtestet misslyckades" : "Längdtestet gick igenom");
+        return failed ? 1 : 0;
+    }
+
     // Provlyssning: requestAudition ska ge ljud (kick och baslager) och publicera kickens spelmarkör.
     int auditionTest()
     {
@@ -408,6 +451,8 @@ int toolMain (int argc, char* argv[])
         return presetTest();
     if (argc == 2 && juce::String (argv[1]) == "auditiontest")
         return auditionTest();
+    if (argc == 2 && juce::String (argv[1]) == "lengthtest")
+        return lengthTest();
 
     // params [instrument|fx]: parameterregistret.
     if (argc >= 2 && juce::String (argv[1]) == "params")

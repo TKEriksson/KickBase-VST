@@ -216,7 +216,17 @@ private:
     juce::TextButton kickLayerButton { "KICK" };                // lager 3: kicken
     std::unique_ptr<ChoiceComponent> kickGrid;                   // kickens rutnät
     int lastNamesVersion = -1;
-    std::array<int, 4> lastRowBars { -1, -1, -1, -1 }; // radernas längd förra gången (kick, bas 1-3), för att ta bort toner efter ett nytt slut
+    // Längdändringar: förkortas en rad tas det som inte får plats bort (efter en bekräftelse om något går förlorat), förlängs den
+    // upprepas det den spelade. Se checkLengthChanges.
+    std::array<int, 4> lastRowBars { -1, -1, -1, -1 };  // radernas längd förra gången (kick, bas 1-3)
+    std::array<int, 5> lastChoices { -1, -1, -1, -1, -1 }; // valen för TOTAL LENGTH och de fyra radernas längd förra gången
+    int lastPatternVersion = -1;
+    bool confirmOpen = false;
+    void checkLengthChanges();
+    void extendRow (int row, int beforeBars, int nowBars, bool repeat); // förlängd rad: upprepa det den spelade, eller töm det nya
+    void trimRow (int row, int bars);                                   // förkortad rad: ta bort det som inte får plats
+    juce::String rowName (int row) const;
+    void restoreChoices (const std::array<int, 5>& choices);
 
     // Per lager (bara det valda syns): notrutnätet och tonlängden (PATTERN), och GATE: på/av, rutnät, djup och mjukhet.
     std::vector<std::unique_ptr<ChoiceComponent>> grids, gateGrids;
