@@ -119,8 +119,18 @@ namespace
                 const juce::String& presets, int effectPreset)
     {
         auto processor = createProcessor (kind);
+        auto clipBars = 0;
+        auto noteOnFirst = false;
         for (const auto& token : juce::StringArray::fromTokens (presets, "+", {}))
         {
+            // clip=N: tonen släpps och slås an igen var N:e takt (som mönsterklipp i FL); clipon=N: med "ton på" före "ton av".
+            if (token.startsWith ("clip"))
+            {
+                noteOnFirst = token.startsWith ("clipon");
+                clipBars = token.fromFirstOccurrenceOf ("=", false, false).getIntValue();
+                continue;
+            }
+
             // p:id=värde sätter en parameter (i dess egen enhet), t.ex. p:fxA1Type=2.
             if (token.startsWith ("p:"))
             {
@@ -130,6 +140,15 @@ namespace
                     parameter->setValueNotifyingHost (parameter->convertTo0to1 (value));
                 else
                     std::printf ("Okänd parameter: %s\n", id.toRawUTF8());
+                continue;
+            }
+
+            // f:<sökväg> laddar ett sparat helpreset (.mofp), t.ex. ett som sparats från pluginet.
+            if (token.startsWith ("f:"))
+            {
+                const juce::File file (token.substring (2));
+                const auto loaded = processor->loadUserPreset (Presets::Section::full, file);
+                std::printf ("Helpreset %s: %s\n", file.getFileName().toRawUTF8(), loaded ? "laddat" : "kunde inte laddas");
                 continue;
             }
 
@@ -154,6 +173,8 @@ namespace
         settings.bars = bars;
         settings.notes = notes;
         settings.extraBars = 1; // en takt efter tonen
+        settings.clipBars = clipBars;
+        settings.noteOnFirst = noteOnFirst;
 
         // FX-versionen: låtsas-Serum, en hållen sågtand i 55 Hz.
         double inputPhase = 0.0;
@@ -185,7 +206,8 @@ namespace
     // Provar pluginets WAV-export, som gränssnittets EXPORT-knapp.
     int exportPart (const juce::File& outFile, const juce::String& part, int bars, double bpm, int note, int preset)
     {
-        InstrumentProcessor processor;
+        const auto owner = std::make_unique<InstrumentProcessor>(); // på heapen: för stor för stacken
+        auto& processor = *owner;
         if (preset >= 0)
             processor.loadFactoryPreset (Presets::Section::full, preset);
         processor.transportStatus.bpm = bpm;

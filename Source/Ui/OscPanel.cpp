@@ -38,7 +38,8 @@ void WavetableView::paint (juce::Graphics& g)
     g.setColour (Theme::knobBodyDark.withAlpha (0.85f));
     g.fillRoundedRectangle (bounds, 6.0f);
 
-    const auto& table = Wavetables::get (lastTable < 0 ? 0 : lastTable);
+    const Wavetable* userTable = lastTable >= Wavetables::userIndex() ? processor.userTable (layer, osc) : nullptr;
+    const auto& table = userTable != nullptr ? *userTable : Wavetables::get (lastTable < 0 || lastTable >= Wavetables::userIndex() ? 0 : lastTable);
     const auto area = bounds.reduced (8.0f, 10.0f);
 
     // Varje frame förskjuts uppåt-höger: de bakre är mindre och mörkare.
@@ -124,6 +125,26 @@ OscPanel::OscPanel (PluginBase& p, int layerIn, int oscIn, juce::Colour accentIn
         button.onClick = [this, i] { chooseTable (Wavetables::count() - 4 + (int) i); };
         addAndMakeVisible (button);
     }
+
+    wavButton.setTooltip ("LOAD WAV - Use a WAV file as this oscillator's wavetable (like Serum). A file of 2048-sample cycles becomes up to 16 "
+                          "waveforms that POS sweeps through; a short file is used as one single waveform. Saved in the project.");
+    wavButton.setColour (juce::TextButton::buttonOnColourId, accent.withAlpha (0.6f));
+    wavButton.onClick = [this]
+    {
+        chooser = std::make_unique<juce::FileChooser> ("Choose a WAV file for the wavetable", juce::File(), "*.wav;*.aif;*.aiff;*.flac");
+        chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                              [this] (const juce::FileChooser& fc)
+                              {
+                                  if (! fc.getResult().existsAsFile())
+                                      return;
+                                  if (processor.loadUserTable (layer, osc, fc.getResult()))
+                                      view.repaint();
+                                  else
+                                      juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Wavetable",
+                                                                              "Could not read that file as a wavetable.");
+                              });
+    };
+    addAndMakeVisible (wavButton);
     startTimerHz (10);
 
     using F = BassField;
@@ -183,8 +204,10 @@ void OscPanel::resized()
     left.removeFromTop (4);
     auto shapes = left.removeFromTop (20);
     const auto shapeWidth = shapes.getWidth() / (int) shapeButtons.size();
+    wavButton.setBounds (shapes.removeFromRight (shapes.getWidth() / 5).reduced (1, 0));
     for (auto& button : shapeButtons)
-        button.setBounds (shapes.removeFromLeft (shapeWidth).reduced (1, 0));
+        button.setBounds (shapes.removeFromLeft (shapes.getWidth() / ((int) shapeButtons.size() - (int) (&button - shapeButtons.data()))).reduced (1, 0));
+    juce::ignoreUnused (shapeWidth);
     left.removeFromTop (4);
     view.setBounds (left);
     area.removeFromLeft (4);

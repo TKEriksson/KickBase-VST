@@ -193,11 +193,10 @@ void InstrumentProcessor::handleMidi (const juce::MidiMessage& message, int samp
         const auto note = message.getNoteNumber();
         const auto wasSilent = numHeldNotes == 0;
 
-        if (! heldNotes[(size_t) note])
-        {
-            heldNotes[(size_t) note] = true;
+        // Räknar tonerna: FL skickar ibland "ton på" före "ton av" när ett mönster tar slut och nästa
+        // börjar på exakt samma ton och sample. Då ska tonen fortfarande hållas, inte släppas.
+        if (heldNotes[(size_t) note]++ == 0)
             ++numHeldNotes;
-        }
 
         currentNote = note;
         refreshEngineParams(); // ny tonart från och med nu
@@ -208,18 +207,14 @@ void InstrumentProcessor::handleMidi (const juce::MidiMessage& message, int samp
     else if (message.isNoteOff())
     {
         const auto note = message.getNoteNumber();
-        if (heldNotes[(size_t) note])
-        {
-            heldNotes[(size_t) note] = false;
-            if (--numHeldNotes == 0)
-                stopPattern (sampleOffset);
-        }
+        if (heldNotes[(size_t) note] > 0 && --heldNotes[(size_t) note] == 0 && --numHeldNotes == 0)
+            stopPattern (sampleOffset);
     }
     else if (message.isAllNotesOff() || message.isAllSoundOff())
     {
         if (numHeldNotes > 0)
         {
-            heldNotes.fill (false);
+            heldNotes.fill (0);
             numHeldNotes = 0;
             stopPattern (sampleOffset);
         }

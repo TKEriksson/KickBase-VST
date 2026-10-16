@@ -63,7 +63,7 @@ void Pattern::clearNotes (int layer)
     for (auto& n : notes[(size_t) layer])
     {
         n.on = false;
-        n.length = 17;
+        n.length = 24;
         n.pitch = 0;
         n.slide = false;
         n.velocity = 0.8f;
@@ -103,7 +103,7 @@ BassGrid Pattern::applyLayerTemplate (int layer, PatternTemplate t)
             case PatternTemplate::rolling:   on = inBeat != 0; break;                      // K B B B
             case PatternTemplate::galloping: on = inBeat >= 2; break;                      // K . B B
             case PatternTemplate::triplet:   on = inBeat != 0; break;                      // K B B
-            case PatternTemplate::offbeat:   on = inBeat == 2; gate = 0.9f; break;         // K . B .
+            case PatternTemplate::offbeat:   on = inBeat == 2; break;                      // K . B .
             case PatternTemplate::clear:     break;
         }
 

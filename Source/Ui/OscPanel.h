@@ -40,6 +40,8 @@ private:
     juce::Colour accent;
     ChoiceComponent table, warp;
     std::array<juce::TextButton, 4> shapeButtons; // SIN, TRI, SAW, SQR: de klassiska vågformerna
+    juce::TextButton wavButton { "WAV" };
+    std::unique_ptr<juce::FileChooser> chooser;
     int lastTable = -1;
     WavetableView view;
     std::vector<std::unique_ptr<KnobComponent>> knobs;

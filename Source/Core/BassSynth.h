@@ -12,7 +12,8 @@ enum class WarpMode { off, sync, bend, pwm, mirror, fm };
 // En wavetable-oscillator.
 struct OscParams
 {
-    int table = 0;            // Wavetables::get
+    int table = 0;            // Wavetables::get; Wavetables::userIndex() = den egna inladdade tabellen (user)
+    const Wavetable* user = nullptr; // oscillatorns egna tabell (från en WAV-fil), eller nullptr
     float position = 2.0f / 3.0f; // 0..1 genom tabellen (Basic: 0 sinus, 1/3 triangel, 2/3 såg, 1 fyrkant)
     float level = 1.0f;       // 0..1
     float semis = 0.0f;       // halvtoner

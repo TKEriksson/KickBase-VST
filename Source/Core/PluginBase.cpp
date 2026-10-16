@@ -47,7 +47,117 @@ KickParams PluginBase::kickForDisplay (int keyPitchClass) const
     p.ampEnv = &kickAmpEnv;
     return p;
 }
-BassParams PluginBase::readModulatedBass (int layer, int rootMidiNote) const { return params.readBass (layer, rootMidiNote); }
+BassParams PluginBase::readModulatedBass (int layer, int rootMidiNote) const
+{
+    auto bass = params.readBass (layer, rootMidiNote);
+    bass.oscA.user = userTable (layer, 0);
+    bass.oscB.user = userTable (layer, 1);
+    return bass;
+}
+
+void PluginBase::setUserTable (int slot, std::unique_ptr<Wavetable> table, std::vector<float> frames, const juce::String& name)
+{
+    // Den gamla tabellen kan läsas av ljudtråden ett block till: den sparas undan en stund.
+    const auto* newTable = table.get();
+    auto old = std::move (userOwned[(size_t) slot]);
+    userOwned[(size_t) slot] = std::move (table);
+    userTables[(size_t) slot].store (newTable);
+    if (old != nullptr)
+        retiredTables.push_back (std::move (old));
+    while (retiredTables.size() > 4)
+        retiredTables.erase (retiredTables.begin());
+
+    userFrames[(size_t) slot] = std::move (frames);
+    userNames[(size_t) slot] = name;
+}
+
+bool PluginBase::loadUserTable (int layer, int osc, const juce::File& file)
+{
+    if (! juce::isPositiveAndBelow (layer, ParamID::numBassLayers) || ! juce::isPositiveAndBelow (osc, 2))
+        return false;
+
+    juce::AudioFormatManager formats;
+    formats.registerBasicFormats();
+    std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (file));
+    if (reader == nullptr || reader->lengthInSamples < 16)
+        return false;
+
+    // Högst 256 cykler om 2048 samples räcker för 16 frames.
+    const auto length = (int) std::min<juce::int64> (reader->lengthInSamples, 2048 * 256);
+    juce::AudioBuffer<float> audio ((int) reader->numChannels, length);
+    reader->read (&audio, 0, length, 0, true, true);
+
+    std::vector<float> mono ((size_t) length, 0.0f);
+    for (int ch = 0; ch < audio.getNumChannels(); ++ch)
+        for (int i = 0; i < length; ++i)
+            mono[(size_t) i] += audio.getSample (ch, i) / (float) audio.getNumChannels();
+
+    std::vector<float> frames;
+    auto table = Wavetables::fromAudio (mono, file.getFileNameWithoutExtension(), frames);
+    if (table == nullptr)
+        return false;
+
+    setUserTable (layer * 2 + osc, std::move (table), std::move (frames), file.getFileNameWithoutExtension());
+
+    // Välj tabellen i oscillatorn.
+    if (auto* parameter = apvts.getParameter (ParamID::bass (layer, ParamID::oscField (osc, BassField::aTable))))
+    {
+        parameter->beginChangeGesture();
+        parameter->setValueNotifyingHost (parameter->convertTo0to1 ((float) Wavetables::userIndex()));
+        parameter->endChangeGesture();
+    }
+    markStateChanged();
+    return true;
+}
+
+juce::ValueTree PluginBase::userTablesToValueTree() const
+{
+    juce::ValueTree tree ("UserTables");
+    for (int slot = 0; slot < numUserSlots; ++slot)
+    {
+        const auto& frames = userFrames[(size_t) slot];
+        if (frames.empty())
+            continue;
+
+        // 16 bitar räcker för en tabell och ger 44 kB (base64) per oscillator i stället för 85 kB.
+        juce::MemoryBlock block (frames.size() * sizeof (juce::int16));
+        auto* out = static_cast<juce::int16*> (block.getData());
+        for (size_t i = 0; i < frames.size(); ++i)
+            out[i] = (juce::int16) juce::roundToInt (juce::jlimit (-1.0f, 1.0f, frames[i]) * 32767.0f);
+
+        juce::ValueTree child ("Table");
+        child.setProperty ("layer", slot / 2, nullptr);
+        child.setProperty ("osc", slot % 2, nullptr);
+        child.setProperty ("name", userNames[(size_t) slot], nullptr);
+        child.setProperty ("data", juce::Base64::toBase64 (block.getData(), block.getSize()), nullptr);
+        tree.appendChild (child, nullptr);
+    }
+    return tree;
+}
+
+void PluginBase::userTablesFromValueTree (const juce::ValueTree& tree)
+{
+    for (const auto& child : tree)
+    {
+        const auto layer = (int) child["layer"], osc = (int) child["osc"];
+        if (! child.hasType ("Table") || ! juce::isPositiveAndBelow (layer, ParamID::numBassLayers) || ! juce::isPositiveAndBelow (osc, 2))
+            continue;
+
+        juce::MemoryOutputStream decoded;
+        if (! juce::Base64::convertFromBase64 (decoded, child["data"].toString()))
+            continue;
+
+        const auto count = decoded.getDataSize() / sizeof (juce::int16);
+        const auto* in = static_cast<const juce::int16*> (decoded.getData());
+        std::vector<float> frames (count);
+        for (size_t i = 0; i < count; ++i)
+            frames[i] = (float) in[i] / 32767.0f;
+
+        const auto name = child["name"].toString();
+        if (auto table = Wavetables::fromFrames (name, frames))
+            setUserTable (layer * 2 + osc, std::move (table), std::move (frames), name);
+    }
+}
 
 juce::String& PluginBase::presetNameSlot (Presets::Section section, int layer)
 {
@@ -78,6 +188,7 @@ void PluginBase::getStateInformation (juce::MemoryBlock& destData)
         state.setProperty ("presetBass" + juce::String (layer + 1), bassPresetNames[(size_t) layer], nullptr);
     state.appendChild (pattern.toValueTree(), nullptr);
     state.appendChild (clickToValueTree(), nullptr);
+    state.appendChild (userTablesToValueTree(), nullptr);
     state.appendChild (sidechainCurve.toValueTree(), nullptr);
     state.appendChild (modRoutes.toValueTree (getParameters()), nullptr);
     state.appendChild (kickPitchEnv.toValueTree (kickPitchType), nullptr);
@@ -110,6 +221,12 @@ void PluginBase::setStateInformation (const void* data, int sizeInBytes)
     {
         clickFromValueTree (clickTree);
         state.removeChild (clickTree, nullptr);
+    }
+
+    if (auto userTree = state.getChildWithName ("UserTables"); userTree.isValid())
+    {
+        userTablesFromValueTree (userTree);
+        state.removeChild (userTree, nullptr);
     }
 
     if (auto curveTree = state.getChildWithName (SidechainCurve::treeType); curveTree.isValid())

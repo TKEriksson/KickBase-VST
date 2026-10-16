@@ -199,13 +199,98 @@ namespace
 namespace Wavetables
 {
     int count() { return (int) all().size(); }
+    int userIndex() { return count(); }
 
     juce::StringArray names()
     {
         juce::StringArray result;
         for (const auto& table : all())
             result.add (table->getName());
+        result.add ("User WAV");
         return result;
+    }
+
+    std::unique_ptr<Wavetable> fromFrames (const juce::String& name, const std::vector<float>& frames)
+    {
+        constexpr int size = Wavetable::frameSize, numFrames = Wavetable::numFrames;
+        if (frames.size() < (size_t) (size * numFrames))
+            return nullptr;
+
+        return std::make_unique<Wavetable> (name, [&frames] (double position, double phase)
+        {
+            const auto framePosition = juce::jlimit (0.0, 1.0, position) * (numFrames - 1);
+            const auto f0 = std::min (numFrames - 2, (int) framePosition);
+            const auto mix = framePosition - f0;
+            const auto index = phase * size;
+            const auto i0 = juce::jlimit (0, size - 1, (int) index), i1 = (i0 + 1) % size;
+            const auto fraction = index - i0;
+            auto read = [&] (int frame)
+            {
+                const auto* d = frames.data() + (size_t) frame * size;
+                return d[i0] + (d[i1] - d[i0]) * fraction;
+            };
+            return read (f0) * (1.0 - mix) + read (f0 + 1) * mix;
+        });
+    }
+
+    std::unique_ptr<Wavetable> fromAudio (const std::vector<float>& mono, const juce::String& name, std::vector<float>& framesOut)
+    {
+        constexpr int size = Wavetable::frameSize, numFrames = Wavetable::numFrames, cycle = 2 * size;
+        const auto length = (int) mono.size();
+        if (length < 16)
+            return nullptr;
+
+        framesOut.assign ((size_t) (size * numFrames), 0.0f);
+
+        if (length >= 2 * cycle)
+        {
+            // Cykler om 2048 samples (Serums format): frames väljs jämnt över filen och halveras till 1024.
+            const auto cycles = length / cycle;
+            for (int f = 0; f < numFrames; ++f)
+            {
+                const auto source = (int) std::lround ((double) f * (cycles - 1) / (numFrames - 1));
+                for (int i = 0; i < size; ++i)
+                {
+                    const auto j = source * cycle + 2 * i;
+                    framesOut[(size_t) (f * size + i)] = 0.5f * (mono[(size_t) j] + mono[(size_t) j + 1]);
+                }
+            }
+        }
+        else
+        {
+            // En enda cykel: hela filen sträcks till 1024 samples och används i alla frames.
+            for (int i = 0; i < size; ++i)
+            {
+                const auto position = (double) i * length / size;
+                const auto i0 = std::min (length - 1, (int) position), i1 = std::min (length - 1, i0 + 1);
+                const auto fraction = (float) (position - i0);
+                const auto value = mono[(size_t) i0] + (mono[(size_t) i1] - mono[(size_t) i0]) * fraction;
+                for (int f = 0; f < numFrames; ++f)
+                    framesOut[(size_t) (f * size + i)] = value;
+            }
+        }
+
+        // Ta bort likspänning per frame och skala så att toppen i hela tabellen blir 1.
+        auto peak = 0.0f;
+        for (int f = 0; f < numFrames; ++f)
+        {
+            auto* frame = framesOut.data() + (size_t) f * size;
+            auto mean = 0.0;
+            for (int i = 0; i < size; ++i)
+                mean += frame[i];
+            mean /= size;
+            for (int i = 0; i < size; ++i)
+            {
+                frame[i] -= (float) mean;
+                peak = std::max (peak, std::abs (frame[i]));
+            }
+        }
+        if (peak < 1.0e-6f)
+            return nullptr;
+        for (auto& v : framesOut)
+            v /= peak;
+
+        return fromFrames (name, framesOut);
     }
 
     const Wavetable& get (int index)

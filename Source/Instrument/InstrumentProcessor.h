@@ -81,7 +81,7 @@ private:
     // Mixerns två stereobussar: det som går genom maximizern, och det som går förbi den.
     juce::AudioBuffer<float> maxBus, bypassBus;
 
-    std::array<bool, 128> heldNotes {};
+    std::array<int, 128> heldNotes {}; // hur många gånger varje ton slagits an utan att släppas
     int numHeldNotes = 0;
     int currentNote = -1; // senast anslagna ton; bestämmer tonarten
 

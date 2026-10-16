@@ -53,13 +53,22 @@ namespace OfflineRender
                 const auto at = (int) (bar * samplesPerBar);
                 if (at < done || at >= done + n)
                     continue;
-                const auto changes = bar == 0 || bar == settings.bars || noteAt (bar) != noteAt (bar - 1);
+                const auto clipEdge = settings.clipBars > 0 && bar % settings.clipBars == 0;
+                const auto changes = bar == 0 || bar == settings.bars || clipEdge || noteAt (bar) != noteAt (bar - 1);
                 if (! changes)
                     continue;
+                const auto off = juce::MidiMessage::noteOff (1, noteAt (std::max (0, bar - 1)));
+                const auto on = juce::MidiMessage::noteOn (1, noteAt (bar), (juce::uint8) 100);
+                if (settings.noteOnFirst && bar > 0 && bar < settings.bars)
+                {
+                    midi.addEvent (on, at - done);
+                    midi.addEvent (off, at - done);
+                    continue;
+                }
                 if (bar > 0)
-                    midi.addEvent (juce::MidiMessage::noteOff (1, noteAt (bar - 1)), at - done);
+                    midi.addEvent (off, at - done);
                 if (bar < settings.bars)
-                    midi.addEvent (juce::MidiMessage::noteOn (1, noteAt (bar), (juce::uint8) 100), at - done);
+                    midi.addEvent (on, at - done);
             }
 
             processor.processBlock (block, midi);

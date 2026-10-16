@@ -69,6 +69,12 @@ public:
     enum class ExportPart { full, kick, bass };
     bool exportWav (const juce::File& file, ExportPart part, int bars);
 
+    // Egna wavetables från WAV-filer, en per oscillator (lager 0-2, OSC A/B). Anropas från gränssnittet
+    // (message thread); ljudtråden läser tabellerna via userTable. Sparas i projektet.
+    bool loadUserTable (int layer, int osc, const juce::File& file);
+    const Wavetable* userTable (int layer, int osc) const { return userTables[(size_t) (layer * 2 + osc)].load(); }
+    juce::String getUserTableName (int layer, int osc) const { return userNames[(size_t) (layer * 2 + osc)]; }
+
     // Klicksampling. Anropas från gränssnittet (message thread).
     bool loadClickSample (const juce::File& file);
     void clearClickSample();
@@ -136,6 +142,17 @@ private:
 
     // Originalet sparas i projektet; en omsamplad kopia spelas. Bara message thread och
     // prepareToPlay rör originalet, därför låset (aldrig på ljudtråden).
+    static constexpr int numUserSlots = ParamID::numBassLayers * 2;
+    void setUserTable (int slot, std::unique_ptr<Wavetable> table, std::vector<float> frames, const juce::String& name);
+    juce::ValueTree userTablesToValueTree() const;
+    void userTablesFromValueTree (const juce::ValueTree& tree);
+
+    std::array<std::atomic<const Wavetable*>, numUserSlots> userTables {};
+    std::array<std::unique_ptr<Wavetable>, numUserSlots> userOwned;
+    std::vector<std::unique_ptr<Wavetable>> retiredTables; // ljudtråden kan läsa en ersatt tabell ett block till
+    std::array<std::vector<float>, numUserSlots> userFrames;
+    std::array<juce::String, numUserSlots> userNames;
+
     juce::CriticalSection clickLock;
     juce::AudioBuffer<float> clickOriginal;
     double clickOriginalRate = 0.0;

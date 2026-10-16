@@ -252,7 +252,7 @@ namespace
         check (! pattern.note (0, 0).on && pattern.note (0, sixteenth).on
                    && pattern.note (0, 3 * sixteenth).on && ! pattern.note (0, 4 * sixteenth).on,
                "Rolling: K B B B");
-        check (pattern.note (0, sixteenth).length == 17, "en ny ton är ungefär 70 % av steget", pattern.note (0, sixteenth).length.load());
+        check (pattern.note (0, sixteenth).length == sixteenth, "en ny ton fyller hela steget", pattern.note (0, sixteenth).length.load());
 
         const auto triplet = Pattern::ticksPerStep (BassGrid::eighthTriplet);
         check (pattern.applyTemplate (PatternTemplate::triplet) == BassGrid::eighthTriplet, "Triplet är i åttondelstrioler");
@@ -318,6 +318,48 @@ namespace
     }
 }
 
+namespace
+{
+    void testUserWavetable()
+    {
+        std::puts ("Wavetable: egen tabell av en WAV, och att den överlever spara/läsa");
+
+        // Fyra cykler om 2048 samples: den första en sågtand, resten fyrkanter. Frames väljs jämnt över filen.
+        std::vector<float> mono;
+        for (int cycle = 0; cycle < 4; ++cycle)
+            for (int i = 0; i < 2048; ++i)
+                mono.push_back (cycle == 0 ? 2.0f * (float) i / 2048.0f - 1.0f : (i < 1024 ? 1.0f : -1.0f));
+
+        std::vector<float> frames;
+        auto table = Wavetables::fromAudio (mono, "test", frames);
+        check (table != nullptr && frames.size() == (size_t) (Wavetable::frameSize * Wavetable::numFrames), "tabellen byggs av 4 cykler");
+        if (table == nullptr)
+            return;
+
+        // Första framen är sågtanden (0,5 vid tre fjärdedelar av cykeln), sista fyrkanten (-1).
+        const auto first = table->sample (0.0f, 0.75, 512.0), last = table->sample (1.0f, 0.75, 512.0);
+        check (first > 0.35f && first < 0.65f && last < -0.8f, "frames följer filens cykler", first);
+
+        // Likadant efter att ha sparats som frames och byggts om (projektets sparade läge).
+        auto restored = Wavetables::fromFrames ("test", frames);
+        check (restored != nullptr && std::abs (restored->sample (0.5f, 0.3, 512.0) - table->sample (0.5f, 0.3, 512.0)) < 1.0e-4f,
+               "tabellen blir densamma efter att ha byggts om av frames");
+
+        // En kort fil räknas som en enda cykel: alla frames lika, så POS gör ingenting.
+        std::vector<float> single;
+        for (int i = 0; i < 600; ++i)
+            single.push_back (std::sin (juce::MathConstants<float>::twoPi * (float) i / 600.0f));
+        std::vector<float> singleFrames;
+        auto singleTable = Wavetables::fromAudio (single, "single", singleFrames);
+        check (singleTable != nullptr && std::abs (singleTable->sample (0.0f, 0.25, 512.0) - singleTable->sample (1.0f, 0.25, 512.0)) < 1.0e-4f
+                   && singleTable->sample (0.0f, 0.25, 512.0) > 0.9f,
+               "en kort fil blir en enda cykel");
+
+        check (Wavetables::fromAudio ({ 0.0f, 0.0f, 0.0f }, "tom", singleFrames) == nullptr, "för kort eller tyst ljud ger ingen tabell");
+        check (Wavetables::names().size() == Wavetables::count() + 1 && Wavetables::userIndex() == Wavetables::count(), "User WAV är sista valet i listan");
+    }
+}
+
 void runEngineTests()
 {
     testKeyMapping();
@@ -329,4 +371,5 @@ void runEngineTests()
     testDuckerIsSmooth();
     testGate();
     testPatternTemplatesAndSaving();
+    testUserWavetable();
 }

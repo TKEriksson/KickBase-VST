@@ -2,6 +2,7 @@
 
 #include <juce_core/juce_core.h>
 #include <functional>
+#include <memory>
 #include <vector>
 
 // En wavetable: en serie vågformer (frames) som WT POS sveper igenom, som i Serum.
@@ -42,7 +43,14 @@ private:
 // De inbyggda tabellerna. Byggs första gången de används.
 namespace Wavetables
 {
-    int count();
-    juce::StringArray names();
+    int count();                  // antal inbyggda
+    int userIndex();              // TABLE-listans sista val, "User WAV": oscillatorns egen inladdade tabell
+    juce::StringArray names();    // de inbyggda och sist "User WAV"
     const Wavetable& get (int index);
+
+    // En tabell av ljud (som i Serum): en fil med cykler om 2048 samples blir upp till 16 frames
+    // som POS sveper igenom; en kort fil räknas som en enda cykel. `framesOut` får de 16 frames
+    // (numFrames * frameSize) som tabellen byggdes av, så att den kan sparas i projektet.
+    std::unique_ptr<Wavetable> fromAudio (const std::vector<float>& mono, const juce::String& name, std::vector<float>& framesOut);
+    std::unique_ptr<Wavetable> fromFrames (const juce::String& name, const std::vector<float>& frames);
 }

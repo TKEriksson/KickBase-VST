@@ -15,6 +15,8 @@ namespace OfflineRender
         int bars = 4;                  // så länge tonerna hålls
         juce::Array<int> notes { 60 }; // en per takt (upprepas); samma ton i rad hålls kvar
         int extraBars = 0;             // takter efter sista tonen, för svansar
+        int clipBars = 0;              // > 0: som FL:s mönsterklipp, tonen släpps och slås an igen var N:e takt
+        bool noteOnFirst = false;      // vid ett klippbyte kommer "ton på" före "ton av" (så skickar FL ibland)
         int blockSize = 512;
 
         // Fyller insignalen (FX-versionen) för blocket som börjar på given sample; annars tyst.

@@ -37,7 +37,7 @@ struct Pattern
     static constexpr int ticksPerQuarter = 96;
     static constexpr int ticksPerBar = ticksPerQuarter * 4;
     static constexpr int maxTicks = maxBars * ticksPerBar;
-    static constexpr float defaultGate = 0.7f; // en ny ton är så lång andel av ett rutnätssteg
+    static constexpr float defaultGate = 1.0f; // en ny ton fyller hela steget (lagrets GATE kortar den vid behov)
 
     static int bassStepsPerBar (BassGrid grid);
     static double bassStepsPerQuarter (BassGrid grid);
@@ -49,7 +49,7 @@ struct Pattern
     struct Note
     {
         std::atomic<bool> on { false };
-        std::atomic<int> length { 17 };       // i ticks
+        std::atomic<int> length { 24 };       // i ticks
         std::atomic<int> pitch { 0 };         // halvtoner från tonarten
         std::atomic<bool> slide { false };    // glid till nästa ton (303-stil)
         std::atomic<float> velocity { 0.8f };

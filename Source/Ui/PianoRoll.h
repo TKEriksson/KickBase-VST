@@ -1,14 +1,20 @@
 #pragma once
 
+#include <map>
+#include <set>
 #include "../Core/PluginBase.h"
 #include "Theme.h"
 
 // Pianorullen för ett baslager, som i FL Studio: tonerna ligger fritt i tiden (1/4 ... 1/64 och
-// trioler, valt med lagrets GRID som också är "snap") och i höjd, ±24 halvtoner från tonarten.
+// trioler) och i höjd, ±24 halvtoner från tonarten.
 //
 // - Klicka i tomt: ny ton (dra för att flytta den). Dra i en tons högerkant: längd.
+// - Skift + klick på en ton: lägg till/ta bort i markeringen. Skift + dra i tomt: markera med en ruta.
+//   Ctrl + A markerar alla. Markerade toner flyttas, förlängs och tas bort tillsammans.
 // - Högerklicka på en ton: ta bort. Dubbelklicka på en ton: slide på/av (triangeln i hörnet).
+// - Piltangenter flyttar de markerade (upp/ner = halvton, skift = oktav, vänster/höger = ett snap-steg).
 // - Skroll: tonhöjd. Ctrl + skroll: zooma i tid. Shift + skroll: flytta i tid.
+// - Verktygsraden: SNAP av/på, rutnätet (snap) 1/4 ... 1/64, radhöjd, markera alla och ta bort.
 // - Remsan längst ner är velocity: dra i en tons stapel.
 class PianoRoll : public juce::Component, public juce::SettableTooltipClient, private juce::Timer
 {
@@ -26,16 +32,25 @@ public:
     void mouseMove (const juce::MouseEvent&) override;
     void mouseExit (const juce::MouseEvent&) override;
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
+    bool keyPressed (const juce::KeyPress&) override;
 
 private:
-    enum class Drag { none, move, resize, velocity };
+    enum class Drag { none, move, resize, velocity, box };
+
+    struct NoteData
+    {
+        int length = 17, pitch = 0;
+        float velocity = 0.8f;
+        bool slide = false;
+    };
+    using NoteMap = std::map<int, NoteData>; // starttick -> ton
 
     void timerCallback() override;
 
     int bars() const;
     int totalTicks() const { return bars() * Pattern::ticksPerBar; }
     BassGrid grid() const;
-    int snapTicks() const { return Pattern::ticksPerStep (grid()); }
+    int snapTicks() const;
     int snapped (float tick) const;           // närmaste steg (nedåt) i ticks
     int rootNote() const;                     // basens grundton (midi)
     int rootPitchClass() const;
@@ -44,7 +59,7 @@ private:
     float xToTicks (float x) const;
     float pitchToY (int pitch) const;         // överkanten av tonens rad
     int yToPitch (float y) const;
-    float rowHeight() const { return 13.0f; }
+    float rowHeight() const { return rowH; }
     int visibleRows() const { return std::max (1, (int) (gridArea.getHeight() / rowHeight())); }
     void clampView();
     void fitToWidth();
@@ -54,23 +69,45 @@ private:
     int noteForVelocity (float x) const;
     juce::String describe (int tick) const;
     void setHover (int tick);
-    void removeAt (int tick);
+
+    NoteMap readNotes() const;
+    void applyNotes (const NoteMap& target); // skriver bara det som ändrats, så att ljudtråden aldrig ser ett tomt mönster
+    void pruneSelection();
+    void selectAll();
+    void deleteSelected();
+    void moveSelected (int deltaTicks, int deltaPitch);
+    void changeRowHeight (float delta);
+    void attachGridBox();
 
     PluginBase& processor;
     std::vector<juce::Colour> layerColours;
     int layer = 0;
 
-    juce::Rectangle<float> keyArea, rulerArea, gridArea, velocityArea;
+    juce::Rectangle<float> toolbarArea, keyArea, rulerArea, gridArea, velocityArea;
 
+    // Verktygsraden.
+    juce::TextButton snapButton { "SNAP" }, smallerButton { "-" }, biggerButton { "+" }, allButton { "ALL" }, deleteButton { "DEL" };
+    juce::ComboBox gridBox;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> gridAttachment;
+    bool snapEnabled = true;
+
+    float rowH = 13.0f;
     float pixelsPerTick = 1.0f;
     float scrollTicks = 0.0f;   // tiden längst till vänster
     float topPitch = 12.0f;     // översta synliga raden (halvtoner från tonarten)
     int justCreatedTick = -1;   // tonen som det första klicket i ett dubbelklick skapade
     int lastLength = 0;         // längden på den senast ritade tonen: nästa ton får samma
 
+    std::set<int> selection;    // starttick för de markerade tonerna
+
     Drag drag = Drag::none;
-    int dragTick = -1;
+    int dragTick = -1;          // tonen som greps (dess nuvarande starttick)
+    int dragStartTick = 0, dragStartPitch = 0;
     float grabOffsetTicks = 0.0f;
+    NoteMap dragSnapshot;       // alla toner när draget började
+    std::set<int> dragSelection; // de markerade när draget började (starttick)
+    juce::Point<float> boxStart, boxEnd;
+    std::set<int> boxBase;      // markeringen innan rutan (skift lägger till)
     bool edited = false;
     int hoverTick = -1;
     bool hoverEdge = false;
