@@ -243,13 +243,26 @@ void FruitLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& butt
     const auto on = button.getToggleState();
     auto bounds = button.getLocalBounds().reduced (4, 0);
 
-    // Om det är en aktiv pill med LED, ge lite plats åt LED:en
-    if (on && bounds.getWidth() > 40)
-        bounds.removeFromLeft (10);
+    // En pill som kan lysa (på/av) har alltid plats för LED:en till vänster, hur smal knappen än är: texten får det som blir kvar.
+    if (on || button.getClickingTogglesState())
+        bounds.removeFromLeft (15);
 
-    g.setFont (getTextButtonFont (button, button.getHeight()).boldened());
+    // Texten krymper först (ner till 7.5 pt) om knappen är smal, och förkortas med ... bara om den ändå inte ryms.
+    auto font = getTextButtonFont (button, button.getHeight()).boldened();
+    const auto text = button.getButtonText();
+    auto textWidth = [&] (float size)
+    {
+        juce::GlyphArrangement glyphs;
+        glyphs.addLineOfText (font.withHeight (size), text, 0.0f, 0.0f);
+        return glyphs.getBoundingBox (0, -1, true).getWidth();
+    };
+    auto size = font.getHeight();
+    while (size > 7.5f && textWidth (size) > (float) bounds.getWidth())
+        size -= 0.5f;
+
+    g.setFont (font.withHeight (size));
     g.setColour (on ? Theme::text : Theme::textDim);
-    g.drawFittedText (button.getButtonText(), bounds, juce::Justification::centred, 1);
+    g.drawText (text, bounds, juce::Justification::centred, true);
 }
 
 void FruitLookAndFeel::drawComboBox (juce::Graphics& g, int width, int height, bool, int, int, int, int, juce::ComboBox& box)

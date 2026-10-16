@@ -115,10 +115,24 @@ PianoRoll::PianoRoll (PluginBase& p, std::vector<juce::Colour> colours) : proces
     hBar.setSingleStepSize (24.0);
     vBar.setSingleStepSize (1.0);
 
+    if (auto* choice = dynamic_cast<juce::AudioParameterChoice*> (processor.apvts.getParameter (ParamID::rowBars (0))))
+        lengthBox.addItemList (choice->choices, 1);
+    lengthBox.setTooltip ("LENGTH - How many bars this piano roll lasts. Total = as long as the whole pattern. If you make it shorter, the notes after "
+                          "the new end are removed.");
+    addAndMakeVisible (lengthBox);
+
     attachGridBox();
+    attachLengthBox();
     updateToolButtons();
     updateToolbarVisibility();
     startTimerHz (30);
+}
+
+void PianoRoll::attachLengthBox()
+{
+    lengthAttachment.reset();
+    lengthAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
+        processor.apvts, ParamID::rowBars (layer == Pattern::kickLayer ? 0 : layer + 1), lengthBox);
 }
 
 void PianoRoll::attachGridBox()
@@ -136,6 +150,7 @@ void PianoRoll::setLayer (int newLayer)
         layer = newLayer;
         selection.clear();
         attachGridBox();
+        attachLengthBox();
     }
     repaint();
 }
@@ -640,6 +655,9 @@ void PianoRoll::resized()
     glideButton.setBounds (bottom.removeFromLeft (56));
     bottom.removeFromLeft (4);
     followButton.setBounds (bottom.removeFromLeft (64));
+    bottom.removeFromLeft (12);
+    lengthCaption = bottom.removeFromLeft (46).toFloat();
+    lengthBox.setBounds (bottom.removeFromLeft (84));
 
     const auto first = pixelsPerTick == 1.0f && scrollTicks == 0.0f;
     if (first)
@@ -1053,7 +1071,11 @@ void PianoRoll::paint (juce::Graphics& g)
         }
     }
 
-    // Verktygsraden: vad musen är över, och antal markerade.
+    // Verktygsraden: pianorullens längd, vad musen är över, och antal markerade.
+    g.setFont (Theme::font (9.5f, true));
+    g.setColour (Theme::textDim);
+    g.drawText ("LENGTH", lengthCaption, juce::Justification::centredRight);
+
     g.setFont (Theme::font (10.0f, true));
     g.setColour (colour);
     g.drawText (layerName(), infoArea.withWidth (86.0f), juce::Justification::centredLeft);

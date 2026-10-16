@@ -113,7 +113,8 @@ void HeaderBar::resized()
 {
     const auto hasPreviews = processor.getKeyboardState() != nullptr;
     const auto height = getHeight();
-    presets.setBounds (14 + Theme::logoWidth (subtitle) + 24, 9, hasPreviews ? 160 : 200, height - 18);
+    aiButton.setBounds (14 + Theme::logoWidth (subtitle) + 24, 9, 44, height - 18); // AI-knappen först, till vänster om presetväljaren
+    presets.setBounds (aiButton.getRight() + 10, 9, hasPreviews ? 160 : 200, height - 18);
     exportButton.setBounds (presets.getRight() + 10, 9, hasPreviews ? 70 : 76, height - 18);
 
     // PREVIEWS: en inringad ruta med högtalaren och tonväljaren, så att man ser att de hör ihop.
@@ -127,7 +128,6 @@ void HeaderBar::resized()
         noteBox.setBounds (listenAll.getRight() + 5, previewGroup.getY() + 14, 62, previewGroup.getHeight() - 20);
     }
 
-    aiButton.setBounds (toolsEnd() + 20 + meterWidth + 8, 9, 44, height - 18);
 
     // Till höger: tonart med lampan under, och en pill med tempo, takt och en knapp som börjar om vid 1.1.
     auto right = getLocalBounds().reduced (14, 0);
@@ -296,7 +296,7 @@ void HeaderBar::paint (juce::Graphics& g)
 
     // Utgångsmätare (L och R, -48 till 0 dB): visar att synten faktiskt ger ljud.
     {
-        auto meter = juce::Rectangle<float> ((float) toolsEnd() + 20.0f, 12.0f, (float) meterWidth, (float) getHeight() - 24.0f);
+        auto meter = juce::Rectangle<float> ((float) toolsEnd() + 16.0f, 12.0f, (float) meterWidth, (float) getHeight() - 24.0f);
         g.setFont (Theme::font (9.0f, true));
         g.setColour (Theme::textDim);
         g.drawText ("OUT", meter.removeFromLeft (26.0f), juce::Justification::centredLeft);
@@ -1060,6 +1060,34 @@ PatternModule::PatternModule (PluginBase& p, bool isInstrument)
 
 void PatternModule::timerCallback()
 {
+    // Görs en pianorulle kortare (själv, eller för att totalen blev kortare) tas tonerna efter det nya slutet bort, så att de inte ligger
+    // kvar dolda och dyker upp igen när den förlängs.
+    if (instrument)
+    {
+        const auto lengthsNow = Params::readPatternLengths (processor.apvts);
+        for (int row = 0; row < 4; ++row)
+        {
+            const auto layer = row == 0 ? Pattern::kickLayer : row - 1;
+            const auto bars = lengthsNow.barsOf (row);
+            if (lastRowBars[(size_t) row] > bars && processor.pattern.isCustom (layer))
+            {
+                const auto limit = bars * Pattern::ticksPerBar;
+                for (int tick = 0; tick < Pattern::maxTicks; ++tick)
+                {
+                    auto& note = processor.pattern.note (layer, tick);
+                    if (! note.on.load())
+                        continue;
+                    if (tick >= limit)
+                        note.on = false;
+                    else if (tick + note.length.load() > limit)
+                        note.length = limit - tick; // en ton som går över slutet kortas
+                }
+                processor.patternChanged();
+            }
+            lastRowBars[(size_t) row] = bars;
+        }
+    }
+
     // Lanerna är för stegmönstret: avstängda för ett lager som redigerats i pianorullen.
     // (Kickens toner spelar hela sitt ljud, så deras längd gör inget.)
     const auto custom = processor.pattern.isCustom (shownLayer);

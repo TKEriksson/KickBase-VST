@@ -216,6 +216,7 @@ private:
     juce::TextButton kickLayerButton { "KICK" };                // lager 3: kicken
     std::unique_ptr<ChoiceComponent> kickGrid;                   // kickens rutnät
     int lastNamesVersion = -1;
+    std::array<int, 4> lastRowBars { -1, -1, -1, -1 }; // radernas längd förra gången (kick, bas 1-3), för att ta bort toner efter ett nytt slut
 
     // Per lager (bara det valda syns): notrutnätet och tonlängden (PATTERN), och GATE: på/av, rutnät, djup och mjukhet.
     std::vector<std::unique_ptr<ChoiceComponent>> grids, gateGrids;

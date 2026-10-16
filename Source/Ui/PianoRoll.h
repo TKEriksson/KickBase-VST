@@ -145,8 +145,10 @@ private:
     double flashUntil = 0.0;
     std::unique_ptr<juce::FileChooser> chooser;
     juce::Component::SafePointer<juce::AlertWindow> saveDialog;
-    juce::Rectangle<float> infoArea;
-    juce::ComboBox gridBox;
+    juce::Rectangle<float> infoArea, lengthCaption;
+    juce::ComboBox gridBox, lengthBox;                      // rutnät och radens längd
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> lengthAttachment;
+    void attachLengthBox();
     juce::ScrollBar hBar { false }, vBar { true }; // tid och tonhöjd
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> gridAttachment;
     bool snapEnabled = true;

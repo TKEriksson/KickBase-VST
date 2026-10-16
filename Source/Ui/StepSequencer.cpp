@@ -212,6 +212,21 @@ void StepSequencer::timerCallback()
             Presets::setParameter (*totalParameter, totalParameter->convertTo0to1 ((float) choiceIndex));
     }
 
+    // En rad som är en pianorulle styr sin längd i pianorullen: rutan här är då avstängd.
+    for (size_t row = 0; row < lengthBoxes.size(); ++row)
+    {
+        const auto layerOfRow = row == 0 ? Pattern::kickLayer : (int) row - 1;
+        const auto inRoll = processor.pattern.isCustom (layerOfRow);
+        if (lengthBoxes[row]->isEnabled() == inRoll)
+        {
+            lengthBoxes[row]->setEnabled (! inRoll);
+            lengthBoxes[row]->setTooltip (inRoll ? juce::String ("This row is a piano roll: set its length in the piano roll (LENGTH in its toolbar).")
+                                                 : (row == 0 ? juce::String ("KICK") : layerNames[row - 1]) + " LENGTH - How many bars this row lasts. Total = as long as the whole pattern "
+                                                   "(which is at least as long as the longest row). A shorter row repeats (shown dimmed) while the longest row plays out, "
+                                                   "or plays once if its loop button is off.");
+        }
+    }
+
     // Högtalarknapparna lyser när raden förhandsspelas.
     for (size_t row = 0; row < listenButtons.size(); ++row)
     {
