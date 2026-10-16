@@ -89,7 +89,9 @@ namespace
     {
         std::puts ("Master: limitern håller taket och latensen stämmer");
         DummyProcessor processor;
-        MasterSection master (processor.apvts);
+        // På heapen: signaluttagen i mastern är flera MB, mer än en konsolprograms stack.
+        const auto masterOwner = std::make_unique<MasterSection> (processor.apvts);
+        auto& master = *masterOwner;
         master.prepare (rate, 2);
 
         const auto latency = master.getLatencySamples();
