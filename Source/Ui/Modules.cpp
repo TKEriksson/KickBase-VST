@@ -50,13 +50,32 @@ HeaderBar::HeaderBar (PluginBase& p, const juce::String& subtitleIn)
         exportButton.onClick = [this] { showExportMenu(); };
         addAndMakeVisible (exportButton);
     }
+
+    aiButton.setClickingTogglesState (true);
+    aiButton.setColour (juce::TextButton::buttonOnColourId, Theme::mix.withAlpha (0.6f));
+    aiButton.onClick = [this]
+    {
+        processor.setBridgeEnabled (aiButton.getToggleState());
+        aiButton.setToggleState (processor.isBridgeEnabled(), juce::dontSendNotification);
+        updateAiTooltip();
+    };
+    addAndMakeVisible (aiButton);
+    updateAiTooltip();
     startTimerHz (15);
+}
+
+void HeaderBar::updateAiTooltip()
+{
+    aiButton.setTooltip (processor.isBridgeEnabled()
+        ? "AI LINK is ON (instance " + processor.getBridgeId() + "). An AI assistant using the Kickbase MCP bridge can read and change this plugin and hear/measure it offline. Click to switch off."
+        : "AI LINK - Off. Switch on to let an AI assistant (through the Kickbase MCP bridge, for example in Claude Desktop) read and change this plugin. Local only; nothing is sent over the internet by Kickbase.");
 }
 
 void HeaderBar::resized()
 {
     presets.setBounds (14 + Theme::logoWidth (subtitle) + 24, 9, 200, getHeight() - 18);
     exportButton.setBounds (presets.getRight() + 10, 9, 76, getHeight() - 18);
+    aiButton.setBounds (exportButton.getRight() + 20 + 112 + 8, 9, 34, getHeight() - 18);
 }
 
 void HeaderBar::showExportMenu()

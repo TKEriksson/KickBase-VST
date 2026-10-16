@@ -40,6 +40,9 @@ set(PLUGIN_SOURCES
     Source/Core/Master.cpp
     Source/Core/Mixer.cpp
     Source/Core/OfflineRender.cpp
+    Source/Core/AudioAnalysis.cpp
+    Source/Core/ToolLayer.cpp
+    Source/Core/BridgeLink.cpp
     Source/Core/Params.cpp
     Source/Core/Presets.cpp
     Source/Core/PluginBase.cpp
@@ -72,6 +75,9 @@ set(FX_SOURCES
     Source/Fx/FxProcessor.cpp
     Source/Fx/FxEditor.cpp
 )
+
+# Guiderna som MCP-bryggan serverar till AI:n (get_guide), inbakade i programmet.
+juce_add_binary_data(KickbaseGuides SOURCES docs/AGENT_GUIDE.md docs/psytrance-kick-bass-reference.md)
 
 # Gemensamt för alla mål: samma definitioner och flaggor.
 function(myownfruit_configure target)
@@ -115,7 +121,7 @@ target_sources(MyOwnFruit PRIVATE
     ${INSTRUMENT_SOURCES}
     Source/Instrument/InstrumentEntry.cpp
 )
-target_link_libraries(MyOwnFruit PRIVATE juce::juce_audio_utils juce::juce_dsp)
+target_link_libraries(MyOwnFruit PRIVATE juce::juce_audio_utils juce::juce_dsp KickbaseGuides)
 myownfruit_configure_plugin(MyOwnFruit)
 
 # MyOwnFruit FX: effekten som läggs i mixern och hackar upp ljudet från en annan synth.
@@ -139,7 +145,7 @@ target_sources(MyOwnFruitFX PRIVATE
     ${FX_SOURCES}
     Source/Fx/FxEntry.cpp
 )
-target_link_libraries(MyOwnFruitFX PRIVATE juce::juce_audio_utils juce::juce_dsp)
+target_link_libraries(MyOwnFruitFX PRIVATE juce::juce_audio_utils juce::juce_dsp KickbaseGuides)
 myownfruit_configure_plugin(MyOwnFruitFX)
 
 # Tester för kärnan (ingen plugin, bara ett konsolprogram). Körs av build.bat.
@@ -167,5 +173,27 @@ target_sources(MyOwnFruitTool PRIVATE
     Tools/Analyzer.cpp
 )
 target_compile_definitions(MyOwnFruitTool PRIVATE JucePlugin_Name="Kickbase")
-target_link_libraries(MyOwnFruitTool PRIVATE juce::juce_audio_utils juce::juce_dsp)
+target_link_libraries(MyOwnFruitTool PRIVATE juce::juce_audio_utils juce::juce_dsp KickbaseGuides)
+
+# KickbaseMcp: MCP-bryggan (stdio) som AI-appar som Claude Desktop startar. Kör Kickbase utan DAW eller kopplar upp sig
+# mot en Kickbase i DAW:en.
+juce_add_console_app(KickbaseMcp PRODUCT_NAME "KickbaseMcp")
+target_sources(KickbaseMcp PRIVATE
+    ${PLUGIN_SOURCES}
+    ${INSTRUMENT_SOURCES}
+    ${FX_SOURCES}
+    Tools/McpServer.cpp
+)
+target_compile_definitions(KickbaseMcp PRIVATE JucePlugin_Name="Kickbase" JUCE_MODAL_LOOPS_PERMITTED=1)
+target_link_libraries(KickbaseMcp PRIVATE juce::juce_audio_utils juce::juce_dsp KickbaseGuides)
+myownfruit_configure(KickbaseMcp)
 myownfruit_configure(MyOwnFruitTool)
+
+
+# KickbaseHostTest: laddar den byggda VST3-filen som en värd, spelar, öppnar och stänger editorn och laddar ur den
+# (fångar krascher och hängningar vid avslut, som FL Studio annars visar).
+juce_add_console_app(KickbaseHostTest PRODUCT_NAME "KickbaseHostTest")
+target_sources(KickbaseHostTest PRIVATE Tools/HostTest.cpp)
+target_compile_definitions(KickbaseHostTest PRIVATE JUCE_PLUGINHOST_VST3=1 JUCE_MODAL_LOOPS_PERMITTED=1)
+target_link_libraries(KickbaseHostTest PRIVATE juce::juce_audio_utils juce::juce_audio_processors juce::juce_gui_basics)
+myownfruit_configure(KickbaseHostTest)

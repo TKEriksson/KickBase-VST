@@ -22,6 +22,7 @@ public:
     void resized() override;
 
 private:
+    juce::SharedResourcePointer<Theme::TextureCache> textures; // håller texturerna vid liv så länge editorn finns
     FruitLookAndFeel lookAndFeel; // först: måste leva längre än komponenterna som ritas med den
     FxProcessor& processor;
 

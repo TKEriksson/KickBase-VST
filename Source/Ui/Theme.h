@@ -50,11 +50,22 @@ namespace Theme
         return juce::Font (juce::FontOptions (height, bold ? juce::Font::bold : juce::Font::plain));
     }
 
+    // Texturerna ägs av en delad resurs som varje öppen editor håller i livet, i stället för av statiska bilder: en statisk
+    // juce::Image rivs först när DLL:en laddas ur, efter att JUCE stängts ner, och det får värdprogram (FL Studio) att
+    // krascha eller hänga sig vid avslut. Editorerna har en `juce::SharedResourcePointer<Theme::TextureCache>`.
+    struct TextureCache
+    {
+        juce::Image brushed;
+        std::unordered_map<int, juce::Image> circular;
+    };
+
     // Högkvalitativ borstad satin-metall för chassit: mycket fina, jämna vågräta mikrostreck
     // utan grova repor, sömlöst upprepningsbar.
     inline const juce::Image& brushedTexture()
     {
-        static const juce::Image image = []
+        juce::SharedResourcePointer<TextureCache> cache;
+        if (cache->brushed.isNull())
+            cache->brushed = []
         {
             constexpr int size = 512;
             juce::Image texture (juce::Image::ARGB, size, size, true);
@@ -75,7 +86,7 @@ namespace Theme
             }
             return texture;
         }();
-        return image;
+        return cache->brushed;
     }
 
     // Koncentriskt borstad ring-struktur ("lathe-turned circular brushed metal"):
@@ -83,7 +94,8 @@ namespace Theme
     // mot ljusvinkeln, precis som maskinbearbetade aluminiumrattar på studioutrustning.
     inline const juce::Image& circularBrushedTexture (int size)
     {
-        static std::unordered_map<int, juce::Image> cache;
+        juce::SharedResourcePointer<TextureCache> shared;
+        auto& cache = shared->circular;
         auto it = cache.find (size);
         if (it != cache.end())
             return it->second;

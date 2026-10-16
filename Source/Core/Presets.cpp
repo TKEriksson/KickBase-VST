@@ -103,8 +103,30 @@ namespace
         return presets;
     }
 
+    const std::vector<Preset>& listFor (Section section, bool effectVersion)
+    {
+        switch (section)
+        {
+            case Section::full:    return fullPresets();
+            case Section::kick:    return kickPresets();
+            case Section::bass:    return effectVersion ? gatePresets() : bassPresets();
+            case Section::pattern: return patternPresets();
+            case Section::effects:   return effectChainPresets();
+            case Section::sidechain: return sidechainPresets();
+            case Section::master:    return masterPresets();
+            case Section::lfo:       return lfoPresets();
+            default:                 break;
+        }
+        return fullPresets();
+    }
+}
+
+#include "PresetData.inl"
+
+namespace Presets
+{
     // Skriver en bas-rad (se Presets::Extras::PatternLine) till mönstret.
-    void writePatternLine (Pattern& pattern, const Presets::Extras::PatternLine& line)
+    void writePatternLine (Pattern& pattern, const Extras::PatternLine& line)
     {
         if (line.bars.empty() || ! juce::isPositiveAndBelow (line.layer, Pattern::numLayers))
             return;
@@ -134,28 +156,6 @@ namespace
         }
     }
 
-    const std::vector<Preset>& listFor (Section section, bool effectVersion)
-    {
-        switch (section)
-        {
-            case Section::full:    return fullPresets();
-            case Section::kick:    return kickPresets();
-            case Section::bass:    return effectVersion ? gatePresets() : bassPresets();
-            case Section::pattern: return patternPresets();
-            case Section::effects:   return effectChainPresets();
-            case Section::sidechain: return sidechainPresets();
-            case Section::master:    return masterPresets();
-            case Section::lfo:       return lfoPresets();
-            default:                 break;
-        }
-        return fullPresets();
-    }
-}
-
-#include "PresetData.inl"
-
-namespace Presets
-{
     const Extras* factoryExtras (Section section, bool effectVersion, int index)
     {
         const auto& list = listFor (section, effectVersion);

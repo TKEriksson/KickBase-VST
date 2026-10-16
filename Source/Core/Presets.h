@@ -69,6 +69,9 @@ namespace Presets
         std::vector<PatternLine> pattern; // tomt = mallens mönster
     };
 
+    // Skriver en bas-rad (se PatternLine) till mönstret: rensar lagret och lägger tonerna.
+    void writePatternLine (Pattern& pattern, const Extras::PatternLine& line);
+
     // Nullptr om presetet saknas.
     const Extras* factoryExtras (Section section, bool effectVersion, int index);
 

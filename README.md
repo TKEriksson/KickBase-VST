@@ -76,6 +76,22 @@ under `Dokument\Kickbase\Exports\`.
 - Dra in en WAV på kickmodulen (eller LOAD) för att använda en sampling som klick.
 - Instrumentet har separata kick- och basutgångar utöver huvudutgången (som alltid har hela mixen).
 
+## AI via MCP (Claude Desktop)
+
+`KickbaseMcp.exe` är en MCP-server som låter en AI-app (t.ex. Claude Desktop) skapa ljud och presets i Kickbase:
+läsa och sätta parametrar, effekter, kickens envelopes, mönster och sidechain, rendera och mäta (med spektrogram),
+spara presets och ångra. Verktygen och guiden som AI:n läser finns i `Source/Core/ToolLayer.cpp` och `docs/AGENT_GUIDE.md`.
+
+1. Bygg (`build.bat RelWithDebInfo`) och kör `powershell -ExecutionPolicy Bypass -File .\install-mcp.ps1`.
+   Skriptet kopierar bryggan till `%LOCALAPPDATA%\Kickbase` och lägger in den i Claude Desktops inställningar (med backup).
+2. Starta om Claude Desktop helt. Be Claude använda Kickbase-verktygen (den läser `get_guide` först).
+3. Utan DAW jobbar AI:n mot en egen instans ("headless"). Vill du att den ska styra pluginet i FL: klicka på **AI** i
+   pluginets topprad, och be AI:n köra `list_instances` och `use_instance`. Länken är lokal (named pipe) och av som standard.
+
+Förhandslyssningar och spektrogram hamnar i `Dokument\Kickbase\Previews`, presets i `Dokument\Kickbase\Presets`.
+`KickbaseMcp --selftest-link` testar länken, och `KickbaseHostTest <plugin.vst3>` laddar pluginet som en värd
+(spelar, öppnar och stänger editorn, laddar ur) för att hitta krascher vid avstängning.
+
 ## Utvecklingsverktyg
 
 `MyOwnFruitTool` (byggs tillsammans med pluginsen) testar utan DAW:

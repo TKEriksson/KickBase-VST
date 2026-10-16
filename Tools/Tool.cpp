@@ -20,6 +20,7 @@
 #include "../Source/Core/OfflineRender.h"
 #include "../Source/Instrument/InstrumentProcessor.h"
 #include "Analyzer.h"
+#include "../Source/Core/AudioAnalysis.h"
 #include <juce_dsp/juce_dsp.h>
 #include <cstdio>
 

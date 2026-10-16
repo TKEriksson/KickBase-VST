@@ -6,6 +6,7 @@
 #include "KickEngine.h"
 #include "Master.h"
 #include "Mixer.h"
+#include "OfflineRender.h"
 #include "Modulation.h"
 #include "Params.h"
 #include "Pattern.h"
@@ -13,6 +14,7 @@
 #include "Sidechain.h"
 #include "SignalTap.h"
 #include "TransportStatus.h"
+#include "BridgeLink.h"
 
 // Det som instrumentet och FX-versionen har gemensamt: parametrar, mönster, klicksampling,
 // sparat läge och klockan.
@@ -69,11 +71,20 @@ public:
     enum class ExportPart { full, kick, bass };
     bool exportWav (const juce::File& file, ExportPart part, int bars);
 
+    // Renderar en kopia av det nuvarande tillståndet offline (den levande ljudtråden rörs inte). Kick eller bas
+    // ensam stänger av den andra. Används av MCP-bryggans render_preview.
+    juce::AudioBuffer<float> renderOffline (const OfflineRender::Settings& settings, ExportPart part);
+
     // Egna wavetables från WAV-filer, en per oscillator (lager 0-2, OSC A/B). Anropas från gränssnittet
     // (message thread); ljudtråden läser tabellerna via userTable. Sparas i projektet.
     bool loadUserTable (int layer, int osc, const juce::File& file);
     const Wavetable* userTable (int layer, int osc) const { return userTables[(size_t) (layer * 2 + osc)].load(); }
     juce::String getUserTableName (int layer, int osc) const { return userNames[(size_t) (layer * 2 + osc)]; }
+
+    // AI-länken till MCP-bryggan (se BridgeLink). Av som standard; användaren slår på den med AI-knappen. Message thread.
+    void setBridgeEnabled (bool enabled);
+    bool isBridgeEnabled() const { return bridge != nullptr && bridge->isRunning(); }
+    juce::String getBridgeId() const { return bridge != nullptr ? bridge->getId() : juce::String(); }
 
     // Klicksampling. Anropas från gränssnittet (message thread).
     bool loadClickSample (const juce::File& file);
@@ -152,6 +163,8 @@ private:
     std::vector<std::unique_ptr<Wavetable>> retiredTables; // ljudtråden kan läsa en ersatt tabell ett block till
     std::array<std::vector<float>, numUserSlots> userFrames;
     std::array<juce::String, numUserSlots> userNames;
+
+    std::unique_ptr<BridgeLink::Server> bridge;
 
     juce::CriticalSection clickLock;
     juce::AudioBuffer<float> clickOriginal;

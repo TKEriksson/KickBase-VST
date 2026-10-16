@@ -171,6 +171,18 @@ juce::String PluginBase::getPresetName (Presets::Section section, int layer) con
                                              : presetNames[(size_t) section];
 }
 
+void PluginBase::setBridgeEnabled (bool enabled)
+{
+    if (enabled)
+    {
+        if (bridge == nullptr)
+            bridge = std::make_unique<BridgeLink::Server> (*this);
+        bridge->start();
+    }
+    else if (bridge != nullptr)
+        bridge->stop();
+}
+
 juce::Optional<juce::AudioPlayHead::PositionInfo> PluginBase::getHostPosition() const
 {
     if (auto* hostPlayHead = getPlayHead())
@@ -444,6 +456,27 @@ bool PluginBase::loadUserPreset (Presets::Section section, const juce::File& fil
     presetNameSlot (section, layer) = file.getFileNameWithoutExtension();
     patternChanged();
     return true;
+}
+
+juce::AudioBuffer<float> PluginBase::renderOffline (const OfflineRender::Settings& settings, ExportPart part)
+{
+    auto copy = createOfflineCopy();
+    juce::MemoryBlock state;
+    getStateInformation (state);
+    copy->setStateInformation (state.getData(), (int) state.getSize());
+
+    auto turnOff = [&copy] (const char* id)
+    {
+        if (auto* parameter = copy->apvts.getParameter (id))
+            parameter->setValueNotifyingHost (0.0f);
+    };
+    if (part == ExportPart::kick)
+        for (int layer = 0; layer < ParamID::numBassLayers; ++layer)
+            turnOff (ParamID::bass (layer, BassField::on).toRawUTF8());
+    if (part == ExportPart::bass)
+        turnOff (ParamID::kickOn);
+
+    return OfflineRender::render (*copy, settings);
 }
 
 bool PluginBase::exportWav (const juce::File& file, ExportPart part, int bars)
