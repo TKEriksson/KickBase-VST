@@ -64,7 +64,17 @@ private:
     Pattern::Note* noteAt (int layer, int step) const;
     int stepOfTick (int layer, int tick) const { return tick < 0 ? -1 : tick / ticksPerStep (layer); }
 
+    // Volym och FX-send för varje rad (kicken och varje lager), som i FL Studios kanalrack.
+    struct RowKnobs
+    {
+        juce::Slider level, fx;
+        std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> levelAttachment, fxAttachment;
+    };
+    void addRowKnobs (const juce::String& name, const juce::String& levelID, const juce::String& fxID, juce::Colour colour);
+    juce::Rectangle<int> knobBounds (juce::Rectangle<int> row, int index) const;
+
     PluginBase& processor;
+    std::vector<std::unique_ptr<RowKnobs>> rowKnobs; // [0] = kick, sedan ett per lager
     juce::StringArray layerNames;
     std::vector<juce::Colour> layerColours;
     Lane lane = Lane::velocity;

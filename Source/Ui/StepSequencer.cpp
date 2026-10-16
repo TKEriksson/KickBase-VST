@@ -2,7 +2,8 @@
 
 namespace
 {
-    constexpr int labelWidth = 64;
+    constexpr int knobsWidth = 46;                 // två små rattar (volym och FX) före namnet
+    constexpr int labelWidth = knobsWidth + 62;
     constexpr int pixelsPerSemitone = 5;
 }
 
@@ -11,7 +12,37 @@ StepSequencer::StepSequencer (PluginBase& p, juce::StringArray names, std::vecto
 {
     setTooltip ("PATTERN - Click steps to turn them on/off (drag to paint). Click a row's name to edit that layer's "
                 "velocity, gate, pitch or slide in the lane below. Right-click a step in the lane to reset it.");
+    addRowKnobs ("KICK", ParamID::kickLevel, ParamID::kickFxAmount, Theme::kick);
+    for (int layer = 0; layer < numLayers(); ++layer)
+        addRowKnobs (layerNames[layer], ParamID::bass (layer, BassField::level), ParamID::bass (layer, BassField::fxAmount), layerColours[(size_t) layer]);
+
     startTimerHz (30);
+}
+
+void StepSequencer::addRowKnobs (const juce::String& name, const juce::String& levelID, const juce::String& fxID, juce::Colour colour)
+{
+    auto knobs = std::make_unique<RowKnobs>();
+    auto setup = [&] (juce::Slider& slider, const juce::String& id, const juce::String& what, const juce::String& text)
+    {
+        slider.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
+        slider.setTextBoxStyle (juce::Slider::NoTextBox, true, 0, 0);
+        slider.setColour (juce::Slider::rotarySliderFillColourId, colour);
+        slider.setPopupDisplayEnabled (true, true, nullptr);
+        slider.setTooltip (name + " " + what + " - " + text);
+        addAndMakeVisible (slider);
+        if (auto* parameter = processor.apvts.getParameter (id))
+            slider.setDoubleClickReturnValue (true, parameter->convertFrom0to1 (parameter->getDefaultValue()));
+    };
+    setup (knobs->level, levelID, "VOLUME", "The volume of this row (the same as LEVEL on its page). Double-click to reset.");
+    setup (knobs->fx, fxID, "FX SEND", "How much of this row goes through its effect channel (pick the channel in the top right corner of its tab). Double-click to reset.");
+    knobs->levelAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (processor.apvts, levelID, knobs->level);
+    knobs->fxAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (processor.apvts, fxID, knobs->fx);
+    rowKnobs.push_back (std::move (knobs));
+}
+
+juce::Rectangle<int> StepSequencer::knobBounds (juce::Rectangle<int> row, int index) const
+{
+    return juce::Rectangle<int> (22, std::min (22, row.getHeight())).withCentre ({ labelColumn.getX() + 12 + index * 23, row.getCentreY() });
 }
 
 void StepSequencer::selectLayer (int layer)
@@ -71,10 +102,10 @@ void StepSequencer::resized()
     auto area = getLocalBounds();
     labelColumn = area.removeFromLeft (labelWidth);
 
-    // Raderna får plats ovanför lanet, som tar resten (minst en tredjedel).
+    // Raderna tar den plats de behöver, och lanet (velocity m.m.) en låg remsa under dem.
     const auto rows = 1 + numLayers();
     const auto gap = 5;
-    const auto rowHeight = juce::jlimit (18, 30, (area.getHeight() * 2 / 3 - gap * rows) / rows);
+    const auto rowHeight = juce::jlimit (22, 54, (area.getHeight() - 70 - 3 - gap * rows) / rows);
 
     kickRow = area.removeFromTop (rowHeight);
     area.removeFromTop (gap);
@@ -85,7 +116,15 @@ void StepSequencer::resized()
         area.removeFromTop (gap);
     }
     area.removeFromTop (3);
-    laneArea = area;
+    laneArea = area.removeFromTop (std::min (area.getHeight(), 100));
+
+    // Rattarna (volym och FX) längst till vänster i varje rad.
+    for (size_t i = 0; i < rowKnobs.size(); ++i)
+    {
+        const auto row = i == 0 ? kickRow : bassRows[i - 1];
+        rowKnobs[i]->level.setBounds (knobBounds (row, 0));
+        rowKnobs[i]->fx.setBounds (knobBounds (row, 1));
+    }
 }
 
 juce::Rectangle<float> StepSequencer::stepBounds (juce::Rectangle<int> row, int step, int numSteps) const
@@ -303,12 +342,13 @@ void StepSequencer::paint (juce::Graphics& g)
     paintLane (g);
 
     // Etiketter till vänster; det valda lagret markeras.
+    const auto nameColumn = labelColumn.withTrimmedLeft (knobsWidth);
     g.setFont (Theme::font (11.0f, true));
     g.setColour (Theme::kick);
-    g.drawText ("KICK", labelColumn.withY (kickRow.getY()).withHeight (kickRow.getHeight()), juce::Justification::centredLeft);
+    g.drawText ("KICK", nameColumn.withY (kickRow.getY()).withHeight (kickRow.getHeight()), juce::Justification::centredLeft);
     for (int layer = 0; layer < numLayers(); ++layer)
     {
-        const auto row = labelColumn.withY (bassRows[(size_t) layer].getY()).withHeight (bassRows[(size_t) layer].getHeight());
+        const auto row = nameColumn.withY (bassRows[(size_t) layer].getY()).withHeight (bassRows[(size_t) layer].getHeight());
         const auto colour = layerColours[(size_t) layer];
         if (layer == selectedLayer && numLayers() > 1)
         {

@@ -46,6 +46,7 @@ set(PLUGIN_SOURCES
     Source/Ui/FruitLookAndFeel.cpp
     Source/Ui/EnvelopeView.cpp
     Source/Ui/StepSequencer.cpp
+    Source/Ui/PianoRoll.cpp
     Source/Ui/Modules.cpp
     Source/Ui/PresetButton.cpp
     Source/Ui/ChannelViews.cpp

@@ -5,6 +5,7 @@
 #include "KickDisplay.h"
 #include "OscPanel.h"
 #include "EnvelopeView.h"
+#include "PianoRoll.h"
 #include "PresetButton.h"
 #include "StepSequencer.h"
 
@@ -118,6 +119,7 @@ private:
     void selectLane (StepSequencer::Lane lane);
     void showLayer (int layer);
     void showFillMenu();
+    void showPianoRoll (bool open);
 
     PluginBase& processor;
     const bool instrument;
@@ -126,6 +128,8 @@ private:
     PresetButton presets;
     std::vector<std::pair<std::unique_ptr<juce::TextButton>, StepSequencer::Lane>> laneButtons;
     StepSequencer sequencer;
+    PianoRoll pianoRoll;
+    juce::TextButton pianoButton { "PIANO ROLL" };
     std::vector<std::unique_ptr<juce::TextButton>> layerButtons; // BASS 1-3: vilket lager som redigeras
     std::vector<std::unique_ptr<ChoiceComponent>> grids; // ett per lager, bara det valda syns
     std::vector<std::unique_ptr<KnobComponent>> gates, slides;

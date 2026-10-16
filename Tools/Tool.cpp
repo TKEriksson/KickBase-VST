@@ -256,7 +256,8 @@ namespace
         auto processor = createProcessor (kind);
         processor->selectedTab = tab % 10;            // nedre panelen
         processor->selectedSynthTab = tab / 10 % 10;  // övre panelen (tiotal)
-        processor->selectedFxView = tab / 100;        // EFFECTS-vyn (hundratal)
+        processor->selectedFxView = tab / 100 % 10;   // EFFECTS-vyn (hundratal)
+        processor->pianoRollOpen = tab / 1000 > 0;    // pianorullen i stället för stegen (tusental)
         processor->setPlayConfigDetails (kind == "fx" ? 2 : 0, 2, renderRate, blockSize);
         processor->prepareToPlay (renderRate, blockSize);
 

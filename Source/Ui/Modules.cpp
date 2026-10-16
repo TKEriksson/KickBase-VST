@@ -539,7 +539,8 @@ PatternModule::PatternModule (PluginBase& p, bool isInstrument)
       sequencer (p,
                  isInstrument ? juce::StringArray { "BASS 1", "BASS 2", "BASS 3" } : juce::StringArray { "GATE" },
                  isInstrument ? std::vector<juce::Colour> { Theme::layerColour (0), Theme::layerColour (1), Theme::layerColour (2) }
-                              : std::vector<juce::Colour> { Theme::gate })
+                              : std::vector<juce::Colour> { Theme::gate }),
+      pianoRoll (p, { Theme::layerColour (0), Theme::layerColour (1), Theme::layerColour (2) })
 {
     addAndMakeVisible (length);
     addAndMakeVisible (presets);
@@ -599,8 +600,31 @@ PatternModule::PatternModule (PluginBase& p, bool isInstrument)
 
     sequencer.onLayerSelected = [this] (int layer) { showLayer (layer); };
     addAndMakeVisible (sequencer);
+    addChildComponent (pianoRoll);
+
+    // Pianorullen ändrar tonhöjd, så den finns bara i instrumentet.
+    pianoButton.setClickingTogglesState (false);
+    pianoButton.setColour (juce::TextButton::buttonOnColourId, Theme::pattern);
+    pianoButton.setTooltip ("PIANO ROLL - Edit the selected layer like in FL Studio's piano roll: notes anywhere in time (1/4 down to 1/64 "
+                            "and triplets), pitch up to 24 semitones either way, slide and velocity. The step view shows the same notes.");
+    pianoButton.onClick = [this] { showPianoRoll (! processor.pianoRollOpen); };
+    addChildComponent (pianoButton);
+    pianoButton.setVisible (instrument);
+
     selectLane (StepSequencer::Lane::velocity);
     showLayer (0);
+    showPianoRoll (instrument && processor.pianoRollOpen);
+}
+
+void PatternModule::showPianoRoll (bool open)
+{
+    processor.pianoRollOpen = open;
+    pianoButton.setToggleState (open, juce::dontSendNotification);
+    pianoRoll.setVisible (open);
+    sequencer.setVisible (! open);
+    for (auto& [button, lane] : laneButtons)
+        button->setVisible (! open);
+    resized();
 }
 
 void PatternModule::selectLane (StepSequencer::Lane lane)
@@ -613,6 +637,7 @@ void PatternModule::selectLane (StepSequencer::Lane lane)
 void PatternModule::showLayer (int layer)
 {
     shownLayer = layer;
+    pianoRoll.setLayer (layer);
     for (size_t i = 0; i < grids.size(); ++i)
     {
         grids[i]->setVisible ((int) i == layer);
@@ -707,6 +732,9 @@ void PatternModule::resized()
         slide->setBounds (knobRow.withTrimmedLeft (half));
     second.removeFromTop (4);
     fillButton.setBounds (second.removeFromTop (24));
+    second.removeFromTop (4);
+    pianoButton.setBounds (second.removeFromTop (28));
 
     sequencer.setBounds (area);
+    pianoRoll.setBounds (area);
 }
