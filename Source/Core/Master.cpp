@@ -12,7 +12,8 @@ MasterSection::MasterSection (juce::AudioProcessorValueTreeState& apvts)
       ceilingDb (apvts.getRawParameterValue ("masterCeiling")),
       releaseMs (apvts.getRawParameterValue ("masterRelease")),
       width (apvts.getRawParameterValue ("masterWidth")),
-      monoBelowHz (apvts.getRawParameterValue ("masterMonoBelow"))
+      monoBelowHz (apvts.getRawParameterValue ("masterMonoBelow")),
+      enhance (apvts.getRawParameterValue ("masterEnhance"))
 {
     jassert (on != nullptr && driveDb != nullptr && clip != nullptr && ceilingDb != nullptr && releaseMs != nullptr);
 }
@@ -35,6 +36,10 @@ void MasterSection::addParameters (juce::AudioProcessorValueTreeState::Parameter
                                                        AudioParameterFloatAttributes().withStringFromValueFunction (db)));
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "masterWidth", 1 }, "Master Width",
                                                        NormalisableRange<float> (0.0f, 2.0f, 0.001f), 1.0f,
+                                                       AudioParameterFloatAttributes().withStringFromValueFunction (
+                                                           [] (float v, int) { return String (roundToInt (v * 100.0f)) + " %"; })));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { "masterEnhance", 1 }, "Master Stereo Enhance",
+                                                       NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.0f,
                                                        AudioParameterFloatAttributes().withStringFromValueFunction (
                                                            [] (float v, int) { return String (roundToInt (v * 100.0f)) + " %"; })));
     NormalisableRange<float> monoRange (20.0f, 400.0f, 1.0f);
@@ -67,6 +72,9 @@ void MasterSection::prepare (double newSampleRate, int numChannels)
 void MasterSection::reset()
 {
     sideState.fill (0.0f);
+    enhanceLine.assign ((size_t) std::max (16, (int) (sampleRate * 0.02)), 0.0f);
+    enhanceIndex = 0;
+    enhanceLow = 0.0f;
     dcInput.assign ((size_t) channels, 0.0f);
     dcOutput.assign ((size_t) channels, 0.0f);
     for (auto& line : delayLines)
@@ -98,9 +106,13 @@ void MasterSection::process (juce::AudioBuffer<float>& buffer, int numSamples)
     const auto splitMono = monoHz > 21.0f;
     const auto sideCoefficient = (float) (1.0 - std::exp (-juce::MathConstants<double>::twoPi * monoHz / sampleRate));
 
+    const auto enhanceAmount = enhance->load();
+    const auto delaySamples = std::min ((int) enhanceLine.size() - 1, (int) (sampleRate * 0.009));
+    const auto enhanceLowCoefficient = (float) (1.0 - std::exp (-juce::MathConstants<double>::twoPi * 250.0 / sampleRate));
+
     for (int i = 0; i < numSamples; ++i)
     {
-        if (stereo && (widthGain != 1.0f || splitMono))
+        if (stereo && (widthGain != 1.0f || splitMono || enhanceAmount > 0.0f))
         {
             const auto left = buffer.getSample (0, i), right = buffer.getSample (1, i);
             const auto mid = 0.5f * (left + right);
@@ -110,6 +122,17 @@ void MasterSection::process (juce::AudioBuffer<float>& buffer, int numSamples)
                 sideState[0] += (side - sideState[0]) * sideCoefficient;
                 sideState[1] += (sideState[0] - sideState[1]) * sideCoefficient;
                 side -= sideState[1]; // bara det över gränsfrekvensen finns kvar
+            }
+            if (enhanceAmount > 0.0f)
+            {
+                // Mitten över ~250 Hz, fördröjd, läggs i sidan: breddar mono utan att basen rörs.
+                enhanceLow += (mid - enhanceLow) * enhanceLowCoefficient;
+                const auto high = mid - enhanceLow;
+                const auto size = (int) enhanceLine.size();
+                const auto delayed = enhanceLine[(size_t) ((enhanceIndex + size - delaySamples) % size)];
+                enhanceLine[(size_t) enhanceIndex] = high;
+                enhanceIndex = (enhanceIndex + 1) % size;
+                side += enhanceAmount * delayed * 0.8f;
             }
             side *= widthGain;
             buffer.setSample (0, i, mid + side);

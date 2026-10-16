@@ -32,6 +32,8 @@ namespace ParamID
     inline constexpr auto kickDrive       = "kickDrive";
     inline constexpr auto kickHighCut     = "kickHighCut";
     inline constexpr auto kickLevel       = "kickLevel";
+    inline constexpr auto kickFxChannel   = "kickFxChannel"; // effektkanal (hör till EFFECTS, inte KICK)
+    inline constexpr auto kickFxAmount    = "kickFxAmount";
 
     // Baslagren: se ParamID::bass (lager, fält) nedan.
 

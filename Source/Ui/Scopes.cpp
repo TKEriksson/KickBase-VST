@@ -18,8 +18,8 @@ ScopeView::ScopeView (PluginBase& p, std::vector<Trace> tracesIn, Mode modeIn)
 
 double ScopeView::windowSeconds() const
 {
-    // Två slag vid DAW:ens tempo, men högst så mycket som uttaget rymmer.
-    const auto seconds = 2.0 * 60.0 / std::max (40.0, processor.transportStatus.bpm.load());
+    // Fyra slag vid DAW:ens tempo (halv rullhastighet, så att man hinner se), men högst så mycket som uttaget rymmer.
+    const auto seconds = 4.0 * 60.0 / std::max (40.0, processor.transportStatus.bpm.load());
     const auto rate = std::max (8000.0, processor.getSampleRate());
     return std::min (seconds, (double) SignalTap::capacity / rate * 0.95);
 }
@@ -50,11 +50,11 @@ void ScopeView::paint (juce::Graphics& g)
     const auto area = bounds.reduced (6.0f, 8.0f);
 
     // Ett lodrätt streck per slag.
-    const auto beats = 2;
-    for (int beat = 1; beat < beats * 2; ++beat)
+    const auto beats = 4;
+    for (int beat = 1; beat < beats; ++beat)
     {
-        g.setColour (Theme::grid.withAlpha (beat % 2 == 0 ? 1.0f : 0.5f));
-        g.drawVerticalLine ((int) (area.getX() + area.getWidth() * (float) beat / (beats * 2)), area.getY(), area.getBottom());
+        g.setColour (Theme::grid);
+        g.drawVerticalLine ((int) (area.getX() + area.getWidth() * (float) beat / beats), area.getY(), area.getBottom());
     }
 
     if (mode == Mode::gainReduction)

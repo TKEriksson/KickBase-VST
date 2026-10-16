@@ -115,6 +115,9 @@ namespace Params
         layout.add (percent (ParamID::kickDrive, "Kick Drive", 0.2f));
         layout.add (floatParam (ParamID::kickHighCut, "Kick High Cut", skewed (500.0f, 20000.0f, 4000.0f, 1.0f), 20000.0f, formatHz));
         layout.add (percent (ParamID::kickLevel, "Kick Level", 0.8f));
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::kickFxChannel, 1 }, "Kick FX Channel",
+                                                            StringArray { "None", "A", "B", "C" }, 0));
+        layout.add (percent (ParamID::kickFxAmount, "Kick FX Amount", 1.0f));
     }
 
     void addBassCommonParams (Layout& layout, int layer, float defaultLevel)

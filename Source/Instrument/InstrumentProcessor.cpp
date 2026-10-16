@@ -355,6 +355,14 @@ void InstrumentProcessor::finishBlock (int numSamples)
             layerOuts[(size_t) layer].add (i, data[i], data[i]);
     }
 
+    // Kickens egen effektkanal: amount av kicken går genom kanalen, resten torrt.
+    const auto kickChannel = (int) params.get (ParamID::kickFxChannel) - 1;
+    const auto kickAmount = params.get (ParamID::kickFxAmount);
+    const auto kickRouted = kickChannel >= 0 && effects.isActive (kickChannel);
+    if (kickRouted)
+        effects.send (kickChannel, kickBuffer.getReadPointer (0), nullptr, numSamples, kickAmount);
+    const auto kickDry = kickRouted ? 1.0f - kickAmount : 1.0f;
+
     effects.process (numSamples, duckData, bassBuffer);
 
     for (int i = 0; i < numSamples; ++i)
@@ -370,7 +378,7 @@ void InstrumentProcessor::finishBlock (int numSamples)
 
     for (int i = 0; i < numSamples; ++i)
     {
-        mainOut.add (i, kickData[i] + left[i], kickData[i] + right[i]);
+        mainOut.add (i, kickData[i] * kickDry + left[i], kickData[i] * kickDry + right[i]);
         kickOut.add (i, kickData[i], kickData[i]);
     }
 }

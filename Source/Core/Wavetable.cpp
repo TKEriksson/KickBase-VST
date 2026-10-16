@@ -180,6 +180,12 @@ namespace
             return -std::cos (twoPi * warped);
         });
 
+        // Klassiska enkla vågformer (som 3x Osc): en ren form, POS gör ingenting.
+        add ("Classic Sine",     [] (double, double p) { return sine (p); });
+        add ("Classic Triangle", [] (double, double p) { return triangle (p); });
+        add ("Classic Saw",      [] (double, double p) { return saw (p); });
+        add ("Classic Square",   [] (double, double p) { return square (p); });
+
         return tables;
     }
 

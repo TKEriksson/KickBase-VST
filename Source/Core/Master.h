@@ -46,6 +46,12 @@ private:
     std::atomic<float>* releaseMs;
     std::atomic<float>* width;
     std::atomic<float>* monoBelowHz;
+    std::atomic<float>* enhance;
+
+    // Stereoförstärkaren: höga delar av mitten fördröjs ~9 ms och läggs i sidan (försvinner i mono).
+    std::vector<float> enhanceLine;
+    int enhanceIndex = 0;
+    float enhanceLow = 0.0f;
 
     // Sidosignalens lågpass (två poler) för mono under gränsfrekvensen.
     std::array<float, 4> sideState {};

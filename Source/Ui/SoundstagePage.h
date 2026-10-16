@@ -15,7 +15,7 @@ public:
 
 private:
     PresetButton presets;
-    KnobComponent width, monoBelow;
+    KnobComponent width, monoBelow, enhance;
     SpectrumView spectrum;
     StereoView stereo;
 };

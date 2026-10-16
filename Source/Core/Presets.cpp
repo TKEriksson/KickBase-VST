@@ -182,7 +182,7 @@ namespace Presets
             case Section::full:
                 return true;
             case Section::kick:
-                return id.startsWith ("kick");
+                return id.startsWith ("kick") && id != ParamID::kickFxChannel && id != ParamID::kickFxAmount;
             case Section::bass:
                 return (bassLayerOf (id) == layer && ! isLayerField (BassField::on) && ! isLayerField (BassField::gate)
                         && ! isLayerField (BassField::duck) && ! isLayerField (BassField::grid)
@@ -191,7 +191,7 @@ namespace Presets
             case Section::pattern:
                 return id == ParamID::patternBars || id == ParamID::noteEnd || isLayerField (BassField::grid) || isLayerField (BassField::gate);
             case Section::effects:
-                return Effects::isEffectParameter (id) || isLayerField (BassField::fxChannel) || isLayerField (BassField::fxAmount);
+                return Effects::isEffectParameter (id) || id == ParamID::kickFxChannel || id == ParamID::kickFxAmount || isLayerField (BassField::fxChannel) || isLayerField (BassField::fxAmount);
             case Section::sidechain:
                 return id.startsWith ("sc") || isLayerField (BassField::duck);
             case Section::master:

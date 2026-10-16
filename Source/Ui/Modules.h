@@ -18,7 +18,7 @@ public:
     void resized() override;
 
 private:
-    void timerCallback() override { repaint(); }
+    void timerCallback() override;
     void showExportMenu();
     void chooseExportTarget (int part, int bars); // part: 0-2 = PluginBase::ExportPart, 3 = alla tre
 
@@ -26,6 +26,8 @@ private:
     juce::String subtitle;
     PresetButton presets;
     juce::TextButton exportButton { "EXPORT" }; // bara i instrumentet
+    float peakL = 0.0f, peakR = 0.0f, holdL = 0.0f, holdR = 0.0f; // utgångsmätaren
+    std::vector<float> meterLeft, meterRight;
     std::unique_ptr<juce::FileChooser> chooser;
 };
 

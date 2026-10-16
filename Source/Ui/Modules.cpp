@@ -126,6 +126,23 @@ void HeaderBar::chooseExportTarget (int part, int bars)
     });
 }
 
+void HeaderBar::timerCallback()
+{
+    // Toppvärdet av de senaste ~20 ms på masterns utgång, med mjukt fall och en håll-markör.
+    processor.getMasterSection().outputTap.copyLatest (1024, meterLeft, meterRight);
+    auto lo = 0.0f, ro = 0.0f;
+    for (size_t i = 0; i < meterLeft.size(); ++i)
+    {
+        lo = std::max (lo, std::abs (meterLeft[i]));
+        ro = std::max (ro, std::abs (meterRight[i]));
+    }
+    peakL = lo > peakL ? lo : peakL * 0.8f;
+    peakR = ro > peakR ? ro : peakR * 0.8f;
+    holdL = std::max (peakL, holdL * 0.985f);
+    holdR = std::max (peakR, holdR * 0.985f);
+    repaint();
+}
+
 void HeaderBar::paint (juce::Graphics& g)
 {
     const auto& status = processor.transportStatus;
@@ -157,6 +174,30 @@ void HeaderBar::paint (juce::Graphics& g)
     g.setFont (Theme::font (13.0f, true));
     g.setColour (Theme::text);
     g.drawText (juce::String (status.bpm.load(), 1) + " BPM", bpmArea, juce::Justification::centred);
+
+    // Utgångsmätare (L och R, -48 till 0 dB): visar att synten faktiskt ger ljud.
+    {
+        auto meter = juce::Rectangle<float> ((float) exportButton.getRight() + 20.0f, 12.0f, 112.0f, (float) getHeight() - 24.0f);
+        g.setFont (Theme::font (9.0f, true));
+        g.setColour (Theme::textDim);
+        g.drawText ("OUT", meter.removeFromLeft (26.0f), juce::Justification::centredLeft);
+        auto bars = meter.reduced (0.0f, 1.0f);
+        const auto barHeight = (bars.getHeight() - 3.0f) * 0.5f;
+        auto drawBar = [&] (juce::Rectangle<float> bar, float peak, float hold)
+        {
+            auto fraction = [] (float amp) { return juce::jlimit (0.0f, 1.0f, (juce::Decibels::gainToDecibels (amp, -60.0f) + 48.0f) / 48.0f); };
+            g.setColour (juce::Colour (0xff0b0d18));
+            g.fillRoundedRectangle (bar, 2.0f);
+            const auto filled = bar.withWidth (bar.getWidth() * fraction (peak));
+            g.setGradientFill (juce::ColourGradient (Theme::mix, bar.getX(), 0.0f, Theme::master, bar.getRight(), 0.0f, false));
+            g.fillRoundedRectangle (filled, 2.0f);
+            g.setColour (juce::Colours::white.withAlpha (0.85f));
+            g.fillRect (bar.getX() + bar.getWidth() * fraction (hold) - 1.0f, bar.getY(), 2.0f, bar.getHeight());
+        };
+        drawBar (bars.removeFromTop (barHeight), peakL, holdL);
+        bars.removeFromTop (3.0f);
+        drawBar (bars, peakR, holdR);
+    }
 
     const auto following = status.followingHost.load();
     const auto lampColour = following ? Theme::mix : Theme::kick;
@@ -207,7 +248,8 @@ KickModule::KickModule (PluginBase& p)
                      { "CLICK", { knob (ParamID::kickClick, "LEVEL"), knob (ParamID::kickClickLength, "LENGTH"),
                                   knob (ParamID::kickClickTone, "TONE") } },
                      { "DRIVE", { choice (ParamID::kickClipMode, "MODE"), knob (ParamID::kickDrive, "AMOUNT") } },
-                     { "OUT", { knob (ParamID::kickHighCut, "HIGH CUT"), knob (ParamID::kickLevel, "LEVEL") } } });
+                     { "OUT", { knob (ParamID::kickHighCut, "HIGH CUT"), knob (ParamID::kickLevel, "LEVEL") } },
+                     { "FX SEND", { choice (ParamID::kickFxChannel, "CHANNEL"), knob (ParamID::kickFxAmount, "AMOUNT") } } });
 
     sampleLabel.setFont (Theme::font (11.0f));
     sampleLabel.setColour (juce::Label::textColourId, Theme::textDim);
