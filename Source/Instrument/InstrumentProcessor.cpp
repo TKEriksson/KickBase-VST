@@ -316,11 +316,13 @@ void InstrumentProcessor::renderSamples (int startSample, int endSample)
     {
         auto& bass = basses[(size_t) layer];
         auto* sourceData = layerBuffer.getWritePointer (layer);
+        auto* sourceRight = layerBufferRight.getWritePointer (layer);
         auto* amplitudeData = amplitudeBuffer.getWritePointer (layer);
         for (int i = startSample; i < endSample; ++i)
         {
             const auto b = bass.next();
-            sourceData[i] = b.source;
+            sourceData[i] = b.left;
+            sourceRight[i] = b.right;
             amplitudeData[i] = b.amplitude;
         }
     }
@@ -344,6 +346,7 @@ void InstrumentProcessor::finishBlock (int numSamples)
     for (int layer = 0; layer < numLayers; ++layer)
     {
         auto* data = layerBuffer.getWritePointer (layer);
+        auto* dataRight = layerBufferRight.getWritePointer (layer);
         const auto* amplitude = amplitudeBuffer.getReadPointer (layer);
         auto& ducker = duckers[(size_t) layer];
         const auto amount = mixer.duckEnabled (Mixer::firstBassSource + layer) ? duckAmounts[(size_t) layer] : 0.0f;
@@ -353,11 +356,12 @@ void InstrumentProcessor::finishBlock (int numSamples)
         auto lastDuckGain = 1.0f;
         for (int i = 0; i < numSamples; ++i)
         {
-            const auto level = data[i] * amplitude[i];
+            const auto levelLeft = data[i] * amplitude[i], levelRight = dataRight[i] * amplitude[i];
             const auto duckGain = ducker.next (duckData[i], amount);
-            data[i] = level * duckGain;
-            before[i] += level;
-            after[i] += data[i];
+            data[i] = levelLeft * duckGain;
+            dataRight[i] = levelRight * duckGain;
+            before[i] += 0.5f * (levelLeft + levelRight);
+            after[i] += 0.5f * (data[i] + dataRight[i]);
             duckGainTaps[(size_t) layer].push (duckGain);
             lastDuckGain = duckGain;
         }
@@ -368,12 +372,12 @@ void InstrumentProcessor::finishBlock (int numSamples)
         const auto amountToChannel = params.bass (layer, BassField::fxAmount);
         const auto routed = channel >= 0 && effects.isActive (channel);
         if (routed)
-            effects.send (channel, data, nullptr, numSamples, amountToChannel);
+            effects.send (channel, data, dataRight, numSamples, amountToChannel);
         const auto dryGain = routed ? 1.0f - amountToChannel : 1.0f;
 
-        mixer.mix (Mixer::firstBassSource + layer, data, nullptr, numSamples, dryGain, maxBus, bypassBus);
+        mixer.mix (Mixer::firstBassSource + layer, data, dataRight, numSamples, dryGain, maxBus, bypassBus);
         for (int i = 0; i < numSamples; ++i)
-            layerOuts[(size_t) layer].add (i, data[i], data[i]);
+            layerOuts[(size_t) layer].add (i, data[i], dataRight[i]);
     }
 
     // Kickens egen effektkanal: amount av kicken går genom kanalen, resten torrt.
@@ -423,6 +427,7 @@ void InstrumentProcessor::ensureScratchSize (int numSamples)
     kickBuffer.setSize (1, numSamples, false, true, true);
     duckBuffer.setSize (1, numSamples, false, true, true);
     layerBuffer.setSize (numLayers, numSamples, false, true, true);
+    layerBufferRight.setSize (numLayers, numSamples, false, true, true);
     tapBuffer.setSize (2, numSamples, false, true, true);
     amplitudeBuffer.setSize (numLayers, numSamples, false, true, true);
     bassBuffer.setSize (2, numSamples, false, true, true);

@@ -75,8 +75,8 @@ private:
     Mixer mixer { apvts };
 
     // Blockets mellanresultat: kick, hur mycket basen ska duckas (före varje lagers mängd),
-    // varje baslagers källa och amplitud (en kanal per lager), och basens summa (stereo).
-    juce::AudioBuffer<float> kickBuffer, duckBuffer, layerBuffer, amplitudeBuffer, bassBuffer, tapBuffer;
+    // varje baslagers källa (vänster i layerBuffer, höger i layerBufferRight) och amplitud, och basens summa.
+    juce::AudioBuffer<float> kickBuffer, duckBuffer, layerBuffer, layerBufferRight, amplitudeBuffer, bassBuffer, tapBuffer;
 
     // Mixerns två stereobussar: det som går genom maximizern, och det som går förbi den.
     juce::AudioBuffer<float> maxBus, bypassBus;

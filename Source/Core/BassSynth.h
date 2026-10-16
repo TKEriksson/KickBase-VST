@@ -24,6 +24,8 @@ struct OscParams
     float warpAmount = 0.0f;  // 0..1
     float phase = 0.0f;       // startfas 0..1
     float randomPhase = 0.0f; // 0 = samma fas varje ton (tight), 1 = slumpad
+    float pan = 0.0f;         // -1 (vänster) ... 1 (höger)
+    float stereo = 0.5f;      // hur långt unison-stämmorna sprids i stereobilden, 0..1
 };
 
 struct BassParams
@@ -74,12 +76,12 @@ public:
     // källan (oscillatorer + filter + drive) och amplituden (envelope * velocity * level).
     struct Output
     {
-        float source = 0.0f;
+        float left = 0.0f, right = 0.0f; // stereo (oscillatorernas pan och unison-spridning)
         float amplitude = 0.0f;
     };
 
     Output next();
-    float nextSample() { const auto o = next(); return o.source * o.amplitude; }
+    float nextSample() { const auto o = next(); return 0.5f * (o.left + o.right) * o.amplitude; }
     bool isActive() const { return stage != Stage::idle; }
 
     // Filter-envelopens form (0..1) efter `seconds`. Används även av gränssnittet.
@@ -88,13 +90,19 @@ public:
     // Fasen efter warp (för gränssnittets bild och för oscillatorn). `fmInput` -1..1.
     static double warpPhase (WarpMode mode, float amount, double phase, float fmInput);
 
+    struct Stereo
+    {
+        float left = 0.0f, right = 0.0f;
+        float mid() const { return 0.5f * (left + right); }
+    };
+
     // En wavetable-oscillator med unison. next() ger signalen utan nivå (OSC B kan modulera A
     // även när den själv är tyst).
     struct Oscillator
     {
         std::array<double, maxUnison> phases {};
         void retrigger (const OscParams& p, juce::Random& random);
-        float next (const OscParams& p, double frequency, double sampleRate, float warpAmount, float fmInput);
+        Stereo next (const OscParams& p, double frequency, double sampleRate, float warpAmount, float fmInput);
     };
 
 private:
@@ -117,6 +125,8 @@ private:
     float velocity = 1.0f;
     double noteTime = 0.0;   // sekunder sedan senaste anslag (för filter-envelopen)
 
-    juce::dsp::StateVariableTPTFilter<float> filter1, filter2;
+    // Filtren för mitten (filter1, filter2) och sidan: samma inställning, så att det blir stereo utan att
+    // ljudet låter olika i vänster och höger.
+    juce::dsp::StateVariableTPTFilter<float> filter1, filter2, sideFilter1, sideFilter2;
     juce::Random random { 1 };
 };

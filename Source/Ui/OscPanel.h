@@ -24,7 +24,7 @@ private:
 };
 
 // En oscillator (OSC A eller OSC B) i ett baslager: tabell, warp, bilden och rattarna.
-class OscPanel : public juce::Component
+class OscPanel : public juce::Component, private juce::Timer
 {
 public:
     OscPanel (PluginBase& processor, int layer, int osc, juce::Colour accent);
@@ -32,9 +32,15 @@ public:
     void resized() override;
 
 private:
-    const int osc;
+    void timerCallback() override;
+    void chooseTable (int index);
+
+    PluginBase& processor;
+    const int layer, osc;
     juce::Colour accent;
     ChoiceComponent table, warp;
+    std::array<juce::TextButton, 4> shapeButtons; // SIN, TRI, SAW, SQR: de klassiska vågformerna
+    int lastTable = -1;
     WavetableView view;
     std::vector<std::unique_ptr<KnobComponent>> knobs;
 };

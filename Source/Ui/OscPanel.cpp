@@ -100,8 +100,8 @@ void WavetableView::paint (juce::Graphics& g)
 }
 
 //==============================================================================
-OscPanel::OscPanel (PluginBase& p, int layer, int oscIn, juce::Colour accentIn)
-    : osc (oscIn), accent (accentIn),
+OscPanel::OscPanel (PluginBase& p, int layerIn, int oscIn, juce::Colour accentIn)
+    : processor (p), layer (layerIn), osc (oscIn), accent (accentIn),
       table (p.apvts, ParamID::bass (layer, ParamID::oscField (oscIn, BassField::aTable)), "TABLE"),
       warp (p.apvts, ParamID::bass (layer, ParamID::oscField (oscIn, BassField::aWarp)), "WARP"),
       view (p, layer, oscIn, accentIn)
@@ -110,14 +110,51 @@ OscPanel::OscPanel (PluginBase& p, int layer, int oscIn, juce::Colour accentIn)
     addAndMakeVisible (warp);
     addAndMakeVisible (view);
 
+    // Klassiska vågformer med ett klick (som i FL:s 3x Osc), utan att behöva förstå wavetables.
+    const char* shapeNames[] { "SIN", "TRI", "SAW", "SQR" };
+    const char* shapeHelp[] { "Pure sine wave.", "Triangle wave: soft, with only odd overtones.",
+                              "Saw wave: bright and buzzy, all overtones. The classic bass sound.",
+                              "Square wave: hollow, with only odd overtones. Use WARP > PWM to change the pulse width." };
+    for (size_t i = 0; i < shapeButtons.size(); ++i)
+    {
+        auto& button = shapeButtons[i];
+        button.setButtonText (shapeNames[i]);
+        button.setTooltip (juce::String ("CLASSIC WAVE - ") + shapeHelp[i] + " (Wavetables are in the TABLE list.)");
+        button.setColour (juce::TextButton::buttonOnColourId, accent.withAlpha (0.6f));
+        button.onClick = [this, i] { chooseTable (Wavetables::count() - 4 + (int) i); };
+        addAndMakeVisible (button);
+    }
+    startTimerHz (10);
+
     using F = BassField;
     const std::pair<F, const char*> specs[] { { F::aPos, "POS" }, { F::aLevel, "LEVEL" }, { F::aSemi, "SEMI" }, { F::aFine, "FINE" },
                                               { F::aPhase, "PHASE" }, { F::aUnison, "UNISON" }, { F::aDetune, "DETUNE" },
-                                              { F::aBlend, "BLEND" }, { F::aWarpAmount, "WARP" }, { F::aRandom, "RAND" } };
+                                              { F::aBlend, "BLEND" }, { F::aPan, "PAN" }, { F::aStereo, "STEREO" },
+                                              { F::aWarpAmount, "WARP" }, { F::aRandom, "RAND" } };
     for (const auto& [field, name] : specs)
     {
         knobs.push_back (std::make_unique<KnobComponent> (p.apvts, ParamID::bass (layer, ParamID::oscField (osc, field)), name, accent));
         addAndMakeVisible (*knobs.back());
+    }
+}
+
+void OscPanel::timerCallback()
+{
+    const auto current = (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, ParamID::oscField (osc, BassField::aTable)))->load();
+    if (current == lastTable)
+        return;
+    lastTable = current;
+    for (size_t i = 0; i < shapeButtons.size(); ++i)
+        shapeButtons[i].setToggleState (current == Wavetables::count() - 4 + (int) i, juce::dontSendNotification);
+}
+
+void OscPanel::chooseTable (int index)
+{
+    if (auto* parameter = processor.apvts.getParameter (ParamID::bass (layer, ParamID::oscField (osc, BassField::aTable))))
+    {
+        parameter->beginChangeGesture();
+        parameter->setValueNotifyingHost (parameter->convertTo0to1 ((float) index));
+        parameter->endChangeGesture();
     }
 }
 
@@ -144,6 +181,11 @@ void OscPanel::resized()
     table.setBounds (choices.removeFromLeft (choices.getWidth() / 2 + 10).withTrimmedRight (3));
     warp.setBounds (choices.withTrimmedLeft (3));
     left.removeFromTop (4);
+    auto shapes = left.removeFromTop (20);
+    const auto shapeWidth = shapes.getWidth() / (int) shapeButtons.size();
+    for (auto& button : shapeButtons)
+        button.setBounds (shapes.removeFromLeft (shapeWidth).reduced (1, 0));
+    left.removeFromTop (4);
     view.setBounds (left);
     area.removeFromLeft (4);
 
@@ -151,8 +193,8 @@ void OscPanel::resized()
     for (int row = 0; row < 2; ++row)
     {
         auto rowArea = area.removeFromTop (rowHeight);
-        const auto width = rowArea.getWidth() / 5;
-        for (int i = 0; i < 5; ++i)
-            knobs[(size_t) (row * 5 + i)]->setBounds (rowArea.removeFromLeft (width));
+        const auto width = rowArea.getWidth() / 6;
+        for (int i = 0; i < 6; ++i)
+            knobs[(size_t) (row * 6 + i)]->setBounds (rowArea.removeFromLeft (width));
     }
 }

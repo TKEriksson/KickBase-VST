@@ -65,8 +65,8 @@ namespace ParamID
     {
         static const char* names[] { "On", "Level", "Gate", "Duck", "Grid", "FxChannel", "FxAmount",
                                      "Octave", "Tune",
-                                     "ATable", "APos", "ALevel", "ASemi", "AFine", "AUnison", "ADetune", "ABlend", "AWarp", "AWarpAmount", "APhase", "ARandom",
-                                     "BTable", "BPos", "BLevel", "BSemi", "BFine", "BUnison", "BDetune", "BBlend", "BWarp", "BWarpAmount", "BPhase", "BRandom",
+                                     "ATable", "APos", "ALevel", "ASemi", "AFine", "AUnison", "ADetune", "ABlend", "AWarp", "AWarpAmount", "APhase", "ARandom", "APan", "AStereo",
+                                     "BTable", "BPos", "BLevel", "BSemi", "BFine", "BUnison", "BDetune", "BBlend", "BWarp", "BWarpAmount", "BPhase", "BRandom", "BPan", "BStereo",
                                      "WarpEnv", "Sub", "SubOctave", "Noise",
                                      "FilterType", "KeyTrack", "Cutoff", "Resonance", "EnvAmount", "EnvDecay", "VelToEnv",
                                      "Attack", "Decay", "Sustain", "Release", "Glide", "Drive" };
@@ -168,6 +168,10 @@ namespace Params
             layout.add (percent (oid (F::aWarpAmount), oscTitle + "Warp Amount", 0.0f));
             layout.add (percent (oid (F::aPhase), oscTitle + "Phase", 0.0f));
             layout.add (percent (oid (F::aRandom), oscTitle + "Random Phase", 0.0f));
+            layout.add (floatParam (oid (F::aPan), oscTitle + "Pan", NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f,
+                                    [] (float v) { const auto p = roundToInt (std::abs (v) * 100.0f);
+                                                   return p == 0 ? String ("C") : String (p) + (v < 0.0f ? " L" : " R"); }));
+            layout.add (percent (oid (F::aStereo), oscTitle + "Stereo Spread", 0.5f));
         }
         layout.add (percent (id (F::warpEnv), title + "Warp Env", 0.0f));
         layout.add (percent (id (F::sub), title + "Sub", 0.3f));
@@ -326,6 +330,8 @@ BassParams ParamRefs::readBass (int layer, int rootMidiNote) const
         o.warpAmount  = oget (F::aWarpAmount);
         o.phase       = oget (F::aPhase);
         o.randomPhase = oget (F::aRandom);
+        o.pan = oget (F::aPan);
+        o.stereo = oget (F::aStereo);
     }
     p.warpEnv    = get (F::warpEnv);
     p.noise      = get (F::noise);

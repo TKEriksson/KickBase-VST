@@ -75,6 +75,8 @@ namespace Help
             { "bassAWarp", "Bends the waveform before it is played: Sync (screaming), Bend, PWM (narrower), Mirror, FM (B) = OSC B modulates OSC A." },
             { "bassAWarpAmount", "How much the WARP mode changes the waveform." },
             { "bassAPhase", "Where in the waveform each note starts. The same start every note gives a tight, punchy attack." },
+            { "bassAPan", "Pans this oscillator left or right. Centre (C) leaves it in the middle." },
+            { "bassAStereo", "How far the UNISON voices are spread across the stereo picture: 0 % = all in the middle (mono), 100 % = the outer voices go hard left and right. Does nothing with UNISON = 1. Keep the low end narrow." },
             { "bassARandom", "Randomises the start phase per note: looser and more analog, less punchy." },
             { "bassWarpEnv", "Extra warp on OSC A at the start of each note, following the filter envelope: a bright, digital 'knock' that fades." },
             { "bassSub", "Level of a pure sine sub under the bass, for weight in the low end." },

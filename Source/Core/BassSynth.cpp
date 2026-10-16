@@ -21,7 +21,7 @@ void BassSynth::prepare (double newSampleRate)
     sampleRate = newSampleRate;
     Wavetables::count(); // bygg tabellerna här (inte på ljudtråden)
 
-    for (auto* filter : { &filter1, &filter2 })
+    for (auto* filter : { &filter1, &filter2, &sideFilter1, &sideFilter2 })
     {
         filter->prepare ({ sampleRate, 512, 1 });
         filter->setType (juce::dsp::StateVariableTPTFilterType::lowpass);
@@ -38,6 +38,8 @@ void BassSynth::reset()
     slideHeld = false;
     filter1.reset();
     filter2.reset();
+    sideFilter1.reset();
+    sideFilter2.reset();
 }
 
 double BassSynth::warpPhase (WarpMode mode, float amount, double phase, float fmInput)
@@ -72,14 +74,14 @@ void BassSynth::Oscillator::retrigger (const OscParams& p, juce::Random& rng)
         ph = wrap (p.phase + p.randomPhase * rng.nextDouble());
 }
 
-float BassSynth::Oscillator::next (const OscParams& p, double frequency, double rate, float warpAmount, float fmInput)
+BassSynth::Stereo BassSynth::Oscillator::next (const OscParams& p, double frequency, double rate, float warpAmount, float fmInput)
 {
     const auto& table = Wavetables::get (p.table);
     const auto voices = juce::jlimit (1, maxUnison, p.unison);
     const auto base = frequency * std::exp2 ((p.semis + p.fineCents * 0.01f) / 12.0f);
 
     // Sidostämmorna sprids jämnt ±detune; mittstämman (eller de två mittersta) har full nivå.
-    auto sum = 0.0f, gainSum = 0.0f;
+    auto sumLeft = 0.0f, sumRight = 0.0f, gainSum = 0.0f;
     for (int v = 0; v < voices; ++v)
     {
         const auto spread = voices > 1 ? (double) v / (voices - 1) * 2.0 - 1.0 : 0.0;
@@ -89,12 +91,19 @@ float BassSynth::Oscillator::next (const OscParams& p, double frequency, double 
 
         auto& phase = phases[(size_t) v];
         const auto warped = warpPhase (p.warp, warpAmount, phase, fmInput);
-        sum += gain * table.sample (p.position, warped, rate * 0.5 / std::max (1.0, hz));
+        const auto voice = gain * table.sample (p.position, warped, rate * 0.5 / std::max (1.0, hz));
+
+        // Stämmorna sprids över stereobilden (balans: mitten oförändrad, ytterkanten tystnar åt andra sidan).
+        const auto voicePan = voices > 1 ? (float) spread * p.stereo : 0.0f;
+        sumLeft += voice * (voicePan > 0.0f ? 1.0f - voicePan : 1.0f);
+        sumRight += voice * (voicePan < 0.0f ? 1.0f + voicePan : 1.0f);
         gainSum += gain * gain;
 
         phase = wrap (phase + hz / rate);
     }
-    return sum / std::sqrt (std::max (1.0f, gainSum));
+    const auto normal = 1.0f / std::sqrt (std::max (1.0f, gainSum));
+    const auto pan = juce::jlimit (-1.0f, 1.0f, p.pan);
+    return { sumLeft * normal * (pan > 0.0f ? 1.0f - pan : 1.0f), sumRight * normal * (pan < 0.0f ? 1.0f + pan : 1.0f) };
 }
 
 void BassSynth::noteOn (int semitones, float newVelocity, int gateSamples, bool slide)
@@ -202,14 +211,19 @@ BassSynth::Output BassSynth::next()
     // OSC B först: den kan frekvensmodulera OSC A (warp FM). Warp env lägger till warp på A
     // i början av varje ton.
     const auto bNeeded = params.oscB.level > 0.0f || params.oscA.warp == WarpMode::fm;
-    const auto b = bNeeded ? oscB.next (params.oscB, frequency, sampleRate, params.oscB.warpAmount, 0.0f) : 0.0f;
+    const auto b = bNeeded ? oscB.next (params.oscB, frequency, sampleRate, params.oscB.warpAmount, 0.0f) : Stereo {};
     const auto warpA = params.oscA.warpAmount + params.warpEnv * envelope;
-    const auto a = params.oscA.level > 0.0f ? oscA.next (params.oscA, frequency, sampleRate, warpA, b) : 0.0f;
+    const auto a = params.oscA.level > 0.0f ? oscA.next (params.oscA, frequency, sampleRate, warpA, b.mid()) : Stereo {};
 
-    auto sample = a * params.oscA.level + b * params.oscB.level;
-    sample += params.sub * (float) std::sin (juce::MathConstants<double>::twoPi * subPhase);
+    // Sub och brus ligger i mitten. Mitten och sidan filtreras var för sig (samma filter), och
+    // blir sedan vänster och höger igen.
+    auto left = a.left * params.oscA.level + b.left * params.oscB.level;
+    auto right = a.right * params.oscA.level + b.right * params.oscB.level;
+    auto centre = params.sub * (float) std::sin (juce::MathConstants<double>::twoPi * subPhase);
     if (params.noise > 0.0f)
-        sample += params.noise * (random.nextFloat() * 2.0f - 1.0f);
+        centre += params.noise * (random.nextFloat() * 2.0f - 1.0f);
+    auto sample = 0.5f * (left + right) + centre;
+    auto side = 0.5f * (left - right);
 
     subPhase = wrap (subPhase + (params.subOctave == 0 ? frequency : frequency * 0.5) / sampleRate);
 
@@ -225,19 +239,27 @@ BassSynth::Output BassSynth::next()
     const auto type = params.filterType == BassFilterType::bandpass ? Type::bandpass
                     : params.filterType == BassFilterType::highpass ? Type::highpass
                                                                     : Type::lowpass;
-    filter2.setType (type);
-    filter2.setCutoffFrequency (clampedCutoff);
-    filter2.setResonance (q);
+    for (auto* filter : { &filter2, &sideFilter2 })
+    {
+        filter->setType (type);
+        filter->setCutoffFrequency (clampedCutoff);
+        filter->setResonance (q);
+    }
 
     if (params.filterType == BassFilterType::lowpass24)
     {
-        filter1.setCutoffFrequency (clampedCutoff);
-        filter1.setResonance (0.707f);
+        for (auto* filter : { &filter1, &sideFilter1 })
+        {
+            filter->setCutoffFrequency (clampedCutoff);
+            filter->setResonance (0.707f);
+        }
         sample = filter1.processSample (0, sample);
+        side = sideFilter1.processSample (0, side);
     }
     sample = filter2.processSample (0, sample);
+    side = sideFilter2.processSample (0, side);
     noteTime += 1.0 / sampleRate;
 
     // Drive verkar på källan (före gaten), så att distorsionen låter likadant oavsett envelope.
-    return { softClip (sample, params.drive), ampLevel * velocity * params.level };
+    return { softClip (sample + side, params.drive), softClip (sample - side, params.drive), ampLevel * velocity * params.level };
 }

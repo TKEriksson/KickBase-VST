@@ -51,8 +51,8 @@ enum class BassField
 {
     on, level, gate, duck, grid, fxChannel, fxAmount,             // lagrets utgång, mönster och effektkanal
     octave, tune,
-    aTable, aPos, aLevel, aSemi, aFine, aUnison, aDetune, aBlend, aWarp, aWarpAmount, aPhase, aRandom, // OSC A
-    bTable, bPos, bLevel, bSemi, bFine, bUnison, bDetune, bBlend, bWarp, bWarpAmount, bPhase, bRandom, // OSC B
+    aTable, aPos, aLevel, aSemi, aFine, aUnison, aDetune, aBlend, aWarp, aWarpAmount, aPhase, aRandom, aPan, aStereo, // OSC A
+    bTable, bPos, bLevel, bSemi, bFine, bUnison, bDetune, bBlend, bWarp, bWarpAmount, bPhase, bRandom, bPan, bStereo, // OSC B
     warpEnv, sub, subOctave, noise,
     filterType, keyTrack, cutoff, resonance, envAmount, envDecay, velToEnv,
     attack, decay, sustain, release, glide, drive,
@@ -62,7 +62,7 @@ enum class BassField
 namespace ParamID
 {
     constexpr int numBassLayers = 3;
-    constexpr int oscFieldCount = 12; // fält per oscillator (aTable ... aRandom)
+    constexpr int oscFieldCount = 14; // fält per oscillator (aTable ... aStereo)
 
     // Samma fält för OSC A (osc 0) eller OSC B (osc 1): oscField (1, BassField::aPos) = bPos.
     inline BassField oscField (int osc, BassField aField) { return (BassField) ((int) aField + osc * oscFieldCount); }
