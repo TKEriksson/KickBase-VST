@@ -122,7 +122,7 @@ public:
     }
     void setLayerName (int layer, const juce::String& name)
     {
-        layerNames[(size_t) juce::jlimit (0, ParamID::numBassLayers - 1, layer)] = name.trim().substring (0, 14);
+        layerNames[(size_t) juce::jlimit (0, ParamID::numBassLayers - 1, layer)] = name.trim().substring (0, 10);
         ++layerNamesVersion;
     }
     std::atomic<int> layerNamesVersion { 0 };

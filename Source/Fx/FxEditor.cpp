@@ -12,6 +12,9 @@ FxEditor::FxEditor (FxProcessor& p)
     synths.addTab ("KICK", Theme::kick, kick, kick.embedInTab());
     synths.addTab ("GATE", Theme::gate, gate, gate.embedInTab());
 
+    synths.addPower (1, processor.apvts, ParamID::kickOn);
+    synths.addPower (2, processor.apvts, ParamID::bass (0, BassField::on));
+
     tools.addTab ("EFFECTS", Theme::effects, effects);
     tools.addTab ("SIDECHAIN", Theme::mix, sidechain);
     tools.addTab ("LFO", Theme::lfo, lfo);

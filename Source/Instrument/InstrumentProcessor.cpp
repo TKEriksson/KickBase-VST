@@ -41,6 +41,8 @@ InstrumentProcessor::InstrumentProcessor()
                       .withOutput ("Bass 3", juce::AudioChannelSet::stereo(), false),
                   createLayout(), false)
 {
+    // Ett nytt instrument börjar som Init: tre lager som låter bra ihop (ett sparat projekt skriver över det).
+    loadFactoryPreset (Presets::Section::full, 0, 0);
 }
 
 void InstrumentProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)

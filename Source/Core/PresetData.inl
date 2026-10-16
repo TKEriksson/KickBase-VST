@@ -183,6 +183,52 @@ namespace
                  b (l, F::decay, 100.0f), b (l, F::sustain, 1.0f), b (l, F::release, 25.0f), b (l, F::drive, 0.08f), b (l, F::level, 0.6f) };
     }
 
+    //==========================================================================================
+    // Init: tre lager som låter bra ihop. Lager 1 en djup sinus-sub på offbeat, lager 2 en mellanbas i såg som rullar,
+    // lager 3 en acid-linje med resonant filter där LFO 1 sveper filtret.
+
+    // Djup sub: ren sinus med ett strå övertoner (så att den hörs i små högtalare), lågt filter, mjuk drive.
+    std::vector<Value> initSub (int l)
+    {
+        return { osc (l, 0, F::aTable, 10), osc (l, 0, F::aLevel, 1.0f), osc (l, 1, F::aTable, 12), osc (l, 1, F::aLevel, 0.10f),
+                 b (l, F::sub, 0.0f), b (l, F::filterType, 0), b (l, F::cutoff, 190.0f), b (l, F::resonance, 0.10f), b (l, F::envAmount, 1.0f),
+                 b (l, F::envDecay, 70.0f), b (l, F::velToEnv, 0.3f), b (l, F::attack, 1.5f), b (l, F::decay, 200.0f), b (l, F::sustain, 0.92f),
+                 b (l, F::release, 28.0f), b (l, F::drive, 0.18f), b (l, F::duck, 0.9f), b (l, F::level, 0.74f) };
+    }
+
+    // Mellanbas: en oktav upp, såg med lite unison, filter som öppnar sig vid varje ton.
+    std::vector<Value> initMid (int l)
+    {
+        return { b (l, F::octave, 1), osc (l, 0, F::aTable, 12), osc (l, 0, F::aLevel, 1.0f), osc (l, 0, F::aUnison, 2), osc (l, 0, F::aDetune, 9.0f),
+                 osc (l, 0, F::aStereo, 0.3f), osc (l, 1, F::aLevel, 0.0f), b (l, F::sub, 0.0f), b (l, F::filterType, 0), b (l, F::cutoff, 420.0f),
+                 b (l, F::resonance, 0.24f), b (l, F::envAmount, 3.0f), b (l, F::envDecay, 85.0f), b (l, F::velToEnv, 0.5f), b (l, F::attack, 0.5f),
+                 b (l, F::decay, 140.0f), b (l, F::sustain, 0.7f), b (l, F::release, 18.0f), b (l, F::drive, 0.30f), b (l, F::duck, 0.8f),
+                 b (l, F::level, 0.56f) };
+    }
+
+    // Acid: resonant såg + fyrkant, hög envelope-mängd, accent via velocity, och en LFO som sveper filtret (se rutten nedan).
+    std::vector<Value> initAcid (int l)
+    {
+        return { b (l, F::octave, 1), osc (l, 0, F::aTable, 12), osc (l, 0, F::aLevel, 1.0f), osc (l, 1, F::aTable, 13), osc (l, 1, F::aLevel, 0.22f),
+                 b (l, F::sub, 0.0f), b (l, F::filterType, 0), b (l, F::cutoff, 360.0f), b (l, F::resonance, 0.60f), b (l, F::envAmount, 3.6f),
+                 b (l, F::envDecay, 110.0f), b (l, F::velToEnv, 0.85f), b (l, F::keyTrack, 0.2f), b (l, F::attack, 0.6f), b (l, F::decay, 150.0f),
+                 b (l, F::sustain, 0.8f), b (l, F::release, 30.0f), b (l, F::glide, 70.0f), b (l, F::drive, 0.45f), b (l, F::duck, 0.65f),
+                 b (l, F::level, 0.45f) };
+    }
+
+    Preset initPreset()
+    {
+        Preset init { "Init", join ({ initSub (0), initMid (1), initAcid (2),
+                                      { { "patternBars", 1 }, { "lfo1On", 1 }, { "lfo1Shape", 0 }, { "lfo1Rate", 8 } } }) };
+        init.extras.pattern = {
+            { 0, BassGrid::sixteenth, { ". . x:190 . . . x:190 . . . x:190 . . . x:190 .", ". . x:190 . . . x:190 . . . x:190 . . . x:190 ." }, 0.7f },
+            { 1, BassGrid::sixteenth, { ". m x x . m x x . m x x . m x X", ". m x x . m x x . m x x . x m x" }, 0.7f },
+            { 2, BassGrid::sixteenth, { "x . m . x+3 . x . m+7 . x . X+12 . x+10 .", "x . . m x . x+7 . m . x+3 . x . X+5 x" }, 0.7f },
+        };
+        init.extras.routes = { { 0, "bass3Cutoff", 0.35f } };
+        return init;
+    }
+
     Preset bassPreset (const char* name, std::vector<Value> values) { return { name, std::move (values) }; }
 }
 
@@ -190,7 +236,7 @@ namespace
 {
     const std::vector<Preset>& fullPresets()
     {
-        static const std::vector<Preset> presets { { "Init", {} } };
+        static const std::vector<Preset> presets { initPreset() };
         return presets;
     }
 
