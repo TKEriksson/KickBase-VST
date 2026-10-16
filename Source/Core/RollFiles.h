@@ -21,8 +21,8 @@ namespace RollFiles
     // glide-toner skrivs som vanliga toner, eftersom MIDI inte har glide-toner.
     bool exportMidi (const Pattern& pattern, int layer, int bars, double bpm, int rootMidiNote, const juce::File& file);
 
-    // Ersätter lagrets toner med en MIDI-fil: toner som ligger utanför ±24 halvtoner från `rootMidiNote` flyttas
-    // oktavvis in. Ger mönsterlängden som behövs (1, 2 eller 4 takter).
+    // Ersätter lagrets toner med en MIDI-fil: toner som ligger utanför ±96 halvtoner från `rootMidiNote` flyttas
+    // oktavvis in. Ger mönsterlängden som behövs (1, 2, 4 ... 64 takter).
     bool importMidi (Pattern& pattern, int layer, const juce::File& file, int rootMidiNote, int& bars);
 
     int barsToChoice (int bars);

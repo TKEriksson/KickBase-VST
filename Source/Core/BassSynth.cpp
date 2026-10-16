@@ -206,7 +206,7 @@ BassSynth::Output BassSynth::next()
             logFrequency = targetLogFrequency;
     }
 
-    const auto frequency = std::exp2 (logFrequency);
+    const auto frequency = juce::jlimit (1.0, sampleRate * 0.45, std::exp2 (logFrequency)); // extrema tonhöjder (±96 halvtoner) får inte ge aliasing
     const auto envelope = filterEnvelopeAt (params, noteTime);
 
     // OSC B först: den kan frekvensmodulera OSC A (warp FM). Warp env lägger till warp på A

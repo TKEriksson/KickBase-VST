@@ -6,7 +6,7 @@
 #include "Theme.h"
 
 // Pianorullen för ett baslager, som i FL Studio: tonerna ligger fritt i tiden (1/4 ... 1/64 och
-// trioler) och i höjd, ±24 halvtoner från tonarten.
+// trioler) och i höjd, ±96 halvtoner från tonarten.
 //
 // - Klicka i tomt: ny ton (dra för att flytta den). Dra i en tons högerkant: längd.
 // - Skift + klick på en ton: lägg till/ta bort i markeringen. Skift + dra i tomt: markera med en ruta.

@@ -86,7 +86,7 @@ namespace Params
     void addPatternParams (Layout& layout, bool includeNoteEnd)
     {
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::patternBars, 1 }, "Pattern Length",
-                                                            StringArray { "1 bar", "2 bars", "4 bars" }, 0));
+                                                            StringArray { "1 bar", "2 bars", "4 bars", "8 bars", "16 bars", "32 bars", "64 bars" }, 0));
         if (includeNoteEnd)
             layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::noteEnd, 1 }, "Note End",
                                                                 StringArray { "Cut", "Finish bar", "Finish pattern" }, 0));
@@ -242,7 +242,7 @@ namespace Params
 
     int barsFromChoice (int choiceIndex)
     {
-        return choiceIndex <= 0 ? 1 : (choiceIndex == 1 ? 2 : 4);
+        return 1 << juce::jlimit (0, 6, choiceIndex); // 1, 2, 4 ... 64 takter
     }
 }
 

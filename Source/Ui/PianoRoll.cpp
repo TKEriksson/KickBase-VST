@@ -126,7 +126,8 @@ int PianoRoll::yToPitch (float y) const { return (int) std::floor (topPitch - (y
 
 void PianoRoll::fitToWidth()
 {
-    pixelsPerTick = gridArea.getWidth() / (float) std::max (1, totalTicks());
+    // Högst fyra takter i bild åt gången; längre mönster skrollas (eller zoomas ut med Ctrl + skroll).
+    pixelsPerTick = gridArea.getWidth() / (float) std::max (1, std::min (totalTicks(), 4 * Pattern::ticksPerBar));
     scrollTicks = 0.0f;
 }
 
@@ -137,7 +138,7 @@ void PianoRoll::clampView()
     const auto visibleTicks = gridArea.getWidth() / pixelsPerTick;
     scrollTicks = juce::jlimit (0.0f, std::max (0.0f, (float) totalTicks() - visibleTicks), scrollTicks);
 
-    // Raderna: hela ±24-området ska gå att nå, men inte mer.
+    // Raderna: hela tonhöjdsområdet ska gå att nå, men inte mer.
     const auto rows = (float) visibleRows();
     topPitch = juce::jlimit ((float) Pattern::minPitch + rows - 1.0f, (float) Pattern::maxPitch, topPitch);
     if (rows > (float) (Pattern::maxPitch - Pattern::minPitch + 1))

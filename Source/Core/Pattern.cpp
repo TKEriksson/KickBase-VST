@@ -64,8 +64,9 @@ void Pattern::setGate (int layer, bool open)
 void Pattern::clearNotes (int layer)
 {
     custom[(size_t) layer] = false;
-    for (auto& n : notes[(size_t) layer])
+    for (int tick = 0; tick < maxTicks; ++tick)
     {
+        auto& n = note (layer, tick);
         n.on = false;
         n.length = 24;
         n.pitch = 0;

@@ -49,11 +49,19 @@ private:
 
     int numLayers() const { return layerNames.size(); }
     int bars() const;
+
+    // Ett mönster på mer än fyra takter visas en sida (fyra takter) i taget; sidknapparna byter sida.
+    static constexpr int barsPerPage = 4;
+    int viewBars() const { return std::min (bars(), barsPerPage); }
+    int numPages() const { return std::max (1, bars() / barsPerPage); }
+    int pageOffset (int visibleSteps) const { return page * visibleSteps; } // första synliga stegets plats i mönstret
+    void setPage (int newPage);
+
     BassGrid grid (int layer) const;
-    int kickSteps() const { return bars() * Pattern::kickStepsPerBar; }
-    int bassSteps (int layer) const { return bars() * Pattern::bassStepsPerBar (grid (layer)); }
+    int kickSteps() const { return viewBars() * Pattern::kickStepsPerBar; }            // synliga steg
+    int bassSteps (int layer) const { return viewBars() * Pattern::bassStepsPerBar (grid (layer)); }
     BassGrid gateGrid (int layer) const;
-    int gateSteps (int layer) const { return bars() * Pattern::bassStepsPerBar (gateGrid (layer)); }
+    int gateSteps (int layer) const { return viewBars() * Pattern::bassStepsPerBar (gateGrid (layer)); }
     bool isCustom (int layer) const { return processor.pattern.isCustom (layer); }
 
     Target targetAt (juce::Point<int> point, int& layer) const;
@@ -61,7 +69,8 @@ private:
     juce::Rectangle<float> stepBounds (juce::Rectangle<int> row, int step, int numSteps) const;
 
     void paintGrid (juce::Graphics&, juce::Rectangle<int> area) const;
-    void paintToggleRow (juce::Graphics&, juce::Rectangle<int> row, int numSteps, juce::Colour colour,
+    // `numSteps` är de synliga stegen; `offset` är sidans första steg, som läggs till vid frågor och `playingStep`.
+    void paintToggleRow (juce::Graphics&, juce::Rectangle<int> row, int numSteps, int offset, juce::Colour colour,
                          int playingStep, const std::function<bool (int)>& isOn, bool dimmed) const;
     void paintLane (juce::Graphics&) const;
     void paintMiniature (juce::Graphics&, juce::Rectangle<int> row, int layer, juce::Colour colour, int playTick, bool dimmed) const;
@@ -95,6 +104,9 @@ private:
     Lane lane = Lane::velocity;
     Mode mode = Mode::notes;
     int selectedLayer = 0;
+    int page = 0;
+    juce::TextButton previousPageButton { "<" }, nextPageButton { ">" };
+    juce::Rectangle<int> pageArea;
 
     juce::Rectangle<int> labelColumn, kickRow, laneArea;
     std::vector<juce::Rectangle<int>> bassRows;

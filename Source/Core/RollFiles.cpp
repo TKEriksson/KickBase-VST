@@ -14,7 +14,14 @@ namespace RollFiles
         return files;
     }
 
-    int barsToChoice (int bars) { return bars <= 1 ? 0 : bars == 2 ? 1 : 2; }
+    // Närmaste längd i listan (1, 2, 4 ... 64 takter) som rymmer `bars`.
+    int barsToChoice (int bars)
+    {
+        auto choice = 0;
+        while ((1 << choice) < bars && choice < 6)
+            ++choice;
+        return choice;
+    }
 
     bool save (const Pattern& pattern, int layer, int bars, BassGrid grid, const juce::File& file)
     {
@@ -56,7 +63,7 @@ namespace RollFiles
         }
         pattern.setCustom (layer, true);
 
-        bars = juce::jlimit (1, Pattern::maxBars, xml->getIntAttribute ("bars", 1));
+        bars = 1 << barsToChoice (juce::jlimit (1, Pattern::maxBars, xml->getIntAttribute ("bars", 1)));
         const auto gridIndex = Pattern::gridNames().indexOf (xml->getStringAttribute ("grid"), true);
         grid = gridIndex >= 0 ? (BassGrid) gridIndex : BassGrid::sixteenth;
         return true;
@@ -136,7 +143,7 @@ namespace RollFiles
         if (found.empty())
             return false;
 
-        // Ryms inte tonerna inom ±24 halvtoner från grundtonen flyttas de en oktav i taget.
+        // Ryms inte tonerna inom ±96 halvtoner från grundtonen flyttas de en oktav i taget.
         auto shift = 0;
         while (lowest + shift - rootMidiNote < Pattern::minPitch)
             shift += 12;
@@ -156,7 +163,7 @@ namespace RollFiles
         pattern.setCustom (layer, true);
 
         const auto needed = (lastEnd + Pattern::ticksPerBar - 1) / Pattern::ticksPerBar;
-        bars = needed <= 1 ? 1 : needed == 2 ? 2 : 4;
+        bars = 1 << barsToChoice (needed);
         return true;
     }
 }

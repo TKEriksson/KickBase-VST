@@ -21,7 +21,7 @@ ska köras om innan en release.
 - **Grind:** så länge tonen hålls spelar plugin:et sitt mönster.
 - **Synk:** mönstret följer DAW:ens tempo och **taktstreck** (via `AudioPlayHead`), inte
   tonens start. En slarvigt placerad ton eller start mitt i en takt ger ändå kick på slaget.
-- **Mönsterlängd:** 1–4 takter. Mönstret loopar inom tonen (8 takters ton + 1 takts mönster
+- **Mönsterlängd:** 1–64 takter (1, 2, 4, 8, 16, 32, 64). Mönstret loopar inom tonen (8 takters ton + 1 takts mönster
   = 8 varv). Längre förlopp och arrangemang sköts i DAW:en.
 - **Kort ton:** om tonen tar slut innan mönstret går en inställning (settings) att välja:
   *klipp direkt* / *spela klart takten* / *spela klart mönstret*.
@@ -41,7 +41,7 @@ ska köras om innan en release.
 - **Tre baslager**, vart och ett med eget mönster, eget ljud, egen ducking och egen effektkanal.
 - **Toner** ligger fritt i tiden (96 ticks per fjärdedel): ett lager kan ha 16-delar, ett annat
   8-delar och ett tredje 64-delar. Stegsekvensen (rutnät 1/4 ... 1/64 och trioler) och
-  **pianorullen** (som FL Studios: dra, förläng, ±24 halvtoner från tonarten, slide-triangel,
+  **pianorullen** (som FL Studios: dra, förläng, ±96 halvtoner från tonarten, slide-triangel,
   velocity-remsa) redigerar samma toner. Pianorullens snap är lagrets GRID.
 - **Per ton:** start, längd, tonhöjd, velocity och en glide-flagga: en glide-ton (som en slide-ton i FL Studio) slår inte
   an utan glider tonen som klingar till sin tonhöjd under sin egen längd.

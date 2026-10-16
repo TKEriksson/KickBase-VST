@@ -72,7 +72,7 @@ under `Dokument\Kickbase\Exports\`.
   upplösning, 1/4 till 1/64 och trioler.
 - **Pianorullen** (PIANO ROLL): klicka i tomt för en ny ton, dra för att flytta, dra kanten för längd,
   högerklicka för att ta bort, **GLIDE**-knappen ritar glide-toner (som slide-toner i FL: de glider tonen som klingar
-  till sin tonhöjd under sin egen längd, och tonen blir kvar). Skroll = tonhöjd (±24 halvtoner från tonarten),
+  till sin tonhöjd under sin egen längd, och tonen blir kvar). Skroll = tonhöjd (±96 halvtoner från tonarten),
   Ctrl + skroll = zoom, Shift + skroll = tid. Remsan längst ner är velocity.
 - **PRESET** i pianorullen sparar lagrets pianorulle som en fil (`Dokument\Kickbase\Presets\Piano Roll`) och laddar sparade i valfritt lager.
   **MIDI** exporterar pianorullen som en MIDI-fil eller importerar en MIDI-fil till lagret (glide-toner exporteras som vanliga toner).

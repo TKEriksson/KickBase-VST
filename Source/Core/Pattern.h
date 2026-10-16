@@ -2,6 +2,7 @@
 
 #include <juce_data_structures/juce_data_structures.h>
 #include <array>
+#include <vector>
 #include <atomic>
 
 // Basens rutnät: upplösningen i stegsekvenseraren och förvalda "snap" i pianorullen.
@@ -25,12 +26,12 @@ enum class PatternTemplate { rolling, galloping, triplet, offbeat, clear };
 // ingen av dem behöver låsa eller vänta på den andra.
 struct Pattern
 {
-    static constexpr int maxBars = 4;
+    static constexpr int maxBars = 64; // längsta mönstret: hela partier ryms i ett mönster
     static constexpr int kickStepsPerBar = 16;
     static constexpr int numGrids = 8;
     static constexpr int maxKickSteps = maxBars * kickStepsPerBar;
-    static constexpr int minPitch = -24;
-    static constexpr int maxPitch = 24;
+    static constexpr int minPitch = -96; // halvtoner från tonarten (basens grundton med lagrets oktav)
+    static constexpr int maxPitch = 96;
     static constexpr int numLayers = 3; // baslager med var sitt mönster (FX-versionen använder bara det första)
 
     // Tiden räknas i "ticks": 96 per fjärdedel, så att alla rutnät (1/4 ... 1/64 och trioler) går jämnt upp.
@@ -62,8 +63,8 @@ struct Pattern
     bool isKickOn (int index) const         { return kick[(size_t) index].load(); }
 
     // Index utanför mönstret hamnar vid närmaste kant i stället för utanför minnet.
-    Note& note (int layer, int tick)             { return notes[(size_t) juce::jlimit (0, numLayers - 1, layer)][(size_t) juce::jlimit (0, maxTicks - 1, tick)]; }
-    const Note& note (int layer, int tick) const { return notes[(size_t) juce::jlimit (0, numLayers - 1, layer)][(size_t) juce::jlimit (0, maxTicks - 1, tick)]; }
+    Note& note (int layer, int tick)             { return notes[noteIndex (layer, tick)]; }
+    const Note& note (int layer, int tick) const { return notes[noteIndex (layer, tick)]; }
 
     // Första tonen som startar i [fromTick, toTick), eller -1.
     int firstNoteIn (int layer, int fromTick, int toTick) const;
@@ -110,8 +111,13 @@ struct Pattern
     static constexpr int currentVersion = 4; // 4: fria toner (ticks); 3: baslager med steg per rutnät
 
 private:
+    static size_t noteIndex (int layer, int tick)
+    {
+        return (size_t) juce::jlimit (0, numLayers - 1, layer) * (size_t) maxTicks + (size_t) juce::jlimit (0, maxTicks - 1, tick);
+    }
+
     std::array<std::atomic<bool>, maxKickSteps> kick {};
-    std::array<std::array<Note, maxTicks>, numLayers> notes;
+    std::vector<Note> notes = std::vector<Note> ((size_t) numLayers * (size_t) maxTicks); // på heapen: många MB på stacken räcker inte
     std::array<std::array<std::atomic<bool>, maxGateSteps>, numLayers> gate {};
     std::array<std::atomic<bool>, numLayers> custom {};
 };

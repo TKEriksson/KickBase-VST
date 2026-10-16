@@ -663,7 +663,7 @@ PatternModule::PatternModule (PluginBase& p, bool isInstrument)
     pianoButton.setClickingTogglesState (false);
     pianoButton.setColour (juce::TextButton::buttonOnColourId, Theme::pattern);
     pianoButton.setTooltip ("PIANO ROLL - The advanced view of the pattern, like FL Studio's piano roll: notes anywhere in time (1/4 down to 1/64 "
-                            "and triplets), pitch up to 24 semitones either way, glide notes and velocity. Once you edit there, the layer's row "
+                            "and triplets), pitch up to 96 semitones either way, glide notes and velocity. Once you edit there, the layer's row "
                             "shows a small piano roll instead of step buttons.");
     pianoButton.onClick = [this] { showPianoRoll (! processor.pianoRollOpen); };
     addChildComponent (pianoButton);

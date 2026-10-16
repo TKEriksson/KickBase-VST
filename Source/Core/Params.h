@@ -94,7 +94,7 @@ namespace Params
     // Basens grundton för en ton från DAW:en: samma tonnamn två oktaver ner (FL:s C5 -> C2),
     // så att en basgång som går nedåt i pianorullen också går nedåt i basen.
     int bassRootMidiNote (int dawNote);
-    int barsFromChoice (int choiceIndex); // 0, 1, 2 -> 1, 2, 4 takter
+    int barsFromChoice (int choiceIndex); // 0 ... 6 -> 1, 2, 4, 8, 16, 32, 64 takter
 }
 
 // Cachade pekare till parametrarnas värden, så att ljudtråden kan läsa dem utan att

@@ -52,7 +52,7 @@ namespace Presets
             float amount = 0.0f;
         };
 
-        // En bas-rad i fabrikspresetets mönster. `bars` är en text per takt (upprepas över fyra takter), i lagrets
+        // En bas-rad i fabrikspresetets mönster. `bars` är en text per takt (upprepas över hela mönstret), i lagrets
         // rutnät. Ett steg skrivs som ett ord: "." = paus, annars en bokstav för velocity (g = spöke 42 %,
         // m = mjuk 62 %, x = normal 80 %, X = accent 100 %), sedan valfritt tonhöjd (+7, -5), "~" för slide och
         // ":50" för längd i procent av steget. Mellanslag och | skiljer stegen. Exempel: ". m x x"
