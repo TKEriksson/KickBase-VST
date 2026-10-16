@@ -116,7 +116,7 @@ namespace Params
         layout.add (floatParam (ParamID::kickHighCut, "Kick High Cut", skewed (500.0f, 20000.0f, 4000.0f, 1.0f), 20000.0f, formatHz));
         layout.add (percent (ParamID::kickLevel, "Kick Level", 0.8f));
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::kickFxChannel, 1 }, "Kick FX Channel",
-                                                            StringArray { "None", "A", "B", "C" }, 0));
+                                                            StringArray { "None", "A", "B", "C", "D", "E" }, 0));
         layout.add (percent (ParamID::kickFxAmount, "Kick FX Amount", 1.0f));
     }
 
@@ -133,7 +133,7 @@ namespace Params
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::grid), 1 }, title + "Grid",
                                                             Pattern::gridNames(), (int) BassGrid::sixteenth));
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::fxChannel), 1 }, title + "FX Channel",
-                                                            StringArray { "None", "A", "B", "C" }, 0));
+                                                            StringArray { "None", "A", "B", "C", "D", "E" }, 0));
         layout.add (percent (id (F::fxAmount), title + "FX Amount", 1.0f));
     }
 

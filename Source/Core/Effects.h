@@ -19,7 +19,7 @@
 enum class EffectType { off, filter, distortion, eq, chorus, phaser, echo, reverb,
                         compressor, gate, comb, ringMod, bitcrusher, autoFilter, count };
 constexpr int numEffectTypes = (int) EffectType::count; // inklusive Off
-constexpr int numEffectChannels = 3;
+constexpr int numEffectChannels = 5;
 constexpr int slotsPerChannel = 5;
 constexpr int knobsPerSlot = 8;
 
@@ -28,7 +28,7 @@ namespace Effects
     juce::StringArray typeNames();                // "Off", "Filter", ... (som i typlistan)
     juce::String name (EffectType type);          // "FILTER" ...
     juce::String shortName (EffectType type);     // "FILT" ... (platsknapparna)
-    juce::String channelName (int channel);       // "A", "B", "C"
+    juce::String channelName (int channel);       // "A" ... "E"
 
     // Parameter-ID: "fxA2Type", "fxA2P1" ... "fxA2P6" (platserna räknas från 1 i ID:t) och
     // kanalens "fxALevel", "fxADuck".
