@@ -1,14 +1,5 @@
 #include "StepScheduler.h"
 
-void StepScheduler::setGrid (int layer, BassGrid newGrid)
-{
-    if (newGrid == grids[(size_t) layer])
-        return;
-
-    grids[(size_t) layer] = newGrid;
-    bassCursors[(size_t) layer] = StepCursor { Pattern::bassStepsPerQuarter (newGrid) };
-}
-
 void StepScheduler::collect (const TransportClock& clock, const Pattern& pattern, int patternBars,
                              int startSample, int endSample, double stopAtPpq)
 {
@@ -56,12 +47,11 @@ void StepScheduler::addKick (const Pattern& pattern, int patternBars, int offset
 
 void StepScheduler::addBass (int layer, const Pattern& pattern, int patternBars, int offset, StepPosition position)
 {
-    const auto grid = grids[(size_t) layer];
-    const auto step = position.stepInPattern (Pattern::bassStepsPerBar (grid), patternBars);
-    lastBassSteps[(size_t) layer] = step;
+    const auto tick = position.stepInPattern (Pattern::ticksPerBar, patternBars);
+    lastBassSteps[(size_t) layer] = tick;
 
-    if (pattern.bassStep (layer, grid, step).on.load())
-        add ({ offset, StepEvent::Type::bass, step, layer });
+    if (pattern.note (layer, tick).on.load())
+        add ({ offset, StepEvent::Type::bass, tick, layer });
 }
 
 void StepScheduler::add (StepEvent event)

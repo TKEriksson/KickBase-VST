@@ -162,7 +162,6 @@ void InstrumentProcessor::readBlockParams()
     kickOn = params.getBool (ParamID::kickOn);
     for (int layer = 0; layer < numLayers; ++layer)
     {
-        scheduler.setGrid (layer, (BassGrid) (int) params.bass (layer, BassField::grid));
         layerOn[(size_t) layer] = params.bass (layer, BassField::on) >= 0.5f;
         duckAmounts[(size_t) layer] = params.bass (layer, BassField::duck); // med LFO-modulering
         gateScales[(size_t) layer] = params.bass (layer, BassField::gate);
@@ -443,15 +442,12 @@ void InstrumentProcessor::handleEvent (const StepEvent& event)
     if (! layerOn[(size_t) layer])
         return;
 
-    const auto grid = scheduler.getGrid (layer);
-    const auto& step = pattern.bassStep (layer, grid, event.step);
-    const auto samplesPerStep = clock.getSamplesPerQuarter() / Pattern::bassStepsPerQuarter (grid);
-    const auto slide = step.slide.load();
+    const auto& note = pattern.note (layer, event.step);
+    const auto samplesPerTick = clock.getSamplesPerQuarter() / Pattern::ticksPerQuarter;
+    const auto holdTicks = pattern.holdTicks (layer, event.step, patternBars * Pattern::ticksPerBar, gateScales[(size_t) layer]);
+    const auto gateSamples = std::max (1, (int) (holdTicks * samplesPerTick));
 
-    const auto gateSamples = slide ? (int) (samplesPerStep * slideOverlap)
-                                   : std::max (1, (int) (step.gate.load() * gateScales[(size_t) layer] * samplesPerStep));
-
-    basses[(size_t) layer].noteOn (step.pitch.load(), step.velocity.load(), gateSamples, slide);
+    basses[(size_t) layer].noteOn (note.pitch.load(), note.velocity.load(), gateSamples, note.slide.load());
 }
 
 juce::AudioProcessorEditor* InstrumentProcessor::createEditor()

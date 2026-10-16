@@ -56,7 +56,13 @@ private:
     float laneValueAt (int y) const;
     juce::String laneName() const;
     juce::String describeStep (int step) const;
-    Pattern::BassStep& selectedStep (int step) const;
+
+    // Tonerna ligger fritt i tiden; ett steg i rutnätet är de ticks det täcker. Stegets ton är den
+    // första som börjar inom det (eller nullptr).
+    int ticksPerStep (int layer) const { return Pattern::ticksPerStep (grid (layer)); }
+    int noteTickAt (int layer, int step) const;
+    Pattern::Note* noteAt (int layer, int step) const;
+    int stepOfTick (int layer, int tick) const { return tick < 0 ? -1 : tick / ticksPerStep (layer); }
 
     PluginBase& processor;
     juce::StringArray layerNames;

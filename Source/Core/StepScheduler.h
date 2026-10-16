@@ -10,7 +10,7 @@ struct StepEvent
 
     int offset;     // sample i blocket
     Type type;
-    int step;       // steg i mönstret
+    int step;       // steg i mönstret (kick: sextondel, bas: tick)
     int layer = 0;  // baslager (bara för bas)
 };
 
@@ -19,9 +19,6 @@ struct StepEvent
 class StepScheduler
 {
 public:
-    void setGrid (int layer, BassGrid newGrid);
-    BassGrid getGrid (int layer) const { return grids[(size_t) layer]; }
-
     // Hur många baslager som spelas (FX-versionen: 1).
     void setNumLayers (int n) { numLayers = juce::jlimit (1, Pattern::numLayers, n); }
 
@@ -47,9 +44,11 @@ private:
     void add (StepEvent event);
 
     int numLayers = Pattern::numLayers;
-    std::array<BassGrid, Pattern::numLayers> grids { BassGrid::sixteenth, BassGrid::sixteenth, BassGrid::sixteenth };
     StepCursor kickCursor { (double) Pattern::kickStepsPerBar / 4.0 };
-    std::array<StepCursor, Pattern::numLayers> bassCursors { StepCursor { 4.0 }, StepCursor { 4.0 }, StepCursor { 4.0 } };
+    // Baslagrens toner ligger fritt i tiden, så markören går i ticks (96 per fjärdedel).
+    static constexpr double bassTicksPerQuarter = Pattern::ticksPerQuarter;
+    std::array<StepCursor, Pattern::numLayers> bassCursors { StepCursor { bassTicksPerQuarter }, StepCursor { bassTicksPerQuarter },
+                                                             StepCursor { bassTicksPerQuarter } };
 
     std::array<StepEvent, 512> events {};
     int numEvents = 0;

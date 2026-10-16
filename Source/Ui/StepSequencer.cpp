@@ -35,9 +35,16 @@ BassGrid StepSequencer::grid (int layer) const
     return (BassGrid) (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, BassField::grid))->load();
 }
 
-Pattern::BassStep& StepSequencer::selectedStep (int step) const
+int StepSequencer::noteTickAt (int layer, int step) const
 {
-    return processor.pattern.bassStep (selectedLayer, grid (selectedLayer), step);
+    const auto from = step * ticksPerStep (layer);
+    return processor.pattern.firstNoteIn (layer, from, from + ticksPerStep (layer));
+}
+
+Pattern::Note* StepSequencer::noteAt (int layer, int step) const
+{
+    const auto tick = noteTickAt (layer, step);
+    return tick >= 0 ? &processor.pattern.note (layer, tick) : nullptr;
 }
 
 void StepSequencer::timerCallback()
@@ -51,7 +58,7 @@ void StepSequencer::timerCallback()
     update (lastVersion, processor.patternVersion.load());
     for (int layer = 0; layer < numLayers(); ++layer)
     {
-        update (lastBassSteps[(size_t) layer], processor.transportStatus.bassSteps[(size_t) layer].load());
+        update (lastBassSteps[(size_t) layer], stepOfTick (layer, processor.transportStatus.bassSteps[(size_t) layer].load()));
         update (lastGrids[(size_t) layer], (int) grid (layer));
     }
 
@@ -214,17 +221,20 @@ void StepSequencer::paintLane (juce::Graphics& g) const
 
     for (int step = 0; step < numSteps; ++step)
     {
-        const auto& data = selectedStep (step);
-        const auto on = data.on.load();
+        const auto* note = noteAt (selectedLayer, step);
+        const auto on = note != nullptr;
         const auto colour = on ? colourOn : Theme::textDim.withAlpha (0.25f);
         const auto column = stepBounds (laneArea, step, numSteps).reduced (1.0f, 3.0f);
+        if (! on && lane != Lane::slide)
+            continue;
 
         switch (lane)
         {
             case Lane::velocity:
             case Lane::gate:
             {
-                const auto value = lane == Lane::velocity ? data.velocity.load() : data.gate.load();
+                const auto value = lane == Lane::velocity ? note->velocity.load()
+                                                          : juce::jlimit (0.05f, 1.0f, (float) note->length.load() / (float) ticksPerStep (selectedLayer));
                 const auto bar = column.withTop (column.getBottom() - value * column.getHeight());
                 g.setColour (colour.withAlpha (on ? 0.85f : 0.4f));
                 g.fillRoundedRectangle (bar, 2.0f);
@@ -232,7 +242,7 @@ void StepSequencer::paintLane (juce::Graphics& g) const
             }
             case Lane::pitch:
             {
-                const auto pitch = data.pitch.load();
+                const auto pitch = note->pitch.load();
                 const auto y = column.getCentreY() - pitch * column.getHeight() / 48.0f;
                 const auto bar = juce::Rectangle<float>::leftTopRightBottom (column.getX(), std::min (y, column.getCentreY()),
                                                                             column.getRight(), std::max (y, column.getCentreY()));
@@ -254,7 +264,7 @@ void StepSequencer::paintLane (juce::Graphics& g) const
             case Lane::slide:
             {
                 const auto box = juce::Rectangle<float> (std::min (12.0f, column.getWidth()), 12.0f).withCentre (column.getCentre());
-                if (data.slide.load())
+                if (note != nullptr && note->slide.load())
                 {
                     g.setColour (colour);
                     g.fillRoundedRectangle (box, 3.0f);
@@ -284,9 +294,10 @@ void StepSequencer::paint (juce::Graphics& g)
     for (int layer = 0; layer < numLayers(); ++layer)
     {
         const auto layerGrid = grid (layer);
+        juce::ignoreUnused (layerGrid);
         paintToggleRow (g, bassRows[(size_t) layer], bassSteps (layer), layerColours[(size_t) layer],
-                        processor.transportStatus.bassSteps[(size_t) layer].load(),
-                        [this, layer, layerGrid] (int step) { return processor.pattern.bassStep (layer, layerGrid, step).on.load(); },
+                        stepOfTick (layer, processor.transportStatus.bassSteps[(size_t) layer].load()),
+                        [this, layer] (int step) { return noteTickAt (layer, step) >= 0; },
                         layer != selectedLayer);
     }
     paintLane (g);
@@ -339,15 +350,17 @@ juce::String StepSequencer::laneName() const
 
 juce::String StepSequencer::describeStep (int step) const
 {
-    const auto& data = selectedStep (step);
+    const auto* note = noteAt (selectedLayer, step);
     juce::String text = "Step " + juce::String (step + 1) + "\n";
+    if (note == nullptr)
+        return text + "(no note)";
 
     switch (lane)
     {
-        case Lane::velocity: return text + juce::String (juce::roundToInt (data.velocity.load() * 100.0f)) + " %";
-        case Lane::gate:     return text + juce::String (juce::roundToInt (data.gate.load() * 100.0f)) + " %";
-        case Lane::pitch:    return text + (data.pitch.load() > 0 ? "+" : "") + juce::String (data.pitch.load()) + " st";
-        case Lane::slide:    return text + (data.slide.load() ? "slide" : "-");
+        case Lane::velocity: return text + juce::String (juce::roundToInt (note->velocity.load() * 100.0f)) + " %";
+        case Lane::gate:     return text + juce::String (juce::roundToInt (100.0f * (float) note->length.load() / (float) ticksPerStep (selectedLayer))) + " %";
+        case Lane::pitch:    return text + (note->pitch.load() > 0 ? "+" : "") + juce::String (note->pitch.load()) + " st";
+        case Lane::slide:    return text + (note->slide.load() ? "slide" : "-");
     }
     return text;
 }
@@ -371,34 +384,50 @@ void StepSequencer::editAt (juce::Point<int> point, bool firstEvent)
         }
         case Target::bass:
         {
-            auto& step = processor.pattern.bassStep (dragLayer, grid (dragLayer), stepAt (point.x, bassSteps (dragLayer))).on;
+            const auto step = stepAt (point.x, bassSteps (dragLayer));
+            const auto tps = ticksPerStep (dragLayer);
             if (firstEvent)
-                paintOn = ! step.load();
-            step = paintOn;
+                paintOn = noteTickAt (dragLayer, step) < 0;
+
+            if (paintOn)
+            {
+                if (noteTickAt (dragLayer, step) < 0)
+                    processor.pattern.addNote (dragLayer, step * tps, juce::roundToInt (Pattern::defaultGate * (float) tps));
+            }
+            else
+            {
+                // Tar bort alla toner som börjar inom steget.
+                for (auto tick = noteTickAt (dragLayer, step); tick >= 0; tick = noteTickAt (dragLayer, step))
+                    processor.pattern.removeNote (dragLayer, tick);
+            }
             break;
         }
         case Target::lane:
         {
-            auto& step = selectedStep (stepAt (point.x, bassSteps (selectedLayer)));
+            auto* note = noteAt (selectedLayer, stepAt (point.x, bassSteps (selectedLayer)));
+            if (note == nullptr)
+                return; // ett steg utan ton har inget att redigera
             switch (lane)
             {
-                case Lane::velocity: step.velocity = laneValueAt (point.y); break;
-                case Lane::gate:     step.gate = std::max (0.05f, laneValueAt (point.y)); break;
+                case Lane::velocity: note->velocity = laneValueAt (point.y); break;
+                case Lane::gate:
+                    note->length = std::max (1, juce::roundToInt (std::max (0.05f, laneValueAt (point.y)) * (float) ticksPerStep (selectedLayer)));
+                    break;
                 case Lane::pitch:
                     // Dra uppåt/neråt från startpunkten; samma tonhöjd målas över de steg man drar över.
                     if (firstEvent)
                     {
-                        dragStartPitch = step.pitch.load();
+                        dragStartPitch = note->pitch.load();
                         dragStartY = point.y;
                     }
                     dragPitch = juce::jlimit (Pattern::minPitch, Pattern::maxPitch,
                                               dragStartPitch + (dragStartY - point.y) / pixelsPerSemitone);
-                    step.pitch = dragPitch;
+                    note->pitch = dragPitch;
                     break;
                 case Lane::slide:
                     if (firstEvent)
-                        paintOn = ! step.slide.load();
-                    step.slide = paintOn;
+                        paintOn = ! note->slide.load();
+                    note->slide = paintOn;
                     break;
             }
             break;
@@ -429,11 +458,13 @@ void StepSequencer::mouseDown (const juce::MouseEvent& event)
     // Högerklick i lanet återställer steget.
     if (event.mods.isPopupMenu() && dragTarget == Target::lane)
     {
-        auto& step = selectedStep (stepAt (event.x, bassSteps (selectedLayer)));
-        step.velocity = 0.8f;
-        step.gate = 0.7f;
-        step.pitch = 0;
-        step.slide = false;
+        if (auto* note = noteAt (selectedLayer, stepAt (event.x, bassSteps (selectedLayer))))
+        {
+            note->velocity = 0.8f;
+            note->length = juce::roundToInt (Pattern::defaultGate * (float) ticksPerStep (selectedLayer));
+            note->pitch = 0;
+            note->slide = false;
+        }
         processor.patternChanged();
         dragTarget = Target::none;
         repaint();
@@ -482,8 +513,10 @@ void StepSequencer::mouseWheelMove (const juce::MouseEvent& event, const juce::M
     if (lane != Lane::pitch || targetAt (event.getPosition(), layer) != Target::lane || wheel.deltaY == 0.0f)
         return;
 
-    auto& step = selectedStep (stepAt (event.x, bassSteps (selectedLayer)));
-    step.pitch = juce::jlimit (Pattern::minPitch, Pattern::maxPitch, step.pitch.load() + (wheel.deltaY > 0.0f ? 1 : -1));
-    processor.patternChanged();
-    repaint();
+    if (auto* note = noteAt (selectedLayer, stepAt (event.x, bassSteps (selectedLayer))))
+    {
+        note->pitch = juce::jlimit (Pattern::minPitch, Pattern::maxPitch, note->pitch.load() + (wheel.deltaY > 0.0f ? 1 : -1));
+        processor.patternChanged();
+        repaint();
+    }
 }

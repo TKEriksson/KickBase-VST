@@ -277,14 +277,18 @@ namespace Presets
 
         for (const auto& tweak : preset.tweaks)
         {
+            const auto stepTicks = Pattern::ticksPerStep (grid);
             for (int bar = 0; bar < Pattern::maxBars; ++bar)
             {
-                auto& step = pattern.bassStep (0, grid, bar * Pattern::bassStepsPerBar (grid) + tweak.step);
-                step.on = true;
-                step.pitch = tweak.pitch;
-                step.slide = tweak.slide;
+                const auto tick = bar * Pattern::ticksPerBar + tweak.step * stepTicks;
+                const auto gate = tweak.gate >= 0.0f ? tweak.gate : Pattern::defaultGate;
+                auto& note = pattern.note (0, tick);
+                if (! note.on.load())
+                    pattern.addNote (0, tick, juce::roundToInt (gate * (float) stepTicks));
+                note.pitch = tweak.pitch;
+                note.slide = tweak.slide;
                 if (tweak.gate >= 0.0f)
-                    step.gate = tweak.gate;
+                    note.length = juce::roundToInt (tweak.gate * (float) stepTicks);
             }
         }
 

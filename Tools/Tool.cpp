@@ -215,7 +215,9 @@ namespace
     // Testfilen tas bort efteråt.
     int presetTest()
     {
-        InstrumentProcessor processor;
+        // På heapen: signaluttagen i processorn är flera MB, mer än en konsolprograms stack.
+        const auto owner = std::make_unique<InstrumentProcessor>();
+        auto& processor = *owner;
         auto* pitch = processor.apvts.getParameter (ParamID::kickTune);
         auto* cutoff = processor.apvts.getParameter (ParamID::bass (0, BassField::cutoff));
 

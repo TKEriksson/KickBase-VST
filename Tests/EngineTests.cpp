@@ -248,47 +248,56 @@ namespace
 
         check (pattern.applyTemplate (PatternTemplate::rolling) == BassGrid::sixteenth, "Rolling är i sextondelar");
         check (pattern.isKickOn (0) && ! pattern.isKickOn (1) && pattern.isKickOn (4), "kick på fjärdedelar");
-        check (! pattern.bassStep (0, BassGrid::sixteenth, 0).on && pattern.bassStep (0, BassGrid::sixteenth, 1).on
-                   && pattern.bassStep (0, BassGrid::sixteenth, 3).on && ! pattern.bassStep (0, BassGrid::sixteenth, 4).on,
+        const auto sixteenth = Pattern::ticksPerStep (BassGrid::sixteenth);
+        check (! pattern.note (0, 0).on && pattern.note (0, sixteenth).on
+                   && pattern.note (0, 3 * sixteenth).on && ! pattern.note (0, 4 * sixteenth).on,
                "Rolling: K B B B");
+        check (pattern.note (0, sixteenth).length == 17, "en ny ton är ungefär 70 % av steget", pattern.note (0, sixteenth).length.load());
 
+        const auto triplet = Pattern::ticksPerStep (BassGrid::eighthTriplet);
         check (pattern.applyTemplate (PatternTemplate::triplet) == BassGrid::eighthTriplet, "Triplet är i åttondelstrioler");
-        check (! pattern.bassStep (0, BassGrid::eighthTriplet, 3).on && pattern.bassStep (0, BassGrid::eighthTriplet, 4).on,
-               "Triplet: K B B");
+        check (! pattern.note (0, 3 * triplet).on && pattern.note (0, 4 * triplet).on, "Triplet: K B B");
 
-        // Ändra några steg och kontrollera att allt överlever spara/läsa.
+        // Ändra några steg och kontrollera att allt överlever spara/läsa, också toner utanför rutnätet.
         pattern.kickStep (7) = true;
-        auto& step = pattern.bassStep (0, BassGrid::sixteenthTriplet, 50);
-        step.on = true;
-        step.pitch = -12;
-        step.slide = true;
-        step.gate = 0.33f;
-        step.velocity = 0.25f;
+        pattern.addNote (0, 800, 5, -12, 0.25f, true);
+        pattern.addNote (1, 6, 3, 7, 0.5f); // en 64-del, i lager 2
 
         Pattern loaded;
         loaded.applyTemplate (PatternTemplate::clear);
         loaded.fromValueTree (pattern.toValueTree());
 
         check (loaded.isKickOn (7) && loaded.isKickOn (0) && ! loaded.isKickOn (1), "kickstegen sparas");
-        const auto& loadedStep = loaded.bassStep (0, BassGrid::sixteenthTriplet, 50);
-        check (loadedStep.on && loadedStep.pitch == -12 && loadedStep.slide, "basstegets på/ton/slide sparas");
-        check (std::abs (loadedStep.gate - 0.33f) < 1.0e-4f && std::abs (loadedStep.velocity - 0.25f) < 1.0e-4f,
-               "basstegets gate/velocity sparas");
-        check (loaded.bassStep (0, BassGrid::eighthTriplet, 4).on, "andra rutnät sparas också");
+        const auto& loadedNote = loaded.note (0, 800);
+        check (loadedNote.on && loadedNote.pitch == -12 && loadedNote.slide && loadedNote.length == 5, "tonens på/ton/slide/längd sparas");
+        check (std::abs (loadedNote.velocity - 0.25f) < 1.0e-3f, "tonens velocity sparas");
+        check (loaded.note (0, 4 * triplet).on, "alla toner i lagret sparas");
+        check (loaded.note (1, 6).on && loaded.note (1, 6).pitch == 7 && ! loaded.note (0, 6).on, "lagren sparas var för sig");
 
-        // Version 1 hade rutnäten i ordningen 1/16, 1/8 T, 1/16 T.
+        // Slide håller tonen in i nästa ton, annars gäller längden (skalad med GATE).
+        Pattern held;
+        held.applyTemplate (PatternTemplate::clear);
+        held.addNote (0, 0, 10, 0, 0.8f, true);
+        held.addNote (0, 48, 10);
+        const auto hold = held.holdTicks (0, 0, Pattern::ticksPerBar, 1.0f);
+        check (std::abs (hold - 48.0 * Pattern::slideOverlap) < 1.0e-6, "slide hålls till nästa ton", hold);
+        held.note (0, 0).slide = false;
+        check (std::abs (held.holdTicks (0, 0, Pattern::ticksPerBar, 0.5f) - 5.0) < 1.0e-6, "gate skalar längden", held.holdTicks (0, 0, Pattern::ticksPerBar, 0.5f));
+
+        // Version 1 hade rutnäten i ordningen 1/16, 1/8 T, 1/16 T, och ett steg per rutnät (gate som andel).
         juce::ValueTree old (Pattern::treeType);
         juce::ValueTree oldBass ("Bass");
         oldBass.setProperty ("grid", 0, nullptr);
         oldBass.setProperty ("on", "0,1,0,1", nullptr);
+        oldBass.setProperty ("gate", "0.7,0.5,0.7,0.7", nullptr);
         old.appendChild (oldBass, nullptr);
 
         Pattern migrated;
         migrated.applyTemplate (PatternTemplate::clear);
         migrated.fromValueTree (old);
-        check (migrated.bassStep (0, BassGrid::sixteenth, 1).on && migrated.bassStep (0, BassGrid::sixteenth, 3).on
-                   && ! migrated.bassStep (0, BassGrid::quarter, 1).on,
-               "gammalt 1/16-mönster hamnar i 1/16");
+        check (migrated.note (0, sixteenth).on && migrated.note (0, 3 * sixteenth).on && ! migrated.note (0, 2 * sixteenth).on,
+               "gammalt 1/16-mönster hamnar på rätt tid");
+        check (migrated.note (0, sixteenth).length == sixteenth / 2, "gammal gate blir längd", migrated.note (0, sixteenth).length.load());
     }
 }
 
