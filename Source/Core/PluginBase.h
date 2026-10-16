@@ -119,6 +119,10 @@ public:
     KickParams kickForDisplay (int keyPitchClass) const;
     TransportStatus transportStatus;
 
+    // Provlyssning från gränssnittet (en klick på kickens eller samplingens ruta). Ljudtråden slår an ljudet nästa block:
+    // 0 = kicken, 1-3 = baslager 1-3 (lagrets ton en sekund).
+    void requestAudition (int what) { auditionRequest = what; }
+
     // Baslagrens namn: standard BASS 1-3, men man kan döpa dem själv. `layerNamesVersion` ökas vid ändring, så att
     // gränssnittet kan uppdatera sina texter.
     juce::String getLayerName (int layer) const
@@ -132,6 +136,7 @@ public:
         ++layerNamesVersion;
     }
     std::atomic<int> layerNamesVersion { 0 };
+    std::atomic<int> auditionRequest { -1 };
 
     std::atomic<bool> followPlayhead { true }; // pianorullen och stegvyn bläddrar med uppspelningen
     std::atomic<int> patternVersion { 0 }; // ökas när mönstret ändras, så att gränssnittet ritar om

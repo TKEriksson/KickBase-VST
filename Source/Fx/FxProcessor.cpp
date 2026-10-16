@@ -79,6 +79,11 @@ void FxProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuff
     lengths = Params::readPatternLengthsWith ([this] (const char* id) { return params.get (id); });
     kick.setParams (readModulatedKick (key));
     kick.setClickSample (getActiveClickSample());
+    if (auditionRequest.exchange (-1) == 0) // provlyssning av kicken från gränssnittet
+    {
+        duckCurve.trigger();
+        kick.trigger (1.0f);
+    }
     gate.setTimes (params.get (ParamID::gateAttack), params.get (ParamID::gateRelease));
 
     active = clock.isFollowingHost();
@@ -173,6 +178,8 @@ void FxProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuff
     transportStatus.publish (clock);
     transportStatus.keyNote = 60 + key;
     transportStatus.patternActive = active;
+    transportStatus.kickPlayTime = kick.getPlayTime();
+    transportStatus.kickTriggers = kick.getTriggerCount();
     transportStatus.kickStep = active ? scheduler.getLastKickStep() : -1;
     transportStatus.bassSteps[0] = active ? scheduler.getLastBassStep (0) : -1;
 }

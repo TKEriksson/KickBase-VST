@@ -99,6 +99,17 @@ public:
     float nextSample() { const auto o = next(); return 0.5f * (o.left + o.right) * o.amplitude; }
     bool isActive() const { return stage != Stage::idle; }
 
+    // Var i samplingen den spelar (0..1), eller -1 när ingen sampling klingar. För gränssnittets markör.
+    float getSampleFraction() const
+    {
+        if (stage == Stage::idle || ! params.sampleOn || params.sampleData == nullptr || params.sampleLevel <= 0.0f)
+            return -1.0f;
+        const auto length = (double) params.sampleData->audio.getNumSamples();
+        if (length < 2.0 || (samplePosition >= length && ! params.sampleLoop))
+            return -1.0f;
+        return (float) (std::fmod (samplePosition, length) / length);
+    }
+
     // Filter-envelopens form (0..1) efter `seconds`. Används även av gränssnittet.
     static float filterEnvelopeAt (const BassParams& p, double seconds);
 

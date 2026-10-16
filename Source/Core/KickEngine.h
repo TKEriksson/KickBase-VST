@@ -75,6 +75,11 @@ public:
     void trigger (float velocity, int transposeSemitones = 0);
     float nextSample();
 
+    // Hur länge den senaste kicken har klingat (sekunder), eller -1 när den är tyst, och hur många kickar som slagits an. För
+    // gränssnittets markör.
+    float getPlayTime() const { return voices[currentVoice].active ? (float) voices[currentVoice].time : -1.0f; }
+    int getTriggerCount() const { return triggerCount; }
+
     // Nuvarande amplitud-envelope (0..1). Basen duckas efter den.
     float getEnvelope() const { return envelope; }
 
@@ -114,6 +119,7 @@ private:
     const ClickSample* clickSample = nullptr;
     std::array<Voice, 2> voices;
     size_t currentVoice = 0;
+    int triggerCount = 0;
     double sampleRate = 44100.0;
     float fadeStep = 0.0f;
     float envelope = 0.0f;

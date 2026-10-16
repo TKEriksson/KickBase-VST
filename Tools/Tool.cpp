@@ -242,6 +242,43 @@ namespace
         return 0;
     }
 
+    // Provlyssning: requestAudition ska ge ljud (kick och baslager) och publicera kickens spelmarkör.
+    int auditionTest()
+    {
+        auto run = [] (int what, bool& heard, float& markerSeen)
+        {
+            const auto owner = std::make_unique<InstrumentProcessor>();
+            auto& processor = *owner;
+            processor.setPlayConfigDetails (0, 2, renderRate, blockSize);
+            processor.prepareToPlay (renderRate, blockSize);
+            processor.requestAudition (what);
+            juce::AudioBuffer<float> buffer (2, blockSize);
+            juce::MidiBuffer midi;
+            auto peak = 0.0f;
+            markerSeen = -1.0f;
+            for (int block = 0; block < 40; ++block)
+            {
+                buffer.clear();
+                processor.processBlock (buffer, midi);
+                peak = std::max (peak, buffer.getMagnitude (0, buffer.getNumSamples()));
+                markerSeen = std::max (markerSeen, processor.transportStatus.kickPlayTime.load());
+            }
+            heard = peak > 0.01f;
+        };
+
+        auto failed = false;
+        bool heard = false;
+        float marker = -1.0f;
+        run (0, heard, marker);
+        std::printf ("kick: hörs %s, markör %.3f s\n", heard ? "ja" : "NEJ", marker);
+        failed |= ! heard || marker < 0.0f;
+        run (1, heard, marker);
+        std::printf ("bas 1: hörs %s\n", heard ? "ja" : "NEJ");
+        failed |= ! heard;
+        std::puts (failed ? "FEL: provlyssningen fungerar inte" : "Provlyssningen fungerar");
+        return failed ? 1 : 0;
+    }
+
     // Sparar ett kickpreset, ändrar ljudet, laddar presetet och kontrollerar värdena.
     // Testfilen tas bort efteråt.
     int presetTest()
@@ -353,6 +390,8 @@ int toolMain (int argc, char* argv[])
 {
     if (argc == 2 && juce::String (argv[1]) == "presettest")
         return presetTest();
+    if (argc == 2 && juce::String (argv[1]) == "auditiontest")
+        return auditionTest();
 
     // params [instrument|fx]: parameterregistret.
     if (argc >= 2 && juce::String (argv[1]) == "params")

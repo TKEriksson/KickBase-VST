@@ -19,6 +19,11 @@ struct TransportStatus
     std::atomic<int> kickStep { -1 };     // steg i mönstret som spelas nu, för markören
     std::array<std::atomic<int>, Pattern::numLayers> bassSteps { -1, -1, -1 };
 
+    // Kicken och baslagrens samplingar just nu, för markörerna i gränssnittet.
+    std::atomic<float> kickPlayTime { -1.0f };     // sekunder sedan senaste kicken slog an, -1 = tyst
+    std::atomic<int> kickTriggers { 0 };           // räknas upp för varje ny kick
+    std::array<std::atomic<float>, Pattern::numLayers> bassSamplePosition { -1.0f, -1.0f, -1.0f }; // 0..1 i samplingen, -1 = spelar inte
+
     void publish (const TransportClock& clock)
     {
         const auto ppq = clock.getPpqAt (0);

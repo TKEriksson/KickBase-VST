@@ -96,6 +96,17 @@ void InstrumentProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
     modulator.update (clock.getPpqAt (0));
     readBlockParams();
 
+    // Provlyssning: en klick på kickens eller samplingens ruta i gränssnittet.
+    if (const auto audition = auditionRequest.exchange (-1); audition == 0)
+    {
+        duckCurve.trigger();
+        kick.trigger (1.0f);
+    }
+    else if (juce::isPositiveAndBelow (audition - 1, numLayers))
+    {
+        basses[(size_t) (audition - 1)].noteOn (0, 1.0f, (int) getSampleRate());
+    }
+
     // Var kick och bas ska skrivas. Huvudutgången får alltid hela mixen; kick- och
     // basutgångarna får dessutom sin del var om DAW:en aktiverat dem.
     auto assign = [&] (Output& out, int busIndex)
@@ -154,6 +165,10 @@ void InstrumentProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
     transportStatus.publish (clock);
     transportStatus.keyNote = currentNote;
     transportStatus.patternActive = patternActive;
+    transportStatus.kickPlayTime = kick.getPlayTime();
+    transportStatus.kickTriggers = kick.getTriggerCount();
+    for (int layer = 0; layer < numLayers; ++layer)
+        transportStatus.bassSamplePosition[(size_t) layer] = basses[(size_t) layer].getSampleFraction();
     transportStatus.kickStep = patternActive ? scheduler.getLastKickStep() : -1;
     for (int layer = 0; layer < numLayers; ++layer)
         transportStatus.bassSteps[(size_t) layer] = patternActive ? scheduler.getLastBassStep (layer) : -1;

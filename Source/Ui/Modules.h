@@ -75,6 +75,9 @@ class SampleView : public juce::Component, public juce::SettableTooltipClient, p
 public:
     SampleView (PluginBase& processor, int layer, juce::Colour accent);
     void paint (juce::Graphics&) override;
+    void mouseDown (const juce::MouseEvent&) override;
+    void mouseEnter (const juce::MouseEvent&) override { hover = true; repaint(); }
+    void mouseExit (const juce::MouseEvent&) override  { hover = false; repaint(); }
 
 private:
     void timerCallback() override;
@@ -84,6 +87,9 @@ private:
     juce::Colour accent;
     const ClickSample* shown = nullptr;
     float lastStart = -1.0f;
+    bool hover = false;
+    float marker = -1.0f;                 // var i samplingen lagret spelar nu (0..1), -1 = inget
+    double flashWallTime = -1000.0;       // när lagret senast började spela samplingen (ms), för blixten
 };
 
 // Samplingen som ljudkälla i ett baslager (en flik bredvid OSC 1-3): vågformen, filen (LOAD, ta bort) och rattarna.

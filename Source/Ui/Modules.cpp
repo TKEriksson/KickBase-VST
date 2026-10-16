@@ -489,18 +489,24 @@ void BassModule::paintOverChildren (juce::Graphics& g)
 //==============================================================================
 SampleView::SampleView (PluginBase& p, int layerIn, juce::Colour accentIn) : processor (p), layer (layerIn), accent (accentIn)
 {
-    setTooltip ("SAMPLE - The waveform of this layer's sample. The line marks where each note starts (START).");
-    startTimerHz (8);
+    setTooltip ("SAMPLE - The waveform of this layer's sample. Click it to hear this layer play a note. The white line marks where each note starts (START); "
+                "the moving marker shows where the sample is playing.");
+    startTimerHz (30);
 }
 
 void SampleView::timerCallback()
 {
     const auto* sample = processor.getActiveBassSample (layer);
     const auto start = processor.apvts.getRawParameterValue (ParamID::bass (layer, BassField::sampleStart))->load();
-    if (sample != shown || start != lastStart)
+    const auto position = processor.transportStatus.bassSamplePosition[(size_t) layer].load();
+    if (position >= 0.0f && (marker < 0.0f || position < marker))
+        flashWallTime = juce::Time::getMillisecondCounterHiRes(); // en ny ton (positionen började om)
+    const auto flashing = juce::Time::getMillisecondCounterHiRes() - flashWallTime < 500.0;
+    if (sample != shown || start != lastStart || position != marker || flashing)
     {
         shown = sample;
         lastStart = start;
+        marker = position;
         repaint();
     }
 }
@@ -545,6 +551,43 @@ void SampleView::paint (juce::Graphics& g)
     const auto startX = area.getX() + juce::jlimit (0.0f, 1.0f, lastStart) * area.getWidth();
     g.setColour (juce::Colours::white.withAlpha (0.8f));
     g.drawVerticalLine ((int) startX, area.getY(), area.getBottom());
+
+    // Spelmarkör: det som spelats lyses upp, ett lysande streck där samplingen är nu, och en blixt när en ny ton börjar.
+    if (marker >= 0.0f)
+    {
+        const auto markerX = area.getX() + marker * area.getWidth();
+        {
+            juce::Graphics::ScopedSaveState state (g);
+            g.reduceClipRegion (area.withRight (markerX).toNearestInt());
+            g.setColour (accent.brighter (0.5f).withAlpha (0.9f));
+            g.fillPath (path);
+        }
+        g.setColour (accent.withAlpha (0.3f));
+        g.fillRect (juce::Rectangle<float> (markerX - 3.0f, area.getY(), 6.0f, area.getHeight()));
+        g.setColour (juce::Colours::white.withAlpha (0.9f));
+        g.fillRect (juce::Rectangle<float> (markerX - 0.75f, area.getY(), 1.5f, area.getHeight()));
+    }
+    const auto sinceFlash = juce::Time::getMillisecondCounterHiRes() - flashWallTime;
+    if (sinceFlash < 500.0)
+    {
+        g.setColour (accent.withAlpha (0.16f * (float) std::exp (-sinceFlash / 140.0)));
+        g.fillRoundedRectangle (bounds, 6.0f);
+    }
+
+    // Glöd när musen är över rutan.
+    if (hover)
+    {
+        g.setColour (accent.withAlpha (0.18f));
+        g.drawRoundedRectangle (bounds.reduced (0.5f), 6.0f, 4.0f);
+        g.setColour (accent.withAlpha (0.75f));
+        g.drawRoundedRectangle (bounds.reduced (1.5f), 6.0f, 1.5f);
+    }
+}
+
+void SampleView::mouseDown (const juce::MouseEvent&)
+{
+    if (processor.getActiveBassSample (layer) != nullptr)
+        processor.requestAudition (1 + layer); // provlyssna lagrets ton (med samplingen)
 }
 
 SamplePage::SamplePage (PluginBase& p, int layerIn, juce::Colour accent)

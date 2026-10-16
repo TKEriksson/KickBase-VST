@@ -20,6 +20,7 @@ public:
     void mouseDoubleClick (const juce::MouseEvent&) override;
     void mouseMove (const juce::MouseEvent&) override;
     void mouseExit (const juce::MouseEvent&) override;
+    void mouseEnter (const juce::MouseEvent&) override;
 
 private:
     void timerCallback() override;
@@ -43,6 +44,10 @@ private:
 
     PluginBase& processor;
     bool amp = false;
+    bool hoverDisplay = false;                      // musen är över rutan: den glöder
+    int lastTriggerCount = 0;
+    double triggerWallTime = 0.0;                   // när senaste kicken märktes (ms), för blixten
+    float markerSeconds = -1.0f;                    // var kicken är just nu (sekunder), -1 = tyst
     juce::TextButton pitchButton { "PITCH" }, ampButton { "AMP" };
 
     // Vågformen som ritas (min/max per bildpunkt), omräknad när något ändrats.

@@ -96,6 +96,7 @@ void KickEngine::trigger (float velocity, int transposeSemitones)
         old.fadingOut = true;
 
     currentVoice = 1 - currentVoice;
+    ++triggerCount;
     auto& voice = voices[currentVoice];
     voice.active = true;
     voice.time = 0.0;

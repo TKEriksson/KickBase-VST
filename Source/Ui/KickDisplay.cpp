@@ -28,11 +28,11 @@ KickDisplay::KickDisplay (PluginBase& p) : processor (p)
     addAndMakeVisible (ampButton);
     setMode (false);
 
-    setTooltip ("KICK - The waveform of the kick. Drag the nodes to shape pitch (PITCH) or volume (AMP); double-click to add a node, "
+    setTooltip ("KICK - The waveform of the kick: click an empty spot to hear it, and watch the marker follow it when it plays. Drag the nodes to shape pitch (PITCH) or volume (AMP); double-click to add a node, "
                 "right-click a node to remove it, drag the small diamond on a segment to bend it.");
     lastHash = stateHash();
     renderWaveform();
-    startTimerHz (20);
+    startTimerHz (30);
 }
 
 void KickDisplay::setMode (bool showAmp)
@@ -77,6 +77,21 @@ void KickDisplay::renderWaveform()
 
 void KickDisplay::timerCallback()
 {
+    // Spelmarkören: var kicken är nu, och en blixt när en ny kick slås an (från DAW, mönstret eller ett klick).
+    const auto playTime = processor.transportStatus.kickPlayTime.load();
+    const auto triggers = processor.transportStatus.kickTriggers.load();
+    if (triggers != lastTriggerCount)
+    {
+        lastTriggerCount = triggers;
+        triggerWallTime = juce::Time::getMillisecondCounterHiRes();
+    }
+    const auto flashing = juce::Time::getMillisecondCounterHiRes() - triggerWallTime < 600.0;
+    if (playTime != markerSeconds || flashing)
+    {
+        markerSeconds = playTime;
+        repaint();
+    }
+
     const auto hash = stateHash();
     if (hash != lastHash)
     {
@@ -215,8 +230,18 @@ void KickDisplay::paint (juce::Graphics& g)
         for (auto it = lower.rbegin(); it != lower.rend(); ++it)
             wave.lineTo (*it);
         wave.closeSubPath();
-        g.setColour (Theme::bass.withAlpha (0.55f));
+        g.setColour (Theme::bass.withAlpha (markerSeconds >= 0.0f ? 0.32f : 0.55f));
         g.fillPath (wave);
+
+        // Det som redan spelats lyses upp bakom markören: ljudvågen "fylls i" medan kicken klingar.
+        if (markerSeconds >= 0.0f)
+        {
+            const auto markerX = area.getX() + markerSeconds / viewSeconds() * area.getWidth();
+            juce::Graphics::ScopedSaveState state (g);
+            g.reduceClipRegion (area.withRight (std::min (area.getRight(), markerX)).toNearestInt());
+            g.setColour (Theme::bass.brighter (0.5f).withAlpha (0.95f));
+            g.fillPath (wave);
+        }
     }
 
     // Envelopens kurva.
@@ -267,6 +292,34 @@ void KickDisplay::paint (juce::Graphics& g)
         }
     }
 
+    // Spelmarkören: ett lysande streck där kicken är just nu, och en kort blixt över hela rutan när den slås an.
+    const auto sinceTrigger = juce::Time::getMillisecondCounterHiRes() - triggerWallTime;
+    if (sinceTrigger < 600.0)
+    {
+        g.setColour (Theme::kick.withAlpha (0.16f * (float) std::exp (-sinceTrigger / 140.0)));
+        g.fillRoundedRectangle (bounds, 6.0f);
+    }
+    if (markerSeconds >= 0.0f)
+    {
+        const auto markerX = area.getX() + markerSeconds / viewSeconds() * area.getWidth();
+        if (markerX <= area.getRight())
+        {
+            g.setColour (Theme::kick.withAlpha (0.25f));
+            g.fillRect (juce::Rectangle<float> (markerX - 3.0f, area.getY(), 6.0f, area.getHeight()));
+            g.setColour (juce::Colours::white.withAlpha (0.9f));
+            g.fillRect (juce::Rectangle<float> (markerX - 0.75f, area.getY(), 1.5f, area.getHeight()));
+        }
+    }
+
+    // Glöd när musen är över rutan.
+    if (hoverDisplay)
+    {
+        g.setColour (Theme::kick.withAlpha (0.18f));
+        g.drawRoundedRectangle (bounds.reduced (0.5f), 6.0f, 4.0f);
+        g.setColour (Theme::kick.withAlpha (0.75f));
+        g.drawRoundedRectangle (bounds.reduced (1.5f), 6.0f, 1.5f);
+    }
+
     // Läsning av den nod som hålls eller dras.
     const auto shown = dragged >= 0 ? dragged : hovered;
     if (shown >= 0 && shown < (int) points.size())
@@ -295,9 +348,16 @@ void KickDisplay::mouseMove (const juce::MouseEvent& event)
     }
 }
 
+void KickDisplay::mouseEnter (const juce::MouseEvent&)
+{
+    hoverDisplay = true;
+    repaint();
+}
+
 void KickDisplay::mouseExit (const juce::MouseEvent&)
 {
     hovered = -1;
+    hoverDisplay = false;
     repaint();
 }
 
@@ -326,6 +386,10 @@ void KickDisplay::mouseDown (const juce::MouseEvent& event)
     }
     editing = points;
     fixedView = viewSeconds();
+
+    // Ett klick på en tom plats provlyssnar kicken.
+    if (point < 0 && draggedTension < 0)
+        processor.requestAudition (0);
 }
 
 void KickDisplay::mouseDrag (const juce::MouseEvent& event)
