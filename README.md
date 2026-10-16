@@ -17,9 +17,17 @@ Kräver Visual Studio Build Tools med C++-verktygen (CMake och Ninja följer med
 ```
 build.bat                    # Release (med link-time optimization, långsam att länka)
 build.bat RelWithDebInfo     # snabbare att bygga under utveckling
+build.bat RelWithDebInfo all # bygger också utvecklingsverktygen (KickbaseMcp / MyOwnFruitTool) och KickbaseHostTest
 ```
 
-JUCE laddas ner automatiskt första gången. `build.bat` kör testerna efter bygget.
+JUCE laddas ner automatiskt första gången. `build.bat` kör testerna efter bygget. Utan `all` byggs bara det som behövs för att
+prova: instrumentet, FX-pluginet och testerna.
+
+**Snabbare byggen:** JUCE:s tunga headers är förkompilerade (`Source/PchPlugin.h`, `Source/PchCore.h`), felsökningsinformationen
+ligger i objektfilerna (/Z7) så att kompileringarna inte väntar på en gemensam PDB, och verktyget och MCP-bryggan är ett och samma
+program (`KickbaseMcp.exe`, som också kopieras till `MyOwnFruitTool.exe`) så att all kod bara kompileras en gång. Om `sccache` (eller
+`ccache`) finns installerat används det automatiskt, vilket gör ren ombyggnad och byte av gren mycket snabbare
+(`winget install Mozilla.sccache`). Det hjälper också att utesluta mappen `build` och repot ur Windows Defender.
 
 ## Installera
 
@@ -103,7 +111,7 @@ Förhandslyssningar och spektrogram hamnar i `Dokument\Kickbase\Previews`, prese
 
 ## Utvecklingsverktyg
 
-`MyOwnFruitTool` (byggs tillsammans med pluginsen) testar utan DAW:
+`MyOwnFruitTool` (byggs med `build.bat RelWithDebInfo all`; samma program som `KickbaseMcp`, som också går att köra som `KickbaseMcp tool <kommando>`) testar utan DAW:
 
 ```
 MyOwnFruitTool render      instrument|fx <ut.wav> [bpm] [takter] [ton] [preset, t.ex. 16+k3+b5]

@@ -348,7 +348,8 @@ namespace
     }
 }
 
-int main (int argc, char* argv[])
+// Verktygets kommandon. Startas av KickbaseMcp.exe när det heter MyOwnFruitTool.exe eller får `tool` som första argument.
+int toolMain (int argc, char* argv[])
 {
     if (argc == 2 && juce::String (argv[1]) == "presettest")
         return presetTest();

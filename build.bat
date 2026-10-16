@@ -1,6 +1,8 @@
 @echo off
 rem Bygger Kickbase med MSVC + Ninja (CMake och Ninja foljer med Visual Studio Build Tools).
-rem Anvandning: build.bat [Debug|Release]   (standard: Release)
+rem Anvandning: build.bat [Debug|RelWithDebInfo|Release] [all]   (standard: Release)
+rem   Utan "all" byggs bara det som behovs for att prova: instrumentet (VST3 + app), FX-pluginet och testerna.
+rem   "all" bygger dessutom utvecklingsverktygen (KickbaseMcp / MyOwnFruitTool) och KickbaseHostTest, vilket tar langre tid.
 
 setlocal
 set CONFIG=%1
@@ -15,7 +17,11 @@ if not defined VSPATH (
 call "%VSPATH%\VC\Auxiliary\Build\vcvars64.bat" >nul || exit /b 1
 
 cmake -S "%~dp0." -B "%~dp0build\%CONFIG%" -G Ninja -DCMAKE_BUILD_TYPE=%CONFIG% || exit /b 1
-cmake --build "%~dp0build\%CONFIG%" || exit /b 1
+if /i "%2"=="all" (
+    cmake --build "%~dp0build\%CONFIG%" || exit /b 1
+) else (
+    cmake --build "%~dp0build\%CONFIG%" --target MyOwnFruit_VST3 MyOwnFruit_Standalone MyOwnFruitFX_VST3 MyOwnFruitTests || exit /b 1
+)
 
 echo.
 "%~dp0build\%CONFIG%\MyOwnFruitTests_artefacts\%CONFIG%\MyOwnFruitTests.exe" || exit /b 1

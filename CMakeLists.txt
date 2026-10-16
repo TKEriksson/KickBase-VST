@@ -1,6 +1,26 @@
 cmake_minimum_required(VERSION 3.22)
 
+# CMP0141 NEW: låter oss välja felsökningsformat (se längre ner) med CMAKE_MSVC_DEBUG_INFORMATION_FORMAT.
+if (POLICY CMP0141)
+    cmake_policy(SET CMP0141 NEW)
+endif()
+
 project(MyOwnFruit VERSION 0.1.0)
+
+# Kompilatorcache: om sccache (eller ccache) finns används den automatiskt. Då går en ren ombyggnad eller ett byte av gren
+# mycket snabbare, eftersom oförändrade filer hämtas ur cachen. Installera med `choco install sccache` eller `winget install Mozilla.sccache`.
+find_program(KICKBASE_COMPILER_CACHE NAMES sccache ccache)
+if (KICKBASE_COMPILER_CACHE)
+    message(STATUS "Kompilatorcache: ${KICKBASE_COMPILER_CACHE}")
+    set(CMAKE_C_COMPILER_LAUNCHER ${KICKBASE_COMPILER_CACHE})
+    set(CMAKE_CXX_COMPILER_LAUNCHER ${KICKBASE_COMPILER_CACHE})
+endif()
+
+# Felsökningsinformation i varje objektfil (/Z7) i stället för en delad PDB (/Zi): med många kompileringar parallellt får
+# annars alla vänta på samma PDB-server. Ger snabbare byggen; länkaren skriver fortfarande den färdiga .pdb:n.
+if (MSVC)
+    set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<$<CONFIG:Debug,RelWithDebInfo>:Embedded>")
+endif()
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -19,6 +39,10 @@ FetchContent_Declare(
     GIT_SHALLOW TRUE
 )
 FetchContent_MakeAvailable(JUCE)
+
+# JUCE:s modul-filer (juce_core.cpp ...) får inte förkompilerade headers: de måste själva vara först att inkludera sina headers.
+file(GLOB KICKBASE_JUCE_MODULE_CPPS "${juce_SOURCE_DIR}/modules/*/*.cpp")
+set_source_files_properties(${KICKBASE_JUCE_MODULE_CPPS} PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
 
 # Ljudkärnan: klocka, mönster och motorer. Inget gränssnitt, går att testa fristående.
 set(CORE_SOURCES
@@ -124,6 +148,7 @@ target_sources(MyOwnFruit PRIVATE
     Source/Instrument/InstrumentEntry.cpp
 )
 target_link_libraries(MyOwnFruit PRIVATE juce::juce_audio_utils juce::juce_dsp KickbaseGuides)
+target_precompile_headers(MyOwnFruit PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CMAKE_CURRENT_SOURCE_DIR}/Source/PchPlugin.h>")
 myownfruit_configure_plugin(MyOwnFruit)
 
 # MyOwnFruit FX: effekten som läggs i mixern och hackar upp ljudet från en annan synth.
@@ -148,6 +173,7 @@ target_sources(MyOwnFruitFX PRIVATE
     Source/Fx/FxEntry.cpp
 )
 target_link_libraries(MyOwnFruitFX PRIVATE juce::juce_audio_utils juce::juce_dsp KickbaseGuides)
+target_precompile_headers(MyOwnFruitFX PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CMAKE_CURRENT_SOURCE_DIR}/Source/PchPlugin.h>")
 myownfruit_configure_plugin(MyOwnFruitFX)
 
 # Tester för kärnan (ingen plugin, bara ett konsolprogram). Körs av build.bat.
@@ -163,34 +189,30 @@ target_sources(MyOwnFruitTests PRIVATE
     Tests/TestMain.cpp
 )
 target_link_libraries(MyOwnFruitTests PRIVATE juce::juce_audio_processors juce::juce_dsp)
+target_precompile_headers(MyOwnFruitTests PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CMAKE_CURRENT_SOURCE_DIR}/Source/PchCore.h>")
 myownfruit_configure(MyOwnFruitTests)
 
-# Utvecklingsverktyg: renderar ljud offline och tar skärmbilder av gränssnittet.
-juce_add_console_app(MyOwnFruitTool PRODUCT_NAME "MyOwnFruitTool")
-target_sources(MyOwnFruitTool PRIVATE
-    ${PLUGIN_SOURCES}
-    ${INSTRUMENT_SOURCES}
-    ${FX_SOURCES}
-    Tools/Tool.cpp
-    Tools/Analyzer.cpp
-)
-target_compile_definitions(MyOwnFruitTool PRIVATE JucePlugin_Name="Kickbase")
-target_link_libraries(MyOwnFruitTool PRIVATE juce::juce_audio_utils juce::juce_dsp KickbaseGuides)
-
 # KickbaseMcp: MCP-bryggan (stdio) som AI-appar som Claude Desktop startar. Kör Kickbase utan DAW eller kopplar upp sig
-# mot en Kickbase i DAW:en.
+# mot en Kickbase i DAW:en. Samma program innehåller också utvecklingsverktyget (renderar ljud offline, tar skärmbilder,
+# analyserar): det startas som `MyOwnFruitTool.exe` (en kopia som görs efter bygget) eller `KickbaseMcp.exe tool <kommando>`.
+# De delar all kod, så den kompileras bara en gång.
 juce_add_console_app(KickbaseMcp PRODUCT_NAME "KickbaseMcp")
 target_sources(KickbaseMcp PRIVATE
     ${PLUGIN_SOURCES}
     ${INSTRUMENT_SOURCES}
     ${FX_SOURCES}
     Tools/McpServer.cpp
+    Tools/Tool.cpp
+    Tools/Analyzer.cpp
 )
 target_compile_definitions(KickbaseMcp PRIVATE JucePlugin_Name="Kickbase" JUCE_MODAL_LOOPS_PERMITTED=1)
 target_link_libraries(KickbaseMcp PRIVATE juce::juce_audio_utils juce::juce_dsp KickbaseGuides)
+target_precompile_headers(KickbaseMcp PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CMAKE_CURRENT_SOURCE_DIR}/Source/PchPlugin.h>")
 myownfruit_configure(KickbaseMcp)
-myownfruit_configure(MyOwnFruitTool)
-
+add_custom_command(TARGET KickbaseMcp POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/MyOwnFruitTool_artefacts/$<CONFIG>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:KickbaseMcp>" "${CMAKE_BINARY_DIR}/MyOwnFruitTool_artefacts/$<CONFIG>/MyOwnFruitTool.exe"
+    VERBATIM)
 
 # KickbaseHostTest: laddar den byggda VST3-filen som en värd, spelar, öppnar och stänger editorn och laddar ur den
 # (fångar krascher och hängningar vid avslut, som FL Studio annars visar).
