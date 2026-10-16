@@ -28,6 +28,7 @@ public:
     bool acceptsMidi() const override { return true; }
 
     juce::MidiKeyboardState keyboardState;
+    juce::MidiKeyboardState* getKeyboardState() override { return &keyboardState; }
 
 protected:
     std::unique_ptr<PluginBase> createOfflineCopy() const override { return std::make_unique<InstrumentProcessor>(); }
@@ -91,6 +92,10 @@ private:
 
     // Läses en gång per block.
     PatternLengths lengths;
+    int soloLayer = 0, soloSource = 0, soloSamplesLeft = 0, kickSoloSamplesLeft = 0;
+    int previewLayer = -1; // rad som förhandsspelas utan DAW-ton, -1 = ingen
+    void handlePreviewRequest (int row);
+    void stopPreview(); // provlyssning av en enda källa (se PluginBase::requestAudition)
     bool kickOn = true;
     std::array<bool, numLayers> layerOn { true, true, true };
     std::array<float, numLayers> duckAmounts { 0.8f, 0.8f, 0.8f }, gateScales { 1.0f, 1.0f, 1.0f };

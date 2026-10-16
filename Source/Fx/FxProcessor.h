@@ -48,6 +48,7 @@ private:
     bool active = false, kickOn = true, gateOn = true;
     float duckAmount = 0.8f, gateScale = 1.0f, inputLevel = 1.0f;
     PatternLengths lengths;
+    int kickSoloSamplesLeft = 0; // provlyssning av bara kickens sampling
     bool useCurve = false;
     double duckLengthSamples = 1.0;
 

@@ -2,6 +2,7 @@
 
 #include "../Core/PluginBase.h"
 #include "Components.h"
+#include "Cursors.h"
 
 // Bilden av en wavetable, som i Serum: alla vågformer staplade bakåt i en svag 3D-vy, och den
 // som spelas nu (positionen, med LFO och warp) ritad framför i lagrets färg.
@@ -10,10 +11,16 @@ class WavetableView : public juce::Component, public juce::SettableTooltipClient
 public:
     WavetableView (PluginBase& processor, int layer, int osc, juce::Colour accent);
     void paint (juce::Graphics&) override;
+    void mouseDown (const juce::MouseEvent&) override;
+    void mouseEnter (const juce::MouseEvent&) override { hover = true; repaint(); }
+    void mouseExit (const juce::MouseEvent&) override  { hover = false; repaint(); }
 
 private:
     void timerCallback() override;
     float raw (BassField field) const;
+
+    bool hover = false;
+    juce::MouseCursor speakerCursor = Cursors::speaker();
 
     PluginBase& processor;
     const int layer, osc;

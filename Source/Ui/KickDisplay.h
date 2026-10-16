@@ -2,6 +2,7 @@
 
 #include "../Core/PluginBase.h"
 #include "Components.h"
+#include "Cursors.h"
 
 // Kickens vågform (renderad av själva kickmotorn) med envelopernas noder ovanpå, som i Kick 3.
 // PITCH visar tonhöjdens svep (noterna märkta med ton och Hz), AMP volymen. Dra noder, dubbel-
@@ -44,6 +45,7 @@ private:
 
     PluginBase& processor;
     bool amp = false;
+    juce::MouseCursor speakerCursor = Cursors::speaker();
     bool hoverDisplay = false;                      // musen är över rutan: den glöder
     int lastTriggerCount = 0;
     double triggerWallTime = 0.0;                   // när senaste kicken märktes (ms), för blixten

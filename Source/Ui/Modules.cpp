@@ -51,6 +51,30 @@ HeaderBar::HeaderBar (PluginBase& p, const juce::String& subtitleIn)
         addAndMakeVisible (exportButton);
     }
 
+    listenButton.setColour (juce::TextButton::buttonOnColourId, Theme::pattern.withAlpha (0.7f));
+    listenButton.setTooltip ("LISTEN - Plays the note C5 for the whole synth (like holding that key): the kick, the bass layers and the pattern. "
+                             "Click again to stop. Use it to hear the whole sound without a DAW.");
+    listenButton.onClick = [this]
+    {
+        if (auto* keys = processor.getKeyboardState())
+        {
+            if (listeningNote >= 0)
+            {
+                keys->noteOff (1, listeningNote, 0.0f);
+                listeningNote = -1;
+            }
+            else
+            {
+                listeningNote = processor.previewNote.load();
+                keys->noteOn (1, listeningNote, 1.0f);
+            }
+        }
+    };
+    addChildComponent (listenButton);
+    noteButton.setTooltip ("The note LISTEN plays (C5 by default). It is also the key used when you listen to a single piano roll. Click to choose another.");
+    noteButton.onClick = [this] { showNoteMenu(); };
+    addChildComponent (noteButton);
+
     aiButton.setClickingTogglesState (true);
     aiButton.setColour (juce::TextButton::buttonOnColourId, Theme::mix.withAlpha (0.6f));
     aiButton.onClick = [this]
@@ -73,9 +97,36 @@ void HeaderBar::updateAiTooltip()
 
 void HeaderBar::resized()
 {
-    presets.setBounds (14 + Theme::logoWidth (subtitle) + 24, 9, 200, getHeight() - 18);
-    exportButton.setBounds (presets.getRight() + 10, 9, 76, getHeight() - 18);
-    aiButton.setBounds (exportButton.getRight() + 20 + 112 + 8, 9, 34, getHeight() - 18);
+    const auto hasListen = processor.getKeyboardState() != nullptr;
+    presets.setBounds (14 + Theme::logoWidth (subtitle) + 24, 9, hasListen ? 160 : 200, getHeight() - 18);
+    exportButton.setBounds (presets.getRight() + 10, 9, hasListen ? 70 : 76, getHeight() - 18);
+    listenButton.setBounds (exportButton.getRight() + 8, 9, 62, getHeight() - 18);
+    noteButton.setBounds (listenButton.getRight() + 4, 9, 38, getHeight() - 18);
+    listenButton.setVisible (hasListen);
+    noteButton.setVisible (hasListen);
+    aiButton.setBounds (toolsEnd() + 20 + meterWidth + 8, 9, 34, getHeight() - 18);
+}
+
+void HeaderBar::showNoteMenu()
+{
+    juce::PopupMenu menu;
+    for (int octave = 6; octave >= 1; --octave)
+    {
+        juce::PopupMenu notes;
+        for (int semitone = 0; semitone < 12; ++semitone)
+        {
+            const auto note = 12 * octave + semitone;
+            notes.addItem (1 + note, juce::MidiMessage::getMidiNoteName (note, true, true, 5), true, note == processor.previewNote.load());
+        }
+        menu.addSubMenu ("Octave " + juce::String (octave), notes);
+    }
+
+    juce::Component::SafePointer<HeaderBar> safeThis (this);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&noteButton), [safeThis] (int result)
+    {
+        if (safeThis != nullptr && result > 0)
+            safeThis->processor.previewNote = result - 1;
+    });
 }
 
 void HeaderBar::showExportMenu()
@@ -147,6 +198,18 @@ void HeaderBar::chooseExportTarget (int part, int bars)
 
 void HeaderBar::timerCallback()
 {
+    if (auto* keys = processor.getKeyboardState())
+    {
+        const auto playing = listeningNote >= 0 && keys->isNoteOn (1, listeningNote);
+        if (! playing)
+            listeningNote = -1;
+        listenButton.setToggleState (playing, juce::dontSendNotification);
+        listenButton.setButtonText (playing ? "STOP" : "LISTEN");
+        const auto name = juce::MidiMessage::getMidiNoteName (processor.previewNote.load(), true, true, 5);
+        if (noteButton.getButtonText() != name)
+            noteButton.setButtonText (name);
+    }
+
     // Toppvärdet av de senaste ~20 ms på masterns utgång, med mjukt fall och en håll-markör.
     processor.getMasterSection().outputTap.copyLatest (1024, meterLeft, meterRight);
     auto lo = 0.0f, ro = 0.0f;
@@ -196,7 +259,7 @@ void HeaderBar::paint (juce::Graphics& g)
 
     // Utgångsmätare (L och R, -48 till 0 dB): visar att synten faktiskt ger ljud.
     {
-        auto meter = juce::Rectangle<float> ((float) exportButton.getRight() + 20.0f, 12.0f, 112.0f, (float) getHeight() - 24.0f);
+        auto meter = juce::Rectangle<float> ((float) toolsEnd() + 20.0f, 12.0f, (float) meterWidth, (float) getHeight() - 24.0f);
         g.setFont (Theme::font (9.0f, true));
         g.setColour (Theme::textDim);
         g.drawText ("OUT", meter.removeFromLeft (26.0f), juce::Justification::centredLeft);
@@ -220,7 +283,7 @@ void HeaderBar::paint (juce::Graphics& g)
 
     const auto following = status.followingHost.load();
     const auto lampColour = following ? Theme::mix : Theme::kick;
-    auto lamp = area.removeFromRight (120);
+    auto lamp = area.removeFromRight (92);
     const juce::Point<float> centre { (float) lamp.getX() + 8.0f, (float) lamp.getCentreY() };
     g.setColour (lampColour.withAlpha (0.35f));
     g.fillEllipse (juce::Rectangle<float> (12.0f, 12.0f).withCentre (centre));
@@ -305,6 +368,13 @@ KickModule::KickModule (PluginBase& p)
     clearButton.onClick = [this] { processor.clearClickSample(); updateSampleLabel(); };
     addAndMakeVisible (clearButton);
 
+    listenButton.setTooltip ("LISTEN - Plays the kick (you can also click an empty spot in the kick's picture).");
+    listenButton.onClick = [this] { processor.requestAudition (0); };
+    addAndMakeVisible (listenButton);
+    listenSampleButton.setTooltip ("HEAR SAMPLE - Plays just the loaded sample, whatever the MODE is (so you can check what you loaded).");
+    listenSampleButton.onClick = [this] { processor.requestAudition (5); };
+    addAndMakeVisible (listenSampleButton);
+
     updateSampleLabel();
     startTimerHz (2); // projektet kan laddas om medan fönstret är öppet
 }
@@ -321,6 +391,7 @@ void KickModule::updateSampleLabel()
     if (sampleLabel.getText() != text)
         sampleLabel.setText (text, juce::dontSendNotification);
     clearButton.setEnabled (name.isNotEmpty());
+    listenSampleButton.setEnabled (name.isNotEmpty());
 }
 
 void KickModule::loadSample (const juce::File& file)
@@ -369,6 +440,11 @@ void KickModule::resized()
     clearButton.setBounds (sampleRow.removeFromRight (24));
     sampleRow.removeFromRight (4);
     loadButton.setBounds (sampleRow.removeFromRight (50));
+    sampleRow.removeFromRight (10);
+    listenSampleButton.setBounds (sampleRow.removeFromRight (96));
+    sampleRow.removeFromRight (6);
+    listenButton.setBounds (sampleRow.removeFromRight (70));
+    sampleRow.removeFromRight (10);
     sampleLabel.setBounds (sampleRow);
     area.removeFromBottom (4);
 
@@ -431,6 +507,10 @@ BassModule::BassModule (PluginBase& p, int layerIn)
         sources.addTab ("OSC " + juce::String (osc + 1), accent, *oscs[(size_t) osc]);
         sources.addPower (osc, p.apvts, ParamID::bass (layer, ParamID::oscField (osc, F::aOn)));
     }
+    listenButton.setTooltip ("LISTEN - Plays this layer's sound (one second, the key's root note) so you can hear it without a DAW note. "
+                             "Click an oscillator's picture to hear just that oscillator.");
+    listenButton.onClick = [this] { processor.requestAudition (1 + layer); };
+    addAndMakeVisible (listenButton);
     sources.addTab ("SAMPLE", accent, *samplePage);
     sources.addPower (ParamID::oscsPerLayer, p.apvts, ParamID::bass (layer, F::sampleOn));
 
@@ -489,7 +569,8 @@ void BassModule::paintOverChildren (juce::Graphics& g)
 //==============================================================================
 SampleView::SampleView (PluginBase& p, int layerIn, juce::Colour accentIn) : processor (p), layer (layerIn), accent (accentIn)
 {
-    setTooltip ("SAMPLE - The waveform of this layer's sample. Click it to hear this layer play a note. The white line marks where each note starts (START); "
+    setMouseCursor (speakerCursor);
+    setTooltip ("SAMPLE - The waveform of this layer's sample. Click it to hear just the sample. The white line marks where each note starts (START); "
                 "the moving marker shows where the sample is playing.");
     startTimerHz (30);
 }
@@ -587,7 +668,7 @@ void SampleView::paint (juce::Graphics& g)
 void SampleView::mouseDown (const juce::MouseEvent&)
 {
     if (processor.getActiveBassSample (layer) != nullptr)
-        processor.requestAudition (1 + layer); // provlyssna lagrets ton (med samplingen)
+        processor.requestAudition (PluginBase::soloAudition (layer, 3)); // bara samplingen
 }
 
 SamplePage::SamplePage (PluginBase& p, int layerIn, juce::Colour accent)
@@ -632,6 +713,9 @@ SamplePage::SamplePage (PluginBase& p, int layerIn, juce::Colour accent)
     clearButton.setTooltip ("Remove the sample from this layer");
     clearButton.onClick = [this] { processor.clearBassSample (layer); updateLabel(); };
     addAndMakeVisible (clearButton);
+    hearButton.setTooltip ("HEAR - Plays just this layer's sample (you can also click the waveform).");
+    hearButton.onClick = [this] { processor.requestAudition (PluginBase::soloAudition (layer, 3)); };
+    addAndMakeVisible (hearButton);
 
     updateLabel();
     startTimerHz (2); // projektet kan laddas om medan fönstret är öppet
@@ -649,6 +733,7 @@ void SamplePage::updateLabel()
     if (label.getText() != text)
         label.setText (text, juce::dontSendNotification);
     clearButton.setEnabled (name.isNotEmpty());
+    hearButton.setEnabled (name.isNotEmpty());
 }
 
 void SamplePage::loadSample (const juce::File& file)
@@ -674,6 +759,8 @@ void SamplePage::resized()
     clearButton.setBounds (top.removeFromRight (24));
     top.removeFromRight (4);
     loadButton.setBounds (top.removeFromRight (56));
+    top.removeFromRight (4);
+    hearButton.setBounds (top.removeFromRight (56));
     label.setBounds (top);
     area.removeFromTop (6);
 
@@ -725,7 +812,10 @@ void BassModule::resized()
     sources.setBounds (area.removeFromTop (juce::jlimit (200, 250, area.getHeight() * 11 / 24)));
     area.removeFromTop (6);
 
-    envelope.setBounds (area.removeFromLeft (220).reduced (0, 2));
+    auto leftColumn = area.removeFromLeft (220);
+    listenButton.setBounds (leftColumn.removeFromBottom (24));
+    leftColumn.removeFromBottom (4);
+    envelope.setBounds (leftColumn.reduced (0, 2));
     area.removeFromLeft (6);
     const auto rowHeight = juce::jlimit (44, 84, area.getHeight() / groups.numRows() - ControlGroups::titleHeight - 3);
     groups.layout (area, rowHeight);

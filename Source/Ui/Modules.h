@@ -2,6 +2,7 @@
 
 #include "../Core/PluginBase.h"
 #include "Components.h"
+#include "Cursors.h"
 #include "KickDisplay.h"
 #include "OscPanel.h"
 #include "EnvelopeView.h"
@@ -22,6 +23,8 @@ public:
 private:
     void timerCallback() override;
     void showExportMenu();
+    static constexpr int meterWidth = 72;
+    int toolsEnd() const { return listenButton.isVisible() ? noteButton.getRight() : exportButton.getRight(); }
     void updateAiTooltip();
     void chooseExportTarget (int part, int bars); // part: 0-2 = PluginBase::ExportPart, 3 = alla tre
 
@@ -29,6 +32,10 @@ private:
     juce::String subtitle;
     PresetButton presets;
     juce::TextButton exportButton { "EXPORT" }; // bara i instrumentet
+    juce::TextButton listenButton { "LISTEN" }; // spelar den valda tonen (standard C5) för hela synthen (bara i instrumentet)
+    juce::TextButton noteButton { "C5" };       // väljer tonen som LISTEN och förhandsspelningen spelar
+    int listeningNote = -1;                     // tonen som LISTEN håller just nu, -1 = ingen
+    void showNoteMenu();
     juce::TextButton aiButton { "AI" };         // slår på länken till MCP-bryggan (se BridgeLink)
     float peakL = 0.0f, peakR = 0.0f, holdL = 0.0f, holdR = 0.0f; // utgångsmätaren
     std::vector<float> meterLeft, meterRight;
@@ -64,7 +71,7 @@ private:
     std::unique_ptr<FxSendControl> fxSend;
 
     juce::Label sampleLabel;
-    juce::TextButton loadButton { "Load" }, clearButton { "X" };
+    juce::TextButton loadButton { "Load" }, clearButton { "X" }, listenButton { "LISTEN" }, listenSampleButton { "HEAR SAMPLE" };
     std::unique_ptr<juce::FileChooser> chooser;
     bool dragHover = false;
 };
@@ -88,6 +95,7 @@ private:
     const ClickSample* shown = nullptr;
     float lastStart = -1.0f;
     bool hover = false;
+    juce::MouseCursor speakerCursor = Cursors::speaker();
     float marker = -1.0f;                 // var i samplingen lagret spelar nu (0..1), -1 = inget
     double flashWallTime = -1000.0;       // när lagret senast började spela samplingen (ms), för blixten
 };
@@ -108,7 +116,7 @@ private:
     const int layer;
     SampleView view;
     juce::Label label;
-    juce::TextButton loadButton { "LOAD" }, clearButton { "X" };
+    juce::TextButton loadButton { "LOAD" }, clearButton { "X" }, hearButton { "HEAR" };
     std::unique_ptr<juce::FileChooser> chooser;
     std::vector<std::unique_ptr<juce::Component>> controls; // LEVEL, START, ROOT, LOOP, KEY
 };
@@ -131,6 +139,7 @@ public:
 private:
     PluginBase& processor;
     bool dragHover = false;
+    juce::TextButton listenButton { "LISTEN" }; // spelar lagrets ton
 
     const int layer;
     ParamRefs refs;

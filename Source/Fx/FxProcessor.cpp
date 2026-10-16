@@ -77,9 +77,19 @@ void FxProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuff
 
     const auto key = params.getChoice (ParamID::fxKey);
     lengths = Params::readPatternLengthsWith ([this] (const char* id) { return params.get (id); });
-    kick.setParams (readModulatedKick (key));
+    const auto audition = auditionRequest.exchange (-1);
+    if (audition == 5)
+        kickSoloSamplesLeft = (int) (getSampleRate() * 2.0);
+    auto kickParams = readModulatedKick (key);
+    if (kickSoloSamplesLeft > 0 && getActiveClickSample() != nullptr)
+    {
+        kickParams.sampleMode = 2; // provlyssning av bara samplingen
+        kickParams.sampleLevel = 1.0f;
+    }
+    kickSoloSamplesLeft = std::max (0, kickSoloSamplesLeft - numSamples);
+    kick.setParams (kickParams);
     kick.setClickSample (getActiveClickSample());
-    if (auditionRequest.exchange (-1) == 0) // provlyssning av kicken från gränssnittet
+    if (audition == 0 || audition == 5) // provlyssning av kicken från gränssnittet
     {
         duckCurve.trigger();
         kick.trigger (1.0f);

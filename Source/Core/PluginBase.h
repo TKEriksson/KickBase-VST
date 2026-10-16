@@ -119,9 +119,20 @@ public:
     KickParams kickForDisplay (int keyPitchClass) const;
     TransportStatus transportStatus;
 
-    // Provlyssning från gränssnittet (en klick på kickens eller samplingens ruta). Ljudtråden slår an ljudet nästa block:
-    // 0 = kicken, 1-3 = baslager 1-3 (lagrets ton en sekund).
+    // Provlyssning från gränssnittet (en klick på kickens, wavetablens eller samplingens ruta, eller en LISTEN-knapp). Ljudtråden
+    // slår an ljudet nästa block: 0 = kicken, 1-3 = baslager 1-3 (lagrets hela ton en sekund), 10 + lager * 10 + källa = bara en
+    // källa i ett lager (källa 0-2 = OSC 1-3, 3 = samplingen). 5 = bara kickens sampling (oavsett läge).
     void requestAudition (int what) { auditionRequest = what; }
+    static int soloAudition (int layer, int source) { return 10 + layer * 10 + source; }
+
+    // Förhandsspelning av en enskild rad (en pianorulle): spelar raden en gång med den egna klockan, utan DAW-ton (100 + rad,
+    // där rad 0-2 = baslager och 3 = kicken; samma anrop igen avbryter). `previewingLayer` visar vilken rad som spelas, -1 = ingen.
+    static int previewRequest (int noteLayer) { return 100 + noteLayer; }
+    std::atomic<int> previewingLayer { -1 };
+    std::atomic<int> previewNote { 60 }; // tonen som LISTEN och förhandsspelningen spelar (MIDI, C5 = 60 som i FL)
+
+    // Instrumentets tangentbord (för LISTEN-knappen som spelar C5), eller nullptr i FX-versionen.
+    virtual juce::MidiKeyboardState* getKeyboardState() { return nullptr; }
 
     // Baslagrens namn: standard BASS 1-3, men man kan döpa dem själv. `layerNamesVersion` ökas vid ändring, så att
     // gränssnittet kan uppdatera sina texter.

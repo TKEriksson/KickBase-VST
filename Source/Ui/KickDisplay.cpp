@@ -346,6 +346,9 @@ void KickDisplay::mouseMove (const juce::MouseEvent& event)
         hovered = index;
         repaint();
     }
+
+    // Högtalare över tomma platser (klicka för att lyssna), vanlig pekare över noder och handtag.
+    setMouseCursor (index < 0 && tensionHandleAt (event.position) < 0 ? speakerCursor : juce::MouseCursor::NormalCursor);
 }
 
 void KickDisplay::mouseEnter (const juce::MouseEvent&)

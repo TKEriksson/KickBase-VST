@@ -201,6 +201,7 @@ void PluginBase::getStateInformation (juce::MemoryBlock& destData)
         state.setProperty (presetProperty ((Presets::Section) i), presetNames[(size_t) i], nullptr);
     for (int layer = 0; layer < ParamID::numBassLayers; ++layer)
         state.setProperty ("presetBass" + juce::String (layer + 1), bassPresetNames[(size_t) layer], nullptr);
+    state.setProperty ("previewNote", previewNote.load(), nullptr);
     for (int layer = 0; layer < ParamID::numBassLayers; ++layer)
         state.setProperty ("layerName" + juce::String (layer + 1), layerNames[(size_t) layer], nullptr);
     state.appendChild (pattern.toValueTree(), nullptr);
@@ -227,6 +228,7 @@ void PluginBase::setStateInformation (const void* data, int sizeInBytes)
         presetNames[(size_t) i] = state.getProperty (presetProperty ((Presets::Section) i), presetNames[(size_t) i]).toString();
     for (int layer = 0; layer < ParamID::numBassLayers; ++layer)
         bassPresetNames[(size_t) layer] = state.getProperty ("presetBass" + juce::String (layer + 1), bassPresetNames[(size_t) layer]).toString();
+    previewNote = juce::jlimit (0, 127, (int) state.getProperty ("previewNote", 60));
     for (int layer = 0; layer < ParamID::numBassLayers; ++layer)
         layerNames[(size_t) layer] = state.getProperty ("layerName" + juce::String (layer + 1), juce::String()).toString();
     ++layerNamesVersion;

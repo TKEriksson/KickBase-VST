@@ -94,10 +94,23 @@ void InstrumentProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
     keyboardState.processNextMidiBuffer (midi, 0, numSamples, true);
     clock.beginBlock (getHostPosition(), numSamples);
     modulator.update (clock.getPpqAt (0));
+
+    // Provlyssning från gränssnittet. En solo-källa (en oscillator eller samplingen) sätts före parametrarna läses, så att
+    // de första samplesen redan är solo.
+    const auto audition = auditionRequest.exchange (-1);
+    if (audition >= 0 && numHeldNotes == 0)
+        currentNote = previewNote.load(); // all provlyssning (kick, oscillatorer, sampling) spelas på den valda tonen
+    if (audition == 5)
+        kickSoloSamplesLeft = (int) (getSampleRate() * 2.0);
+    if (audition >= 10 && audition < 100)
+    {
+        soloLayer = juce::jlimit (0, numLayers - 1, (audition - 10) / 10);
+        soloSource = (audition - 10) % 10;
+        soloSamplesLeft = (int) getSampleRate();
+    }
     readBlockParams();
 
-    // Provlyssning: en klick på kickens eller samplingens ruta i gränssnittet.
-    if (const auto audition = auditionRequest.exchange (-1); audition == 0)
+    if (audition == 0 || audition == 5)
     {
         duckCurve.trigger();
         kick.trigger (1.0f);
@@ -105,6 +118,14 @@ void InstrumentProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
     else if (juce::isPositiveAndBelow (audition - 1, numLayers))
     {
         basses[(size_t) (audition - 1)].noteOn (0, 1.0f, (int) getSampleRate());
+    }
+    else if (audition >= 100)
+    {
+        handlePreviewRequest (audition - 100);
+    }
+    else if (audition >= 10)
+    {
+        basses[(size_t) soloLayer].noteOn (0, 1.0f, (int) getSampleRate());
     }
 
     // Var kick och bas ska skrivas. Huvudutgången får alltid hela mixen; kick- och
@@ -165,6 +186,9 @@ void InstrumentProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
     transportStatus.publish (clock);
     transportStatus.keyNote = currentNote;
     transportStatus.patternActive = patternActive;
+    previewingLayer = patternActive ? previewLayer : -1;
+    soloSamplesLeft = std::max (0, soloSamplesLeft - numSamples);
+    kickSoloSamplesLeft = std::max (0, kickSoloSamplesLeft - numSamples);
     transportStatus.kickPlayTime = kick.getPlayTime();
     transportStatus.kickTriggers = kick.getTriggerCount();
     for (int layer = 0; layer < numLayers; ++layer)
@@ -201,15 +225,75 @@ void InstrumentProcessor::readBlockParams()
 
 void InstrumentProcessor::refreshEngineParams()
 {
-    kick.setParams (readModulatedKick (keyPitchClass()));
+    auto kickParams = readModulatedKick (keyPitchClass());
+    if (kickSoloSamplesLeft > 0 && getActiveClickSample() != nullptr)
+    {
+        kickParams.sampleMode = 2; // bara samplingen, i full nivå
+        kickParams.sampleLevel = 1.0f;
+    }
+    kick.setParams (kickParams);
     for (int layer = 0; layer < numLayers; ++layer)
-        basses[(size_t) layer].setParams (readModulatedBass (layer, bassRootNote()));
+    {
+        auto bassParams = readModulatedBass (layer, bassRootNote());
+        if (soloSamplesLeft > 0 && layer == soloLayer)
+        {
+            // Lyssna på en enda källa: bara den är på, med full nivå (sub och brus tystas).
+            for (int source = 0; source < 3; ++source)
+            {
+                auto& osc = source == 0 ? bassParams.oscA : source == 1 ? bassParams.oscB : bassParams.oscC;
+                osc.on = source == soloSource;
+                if (source == soloSource)
+                    osc.level = 1.0f;
+            }
+            bassParams.sub = 0.0f;
+            bassParams.noise = 0.0f;
+            bassParams.sampleOn = soloSource == 3;
+            if (soloSource == 3)
+                bassParams.sampleLevel = 1.0f;
+        }
+        basses[(size_t) layer].setParams (bassParams);
+    }
+}
+
+void InstrumentProcessor::handlePreviewRequest (int row)
+{
+    if (previewLayer == row)
+    {
+        stopPreview(); // samma knapp igen avbryter
+        return;
+    }
+    if (patternActive || numHeldNotes > 0)
+        return; // en ton spelar redan: mönstret hörs ändå
+
+    if (! clock.isFollowingHost())
+        clock.restartFreeRunAt (0);
+    currentNote = previewNote.load(); // tonarten för förhandsspelningen, som om tonen hölls
+    refreshEngineParams();
+    previewLayer = row;
+    patternActive = true;
+    const auto rowBars = lengths.barsOf (row == Pattern::kickLayer ? 0 : row + 1);
+    stopAtPpq = clock.getPpqAt (0) + (double) rowBars * clock.getBarLengthPpq(); // ett varv
+
+    const auto tolerance = (int) (noteOnToleranceSeconds * getSampleRate());
+    scheduler.collectJustPassed (clock, pattern, lengths, 0, tolerance);
+    for (const auto& event : scheduler)
+        handleEvent (event);
+}
+
+void InstrumentProcessor::stopPreview()
+{
+    previewLayer = -1;
+    patternActive = false;
+    stoppedAtPpq = clock.getPpqAt (0);
+    for (auto& bass : basses)
+        bass.release();
 }
 
 void InstrumentProcessor::handleMidi (const juce::MidiMessage& message, int sampleOffset)
 {
     if (message.isNoteOn())
     {
+        previewLayer = -1; // en riktig ton tar över från förhandsspelningen
         const auto note = message.getNoteNumber();
         const auto wasSilent = numHeldNotes == 0;
 
@@ -310,6 +394,7 @@ void InstrumentProcessor::renderSegment (int startSample, int endSample)
     if (patternActive && clock.getPpqAt (endSample) >= stopAtPpq)
     {
         patternActive = false;
+        previewLayer = -1; // förhandsspelningen har spelat ett varv
         stoppedAtPpq = stopAtPpq;
     }
 }
@@ -470,6 +555,10 @@ void InstrumentProcessor::ensureScratchSize (int numSamples)
 
 void InstrumentProcessor::handleEvent (const StepEvent& event)
 {
+    // Förhandsspelning av en enskild rad: de andra raderna är tysta.
+    if (previewLayer >= 0 && (event.type == StepEvent::Type::kick ? previewLayer != Pattern::kickLayer : event.layer != previewLayer))
+        return;
+
     if (event.type == StepEvent::Type::kick)
     {
         // Duckkurvan följer kickstegen även när kicken är avstängd (pump utan kick).

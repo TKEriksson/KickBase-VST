@@ -3,10 +3,11 @@
 WavetableView::WavetableView (PluginBase& p, int layerIn, int oscIn, juce::Colour accentIn)
     : processor (p), layer (layerIn), osc (oscIn), accent (accentIn)
 {
+    setMouseCursor (speakerCursor);
     positionIndex = processor.modulator.indexOf (ParamID::bass (layer, ParamID::oscField (osc, BassField::aPos)));
     setTooltip ("OSC " + juce::String (osc + 1)
-                + " - The wavetable: all its waveforms stacked from back to front. POS chooses which one plays "
-                  "(drag an LFO onto POS to sweep through them); WARP bends the waveform you see in front.");
+                + " - The wavetable: all its waveforms stacked from back to front. CLICK it to hear just this oscillator (even if it is off). "
+                  "POS chooses which waveform plays (drag an LFO onto POS to sweep through them); WARP bends the waveform you see in front.");
     startTimerHz (30);
 }
 
@@ -98,6 +99,20 @@ void WavetableView::paint (juce::Graphics& g)
     g.setFont (Theme::font (9.5f, true));
     g.setColour (Theme::textDim);
     g.drawText (table.getName().toUpperCase(), bounds.reduced (6.0f, 4.0f), juce::Justification::topLeft);
+
+    // Glöd när musen är över bilden (klicka för att lyssna).
+    if (hover)
+    {
+        g.setColour (accent.withAlpha (0.18f));
+        g.drawRoundedRectangle (bounds.reduced (0.5f), 6.0f, 4.0f);
+        g.setColour (accent.withAlpha (0.75f));
+        g.drawRoundedRectangle (bounds.reduced (1.5f), 6.0f, 1.5f);
+    }
+}
+
+void WavetableView::mouseDown (const juce::MouseEvent&)
+{
+    processor.requestAudition (PluginBase::soloAudition (layer, osc)); // bara den här oscillatorn
 }
 
 //==============================================================================

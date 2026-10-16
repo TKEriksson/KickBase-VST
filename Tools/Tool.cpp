@@ -275,6 +275,21 @@ namespace
         run (1, heard, marker);
         std::printf ("bas 1: hörs %s\n", heard ? "ja" : "NEJ");
         failed |= ! heard;
+
+        // Bara en källa: OSC 3 är av som standard men ska höras när man provlyssnar den, och samplingen (ingen laddad) är tyst.
+        run (PluginBase::soloAudition (0, 2), heard, marker);
+        std::printf ("bas 1, bara OSC 3: hörs %s\n", heard ? "ja" : "NEJ");
+        failed |= ! heard;
+        run (PluginBase::soloAudition (0, 3), heard, marker);
+        std::printf ("bas 1, bara samplingen (ingen laddad): hörs %s\n", heard ? "JA (fel)" : "nej");
+        failed |= heard;
+        // Förhandsspelning av en pianorulle (utan DAW-ton): kicken och bas 2 ska höras var för sig.
+        run (PluginBase::previewRequest (Pattern::kickLayer), heard, marker);
+        std::printf ("förhandsspelning kick: hörs %s\n", heard ? "ja" : "NEJ");
+        failed |= ! heard;
+        run (PluginBase::previewRequest (1), heard, marker);
+        std::printf ("förhandsspelning bas 2: hörs %s\n", heard ? "ja" : "NEJ");
+        failed |= ! heard;
         std::puts (failed ? "FEL: provlyssningen fungerar inte" : "Provlyssningen fungerar");
         return failed ? 1 : 0;
     }
