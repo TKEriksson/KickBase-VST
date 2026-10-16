@@ -1,5 +1,6 @@
 #include "ToolLayer.h"
 #include "AudioAnalysis.h"
+#include "RollFiles.h"
 #include <BinaryData.h>
 
 using juce::var;
@@ -184,6 +185,14 @@ std::vector<ToolLayer::ToolInfo> ToolLayer::tools()
           R"({"type":"object","properties":{"section":{"type":"string"},"name":{"type":"string"},"layer":{"type":"integer"}},"required":["section","name"]})" },
         { "render_preview", "Renders the current sound offline (note held for 'bars' bars) and measures it. Returns metrics (peak, RMS, DC, spectral centroid, energy per band, stereo, kick length and tail frequency, checks against the psytrance rules) and a spectrogram image; the WAV is saved under Documents\\Kickbase\\Previews. part 'kick' or 'bass' renders one alone (kick part gets a close-up spectrogram). note is the MIDI key (52 = E4: bass root E1 at 41 Hz, kick tail near E1).",
           R"({"type":"object","properties":{"bpm":{"type":"number"},"bars":{"type":"integer"},"note":{"type":"integer"},"part":{"type":"string","enum":["full","kick","bass"]},"name":{"type":"string"},"spectrogram":{"type":"boolean"}}})" },
+        { "save_piano_roll", "Saves a bass layer's notes (and pattern length and grid) as a piano roll preset file (Documents\\Kickbase\\Presets\\Piano Roll), which the plugin's piano roll PRESET menu lists and can load into any layer.",
+          R"({"type":"object","properties":{"layer":{"type":"integer"},"name":{"type":"string"}},"required":["layer","name"]})" },
+        { "load_piano_roll", "Loads a saved piano roll preset (by name or file path) into a bass layer, replacing its notes and setting the pattern length and grid it was saved with.",
+          R"({"type":"object","properties":{"layer":{"type":"integer"},"name":{"type":"string"},"file":{"type":"string"}},"required":["layer"]})" },
+        { "export_midi", "Exports a bass layer's notes as a MIDI file (96 ticks per quarter, tempo, 4/4). note is the MIDI key that sets the bass root (default 52 = E4: root E1); glide notes are written as ordinary notes. Default folder Documents\\Kickbase\\Exports.",
+          R"({"type":"object","properties":{"layer":{"type":"integer"},"file":{"type":"string"},"bpm":{"type":"number"},"note":{"type":"integer"}},"required":["layer"]})" },
+        { "import_midi", "Imports a MIDI file into a bass layer (replacing its notes; pitches are placed relative to the bass root of 'note', default 52, and moved by octaves to fit within 24 semitones) and sets the pattern length to 1, 2 or 4 bars as needed.",
+          R"({"type":"object","properties":{"layer":{"type":"integer"},"file":{"type":"string"},"note":{"type":"integer"}},"required":["layer","file"]})" },
         { "analyze_audio", "Measures an audio file (WAV, AIFF, FLAC or MP3) the same way render_preview measures the synth, so you can compare a reference (a kick sample, a snippet of a track) with your sound: metrics, spectrogram image and, for kind 'kick', the kick length and tail frequency. start/seconds select a part (default: the first 20 s). Use bpm for the beat lines.",
           R"({"type":"object","properties":{"file":{"type":"string"},"kind":{"type":"string","enum":["kick","music"]},"start":{"type":"number"},"seconds":{"type":"number"},"bpm":{"type":"number"}},"required":["file"]})" },
         { "load_kick_sample", "Loads a WAV/AIFF/FLAC file (max 2 s, mono-summed) as the kick's click layer: it plays from the start of every kick on top of the synthesized body, scaled by kickClick. Empty or missing file clears it.",
@@ -223,12 +232,14 @@ var ToolLayer::call (const juce::String& tool, const var& args)
     if (tool == "list_presets")     return listPresets (args);
     if (tool == "render_preview")   return renderPreview (args);
     if (tool == "analyze_audio")    return analyzeAudio (args);
+    if (tool == "export_midi" || tool == "save_piano_roll")
+        return pianoRollFiles (tool, args);
     if (tool == "undo")             return undo (false);
     if (tool == "redo")             return undo (true);
 
     // Resten ändrar ljudet: ett ångra-steg först.
     if (tool == "set_parameters" || tool == "set_effect" || tool == "set_kick_envelopes" || tool == "set_pattern" || tool == "set_sidechain_curve" || tool == "set_gate"
-        || tool == "set_modulation" || tool == "load_preset" || tool == "reset" || tool == "load_kick_sample")
+        || tool == "set_modulation" || tool == "load_preset" || tool == "reset" || tool == "load_kick_sample" || tool == "load_piano_roll" || tool == "import_midi")
         snapshot();
 
     if (tool == "set_parameters")      return setParameters (args);
@@ -240,6 +251,8 @@ var ToolLayer::call (const juce::String& tool, const var& args)
     if (tool == "set_modulation")      return setModulation (args);
     if (tool == "load_preset")         return loadPreset (args);
     if (tool == "load_kick_sample")    return loadKickSample (args);
+    if (tool == "load_piano_roll" || tool == "import_midi")
+        return pianoRollFiles (tool, args);
     if (tool == "save_preset")         return savePreset (args);
     if (tool == "reset")
     {
@@ -767,6 +780,13 @@ var ToolLayer::listPresets (const var& args) const
             user.add (file.getFileNameWithoutExtension());
         put (entry, "factory [index, name]", factory);
         put (entry, "user", user);
+        if (section == Presets::Section::pattern)
+        {
+            juce::Array<var> rolls;
+            for (const auto& file : RollFiles::list())
+                rolls.add (file.getFileNameWithoutExtension());
+            put (entry, "piano_rolls (save_piano_roll / load_piano_roll)", rolls);
+        }
         sections.add (entry);
     }
     return ok (sections);
@@ -985,6 +1005,78 @@ var ToolLayer::analyzeAudio (const var& args)
     put (entry, "data", AudioAnalysis::pngBase64 (image));
     put (result, "images", juce::Array<var> { entry });
     return result;
+}
+
+var ToolLayer::pianoRollFiles (const juce::String& tool, const var& args)
+{
+    const auto layer = (int) args["layer"];
+    if (! juce::isPositiveAndBelow (layer, Pattern::numLayers))
+        return fail ("layer must be 0, 1 or 2.");
+
+    auto& pattern = processor.pattern;
+    const auto bars = Params::barsFromChoice ((int) processor.apvts.getRawParameterValue (ParamID::patternBars)->load());
+    const auto gridIndex = juce::jlimit (0, Pattern::numGrids - 1, (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, BassField::grid))->load());
+    const auto note = args.hasProperty ("note") ? juce::jlimit (0, 127, (int) args["note"]) : 52;
+    const auto root = Params::bassRootMidiNote (note) + 12 * (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, BassField::octave))->load();
+    const auto documents = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("Kickbase");
+
+    auto applyLoaded = [this, layer] (int newBars, BassGrid grid)
+    {
+        if (auto* gridParameter = findParameter (processor, ParamID::bass (layer, BassField::grid)))
+            Presets::setParameter (*gridParameter, gridParameter->convertTo0to1 ((float) grid));
+        if (auto* barsParameter = findParameter (processor, ParamID::patternBars))
+            Presets::setParameter (*barsParameter, barsParameter->convertTo0to1 ((float) RollFiles::barsToChoice (newBars)));
+        processor.patternChanged();
+    };
+
+    if (tool == "save_piano_roll")
+    {
+        const auto name = juce::File::createLegalFileName (args["name"].toString().trim());
+        if (name.isEmpty())
+            return fail ("Give a name.");
+        const auto file = RollFiles::folder().getChildFile (name + ".roll");
+        if (! RollFiles::save (pattern, layer, bars, (BassGrid) gridIndex, file))
+            return fail ("Could not write " + file.getFullPathName());
+        auto data = object();
+        put (data, "saved", file.getFullPathName());
+        return ok (data);
+    }
+
+    if (tool == "load_piano_roll")
+    {
+        juce::File file = args.hasProperty ("file") ? juce::File (args["file"].toString()) : juce::File();
+        if (! file.existsAsFile())
+            for (const auto& candidate : RollFiles::list())
+                if (candidate.getFileNameWithoutExtension().equalsIgnoreCase (args["name"].toString().trim()))
+                    file = candidate;
+        int newBars = 1;
+        auto grid = BassGrid::sixteenth;
+        if (! file.existsAsFile() || ! RollFiles::load (pattern, layer, file, newBars, grid))
+            return fail ("No such piano roll preset. The plugin's PRESET menu lists the saved ones; save one first with save_piano_roll.");
+        applyLoaded (newBars, grid);
+        return ok ("Loaded " + file.getFileNameWithoutExtension() + " into layer " + juce::String (layer) + ".");
+    }
+
+    if (tool == "import_midi")
+    {
+        int newBars = 1;
+        const juce::File file (args["file"].toString());
+        if (! file.existsAsFile() || ! RollFiles::importMidi (pattern, layer, file, root, newBars))
+            return fail ("Could not read notes from that MIDI file.");
+        applyLoaded (newBars, (BassGrid) gridIndex);
+        return ok ("Imported into layer " + juce::String (layer) + "; pattern length set to " + juce::String (newBars) + " bar(s).");
+    }
+
+    // export_midi
+    auto file = args.hasProperty ("file") ? juce::File (args["file"].toString()) : documents.getChildFile ("Exports").getChildFile ("Kickbase BASS " + juce::String (layer + 1) + ".mid");
+    file = file.withFileExtension ("mid");
+    const auto bpm = args.hasProperty ("bpm") ? juce::jlimit (20.0, 300.0, (double) args["bpm"]) : (double) processor.transportStatus.bpm.load();
+    if (! RollFiles::exportMidi (pattern, layer, bars, bpm, root, file))
+        return fail ("Could not write " + file.getFullPathName());
+    auto data = object();
+    put (data, "saved", file.getFullPathName());
+    put (data, "bass_root_midi_note", root);
+    return ok (data);
 }
 
 var ToolLayer::loadKickSample (const var& args)

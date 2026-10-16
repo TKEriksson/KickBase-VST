@@ -41,6 +41,7 @@ set(PLUGIN_SOURCES
     Source/Core/Mixer.cpp
     Source/Core/OfflineRender.cpp
     Source/Core/AudioAnalysis.cpp
+    Source/Core/RollFiles.cpp
     Source/Core/ToolLayer.cpp
     Source/Core/BridgeLink.cpp
     Source/Core/Params.cpp

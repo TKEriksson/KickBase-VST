@@ -1,4 +1,5 @@
 #include "PianoRoll.h"
+#include "../Core/RollFiles.h"
 
 namespace
 {
@@ -31,6 +32,12 @@ PianoRoll::PianoRoll (PluginBase& p, std::vector<juce::Colour> colours) : proces
                 "during their own length, then the pitch stays. Double-click a note to turn glide on/off for it. "
                 "Scroll = pitch, Ctrl + scroll = zoom, Shift + scroll = move in time. The strip at the bottom is velocity.");
 
+    presetButton.setTooltip ("PRESET - Save this layer's piano roll as a preset, or load a saved one into this layer. Saved piano rolls can be loaded into any layer.");
+    presetButton.onClick = [this] { showPresetMenu(); };
+    midiButton.setTooltip ("MIDI - Export this piano roll as a MIDI file (to use in your DAW or another synth), or import a MIDI file into this layer. "
+                           "Glide notes are exported as ordinary notes.");
+    midiButton.onClick = [this] { showMidiMenu(); };
+
     glideButton.setClickingTogglesState (true);
     glideButton.setColour (juce::TextButton::buttonOnColourId, Theme::pattern);
     glideButton.setTooltip ("GLIDE - On: the notes you draw are glide notes. A glide note does not play a new note: it glides the note that is "
@@ -54,7 +61,7 @@ PianoRoll::PianoRoll (PluginBase& p, std::vector<juce::Colour> colours) : proces
     deleteButton.setTooltip ("DELETE - Deletes the selected notes (Delete key).");
     deleteButton.onClick = [this] { deleteSelected(); };
 
-    for (auto* c : std::initializer_list<juce::Component*> { &snapButton, &gridBox, &smallerButton, &biggerButton, &allButton, &deleteButton, &glideButton, &hBar, &vBar })
+    for (auto* c : std::initializer_list<juce::Component*> { &snapButton, &gridBox, &smallerButton, &biggerButton, &allButton, &deleteButton, &glideButton, &presetButton, &midiButton, &hBar, &vBar })
         addAndMakeVisible (c);
     hBar.addListener (this);
     vBar.addListener (this);
@@ -158,6 +165,129 @@ void PianoRoll::scrollBarMoved (juce::ScrollBar* bar, double newRangeStart)
     repaint();
 }
 
+int PianoRoll::soundingRoot() const
+{
+    return rootNote() + 12 * (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, BassField::octave))->load();
+}
+
+void PianoRoll::afterLoad (int bars, BassGrid newGrid)
+{
+    if (auto* gridParameter = processor.apvts.getParameter (ParamID::bass (layer, BassField::grid)))
+        Presets::setParameter (*gridParameter, gridParameter->convertTo0to1 ((float) newGrid));
+    if (auto* barsParameter = processor.apvts.getParameter (ParamID::patternBars))
+        Presets::setParameter (*barsParameter, barsParameter->convertTo0to1 ((float) RollFiles::barsToChoice (bars)));
+    selection.clear();
+    processor.patternChanged();
+    repaint();
+}
+
+void PianoRoll::showPresetMenu()
+{
+    const auto files = RollFiles::list();
+    juce::PopupMenu menu;
+    if (! files.isEmpty())
+    {
+        menu.addSectionHeader ("SAVED PIANO ROLLS");
+        for (int i = 0; i < files.size(); ++i)
+            menu.addItem (100 + i, files[i].getFileNameWithoutExtension());
+        menu.addSeparator();
+    }
+    menu.addItem (1, "Save this piano roll as a preset...");
+    menu.addItem (2, "Open the preset folder");
+
+    juce::Component::SafePointer<PianoRoll> safeThis (this);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&presetButton), [safeThis, files] (int result)
+    {
+        if (safeThis == nullptr || result <= 0)
+            return;
+        if (result == 1)
+            safeThis->askForNameAndSave();
+        else if (result == 2)
+        {
+            RollFiles::folder().createDirectory();
+            RollFiles::folder().startAsProcess();
+        }
+        else if (juce::isPositiveAndBelow (result - 100, files.size()))
+        {
+            int bars = 1;
+            auto newGrid = BassGrid::sixteenth;
+            if (RollFiles::load (safeThis->processor.pattern, safeThis->layer, files[result - 100], bars, newGrid))
+                safeThis->afterLoad (bars, newGrid);
+            else
+                juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Piano roll", "Could not read that piano roll file.");
+        }
+    });
+}
+
+void PianoRoll::askForNameAndSave()
+{
+    auto* window = new juce::AlertWindow ("Save piano roll", "Name:", juce::MessageBoxIconType::NoIcon);
+    window->setLookAndFeel (&getLookAndFeel());
+    saveDialog = window;
+    window->addTextEditor ("name", "My piano roll");
+    window->addButton ("Save", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    window->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+
+    juce::Component::SafePointer<PianoRoll> safeThis (this);
+    window->enterModalState (true, juce::ModalCallbackFunction::create ([safeThis, window] (int result)
+    {
+        if (result != 1 || safeThis == nullptr)
+            return;
+        const auto name = window->getTextEditorContents ("name").trim();
+        const auto fileName = juce::File::createLegalFileName (name);
+        if (fileName.isEmpty() || ! RollFiles::save (safeThis->processor.pattern, safeThis->layer, safeThis->bars(), safeThis->grid(),
+                                                      RollFiles::folder().getChildFile (fileName + ".roll")))
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Could not save", "Check that the name is valid: " + name);
+    }), true);
+}
+
+void PianoRoll::showMidiMenu()
+{
+    juce::PopupMenu menu;
+    menu.addItem (1, "Export as a MIDI file...");
+    menu.addItem (2, "Import a MIDI file into this layer...");
+
+    juce::Component::SafePointer<PianoRoll> safeThis (this);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&midiButton), [safeThis] (int result)
+    {
+        if (safeThis == nullptr || result <= 0)
+            return;
+
+        const auto folder = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("Kickbase").getChildFile ("Exports");
+        folder.createDirectory();
+
+        if (result == 1)
+        {
+            safeThis->chooser = std::make_unique<juce::FileChooser> ("Export the piano roll as MIDI", folder.getChildFile ("Kickbase BASS " + juce::String (safeThis->layer + 1) + ".mid"), "*.mid");
+            safeThis->chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles | juce::FileBrowserComponent::warnAboutOverwriting,
+                                            [safeThis] (const juce::FileChooser& fc)
+                                            {
+                                                if (safeThis == nullptr || fc.getResult() == juce::File())
+                                                    return;
+                                                const auto file = fc.getResult().withFileExtension ("mid");
+                                                if (! RollFiles::exportMidi (safeThis->processor.pattern, safeThis->layer, safeThis->bars(), safeThis->processor.transportStatus.bpm.load(),
+                                                                             safeThis->soundingRoot(), file))
+                                                    juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Export failed", "Could not write " + file.getFullPathName());
+                                            });
+        }
+        else
+        {
+            safeThis->chooser = std::make_unique<juce::FileChooser> ("Import a MIDI file", folder, "*.mid;*.midi");
+            safeThis->chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                                            [safeThis] (const juce::FileChooser& fc)
+                                            {
+                                                if (safeThis == nullptr || ! fc.getResult().existsAsFile())
+                                                    return;
+                                                int bars = 1;
+                                                if (RollFiles::importMidi (safeThis->processor.pattern, safeThis->layer, fc.getResult(), safeThis->soundingRoot(), bars))
+                                                    safeThis->afterLoad (bars, safeThis->grid());
+                                                else
+                                                    juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Import failed", "No notes found in that MIDI file.");
+                                            });
+        }
+    });
+}
+
 void PianoRoll::commit()
 {
     processor.pattern.setCustom (layer, true); // lagret visas nu som pianorulle i stället för stegknappar
@@ -194,6 +324,10 @@ void PianoRoll::resized()
 
     // Verktygsraden: SNAP, rutnät, radhöjd, markera alla, ta bort.
     auto tools = toolbarArea.toNearestInt().reduced (2, 1);
+    presetButton.setBounds (tools.removeFromRight (62));
+    tools.removeFromRight (4);
+    midiButton.setBounds (tools.removeFromRight (48));
+    tools.removeFromRight (8);
     snapButton.setBounds (tools.removeFromLeft (50));
     tools.removeFromLeft (4);
     gridBox.setBounds (tools.removeFromLeft (76));
@@ -207,6 +341,7 @@ void PianoRoll::resized()
     deleteButton.setBounds (tools.removeFromLeft (38));
     tools.removeFromLeft (10);
     glideButton.setBounds (tools.removeFromLeft (56));
+    infoArea = juce::Rectangle<float> ((float) glideButton.getRight() + 10.0f, toolbarArea.getY(), std::max (0.0f, (float) (midiButton.getX() - glideButton.getRight()) - 18.0f), toolbarArea.getHeight());
 
     const auto first = pixelsPerTick == 1.0f && scrollTicks == 0.0f;
     if (first)
@@ -552,12 +687,12 @@ void PianoRoll::paint (juce::Graphics& g)
     // Verktygsraden: vad musen är över, och antal markerade.
     g.setFont (Theme::font (10.0f, true));
     g.setColour (colour);
-    g.drawText ("BASS " + juce::String (layer + 1), toolbarArea.withTrimmedLeft (toolbarArea.getWidth() * 0.62f).withWidth (60.0f), juce::Justification::centredLeft);
+    g.drawText ("BASS " + juce::String (layer + 1), infoArea.withWidth (50.0f), juce::Justification::centredLeft);
     g.setColour (Theme::text);
     const auto info = hoverTick >= 0 ? describe (hoverTick)
                     : selection.empty() ? juce::String()
                                         : juce::String ((int) selection.size()) + " selected";
-    g.drawText (info, toolbarArea.withTrimmedLeft (toolbarArea.getWidth() * 0.62f + 62.0f).reduced (6.0f, 0.0f), juce::Justification::centredRight);
+    g.drawText (info, infoArea.withTrimmedLeft (52.0f), juce::Justification::centredRight);
 
     // Velocity.
     g.setColour (juce::Colours::black.withAlpha (0.3f));

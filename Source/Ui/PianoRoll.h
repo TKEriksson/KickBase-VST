@@ -16,7 +16,8 @@
 //   där tills den slutar. Dubbelklicka på en ton: glide på/av för den.
 // - Piltangenter flyttar de markerade (upp/ner = halvton, skift = oktav, vänster/höger = ett snap-steg).
 // - Skroll: tonhöjd. Ctrl + skroll: zooma i tid. Shift + skroll: flytta i tid.
-// - Verktygsraden: SNAP av/på, rutnätet (snap) 1/4 ... 1/64, radhöjd, markera alla och ta bort.
+// - Verktygsraden: SNAP av/på, rutnätet (snap) 1/4 ... 1/64, radhöjd, markera alla och ta bort, GLIDE, samt
+//   PRESET (spara och ladda pianorullar) och MIDI (exportera och importera MIDI-filer).
 // - Remsan längst ner är velocity: dra i en tons stapel.
 class PianoRoll : public juce::Component, public juce::SettableTooltipClient, private juce::Timer, private juce::ScrollBar::Listener
 {
@@ -84,6 +85,11 @@ private:
     void deleteSelected();
     void moveSelected (int deltaTicks, int deltaPitch);
     void changeRowHeight (float delta);
+    void showPresetMenu();
+    void showMidiMenu();
+    void askForNameAndSave();
+    void afterLoad (int bars, BassGrid newGrid); // sätter mönsterlängd och rutnät efter att en pianorulle laddats
+    int soundingRoot() const; // basens grundton med lagrets oktav (tonhöjden 0), som MIDI-tonnummer
     void commit(); // markerar lagret som pianorulle och talar om att mönstret ändrats
     int pitchBefore (int tick) const;
     void attachGridBox();
@@ -96,7 +102,10 @@ private:
 
     // Verktygsraden.
     juce::TextButton snapButton { "SNAP" }, smallerButton { "-" }, biggerButton { "+" }, allButton { "ALL" }, deleteButton { "DEL" },
-                     glideButton { "GLIDE" };
+                     glideButton { "GLIDE" }, presetButton { "PRESET" }, midiButton { "MIDI" };
+    std::unique_ptr<juce::FileChooser> chooser;
+    juce::Component::SafePointer<juce::AlertWindow> saveDialog;
+    juce::Rectangle<float> infoArea;
     juce::ComboBox gridBox;
     juce::ScrollBar hBar { false }, vBar { true }; // tid och tonhöjd
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> gridAttachment;

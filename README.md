@@ -74,6 +74,8 @@ under `Dokument\Kickbase\Exports\`.
   högerklicka för att ta bort, **GLIDE**-knappen ritar glide-toner (som slide-toner i FL: de glider tonen som klingar
   till sin tonhöjd under sin egen längd, och tonen blir kvar). Skroll = tonhöjd (±24 halvtoner från tonarten),
   Ctrl + skroll = zoom, Shift + skroll = tid. Remsan längst ner är velocity.
+- **PRESET** i pianorullen sparar lagrets pianorulle som en fil (`Dokument\Kickbase\Presets\Piano Roll`) och laddar sparade i valfritt lager.
+  **MIDI** exporterar pianorullen som en MIDI-fil eller importerar en MIDI-fil till lagret (glide-toner exporteras som vanliga toner).
 - Raderna i PATTERN har små rattar för volym och FX-send, som FL Studios Channel Rack.
 - Dra in en WAV på kickmodulen (eller LOAD) för att använda en sampling som klick.
 - Instrumentet har separata kick- och basutgångar utöver huvudutgången (som alltid har hela mixen).
