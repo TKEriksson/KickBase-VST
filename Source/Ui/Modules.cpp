@@ -130,7 +130,7 @@ void HeaderBar::paint (juce::Graphics& g)
 {
     const auto& status = processor.transportStatus;
     auto area = getLocalBounds().reduced (14, 0);
-    Theme::paintLogo (g, area.removeFromLeft (400), subtitle);
+    Theme::paintLogo (g, area.removeFromLeft (420), subtitle);
 
     // Från höger: tonart, takt.slag, tempo och en lampa som visar om DAW:en styr.
     const auto keyNote = status.keyNote.load();
@@ -138,27 +138,39 @@ void HeaderBar::paint (juce::Graphics& g)
     g.setFont (Theme::font (10.0f, true));
     g.setColour (Theme::textDim);
     g.drawText ("KEY", keyArea.removeFromLeft (26), juce::Justification::centredLeft);
-    g.setFont (Theme::font (20.0f, true));
+    g.setFont (Theme::font (16.0f, true));
     g.setColour (Theme::pattern);
     g.drawText (keyNote >= 0 ? Params::keyNames()[keyNote % 12] : juce::String ("-"), keyArea, juce::Justification::centredLeft);
 
     g.setFont (Theme::font (14.0f, true));
     g.setColour (Theme::text);
     g.drawText (juce::String (status.bar.load()) + "." + juce::String (status.beat.load()),
-                area.removeFromRight (60), juce::Justification::centredLeft);
-    g.drawText (juce::String (status.bpm.load(), 1) + " BPM", area.removeFromRight (100), juce::Justification::centredLeft);
+                area.removeFromRight (55), juce::Justification::centredLeft);
+
+    // Tempo i en kapselformad hårdvarupill
+    auto bpmArea = area.removeFromRight (110).reduced (4, 9).toFloat();
+    g.setGradientFill (juce::ColourGradient (juce::Colour (0xff121420), bpmArea.getX(), bpmArea.getY(),
+                                             juce::Colour (0xff1c1f30), bpmArea.getX(), bpmArea.getBottom(), false));
+    g.fillRoundedRectangle (bpmArea, bpmArea.getHeight() * 0.5f);
+    g.setColour (juce::Colour (0xff2c3148));
+    g.drawRoundedRectangle (bpmArea, bpmArea.getHeight() * 0.5f, 1.0f);
+    g.setFont (Theme::font (13.0f, true));
+    g.setColour (Theme::text);
+    g.drawText (juce::String (status.bpm.load(), 1) + " BPM", bpmArea, juce::Justification::centred);
 
     const auto following = status.followingHost.load();
     const auto lampColour = following ? Theme::mix : Theme::kick;
     auto lamp = area.removeFromRight (120);
     const juce::Point<float> centre { (float) lamp.getX() + 8.0f, (float) lamp.getCentreY() };
-    g.setColour (lampColour.withAlpha (status.patternActive.load() ? 0.35f : 0.12f));
-    g.fillEllipse (juce::Rectangle<float> (16.0f, 16.0f).withCentre (centre));
-    g.setColour (lampColour);
-    g.fillEllipse (juce::Rectangle<float> (8.0f, 8.0f).withCentre (centre));
+    g.setColour (lampColour.withAlpha (0.35f));
+    g.fillEllipse (juce::Rectangle<float> (12.0f, 12.0f).withCentre (centre));
+    g.setColour (lampColour.brighter (0.3f));
+    g.fillEllipse (juce::Rectangle<float> (6.0f, 6.0f).withCentre (centre));
+    g.setColour (juce::Colours::white.withAlpha (0.8f));
+    g.fillEllipse (juce::Rectangle<float> (2.0f, 2.0f).withCentre (centre));
     g.setFont (Theme::font (11.0f, true));
     g.setColour (Theme::textDim);
-    g.drawText (following ? "DAW SYNC" : "FREE RUN", lamp.withTrimmedLeft (22), juce::Justification::centredLeft);
+    g.drawText (following ? "DAW SYNC" : "FREE RUN", lamp.withTrimmedLeft (20), juce::Justification::centredLeft);
 }
 
 //==============================================================================

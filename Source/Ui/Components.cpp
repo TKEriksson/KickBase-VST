@@ -57,11 +57,13 @@ KnobComponent::KnobComponent (juce::AudioProcessorValueTreeState& apvts, const j
     slider.setTextBoxStyle (juce::Slider::NoTextBox, true, 0, 0);
     slider.setColour (juce::Slider::rotarySliderFillColourId, accent);
     slider.setPopupDisplayEnabled (false, false, nullptr);
+    slider.setComponentID (paramID);
+    slider.setName (nameIn);
     addAndMakeVisible (slider);
 
     label.setText (name, juce::dontSendNotification);
     label.setJustificationType (juce::Justification::centred);
-    label.setFont (Theme::font (11.0f, true));
+    label.setFont (Theme::font (9.5f, true));
     label.setColour (juce::Label::textColourId, Theme::textDim);
     label.setInterceptsMouseClicks (false, false);
     addAndMakeVisible (label);
@@ -493,13 +495,23 @@ void ControlGroups::paint (juce::Graphics& g, juce::Colour accent) const
     for (const auto& [bounds, title] : frames)
     {
         const auto frame = bounds.toFloat();
-        g.setColour (Theme::knobBodyDark.withAlpha (0.3f));
-        g.fillRoundedRectangle (frame, 5.0f);
-        g.setColour (Theme::panelBorder.withAlpha (0.7f));
-        g.drawRoundedRectangle (frame.reduced (0.5f), 5.0f, 1.0f);
 
-        g.setColour (accent.withAlpha (0.85f));
-        g.setFont (Theme::font (9.5f, true));
-        g.drawText (title, bounds.withHeight (titleHeight + 1).withTrimmedLeft (6), juce::Justification::centredLeft);
+        // Nedsänkt hårdvarufack: mörk sockel med skugga och 1px specular-toppkant
+        g.setGradientFill (juce::ColourGradient (juce::Colour (0xdd121420), frame.getX(), frame.getY(),
+                                                 juce::Colour (0xdd181b28), frame.getX(), frame.getBottom(), false));
+        g.fillRoundedRectangle (frame, 6.0f);
+
+        // Mörk innerkant
+        g.setColour (juce::Colour (0xff24283c));
+        g.drawRoundedRectangle (frame.reduced (0.5f), 6.0f, 1.0f);
+
+        // Specular highlight i överkant
+        g.setColour (juce::Colours::white.withAlpha (0.12f));
+        g.drawLine (frame.getX() + 6.0f, frame.getY() + 0.5f, frame.getRight() - 6.0f, frame.getY() + 0.5f, 1.0f);
+
+        // Rubrik i ren, distinkt accentfärg med extra spärrning
+        g.setColour (accent.withAlpha (0.92f));
+        g.setFont (Theme::font (9.5f, true).withExtraKerningFactor (0.08f));
+        g.drawText (title, bounds.withHeight (titleHeight + 1).withTrimmedLeft (8), juce::Justification::centredLeft);
     }
 }

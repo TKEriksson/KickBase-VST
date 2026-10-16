@@ -199,10 +199,7 @@ public:
             return; // flikpanelen ritar bakgrunden och fliken visar namnet
 
         const auto bounds = getLocalBounds().toFloat().reduced (0.5f);
-        g.setColour (Theme::panel);
-        g.fillRoundedRectangle (bounds, 8.0f);
-        g.setColour (Theme::panelBorder);
-        g.drawRoundedRectangle (bounds, 8.0f, 1.0f);
+        Theme::paintMetal (g, bounds, 8.0f, juce::Colour (0xe62c3048), juce::Colour (0xe61a1d30));
 
         // Färgad linje överst och titel.
         g.setColour (accent);

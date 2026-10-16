@@ -50,16 +50,7 @@ public:
     void paint (juce::Graphics& g) override
     {
         const auto bounds = getLocalBounds().toFloat().reduced (0.5f);
-        g.setColour (Theme::panel);
-        g.fillRoundedRectangle (bounds, 8.0f);
-        g.setColour (Theme::panelBorder);
-        g.drawRoundedRectangle (bounds, 8.0f, 1.0f);
-
-        if (! tabs.empty())
-        {
-            g.setColour (tabs[(size_t) current].accent);
-            g.fillRoundedRectangle (bounds.getX() + 10.0f, bounds.getY(), 36.0f, 3.0f, 1.5f);
-        }
+        Theme::paintMetal (g, bounds, 8.0f, juce::Colour (0xf022263a), juce::Colour (0xf0141624));
     }
 
     void resized() override

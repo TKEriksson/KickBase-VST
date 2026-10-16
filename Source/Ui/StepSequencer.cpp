@@ -139,31 +139,54 @@ void StepSequencer::paintToggleRow (juce::Graphics& g, juce::Rectangle<int> row,
 {
     for (int step = 0; step < numSteps; ++step)
     {
-        const auto bounds = stepBounds (row, step, numSteps);
+        const auto bounds = stepBounds (row, step, numSteps).reduced (0.5f, 1.0f);
         const auto on = isOn (step);
         const auto playing = step == playingStep;
+        constexpr float corner = 3.5f;
 
         if (on)
         {
             const auto c = dimmed ? colour.withMultipliedSaturation (0.6f).withMultipliedAlpha (0.65f) : colour;
-            g.setColour (c.withAlpha (0.25f));
-            g.fillRoundedRectangle (bounds.expanded (1.0f), 4.0f);
-            g.setGradientFill (juce::ColourGradient (c.brighter (0.2f), 0.0f, bounds.getY(),
-                                                     c.darker (0.3f), 0.0f, bounds.getBottom(), false));
-            g.fillRoundedRectangle (bounds.reduced (1.0f), 3.0f);
+
+            // Mjuk yttre neon-glöd
+            g.setColour (c.withAlpha (0.30f));
+            g.fillRoundedRectangle (bounds.expanded (1.5f), corner + 1.0f);
+
+            // 3D-knapp med topp-diffus gradient
+            g.setGradientFill (juce::ColourGradient (c.brighter (0.40f), bounds.getX(), bounds.getY(),
+                                                     c.darker (0.25f), bounds.getX(), bounds.getBottom(), false));
+            g.fillRoundedRectangle (bounds, corner);
+
+            // Fasad toppkant (specular highlight)
+            g.setColour (juce::Colours::white.withAlpha (0.45f));
+            g.drawLine (bounds.getX() + 2.0f, bounds.getY() + 0.5f, bounds.getRight() - 2.0f, bounds.getY() + 0.5f, 1.0f);
+
+            // Skarp kant
+            g.setColour (c.brighter (0.15f));
+            g.drawRoundedRectangle (bounds, corner, 1.0f);
         }
         else
         {
-            g.setColour (Theme::knobBodyDark);
-            g.fillRoundedRectangle (bounds.reduced (1.0f), 3.0f);
-            g.setColour (Theme::grid);
-            g.drawRoundedRectangle (bounds.reduced (1.0f), 3.0f, 1.0f);
+            // Nedsänkt mörk sockel
+            g.setGradientFill (juce::ColourGradient (juce::Colour (0xff121420), bounds.getX(), bounds.getY(),
+                                                     juce::Colour (0xff181b29), bounds.getX(), bounds.getBottom(), false));
+            g.fillRoundedRectangle (bounds, corner);
+
+            g.setColour (juce::Colour (0xff24283c));
+            g.drawRoundedRectangle (bounds, corner, 1.0f);
+
+            // Taktstreck-markering (var 4:e steg är subtilt ljusare)
+            if (step % 4 == 0)
+            {
+                g.setColour (juce::Colours::white.withAlpha (0.04f));
+                g.fillRoundedRectangle (bounds, corner);
+            }
         }
 
         if (playing)
         {
-            g.setColour (juce::Colours::white.withAlpha (on ? 0.9f : 0.5f));
-            g.drawRoundedRectangle (bounds.reduced (0.5f), 3.0f, 1.5f);
+            g.setColour (juce::Colours::white.withAlpha (on ? 0.95f : 0.65f));
+            g.drawRoundedRectangle (bounds.expanded (0.5f), corner + 0.5f, 1.5f);
         }
     }
 }
