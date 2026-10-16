@@ -19,7 +19,7 @@ namespace Help
             { "noteEnd", "What happens when the DAW note ends in the middle of the pattern: stop at once, finish the bar or finish the whole pattern." },
             { "bassGate", "Scales the length of every step in this layer. Lower = shorter, punchier notes." },
             { "gain", "Output volume of the whole plugin." },
-            { "bassDuck", "Sidechain depth for this layer: how far it is pushed down while the kick plays. 0 % = no ducking." },
+            { "bassDuck", "DUCK sets how deeply the kick pushes this layer's volume down. 0 % = no ducking, 100 % = the volume goes all the way down." },
             { "bassOn", "Turns this bass layer on or off." },
             { "kickFxChannel", "Which effect channel (A, B or C) the kick is sent through. None = no effects on the kick." },
             { "kickFxAmount", "How much of the kick goes through its effect channel (the rest stays dry)." },
@@ -27,8 +27,8 @@ namespace Help
             { "bassFxAmount", "How much of this layer goes through its effect channel (the rest stays dry)." },
             { "fxALevel", "Volume of this effect channel's output." }, { "fxBLevel", "Volume of this effect channel's output." },
             { "fxCLevel", "Volume of this effect channel's output." },
-            { "fxADuck", "How much this channel is ducked under the kick." }, { "fxBDuck", "How much this channel is ducked under the kick." },
-            { "fxCDuck", "How much this channel is ducked under the kick." },
+            { "fxADuck", "DUCK sets how deeply the kick pushes this channel's volume down (tails too, so reverb and echo don't blur the kick). 0 % = no ducking, 100 % = the volume goes all the way down." }, { "fxBDuck", "DUCK sets how deeply the kick pushes this channel's volume down (tails too, so reverb and echo don't blur the kick). 0 % = no ducking, 100 % = the volume goes all the way down." },
+            { "fxCDuck", "DUCK sets how deeply the kick pushes this channel's volume down (tails too, so reverb and echo don't blur the kick). 0 % = no ducking, 100 % = the volume goes all the way down." },
             { "bassGrid", "This layer's step grid: 1/16 for rolling basses, 1/8 T for triplet (K-B-B) grooves, and more." },
 
             // Kick

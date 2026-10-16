@@ -298,7 +298,7 @@ EffectsPage::EffectsPage (PluginBase& p)
         levels.push_back (std::make_unique<KnobComponent> (p.apvts, Effects::channelParamID (ch, "Level"), "LEVEL", Theme::effects));
         ducks.push_back (std::make_unique<KnobComponent> (p.apvts, Effects::channelParamID (ch, "Duck"), "DUCK", Theme::effects));
         levels.back()->setDescription ("Volume of this channel's effect output.");
-        ducks.back()->setDescription ("How much this channel is ducked under the kick (tails too), so reverb and echo don't blur the kick.");
+        ducks.back()->setDescription ("DUCK sets how deeply the kick pushes this channel's volume down (tails too, so reverb and echo don't blur the kick). 0 % = no ducking, 100 % = the volume goes all the way down.");
         addChildComponent (*levels.back());
         addChildComponent (*ducks.back());
 
