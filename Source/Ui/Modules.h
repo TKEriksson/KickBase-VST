@@ -2,6 +2,7 @@
 
 #include "../Core/PluginBase.h"
 #include "Components.h"
+#include "ListenButton.h"
 #include "Cursors.h"
 #include "KickDisplay.h"
 #include "OscPanel.h"
@@ -18,13 +19,14 @@ class HeaderBar : public juce::Component, private juce::Timer
 public:
     HeaderBar (PluginBase& processor, const juce::String& subtitle);
     void paint (juce::Graphics&) override;
+    void paintOverChildren (juce::Graphics&) override;
     void resized() override;
 
 private:
     void timerCallback() override;
     void showExportMenu();
     static constexpr int meterWidth = 72;
-    int toolsEnd() const { return listenButton.isVisible() ? noteButton.getRight() : exportButton.getRight(); }
+    int toolsEnd() const { return previewGroup.isEmpty() ? exportButton.getRight() : previewGroup.getRight(); }
     void updateAiTooltip();
     void chooseExportTarget (int part, int bars); // part: 0-2 = PluginBase::ExportPart, 3 = alla tre
 
@@ -32,10 +34,12 @@ private:
     juce::String subtitle;
     PresetButton presets;
     juce::TextButton exportButton { "EXPORT" }; // bara i instrumentet
-    juce::TextButton listenButton { "LISTEN" }; // spelar den valda tonen (standard C5) för hela synthen (bara i instrumentet)
-    juce::TextButton noteButton { "C5" };       // väljer tonen som LISTEN och förhandsspelningen spelar
-    int listeningNote = -1;                     // tonen som LISTEN håller just nu, -1 = ingen
-    void showNoteMenu();
+    // PREVIEWS (bara i instrumentet): högtalaren spelar hela synthen på den valda tonen (standard C5) så länge man håller ner den,
+    // och tonen gäller alla provlyssningar.
+    ListenButton listenAll;
+    juce::ComboBox noteBox;
+    juce::TextButton restartButton { "" };       // börjar om räknaren och mönstret vid 1.1 (egen klocka)
+    juce::Rectangle<int> previewGroup, bpmPill, keyBlock;
     juce::TextButton aiButton { "AI" };         // slår på länken till MCP-bryggan (se BridgeLink)
     float peakL = 0.0f, peakR = 0.0f, holdL = 0.0f, holdR = 0.0f; // utgångsmätaren
     std::vector<float> meterLeft, meterRight;
@@ -207,8 +211,6 @@ private:
     StepSequencer sequencer;
     PianoRoll pianoRoll;
     juce::TextButton patternTab { "PATTERN" }, gateTab { "GATE" };
-    juce::TextButton loopButton { "LOOP ROWS" };
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> loopAttachment;
     juce::TextButton pianoButton { "PIANO ROLL" };
     std::vector<std::unique_ptr<juce::TextButton>> layerButtons; // BASS 1-3: vilket lager som redigeras
     juce::TextButton kickLayerButton { "KICK" };                // lager 3: kicken

@@ -21,11 +21,11 @@ enum class BassGrid
 };
 
 // Mönstrets längd: hela mönstret (`total`) och varje rads egen längd (kicken är rad 0, sedan baslagren; 0 = hela
-// mönstret). En rad som är kortare än mönstret loopar (`loop`) eller spelar en gång och tystnar tills mönstret börjar om.
+// mönstret). En rad som är kortare än mönstret loopar (`loops`, per rad) eller spelar en gång och tystnar tills mönstret börjar om.
 struct PatternLengths
 {
     int total = 1;
-    bool loop = true;
+    std::array<bool, 4> loops { true, true, true, true }; // loopar raden? (annars spelar den en gång och tystnar)
     std::array<int, 4> rows { 0, 0, 0, 0 };
 
     int barsOf (int row) const
@@ -39,7 +39,7 @@ struct PatternLengths
     {
         const auto inPattern = (int) (((bar % total) + total) % total);
         const auto rowBars = barsOf (row);
-        if (! loop && inPattern >= rowBars)
+        if (! loops[(size_t) juce::jlimit (0, 3, row)] && inPattern >= rowBars)
             return -1;
         return inPattern % rowBars;
     }

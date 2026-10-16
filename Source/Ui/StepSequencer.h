@@ -2,6 +2,7 @@
 
 #include "../Core/PluginBase.h"
 #include "Theme.h"
+#include "ListenButton.h"
 
 // Stegsekvenseraren: en rad för kicken, en per baslager och ett "lane" under där det valda
 // lagrets velocity, tonlängd eller tonhöjd ritas och dras i.
@@ -76,13 +77,13 @@ private:
     juce::String nameOf (int layer) const;
     bool renameable() const { return numLayers() > 1; } // instrumentets baslager kan döpas om; FX-versionens GATE-rad inte
 
-    int laneStepAt (int x) const { const auto l = lengths(); return stepAt (x, bassSteps (selectedLayer), bassOwnSteps (l, selectedLayer)); }
+    int laneStepAt (int x) const { const auto l = lengths(); return stepAt (x, selectedLayer, bassSteps (selectedLayer), bassOwnSteps (l, selectedLayer)); }
     bool isCustom (int layer) const { return processor.pattern.isCustom (layer); }
 
     Target targetAt (juce::Point<int> point, int& layer) const;
     // Stegets plats i radens eget mönster (loopade kopior räknas om till originalet), eller -1 i en tyst del av en rad
     // som inte loopar. `numSteps` är de synliga stegen.
-    int stepAt (int x, int numSteps, int ownSteps) const;
+    int stepAt (int x, int layer, int numSteps, int ownSteps) const;
     juce::Rectangle<float> stepBounds (juce::Rectangle<int> row, int step, int numSteps) const;
 
     void paintGrid (juce::Graphics&, juce::Rectangle<int> area) const;
@@ -125,6 +126,12 @@ private:
     int page = 0;
     juce::TextButton previousPageButton { "<" }, nextPageButton { ">" }, followButton { "FOLLOW" };
     std::vector<std::unique_ptr<juce::ComboBox>> lengthBoxes; // radens längd: [0] kick, sedan baslagren
+    std::vector<std::unique_ptr<ListenButton>> listenButtons; // högtalare: spelar raden
+    std::vector<std::unique_ptr<LoopToggle>> loopToggles;     // loopar raden?
+    std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment>> loopAttachments;
+    juce::Rectangle<int> overviewArea;                        // remsan som visar radernas längder och var man är
+    bool overviewDragging = false;
+    void setPageFromOverview (int x);
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment>> lengthAttachments;
     juce::Rectangle<int> pageArea, headerLabels;
 

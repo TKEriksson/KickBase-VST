@@ -82,6 +82,12 @@ namespace ParamID
         return "bass" + juce::String (layer + 1) + bassFieldName (field);
     }
 
+    const char* rowLoop (int row)
+    {
+        static const char* names[] { "rowLoopKick", "rowLoopBass1", "rowLoopBass2", "rowLoopBass3" };
+        return names[juce::jlimit (0, 3, row)];
+    }
+
     const char* rowBars (int row)
     {
         static const char* names[] { "rowBarsKick", "rowBarsBass1", "rowBarsBass2", "rowBarsBass3" };
@@ -93,15 +99,17 @@ namespace Params
 {
     void addPatternParams (Layout& layout, bool includeNoteEnd)
     {
-        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::patternBars, 1 }, "Pattern Length",
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::patternBars, 1 }, "Total Length",
                                                             StringArray { "1 bar", "2 bars", "4 bars", "8 bars", "16 bars", "32 bars", "64 bars" }, 0));
-        juce::StringArray rowLengths { "Pattern" };
+        juce::StringArray rowLengths { "Total" };
         for (int bars = 1; bars <= Pattern::maxBars; bars *= 2)
             rowLengths.add (juce::String (bars) + (bars == 1 ? " bar" : " bars"));
         for (int row = 0; row < 4; ++row)
             layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::rowBars (row), 1 },
                                                                 row == 0 ? juce::String ("Kick Length") : "Bass " + juce::String (row) + " Length", rowLengths, 0));
-        layout.add (std::make_unique<AudioParameterBool> (ParameterID { ParamID::rowLoop, 1 }, "Loop Shorter Rows", true));
+        for (int row = 0; row < 4; ++row)
+            layout.add (std::make_unique<AudioParameterBool> (ParameterID { ParamID::rowLoop (row), 1 },
+                                                              row == 0 ? juce::String ("Kick Loop") : "Bass " + juce::String (row) + " Loop", true));
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::rowGridKick, 1 }, "Kick Grid", Pattern::gridNames(), (int) BassGrid::sixteenth));
         if (includeNoteEnd)
             layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::noteEnd, 1 }, "Note End",

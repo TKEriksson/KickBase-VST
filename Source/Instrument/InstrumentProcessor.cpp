@@ -95,6 +95,10 @@ void InstrumentProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
     clock.beginBlock (getHostPosition(), numSamples);
     modulator.update (clock.getPpqAt (0));
 
+    // Räknaren och mönstret börjar om vid 1.1 (egen klocka).
+    if (restartRequest.exchange (false) && ! clock.isFollowingHost())
+        clock.restartFreeRunAt (0);
+
     // Provlyssning från gränssnittet. En solo-källa (en oscillator eller samplingen) sätts före parametrarna läses, så att
     // de första samplesen redan är solo.
     const auto audition = auditionRequest.exchange (-1);
@@ -102,7 +106,7 @@ void InstrumentProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
         currentNote = previewNote.load(); // all provlyssning (kick, oscillatorer, sampling) spelas på den valda tonen
     if (audition == 5)
         kickSoloSamplesLeft = (int) (getSampleRate() * 2.0);
-    if (audition >= 10 && audition < 100)
+    if (audition >= 10 && audition < PluginBase::previewStop)
     {
         soloLayer = juce::jlimit (0, numLayers - 1, (audition - 10) / 10);
         soloSource = (audition - 10) % 10;
@@ -118,6 +122,10 @@ void InstrumentProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
     else if (juce::isPositiveAndBelow (audition - 1, numLayers))
     {
         basses[(size_t) (audition - 1)].noteOn (0, 1.0f, (int) getSampleRate());
+    }
+    else if (audition == PluginBase::previewStop)
+    {
+        stopPreview();
     }
     else if (audition >= 100)
     {
@@ -258,13 +266,10 @@ void InstrumentProcessor::refreshEngineParams()
 
 void InstrumentProcessor::handlePreviewRequest (int row)
 {
-    if (previewLayer == row)
-    {
-        stopPreview(); // samma knapp igen avbryter
-        return;
-    }
-    if (patternActive || numHeldNotes > 0)
-        return; // en ton spelar redan: mönstret hörs ändå
+    if (numHeldNotes > 0)
+        return; // en riktig ton spelar redan: mönstret hörs ändå
+    if (previewLayer >= 0)
+        stopPreview(); // ett nytt tryck börjar om från början
 
     if (! clock.isFollowingHost())
         clock.restartFreeRunAt (0);
@@ -272,8 +277,7 @@ void InstrumentProcessor::handlePreviewRequest (int row)
     refreshEngineParams();
     previewLayer = row;
     patternActive = true;
-    const auto rowBars = lengths.barsOf (row == Pattern::kickLayer ? 0 : row + 1);
-    stopAtPpq = clock.getPpqAt (0) + (double) rowBars * clock.getBarLengthPpq(); // ett varv
+    stopAtPpq = std::numeric_limits<double>::infinity(); // loopar tills den stoppas
 
     const auto tolerance = (int) (noteOnToleranceSeconds * getSampleRate());
     scheduler.collectJustPassed (clock, pattern, lengths, 0, tolerance);
@@ -557,7 +561,8 @@ void InstrumentProcessor::ensureScratchSize (int numSamples)
 void InstrumentProcessor::handleEvent (const StepEvent& event)
 {
     // Förhandsspelning av en enskild rad: de andra raderna är tysta.
-    if (previewLayer >= 0 && (event.type == StepEvent::Type::kick ? previewLayer != Pattern::kickLayer : event.layer != previewLayer))
+    if (previewLayer >= 0 && previewLayer != PluginBase::previewAllRows
+        && (event.type == StepEvent::Type::kick ? previewLayer != Pattern::kickLayer : event.layer != previewLayer))
         return;
 
     if (event.type == StepEvent::Type::kick)

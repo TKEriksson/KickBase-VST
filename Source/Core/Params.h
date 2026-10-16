@@ -14,11 +14,13 @@ namespace ParamID
     // Mönster
     inline constexpr auto patternBars = "patternBars";
     inline constexpr auto noteEnd     = "noteEnd";
-    inline constexpr auto rowLoop     = "rowLoop"; // rader som är kortare än mönstret loopar
     inline constexpr auto rowGridKick = "rowGridKick"; // kickens rutnät (som bassidornas Grid); heter inte kick... så att det hör till mönstret
 
     // Radens egen längd: 0 = kicken, 1-3 = baslager (val 0 = hela mönstret, sedan 1 ... 64 takter).
     const char* rowBars (int row);
+
+    // Loopar raden (när den är kortare än mönstret)? Per rad: 0 = kicken, 1-3 = baslager.
+    const char* rowLoop (int row);
 
     // Kick
     inline constexpr auto kickOn          = "kickOn";
@@ -125,9 +127,15 @@ namespace Params
     {
         PatternLengths lengths;
         lengths.total = barsFromChoice ((int) get (ParamID::patternBars));
-        lengths.loop = get (ParamID::rowLoop) >= 0.5f;
         for (int row = 0; row < 4; ++row)
+        {
             lengths.rows[(size_t) row] = rowBarsFromChoice ((int) get (ParamID::rowBars (row)));
+            lengths.loops[(size_t) row] = get (ParamID::rowLoop (row)) >= 0.5f;
+        }
+
+        // Totalen är minst så lång som den längsta raden: mönstret börjar inte om förrän den är klar.
+        for (const auto rowBars : lengths.rows)
+            lengths.total = std::max (lengths.total, rowBars);
         return lengths;
     }
 

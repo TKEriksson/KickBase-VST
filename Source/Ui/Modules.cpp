@@ -51,29 +51,26 @@ HeaderBar::HeaderBar (PluginBase& p, const juce::String& subtitleIn)
         addAndMakeVisible (exportButton);
     }
 
-    listenButton.setColour (juce::TextButton::buttonOnColourId, Theme::pattern.withAlpha (0.7f));
-    listenButton.setTooltip ("LISTEN - Plays the note C5 for the whole synth (like holding that key): the kick, the bass layers and the pattern. "
-                             "Click again to stop. Use it to hear the whole sound without a DAW.");
-    listenButton.onClick = [this]
+    if (processor.getKeyboardState() != nullptr) // instrumentet
     {
-        if (auto* keys = processor.getKeyboardState())
-        {
-            if (listeningNote >= 0)
-            {
-                keys->noteOff (1, listeningNote, 0.0f);
-                listeningNote = -1;
-            }
-            else
-            {
-                listeningNote = processor.previewNote.load();
-                keys->noteOn (1, listeningNote, 1.0f);
-            }
-        }
-    };
-    addChildComponent (listenButton);
-    noteButton.setTooltip ("The note LISTEN plays (C5 by default). It is also the key used when you listen to a single piano roll. Click to choose another.");
-    noteButton.onClick = [this] { showNoteMenu(); };
-    addChildComponent (noteButton);
+        listenAll.setTooltip ("LISTEN - Hold to hear the whole synth (the kick, the bass layers and the pattern) on the note chosen next to it, looping while you hold. "
+                              "Press again to start over. Double-click to let it keep playing until you click again.");
+        listenAll.onStart = [this] { processor.requestAudition (PluginBase::previewRequest (PluginBase::previewAllRows)); };
+        listenAll.onStop = [this] { processor.requestAudition (PluginBase::previewStop); };
+        addAndMakeVisible (listenAll);
+
+        for (int note = 24; note < 96; ++note) // C1 ... B6
+            noteBox.addItem (juce::MidiMessage::getMidiNoteName (note, true, true, 5), note + 1);
+        noteBox.setSelectedId (processor.previewNote.load() + 1, juce::dontSendNotification);
+        noteBox.setTooltip ("PREVIEWS - The note all listening plays: this synth LISTEN button, the rows' speaker buttons, the piano rolls and the oscillators. "
+                            "C5 by default.");
+        noteBox.onChange = [this] { processor.previewNote = noteBox.getSelectedId() - 1; };
+        addAndMakeVisible (noteBox);
+
+        restartButton.setTooltip ("RESTART - Starts the counter and the pattern over at bar 1.1 (when the plugin runs on its own clock; with DAW SYNC the DAW decides).");
+        restartButton.onClick = [this] { processor.requestRestart(); };
+        addAndMakeVisible (restartButton);
+    }
 
     aiButton.setClickingTogglesState (true);
     aiButton.setColour (juce::TextButton::buttonOnColourId, Theme::mix.withAlpha (0.6f));
@@ -95,38 +92,49 @@ void HeaderBar::updateAiTooltip()
         : "AI LINK - Off. Switch on to let an AI assistant (through the Kickbase MCP bridge, for example in Claude Desktop) read and change this plugin. Local only; nothing is sent over the internet by Kickbase.");
 }
 
-void HeaderBar::resized()
+void HeaderBar::paintOverChildren (juce::Graphics& g)
 {
-    const auto hasListen = processor.getKeyboardState() != nullptr;
-    presets.setBounds (14 + Theme::logoWidth (subtitle) + 24, 9, hasListen ? 160 : 200, getHeight() - 18);
-    exportButton.setBounds (presets.getRight() + 10, 9, hasListen ? 70 : 76, getHeight() - 18);
-    listenButton.setBounds (exportButton.getRight() + 8, 9, 62, getHeight() - 18);
-    noteButton.setBounds (listenButton.getRight() + 4, 9, 38, getHeight() - 18);
-    listenButton.setVisible (hasListen);
-    noteButton.setVisible (hasListen);
-    aiButton.setBounds (toolsEnd() + 20 + meterWidth + 8, 9, 34, getHeight() - 18);
+    // Returpilen på omstartsknappen (ritad, så att den inte beror på att ett typsnitt har symbolen).
+    if (! restartButton.isVisible())
+        return;
+    const auto centre = restartButton.getBounds().toFloat().getCentre();
+    g.setColour (Theme::text);
+    juce::Path arrow;
+    arrow.startNewSubPath (centre.x + 5.0f, centre.y - 6.0f);
+    arrow.lineTo (centre.x + 5.0f, centre.y + 2.0f);
+    arrow.lineTo (centre.x - 4.0f, centre.y + 2.0f);
+    g.strokePath (arrow, juce::PathStrokeType (1.8f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    juce::Path head;
+    head.addTriangle (centre.x - 8.0f, centre.y + 2.0f, centre.x - 3.0f, centre.y - 2.5f, centre.x - 3.0f, centre.y + 6.5f);
+    g.fillPath (head);
 }
 
-void HeaderBar::showNoteMenu()
+void HeaderBar::resized()
 {
-    juce::PopupMenu menu;
-    for (int octave = 6; octave >= 1; --octave)
+    const auto hasPreviews = processor.getKeyboardState() != nullptr;
+    const auto height = getHeight();
+    presets.setBounds (14 + Theme::logoWidth (subtitle) + 24, 9, hasPreviews ? 160 : 200, height - 18);
+    exportButton.setBounds (presets.getRight() + 10, 9, hasPreviews ? 70 : 76, height - 18);
+
+    // PREVIEWS: en inringad ruta med högtalaren och tonväljaren, så att man ser att de hör ihop.
+    previewGroup = hasPreviews ? juce::Rectangle<int> (exportButton.getRight() + 10, 4, 112, height - 8) : juce::Rectangle<int>();
+    listenAll.setVisible (hasPreviews);
+    noteBox.setVisible (hasPreviews);
+    restartButton.setVisible (hasPreviews);
+    if (hasPreviews)
     {
-        juce::PopupMenu notes;
-        for (int semitone = 0; semitone < 12; ++semitone)
-        {
-            const auto note = 12 * octave + semitone;
-            notes.addItem (1 + note, juce::MidiMessage::getMidiNoteName (note, true, true, 5), true, note == processor.previewNote.load());
-        }
-        menu.addSubMenu ("Octave " + juce::String (octave), notes);
+        listenAll.setBounds (previewGroup.getX() + 7, previewGroup.getY() + 14, 30, previewGroup.getHeight() - 20);
+        noteBox.setBounds (listenAll.getRight() + 5, previewGroup.getY() + 14, 62, previewGroup.getHeight() - 20);
     }
 
-    juce::Component::SafePointer<HeaderBar> safeThis (this);
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&noteButton), [safeThis] (int result)
-    {
-        if (safeThis != nullptr && result > 0)
-            safeThis->processor.previewNote = result - 1;
-    });
+    aiButton.setBounds (toolsEnd() + 20 + meterWidth + 8, 9, 44, height - 18);
+
+    // Till höger: tonart med lampan under, och en pill med tempo, takt och en knapp som börjar om vid 1.1.
+    auto right = getLocalBounds().reduced (14, 0);
+    keyBlock = right.removeFromRight (84);
+    right.removeFromRight (8);
+    bpmPill = right.removeFromRight (214).reduced (0, 9);
+    restartButton.setBounds (bpmPill.getRight() - 32, bpmPill.getY() + 4, 26, bpmPill.getHeight() - 8);
 }
 
 void HeaderBar::showExportMenu()
@@ -198,16 +206,11 @@ void HeaderBar::chooseExportTarget (int part, int bars)
 
 void HeaderBar::timerCallback()
 {
-    if (auto* keys = processor.getKeyboardState())
+    if (processor.getKeyboardState() != nullptr)
     {
-        const auto playing = listeningNote >= 0 && keys->isNoteOn (1, listeningNote);
-        if (! playing)
-            listeningNote = -1;
-        listenButton.setToggleState (playing, juce::dontSendNotification);
-        listenButton.setButtonText (playing ? "STOP" : "LISTEN");
-        const auto name = juce::MidiMessage::getMidiNoteName (processor.previewNote.load(), true, true, 5);
-        if (noteButton.getButtonText() != name)
-            noteButton.setButtonText (name);
+        listenAll.setActive (processor.previewingLayer.load() == PluginBase::previewAllRows);
+        if (noteBox.getSelectedId() != processor.previewNote.load() + 1)
+            noteBox.setSelectedId (processor.previewNote.load() + 1, juce::dontSendNotification);
     }
 
     // Toppvärdet av de senaste ~20 ms på masterns utgång, med mjukt fall och en håll-markör.
@@ -231,31 +234,65 @@ void HeaderBar::paint (juce::Graphics& g)
     auto area = getLocalBounds().reduced (14, 0);
     Theme::paintLogo (g, area.removeFromLeft (420), subtitle);
 
-    // Från höger: tonart, takt.slag, tempo och en lampa som visar om DAW:en styr.
-    const auto keyNote = status.keyNote.load();
-    auto keyArea = area.removeFromRight (70);
-    g.setFont (Theme::font (10.0f, true));
-    g.setColour (Theme::textDim);
-    g.drawText ("KEY", keyArea.removeFromLeft (26), juce::Justification::centredLeft);
-    g.setFont (Theme::font (16.0f, true));
-    g.setColour (Theme::pattern);
-    g.drawText (keyNote >= 0 ? Params::keyNames()[keyNote % 12] : juce::String ("-"), keyArea, juce::Justification::centredLeft);
+    // Tonart med lampan under (DAW SYNC eller FREE RUN) längst till höger.
+    {
+        const auto keyNote = status.keyNote.load();
+        auto block = keyBlock.toFloat();
+        auto keyRow = block.removeFromTop (block.getHeight() * 0.5f);
+        g.setFont (Theme::font (10.0f, true));
+        g.setColour (Theme::textDim);
+        g.drawText ("KEY", keyRow.removeFromLeft (26.0f), juce::Justification::centredLeft);
+        g.setFont (Theme::font (16.0f, true));
+        g.setColour (Theme::pattern);
+        g.drawText (keyNote >= 0 ? Params::keyNames()[keyNote % 12] : juce::String ("-"), keyRow, juce::Justification::centredLeft);
 
-    g.setFont (Theme::font (14.0f, true));
-    g.setColour (Theme::text);
-    g.drawText (juce::String (status.patternBar.load()) + "." + juce::String (status.beat.load()), // takten i mönstret (börjar om när mönstret är klart)
-                area.removeFromRight (55), juce::Justification::centredLeft);
+        const auto following = status.followingHost.load();
+        const auto lampColour = following ? Theme::mix : Theme::kick;
+        const juce::Point<float> centre { block.getX() + 7.0f, block.getCentreY() };
+        g.setColour (lampColour.withAlpha (0.35f));
+        g.fillEllipse (juce::Rectangle<float> (12.0f, 12.0f).withCentre (centre));
+        g.setColour (lampColour.brighter (0.3f));
+        g.fillEllipse (juce::Rectangle<float> (6.0f, 6.0f).withCentre (centre));
+        g.setColour (juce::Colours::white.withAlpha (0.8f));
+        g.fillEllipse (juce::Rectangle<float> (2.0f, 2.0f).withCentre (centre));
+        g.setFont (Theme::font (11.0f, true));
+        g.setColour (Theme::textDim);
+        g.drawText (following ? "DAW SYNC" : "FREE RUN", block.withTrimmedLeft (18.0f), juce::Justification::centredLeft);
+    }
 
-    // Tempo i en kapselformad hårdvarupill
-    auto bpmArea = area.removeFromRight (110).reduced (4, 9).toFloat();
-    g.setGradientFill (juce::ColourGradient (juce::Colour (0xff121420), bpmArea.getX(), bpmArea.getY(),
-                                             juce::Colour (0xff1c1f30), bpmArea.getX(), bpmArea.getBottom(), false));
-    g.fillRoundedRectangle (bpmArea, bpmArea.getHeight() * 0.5f);
-    g.setColour (juce::Colour (0xff2c3148));
-    g.drawRoundedRectangle (bpmArea, bpmArea.getHeight() * 0.5f, 1.0f);
-    g.setFont (Theme::font (13.0f, true));
-    g.setColour (Theme::text);
-    g.drawText (juce::String (status.bpm.load(), 1) + " BPM", bpmArea, juce::Justification::centred);
+    // Tempo och takt i samma kapselformade hårdvarupill; knappen längst till höger börjar om vid 1.1.
+    {
+        const auto pill = bpmPill.toFloat();
+        g.setGradientFill (juce::ColourGradient (juce::Colour (0xff121420), pill.getX(), pill.getY(),
+                                                 juce::Colour (0xff1c1f30), pill.getX(), pill.getBottom(), false));
+        g.fillRoundedRectangle (pill, pill.getHeight() * 0.5f);
+        g.setColour (juce::Colour (0xff2c3148));
+        g.drawRoundedRectangle (pill, pill.getHeight() * 0.5f, 1.0f);
+
+        auto inner = pill.reduced (pill.getHeight() * 0.5f - 4.0f, 0.0f);
+        g.setFont (Theme::font (13.0f, true));
+        g.setColour (Theme::text);
+        g.drawText (juce::String (status.bpm.load(), 1) + " BPM", inner.removeFromLeft (100.0f), juce::Justification::centred);
+        g.setColour (juce::Colour (0xff2c3148));
+        g.fillRect (juce::Rectangle<float> (inner.getX(), pill.getY() + 7.0f, 1.0f, pill.getHeight() - 14.0f));
+        g.setFont (Theme::font (14.0f, true));
+        g.setColour (Theme::text);
+        g.drawText (juce::String (status.patternBar.load()) + "." + juce::String (status.beat.load()), // takten i mönstret (börjar om när mönstret är klart)
+                    inner.removeFromLeft (58.0f), juce::Justification::centred);
+    }
+
+    // PREVIEWS: ramen runt högtalaren och tonväljaren.
+    if (! previewGroup.isEmpty())
+    {
+        const auto group = previewGroup.toFloat();
+        g.setColour (Theme::pattern.withAlpha (0.07f));
+        g.fillRoundedRectangle (group, 6.0f);
+        g.setColour (Theme::pattern.withAlpha (0.75f));
+        g.drawRoundedRectangle (group.reduced (0.5f), 6.0f, 1.2f);
+        g.setFont (Theme::font (8.5f, true));
+        g.setColour (Theme::pattern);
+        g.drawText ("PREVIEWS", group.withHeight (14.0f).withTrimmedLeft (8.0f), juce::Justification::centredLeft);
+    }
 
     // Utgångsmätare (L och R, -48 till 0 dB): visar att synten faktiskt ger ljud.
     {
@@ -280,20 +317,6 @@ void HeaderBar::paint (juce::Graphics& g)
         bars.removeFromTop (3.0f);
         drawBar (bars, peakR, holdR);
     }
-
-    const auto following = status.followingHost.load();
-    const auto lampColour = following ? Theme::mix : Theme::kick;
-    auto lamp = area.removeFromRight (92);
-    const juce::Point<float> centre { (float) lamp.getX() + 8.0f, (float) lamp.getCentreY() };
-    g.setColour (lampColour.withAlpha (0.35f));
-    g.fillEllipse (juce::Rectangle<float> (12.0f, 12.0f).withCentre (centre));
-    g.setColour (lampColour.brighter (0.3f));
-    g.fillEllipse (juce::Rectangle<float> (6.0f, 6.0f).withCentre (centre));
-    g.setColour (juce::Colours::white.withAlpha (0.8f));
-    g.fillEllipse (juce::Rectangle<float> (2.0f, 2.0f).withCentre (centre));
-    g.setFont (Theme::font (11.0f, true));
-    g.setColour (Theme::textDim);
-    g.drawText (following ? "DAW SYNC" : "FREE RUN", lamp.withTrimmedLeft (20), juce::Justification::centredLeft);
 }
 
 //==============================================================================
@@ -891,7 +914,7 @@ void GateModule::resized()
 //==============================================================================
 PatternModule::PatternModule (PluginBase& p, bool isInstrument)
     : processor (p), instrument (isInstrument),
-      length (p.apvts, ParamID::patternBars, "LENGTH"),
+      length (p.apvts, ParamID::patternBars, "TOTAL LENGTH"),
       presets (p, Presets::Section::pattern, Theme::pattern),
       sequencer (p,
                  isInstrument ? juce::StringArray { "BASS 1", "BASS 2", "BASS 3" } : juce::StringArray { "GATE" },
@@ -901,12 +924,6 @@ PatternModule::PatternModule (PluginBase& p, bool isInstrument)
 {
     addAndMakeVisible (length);
     addAndMakeVisible (presets);
-    loopButton.setClickingTogglesState (true);
-    loopButton.setColour (juce::TextButton::buttonOnColourId, Theme::pattern.withAlpha (0.7f));
-    loopButton.setTooltip ("LOOP ROWS - Each row (kick, bass 1-3) can have its own length (the box next to its name). On: a row that is shorter than the "
-                           "pattern repeats until the longest row has played out. Off: it plays once and is silent until the pattern starts over.");
-    loopAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, ParamID::rowLoop, loopButton);
-    addAndMakeVisible (loopButton);
     if (instrument)
     {
         noteEnd = std::make_unique<ChoiceComponent> (p.apvts, ParamID::noteEnd, "NOTE END");
@@ -1250,8 +1267,6 @@ void PatternModule::resized()
         noteEnd->setBounds (first.removeFromTop (40));
         first.removeFromTop (6);
     }
-    loopButton.setBounds (first.removeFromTop (24));
-    first.removeFromTop (6);
     presets.setBounds (first.removeFromTop (24));
     first.removeFromTop (12);
     if (instrument)

@@ -5,6 +5,7 @@
 #include "../Core/PluginBase.h"
 #include "Theme.h"
 #include "Cursors.h"
+#include "ListenButton.h"
 
 // Pianorullen för ett baslager, som i FL Studio: tonerna ligger fritt i tiden (1/4 ... 1/64 och
 // trioler) och i höjd, ±96 halvtoner från tonarten.
@@ -129,7 +130,8 @@ private:
     juce::TextButton snapButton { "SNAP" }, smallerButton { "-" }, biggerButton { "+" }, allButton { "ALL" }, deleteButton { "DEL" },
                      glideButton { "GLIDE" }, followButton { "FOLLOW" }, presetButton { "PRESET" }, midiButton { "MIDI" },
                      drawButton { "PENCIL" }, selectButton { "SELECT" }, eraseButton { "ERASER" }, copyButton { "COPY" },
-                     pasteButton { "PASTE" }, pasteOkButton { "OK" }, pasteCancelButton { "CANCEL" }, listenButton { "LISTEN" };
+                     pasteButton { "PASTE" }, pasteOkButton { "OK" }, pasteCancelButton { "CANCEL" };
+    ListenButton listenButton; // högtalare: håll för att höra pianorullen (loopar), släpp för att sluta
     Tool tool = Tool::draw;
     bool shiftHeld = false;
     juce::MouseCursor pencilCursor = Cursors::pencil(), eraserCursor = Cursors::eraser();

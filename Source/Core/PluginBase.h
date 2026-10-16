@@ -127,7 +127,14 @@ public:
 
     // Förhandsspelning av en enskild rad (en pianorulle): spelar raden en gång med den egna klockan, utan DAW-ton (100 + rad,
     // där rad 0-2 = baslager och 3 = kicken; samma anrop igen avbryter). `previewingLayer` visar vilken rad som spelas, -1 = ingen.
+    // Raden 4 är hela synthen (alla rader). Förhandsspelningen loopar tills `previewStop` skickas, och ett nytt anrop börjar om från början.
+    static constexpr int previewAllRows = 4;
+    static constexpr int previewStop = 99;
     static int previewRequest (int noteLayer) { return 100 + noteLayer; }
+
+    // Börjar om räknaren och mönstret vid 1.1 (egen klocka; med DAW-synk styr DAW:en).
+    void requestRestart() { restartRequest = true; }
+    std::atomic<bool> restartRequest { false };
     std::atomic<int> previewingLayer { -1 };
 
     // Pianorullens urklipp (gränssnittet): kopierade toner, relativt den första, och var nästa inklistring börjar som standard

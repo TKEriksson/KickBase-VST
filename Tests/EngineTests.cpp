@@ -510,7 +510,7 @@ namespace
         check (lengths.barInRow (1, 0) == 0 && lengths.barInRow (1, 3) == 1 && lengths.barInRow (1, 9) == 1, "en kortare rad loopar");
         check (lengths.barInRow (0, 11) == 3, "hela mönstret räknas modulo mönsterlängden", lengths.barInRow (0, 11));
         check (lengths.barInRow (1, -1) == 1, "negativ takt");
-        lengths.loop = false;
+        lengths.loops.fill (false);
         check (lengths.barInRow (1, 1) == 1 && lengths.barInRow (1, 2) == -1 && lengths.barInRow (1, 8) == 0, "utan loop spelar raden en gång och tystnar");
         lengths.rows = { 0, 99, 0, 0 };
         check (lengths.barsOf (1) == 8, "en rad kan inte vara längre än mönstret");

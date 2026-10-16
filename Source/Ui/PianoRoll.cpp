@@ -45,7 +45,7 @@ PianoRoll::PianoRoll (PluginBase& p, std::vector<juce::Colour> colours) : proces
     followButton.setTooltip ("FOLLOW - On: the view flips to the bars that play, so you follow the song. Off: stay where you are.");
     followButton.onClick = [this] { processor.followPlayhead = followButton.getToggleState(); };
 
-    for (auto* button : { &drawButton, &selectButton, &eraseButton, &copyButton, &pasteButton, &pasteOkButton, &pasteCancelButton, &listenButton })
+    for (auto* button : { &drawButton, &selectButton, &eraseButton, &copyButton, &pasteButton, &pasteOkButton, &pasteCancelButton })
     {
         button->setMouseClickGrabsKeyboardFocus (false); // Enter och Esc ska gå till pianorullen, inte till knappen
         button->setWantsKeyboardFocus (false);
@@ -73,9 +73,10 @@ PianoRoll::PianoRoll (PluginBase& p, std::vector<juce::Colour> colours) : proces
     pasteCancelButton.setTooltip ("CANCEL - Throws the paste away (Esc).");
     pasteCancelButton.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff8a2f35));
     pasteCancelButton.onClick = [this] { cancelPaste(); grabKeyboardFocus(); };
-    listenButton.setTooltip ("LISTEN - Plays this piano roll once, on its own, with the note chosen next to LISTEN in the top bar (C5 by default). "
-                             "Click again to stop.");
-    listenButton.onClick = [this] { processor.requestAudition (PluginBase::previewRequest (layer)); };
+    listenButton.setTooltip ("LISTEN - Hold to hear just this piano roll on the preview note (the PREVIEWS note at the top, C5 by default), looping while you hold. "
+                             "Press again to start over; double-click to let it play until you click again.");
+    listenButton.onStart = [this] { processor.requestAudition (PluginBase::previewRequest (layer)); };
+    listenButton.onStop = [this] { processor.requestAudition (PluginBase::previewStop); };
     copyButton.setVisible (false);
     pasteButton.setVisible (false);
     pasteOkButton.setVisible (false);
@@ -621,7 +622,7 @@ void PianoRoll::resized()
     pasteButton.setBounds (slotB);
     pasteCancelButton.setBounds (slotB);
     top.removeFromLeft (10);
-    listenButton.setBounds (top.removeFromLeft (62));
+    listenButton.setBounds (top.removeFromLeft (36));
     infoArea = juce::Rectangle<float> ((float) listenButton.getRight() + 10.0f, (float) top.getY() - 1.0f,
                                        std::max (0.0f, (float) (top.getRight() - listenButton.getRight()) - 10.0f), 22.0f);
 
@@ -676,9 +677,7 @@ void PianoRoll::timerCallback()
     }
     updateToolButtons();
     updateToolbarVisibility();
-    const auto previewing = processor.previewingLayer.load() == layer;
-    listenButton.setButtonText (previewing ? "STOP" : "LISTEN");
-    listenButton.setToggleState (previewing, juce::dontSendNotification);
+    listenButton.setActive (processor.previewingLayer.load() == layer || processor.previewingLayer.load() == PluginBase::previewAllRows);
     if (flashText.isNotEmpty() && juce::Time::getMillisecondCounterHiRes() > flashUntil)
     {
         flashText = {};

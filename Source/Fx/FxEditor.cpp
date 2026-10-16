@@ -37,7 +37,7 @@ void FxEditor::paint (juce::Graphics& g)
 void FxEditor::resized()
 {
     auto area = getLocalBounds().reduced (10);
-    header.setBounds (area.removeFromTop (44));
+    header.setBounds (area.removeFromTop (52));
     area.removeFromTop (4);
     info.setBounds (area.removeFromBottom (22));
     area.removeFromBottom (6);

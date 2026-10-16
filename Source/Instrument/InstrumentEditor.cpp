@@ -49,7 +49,7 @@ void InstrumentEditor::resized()
 {
     auto area = getLocalBounds().reduced (10);
 
-    header.setBounds (area.removeFromTop (44));
+    header.setBounds (area.removeFromTop (52));
     area.removeFromTop (4);
 
     keyboard.setBounds (area.removeFromBottom (50));
