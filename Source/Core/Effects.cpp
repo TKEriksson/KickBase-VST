@@ -171,11 +171,13 @@ namespace Effects
                 mixKnob (0.5f) };
             table[(size_t) EffectType::echo] = {
                 choice ("TIME", firstSyncNames (9), 5),
+                value ("OFFSET", -0.5f, 0.5f, 0.0f, 0.0f, Unit::percent),
+                value ("IN PAN", -1.0f, 1.0f, 0.0f, 0.0f, Unit::percent),
+                value ("IN VOL", 0.0f, 1.0f, 0.0f, 0.5f, Unit::percent),
+                choice ("FB MODE", { "Normal", "Invert", "Ping-pong" }, 2),
                 value ("FEEDBACK", 0.0f, 0.95f, 0.0f, 0.4f, Unit::percent),
-                choice ("PING PONG", { "Off", "On" }, 1),
-                value ("LOW CUT", 20.0f, 2000.0f, 200.0f, 250.0f, Unit::hz),
-                value ("HIGH CUT", 1000.0f, 20000.0f, 5000.0f, 6000.0f, Unit::hz),
-                mixKnob (0.3f) };
+                value ("CUT", 1000.0f, 20000.0f, 5000.0f, 6000.0f, Unit::hz),
+                value ("DRY VOL", 0.0f, 1.0f, 0.0f, 1.0f, Unit::percent) };
             table[(size_t) EffectType::reverb] = {
                 value ("SIZE", 0.0f, 1.0f, 0.0f, 0.5f, Unit::percent),
                 value ("DAMPING", 0.0f, 1.0f, 0.0f, 0.5f, Unit::percent),
@@ -647,12 +649,15 @@ namespace
         }
     };
 
+    // Som FL Studios Fruity Delay 2: ingången (pan, volym) matas in i två fördröjningar, ekot går
+    // tillbaka med återkoppling (normal, inverterad eller ping-pong) och ett filter (CUT), höger
+    // sida kan ligga före eller efter vänster (OFFSET), och DRY VOL är det orörda ljudet.
     struct EchoFx
     {
-        static constexpr double maxSeconds = 2.2; // 1/2 not vid 55 BPM
+        static constexpr double maxSeconds = 3.4; // 1/2 not vid 55 BPM, med offset på +50 %
 
         dsp::DelayLine<float, dsp::DelayLineInterpolationTypes::Linear> line;
-        SmoothedValue<float> delaySamples;
+        SmoothedValue<float> delayLeft, delayRight;
         std::array<OnePole, 2> lowCutFilters, highCutFilters;
         bool fresh = true;
 
@@ -660,7 +665,8 @@ namespace
         {
             line.prepare ({ spec.sampleRate, spec.maximumBlockSize, 2 });
             line.setMaximumDelayInSamples ((int) (spec.sampleRate * maxSeconds) + 4);
-            delaySamples.reset (spec.sampleRate, 0.08);
+            delayLeft.reset (spec.sampleRate, 0.08);
+            delayRight.reset (spec.sampleRate, 0.08);
             reset();
         }
 
@@ -668,26 +674,35 @@ namespace
 
         void process (AudioBuffer<float>& buffer, int numSamples, const Values& k, const Context& context)
         {
-            const auto target = (float) jlimit (1.0, context.sampleRate * (maxSeconds - 0.05),
-                                                Effects::syncInQuarters ((int) k[0]) * context.samplesPerQuarter());
+            const auto longest = context.sampleRate * (maxSeconds - 0.05);
+            const auto time = Effects::syncInQuarters ((int) k[0]) * context.samplesPerQuarter();
+            const auto targetLeft = (float) jlimit (1.0, longest, time);
+            const auto targetRight = (float) jlimit (1.0, longest, time * (1.0 + k[1]));
             if (fresh)
-                delaySamples.setCurrentAndTargetValue (target);
+            {
+                delayLeft.setCurrentAndTargetValue (targetLeft);
+                delayRight.setCurrentAndTargetValue (targetRight);
+            }
             fresh = false;
-            delaySamples.setTargetValue (target);
+            delayLeft.setTargetValue (targetLeft);
+            delayRight.setTargetValue (targetRight);
 
-            const auto fb = k[1];
-            const auto pong = k[2] >= 0.5f;
-            const auto lowCoefficient = onePoleCoefficient (k[3], context.sampleRate);
-            const auto highCoefficient = onePoleCoefficient (k[4], context.sampleRate);
-            const auto wet = k[5];
+            const auto pan = k[2];
+            const auto gainLeft = pan > 0.0f ? 1.0f - pan : 1.0f, gainRight = pan < 0.0f ? 1.0f + pan : 1.0f;
+            const auto inputVolume = k[3];
+            const auto mode = (int) k[4];
+            const auto pong = mode == 2;
+            const auto feedback = k[5] * (mode == 1 ? -1.0f : 1.0f);
+            const auto lowCoefficient = onePoleCoefficient (60.0f, context.sampleRate); // släpper inte in dc och sub i slingan
+            const auto highCoefficient = onePoleCoefficient (k[6], context.sampleRate);
+            const auto dry = k[7];
             const auto stereo = buffer.getNumChannels() > 1;
 
             for (int i = 0; i < numSamples; ++i)
             {
-                const auto d = delaySamples.getNextValue();
-                std::array<float, 2> echo { line.popSample (0, d), line.popSample (1, d) };
+                std::array<float, 2> echo { line.popSample (0, delayLeft.getNextValue()), line.popSample (1, delayRight.getNextValue()) };
 
-                // Filtrera ekot, så att varje upprepning blir tunnare och mörkare.
+                // Filtrera ekot, så att varje upprepning blir mörkare.
                 for (size_t ch = 0; ch < 2; ++ch)
                     echo[ch] = highCutFilters[ch].lowpass (lowCutFilters[ch].highpass (echo[ch], lowCoefficient), highCoefficient);
 
@@ -696,19 +711,21 @@ namespace
 
                 if (pong)
                 {
-                    // Ping-pong: ingången går in till vänster, ekot studsar mellan sidorna.
-                    line.pushSample (0, (inL + inR) * 0.5f + echo[1] * fb);
-                    line.pushSample (1, echo[0] * fb);
+                    // Ping-pong: ingången går in på ena sidan (åt det håll du panorerar, annars vänster)
+                    // och ekot studsar mellan sidorna.
+                    const auto mono = (inL + inR) * 0.5f * inputVolume;
+                    line.pushSample (0, (pan > 0.0f ? 0.0f : mono) + echo[1] * feedback);
+                    line.pushSample (1, (pan > 0.0f ? mono : 0.0f) + echo[0] * feedback);
                 }
                 else
                 {
-                    line.pushSample (0, inL + echo[0] * fb);
-                    line.pushSample (1, inR + echo[1] * fb);
+                    line.pushSample (0, inL * gainLeft * inputVolume + echo[0] * feedback);
+                    line.pushSample (1, inR * gainRight * inputVolume + echo[1] * feedback);
                 }
 
-                buffer.setSample (0, i, inL + echo[0] * wet);
+                buffer.setSample (0, i, inL * dry + echo[0]);
                 if (stereo)
-                    buffer.setSample (1, i, inR + echo[1] * wet);
+                    buffer.setSample (1, i, inR * dry + echo[1]);
             }
         }
     };

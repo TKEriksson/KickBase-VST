@@ -21,7 +21,7 @@ enum class EffectType { off, filter, distortion, eq, chorus, phaser, echo, rever
 constexpr int numEffectTypes = (int) EffectType::count; // inklusive Off
 constexpr int numEffectChannels = 3;
 constexpr int slotsPerChannel = 5;
-constexpr int knobsPerSlot = 6;
+constexpr int knobsPerSlot = 8;
 
 namespace Effects
 {
