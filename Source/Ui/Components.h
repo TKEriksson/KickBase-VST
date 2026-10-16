@@ -110,6 +110,31 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> attachment;
 };
 
+// Kompakt FX-send i synthens flikrad: "FX", en kanalväljare (None/A/B/C) och en liten reglage för
+// hur mycket av ljudet som går genom kanalen. Högerklick visar menyn med DAW:ens val.
+class FxSendControl : public juce::Component
+{
+public:
+    FxSendControl (juce::AudioProcessorValueTreeState& apvts, const juce::String& channelID, const juce::String& amountID,
+                   const juce::String& name, juce::Colour accent);
+
+    void resized() override;
+
+    class AmountSlider : public juce::Slider
+    {
+    public:
+        juce::RangedAudioParameter* parameter = nullptr;
+        void mouseDown (const juce::MouseEvent&) override;
+    };
+
+private:
+    juce::Label label;
+    ChoiceComponent::Box channel;
+    AmountSlider amount;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> channelAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> amountAttachment;
+};
+
 // Raden längst ner som alltid förklarar det musen är över (tooltip-texten för kontrollen
 // under musen, eller en allmän tips-text).
 class InfoBar : public juce::Component, private juce::Timer
@@ -187,8 +212,11 @@ public:
             headerControls.addAndMakeVisible (*power);
         if (headerPreset != nullptr)
             headerControls.addAndMakeVisible (*headerPreset);
+        if (headerFxSend != nullptr)
+            headerControls.addAndMakeVisible (*headerFxSend);
         headerControls.power = power.get();
         headerControls.preset = headerPreset;
+        headerControls.fxSend = headerFxSend;
         repaint();
         return &headerControls;
     }
@@ -219,11 +247,15 @@ protected:
     // Presetknappen som flyttas till flikraden i en flikpanel (se embedInTab).
     void setHeaderPreset (juce::Component* preset) { headerPreset = preset; }
 
+    // FX-send (kanal och mängd) som visas i flikraden, mellan på/av-knappen och presetknappen.
+    void setHeaderFxSend (juce::Component* fxSend) { headerFxSend = fxSend; }
+
 private:
     struct HeaderControls : juce::Component
     {
         juce::Component* power = nullptr;
         juce::Component* preset = nullptr;
+        juce::Component* fxSend = nullptr;
 
         void resized() override
         {
@@ -231,6 +263,11 @@ private:
             if (power != nullptr)
                 power->setBounds (area.removeFromLeft (24));
             area.removeFromLeft (8);
+            if (fxSend != nullptr)
+            {
+                fxSend->setBounds (area.removeFromRight (168));
+                area.removeFromRight (8);
+            }
             if (preset != nullptr)
                 preset->setBounds (area);
         }
@@ -238,6 +275,7 @@ private:
 
     HeaderControls headerControls;
     juce::Component* headerPreset = nullptr;
+    juce::Component* headerFxSend = nullptr;
     bool embedded = false;
     juce::String title;
     juce::Colour accent;

@@ -223,6 +223,9 @@ KickModule::KickModule (PluginBase& p)
 {
     setHeaderPreset (&presets);
     addAndMakeVisible (presets);
+    fxSend = std::make_unique<FxSendControl> (p.apvts, ParamID::kickFxChannel, ParamID::kickFxAmount, "FX SEND", Theme::kick);
+    addAndMakeVisible (*fxSend);
+    setHeaderFxSend (fxSend.get());
     addAndMakeVisible (keyMode);
     addAndMakeVisible (display);
 
@@ -248,8 +251,7 @@ KickModule::KickModule (PluginBase& p)
                      { "CLICK", { knob (ParamID::kickClick, "LEVEL"), knob (ParamID::kickClickLength, "LENGTH"),
                                   knob (ParamID::kickClickTone, "TONE") } },
                      { "DRIVE", { choice (ParamID::kickClipMode, "MODE"), knob (ParamID::kickDrive, "AMOUNT") } },
-                     { "OUT", { knob (ParamID::kickHighCut, "HIGH CUT"), knob (ParamID::kickLevel, "LEVEL") } },
-                     { "FX SEND", { choice (ParamID::kickFxChannel, "CHANNEL"), knob (ParamID::kickFxAmount, "AMOUNT") } } });
+                     { "OUT", { knob (ParamID::kickHighCut, "HIGH CUT"), knob (ParamID::kickLevel, "LEVEL") } } });
 
     sampleLabel.setFont (Theme::font (11.0f));
     sampleLabel.setColour (juce::Label::textColourId, Theme::textDim);
@@ -360,6 +362,9 @@ BassModule::BassModule (PluginBase& p, int layerIn)
 
     setHeaderPreset (&presets);
     addAndMakeVisible (presets);
+    fxSend = std::make_unique<FxSendControl> (p.apvts, id (F::fxChannel), id (F::fxAmount), "FX SEND", accent);
+    addAndMakeVisible (*fxSend);
+    setHeaderFxSend (fxSend.get());
     envelope.onBeforePaint = [this] { current = refs.readBass (layer, 36); };
 
     envelope.addCurve ({ [this] (double t) { return BassSynth::filterEnvelopeAt (current, t) * current.envAmount / 8.0f; },
@@ -414,7 +419,6 @@ BassModule::BassModule (PluginBase& p, int layerIn)
                      { "WARP ENV", { knob (id (F::warpEnv), "AMOUNT") } },
                      { "DRIVE", { knob (id (F::drive), "AMOUNT") } },
                      { "SLIDE", { knob (id (F::glide), "TIME") } },
-                     { "FX SEND", { choice (id (F::fxChannel), "CHANNEL"), knob (id (F::fxAmount), "AMOUNT") } },
                      { "LAYER OUT", { knob (id (F::level), "LEVEL"), knob (id (F::duck), "DUCK"), knob (id (F::gate), "GATE") } } });
 }
 

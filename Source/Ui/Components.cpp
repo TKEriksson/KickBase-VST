@@ -400,6 +400,56 @@ void ChoiceComponent::Box::mouseDown (const juce::MouseEvent& e)
 }
 
 //==============================================================================
+FxSendControl::FxSendControl (juce::AudioProcessorValueTreeState& apvts, const juce::String& channelID, const juce::String& amountID,
+                              const juce::String& name, juce::Colour accent)
+{
+    label.setText ("FX", juce::dontSendNotification);
+    label.setFont (Theme::font (11.0f, true));
+    label.setColour (juce::Label::textColourId, Theme::textDim);
+    label.setJustificationType (juce::Justification::centredRight);
+    addAndMakeVisible (label);
+
+    channel.parameter = apvts.getParameter (channelID);
+    if (channel.parameter != nullptr)
+    {
+        channel.addItemList (channel.parameter->getAllValueStrings(), 1);
+        channel.setTooltip ("FX SEND - " + Help::forParameter (channelID));
+    }
+    addAndMakeVisible (channel);
+
+    amount.parameter = apvts.getParameter (amountID);
+    amount.setSliderStyle (juce::Slider::LinearHorizontal);
+    amount.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+    amount.setColour (juce::Slider::trackColourId, accent);
+    amount.setColour (juce::Slider::thumbColourId, Theme::text);
+    amount.setPopupDisplayEnabled (true, true, nullptr);
+    amount.setTooltip ("FX SEND AMOUNT - " + Help::forParameter (amountID));
+    addAndMakeVisible (amount);
+
+    channelAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (apvts, channelID, channel);
+    amountAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (apvts, amountID, amount);
+    juce::ignoreUnused (name);
+}
+
+void FxSendControl::resized()
+{
+    auto area = getLocalBounds();
+    label.setBounds (area.removeFromLeft (22));
+    area.removeFromLeft (4);
+    channel.setBounds (area.removeFromLeft (62));
+    area.removeFromLeft (4);
+    amount.setBounds (area);
+}
+
+void FxSendControl::AmountSlider::mouseDown (const juce::MouseEvent& e)
+{
+    if (e.mods.isPopupMenu() && parameter != nullptr)
+        showParameterMenu (*this, *parameter, {});
+    else
+        juce::Slider::mouseDown (e);
+}
+
+//==============================================================================
 InfoBar::InfoBar()
 {
     setInterceptsMouseClicks (false, false);

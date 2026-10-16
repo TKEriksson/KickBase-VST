@@ -57,6 +57,7 @@ private:
     ControlGroups groups; // KEY, PITCH, LENGTH, BODY, CLICK, DRIVE, OUT
     ChoiceComponent keyMode;
     PresetButton presets;
+    std::unique_ptr<FxSendControl> fxSend;
 
     juce::Label sampleLabel;
     juce::TextButton loadButton { "Load" }, clearButton { "X" };
@@ -83,6 +84,7 @@ private:
     std::vector<std::unique_ptr<juce::Component>> controls;
     ControlGroups groups; // PITCH, SUB, NOISE, FILTER, FILTER ENV, VOLUME ENV, WARP ENV, DRIVE, SLIDE, OUT
     PresetButton presets;
+    std::unique_ptr<FxSendControl> fxSend;
 };
 
 // Gaten (bara FX-versionen): formar ljudet från den andra synthen.

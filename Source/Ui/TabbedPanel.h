@@ -56,7 +56,7 @@ public:
     void resized() override
     {
         auto header = getLocalBounds().removeFromTop (headerHeight).reduced (10, 4).withTrimmedTop (2);
-        const auto extrasArea = header.removeFromRight (200);
+        const auto extrasArea = header.removeFromRight (380);
         for (auto& tab : tabs)
             if (tab.headerExtras != nullptr)
                 tab.headerExtras->setBounds (extrasArea);
