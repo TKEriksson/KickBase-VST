@@ -16,6 +16,7 @@ public:
         juce::Colour colour;
         bool filled = true;    // fylld yta, annars bara en linje
         juce::String name;
+        bool edge = false;     // förstärkning (0..1) som ritas från över- och underkanten inåt: så mycket som tas bort
     };
 
     enum class Mode { wave, gainReduction };

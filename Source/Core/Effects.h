@@ -156,7 +156,12 @@ public:
 
     // Kör kanalerna och adderar dem till `mix` (stereo). `kickEnvelope` är kickens envelope per
     // sample (0..1) som kanalernas duckning följer.
-    void process (int numSamples, const float* kickEnvelope, juce::AudioBuffer<float>& mix);
+    // Utan `mix` adderas inget; kanalens ljud hämtas då med output(). `duckEnabled` (en per kanal)
+    // stänger av duckningen för kanaler där sidechainen är bortvald i mixern.
+    void process (int numSamples, const float* kickEnvelope, juce::AudioBuffer<float>* mix = nullptr, const bool* duckEnabled = nullptr);
+
+    // Kanalens färdiga ljud (stereo, efter effekter, EQ, kompressor, duckning och nivå) efter process.
+    const juce::AudioBuffer<float>& output (int channel) const;
 
 private:
     struct Impl;

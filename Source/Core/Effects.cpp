@@ -1297,7 +1297,12 @@ void EffectRack::send (int channel, const float* left, const float* right, int n
     buffer.addFrom (1, 0, right != nullptr ? right : left, numSamples, amount);
 }
 
-void EffectRack::process (int numSamples, const float* kickEnvelope, AudioBuffer<float>& mix)
+const AudioBuffer<float>& EffectRack::output (int channel) const
+{
+    return impl->buffers[(size_t) jlimit (0, numEffectChannels - 1, channel)];
+}
+
+void EffectRack::process (int numSamples, const float* kickEnvelope, AudioBuffer<float>* mix, const bool* duckEnabled)
 {
     for (int ch = 0; ch < numEffectChannels; ++ch)
     {
@@ -1328,7 +1333,7 @@ void EffectRack::process (int numSamples, const float* kickEnvelope, AudioBuffer
 
         // Kanalens duckning följer kickens envelope (efter effekterna, så att svansar duckas också).
         auto& state = impl->duckState[(size_t) ch];
-        const auto amount = impl->duckAmounts[(size_t) ch];
+        const auto amount = duckEnabled == nullptr || duckEnabled[ch] ? impl->duckAmounts[(size_t) ch] : 0.0f;
         const auto gain = impl->gains[(size_t) ch];
         auto* left = buffer.getWritePointer (0);
         auto* right = buffer.getWritePointer (1);
@@ -1340,7 +1345,10 @@ void EffectRack::process (int numSamples, const float* kickEnvelope, AudioBuffer
             right[i] *= g;
         }
 
-        mix.addFrom (0, 0, buffer, 0, 0, numSamples);
-        mix.addFrom (1, 0, buffer, 1, 0, numSamples);
+        if (mix != nullptr)
+        {
+            mix->addFrom (0, 0, buffer, 0, 0, numSamples);
+            mix->addFrom (1, 0, buffer, 1, 0, numSamples);
+        }
     }
 }

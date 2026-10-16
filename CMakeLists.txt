@@ -38,6 +38,7 @@ set(PLUGIN_SOURCES
     ${CORE_SOURCES}
     Source/Core/Effects.cpp
     Source/Core/Master.cpp
+    Source/Core/Mixer.cpp
     Source/Core/OfflineRender.cpp
     Source/Core/Params.cpp
     Source/Core/Presets.cpp
@@ -51,6 +52,7 @@ set(PLUGIN_SOURCES
     Source/Ui/EffectsPage.cpp
     Source/Ui/SidechainPage.cpp
     Source/Ui/MasterPage.cpp
+    Source/Ui/MixerPage.cpp
     Source/Ui/LfoPage.cpp
     Source/Ui/Components.cpp
     Source/Ui/Help.cpp

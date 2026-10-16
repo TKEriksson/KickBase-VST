@@ -5,6 +5,7 @@
 #include "Effects.h"
 #include "KickEngine.h"
 #include "Master.h"
+#include "Mixer.h"
 #include "Modulation.h"
 #include "Params.h"
 #include "Pattern.h"
@@ -27,6 +28,9 @@ public:
 
     // Effektkanalerna ägs också av underklassen; gränssnittet läser deras uttag (EQ, kompressor).
     virtual const EffectRack& getEffectRack() const = 0;
+
+    // Mixern (bara instrumentet): gain, panorering, mätare och bypass per ljudkälla.
+    virtual const Mixer* getMixer() const { return nullptr; }
 
     void releaseResources() override {}
     bool hasEditor() const override { return true; }
@@ -77,6 +81,11 @@ public:
 
     // Vad gränssnittet ritar i realtid: kicken, och basen före och efter duckningen under kicken.
     SignalTap kickTap, bassBeforeDuckTap, bassAfterDuckTap;
+
+    // Hur mycket varje baslager duckas just nu: förstärkningen (1 = orörd) sample för sample, och
+    // det senaste värdet som minskning 0..1 (för ringen runt DUCK-ratten).
+    std::array<SignalTap, ParamID::numBassLayers> duckGainTaps;
+    std::array<std::atomic<float>, ParamID::numBassLayers> duckReduction {};
 
     // Kickens pitch-envelope (halvtoner över svansen, upp till 0,5 s) och volym-envelope
     // (upp till 2 s), redigeras i KICK-fliken.

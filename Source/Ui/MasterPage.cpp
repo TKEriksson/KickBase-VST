@@ -74,13 +74,54 @@ MasterPage::MasterPage (PluginBase& p)
 
     addAndMakeVisible (output);
     addAndMakeVisible (reduction);
+
+    // Mixern finns bara i instrumentet; då väljer man mellan MIXER och MAXIMIZER.
+    if (p.getMixer() != nullptr)
+    {
+        mixerView = std::make_unique<MixerView> (p);
+        addChildComponent (*mixerView);
+        maxSources = std::make_unique<SourceToggles> (p, "Max", "THROUGH THE MAXIMIZER");
+        addChildComponent (*maxSources);
+
+        mixerTab.setTooltip ("MIXER - Gain, pan and level meter for every sound source (kick, bass layers and FX channels), "
+                             "plus SC (sidechain on/off) and MAX (through the maximizer or not) per source.");
+        maximizerTab.setTooltip ("MAXIMIZER - Drive, clip and limiter on the whole mix. Choose which sources go through it at the bottom.");
+        mixerTab.onClick = [this] { showView (true); };
+        maximizerTab.onClick = [this] { showView (false); };
+        mixerTab.setColour (juce::TextButton::buttonOnColourId, Theme::master.withAlpha (0.55f));
+        maximizerTab.setColour (juce::TextButton::buttonOnColourId, Theme::master.withAlpha (0.55f));
+        addAndMakeVisible (mixerTab);
+        addAndMakeVisible (maximizerTab);
+        showView (true);
+    }
+}
+
+void MasterPage::showView (bool mixer)
+{
+    showingMixer = mixer;
+    mixerTab.setToggleState (mixer, juce::dontSendNotification);
+    maximizerTab.setToggleState (! mixer, juce::dontSendNotification);
+    mixerView->setVisible (mixer);
+    maxSources->setVisible (! mixer);
+    for (auto& knob : knobs)
+        knob->setVisible (! mixer);
+    for (auto* c : std::initializer_list<juce::Component*> { &output, &reduction, &scope, &gainScope })
+        c->setVisible (! mixer);
+    resized();
+    repaint();
 }
 
 void MasterPage::paint (juce::Graphics& g)
 {
-    g.setFont (Theme::font (13.0f, true));
-    g.setColour (Theme::master);
-    g.drawText ("MAXIMIZER", getLocalBounds().withHeight (24).withTrimmedLeft (30), juce::Justification::centredLeft);
+    if (mixerView == nullptr)
+    {
+        g.setFont (Theme::font (13.0f, true));
+        g.setColour (Theme::master);
+        g.drawText ("MAXIMIZER", getLocalBounds().withHeight (24).withTrimmedLeft (30), juce::Justification::centredLeft);
+    }
+
+    if (showingMixer)
+        return;
 
     g.setFont (Theme::font (10.0f));
     g.setColour (Theme::textDim);
@@ -96,7 +137,25 @@ void MasterPage::resized()
     auto header = area.removeFromTop (24);
     power.setBounds (header.removeFromLeft (26));
     presets.setBounds (header.removeFromRight (160));
+    if (mixerView != nullptr)
+    {
+        header.removeFromLeft (6);
+        mixerTab.setBounds (header.removeFromLeft (90));
+        header.removeFromLeft (6);
+        maximizerTab.setBounds (header.removeFromLeft (110));
+    }
     area.removeFromTop (6);
+
+    if (mixerView != nullptr && showingMixer)
+    {
+        mixerView->setBounds (area.withHeight (area.getHeight() + 16));
+        return;
+    }
+    if (maxSources != nullptr)
+    {
+        maxSources->setBounds (area.removeFromBottom (24));
+        area.removeFromBottom (2);
+    }
 
     auto meters = area.removeFromRight (110);
     output.setBounds (meters.removeFromLeft (55));

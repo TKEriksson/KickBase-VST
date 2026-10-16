@@ -169,6 +169,15 @@ void KnobComponent::timerCallback()
     // Rita om när kopplingarna ändras, och medan ratten moduleras (pricken rör sig).
     const auto version = processor->modRoutes.version.load();
     const auto offset = processor->modulator.currentOffset (parameterIndex());
+    if (liveMeter)
+    {
+        const auto live = liveMeter();
+        if (std::abs (live - lastLive) > 0.004f)
+        {
+            lastLive = live;
+            repaint();
+        }
+    }
     if (version != lastRoutesVersion || offset != lastOffset)
     {
         if (version != lastRoutesVersion)
@@ -196,6 +205,18 @@ void KnobComponent::paintOverChildren (juce::Graphics& g)
     {
         g.setColour (Theme::lfo.withAlpha (0.25f));
         g.fillEllipse (juce::Rectangle<float> (trackRadius() * 2.0f + 8.0f, trackRadius() * 2.0f + 8.0f).withCentre (centre));
+    }
+
+    if (liveMeter && lastLive > 0.0f)
+    {
+        // Liveindikatorn: en båge inne i ratten, från start och så långt som värdet visar.
+        const auto radius = trackRadius() - 6.0f;
+        juce::Path live;
+        live.addCentredArc (centre.x, centre.y, radius, radius, 0.0f, angleAt (0.0f), angleAt (lastLive), true);
+        g.setColour (liveColour.withAlpha (0.25f));
+        g.strokePath (live, juce::PathStrokeType (6.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        g.setColour (liveColour);
+        g.strokePath (live, juce::PathStrokeType (3.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     }
 
     const auto list = rings();

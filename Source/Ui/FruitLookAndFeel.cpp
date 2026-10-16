@@ -142,6 +142,30 @@ void FruitLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int wi
     }
 }
 
+void FruitLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int width, int height, float sliderPos,
+                                         float minSliderPos, float maxSliderPos, juce::Slider::SliderStyle style, juce::Slider& slider)
+{
+    if (style != juce::Slider::LinearVertical)
+    {
+        LookAndFeel_V4::drawLinearSlider (g, x, y, width, height, sliderPos, minSliderPos, maxSliderPos, style, slider);
+        return;
+    }
+
+    // Fader: ett nedsänkt spår med färgad fyllning underifrån och ett metallhandtag.
+    const auto accent = slider.findColour (juce::Slider::trackColourId);
+    const auto centreX = (float) x + (float) width * 0.5f;
+    const auto groove = juce::Rectangle<float> (4.0f, (float) height).withCentre ({ centreX, (float) y + (float) height * 0.5f });
+    g.setColour (Theme::knobBodyDark);
+    g.fillRoundedRectangle (groove, 2.0f);
+    g.setColour (accent.withAlpha (0.8f));
+    g.fillRoundedRectangle (groove.withTop (sliderPos), 2.0f);
+
+    const auto cap = juce::Rectangle<float> ((float) std::min (width, 22), 12.0f).withCentre ({ centreX, sliderPos });
+    Theme::paintMetal (g, cap, 2.5f, juce::Colour (0xffd2d6e6), juce::Colour (0xff7e8499), false);
+    g.setColour (juce::Colours::black.withAlpha (0.55f));
+    g.fillRect (cap.withHeight (1.5f).withCentre (cap.getCentre()));
+}
+
 void FruitLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButton& button, bool highlighted, bool)
 {
     // På/av-knapp: lysande neonring med brytarstreck

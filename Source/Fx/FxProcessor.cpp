@@ -134,7 +134,11 @@ void FxProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuff
     duckRawBuffer.copyFrom (0, 0, duckBuffer, 0, 0, numSamples);
     auto* duckData = duckBuffer.getWritePointer (0);
     for (int i = 0; i < numSamples; ++i)
+    {
         duckData[i] = ducker.next (duckData[i], duckAmount);
+        duckGainTaps[0].push (duckData[i]);
+    }
+    duckReduction[0] = numSamples > 0 ? 1.0f - duckData[numSamples - 1] : 0.0f;
 
     for (int ch = 0; ch < 2; ++ch)
         juce::FloatVectorOperations::multiply (synthBuffer.getWritePointer (ch), duckData, numSamples);
@@ -145,7 +149,7 @@ void FxProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuff
         bassAfterDuckTap.push (0.5f * (synthBuffer.getSample (0, i) + synthBuffer.getSample (1, i)));
     }
 
-    effects.process (numSamples, duckRawBuffer.getReadPointer (0), synthBuffer);
+    effects.process (numSamples, duckRawBuffer.getReadPointer (0), &synthBuffer);
 
     const auto masterGain = params.get (ParamID::gain);
     const auto* kickData = kickBuffer.getReadPointer (0);

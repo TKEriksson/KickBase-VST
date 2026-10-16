@@ -2,6 +2,7 @@
 
 #include "../Core/PluginBase.h"
 #include "Components.h"
+#include "MixerPage.h"
 #include "PresetButton.h"
 #include "Scopes.h"
 
@@ -24,7 +25,8 @@ private:
     void timerCallback() override;
 
     bool curveMode() const;
-    float depth() const;
+    float depth (int layer) const;
+    int numLayers() const;
     juce::Rectangle<float> plotArea() const;
     juce::Point<float> toScreen (float x, float duck) const;
     juce::Point<float> fromScreen (juce::Point<float> p) const;
@@ -39,7 +41,7 @@ private:
     float tensionStart = 0.0f, dragStartY = 0.0f;
     int lastVersion = -1;
     bool lastMode = false;
-    float lastDepth = -1.0f;
+    float lastDepths = -1.0f; // summan av lagrens djup, för att se när något ändrats
 };
 
 // Fliken SIDECHAIN.
@@ -55,4 +57,5 @@ private:
     std::vector<std::unique_ptr<KnobComponent>> depths; // en per baslager
     DuckCurveView curve;
     ScopeView scope;
+    std::unique_ptr<SourceToggles> sources; // vilka källor som ducks (samma som SC i mixern)
 };

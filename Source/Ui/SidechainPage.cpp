@@ -15,21 +15,28 @@ bool DuckCurveView::curveMode() const
     return (int) processor.apvts.getRawParameterValue ("scMode")->load() == (int) Sidechain::Mode::curve;
 }
 
-float DuckCurveView::depth() const
+float DuckCurveView::depth (int layer) const
 {
-    return processor.apvts.getRawParameterValue (ParamID::bass (0, BassField::duck))->load(); // kurvan visar lager 1
+    return processor.apvts.getRawParameterValue (ParamID::bass (layer, BassField::duck))->load();
+}
+
+int DuckCurveView::numLayers() const
+{
+    return processor.isEffectVersion() ? 1 : ParamID::numBassLayers;
 }
 
 void DuckCurveView::timerCallback()
 {
     const auto version = processor.sidechainCurve.version.load();
     const auto mode = curveMode();
-    const auto d = depth();
-    if (version != lastVersion || mode != lastMode || d != lastDepth)
+    float d = 0.0f;
+    for (int layer = 0; layer < numLayers(); ++layer)
+        d += depth (layer) * (float) (layer + 1);
+    if (version != lastVersion || mode != lastMode || d != lastDepths)
     {
         lastVersion = version;
         lastMode = mode;
-        lastDepth = d;
+        lastDepths = d;
         repaint();
     }
 }
@@ -39,18 +46,18 @@ juce::Rectangle<float> DuckCurveView::plotArea() const
     return getLocalBounds().toFloat().reduced (10.0f, 12.0f);
 }
 
-// Skärmen visar volymen 1 - djup * duck, så djupet räknas in här och bara här.
+// Formen ritas och redigeras på fullt djup; varje lagers egen volym (djupet) ritas som en linje över den.
 juce::Point<float> DuckCurveView::toScreen (float x, float duck) const
 {
     const auto area = plotArea();
-    return { area.getX() + x * area.getWidth(), area.getY() + depth() * duck * area.getHeight() };
+    return { area.getX() + x * area.getWidth(), area.getY() + duck * area.getHeight() };
 }
 
 juce::Point<float> DuckCurveView::fromScreen (juce::Point<float> p) const
 {
     const auto area = plotArea();
     return { juce::jlimit (0.0f, 1.0f, (p.x - area.getX()) / area.getWidth()),
-             juce::jlimit (0.0f, 1.0f, (p.y - area.getY()) / (area.getHeight() * std::max (0.05f, depth()))) };
+             juce::jlimit (0.0f, 1.0f, (p.y - area.getY()) / area.getHeight()) };
 }
 
 juce::Point<float> DuckCurveView::tensionHandle (size_t segment) const
@@ -105,7 +112,9 @@ void DuckCurveView::paint (juce::Graphics& g)
         preview.setPoints (editing);
     const auto& source = editing.empty() ? processor.sidechainCurve : preview;
 
+    // Formen (fullt djup) och varje lagers volym: 1 - djup * form.
     juce::Path volume;
+    std::vector<juce::Path> layerPaths ((size_t) numLayers());
     constexpr int resolution = 200;
     for (int i = 0; i <= resolution; ++i)
     {
@@ -124,6 +133,15 @@ void DuckCurveView::paint (juce::Graphics& g)
         if (i == 0)
             volume.startNewSubPath (area.getX(), area.getY());
         volume.lineTo (point);
+
+        for (int layer = 0; layer < numLayers(); ++layer)
+        {
+            const auto layerPoint = toScreen (x, duck * depth (layer));
+            if (i == 0)
+                layerPaths[(size_t) layer].startNewSubPath (layerPoint);
+            else
+                layerPaths[(size_t) layer].lineTo (layerPoint);
+        }
     }
 
     auto fill = volume;
@@ -134,12 +152,23 @@ void DuckCurveView::paint (juce::Graphics& g)
     g.setGradientFill (juce::ColourGradient (colour.withAlpha (0.35f), 0.0f, area.getY(),
                                              colour.withAlpha (0.05f), 0.0f, area.getBottom(), false));
     g.fillPath (fill);
-    g.setColour (colour.withAlpha (editable ? 1.0f : 0.6f));
-    g.strokePath (volume, juce::PathStrokeType (2.0f));
+    g.setColour (colour.withAlpha (editable ? 0.8f : 0.45f));
+    g.strokePath (volume, juce::PathStrokeType (1.5f));
+
+    // Varje baslagers volym efter kicken (dess DUCK-djup): en linje per lager i lagrets färg.
+    if (numLayers() > 1)
+    {
+        for (int layer = 0; layer < numLayers(); ++layer)
+        {
+            g.setColour (Theme::layerColour (layer));
+            g.strokePath (layerPaths[(size_t) layer], juce::PathStrokeType (2.0f));
+        }
+    }
 
     g.setFont (Theme::font (10.0f, true));
     g.setColour (Theme::textDim);
-    g.drawText ("VOLUME AFTER EACH KICK", getLocalBounds().reduced (12, 2).removeFromTop (12), juce::Justification::left);
+    g.drawText (numLayers() > 1 ? "VOLUME AFTER EACH KICK  (lines = each bass layer)"
+                                 : "VOLUME AFTER EACH KICK", getLocalBounds().reduced (12, 2).removeFromTop (12), juce::Justification::left);
 
     if (! editable)
     {
@@ -279,10 +308,14 @@ SidechainPage::SidechainPage (PluginBase& p)
       curve (p),
       scope (p, { { &p.bassBeforeDuckTap, 2, juce::Colours::white.withAlpha (0.6f), false, "BASS BEFORE" },
                   { &p.bassAfterDuckTap, 2, Theme::bass, true, "BASS DUCKED" },
-                  { &p.kickTap, 2, Theme::kick, true, "KICK" } })
+                  { &p.kickTap, 2, Theme::kick, true, "KICK" },
+                  { &p.duckGainTaps[0], 2, Theme::layerColour (0), false, "DUCK 1", true },
+                  { &p.duckGainTaps[1], 2, Theme::layerColour (1), false, "DUCK 2", true },
+                  { &p.duckGainTaps[2], 2, Theme::layerColour (2), false, "DUCK 3", true } })
 {
     scope.setTooltip ("SIDECHAIN SCOPE - Live: the kick (orange), the bass before the sidechain (white outline) and after it (blue). "
-                      "The blue is the bass the kick lets through: watch it being cut away under each kick.");
+                      "The blue is the bass the kick lets through: watch it being cut away under each kick. "
+                      "The coloured curves in from the top and bottom edges show how much each bass layer is ducked (DUCK 1, 2, 3).");
     for (auto* c : std::initializer_list<juce::Component*> { &presets, &mode, &length, &curve, &scope })
         addAndMakeVisible (c);
 
@@ -293,12 +326,26 @@ SidechainPage::SidechainPage (PluginBase& p)
         depths.push_back (std::make_unique<KnobComponent> (p.apvts, ParamID::bass (layer, BassField::duck), name,
                                                            p.isEffectVersion() ? Theme::mix : Theme::layerColour (layer)));
         addAndMakeVisible (*depths.back());
+        depths.back()->setLiveMeter ([&p, layer] { return p.duckReduction[(size_t) layer].load(); }, Theme::kick);
+        depths.back()->setDescription ("DUCK sets how deeply the kick pushes this layer's volume down. 0 % = no ducking, 100 % = the volume goes all the way down. "
+                                       "The orange arc inside the knob shows how much it is ducked right now.");
+    }
+
+    if (p.getMixer() != nullptr)
+    {
+        sources = std::make_unique<SourceToggles> (p, "Duck", "SIDECHAIN AFFECTS");
+        addAndMakeVisible (*sources);
     }
 }
 
 void SidechainPage::resized()
 {
     auto area = getLocalBounds();
+    if (sources != nullptr)
+    {
+        sources->setBounds (area.removeFromBottom (24));
+        area.removeFromBottom (2);
+    }
     auto column = area.removeFromLeft (130);
     area.removeFromLeft (10);
     auto knobColumn = area.removeFromLeft (depths.size() > 1 ? 160 : 90);

@@ -2,7 +2,7 @@
 
 namespace
 {
-    constexpr int numExtraDelays = 4; // kickutgången och de tre baslagrens utgångar
+    constexpr int numExtraDelays = 5; // kickutgången, de tre baslagrens utgångar och mixerns förbi-maximizer-buss
 }
 
 MasterSection::MasterSection (juce::AudioProcessorValueTreeState& apvts)

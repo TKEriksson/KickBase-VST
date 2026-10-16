@@ -34,6 +34,10 @@ public:
     // Beskrivning som visas när musen är över ratten (och i inforaden).
     void setDescription (const juce::String& text);
 
+    // En liveindikator inuti ratten: en båge som visar ett värde 0..1 just nu (t.ex. hur mycket
+    // basen duckas under kicken, så att man ser den pumpa).
+    void setLiveMeter (std::function<float()> read, juce::Colour colour) { liveMeter = std::move (read); liveColour = colour; }
+
     class ModSlider : public juce::Slider
     {
     public:
@@ -77,6 +81,9 @@ private:
     juce::Colour accent;
     bool modulatable = false;
     bool dropHover = false;
+    std::function<float()> liveMeter;
+    juce::Colour liveColour;
+    float lastLive = -1.0f;
 
     int dragRing = -1;        // ringen som dras, index i rings()
     int dragRoute = -1;

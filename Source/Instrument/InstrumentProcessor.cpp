@@ -23,6 +23,7 @@ namespace
         Sidechain::addParameters (layout);
         Modulation::addParameters (layout);
         MasterSection::addParameters (layout);
+        Mixer::addParameters (layout);
         Params::addMasterParams (layout);
         return layout;
     }
@@ -55,6 +56,7 @@ void InstrumentProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     effects.prepare (sampleRate, samplesPerBlock);
     effects.setModulator (&modulator);
     master.prepare (sampleRate, 2);
+    mixer.prepare (sampleRate);
     setLatencySamples (master.getLatencySamples());
     ensureScratchSize (samplesPerBlock);
 
@@ -128,6 +130,15 @@ void InstrumentProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
     // mycket som limiterns lookahead, så att de ligger i synk med huvudutgången.
     auto mainBus = getBusBuffer (buffer, false, 0);
     master.process (mainBus, numSamples);
+
+    // Källor som mixern tagit förbi maximizern läggs på efteråt, lika fördröjda som resten.
+    bypassBus.applyGain (0, numSamples, params.get (ParamID::gain));
+    master.delayOnly (bypassBus, numSamples, 4);
+    for (int ch = 0; ch < mainBus.getNumChannels(); ++ch)
+        mainBus.addFrom (ch, 0, bypassBus, mainBus.getNumChannels() == 1 ? 0 : ch, 0, numSamples, mainBus.getNumChannels() == 1 ? 0.5f : 1.0f);
+    if (mainBus.getNumChannels() == 1)
+        mainBus.addFrom (0, 0, bypassBus, 1, 0, numSamples, 0.5f);
+
     for (int bus = 1; bus < getBusCount (false); ++bus)
     {
         if (auto* b = getBus (false, bus); b != nullptr && b->isEnabled())
@@ -319,7 +330,11 @@ void InstrumentProcessor::finishBlock (int numSamples)
     // sedan (helt eller delvis) genom sin effektkanal; varje lagers egen utgång får lagret
     // utan effekter.
     const auto* duckData = duckBuffer.getReadPointer (0);
-    bassBuffer.clear (0, numSamples);
+    mixer.beginBlock();
+    maxBus.clear (0, numSamples);
+    maxBus.clear (1, numSamples);
+    bypassBus.clear (0, numSamples);
+    bypassBus.clear (1, numSamples);
     effects.beginBlock (numSamples, clock.getBpm(), clock.getPpqAt (0));
     tapBuffer.clear (0, numSamples);
     tapBuffer.clear (1, numSamples);
@@ -329,17 +344,22 @@ void InstrumentProcessor::finishBlock (int numSamples)
         auto* data = layerBuffer.getWritePointer (layer);
         const auto* amplitude = amplitudeBuffer.getReadPointer (layer);
         auto& ducker = duckers[(size_t) layer];
-        const auto amount = duckAmounts[(size_t) layer];
+        const auto amount = mixer.duckEnabled (Mixer::firstBassSource + layer) ? duckAmounts[(size_t) layer] : 0.0f;
 
         auto* before = tapBuffer.getWritePointer (0);
         auto* after = tapBuffer.getWritePointer (1);
+        auto lastDuckGain = 1.0f;
         for (int i = 0; i < numSamples; ++i)
         {
             const auto level = data[i] * amplitude[i];
-            data[i] = level * ducker.next (duckData[i], amount);
+            const auto duckGain = ducker.next (duckData[i], amount);
+            data[i] = level * duckGain;
             before[i] += level;
             after[i] += data[i];
+            duckGainTaps[(size_t) layer].push (duckGain);
+            lastDuckGain = duckGain;
         }
+        duckReduction[(size_t) layer] = numSamples > 0 ? 1.0f - lastDuckGain : 0.0f;
 
         // Kanal A-C: amount av ljudet går genom kanalen, resten torrt.
         const auto channel = (int) params.bass (layer, BassField::fxChannel) - 1;
@@ -349,8 +369,7 @@ void InstrumentProcessor::finishBlock (int numSamples)
             effects.send (channel, data, nullptr, numSamples, amountToChannel);
         const auto dryGain = routed ? 1.0f - amountToChannel : 1.0f;
 
-        bassBuffer.addFrom (0, 0, data, numSamples, dryGain);
-        bassBuffer.addFrom (1, 0, data, numSamples, dryGain);
+        mixer.mix (Mixer::firstBassSource + layer, data, nullptr, numSamples, dryGain, maxBus, bypassBus);
         for (int i = 0; i < numSamples; ++i)
             layerOuts[(size_t) layer].add (i, data[i], data[i]);
     }
@@ -363,7 +382,17 @@ void InstrumentProcessor::finishBlock (int numSamples)
         effects.send (kickChannel, kickBuffer.getReadPointer (0), nullptr, numSamples, kickAmount);
     const auto kickDry = kickRouted ? 1.0f - kickAmount : 1.0f;
 
-    effects.process (numSamples, duckData, bassBuffer);
+    mixer.mix (Mixer::kickSource, kickBuffer.getReadPointer (0), nullptr, numSamples, kickDry, maxBus, bypassBus);
+
+    std::array<bool, numEffectChannels> channelDuck {};
+    for (int ch = 0; ch < numEffectChannels; ++ch)
+        channelDuck[(size_t) ch] = mixer.duckEnabled (Mixer::firstFxSource + ch);
+    effects.process (numSamples, duckData, nullptr, channelDuck.data());
+    for (int ch = 0; ch < numEffectChannels; ++ch)
+    {
+        const auto& returned = effects.output (ch);
+        mixer.mix (Mixer::firstFxSource + ch, returned.getReadPointer (0), returned.getReadPointer (1), numSamples, 1.0f, maxBus, bypassBus);
+    }
 
     for (int i = 0; i < numSamples; ++i)
     {
@@ -373,12 +402,12 @@ void InstrumentProcessor::finishBlock (int numSamples)
     }
 
     const auto* kickData = kickBuffer.getReadPointer (0);
-    const auto* left = bassBuffer.getReadPointer (0);
-    const auto* right = bassBuffer.getReadPointer (1);
+    const auto* left = maxBus.getReadPointer (0);
+    const auto* right = maxBus.getReadPointer (1);
 
     for (int i = 0; i < numSamples; ++i)
     {
-        mainOut.add (i, kickData[i] * kickDry + left[i], kickData[i] * kickDry + right[i]);
+        mainOut.add (i, left[i], right[i]);
         kickOut.add (i, kickData[i], kickData[i]);
     }
 }
@@ -395,6 +424,8 @@ void InstrumentProcessor::ensureScratchSize (int numSamples)
     tapBuffer.setSize (2, numSamples, false, true, true);
     amplitudeBuffer.setSize (numLayers, numSamples, false, true, true);
     bassBuffer.setSize (2, numSamples, false, true, true);
+    maxBus.setSize (2, numSamples, false, true, true);
+    bypassBus.setSize (2, numSamples, false, true, true);
 }
 
 void InstrumentProcessor::handleEvent (const StepEvent& event)

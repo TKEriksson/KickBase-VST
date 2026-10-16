@@ -195,7 +195,7 @@ namespace Presets
             case Section::sidechain:
                 return id.startsWith ("sc") || isLayerField (BassField::duck);
             case Section::master:
-                return id.startsWith ("master");
+                return id.startsWith ("master") || id.startsWith ("mix");
             case Section::lfo:
                 return id.startsWith ("lfo");
             default:

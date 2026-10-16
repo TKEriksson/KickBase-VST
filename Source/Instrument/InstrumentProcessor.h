@@ -6,6 +6,7 @@
 #include "../Core/Effects.h"
 #include "../Core/KickEngine.h"
 #include "../Core/Master.h"
+#include "../Core/Mixer.h"
 #include "../Core/PluginBase.h"
 #include "../Core/StepScheduler.h"
 
@@ -23,6 +24,7 @@ public:
     juce::AudioProcessorEditor* createEditor() override;
     const MasterSection& getMasterSection() const override { return master; }
     const EffectRack& getEffectRack() const override { return effects; }
+    const Mixer* getMixer() const override { return &mixer; }
     bool acceptsMidi() const override { return true; }
 
     juce::MidiKeyboardState keyboardState;
@@ -70,10 +72,14 @@ private:
     EffectRack effects { apvts };
     DuckCurvePlayer duckCurve;
     MasterSection master { apvts };
+    Mixer mixer { apvts };
 
     // Blockets mellanresultat: kick, hur mycket basen ska duckas (före varje lagers mängd),
     // varje baslagers källa och amplitud (en kanal per lager), och basens summa (stereo).
     juce::AudioBuffer<float> kickBuffer, duckBuffer, layerBuffer, amplitudeBuffer, bassBuffer, tapBuffer;
+
+    // Mixerns två stereobussar: det som går genom maximizern, och det som går förbi den.
+    juce::AudioBuffer<float> maxBus, bypassBus;
 
     std::array<bool, 128> heldNotes {};
     int numHeldNotes = 0;

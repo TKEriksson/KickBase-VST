@@ -120,6 +120,36 @@ void ScopeView::paint (juce::Graphics& g)
 
         const auto n = (int) samples.size();
         const auto width = (int) area.getWidth();
+
+        if (traces[t].edge)
+        {
+            // Ducking: från över- och underkanten inåt, så långt som ljudet tas bort (som maximizerns GR).
+            juce::Path top, bottom;
+            top.startNewSubPath (area.getX(), area.getY());
+            bottom.startNewSubPath (area.getX(), area.getBottom());
+            for (int px = 0; px < width; ++px)
+            {
+                const auto from = px * n / width, to = std::max (from + 1, (px + 1) * n / width);
+                auto lowest = 1.0f;
+                for (int i = from; i < std::min (to, n); ++i)
+                    lowest = std::min (lowest, samples[(size_t) i]);
+                const auto reach = (1.0f - juce::jlimit (0.0f, 1.0f, lowest)) * area.getHeight() * 0.5f;
+                top.lineTo (area.getX() + (float) px, area.getY() + reach);
+                bottom.lineTo (area.getX() + (float) px, area.getBottom() - reach);
+            }
+            top.lineTo (area.getRight(), area.getY());
+            top.closeSubPath();
+            bottom.lineTo (area.getRight(), area.getBottom());
+            bottom.closeSubPath();
+            g.setColour (traces[t].colour.withAlpha (0.16f));
+            g.fillPath (top);
+            g.fillPath (bottom);
+            g.setColour (traces[t].colour.withAlpha (0.95f));
+            g.strokePath (top, juce::PathStrokeType (1.6f));
+            g.strokePath (bottom, juce::PathStrokeType (1.6f));
+            continue;
+        }
+
         juce::Path path;
         std::vector<juce::Point<float>> lower;
         for (int px = 0; px < width; ++px)

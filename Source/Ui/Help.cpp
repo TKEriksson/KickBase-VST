@@ -13,6 +13,19 @@ namespace Help
         if (paramID.startsWith ("bassB") && paramID.length() > 5 && juce::CharacterFunctions::isUpperCase (paramID[5]))
             paramID = "bassA" + paramID.substring (5);
 
+        // Mixern: samma förklaring för alla källor.
+        if (rawID.startsWith ("mix"))
+        {
+            if (rawID.endsWith ("Gain"))
+                return "Gain of this sound source in the mix, in dB. Down to -inf (silent), up to +12 dB. Double-click to reset to 0 dB.";
+            if (rawID.endsWith ("Pan"))
+                return "Pans this source left or right. Centre (C) leaves it as it is.";
+            if (rawID.endsWith ("Duck"))
+                return "SC on: the sidechain ducks this source under the kick. Off: the kick leaves it alone.";
+            if (rawID.endsWith ("Max"))
+                return "MAX on: this source goes through the maximizer (drive, clip, limiter, width). Off: it bypasses the maximizer and is added after it.";
+        }
+
         static const std::map<juce::String, juce::String> texts {
             // Mönster och mix
             { "patternBars", "How many bars the pattern lasts before it repeats." },
