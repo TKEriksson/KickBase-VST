@@ -79,8 +79,8 @@ public:
     // Egna wavetables från WAV-filer, en per oscillator (lager 0-2, OSC A/B). Anropas från gränssnittet
     // (message thread); ljudtråden läser tabellerna via userTable. Sparas i projektet.
     bool loadUserTable (int layer, int osc, const juce::File& file);
-    const Wavetable* userTable (int layer, int osc) const { return userTables[(size_t) (layer * 2 + osc)].load(); }
-    juce::String getUserTableName (int layer, int osc) const { return userNames[(size_t) (layer * 2 + osc)]; }
+    const Wavetable* userTable (int layer, int osc) const { return userTables[(size_t) (layer * ParamID::oscsPerLayer + osc)].load(); }
+    juce::String getUserTableName (int layer, int osc) const { return userNames[(size_t) (layer * ParamID::oscsPerLayer + osc)]; }
 
     // AI-länken till MCP-bryggan (se BridgeLink). Av som standard; användaren slår på den med AI-knappen. Message thread.
     void setBridgeEnabled (bool enabled);
@@ -138,6 +138,7 @@ public:
     int selectedTab = 0;                   // gränssnittets valda flikar (nedre och övre panelen), så att de
     int selectedSynthTab = 0;              // finns kvar när fönstret öppnas igen
     int selectedPatternMode = 0;           // PATTERN-flikens läge: 0 PATTERN (toner), 1 GATE
+    std::array<int, ParamID::numBassLayers> selectedBassSource {}; // baslagrets valda källflik: OSC 1-3 eller SAMPLE
     int selectedPatternLayer = 0;          // PATTERN-flikens valda lager: 0-2 bas, 3 kick
     bool pianoRollOpen = false;            // PATTERN-flikens vy: stegen eller pianorullen
     int selectedFxView = 2;                // EFFECTS-sidans vy: 0 EQ, 1 COMP, 2 FX
@@ -175,7 +176,7 @@ private:
 
     // Originalet sparas i projektet; en omsamplad kopia spelas. Bara message thread och
     // prepareToPlay rör originalet, därför låset (aldrig på ljudtråden).
-    static constexpr int numUserSlots = ParamID::numBassLayers * 2;
+    static constexpr int numUserSlots = ParamID::numBassLayers * ParamID::oscsPerLayer;
     void setUserTable (int slot, std::unique_ptr<Wavetable> table, std::vector<float> frames, const juce::String& name);
     juce::ValueTree userTablesToValueTree() const;
     void userTablesFromValueTree (const juce::ValueTree& tree);

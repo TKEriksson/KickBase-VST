@@ -216,6 +216,7 @@ namespace
         p.sustain = 1.0f;
         p.sampleData = &sample;
         p.sampleLevel = 1.0f;
+        p.sampleOn = true;
         p.sampleRootHz = 100.0f;
 
         auto measure = [&] (bool keyTrack)

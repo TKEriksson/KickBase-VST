@@ -65,13 +65,14 @@ namespace ParamID
     {
         static const char* names[] { "On", "Level", "Gate", "Duck", "Grid", "FxChannel", "FxAmount",
                                      "Octave", "Tune",
-                                     "ATable", "APos", "ALevel", "ASemi", "AFine", "AUnison", "ADetune", "ABlend", "AWarp", "AWarpAmount", "APhase", "ARandom", "APan", "AStereo",
-                                     "BTable", "BPos", "BLevel", "BSemi", "BFine", "BUnison", "BDetune", "BBlend", "BWarp", "BWarpAmount", "BPhase", "BRandom", "BPan", "BStereo",
+                                     "ATable", "APos", "ALevel", "ASemi", "AFine", "AUnison", "ADetune", "ABlend", "AWarp", "AWarpAmount", "APhase", "ARandom", "APan", "AStereo", "AOn",
+                                     "BTable", "BPos", "BLevel", "BSemi", "BFine", "BUnison", "BDetune", "BBlend", "BWarp", "BWarpAmount", "BPhase", "BRandom", "BPan", "BStereo", "BOn",
+                                     "CTable", "CPos", "CLevel", "CSemi", "CFine", "CUnison", "CDetune", "CBlend", "CWarp", "CWarpAmount", "CPhase", "CRandom", "CPan", "CStereo", "COn",
                                      "WarpEnv", "Sub", "SubOctave", "Noise",
                                      "FilterType", "KeyTrack", "Cutoff", "Resonance", "EnvAmount", "EnvDecay", "VelToEnv",
                                      "Attack", "Decay", "Sustain", "Release", "Glide", "Drive",
                                      "GateOn", "GateGrid", "GateDepth", "GateSmooth",
-                                     "SampleLevel", "SampleRoot", "SampleLoop", "SampleKey", "SampleStart" };
+                                     "SampleLevel", "SampleRoot", "SampleLoop", "SampleKey", "SampleStart", "SampleOn" };
         static_assert (std::size (names) == (size_t) BassField::count);
         return names[(size_t) field];
     }
@@ -188,10 +189,10 @@ namespace Params
         layout.add (floatParam (id (F::tune), title + "Tune", NormalisableRange<float> (-12.0f, 12.0f, 0.01f), 0.0f,
                                 [] (float v) { return formatSemis (v, 2); }));
         // OSC A och OSC B: wavetable, position, nivå, stämning, unison, warp och fas.
-        for (int osc = 0; osc < 2; ++osc)
+        for (int osc = 0; osc < ParamID::oscsPerLayer; ++osc)
         {
             auto oid = [&] (F f) { return id (ParamID::oscField (osc, f)); };
-            const auto oscTitle = title + (osc == 0 ? "Osc A " : "Osc B ");
+            const auto oscTitle = title + "Osc " + String::charToString ((juce::juce_wchar) ('A' + osc)) + " ";
             layout.add (std::make_unique<AudioParameterChoice> (ParameterID { oid (F::aTable), 1 }, oscTitle + "Table", Wavetables::names(), 0));
             layout.add (floatParam (oid (F::aPos), oscTitle + "Position", NormalisableRange<float> (0.0f, 1.0f, 0.001f), osc == 0 ? 2.0f / 3.0f : 0.0f, formatPercent));
             layout.add (percent (oid (F::aLevel), oscTitle + "Level", osc == 0 ? 1.0f : 0.0f));
@@ -213,6 +214,7 @@ namespace Params
                                     [] (float v) { const auto p = roundToInt (std::abs (v) * 100.0f);
                                                    return p == 0 ? String ("C") : String (p) + (v < 0.0f ? " L" : " R"); }));
             layout.add (percent (oid (F::aStereo), oscTitle + "Stereo Spread", 0.5f));
+            layout.add (std::make_unique<AudioParameterBool> (ParameterID { oid (F::aOn), 1 }, oscTitle + "On", osc < 2)); // OSC 3 är av som standard
         }
         layout.add (percent (id (F::warpEnv), title + "Warp Env", 0.0f));
         layout.add (percent (id (F::sub), title + "Sub", 0.3f));
@@ -236,7 +238,7 @@ namespace Params
         layout.add (percent (id (F::drive), title + "Drive", 0.2f));
 
         // Samplingen (laddas in på lagrets sida): nivå, samplingens egen ton, loop, om den följer noten, och startpunkt.
-        layout.add (percent (id (F::sampleLevel), title + "Sample Level", 0.0f));
+        layout.add (percent (id (F::sampleLevel), title + "Sample Level", 1.0f));
         layout.add (std::make_unique<AudioParameterInt> (ParameterID { id (F::sampleRoot), 1 }, title + "Sample Root", 12, 96, 48,
                                                          AudioParameterIntAttributes().withStringFromValueFunction ([] (int v, int)
                                                          {
@@ -246,6 +248,7 @@ namespace Params
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::sampleLoop), 1 }, title + "Sample Loop", StringArray { "Off", "On" }, 0));
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::sampleKey), 1 }, title + "Sample Key Track", StringArray { "Off", "On" }, 0));
         layout.add (percent (id (F::sampleStart), title + "Sample Start", 0.0f));
+        layout.add (std::make_unique<AudioParameterBool> (ParameterID { id (F::sampleOn), 1 }, title + "Sample On", false));
     }
 
     void addFxParams (Layout& layout)
@@ -386,10 +389,10 @@ BassParams ParamRefs::readBass (int layer, int rootMidiNote) const
 
     BassParams p;
     p.rootHz     = Params::midiToHz ((float) rootMidiNote + 12.0f * get (F::octave) + get (F::tune));
-    for (int osc = 0; osc < 2; ++osc)
+    for (int osc = 0; osc < ParamID::oscsPerLayer; ++osc)
     {
         auto oget = [&] (F f) { return get (ParamID::oscField (osc, f)); };
-        auto& o = osc == 0 ? p.oscA : p.oscB;
+        auto& o = osc == 0 ? p.oscA : osc == 1 ? p.oscB : p.oscC;
         o.table       = (int) oget (F::aTable);
         o.position    = oget (F::aPos);
         o.level       = oget (F::aLevel);
@@ -404,6 +407,7 @@ BassParams ParamRefs::readBass (int layer, int rootMidiNote) const
         o.randomPhase = oget (F::aRandom);
         o.pan = oget (F::aPan);
         o.stereo = oget (F::aStereo);
+        o.on = oget (F::aOn) >= 0.5f;
     }
     p.warpEnv    = get (F::warpEnv);
     p.noise      = get (F::noise);
@@ -428,5 +432,6 @@ BassParams ParamRefs::readBass (int layer, int rootMidiNote) const
     p.sampleLoop     = (int) get (F::sampleLoop) == 1;
     p.sampleKeyTrack = (int) get (F::sampleKey) == 1;
     p.sampleStart    = get (F::sampleStart);
+    p.sampleOn       = get (F::sampleOn) >= 0.5f;
     return p;
 }

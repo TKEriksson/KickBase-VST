@@ -4,7 +4,7 @@ WavetableView::WavetableView (PluginBase& p, int layerIn, int oscIn, juce::Colou
     : processor (p), layer (layerIn), osc (oscIn), accent (accentIn)
 {
     positionIndex = processor.modulator.indexOf (ParamID::bass (layer, ParamID::oscField (osc, BassField::aPos)));
-    setTooltip (juce::String (osc == 0 ? "OSC A" : "OSC B")
+    setTooltip ("OSC " + juce::String (osc + 1)
                 + " - The wavetable: all its waveforms stacked from back to front. POS chooses which one plays "
                   "(drag an LFO onto POS to sweep through them); WARP bends the waveform you see in front.");
     startTimerHz (30);
@@ -188,7 +188,7 @@ void OscPanel::paint (juce::Graphics& g)
     g.drawRoundedRectangle (frame.reduced (0.5f), 5.0f, 1.0f);
     g.setColour (accent);
     g.setFont (Theme::font (12.0f, true));
-    g.drawText (osc == 0 ? "OSC A" : "OSC B", getLocalBounds().reduced (8, 4).withHeight (16), juce::Justification::centredLeft);
+    g.drawText ("OSC " + juce::String (osc + 1), getLocalBounds().reduced (8, 4).withHeight (16), juce::Justification::centredLeft);
 }
 
 void OscPanel::resized()
@@ -197,7 +197,7 @@ void OscPanel::resized()
     area.removeFromTop (16);
 
     // Vänster: tabell, warp och bilden. Höger: rattarna i två rader över hela höjden.
-    auto left = area.removeFromLeft (juce::jmin (160, area.getWidth() / 3));
+    auto left = area.removeFromLeft (juce::jmin (300, area.getWidth() / 3));
     auto choices = left.removeFromTop (40);
     table.setBounds (choices.removeFromLeft (choices.getWidth() / 2 + 10).withTrimmedRight (3));
     warp.setBounds (choices.withTrimmedLeft (3));

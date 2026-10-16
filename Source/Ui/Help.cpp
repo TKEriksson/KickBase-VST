@@ -9,8 +9,8 @@ namespace Help
         auto paramID = rawID;
         if (paramID.startsWith ("bass") && paramID.length() > 4 && juce::CharacterFunctions::isDigit (paramID[4]))
             paramID = "bass" + paramID.substring (5);
-        // OSC B har samma förklaringar som OSC A.
-        if (paramID.startsWith ("bassB") && paramID.length() > 5 && juce::CharacterFunctions::isUpperCase (paramID[5]))
+        // OSC 2 (B) och OSC 3 (C) har samma förklaringar som OSC 1 (A).
+        if ((paramID.startsWith ("bassB") || paramID.startsWith ("bassC")) && paramID.length() > 5 && juce::CharacterFunctions::isUpperCase (paramID[5]))
             paramID = "bassA" + paramID.substring (5);
 
         // Mixern: samma förklaring för alla källor.
@@ -108,6 +108,8 @@ namespace Help
 
             // Filter
             { "bassFilterType", "Filter type. LP 24 = smooth and dark (classic psy), LP 12 = brighter, Band and High for thin sounds." },
+            { "bassAOn", "Turns this oscillator on or off. Off = it is not heard (and OSC 2 does not frequency-modulate OSC 1)." },
+            { "bassSampleOn", "Turns the sample on or off. Turn the oscillators off (and SUB and NOISE down) to hear only the sample." },
             { "bassSampleLevel", "How loud this layer's sample is (the file you load with LOAD or drop on the page). It plays alongside the oscillators, through the filter and envelope." },
             { "bassSampleRoot", "The pitch the sample was recorded at. With KEY on, the sample is pitched so that this note becomes the note you play." },
             { "bassSampleLoop", "On: the sample repeats while the note is held. Off: it plays once." },

@@ -28,12 +28,13 @@ struct OscParams
     float randomPhase = 0.0f; // 0 = samma fas varje ton (tight), 1 = slumpad
     float pan = 0.0f;         // -1 (vänster) ... 1 (höger)
     float stereo = 0.5f;      // hur långt unison-stämmorna sprids i stereobilden, 0..1
+    bool on = true;           // av = oscillatorn hörs inte (och OSC B modulerar inte OSC A)
 };
 
 struct BassParams
 {
     float rootHz = 65.4f;        // tonartens grundton i basens oktav
-    OscParams oscA, oscB;
+    OscParams oscA, oscB, oscC;
     float warpEnv = 0.0f;        // extra warp på OSC A i början av varje ton (följer filter-envelopen)
     float sub = 0.3f;            // sinus, 0..1
     int subOctave = 0;           // 0 = samma oktav som grundtonen, -1 = en oktav ner
@@ -58,10 +59,11 @@ struct BassParams
     float sampleLevel = 0.0f;    // 0..1
     float sampleRootHz = 130.8f; // samplingens egen tonhöjd; med KEY spelas den så att den följer noten
     bool sampleLoop = false;
+    bool sampleOn = false;       // samplingen hörs bara när den är på
     bool sampleKeyTrack = false; // av = spelas med sin egen tonhöjd och hastighet
     float sampleStart = 0.0f;    // 0..1: var i samplingen varje ton börjar
 
-    BassParams() { oscB.level = 0.0f; }
+    BassParams() { oscB.level = 0.0f; oscC.level = 0.0f; oscC.on = false; }
 };
 
 // Monofonisk bassynt som spelas steg för steg av sequencern.
@@ -126,7 +128,7 @@ private:
     BassParams params;
     double sampleRate = 44100.0;
 
-    Oscillator oscA, oscB;
+    Oscillator oscA, oscB, oscC;
     double subPhase = 0.0;
     double samplePosition = 0.0; // i samplingens samples
     double logFrequency = 0.0, targetLogFrequency = 0.0; // log2(Hz), så att glide låter jämnt

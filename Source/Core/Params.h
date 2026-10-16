@@ -70,22 +70,24 @@ enum class BassField
 {
     on, level, gate, duck, grid, fxChannel, fxAmount,             // lagrets utgång, mönster och effektkanal
     octave, tune,
-    aTable, aPos, aLevel, aSemi, aFine, aUnison, aDetune, aBlend, aWarp, aWarpAmount, aPhase, aRandom, aPan, aStereo, // OSC A
-    bTable, bPos, bLevel, bSemi, bFine, bUnison, bDetune, bBlend, bWarp, bWarpAmount, bPhase, bRandom, bPan, bStereo, // OSC B
+    aTable, aPos, aLevel, aSemi, aFine, aUnison, aDetune, aBlend, aWarp, aWarpAmount, aPhase, aRandom, aPan, aStereo, aOn, // OSC 1 (A)
+    bTable, bPos, bLevel, bSemi, bFine, bUnison, bDetune, bBlend, bWarp, bWarpAmount, bPhase, bRandom, bPan, bStereo, bOn, // OSC 2 (B)
+    cTable, cPos, cLevel, cSemi, cFine, cUnison, cDetune, cBlend, cWarp, cWarpAmount, cPhase, cRandom, cPan, cStereo, cOn, // OSC 3 (C)
     warpEnv, sub, subOctave, noise,
     filterType, keyTrack, cutoff, resonance, envAmount, envDecay, velToEnv,
     attack, decay, sustain, release, glide, drive,
     gateOn, gateGrid, gateDepth, gateSmooth,                      // lagrets GATE: en egen av/på-rytm som hackar ljudet
-    sampleLevel, sampleRoot, sampleLoop, sampleKey, sampleStart,  // lagrets sampling som ljudkälla
+    sampleLevel, sampleRoot, sampleLoop, sampleKey, sampleStart, sampleOn, // lagrets sampling som ljudkälla
     count
 };
 
 namespace ParamID
 {
     constexpr int numBassLayers = 3;
-    constexpr int oscFieldCount = 14; // fält per oscillator (aTable ... aStereo)
+    constexpr int oscFieldCount = 15; // fält per oscillator (aTable ... aOn)
+    constexpr int oscsPerLayer = 3;   // OSC 1, 2 och 3
 
-    // Samma fält för OSC A (osc 0) eller OSC B (osc 1): oscField (1, BassField::aPos) = bPos.
+    // Samma fält för OSC 1 (osc 0), OSC 2 (osc 1) eller OSC 3 (osc 2): oscField (1, BassField::aPos) = bPos.
     inline BassField oscField (int osc, BassField aField) { return (BassField) ((int) aField + osc * oscFieldCount); }
     juce::String bass (int layer, BassField field);   // "bass1Cutoff" ...
     const char* bassFieldName (BassField field);      // "Cutoff" ...

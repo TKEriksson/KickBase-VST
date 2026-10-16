@@ -53,6 +53,7 @@ BassParams PluginBase::readModulatedBass (int layer, int rootMidiNote) const
     auto bass = params.readBass (layer, rootMidiNote);
     bass.oscA.user = userTable (layer, 0);
     bass.oscB.user = userTable (layer, 1);
+    bass.oscC.user = userTable (layer, 2);
     bass.sampleData = getActiveBassSample (layer);
     return bass;
 }
@@ -75,7 +76,7 @@ void PluginBase::setUserTable (int slot, std::unique_ptr<Wavetable> table, std::
 
 bool PluginBase::loadUserTable (int layer, int osc, const juce::File& file)
 {
-    if (! juce::isPositiveAndBelow (layer, ParamID::numBassLayers) || ! juce::isPositiveAndBelow (osc, 2))
+    if (! juce::isPositiveAndBelow (layer, ParamID::numBassLayers) || ! juce::isPositiveAndBelow (osc, ParamID::oscsPerLayer))
         return false;
 
     juce::AudioFormatManager formats;
@@ -99,7 +100,7 @@ bool PluginBase::loadUserTable (int layer, int osc, const juce::File& file)
     if (table == nullptr)
         return false;
 
-    setUserTable (layer * 2 + osc, std::move (table), std::move (frames), file.getFileNameWithoutExtension());
+    setUserTable (layer * ParamID::oscsPerLayer + osc, std::move (table), std::move (frames), file.getFileNameWithoutExtension());
 
     // Välj tabellen i oscillatorn.
     if (auto* parameter = apvts.getParameter (ParamID::bass (layer, ParamID::oscField (osc, BassField::aTable))))
@@ -128,8 +129,8 @@ juce::ValueTree PluginBase::userTablesToValueTree() const
             out[i] = (juce::int16) juce::roundToInt (juce::jlimit (-1.0f, 1.0f, frames[i]) * 32767.0f);
 
         juce::ValueTree child ("Table");
-        child.setProperty ("layer", slot / 2, nullptr);
-        child.setProperty ("osc", slot % 2, nullptr);
+        child.setProperty ("layer", slot / ParamID::oscsPerLayer, nullptr);
+        child.setProperty ("osc", slot % ParamID::oscsPerLayer, nullptr);
         child.setProperty ("name", userNames[(size_t) slot], nullptr);
         child.setProperty ("data", juce::Base64::toBase64 (block.getData(), block.getSize()), nullptr);
         tree.appendChild (child, nullptr);
@@ -157,7 +158,7 @@ void PluginBase::userTablesFromValueTree (const juce::ValueTree& tree)
 
         const auto name = child["name"].toString();
         if (auto table = Wavetables::fromFrames (name, frames))
-            setUserTable (layer * 2 + osc, std::move (table), std::move (frames), name);
+            setUserTable (layer * ParamID::oscsPerLayer + osc, std::move (table), std::move (frames), name);
     }
 }
 

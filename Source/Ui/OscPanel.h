@@ -23,7 +23,7 @@ private:
     int lastTable = -1, lastWarpMode = -1;
 };
 
-// En oscillator (OSC A eller OSC B) i ett baslager: tabell, warp, bilden och rattarna.
+// En oscillator (OSC 1, 2 eller 3) i ett baslager: tabell, warp, bilden och rattarna.
 class OscPanel : public juce::Component, private juce::Timer
 {
 public:

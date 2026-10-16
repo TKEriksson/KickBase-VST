@@ -8,6 +8,7 @@
 #include "PianoRoll.h"
 #include "PresetButton.h"
 #include "StepSequencer.h"
+#include "TabbedPanel.h"
 
 // Rubrikraden: logotyp, presetmeny och uppspelningsstatus (DAW eller egen klocka, tempo,
 // takt, tonart).
@@ -68,9 +69,47 @@ private:
     bool dragHover = false;
 };
 
-// Ett baslager (bara instrumentet): filter- och amplitud-envelope och rattar. En WAV kan släppas på sidan (eller laddas med
-// LOAD) och spelas som tredje ljudkälla, bredvid oscillatorerna.
-class BassModule : public ModulePanel, public juce::FileDragAndDropTarget, private juce::Timer
+// Samplingens vågform med startpunkten markerad.
+class SampleView : public juce::Component, public juce::SettableTooltipClient, private juce::Timer
+{
+public:
+    SampleView (PluginBase& processor, int layer, juce::Colour accent);
+    void paint (juce::Graphics&) override;
+
+private:
+    void timerCallback() override;
+
+    PluginBase& processor;
+    const int layer;
+    juce::Colour accent;
+    const ClickSample* shown = nullptr;
+    float lastStart = -1.0f;
+};
+
+// Samplingen som ljudkälla i ett baslager (en flik bredvid OSC 1-3): vågformen, filen (LOAD, ta bort) och rattarna.
+class SamplePage : public juce::Component, private juce::Timer
+{
+public:
+    SamplePage (PluginBase& processor, int layer, juce::Colour accent);
+    void resized() override;
+    void loadSample (const juce::File& file);
+
+private:
+    void timerCallback() override;
+    void updateLabel();
+
+    PluginBase& processor;
+    const int layer;
+    SampleView view;
+    juce::Label label;
+    juce::TextButton loadButton { "LOAD" }, clearButton { "X" };
+    std::unique_ptr<juce::FileChooser> chooser;
+    std::vector<std::unique_ptr<juce::Component>> controls; // LEVEL, START, ROOT, LOOP, KEY
+};
+
+// Ett baslager (bara instrumentet): källorna i flikar (OSC 1-3 och SAMPLE, var och en med av/på), filter- och
+// amplitud-envelope och rattar. En WAV kan släppas på sidan (eller laddas med LOAD på SAMPLE-fliken).
+class BassModule : public ModulePanel, public juce::FileDragAndDropTarget
 {
 public:
     BassModule (PluginBase& processor, int layer);
@@ -84,14 +123,7 @@ public:
     void filesDropped (const juce::StringArray& files, int, int) override;
 
 private:
-    void timerCallback() override;
-    void loadSample (const juce::File& file);
-    void updateSampleLabel();
-
     PluginBase& processor;
-    juce::Label sampleLabel;
-    juce::TextButton loadButton { "LOAD" }, clearButton { "X" };
-    std::unique_ptr<juce::FileChooser> chooser;
     bool dragHover = false;
 
     const int layer;
@@ -100,9 +132,11 @@ private:
     float ampValueAt (double seconds) const;
 
     EnvelopeView envelope { 0.5 };
-    std::unique_ptr<OscPanel> oscA, oscB;
+    TabbedPanel sources;
+    std::array<std::unique_ptr<OscPanel>, ParamID::oscsPerLayer> oscs;
+    std::unique_ptr<SamplePage> samplePage;
     std::vector<std::unique_ptr<juce::Component>> controls;
-    ControlGroups groups; // PITCH, SUB, NOISE, FILTER, FILTER ENV, VOLUME ENV, WARP ENV, DRIVE, SLIDE, OUT
+    ControlGroups groups; // PITCH, SUB, NOISE, FILTER, FILTER ENV, VOLUME ENV, WARP ENV, DRIVE, OUT
     PresetButton presets;
     std::unique_ptr<FxSendControl> fxSend;
 };

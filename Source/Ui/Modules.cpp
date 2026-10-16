@@ -386,6 +386,7 @@ BassModule::BassModule (PluginBase& p, int layerIn)
       processor (p),
       layer (layerIn),
       refs (p.apvts),
+      sources (&p.selectedBassSource[(size_t) layerIn]),
       presets (p, Presets::Section::bass, Theme::layerColour (layerIn), layerIn)
 {
     using F = BassField;
@@ -420,10 +421,18 @@ BassModule::BassModule (PluginBase& p, int layerIn)
                           param (p, id (F::release)), nullptr, false, Theme::text });
     addAndMakeVisible (envelope);
 
-    oscA = std::make_unique<OscPanel> (p, layer, 0, accent);
-    oscB = std::make_unique<OscPanel> (p, layer, 1, accent);
-    addAndMakeVisible (*oscA);
-    addAndMakeVisible (*oscB);
+    // Källorna i flikar: OSC 1, OSC 2, OSC 3 och SAMPLE, var och en med en på/av-knapp på fliken.
+    for (int osc = 0; osc < ParamID::oscsPerLayer; ++osc)
+        oscs[(size_t) osc] = std::make_unique<OscPanel> (p, layer, osc, accent);
+    samplePage = std::make_unique<SamplePage> (p, layer, accent);
+    addAndMakeVisible (sources);
+    for (int osc = 0; osc < ParamID::oscsPerLayer; ++osc)
+    {
+        sources.addTab ("OSC " + juce::String (osc + 1), accent, *oscs[(size_t) osc]);
+        sources.addPower (osc, p.apvts, ParamID::bass (layer, ParamID::oscField (osc, F::aOn)));
+    }
+    sources.addTab ("SAMPLE", accent, *samplePage);
+    sources.addPower (ParamID::oscsPerLayer, p.apvts, ParamID::bass (layer, F::sampleOn));
 
     auto knob = [&] (const juce::String& paramID, const char* name) -> juce::Component*
     {
@@ -451,59 +460,6 @@ BassModule::BassModule (PluginBase& p, int layerIn)
                      { "WARP ENV", { knob (id (F::warpEnv), "AMOUNT") } },
                      { "DRIVE", { knob (id (F::drive), "AMOUNT") } },
                      { "LAYER OUT", { knob (id (F::level), "LEVEL"), knob (id (F::duck), "DUCK"), knob (id (F::gate), "GATE") } } });
-    groups.addRow ({ { "SAMPLE", { knob (id (F::sampleLevel), "LEVEL"), knob (id (F::sampleStart), "START"), knob (id (F::sampleRoot), "ROOT"),
-                                   choice (id (F::sampleLoop), "LOOP"), choice (id (F::sampleKey), "KEY") },
-                       "A sample as a third sound source next to the oscillators: load a WAV with LOAD (or drop it on the page). "
-                       "It goes through the filter and envelope. KEY makes it follow the notes (set ROOT to the pitch it was recorded at)." } });
-
-    sampleLabel.setFont (Theme::font (11.0f));
-    sampleLabel.setColour (juce::Label::textColourId, Theme::textDim);
-    addAndMakeVisible (sampleLabel);
-    loadButton.setTooltip ("Load a WAV/AIFF/FLAC as this layer's sample source (or drop a file on the page). The sample level is turned up for you.");
-    loadButton.onClick = [this]
-    {
-        chooser = std::make_unique<juce::FileChooser> ("Choose a sample for this layer", juce::File(), "*.wav;*.aif;*.aiff;*.flac");
-        chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
-                              [this] (const juce::FileChooser& fc)
-                              {
-                                  if (fc.getResult().existsAsFile())
-                                      loadSample (fc.getResult());
-                              });
-    };
-    addAndMakeVisible (loadButton);
-    clearButton.setTooltip ("Remove the sample from this layer");
-    clearButton.onClick = [this] { processor.clearBassSample (layer); updateSampleLabel(); };
-    addAndMakeVisible (clearButton);
-    updateSampleLabel();
-    startTimerHz (2); // projektet kan laddas om medan fönstret är öppet
-}
-
-void BassModule::timerCallback()
-{
-    updateSampleLabel();
-}
-
-void BassModule::updateSampleLabel()
-{
-    const auto name = processor.getBassSampleName (layer);
-    const auto text = name.isEmpty() ? juce::String ("SAMPLE: none  (drop a WAV here)") : "SAMPLE: " + name;
-    if (sampleLabel.getText() != text)
-        sampleLabel.setText (text, juce::dontSendNotification);
-    clearButton.setEnabled (name.isNotEmpty());
-}
-
-void BassModule::loadSample (const juce::File& file)
-{
-    if (! processor.loadBassSample (layer, file))
-    {
-        sampleLabel.setText ("Could not read " + file.getFileName(), juce::dontSendNotification);
-        return;
-    }
-
-    // En sampling som inte hörs är förvirrande: höj nivån om den står på noll.
-    if (auto* level = processor.apvts.getParameter (ParamID::bass (layer, BassField::sampleLevel)); level != nullptr && level->getValue() <= 0.0f)
-        Presets::setParameter (*level, 1.0f);
-    updateSampleLabel();
 }
 
 bool BassModule::isInterestedInFileDrag (const juce::StringArray& files)
@@ -514,7 +470,8 @@ bool BassModule::isInterestedInFileDrag (const juce::StringArray& files)
 void BassModule::filesDropped (const juce::StringArray& files, int, int)
 {
     dragHover = false;
-    loadSample (juce::File (files[0]));
+    samplePage->loadSample (juce::File (files[0]));
+    sources.setCurrentTab (ParamID::oscsPerLayer); // visa SAMPLE-fliken
     repaint();
 }
 
@@ -529,6 +486,169 @@ void BassModule::paintOverChildren (juce::Graphics& g)
     }
 }
 
+//==============================================================================
+SampleView::SampleView (PluginBase& p, int layerIn, juce::Colour accentIn) : processor (p), layer (layerIn), accent (accentIn)
+{
+    setTooltip ("SAMPLE - The waveform of this layer's sample. The line marks where each note starts (START).");
+    startTimerHz (8);
+}
+
+void SampleView::timerCallback()
+{
+    const auto* sample = processor.getActiveBassSample (layer);
+    const auto start = processor.apvts.getRawParameterValue (ParamID::bass (layer, BassField::sampleStart))->load();
+    if (sample != shown || start != lastStart)
+    {
+        shown = sample;
+        lastStart = start;
+        repaint();
+    }
+}
+
+void SampleView::paint (juce::Graphics& g)
+{
+    const auto bounds = getLocalBounds().toFloat();
+    g.setColour (Theme::knobBodyDark.withAlpha (0.85f));
+    g.fillRoundedRectangle (bounds, 6.0f);
+
+    const auto* sample = processor.getActiveBassSample (layer);
+    if (sample == nullptr || sample->audio.getNumSamples() < 2)
+    {
+        g.setColour (Theme::textDim);
+        g.setFont (Theme::font (12.0f));
+        g.drawText ("Drop a WAV here, or press LOAD", bounds, juce::Justification::centred);
+        return;
+    }
+
+    const auto area = bounds.reduced (6.0f, 8.0f);
+    const auto* data = sample->audio.getReadPointer (0);
+    const auto length = sample->audio.getNumSamples();
+    const auto width = std::max (1, (int) area.getWidth());
+
+    juce::Path path;
+    for (int x = 0; x < width; ++x)
+    {
+        const auto from = (int) ((juce::int64) x * length / width);
+        const auto to = std::max (from + 1, (int) ((juce::int64) (x + 1) * length / width));
+        auto lowest = 0.0f, highest = 0.0f;
+        for (int i = from; i < to && i < length; ++i)
+        {
+            lowest = std::min (lowest, data[i]);
+            highest = std::max (highest, data[i]);
+        }
+        const auto px = area.getX() + (float) x;
+        path.addRectangle (px, area.getCentreY() - highest * area.getHeight() * 0.5f, 1.0f, std::max (1.0f, (highest - lowest) * area.getHeight() * 0.5f));
+    }
+    g.setColour (accent.withAlpha (0.85f));
+    g.fillPath (path);
+
+    const auto startX = area.getX() + juce::jlimit (0.0f, 1.0f, lastStart) * area.getWidth();
+    g.setColour (juce::Colours::white.withAlpha (0.8f));
+    g.drawVerticalLine ((int) startX, area.getY(), area.getBottom());
+}
+
+SamplePage::SamplePage (PluginBase& p, int layerIn, juce::Colour accent)
+    : processor (p), layer (layerIn), view (p, layerIn, accent)
+{
+    using F = BassField;
+    auto id = [layerIn] (F f) { return ParamID::bass (layerIn, f); };
+    auto knob = [&] (F f, const char* name)
+    {
+        controls.push_back (std::make_unique<KnobComponent> (p.apvts, id (f), name, accent));
+        addAndMakeVisible (*controls.back());
+    };
+    auto choice = [&] (F f, const char* name)
+    {
+        controls.push_back (std::make_unique<ChoiceComponent> (p.apvts, id (f), name));
+        addAndMakeVisible (*controls.back());
+    };
+    knob (F::sampleLevel, "LEVEL");
+    knob (F::sampleStart, "START");
+    knob (F::sampleRoot, "ROOT");
+    choice (F::sampleLoop, "LOOP");
+    choice (F::sampleKey, "KEY");
+
+    addAndMakeVisible (view);
+    label.setFont (Theme::font (11.0f));
+    label.setColour (juce::Label::textColourId, Theme::textDim);
+    addAndMakeVisible (label);
+
+    loadButton.setTooltip ("Load a WAV/AIFF/FLAC as this layer's sample (or drop a file on the page). The sample is turned on for you. "
+                           "Turn the oscillators off (the power buttons on the OSC tabs) to hear only the sample.");
+    loadButton.onClick = [this]
+    {
+        chooser = std::make_unique<juce::FileChooser> ("Choose a sample for this layer", juce::File(), "*.wav;*.aif;*.aiff;*.flac");
+        chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                              [this] (const juce::FileChooser& fc)
+                              {
+                                  if (fc.getResult().existsAsFile())
+                                      loadSample (fc.getResult());
+                              });
+    };
+    addAndMakeVisible (loadButton);
+    clearButton.setTooltip ("Remove the sample from this layer");
+    clearButton.onClick = [this] { processor.clearBassSample (layer); updateLabel(); };
+    addAndMakeVisible (clearButton);
+
+    updateLabel();
+    startTimerHz (2); // projektet kan laddas om medan fönstret är öppet
+}
+
+void SamplePage::timerCallback()
+{
+    updateLabel();
+}
+
+void SamplePage::updateLabel()
+{
+    const auto name = processor.getBassSampleName (layer);
+    const auto text = name.isEmpty() ? juce::String ("No sample loaded") : name;
+    if (label.getText() != text)
+        label.setText (text, juce::dontSendNotification);
+    clearButton.setEnabled (name.isNotEmpty());
+}
+
+void SamplePage::loadSample (const juce::File& file)
+{
+    if (! processor.loadBassSample (layer, file))
+    {
+        label.setText ("Could not read " + file.getFileName(), juce::dontSendNotification);
+        return;
+    }
+
+    // En sampling som inte hörs är förvirrande: slå på den och höj nivån om den står på noll.
+    if (auto* on = processor.apvts.getParameter (ParamID::bass (layer, BassField::sampleOn)))
+        Presets::setParameter (*on, 1.0f);
+    if (auto* level = processor.apvts.getParameter (ParamID::bass (layer, BassField::sampleLevel)); level != nullptr && level->getValue() <= 0.0f)
+        Presets::setParameter (*level, 1.0f);
+    updateLabel();
+}
+
+void SamplePage::resized()
+{
+    auto area = getLocalBounds().reduced (4);
+    auto top = area.removeFromTop (24);
+    clearButton.setBounds (top.removeFromRight (24));
+    top.removeFromRight (4);
+    loadButton.setBounds (top.removeFromRight (56));
+    label.setBounds (top);
+    area.removeFromTop (6);
+
+    auto right = area.removeFromRight (juce::jlimit (240, 420, area.getWidth() * 2 / 5));
+    area.removeFromRight (8);
+    view.setBounds (area);
+
+    auto knobsRow = right.removeFromTop (right.getHeight() * 3 / 5);
+    const auto cell = knobsRow.getWidth() / 3;
+    for (int i = 0; i < 3; ++i)
+        controls[(size_t) i]->setBounds (knobsRow.removeFromLeft (cell));
+    right.removeFromTop (6);
+    auto choices = right.removeFromTop (44);
+    controls[3]->setBounds (choices.removeFromLeft (choices.getWidth() / 2).reduced (6, 0));
+    controls[4]->setBounds (choices.reduced (6, 0));
+}
+
+//==============================================================================
 float BassModule::ampValueAt (double seconds) const
 {
     // Envelopen för en ton som hålls i 180 ms (ungefär ett långt sextondelssteg).
@@ -558,22 +678,11 @@ void BassModule::resized()
         presets.setBounds (presetBounds (*this));
     auto area = getContentBounds();
 
-    // Överst de två oscillatorerna, under dem kurvorna (filter + volym) och rattarna.
-    auto oscRow = area.removeFromTop (juce::jlimit (150, 220, area.getHeight() * 4 / 9));
-    oscA->setBounds (oscRow.removeFromLeft (oscRow.getWidth() / 2 - 3));
-    oscRow.removeFromLeft (6);
-    oscB->setBounds (oscRow);
+    // Överst källorna i flikar (OSC 1-3 och SAMPLE), under dem kurvorna (filter + volym) och rattarna.
+    sources.setBounds (area.removeFromTop (juce::jlimit (200, 250, area.getHeight() * 11 / 24)));
     area.removeFromTop (6);
 
-    // Till vänster kurvorna och under dem samplingens fil (namn, LOAD och ta bort).
-    auto leftColumn = area.removeFromLeft (220);
-    auto sampleRow = leftColumn.removeFromBottom (24);
-    leftColumn.removeFromBottom (4);
-    clearButton.setBounds (sampleRow.removeFromRight (24));
-    sampleRow.removeFromRight (4);
-    loadButton.setBounds (sampleRow.removeFromRight (46));
-    sampleLabel.setBounds (sampleRow);
-    envelope.setBounds (leftColumn.reduced (0, 2));
+    envelope.setBounds (area.removeFromLeft (220).reduced (0, 2));
     area.removeFromLeft (6);
     const auto rowHeight = juce::jlimit (44, 84, area.getHeight() / groups.numRows() - ControlGroups::titleHeight - 3);
     groups.layout (area, rowHeight);

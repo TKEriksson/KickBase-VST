@@ -121,6 +121,7 @@ void BassSynth::noteOn (int semitones, float newVelocity, int gateSamples)
     {
         oscA.retrigger (params.oscA, random);
         oscB.retrigger (params.oscB, random);
+        oscC.retrigger (params.oscC, random);
         subPhase = 0.0;
     }
 
@@ -213,21 +214,25 @@ BassSynth::Output BassSynth::next()
 
     // OSC B först: den kan frekvensmodulera OSC A (warp FM). Warp env lägger till warp på A
     // i början av varje ton.
-    const auto bNeeded = params.oscB.level > 0.0f || params.oscA.warp == WarpMode::fm;
+    const auto levelA = params.oscA.on ? params.oscA.level : 0.0f;
+    const auto levelB = params.oscB.on ? params.oscB.level : 0.0f;
+    const auto levelC = params.oscC.on ? params.oscC.level : 0.0f;
+    const auto bNeeded = params.oscB.on && (params.oscB.level > 0.0f || params.oscA.warp == WarpMode::fm);
     const auto b = bNeeded ? oscB.next (params.oscB, frequency, sampleRate, params.oscB.warpAmount, 0.0f) : Stereo {};
     const auto warpA = params.oscA.warpAmount + params.warpEnv * envelope;
-    const auto a = params.oscA.level > 0.0f ? oscA.next (params.oscA, frequency, sampleRate, warpA, b.mid()) : Stereo {};
+    const auto a = levelA > 0.0f ? oscA.next (params.oscA, frequency, sampleRate, warpA, b.mid()) : Stereo {};
+    const auto c = levelC > 0.0f ? oscC.next (params.oscC, frequency, sampleRate, params.oscC.warpAmount, 0.0f) : Stereo {};
 
     // Sub och brus ligger i mitten. Mitten och sidan filtreras var för sig (samma filter), och
     // blir sedan vänster och höger igen.
-    auto left = a.left * params.oscA.level + b.left * params.oscB.level;
-    auto right = a.right * params.oscA.level + b.right * params.oscB.level;
+    auto left = a.left * levelA + b.left * levelB + c.left * levelC;
+    auto right = a.right * levelA + b.right * levelB + c.right * levelC;
     auto centre = params.sub * (float) std::sin (juce::MathConstants<double>::twoPi * subPhase);
     if (params.noise > 0.0f)
         centre += params.noise * (random.nextFloat() * 2.0f - 1.0f);
 
     // Samplingen: linjär interpolation. Med KEY följer hastigheten noten (samplingens egen tonhöjd = sampleRootHz).
-    if (params.sampleData != nullptr && params.sampleLevel > 0.0f)
+    if (params.sampleOn && params.sampleData != nullptr && params.sampleLevel > 0.0f)
     {
         const auto& audio = params.sampleData->audio;
         const auto length = audio.getNumSamples();
