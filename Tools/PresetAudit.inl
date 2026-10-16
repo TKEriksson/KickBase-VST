@@ -16,9 +16,10 @@ namespace
         return juce::Colour::fromFloatRGBA (1.0f, 0.5f + (v - 0.75f) * 2.0f, (v - 0.75f) * 4.0f, 1.0f);
     }
 
-    void writeSpectrogram (const juce::AudioBuffer<float>& audio, double rate, double bpm, const juce::File& file)
+    // `order`: FFT-storlek (12 = 4096 punkter, 10 = 1024 för tät tidsupplösning); `seconds` > 0 visar bara början.
+    void writeSpectrogram (const juce::AudioBuffer<float>& audio, double rate, double bpm, const juce::File& file, int order = 12, double seconds = 0.0)
     {
-        constexpr int order = 12, size = 1 << order, bins = size / 2;
+        const int size = 1 << order, bins = size / 2;
         constexpr int width = 1400, height = 360, left = 34, bottom = 16;
         const auto plotWidth = width - left, plotHeight = height - bottom;
 
@@ -30,7 +31,7 @@ namespace
         juce::Graphics g (image);
         g.fillAll (juce::Colours::black);
 
-        const auto n = audio.getNumSamples();
+        const auto n = seconds > 0.0 ? std::min (audio.getNumSamples(), (int) (seconds * rate)) : audio.getNumSamples();
         for (int x = 0; x < plotWidth; ++x)
         {
             const auto centre = (int) ((double) x / plotWidth * n);
@@ -227,7 +228,7 @@ namespace
             settings.blockSize = blockSize;
             settings.bpm = bpm;
             settings.bars = 4;
-            settings.notes = { 60 };
+            settings.notes = { 52 }; // E4: basgrundton E1 (41 Hz)
             settings.extraBars = 1;
             const auto audio = OfflineRender::render (processor, settings);
             const auto m = measure (audio, renderRate);
@@ -260,7 +261,11 @@ namespace
             if (pngFolder != juce::File())
             {
                 pngFolder.createDirectory();
-                writeSpectrogram (audio, renderRate, bpm, pngFolder.getChildFile (juce::String::formatted ("%02d ", i) + juce::File::createLegalFileName (name) + ".png"));
+                const auto file = pngFolder.getChildFile (juce::String::formatted ("%02d ", i) + juce::File::createLegalFileName (name) + ".png");
+                if (section == Section::kick)
+                    writeSpectrogram (audio, renderRate, bpm, file, 10, 0.40); // en kick i närbild
+                else
+                    writeSpectrogram (audio, renderRate, bpm, file);
             }
         }
         return 0;

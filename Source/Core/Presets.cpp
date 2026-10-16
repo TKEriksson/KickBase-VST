@@ -103,6 +103,37 @@ namespace
         return presets;
     }
 
+    // Skriver en bas-rad (se Presets::Extras::PatternLine) till mönstret.
+    void writePatternLine (Pattern& pattern, const Presets::Extras::PatternLine& line)
+    {
+        if (line.bars.empty() || ! juce::isPositiveAndBelow (line.layer, Pattern::numLayers))
+            return;
+
+        pattern.clearNotes (line.layer);
+        const auto stepTicks = Pattern::ticksPerStep (line.grid);
+        const auto stepsPerBar = Pattern::bassStepsPerBar (line.grid);
+
+        for (int bar = 0; bar < Pattern::maxBars; ++bar)
+        {
+            const auto steps = juce::StringArray::fromTokens (juce::String (line.bars[(size_t) bar % line.bars.size()]), " |", "");
+            for (int step = 0; step < steps.size() && step < stepsPerBar; ++step)
+            {
+                const auto token = steps[step];
+                if (token == "." || token.isEmpty())
+                    continue;
+
+                const auto velocity = token[0] == 'X' ? 1.0f : token[0] == 'm' ? 0.62f : token[0] == 'g' ? 0.42f : 0.8f;
+                auto rest = token.substring (1);
+                const auto slide = rest.contains ("~");
+                const auto gatePercent = rest.contains (":") ? rest.fromFirstOccurrenceOf (":", false, false).getFloatValue() : line.gate * 100.0f;
+                const auto pitch = rest.upToFirstOccurrenceOf ("~", false, false).upToFirstOccurrenceOf (":", false, false).getIntValue();
+
+                pattern.addNote (line.layer, bar * Pattern::ticksPerBar + step * stepTicks,
+                                 std::max (1, juce::roundToInt ((float) stepTicks * gatePercent / 100.0f)), pitch, velocity, slide);
+            }
+        }
+    }
+
     const std::vector<Preset>& listFor (Section section, bool effectVersion)
     {
         switch (section)
@@ -287,5 +318,13 @@ namespace Presets
 
         if (auto* gridParam = apvts.getParameter (ParamID::bass (0, BassField::grid)))
             setParameter (*gridParam, gridParam->convertTo0to1 ((float) grid));
+
+        // Egna rader per lager (rutnätet sätts med).
+        for (const auto& line : preset.extras.pattern)
+        {
+            writePatternLine (pattern, line);
+            if (auto* lineGrid = apvts.getParameter (ParamID::bass (line.layer, BassField::grid)))
+                setParameter (*lineGrid, lineGrid->convertTo0to1 ((float) line.grid));
+        }
     }
 }

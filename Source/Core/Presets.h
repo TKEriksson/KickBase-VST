@@ -1,6 +1,7 @@
 #pragma once
 
 #include <juce_audio_processors/juce_audio_processors.h>
+#include <string>
 #include "Effects.h"
 #include "NodeEnvelope.h"
 #include "Pattern.h"
@@ -51,8 +52,21 @@ namespace Presets
             float amount = 0.0f;
         };
 
+        // En bas-rad i fabrikspresetets mönster. `bars` är en text per takt (upprepas över fyra takter), i lagrets
+        // rutnät. Ett steg skrivs som ett ord: "." = paus, annars en bokstav för velocity (g = spöke 42 %,
+        // m = mjuk 62 %, x = normal 80 %, X = accent 100 %), sedan valfritt tonhöjd (+7, -5), "~" för slide och
+        // ":50" för längd i procent av steget. Mellanslag och | skiljer stegen. Exempel: ". m x x"
+        struct PatternLine
+        {
+            int layer = 0;
+            BassGrid grid = BassGrid::sixteenth;
+            std::vector<std::string> bars;
+            float gate = 0.7f; // längd på toner utan ":procent"
+        };
+
         std::vector<NodeEnvelope::Point> pitchEnv, ampEnv;
         std::vector<Route> routes;
+        std::vector<PatternLine> pattern; // tomt = mallens mönster
     };
 
     // Nullptr om presetet saknas.
