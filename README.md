@@ -7,7 +7,8 @@ VST3-plugins för kick och rullande bas i psytrance, byggda med [JUCE](https://j
 - **Kickbase FX** (effekt): läggs på mixerkanalen där en annan synth (t.ex. Serum) hamnar.
   Synthens ljud gate:as av mönstret och duckas under en egen kick.
 
-Designen finns i [docs/design.md](docs/design.md).
+Designen finns i [docs/DESIGN.md](docs/DESIGN.md), planerna för ljuddesign-skill och AI-styrning i
+[docs/sound-design-roadmap.md](docs/sound-design-roadmap.md).
 
 ## Bygga
 
@@ -42,20 +43,22 @@ bestämmer vad som händer när tonen tar slut mitt i ett mönster.
 **FX-versionen:** lägg den i en effektplats på synthens mixerkanal och välj tonart (KEY).
 När DAW:en står still släpps ljudet igenom orört och ingen kick spelas.
 
-**Flikarna** under kick och bas:
-- **PATTERN:** stegsekvenseraren, mönsterlängd, basens rutnät (1/4 till 1/32, trioler).
-- **EFFECTS:** filter, distortion, EQ, chorus, phaser, echo (ping-pong) och reverb. Varje effekt
-  ligger PRE (före gaten, klipps av den) eller POST (efter, svansar klingar ut); dra raderna för ordningen.
-- **SIDECHAIN:** ducka basen efter kickens envelope eller en egen kurva (dra punkter, dubbelklicka
-  för att lägga till, högerklicka för att ta bort, dra i romberna för att böja).
-- **LFO:** två tempo-synkade LFO:er med två mål var.
-- **MASTER:** drive, soft clip och limiter med tak, plus mätare.
+**Flikarna:**
+- **PATTERN, KICK, BASS 1-3** (överst): mönstret (stegsekvens eller **PIANO ROLL**), kicken och de tre
+  baslagren. Uppe i hörnet på varje flik väljer du effektkanal och mängd (FX).
+- **EFFECTS** (nederst): kanalerna FX A-E, var och en med flikarna FX (fem platser, 13 effekttyper), EQ
+  (dra noderna, live-spektrum) och COMP (kompressor med vågformsvy). Dra platserna för att byta ordning.
+- **SIDECHAIN:** ducka basen efter kickens envelope eller en egen kurva; DUCK per lager, och vilka
+  källor som påverkas.
+- **LFO:** tre tempo-synkade LFO:er. Dra en LFO på en ratt för att modulera den.
+- **MASTER:** **MIXER** (gain, pan, dB-mätare, SC och MAX per källa) och **MAXIMIZER** (drive, clip,
+  limiter med tak).
+- **SOUNDSTAGE:** spektrum, stereobild, bredd, mono under en frekvens och stereoförstärkare.
 
-**Presets:** varje del (hela pluginet, kick, bas, mönster, effektkedjan, varje effekt, sidechain,
-LFO, master) har en egen presetmeny med fabrikspresets, egna presets, "Save preset..." och
-"Open preset folder". Egna presets sparas som filer under `Dokument\Kickbase\Presets\`.
-De fyra "(... style)"-presetsen är anpassade mot referenslåtar med `fitbeat` (se nedan); spela
-dem i låtens tempo och med tonen som står i kommentaren i `Presets.cpp` (E4 eller G4).
+**Presets:** varje del (hela pluginet, kick, bas, mönster, effektkedjan, sidechain, LFO, master) har
+en egen presetmeny med egna presets, "Save preset..." och "Open preset folder". Egna presets sparas
+som filer under `Dokument\Kickbase\Presets\`. Fabrikspresets byggs om med `fitbeat` (se nedan) när
+synten är klar; tills dess finns bara Init/Default.
 
 **EXPORT** (instrumentet): exporterar kicken, basen, hela mixen eller alla tre som WAV-loopar på
 4, 8 eller 16 takter, i DAW:ens senaste tempo och med den senast spelade tonen. Filerna föreslås
@@ -63,8 +66,13 @@ under `Dokument\Kickbase\Exports\`.
 
 **Gränssnittet:**
 - Dra i handtagen i kurvorna för att forma envelopes (shift = finjustering, dubbelklick = återställ).
-- Klicka/dra i stegen för att slå på/av. Välj VEL/GATE/PITCH/SLIDE för basstegens lane:
-  dra i staplarna, skrolla för tonhöjd, högerklicka för att återställa ett steg.
+- Klicka/dra i stegen för att slå på/av. Välj VEL/GATE/PITCH/SLIDE för tonernas lane:
+  dra i staplarna, skrolla för tonhöjd, högerklicka för att återställa en ton. Rutnätet (GRID) väljer
+  upplösning, 1/4 till 1/64 och trioler.
+- **Pianorullen** (PIANO ROLL): klicka i tomt för en ny ton, dra för att flytta, dra kanten för längd,
+  högerklicka för att ta bort, dubbelklicka för slide. Skroll = tonhöjd (±24 halvtoner från tonarten),
+  Ctrl + skroll = zoom, Shift + skroll = tid. Remsan längst ner är velocity.
+- Raderna i PATTERN har små rattar för volym och FX-send, som FL Studios Channel Rack.
 - Dra in en WAV på kickmodulen (eller LOAD) för att använda en sampling som klick.
 - Instrumentet har separata kick- och basutgångar utöver huvudutgången (som alltid har hela mixen).
 
@@ -81,9 +89,11 @@ MyOwnFruitTool fitbeat     <ljudfil> <start> <slut> rolling|galloping|triplet|of
 MyOwnFruitTool comparebeat <ljudfil> <start> <slut> <mönster> <rendering.wav>
 ```
 
-- `render` skriver en WAV och en PNG med vågformen och skriver ut toppvärde per sextondel.
+- `render` skriver en WAV och en PNG med vågformen och skriver ut toppvärde per sextondel. Slumpen
+  är seedad: samma inställningar ger bit-identisk ljud. `p:id=värde` i presetfältet sätter parametrar.
 - `export` gör samma sak som EXPORT-knappen.
-- `snapshot` sparar en skärmbild av gränssnittet.
+- `snapshot` sparar en skärmbild av gränssnittet. Flik-numret är ensiffrigt för nedre panelen, tiotal
+  för övre panelen, hundratal för EFFECTS-vyn (0 EQ, 1 COMP, 2 FX) och tusental 1 för pianorullen.
 - `analyze` mäter en låt (eller en rendering): tempo, kickens svep, svans och envelope, basgången
   sextondel för sextondel och basens övertoner.
 - `fitbeat` söker kick-, bas- och mixinställningar som låter som ett parti av en låt (analys
