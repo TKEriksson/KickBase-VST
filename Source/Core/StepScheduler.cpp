@@ -39,10 +39,10 @@ void StepScheduler::collectJustPassed (const TransportClock& clock, const Patter
 void StepScheduler::addKick (const Pattern& pattern, const PatternLengths& lengths, int offset, StepPosition position)
 {
     const auto barInRow = lengths.barInRow (0, position.bar);
-    const auto step = barInRow < 0 ? -1 : barInRow * Pattern::kickStepsPerBar + position.stepInBar;
+    const auto step = barInRow < 0 ? -1 : barInRow * Pattern::ticksPerBar + position.stepInBar;
     lastKickStep = step;
 
-    if (step >= 0 && pattern.isKickOn (step))
+    if (step >= 0 && pattern.note (Pattern::kickLayer, step).on.load())
         add ({ offset, StepEvent::Type::kick, step });
 }
 

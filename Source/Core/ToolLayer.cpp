@@ -400,22 +400,27 @@ var ToolLayer::getState (const var& args) const
     auto pattern = object();
     put (pattern, "ticks_per_bar", Pattern::ticksPerBar);
     put (pattern, "bars", Params::barsFromChoice ((int) processor.apvts.getRawParameterValue (ParamID::patternBars)->load()));
-    juce::String kick;
-    for (int i = 0; i < Pattern::maxKickSteps; ++i)
-        kick << (processor.pattern.isKickOn (i) ? 'x' : '.');
-    put (pattern, "kick_steps_64", kick);
     juce::Array<var> layers;
-    for (int layer = 0; layer < Pattern::numLayers; ++layer)
+    for (int layer = 0; layer < Pattern::numNoteLayers; ++layer)
     {
+        const auto isKick = layer == Pattern::kickLayer;
         juce::Array<var> notes;
         for (int tick = 0; tick < Pattern::maxTicks; ++tick)
             if (const auto& n = processor.pattern.note (layer, tick); n.on.load())
                 notes.add (var (juce::Array<var> { tick, n.length.load(), n.pitch.load(), round4 (n.velocity.load()), n.slide.load() }));
         auto entry = object();
-        put (entry, "layer", layer);
-        put (entry, "grid", Pattern::gridNames()[(int) processor.apvts.getRawParameterValue (ParamID::bass (layer, BassField::grid))->load()]);
+        put (entry, "layer", isKick ? juce::var ("kick") : juce::var (layer));
+        if (! isKick)
+            put (entry, "name", processor.getLayerName (layer));
+        put (entry, "grid", Pattern::gridNames()[isKick ? (int) processor.apvts.getRawParameterValue (ParamID::rowGridKick)->load()
+                                                         : (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, BassField::grid))->load()]);
         put (entry, "notes [tick, length, pitch, velocity, glide]", notes);
         put (entry, "piano_roll_layer", processor.pattern.isCustom (layer));
+        if (isKick)
+        {
+            layers.add (entry);
+            continue; // kicken har ingen gate
+        }
 
         auto gateInfo = object();
         const auto gateGrid = juce::jlimit (0, Pattern::numGrids - 1, (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, BassField::gateGrid))->load());
@@ -430,7 +435,7 @@ var ToolLayer::getState (const var& args) const
         put (entry, "gate", gateInfo);
         layers.add (entry);
     }
-    put (pattern, "bass_layers", layers);
+    put (pattern, "layers (bass 0-2 and 'kick')", layers);
     put (data, "pattern", pattern);
 
     put (data, "kick_pitch_envelope", pointsToVar (processor.kickPitchEnv.getPoints()));
@@ -575,28 +580,13 @@ var ToolLayer::setPattern (const var& args)
     auto& pattern = processor.pattern;
     const auto layerArg = args["layer"];
 
-    if (layerArg.toString().equalsIgnoreCase ("kick"))
-    {
-        for (int i = 0; i < Pattern::maxKickSteps; ++i)
-            pattern.kickStep (i) = false;
-        if (auto* bars = args["bars"].getArray())
-            for (int bar = 0; bar < Pattern::maxBars; ++bar)
-            {
-                if (bars->isEmpty())
-                    break;
-                const auto text = (*bars)[bar % bars->size()].toString().retainCharacters ("x.X");
-                for (int step = 0; step < Pattern::kickStepsPerBar && step < text.length(); ++step)
-                    pattern.kickStep (bar * Pattern::kickStepsPerBar + step) = text[step] != '.';
-            }
-        processor.patternChanged();
-        return ok ("Kick pattern set.");
-    }
-
-    const auto layer = (int) layerArg;
-    if (! juce::isPositiveAndBelow (layer, Pattern::numLayers))
+    const auto isKick = layerArg.toString().equalsIgnoreCase ("kick");
+    const auto layer = isKick ? Pattern::kickLayer : (int) layerArg;
+    if (! juce::isPositiveAndBelow (layer, Pattern::numNoteLayers))
         return fail ("layer must be 0, 1, 2 or 'kick'.");
 
-    auto grid = (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, BassField::grid))->load();
+    const auto gridParameterID = isKick ? juce::String (ParamID::rowGridKick) : ParamID::bass (layer, BassField::grid);
+    auto grid = (int) processor.apvts.getRawParameterValue (gridParameterID)->load();
     if (args.hasProperty ("grid"))
     {
         grid = gridIndex (args["grid"].toString());
@@ -613,7 +603,7 @@ var ToolLayer::setPattern (const var& args)
             if (! juce::isPositiveAndBelow (tick, Pattern::maxTicks))
                 continue;
             pattern.addNote (layer, tick, note.hasProperty ("length") ? (int) note["length"] : Pattern::ticksPerStep ((BassGrid) grid),
-                             (int) note["pitch"], note.hasProperty ("velocity") ? (float) (double) note["velocity"] : 0.8f, (bool) note["slide"]);
+                             (int) note["pitch"], note.hasProperty ("velocity") ? (float) (double) note["velocity"] : Pattern::defaultVelocity (layer), (bool) note["slide"]);
         }
         pattern.setCustom (layer, true);
     }
@@ -624,7 +614,18 @@ var ToolLayer::setPattern (const var& args)
         line.grid = (BassGrid) grid;
         line.gate = args.hasProperty ("gate") ? (float) (double) args["gate"] : 0.7f;
         for (const auto& bar : *bars)
-            line.bars.push_back (bar.toString().toStdString());
+        {
+            // Äldre kickstil: 16 tecken 'x' och '.' utan mellanslag, ett steg per tecken.
+            auto text = bar.toString();
+            if (isKick && ! text.containsAnyOf (" |") && text.containsOnly ("xX."))
+            {
+                juce::StringArray characters;
+                for (auto c : text)
+                    characters.add (juce::String::charToString (c));
+                text = characters.joinIntoString (" ");
+            }
+            line.bars.push_back (text.toStdString());
+        }
         Presets::writePatternLine (pattern, line);
     }
     else if ((bool) args["clear"])
@@ -632,7 +633,7 @@ var ToolLayer::setPattern (const var& args)
     else
         return fail ("Give 'bars' (pattern language), 'notes', or clear:true.");
 
-    if (auto* gridParameter = findParameter (processor, ParamID::bass (layer, BassField::grid)))
+    if (auto* gridParameter = findParameter (processor, gridParameterID))
         Presets::setParameter (*gridParameter, gridParameter->convertTo0to1 ((float) grid));
     processor.patternChanged();
 
@@ -640,7 +641,7 @@ var ToolLayer::setPattern (const var& args)
     for (int tick = 0; tick < Pattern::maxTicks; ++tick)
         count += pattern.note (layer, tick).on.load() ? 1 : 0;
     auto data = object();
-    put (data, "layer", layer);
+    put (data, "layer", isKick ? juce::var ("kick") : juce::var (layer));
     put (data, "notes", count);
     put (data, "grid", Pattern::gridNames()[grid]);
     return ok (data);
@@ -1009,20 +1010,23 @@ var ToolLayer::analyzeAudio (const var& args)
 
 var ToolLayer::pianoRollFiles (const juce::String& tool, const var& args)
 {
-    const auto layer = (int) args["layer"];
-    if (! juce::isPositiveAndBelow (layer, Pattern::numLayers))
-        return fail ("layer must be 0, 1 or 2.");
+    const auto isKick = args["layer"].toString().equalsIgnoreCase ("kick");
+    const auto layer = isKick ? Pattern::kickLayer : (int) args["layer"];
+    if (! juce::isPositiveAndBelow (layer, Pattern::numNoteLayers))
+        return fail ("layer must be 0, 1, 2 or 'kick'.");
 
     auto& pattern = processor.pattern;
-    const auto bars = Params::barsFromChoice ((int) processor.apvts.getRawParameterValue (ParamID::patternBars)->load());
-    const auto gridIndex = juce::jlimit (0, Pattern::numGrids - 1, (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, BassField::grid))->load());
+    const auto bars = Params::readPatternLengths (processor.apvts).barsOf (isKick ? 0 : 1 + layer);
+    const auto gridParameterID = isKick ? juce::String (ParamID::rowGridKick) : ParamID::bass (layer, BassField::grid);
+    const auto gridIndex = juce::jlimit (0, Pattern::numGrids - 1, (int) processor.apvts.getRawParameterValue (gridParameterID)->load());
     const auto note = args.hasProperty ("note") ? juce::jlimit (0, 127, (int) args["note"]) : 52;
-    const auto root = Params::bassRootMidiNote (note) + 12 * (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, BassField::octave))->load();
+    const auto root = isKick ? (int) (processor.apvts.getRawParameterValue (ParamID::kickKeyFollow)->load() >= 0.5f ? Params::kickTailMidiNote (note % 12) : 24)
+                             : Params::bassRootMidiNote (note) + 12 * (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, BassField::octave))->load();
     const auto documents = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("Kickbase");
 
-    auto applyLoaded = [this, layer] (int newBars, BassGrid grid)
+    auto applyLoaded = [this, layer, gridParameterID] (int newBars, BassGrid grid)
     {
-        if (auto* gridParameter = findParameter (processor, ParamID::bass (layer, BassField::grid)))
+        if (auto* gridParameter = findParameter (processor, gridParameterID))
             Presets::setParameter (*gridParameter, gridParameter->convertTo0to1 ((float) grid));
         RollFiles::applyLength (processor.apvts, layer, newBars);
         processor.patternChanged();

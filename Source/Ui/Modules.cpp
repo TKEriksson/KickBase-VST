@@ -558,7 +558,7 @@ PatternModule::PatternModule (PluginBase& p, bool isInstrument)
                  isInstrument ? juce::StringArray { "BASS 1", "BASS 2", "BASS 3" } : juce::StringArray { "GATE" },
                  isInstrument ? std::vector<juce::Colour> { Theme::layerColour (0), Theme::layerColour (1), Theme::layerColour (2) }
                               : std::vector<juce::Colour> { Theme::gate }),
-      pianoRoll (p, { Theme::layerColour (0), Theme::layerColour (1), Theme::layerColour (2) })
+      pianoRoll (p, { Theme::layerColour (0), Theme::layerColour (1), Theme::layerColour (2), Theme::kick })
 {
     addAndMakeVisible (length);
     addAndMakeVisible (presets);
@@ -625,7 +625,8 @@ PatternModule::PatternModule (PluginBase& p, bool isInstrument)
             addChildComponent (*gateSmooths.back());
             addChildComponent (*gateOnButtons.back());
 
-            auto button = std::make_unique<juce::TextButton> ("BASS " + juce::String (layer + 1));
+            auto button = std::make_unique<juce::TextButton> (p.getLayerName (layer));
+            button->addMouseListener (this, false);
             button->setColour (juce::TextButton::buttonOnColourId, colour.withAlpha (0.55f));
             button->setColour (juce::TextButton::textColourOffId, colour);
             button->setTooltip ("BASS " + juce::String (layer + 1) + " - Edit this layer: its note grid, length, FILL, the lane and the gate settings "
@@ -634,6 +635,18 @@ PatternModule::PatternModule (PluginBase& p, bool isInstrument)
             addAndMakeVisible (*button);
             layerButtons.push_back (std::move (button));
         }
+    }
+
+    if (instrument)
+    {
+        kickLayerButton.setColour (juce::TextButton::buttonOnColourId, Theme::kick.withAlpha (0.55f));
+        kickLayerButton.setColour (juce::TextButton::textColourOffId, Theme::kick);
+        kickLayerButton.setTooltip ("KICK - Edit the kick's pattern like a bass layer: its note grid, FILL, pitch and velocity in the lane, and the piano roll "
+                                    "(a kick note's pitch moves the kick's tail, so you can play kick melodies).");
+        kickLayerButton.onClick = [this] { sequencer.selectLayer (Pattern::kickLayer); showLayer (Pattern::kickLayer); };
+        addAndMakeVisible (kickLayerButton);
+        kickGrid = std::make_unique<ChoiceComponent> (p.apvts, ParamID::rowGridKick, "GRID");
+        addChildComponent (*kickGrid);
     }
 
     // PATTERN | GATE: vad rutnätet redigerar. Bara i instrumentet (FX-versionens mönster är redan gaten).
@@ -679,7 +692,12 @@ PatternModule::PatternModule (PluginBase& p, bool isInstrument)
     sequencer.setMode (mode);
     patternTab.setToggleState (mode == StepSequencer::Mode::notes, juce::dontSendNotification);
     gateTab.setToggleState (mode == StepSequencer::Mode::gate, juce::dontSendNotification);
-    showLayer (0);
+    {
+        const auto layer = processor.selectedPatternLayer;
+        const auto valid = layer == Pattern::kickLayer || juce::isPositiveAndBelow (layer, instrument ? Pattern::numLayers : 1);
+        sequencer.selectLayer (valid ? layer : 0);
+        showLayer (valid ? layer : 0);
+    }
     updateVisibility();
     startTimerHz (8);
 }
@@ -687,9 +705,27 @@ PatternModule::PatternModule (PluginBase& p, bool isInstrument)
 void PatternModule::timerCallback()
 {
     // Lanerna är för stegmönstret: avstängda för ett lager som redigerats i pianorullen.
+    // (Kickens toner spelar hela sitt ljud, så deras längd gör inget.)
     const auto custom = processor.pattern.isCustom (shownLayer);
     for (auto& [button, lane] : laneButtons)
-        button->setEnabled (! custom);
+        button->setEnabled (! custom && ! (shownLayer == Pattern::kickLayer && lane == StepSequencer::Lane::gate));
+    if (shownLayer == Pattern::kickLayer && sequencer.getLane() == StepSequencer::Lane::gate)
+        selectLane (StepSequencer::Lane::velocity);
+
+    if (instrument && lastNamesVersion != processor.layerNamesVersion.load())
+    {
+        lastNamesVersion = processor.layerNamesVersion.load();
+        for (size_t i = 0; i < layerButtons.size(); ++i)
+            layerButtons[i]->setButtonText (processor.getLayerName ((int) i));
+        repaint();
+    }
+}
+
+void PatternModule::mouseDoubleClick (const juce::MouseEvent& event)
+{
+    for (size_t i = 0; i < layerButtons.size(); ++i)
+        if (event.originalComponent == layerButtons[i].get())
+            sequencer.renameLayer ((int) i);
 }
 
 void PatternModule::showMode (StepSequencer::Mode newMode)
@@ -737,6 +773,8 @@ void PatternModule::updateVisibility()
             gateOnButtons[i]->setVisible (shown && gating);
         }
     }
+    if (kickGrid != nullptr)
+        kickGrid->setVisible (shownLayer == Pattern::kickLayer && ! gating);
     resized();
     repaint();
 }
@@ -751,14 +789,48 @@ void PatternModule::selectLane (StepSequencer::Lane lane)
 void PatternModule::showLayer (int layer)
 {
     shownLayer = layer;
+    processor.selectedPatternLayer = layer;
     pianoRoll.setLayer (layer);
     for (size_t i = 0; i < layerButtons.size(); ++i)
         layerButtons[i]->setToggleState ((int) i == layer, juce::dontSendNotification);
+    kickLayerButton.setToggleState (layer == Pattern::kickLayer, juce::dontSendNotification);
     updateVisibility();
+}
+
+void PatternModule::showKickFillMenu()
+{
+    // Kickens mallar, på rutnätet 1/16: en takt som upprepas över hela mönstret.
+    const juce::StringArray names { "Four on the floor", "Every other beat", "Half-time (beat 3)", "Double (every 8th)", "Syncopated (x..x..x.)", "Clear" };
+    const char* bars[] { "x...x...x...x...", "x.......x.......", "........x.......", "x.x.x.x.x.x.x.x.", "x..x..x.x..x..x.", "................" };
+
+    juce::PopupMenu menu;
+    for (int i = 0; i < names.size(); ++i)
+        menu.addItem (i + 1, names[i]);
+
+    juce::Component::SafePointer<PatternModule> safeThis (this);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&fillButton), [safeThis, bars] (int result)
+    {
+        if (safeThis == nullptr || result <= 0)
+            return;
+        auto& p = safeThis->processor;
+        juce::String steps;
+        for (int bar = 0; bar < Pattern::maxBars; ++bar)
+            steps << bars[result - 1];
+        p.pattern.setKickSteps (steps, Pattern::ticksPerStep (BassGrid::sixteenth));
+        if (auto* gridParam = p.apvts.getParameter (ParamID::rowGridKick))
+            Presets::setParameter (*gridParam, gridParam->convertTo0to1 ((float) BassGrid::sixteenth));
+        p.patternChanged();
+    });
 }
 
 void PatternModule::showFillMenu()
 {
+    if (shownLayer == Pattern::kickLayer)
+    {
+        showKickFillMenu();
+        return;
+    }
+
     juce::PopupMenu menu;
     const auto names = Pattern::templateNames();
     for (int i = 0; i < names.size(); ++i)
@@ -815,8 +887,9 @@ void PatternModule::paint (juce::Graphics& g)
     if (! headingBounds.isEmpty())
     {
         g.setFont (Theme::font (11.0f, true));
-        g.setColour (instrument ? Theme::layerColour (shownLayer) : Theme::gate);
-        g.drawText (instrument ? "BASS " + juce::String (shownLayer + 1) : juce::String ("GATE"), headingBounds, juce::Justification::centredLeft);
+        g.setColour (! instrument ? Theme::gate : shownLayer == Pattern::kickLayer ? Theme::kick : Theme::layerColour (shownLayer));
+        g.drawText (! instrument ? juce::String ("GATE") : shownLayer == Pattern::kickLayer ? juce::String ("KICK") : processor.getLayerName (shownLayer),
+                    headingBounds, juce::Justification::centredLeft);
     }
 }
 
@@ -842,6 +915,11 @@ void PatternModule::resized()
     first.removeFromTop (6);
     presets.setBounds (first.removeFromTop (24));
     first.removeFromTop (12);
+    if (instrument)
+    {
+        kickLayerButton.setBounds (first.removeFromTop (24));
+        first.removeFromTop (4);
+    }
     for (auto& button : layerButtons)
     {
         button->setBounds (first.removeFromTop (24));
@@ -861,6 +939,8 @@ void PatternModule::resized()
     auto notesColumn = second;
     for (auto& grid : grids)
         grid->setBounds (notesColumn.getX(), notesColumn.getY(), notesColumn.getWidth(), 40);
+    if (kickGrid != nullptr)
+        kickGrid->setBounds (notesColumn.getX(), notesColumn.getY(), notesColumn.getWidth(), 40);
     notesColumn.removeFromTop (44);
     for (size_t i = 0; i < laneButtons.size(); i += 2)
     {

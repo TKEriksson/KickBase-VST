@@ -2,9 +2,10 @@
 
 namespace
 {
-    constexpr int knobsWidth = 46;                 // två små rattar (volym och FX) före namnet
-    constexpr int lengthBoxWidth = 68;
-    constexpr int labelWidth = knobsWidth + 46 + lengthBoxWidth + 4;
+    constexpr int knobsWidth = 66;                 // två rattar (volym och FX) före namnet
+    constexpr int knobSize = 30, knobSpacing = 32, headerHeight = 16;
+    constexpr int lengthBoxWidth = 64;
+    constexpr int labelWidth = knobsWidth + 44 + lengthBoxWidth + 4;
     constexpr int pixelsPerSemitone = 5;
 }
 
@@ -63,6 +64,7 @@ void StepSequencer::addRowKnobs (const juce::String& name, const juce::String& l
     auto setup = [&] (juce::Slider& slider, const juce::String& id, const juce::String& what, const juce::String& text)
     {
         slider.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
+        slider.getProperties().set ("ringMargin", 3.0);
         slider.setTextBoxStyle (juce::Slider::NoTextBox, true, 0, 0);
         slider.setColour (juce::Slider::rotarySliderFillColourId, colour);
         slider.setPopupDisplayEnabled (true, true, nullptr);
@@ -80,12 +82,13 @@ void StepSequencer::addRowKnobs (const juce::String& name, const juce::String& l
 
 juce::Rectangle<int> StepSequencer::knobBounds (juce::Rectangle<int> row, int index) const
 {
-    return juce::Rectangle<int> (22, std::min (22, row.getHeight())).withCentre ({ labelColumn.getX() + 12 + index * 23, row.getCentreY() });
+    return juce::Rectangle<int> (knobSize, std::min (knobSize, row.getHeight())).withCentre ({ labelColumn.getX() + 15 + index * knobSpacing, row.getCentreY() });
 }
 
 void StepSequencer::selectLayer (int layer)
 {
-    layer = juce::jlimit (0, numLayers() - 1, layer);
+    if (layer != Pattern::kickLayer)
+        layer = juce::jlimit (0, numLayers() - 1, layer);
     if (layer == selectedLayer)
         return;
     selectedLayer = layer;
@@ -101,7 +104,38 @@ int StepSequencer::bars() const
 
 BassGrid StepSequencer::grid (int layer) const
 {
-    return (BassGrid) (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, BassField::grid))->load();
+    const auto id = layer == Pattern::kickLayer ? juce::String (ParamID::rowGridKick) : ParamID::bass (layer, BassField::grid);
+    return (BassGrid) juce::jlimit (0, Pattern::numGrids - 1, (int) processor.apvts.getRawParameterValue (id)->load());
+}
+
+juce::String StepSequencer::nameOf (int layer) const
+{
+    if (layer == Pattern::kickLayer)
+        return "KICK";
+    return renameable() ? processor.getLayerName (layer) : layerNames[layer];
+}
+
+void StepSequencer::renameLayer (int layer)
+{
+    if (! renameable() || layer == Pattern::kickLayer)
+        return;
+
+    auto* window = new juce::AlertWindow ("Rename", "Name for this layer (it is shown in the pattern, the tabs and the piano roll):", juce::MessageBoxIconType::NoIcon);
+    window->setLookAndFeel (&getLookAndFeel());
+    renameDialog = window;
+    window->addTextEditor ("name", processor.getLayerName (layer));
+    window->addButton ("OK", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    window->addButton ("Default name", 2);
+    window->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+
+    juce::Component::SafePointer<StepSequencer> safeThis (this);
+    window->enterModalState (true, juce::ModalCallbackFunction::create ([safeThis, window, layer] (int result)
+    {
+        if (safeThis == nullptr || result == 0)
+            return;
+        safeThis->processor.setLayerName (layer, result == 2 ? juce::String() : window->getTextEditorContents ("name"));
+        safeThis->repaint();
+    }), true);
 }
 
 BassGrid StepSequencer::gateGrid (int layer) const
@@ -134,7 +168,8 @@ void StepSequencer::timerCallback()
     auto changed = false;
     auto update = [&changed] (int& last, int now) { if (last != now) { last = now; changed = true; } };
 
-    update (lastKickStep, processor.transportStatus.kickStep.load());
+    update (lastKickStep, stepOfTick (Pattern::kickLayer, processor.transportStatus.kickStep.load()));
+    update (lastNamesVersion, processor.layerNamesVersion.load());
     const auto barsBefore = lastBars;
     update (lastBars, bars());
     if (lastBars != barsBefore)
@@ -167,13 +202,15 @@ void StepSequencer::timerCallback()
 void StepSequencer::resized()
 {
     auto area = getLocalBounds();
-    labelColumn = area.removeFromLeft (labelWidth);
 
-    // Sidväljaren (bara för mönster längre än fyra takter) ligger i en smal remsa överst.
+    // Rubrikremsan överst: VOL, FX och LENGTH över kolumnerna till vänster, och sidväljaren (bara för mönster längre än
+    // fyra takter) över stegen.
+    auto header = area.removeFromTop (headerHeight);
+    area.removeFromTop (2);
+    labelColumn = area.removeFromLeft (labelWidth);
+    headerLabels = header.removeFromLeft (labelWidth);
     const auto paged = bars() > barsPerPage;
-    pageArea = paged ? area.removeFromTop (18) : juce::Rectangle<int>();
-    if (paged)
-        area.removeFromTop (3);
+    pageArea = header;
     previousPageButton.setVisible (paged);
     nextPageButton.setVisible (paged);
     followButton.setVisible (paged);
@@ -234,7 +271,10 @@ StepSequencer::Target StepSequencer::targetAt (juce::Point<int> point, int& laye
     const auto inLabels = point.x < kickRow.getX();
 
     if (point.y < kickRow.getBottom() + 2)
-        return inLabels ? Target::none : Target::kick;
+    {
+        layer = Pattern::kickLayer;
+        return inLabels ? Target::label : Target::bass;
+    }
 
     for (int l = 0; l < (int) bassRows.size(); ++l)
     {
@@ -342,7 +382,7 @@ void StepSequencer::paintLane (juce::Graphics& g) const
     const auto lengthsNow = lengths();
     const auto ownSteps = bassOwnSteps (lengthsNow, selectedLayer);
     const auto area = laneArea.toFloat();
-    const auto colourOn = layerColours[(size_t) selectedLayer];
+    const auto colourOn = colourOf (selectedLayer);
 
     g.setColour (Theme::knobBodyDark.withAlpha (0.6f));
     g.fillRoundedRectangle (area, 4.0f);
@@ -446,7 +486,7 @@ void StepSequencer::paintMiniature (juce::Graphics& g, juce::Rectangle<int> row,
     g.setColour (juce::Colour (0xff121420));
     g.fillRoundedRectangle (area, 4.0f);
 
-    const auto totalTicks = lengths().barsOf (1 + layer) * Pattern::ticksPerBar; // radens egen längd
+    const auto totalTicks = lengths().barsOf (rowOf (layer)) * Pattern::ticksPerBar; // radens egen längd
     auto lowest = Pattern::maxPitch, highest = Pattern::minPitch;
     for (int tick = 0; tick < totalTicks; ++tick)
         if (const auto& n = processor.pattern.note (layer, tick); n.on.load())
@@ -523,15 +563,15 @@ void StepSequencer::paint (juce::Graphics& g)
     paintGrid (g, juce::Rectangle<int>::leftTopRightBottom (kickRow.getX(), kickRow.getY(), kickRow.getRight(), gridBottom));
 
     const auto lengthsNow = lengths();
-    paintToggleRow (g, kickRow, kickSteps(), pageOffset (kickSteps()), kickOwnSteps (lengthsNow), lengthsNow.loop, Theme::kick, processor.transportStatus.kickStep.load(),
-                    [this] (int step) { return processor.pattern.isKickOn (step); }, false);
-    for (int layer = 0; layer < numLayers(); ++layer)
+    auto paintLayerRow = [&] (int layer)
     {
-        const auto& row = bassRows[(size_t) layer];
-        const auto colour = layerColours[(size_t) layer];
-        const auto playTick = processor.transportStatus.bassSteps[(size_t) layer].load();
+        const auto row = rowBounds (layer);
+        const auto colour = colourOf (layer);
+        const auto isKick = layer == Pattern::kickLayer;
+        const auto playTick = isKick ? processor.transportStatus.kickStep.load() : processor.transportStatus.bassSteps[(size_t) layer].load();
+        const auto dimmedRow = isKick ? mode == Mode::gate : layer != selectedLayer; // kicken är en vanlig rad, men har ingen gate
 
-        if (mode == Mode::gate)
+        if (mode == Mode::gate && ! isKick)
         {
             // GATE: en egen av/på-rytm med eget rutnät. Raden dämpas när lagrets gate är avstängd.
             const auto gateTicks = Pattern::ticksPerStep (gateGrid (layer));
@@ -541,30 +581,44 @@ void StepSequencer::paint (juce::Graphics& g)
                             layer != selectedLayer || ! gateIsOn);
         }
         else if (isCustom (layer))
-            paintMiniature (g, row, layer, colour, playTick, layer != selectedLayer);
+            paintMiniature (g, row, layer, colour, playTick, dimmedRow);
         else
             paintToggleRow (g, row, bassSteps (layer), pageOffset (bassSteps (layer)), bassOwnSteps (lengthsNow, layer), lengthsNow.loop, colour, stepOfTick (layer, playTick),
-                            [this, layer] (int step) { return noteTickAt (layer, step) >= 0; }, layer != selectedLayer);
-    }
+                            [this, layer] (int step) { return noteTickAt (layer, step) >= 0; }, dimmedRow);
+    };
+    paintLayerRow (Pattern::kickLayer);
+    for (int layer = 0; layer < numLayers(); ++layer)
+        paintLayerRow (layer);
     if (mode == Mode::notes)
         paintLane (g);
 
     // Etiketter till vänster; det valda lagret markeras.
+    // Rubriker över kolumnerna: vad de små rattarna och rutan är.
+    g.setColour (Theme::textDim);
+    g.setFont (Theme::font (10.0f, true));
+    for (int index = 0; index < 2; ++index)
+        g.drawText (index == 0 ? "VOL" : "FX", juce::Rectangle<int> (knobSpacing, headerLabels.getHeight()).withCentre ({ labelColumn.getX() + 15 + index * knobSpacing, headerLabels.getCentreY() }),
+                    juce::Justification::centred);
+    g.drawText ("LENGTH", juce::Rectangle<int> (lengthBoxWidth, headerLabels.getHeight()).withCentre ({ labelColumn.getRight() - lengthBoxWidth / 2 - 2, headerLabels.getCentreY() }),
+                juce::Justification::centred);
+
     const auto nameColumn = labelColumn.withTrimmedLeft (knobsWidth);
     g.setFont (Theme::font (11.0f, true));
-    g.setColour (Theme::kick);
-    g.drawText ("KICK", nameColumn.withY (kickRow.getY()).withHeight (kickRow.getHeight()), juce::Justification::centredLeft);
-    for (int layer = 0; layer < numLayers(); ++layer)
+    for (const auto layer : { Pattern::kickLayer, 0, 1, 2 })
     {
-        const auto row = nameColumn.withY (bassRows[(size_t) layer].getY()).withHeight (bassRows[(size_t) layer].getHeight());
-        const auto colour = layerColours[(size_t) layer];
-        if (layer == selectedLayer && numLayers() > 1)
+        if (layer != Pattern::kickLayer && layer >= numLayers())
+            continue;
+        const auto bounds = rowBounds (layer);
+        const auto row = nameColumn.withY (bounds.getY()).withHeight (bounds.getHeight()).withTrimmedRight (lengthBoxWidth + 4);
+        const auto colour = colourOf (layer);
+        const auto selected = layer == selectedLayer && (numLayers() > 1 || layer == Pattern::kickLayer);
+        if (selected)
         {
             g.setColour (colour.withAlpha (0.18f));
-            g.fillRoundedRectangle (row.toFloat().reduced (0.0f, 1.0f).withTrimmedRight (6.0f), 4.0f);
+            g.fillRoundedRectangle (row.toFloat().reduced (0.0f, 1.0f), 4.0f);
         }
-        g.setColour (layer == selectedLayer ? colour : colour.withAlpha (0.6f));
-        g.drawText (layerNames[layer], row.withTrimmedLeft (4), juce::Justification::centredLeft);
+        g.setColour (selected || layer == Pattern::kickLayer ? colour : colour.withAlpha (0.6f));
+        g.drawText (nameOf (layer), row.withTrimmedLeft (4), juce::Justification::centredLeft);
     }
     if (bars() > barsPerPage)
     {
@@ -579,10 +633,10 @@ void StepSequencer::paint (juce::Graphics& g)
     g.setColour (Theme::textDim);
     g.setFont (Theme::font (10.0f, true));
     g.drawText (laneName(), labelColumn.withY (laneArea.getY()).withHeight (14), juce::Justification::centredLeft);
-    if (numLayers() > 1)
+    if (numLayers() > 1 || selectedLayer == Pattern::kickLayer)
     {
-        g.setColour (layerColours[(size_t) selectedLayer]);
-        g.drawText (layerNames[selectedLayer], labelColumn.withY (laneArea.getY() + 14).withHeight (14), juce::Justification::centredLeft);
+        g.setColour (colourOf (selectedLayer));
+        g.drawText (nameOf (selectedLayer), labelColumn.withY (laneArea.getY() + 14).withHeight (14), juce::Justification::centredLeft);
     }
 
     if (hoverStep >= 0 && ! isCustom (selectedLayer))
@@ -632,21 +686,12 @@ void StepSequencer::editAt (juce::Point<int> point, bool firstEvent)
 {
     switch (dragTarget)
     {
-        case Target::kick:
-        {
-            const auto kickIndex = stepAt (point.x, kickSteps(), kickOwnSteps (lengths()));
-            if (kickIndex < 0)
-                return; // den tysta delen av en kick som inte loopar
-            auto& step = processor.pattern.kickStep (kickIndex);
-            if (firstEvent)
-                paintOn = ! step.load();
-            step = paintOn;
-            break;
-        }
         case Target::bass:
         {
             if (mode == Mode::gate)
             {
+                if (dragLayer == Pattern::kickLayer)
+                    return; // kicken har ingen gate
                 const auto gateIndex = stepAt (point.x, gateSteps (dragLayer), gateOwnSteps (lengths(), dragLayer));
                 if (gateIndex < 0)
                     return;
@@ -669,7 +714,7 @@ void StepSequencer::editAt (juce::Point<int> point, bool firstEvent)
             if (paintOn)
             {
                 if (noteTickAt (dragLayer, step) < 0)
-                    processor.pattern.addNote (dragLayer, step * tps, juce::roundToInt (Pattern::defaultGate * (float) tps));
+                    processor.pattern.addNote (dragLayer, step * tps, juce::roundToInt (Pattern::defaultGate * (float) tps), 0, Pattern::defaultVelocity (dragLayer));
             }
             else
             {
@@ -774,6 +819,13 @@ void StepSequencer::mouseDrag (const juce::MouseEvent& event)
     editAt (event.getPosition(), false);
     if (dragTarget == Target::lane)
         hoverStep = laneStepAt (event.x);
+}
+
+void StepSequencer::mouseDoubleClick (const juce::MouseEvent& event)
+{
+    int layer = 0;
+    if (targetAt (event.getPosition(), layer) == Target::label)
+        renameLayer (layer);
 }
 
 void StepSequencer::mouseUp (const juce::MouseEvent&)

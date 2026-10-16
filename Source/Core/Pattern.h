@@ -52,12 +52,17 @@ enum class PatternTemplate { rolling, galloping, triplet, offbeat, clear };
 struct Pattern
 {
     static constexpr int maxBars = 64; // längsta mönstret: hela partier ryms i ett mönster
-    static constexpr int kickStepsPerBar = 16;
     static constexpr int numGrids = 8;
-    static constexpr int maxKickSteps = maxBars * kickStepsPerBar;
     static constexpr int minPitch = -96; // halvtoner från tonarten (basens grundton med lagrets oktav)
     static constexpr int maxPitch = 96;
     static constexpr int numLayers = 3; // baslager med var sitt mönster (FX-versionen använder bara det första)
+
+    // Kicken är ett fjärde "notlager" (lager 3): fritt placerade toner, på samma sätt som baslagren. Tonhöjden flyttar
+    // kickens svans (halvtoner från tonarten), velocity styr volymen. Kicken har ingen gate.
+    static constexpr int kickLayer = numLayers;
+    static constexpr int numNoteLayers = numLayers + 1;
+    static constexpr float defaultKickVelocity = 1.0f;
+    static float defaultVelocity (int layer) { return layer == kickLayer ? defaultKickVelocity : 0.8f; }
 
     // Tiden räknas i "ticks": 96 per fjärdedel, så att alla rutnät (1/4 ... 1/64 och trioler) går jämnt upp.
     static constexpr int ticksPerQuarter = 96;
@@ -83,9 +88,6 @@ struct Pattern
     };
 
     Pattern() { applyTemplate (PatternTemplate::rolling); }
-
-    std::atomic<bool>& kickStep (int index) { return kick[(size_t) index]; }
-    bool isKickOn (int index) const         { return kick[(size_t) index].load(); }
 
     // Index utanför mönstret hamnar vid närmaste kant i stället för utanför minnet.
     Note& note (int layer, int tick)             { return notes[noteIndex (layer, tick)]; }
@@ -114,11 +116,14 @@ struct Pattern
     // Ett lager med "pianorulle": tonerna redigeras i pianorullen (frihand i tid, höjd och glide) och visas som en
     // miniatyr i stället för stegknappar, som i FL Studio. Sätts när man redigerar i pianorullen, och nollställs
     // när lagrets toner rensas eller fylls om.
-    bool isCustom (int layer) const { return custom[(size_t) juce::jlimit (0, numLayers - 1, layer)].load(); }
-    void setCustom (int layer, bool value) { custom[(size_t) juce::jlimit (0, numLayers - 1, layer)] = value; }
+    bool isCustom (int layer) const { return custom[(size_t) juce::jlimit (0, numNoteLayers - 1, layer)].load(); }
+    void setCustom (int layer, bool value) { custom[(size_t) juce::jlimit (0, numNoteLayers - 1, layer)] = value; }
 
     // Lägger en ny ton (eller ändrar den som redan ligger där). Returnerar den.
     Note& addNote (int layer, int tick, int length, int pitch = 0, float velocity = 0.8f, bool slide = false);
+
+    // Kicken som en rad ettor och punkter, `ticksPerStep` mellan stegen (för verktyg och tester).
+    void setKickSteps (const juce::String& steps, int ticksPerStep);
     void removeNote (int layer, int tick) { note (layer, tick).on = false; }
     void clearNotes (int layer);
 
@@ -133,16 +138,15 @@ struct Pattern
     void fromValueTree (const juce::ValueTree& tree);
 
     static inline const juce::Identifier treeType { "Pattern" };
-    static constexpr int currentVersion = 4; // 4: fria toner (ticks); 3: baslager med steg per rutnät
+    static constexpr int currentVersion = 5; // 5: kicken som notlager; 4: fria toner (ticks); 3: baslager med steg per rutnät
 
 private:
     static size_t noteIndex (int layer, int tick)
     {
-        return (size_t) juce::jlimit (0, numLayers - 1, layer) * (size_t) maxTicks + (size_t) juce::jlimit (0, maxTicks - 1, tick);
+        return (size_t) juce::jlimit (0, numNoteLayers - 1, layer) * (size_t) maxTicks + (size_t) juce::jlimit (0, maxTicks - 1, tick);
     }
 
-    std::array<std::atomic<bool>, maxKickSteps> kick {};
-    std::vector<Note> notes = std::vector<Note> ((size_t) numLayers * (size_t) maxTicks); // på heapen: många MB på stacken räcker inte
+    std::vector<Note> notes = std::vector<Note> ((size_t) numNoteLayers * (size_t) maxTicks); // på heapen: många MB på stacken räcker inte
     std::array<std::array<std::atomic<bool>, maxGateSteps>, numLayers> gate {};
-    std::array<std::atomic<bool>, numLayers> custom {};
+    std::array<std::atomic<bool>, numNoteLayers> custom {};
 };

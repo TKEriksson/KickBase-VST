@@ -198,7 +198,10 @@ void FxProcessor::handleEvent (const StepEvent& event)
     {
         duckCurve.trigger(); // duckkurvan följer kickstegen även när kicken är avstängd
         if (kickOn)
-            kick.trigger (1.0f);
+        {
+            const auto& note = pattern.note (Pattern::kickLayer, event.step);
+            kick.trigger (note.velocity.load(), note.pitch.load());
+        }
         return;
     }
 

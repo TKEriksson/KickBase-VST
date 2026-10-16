@@ -30,6 +30,7 @@ public:
     std::function<void (int)> onOpenPianoRoll;
 
     void selectLayer (int layer);
+    void renameLayer (int layer); // dialog för att döpa om ett baslager (instrumentet)
     int getSelectedLayer() const { return selectedLayer; }
     std::function<void (int)> onLayerSelected;
 
@@ -38,12 +39,13 @@ public:
     void mouseDown (const juce::MouseEvent&) override;
     void mouseDrag (const juce::MouseEvent&) override;
     void mouseUp (const juce::MouseEvent&) override;
+    void mouseDoubleClick (const juce::MouseEvent&) override;
     void mouseMove (const juce::MouseEvent&) override;
     void mouseExit (const juce::MouseEvent&) override;
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 
 private:
-    enum class Target { none, kick, bass, lane, label };
+    enum class Target { none, bass, lane, label }; // bass = en lagerrad (också kicken)
 
     void timerCallback() override;
 
@@ -59,15 +61,21 @@ private:
     void setPage (int newPage);
 
     BassGrid grid (int layer) const;
-    int kickSteps() const { return viewBars() * Pattern::kickStepsPerBar; }            // synliga steg
     int bassSteps (int layer) const { return viewBars() * Pattern::bassStepsPerBar (grid (layer)); }
     BassGrid gateGrid (int layer) const;
     int gateSteps (int layer) const { return viewBars() * Pattern::bassStepsPerBar (gateGrid (layer)); }
 
     // Radens egna längd i steg (kortare än mönstret när raden har en egen längd): efter den loopar eller tystnar raden.
-    int kickOwnSteps (const PatternLengths& l) const            { return l.barsOf (0) * Pattern::kickStepsPerBar; }
-    int bassOwnSteps (const PatternLengths& l, int layer) const { return l.barsOf (1 + layer) * Pattern::bassStepsPerBar (grid (layer)); }
-    int gateOwnSteps (const PatternLengths& l, int layer) const { return l.barsOf (1 + layer) * Pattern::bassStepsPerBar (gateGrid (layer)); }
+    // Lager 0-2 är baslagren och lager 3 (Pattern::kickLayer) är kicken. Radens nummer för längderna: kick 0, bas 1-3.
+    static int rowOf (int layer) { return layer == Pattern::kickLayer ? 0 : layer + 1; }
+    int bassOwnSteps (const PatternLengths& l, int layer) const { return l.barsOf (rowOf (layer)) * Pattern::bassStepsPerBar (grid (layer)); }
+    int gateOwnSteps (const PatternLengths& l, int layer) const { return l.barsOf (rowOf (layer)) * Pattern::bassStepsPerBar (gateGrid (layer)); }
+
+    juce::Rectangle<int> rowBounds (int layer) const { return layer == Pattern::kickLayer ? kickRow : bassRows[(size_t) layer]; }
+    juce::Colour colourOf (int layer) const { return layer == Pattern::kickLayer ? Theme::kick : layerColours[(size_t) layer]; }
+    juce::String nameOf (int layer) const;
+    bool renameable() const { return numLayers() > 1; } // instrumentets baslager kan döpas om; FX-versionens GATE-rad inte
+
     int laneStepAt (int x) const { const auto l = lengths(); return stepAt (x, bassSteps (selectedLayer), bassOwnSteps (l, selectedLayer)); }
     bool isCustom (int layer) const { return processor.pattern.isCustom (layer); }
 
@@ -118,7 +126,7 @@ private:
     juce::TextButton previousPageButton { "<" }, nextPageButton { ">" }, followButton { "FOLLOW" };
     std::vector<std::unique_ptr<juce::ComboBox>> lengthBoxes; // radens längd: [0] kick, sedan baslagren
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment>> lengthAttachments;
-    juce::Rectangle<int> pageArea;
+    juce::Rectangle<int> pageArea, headerLabels;
 
     juce::Rectangle<int> labelColumn, kickRow, laneArea;
     std::vector<juce::Rectangle<int>> bassRows;
@@ -130,6 +138,7 @@ private:
     bool edited = false;
     int hoverStep = -1;
 
-    int lastKickStep = -2, lastBars = 0, lastVersion = -1, lastCustomBits = -1;
+    int lastKickStep = -2, lastBars = 0, lastVersion = -1, lastCustomBits = -1, lastNamesVersion = -1;
+    juce::Component::SafePointer<juce::AlertWindow> renameDialog;
     std::array<int, Pattern::numLayers> lastBassSteps { -2, -2, -2 }, lastGrids { -1, -1, -1 }, lastGateGrids { -1, -1, -1 };
 };

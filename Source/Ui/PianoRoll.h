@@ -89,7 +89,10 @@ private:
     void showMidiMenu();
     void askForNameAndSave();
     void afterLoad (int bars, BassGrid newGrid); // sätter mönsterlängd och rutnät efter att en pianorulle laddats
-    int soundingRoot() const; // basens grundton med lagrets oktav (tonhöjden 0), som MIDI-tonnummer
+    int soundingRoot() const;
+    juce::String gridParameterId() const; // lagrets rutnät (kickens eget för kicken)
+    int playTickNow() const;              // uppspelningsmarkören i radens ticks, eller -1
+    juce::String layerName() const; // basens grundton med lagrets oktav (tonhöjden 0), som MIDI-tonnummer
     void commit(); // markerar lagret som pianorulle och talar om att mönstret ändrats
     int pitchBefore (int tick) const;
     void attachGridBox();

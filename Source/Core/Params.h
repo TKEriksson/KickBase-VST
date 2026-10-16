@@ -15,6 +15,7 @@ namespace ParamID
     inline constexpr auto patternBars = "patternBars";
     inline constexpr auto noteEnd     = "noteEnd";
     inline constexpr auto rowLoop     = "rowLoop"; // rader som är kortare än mönstret loopar
+    inline constexpr auto rowGridKick = "rowGridKick"; // kickens rutnät (som bassidornas Grid); heter inte kick... så att det hör till mönstret
 
     // Radens egen längd: 0 = kicken, 1-3 = baslager (val 0 = hela mönstret, sedan 1 ... 64 takter).
     const char* rowBars (int row);

@@ -61,8 +61,17 @@ void Pattern::setGate (int layer, bool open)
         step = open;
 }
 
+void Pattern::setKickSteps (const juce::String& steps, int stepTicks)
+{
+    clearNotes (kickLayer);
+    for (int i = 0; i < steps.length() && (i + 1) * stepTicks <= maxTicks; ++i)
+        if (steps[i] != '.')
+            addNote (kickLayer, i * stepTicks, stepTicks, 0, steps[i] == 'X' ? 1.0f : defaultKickVelocity);
+}
+
 void Pattern::clearNotes (int layer)
 {
+    layer = juce::jlimit (0, numNoteLayers - 1, layer);
     custom[(size_t) layer] = false;
     for (int tick = 0; tick < maxTicks; ++tick)
     {
@@ -78,8 +87,10 @@ void Pattern::clearNotes (int layer)
 BassGrid Pattern::applyTemplate (PatternTemplate t)
 {
     // Kick på varje fjärdedel i alla mallar utom Clear.
-    for (int i = 0; i < maxKickSteps; ++i)
-        kick[(size_t) i] = t != PatternTemplate::clear && i % 4 == 0;
+    clearNotes (kickLayer);
+    if (t != PatternTemplate::clear)
+        for (int tick = 0; tick < maxTicks; tick += ticksPerQuarter)
+            addNote (kickLayer, tick, ticksPerQuarter / 4, 0, defaultKickVelocity);
 
     for (int layer = 1; layer < numLayers; ++layer)
         clearNotes (layer);
@@ -134,13 +145,8 @@ juce::ValueTree Pattern::toValueTree() const
     juce::ValueTree tree (treeType);
     tree.setProperty ("version", currentVersion, nullptr);
 
-    juce::StringArray kicks;
-    for (int i = 0; i < maxKickSteps; ++i)
-        kicks.add (kick[(size_t) i].load() ? "1" : "0");
-    tree.setProperty ("kick", kicks.joinIntoString (","), nullptr);
-
     // En rad per lager: start/längd/ton/slide/velocity för varje ton, åtskilda med semikolon.
-    for (int layer = 0; layer < numLayers; ++layer)
+    for (int layer = 0; layer < numNoteLayers; ++layer)
     {
         juce::StringArray entries;
         for (int tick = 0; tick < maxTicks; ++tick)
@@ -156,6 +162,9 @@ juce::ValueTree Pattern::toValueTree() const
         child.setProperty ("notes", entries.joinIntoString (";"), nullptr);
         child.setProperty ("custom", isCustom (layer), nullptr);
         tree.appendChild (child, nullptr);
+
+        if (layer >= numLayers)
+            continue; // kicken har ingen gate
 
         // GATE-stegen: en siffra per steg (1 = öppet).
         juce::String steps;
@@ -175,9 +184,16 @@ void Pattern::fromValueTree (const juce::ValueTree& tree)
     if (! tree.hasType (treeType))
         return;
 
-    const auto kicks = split (tree["kick"], ",");
-    for (int i = 0; i < maxKickSteps && i < kicks.size(); ++i)
-        kick[(size_t) i] = kicks[i].getIntValue() != 0;
+    // Äldre projekt (version < 5) hade kicken som 16 steg per takt; varje på-steg blir en ton på sin plats i tiden.
+    if (tree.hasProperty ("kick"))
+    {
+        const auto kicks = split (tree["kick"], ",");
+        clearNotes (kickLayer);
+        const auto stepTicks = ticksPerBar / 16;
+        for (int i = 0; i < kicks.size() && (i + 1) * stepTicks <= maxTicks; ++i)
+            if (kicks[i].getIntValue() != 0)
+                addNote (kickLayer, i * stepTicks, stepTicks, 0, defaultKickVelocity);
+    }
 
     // Version 1 hade bara rutnäten 1/16, 1/8 T och 1/16 T, i den ordningen.
     const auto version = (int) tree.getProperty ("version", 1);
@@ -189,7 +205,7 @@ void Pattern::fromValueTree (const juce::ValueTree& tree)
         return juce::isPositiveAndBelow (stored, 3) ? (int) oldOrder[stored] : -1;
     };
 
-    std::array<bool, numLayers> cleared {};
+    std::array<bool, numNoteLayers> cleared {};
     auto clearOnce = [&] (int layer)
     {
         if (! cleared[(size_t) layer])
@@ -202,10 +218,10 @@ void Pattern::fromValueTree (const juce::ValueTree& tree)
     for (const auto& child : tree)
     {
         const auto layer = (int) child.getProperty ("layer", 0);
-        if (! juce::isPositiveAndBelow (layer, numLayers))
+        if (! juce::isPositiveAndBelow (layer, numNoteLayers))
             continue;
 
-        if (child.hasType ("Gate"))
+        if (child.hasType ("Gate") && layer < numLayers)
         {
             const auto steps = child["steps"].toString();
             for (int i = 0; i < maxGateSteps && i < steps.length(); ++i)
@@ -223,7 +239,7 @@ void Pattern::fromValueTree (const juce::ValueTree& tree)
                     addNote (layer, tick, parts[1].getIntValue(), parts[2].getIntValue(), parts[4].getFloatValue(), parts[3].getIntValue() != 0);
             }
         }
-        else if (child.hasType ("Bass"))
+        else if (child.hasType ("Bass") && layer < numLayers)
         {
             // Äldre projekt: ett steg per rutnät. Varje på-steg blir en ton på sin plats i tiden.
             const auto g = gridIndex ((int) child["grid"]);

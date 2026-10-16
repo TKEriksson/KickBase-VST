@@ -84,12 +84,12 @@ void PianoRoll::attachGridBox()
 {
     gridAttachment.reset();
     gridAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
-        processor.apvts, ParamID::bass (layer, BassField::grid), gridBox);
+        processor.apvts, gridParameterId(), gridBox);
 }
 
 void PianoRoll::setLayer (int newLayer)
 {
-    newLayer = juce::jlimit (0, Pattern::numLayers - 1, newLayer);
+    newLayer = juce::jlimit (0, Pattern::numNoteLayers - 1, newLayer);
     if (newLayer != layer)
     {
         layer = newLayer;
@@ -101,12 +101,27 @@ void PianoRoll::setLayer (int newLayer)
 
 int PianoRoll::bars() const
 {
-    return Params::readPatternLengths (processor.apvts).barsOf (1 + layer); // radens egen längd
+    return Params::readPatternLengths (processor.apvts).barsOf (layer == Pattern::kickLayer ? 0 : 1 + layer); // radens egen längd
+}
+
+juce::String PianoRoll::gridParameterId() const
+{
+    return layer == Pattern::kickLayer ? juce::String (ParamID::rowGridKick) : ParamID::bass (layer, BassField::grid);
+}
+
+int PianoRoll::playTickNow() const
+{
+    return layer == Pattern::kickLayer ? processor.transportStatus.kickStep.load() : processor.transportStatus.bassSteps[(size_t) layer].load();
+}
+
+juce::String PianoRoll::layerName() const
+{
+    return layer == Pattern::kickLayer ? juce::String ("KICK") : processor.getLayerName (layer);
 }
 
 BassGrid PianoRoll::grid() const
 {
-    return (BassGrid) (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, BassField::grid))->load();
+    return (BassGrid) juce::jlimit (0, Pattern::numGrids - 1, (int) processor.apvts.getRawParameterValue (gridParameterId())->load());
 }
 
 int PianoRoll::snapTicks() const { return snapEnabled ? Pattern::ticksPerStep (grid()) : 1; }
@@ -120,6 +135,12 @@ int PianoRoll::snapped (float tick) const
 int PianoRoll::rootNote() const
 {
     const auto key = processor.transportStatus.keyNote.load();
+    if (layer == Pattern::kickLayer)
+    {
+        // Kickens tonhöjd 0 är dess svans: på tonarten (Follow) eller en fast ton (Fixed).
+        const auto follow = (int) processor.apvts.getRawParameterValue (ParamID::kickKeyFollow)->load() == 1;
+        return follow ? Params::kickTailMidiNote ((key >= 0 ? key : 60) % 12) : 24;
+    }
     return Params::bassRootMidiNote (key >= 0 ? key : 60);
 }
 
@@ -174,12 +195,14 @@ void PianoRoll::scrollBarMoved (juce::ScrollBar* bar, double newRangeStart)
 
 int PianoRoll::soundingRoot() const
 {
+    if (layer == Pattern::kickLayer)
+        return rootNote();
     return rootNote() + 12 * (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, BassField::octave))->load();
 }
 
 void PianoRoll::afterLoad (int bars, BassGrid newGrid)
 {
-    if (auto* gridParameter = processor.apvts.getParameter (ParamID::bass (layer, BassField::grid)))
+    if (auto* gridParameter = processor.apvts.getParameter (gridParameterId()))
         Presets::setParameter (*gridParameter, gridParameter->convertTo0to1 ((float) newGrid));
     RollFiles::applyLength (processor.apvts, layer, bars);
     selection.clear();
@@ -368,7 +391,7 @@ void PianoRoll::timerCallback()
     auto changed = false;
     auto update = [&changed] (int& last, int now) { if (last != now) { last = now; changed = true; } };
     update (lastVersion, processor.patternVersion.load());
-    const auto playTick = processor.transportStatus.bassSteps[(size_t) layer].load();
+    const auto playTick = playTickNow();
     update (lastPlayTick, playTick / 6); // var 6:e tick räcker
 
     // FOLLOW: när uppspelningen lämnar bilden bläddrar vyn till de takter som spelar.
@@ -653,7 +676,7 @@ void PianoRoll::paint (juce::Graphics& g)
         }
 
         // Uppspelningsmarkören.
-        const auto playTick = processor.transportStatus.bassSteps[(size_t) layer].load();
+        const auto playTick = playTickNow();
         if (playTick >= 0)
         {
             g.setColour (juce::Colour (0xffffe27a));
@@ -708,12 +731,12 @@ void PianoRoll::paint (juce::Graphics& g)
     // Verktygsraden: vad musen är över, och antal markerade.
     g.setFont (Theme::font (10.0f, true));
     g.setColour (colour);
-    g.drawText ("BASS " + juce::String (layer + 1), infoArea.withWidth (50.0f), juce::Justification::centredLeft);
+    g.drawText (layerName(), infoArea.withWidth (86.0f), juce::Justification::centredLeft);
     g.setColour (Theme::text);
     const auto info = hoverTick >= 0 ? describe (hoverTick)
                     : selection.empty() ? juce::String()
                                         : juce::String ((int) selection.size()) + " selected";
-    g.drawText (info, infoArea.withTrimmedLeft (52.0f), juce::Justification::centredRight);
+    g.drawText (info, infoArea.withTrimmedLeft (88.0f), juce::Justification::centredRight);
 
     // Velocity.
     g.setColour (juce::Colours::black.withAlpha (0.3f));
@@ -876,7 +899,7 @@ void PianoRoll::mouseDown (const juce::MouseEvent& event)
     const auto pitch = juce::jlimit (Pattern::minPitch, Pattern::maxPitch, yToPitch (event.position.y));
     const auto glide = glideButton.getToggleState();
     const auto length = ! glide && lastLength > 0 ? lastLength : Pattern::ticksPerStep (grid());
-    processor.pattern.addNote (layer, start, length, pitch, 0.8f, glide);
+    processor.pattern.addNote (layer, start, length, pitch, Pattern::defaultVelocity (layer), glide);
     selection = { start };
     justCreatedTick = start;
     drag = Drag::move;

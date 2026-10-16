@@ -34,7 +34,7 @@ namespace RollFiles
                 Presets::setParameter (*parameter, parameter->convertTo0to1 ((float) choice));
         };
         set (ParamID::patternBars, barsToChoice (total));
-        set (ParamID::rowBars (1 + layer), bars >= total ? 0 : barsToChoice (bars) + 1);
+        set (ParamID::rowBars (layer == Pattern::kickLayer ? 0 : 1 + layer), bars >= total ? 0 : barsToChoice (bars) + 1);
     }
 
     bool save (const Pattern& pattern, int layer, int bars, BassGrid grid, const juce::File& file)

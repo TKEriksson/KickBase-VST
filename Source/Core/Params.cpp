@@ -100,6 +100,7 @@ namespace Params
             layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::rowBars (row), 1 },
                                                                 row == 0 ? juce::String ("Kick Length") : "Bass " + juce::String (row) + " Length", rowLengths, 0));
         layout.add (std::make_unique<AudioParameterBool> (ParameterID { ParamID::rowLoop, 1 }, "Loop Shorter Rows", true));
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::rowGridKick, 1 }, "Kick Grid", Pattern::gridNames(), (int) BassGrid::sixteenth));
         if (includeNoteEnd)
             layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::noteEnd, 1 }, "Note End",
                                                                 StringArray { "Cut", "Finish bar", "Finish pattern" }, 0));

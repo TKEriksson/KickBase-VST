@@ -198,6 +198,8 @@ void PluginBase::getStateInformation (juce::MemoryBlock& destData)
         state.setProperty (presetProperty ((Presets::Section) i), presetNames[(size_t) i], nullptr);
     for (int layer = 0; layer < ParamID::numBassLayers; ++layer)
         state.setProperty ("presetBass" + juce::String (layer + 1), bassPresetNames[(size_t) layer], nullptr);
+    for (int layer = 0; layer < ParamID::numBassLayers; ++layer)
+        state.setProperty ("layerName" + juce::String (layer + 1), layerNames[(size_t) layer], nullptr);
     state.appendChild (pattern.toValueTree(), nullptr);
     state.appendChild (clickToValueTree(), nullptr);
     state.appendChild (userTablesToValueTree(), nullptr);
@@ -221,6 +223,9 @@ void PluginBase::setStateInformation (const void* data, int sizeInBytes)
         presetNames[(size_t) i] = state.getProperty (presetProperty ((Presets::Section) i), presetNames[(size_t) i]).toString();
     for (int layer = 0; layer < ParamID::numBassLayers; ++layer)
         bassPresetNames[(size_t) layer] = state.getProperty ("presetBass" + juce::String (layer + 1), bassPresetNames[(size_t) layer]).toString();
+    for (int layer = 0; layer < ParamID::numBassLayers; ++layer)
+        layerNames[(size_t) layer] = state.getProperty ("layerName" + juce::String (layer + 1), juce::String()).toString();
+    ++layerNamesVersion;
 
     if (auto patternTree = state.getChildWithName (Pattern::treeType); patternTree.isValid())
     {

@@ -10,7 +10,7 @@ struct StepEvent
 
     int offset;     // sample i blocket
     Type type;
-    int step;       // steg i mönstret (kick: sextondel, bas: tick)
+    int step;       // tonens tick i mönstret (kick och bas)
     int layer = 0;  // baslager (bara för bas)
 };
 
@@ -44,8 +44,8 @@ private:
     void add (StepEvent event);
 
     int numLayers = Pattern::numLayers;
-    StepCursor kickCursor { (double) Pattern::kickStepsPerBar / 4.0 };
-    // Baslagrens toner ligger fritt i tiden, så markören går i ticks (96 per fjärdedel).
+    // Kickens och baslagrens toner ligger fritt i tiden, så markörerna går i ticks (96 per fjärdedel).
+    StepCursor kickCursor { (double) Pattern::ticksPerQuarter };
     static constexpr double bassTicksPerQuarter = Pattern::ticksPerQuarter;
     std::array<StepCursor, Pattern::numLayers> bassCursors { StepCursor { bassTicksPerQuarter }, StepCursor { bassTicksPerQuarter },
                                                              StepCursor { bassTicksPerQuarter } };

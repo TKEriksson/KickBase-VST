@@ -55,7 +55,7 @@ void KickEngine::reset()
     envelope = 0.0f;
 }
 
-void KickEngine::trigger (float velocity)
+void KickEngine::trigger (float velocity, int transposeSemitones)
 {
     // Den gamla rösten tonas ut på några millisekunder i stället för att klippas.
     auto& old = voices[currentVoice];
@@ -68,6 +68,7 @@ void KickEngine::trigger (float velocity)
     voice.time = 0.0;
     voice.phase = 0.0; // sinus från noll: ingen DC-knäpp i anslaget
     voice.velocity = velocity;
+    voice.transpose = std::exp2 ((float) transposeSemitones / 12.0f);
     voice.fade = 1.0f;
     voice.fadingOut = false;
     voice.sampleIndex = 0;
@@ -106,7 +107,7 @@ float KickEngine::renderVoice (Voice& voice)
 
     // Kropp: sinus vars frekvens sveper ner till tailHz: ett snabbt svep (pitch) och ett
     // långsamt (glide) ovanpå varandra.
-    const auto frequency = params.tailHz * std::exp2 (pitchSemitonesAt (params, t) / 12.0f);
+    const auto frequency = params.tailHz * voice.transpose * std::exp2 (pitchSemitonesAt (params, t) / 12.0f);
     constexpr auto twoPi = juce::MathConstants<double>::twoPi;
     auto body = (float) std::sin (twoPi * (voice.phase + params.startPhase));
 

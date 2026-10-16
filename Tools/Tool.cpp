@@ -290,6 +290,7 @@ namespace
         processor->selectedFxView = tab / 100 % 10;   // EFFECTS-vyn (hundratal)
         processor->pianoRollOpen = tab / 1000 % 10 > 0; // pianorullen i stället för stegen (tusental)
         processor->selectedPatternMode = tab / 10000 % 10; // 1 = GATE-läget (tiotusental)
+        processor->selectedPatternLayer = tab / 10000000 % 10; // valt lager i PATTERN: 3 = kicken (tiomiljontal)
         if (tab / 1000000 > 0)
         {
             // Exempel: 16 takter, bas 1 på 4 takter och bas 2 på 1 takt (miljontal).

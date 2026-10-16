@@ -242,7 +242,9 @@ namespace
         Pattern pattern;
 
         check (pattern.applyTemplate (PatternTemplate::rolling) == BassGrid::sixteenth, "Rolling är i sextondelar");
-        check (pattern.isKickOn (0) && ! pattern.isKickOn (1) && pattern.isKickOn (4), "kick på fjärdedelar");
+        const auto quarter = Pattern::ticksPerQuarter;
+        auto kickOn = [&pattern] (int tick) { return pattern.note (Pattern::kickLayer, tick).on.load(); };
+        check (kickOn (0) && ! kickOn (24) && kickOn (quarter) && kickOn (4 * quarter), "kick på fjärdedelar");
         const auto sixteenth = Pattern::ticksPerStep (BassGrid::sixteenth);
         check (! pattern.note (0, 0).on && pattern.note (0, sixteenth).on
                    && pattern.note (0, 3 * sixteenth).on && ! pattern.note (0, 4 * sixteenth).on,
@@ -254,7 +256,7 @@ namespace
         check (! pattern.note (0, 3 * triplet).on && pattern.note (0, 4 * triplet).on, "Triplet: K B B");
 
         // Ändra några steg och kontrollera att allt överlever spara/läsa, också toner utanför rutnätet.
-        pattern.kickStep (7) = true;
+        pattern.addNote (Pattern::kickLayer, 7 * 24, 12, 5, 0.6f); // en kick med tonhöjd, på en sextondel
         pattern.addNote (0, 800, 5, -12, 0.25f, true);
         pattern.addNote (1, 6, 3, 7, 0.5f); // en 64-del, i lager 2
 
@@ -262,7 +264,17 @@ namespace
         loaded.applyTemplate (PatternTemplate::clear);
         loaded.fromValueTree (pattern.toValueTree());
 
-        check (loaded.isKickOn (7) && loaded.isKickOn (0) && ! loaded.isKickOn (1), "kickstegen sparas");
+        check (loaded.note (Pattern::kickLayer, 7 * 24).on && loaded.note (Pattern::kickLayer, 7 * 24).pitch == 5 && loaded.note (Pattern::kickLayer, 0).on
+                   && ! loaded.note (Pattern::kickLayer, 24).on, "kicknoterna sparas, med tonhöjd");
+
+        // Äldre projekt: kicken som 16 steg per takt blir toner.
+        juce::ValueTree legacy (Pattern::treeType);
+        legacy.setProperty ("version", 4, nullptr);
+        legacy.setProperty ("kick", "1,0,0,0,1,0,0,0,0,0,1,0,0,0,0,0", nullptr);
+        Pattern migratedKick;
+        migratedKick.fromValueTree (legacy);
+        check (migratedKick.note (Pattern::kickLayer, 0).on && migratedKick.note (Pattern::kickLayer, 4 * 24).on && migratedKick.note (Pattern::kickLayer, 10 * 24).on
+                   && ! migratedKick.note (Pattern::kickLayer, 24).on, "gamla kickstegen blir toner");
         const auto& loadedNote = loaded.note (0, 800);
         check (loadedNote.on && loadedNote.pitch == -12 && loadedNote.slide && loadedNote.length == 5, "tonens på/ton/slide/längd sparas");
         check (std::abs (loadedNote.velocity - 0.25f) < 1.0e-3f, "tonens velocity sparas");

@@ -458,7 +458,10 @@ void InstrumentProcessor::handleEvent (const StepEvent& event)
         // Duckkurvan följer kickstegen även när kicken är avstängd (pump utan kick).
         duckCurve.trigger();
         if (kickOn)
-            kick.trigger (1.0f);
+        {
+            const auto& note = pattern.note (Pattern::kickLayer, event.step);
+            kick.trigger (note.velocity.load(), note.pitch.load());
+        }
         return;
     }
 

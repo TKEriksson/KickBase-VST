@@ -112,11 +112,27 @@ public:
     // Kickens inställningar som de är just nu, utan LFO (för gränssnittets bilder).
     KickParams kickForDisplay (int keyPitchClass) const;
     TransportStatus transportStatus;
+
+    // Baslagrens namn: standard BASS 1-3, men man kan döpa dem själv. `layerNamesVersion` ökas vid ändring, så att
+    // gränssnittet kan uppdatera sina texter.
+    juce::String getLayerName (int layer) const
+    {
+        const auto index = (size_t) juce::jlimit (0, ParamID::numBassLayers - 1, layer);
+        return layerNames[index].isEmpty() ? "BASS " + juce::String (layer + 1) : layerNames[index];
+    }
+    void setLayerName (int layer, const juce::String& name)
+    {
+        layerNames[(size_t) juce::jlimit (0, ParamID::numBassLayers - 1, layer)] = name.trim().substring (0, 14);
+        ++layerNamesVersion;
+    }
+    std::atomic<int> layerNamesVersion { 0 };
+
     std::atomic<bool> followPlayhead { true }; // pianorullen och stegvyn bläddrar med uppspelningen
     std::atomic<int> patternVersion { 0 }; // ökas när mönstret ändras, så att gränssnittet ritar om
     int selectedTab = 0;                   // gränssnittets valda flikar (nedre och övre panelen), så att de
     int selectedSynthTab = 0;              // finns kvar när fönstret öppnas igen
     int selectedPatternMode = 0;           // PATTERN-flikens läge: 0 PATTERN (toner), 1 GATE
+    int selectedPatternLayer = 0;          // PATTERN-flikens valda lager: 0-2 bas, 3 kick
     bool pianoRollOpen = false;            // PATTERN-flikens vy: stegen eller pianorullen
     int selectedFxView = 2;                // EFFECTS-sidans vy: 0 EQ, 1 COMP, 2 FX
 
@@ -179,6 +195,7 @@ private:
     const bool effectVersion;
     std::array<juce::String, Presets::numSections> presetNames; // bara message thread
     std::array<juce::String, ParamID::numBassLayers> bassPresetNames;
+    std::array<juce::String, ParamID::numBassLayers> layerNames;
 
     double currentSampleRate = 44100.0;
     std::atomic<ClickSample*> activeClick { nullptr };

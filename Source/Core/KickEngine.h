@@ -62,7 +62,8 @@ public:
     void setParams (const KickParams& newParams) { params = newParams; }
     void setClickSample (const ClickSample* sample) { clickSample = sample; }
 
-    void trigger (float velocity);
+    // `transposeSemitones`: flyttar hela kicken (svans och svep) så här många halvtoner, för kicknoter med tonhöjd.
+    void trigger (float velocity, int transposeSemitones = 0);
     float nextSample();
 
     // Nuvarande amplitud-envelope (0..1). Basen duckas efter den.
@@ -85,6 +86,7 @@ private:
         double time = 0.0;       // sekunder sedan anslaget
         double phase = 0.0;      // 0..1
         float velocity = 1.0f;
+        float transpose = 1.0f;  // frekvensfaktor
         float fade = 1.0f;       // < 1 när rösten tonas ut för att ge plats åt en ny
         bool fadingOut = false;
         int sampleIndex = 0;     // position i klicksamplingen

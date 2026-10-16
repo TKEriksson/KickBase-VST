@@ -119,6 +119,7 @@ public:
     PatternModule (PluginBase& processor, bool instrument);
     void resized() override;
     void paint (juce::Graphics&) override;
+    void mouseDoubleClick (const juce::MouseEvent&) override; // dubbelklick på ett lagers knapp: döp om
 
 private:
     void timerCallback() override;
@@ -126,6 +127,7 @@ private:
     void showLayer (int layer);
     void showMode (StepSequencer::Mode newMode);
     void showFillMenu();
+    void showKickFillMenu();
     void showGateFillMenu();
     void showPianoRoll (bool open);
     void updateVisibility();
@@ -143,6 +145,9 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> loopAttachment;
     juce::TextButton pianoButton { "PIANO ROLL" };
     std::vector<std::unique_ptr<juce::TextButton>> layerButtons; // BASS 1-3: vilket lager som redigeras
+    juce::TextButton kickLayerButton { "KICK" };                // lager 3: kicken
+    std::unique_ptr<ChoiceComponent> kickGrid;                   // kickens rutnät
+    int lastNamesVersion = -1;
 
     // Per lager (bara det valda syns): notrutnätet och tonlängden (PATTERN), och GATE: på/av, rutnät, djup och mjukhet.
     std::vector<std::unique_ptr<ChoiceComponent>> grids, gateGrids;

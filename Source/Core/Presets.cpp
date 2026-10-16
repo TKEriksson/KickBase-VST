@@ -128,7 +128,7 @@ namespace Presets
     // Skriver en bas-rad (se Presets::Extras::PatternLine) till mönstret.
     void writePatternLine (Pattern& pattern, const Extras::PatternLine& line)
     {
-        if (line.bars.empty() || ! juce::isPositiveAndBelow (line.layer, Pattern::numLayers))
+        if (line.bars.empty() || ! juce::isPositiveAndBelow (line.layer, Pattern::numNoteLayers))
             return;
 
         pattern.clearNotes (line.layer);
@@ -145,7 +145,9 @@ namespace Presets
                 if (token == "." || token.isEmpty())
                     continue;
 
-                const auto velocity = token[0] == 'X' ? 1.0f : token[0] == 'm' ? 0.62f : token[0] == 'g' ? 0.42f : 0.8f;
+                const auto isKickLine = line.layer == Pattern::kickLayer; // kicken: x och X är full volym
+                const auto velocity = token[0] == 'X' ? 1.0f : token[0] == 'm' ? (isKickLine ? 0.7f : 0.62f) : token[0] == 'g' ? (isKickLine ? 0.45f : 0.42f)
+                                                                                                                        : (isKickLine ? 1.0f : 0.8f);
                 auto rest = token.substring (1);
                 const auto slide = rest.contains ("~");
                 const auto gatePercent = rest.contains (":") ? rest.fromFirstOccurrenceOf (":", false, false).getFloatValue() : line.gate * 100.0f;
@@ -219,7 +221,7 @@ namespace Presets
                         && ! isLayerField (BassField::gateDepth) && ! isLayerField (BassField::gateSmooth))
                     || id == ParamID::gateAttack || id == ParamID::gateRelease;
             case Section::pattern:
-                return id == ParamID::patternBars || id == ParamID::noteEnd || id == ParamID::rowLoop || id.startsWith ("rowBars") || isLayerField (BassField::grid) || isLayerField (BassField::gate)
+                return id == ParamID::patternBars || id == ParamID::noteEnd || id == ParamID::rowLoop || id == ParamID::rowGridKick || id.startsWith ("rowBars") || isLayerField (BassField::grid) || isLayerField (BassField::gate)
                     || isLayerField (BassField::gateOn) || isLayerField (BassField::gateGrid)
                     || isLayerField (BassField::gateDepth) || isLayerField (BassField::gateSmooth);
             case Section::effects:
@@ -285,7 +287,7 @@ namespace Presets
                 auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p);
                 if (ranged == nullptr || ! belongsTo (section, ranged->getParameterID(), layer) || ranged->getParameterID() == ParamID::patternBars)
                     continue;
-                if (ranged->getParameterID() == ParamID::rowLoop || ranged->getParameterID().startsWith ("rowBars"))
+                if (ranged->getParameterID() == ParamID::rowLoop || ranged->getParameterID() == ParamID::rowGridKick || ranged->getParameterID().startsWith ("rowBars"))
                     continue;
                 setParameter (*ranged, ranged->getDefaultValue());
             }
