@@ -36,6 +36,7 @@ private:
     juce::var setEffect (const juce::var& args);
     juce::var setKickEnvelopes (const juce::var& args);
     juce::var setPattern (const juce::var& args);
+    juce::var setGate (const juce::var& args);
     juce::var setSidechainCurve (const juce::var& args);
     juce::var setModulation (const juce::var& args);
     juce::var listPresets (const juce::var& args) const;

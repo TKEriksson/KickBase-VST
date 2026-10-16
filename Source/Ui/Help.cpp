@@ -30,7 +30,11 @@ namespace Help
             // Mönster och mix
             { "patternBars", "How many bars the pattern lasts before it repeats." },
             { "noteEnd", "What happens when the DAW note ends in the middle of the pattern: stop at once, finish the bar or finish the whole pattern." },
-            { "bassGate", "Scales the length of every step in this layer. Lower = shorter, punchier notes." },
+            { "bassGate", "LENGTH - scales the length of every note in this layer. Lower = shorter, punchier notes." },
+            { "bassGateOn", "Turns this layer's GATE on: a separate on/off rhythm (its own grid) that chops the layer's sound. It does not change the notes." },
+            { "bassGateGrid", "The grid of this layer's gate steps (independent of the note grid)." },
+            { "bassGateDepth", "How much the gate cuts the sound in its closed steps: 0 % = nothing, 100 % = fully silent." },
+            { "bassGateSmooth", "How soft the gate's edges are: short = hard and chopped, longer = smoother." },
             { "gain", "Output volume of the whole plugin." },
             { "bassDuck", "DUCK sets how deeply the kick pushes this layer's volume down. 0 % = no ducking, 100 % = the volume goes all the way down." },
             { "bassOn", "Turns this bass layer on or off." },

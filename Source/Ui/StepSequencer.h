@@ -4,20 +4,30 @@
 #include "Theme.h"
 
 // Stegsekvenseraren: en rad för kicken, en per baslager och ett "lane" under där det valda
-// lagrets velocity, gate-längd, tonhöjd eller slide ritas och dras i.
+// lagrets velocity, tonlängd eller tonhöjd ritas och dras i.
+//
+// Två lägen: PATTERN (tonerna: stegen är en enkel pianorulle; ett lager som redigerats i pianorullen visas som en
+// miniatyr i stället för stegknappar) och GATE (en egen av/på-rytm per lager, med eget rutnät, som hackar ljudet).
 //
 // Raderna är tidsjusterade: kicken har alltid 16 steg per takt, varje baslager sitt eget
 // rutnät (16, 12, 24 ...), men en takt tar lika stor bredd i alla.
 class StepSequencer : public juce::Component, public juce::SettableTooltipClient, private juce::Timer
 {
 public:
-    enum class Lane { velocity, gate, pitch, slide };
+    enum class Lane { velocity, gate, pitch, slide }; // gate = tonlängd (LENGTH); slide används inte längre
+    enum class Mode { notes, gate };
 
     // `layerNames`: en rad per baslager (FX-versionen: bara gaten).
     StepSequencer (PluginBase& processor, juce::StringArray layerNames, std::vector<juce::Colour> layerColours);
 
     void setLane (Lane newLane) { lane = newLane; repaint(); }
     Lane getLane() const        { return lane; }
+
+    void setMode (Mode newMode);
+    Mode getMode() const { return mode; }
+
+    // Anropas när man klickar på ett lagers miniatyr (öppna pianorullen för lagret).
+    std::function<void (int)> onOpenPianoRoll;
 
     void selectLayer (int layer);
     int getSelectedLayer() const { return selectedLayer; }
@@ -42,6 +52,9 @@ private:
     BassGrid grid (int layer) const;
     int kickSteps() const { return bars() * Pattern::kickStepsPerBar; }
     int bassSteps (int layer) const { return bars() * Pattern::bassStepsPerBar (grid (layer)); }
+    BassGrid gateGrid (int layer) const;
+    int gateSteps (int layer) const { return bars() * Pattern::bassStepsPerBar (gateGrid (layer)); }
+    bool isCustom (int layer) const { return processor.pattern.isCustom (layer); }
 
     Target targetAt (juce::Point<int> point, int& layer) const;
     int stepAt (int x, int numSteps) const;
@@ -51,6 +64,8 @@ private:
     void paintToggleRow (juce::Graphics&, juce::Rectangle<int> row, int numSteps, juce::Colour colour,
                          int playingStep, const std::function<bool (int)>& isOn, bool dimmed) const;
     void paintLane (juce::Graphics&) const;
+    void paintMiniature (juce::Graphics&, juce::Rectangle<int> row, int layer, juce::Colour colour, int playTick, bool dimmed) const;
+    void showCustomMenu (int layer);
 
     void editAt (juce::Point<int> point, bool firstEvent);
     float laneValueAt (int y) const;
@@ -78,6 +93,7 @@ private:
     juce::StringArray layerNames;
     std::vector<juce::Colour> layerColours;
     Lane lane = Lane::velocity;
+    Mode mode = Mode::notes;
     int selectedLayer = 0;
 
     juce::Rectangle<int> labelColumn, kickRow, laneArea;
@@ -90,6 +106,6 @@ private:
     bool edited = false;
     int hoverStep = -1;
 
-    int lastKickStep = -2, lastBars = 0, lastVersion = -1;
-    std::array<int, Pattern::numLayers> lastBassSteps { -2, -2, -2 }, lastGrids { -1, -1, -1 };
+    int lastKickStep = -2, lastBars = 0, lastVersion = -1, lastCustomBits = -1;
+    std::array<int, Pattern::numLayers> lastBassSteps { -2, -2, -2 }, lastGrids { -1, -1, -1 }, lastGateGrids { -1, -1, -1 };
 };

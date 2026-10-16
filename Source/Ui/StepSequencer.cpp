@@ -10,8 +10,9 @@ namespace
 StepSequencer::StepSequencer (PluginBase& p, juce::StringArray names, std::vector<juce::Colour> colours)
     : processor (p), layerNames (std::move (names)), layerColours (std::move (colours))
 {
-    setTooltip ("PATTERN - Click steps to turn them on/off (drag to paint). Click a row's name to edit that layer's "
-                "velocity, gate, pitch or slide in the lane below. Right-click a step in the lane to reset it.");
+    setTooltip ("PATTERN - Click steps to turn notes on/off (drag to paint). Click a row's name to edit that layer's "
+                "velocity, length or pitch in the lane below. A layer edited in the piano roll shows a small piano roll instead of steps: "
+                "click it to open the piano roll, right-click to delete it. GATE mode edits the on/off rhythm that chops the sound.");
     addRowKnobs ("KICK", ParamID::kickLevel, ParamID::kickFxAmount, Theme::kick);
     for (int layer = 0; layer < numLayers(); ++layer)
         addRowKnobs (layerNames[layer], ParamID::bass (layer, BassField::level), ParamID::bass (layer, BassField::fxAmount), layerColours[(size_t) layer]);
@@ -66,6 +67,18 @@ BassGrid StepSequencer::grid (int layer) const
     return (BassGrid) (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, BassField::grid))->load();
 }
 
+BassGrid StepSequencer::gateGrid (int layer) const
+{
+    return (BassGrid) juce::jlimit (0, Pattern::numGrids - 1, (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, BassField::gateGrid))->load());
+}
+
+void StepSequencer::setMode (Mode newMode)
+{
+    mode = newMode;
+    resized();
+    repaint();
+}
+
 int StepSequencer::noteTickAt (int layer, int step) const
 {
     const auto from = step * ticksPerStep (layer);
@@ -91,7 +104,9 @@ void StepSequencer::timerCallback()
     {
         update (lastBassSteps[(size_t) layer], stepOfTick (layer, processor.transportStatus.bassSteps[(size_t) layer].load()));
         update (lastGrids[(size_t) layer], (int) grid (layer));
+        update (lastGateGrids[(size_t) layer], (int) gateGrid (layer));
     }
+    update (lastCustomBits, (processor.pattern.isCustom (0) ? 1 : 0) | (processor.pattern.isCustom (1) ? 2 : 0) | (processor.pattern.isCustom (2) ? 4 : 0));
 
     if (changed)
         repaint();
@@ -105,7 +120,8 @@ void StepSequencer::resized()
     // Raderna tar den plats de behöver, och lanet (velocity m.m.) en låg remsa under dem.
     const auto rows = 1 + numLayers();
     const auto gap = 5;
-    const auto rowHeight = juce::jlimit (22, 54, (area.getHeight() - 70 - 3 - gap * rows) / rows);
+    const auto laneSpace = mode == Mode::notes ? 70 + 3 : 0;
+    const auto rowHeight = juce::jlimit (22, 54, (area.getHeight() - laneSpace - gap * rows) / rows);
 
     kickRow = area.removeFromTop (rowHeight);
     area.removeFromTop (gap);
@@ -116,7 +132,7 @@ void StepSequencer::resized()
         area.removeFromTop (gap);
     }
     area.removeFromTop (3);
-    laneArea = area.removeFromTop (std::min (area.getHeight(), 100));
+    laneArea = mode == Mode::notes ? area.removeFromTop (std::min (area.getHeight(), 100)) : juce::Rectangle<int>();
 
     // Rattarna (volym och FX) längst till vänster i varje rad.
     for (size_t i = 0; i < rowKnobs.size(); ++i)
@@ -248,6 +264,16 @@ void StepSequencer::paintLane (juce::Graphics& g) const
     g.setColour (colourOn.withAlpha (0.35f));
     g.drawRoundedRectangle (area.reduced (0.5f), 4.0f, 1.0f);
 
+    if (isCustom (selectedLayer))
+    {
+        g.setColour (Theme::textDim);
+        g.setFont (Theme::font (11.0f));
+        g.drawFittedText ("This layer is edited in the piano roll (note velocity, length, pitch and glide are set there). "
+                          "Click its row to open the piano roll, or right-click it to delete the piano roll and use steps again.",
+                          laneArea.reduced (14, 8), juce::Justification::centred, 3);
+        return;
+    }
+
     if (lane == Lane::pitch)
     {
         // Nollinje i mitten och svaga linjer vid ±12.
@@ -324,22 +350,104 @@ void StepSequencer::paintLane (juce::Graphics& g) const
     }
 }
 
+void StepSequencer::paintMiniature (juce::Graphics& g, juce::Rectangle<int> row, int layer, juce::Colour colour, int playTick, bool dimmed) const
+{
+    // Ett lager som redigerats i pianorullen visas som en liten pianorulle, som i FL Studios kanalrack.
+    const auto area = row.toFloat().reduced (0.0f, 1.0f);
+    g.setColour (juce::Colour (0xff121420));
+    g.fillRoundedRectangle (area, 4.0f);
+
+    const auto totalTicks = bars() * Pattern::ticksPerBar;
+    auto lowest = Pattern::maxPitch, highest = Pattern::minPitch;
+    for (int tick = 0; tick < totalTicks; ++tick)
+        if (const auto& n = processor.pattern.note (layer, tick); n.on.load())
+        {
+            lowest = std::min (lowest, n.pitch.load());
+            highest = std::max (highest, n.pitch.load());
+        }
+
+    const auto span = std::max (8, highest - lowest + 1);
+    const auto bottomPitch = (lowest <= highest ? lowest : 0) - (span - std::max (1, highest - lowest + 1)) / 2;
+    const auto rowHeight = (area.getHeight() - 4.0f) / (float) span;
+    const auto alpha = dimmed ? 0.55f : 1.0f;
+
+    for (int tick = 0; tick < totalTicks; ++tick)
+    {
+        const auto& n = processor.pattern.note (layer, tick);
+        if (! n.on.load())
+            continue;
+        const auto x0 = area.getX() + 2.0f + (area.getWidth() - 4.0f) * (float) tick / (float) totalTicks;
+        const auto x1 = area.getX() + 2.0f + (area.getWidth() - 4.0f) * (float) std::min (totalTicks, tick + n.length.load()) / (float) totalTicks;
+        const auto y = area.getBottom() - 2.0f - (float) (n.pitch.load() - bottomPitch + 1) * rowHeight;
+        const auto note = juce::Rectangle<float> (x0, y, std::max (2.0f, x1 - x0), std::max (2.0f, rowHeight - 0.5f));
+        g.setColour ((n.slide.load() ? colour.interpolatedWith (juce::Colours::white, 0.55f) : colour).withAlpha (alpha * (0.5f + 0.5f * n.velocity.load())));
+        g.fillRoundedRectangle (note, 1.5f);
+    }
+
+    g.setColour (colour.withAlpha (dimmed ? 0.25f : 0.55f));
+    g.drawRoundedRectangle (area.reduced (0.5f), 4.0f, 1.0f);
+    g.setFont (Theme::font (8.5f, true));
+    g.setColour (Theme::textDim.withAlpha (0.8f));
+    g.drawText ("PIANO ROLL", area.reduced (5.0f, 2.0f), juce::Justification::topRight);
+
+    if (playTick >= 0)
+    {
+        g.setColour (juce::Colour (0xffffe27a));
+        g.fillRect (juce::Rectangle<float> (area.getX() + 2.0f + (area.getWidth() - 4.0f) * (float) playTick / (float) totalTicks, area.getY() + 1.0f, 1.5f, area.getHeight() - 2.0f));
+    }
+}
+
+void StepSequencer::showCustomMenu (int layer)
+{
+    juce::PopupMenu menu;
+    menu.addItem (1, "Open piano roll");
+    menu.addItem (2, "Delete piano roll (back to the step pattern)");
+
+    juce::Component::SafePointer<StepSequencer> safeThis (this);
+    menu.showMenuAsync (juce::PopupMenu::Options().withMinimumWidth (240), [safeThis, layer] (int result)
+    {
+        if (safeThis == nullptr)
+            return;
+        if (result == 1 && safeThis->onOpenPianoRoll)
+            safeThis->onOpenPianoRoll (layer);
+        else if (result == 2)
+        {
+            safeThis->processor.pattern.clearNotes (layer); // nollställer också pianorullsmarkeringen
+            safeThis->processor.patternChanged();
+        }
+    });
+}
+
 void StepSequencer::paint (juce::Graphics& g)
 {
-    paintGrid (g, juce::Rectangle<int>::leftTopRightBottom (kickRow.getX(), kickRow.getY(), kickRow.getRight(), laneArea.getBottom()));
+    const auto gridBottom = mode == Mode::notes ? laneArea.getBottom() : bassRows.back().getBottom();
+    paintGrid (g, juce::Rectangle<int>::leftTopRightBottom (kickRow.getX(), kickRow.getY(), kickRow.getRight(), gridBottom));
 
     paintToggleRow (g, kickRow, kickSteps(), Theme::kick, processor.transportStatus.kickStep.load(),
                     [this] (int step) { return processor.pattern.isKickOn (step); }, false);
     for (int layer = 0; layer < numLayers(); ++layer)
     {
-        const auto layerGrid = grid (layer);
-        juce::ignoreUnused (layerGrid);
-        paintToggleRow (g, bassRows[(size_t) layer], bassSteps (layer), layerColours[(size_t) layer],
-                        stepOfTick (layer, processor.transportStatus.bassSteps[(size_t) layer].load()),
-                        [this, layer] (int step) { return noteTickAt (layer, step) >= 0; },
-                        layer != selectedLayer);
+        const auto& row = bassRows[(size_t) layer];
+        const auto colour = layerColours[(size_t) layer];
+        const auto playTick = processor.transportStatus.bassSteps[(size_t) layer].load();
+
+        if (mode == Mode::gate)
+        {
+            // GATE: en egen av/på-rytm med eget rutnät. Raden dämpas när lagrets gate är avstängd.
+            const auto gateTicks = Pattern::ticksPerStep (gateGrid (layer));
+            const auto gateIsOn = processor.apvts.getRawParameterValue (ParamID::bass (layer, BassField::gateOn))->load() >= 0.5f;
+            paintToggleRow (g, row, gateSteps (layer), colour, playTick < 0 ? -1 : playTick / gateTicks,
+                            [this, layer] (int step) { return processor.pattern.isGateStepOn (layer, step); },
+                            layer != selectedLayer || ! gateIsOn);
+        }
+        else if (isCustom (layer))
+            paintMiniature (g, row, layer, colour, playTick, layer != selectedLayer);
+        else
+            paintToggleRow (g, row, bassSteps (layer), colour, stepOfTick (layer, playTick),
+                            [this, layer] (int step) { return noteTickAt (layer, step) >= 0; }, layer != selectedLayer);
     }
-    paintLane (g);
+    if (mode == Mode::notes)
+        paintLane (g);
 
     // Etiketter till vänster; det valda lagret markeras.
     const auto nameColumn = labelColumn.withTrimmedLeft (knobsWidth);
@@ -358,6 +466,9 @@ void StepSequencer::paint (juce::Graphics& g)
         g.setColour (layer == selectedLayer ? colour : colour.withAlpha (0.6f));
         g.drawText (layerNames[layer], row.withTrimmedLeft (4), juce::Justification::centredLeft);
     }
+    if (mode == Mode::gate)
+        return;
+
     g.setColour (Theme::textDim);
     g.setFont (Theme::font (10.0f, true));
     g.drawText (laneName(), labelColumn.withY (laneArea.getY()).withHeight (14), juce::Justification::centredLeft);
@@ -367,7 +478,7 @@ void StepSequencer::paint (juce::Graphics& g)
         g.drawText (layerNames[selectedLayer], labelColumn.withY (laneArea.getY() + 14).withHeight (14), juce::Justification::centredLeft);
     }
 
-    if (hoverStep >= 0)
+    if (hoverStep >= 0 && ! isCustom (selectedLayer))
     {
         g.setFont (Theme::font (10.0f));
         g.setColour (Theme::text);
@@ -381,7 +492,7 @@ juce::String StepSequencer::laneName() const
     switch (lane)
     {
         case Lane::velocity: return "VELOCITY";
-        case Lane::gate:     return "GATE";
+        case Lane::gate:     return "LENGTH";
         case Lane::pitch:    return "PITCH";
         case Lane::slide:    return "SLIDE";
     }
@@ -424,6 +535,17 @@ void StepSequencer::editAt (juce::Point<int> point, bool firstEvent)
         }
         case Target::bass:
         {
+            if (mode == Mode::gate)
+            {
+                auto& gateStep = processor.pattern.gateStep (dragLayer, stepAt (point.x, gateSteps (dragLayer)));
+                if (firstEvent)
+                    paintOn = ! gateStep.load();
+                gateStep = paintOn;
+                break;
+            }
+            if (isCustom (dragLayer))
+                return; // pianorulle: stegen redigeras inte här
+
             const auto step = stepAt (point.x, bassSteps (dragLayer));
             const auto tps = ticksPerStep (dragLayer);
             if (firstEvent)
@@ -444,6 +566,8 @@ void StepSequencer::editAt (juce::Point<int> point, bool firstEvent)
         }
         case Target::lane:
         {
+            if (mode == Mode::gate || isCustom (selectedLayer))
+                return;
             auto* note = noteAt (selectedLayer, stepAt (point.x, bassSteps (selectedLayer)));
             if (note == nullptr)
                 return; // ett steg utan ton har inget att redigera
@@ -490,6 +614,22 @@ void StepSequencer::mouseDown (const juce::MouseEvent& event)
     if (dragTarget == Target::label || dragTarget == Target::bass)
         selectLayer (dragLayer);
     if (dragTarget == Target::label)
+    {
+        dragTarget = Target::none;
+        return;
+    }
+
+    // Ett lager med pianorulle: klicka för att öppna den, högerklicka för att öppna eller ta bort den.
+    if (dragTarget == Target::bass && mode == Mode::notes && isCustom (dragLayer))
+    {
+        dragTarget = Target::none;
+        if (event.mods.isPopupMenu())
+            showCustomMenu (dragLayer);
+        else if (onOpenPianoRoll)
+            onOpenPianoRoll (dragLayer);
+        return;
+    }
+    if (dragTarget == Target::lane && (mode == Mode::gate || isCustom (selectedLayer)))
     {
         dragTarget = Target::none;
         return;

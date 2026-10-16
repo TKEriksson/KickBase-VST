@@ -40,11 +40,8 @@ int Pattern::ticksToNextNote (int layer, int tick, int patternTicks, int limit) 
 
 double Pattern::holdTicks (int layer, int tick, int patternTicks, float gateScale) const
 {
-    const auto& n = note (layer, tick);
-    const auto length = (double) n.length.load();
-    if (n.slide.load())
-        return std::max (length, (double) ticksToNextNote (layer, tick, patternTicks, 2 * ticksPerQuarter)) * slideOverlap;
-    return std::max (1.0, length * (double) gateScale);
+    juce::ignoreUnused (patternTicks);
+    return std::max (1.0, (double) note (layer, tick).length.load() * (double) gateScale);
 }
 
 Pattern::Note& Pattern::addNote (int layer, int tick, int length, int pitch, float velocity, bool slide)
@@ -58,8 +55,15 @@ Pattern::Note& Pattern::addNote (int layer, int tick, int length, int pitch, flo
     return n;
 }
 
+void Pattern::setGate (int layer, bool open)
+{
+    for (auto& step : gate[(size_t) juce::jlimit (0, numLayers - 1, layer)])
+        step = open;
+}
+
 void Pattern::clearNotes (int layer)
 {
+    custom[(size_t) layer] = false;
     for (auto& n : notes[(size_t) layer])
     {
         n.on = false;
@@ -78,6 +82,8 @@ BassGrid Pattern::applyTemplate (PatternTemplate t)
 
     for (int layer = 1; layer < numLayers; ++layer)
         clearNotes (layer);
+    for (int layer = 0; layer < numLayers; ++layer)
+        setGate (layer, true);
     return applyLayerTemplate (0, t);
 }
 
@@ -147,7 +153,17 @@ juce::ValueTree Pattern::toValueTree() const
         juce::ValueTree child ("Notes");
         child.setProperty ("layer", layer, nullptr);
         child.setProperty ("notes", entries.joinIntoString (";"), nullptr);
+        child.setProperty ("custom", isCustom (layer), nullptr);
         tree.appendChild (child, nullptr);
+
+        // GATE-stegen: en siffra per steg (1 = öppet).
+        juce::String steps;
+        for (int i = 0; i < maxGateSteps; ++i)
+            steps << (isGateStepOn (layer, i) ? '1' : '0');
+        juce::ValueTree gateChild ("Gate");
+        gateChild.setProperty ("layer", layer, nullptr);
+        gateChild.setProperty ("steps", steps, nullptr);
+        tree.appendChild (gateChild, nullptr);
     }
 
     return tree;
@@ -188,9 +204,16 @@ void Pattern::fromValueTree (const juce::ValueTree& tree)
         if (! juce::isPositiveAndBelow (layer, numLayers))
             continue;
 
-        if (child.hasType ("Notes"))
+        if (child.hasType ("Gate"))
+        {
+            const auto steps = child["steps"].toString();
+            for (int i = 0; i < maxGateSteps && i < steps.length(); ++i)
+                gateStep (layer, i) = steps[i] != '0';
+        }
+        else if (child.hasType ("Notes"))
         {
             clearOnce (layer);
+            setCustom (layer, (bool) child["custom"]);
             for (const auto& entry : split (child["notes"], ";"))
             {
                 const auto parts = juce::StringArray::fromTokens (entry, "/", {});

@@ -3,7 +3,6 @@
 
 namespace
 {
-    constexpr double slideOverlap = 1.05;
 
     juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     {
@@ -204,6 +203,9 @@ void FxProcessor::handleEvent (const StepEvent& event)
     }
 
     const auto& note = pattern.note (0, event.step);
+    if (note.slide.load())
+        return; // en glide-ton styr bara tonhöjd, och här kommer tonhöjden från den andra synthen
+
     const auto samplesPerTick = clock.getSamplesPerQuarter() / Pattern::ticksPerQuarter;
 
     // Slide håller gaten öppen in i nästa ton, så att de flyter ihop.

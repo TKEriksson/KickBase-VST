@@ -108,9 +108,12 @@ private:
     juce::Label help;
 };
 
-// Mönstret (en egen flik): längd, presets, stegsekvenseraren med en rad per baslager, och
-// det valda lagrets rutnät, gate och mallar.
-class PatternModule : public juce::Component
+// Mönstret (en egen flik). Två lägen per lager, som man väljer med PATTERN | GATE:
+// - PATTERN: tonerna. Stegen är en enkel pianorulle (VEL, LENGTH och PITCH per ton i en lane); PIANO ROLL är den avancerade
+//   varianten av samma toner, och ett lager som redigerats där visas som en miniatyr i stället för stegknappar.
+// - GATE: en egen av/på-rytm som hackar lagrets ljud, med eget rutnät (GRID), djup (DEPTH) och mjukhet (SMOOTH). Den ändrar
+//   inte tonerna.
+class PatternModule : public juce::Component, private juce::Timer
 {
 public:
     PatternModule (PluginBase& processor, bool instrument);
@@ -118,10 +121,14 @@ public:
     void paint (juce::Graphics&) override;
 
 private:
+    void timerCallback() override;
     void selectLane (StepSequencer::Lane lane);
     void showLayer (int layer);
+    void showMode (StepSequencer::Mode newMode);
     void showFillMenu();
+    void showGateFillMenu();
     void showPianoRoll (bool open);
+    void updateVisibility();
 
     PluginBase& processor;
     const bool instrument;
@@ -131,10 +138,17 @@ private:
     std::vector<std::pair<std::unique_ptr<juce::TextButton>, StepSequencer::Lane>> laneButtons;
     StepSequencer sequencer;
     PianoRoll pianoRoll;
+    juce::TextButton patternTab { "PATTERN" }, gateTab { "GATE" };
     juce::TextButton pianoButton { "PIANO ROLL" };
     std::vector<std::unique_ptr<juce::TextButton>> layerButtons; // BASS 1-3: vilket lager som redigeras
-    std::vector<std::unique_ptr<ChoiceComponent>> grids; // ett per lager, bara det valda syns
-    std::vector<std::unique_ptr<KnobComponent>> gates, slides;
-    juce::TextButton fillButton { "FILL..." };
+
+    // Per lager (bara det valda syns): notrutnätet och tonlängden (PATTERN), och GATE: på/av, rutnät, djup och mjukhet.
+    std::vector<std::unique_ptr<ChoiceComponent>> grids, gateGrids;
+    std::vector<std::unique_ptr<KnobComponent>> lengths, gateDepths, gateSmooths;
+    std::vector<std::unique_ptr<juce::TextButton>> gateOnButtons;
+    std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment>> gateOnAttachments;
+    juce::TextButton fillButton { "FILL..." }, gateFillButton { "FILL..." };
+    StepSequencer::Mode mode = StepSequencer::Mode::notes;
+    juce::Rectangle<int> headingBounds;
     int shownLayer = 0;
 };

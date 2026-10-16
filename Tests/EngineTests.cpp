@@ -124,7 +124,7 @@ namespace
         p.releaseMs = 10.0f;
         bass.setParams (p);
 
-        bass.noteOn (7, 1.0f, (int) (rate * 0.2), false); // en kvint upp: G2 = 98 Hz
+        bass.noteOn (7, 1.0f, (int) (rate * 0.2)); // en kvint upp: G2 = 98 Hz
         std::vector<float> audio ((size_t) (rate * 0.3));
         for (auto& s : audio)
             s = bass.nextSample();
@@ -135,9 +135,9 @@ namespace
         check (! bass.isActive(), "tyst efter release");
     }
 
-    void testBassSlide()
+    void testBassGlide()
     {
-        std::puts ("Bas: slide glider till nästa ton utan nytt anslag");
+        std::puts ("Bas: en glide-ton glider den klingande tonen utan nytt anslag och blir kvar");
         BassSynth bass;
         bass.prepare (rate);
 
@@ -148,31 +148,26 @@ namespace
         p.cutoffHz = 20000.0f;
         p.envAmount = 0.0f;
         p.drive = 0.0f;
-        p.glideMs = 20.0f;
         p.sustain = 1.0f;
         bass.setParams (p);
 
-        const auto stepSamples = (int) (rate * 0.1);
-        bass.noteOn (0, 1.0f, (int) (stepSamples * 1.05), true);
+        check (! bass.glideTo (12, 1000), "glide utan klingande ton gör ingenting");
 
-        std::vector<float> audio ((size_t) stepSamples * 2);
+        const auto step = (int) (rate * 0.1);
+        bass.noteOn (0, 1.0f, step * 5); // en lång ton
+        std::vector<float> audio ((size_t) step * 4);
         for (size_t i = 0; i < audio.size(); ++i)
         {
-            if (i == (size_t) stepSamples)
-            {
-                check (bass.isActive(), "första tonen klingar när nästa steg kommer");
-                bass.noteOn (12, 1.0f, stepSamples / 2, false); // en oktav upp
-            }
+            if (i == (size_t) step)
+                check (bass.glideTo (12, step / 2), "glide-tonen hittar den klingande tonen"); // en oktav upp på en halv step
             audio[i] = bass.nextSample();
         }
 
-        const auto before = estimateFrequency (audio, (size_t) (stepSamples * 0.3), (size_t) (stepSamples * 0.95));
-        const auto after = estimateFrequency (audio, (size_t) (stepSamples * 1.3), (size_t) (stepSamples * 1.45));
-        check (std::abs (before - 55.0) < 1.0, "frekvens före glid", before);
-        check (std::abs (after - 110.0) < 2.0, "frekvens efter glid", after);
-
-        // Legato: ingen ny attack, så nivån får inte dyka vid övergången.
-        check (peakOf (audio, (size_t) stepSamples, (size_t) stepSamples + 2000) > 0.5f, "ingen dipp vid glidet");
+        const auto before = estimateFrequency (audio, (size_t) (step * 0.3), (size_t) (step * 0.95));
+        const auto after = estimateFrequency (audio, (size_t) (step * 2.0), (size_t) (step * 3.5));
+        check (std::abs (before - 55.0) < 1.0, "frekvens före glidet", before);
+        check (std::abs (after - 110.0) < 2.0, "tonen blir kvar på målet efter glidet", after);
+        check (peakOf (audio, (size_t) step, (size_t) step + 2000) > 0.5f, "ingen dipp: inget nytt anslag");
     }
 
     void testBassRetriggerWithoutClick()
@@ -194,7 +189,7 @@ namespace
         for (int i = 0; i < step * 3; ++i)
         {
             if (i % step == 0)
-                bass.noteOn (i == step ? 5 : 0, 1.0f, step * 2, false);
+                bass.noteOn (i == step ? 5 : 0, 1.0f, step * 2);
             const auto s = bass.nextSample();
             if (i > 0)
                 maxJump = std::max (maxJump, std::abs (s - previous));
@@ -274,15 +269,11 @@ namespace
         check (loaded.note (0, 4 * triplet).on, "alla toner i lagret sparas");
         check (loaded.note (1, 6).on && loaded.note (1, 6).pitch == 7 && ! loaded.note (0, 6).on, "lagren sparas var för sig");
 
-        // Slide håller tonen in i nästa ton, annars gäller längden (skalad med GATE).
+        // Tonens längd skalas med lagrets LENGTH (en glide-ton håller inte kvar något: den glider den klingande tonen).
         Pattern held;
         held.applyTemplate (PatternTemplate::clear);
         held.addNote (0, 0, 10, 0, 0.8f, true);
-        held.addNote (0, 48, 10);
-        const auto hold = held.holdTicks (0, 0, Pattern::ticksPerBar, 1.0f);
-        check (std::abs (hold - 48.0 * Pattern::slideOverlap) < 1.0e-6, "slide hålls till nästa ton", hold);
-        held.note (0, 0).slide = false;
-        check (std::abs (held.holdTicks (0, 0, Pattern::ticksPerBar, 0.5f) - 5.0) < 1.0e-6, "gate skalar längden", held.holdTicks (0, 0, Pattern::ticksPerBar, 0.5f));
+        check (std::abs (held.holdTicks (0, 0, Pattern::ticksPerBar, 0.5f) - 5.0) < 1.0e-6, "längden skalas", held.holdTicks (0, 0, Pattern::ticksPerBar, 0.5f));
 
         // Version 1 hade rutnäten i ordningen 1/16, 1/8 T, 1/16 T, och ett steg per rutnät (gate som andel).
         juce::ValueTree old (Pattern::treeType);
@@ -360,16 +351,40 @@ namespace
     }
 }
 
+namespace
+{
+    void testGateAndPianoRollFlag()
+    {
+        std::puts ("Mönster: gate-steg och pianorullsmarkering sparas per lager");
+        Pattern pattern;
+        pattern.applyTemplate (PatternTemplate::rolling);
+        check (pattern.isGateStepOn (0, 5) && ! pattern.isCustom (0), "gaten är öppen och lagret är ett stegmönster som standard");
+
+        pattern.gateStep (1, 7) = false;
+        pattern.addNote (2, 0, 24, 5);
+        pattern.setCustom (2, true);
+
+        Pattern loaded;
+        loaded.fromValueTree (pattern.toValueTree());
+        check (! loaded.isGateStepOn (1, 7) && loaded.isGateStepOn (1, 6) && loaded.isGateStepOn (0, 7), "gate-stegen sparas per lager");
+        check (loaded.isCustom (2) && ! loaded.isCustom (0) && ! loaded.isCustom (1), "pianorullsmarkeringen sparas per lager");
+
+        pattern.clearNotes (2);
+        check (! pattern.isCustom (2), "när lagret rensas nollställs pianorullsmarkeringen");
+    }
+}
+
 void runEngineTests()
 {
     testKeyMapping();
     testKickLandsOnKey();
     testKickRetriggerFades();
     testBassPitchAndRelease();
-    testBassSlide();
+    testBassGlide();
     testBassRetriggerWithoutClick();
     testDuckerIsSmooth();
     testGate();
     testPatternTemplatesAndSaving();
     testUserWavetable();
+    testGateAndPianoRollFlag();
 }

@@ -19,7 +19,9 @@ One plugin: **kick** + **3 bass layers** + sidechain + **5 FX channels (A–E)**
 
 - **Key**: the incoming MIDI note sets the key and *also the bass octave*. MIDI note 52 (E4) gives bass root E1 = 41 Hz and kick tail near E1; note 60 (C5 in FL) gives C2 = 65 Hz. Psytrance bass roots are 41–49 Hz (E1–G1), so the usual keys are MIDI 52–55. `render_preview` takes `note` (default 52).
 - **Kick tail**: `kickKeyFollow` = Follow puts the tail on the key note within A#0..A1 (29–55 Hz), `kickTune` ±12 semitones moves it. Fixed = C1 + tune.
-- **Pattern**: the kick plays on a 16-step-per-bar grid. Each bass layer has free-timed notes (96 ticks per quarter note, 384 per bar) with pitch ±24 semitones from the key, velocity, length and slide. Pattern length 1, 2 or 4 bars (`patternBars`); Note End (`noteEnd`) Cut/Finish bar/Finish pattern is what happens when the held key ends.
+- **Pattern**: the kick plays on a 16-step-per-bar grid. Each bass layer has free-timed notes (96 ticks per quarter note, 384 per bar) with pitch ±24 semitones from the key, velocity, length and an optional **glide** flag. A glide note works like an FL Studio slide note: it plays no new note, it glides the note that is sounding to its own pitch during its own length, and the pitch stays there until that note ends (a 2-bar note with a quarter-long glide note an octave up half-way through: it rises an octave over that quarter and stays up).
+- **Gate**: separate from the notes. Each bass layer can have a GATE: an on/off rhythm with its own grid (`bassNGateGrid`), depth (`bassNGateDepth`) and edge smoothing (`bassNGateSmooth`) that chops the layer's sound while `bassNGateOn` is true. It does not change the notes; notes can sound outside the gate. Use `set_gate`.
+- **Piano roll layers**: a layer whose notes were edited in the piano roll (or written with `notes`, pitches or glide) is shown as a small piano roll in the plugin instead of step buttons, as in FL Studio. Pattern length 1, 2 or 4 bars (`patternBars`); Note End (`noteEnd`) Cut/Finish bar/Finish pattern is what happens when the held key ends.
 - **Signal**: layer → ducked by the kick (per-layer depth) → optionally through an FX channel (`bassNFxChannel`, `bassNFxAmount`) → mixer strip (gain, pan, SC on/off, MAX = through the maximizer or not) → master (width, mono-below, drive, clip, limiter).
 - Rendering is deterministic (seeded randomness): the same sound renders bit-identically.
 
@@ -28,12 +30,13 @@ One plugin: **kick** + **3 bass layers** + sidechain + **5 FX channels (A–E)**
 Values are in the parameter's own unit: Hz, ms, dB, semitones, octaves; percentages are 0..1. Choice parameters take the option name or index; switches true/false. `list_parameters` (with `prefix`) tells you id, range, default, current value.
 
 - **kick**: `kickOn`, `kickKeyFollow`, `kickTune` (st), `kickPitchAmount` (scales the pitch envelope), `kickLength` (stretches both envelopes), `kickPhase`, `kickHarmonics` + `kickHarmDecay` (ms) + `kickHarmTilt`, `kickClick` (level) + `kickClickLength` (ms) + `kickClickTone` (Hz), `kickClipMode` (Soft/Hard/Tube), `kickDrive`, `kickHighCut` (Hz), `kickLevel`, `kickFxChannel` (None, A–E), `kickFxAmount`.
-- **bass layer N** (`bass1…bass3`): `bassNOn`, `bassNLevel`, `bassNGate` (scales note lengths), `bassNDuck` (sidechain depth), `bassNGrid`, `bassNFxChannel`, `bassNFxAmount`, `bassNOctave` (−2..1), `bassNTune`.
+- **bass layer N** (`bass1…bass3`): `bassNOn`, `bassNLevel`, `bassNGate` (LENGTH: scales note lengths), `bassNDuck` (sidechain depth), `bassNGrid`, `bassNFxChannel`, `bassNFxAmount`, `bassNOctave` (−2..1), `bassNTune`.
   - Oscillators `bassNA…` / `bassNB…`: `Table`, `Pos` (position in the wavetable), `Level`, `Semi`, `Fine` (cents), `Unison` (1–7), `Detune` (cents), `Blend`, `Warp` (Off, Sync, Bend, PWM, Mirror, FM (B) – FM only on A, OSC B modulates A even when its level is 0), `WarpAmount`, `Phase`, `Random` (random start phase; 0 = identical attack every note), `Pan`, `Stereo` (unison spread).
   - Tables (index): Basic, PWM, Sync, Harmonics, FM, Growl, Fold, Formant, Digital, Phase Dist, **Classic Sine (10), Classic Triangle (11), Classic Saw (12), Classic Square (13)**, User WAV. Classic tables ignore `Pos`.
   - `bassNWarpEnv` (extra warp on A at the start of each note), `bassNSub` + `SubOctave` (sine sub, mono), `bassNNoise`.
   - Filter: `FilterType` (LP 24, LP 12, Band, High), `KeyTrack`, `Cutoff` (Hz), `Resonance`, `EnvAmount` (octaves the envelope opens the filter), `EnvDecay` (ms), `VelToEnv` (accent: velocity opens the filter more).
-  - Amp: `Attack`, `Decay`, `Sustain`, `Release` (ms), `Glide` (ms, used by slide notes), `Drive`.
+  - Amp: `Attack`, `Decay`, `Sustain`, `Release` (ms), `Drive`. (`Glide` is no longer used: a glide note glides during its own length.)
+  - Gate: `GateOn`, `GateGrid`, `GateDepth` (0..1), `GateSmooth` (ms).
 - **sidechain**: `scMode` (Kick envelope | Curve), `scLength` (Kick, 1/16, 1/8, 3/16, 1/4, 1/2), plus `bassNDuck` per layer and `fxXDuck` per FX channel. Use `set_sidechain_curve` for curve points.
 - **FX channels** `fxA…fxE`: `fxALevel` (0..1.5), `fxADuck`, EQ (`fxAEqHp`, `fxAEqLp`, `fxAEq1F/1G/1Q … 4F/4G/4Q`), compressor (`fxACompThr/Ratio/Att/Rel/Makeup`; ratio 1 = off). Slots with effects: `set_effect`.
 - **mixer**: `mix<Kick|Bass1|Bass2|Bass3|FxA…FxE><Gain|Pan|Duck|Max>` (Gain in dB −60..+12; Duck = sidechain applies; Max = goes through the maximizer).
@@ -53,12 +56,12 @@ Values are in the parameter's own unit: Hz, ms, dB, semitones, octaves; percenta
 Bass layer: `bars` = one text per bar (repeated to fill four bars), `grid` = step resolution ('1/16', '1/8', '1/8 T', '1/16 T', '1/32', '1/64', '1/4'). Words separated by spaces or `|`:
 - `.` rest
 - `g` ghost (42 %), `m` soft (62 %), `x` normal (80 %), `X` accent (100 %) velocity
-- then optionally pitch (`+7`, `-5` semitones from the key), `~` slide into the next note, `:50` length as percent of the step
+- then optionally pitch (`+7`, `-5` semitones from the key), `~` makes it a **glide note** (no new note: it glides the sounding note to this pitch during its own length), `:50` length as percent of the step
 
 Examples (grid 1/16, 16 words per bar): classic rolling `". m x x . m x x . m x x . m x x"`; with a melodic turn in beat 4: `". m x x . m x x . m x x . m+3 x+7 X+12"`; hypnotic gaps `". m . x . m x . . m . x . m x ."`. Triplet K-B-B: grid `1/8 T`, `". x x . x x . x x . x x"`. Offbeat: grid `1/8`, `". x . x . x . x"`.
 Or exact `notes`: `[{"tick":0,"length":24,"pitch":0,"velocity":0.8,"slide":false}]`.
 Kick: layer `"kick"`, `bars` of 16 characters `x`/`.`: `["x...x...x...x..."]`.
-Slide notes are held into the next note and glide (`bassNGlide` ms); give the note after a `~` the target pitch.
+A glide note needs a sounding note to glide: write a long note, then a short `~` note later inside it, e.g. a 1/16 grid with a one-bar note and `~` words with pitch: use `notes` for exact control (the long note `{"tick":0,"length":384}` and the glide `{"tick":192,"length":96,"pitch":12,"slide":true}`). Gate steps: `set_gate` with `bars` of `x` (open) and `.` (closed).
 
 ## 6. Effects
 
@@ -75,6 +78,7 @@ Also check yourself: the first bass note after a kick is a little softer (rollin
 ## 8. Pitfalls
 
 - A pattern note beyond the pattern length (`patternBars`) is not played but is kept.
+- Do not confuse note LENGTH (`bassNGate`, how long notes sound) with the GATE (an on/off chopping rhythm). A glide note is not a normal note: with nothing sounding it plays as a normal note.
 - `bassNLevel` is the layer's own volume; the mixer gain (`mixBass1Gain`) comes after it. Use one of them consistently.
 - Presets `section=Bass` store a layer's sound (not its on/off, gate, duck, grid, sends); `Full` stores everything. User presets are plain files in `Documents\Kickbase\Presets\<Section>`.
 - FX knob parameters (`fxA1P1…`) are normalized 0..1 and depend on the slot's type: always use `set_effect`.

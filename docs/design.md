@@ -1,12 +1,16 @@
-# MyOwnFruit – design
+# Kickbase – design
 
 En VST3-synth för kick och rullande bas i psytrance. Kick och bas byggs i **samma plugin**
 så att de kan låta perfekt ihop: exakt ducking, gemensam stämning och fasjustering ner på
 sample-nivå, något som separata plugins inte kan göra.
 
-Status: steg 1 provat i FL Studio. Steg 2–6 byggda natten 14–15 okt 2026 (gren
-`natt-kick-och-bas`): automatiskt testade, renderade offline och validerade med pluginval,
-men **inte provade i FL Studio än**.
+Produktnamn: **Kickbase** (instrument) och **Kickbase FX** (effekt), tillverkare TKDEV.
+Kodnamnet i repot och i verktygen är fortfarande MyOwnFruit.
+
+Status (16 okt 2026, gren `natt-kick-och-bas`): allt nedan finns och är renderat offline och
+testat med enhetstesterna; plugin:et har körts i FL Studio (utseende och laddning), men
+pianorullen, mixern och de senaste effekterna är **inte provade i FL Studio än**. Pluginval
+ska köras om innan en release.
 
 ## Grundmodell
 
@@ -24,30 +28,49 @@ men **inte provade i FL Studio än**.
 
 ## Kick
 
-- **Stegsekvenser** som FL Studios Channel Rack: 16 steg per takt, klicka ut slagen.
-- **Syntetiserad kropp:** sinus med pitch-envelope (startfrekvens, kurva, tid) som landar
-  på tonarten, plus ett andra långsamt svep (glide); amplitud-envelope; drive. KEY = Follow
-  stämmer svansen efter tonen (A#0-A1), Fixed håller den på C1 + TUNE.
+- **Stegsekvens** som FL Studios Channel Rack: 16 steg per takt, klicka ut slagen.
+- **Syntetiserad kropp** (som Kick 3): en sinus vars pitch och volym följer **fria envelopes**
+  man ritar i en vågformsvy (noder med spänning; pitch upp till 0,5 s, volym upp till 2 s), plus
+  övertoner, klick och drive. KEY = Follow stämmer svansen efter tonen (A#0-A1), Fixed håller
+  den på C1 + TUNE.
 - **Klicklager:** syntetiserat klick, eller en inladdad sampling (WAV/AIFF/FLAC, dra och
   släpp) som spelas över de första millisekunderna.
 
 ## Bas
 
-- **Stegsekvenser** med valbar upplösning per mönster: 1/16 (rullande, galopp), 1/8T
-  (K-B-B per slag) eller 1/16T. Varje rutnät har sitt eget sparade mönster.
-- **Per steg:** på/av, tonhöjd relativt tonarten (t.ex. +12), slide till nästa steg
-  (303-stil), gate-längd, velocity.
-- **Ljud:** två oscillatorer med steglös form (sinus → triangel → såg → fyrkant, pulsbredd),
-  sub (samma oktav eller en ner), brus och FM (oscillator 2 fasmodulerar oscillator 1, med en
-  extra mängd som följer filter-envelopen) → filter (LP24/LP12/band/high, keytrack) där varje
-  basslag har en egen kort filter-envelope (det plockiga psy-ljudet) → drive. ADSR och glide.
+- **Tre baslager**, vart och ett med eget mönster, eget ljud, egen ducking och egen effektkanal.
+- **Toner** ligger fritt i tiden (96 ticks per fjärdedel): ett lager kan ha 16-delar, ett annat
+  8-delar och ett tredje 64-delar. Stegsekvensen (rutnät 1/4 ... 1/64 och trioler) och
+  **pianorullen** (som FL Studios: dra, förläng, ±24 halvtoner från tonarten, slide-triangel,
+  velocity-remsa) redigerar samma toner. Pianorullens snap är lagrets GRID.
+- **Per ton:** start, längd, tonhöjd, velocity och en glide-flagga: en glide-ton (som en slide-ton i FL Studio) slår inte
+  an utan glider tonen som klingar till sin tonhöjd under sin egen längd.
+- **GATE:** per lager en egen av/på-rytm (eget rutnät, djup, mjukhet) som hackar ljudet, oberoende av tonerna.
+- **Ljud:** två oscillatorer per lager. Wavetables (Basic, PWM, Sync, Harmonics, FM, Growl, ...)
+  eller klassiska vågformer med ett klick (SIN/TRI/SAW/SQR), med warp (sync, bend, PWM, mirror,
+  FM), unison (≤ 7), detune, blend, fas, slumpfas, **pan och stereospridning per oscillator** →
+  sub (samma oktav eller en ner) och brus → filter (LP24/LP12/band/high, keytrack) med en egen kort
+  filter-envelope per ton (det plockiga psy-ljudet) → drive. ADSR och glide. Lagren är stereo.
+- **LFO:er:** tre, tempo-synkade. Dra en LFO på valfri ratt (Massive-stil); ringen utanför
+  ratten visar och styr mängden. Högerklick på en ratt ger DAW:ens meny (automation m.m.).
 - **Lärdom från referenslåtarna:** riktiga psy-basar är mörkare än man tror (övertonerna från
   den femte och uppåt ligger 20-30 dB under grundtonen), tonerna fyller ofta hela steget och
   formas av amp-envelopen, och kickens svans ligger ofta 2-3 halvtoner över basens grundton.
 
 ## Kick + bas tillsammans
 
-- Ducking av basen under kicken, sample-exakt, utan extern sidechain.
+- Ducking av basen under kicken, sample-exakt, utan extern sidechain. Varje lager har ett eget
+  djup (DUCK); kurvan är kickens envelope eller en egen ritad kurva. SIDECHAIN-fliken visar
+  varje lagers ducking i sin färg, och en ring i DUCK-ratten visar hur mycket som duckas just nu.
+- **FX-kanaler A–E:** kick och lager skickar (kanal + mängd, uppe i hörnet på respektive flik) till
+  en kanal med fem platser (13 effekttyper), en alltid-närvarande EQ (parametrisk, med spektrum
+  av ljudet som kommer in) och kompressor (med vågformsvy), nivå och en egen duckning under kicken.
+- **MASTER-fliken:** en mixer med gain, pan och dB-mätare för varje källa (kick, lager 1-3,
+  FX A-E) samt master, och brytarna SC (sidechain på/av) och MAX (genom maximizern eller förbi
+  den). Maximizern har drive, clip och en limiter med lookahead; SOUNDSTAGE visar spektrum,
+  stereobild (vektorskop), bredd, mono-under-frekvens och en stereoförstärkare.
+- **Rendering är deterministisk:** slumpen (brus, slumpfas) är seedad, så samma inställningar
+  ger bit-identisk ljud offline (viktigt för analysverktygen och en framtida renderloop).
 - Kickens svans och basen stäms mot samma tonart.
 - Fasjustering där kick och bas möts: basens oscillator startar i samma fas varje slag.
 - Separata utgångar (kick / bas) så de kan mixas på egna kanaler. Huvudutgången har alltid
@@ -87,7 +110,9 @@ egen identitet, inga lånade logotyper eller grafik.
 
 ## Presets
 
-Fabrikspresets (ljud + mönster) finns i plugin:ets egen meny. De exponeras medvetet **inte**
+Fabrikspresets togs bort medvetet när synten byggdes om (bara Init/Default finns); nya byggs
+med `fitbeat` när synten är klar. Egna presets sparas som filer. Delarna har var sin presetmeny.
+Menyn finns i plugin:ets egen meny. De exponeras medvetet **inte**
 som VST3-"programs": en värd kan sätta program-parametern när ett projekt laddas och skulle
 då skriva över det sparade ljudet. Mönsterlängden behålls när ett preset laddas.
 
@@ -120,5 +145,10 @@ Varje steg ska gå att höra och testa för sig.
 10. ✅ **LFO:er** (2 st, tempo-synkade, två mål var).
 11. ✅ **Bassynt v2** (två oscillatorer, FM, filtertyper), kickens glide, analysverktyg och
     presets anpassade mot referenslåtar (`fitbeat`), WAV-export.
-12. **Nästa:** effektplatser (upp till 15, valfri effekt per plats, samma effekt flera gånger)
-    och fler effekttyper; prova allt i FL Studio och finjustera efter öra.
+12. ✅ **Kickbase:** tre baslager, wavetables, Kick 3-lik kick, effektkanaler A–E med EQ och
+    kompressor, brushed-metal-tema, live-scopes, mixer, SOUNDSTAGE, pianorulle, stereo per oscillator,
+    Echo efter FL:s Fruity Delay 2, seedad slump.
+13. **Nästa:** WAV-import till wavetables (Serum-stil) och ett tydligare wavetable-gränssnitt;
+    nya fabrikspresets med `fitbeat`; pluginval och Release-bygge; prova allt i FL Studio och
+    finjustera efter öra. Därefter ljuddesign-skill, renderloop och AI-styrning
+    (se `docs/sound-design-roadmap.md`).

@@ -11,7 +11,9 @@
 // - Klicka i tomt: ny ton (dra för att flytta den). Dra i en tons högerkant: längd.
 // - Skift + klick på en ton: lägg till/ta bort i markeringen. Skift + dra i tomt: markera med en ruta.
 //   Ctrl + A markerar alla. Markerade toner flyttas, förlängs och tas bort tillsammans.
-// - Högerklicka på en ton: ta bort. Dubbelklicka på en ton: slide på/av (triangeln i hörnet).
+// - Högerklicka på en ton: ta bort. GLIDE-knappen: de toner man ritar blir glide-toner (som slide-toner i FL Studio):
+//   en glide-ton slår inte an utan glider tonen som klingar till sin tonhöjd under sin egen längd, och tonen blir kvar
+//   där tills den slutar. Dubbelklicka på en ton: glide på/av för den.
 // - Piltangenter flyttar de markerade (upp/ner = halvton, skift = oktav, vänster/höger = ett snap-steg).
 // - Skroll: tonhöjd. Ctrl + skroll: zooma i tid. Shift + skroll: flytta i tid.
 // - Verktygsraden: SNAP av/på, rutnätet (snap) 1/4 ... 1/64, radhöjd, markera alla och ta bort.
@@ -22,6 +24,9 @@ public:
     PianoRoll (PluginBase& processor, std::vector<juce::Colour> layerColours);
 
     void setLayer (int newLayer);
+
+    // Anropas när pianorullens toner tagits bort (lagret går tillbaka till stegmönstret).
+    std::function<void()> onDeleted;
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -79,6 +84,8 @@ private:
     void deleteSelected();
     void moveSelected (int deltaTicks, int deltaPitch);
     void changeRowHeight (float delta);
+    void commit(); // markerar lagret som pianorulle och talar om att mönstret ändrats
+    int pitchBefore (int tick) const;
     void attachGridBox();
 
     PluginBase& processor;
@@ -88,7 +95,8 @@ private:
     juce::Rectangle<float> toolbarArea, keyArea, rulerArea, gridArea, velocityArea;
 
     // Verktygsraden.
-    juce::TextButton snapButton { "SNAP" }, smallerButton { "-" }, biggerButton { "+" }, allButton { "ALL" }, deleteButton { "DEL" };
+    juce::TextButton snapButton { "SNAP" }, smallerButton { "-" }, biggerButton { "+" }, allButton { "ALL" }, deleteButton { "DEL" },
+                     glideButton { "GLIDE" };
     juce::ComboBox gridBox;
     juce::ScrollBar hBar { false }, vBar { true }; // tid och tonhöjd
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> gridAttachment;

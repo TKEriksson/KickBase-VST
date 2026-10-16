@@ -115,6 +115,7 @@ public:
     std::atomic<int> patternVersion { 0 }; // ökas när mönstret ändras, så att gränssnittet ritar om
     int selectedTab = 0;                   // gränssnittets valda flikar (nedre och övre panelen), så att de
     int selectedSynthTab = 0;              // finns kvar när fönstret öppnas igen
+    int selectedPatternMode = 0;           // PATTERN-flikens läge: 0 PATTERN (toner), 1 GATE
     bool pianoRollOpen = false;            // PATTERN-flikens vy: stegen eller pianorullen
     int selectedFxView = 2;                // EFFECTS-sidans vy: 0 EQ, 1 COMP, 2 FX
 

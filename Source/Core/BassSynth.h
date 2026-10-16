@@ -68,9 +68,12 @@ public:
     void reset();
     void setParams (const BassParams& newParams) { params = newParams; }
 
-    // Spelar en ton `semitones` från grundtonen i `gateSamples` samples. Med slide hålls tonen
-    // kvar in i nästa steg, som då glider dit i stället för att slå an på nytt.
-    void noteOn (int semitones, float velocity, int gateSamples, bool slide);
+    // Spelar en ton `semitones` från grundtonen i `gateSamples` samples.
+    void noteOn (int semitones, float velocity, int gateSamples);
+
+    // En glide-ton (som en "slide note" i FL Studio): ingen ny ton slås an, utan den som klingar glider till
+    // `semitones` på `samples` samples och blir kvar där tills den slutar. Ger false om ingenting klingar.
+    bool glideTo (int semitones, int samples);
     void release();
 
     // Basen i två delar, så att effekter kan läggas före eller efter gaten:
@@ -117,12 +120,12 @@ private:
     Oscillator oscA, oscB;
     double subPhase = 0.0;
     double logFrequency = 0.0, targetLogFrequency = 0.0; // log2(Hz), så att glide låter jämnt
-    bool gliding = false;
+    int glideSamplesLeft = 0;
+    double glideStep = 0.0;  // ändring i log-frekvens per sample under ett glide
 
     Stage stage = Stage::idle;
     float ampLevel = 0.0f;
     int gateRemaining = 0;
-    bool slideHeld = false;  // nuvarande ton har slide och väntar på nästa steg
     float velocity = 1.0f;
     double noteTime = 0.0;   // sekunder sedan senaste anslag (för filter-envelopen)
 

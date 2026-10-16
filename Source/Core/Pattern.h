@@ -37,6 +37,7 @@ struct Pattern
     static constexpr int ticksPerQuarter = 96;
     static constexpr int ticksPerBar = ticksPerQuarter * 4;
     static constexpr int maxTicks = maxBars * ticksPerBar;
+    static constexpr int maxGateSteps = maxBars * 64; // GATE-stegen: högst 64 per takt (rutnätet 1/64)
     static constexpr float defaultGate = 1.0f; // en ny ton fyller hela steget (lagrets GATE kortar den vid behov)
 
     static int bassStepsPerBar (BassGrid grid);
@@ -51,7 +52,7 @@ struct Pattern
         std::atomic<bool> on { false };
         std::atomic<int> length { 24 };       // i ticks
         std::atomic<int> pitch { 0 };         // halvtoner från tonarten
-        std::atomic<bool> slide { false };    // glid till nästa ton (303-stil)
+        std::atomic<bool> slide { false };    // glide-ton (som i FL Studio): glider den klingande tonen hit under sin längd
         std::atomic<float> velocity { 0.8f };
     };
 
@@ -70,10 +71,25 @@ struct Pattern
     // Antal ticks till nästa ton efter `tick` (cirkulärt i ett mönster på `patternTicks`), högst `limit`.
     int ticksToNextNote (int layer, int tick, int patternTicks, int limit) const;
 
-    // Hur länge tonen hålls, i ticks. Med slide hålls den in i nästa ton (en aning över), annars gäller
-    // tonens längd skalad med lagrets GATE.
-    static constexpr double slideOverlap = 1.05;
+    // Hur länge tonen hålls, i ticks: tonens längd skalad med lagrets LENGTH (bassNGate).
     double holdTicks (int layer, int tick, int patternTicks, float gateScale) const;
+
+    // GATE: en egen av/på-rytm per lager (eget rutnät, bassNGateGrid) som hackar lagrets ljud. Öppet = true.
+    std::atomic<bool>& gateStep (int layer, int index)
+    {
+        return gate[(size_t) juce::jlimit (0, numLayers - 1, layer)][(size_t) juce::jlimit (0, maxGateSteps - 1, index)];
+    }
+    bool isGateStepOn (int layer, int index) const
+    {
+        return gate[(size_t) juce::jlimit (0, numLayers - 1, layer)][(size_t) juce::jlimit (0, maxGateSteps - 1, index)].load();
+    }
+    void setGate (int layer, bool open);
+
+    // Ett lager med "pianorulle": tonerna redigeras i pianorullen (frihand i tid, höjd och glide) och visas som en
+    // miniatyr i stället för stegknappar, som i FL Studio. Sätts när man redigerar i pianorullen, och nollställs
+    // när lagrets toner rensas eller fylls om.
+    bool isCustom (int layer) const { return custom[(size_t) juce::jlimit (0, numLayers - 1, layer)].load(); }
+    void setCustom (int layer, bool value) { custom[(size_t) juce::jlimit (0, numLayers - 1, layer)] = value; }
 
     // Lägger en ny ton (eller ändrar den som redan ligger där). Returnerar den.
     Note& addNote (int layer, int tick, int length, int pitch = 0, float velocity = 0.8f, bool slide = false);
@@ -96,4 +112,6 @@ struct Pattern
 private:
     std::array<std::atomic<bool>, maxKickSteps> kick {};
     std::array<std::array<Note, maxTicks>, numLayers> notes;
+    std::array<std::array<std::atomic<bool>, maxGateSteps>, numLayers> gate {};
+    std::array<std::atomic<bool>, numLayers> custom {};
 };

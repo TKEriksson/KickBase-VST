@@ -56,6 +56,7 @@ enum class BassField
     warpEnv, sub, subOctave, noise,
     filterType, keyTrack, cutoff, resonance, envAmount, envDecay, velToEnv,
     attack, decay, sustain, release, glide, drive,
+    gateOn, gateGrid, gateDepth, gateSmooth,                      // lagrets GATE: en egen av/på-rytm som hackar ljudet
     count
 };
 

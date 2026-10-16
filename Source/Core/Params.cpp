@@ -69,7 +69,8 @@ namespace ParamID
                                      "BTable", "BPos", "BLevel", "BSemi", "BFine", "BUnison", "BDetune", "BBlend", "BWarp", "BWarpAmount", "BPhase", "BRandom", "BPan", "BStereo",
                                      "WarpEnv", "Sub", "SubOctave", "Noise",
                                      "FilterType", "KeyTrack", "Cutoff", "Resonance", "EnvAmount", "EnvDecay", "VelToEnv",
-                                     "Attack", "Decay", "Sustain", "Release", "Glide", "Drive" };
+                                     "Attack", "Decay", "Sustain", "Release", "Glide", "Drive",
+                                     "GateOn", "GateGrid", "GateDepth", "GateSmooth" };
         static_assert (std::size (names) == (size_t) BassField::count);
         return names[(size_t) field];
     }
@@ -128,13 +129,21 @@ namespace Params
 
         layout.add (std::make_unique<AudioParameterBool> (ParameterID { id (F::on), 1 }, title + "On", true));
         layout.add (percent (id (F::level), title + "Level", defaultLevel));
-        layout.add (floatParam (id (F::gate), title + "Gate", NormalisableRange<float> (0.05f, 1.0f, 0.001f), 1.0f, formatPercent));
+        // LENGTH: skalar längden på alla toner i lagret (parameter-ID:t heter fortfarande Gate).
+        layout.add (floatParam (id (F::gate), title + "Length", NormalisableRange<float> (0.05f, 1.0f, 0.001f), 1.0f, formatPercent));
         layout.add (percent (id (F::duck), title + "Duck", 0.8f));
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::grid), 1 }, title + "Grid",
                                                             Pattern::gridNames(), (int) BassGrid::sixteenth));
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::fxChannel), 1 }, title + "FX Channel",
                                                             StringArray { "None", "A", "B", "C", "D", "E" }, 0));
         layout.add (percent (id (F::fxAmount), title + "FX Amount", 1.0f));
+
+        // GATE: en egen av/på-rytm (eget rutnät) som hackar lagrets ljud; stegen ligger i mönstret.
+        layout.add (std::make_unique<AudioParameterBool> (ParameterID { id (F::gateOn), 1 }, title + "Gate On", false));
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::gateGrid), 1 }, title + "Gate Grid",
+                                                            Pattern::gridNames(), (int) BassGrid::sixteenth));
+        layout.add (percent (id (F::gateDepth), title + "Gate Depth", 1.0f));
+        layout.add (ms (0.5f, 50.0f, 4.0f, 3.0f, id (F::gateSmooth), title + "Gate Smooth"));
     }
 
     void addBassSynthParams (Layout& layout, int layer)

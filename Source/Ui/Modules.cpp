@@ -437,7 +437,6 @@ BassModule::BassModule (PluginBase& p, int layerIn)
                                             knob (id (F::sustain), "SUSTAIN"), knob (id (F::release), "RELEASE") } },
                      { "WARP ENV", { knob (id (F::warpEnv), "AMOUNT") } },
                      { "DRIVE", { knob (id (F::drive), "AMOUNT") } },
-                     { "SLIDE", { knob (id (F::glide), "TIME") } },
                      { "LAYER OUT", { knob (id (F::level), "LEVEL"), knob (id (F::duck), "DUCK"), knob (id (F::gate), "GATE") } } });
 }
 
@@ -569,18 +568,19 @@ PatternModule::PatternModule (PluginBase& p, bool isInstrument)
         addAndMakeVisible (*noteEnd);
     }
 
+    // Lanerna för tonerna: velocity, längd och tonhöjd (glide ritas i pianorullen).
     std::vector<std::pair<juce::String, StepSequencer::Lane>> lanes { { "VEL", StepSequencer::Lane::velocity },
-                                                                      { "GATE", StepSequencer::Lane::gate } };
+                                                                      { "LENGTH", StepSequencer::Lane::gate } };
     if (instrument)
         lanes.push_back ({ "PITCH", StepSequencer::Lane::pitch });
-    lanes.push_back ({ "SLIDE", StepSequencer::Lane::slide });
 
     for (const auto& [name, lane] : lanes)
     {
         auto button = std::make_unique<juce::TextButton> (name);
         button->setClickingTogglesState (false);
         button->setColour (juce::TextButton::buttonOnColourId, Theme::pattern);
-        button->setTooltip (name + " - Shows the selected layer's " + name.toLowerCase() + " per step in the lane under the rows.");
+        button->setTooltip (name + " - Shows the selected layer's note " + name.toLowerCase() + " in the lane under the rows. "
+                            "Not available for a layer that is edited in the piano roll (set those there).");
         const auto laneCopy = lane;
         button->onClick = [this, laneCopy] { selectLane (laneCopy); };
         addAndMakeVisible (*button);
@@ -592,58 +592,147 @@ PatternModule::PatternModule (PluginBase& p, bool isInstrument)
     {
         const auto colour = instrument ? Theme::layerColour (layer) : Theme::gate;
         grids.push_back (std::make_unique<ChoiceComponent> (p.apvts, ParamID::bass (layer, BassField::grid), "GRID"));
-        gates.push_back (std::make_unique<KnobComponent> (p.apvts, ParamID::bass (layer, BassField::gate), "GATE", colour));
+        lengths.push_back (std::make_unique<KnobComponent> (p.apvts, ParamID::bass (layer, BassField::gate), "LENGTH", colour));
+        lengths.back()->setDescription ("Scales the length of every note in this layer. Lower = shorter, punchier notes. (Set a single note's length "
+                                        "with the LENGTH lane or in the piano roll.)");
         addChildComponent (*grids.back());
-        addChildComponent (*gates.back());
+        addChildComponent (*lengths.back());
 
         if (instrument)
         {
-            slides.push_back (std::make_unique<KnobComponent> (p.apvts, ParamID::bass (layer, BassField::glide), "SLIDE", colour));
-            slides.back()->setDescription ("How long this layer takes to glide between notes on steps with SLIDE on.");
-            addChildComponent (*slides.back());
+            gateGrids.push_back (std::make_unique<ChoiceComponent> (p.apvts, ParamID::bass (layer, BassField::gateGrid), "GATE GRID"));
+            gateDepths.push_back (std::make_unique<KnobComponent> (p.apvts, ParamID::bass (layer, BassField::gateDepth), "DEPTH", colour));
+            gateSmooths.push_back (std::make_unique<KnobComponent> (p.apvts, ParamID::bass (layer, BassField::gateSmooth), "SMOOTH", colour));
+            gateDepths.back()->setDescription ("How much the gate cuts the sound in its closed steps: 0 % = nothing, 100 % = fully silent.");
+            gateSmooths.back()->setDescription ("How soft the gate's edges are. Short = hard chopped, longer = smoother.");
+
+            auto onButton = std::make_unique<juce::TextButton> ("GATE ON");
+            onButton->setClickingTogglesState (true);
+            onButton->setColour (juce::TextButton::buttonOnColourId, colour.withAlpha (0.6f));
+            onButton->setTooltip ("GATE ON - Turns this layer's gate on. The gate is a separate on/off rhythm (its own grid) that chops the layer's sound; "
+                                  "it does not change the notes. Click the steps to the right to open and close it.");
+            gateOnAttachments.push_back (std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
+                p.apvts, ParamID::bass (layer, BassField::gateOn), *onButton));
+            gateOnButtons.push_back (std::move (onButton));
+            addChildComponent (*gateGrids.back());
+            addChildComponent (*gateDepths.back());
+            addChildComponent (*gateSmooths.back());
+            addChildComponent (*gateOnButtons.back());
 
             auto button = std::make_unique<juce::TextButton> ("BASS " + juce::String (layer + 1));
             button->setColour (juce::TextButton::buttonOnColourId, colour.withAlpha (0.55f));
             button->setColour (juce::TextButton::textColourOffId, colour);
-            button->setTooltip ("BASS " + juce::String (layer + 1) + " - Edit this layer: the lane (velocity, gate, pitch, slide), "
-                                "its grid, gate, slide time and FILL apply to the selected layer.");
+            button->setTooltip ("BASS " + juce::String (layer + 1) + " - Edit this layer: its note grid, length, FILL, the lane and the gate settings "
+                                "apply to the selected layer.");
             button->onClick = [this, layer] { sequencer.selectLayer (layer); showLayer (layer); };
             addAndMakeVisible (*button);
             layerButtons.push_back (std::move (button));
         }
     }
 
-    fillButton.setTooltip ("FILL - Fill the selected layer with a rhythm (rolling, galloping, triplets, offbeat) or clear it.");
+    // PATTERN | GATE: vad rutnätet redigerar. Bara i instrumentet (FX-versionens mönster är redan gaten).
+    for (auto* button : { &patternTab, &gateTab })
+    {
+        button->setClickingTogglesState (false);
+        button->setColour (juce::TextButton::buttonOnColourId, Theme::pattern);
+        addChildComponent (*button);
+    }
+    patternTab.setTooltip ("PATTERN - The notes. The grid is a simple piano roll (click steps to place notes). PIANO ROLL is the advanced view of the same notes.");
+    gateTab.setTooltip ("GATE - A separate on/off rhythm that chops the layer's sound, with its own grid. It does not change the notes: "
+                        "notes can sound outside the gate. Turn it on with GATE ON.");
+    patternTab.onClick = [this] { showMode (StepSequencer::Mode::notes); };
+    gateTab.onClick = [this] { showMode (StepSequencer::Mode::gate); };
+    patternTab.setVisible (instrument);
+    gateTab.setVisible (instrument);
+
+    fillButton.setTooltip ("FILL - Fill the selected layer with a rhythm (rolling, galloping, triplets, offbeat) or clear it. "
+                           "This replaces the layer's notes (and the piano roll).");
     fillButton.onClick = [this] { showFillMenu(); };
     addAndMakeVisible (fillButton);
+    gateFillButton.setTooltip ("FILL - Fill the selected layer's gate steps with a rhythm (all open, alternating, offbeats ...).");
+    gateFillButton.onClick = [this] { showGateFillMenu(); };
+    addChildComponent (gateFillButton);
 
     sequencer.onLayerSelected = [this] (int layer) { showLayer (layer); };
+    sequencer.onOpenPianoRoll = [this] (int layer) { sequencer.selectLayer (layer); showLayer (layer); showPianoRoll (true); };
+    pianoRoll.onDeleted = [this] { showPianoRoll (false); };
     addAndMakeVisible (sequencer);
     addChildComponent (pianoRoll);
 
     // Pianorullen ändrar tonhöjd, så den finns bara i instrumentet.
     pianoButton.setClickingTogglesState (false);
     pianoButton.setColour (juce::TextButton::buttonOnColourId, Theme::pattern);
-    pianoButton.setTooltip ("PIANO ROLL - Edit the selected layer like in FL Studio's piano roll: notes anywhere in time (1/4 down to 1/64 "
-                            "and triplets), pitch up to 24 semitones either way, slide and velocity. The step view shows the same notes.");
+    pianoButton.setTooltip ("PIANO ROLL - The advanced view of the pattern, like FL Studio's piano roll: notes anywhere in time (1/4 down to 1/64 "
+                            "and triplets), pitch up to 24 semitones either way, glide notes and velocity. Once you edit there, the layer's row "
+                            "shows a small piano roll instead of step buttons.");
     pianoButton.onClick = [this] { showPianoRoll (! processor.pianoRollOpen); };
     addChildComponent (pianoButton);
-    pianoButton.setVisible (instrument);
 
     selectLane (StepSequencer::Lane::velocity);
+    mode = instrument && processor.selectedPatternMode == 1 ? StepSequencer::Mode::gate : StepSequencer::Mode::notes;
+    sequencer.setMode (mode);
+    patternTab.setToggleState (mode == StepSequencer::Mode::notes, juce::dontSendNotification);
+    gateTab.setToggleState (mode == StepSequencer::Mode::gate, juce::dontSendNotification);
     showLayer (0);
-    showPianoRoll (instrument && processor.pianoRollOpen);
+    updateVisibility();
+    startTimerHz (8);
+}
+
+void PatternModule::timerCallback()
+{
+    // Lanerna är för stegmönstret: avstängda för ett lager som redigerats i pianorullen.
+    const auto custom = processor.pattern.isCustom (shownLayer);
+    for (auto& [button, lane] : laneButtons)
+        button->setEnabled (! custom);
+}
+
+void PatternModule::showMode (StepSequencer::Mode newMode)
+{
+    mode = newMode;
+    processor.selectedPatternMode = mode == StepSequencer::Mode::gate ? 1 : 0;
+    patternTab.setToggleState (mode == StepSequencer::Mode::notes, juce::dontSendNotification);
+    gateTab.setToggleState (mode == StepSequencer::Mode::gate, juce::dontSendNotification);
+    sequencer.setMode (mode);
+    updateVisibility();
 }
 
 void PatternModule::showPianoRoll (bool open)
 {
     processor.pianoRollOpen = open;
     pianoButton.setToggleState (open, juce::dontSendNotification);
-    pianoRoll.setVisible (open);
-    sequencer.setVisible (! open);
+    if (open && mode == StepSequencer::Mode::gate)
+        showMode (StepSequencer::Mode::notes);
+    updateVisibility();
+}
+
+void PatternModule::updateVisibility()
+{
+    const auto gating = instrument && mode == StepSequencer::Mode::gate;
+    const auto rollOpen = ! gating && instrument && processor.pianoRollOpen;
+
+    pianoRoll.setVisible (rollOpen);
+    sequencer.setVisible (! rollOpen);
+    pianoButton.setVisible (instrument && ! gating);
+    fillButton.setVisible (! gating);
+    gateFillButton.setVisible (gating);
     for (auto& [button, lane] : laneButtons)
-        button->setVisible (! open);
+        button->setVisible (! gating && ! rollOpen);
+
+    for (size_t i = 0; i < grids.size(); ++i)
+    {
+        const auto shown = (int) i == shownLayer;
+        grids[i]->setVisible (shown && ! gating);
+        lengths[i]->setVisible (shown && ! gating);
+        if (i < gateGrids.size())
+        {
+            gateGrids[i]->setVisible (shown && gating);
+            gateDepths[i]->setVisible (shown && gating);
+            gateSmooths[i]->setVisible (shown && gating);
+            gateOnButtons[i]->setVisible (shown && gating);
+        }
+    }
     resized();
+    repaint();
 }
 
 void PatternModule::selectLane (StepSequencer::Lane lane)
@@ -657,16 +746,9 @@ void PatternModule::showLayer (int layer)
 {
     shownLayer = layer;
     pianoRoll.setLayer (layer);
-    for (size_t i = 0; i < grids.size(); ++i)
-    {
-        grids[i]->setVisible ((int) i == layer);
-        gates[i]->setVisible ((int) i == layer);
-        if (i < slides.size())
-            slides[i]->setVisible ((int) i == layer);
-        if (i < layerButtons.size())
-            layerButtons[i]->setToggleState ((int) i == layer, juce::dontSendNotification);
-    }
-    repaint();
+    for (size_t i = 0; i < layerButtons.size(); ++i)
+        layerButtons[i]->setToggleState ((int) i == layer, juce::dontSendNotification);
+    updateVisibility();
 }
 
 void PatternModule::showFillMenu()
@@ -690,15 +772,45 @@ void PatternModule::showFillMenu()
     });
 }
 
+void PatternModule::showGateFillMenu()
+{
+    juce::PopupMenu menu;
+    menu.addItem (1, "All open");
+    menu.addItem (2, "Alternate (open, closed, open ...)");
+    menu.addItem (3, "Offbeats (closed, open, closed ...)");
+    menu.addItem (4, "Chop (every 4th step closed)");
+    menu.addItem (5, "All closed");
+
+    juce::Component::SafePointer<PatternModule> safeThis (this);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&gateFillButton), [safeThis] (int result)
+    {
+        if (safeThis == nullptr || result <= 0)
+            return;
+        auto& p = safeThis->processor;
+        const auto layer = safeThis->shownLayer;
+        const auto gridIndex = juce::jlimit (0, Pattern::numGrids - 1, (int) p.apvts.getRawParameterValue (ParamID::bass (layer, BassField::gateGrid))->load());
+        const auto stepsPerBar = Pattern::bassStepsPerBar ((BassGrid) gridIndex);
+
+        for (int i = 0; i < Pattern::maxGateSteps; ++i)
+        {
+            const auto step = i % stepsPerBar;
+            const auto open = result == 1 || (result == 2 && step % 2 == 0) || (result == 3 && step % 2 == 1) || (result == 4 && step % 4 != 3);
+            p.pattern.gateStep (layer, i) = open;
+        }
+        if (auto* on = p.apvts.getParameter (ParamID::bass (layer, BassField::gateOn)))
+            Presets::setParameter (*on, 1.0f); // en fylld gate är till för att höras
+        p.patternChanged();
+    });
+}
+
 void PatternModule::paint (juce::Graphics& g)
 {
     // Rubrik för det valda lagrets inställningar.
-    if (! grids.empty())
+    if (! headingBounds.isEmpty())
     {
-        const auto area = grids[(size_t) shownLayer]->getBounds().withHeight (14).translated (0, -18);
         g.setFont (Theme::font (11.0f, true));
         g.setColour (instrument ? Theme::layerColour (shownLayer) : Theme::gate);
-        g.drawText (instrument ? "BASS " + juce::String (shownLayer + 1) : juce::String ("GATE"), area, juce::Justification::centredLeft);
+        g.drawText (instrument ? "BASS " + juce::String (shownLayer + 1) : juce::String ("GATE"), headingBounds, juce::Justification::centredLeft);
     }
 }
 
@@ -706,8 +818,8 @@ void PatternModule::resized()
 {
     auto area = getLocalBounds();
 
-    // Två smala kolumner till vänster: mönstrets längd/slut/presets och vilket lager som
-    // redigeras, sedan lanet och det valda lagrets rutnät, gate, slide och mallar.
+    // Två smala kolumner till vänster: mönstrets längd/slut/presets och vilket lager som redigeras, sedan
+    // PATTERN | GATE och det valda lagrets inställningar för läget.
     auto first = area.removeFromLeft (130);
     area.removeFromLeft (8);
     auto second = area.removeFromLeft (150);
@@ -728,31 +840,53 @@ void PatternModule::resized()
         first.removeFromTop (4);
     }
 
-    second.removeFromTop (18); // rubriken med lagrets namn
-    for (auto& grid : grids)
-        grid->setBounds (second.getX(), second.getY(), second.getWidth(), 40);
-    second.removeFromTop (44);
+    headingBounds = second.removeFromTop (16);
+    if (instrument)
+    {
+        auto tabs = second.removeFromTop (26);
+        patternTab.setBounds (tabs.removeFromLeft (tabs.getWidth() / 2 - 2));
+        gateTab.setBounds (tabs.withTrimmedLeft (4));
+        second.removeFromTop (6);
+    }
 
+    // PATTERN: notrutnätet, lanerna, tonlängd, FILL och PIANO ROLL.
+    auto notesColumn = second;
+    for (auto& grid : grids)
+        grid->setBounds (notesColumn.getX(), notesColumn.getY(), notesColumn.getWidth(), 40);
+    notesColumn.removeFromTop (44);
     for (size_t i = 0; i < laneButtons.size(); i += 2)
     {
-        auto row = second.removeFromTop (24);
+        auto row = notesColumn.removeFromTop (24);
         laneButtons[i].first->setBounds (row.removeFromLeft (row.getWidth() / 2 - 2));
         if (i + 1 < laneButtons.size())
             laneButtons[i + 1].first->setBounds (row.withTrimmedLeft (4));
-        second.removeFromTop (4);
+        notesColumn.removeFromTop (4);
     }
-    second.removeFromTop (4);
+    notesColumn.removeFromTop (4);
+    auto knobRow = notesColumn.removeFromTop (72);
+    for (auto& lengthKnob : lengths)
+        lengthKnob->setBounds (knobRow.withSizeKeepingCentre (knobRow.getWidth() / 2, knobRow.getHeight()));
+    notesColumn.removeFromTop (4);
+    fillButton.setBounds (notesColumn.removeFromTop (24));
+    notesColumn.removeFromTop (4);
+    pianoButton.setBounds (notesColumn.removeFromTop (28));
 
-    auto knobRow = second.removeFromTop (72);
-    const auto half = knobRow.getWidth() / 2;
-    for (auto& gate : gates)
-        gate->setBounds (slides.empty() ? knobRow.withSizeKeepingCentre (half, knobRow.getHeight()) : knobRow.withWidth (half));
-    for (auto& slide : slides)
-        slide->setBounds (knobRow.withTrimmedLeft (half));
-    second.removeFromTop (4);
-    fillButton.setBounds (second.removeFromTop (24));
-    second.removeFromTop (4);
-    pianoButton.setBounds (second.removeFromTop (28));
+    // GATE: på/av, gatens rutnät, djup och mjukhet, FILL.
+    auto gateColumn = second;
+    for (auto& button : gateOnButtons)
+        button->setBounds (gateColumn.getX(), gateColumn.getY(), gateColumn.getWidth(), 26);
+    gateColumn.removeFromTop (30);
+    for (auto& grid : gateGrids)
+        grid->setBounds (gateColumn.getX(), gateColumn.getY(), gateColumn.getWidth(), 40);
+    gateColumn.removeFromTop (44);
+    auto gateKnobs = gateColumn.removeFromTop (72);
+    const auto half = gateKnobs.getWidth() / 2;
+    for (auto& depth : gateDepths)
+        depth->setBounds (gateKnobs.withWidth (half));
+    for (auto& smooth : gateSmooths)
+        smooth->setBounds (gateKnobs.withTrimmedLeft (half));
+    gateColumn.removeFromTop (4);
+    gateFillButton.setBounds (gateColumn.removeFromTop (24));
 
     sequencer.setBounds (area);
     pianoRoll.setBounds (area);

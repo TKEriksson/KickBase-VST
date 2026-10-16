@@ -27,8 +27,15 @@ PianoRoll::PianoRoll (PluginBase& p, std::vector<juce::Colour> colours) : proces
     setWantsKeyboardFocus (true);
     setTooltip ("PIANO ROLL - Click in an empty spot to add a note (drag to move it), drag a note's right edge to change its length. "
                 "Shift + click selects several notes (or Shift + drag a box, or Ctrl + A for all): selected notes move, stretch and delete together. "
-                "Right-click a note to delete it, double-click it to turn SLIDE on/off (the little triangle: it glides into the next note). "
+                "Right-click a note to delete it. With GLIDE on, the notes you draw are glide notes (pink): they glide the sounding note to their pitch "
+                "during their own length, then the pitch stays. Double-click a note to turn glide on/off for it. "
                 "Scroll = pitch, Ctrl + scroll = zoom, Shift + scroll = move in time. The strip at the bottom is velocity.");
+
+    glideButton.setClickingTogglesState (true);
+    glideButton.setColour (juce::TextButton::buttonOnColourId, Theme::pattern);
+    glideButton.setTooltip ("GLIDE - On: the notes you draw are glide notes. A glide note does not play a new note: it glides the note that is "
+                            "sounding to its own pitch during its own length (draw it shorter for a quick slide), and the pitch stays there "
+                            "until the long note ends. Like slide notes in FL Studio.");
 
     snapButton.setClickingTogglesState (true);
     snapButton.setToggleState (true, juce::dontSendNotification);
@@ -47,7 +54,7 @@ PianoRoll::PianoRoll (PluginBase& p, std::vector<juce::Colour> colours) : proces
     deleteButton.setTooltip ("DELETE - Deletes the selected notes (Delete key).");
     deleteButton.onClick = [this] { deleteSelected(); };
 
-    for (auto* c : std::initializer_list<juce::Component*> { &snapButton, &gridBox, &smallerButton, &biggerButton, &allButton, &deleteButton, &hBar, &vBar })
+    for (auto* c : std::initializer_list<juce::Component*> { &snapButton, &gridBox, &smallerButton, &biggerButton, &allButton, &deleteButton, &glideButton, &hBar, &vBar })
         addAndMakeVisible (c);
     hBar.addListener (this);
     vBar.addListener (this);
@@ -151,6 +158,20 @@ void PianoRoll::scrollBarMoved (juce::ScrollBar* bar, double newRangeStart)
     repaint();
 }
 
+void PianoRoll::commit()
+{
+    processor.pattern.setCustom (layer, true); // lagret visas nu som pianorulle i stället för stegknappar
+    processor.patternChanged();
+}
+
+int PianoRoll::pitchBefore (int tick) const
+{
+    for (int t = std::min (tick, Pattern::maxTicks) - 1; t >= 0; --t)
+        if (processor.pattern.note (layer, t).on.load())
+            return processor.pattern.note (layer, t).pitch.load();
+    return processor.pattern.note (layer, tick).pitch.load();
+}
+
 void PianoRoll::changeRowHeight (float delta)
 {
     const auto centrePitch = topPitch - (float) visibleRows() * 0.5f;
@@ -184,6 +205,8 @@ void PianoRoll::resized()
     allButton.setBounds (tools.removeFromLeft (38));
     tools.removeFromLeft (2);
     deleteButton.setBounds (tools.removeFromLeft (38));
+    tools.removeFromLeft (10);
+    glideButton.setBounds (tools.removeFromLeft (56));
 
     const auto first = pixelsPerTick == 1.0f && scrollTicks == 0.0f;
     if (first)
@@ -278,7 +301,7 @@ void PianoRoll::deleteSelected()
     for (const auto tick : selection)
         processor.pattern.removeNote (layer, tick);
     selection.clear();
-    processor.patternChanged();
+    commit();
     repaint();
 }
 
@@ -314,7 +337,7 @@ void PianoRoll::moveSelected (int deltaTicks, int deltaPitch)
     }
     applyNotes (target);
     selection = moved;
-    processor.patternChanged();
+    commit();
     repaint();
 }
 
@@ -376,7 +399,7 @@ juce::String PianoRoll::describe (int tick) const
                       + "length " + gridNameFor (n.length.load()) + "  "
                       + "vel " + juce::String (juce::roundToInt (n.velocity.load() * 100.0f)) + " %";
     if (n.slide.load())
-        text << "  SLIDE";
+        text << "  GLIDE";
     return text;
 }
 
@@ -437,6 +460,15 @@ void PianoRoll::paint (juce::Graphics& g)
             const auto selected = selection.count (tick) > 0;
             const auto active = tick == hoverTick || tick == dragTick;
             auto c = colour.withMultipliedBrightness (0.55f + 0.45f * n.velocity.load());
+            if (n.slide.load())
+            {
+                c = Theme::pattern.withMultipliedBrightness (0.7f + 0.3f * n.velocity.load());
+
+                // Rampen: från tonhöjden som klingar till glide-tonens tonhöjd, under glide-tonens längd.
+                const auto fromY = pitchToY (pitchBefore (tick)) + rowHeight() * 0.5f;
+                g.setColour (Theme::pattern.withAlpha (0.9f));
+                g.drawLine (b.getX(), fromY, b.getRight(), b.getCentreY(), 2.0f);
+            }
             if (selected)
                 c = c.brighter (0.45f).interpolatedWith (juce::Colours::white, 0.25f);
             g.setGradientFill (juce::ColourGradient (c.brighter (0.35f), b.getX(), b.getY(), c.darker (0.2f), b.getX(), b.getBottom(), false));
@@ -452,14 +484,6 @@ void PianoRoll::paint (juce::Graphics& g)
                             b.reduced (3.0f, 0.0f), juce::Justification::centredLeft);
             }
 
-            if (n.slide.load())
-            {
-                // Triangeln i hörnet, som i FL Studio.
-                juce::Path triangle;
-                triangle.addTriangle (b.getRight() - 1.0f, b.getBottom() - 1.0f, b.getRight() - 1.0f, b.getBottom() - 8.0f, b.getRight() - 8.0f, b.getBottom() - 1.0f);
-                g.setColour (juce::Colours::white);
-                g.fillPath (triangle);
-            }
         }
 
         // Markeringsrutan.
@@ -528,12 +552,12 @@ void PianoRoll::paint (juce::Graphics& g)
     // Verktygsraden: vad musen är över, och antal markerade.
     g.setFont (Theme::font (10.0f, true));
     g.setColour (colour);
-    g.drawText ("BASS " + juce::String (layer + 1), toolbarArea.withTrimmedLeft (toolbarArea.getWidth() * 0.45f).withWidth (60.0f), juce::Justification::centredLeft);
+    g.drawText ("BASS " + juce::String (layer + 1), toolbarArea.withTrimmedLeft (toolbarArea.getWidth() * 0.62f).withWidth (60.0f), juce::Justification::centredLeft);
     g.setColour (Theme::text);
     const auto info = hoverTick >= 0 ? describe (hoverTick)
                     : selection.empty() ? juce::String()
                                         : juce::String ((int) selection.size()) + " selected";
-    g.drawText (info, toolbarArea.withTrimmedLeft (toolbarArea.getWidth() * 0.45f + 62.0f).reduced (6.0f, 0.0f), juce::Justification::centredRight);
+    g.drawText (info, toolbarArea.withTrimmedLeft (toolbarArea.getWidth() * 0.62f + 62.0f).reduced (6.0f, 0.0f), juce::Justification::centredRight);
 
     // Velocity.
     g.setColour (juce::Colours::black.withAlpha (0.3f));
@@ -618,6 +642,8 @@ void PianoRoll::mouseDown (const juce::MouseEvent& event)
             menu.addItem (1, "Select all", true);
             menu.addItem (2, "Clear selection", ! selection.empty());
             menu.addItem (3, "Delete selected", ! selection.empty());
+            menu.addSeparator();
+            menu.addItem (4, "Delete the piano roll (back to the step pattern)");
             juce::Component::SafePointer<PianoRoll> safeThis (this);
             menu.showMenuAsync ({}, [safeThis] (int result)
             {
@@ -626,6 +652,14 @@ void PianoRoll::mouseDown (const juce::MouseEvent& event)
                 if (result == 1) safeThis->selectAll();
                 else if (result == 2) { safeThis->selection.clear(); safeThis->repaint(); }
                 else if (result == 3) safeThis->deleteSelected();
+                else if (result == 4)
+                {
+                    safeThis->selection.clear();
+                    safeThis->processor.pattern.clearNotes (safeThis->layer); // nollställer pianorullsmarkeringen
+                    safeThis->processor.patternChanged();
+                    if (safeThis->onDeleted)
+                        safeThis->onDeleted();
+                }
             });
         }
         return;
@@ -674,8 +708,9 @@ void PianoRoll::mouseDown (const juce::MouseEvent& event)
     // Tom plats: en ny ton på steget under musen, i raden under musen.
     const auto start = snapped (xToTicks (event.position.x));
     const auto pitch = juce::jlimit (Pattern::minPitch, Pattern::maxPitch, yToPitch (event.position.y));
-    const auto length = lastLength > 0 ? lastLength : Pattern::ticksPerStep (grid());
-    processor.pattern.addNote (layer, start, length, pitch);
+    const auto glide = glideButton.getToggleState();
+    const auto length = ! glide && lastLength > 0 ? lastLength : Pattern::ticksPerStep (grid());
+    processor.pattern.addNote (layer, start, length, pitch, 0.8f, glide);
     selection = { start };
     justCreatedTick = start;
     drag = Drag::move;
@@ -781,7 +816,7 @@ void PianoRoll::mouseDrag (const juce::MouseEvent& event)
 void PianoRoll::mouseUp (const juce::MouseEvent&)
 {
     if (edited)
-        processor.patternChanged();
+        commit();
     drag = Drag::none;
     dragTick = -1;
     repaint();
@@ -808,7 +843,7 @@ void PianoRoll::mouseDoubleClick (const juce::MouseEvent& event)
     const auto turnOn = ! processor.pattern.note (layer, tick).slide.load();
     for (const auto t : targets)
         processor.pattern.note (layer, t).slide = turnOn;
-    processor.patternChanged();
+    commit();
     repaint();
 }
 

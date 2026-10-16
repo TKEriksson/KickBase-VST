@@ -168,8 +168,10 @@ std::vector<ToolLayer::ToolInfo> ToolLayer::tools()
           R"({"type":"object","properties":{"channel":{"type":"string"},"slot":{"type":"integer"},"type":{"type":"string"},"knobs":{"type":"object","additionalProperties":true}},"required":["channel","slot","type"]})" },
         { "set_kick_envelopes", "Sets the kick's free envelopes as arrays of [time_seconds, value, tension] nodes. pitch: semitones above the tail pitch (0..72, max 0.5 s). amp: volume 0..1 (max 2 s; the kick ends at the last node, which should be 0). Tension -1..1: negative falls/rises fast first, positive holds then moves late. Omit one to leave it unchanged.",
           R"({"type":"object","properties":{"pitch":{"type":"array","items":{"type":"array","items":{"type":"number"}}},"amp":{"type":"array","items":{"type":"array","items":{"type":"number"}}}}})" },
-        { "set_pattern", "Writes notes. layer 0-2 = bass layer 1-3, or 'kick'. For a bass layer give 'bars' (one text per bar, repeated over four bars) in the pattern language, with a 'grid' such as '1/16', '1/8 T', '1/32'. Step words separated by spaces: '.' rest, g/m/x/X = velocity ghost/soft/normal/accent, then optional pitch (+7, -5), '~' slide, ':50' length in percent of the step. Example 1/16 rolling bass: [\". m x x . m x x . m x x . m x x\"]. Or give 'notes': [{\"tick\":0,\"length\":24,\"pitch\":0,\"velocity\":0.8,\"slide\":false}] (96 ticks per quarter note, 384 per bar). For 'kick' give 'bars' of 16 characters 'x' or '.', e.g. [\"x...x...x...x...\"]. Set the pattern length with set_parameters patternBars.",
+        { "set_pattern", "Writes notes. layer 0-2 = bass layer 1-3, or 'kick'. For a bass layer give 'bars' (one text per bar, repeated over four bars) in the pattern language, with a 'grid' such as '1/16', '1/8 T', '1/32'. Step words separated by spaces: '.' rest, g/m/x/X = velocity ghost/soft/normal/accent, then optional pitch (+7, -5), '~' glide note, ':50' length in percent of the step. A GLIDE note (flag '~' / slide:true) works like an FL Studio slide note: it does not play a new note, it glides the note that is sounding to its pitch during its own length and the pitch stays there until that note ends. Example 1/16 rolling bass: [\". m x x . m x x . m x x . m x x\"]. Or give 'notes': [{\"tick\":0,\"length\":24,\"pitch\":0,\"velocity\":0.8,\"slide\":false}] (96 ticks per quarter note, 384 per bar). For 'kick' give 'bars' of 16 characters 'x' or '.', e.g. [\"x...x...x...x...\"]. Set the pattern length with set_parameters patternBars.",
           R"({"type":"object","properties":{"layer":{},"bars":{"type":"array","items":{"type":"string"}},"grid":{"type":"string"},"gate":{"type":"number"},"notes":{"type":"array","items":{"type":"object"}},"clear":{"type":"boolean"}},"required":["layer"]})" },
+        { "set_gate", "Sets a bass layer's GATE: a separate on/off rhythm that chops the layer's sound, with its own grid, independent of the notes. layer 0-2; on (true/false), grid ('1/16' ...), depth 0..1 (1 = fully closed in the off steps), smooth_ms (edge softness), and the steps as 'bars' (one text per bar, repeated over four bars): 'x' = open, '.' = closed, e.g. [\"x.x.x.x.x.x.x.x.\"] on a 1/16 grid. all:'open' or 'closed' fills every step.",
+          R"({"type":"object","properties":{"layer":{"type":"integer"},"on":{"type":"boolean"},"grid":{"type":"string"},"depth":{"type":"number"},"smooth_ms":{"type":"number"},"bars":{"type":"array","items":{"type":"string"}},"all":{"type":"string","enum":["open","closed"]}},"required":["layer"]})" },
         { "set_sidechain_curve", "Sets how the kick ducks the bass. mode 'Kick envelope' follows the kick; mode 'Curve' uses 'points' [[x,y,tension]...] where x is 0..1 across the length (1/16, 1/8, 3/16, 1/4, 1/2, or Kick) and y 0..1 is the ducking (1 = fully ducked). The depth per bass layer is bass1Duck/bass2Duck/bass3Duck.",
           R"({"type":"object","properties":{"mode":{"type":"string"},"length":{"type":"string"},"points":{"type":"array","items":{"type":"array","items":{"type":"number"}}}}})" },
         { "set_modulation", "Sets up LFOs and routes. lfos: [{\"lfo\":1,\"shape\":\"Sine\",\"rate\":\"1 bar\",\"on\":true}] (shapes: Sine, Triangle, Saw Up, Saw Down, Square, Random; rates 1/32 ... 4 bars). routes: [{\"lfo\":1,\"param\":\"bass1Cutoff\",\"amount\":0.3}] (amount -1..1 of the knob's travel, only sound parameters: kick*, bass*, fx*). clear_routes removes all routes first.",
@@ -225,7 +227,7 @@ var ToolLayer::call (const juce::String& tool, const var& args)
     if (tool == "redo")             return undo (true);
 
     // Resten ändrar ljudet: ett ångra-steg först.
-    if (tool == "set_parameters" || tool == "set_effect" || tool == "set_kick_envelopes" || tool == "set_pattern" || tool == "set_sidechain_curve"
+    if (tool == "set_parameters" || tool == "set_effect" || tool == "set_kick_envelopes" || tool == "set_pattern" || tool == "set_sidechain_curve" || tool == "set_gate"
         || tool == "set_modulation" || tool == "load_preset" || tool == "reset" || tool == "load_kick_sample")
         snapshot();
 
@@ -234,6 +236,7 @@ var ToolLayer::call (const juce::String& tool, const var& args)
     if (tool == "set_kick_envelopes")  return setKickEnvelopes (args);
     if (tool == "set_pattern")         return setPattern (args);
     if (tool == "set_sidechain_curve") return setSidechainCurve (args);
+    if (tool == "set_gate")            return setGate (args);
     if (tool == "set_modulation")      return setModulation (args);
     if (tool == "load_preset")         return loadPreset (args);
     if (tool == "load_kick_sample")    return loadKickSample (args);
@@ -398,7 +401,20 @@ var ToolLayer::getState (const var& args) const
         auto entry = object();
         put (entry, "layer", layer);
         put (entry, "grid", Pattern::gridNames()[(int) processor.apvts.getRawParameterValue (ParamID::bass (layer, BassField::grid))->load()]);
-        put (entry, "notes [tick, length, pitch, velocity, slide]", notes);
+        put (entry, "notes [tick, length, pitch, velocity, glide]", notes);
+        put (entry, "piano_roll_layer", processor.pattern.isCustom (layer));
+
+        auto gateInfo = object();
+        const auto gateGrid = juce::jlimit (0, Pattern::numGrids - 1, (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, BassField::gateGrid))->load());
+        put (gateInfo, "on", processor.apvts.getRawParameterValue (ParamID::bass (layer, BassField::gateOn))->load() >= 0.5f);
+        put (gateInfo, "grid", Pattern::gridNames()[gateGrid]);
+        put (gateInfo, "depth", round4 (processor.apvts.getRawParameterValue (ParamID::bass (layer, BassField::gateDepth))->load()));
+        juce::String steps;
+        const auto barCount = Params::barsFromChoice ((int) processor.apvts.getRawParameterValue (ParamID::patternBars)->load());
+        for (int i = 0; i < barCount * Pattern::bassStepsPerBar ((BassGrid) gateGrid); ++i)
+            steps << (processor.pattern.isGateStepOn (layer, i) ? 'x' : '.');
+        put (gateInfo, "steps (x open, . closed)", steps);
+        put (entry, "gate", gateInfo);
         layers.add (entry);
     }
     put (pattern, "bass_layers", layers);
@@ -586,6 +602,7 @@ var ToolLayer::setPattern (const var& args)
             pattern.addNote (layer, tick, note.hasProperty ("length") ? (int) note["length"] : Pattern::ticksPerStep ((BassGrid) grid),
                              (int) note["pitch"], note.hasProperty ("velocity") ? (float) (double) note["velocity"] : 0.8f, (bool) note["slide"]);
         }
+        pattern.setCustom (layer, true);
     }
     else if (auto* bars = args["bars"].getArray())
     {
@@ -613,6 +630,45 @@ var ToolLayer::setPattern (const var& args)
     put (data, "layer", layer);
     put (data, "notes", count);
     put (data, "grid", Pattern::gridNames()[grid]);
+    return ok (data);
+}
+
+var ToolLayer::setGate (const var& args)
+{
+    const auto layer = (int) args["layer"];
+    if (! juce::isPositiveAndBelow (layer, Pattern::numLayers))
+        return fail ("layer must be 0, 1 or 2.");
+
+    juce::String problem;
+    for (const auto& [key, field] : { std::pair<const char*, BassField> { "on", BassField::gateOn }, { "grid", BassField::gateGrid },
+                                      { "depth", BassField::gateDepth }, { "smooth_ms", BassField::gateSmooth } })
+        if (args.hasProperty (key))
+        {
+            auto* parameter = findParameter (processor, ParamID::bass (layer, field));
+            if (parameter == nullptr || ! assign (*parameter, args[key], problem))
+                return fail (problem.isEmpty() ? juce::String ("No such gate parameter.") : problem);
+        }
+
+    const auto gridIndexNow = juce::jlimit (0, Pattern::numGrids - 1, (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, BassField::gateGrid))->load());
+    const auto stepsPerBar = Pattern::bassStepsPerBar ((BassGrid) gridIndexNow);
+
+    if (auto* bars = args["bars"].getArray(); bars != nullptr && ! bars->isEmpty())
+    {
+        for (int bar = 0; bar < Pattern::maxBars; ++bar)
+        {
+            const auto text = (*bars)[bar % bars->size()].toString().retainCharacters ("xX.");
+            for (int step = 0; step < stepsPerBar; ++step)
+                processor.pattern.gateStep (layer, bar * stepsPerBar + step) = step < text.length() ? text[step] != '.' : true;
+        }
+    }
+    else if (args.hasProperty ("all"))
+        processor.pattern.setGate (layer, args["all"].toString().equalsIgnoreCase ("open"));
+
+    processor.patternChanged();
+    auto data = object();
+    put (data, "layer", layer);
+    put (data, "grid", Pattern::gridNames()[gridIndexNow]);
+    put (data, "steps_per_bar", stepsPerBar);
     return ok (data);
 }
 

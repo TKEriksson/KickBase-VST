@@ -116,7 +116,7 @@ namespace
         synth.setParams (p);
 
         const auto length = (int) (stepSeconds * fitRate);
-        synth.noteOn (0, 0.8f, std::max (1, (int) (c.gate * length)), false);
+        synth.noteOn (0, 0.8f, std::max (1, (int) (c.gate * length)));
         std::vector<float> audio ((size_t) length);
         for (auto& s : audio)
             s = synth.nextSample();

@@ -6,8 +6,6 @@ namespace
     // En ton som börjar så här mycket efter ett steg räknas som "på steget".
     constexpr double noteOnToleranceSeconds = 0.003;
 
-    // Ett steg med slide hålls lite längre än steget, så att nästa steg hinner glida in.
-    constexpr double slideOverlap = 1.05;
 
     juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     {
@@ -168,6 +166,11 @@ void InstrumentProcessor::readBlockParams()
         layerOn[(size_t) layer] = params.bass (layer, BassField::on) >= 0.5f;
         duckAmounts[(size_t) layer] = params.bass (layer, BassField::duck); // med LFO-modulering
         gateScales[(size_t) layer] = params.bass (layer, BassField::gate);
+        gateOn[(size_t) layer] = params.bass (layer, BassField::gateOn) >= 0.5f;
+        gateGrid[(size_t) layer] = juce::jlimit (0, Pattern::numGrids - 1, (int) params.bass (layer, BassField::gateGrid));
+        gateDepth[(size_t) layer] = params.bass (layer, BassField::gateDepth);
+        const auto smoothMs = std::max (0.5f, params.bass (layer, BassField::gateSmooth));
+        gateCoefficient[(size_t) layer] = (float) (1.0 - std::exp (-1.0 / (0.001 * smoothMs * getSampleRate())));
     }
     noteEnd = (NoteEnd) params.getChoice (ParamID::noteEnd);
     kick.setClickSample (getActiveClickSample());
@@ -349,9 +352,27 @@ void InstrumentProcessor::finishBlock (int numSamples)
         auto* before = tapBuffer.getWritePointer (0);
         auto* after = tapBuffer.getWritePointer (1);
         auto lastDuckGain = 1.0f;
+        // GATE: stegen följer samma takt och mönsterlängd som tonerna, men med eget rutnät.
+        const auto gating = gateOn[(size_t) layer] && patternActive;
+        const auto gateStepsPerBar = Pattern::bassStepsPerBar ((BassGrid) gateGrid[(size_t) layer]);
+        const auto gateClosed = 1.0f - gateDepth[(size_t) layer];
+        auto& gateGainRef = gateGain[(size_t) layer];
+
         for (int i = 0; i < numSamples; ++i)
         {
-            const auto levelLeft = data[i] * amplitude[i], levelRight = dataRight[i] * amplitude[i];
+            auto gateTarget = 1.0f;
+            if (gating)
+            {
+                const auto ppq = clock.getPpqAt (i);
+                const auto barLength = clock.getBarLengthPpq();
+                const auto bar = clock.getBarIndex() + (juce::int64) std::floor ((ppq - clock.getBarStartPpq()) / barLength);
+                const auto inBar = juce::jlimit (0.0, 0.999999, (ppq - clock.getPpqOfBar (bar)) / barLength);
+                const auto barInPattern = (int) (((bar % patternBars) + patternBars) % patternBars);
+                gateTarget = pattern.isGateStepOn (layer, barInPattern * gateStepsPerBar + (int) (inBar * gateStepsPerBar)) ? 1.0f : gateClosed;
+            }
+            gateGainRef += (gateTarget - gateGainRef) * gateCoefficient[(size_t) layer];
+
+            const auto levelLeft = data[i] * amplitude[i] * gateGainRef, levelRight = dataRight[i] * amplitude[i] * gateGainRef;
             const auto duckGain = ducker.next (duckData[i], amount);
             data[i] = levelLeft * duckGain;
             dataRight[i] = levelRight * duckGain;
@@ -447,10 +468,16 @@ void InstrumentProcessor::handleEvent (const StepEvent& event)
 
     const auto& note = pattern.note (layer, event.step);
     const auto samplesPerTick = clock.getSamplesPerQuarter() / Pattern::ticksPerQuarter;
+
+    // En glide-ton slår inte an: den glider tonen som klingar till sin tonhöjd under sin egen längd. Klingar inget
+    // spelas den som en vanlig ton.
+    if (note.slide.load() && basses[(size_t) layer].glideTo (note.pitch.load(), std::max (1, (int) (note.length.load() * samplesPerTick))))
+        return;
+
     const auto holdTicks = pattern.holdTicks (layer, event.step, patternBars * Pattern::ticksPerBar, gateScales[(size_t) layer]);
     const auto gateSamples = std::max (1, (int) (holdTicks * samplesPerTick));
 
-    basses[(size_t) layer].noteOn (note.pitch.load(), note.velocity.load(), gateSamples, note.slide.load());
+    basses[(size_t) layer].noteOn (note.pitch.load(), note.velocity.load(), gateSamples);
 }
 
 juce::AudioProcessorEditor* InstrumentProcessor::createEditor()

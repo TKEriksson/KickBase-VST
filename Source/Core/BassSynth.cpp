@@ -35,7 +35,7 @@ void BassSynth::reset()
     stage = Stage::idle;
     ampLevel = 0.0f;
     gateRemaining = 0;
-    slideHeld = false;
+    glideSamplesLeft = 0;
     filter1.reset();
     filter2.reset();
     sideFilter1.reset();
@@ -107,47 +107,43 @@ BassSynth::Stereo BassSynth::Oscillator::next (const OscParams& p, double freque
     return { sumLeft * normal * (pan > 0.0f ? 1.0f - pan : 1.0f), sumRight * normal * (pan < 0.0f ? 1.0f + pan : 1.0f) };
 }
 
-void BassSynth::noteOn (int semitones, float newVelocity, int gateSamples, bool slide)
+void BassSynth::noteOn (int semitones, float newVelocity, int gateSamples)
 {
     const auto frequency = params.rootHz * std::exp2 (semitones / 12.0f);
     targetLogFrequency = std::log2 ((double) frequency);
+    logFrequency = targetLogFrequency;
+    glideSamplesLeft = 0;
 
-    const auto legato = slideHeld && (stage == Stage::attack || stage == Stage::decay);
-
-    if (legato)
+    // Samma startfas varje slag ger ett jämnt, tight anslag. Men om förra tonen fortfarande
+    // hörs skulle ett fashopp knäppa, så då fortsätter fasen där den är.
+    if (ampLevel < 0.05f)
     {
-        // Glid till den nya tonen utan att slå an envelopen igen.
-        gliding = true;
-    }
-    else
-    {
-        logFrequency = targetLogFrequency;
-        gliding = false;
-
-        // Samma startfas varje slag ger ett jämnt, tight anslag. Men om förra tonen fortfarande
-        // hörs skulle ett fashopp knäppa, så då fortsätter fasen där den är.
-        if (ampLevel < 0.05f)
-        {
-            oscA.retrigger (params.oscA, random);
-            oscB.retrigger (params.oscB, random);
-            subPhase = 0.0;
-        }
-
-        noteTime = 0.0;
-        velocity = newVelocity;
-        stage = Stage::attack; // attacken börjar från nuvarande nivå, så inget knäpp
+        oscA.retrigger (params.oscA, random);
+        oscB.retrigger (params.oscB, random);
+        subPhase = 0.0;
     }
 
+    noteTime = 0.0;
+    velocity = newVelocity;
+    stage = Stage::attack; // attacken börjar från nuvarande nivå, så inget knäpp
     gateRemaining = gateSamples;
-    slideHeld = slide;
+}
+
+bool BassSynth::glideTo (int semitones, int samples)
+{
+    if (stage == Stage::idle)
+        return false;
+
+    targetLogFrequency = std::log2 ((double) (params.rootHz * std::exp2 (semitones / 12.0f)));
+    glideSamplesLeft = std::max (1, samples);
+    glideStep = (targetLogFrequency - logFrequency) / (double) glideSamplesLeft;
+    return true;
 }
 
 void BassSynth::release()
 {
     if (stage != Stage::idle)
         stage = Stage::release;
-
-    slideHeld = false;
 }
 
 float BassSynth::filterEnvelopeAt (const BassParams& p, double seconds)
@@ -202,9 +198,13 @@ BassSynth::Output BassSynth::next()
             break;
     }
 
-    // Glide i log-frekvens så att varje halvton tar lika lång tid.
-    if (gliding)
-        logFrequency += (targetLogFrequency - logFrequency) * coefficientFor (params.glideMs, sampleRate);
+    // Glide-tonen: linjärt i log-frekvens, så att varje halvton tar lika lång tid, och tonen blir kvar på målet.
+    if (glideSamplesLeft > 0)
+    {
+        logFrequency += glideStep;
+        if (--glideSamplesLeft == 0)
+            logFrequency = targetLogFrequency;
+    }
 
     const auto frequency = std::exp2 (logFrequency);
     const auto envelope = filterEnvelopeAt (params, noteTime);

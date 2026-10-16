@@ -132,6 +132,7 @@ namespace Presets
             return;
 
         pattern.clearNotes (line.layer);
+        auto melodic = false; // toner med tonhöjd eller glide visas som pianorulle (miniatyr) i stället för stegknappar
         const auto stepTicks = Pattern::ticksPerStep (line.grid);
         const auto stepsPerBar = Pattern::bassStepsPerBar (line.grid);
 
@@ -152,8 +153,11 @@ namespace Presets
 
                 pattern.addNote (line.layer, bar * Pattern::ticksPerBar + step * stepTicks,
                                  std::max (1, juce::roundToInt ((float) stepTicks * gatePercent / 100.0f)), pitch, velocity, slide);
+                if (pitch != 0 || slide)
+                    melodic = true;
             }
         }
+        pattern.setCustom (line.layer, melodic);
     }
 
     const Extras* factoryExtras (Section section, bool effectVersion, int index)
@@ -210,10 +214,14 @@ namespace Presets
             case Section::bass:
                 return (bassLayerOf (id) == layer && ! isLayerField (BassField::on) && ! isLayerField (BassField::gate)
                         && ! isLayerField (BassField::duck) && ! isLayerField (BassField::grid)
-                        && ! isLayerField (BassField::fxChannel) && ! isLayerField (BassField::fxAmount))
+                        && ! isLayerField (BassField::fxChannel) && ! isLayerField (BassField::fxAmount)
+                        && ! isLayerField (BassField::gateOn) && ! isLayerField (BassField::gateGrid)
+                        && ! isLayerField (BassField::gateDepth) && ! isLayerField (BassField::gateSmooth))
                     || id == ParamID::gateAttack || id == ParamID::gateRelease;
             case Section::pattern:
-                return id == ParamID::patternBars || id == ParamID::noteEnd || isLayerField (BassField::grid) || isLayerField (BassField::gate);
+                return id == ParamID::patternBars || id == ParamID::noteEnd || isLayerField (BassField::grid) || isLayerField (BassField::gate)
+                    || isLayerField (BassField::gateOn) || isLayerField (BassField::gateGrid)
+                    || isLayerField (BassField::gateDepth) || isLayerField (BassField::gateSmooth);
             case Section::effects:
                 return Effects::isEffectParameter (id) || id == ParamID::kickFxChannel || id == ParamID::kickFxAmount || isLayerField (BassField::fxChannel) || isLayerField (BassField::fxAmount);
             case Section::sidechain:

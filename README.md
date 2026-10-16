@@ -44,8 +44,9 @@ bestämmer vad som händer när tonen tar slut mitt i ett mönster.
 När DAW:en står still släpps ljudet igenom orört och ingen kick spelas.
 
 **Flikarna:**
-- **PATTERN, KICK, BASS 1-3** (överst): mönstret (stegsekvens eller **PIANO ROLL**), kicken och de tre
-  baslagren. Uppe i hörnet på varje flik väljer du effektkanal och mängd (FX).
+- **PATTERN, KICK, BASS 1-3** (överst): mönstret, kicken och de tre baslagren. Mönstret har två lägen,
+  **PATTERN** (tonerna: stegen är en enkel pianorulle, **PIANO ROLL** den avancerade varianten, och ett lager som
+  redigerats där visas som en miniatyr) och **GATE** (en egen av/på-rytm per lager med eget rutnät som hackar ljudet). Uppe i hörnet på varje flik väljer du effektkanal och mängd (FX).
 - **EFFECTS** (nederst): kanalerna FX A-E, var och en med flikarna FX (fem platser, 13 effekttyper), EQ
   (dra noderna, live-spektrum) och COMP (kompressor med vågformsvy). Dra platserna för att byta ordning.
 - **SIDECHAIN:** ducka basen efter kickens envelope eller en egen kurva; DUCK per lager, och vilka
@@ -70,7 +71,8 @@ under `Dokument\Kickbase\Exports\`.
   dra i staplarna, skrolla för tonhöjd, högerklicka för att återställa en ton. Rutnätet (GRID) väljer
   upplösning, 1/4 till 1/64 och trioler.
 - **Pianorullen** (PIANO ROLL): klicka i tomt för en ny ton, dra för att flytta, dra kanten för längd,
-  högerklicka för att ta bort, dubbelklicka för slide. Skroll = tonhöjd (±24 halvtoner från tonarten),
+  högerklicka för att ta bort, **GLIDE**-knappen ritar glide-toner (som slide-toner i FL: de glider tonen som klingar
+  till sin tonhöjd under sin egen längd, och tonen blir kvar). Skroll = tonhöjd (±24 halvtoner från tonarten),
   Ctrl + skroll = zoom, Shift + skroll = tid. Remsan längst ner är velocity.
 - Raderna i PATTERN har små rattar för volym och FX-send, som FL Studios Channel Rack.
 - Dra in en WAV på kickmodulen (eller LOAD) för att använda en sampling som klick.

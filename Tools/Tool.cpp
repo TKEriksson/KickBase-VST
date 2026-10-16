@@ -288,7 +288,16 @@ namespace
         processor->selectedTab = tab % 10;            // nedre panelen
         processor->selectedSynthTab = tab / 10 % 10;  // övre panelen (tiotal)
         processor->selectedFxView = tab / 100 % 10;   // EFFECTS-vyn (hundratal)
-        processor->pianoRollOpen = tab / 1000 > 0;    // pianorullen i stället för stegen (tusental)
+        processor->pianoRollOpen = tab / 1000 % 10 > 0; // pianorullen i stället för stegen (tusental)
+        processor->selectedPatternMode = tab / 10000 % 10; // 1 = GATE-läget (tiotusental)
+        if (tab / 100000 > 0)
+        {
+            // Exempel: lager 2 som pianorulle, med en lång ton och en glide-ton (hundratusental).
+            processor->pattern.addNote (1, 0, 288, 0);
+            processor->pattern.addNote (1, 96, 24, 7, 0.8f, true);
+            processor->pattern.addNote (1, 192, 96, 0);
+            processor->pattern.setCustom (1, true);
+        }
         processor->setPlayConfigDetails (kind == "fx" ? 2 : 0, 2, renderRate, blockSize);
         processor->prepareToPlay (renderRate, blockSize);
 

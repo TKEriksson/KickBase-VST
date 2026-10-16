@@ -184,7 +184,7 @@ namespace
                 kick.trigger (1.0f);
             for (size_t s = 0; s < pattern.steps.size(); ++s)
                 if (inBeat == pattern.steps[s] * stepSamples)
-                    bass.noteOn (layout.notes[(size_t) position][s], 0.8f, gateSamples, false);
+                    bass.noteOn (layout.notes[(size_t) position][s], 0.8f, gateSamples);
 
             const auto k = kick.nextSample();
             const auto duckGain = ducker.next (kick.getEnvelope(), c.duck);
