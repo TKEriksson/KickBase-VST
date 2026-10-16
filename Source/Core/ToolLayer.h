@@ -46,6 +46,7 @@ private:
     juce::var analyzeAudio (const juce::var& args);
     juce::var pianoRollFiles (const juce::String& tool, const juce::var& args);
     juce::var loadKickSample (const juce::var& args);
+    juce::var loadBassSample (const juce::var& args);
     juce::var undo (bool redo);
 
     void snapshot();

@@ -3,7 +3,6 @@
 
 namespace
 {
-    constexpr double maxClickSeconds = 2.0;
     const juce::Identifier clickTreeType { "ClickSample" };
     const juce::String presetFileExtension { ".mofp" };
 
@@ -28,7 +27,9 @@ void PluginBase::prepareBase (double sampleRate)
 {
     currentSampleRate = sampleRate;
     clock.prepare (sampleRate);
-    rebuildClickForSampleRate();
+    kickSample.prepare (sampleRate);
+    for (auto& slot : bassSamples)
+        slot.prepare (sampleRate);
 }
 
 // params läser med modulering (se konstruktorn), så kick och bas får LFO:erna härifrån.
@@ -52,6 +53,7 @@ BassParams PluginBase::readModulatedBass (int layer, int rootMidiNote) const
     auto bass = params.readBass (layer, rootMidiNote);
     bass.oscA.user = userTable (layer, 0);
     bass.oscB.user = userTable (layer, 1);
+    bass.sampleData = getActiveBassSample (layer);
     return bass;
 }
 
@@ -201,7 +203,8 @@ void PluginBase::getStateInformation (juce::MemoryBlock& destData)
     for (int layer = 0; layer < ParamID::numBassLayers; ++layer)
         state.setProperty ("layerName" + juce::String (layer + 1), layerNames[(size_t) layer], nullptr);
     state.appendChild (pattern.toValueTree(), nullptr);
-    state.appendChild (clickToValueTree(), nullptr);
+    state.appendChild (kickSample.toValueTree (clickTreeType), nullptr);
+    state.appendChild (bassSamplesToValueTree(), nullptr);
     state.appendChild (userTablesToValueTree(), nullptr);
     state.appendChild (sidechainCurve.toValueTree(), nullptr);
     state.appendChild (modRoutes.toValueTree (getParameters()), nullptr);
@@ -236,8 +239,19 @@ void PluginBase::setStateInformation (const void* data, int sizeInBytes)
 
     if (auto clickTree = state.getChildWithName (clickTreeType); clickTree.isValid())
     {
-        clickFromValueTree (clickTree);
+        kickSample.fromValueTree (clickTree);
         state.removeChild (clickTree, nullptr);
+    }
+
+    if (auto samplesTree = state.getChildWithName ("BassSamples"); samplesTree.isValid())
+    {
+        bassSamplesFromValueTree (samplesTree);
+        state.removeChild (samplesTree, nullptr);
+    }
+    else
+    {
+        for (auto& slot : bassSamples)
+            slot.clear();
     }
 
     if (auto userTree = state.getChildWithName ("UserTables"); userTree.isValid())
@@ -323,9 +337,14 @@ void PluginBase::loadFactoryPreset (Presets::Section section, int index, int lay
         }
     }
 
+    if (section == Presets::Section::bass)
+        clearBassSample (layer); // fabriksljuden har ingen sampling
+
     if (section == Presets::Section::full)
     {
         clearClickSample();
+        for (int l = 0; l < ParamID::numBassLayers; ++l)
+            clearBassSample (l);
         presetNames.fill ({}); // delarna kommer inte längre från sina egna presets
         bassPresetNames.fill ({});
     }
@@ -374,10 +393,15 @@ bool PluginBase::saveUserPreset (Presets::Section section, const juce::String& n
 
     if (section == Presets::Section::full || section == Presets::Section::kick)
     {
-        root.addChildElement (clickToValueTree().createXml().release());
+        root.addChildElement (kickSample.toValueTree (clickTreeType).createXml().release());
         root.addChildElement (kickPitchEnv.toValueTree (kickPitchType).createXml().release());
         root.addChildElement (kickAmpEnv.toValueTree (kickAmpType).createXml().release());
     }
+
+    if (section == Presets::Section::full)
+        root.addChildElement (bassSamplesToValueTree().createXml().release());
+    if (section == Presets::Section::bass && bassSamples[(size_t) layer].hasSample())
+        root.addChildElement (bassSamples[(size_t) layer].toValueTree ("BassSample").createXml().release());
 
     if (section == Presets::Section::full || section == Presets::Section::sidechain)
         root.addChildElement (sidechainCurve.toValueTree().createXml().release());
@@ -423,9 +447,9 @@ bool PluginBase::loadUserPreset (Presets::Section section, const juce::File& fil
     if (section == Presets::Section::full || section == Presets::Section::kick)
     {
         if (const auto* clickXml = xml->getChildByName (clickTreeType))
-            clickFromValueTree (juce::ValueTree::fromXml (*clickXml));
+            kickSample.fromValueTree (juce::ValueTree::fromXml (*clickXml));
         else
-            setClickOriginal ({}, 0.0, {});
+            kickSample.clear();
 
         for (auto [envelope, type] : { std::pair<NodeEnvelope*, juce::Identifier> { &kickPitchEnv, kickPitchType }, { &kickAmpEnv, kickAmpType } })
         {
@@ -434,6 +458,22 @@ bool PluginBase::loadUserPreset (Presets::Section section, const juce::File& fil
             else
                 envelope->reset();
         }
+    }
+
+    if (section == Presets::Section::full)
+    {
+        if (const auto* samplesXml = xml->getChildByName ("BassSamples"))
+            bassSamplesFromValueTree (juce::ValueTree::fromXml (*samplesXml));
+        else
+            for (auto& slot : bassSamples)
+                slot.clear();
+    }
+    else if (section == Presets::Section::bass)
+    {
+        if (const auto* sampleXml = xml->getChildByName ("BassSample"))
+            bassSamples[(size_t) layer].fromValueTree (juce::ValueTree::fromXml (*sampleXml));
+        else
+            bassSamples[(size_t) layer].clear();
     }
 
     if (section == Presets::Section::full || section == Presets::Section::sidechain)
@@ -527,107 +567,56 @@ bool PluginBase::exportWav (const juce::File& file, ExportPart part, int bars)
 
 bool PluginBase::loadClickSample (const juce::File& file)
 {
-    juce::AudioFormatManager formats;
-    formats.registerBasicFormats();
-
-    std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (file));
-    if (reader == nullptr || reader->sampleRate <= 0.0)
+    if (! kickSample.loadFile (file))
         return false;
-
-    const auto length = (int) std::min<juce::int64> (reader->lengthInSamples, (juce::int64) (maxClickSeconds * reader->sampleRate));
-    juce::AudioBuffer<float> fileAudio ((int) reader->numChannels, length);
-    reader->read (&fileAudio, 0, length, 0, true, true);
-
-    // Mixa ner till mono.
-    juce::AudioBuffer<float> mono (1, length);
-    mono.clear();
-    for (int ch = 0; ch < fileAudio.getNumChannels(); ++ch)
-        mono.addFrom (0, 0, fileAudio, ch, 0, length, 1.0f / (float) fileAudio.getNumChannels());
-
-    setClickOriginal (std::move (mono), reader->sampleRate, file.getFileNameWithoutExtension());
     patternChanged();
     return true;
 }
 
 void PluginBase::clearClickSample()
 {
-    setClickOriginal ({}, 0.0, {});
+    kickSample.clear();
     patternChanged();
 }
 
-juce::String PluginBase::getClickSampleName() const
+bool PluginBase::loadBassSample (int layer, const juce::File& file)
 {
-    const juce::ScopedLock lock (clickLock);
-    return clickName;
+    if (! juce::isPositiveAndBelow (layer, ParamID::numBassLayers) || ! bassSamples[(size_t) layer].loadFile (file))
+        return false;
+    patternChanged();
+    return true;
 }
 
-void PluginBase::setClickOriginal (juce::AudioBuffer<float> audio, double rate, const juce::String& name)
+void PluginBase::clearBassSample (int layer)
 {
-    {
-        const juce::ScopedLock lock (clickLock);
-        clickOriginal = std::move (audio);
-        clickOriginalRate = rate;
-        clickName = name;
-    }
-    rebuildClickForSampleRate();
+    if (juce::isPositiveAndBelow (layer, ParamID::numBassLayers))
+        bassSamples[(size_t) layer].clear();
+    patternChanged();
 }
 
-void PluginBase::rebuildClickForSampleRate()
+juce::ValueTree PluginBase::bassSamplesToValueTree() const
 {
-    std::unique_ptr<ClickSample> fresh;
-
-    {
-        const juce::ScopedLock lock (clickLock);
-
-        if (clickOriginal.getNumSamples() > 0 && clickOriginalRate > 0.0)
+    juce::ValueTree tree ("BassSamples");
+    for (int layer = 0; layer < ParamID::numBassLayers; ++layer)
+        if (bassSamples[(size_t) layer].hasSample())
         {
-            fresh = std::make_unique<ClickSample>();
-            fresh->name = clickName;
-
-            const auto ratio = clickOriginalRate / currentSampleRate;
-            const auto outLength = (int) (clickOriginal.getNumSamples() / ratio);
-            fresh->audio.setSize (1, outLength);
-
-            juce::LagrangeInterpolator interpolator;
-            interpolator.process (ratio, clickOriginal.getReadPointer (0), fresh->audio.getWritePointer (0), outLength);
+            auto child = bassSamples[(size_t) layer].toValueTree ("BassSample");
+            child.setProperty ("layer", layer, nullptr);
+            tree.appendChild (child, nullptr);
         }
-    }
-
-    // Byt atomiskt. Den gamla samplingen hålls kvar tills nästa byte, eftersom ljudtråden
-    // kan vara mitt i ett block som läser den.
-    activeClick.store (fresh.get());
-    retiredClick = std::move (ownedClick);
-    ownedClick = std::move (fresh);
-}
-
-juce::ValueTree PluginBase::clickToValueTree() const
-{
-    juce::ValueTree tree (clickTreeType);
-    const juce::ScopedLock lock (clickLock);
-
-    if (clickOriginal.getNumSamples() > 0)
-    {
-        juce::MemoryBlock block (clickOriginal.getReadPointer (0), (size_t) clickOriginal.getNumSamples() * sizeof (float));
-        tree.setProperty ("name", clickName, nullptr);
-        tree.setProperty ("rate", clickOriginalRate, nullptr);
-        tree.setProperty ("data", block.toBase64Encoding(), nullptr);
-    }
-
     return tree;
 }
 
-void PluginBase::clickFromValueTree (const juce::ValueTree& tree)
+void PluginBase::bassSamplesFromValueTree (const juce::ValueTree& tree)
 {
-    juce::MemoryBlock block;
-    if (! tree.hasProperty ("data") || ! block.fromBase64Encoding (tree["data"].toString()))
-    {
-        setClickOriginal ({}, 0.0, {});
-        return;
-    }
-
-    const auto numSamples = (int) (block.getSize() / sizeof (float));
-    juce::AudioBuffer<float> audio (1, numSamples);
-    std::memcpy (audio.getWritePointer (0), block.getData(), (size_t) numSamples * sizeof (float));
-
-    setClickOriginal (std::move (audio), (double) tree["rate"], tree["name"].toString());
+    std::array<bool, ParamID::numBassLayers> found {};
+    for (const auto& child : tree)
+        if (const auto layer = (int) child.getProperty ("layer", -1); juce::isPositiveAndBelow (layer, ParamID::numBassLayers))
+        {
+            bassSamples[(size_t) layer].fromValueTree (child);
+            found[(size_t) layer] = true;
+        }
+    for (int layer = 0; layer < ParamID::numBassLayers; ++layer)
+        if (! found[(size_t) layer])
+            bassSamples[(size_t) layer].clear();
 }

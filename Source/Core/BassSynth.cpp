@@ -36,6 +36,7 @@ void BassSynth::reset()
     ampLevel = 0.0f;
     gateRemaining = 0;
     glideSamplesLeft = 0;
+    samplePosition = 0.0;
     filter1.reset();
     filter2.reset();
     sideFilter1.reset();
@@ -124,6 +125,7 @@ void BassSynth::noteOn (int semitones, float newVelocity, int gateSamples)
     }
 
     noteTime = 0.0;
+    samplePosition = params.sampleData != nullptr ? (double) params.sampleStart * (double) params.sampleData->audio.getNumSamples() : 0.0;
     velocity = newVelocity;
     stage = Stage::attack; // attacken börjar från nuvarande nivå, så inget knäpp
     gateRemaining = gateSamples;
@@ -223,6 +225,27 @@ BassSynth::Output BassSynth::next()
     auto centre = params.sub * (float) std::sin (juce::MathConstants<double>::twoPi * subPhase);
     if (params.noise > 0.0f)
         centre += params.noise * (random.nextFloat() * 2.0f - 1.0f);
+
+    // Samplingen: linjär interpolation. Med KEY följer hastigheten noten (samplingens egen tonhöjd = sampleRootHz).
+    if (params.sampleData != nullptr && params.sampleLevel > 0.0f)
+    {
+        const auto& audio = params.sampleData->audio;
+        const auto length = audio.getNumSamples();
+        if (length > 1)
+        {
+            if (samplePosition >= (double) length && params.sampleLoop)
+                samplePosition = std::fmod (samplePosition, (double) length);
+            if (samplePosition < (double) length)
+            {
+                const auto* data = audio.getReadPointer (0);
+                const auto index = (int) samplePosition;
+                const auto fraction = (float) (samplePosition - (double) index);
+                const auto following = index + 1 < length ? data[index + 1] : (params.sampleLoop ? data[0] : 0.0f);
+                centre += params.sampleLevel * (data[index] + fraction * (following - data[index]));
+                samplePosition += params.sampleKeyTrack ? frequency / (double) std::max (1.0f, params.sampleRootHz) : 1.0;
+            }
+        }
+    }
     auto sample = 0.5f * (left + right) + centre;
     auto side = 0.5f * (left - right);
 

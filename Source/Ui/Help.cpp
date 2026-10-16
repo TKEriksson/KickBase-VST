@@ -54,6 +54,20 @@ namespace Help
             { "bassGrid", "This layer's step grid: 1/16 for rolling basses, 1/8 T for triplet (K-B-B) grooves, and more." },
 
             // Kick
+            { "kickWave", "The waveform of the kick's body: sine is the classic, triangle and soft square are brighter, soft saw is the harshest." },
+            { "kickSub", "A sine one octave below the body, for extra weight at the very bottom." },
+            { "kickFm", "FM on the body: a second sine bends its phase at the start of the kick. A little makes it punchier, a lot makes it metallic." },
+            { "kickFmRatio", "The pitch of the FM sine compared to the body (2x = an octave above). Whole numbers sound harmonic, others more metallic." },
+            { "kickFmDecay", "How fast the FM fades away after the start of the kick." },
+            { "kickNoise", "A noisy top layer on the kick: snap and air. Has its own decay and tone." },
+            { "kickNoiseDecay", "How long the noisy top layer rings." },
+            { "kickNoiseTone", "High-pass frequency of the noisy top layer: higher = airier, lower = fuller." },
+            { "kickCrush", "Bit crushing after the drive: 0 = clean, up to 4-bit grit." },
+            { "kickLowCut", "High-pass on the whole kick: removes rumble below the kick's tone (20 Hz = off)." },
+            { "kickVelPitch", "How much a note's velocity changes the pitch sweep: 0 = none, 100 % = a soft hit gets almost no sweep." },
+            { "kickSampleMode", "How a loaded sample is used: Click = only the first moments (CLICK level), Layer = the whole sample on top of the synth kick, Replace = the sample is the kick." },
+            { "kickSampleLevel", "Level of the sample in Layer and Replace mode." },
+            { "kickSampleTune", "Plays the sample faster or slower, in semitones (changes its pitch and length)." },
             { "kickKeyFollow", "Follow: the kick's tail is tuned to the note you play. Fixed: it stays on C1 + TUNE whatever the note." },
             { "kickTune", "Tunes the kick's tail (its low 'boom') in semitones. Psy kicks often sit 1-3 semitones above the bass note." },
             { "kickPitchAmount", "Scales the whole pitch envelope you draw in the display: 100 % = as drawn, 0 % = no pitch drop at all." },
@@ -94,6 +108,11 @@ namespace Help
 
             // Filter
             { "bassFilterType", "Filter type. LP 24 = smooth and dark (classic psy), LP 12 = brighter, Band and High for thin sounds." },
+            { "bassSampleLevel", "How loud this layer's sample is (the file you load with LOAD or drop on the page). It plays alongside the oscillators, through the filter and envelope." },
+            { "bassSampleRoot", "The pitch the sample was recorded at. With KEY on, the sample is pitched so that this note becomes the note you play." },
+            { "bassSampleLoop", "On: the sample repeats while the note is held. Off: it plays once." },
+            { "bassSampleKey", "On: the sample follows the note you play (set ROOT to the pitch it was recorded at). Off: it always plays at its own pitch and speed." },
+            { "bassSampleStart", "Where in the sample each note starts." },
             { "bassCutoff", "Where the filter starts cutting the highs. Lower = darker bass." },
             { "bassResonance", "Boost at the cutoff frequency. High values give the squelchy, acid sound." },
             { "bassKeyTrack", "How much the cutoff follows the note: higher notes get a brighter filter." },

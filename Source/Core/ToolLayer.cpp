@@ -195,7 +195,9 @@ std::vector<ToolLayer::ToolInfo> ToolLayer::tools()
           R"({"type":"object","properties":{"layer":{"type":"integer"},"file":{"type":"string"},"note":{"type":"integer"}},"required":["layer","file"]})" },
         { "analyze_audio", "Measures an audio file (WAV, AIFF, FLAC or MP3) the same way render_preview measures the synth, so you can compare a reference (a kick sample, a snippet of a track) with your sound: metrics, spectrogram image and, for kind 'kick', the kick length and tail frequency. start/seconds select a part (default: the first 20 s). Use bpm for the beat lines.",
           R"({"type":"object","properties":{"file":{"type":"string"},"kind":{"type":"string","enum":["kick","music"]},"start":{"type":"number"},"seconds":{"type":"number"},"bpm":{"type":"number"}},"required":["file"]})" },
-        { "load_kick_sample", "Loads a WAV/AIFF/FLAC file (max 2 s, mono-summed) as the kick's click layer: it plays from the start of every kick on top of the synthesized body, scaled by kickClick. Empty or missing file clears it.",
+        { "load_bass_sample", "Loads a WAV/AIFF/FLAC file (max 12 s, mono-summed) as a bass layer's sample source: it plays alongside the oscillators (through the filter and envelope), scaled by bassNSampleLevel (set here with 'level', default 1). layer 0-2. key_track true makes it follow the notes (root_note = the MIDI note the sample was recorded at, C5 = 60), loop repeats it while the note is held, start 0..1. Empty or missing file clears the sample. Set the oscillator levels to 0 (bassNOscALevel) to hear the sample alone.",
+          R"({"type":"object","properties":{"layer":{"type":"integer"},"file":{"type":"string"},"level":{"type":"number"},"key_track":{"type":"boolean"},"root_note":{"type":"integer"},"loop":{"type":"boolean"},"start":{"type":"number"}},"required":["layer"]})" },
+        { "load_kick_sample", "Loads a WAV/AIFF/FLAC file (max 2 s, mono-summed) as the kick's sample. kickSampleMode (Click | Layer | Replace) decides how it is used: Click = the first moments of every kick on top of the synthesized body, scaled by kickClick; Layer = the whole sample on top of the synthesized kick (kickSampleLevel); Replace = the sample is the kick (the synthesized body is silent). kickSampleTune plays it faster or slower. Empty or missing file clears it.",
           R"({"type":"object","properties":{"file":{"type":"string"}}})" },
         { "undo", "Undoes the last change made through these tools.", R"({"type":"object","properties":{}})" },
         { "redo", "Redoes what undo undid.", R"({"type":"object","properties":{}})" },
@@ -239,7 +241,7 @@ var ToolLayer::call (const juce::String& tool, const var& args)
 
     // Resten ändrar ljudet: ett ångra-steg först.
     if (tool == "set_parameters" || tool == "set_effect" || tool == "set_kick_envelopes" || tool == "set_pattern" || tool == "set_sidechain_curve" || tool == "set_gate"
-        || tool == "set_modulation" || tool == "load_preset" || tool == "reset" || tool == "load_kick_sample" || tool == "load_piano_roll" || tool == "import_midi")
+        || tool == "set_modulation" || tool == "load_preset" || tool == "reset" || tool == "load_kick_sample" || tool == "load_bass_sample" || tool == "load_piano_roll" || tool == "import_midi")
         snapshot();
 
     if (tool == "set_parameters")      return setParameters (args);
@@ -251,6 +253,7 @@ var ToolLayer::call (const juce::String& tool, const var& args)
     if (tool == "set_modulation")      return setModulation (args);
     if (tool == "load_preset")         return loadPreset (args);
     if (tool == "load_kick_sample")    return loadKickSample (args);
+    if (tool == "load_bass_sample")    return loadBassSample (args);
     if (tool == "load_piano_roll" || tool == "import_midi")
         return pianoRollFiles (tool, args);
     if (tool == "save_preset")         return savePreset (args);
@@ -1092,7 +1095,36 @@ var ToolLayer::loadKickSample (const var& args)
     }
     if (! processor.loadClickSample (juce::File (path)))
         return fail ("Could not load that file as a sample (WAV, AIFF or FLAC, readable path).");
-    return ok ("Loaded " + processor.getClickSampleName() + " as the kick's click layer. kickClick sets its level.");
+    return ok ("Loaded " + processor.getClickSampleName() + " as the kick's sample (kickSampleMode: Click = click layer, Layer, Replace = the sample is the whole kick).");
+}
+
+var ToolLayer::loadBassSample (const var& args)
+{
+    const auto layer = (int) args["layer"];
+    if (! juce::isPositiveAndBelow (layer, Pattern::numLayers))
+        return fail ("layer must be 0, 1 or 2.");
+
+    const auto path = args["file"].toString().trim();
+    if (path.isEmpty())
+    {
+        processor.clearBassSample (layer);
+        return ok ("Sample cleared from layer " + juce::String (layer) + ".");
+    }
+    if (! processor.loadBassSample (layer, juce::File (path)))
+        return fail ("Could not load that file as a sample (WAV, AIFF or FLAC, readable path).");
+
+    auto set = [this, layer] (BassField field, float real)
+    {
+        if (auto* parameter = findParameter (processor, ParamID::bass (layer, field)))
+            Presets::setParameter (*parameter, parameter->convertTo0to1 (real));
+    };
+    set (BassField::sampleLevel, args.hasProperty ("level") ? (float) (double) args["level"] : 1.0f);
+    if (args.hasProperty ("key_track"))  set (BassField::sampleKey, (bool) args["key_track"] ? 1.0f : 0.0f);
+    if (args.hasProperty ("root_note"))  set (BassField::sampleRoot, (float) (int) args["root_note"]);
+    if (args.hasProperty ("loop"))       set (BassField::sampleLoop, (bool) args["loop"] ? 1.0f : 0.0f);
+    if (args.hasProperty ("start"))      set (BassField::sampleStart, (float) (double) args["start"]);
+    processor.patternChanged();
+    return ok ("Loaded " + processor.getBassSampleName (layer) + " into layer " + juce::String (layer) + ".");
 }
 
 var ToolLayer::undo (bool redo)

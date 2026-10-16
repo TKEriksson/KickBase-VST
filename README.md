@@ -77,6 +77,8 @@ under `Dokument\Kickbase\Exports\`.
 - **PRESET** i pianorullen sparar lagrets pianorulle som en fil (`Dokument\Kickbase\Presets\Piano Roll`) och laddar sparade i valfritt lager.
   **MIDI** exporterar pianorullen som en MIDI-fil eller importerar en MIDI-fil till lagret (glide-toner exporteras som vanliga toner).
 - **Kicken är ett notlager** som baslagren: egen KICK-knapp bland lagren (rutnät, FILL-mallar, velocity, tonhöjd i lanet och pianorullen). En kicknots tonhöjd flyttar kickens svans, så man kan spela kick-melodier. Gamla projekt med kickens 16 steg öppnas som toner.
+- **Sampling på basen och kicken**: släpp en WAV på ett baslagers sida (eller LOAD) så blir den en tredje ljudkälla bredvid oscillatorerna (nivå, start, root, loop, KEY låter den följa noterna). På kicken kan en sampling vara klick, ett lager eller hela kicken (MODE: Click, Layer, Replace).
+- **Fler kick-lager och former**: vågform på kroppen, sub, FM, brusig topp, fler drive-lägen (Fold), bitkrossning, lågt skär och velocity som styr pitch-svepet.
 - **Längd per rad**: rutan bredvid radens namn (kick, bas 1-3) ger raden en egen längd (1-64 takter; Pattern = hela mönstret). En kortare rad loopar tills den längsta har spelat klart (visas som dämpade kopior), eller spelar en gång om **LOOP ROWS** är av. Mönstret kan vara upp till 64 takter; stegvyn visas fyra takter i taget (< >), och **FOLLOW** låter stegvyn och pianorullen bläddra med när låten spelas.
 - Raderna i PATTERN har små rattar för volym och FX-send, som FL Studios Channel Rack.
 - Dra in en WAV på kickmodulen (eller LOAD) för att använda en sampling som klick.

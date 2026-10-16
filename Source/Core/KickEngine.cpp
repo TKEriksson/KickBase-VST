@@ -21,7 +21,32 @@ namespace
                 const auto y = std::tanh (gain * x + bias) - std::tanh (bias);
                 return y / (std::tanh (gain + bias) - std::tanh (bias));
             }
+            case 3: return std::sin (juce::MathConstants<float>::halfPi * gain * x * 0.5f);   // vikning: höga värden viks tillbaka
             default: return std::tanh (gain * x) / std::tanh (gain);
+        }
+    }
+
+    // Kroppens vågform (fas 0..1, börjar vid noll och går uppåt som en sinus).
+    float bodyWave (double phase, int wave)
+    {
+        constexpr auto twoPi = juce::MathConstants<double>::twoPi;
+        switch (wave)
+        {
+            case 1:
+            {
+                const auto p = phase - 0.25 - std::floor (phase - 0.25);
+                return (float) (4.0 * std::abs (p - 0.5) - 1.0);
+            }
+            case 2: return (float) (std::tanh (4.0 * std::sin (twoPi * phase)) / std::tanh (4.0));
+            case 3:
+            {
+                // Såg av de sex första övertonerna, så att den inte aliasar vid pitch-svepets snabba start.
+                auto sum = 0.0;
+                for (int k = 1; k <= 6; ++k)
+                    sum += ((k % 2 == 1) ? 1.0 : -1.0) * std::sin (twoPi * k * phase) / k;
+                return (float) (sum * 0.85);
+            }
+            default: return (float) std::sin (twoPi * phase);
         }
     }
 }
@@ -36,10 +61,16 @@ void KickEngine::prepare (double newSampleRate)
         voice.clickFilter.prepare ({ sampleRate, 512, 1 });
         voice.clickFilter.setType (juce::dsp::StateVariableTPTFilterType::bandpass);
         voice.clickFilter.setResonance (0.8f);
+        voice.noiseFilter.prepare ({ sampleRate, 512, 1 });
+        voice.noiseFilter.setType (juce::dsp::StateVariableTPTFilterType::highpass);
+        voice.noiseFilter.setResonance (0.7071f);
     }
     highCut.prepare ({ sampleRate, 512, 1 });
     highCut.setType (juce::dsp::StateVariableTPTFilterType::lowpass);
     highCut.setResonance (0.7071f);
+    lowCut.prepare ({ sampleRate, 512, 1 });
+    lowCut.setType (juce::dsp::StateVariableTPTFilterType::highpass);
+    lowCut.setResonance (0.7071f);
 
     reset();
 }
@@ -50,8 +81,10 @@ void KickEngine::reset()
     {
         voice.active = false;
         voice.clickFilter.reset();
+        voice.noiseFilter.reset();
     }
     highCut.reset();
+    lowCut.reset();
     envelope = 0.0f;
 }
 
@@ -71,8 +104,13 @@ void KickEngine::trigger (float velocity, int transposeSemitones)
     voice.transpose = std::exp2 ((float) transposeSemitones / 12.0f);
     voice.fade = 1.0f;
     voice.fadingOut = false;
-    voice.sampleIndex = 0;
+    voice.subPhase = 0.0;
+    voice.fmPhase = 0.0;
+    voice.pitchScale = 1.0f - params.velPitch * (1.0f - juce::jlimit (0.0f, 1.0f, velocity));
+    voice.sampleFollower = 0.0f;
+    voice.samplePosition = 0.0;
     voice.clickFilter.reset();
+    voice.noiseFilter.reset();
 }
 
 float KickEngine::nextSample()
@@ -83,9 +121,21 @@ float KickEngine::nextSample()
             out += renderVoice (voice);
 
     const auto& current = voices[currentVoice];
-    envelope = current.active ? amplitudeAt (params, current.time) * current.fade : 0.0f;
+    // Duckningen följer kicken: syntesens envelope (inte vid ersättning) eller samplingens nivå, den som är högst.
+    const auto synthEnvelope = params.sampleMode == 2 && clickSample != nullptr ? 0.0f : amplitudeAt (params, current.time);
+    envelope = current.active ? std::max (synthEnvelope, current.sampleFollower) * current.fade : 0.0f;
 
     auto y = clip (out, params.drive, params.clipMode);
+    if (params.crush > 0.0f)
+    {
+        const auto levels = std::exp2 (15.0f - params.crush * 12.0f); // 16 bitar ... 4 bitar
+        y = std::round (y * levels) / levels;
+    }
+    if (params.lowCutHz > 21.0f)
+    {
+        lowCut.setCutoffFrequency (juce::jlimit (20.0f, 400.0f, params.lowCutHz));
+        y = lowCut.processSample (0, y);
+    }
     if (params.highCutHz < 19000.0f)
     {
         highCut.setCutoffFrequency (juce::jlimit (200.0f, (float) sampleRate * 0.45f, params.highCutHz));
@@ -97,43 +147,92 @@ float KickEngine::nextSample()
 float KickEngine::renderVoice (Voice& voice)
 {
     const auto t = voice.time;
-    const auto amplitude = amplitudeAt (params, t);
+    const auto hasSample = clickSample != nullptr && clickSample->audio.getNumSamples() > 0;
+    const auto replace = hasSample && params.sampleMode == 2;
+    const auto layered = hasSample && params.sampleMode >= 1;
 
-    if (t > lengthSeconds (params) || voice.fade <= 0.0f)
+    if (t > totalSeconds (params, clickSample, sampleRate) || voice.fade <= 0.0f)
     {
         voice.active = false;
         return 0.0f;
     }
 
-    // Kropp: sinus vars frekvens sveper ner till tailHz: ett snabbt svep (pitch) och ett
-    // långsamt (glide) ovanpå varandra.
-    const auto frequency = params.tailHz * voice.transpose * std::exp2 (pitchSemitonesAt (params, t) / 12.0f);
     constexpr auto twoPi = juce::MathConstants<double>::twoPi;
-    auto body = (float) std::sin (twoPi * (voice.phase + params.startPhase));
-
-    // Övertoner 2-9 på kroppen (följer svepet), som klingar av för sig.
-    if (params.harmonics > 0.0f)
-    {
-        auto sum = 0.0f, norm = 0.0f;
-        for (int n = 2; n <= 9; ++n)
-        {
-            const auto gain = std::pow ((float) n, -params.harmonicsTilt);
-            sum += gain * (float) std::sin (twoPi * n * (voice.phase + params.startPhase));
-            norm += gain;
-        }
-        const auto decay = (float) std::exp (-t / std::max (0.001, params.harmonicsDecayMs * 0.001));
-        body += params.harmonics * decay * sum / std::max (1.0f, norm);
-    }
-    body *= amplitude;
-    voice.phase += frequency / sampleRate;
-    voice.phase -= std::floor (voice.phase);
-
-    // Klick: inladdad sampling om det finns en, annars bandpassfiltrerat brus.
+    auto body = 0.0f;
+    auto top = 0.0f;
     auto click = 0.0f;
-    if (clickSample != nullptr && clickSample->audio.getNumSamples() > 0)
+
+    if (! replace)
     {
-        if (voice.sampleIndex < clickSample->audio.getNumSamples())
-            click = clickSample->audio.getSample (0, voice.sampleIndex++);
+        const auto amplitude = amplitudeAt (params, t);
+
+        // Kropp: en vågform vars frekvens sveper ner till tailHz: ett snabbt svep (pitch) och ett långsamt (glide) ovanpå
+        // varandra. Lägre velocity ger ett mindre svep (velPitch).
+        const auto frequency = params.tailHz * voice.transpose * std::exp2 (pitchSemitonesAt (params, t) * voice.pitchScale / 12.0f);
+
+        // FM: en andra sinus (fmRatio gånger frekvensen) flyttar kroppens fas, mest i början.
+        auto fmShift = 0.0;
+        if (params.fm > 0.0f)
+        {
+            const auto fmEnvelope = std::exp (-t / std::max (0.001, params.fmDecayMs * 0.001));
+            fmShift = 0.8 * params.fm * fmEnvelope * std::sin (twoPi * voice.fmPhase);
+            voice.fmPhase += frequency * params.fmRatio / sampleRate;
+            voice.fmPhase -= std::floor (voice.fmPhase);
+        }
+
+        const auto phase = voice.phase + params.startPhase + fmShift;
+        body = bodyWave (phase, params.wave);
+
+        // Sub: en sinus en oktav under kroppen.
+        if (params.sub > 0.0f)
+        {
+            body += params.sub * (float) std::sin (twoPi * voice.subPhase);
+            voice.subPhase += 0.5 * frequency / sampleRate;
+            voice.subPhase -= std::floor (voice.subPhase);
+        }
+
+        // Övertoner 2-9 på kroppen (följer svepet), som klingar av för sig.
+        if (params.harmonics > 0.0f)
+        {
+            auto sum = 0.0f, norm = 0.0f;
+            for (int n = 2; n <= 9; ++n)
+            {
+                const auto gain = std::pow ((float) n, -params.harmonicsTilt);
+                sum += gain * (float) std::sin (twoPi * n * (voice.phase + params.startPhase));
+                norm += gain;
+            }
+            const auto decay = (float) std::exp (-t / std::max (0.001, params.harmonicsDecayMs * 0.001));
+            body += params.harmonics * decay * sum / std::max (1.0f, norm);
+        }
+        body *= amplitude;
+        voice.phase += frequency / sampleRate;
+        voice.phase -= std::floor (voice.phase);
+
+        // Brusig topp: högpassat brus som avtar för sig (luft och snärt ovanpå kicken).
+        if (params.noise > 0.0f)
+        {
+            voice.noiseFilter.setCutoffFrequency (juce::jlimit (200.0f, (float) sampleRate * 0.45f, params.noiseToneHz));
+            const auto decay = (float) std::exp (-t / std::max (0.002, params.noiseDecayMs * 0.001));
+            top = voice.noiseFilter.processSample (0, random.nextFloat() * 2.0f - 1.0f) * decay * params.noise;
+        }
+    }
+
+    // Samplingen: som klick (de första millisekunderna, nivå = clickLevel), eller som hel kick (lager/ersätt, nivå = sampleLevel).
+    auto sampled = 0.0f;
+    if (hasSample)
+    {
+        const auto& audio = clickSample->audio;
+        const auto length = audio.getNumSamples();
+        if (voice.samplePosition < (double) length - 1.0)
+        {
+            const auto* data = audio.getReadPointer (0);
+            const auto index = (int) voice.samplePosition;
+            const auto fraction = (float) (voice.samplePosition - (double) index);
+            sampled = data[index] + fraction * (data[index + 1] - data[index]);
+            voice.samplePosition += std::exp2 ((double) params.sampleTuneSemis / 12.0);
+        }
+        voice.sampleFollower = std::max (std::abs (sampled) * (layered ? params.sampleLevel : params.clickLevel),
+                                         voice.sampleFollower * (float) std::exp (-1.0 / (0.012 * sampleRate)));
     }
     else
     {
@@ -151,7 +250,18 @@ float KickEngine::renderVoice (Voice& voice)
     if (voice.fadingOut)
         voice.fade = std::max (0.0f, voice.fade - fadeStep);
 
-    return (body + click * params.clickLevel) * voice.velocity * voice.fade;
+    const auto sampleOut = layered ? sampled * params.sampleLevel : sampled * params.clickLevel;
+    return (body + (hasSample ? sampleOut : click * params.clickLevel) + top) * voice.velocity * voice.fade;
+}
+
+double KickEngine::totalSeconds (const KickParams& p, const ClickSample* sample, double sampleRate)
+{
+    const auto synth = lengthSeconds (p);
+    if (sample == nullptr || sample->audio.getNumSamples() <= 0 || p.sampleMode == 0)
+        return synth;
+
+    const auto sampleSeconds = (double) sample->audio.getNumSamples() / sampleRate / std::exp2 ((double) p.sampleTuneSemis / 12.0);
+    return p.sampleMode == 2 ? sampleSeconds : std::max (synth, sampleSeconds);
 }
 
 float KickEngine::amplitudeAt (const KickParams& p, double seconds)
@@ -217,7 +327,7 @@ juce::AudioBuffer<float> KickEngine::render (const KickParams& p, const ClickSam
     engine.setClickSample (click);
     engine.trigger (1.0f);
 
-    juce::AudioBuffer<float> audio (1, std::max (1, (int) ((lengthSeconds (params) + 0.01) * sampleRate)));
+    juce::AudioBuffer<float> audio (1, std::max (1, (int) ((totalSeconds (params, click, sampleRate) + 0.01) * sampleRate)));
     for (int i = 0; i < audio.getNumSamples(); ++i)
         audio.setSample (0, i, engine.nextSample());
     return audio;

@@ -33,6 +33,20 @@ namespace ParamID
     inline constexpr auto kickClick       = "kickClick";
     inline constexpr auto kickClickLength = "kickClickLength";
     inline constexpr auto kickClickTone   = "kickClickTone";
+    inline constexpr auto kickWave        = "kickWave";        // kroppens vågform
+    inline constexpr auto kickSub         = "kickSub";         // sinus en oktav ner
+    inline constexpr auto kickFm          = "kickFm";          // FM på kroppen
+    inline constexpr auto kickFmRatio     = "kickFmRatio";
+    inline constexpr auto kickFmDecay     = "kickFmDecay";
+    inline constexpr auto kickNoise       = "kickNoise";       // brusig "topp" ovanpå kicken
+    inline constexpr auto kickNoiseDecay  = "kickNoiseDecay";
+    inline constexpr auto kickNoiseTone   = "kickNoiseTone";
+    inline constexpr auto kickCrush       = "kickCrush";       // bitkrossning efter drive
+    inline constexpr auto kickLowCut      = "kickLowCut";      // tar bort ljud under kicken (sub-rumlet)
+    inline constexpr auto kickVelPitch    = "kickVelPitch";    // hur mycket velocity ändrar pitch-svepet
+    inline constexpr auto kickSampleMode  = "kickSampleMode";  // sampling som klick, lager eller hel kick
+    inline constexpr auto kickSampleLevel = "kickSampleLevel";
+    inline constexpr auto kickSampleTune  = "kickSampleTune";
     inline constexpr auto kickClipMode    = "kickClipMode";
     inline constexpr auto kickDrive       = "kickDrive";
     inline constexpr auto kickHighCut     = "kickHighCut";
@@ -62,6 +76,7 @@ enum class BassField
     filterType, keyTrack, cutoff, resonance, envAmount, envDecay, velToEnv,
     attack, decay, sustain, release, glide, drive,
     gateOn, gateGrid, gateDepth, gateSmooth,                      // lagrets GATE: en egen av/på-rytm som hackar ljudet
+    sampleLevel, sampleRoot, sampleLoop, sampleKey, sampleStart,  // lagrets sampling som ljudkälla
     count
 };
 

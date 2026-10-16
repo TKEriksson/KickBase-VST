@@ -14,6 +14,7 @@
 #include "Sidechain.h"
 #include "SignalTap.h"
 #include "TransportStatus.h"
+#include "SampleSlot.h"
 #include "BridgeLink.h"
 
 // Det som instrumentet och FX-versionen har gemensamt: parametrar, mönster, klicksampling,
@@ -86,11 +87,16 @@ public:
     bool isBridgeEnabled() const { return bridge != nullptr && bridge->isRunning(); }
     juce::String getBridgeId() const { return bridge != nullptr ? bridge->getId() : juce::String(); }
 
-    // Klicksampling. Anropas från gränssnittet (message thread).
+    // Kickens sampling (klick eller hel kick) och baslagrens samplingar. Anropas från gränssnittet (message thread).
     bool loadClickSample (const juce::File& file);
     void clearClickSample();
-    juce::String getClickSampleName() const;
+    juce::String getClickSampleName() const { return kickSample.name(); }
     const ClickSample* clickForDisplay() const { return getActiveClickSample(); } // message thread
+
+    bool loadBassSample (int layer, const juce::File& file);
+    void clearBassSample (int layer);
+    juce::String getBassSampleName (int layer) const { return bassSamples[(size_t) juce::jlimit (0, ParamID::numBassLayers - 1, layer)].name(); }
+    const ClickSample* getActiveBassSample (int layer) const { return bassSamples[(size_t) juce::jlimit (0, ParamID::numBassLayers - 1, layer)].active(); }
 
     juce::AudioProcessorValueTreeState apvts;
     Pattern pattern;
@@ -147,7 +153,7 @@ protected:
     juce::Optional<juce::AudioPlayHead::PositionInfo> getHostPosition() const;
 
     // Klicksamplingen som ljudtråden ska använda just nu (kan vara nullptr).
-    const ClickSample* getActiveClickSample() const { return activeClick.load(); }
+    const ClickSample* getActiveClickSample() const { return kickSample.active(); }
 
     ParamRefs params;
     ParamRefs displayParams { apvts }; // utan modulering, för gränssnittet
@@ -164,10 +170,8 @@ protected:
     BassParams readModulatedBass (int layer, int rootMidiNote) const;
 
 private:
-    void setClickOriginal (juce::AudioBuffer<float> audio, double rate, const juce::String& name);
-    void rebuildClickForSampleRate();
-    juce::ValueTree clickToValueTree() const;
-    void clickFromValueTree (const juce::ValueTree& tree);
+    juce::ValueTree bassSamplesToValueTree() const;
+    void bassSamplesFromValueTree (const juce::ValueTree& tree);
 
     // Originalet sparas i projektet; en omsamplad kopia spelas. Bara message thread och
     // prepareToPlay rör originalet, därför låset (aldrig på ljudtråden).
@@ -184,10 +188,8 @@ private:
 
     std::unique_ptr<BridgeLink::Server> bridge;
 
-    juce::CriticalSection clickLock;
-    juce::AudioBuffer<float> clickOriginal;
-    double clickOriginalRate = 0.0;
-    juce::String clickName;
+    SampleSlot kickSample { 2.0 };
+    std::array<SampleSlot, ParamID::numBassLayers> bassSamples { SampleSlot (12.0), SampleSlot (12.0), SampleSlot (12.0) };
 
     void resetSectionToDefaults (Presets::Section section, int layer);
     juce::String& presetNameSlot (Presets::Section section, int layer);
@@ -198,7 +200,4 @@ private:
     std::array<juce::String, ParamID::numBassLayers> layerNames;
 
     double currentSampleRate = 44100.0;
-    std::atomic<ClickSample*> activeClick { nullptr };
-    std::unique_ptr<ClickSample> ownedClick;
-    std::unique_ptr<ClickSample> retiredClick; // föregående, ljudtråden kan läsa den ett block till
 };

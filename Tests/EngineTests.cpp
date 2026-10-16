@@ -108,6 +108,140 @@ namespace
         check (maxJump < 0.2f, "största hopp mellan samples", maxJump);
     }
 
+    ClickSample makeSine (double hz, double seconds)
+    {
+        ClickSample sample;
+        sample.audio.setSize (1, (int) (seconds * rate));
+        for (int i = 0; i < sample.audio.getNumSamples(); ++i)
+            sample.audio.setSample (0, i, 0.8f * (float) std::sin (2.0 * 3.14159265358979 * hz * i / rate));
+        return sample;
+    }
+
+    void testKickShapesAndSamples()
+    {
+        std::puts("Kick: nya former, transponering och sampling som hel kick");
+
+        // Alla former och drive-lägen ger ändliga, hyfsat begränsade signaler.
+        for (int wave = 0; wave < 4; ++wave)
+            for (int mode = 0; mode < 4; ++mode)
+            {
+                KickEngine kick;
+                kick.prepare (rate);
+                KickParams p;
+                p.wave = wave;
+                p.clipMode = mode;
+                p.sub = 0.5f;
+                p.fm = 0.6f;
+                p.noise = 0.5f;
+                p.crush = 0.4f;
+                p.lowCutHz = 40.0f;
+                p.velPitch = 0.5f;
+                p.drive = 0.6f;
+                kick.setParams (p);
+                kick.trigger (0.7f);
+                std::vector<float> audio ((size_t) (rate * 0.4));
+                for (auto& v : audio)
+                    v = kick.nextSample();
+                check (allFinite (audio), "alla former och lägen är ändliga", wave * 10 + mode);
+                check (peakOf (audio, 0, audio.size()) < 4.0f, "alla former och lägen är begränsade", peakOf (audio, 0, audio.size()));
+            }
+
+        // En kicknot med tonhöjd flyttar svansen: +12 halvtoner = dubbla frekvensen.
+        {
+            KickEngine kick;
+            kick.prepare (rate);
+            KickParams p;
+            p.tailHz = 46.25f;
+            p.clickLevel = 0.0f;
+            p.drive = 0.0f;
+            p.decayMs = 400.0f;
+            p.decayCurve = 1.0f;
+            kick.setParams (p);
+            kick.trigger (1.0f, 12);
+            std::vector<float> audio ((size_t) (rate * 0.6));
+            for (auto& v : audio)
+                v = kick.nextSample();
+            const auto tail = estimateFrequency (audio, (size_t) (rate * 0.1), (size_t) (rate * 0.3));
+            check (std::abs (tail - 92.5) < 3.0, "kicknotens tonhöjd flyttar svansen", tail);
+        }
+
+        // Sampling som hel kick (ersätter): samplingens egen ton, och tyst efter den.
+        {
+            const auto sample = makeSine (440.0, 0.1);
+            KickEngine kick;
+            kick.prepare (rate);
+            KickParams p;
+            p.sampleMode = 2;
+            p.sampleLevel = 1.0f;
+            p.drive = 0.0f;
+            kick.setParams (p);
+            kick.setClickSample (&sample);
+            kick.trigger (1.0f);
+            std::vector<float> audio ((size_t) (rate * 0.3));
+            for (auto& v : audio)
+                v = kick.nextSample();
+            const auto hz = estimateFrequency (audio, (size_t) (rate * 0.01), (size_t) (rate * 0.08));
+            check (std::abs (hz - 440.0) < 12.0, "ersätt: samplingens egen ton", hz);
+            check (peakOf (audio, (size_t) (rate * 0.12), audio.size()) < 0.001f, "ersätt: tyst efter samplingen", peakOf (audio, (size_t) (rate * 0.12), audio.size()));
+            check (peakOf (audio, 0, (size_t) (rate * 0.1)) > 0.3f, "ersätt: samplingen hörs");
+
+            // Lager: samplingen är längre än syntesen och spelas ut.
+            p.sampleMode = 1;
+            p.decayMs = 20.0f;
+            p.holdMs = 5.0f;
+            kick.setParams (p);
+            kick.reset();
+            kick.trigger (1.0f);
+            for (auto& v : audio)
+                v = kick.nextSample();
+            check (peakOf (audio, (size_t) (rate * 0.06), (size_t) (rate * 0.09)) > 0.2f, "lager: samplingen klingar efter syntesen");
+        }
+    }
+
+    void testBassSample()
+    {
+        std::puts("Bas: sampling som ljudkälla (egen ton och följer noten)");
+        const auto sample = makeSine (100.0, 0.6);
+        BassSynth bass;
+        bass.prepare (rate);
+
+        BassParams p;
+        p.rootHz = 200.0f;
+        p.oscA.level = 0.0f;
+        p.oscB.level = 0.0f;
+        p.sub = 0.0f;
+        p.cutoffHz = 20000.0f;
+        p.envAmount = 0.0f;
+        p.drive = 0.0f;
+        p.sustain = 1.0f;
+        p.sampleData = &sample;
+        p.sampleLevel = 1.0f;
+        p.sampleRootHz = 100.0f;
+
+        auto measure = [&] (bool keyTrack)
+        {
+            p.sampleKeyTrack = keyTrack;
+            bass.setParams (p);
+            bass.reset();
+            bass.noteOn (0, 1.0f, (int) rate);
+            std::vector<float> audio ((size_t) (rate * 0.4));
+            for (auto& v : audio)
+                v = bass.nextSample();
+            return audio;
+        };
+
+        const auto own = measure (false);
+        check (std::abs (estimateFrequency (own, (size_t) (rate * 0.05), (size_t) (rate * 0.3)) - 100.0) < 4.0, "utan KEY spelas samplingen med egen ton",
+               estimateFrequency (own, (size_t) (rate * 0.05), (size_t) (rate * 0.3)));
+        const auto followed = measure (true);
+        check (std::abs (estimateFrequency (followed, (size_t) (rate * 0.05), (size_t) (rate * 0.3)) - 200.0) < 6.0, "med KEY följer samplingen noten",
+               estimateFrequency (followed, (size_t) (rate * 0.05), (size_t) (rate * 0.3)));
+
+        p.sampleLevel = 0.0f;
+        const auto silent = measure (false);
+        check (peakOf (silent, 0, silent.size()) < 1.0e-4f, "nivå 0 ger tyst bas utan oscillatorer");
+    }
+
     void testBassPitchAndRelease()
     {
         std::puts ("Bas: rätt ton och tystnar efter gate + release");
@@ -419,6 +553,8 @@ void runEngineTests()
     testKeyMapping();
     testKickLandsOnKey();
     testKickRetriggerFades();
+    testKickShapesAndSamples();
+    testBassSample();
     testBassPitchAndRelease();
     testBassGlide();
     testBassRetriggerWithoutClick();

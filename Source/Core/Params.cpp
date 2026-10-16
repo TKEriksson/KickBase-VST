@@ -70,7 +70,8 @@ namespace ParamID
                                      "WarpEnv", "Sub", "SubOctave", "Noise",
                                      "FilterType", "KeyTrack", "Cutoff", "Resonance", "EnvAmount", "EnvDecay", "VelToEnv",
                                      "Attack", "Decay", "Sustain", "Release", "Glide", "Drive",
-                                     "GateOn", "GateGrid", "GateDepth", "GateSmooth" };
+                                     "GateOn", "GateGrid", "GateDepth", "GateSmooth",
+                                     "SampleLevel", "SampleRoot", "SampleLoop", "SampleKey", "SampleStart" };
         static_assert (std::size (names) == (size_t) BassField::count);
         return names[(size_t) field];
     }
@@ -125,8 +126,25 @@ namespace Params
         layout.add (percent (ParamID::kickClick, "Kick Click", 0.3f));
         layout.add (ms (1.0f, 30.0f, 6.0f, 6.0f, ParamID::kickClickLength, "Kick Click Length"));
         layout.add (floatParam (ParamID::kickClickTone, "Kick Click Tone", skewed (500.0f, 16000.0f, 4000.0f, 1.0f), 5000.0f, formatHz));
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::kickWave, 1 }, "Kick Wave",
+                                                            StringArray { "Sine", "Triangle", "Soft Square", "Soft Saw" }, 0));
+        layout.add (percent (ParamID::kickSub, "Kick Sub", 0.0f));
+        layout.add (percent (ParamID::kickFm, "Kick FM", 0.0f));
+        layout.add (floatParam (ParamID::kickFmRatio, "Kick FM Ratio", skewed (0.5f, 8.0f, 2.0f, 0.01f), 2.0f, [] (float v) { return String (v, 2) + "x"; }));
+        layout.add (ms (2.0f, 300.0f, 40.0f, 40.0f, ParamID::kickFmDecay, "Kick FM Decay"));
+        layout.add (percent (ParamID::kickNoise, "Kick Noise", 0.0f));
+        layout.add (ms (5.0f, 400.0f, 60.0f, 60.0f, ParamID::kickNoiseDecay, "Kick Noise Decay"));
+        layout.add (floatParam (ParamID::kickNoiseTone, "Kick Noise Tone", skewed (500.0f, 16000.0f, 4000.0f, 1.0f), 6000.0f, formatHz));
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::kickClipMode, 1 }, "Kick Clip Mode",
-                                                            StringArray { "Soft", "Hard", "Tube" }, 0));
+                                                            StringArray { "Soft", "Hard", "Tube", "Fold" }, 0));
+        layout.add (percent (ParamID::kickCrush, "Kick Crush", 0.0f));
+        layout.add (floatParam (ParamID::kickLowCut, "Kick Low Cut", skewed (20.0f, 150.0f, 40.0f, 0.1f), 20.0f, formatHz));
+        layout.add (percent (ParamID::kickVelPitch, "Kick Vel > Pitch", 0.0f));
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::kickSampleMode, 1 }, "Kick Sample Mode",
+                                                            StringArray { "Click", "Layer", "Replace" }, 0));
+        layout.add (percent (ParamID::kickSampleLevel, "Kick Sample Level", 1.0f));
+        layout.add (floatParam (ParamID::kickSampleTune, "Kick Sample Tune", NormalisableRange<float> (-12.0f, 12.0f, 0.01f), 0.0f,
+                                [] (float v) { return formatSemis (v, 2); }));
         layout.add (percent (ParamID::kickDrive, "Kick Drive", 0.2f));
         layout.add (floatParam (ParamID::kickHighCut, "Kick High Cut", skewed (500.0f, 20000.0f, 4000.0f, 1.0f), 20000.0f, formatHz));
         layout.add (percent (ParamID::kickLevel, "Kick Level", 0.8f));
@@ -216,6 +234,18 @@ namespace Params
         layout.add (ms (1.0f, 300.0f, 30.0f, 15.0f, id (F::release), title + "Release"));
         layout.add (ms (1.0f, 500.0f, 80.0f, 60.0f, id (F::glide), title + "Glide"));
         layout.add (percent (id (F::drive), title + "Drive", 0.2f));
+
+        // Samplingen (laddas in på lagrets sida): nivå, samplingens egen ton, loop, om den följer noten, och startpunkt.
+        layout.add (percent (id (F::sampleLevel), title + "Sample Level", 0.0f));
+        layout.add (std::make_unique<AudioParameterInt> (ParameterID { id (F::sampleRoot), 1 }, title + "Sample Root", 12, 96, 48,
+                                                         AudioParameterIntAttributes().withStringFromValueFunction ([] (int v, int)
+                                                         {
+                                                             static const char* names[] { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
+                                                             return String (names[((v % 12) + 12) % 12]) + String (v / 12); // C5 = 60, som i FL Studio
+                                                         })));
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::sampleLoop), 1 }, title + "Sample Loop", StringArray { "Off", "On" }, 0));
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::sampleKey), 1 }, title + "Sample Key Track", StringArray { "Off", "On" }, 0));
+        layout.add (percent (id (F::sampleStart), title + "Sample Start", 0.0f));
     }
 
     void addFxParams (Layout& layout)
@@ -329,6 +359,20 @@ KickParams ParamRefs::readKick (int keyPitchClass) const
     p.clickLengthMs = get (ParamID::kickClickLength);
     p.clickToneHz   = get (ParamID::kickClickTone);
     p.clipMode      = getChoice (ParamID::kickClipMode);
+    p.wave          = getChoice (ParamID::kickWave);
+    p.sub           = get (ParamID::kickSub);
+    p.fm            = get (ParamID::kickFm);
+    p.fmRatio       = get (ParamID::kickFmRatio);
+    p.fmDecayMs     = get (ParamID::kickFmDecay);
+    p.noise         = get (ParamID::kickNoise);
+    p.noiseDecayMs  = get (ParamID::kickNoiseDecay);
+    p.noiseToneHz   = get (ParamID::kickNoiseTone);
+    p.crush         = get (ParamID::kickCrush);
+    p.lowCutHz      = get (ParamID::kickLowCut);
+    p.velPitch      = get (ParamID::kickVelPitch);
+    p.sampleMode    = getChoice (ParamID::kickSampleMode);
+    p.sampleLevel   = get (ParamID::kickSampleLevel);
+    p.sampleTuneSemis = get (ParamID::kickSampleTune);
     p.drive         = get (ParamID::kickDrive);
     p.highCutHz     = get (ParamID::kickHighCut);
     p.level         = get (ParamID::kickLevel);
@@ -379,5 +423,10 @@ BassParams ParamRefs::readBass (int layer, int rootMidiNote) const
     p.glideMs    = get (F::glide);
     p.drive      = get (F::drive);
     p.level      = get (F::level);
+    p.sampleLevel    = get (F::sampleLevel);
+    p.sampleRootHz   = Params::midiToHz (get (F::sampleRoot));
+    p.sampleLoop     = (int) get (F::sampleLoop) == 1;
+    p.sampleKeyTrack = (int) get (F::sampleKey) == 1;
+    p.sampleStart    = get (F::sampleStart);
     return p;
 }

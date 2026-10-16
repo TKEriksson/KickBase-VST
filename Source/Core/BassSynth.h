@@ -2,6 +2,7 @@
 
 #include <juce_dsp/juce_dsp.h>
 #include <array>
+#include "SampleData.h"
 #include "Wavetable.h"
 
 enum class BassFilterType { lowpass24, lowpass12, bandpass, highpass };
@@ -51,6 +52,14 @@ struct BassParams
     float glideMs = 60.0f;
     float drive = 0.2f;          // 0..1
     float level = 0.7f;
+
+    // Samplingen som tredje ljudkälla (lagrets egen inladdade sampling, eller nullptr): spelas före filtret.
+    const ClickSample* sampleData = nullptr;
+    float sampleLevel = 0.0f;    // 0..1
+    float sampleRootHz = 130.8f; // samplingens egen tonhöjd; med KEY spelas den så att den följer noten
+    bool sampleLoop = false;
+    bool sampleKeyTrack = false; // av = spelas med sin egen tonhöjd och hastighet
+    float sampleStart = 0.0f;    // 0..1: var i samplingen varje ton börjar
 
     BassParams() { oscB.level = 0.0f; }
 };
@@ -119,6 +128,7 @@ private:
 
     Oscillator oscA, oscB;
     double subPhase = 0.0;
+    double samplePosition = 0.0; // i samplingens samples
     double logFrequency = 0.0, targetLogFrequency = 0.0; // log2(Hz), så att glide låter jämnt
     int glideSamplesLeft = 0;
     double glideStep = 0.0;  // ändring i log-frekvens per sample under ett glide

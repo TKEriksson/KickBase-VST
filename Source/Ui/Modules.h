@@ -68,15 +68,32 @@ private:
     bool dragHover = false;
 };
 
-// Ett baslager (bara instrumentet): filter- och amplitud-envelope och rattar.
-class BassModule : public ModulePanel
+// Ett baslager (bara instrumentet): filter- och amplitud-envelope och rattar. En WAV kan släppas på sidan (eller laddas med
+// LOAD) och spelas som tredje ljudkälla, bredvid oscillatorerna.
+class BassModule : public ModulePanel, public juce::FileDragAndDropTarget, private juce::Timer
 {
 public:
     BassModule (PluginBase& processor, int layer);
     void resized() override;
     void paint (juce::Graphics& g) override { ModulePanel::paint (g); groups.paint (g, getAccent()); }
+    void paintOverChildren (juce::Graphics&) override;
+
+    bool isInterestedInFileDrag (const juce::StringArray& files) override;
+    void fileDragEnter (const juce::StringArray&, int, int) override { dragHover = true; repaint(); }
+    void fileDragExit (const juce::StringArray&) override              { dragHover = false; repaint(); }
+    void filesDropped (const juce::StringArray& files, int, int) override;
 
 private:
+    void timerCallback() override;
+    void loadSample (const juce::File& file);
+    void updateSampleLabel();
+
+    PluginBase& processor;
+    juce::Label sampleLabel;
+    juce::TextButton loadButton { "LOAD" }, clearButton { "X" };
+    std::unique_ptr<juce::FileChooser> chooser;
+    bool dragHover = false;
+
     const int layer;
     ParamRefs refs;
     BassParams current;
