@@ -49,6 +49,9 @@ void InstrumentProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     prepareBase (sampleRate);
     kick.prepare (sampleRate);
+    kick.setSeed (1000);
+    for (size_t layer = 0; layer < basses.size(); ++layer)
+        basses[layer].setSeed (2000 + (juce::int64) layer);
     for (auto& bass : basses)
         bass.prepare (sampleRate);
     for (auto& ducker : duckers)

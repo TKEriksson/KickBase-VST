@@ -59,6 +59,9 @@ public:
     static constexpr int maxUnison = 7;
 
     void prepare (double sampleRate);
+
+    // Slumpen (brus, slumpfas) är seedad, så att samma preset renderar bit-identiskt varje gång.
+    void setSeed (juce::int64 seed) { random.setSeed (seed); }
     void reset();
     void setParams (const BassParams& newParams) { params = newParams; }
 
@@ -115,5 +118,5 @@ private:
     double noteTime = 0.0;   // sekunder sedan senaste anslag (för filter-envelopen)
 
     juce::dsp::StateVariableTPTFilter<float> filter1, filter2;
-    juce::Random random;
+    juce::Random random { 1 };
 };

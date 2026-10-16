@@ -55,6 +55,9 @@ class KickEngine
 {
 public:
     void prepare (double sampleRate);
+
+    // Slumpen (klickens brus) är seedad, så att samma preset renderar bit-identiskt varje gång.
+    void setSeed (juce::int64 seed) { random.setSeed (seed); }
     void reset();
     void setParams (const KickParams& newParams) { params = newParams; }
     void setClickSample (const ClickSample* sample) { clickSample = sample; }
@@ -98,5 +101,5 @@ private:
     float fadeStep = 0.0f;
     float envelope = 0.0f;
     juce::dsp::StateVariableTPTFilter<float> highCut;
-    juce::Random random;
+    juce::Random random { 1 };
 };

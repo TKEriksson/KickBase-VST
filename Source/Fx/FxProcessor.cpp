@@ -34,6 +34,7 @@ void FxProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     prepareBase (sampleRate);
     kick.prepare (sampleRate);
+    kick.setSeed (1000);
     gate.prepare (sampleRate);
     ducker.prepare (sampleRate);
     effects.prepare (sampleRate, samplesPerBlock);
