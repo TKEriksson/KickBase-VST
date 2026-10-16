@@ -224,6 +224,9 @@ namespace Help
             { "LENGTH", "How long the gate stays open in each repeat." },
             { "SMOOTH", "How soft the gate's edges are (longer = less clicky)." },
             { "SHIFT", "Moves the gate pattern within the beat." },
+            { "GAIN", "Maximizer: how much the sound is pushed in before it is clipped and limited. More gain = louder and denser." },
+            { "CLIP", "Maximizer: how much of a soft clipper is added before the limiter (round, warm loudness)." },
+            { "CEILING", "Maximizer: the level nothing goes above. Peaks are held at this ceiling." },
             { "BITS", "Number of bits: fewer = rougher and more distorted." },
             { "DOWNSAMPLE", "Lowers the sample rate for a digital, aliased sound." },
         };

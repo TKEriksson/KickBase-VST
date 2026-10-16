@@ -70,7 +70,7 @@ A glide note needs a sounding note to glide: write a long note, then a short `~`
 
 ## 6. Effects
 
-`list_effects` gives all 13 types and their knobs. Use `set_effect` with channel A–E, slot 1–5, type and knobs by name. Sources reach a channel through their sends (`bassNFxChannel` = 1 for A … 5 for E; `bassNFxAmount` = how much goes through, the rest stays dry); the channel returns with its `Level` and `Duck`. For parallel effects (reverb, echo) send a moderate amount and give the channel an EQ high-pass (`fxAEqHp` ≈ 150–300 Hz) so the low end stays clean, and `fxADuck` so tails pump with the kick.
+`list_effects` gives all 14 types and their knobs. The **Maximizer** (GAIN, CLIP, CEILING, RELEASE, MIX; no latency) is a loudness maximizer you can put on one channel only: send the kick to a channel with a Maximizer (`kickFxChannel`, `kickFxAmount` = 1) to make the kick loud and even on its own, separately from the master maximizer. Use `set_effect` with channel A–E, slot 1–5, type and knobs by name. Sources reach a channel through their sends (`bassNFxChannel` = 1 for A … 5 for E; `bassNFxAmount` = how much goes through, the rest stays dry); the channel returns with its `Level` and `Duck`. For parallel effects (reverb, echo) send a moderate amount and give the channel an EQ high-pass (`fxAEqHp` ≈ 150–300 Hz) so the low end stays clean, and `fxADuck` so tails pump with the kick.
 The Echo is modelled on FL's Fruity Delay 2 (TIME, OFFSET, IN PAN, IN VOL, FB MODE Normal/Invert/Ping-pong, FEEDBACK, CUT, DRY VOL; echoes are IN VOL × input, the dry sound DRY VOL).
 
 ## 7. What `render_preview` tells you

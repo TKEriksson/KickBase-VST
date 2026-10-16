@@ -62,7 +62,7 @@ namespace Effects
     StringArray typeNames()
     {
         return { "Off", "Filter", "Distortion", "EQ", "Chorus", "Phaser", "Echo", "Reverb",
-                 "Compressor", "Trance Gate", "Comb", "Ring Mod", "Bitcrusher", "Auto Filter" };
+                 "Compressor", "Trance Gate", "Comb", "Ring Mod", "Bitcrusher", "Auto Filter", "Maximizer" };
     }
 
     String name (EffectType type)
@@ -73,7 +73,7 @@ namespace Effects
     String shortName (EffectType type)
     {
         const char* names[] { "-", "FILT", "DIST", "EQ", "CHOR", "PHAS", "ECHO", "VERB",
-                              "COMP", "GATE", "COMB", "RING", "CRSH", "AUTO" };
+                              "COMP", "GATE", "COMB", "RING", "CRSH", "AUTO", "MAX" };
         return names[jlimit (0, numEffectTypes - 1, (int) type)];
     }
 
@@ -217,6 +217,12 @@ namespace Effects
                 value ("RESO", 0.0f, 1.0f, 0.0f, 0.4f, Unit::percent),
                 choice ("RATE", syncNames(), 9),
                 value ("DEPTH", 0.0f, 6.0f, 0.0f, 2.0f, Unit::octaves),
+                mixKnob (1.0f) };
+            table[(size_t) EffectType::maximizer] = {
+                value ("GAIN", 0.0f, 24.0f, 0.0f, 6.0f, Unit::db),
+                value ("CLIP", 0.0f, 1.0f, 0.0f, 0.3f, Unit::percent),
+                value ("CEILING", -12.0f, 0.0f, 0.0f, -0.3f, Unit::db),
+                value ("RELEASE", 5.0f, 500.0f, 60.0f, 60.0f, Unit::ms),
                 mixKnob (1.0f) };
             return table;
         }();
@@ -922,6 +928,46 @@ namespace
         }
     };
 
+    // Maximizer utan fördröjning: förstärkning in, mjuk klippning och en limiter med omedelbar attack (ingenting går över
+    // taket) och en release. Utan lookahead, så att den kan ligga i en effektkanal utan att flytta ljudet i tiden.
+    // Ett bra sätt att göra kicken högljudd och jämn för sig: skicka kicken till en kanal med en Maximizer (AMOUNT 100 %).
+    struct MaximizerFx
+    {
+        float envelope = 1.0f; // förstärkningsminskning som tal >= 1 (länkat mellan kanalerna)
+
+        void prepare (const dsp::ProcessSpec&) { reset(); }
+        void reset() { envelope = 1.0f; }
+
+        void process (AudioBuffer<float>& buffer, int numSamples, const Values& k, const Context& context)
+        {
+            const auto gain = Decibels::decibelsToGain (k[0]);
+            const auto clipAmount = k[1];
+            const auto ceiling = std::max (0.05f, Decibels::decibelsToGain (k[2]));
+            const auto release = (float) std::exp (-1.0 / (std::max (1.0, (double) k[3]) * 0.001 * context.sampleRate));
+            const auto wet = k[4];
+            const auto channels = std::min (2, buffer.getNumChannels());
+
+            for (int i = 0; i < numSamples; ++i)
+            {
+                std::array<float, 2> dry {}, processed {};
+                auto peak = 0.0f;
+                for (int ch = 0; ch < channels; ++ch)
+                {
+                    dry[(size_t) ch] = buffer.getSample (ch, i);
+                    const auto x = dry[(size_t) ch] * gain;
+                    processed[(size_t) ch] = x + (std::tanh (x) - x) * clipAmount;
+                    peak = std::max (peak, std::abs (processed[(size_t) ch]));
+                }
+
+                const auto needed = std::max (1.0f, peak / ceiling);
+                envelope = std::max (needed, 1.0f + (envelope - 1.0f) * release);
+
+                for (int ch = 0; ch < channels; ++ch)
+                    buffer.setSample (ch, i, dry[(size_t) ch] + (processed[(size_t) ch] / envelope - dry[(size_t) ch]) * wet);
+            }
+        }
+    };
+
     struct BitcrusherFx
     {
         std::array<float, 2> held {};
@@ -977,13 +1023,14 @@ struct EffectChain::Impl
         RingModFx ringMod;
         BitcrusherFx bitcrusher;
         AutoFilterFx autoFilter;
+        MaximizerFx maximizer;
 
         template <typename Function>
         void forEachEffect (Function&& function)
         {
             function (filter); function (distortion); function (eq); function (chorus); function (phaser);
             function (echo); function (reverb); function (compressor); function (gate); function (comb);
-            function (ringMod); function (bitcrusher); function (autoFilter);
+            function (ringMod); function (bitcrusher); function (autoFilter); function (maximizer);
         }
 
         void resetCurrent()
@@ -1003,6 +1050,7 @@ struct EffectChain::Impl
                 case EffectType::ringMod:    ringMod.reset(); break;
                 case EffectType::bitcrusher: bitcrusher.reset(); break;
                 case EffectType::autoFilter: autoFilter.reset(); break;
+                case EffectType::maximizer:  maximizer.reset(); break;
                 case EffectType::off:
                 case EffectType::count:      break;
             }
@@ -1025,6 +1073,7 @@ struct EffectChain::Impl
                 case EffectType::ringMod:    ringMod.process (buffer, numSamples, values, context); break;
                 case EffectType::bitcrusher: bitcrusher.process (buffer, numSamples, values, context); break;
                 case EffectType::autoFilter: autoFilter.process (buffer, numSamples, values, context); break;
+                case EffectType::maximizer:  maximizer.process (buffer, numSamples, values, context); break;
                 case EffectType::off:
                 case EffectType::count:      break;
             }

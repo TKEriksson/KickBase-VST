@@ -17,7 +17,7 @@
 // Rattarna är parametrar 0..1 (så att parameteruppsättningen är fast, som VST3 kräver);
 // Effects::knobs(typ) säger vad de betyder och hur de räknas om till riktiga enheter.
 enum class EffectType { off, filter, distortion, eq, chorus, phaser, echo, reverb,
-                        compressor, gate, comb, ringMod, bitcrusher, autoFilter, count };
+                        compressor, gate, comb, ringMod, bitcrusher, autoFilter, maximizer, count };
 constexpr int numEffectTypes = (int) EffectType::count; // inklusive Off
 constexpr int numEffectChannels = 5;
 constexpr int slotsPerChannel = 5;
