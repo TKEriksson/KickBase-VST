@@ -412,8 +412,18 @@ void StepSequencer::showCustomMenu (int layer)
             safeThis->onOpenPianoRoll (layer);
         else if (result == 2)
         {
-            safeThis->processor.pattern.clearNotes (layer); // nollställer också pianorullsmarkeringen
-            safeThis->processor.patternChanged();
+            // Bekräfta först: det tar bort lagrets alla toner.
+            juce::AlertWindow::showAsync (juce::MessageBoxOptions::makeOptionsOkCancel (
+                                              juce::MessageBoxIconType::WarningIcon, "Delete piano roll",
+                                              "Delete the piano roll? All the notes of this layer are removed and the layer goes back to an empty step pattern.",
+                                              "Delete", "Cancel"),
+                                          [safeThis, layer] (int choice)
+            {
+                if (safeThis == nullptr || choice != 1)
+                    return;
+                safeThis->processor.pattern.clearNotes (layer); // nollställer också pianorullsmarkeringen
+                safeThis->processor.patternChanged();
+            });
         }
     });
 }

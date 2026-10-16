@@ -654,11 +654,21 @@ void PianoRoll::mouseDown (const juce::MouseEvent& event)
                 else if (result == 3) safeThis->deleteSelected();
                 else if (result == 4)
                 {
-                    safeThis->selection.clear();
-                    safeThis->processor.pattern.clearNotes (safeThis->layer); // nollställer pianorullsmarkeringen
-                    safeThis->processor.patternChanged();
-                    if (safeThis->onDeleted)
-                        safeThis->onDeleted();
+                    // Bekräfta först: det tar bort lagrets alla toner.
+                    juce::AlertWindow::showAsync (juce::MessageBoxOptions::makeOptionsOkCancel (
+                                                      juce::MessageBoxIconType::WarningIcon, "Delete piano roll",
+                                                      "Delete the piano roll? All the notes of this layer are removed and the layer goes back to an empty step pattern.",
+                                                      "Delete", "Cancel"),
+                                                  [safeThis] (int choice)
+                    {
+                        if (safeThis == nullptr || choice != 1)
+                            return;
+                        safeThis->selection.clear();
+                        safeThis->processor.pattern.clearNotes (safeThis->layer); // nollställer pianorullsmarkeringen
+                        safeThis->processor.patternChanged();
+                        if (safeThis->onDeleted)
+                            safeThis->onDeleted();
+                    });
                 }
             });
         }
