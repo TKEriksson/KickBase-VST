@@ -93,7 +93,7 @@ void ScopeView::paint (juce::Graphics& g)
         }
         g.setFont (Theme::font (9.5f, true));
         g.setColour (Theme::textDim);
-        g.drawText ("LIMITER GAIN REDUCTION (dB)", bounds.reduced (8.0f, 3.0f), juce::Justification::topLeft);
+        g.drawText (gainTitle, bounds.reduced (8.0f, 3.0f), juce::Justification::topLeft);
         return;
     }
 

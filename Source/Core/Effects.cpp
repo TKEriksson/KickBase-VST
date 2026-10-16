@@ -241,8 +241,56 @@ namespace Effects
                                                                NormalisableRange<float> (0.0f, 1.5f, 0.001f), 1.0f,
                                                                AudioParameterFloatAttributes().withStringFromValueFunction ([] (float v, int) { return String (roundToInt (v * 100.0f)) + " %"; })));
             layout.add (std::make_unique<AudioParameterFloat> (ParameterID { channelParamID (channel, "Duck"), 1 }, channelTitle + " Duck",
-                                                               NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.5f,
+                                                               NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.0f,
                                                                AudioParameterFloatAttributes().withStringFromValueFunction ([] (float v, int) { return String (roundToInt (v * 100.0f)) + " %"; })));
+
+            // EQ: högpass, fyra band (frekvens, gain, Q), lågpass.
+            auto skewedRange = [] (float lo, float hi, float centre)
+            {
+                NormalisableRange<float> range (lo, hi, 0.1f);
+                range.setSkewForCentre (centre);
+                return range;
+            };
+            auto hzText = [] (float v, int) { return v >= 1000.0f ? String (v / 1000.0f, 2) + " kHz" : String (roundToInt (v)) + " Hz"; };
+            layout.add (std::make_unique<AudioParameterFloat> (ParameterID { channelParamID (channel, "EqHp"), 1 }, channelTitle + " EQ High Pass",
+                                                               skewedRange (20.0f, 600.0f, 90.0f), 20.0f,
+                                                               AudioParameterFloatAttributes().withStringFromValueFunction ([] (float v, int) { return v <= 21.0f ? String ("Off") : String (roundToInt (v)) + " Hz"; })));
+            layout.add (std::make_unique<AudioParameterFloat> (ParameterID { channelParamID (channel, "EqLp"), 1 }, channelTitle + " EQ Low Pass",
+                                                               skewedRange (1500.0f, 20000.0f, 6000.0f), 20000.0f,
+                                                               AudioParameterFloatAttributes().withStringFromValueFunction ([] (float v, int) { return v >= 19500.0f ? String ("Off") : (v >= 1000.0f ? String (v / 1000.0f, 1) + " kHz" : String (roundToInt (v)) + " Hz"); })));
+            const float bandLow[] { 30.0f, 60.0f, 400.0f, 2000.0f }, bandHigh[] { 400.0f, 2000.0f, 8000.0f, 16000.0f };
+            const float bandDefault[] { 100.0f, 400.0f, 2500.0f, 8000.0f }, bandCentre[] { 100.0f, 400.0f, 2000.0f, 6000.0f };
+            for (int b = 0; b < eqBands; ++b)
+            {
+                const auto name = channelTitle + " EQ " + String (b + 1) + " ";
+                const auto key = "Eq" + String (b + 1);
+                layout.add (std::make_unique<AudioParameterFloat> (ParameterID { channelParamID (channel, key + "F"), 1 }, name + "Freq",
+                                                                   skewedRange (bandLow[b], bandHigh[b], bandCentre[b]), bandDefault[b],
+                                                                   AudioParameterFloatAttributes().withStringFromValueFunction (hzText)));
+                layout.add (std::make_unique<AudioParameterFloat> (ParameterID { channelParamID (channel, key + "G"), 1 }, name + "Gain",
+                                                                   NormalisableRange<float> (-15.0f, 15.0f, 0.1f), 0.0f,
+                                                                   AudioParameterFloatAttributes().withStringFromValueFunction ([] (float v, int) { return (v > 0.0f ? "+" : "") + String (v, 1) + " dB"; })));
+                layout.add (std::make_unique<AudioParameterFloat> (ParameterID { channelParamID (channel, key + "Q"), 1 }, name + "Q",
+                                                                   skewedRange (0.3f, 8.0f, 1.2f), b == 1 || b == 2 ? 1.0f : 0.7f,
+                                                                   AudioParameterFloatAttributes().withStringFromValueFunction ([] (float v, int) { return String (v, 2); })));
+            }
+
+            // Kompressor: neutral som standard (ratio 1:1, ingen make-up).
+            layout.add (std::make_unique<AudioParameterFloat> (ParameterID { channelParamID (channel, "CompThr"), 1 }, channelTitle + " Comp Threshold",
+                                                               NormalisableRange<float> (-40.0f, 0.0f, 0.1f), 0.0f,
+                                                               AudioParameterFloatAttributes().withStringFromValueFunction ([] (float v, int) { return String (v, 1) + " dB"; })));
+            layout.add (std::make_unique<AudioParameterFloat> (ParameterID { channelParamID (channel, "CompRatio"), 1 }, channelTitle + " Comp Ratio",
+                                                               skewedRange (1.0f, 20.0f, 4.0f), 1.0f,
+                                                               AudioParameterFloatAttributes().withStringFromValueFunction ([] (float v, int) { return String (v, 1) + ":1"; })));
+            layout.add (std::make_unique<AudioParameterFloat> (ParameterID { channelParamID (channel, "CompAtt"), 1 }, channelTitle + " Comp Attack",
+                                                               skewedRange (0.1f, 100.0f, 10.0f), 10.0f,
+                                                               AudioParameterFloatAttributes().withStringFromValueFunction ([] (float v, int) { return String (v, 1) + " ms"; })));
+            layout.add (std::make_unique<AudioParameterFloat> (ParameterID { channelParamID (channel, "CompRel"), 1 }, channelTitle + " Comp Release",
+                                                               skewedRange (10.0f, 500.0f, 100.0f), 100.0f,
+                                                               AudioParameterFloatAttributes().withStringFromValueFunction ([] (float v, int) { return String (roundToInt (v)) + " ms"; })));
+            layout.add (std::make_unique<AudioParameterFloat> (ParameterID { channelParamID (channel, "CompMakeup"), 1 }, channelTitle + " Comp Makeup",
+                                                               NormalisableRange<float> (0.0f, 24.0f, 0.1f), 0.0f,
+                                                               AudioParameterFloatAttributes().withStringFromValueFunction ([] (float v, int) { return "+" + String (v, 1) + " dB"; })));
 
             for (int slot = 0; slot < slotsPerChannel; ++slot)
             {
@@ -260,6 +308,48 @@ namespace Effects
         if (auto* value = apvts.getRawParameterValue (slotParamID (channel, slot, "Type")))
             return (EffectType) jlimit (0, numEffectTypes - 1, (int) value->load());
         return EffectType::off;
+    }
+
+    EqSettings readEq (const AudioProcessorValueTreeState& apvts, int channel)
+    {
+        auto get = [&] (const String& suffix, float fallback)
+        {
+            const auto* value = apvts.getRawParameterValue (channelParamID (channel, suffix));
+            return value != nullptr ? value->load() : fallback;
+        };
+        EqSettings s;
+        s.hp = get ("EqHp", 20.0f);
+        s.lp = get ("EqLp", 20000.0f);
+        for (int b = 0; b < eqBands; ++b)
+        {
+            const auto key = "Eq" + String (b + 1);
+            s.freq[b] = get (key + "F", s.freq[b]);
+            s.gain[b] = get (key + "G", 0.0f);
+            s.q[b] = get (key + "Q", s.q[b]);
+        }
+        return s;
+    }
+
+    std::array<dsp::IIR::Coefficients<float>::Ptr, eqBands + 2> eqCoefficients (double rate, const EqSettings& s)
+    {
+        using Coeffs = dsp::IIR::Coefficients<float>;
+        const auto limit = (float) rate * 0.45f;
+        std::array<Coeffs::Ptr, eqBands + 2> result;
+        result[0] = Coeffs::makeHighPass (rate, s.hp <= 21.0f ? 5.0f : jmin (s.hp, limit), 0.7071f);
+        result[1] = Coeffs::makeLowShelf (rate, jmin (s.freq[0], limit), 0.7f, Decibels::decibelsToGain (s.gain[0]));
+        result[2] = Coeffs::makePeakFilter (rate, jmin (s.freq[1], limit), s.q[1], Decibels::decibelsToGain (s.gain[1]));
+        result[3] = Coeffs::makePeakFilter (rate, jmin (s.freq[2], limit), s.q[2], Decibels::decibelsToGain (s.gain[2]));
+        result[4] = Coeffs::makeHighShelf (rate, jmin (s.freq[3], limit), 0.7f, Decibels::decibelsToGain (s.gain[3]));
+        result[5] = Coeffs::makeLowPass (rate, s.lp >= 19500.0f ? limit : jmin (s.lp, limit), 0.7071f);
+        return result;
+    }
+
+    float eqResponseDb (double rate, const EqSettings& s, float hz)
+    {
+        float magnitude = 1.0f;
+        for (auto& c : eqCoefficients (rate, s))
+            magnitude *= c->getMagnitudeForFrequency (hz, rate);
+        return Decibels::gainToDecibels (magnitude, -60.0f);
     }
 
     namespace
@@ -1020,12 +1110,100 @@ void EffectChain::process (AudioBuffer<float>& buffer, int numSamples)
 }
 
 //==============================================================================
+namespace
+{
+    // Kanalens EQ och kompressor (alltid med, neutrala som standard). Allt skapas i prepare.
+    struct ChannelStrip
+    {
+        std::array<std::array<dsp::IIR::Filter<float>, 2>, Effects::eqBands + 2> filters;
+        Effects::EqSettings last;
+        bool coefficientsValid = false;
+        float env = 0.0f, gainState = 1.0f;
+        double sampleRate = 44100.0;
+
+        void prepare (double rate)
+        {
+            sampleRate = rate;
+            for (auto& pair : filters)
+                for (auto& filter : pair)
+                {
+                    filter.coefficients = new dsp::IIR::Coefficients<float> (1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f);
+                    filter.reset();
+                }
+            coefficientsValid = false;
+            env = 0.0f;
+            gainState = 1.0f;
+        }
+
+        void updateEq (const Effects::EqSettings& s)
+        {
+            const auto limit = (float) sampleRate * 0.45f;
+            using Array = dsp::IIR::ArrayCoefficients<float>;
+            auto differs = [this, &s] { return std::memcmp (&last, &s, sizeof (s)) != 0; };
+            if (coefficientsValid && ! differs())
+                return;
+
+            for (auto& f : filters[0]) *f.coefficients = Array::makeHighPass (sampleRate, s.hp <= 21.0f ? 5.0f : jmin (s.hp, limit), 0.7071f);
+            for (auto& f : filters[1]) *f.coefficients = Array::makeLowShelf (sampleRate, jmin (s.freq[0], limit), 0.7f, Decibels::decibelsToGain (s.gain[0]));
+            for (auto& f : filters[2]) *f.coefficients = Array::makePeakFilter (sampleRate, jmin (s.freq[1], limit), s.q[1], Decibels::decibelsToGain (s.gain[1]));
+            for (auto& f : filters[3]) *f.coefficients = Array::makePeakFilter (sampleRate, jmin (s.freq[2], limit), s.q[2], Decibels::decibelsToGain (s.gain[2]));
+            for (auto& f : filters[4]) *f.coefficients = Array::makeHighShelf (sampleRate, jmin (s.freq[3], limit), 0.7f, Decibels::decibelsToGain (s.gain[3]));
+            for (auto& f : filters[5]) *f.coefficients = Array::makeLowPass (sampleRate, s.lp >= 19500.0f ? limit : jmin (s.lp, limit), 0.7071f);
+            last = s;
+            coefficientsValid = true;
+        }
+
+        void processEq (AudioBuffer<float>& buffer, int numSamples)
+        {
+            for (int ch = 0; ch < 2; ++ch)
+            {
+                auto* data = buffer.getWritePointer (ch);
+                for (int i = 0; i < numSamples; ++i)
+                {
+                    auto x = data[i];
+                    for (auto& pair : filters)
+                        x = pair[(size_t) ch].processSample (x);
+                    data[i] = x;
+                }
+            }
+        }
+
+        // Kompressor med länkade kanaler. gainOut får förstärkningen (utan make-up) per sample.
+        void processComp (AudioBuffer<float>& buffer, int numSamples, float threshold, float ratio, float attackMs, float releaseMs,
+                          float makeupDb, SignalTap& gainTap)
+        {
+            const auto attack = 1.0f - std::exp (-1.0f / (std::max (0.05f, attackMs) * 0.001f * (float) sampleRate));
+            const auto release = 1.0f - std::exp (-1.0f / (std::max (1.0f, releaseMs) * 0.001f * (float) sampleRate));
+            const auto makeup = Decibels::decibelsToGain (makeupDb);
+            auto* left = buffer.getWritePointer (0);
+            auto* right = buffer.getWritePointer (1);
+            for (int i = 0; i < numSamples; ++i)
+            {
+                const auto level = std::max (std::abs (left[i]), std::abs (right[i]));
+                env += (level - env) * (level > env ? attack : release);
+                const auto db = Decibels::gainToDecibels (env, -100.0f);
+                const auto over = db - threshold;
+                const auto reduction = over > 0.0f ? over * (1.0f - 1.0f / ratio) : 0.0f;
+                const auto target = Decibels::decibelsToGain (-reduction);
+                gainState += (target - gainState) * 0.3f; // jämnar ut hoppen i förstärkningen
+                left[i] *= gainState * makeup;
+                right[i] *= gainState * makeup;
+                gainTap.push (gainState);
+            }
+        }
+    };
+}
+
 struct EffectRack::Impl
 {
     explicit Impl (AudioProcessorValueTreeState& apvts)
     {
+        apvtsPointer = &apvts;
         for (int ch = 0; ch < numEffectChannels; ++ch)
         {
+            const char* keys[] { "CompThr", "CompRatio", "CompAtt", "CompRel", "CompMakeup" };
+            for (int k = 0; k < 5; ++k)
+                comp[(size_t) ch][(size_t) k] = apvts.getRawParameterValue (Effects::channelParamID (ch, keys[k]));
             chains[(size_t) ch] = std::make_unique<EffectChain> (apvts, ch);
             level[(size_t) ch] = apvts.getRawParameterValue (Effects::channelParamID (ch, "Level"));
             duck[(size_t) ch] = apvts.getRawParameterValue (Effects::channelParamID (ch, "Duck"));
@@ -1033,6 +1211,9 @@ struct EffectRack::Impl
     }
 
     std::array<std::unique_ptr<EffectChain>, numEffectChannels> chains;
+    std::array<ChannelStrip, numEffectChannels> strips;
+    AudioProcessorValueTreeState* apvtsPointer = nullptr;
+    std::array<std::array<std::atomic<float>*, 5>, numEffectChannels> comp {}; // thr, ratio, att, rel, makeup
     std::array<std::atomic<float>*, numEffectChannels> level {}, duck {};
     std::array<AudioBuffer<float>, numEffectChannels> buffers;
     std::array<float, numEffectChannels> gains {}, duckAmounts {};
@@ -1051,6 +1232,7 @@ void EffectRack::prepare (double sampleRate, int maxBlockSize)
     {
         impl->chains[(size_t) ch]->prepare (sampleRate, maxBlockSize);
         impl->buffers[(size_t) ch].setSize (2, std::max (1, maxBlockSize), false, true, true);
+        impl->strips[(size_t) ch].prepare (sampleRate);
         impl->duckState[(size_t) ch] = 1.0f;
     }
     impl->duckCoefficient = (float) (1.0 - std::exp (-1.0 / (0.001 * sampleRate)));
@@ -1074,7 +1256,7 @@ void EffectRack::beginBlock (int numSamples, double bpm, double ppq)
 
         auto& chain = *impl->chains[(size_t) ch];
         chain.update (bpm, ppq);
-        impl->active[(size_t) ch] = chain.hasActive();
+        impl->active[(size_t) ch] = true; // en neutral kanal släpper igenom ljudet orört
 
         auto read = [this] (std::atomic<float>* raw)
         {
@@ -1102,12 +1284,30 @@ void EffectRack::process (int numSamples, const float* kickEnvelope, AudioBuffer
 {
     for (int ch = 0; ch < numEffectChannels; ++ch)
     {
-        // En kanal utan effekter är inte en del av ljudvägen (lagren skickar inget dit).
-        if (! impl->active[(size_t) ch])
-            continue;
-
         auto& buffer = impl->buffers[(size_t) ch];
         impl->chains[(size_t) ch]->process (buffer, numSamples);
+
+        // EQ och kompressor (alltid med, neutrala som standard). Taparna visar vad som når dem.
+        auto& strip = impl->strips[(size_t) ch];
+        const auto eq = Effects::readEq (*impl->apvtsPointer, ch);
+        for (int i = 0; i < numSamples; ++i)
+            eqInputTap[ch].push (0.5f * (buffer.getSample (0, i) + buffer.getSample (1, i)));
+        if (! eq.isNeutral())
+        {
+            strip.updateEq (eq);
+            strip.processEq (buffer, numSamples);
+        }
+        for (int i = 0; i < numSamples; ++i)
+            compInputTap[ch].push (0.5f * (buffer.getSample (0, i) + buffer.getSample (1, i)));
+        const auto& comp = impl->comp[(size_t) ch];
+        const auto ratio = comp[1]->load(), makeup = comp[4]->load();
+        if (ratio > 1.01f || makeup > 0.01f)
+            strip.processComp (buffer, numSamples, comp[0]->load(), std::max (1.0f, ratio), comp[2]->load(), comp[3]->load(), makeup, compGainTap[ch]);
+        else
+            for (int i = 0; i < numSamples; ++i)
+                compGainTap[ch].push (1.0f);
+        for (int i = 0; i < numSamples; ++i)
+            compOutputTap[ch].push (0.5f * (buffer.getSample (0, i) + buffer.getSample (1, i)));
 
         // Kanalens duckning följer kickens envelope (efter effekterna, så att svansar duckas också).
         auto& state = impl->duckState[(size_t) ch];

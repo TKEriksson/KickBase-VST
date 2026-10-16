@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../Core/PluginBase.h"
+#include "ChannelViews.h"
 #include "Components.h"
 #include "PresetButton.h"
 
@@ -65,14 +66,21 @@ public:
     void resized() override;
 
 private:
+    enum class View { eq, comp, fx };
+
     void selectChannel (int channel);
     void selectSlot (int slot);
+    void selectView (View view);
 
     PluginBase& processor;
     int channel = 0, slot = 0;
+    View view = View::fx;
     PresetButton presets;
     std::array<juce::TextButton, numEffectChannels> channelButtons;
+    std::array<juce::TextButton, 3> viewButtons; // EQ, COMP, FX
     std::vector<std::unique_ptr<KnobComponent>> levels, ducks; // en per kanal, bara vald syns
     EffectSlotStrip strip;
     EffectSlotEditor editor;
+    EqView eq;
+    std::vector<std::unique_ptr<CompView>> comps; // en per kanal, bara vald syns
 };

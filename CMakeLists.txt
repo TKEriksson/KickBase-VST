@@ -47,6 +47,7 @@ set(PLUGIN_SOURCES
     Source/Ui/StepSequencer.cpp
     Source/Ui/Modules.cpp
     Source/Ui/PresetButton.cpp
+    Source/Ui/ChannelViews.cpp
     Source/Ui/EffectsPage.cpp
     Source/Ui/SidechainPage.cpp
     Source/Ui/MasterPage.cpp

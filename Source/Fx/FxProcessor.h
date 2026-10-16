@@ -22,6 +22,7 @@ public:
 
     juce::AudioProcessorEditor* createEditor() override;
     const MasterSection& getMasterSection() const override { return master; }
+    const EffectRack& getEffectRack() const override { return effects; }
     bool acceptsMidi() const override { return false; }
 
 protected:

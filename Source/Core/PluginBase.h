@@ -25,6 +25,9 @@ public:
     // Mastersektionen ägs av underklassen (den behöver bara finnas där ljudet bearbetas).
     virtual const MasterSection& getMasterSection() const = 0;
 
+    // Effektkanalerna ägs också av underklassen; gränssnittet läser deras uttag (EQ, kompressor).
+    virtual const EffectRack& getEffectRack() const = 0;
+
     void releaseResources() override {}
     bool hasEditor() const override { return true; }
     const juce::String getName() const override { return JucePlugin_Name; }
@@ -86,6 +89,7 @@ public:
     std::atomic<int> patternVersion { 0 }; // ökas när mönstret ändras, så att gränssnittet ritar om
     int selectedTab = 0;                   // gränssnittets valda flikar (nedre och övre panelen), så att de
     int selectedSynthTab = 0;              // finns kvar när fönstret öppnas igen
+    int selectedFxView = 2;                // EFFECTS-sidans vy: 0 EQ, 1 COMP, 2 FX
 
 protected:
     // En ny processor av samma slag, som exporten spelar med en kopia av inställningarna.

@@ -25,6 +25,9 @@ public:
     // En horisontell hjälplinje (t.ex. masterns tak) som ritas vid ±värdet (vågläge).
     std::function<float()> guideLevel;
 
+    // Rubriken i förstärkningsminskningsläget.
+    juce::String gainTitle = "LIMITER GAIN REDUCTION (dB)";
+
     void paint (juce::Graphics&) override;
 
 private:

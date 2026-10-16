@@ -265,9 +265,25 @@ void EffectSlotEditor::resized()
 
 //==============================================================================
 EffectsPage::EffectsPage (PluginBase& p)
-    : processor (p), presets (p, Presets::Section::effects, Theme::effects), strip (p), editor (p)
+    : processor (p), presets (p, Presets::Section::effects, Theme::effects), strip (p), editor (p), eq (p)
 {
     addAndMakeVisible (presets);
+
+    const char* viewNames[] { "EQ", "COMP", "FX" };
+    const char* viewHelp[] { "CHANNEL EQ - A parametric equalizer on this channel, with a live view of the sound reaching it. Flat (neutral) by default.",
+                             "CHANNEL COMPRESSOR - Evens out the level of this channel and shows what it does to the waveform. Off (1:1) by default.",
+                             "EFFECTS - The five effect slots of this channel." };
+    for (size_t i = 0; i < viewButtons.size(); ++i)
+    {
+        auto& button = viewButtons[i];
+        button.setButtonText (viewNames[i]);
+        button.setTooltip (viewHelp[i]);
+        button.setClickingTogglesState (false);
+        button.setColour (juce::TextButton::buttonOnColourId, Theme::effects.withAlpha (0.55f));
+        button.onClick = [this, i] { selectView ((View) i); };
+        addAndMakeVisible (button);
+    }
+    addChildComponent (eq);
 
     for (int ch = 0; ch < numEffectChannels; ++ch)
     {
@@ -285,6 +301,9 @@ EffectsPage::EffectsPage (PluginBase& p)
         ducks.back()->setDescription ("How much this channel is ducked under the kick (tails too), so reverb and echo don't blur the kick.");
         addChildComponent (*levels.back());
         addChildComponent (*ducks.back());
+
+        comps.push_back (std::make_unique<CompView> (p, ch));
+        addChildComponent (*comps.back());
     }
 
     strip.onSelect = [this] (int s) { selectSlot (s); };
@@ -292,6 +311,21 @@ EffectsPage::EffectsPage (PluginBase& p)
     addAndMakeVisible (editor);
 
     selectChannel (0);
+    selectView ((View) juce::jlimit (0, 2, p.selectedFxView));
+}
+
+void EffectsPage::selectView (View newView)
+{
+    view = newView;
+    processor.selectedFxView = (int) view;
+    for (size_t i = 0; i < viewButtons.size(); ++i)
+        viewButtons[i].setToggleState ((View) i == view, juce::dontSendNotification);
+
+    strip.setVisible (view == View::fx);
+    editor.setVisible (view == View::fx);
+    eq.setVisible (view == View::eq);
+    for (int ch = 0; ch < numEffectChannels; ++ch)
+        comps[(size_t) ch]->setVisible (view == View::comp && ch == channel);
 }
 
 void EffectsPage::selectChannel (int newChannel)
@@ -304,6 +338,9 @@ void EffectsPage::selectChannel (int newChannel)
         ducks[(size_t) ch]->setVisible (ch == channel);
     }
     strip.setChannel (channel);
+    eq.setChannel (channel);
+    for (int ch = 0; ch < numEffectChannels; ++ch)
+        comps[(size_t) ch]->setVisible (view == View::comp && ch == channel);
     selectSlot (slot);
 }
 
@@ -330,6 +367,11 @@ void EffectsPage::resized()
     area.removeFromLeft (10);
 
     auto knobs = area.removeFromLeft (170);
+    auto tabs = knobs.removeFromTop (28);
+    const auto tabWidth = tabs.getWidth() / 3;
+    for (auto& button : viewButtons)
+        button.setBounds (tabs.removeFromLeft (tabWidth).reduced (2, 0));
+    knobs.removeFromTop (4);
     const auto half = knobs.getWidth() / 2;
     for (int ch = 0; ch < numEffectChannels; ++ch)
     {
@@ -344,4 +386,7 @@ void EffectsPage::resized()
     strip.setBounds (top);
     area.removeFromTop (6);
     editor.setBounds (area);
+    eq.setBounds (area);
+    for (auto& comp : comps)
+        comp->setBounds (area);
 }

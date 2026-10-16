@@ -5,6 +5,7 @@
 #include <array>
 #include <atomic>
 #include "Modulation.h"
+#include "SignalTap.h"
 
 // Effektkanaler, som i FL Studios mixer: tre kanaler (A, B, C) med fem platser var. Varje plats
 // har en effekttyp (eller Off) och sex rattar vars betydelse beror på typen. Samma effekt kan
@@ -61,6 +62,34 @@ namespace Effects
     double syncInQuarters (int index);
 
     void addParameters (juce::AudioProcessorValueTreeState::ParameterLayout& layout);
+
+    // Kanalens EQ (högpass, fyra band, lågpass) och kompressor. Alltid med, men neutrala som
+    // standard (inga gain, högpass av, ratio 1:1), och då körs ingen bearbetning alls.
+    constexpr int eqBands = 4; // lågt hyllfilter, två klockor, högt hyllfilter
+
+    struct EqSettings
+    {
+        float hp = 20.0f, lp = 20000.0f;                  // Hz; av vid ytterlägena
+        float freq[eqBands] { 100.0f, 400.0f, 2500.0f, 8000.0f };
+        float gain[eqBands] { 0.0f, 0.0f, 0.0f, 0.0f };   // dB
+        float q[eqBands] { 0.7f, 1.0f, 1.0f, 0.7f };      // bara klockorna använder Q
+
+        bool isNeutral() const
+        {
+            for (auto g : gain)
+                if (std::abs (g) > 0.01f)
+                    return false;
+            return hp <= 21.0f && lp >= 19500.0f;
+        }
+    };
+
+    EqSettings readEq (const juce::AudioProcessorValueTreeState& apvts, int channel);
+
+    // Filtrens koefficienter i ordningen högpass, band 1-4, lågpass (samma som ljudtråden använder).
+    std::array<juce::dsp::IIR::Coefficients<float>::Ptr, eqBands + 2> eqCoefficients (double sampleRate, const EqSettings& settings);
+
+    // Frekvenssvaret i dB vid en frekvens (för ritningen).
+    float eqResponseDb (double sampleRate, const EqSettings& settings, float hz);
 
     // Sätter en plats till en effekttyp med typens standardrattar (med gest, som en användare).
     void setSlotType (juce::AudioProcessorValueTreeState& apvts, int channel, int slot, EffectType type);
@@ -119,6 +148,11 @@ public:
 
     // Lägger `amount` av ljudet på kanalens ingång.
     void send (int channel, const float* left, const float* right, int numSamples, float amount);
+
+    // Vad gränssnittet ritar per kanal: ljudet in i EQ:n, in i kompressorn, ut ur den, och
+    // kompressorns förstärkning (i båda kanalerna).
+    SignalTap eqInputTap[numEffectChannels], compInputTap[numEffectChannels], compOutputTap[numEffectChannels],
+              compGainTap[numEffectChannels];
 
     // Kör kanalerna och adderar dem till `mix` (stereo). `kickEnvelope` är kickens envelope per
     // sample (0..1) som kanalernas duckning följer.
