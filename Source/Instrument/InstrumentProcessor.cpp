@@ -184,6 +184,7 @@ void InstrumentProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
     }
 
     transportStatus.publish (clock);
+    transportStatus.patternBar = (int) (((clock.getBarIndex() % lengths.total) + lengths.total) % lengths.total) + 1;
     transportStatus.keyNote = currentNote;
     transportStatus.patternActive = patternActive;
     previewingLayer = patternActive ? previewLayer : -1;

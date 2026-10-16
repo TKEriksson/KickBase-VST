@@ -186,6 +186,7 @@ void FxProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuff
     master.process (buffer, numSamples);
 
     transportStatus.publish (clock);
+    transportStatus.patternBar = (int) (((clock.getBarIndex() % lengths.total) + lengths.total) % lengths.total) + 1;
     transportStatus.keyNote = 60 + key;
     transportStatus.patternActive = active;
     transportStatus.kickPlayTime = kick.getPlayTime();

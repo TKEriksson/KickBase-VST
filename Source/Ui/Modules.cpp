@@ -243,7 +243,7 @@ void HeaderBar::paint (juce::Graphics& g)
 
     g.setFont (Theme::font (14.0f, true));
     g.setColour (Theme::text);
-    g.drawText (juce::String (status.bar.load()) + "." + juce::String (status.beat.load()),
+    g.drawText (juce::String (status.patternBar.load()) + "." + juce::String (status.beat.load()), // takten i mönstret (börjar om när mönstret är klart)
                 area.removeFromRight (55), juce::Justification::centredLeft);
 
     // Tempo i en kapselformad hårdvarupill

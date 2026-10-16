@@ -14,6 +14,7 @@ struct TransportStatus
     std::atomic<bool> followingHost { false };
     std::atomic<int> bar { 1 };
     std::atomic<int> beat { 1 };
+    std::atomic<int> patternBar { 1 };    // takten i mönstret (börjar om när hela mönstret, den längsta raden, är klart)
     std::atomic<int> keyNote { -1 };      // tonen som bestämmer tonarten, -1 = ingen
     std::atomic<bool> patternActive { false };
     std::atomic<int> kickStep { -1 };     // steg i mönstret som spelas nu, för markören
