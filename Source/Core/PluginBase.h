@@ -78,7 +78,9 @@ public:
 
     // Egna wavetables från WAV-filer, en per oscillator (lager 0-2, OSC A/B). Anropas från gränssnittet
     // (message thread); ljudtråden läser tabellerna via userTable. Sparas i projektet.
+    // `file` kan också vara en mapp: dess WAV-filer (högst 16, jämnt utvalda, i namnordning) blir tabellens vågformer.
     bool loadUserTable (int layer, int osc, const juce::File& file);
+    void ensureTablesInUse(); // bygger de inbyggda tabeller som oscillatorerna använder nu (blockerar; inte på ljudtråden)
     const Wavetable* userTable (int layer, int osc) const { return userTables[(size_t) (layer * ParamID::oscsPerLayer + osc)].load(); }
     juce::String getUserTableName (int layer, int osc) const { return userNames[(size_t) (layer * ParamID::oscsPerLayer + osc)]; }
 
@@ -221,6 +223,7 @@ private:
     std::array<std::vector<float>, numUserSlots> userFrames;
     std::array<juce::String, numUserSlots> userNames;
 
+    juce::SharedResourcePointer<TableBuilder> tableBuilder; // bygger tabeller som ljudtråden bett om
     std::unique_ptr<BridgeLink::Server> bridge;
 
     SampleSlot kickSample { 2.0 };

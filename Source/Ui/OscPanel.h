@@ -41,11 +41,18 @@ public:
 private:
     void timerCallback() override;
     void chooseTable (int index);
+    void showTableMenu();
+    void loadFromLibrary (const juce::File& fileOrFolder);
+    void chooseWavFile();
+    juce::String currentTableName() const;
+    std::vector<juce::File> menuFiles; // biblioteksval i menyn (id 1000 +)
 
     PluginBase& processor;
     const int layer, osc;
     juce::Colour accent;
-    ChoiceComponent table, warp;
+    ChoiceComponent warp;
+    juce::Label tableLabel;
+    juce::TextButton tableButton;
     std::array<juce::TextButton, 4> shapeButtons; // SIN, TRI, SAW, SQR: de klassiska vågformerna
     juce::TextButton wavButton { "WAV" };
     std::unique_ptr<juce::FileChooser> chooser;

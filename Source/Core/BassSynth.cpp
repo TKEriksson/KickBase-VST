@@ -19,7 +19,7 @@ namespace
 void BassSynth::prepare (double newSampleRate)
 {
     sampleRate = newSampleRate;
-    Wavetables::count(); // bygg tabellerna här (inte på ljudtråden)
+    Wavetables::ensure (0); // Basic måste finnas; övriga tabeller byggs av TableBuilder / ensureTablesInUse (inte på ljudtråden)
 
     for (auto* filter : { &filter1, &filter2, &sideFilter1, &sideFilter2 })
     {
@@ -77,7 +77,7 @@ void BassSynth::Oscillator::retrigger (const OscParams& p, juce::Random& rng)
 
 BassSynth::Stereo BassSynth::Oscillator::next (const OscParams& p, double frequency, double rate, float warpAmount, float fmInput)
 {
-    const auto& table = p.table >= Wavetables::userIndex() ? (p.user != nullptr ? *p.user : Wavetables::get (0))
+    const auto& table = p.table == Wavetables::userIndex() ? (p.user != nullptr ? *p.user : Wavetables::get (0))
                                                            : Wavetables::get (p.table);
     const auto voices = juce::jlimit (1, maxUnison, p.unison);
     const auto base = frequency * std::exp2 ((p.semis + p.fineCents * 0.01f) / 12.0f);

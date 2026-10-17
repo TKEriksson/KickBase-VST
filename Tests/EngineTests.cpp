@@ -494,7 +494,62 @@ namespace
                "en kort fil blir en enda cykel");
 
         check (Wavetables::fromAudio ({ 0.0f, 0.0f, 0.0f }, "tom", singleFrames) == nullptr, "för kort eller tyst ljud ger ingen tabell");
-        check (Wavetables::names().size() == Wavetables::count() + 1 && Wavetables::userIndex() == Wavetables::count(), "User WAV är sista valet i listan");
+        check (Wavetables::names().size() == Wavetables::listSize() && Wavetables::names()[Wavetables::userIndex()] == "User WAV"
+                   && Wavetables::userIndex() == 14,
+               "User WAV ligger kvar på plats 14");
+        check (Wavetables::names()[Wavetables::classicIndex (2)] == "Classic Saw" && Wavetables::names()[0] == "Basic", "de ursprungliga platserna ligger kvar");
+    }
+
+    void testWavetableLibrary()
+    {
+        std::puts ("Wavetable: alla inbyggda tabeller byggs, är rena och olika");
+
+        const auto start = juce::Time::getMillisecondCounterHiRes();
+        Wavetables::ensureAll();
+        const auto seconds = (juce::Time::getMillisecondCounterHiRes() - start) / 1000.0;
+        std::printf ("  %d tabeller byggda på %.2f s\n", Wavetables::builtInCount(), seconds);
+        check (Wavetables::builtInCount() >= 100, "minst 100 inbyggda tabeller", (double) Wavetables::builtInCount());
+        check (seconds < 20.0, "alla tabeller byggs på rimlig tid", seconds);
+
+        juce::StringArray seen;
+        auto bad = 0;
+        auto silent = 0;
+        auto identical = 0;
+        for (int choice = 0; choice < Wavetables::listSize(); ++choice)
+        {
+            if (choice == Wavetables::userIndex())
+                continue;
+            const auto& table = Wavetables::get (choice);
+            if (seen.contains (table.getName()))
+                ++bad; // samma namn två gånger
+            seen.add (table.getName());
+
+            auto peak = 0.0f;
+            auto firstEnergy = 0.0, lastEnergy = 0.0, difference = 0.0;
+            for (int i = 0; i < Wavetable::frameSize; ++i)
+            {
+                const auto a = table.displayFrame (0)[i], b = table.displayFrame (Wavetable::numFrames - 1)[i];
+                if (! std::isfinite (a) || ! std::isfinite (b))
+                    ++bad;
+                peak = std::max ({ peak, std::abs (a), std::abs (b) });
+                firstEnergy += a * a; lastEnergy += b * b; difference += (a - b) * (a - b);
+            }
+            if (peak < 0.5f || peak > 1.1f || firstEnergy < 1.0e-3 || lastEnergy < 1.0e-3)
+            {
+                std::printf ("  tyst eller fel nivå: %s (topp %.3f, energi %.4f / %.4f)\n", table.getName().toRawUTF8(), (double) peak, firstEnergy, lastEnergy);
+                ++silent;
+            }
+            if (difference < 1.0e-6)
+                ++identical;
+        }
+        check (bad == 0, "inga NaN och inga dubbla namn", (double) bad);
+        check (silent == 0, "alla tabeller har ett ljud med toppen nära 1", (double) silent);
+        std::printf ("  %d tabeller är lika i första och sista framen (enkla klassiska former är ok)\n", identical);
+
+        auto categories = juce::StringArray();
+        for (int choice = 0; choice < Wavetables::listSize(); ++choice)
+            categories.addIfNotAlreadyThere (Wavetables::categoryOf (choice));
+        check (categories.size() >= 8, "tabellerna är sorterade i kategorier", (double) categories.size());
     }
 }
 
@@ -563,6 +618,7 @@ void runEngineTests()
     testGate();
     testPatternTemplatesAndSaving();
     testUserWavetable();
+    testWavetableLibrary();
     testGateAndPianoRollFlag();
     testRowLengths();
 }

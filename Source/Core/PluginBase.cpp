@@ -81,26 +81,55 @@ bool PluginBase::loadUserTable (int layer, int osc, const juce::File& file)
 
     juce::AudioFormatManager formats;
     formats.registerBasicFormats();
-    std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (file));
-    if (reader == nullptr || reader->lengthInSamples < 16)
+
+    auto readMono = [&formats] (const juce::File& source, std::vector<float>& mono, int maxLength)
+    {
+        std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (source));
+        if (reader == nullptr || reader->lengthInSamples < 16)
+            return false;
+        const auto length = (int) std::min<juce::int64> (reader->lengthInSamples, maxLength);
+        juce::AudioBuffer<float> audio ((int) reader->numChannels, length);
+        reader->read (&audio, 0, length, 0, true, true);
+        mono.assign ((size_t) length, 0.0f);
+        for (int ch = 0; ch < audio.getNumChannels(); ++ch)
+            for (int i = 0; i < length; ++i)
+                mono[(size_t) i] += audio.getSample (ch, i) / (float) audio.getNumChannels();
+        return true;
+    };
+
+    std::vector<float> mono;
+    if (file.isDirectory())
+    {
+        // En mapp med enkelcykel-filer (som AKWF): varje fil sträcks till en cykel om 2048 samples, och högst 16 av dem väljs jämnt.
+        auto files = file.findChildFiles (juce::File::findFiles, false, "*.wav;*.aif;*.aiff;*.flac");
+        std::sort (files.begin(), files.end(), [] (const juce::File& a, const juce::File& b) { return a.getFileName().compareNatural (b.getFileName()) < 0; });
+        if (files.size() < 2)
+            return false;
+
+        const auto count = std::min (16, files.size());
+        for (int i = 0; i < count; ++i)
+        {
+            std::vector<float> one;
+            if (! readMono (files[count == 1 ? 0 : (int) std::lround ((double) i * (files.size() - 1) / (count - 1))], one, 2048 * 8))
+                one.assign (2048, 0.0f);
+            for (int s = 0; s < 2048; ++s)
+            {
+                const auto position = (double) s * (double) one.size() / 2048.0;
+                const auto i0 = std::min ((int) one.size() - 1, (int) position), i1 = (i0 + 1) % (int) one.size();
+                const auto fraction = (float) (position - i0);
+                mono.push_back (one[(size_t) i0] + (one[(size_t) i1] - one[(size_t) i0]) * fraction);
+            }
+        }
+    }
+    else if (! readMono (file, mono, 2048 * 256)) // högst 256 cykler om 2048 samples räcker för 16 frames
         return false;
 
-    // Högst 256 cykler om 2048 samples räcker för 16 frames.
-    const auto length = (int) std::min<juce::int64> (reader->lengthInSamples, 2048 * 256);
-    juce::AudioBuffer<float> audio ((int) reader->numChannels, length);
-    reader->read (&audio, 0, length, 0, true, true);
-
-    std::vector<float> mono ((size_t) length, 0.0f);
-    for (int ch = 0; ch < audio.getNumChannels(); ++ch)
-        for (int i = 0; i < length; ++i)
-            mono[(size_t) i] += audio.getSample (ch, i) / (float) audio.getNumChannels();
-
     std::vector<float> frames;
-    auto table = Wavetables::fromAudio (mono, file.getFileNameWithoutExtension(), frames);
+    auto table = Wavetables::fromAudio (mono, file.isDirectory() ? file.getFileName() : file.getFileNameWithoutExtension(), frames);
     if (table == nullptr)
         return false;
 
-    setUserTable (layer * ParamID::oscsPerLayer + osc, std::move (table), std::move (frames), file.getFileNameWithoutExtension());
+    setUserTable (layer * ParamID::oscsPerLayer + osc, std::move (table), std::move (frames), file.isDirectory() ? file.getFileName() : file.getFileNameWithoutExtension());
 
     // Välj tabellen i oscillatorn.
     if (auto* parameter = apvts.getParameter (ParamID::bass (layer, ParamID::oscField (osc, BassField::aTable))))
@@ -111,6 +140,14 @@ bool PluginBase::loadUserTable (int layer, int osc, const juce::File& file)
     }
     markStateChanged();
     return true;
+}
+
+void PluginBase::ensureTablesInUse()
+{
+    for (int layer = 0; layer < ParamID::numBassLayers; ++layer)
+        for (int osc = 0; osc < ParamID::oscsPerLayer; ++osc)
+            if (auto* value = apvts.getRawParameterValue (ParamID::bass (layer, ParamID::oscField (osc, BassField::aTable))))
+                Wavetables::ensure ((int) std::lround (value->load()));
 }
 
 juce::ValueTree PluginBase::userTablesToValueTree() const
@@ -285,6 +322,7 @@ void PluginBase::setStateInformation (const void* data, int sizeInBytes)
         state.removeChild (routesTree, nullptr);
 
     apvts.replaceState (state);
+    ensureTablesInUse();
 }
 
 void PluginBase::patternChanged()
@@ -353,6 +391,7 @@ void PluginBase::loadFactoryPreset (Presets::Section section, int index, int lay
     }
 
     presetNameSlot (section, layer) = Presets::factoryName (section, effectVersion, index);
+    ensureTablesInUse();
     patternChanged();
 }
 
@@ -502,6 +541,7 @@ bool PluginBase::loadUserPreset (Presets::Section section, const juce::File& fil
     }
 
     presetNameSlot (section, layer) = file.getFileNameWithoutExtension();
+    ensureTablesInUse();
     patternChanged();
     return true;
 }
@@ -524,6 +564,7 @@ juce::AudioBuffer<float> PluginBase::renderOffline (const OfflineRender::Setting
     if (part == ExportPart::bass)
         turnOff (ParamID::kickOn);
 
+    copy->ensureTablesInUse();
     return OfflineRender::render (*copy, settings);
 }
 
@@ -544,6 +585,8 @@ bool PluginBase::exportWav (const juce::File& file, ExportPart part, int bars)
             turnOff (ParamID::bass (layer, BassField::on).toRawUTF8());
     if (part == ExportPart::bass)
         turnOff (ParamID::kickOn);
+
+    copy->ensureTablesInUse();
 
     // Fyra takters förrulle: mönstret och LFO:erna börjar om var fjärde takt, så loopen börjar
     // på mönstrets början med förra varvets svansar. En takt extra täcker masterns latens.

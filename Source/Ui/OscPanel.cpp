@@ -39,8 +39,8 @@ void WavetableView::paint (juce::Graphics& g)
     g.setColour (Theme::knobBodyDark.withAlpha (0.85f));
     g.fillRoundedRectangle (bounds, 6.0f);
 
-    const Wavetable* userTable = lastTable >= Wavetables::userIndex() ? processor.userTable (layer, osc) : nullptr;
-    const auto& table = userTable != nullptr ? *userTable : Wavetables::get (lastTable < 0 || lastTable >= Wavetables::userIndex() ? 0 : lastTable);
+    const Wavetable* userTable = lastTable == Wavetables::userIndex() ? processor.userTable (layer, osc) : nullptr;
+    const auto& table = userTable != nullptr ? *userTable : Wavetables::get (lastTable < 0 || lastTable == Wavetables::userIndex() ? 0 : lastTable);
     const auto area = bounds.reduced (8.0f, 10.0f);
 
     // Varje frame förskjuts uppåt-höger: de bakre är mindre och mörkare.
@@ -118,11 +118,18 @@ void WavetableView::mouseDown (const juce::MouseEvent&)
 //==============================================================================
 OscPanel::OscPanel (PluginBase& p, int layerIn, int oscIn, juce::Colour accentIn)
     : processor (p), layer (layerIn), osc (oscIn), accent (accentIn),
-      table (p.apvts, ParamID::bass (layer, ParamID::oscField (oscIn, BassField::aTable)), "TABLE"),
       warp (p.apvts, ParamID::bass (layer, ParamID::oscField (oscIn, BassField::aWarp)), "WARP"),
       view (p, layer, oscIn, accentIn)
 {
-    addAndMakeVisible (table);
+    tableLabel.setText ("TABLE", juce::dontSendNotification);
+    tableLabel.setFont (Theme::font (11.0f, true));
+    tableLabel.setColour (juce::Label::textColourId, Theme::textDim);
+    addAndMakeVisible (tableLabel);
+    tableButton.setTooltip ("TABLE - The wavetable this oscillator plays: every waveform in it is one step along POS. Click to choose from categories "
+                            "(Analog, Filter, FM, Digital, Vocal, Psy ...), your own library (Documents/Kickbase/Wavetables, e.g. the 4000+ AKWF waveforms) "
+                            "or a WAV file/folder.");
+    tableButton.onClick = [this] { showTableMenu(); };
+    addAndMakeVisible (tableButton);
     addAndMakeVisible (warp);
     addAndMakeVisible (view);
 
@@ -137,7 +144,7 @@ OscPanel::OscPanel (PluginBase& p, int layerIn, int oscIn, juce::Colour accentIn
         button.setButtonText (shapeNames[i]);
         button.setTooltip (juce::String ("CLASSIC WAVE - ") + shapeHelp[i] + " (Wavetables are in the TABLE list.)");
         button.setColour (juce::TextButton::buttonOnColourId, accent.withAlpha (0.6f));
-        button.onClick = [this, i] { chooseTable (Wavetables::count() - 4 + (int) i); };
+        button.onClick = [this, i] { chooseTable (Wavetables::classicIndex ((int) i)); };
         addAndMakeVisible (button);
     }
 
@@ -146,18 +153,7 @@ OscPanel::OscPanel (PluginBase& p, int layerIn, int oscIn, juce::Colour accentIn
     wavButton.setColour (juce::TextButton::buttonOnColourId, accent.withAlpha (0.6f));
     wavButton.onClick = [this]
     {
-        chooser = std::make_unique<juce::FileChooser> ("Choose a WAV file for the wavetable", juce::File(), "*.wav;*.aif;*.aiff;*.flac");
-        chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
-                              [this] (const juce::FileChooser& fc)
-                              {
-                                  if (! fc.getResult().existsAsFile())
-                                      return;
-                                  if (processor.loadUserTable (layer, osc, fc.getResult()))
-                                      view.repaint();
-                                  else
-                                      juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Wavetable",
-                                                                              "Could not read that file as a wavetable.");
-                              });
+        chooseWavFile();
     };
     addAndMakeVisible (wavButton);
     startTimerHz (10);
@@ -174,18 +170,138 @@ OscPanel::OscPanel (PluginBase& p, int layerIn, int oscIn, juce::Colour accentIn
     }
 }
 
+juce::String OscPanel::currentTableName() const
+{
+    const auto current = (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, ParamID::oscField (osc, BassField::aTable)))->load();
+    if (current == Wavetables::userIndex())
+        return processor.getUserTableName (layer, osc).isEmpty() ? juce::String ("User WAV") : processor.getUserTableName (layer, osc);
+    return Wavetables::names()[juce::jlimit (0, Wavetables::listSize() - 1, current)];
+}
+
 void OscPanel::timerCallback()
 {
     const auto current = (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, ParamID::oscField (osc, BassField::aTable)))->load();
-    if (current == lastTable)
-        return;
-    lastTable = current;
-    for (size_t i = 0; i < shapeButtons.size(); ++i)
-        shapeButtons[i].setToggleState (current == Wavetables::count() - 4 + (int) i, juce::dontSendNotification);
+    const auto name = currentTableName();
+    if (current != lastTable || name != tableButton.getButtonText())
+    {
+        lastTable = current;
+        tableButton.setButtonText (name);
+        for (size_t i = 0; i < shapeButtons.size(); ++i)
+            shapeButtons[i].setToggleState (current == Wavetables::classicIndex ((int) i), juce::dontSendNotification);
+    }
+}
+
+void OscPanel::chooseWavFile()
+{
+    chooser = std::make_unique<juce::FileChooser> ("Choose a WAV file for the wavetable", Wavetables::libraryFolder(), "*.wav;*.aif;*.aiff;*.flac");
+    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                          [this] (const juce::FileChooser& fc)
+                          {
+                              if (fc.getResult().existsAsFile())
+                                  loadFromLibrary (fc.getResult());
+                          });
+}
+
+void OscPanel::loadFromLibrary (const juce::File& fileOrFolder)
+{
+    if (processor.loadUserTable (layer, osc, fileOrFolder))
+        view.repaint();
+    else
+        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Wavetable", "Could not read that as a wavetable.");
+}
+
+// Menyn: kategorierna med de inbyggda tabellerna, och biblioteket (mappar och WAV-filer i Dokument/Kickbase/Wavetables).
+void OscPanel::showTableMenu()
+{
+    juce::PopupMenu menu;
+    const auto current = (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, ParamID::oscField (osc, BassField::aTable)))->load();
+    const auto names = Wavetables::names();
+
+    juce::StringArray categories;
+    for (int choice = 0; choice < Wavetables::listSize(); ++choice)
+        if (choice != Wavetables::userIndex())
+            categories.addIfNotAlreadyThere (Wavetables::categoryOf (choice));
+
+    for (const auto& category : categories)
+    {
+        juce::PopupMenu sub;
+        auto containsCurrent = false;
+        for (int choice = 0; choice < Wavetables::listSize(); ++choice)
+            if (choice != Wavetables::userIndex() && Wavetables::categoryOf (choice) == category)
+            {
+                sub.addItem (choice + 1, names[choice], true, choice == current);
+                containsCurrent = containsCurrent || choice == current;
+            }
+        menu.addSubMenu (category.toUpperCase(), sub, true, nullptr, containsCurrent);
+    }
+
+    menuFiles.clear();
+    const auto library = Wavetables::libraryFolder();
+    menu.addSeparator();
+    std::function<void (juce::PopupMenu&, const juce::File&, int)> addFolder = [&] (juce::PopupMenu& into, const juce::File& folder, int depth)
+    {
+        auto wavs = folder.findChildFiles (juce::File::findFiles, false, "*.wav;*.aif;*.aiff;*.flac");
+        std::sort (wavs.begin(), wavs.end(), [] (const juce::File& a, const juce::File& b) { return a.getFileName().compareNatural (b.getFileName()) < 0; });
+        auto folders = folder.findChildFiles (juce::File::findDirectories, false);
+        std::sort (folders.begin(), folders.end(), [] (const juce::File& a, const juce::File& b) { return a.getFileName().compareNatural (b.getFileName()) < 0; });
+
+        if (wavs.size() >= 2)
+        {
+            menuFiles.push_back (folder);
+            into.addItem (999 + (int) menuFiles.size(), "[ Whole folder as one wavetable ]");
+            into.addSeparator();
+        }
+        for (const auto& subfolder : folders)
+        {
+            if (depth >= 4)
+                break;
+            juce::PopupMenu sub;
+            addFolder (sub, subfolder, depth + 1);
+            into.addSubMenu (subfolder.getFileName(), sub);
+        }
+        for (const auto& wav : wavs)
+        {
+            menuFiles.push_back (wav);
+            into.addItem (999 + (int) menuFiles.size(), wav.getFileNameWithoutExtension());
+        }
+    };
+
+    if (library.isDirectory())
+    {
+        juce::PopupMenu libraryMenu;
+        addFolder (libraryMenu, library, 0);
+        menu.addSubMenu ("LIBRARY (your waves)", libraryMenu);
+    }
+    menu.addItem (900, "Load WAV file ...");
+    menu.addItem (901, "Open the library folder");
+    if (current == Wavetables::userIndex())
+        menu.addItem (Wavetables::userIndex() + 1, currentTableName() + " (loaded)", true, true);
+
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (tableButton).withMinimumWidth (tableButton.getWidth()),
+                        [safe = juce::Component::SafePointer<OscPanel> (this)] (int result)
+                        {
+                            if (safe == nullptr || result == 0)
+                                return;
+                            if (result == 900)
+                                safe->chooseWavFile();
+                            else if (result == 901)
+                            {
+                                Wavetables::libraryFolder().createDirectory();
+                                Wavetables::libraryFolder().startAsProcess();
+                            }
+                            else if (result >= 1000)
+                            {
+                                if ((size_t) (result - 1000) < safe->menuFiles.size())
+                                    safe->loadFromLibrary (safe->menuFiles[(size_t) (result - 1000)]);
+                            }
+                            else if (result != Wavetables::userIndex() + 1)
+                                safe->chooseTable (result - 1);
+                        });
 }
 
 void OscPanel::chooseTable (int index)
 {
+    Wavetables::ensure (index); // bygg den nu (några hundra ms som mest) så att det låter direkt
     if (auto* parameter = processor.apvts.getParameter (ParamID::bass (layer, ParamID::oscField (osc, BassField::aTable))))
     {
         parameter->beginChangeGesture();
@@ -214,7 +330,9 @@ void OscPanel::resized()
     // Vänster: tabell, warp och bilden. Höger: rattarna i två rader över hela höjden.
     auto left = area.removeFromLeft (juce::jmin (300, area.getWidth() / 3));
     auto choices = left.removeFromTop (40);
-    table.setBounds (choices.removeFromLeft (choices.getWidth() / 2 + 10).withTrimmedRight (3));
+    auto tableArea = choices.removeFromLeft (choices.getWidth() / 2 + 10).withTrimmedRight (3);
+    tableLabel.setBounds (tableArea.removeFromTop (14));
+    tableButton.setBounds (tableArea.removeFromTop (24));
     warp.setBounds (choices.withTrimmedLeft (3));
     left.removeFromTop (4);
     auto shapes = left.removeFromTop (20);
