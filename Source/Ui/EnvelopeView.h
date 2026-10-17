@@ -36,6 +36,10 @@ public:
     void addCurve (Curve curve)    { curves.push_back (std::move (curve)); }
     void addHandle (Handle handle) { handles.push_back (std::move (handle)); }
 
+    // Markerar när tonen släpps (note off): en streckad linje med texten NOTE OFF. `real` = från mönstret, annars ett exempel (inget mönster att läsa).
+    struct NoteOff { double seconds = 0.0; bool real = false; };
+    void setNoteOff (std::function<NoteOff()> getter) { noteOff = std::move (getter); }
+
     void paint (juce::Graphics&) override;
     void mouseMove (const juce::MouseEvent&) override;
     void mouseExit (const juce::MouseEvent&) override;
@@ -58,6 +62,7 @@ private:
     double displaySeconds;
     std::vector<Curve> curves;
     std::vector<Handle> handles;
+    std::function<NoteOff()> noteOff;
 
     float lastSignature = -1.0f;
     int hoveredHandle = -1, draggedHandle = -1;

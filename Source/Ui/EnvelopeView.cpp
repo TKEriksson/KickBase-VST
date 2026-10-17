@@ -34,6 +34,8 @@ float EnvelopeView::signature() const
         const auto p = handle.position();
         sum += p.x * 7919.0f + p.y * 104729.0f;
     }
+    if (noteOff)
+        sum += (float) noteOff().seconds * 977.0f;
     for (const auto& curve : curves)
         for (const auto fraction : { 0.0025, 0.01, 0.05, 0.25, 1.0 })
             sum += curve.valueAt (fraction * displaySeconds) * 31.0f;
@@ -89,6 +91,30 @@ void EnvelopeView::paint (juce::Graphics& g)
     }
     g.setColour (Theme::grid);
     g.drawHorizontalLine ((int) area.getBottom(), area.getX(), area.getRight());
+
+    // När tonen släpps (note off): det är inte en inställning här, den kommer från mönstret. Därefter följer release.
+    if (noteOff)
+    {
+        const auto marker = noteOff();
+        const auto x = timeToX (marker.seconds);
+        juce::Path line;
+        line.startNewSubPath (x, area.getY());
+        line.lineTo (x, area.getBottom());
+        juce::Path dashed;
+        const float dashes[] = { 3.0f, 3.0f };
+        juce::PathStrokeType (1.0f).createDashedStroke (dashed, line, dashes, 2);
+        g.setColour (Theme::text.withAlpha (marker.real ? 0.55f : 0.35f));
+        g.fillPath (dashed);
+
+        const auto text = juce::String (marker.real ? "NOTE OFF" : "NOTE OFF (example)");
+        g.setFont (Theme::font (9.0f, true));
+        const auto width = juce::GlyphArrangement::getStringWidthInt (Theme::font (9.0f, true), text) + 4;
+        const auto room = area.getRight() - x - 3.0f;
+        if (room >= (float) width)
+            g.drawText (text, (int) x + 3, (int) area.getY() + 1, width, 10, juce::Justification::left);
+        else
+            g.drawText (text, (int) x - width - 2, (int) area.getY() + 1, width, 10, juce::Justification::right);
+    }
 
     // Kurvorna. Samplas tätare i början där skalan är utdragen.
     constexpr int numPoints = 240;

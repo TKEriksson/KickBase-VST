@@ -576,10 +576,10 @@ BassModule::BassModule (PluginBase& p, int layerIn)
                          accent, true, "FILTER" });
     envelope.addCurve ({ [this] (double t) { return ampValueAt (t); }, Theme::text.withAlpha (0.8f), false, "AMP" });
 
-    envelope.addHandle ({ [this] { return juce::Point<float> (0.0015f, current.envAmount / 8.0f); },
-                          nullptr, param (p, id (F::envAmount)), false, accent });
+    envelope.addHandle ({ [this] { return juce::Point<float> (std::max (0.0015f, current.envAttackMs * 0.001f), current.envAmount / 8.0f); },
+                          param (p, id (F::envAttack)), param (p, id (F::envAmount)), false, accent });
     envelope.addHandle ({ [this] {
-                              const auto t = current.envDecayMs * 0.001 / 3.0;
+                              const auto t = current.envAttackMs * 0.001 + current.envDecayMs * 0.001 / 3.0;
                               return juce::Point<float> ((float) t, BassSynth::filterEnvelopeAt (current, t) * current.envAmount / 8.0f); },
                           param (p, id (F::envDecay)), nullptr, false, accent });
 
@@ -589,7 +589,8 @@ BassModule::BassModule (PluginBase& p, int layerIn)
                               const auto t = (current.attackMs + current.decayMs * 0.5f) * 0.001;
                               return juce::Point<float> ((float) t, ampValueAt (t)); },
                           param (p, id (F::decay)), param (p, id (F::sustain)), false, Theme::text });
-    envelope.addHandle ({ [this] { return juce::Point<float> (0.18f + current.releaseMs * 0.001f, 0.0f); },
+    envelope.setNoteOff ([this] { return noteOffNow(); });
+    envelope.addHandle ({ [this] { return juce::Point<float> ((float) noteOffNow().seconds + current.releaseMs * 0.001f, 0.0f); },
                           param (p, id (F::release)), nullptr, false, Theme::text });
     addAndMakeVisible (envelope);
 
@@ -630,7 +631,7 @@ BassModule::BassModule (PluginBase& p, int layerIn)
                      { "NOISE", { knob (id (F::noise), "LEVEL"), knob (id (F::noiseTone), "TONE") } },
                      { "FILTER", { choice (id (F::filterType), "TYPE"), knob (id (F::cutoff), "CUTOFF"),
                                    knob (id (F::resonance), "RESO"), knob (id (F::keyTrack), "KEYTRK") } },
-                     { "FILTER ENVELOPE", { knob (id (F::envAmount), "AMOUNT"), knob (id (F::envDecay), "DECAY"),
+                     { "FILTER ENVELOPE", { knob (id (F::envAmount), "AMOUNT"), knob (id (F::envAttack), "ATTACK"), knob (id (F::envDecay), "DECAY"),
                                             knob (id (F::velToEnv), "VEL") } } });
     groups.addRow ({ { "VOLUME ENVELOPE", { knob (id (F::attack), "ATTACK"), knob (id (F::decay), "DECAY"),
                                             knob (id (F::sustain), "SUSTAIN"), knob (id (F::release), "RELEASE") } },
@@ -916,10 +917,16 @@ void SamplePage::resized()
 }
 
 //==============================================================================
+EnvelopeView::NoteOff BassModule::noteOffNow() const
+{
+    const auto real = processor.typicalNoteSeconds (layer);
+    return { real > 0.0 ? real : 0.18, real > 0.0 };
+}
+
 float BassModule::ampValueAt (double seconds) const
 {
-    // Envelopen för en ton som hålls i 180 ms (ungefär ett långt sextondelssteg).
-    constexpr double gateSeconds = 0.18;
+    // Envelopen för en typisk ton i instrumentets mönster (finns ingen, ett exempel på 180 ms).
+    const auto gateSeconds = noteOffNow().seconds;
     const auto attack = std::max (0.00005, current.attackMs * 0.001);
     const auto decay = std::max (0.0001, current.decayMs * 0.001);
     const auto release = std::max (0.0001, current.releaseMs * 0.001);

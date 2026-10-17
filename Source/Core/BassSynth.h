@@ -51,6 +51,7 @@ struct BassParams
     float resonance = 0.3f;      // 0..1
     float envAmount = 4.0f;      // hur många oktaver filtret öppnas av envelopen
     float envDecayMs = 120.0f;
+    float envAttackMs = 1.0f;    // hur snabbt filtret öppnas (1 ms = som innan inställningen fanns)
     float velToEnv = 0.5f;       // hur mycket velocity påverkar filter-envelopen, 0..1
     float attackMs = 1.0f;
     float decayMs = 200.0f;

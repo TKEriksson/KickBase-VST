@@ -89,6 +89,7 @@ enum class BassField
     env2Attack, env2Decay, env2Sustain, env2Release,              // ENV 2 och ENV 3: modulationsenveloper
     env3Attack, env3Decay, env3Sustain, env3Release,
     subWave, noiseTone, pitchEnvAmount, pitchEnvDecay, driveMode,
+    envAttack,                                                    // filterenvelopens attack (före envDecay i signalen, men sist här så att gamla projekt är orörda)
     count
 };
 

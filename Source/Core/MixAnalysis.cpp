@@ -1074,7 +1074,7 @@ namespace MixAnalysis
                         in.eq->setProperty (field.substring (2), value);
                     else if (field == "WarpEnv" || field == "Sub" || field == "SubOctave" || field == "SubWave" || field == "Noise" || field == "NoiseTone")
                         in.subNoise->setProperty (field, value);
-                    else if (field == "FilterType" || field == "KeyTrack" || field == "Cutoff" || field == "Resonance" || field == "EnvAmount" || field == "EnvDecay" || field == "VelToEnv")
+                    else if (field == "FilterType" || field == "KeyTrack" || field == "Cutoff" || field == "Resonance" || field == "EnvAmount" || field == "EnvAttack" || field == "EnvDecay" || field == "VelToEnv")
                         in.filter->setProperty (field, value);
                     else if (field == "Attack" || field == "Decay" || field == "Sustain" || field == "Release" || field == "Glide")
                         in.amp->setProperty (field, value);

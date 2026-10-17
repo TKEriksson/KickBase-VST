@@ -2,7 +2,6 @@
 
 namespace
 {
-    constexpr double filterAttackSeconds = 0.001;
 
     // Drive: 0 mjuk (tanh), 1 hård (klippning), 2 vikning (wavefolder), 3 asymmetrisk (jämna övertoner), 4 krossad (bitar).
     float softClip (float x, float drive, int mode = 0)
@@ -236,12 +235,13 @@ void BassSynth::ModEnv::next (const ModEnvParams& p, double rate)
 
 float BassSynth::filterEnvelopeAt (const BassParams& p, double seconds)
 {
-    if (seconds < filterAttackSeconds)
-        return (float) (seconds / filterAttackSeconds);
+    const auto attack = std::max (0.0001, p.envAttackMs * 0.001);
+    if (seconds < attack)
+        return (float) (seconds / attack);
 
     // Exponentiellt fall, -60 dB efter envDecayMs.
     const auto decay = std::max (0.001, p.envDecayMs * 0.001);
-    return (float) std::exp (std::log (0.001) * (seconds - filterAttackSeconds) / decay);
+    return (float) std::exp (std::log (0.001) * (seconds - attack) / decay);
 }
 
 double BassSynth::coefficientFor (double milliseconds, double rate)

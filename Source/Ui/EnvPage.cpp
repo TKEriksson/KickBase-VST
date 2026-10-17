@@ -47,6 +47,12 @@ EnvPage::EnvPage (PluginBase& p) : processor (p), refs (p.apvts)
 
 EnvPage::~EnvPage() = default;
 
+EnvelopeView::NoteOff EnvPage::noteOffOf (int forLayer, double example) const
+{
+    const auto real = processor.typicalNoteSeconds (forLayer);
+    return { real > 0.0 ? real : example, real > 0.0 };
+}
+
 void EnvPage::timerCallback()
 {
     const auto wanted = juce::jlimit (0, processor.activeInstruments() - 1, processor.selectedInstrument);
@@ -92,25 +98,26 @@ void EnvPage::rebuild()
     // ENV 1: volym-envelopen (det som formar ljudet).
     {
         auto* view = addTile ("ENV 1  VOLUME", "Shapes the loudness of every note: attack, decay, sustain level and release.", 1.0, -1);
-        constexpr double gate = 0.4;
-        view->addCurve ({ [this] (double t) { return adsrAt (t, current.attackMs, current.decayMs, current.sustain, current.releaseMs, gate); }, accent, true, "VOLUME" });
+        const auto gate = [this, thisLayer] { return noteOffOf (thisLayer, 0.4).seconds; };
+        view->setNoteOff ([this, thisLayer] { return noteOffOf (thisLayer, 0.4); });
+        view->addCurve ({ [this, gate] (double t) { return adsrAt (t, current.attackMs, current.decayMs, current.sustain, current.releaseMs, gate()); }, accent, true, "VOLUME" });
         view->addHandle ({ [this] { return juce::Point<float> (current.attackMs * 0.001f, 1.0f); }, param (processor, layer, F::attack), nullptr, false, Theme::text });
-        view->addHandle ({ [this]
+        view->addHandle ({ [this, gate]
                            {
                                const auto t = (current.attackMs + current.decayMs * 0.5f) * 0.001;
-                               return juce::Point<float> ((float) t, adsrAt (t, current.attackMs, current.decayMs, current.sustain, current.releaseMs, gate)); },
+                               return juce::Point<float> ((float) t, adsrAt (t, current.attackMs, current.decayMs, current.sustain, current.releaseMs, gate())); },
                            param (processor, layer, F::decay), param (processor, layer, F::sustain), false, Theme::text });
-        view->addHandle ({ [this] { return juce::Point<float> ((float) gate + current.releaseMs * 0.001f, 0.0f); }, param (processor, layer, F::release), nullptr, false, Theme::text });
+        view->addHandle ({ [this, gate] { return juce::Point<float> ((float) gate() + current.releaseMs * 0.001f, 0.0f); }, param (processor, layer, F::release), nullptr, false, Theme::text });
     }
 
     // Filter-envelopen: hur mycket och hur länge filtret öppnas i början av varje ton.
     {
-        auto* view = addTile ("FILTER ENVELOPE", "Opens the filter at the start of every note and lets it close again: AMOUNT (how far, in octaves) and DECAY (how fast).", 0.5, -1);
+        auto* view = addTile ("FILTER ENVELOPE", "Opens the filter at the start of every note and lets it close again: AMOUNT (how far, in octaves), ATTACK (how fast it opens) and DECAY (how fast it closes).", 0.5, -1);
         view->addCurve ({ [this] (double t) { return BassSynth::filterEnvelopeAt (current, t) * current.envAmount / 8.0f; }, accent, true, "FILTER" });
-        view->addHandle ({ [this] { return juce::Point<float> (0.0015f, current.envAmount / 8.0f); }, nullptr, param (processor, layer, F::envAmount), false, accent });
+        view->addHandle ({ [this] { return juce::Point<float> (std::max (0.0015f, current.envAttackMs * 0.001f), current.envAmount / 8.0f); }, param (processor, layer, F::envAttack), param (processor, layer, F::envAmount), false, accent });
         view->addHandle ({ [this]
                            {
-                               const auto t = current.envDecayMs * 0.001 / 3.0;
+                               const auto t = current.envAttackMs * 0.001 + current.envDecayMs * 0.001 / 3.0;
                                return juce::Point<float> ((float) t, BassSynth::filterEnvelopeAt (current, t) * current.envAmount / 8.0f); },
                            param (processor, layer, F::envDecay), nullptr, false, accent });
     }
@@ -122,21 +129,22 @@ void EnvPage::rebuild()
         const auto source = Modulation::instrumentSource (layer, env);
         auto* view = addTile ("ENV " + juce::String (env + 2) + "  MODULATION", "An extra envelope that does not play the sound but moves other knobs. Drag the handle at the top onto a knob "
                                                                               "(in the window above), or set it up in the MATRIX tab.", 2.0, source);
-        constexpr double gate = 0.7;
+        const auto gate = [this, thisLayer] { return noteOffOf (thisLayer, 0.7).seconds; };
+        view->setNoteOff ([this, thisLayer] { return noteOffOf (thisLayer, 0.7); });
         auto read = [this, env]
         {
             const auto& e = env == 0 ? current.env2 : current.env3;
             return e;
         };
-        view->addCurve ({ [read] (double t) { const auto e = read(); return adsrAt (t, e.attackMs, e.decayMs, e.sustain, e.releaseMs, gate); }, Theme::sourceColour (source), true, "ENV " + juce::String (env + 2) });
+        view->addCurve ({ [read, gate] (double t) { const auto e = read(); return adsrAt (t, e.attackMs, e.decayMs, e.sustain, e.releaseMs, gate()); }, Theme::sourceColour (source), true, "ENV " + juce::String (env + 2) });
         view->addHandle ({ [read] { return juce::Point<float> (read().attackMs * 0.001f, 1.0f); }, param (processor, layer, (F) base), nullptr, false, Theme::text });
-        view->addHandle ({ [read]
+        view->addHandle ({ [read, gate]
                            {
                                const auto e = read();
                                const auto t = (e.attackMs + e.decayMs * 0.5f) * 0.001;
-                               return juce::Point<float> ((float) t, adsrAt (t, e.attackMs, e.decayMs, e.sustain, e.releaseMs, gate)); },
+                               return juce::Point<float> ((float) t, adsrAt (t, e.attackMs, e.decayMs, e.sustain, e.releaseMs, gate())); },
                            param (processor, layer, (F) (base + 1)), param (processor, layer, (F) (base + 2)), false, Theme::text });
-        view->addHandle ({ [read] { return juce::Point<float> ((float) gate + read().releaseMs * 0.001f, 0.0f); }, param (processor, layer, (F) (base + 3)), nullptr, false, Theme::text });
+        view->addHandle ({ [read, gate] { return juce::Point<float> ((float) gate() + read().releaseMs * 0.001f, 0.0f); }, param (processor, layer, (F) (base + 3)), nullptr, false, Theme::text });
     }
 
     resized();

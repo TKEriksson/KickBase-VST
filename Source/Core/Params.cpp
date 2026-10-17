@@ -89,7 +89,7 @@ namespace ParamID
                                      "GateOn", "GateGrid", "GateDepth", "GateSmooth",
                                      "SampleLevel", "SampleRoot", "SampleLoop", "SampleKey", "SampleStart", "SampleOn",
                                      "Env2Attack", "Env2Decay", "Env2Sustain", "Env2Release", "Env3Attack", "Env3Decay", "Env3Sustain", "Env3Release",
-                                     "SubWave", "NoiseTone", "PitchEnvAmount", "PitchEnvDecay", "DriveMode" };
+                                     "SubWave", "NoiseTone", "PitchEnvAmount", "PitchEnvDecay", "DriveMode", "EnvAttack" };
         static_assert (std::size (names) == (size_t) BassField::count);
         return names[(size_t) field];
     }
@@ -273,6 +273,7 @@ namespace Params
         layout.add (floatParam (id (F::envAmount), title + "Env Amount", NormalisableRange<float> (0.0f, 8.0f, 0.01f), 4.0f,
                                 [] (float v) { return String (v, 1) + " oct"; }));
         layout.add (ms (5.0f, 1000.0f, 150.0f, 120.0f, id (F::envDecay), title + "Env Decay"));
+        layout.add (ms (0.0f, 300.0f, 10.0f, 1.0f, id (F::envAttack), title + "Env Attack")); // 1 ms = som filtret alltid var före
         layout.add (percent (id (F::velToEnv), title + "Vel > Env", 0.5f));
         layout.add (ms (0.0f, 50.0f, 5.0f, 1.0f, id (F::attack), title + "Attack"));
         layout.add (ms (5.0f, 2000.0f, 200.0f, 200.0f, id (F::decay), title + "Decay"));
@@ -489,6 +490,7 @@ BassParams ParamRefs::readBass (int layer, int rootMidiNote) const
     p.resonance  = get (F::resonance);
     p.envAmount  = get (F::envAmount);
     p.envDecayMs = get (F::envDecay);
+    p.envAttackMs = get (F::envAttack);
     p.velToEnv   = get (F::velToEnv);
     p.attackMs   = get (F::attack);
     p.decayMs    = get (F::decay);

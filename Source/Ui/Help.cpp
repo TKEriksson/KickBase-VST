@@ -144,6 +144,7 @@ namespace Help
             { "bassResonance", "Boost at the cutoff frequency. High values give the squelchy, acid sound." },
             { "bassKeyTrack", "How much the cutoff follows the note: higher notes get a brighter filter." },
             { "bassEnvAmount", "How far (in octaves) the filter opens at the start of every note. The 'pluck' of a psy bass." },
+            { "bassEnvAttack", "How fast the filter opens at the start of every note. Short (1 ms) = a hard pluck, longer = the sound swells open." },
             { "bassEnvDecay", "How fast the filter closes again after each note starts." },
             { "bassVelToEnv", "How much the step velocity changes the filter envelope. Accents get brighter." },
             { "bassDrive", "Saturation after the filter: warmer, louder, more harmonics." },

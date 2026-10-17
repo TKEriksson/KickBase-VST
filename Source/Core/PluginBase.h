@@ -33,7 +33,11 @@ public:
 
     // AI-chatten i synten (skapas första gången den behövs; samtalet finns kvar medan pluginet lever). Message thread.
     AiChat& getAiChat();
-    MixAnalyser& getMixAnalyser(); // en enda analys per instans: samma som visas i ANALYZER-fliken och som en AI hämtar med get_mix_report
+    MixAnalyser& getMixAnalyser();
+
+    // Hur länge en typisk ton i instrumentets mönster hålls, i sekunder (mediannotens längd gånger lagrets LENGTH, vid DAW:ens tempo); 0 om lagret
+    // inte har några toner. Meddelandetråden. Räknas om högst fyra gånger per sekund, så att diagram kan fråga ofta.
+    double typicalNoteSeconds (int layer); // en enda analys per instans: samma som visas i ANALYZER-fliken och som en AI hämtar med get_mix_report
 
     // Mastersektionen ägs av underklassen (den behöver bara finnas där ljudet bearbetas).
     virtual const MasterSection& getMasterSection() const = 0;
@@ -340,6 +344,8 @@ private:
 
     mutable juce::CriticalSection aiNotesLock;
     std::vector<AiNote> aiNotes;
+    std::array<double, Pattern::numLayers> noteSecondsCache {};
+    std::array<juce::uint32, Pattern::numLayers> noteSecondsStamp {};
     std::unique_ptr<MixAnalyser> mixAnalyser;
     std::unique_ptr<AiChat> aiChat; // sist: rivs först, så att dess tråd är klar innan resten försvinner
 };

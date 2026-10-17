@@ -169,6 +169,7 @@ private:
     ParamRefs refs;
     BassParams current;
     float ampValueAt (double seconds) const;
+    EnvelopeView::NoteOff noteOffNow() const;
 
     EnvelopeView envelope { 0.5 };
     TabbedPanel sources;

@@ -36,6 +36,33 @@ MixAnalyser& PluginBase::getMixAnalyser()
     return *mixAnalyser;
 }
 
+double PluginBase::typicalNoteSeconds (int layer)
+{
+    layer = juce::jlimit (0, Pattern::numLayers - 1, layer);
+    const auto now = juce::Time::getMillisecondCounter();
+    if (noteSecondsStamp[(size_t) layer] != 0 && now - noteSecondsStamp[(size_t) layer] < 250)
+        return noteSecondsCache[(size_t) layer];
+
+    const auto lengths = Params::readPatternLengths (apvts);
+    const auto ticks = juce::jlimit (1, Pattern::maxTicks, std::max (1, lengths.total) * Pattern::ticksPerBar);
+    std::vector<int> noteLengths;
+    for (int tick = 0; tick < ticks; ++tick)
+        if (const auto& note = pattern.note (layer, tick); note.on.load())
+            noteLengths.push_back (note.length.load());
+
+    auto seconds = 0.0;
+    if (! noteLengths.empty())
+    {
+        std::nth_element (noteLengths.begin(), noteLengths.begin() + (long) noteLengths.size() / 2, noteLengths.end());
+        const auto scale = apvts.getRawParameterValue (ParamID::bass (layer, BassField::gate))->load();
+        const auto bpm = std::max (40.0, (double) transportStatus.bpm.load());
+        seconds = std::max (1.0, (double) noteLengths[noteLengths.size() / 2] * (double) scale) * 60.0 / bpm / Pattern::ticksPerQuarter;
+    }
+    noteSecondsCache[(size_t) layer] = seconds;
+    noteSecondsStamp[(size_t) layer] = std::max<juce::uint32> (1, now);
+    return seconds;
+}
+
 AiChat& PluginBase::getAiChat()
 {
     if (aiChat == nullptr)

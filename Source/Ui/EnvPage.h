@@ -28,6 +28,7 @@ private:
 
     void timerCallback() override;
     void rebuild();
+    EnvelopeView::NoteOff noteOffOf (int forLayer, double example) const;
 
     PluginBase& processor;
     ParamRefs refs;
