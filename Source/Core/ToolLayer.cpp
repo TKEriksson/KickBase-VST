@@ -95,8 +95,14 @@ namespace
 
     int channelIndex (const var& value)
     {
-        const auto text = value.toString().trim().toUpperCase();
-        return text.length() == 1 && text[0] >= 'A' && text[0] < 'A' + numEffectChannels ? (int) (text[0] - 'A') : (juce::isPositiveAndBelow ((int) value - 1, numEffectChannels) ? (int) value - 1 : -1);
+        // "FX3", "3" (nummer 1-11) eller en gammal bokstav A-K.
+        auto text = value.toString().trim().toUpperCase();
+        if (text.startsWith ("FX"))
+            text = text.substring (2).trim();
+        if (text.length() == 1 && text[0] >= 'A' && text[0] < 'A' + numEffectChannels)
+            return (int) (text[0] - 'A');
+        const auto number = text.getIntValue();
+        return text.containsOnly ("0123456789") && juce::isPositiveAndBelow (number - 1, numEffectChannels) ? number - 1 : -1;
     }
 
     juce::String unitName (Effects::Knob::Unit unit)
@@ -384,7 +390,7 @@ var ToolLayer::getState (const var& args) const
             if (type == EffectType::off)
                 continue;
             auto slot = object();
-            put (slot, "channel", Effects::channelName (c));
+            put (slot, "channel", Effects::channelLabel (c));
             put (slot, "slot", s + 1);
             put (slot, "type", Effects::typeNames()[(int) type]);
             auto knobs = object();
@@ -548,7 +554,7 @@ var ToolLayer::setEffect (const var& args)
     }
 
     auto data = object();
-    put (data, "slot", Effects::channelName (channel) + juce::String (slot + 1) + " = " + Effects::typeNames()[typeIndex]);
+    put (data, "slot", Effects::channelLabel (channel) + "." + juce::String (slot + 1) + " = " + Effects::typeNames()[typeIndex]);
     if (! problems.isEmpty())
         put (data, "problems", problems);
     return ok (data);

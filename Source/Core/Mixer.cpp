@@ -16,7 +16,7 @@ String Mixer::sourceName (int source)
         return "KICK";
     if (source < firstFxSource)
         return "INSTR " + String (source - firstBassSource + 1);
-    return "FX " + String::charToString ((juce_wchar) ('A' + (source - firstFxSource)));
+    return Effects::channelLabel (source - firstFxSource);
 }
 
 String Mixer::paramID (int source, const String& field)

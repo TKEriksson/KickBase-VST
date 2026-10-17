@@ -139,3 +139,57 @@ public:
 private:
     juce::Colour accent;
 };
+
+// PIANO ROLL-knappen: en pianoikon med ett plus när raden inte har någon pianorulle än (grön: lägg till en), utan plus när den har en
+// (blå: öppna den). Medan pianorullen är öppen är knappen tänd.
+class PianoRollButton : public juce::Button
+{
+public:
+    PianoRollButton() : juce::Button ("piano roll") {}
+
+    void setState (bool wantsPlus, bool isOpen)
+    {
+        if (wantsPlus != plus || isOpen != open)
+        {
+            plus = wantsPlus;
+            open = isOpen;
+            repaint();
+        }
+    }
+
+    void paintButton (juce::Graphics& g, bool highlighted, bool down) override
+    {
+        const auto bounds = getLocalBounds().toFloat().reduced (1.0f);
+        const auto accent = plus ? juce::Colour (0xff4be08a) : juce::Colour (0xff4aa8ff);
+        const auto alpha = open ? 0.6f : (highlighted || down ? 0.38f : 0.24f);
+        g.setColour (accent.withAlpha (alpha));
+        g.fillRoundedRectangle (bounds, 6.0f);
+        g.setColour (accent.withAlpha (open || highlighted ? 1.0f : 0.7f));
+        g.drawRoundedRectangle (bounds, 6.0f, open ? 1.8f : 1.2f);
+
+        // Pianot: sju vita tangenter med fem svarta ovanpå.
+        const auto iconHeight = std::min (bounds.getHeight() - 8.0f, 20.0f);
+        const auto iconWidth = iconHeight * 1.5f;
+        const auto iconArea = juce::Rectangle<float> (iconWidth, iconHeight).withCentre ({ bounds.getCentreX() + (plus ? 7.0f : 0.0f), bounds.getCentreY() });
+        g.setColour (juce::Colours::white.withAlpha (0.92f));
+        g.fillRoundedRectangle (iconArea, 2.0f);
+        const auto keyWidth = iconArea.getWidth() / 7.0f;
+        g.setColour (juce::Colour (0xff10121c));
+        for (int i = 1; i < 7; ++i)
+            g.fillRect (juce::Rectangle<float> (iconArea.getX() + keyWidth * (float) i - 0.4f, iconArea.getY(), 0.8f, iconArea.getHeight()));
+        for (const auto index : { 1, 2, 4, 5, 6 })
+            g.fillRect (juce::Rectangle<float> (iconArea.getX() + keyWidth * (float) index - keyWidth * 0.3f, iconArea.getY(), keyWidth * 0.6f, iconArea.getHeight() * 0.58f));
+
+        // Plus: lägg till en pianorulle.
+        if (plus)
+        {
+            const auto centre = juce::Point<float> (iconArea.getX() - 10.0f, bounds.getCentreY());
+            g.setColour (accent.brighter (0.4f));
+            g.drawLine (centre.x - 5.0f, centre.y, centre.x + 5.0f, centre.y, 2.4f);
+            g.drawLine (centre.x, centre.y - 5.0f, centre.x, centre.y + 5.0f, 2.4f);
+        }
+    }
+
+private:
+    bool plus = true, open = false;
+};

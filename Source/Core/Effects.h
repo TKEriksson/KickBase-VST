@@ -19,7 +19,7 @@
 enum class EffectType { off, filter, distortion, eq, chorus, phaser, echo, reverb,
                         compressor, gate, comb, ringMod, bitcrusher, autoFilter, maximizer, count };
 constexpr int numEffectTypes = (int) EffectType::count; // inklusive Off
-constexpr int numEffectChannels = 5;
+constexpr int numEffectChannels = 11; // FX1 ... FX11
 constexpr int slotsPerChannel = 5;
 constexpr int knobsPerSlot = 8;
 
@@ -28,10 +28,11 @@ namespace Effects
     juce::StringArray typeNames();                // "Off", "Filter", ... (som i typlistan)
     juce::String name (EffectType type);          // "FILTER" ...
     juce::String shortName (EffectType type);     // "FILT" ... (platsknapparna)
-    juce::String channelName (int channel);       // "A" ... "E"
+    juce::String channelName (int channel);       // bokstaven i parameter-ID:n: "A" ... "K" (FX1 = A; de fem första är de ursprungliga)
+    juce::String channelLabel (int channel);      // namnet i gränssnittet: "FX1" ... "FX11"
 
     // Parameter-ID: "fxA2Type", "fxA2P1" ... "fxA2P6" (platserna räknas från 1 i ID:t) och
-    // kanalens "fxALevel", "fxADuck".
+    // kanalens "fxALevel", "fxADuck". Kanalerna 1-11 heter A-K i ID:n (sparade projekt pekar på de gamla A-E).
     juce::String slotParamID (int channel, int slot, const juce::String& suffix);
     juce::String knobParamID (int channel, int slot, int knob);
     juce::String channelParamID (int channel, const juce::String& suffix);

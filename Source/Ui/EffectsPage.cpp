@@ -288,10 +288,10 @@ EffectsPage::EffectsPage (PluginBase& p)
     for (int ch = 0; ch < numEffectChannels; ++ch)
     {
         auto& button = channelButtons[(size_t) ch];
-        button.setButtonText ("FX " + Effects::channelName (ch));
+        button.setButtonText (Effects::channelLabel (ch));
         button.setColour (juce::TextButton::buttonOnColourId, Theme::effects.withAlpha (0.55f));
-        button.setTooltip ("FX CHANNEL " + Effects::channelName (ch) + " - A mixer channel for effects. Each bass layer picks a channel "
-                           "and how much of its sound goes through it (FX SEND on the bass page).");
+        button.setTooltip ("FX CHANNEL " + Effects::channelLabel (ch) + " - A mixer channel for effects. Each instrument picks a channel "
+                           "and how much of its sound goes through it (FX SEND on the instrument page).");
         button.onClick = [this, ch] { selectChannel (ch); };
         addAndMakeVisible (button);
 
@@ -357,13 +357,14 @@ void EffectsPage::resized()
 {
     auto area = getLocalBounds();
 
-    auto left = area.removeFromLeft (74);
-    const auto buttonHeight = std::min (34, (left.getHeight() - 8) / numEffectChannels);
-    for (auto& button : channelButtons)
-    {
-        button.setBounds (left.removeFromTop (buttonHeight));
-        left.removeFromTop (4);
-    }
+    // Elva kanaler i två kolumner (FX1-6 och FX7-11).
+    auto left = area.removeFromLeft (112);
+    const auto perColumn = (numEffectChannels + 1) / 2;
+    const auto buttonHeight = std::min (34, (left.getHeight() - 4 * perColumn) / perColumn);
+    const auto columnWidth = left.getWidth() / 2;
+    for (size_t i = 0; i < channelButtons.size(); ++i)
+        channelButtons[i].setBounds (left.getX() + ((int) i / perColumn) * columnWidth, left.getY() + ((int) i % perColumn) * (buttonHeight + 4),
+                                     columnWidth - 4, buttonHeight);
     area.removeFromLeft (10);
 
     auto knobs = area.removeFromLeft (170);

@@ -228,7 +228,6 @@ public:
     PatternModule (PluginBase& processor, bool instrument);
     void resized() override;
     void paint (juce::Graphics&) override;
-    void mouseDoubleClick (const juce::MouseEvent&) override; // dubbelklick på ett lagers knapp: döp om
 
 private:
     void timerCallback() override;
@@ -250,9 +249,8 @@ private:
     StepSequencer sequencer;
     PianoRoll pianoRoll;
     juce::TextButton patternTab { "PATTERN" }, gateTab { "GATE" };
-    juce::TextButton pianoButton { "PIANO ROLL" };
-    std::vector<std::unique_ptr<juce::TextButton>> layerButtons; // instrumenten: vilket lager som redigeras
-    juce::TextButton kickLayerButton { "KICK" };                // lager 10: kicken
+    PianoRollButton pianoButton;
+    void updatePianoButton();
     std::unique_ptr<ChoiceComponent> kickGrid;                   // kickens rutnät
     int lastNamesVersion = -1;
     // Längdändringar: förkortas en rad tas det som inte får plats bort (efter en bekräftelse om något går förlorat), förlängs den

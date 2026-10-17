@@ -14,7 +14,8 @@ namespace
 StepSequencer::StepSequencer (PluginBase& p, juce::StringArray names, std::vector<juce::Colour> colours)
     : processor (p), layerNames (std::move (names)), layerColours (std::move (colours))
 {
-    setTooltip ("PATTERN - Click steps to turn notes on/off (drag to paint). Click a row's name to edit that layer's "
+    setTooltip ("PATTERN - Click steps to turn notes on/off (drag to paint). Click the round button by a row's name to select it (double-click the name to rename it): "
+                "the selected row's grid, length, FILL and piano roll show on the left and its "
                 "velocity, length or pitch in the lane below. A layer edited in the piano roll shows a small piano roll instead of steps: "
                 "click it to open the piano roll, right-click to delete it. GATE mode edits the on/off rhythm that chops the sound.");
     addRowKnobs ("KICK", ParamID::kickLevel, ParamID::kickFxAmount, Theme::kick);
@@ -754,8 +755,16 @@ void StepSequencer::paint (juce::Graphics& g)
             g.setColour (colour.withAlpha (0.18f));
             g.fillRoundedRectangle (row.toFloat().reduced (0.0f, 1.0f), 4.0f);
         }
+        // Väljaren: en radioknapp och namnet. Den valda raden är tänd; raden visar sina inställningar (rutnät, lane, pianorulle).
+        const auto selector = row.withHeight (18).toFloat().reduced (0.0f, 1.0f);
+        g.setColour (colour.withAlpha (selected ? 0.5f : 0.14f));
+        g.drawRoundedRectangle (selector.reduced (0.5f), 4.0f, 1.0f);
+        const auto dot = juce::Rectangle<float> (9.0f, 9.0f).withCentre ({ selector.getX() + 9.0f, selector.getCentreY() });
         g.setColour (selected || layer == Pattern::kickLayer ? colour : colour.withAlpha (0.6f));
-        g.drawText (nameOf (layer), row.withTrimmedLeft (4).withHeight (18), juce::Justification::centredLeft);
+        g.drawEllipse (dot, 1.4f);
+        if (selected)
+            g.fillEllipse (dot.reduced (2.2f));
+        g.drawFittedText (nameOf (layer), row.withTrimmedLeft (18).withHeight (18), juce::Justification::centredLeft, 1, 0.8f);
     }
     if (bars() > barsPerPage)
     {

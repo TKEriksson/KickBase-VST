@@ -1214,26 +1214,11 @@ PatternModule::PatternModule (PluginBase& p, bool isInstrument)
             addChildComponent (*gateSmooths.back());
             addChildComponent (*gateOnButtons.back());
 
-            auto button = std::make_unique<juce::TextButton> (p.getLayerName (layer));
-            button->addMouseListener (this, false);
-            button->setColour (juce::TextButton::buttonOnColourId, colour.withAlpha (0.55f));
-            button->setColour (juce::TextButton::textColourOffId, colour);
-            button->setTooltip ("INSTR " + juce::String (layer + 1) + " - Edit this instrument: its note grid, length, FILL, the lane and the gate settings "
-                                "apply to the selected layer.");
-            button->onClick = [this, layer] { sequencer.selectLayer (layer); showLayer (layer); };
-            addAndMakeVisible (*button);
-            layerButtons.push_back (std::move (button));
         }
     }
 
     if (instrument)
     {
-        kickLayerButton.setColour (juce::TextButton::buttonOnColourId, Theme::kick.withAlpha (0.55f));
-        kickLayerButton.setColour (juce::TextButton::textColourOffId, Theme::kick);
-        kickLayerButton.setTooltip ("KICK - Edit the kick's pattern like a bass layer: its note grid, FILL, pitch and velocity in the lane, and the piano roll "
-                                    "(a kick note's pitch moves the kick's tail, so you can play kick melodies).");
-        kickLayerButton.onClick = [this] { sequencer.selectLayer (Pattern::kickLayer); showLayer (Pattern::kickLayer); };
-        addAndMakeVisible (kickLayerButton);
         kickGrid = std::make_unique<ChoiceComponent> (p.apvts, ParamID::rowGridKick, "GRID");
         addChildComponent (*kickGrid);
     }
@@ -1269,9 +1254,9 @@ PatternModule::PatternModule (PluginBase& p, bool isInstrument)
 
     // Pianorullen ändrar tonhöjd, så den finns bara i instrumentet.
     pianoButton.setClickingTogglesState (false);
-    pianoButton.setColour (juce::TextButton::buttonOnColourId, Theme::pattern);
-    pianoButton.setTooltip ("PIANO ROLL - The advanced view of the pattern, like FL Studio's piano roll: notes anywhere in time (1/4 down to 1/64 "
-                            "and triplets), pitch up to 96 semitones either way, glide notes and velocity. Once you edit there, the layer's row "
+    pianoButton.setTooltip ("PIANO ROLL - Green with a +: this row has no piano roll yet, click to add one. Blue: the row has a piano roll, click to open it "
+                            "(click again to go back to the steps). The piano roll is the advanced view of the pattern, like FL Studio's: notes anywhere in time "
+                            "(1/4 down to 1/64 and triplets), pitch up to 96 semitones either way, glide notes and velocity. Once you edit there, the row "
                             "shows a small piano roll instead of step buttons.");
     pianoButton.onClick = [this] { showPianoRoll (! processor.pianoRollOpen); };
     addChildComponent (pianoButton);
@@ -1518,7 +1503,7 @@ void PatternModule::timerCallback()
 {
     checkLengthChanges();
 
-    // Instrument som lagts till eller tagits bort: knapparna och raderna följer, och ett borttaget instrument kan inte vara valt.
+    // Instrument som lagts till eller tagits bort: raderna följer, och ett borttaget instrument kan inte vara valt.
     if (instrument && processor.activeInstruments() != lastActive)
     {
         lastActive = processor.activeInstruments();
@@ -1541,17 +1526,9 @@ void PatternModule::timerCallback()
     if (instrument && lastNamesVersion != processor.layerNamesVersion.load())
     {
         lastNamesVersion = processor.layerNamesVersion.load();
-        for (size_t i = 0; i < layerButtons.size(); ++i)
-            layerButtons[i]->setButtonText (processor.getLayerName ((int) i));
-        repaint();
+        repaint(); // rubriken visar det valda lagrets namn
     }
-}
-
-void PatternModule::mouseDoubleClick (const juce::MouseEvent& event)
-{
-    for (size_t i = 0; i < layerButtons.size(); ++i)
-        if (event.originalComponent == layerButtons[i].get())
-            sequencer.renameLayer ((int) i);
+    updatePianoButton();
 }
 
 void PatternModule::showMode (StepSequencer::Mode newMode)
@@ -1564,10 +1541,15 @@ void PatternModule::showMode (StepSequencer::Mode newMode)
     updateVisibility();
 }
 
+void PatternModule::updatePianoButton()
+{
+    pianoButton.setState (! processor.pattern.isCustom (shownLayer), processor.pianoRollOpen);
+}
+
 void PatternModule::showPianoRoll (bool open)
 {
     processor.pianoRollOpen = open;
-    pianoButton.setToggleState (open, juce::dontSendNotification);
+    updatePianoButton();
     if (open && mode == StepSequencer::Mode::gate)
         showMode (StepSequencer::Mode::notes);
     updateVisibility();
@@ -1601,6 +1583,7 @@ void PatternModule::updateVisibility()
     }
     if (kickGrid != nullptr)
         kickGrid->setVisible (shownLayer == Pattern::kickLayer && ! gating);
+    updatePianoButton();
     resized();
     repaint();
 }
@@ -1617,9 +1600,6 @@ void PatternModule::showLayer (int layer)
     shownLayer = layer;
     processor.selectedPatternLayer = layer;
     pianoRoll.setLayer (layer);
-    for (size_t i = 0; i < layerButtons.size(); ++i)
-        layerButtons[i]->setToggleState ((int) i == layer, juce::dontSendNotification);
-    kickLayerButton.setToggleState (layer == Pattern::kickLayer, juce::dontSendNotification);
     updateVisibility();
 }
 
@@ -1723,73 +1703,53 @@ void PatternModule::resized()
 {
     auto area = getLocalBounds();
 
-    // Två smala kolumner till vänster: mönstrets längd/slut/presets och vilket lager som redigeras, sedan
-    // PATTERN | GATE och det valda lagrets inställningar för läget.
-    auto first = area.removeFromLeft (130);
-    area.removeFromLeft (8);
-    auto second = area.removeFromLeft (150);
-    area.removeFromLeft (12);
+    // En smal kolumn till vänster: mönstrets längd/slut/presets, PATTERN | GATE (ovanpå varandra) och det valda lagrets inställningar för
+    // läget. Vilket lager som redigeras väljs med knapparna vid namnen i raderna.
+    auto column = area.removeFromLeft (134);
+    area.removeFromLeft (10);
 
-    length.setBounds (first.removeFromTop (40));
-    first.removeFromTop (4);
+    length.setBounds (column.removeFromTop (40));
+    column.removeFromTop (4);
     if (noteEnd != nullptr)
     {
-        noteEnd->setBounds (first.removeFromTop (40));
-        first.removeFromTop (6);
+        noteEnd->setBounds (column.removeFromTop (40));
+        column.removeFromTop (6);
     }
-    presets.setBounds (first.removeFromTop (24));
-    first.removeFromTop (12);
+    presets.setBounds (column.removeFromTop (24));
+    column.removeFromTop (8);
+
+    headingBounds = column.removeFromTop (16);
     if (instrument)
     {
-        kickLayerButton.setBounds (first.removeFromTop (24));
-        first.removeFromTop (4);
-    }
-    for (size_t i = 0; i < layerButtons.size(); ++i)
-    {
-        const auto shown = ! instrument || (int) i < processor.activeInstruments();
-        layerButtons[i]->setVisible (shown);
-        if (shown)
-        {
-            layerButtons[i]->setBounds (first.removeFromTop (24));
-            first.removeFromTop (4);
-        }
+        patternTab.setBounds (column.removeFromTop (24));
+        column.removeFromTop (3);
+        gateTab.setBounds (column.removeFromTop (24));
+        column.removeFromTop (6);
     }
 
-    headingBounds = second.removeFromTop (16);
-    if (instrument)
-    {
-        auto tabs = second.removeFromTop (26);
-        patternTab.setBounds (tabs.removeFromLeft (tabs.getWidth() / 2 - 2));
-        gateTab.setBounds (tabs.withTrimmedLeft (4));
-        second.removeFromTop (6);
-    }
-
-    // PATTERN: notrutnätet, lanerna, tonlängd, FILL och PIANO ROLL.
-    auto notesColumn = second;
+    // PATTERN: notrutnätet, lanerna (ovanpå varandra), tonlängd, FILL och PIANO ROLL.
+    auto notesColumn = column;
     for (auto& grid : grids)
         grid->setBounds (notesColumn.getX(), notesColumn.getY(), notesColumn.getWidth(), 40);
     if (kickGrid != nullptr)
         kickGrid->setBounds (notesColumn.getX(), notesColumn.getY(), notesColumn.getWidth(), 40);
     notesColumn.removeFromTop (44);
-    for (size_t i = 0; i < laneButtons.size(); i += 2)
+    for (auto& [button, lane] : laneButtons)
     {
-        auto row = notesColumn.removeFromTop (24);
-        laneButtons[i].first->setBounds (row.removeFromLeft (row.getWidth() / 2 - 2));
-        if (i + 1 < laneButtons.size())
-            laneButtons[i + 1].first->setBounds (row.withTrimmedLeft (4));
-        notesColumn.removeFromTop (4);
+        button->setBounds (notesColumn.removeFromTop (24));
+        notesColumn.removeFromTop (3);
     }
-    notesColumn.removeFromTop (4);
-    auto knobRow = notesColumn.removeFromTop (72);
+    notesColumn.removeFromTop (3);
+    auto knobRow = notesColumn.removeFromTop (66);
     for (auto& lengthKnob : lengths)
-        lengthKnob->setBounds (knobRow.withSizeKeepingCentre (knobRow.getWidth() / 2, knobRow.getHeight()));
-    notesColumn.removeFromTop (4);
+        lengthKnob->setBounds (knobRow.withSizeKeepingCentre (knobRow.getWidth() * 3 / 4, knobRow.getHeight()));
+    notesColumn.removeFromTop (3);
     fillButton.setBounds (notesColumn.removeFromTop (24));
     notesColumn.removeFromTop (4);
-    pianoButton.setBounds (notesColumn.removeFromTop (28));
+    pianoButton.setBounds (notesColumn.removeFromTop (30));
 
     // GATE: på/av, gatens rutnät, djup och mjukhet, FILL.
-    auto gateColumn = second;
+    auto gateColumn = column;
     for (auto& button : gateOnButtons)
         button->setBounds (gateColumn.getX(), gateColumn.getY(), gateColumn.getWidth(), 26);
     gateColumn.removeFromTop (30);

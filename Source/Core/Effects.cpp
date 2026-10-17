@@ -78,6 +78,7 @@ namespace Effects
     }
 
     String channelName (int channel) { return String::charToString ((juce_wchar) ('A' + channel)); }
+    String channelLabel (int channel) { return "FX" + String (channel + 1); }
 
     String slotParamID (int channel, int slot, const String& suffix) { return "fx" + channelName (channel) + String (slot + 1) + suffix; }
     String knobParamID (int channel, int slot, int knob)             { return slotParamID (channel, slot, "P" + String (knob + 1)); }
@@ -85,8 +86,8 @@ namespace Effects
 
     bool isEffectParameter (const String& paramID)
     {
-        // "fxA..", "fxB..", "fxC.." (inte FX-versionens "fxKey").
-        return paramID.startsWith ("fx") && paramID.length() > 2 && paramID[2] >= 'A' && paramID[2] <= 'A' + numEffectChannels - 1;
+        // "fxA..", "fxB.." ... "fxK.." (inte FX-versionens "fxKey").
+        return paramID.startsWith ("fx") && paramID.length() > 2 && paramID[2] >= 'A' && paramID[2] <= 'A' + numEffectChannels - 1 && paramID != "fxKey";
     }
 
     float Knob::fromNormalised (float normalised) const
@@ -244,7 +245,7 @@ namespace Effects
     {
         for (int channel = 0; channel < numEffectChannels; ++channel)
         {
-            const auto channelTitle = "FX " + channelName (channel);
+            const auto channelTitle = channelLabel (channel);
             layout.add (std::make_unique<AudioParameterFloat> (ParameterID { channelParamID (channel, "Level"), 1 }, channelTitle + " Level",
                                                                NormalisableRange<float> (0.0f, 1.5f, 0.001f), 1.0f,
                                                                AudioParameterFloatAttributes().withStringFromValueFunction ([] (float v, int) { return String (roundToInt (v * 100.0f)) + " %"; })));

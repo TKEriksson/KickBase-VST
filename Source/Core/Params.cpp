@@ -1,5 +1,6 @@
 #include "Params.h"
 #include "Modulation.h"
+#include "Effects.h"
 #include <map>
 #include <string>
 
@@ -58,6 +59,18 @@ namespace
     auto curve (const String& id, const String& name, float def)
     {
         return floatParam (id, name, skewed (0.2f, 8.0f, 1.5f, 0.01f), def, [] (float v) { return String (v, 2); });
+    }
+}
+
+namespace
+{
+    // "None", "FX1" ... "FX11": platsen är den gamla bokstaven A-E och sedan fler (sparade värden är index).
+    juce::StringArray fxChannelChoices()
+    {
+        juce::StringArray choices { "None" };
+        for (int channel = 0; channel < numEffectChannels; ++channel)
+            choices.add ("FX" + juce::String (channel + 1));
+        return choices;
     }
 }
 
@@ -179,7 +192,7 @@ namespace Params
         layout.add (floatParam (ParamID::kickHighCut, "Kick High Cut", skewed (500.0f, 20000.0f, 4000.0f, 1.0f), 20000.0f, formatHz));
         layout.add (percent (ParamID::kickLevel, "Kick Level", 0.8f));
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::kickFxChannel, 1 }, "Kick FX Channel",
-                                                            StringArray { "None", "A", "B", "C", "D", "E" }, 0));
+                                                            fxChannelChoices(), 0));
         layout.add (percent (ParamID::kickFxAmount, "Kick FX Amount", 1.0f));
     }
 
@@ -197,7 +210,7 @@ namespace Params
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::grid), 1 }, title + "Grid",
                                                             Pattern::gridNames(), (int) BassGrid::sixteenth));
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::fxChannel), 1 }, title + "FX Channel",
-                                                            StringArray { "None", "A", "B", "C", "D", "E" }, 0));
+                                                            fxChannelChoices(), 0));
         layout.add (percent (id (F::fxAmount), title + "FX Amount", 1.0f));
 
         // GATE: en egen av/på-rytm (eget rutnät) som hackar lagrets ljud; stegen ligger i mönstret.
