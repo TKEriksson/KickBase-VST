@@ -164,7 +164,7 @@ SettingsPage::SettingsPage (PluginBase& p) : processor (p)
         }
     };
 
-    refresh (true);
+    refresh (false); // mapparna och vågformerna läses först när sidan visas (inte varje gång fönstret öppnas)
     startTimerHz (10);
 }
 
@@ -203,7 +203,7 @@ void SettingsPage::updatePack()
     progressBar.setVisible (busy);
     packProgress = (double) pack.getProgress();
     const auto status = pack.getStatus();
-    packStatus.setText (status.isNotEmpty() ? status : juce::String (WavetablePack::installedCount() > 0 ? "The pack is installed." : "The pack is not installed."),
+    packStatus.setText (status.isNotEmpty() ? status : juce::String (installedWaveforms > 0 ? "The pack is installed." : "The pack is not installed."),
                         juce::dontSendNotification);
 }
 
@@ -234,19 +234,42 @@ void SettingsPage::refresh (bool includeFiles)
             row.path.setTooltip (folder.getFullPathName());
             row.reset.setEnabled (! isDefault);
         }
-        const auto count = WavetablePack::installedCount();
-        packCount.setText (count > 0 ? juce::String (count) + " waveforms installed" : "Not installed", juce::dontSendNotification);
+        installedWaveforms = WavetablePack::installedCount();
+        packCount.setText (installedWaveforms > 0 ? juce::String (installedWaveforms) + " waveforms installed" : "Not installed", juce::dontSendNotification);
     }
     updatePack();
 }
 
 void SettingsPage::timerCallback()
 {
-    refresh (++tick % 20 == 0);
+    // Sidan finns i fönstret även när en annan flik visas: då gör den ingenting (räkningen av vågformer och läsningen av inställningsfilen
+    // tog annars en stor del av en processorkärna hela tiden).
+    if (! isShowing())
+    {
+        filesShown = false;
+        return;
+    }
+    refresh (! filesShown || ++tick % 20 == 0);
+    filesShown = true;
+}
+
+void SettingsPage::visibilityChanged()
+{
+    if (isShowing())
+    {
+        refresh (true);
+        filesShown = true;
+    }
 }
 
 void SettingsPage::paint (juce::Graphics& g)
 {
+    if (! filesShown)
+    {
+        // Första gången sidan ritas (den visas, eller en skärmbild tas): läs mappar och vågformer. Etiketterna ritas efter den här funktionen.
+        filesShown = true;
+        refresh (true);
+    }
     auto frame = [&g] (juce::Rectangle<int> area, const juce::String& title)
     {
         const auto bounds = area.toFloat();

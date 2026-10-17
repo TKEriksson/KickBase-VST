@@ -330,7 +330,6 @@ void StepSequencer::timerCallback()
     auto changed = false;
     auto update = [&changed] (int& last, int now) { if (last != now) { last = now; changed = true; } };
 
-    update (lastKickStep, stepOfTick (Pattern::kickLayer, processor.transportStatus.kickStep.load()));
     update (lastNamesVersion, processor.layerNamesVersion.load());
     if (const auto active = numLayers(); active != lastActive)
     {
@@ -402,7 +401,6 @@ void StepSequencer::timerCallback()
 
     for (int layer = 0; layer < numLayers(); ++layer)
     {
-        update (lastBassSteps[(size_t) layer], stepOfTick (layer, processor.transportStatus.bassSteps[(size_t) layer].load()));
         update (lastGrids[(size_t) layer], (int) grid (layer));
         update (lastGateGrids[(size_t) layer], (int) gateGrid (layer));
     }
@@ -413,8 +411,68 @@ void StepSequencer::timerCallback()
         update (lastCustomBits, bits);
     }
 
+    // Markörerna: har inget annat ändrats ritas bara cellerna där de var och hamnar om.
+    std::array<std::pair<int, int>, Pattern::numNoteLayers> movedMarkers {};
+    auto numMoved = 0;
+    auto visitMarker = [&] (int layer)
+    {
+        const auto now = markerStep (layer);
+        auto& last = lastMarkers[(size_t) layer];
+        if (now != last)
+        {
+            movedMarkers[(size_t) numMoved++] = { layer, last };
+            last = now;
+        }
+    };
+    visitMarker (Pattern::kickLayer);
+    for (int layer = 0; layer < numLayers(); ++layer)
+        visitMarker (layer);
+
     if (changed)
         repaint();
+    else
+        for (int i = 0; i < numMoved; ++i)
+            repaintMarker (movedMarkers[(size_t) i].first, movedMarkers[(size_t) i].second, lastMarkers[(size_t) movedMarkers[(size_t) i].first]);
+}
+
+int StepSequencer::markerStep (int layer) const
+{
+    const auto isKick = layer == Pattern::kickLayer;
+    const auto playTick = isKick ? processor.transportStatus.kickStep.load() : processor.transportStatus.bassSteps[(size_t) layer].load();
+    if (mode == Mode::gate && ! isKick)
+        return playTick < 0 ? -1 : playTick / Pattern::ticksPerStep (gateGrid (layer)); // samma som paint i GATE-läget
+    return stepOfTick (layer, playTick);
+}
+
+void StepSequencer::repaintMarker (int layer, int oldStep, int newStep)
+{
+    const auto row = rowBounds (layer);
+    if (row.isEmpty())
+        return;
+    const auto isKick = layer == Pattern::kickLayer;
+    const auto gate = mode == Mode::gate && ! isKick;
+    if (! gate && isCustom (layer))
+    {
+        repaint (row.expanded (2)); // pianorullens miniatyr: strecket kan ligga var som helst i raden
+        return;
+    }
+
+    // Samma celler som paintToggleRow tänder: alla synliga kopior av radens steg (en kortare rad som loopar visas flera gånger).
+    const auto lengthsNow = lengths();
+    const auto numSteps = gate ? gateSteps (layer) : bassSteps (layer);
+    const auto offset = pageOffset (numSteps);
+    const auto ownSteps = std::max (1, gate ? gateOwnSteps (lengthsNow, layer) : bassOwnSteps (lengthsNow, layer));
+    const auto loops = lengthsNow.loops[(size_t) rowOf (layer)];
+    for (int step = 0; step < numSteps; ++step)
+    {
+        const auto absolute = offset + step;
+        const auto beyond = absolute >= ownSteps;
+        if (beyond && ! loops)
+            continue;
+        const auto source = beyond ? absolute % ownSteps : absolute;
+        if (source == oldStep || source == newStep)
+            repaint (stepBounds (row, step, numSteps).expanded (3.0f).getSmallestIntegerContainer());
+    }
 }
 
 void StepSequencer::resized()
@@ -641,6 +699,8 @@ void StepSequencer::paintToggleRow (juce::Graphics& g, juce::Rectangle<int> row,
     for (int step = 0; step < numSteps; ++step)
     {
         const auto bounds = stepBounds (row, step, numSteps).reduced (0.5f, 1.0f);
+        if (! g.clipRegionIntersects (bounds.expanded (2.0f).getSmallestIntegerContainer()))
+            continue; // utanför det som ritas om (t.ex. när bara markören flyttats)
         const auto absolute = offset + step;
         const auto beyond = absolute >= ownSteps;       // efter radens egen längd
         const auto silent = beyond && ! loops;          // raden spelar bara en gång

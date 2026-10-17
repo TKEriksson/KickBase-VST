@@ -388,11 +388,9 @@ ParamRefs::ParamRefs (juce::AudioProcessorValueTreeState& apvts)
         for (int f = 0; f < (int) BassField::count; ++f)
         {
             auto& slot = bassEntries[(size_t) layer][(size_t) f];
-            slot = -1;
             const auto id = ParamID::bass (layer, (BassField) f);
-            for (size_t e = 0; e < entries.size(); ++e)
-                if (entries[e].id == id)
-                    slot = (int) e;
+            const auto found = lookup.find (std::string_view (id.toRawUTF8())); // (förr en jämförelse mot alla ~2000 ID:n per fält)
+            slot = found != lookup.end() ? found->second : -1;
         }
     }
 }

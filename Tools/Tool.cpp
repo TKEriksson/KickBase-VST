@@ -949,6 +949,17 @@ namespace
             }
             return (juce::Time::getMillisecondCounterHiRes() - start) / 1000.0 / seconds;
         };
+        // Hur lång tid en ny instans tar (konstruktorn laddar det inbakade Init), som när pluginet läggs i ett projekt.
+        {
+            const auto codeInit = PluginBase::preferCodeInit;
+            PluginBase::preferCodeInit = false;
+            const auto start = juce::Time::getMillisecondCounterHiRes();
+            constexpr int count = 5;
+            for (int i = 0; i < count; ++i)
+                std::make_unique<InstrumentProcessor>();
+            std::printf ("ny instans (med Init): %.0f ms\n", (juce::Time::getMillisecondCounterHiRes() - start) / count);
+            PluginBase::preferCodeInit = codeInit;
+        }
         const auto one = timeIt (1), few = timeIt (3), many = timeIt (10);
         std::puts (("1 instrument:  " + juce::String (one, 3) + " s CPU per sekund ljud").toRawUTF8());
         std::puts (("3 instrument:  " + juce::String (few, 3) + " s CPU per sekund ljud").toRawUTF8());
@@ -1487,6 +1498,7 @@ namespace
 }
 
 int profileCommand (const juce::String& scenario, int instruments, double seconds); // Tools/Profile.cpp
+int uiProfileCommand (int tab, const juce::String& scenario, int instruments, double seconds); // Tools/Profile.cpp
 int renderSignaturesWide(); // Tools/AudioTests.cpp
 int audioThreadTest();      // Tools/AudioTests.cpp
 int persistTest();          // Tools/StateTests.cpp
@@ -1498,7 +1510,7 @@ int toolMain (int argc, char* argv[])
     // `rendersigreal` använder det riktiga Init (den inbakade filen).
     {
         const juce::String command (argc > 1 ? argv[1] : "");
-        PluginBase::preferCodeInit = ! (command == "snapshot" || command == "render" || command == "export" || command == "repairpresets" || command == "rendersigreal" || command == "profile");
+        PluginBase::preferCodeInit = ! (command == "snapshot" || command == "render" || command == "export" || command == "repairpresets" || command == "rendersigreal" || command == "profile" || command == "uiprofile");
     }
 
     // Testerna som sparar presets eller rullar körs i en tillfällig mapp, aldrig i användarens Dokument\Kickbase.
@@ -1543,6 +1555,10 @@ int toolMain (int argc, char* argv[])
         return renderSignaturesWide();
     if (argc == 2 && juce::String (argv[1]) == "audiotest")
         return audioThreadTest();
+    // uiprofile <flik> <init|heavy> [instrument] [sekunder]: gränssnittets CPU och var meddelandetråden lägger tiden.
+    if (argc >= 4 && juce::String (argv[1]) == "uiprofile")
+        return uiProfileCommand (juce::String (argv[2]).getIntValue(), juce::String (argv[3]), argc > 4 ? juce::String (argv[4]).getIntValue() : 3,
+                                 argc > 5 ? juce::String (argv[5]).getDoubleValue() : 6.0);
     // profile <init|heavy|fx> [instrument] [sekunder]: var tiden går (samplande profilerare, Tools/Profile.cpp).
     if (argc >= 3 && juce::String (argv[1]) == "profile")
         return profileCommand (juce::String (argv[2]), argc > 3 ? juce::String (argv[3]).getIntValue() : 10, argc > 4 ? juce::String (argv[4]).getDoubleValue() : 5.0);

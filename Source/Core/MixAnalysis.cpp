@@ -87,16 +87,18 @@ namespace MixAnalysis
             const auto minLag = (int) (rate / 100.0), maxLag = std::min ((int) (rate / 25.0), n / 2);
             if (maxLag - minLag < 4)
                 return 0.0f;
+            // Energierna i de två överlappande delarna ur kumulativa summor (förr räknades de om för varje fördröjning: tre gånger så mycket arbete).
+            std::vector<double> cumulative ((size_t) n + 1, 0.0);
+            for (int i = 0; i < n; ++i)
+                cumulative[(size_t) i + 1] = cumulative[(size_t) i] + (double) y[(size_t) i] * y[(size_t) i];
             std::vector<double> r ((size_t) maxLag + 2, 0.0);
             for (int lag = minLag - 1; lag <= maxLag + 1; ++lag)
             {
-                double dot = 0.0, a = 0.0, b = 0.0;
+                double dot = 0.0;
                 for (int i = 0; i + lag < n; ++i)
-                {
                     dot += (double) y[(size_t) i] * y[(size_t) (i + lag)];
-                    a += (double) y[(size_t) i] * y[(size_t) i];
-                    b += (double) y[(size_t) (i + lag)] * y[(size_t) (i + lag)];
-                }
+                const auto a = cumulative[(size_t) (n - lag)];                     // y[0 .. n-lag)
+                const auto b = cumulative[(size_t) n] - cumulative[(size_t) lag]; // y[lag .. n)
                 r[(size_t) lag] = dot / std::sqrt (a * b + 1.0e-20);
             }
             auto highest = 0.0;

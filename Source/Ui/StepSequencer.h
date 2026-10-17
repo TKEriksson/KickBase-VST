@@ -108,6 +108,11 @@ private:
     Pattern::Note* noteAt (int layer, int step) const;
     int stepOfTick (int layer, int tick) const { return tick < 0 ? -1 : tick / ticksPerStep (layer); }
 
+    // Uppspelningsmarkören: det steg (eller i GATE-läget det gatesteg) som raden visar som spelande. När bara markörerna flyttas ritas
+    // bara de celler om där markören var och hamnar, inte hela rutnätet (som annars ritades om vid varje sextondel).
+    int markerStep (int layer) const;
+    void repaintMarker (int layer, int oldStep, int newStep);
+
     // Volym och FX-send för varje rad (kicken och varje lager), som i FL Studios kanalrack.
     struct RowKnobs
     {
@@ -179,8 +184,8 @@ private:
     int hoverStep = -1;
 
     int lastSwitchBits = -1;
-    int lastKickStep = -2, lastBars = 0, lastVersion = -1, lastCustomBits = -1, lastNamesVersion = -1, lastActive = -1;
+    int lastBars = 0, lastVersion = -1, lastCustomBits = -1, lastNamesVersion = -1, lastActive = -1;
     juce::Component::SafePointer<juce::AlertWindow> renameDialog;
-    std::array<int, Pattern::numLayers> lastBassSteps = filledArray<int, Pattern::numLayers> (-2), lastGrids = filledArray<int, Pattern::numLayers> (-1),
-                                       lastGateGrids = filledArray<int, Pattern::numLayers> (-1);
+    std::array<int, Pattern::numNoteLayers> lastMarkers = filledArray<int, Pattern::numNoteLayers> (-2); // markerStep per lager (kicken sist)
+    std::array<int, Pattern::numLayers> lastGrids = filledArray<int, Pattern::numLayers> (-1), lastGateGrids = filledArray<int, Pattern::numLayers> (-1);
 };

@@ -249,9 +249,12 @@ void Pattern::fromValueTree (const juce::ValueTree& tree, bool clearUnmentionedL
 
         if (child.hasType ("Gate") && layer < numLayers)
         {
+            // Tecken för tecken med en pekare: String::operator[] och length() går igenom UTF-8-texten från början varje gång, vilket gjorde
+            // det här kvadratiskt (4096 steg per lager) och tog nära en sekund varje gång ett tillstånd laddades.
             const auto steps = child["steps"].toString();
-            for (int i = 0; i < maxGateSteps && i < steps.length(); ++i)
-                gateStep (layer, i) = steps[i] != '0';
+            auto character = steps.getCharPointer();
+            for (int i = 0; i < maxGateSteps && ! character.isEmpty(); ++i)
+                gateStep (layer, i) = character.getAndAdvance() != '0';
         }
         else if (child.hasType ("Notes"))
         {

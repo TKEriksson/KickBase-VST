@@ -25,6 +25,7 @@ private:
     };
 
     void timerCallback() override;
+    void visibilityChanged() override;
     void refresh (bool includeFiles);
     void chooseFolder (FolderRow& row);
     void setBridge (bool on);
@@ -33,6 +34,7 @@ private:
     PluginBase& processor;
     std::unique_ptr<juce::FileChooser> chooser;
     int tick = 0;
+    bool filesShown = false; // mapparna och vågformerna har lästs sedan sidan senast blev synlig
 
     // FÖNSTER
     juce::Label scaleLabel, windowHint;
@@ -54,6 +56,7 @@ private:
     juce::Label packStatus, packCount, packHint;
     juce::TextButton installButton { "INSTALL AKWF PACK" }, cancelButton { "CANCEL" }, packFolderButton { "OPEN FOLDER" };
     double packProgress = 0.0;
+    int installedWaveforms = 0; // räknas när sidan visas och efter en installation (att räkna går igenom tusentals filer på disken)
     juce::ProgressBar progressBar { packProgress };
 
     juce::Rectangle<int> windowBox, aiBox, folderBox, packBox;
