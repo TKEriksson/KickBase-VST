@@ -41,7 +41,12 @@ public:
 
     // Vilka effektkanaler som används (bit n = FX n+1): något skickas dit (kicken eller ett instrument), en effekt ligger på någon plats eller kanalens EQ är inställd.
     // Gränssnittet döljer de andra. Meddelandetråden.
-    int fxChannelUsageMask(); // en enda analys per instans: samma som visas i ANALYZER-fliken och som en AI hämtar med get_mix_report
+    int fxChannelUsageMask();
+
+    // SOLO i mönstret: bit n = instrument n+1 (bit 10 = kicken). Är något soloat spelar bara de soloade. Inget som sparas med projektet:
+    // solo är ett lyssningshjälpmedel, och ett projekt ska inte öppnas med ett instrument tyst.
+    std::atomic<int> soloMask { 0 };
+    static constexpr int kickSoloBit = 1 << 10; // en enda analys per instans: samma som visas i ANALYZER-fliken och som en AI hämtar med get_mix_report
 
     // Mastersektionen ägs av underklassen (den behöver bara finnas där ljudet bearbetas).
     virtual const MasterSection& getMasterSection() const = 0;
@@ -81,7 +86,7 @@ public:
     void loadFactoryPreset (Presets::Section section, int index, int layer = 0);
     bool saveUserPreset (Presets::Section section, const juce::String& name, int layer = 0);
     bool loadUserPreset (Presets::Section section, const juce::File& file, int layer = 0);
-    juce::Array<juce::File> getUserPresets (Presets::Section section) const;
+    juce::Array<juce::File> getUserPresets (Presets::Section section, int layer = -1) const; // Mönster: bara rad-presets, av rätt sort om `layer` anges
     juce::String getPresetName (Presets::Section section, int layer = 0) const;
 
     // Renderar ljudet offline till en WAV-fil som loopar: bars takter i DAW:ens senaste tempo och
@@ -342,6 +347,7 @@ private:
     const bool effectVersion;
     std::array<juce::String, Presets::numSections> presetNames; // bara message thread
     std::array<juce::String, ParamID::numBassLayers> bassPresetNames;
+    std::array<juce::String, Pattern::numNoteLayers> rowPresetNames; // mönster-presets: ett namn per rad (instrument 0-9, kicken sist)
     std::array<juce::String, ParamID::numBassLayers> layerNames;
 
     double currentSampleRate = 44100.0;

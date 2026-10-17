@@ -203,6 +203,26 @@ namespace Presets
         return "bass" + juce::String (layer + 1) + id.substring (4 + digits);
     }
 
+    juce::String patternIdToCanonical (const juce::String& id, int layer)
+    {
+        if (layer == Pattern::kickLayer)
+            return id;
+        for (const char* prefix : { "rowBars", "rowLoop" })
+            if (id == juce::String (prefix) + "Bass" + juce::String (layer + 1))
+                return juce::String (prefix) + "Bass1";
+        return toBassLayer (id, 0);
+    }
+
+    juce::String patternIdFromCanonical (const juce::String& id, int layer)
+    {
+        if (layer == Pattern::kickLayer)
+            return id;
+        for (const char* prefix : { "rowBars", "rowLoop" })
+            if (id == juce::String (prefix) + "Bass1")
+                return juce::String (prefix) + "Bass" + juce::String (layer + 1);
+        return toBassLayer (id, layer);
+    }
+
     bool belongsTo (Section section, const juce::String& id, int layer)
     {
         // Ett baslagers fält som hör till mönstret eller sidechainen snarare än till ljudet.
@@ -219,16 +239,21 @@ namespace Presets
             case Section::kick:
                 return id.startsWith ("kick") && id != ParamID::kickFxChannel && id != ParamID::kickFxAmount;
             case Section::bass:
-                return (bassLayerOf (id) == layer && ! isLayerField (BassField::on) && ! isLayerField (BassField::gate)
+                return (bassLayerOf (id) == layer && ! isLayerField (BassField::on) && ! isLayerField (BassField::gate) && ! isLayerField (BassField::delay) && ! isLayerField (BassField::swing) && ! isLayerField (BassField::humanize)
                         && ! isLayerField (BassField::duck) && ! isLayerField (BassField::grid)
                         && ! isLayerField (BassField::fxChannel) && ! isLayerField (BassField::fxAmount)
                         && ! isLayerField (BassField::gateOn) && ! isLayerField (BassField::gateGrid)
                         && ! isLayerField (BassField::gateDepth) && ! isLayerField (BassField::gateSmooth))
                     || id == ParamID::gateAttack || id == ParamID::gateRelease;
             case Section::pattern:
-                return id == ParamID::patternBars || id == ParamID::noteEnd || id.startsWith ("rowLoop") || id == ParamID::rowGridKick || id.startsWith ("rowBars") || isLayerField (BassField::grid) || isLayerField (BassField::gate)
-                    || isLayerField (BassField::gateOn) || isLayerField (BassField::gateGrid)
-                    || isLayerField (BassField::gateDepth) || isLayerField (BassField::gateSmooth);
+                // En rad: dess rutnät, noternas längdskala (GATE-ratten), GATE, fördröjning, längd och loop. Inte tonart, swing eller antal instrument.
+                if (layer == Pattern::kickLayer)
+                    return id == "rowBarsKick" || id == "rowLoopKick" || id == ParamID::rowGridKick;
+                return (bassLayerOf (id) == layer
+                        && (isLayerField (BassField::grid) || isLayerField (BassField::gate) || isLayerField (BassField::gateOn) || isLayerField (BassField::gateGrid)
+                            || isLayerField (BassField::gateDepth) || isLayerField (BassField::gateSmooth) || isLayerField (BassField::delay)
+                            || isLayerField (BassField::swing) || isLayerField (BassField::humanize)))
+                    || id == ParamID::rowBars (layer + 1) || id == ParamID::rowLoop (layer + 1);
             case Section::effects:
                 return Effects::isEffectParameter (id) || id == ParamID::kickFxChannel || id == ParamID::kickFxAmount || isLayerField (BassField::fxChannel) || isLayerField (BassField::fxAmount);
             case Section::sidechain:
@@ -312,7 +337,8 @@ namespace Presets
         if (section != Section::full && section != Section::pattern)
             return;
 
-        const auto grid = pattern.applyTemplate (preset.pattern);
+        // Ett mönster-preset (inte Full) rör bara kicken och instrument 1, inte de andra instrumentens toner (utom Clear, som tömmer allt).
+        const auto grid = pattern.applyTemplate (preset.pattern, section == Section::pattern && preset.pattern != PatternTemplate::clear);
 
         for (const auto& tweak : preset.tweaks)
         {

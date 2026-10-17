@@ -394,10 +394,14 @@ SidechainPage::SidechainPage (PluginBase& p)
     }
     else
     {
+        depthViewport.setViewedComponent (&depthContent, false);
+        depthViewport.setScrollBarsShown (true, false);
+        depthViewport.setScrollBarThickness (10);
+        addAndMakeVisible (depthViewport);
         for (int layer = 0; layer < ParamID::numBassLayers; ++layer)
         {
             depthRows.push_back (std::make_unique<DuckRow> (p, layer));
-            addChildComponent (*depthRows.back());
+            depthContent.addChildComponent (*depthRows.back());
         }
     }
 
@@ -437,21 +441,24 @@ void SidechainPage::resized()
     column.removeFromTop (2);
     length.setBounds (column.removeFromTop (40));
 
-    // Djupet per instrument: en rad var (med två kolumner när det är fler än fem).
+    // Djupet per instrument: en rad var, som rullar lodrätt när de inte får plats (reglagen ska inte bli små).
     if (depthKnob != nullptr)
         depthKnob->setBounds (depthColumn.withHeight (82));
     const auto active = processor.activeInstruments();
-    const auto columns = active > 5 ? 2 : 1;
-    const auto perColumn = (active + columns - 1) / columns;
-    const auto rowHeight = std::min (30, depthColumn.getHeight() / std::max (1, perColumn));
-    const auto columnWidth = depthColumn.getWidth() / columns;
-    for (size_t i = 0; i < depthRows.size(); ++i)
+    constexpr int rowHeight = 30;
+    if (! depthRows.empty())
     {
-        const auto shown = (int) i < active;
-        depthRows[i]->setVisible (shown);
-        if (shown)
-            depthRows[i]->setBounds (depthColumn.getX() + ((int) i / perColumn) * columnWidth, depthColumn.getY() + ((int) i % perColumn) * rowHeight,
-                                     columnWidth - (columns > 1 ? 6 : 0), rowHeight);
+        depthViewport.setBounds (depthColumn);
+        const auto scrolling = active * rowHeight > depthColumn.getHeight();
+        const auto width = depthColumn.getWidth() - (scrolling ? depthViewport.getScrollBarThickness() : 0);
+        depthContent.setSize (width, std::max (active * rowHeight, depthColumn.getHeight()));
+        for (size_t i = 0; i < depthRows.size(); ++i)
+        {
+            const auto shown = (int) i < active;
+            depthRows[i]->setVisible (shown);
+            if (shown)
+                depthRows[i]->setBounds (0, (int) i * rowHeight, width, rowHeight);
+        }
     }
     curve.setBounds (area.removeFromLeft (area.getWidth() * 4 / 10));
     area.removeFromLeft (8);

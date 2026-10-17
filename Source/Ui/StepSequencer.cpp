@@ -48,6 +48,42 @@ StepSequencer::StepSequencer (PluginBase& p, juce::StringArray names, std::vecto
         addAndMakeVisible (*loop);
         loopAttachments.push_back (std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (processor.apvts, ParamID::rowLoop (row), *loop));
         loopToggles.push_back (std::move (loop));
+
+        auto switches = std::make_unique<RowSwitches>();
+        const auto rowName = row == 0 ? juce::String ("KICK") : layerNames[row - 1];
+        switches->mute.setTooltip (rowName + " MUTE - Switches this row off and on (the same as the power button on its tab). A muted row is shown dimmed.");
+        switches->solo.setTooltip (rowName + " SOLO - Only the soloed rows play (click several to hear a few together). Click again to release. "
+                                   "Solo is not saved with the project.");
+        switches->mute.setColour (juce::TextButton::buttonOnColourId, juce::Colour (0xffd64a5a));
+        switches->solo.setColour (juce::TextButton::buttonOnColourId, juce::Colour (0xffe6c23c));
+        switches->solo.setColour (juce::TextButton::textColourOnId, juce::Colour (0xff10121c));
+        for (auto* button : { &switches->mute, &switches->solo })
+        {
+            button->setClickingTogglesState (false);
+            button->setConnectedEdges (0);
+            addAndMakeVisible (*button);
+            button->setVisible (! processor.isEffectVersion()); // mute och solo finns bara i instrumentet
+        }
+        switches->mute.onClick = [this, row, layerOfRow]
+        {
+            const auto id = row == 0 ? juce::String (ParamID::kickOn) : ParamID::bass (row - 1, BassField::on);
+            if (auto* parameter = processor.apvts.getParameter (id))
+            {
+                parameter->beginChangeGesture();
+                parameter->setValueNotifyingHost (parameter->getValue() >= 0.5f ? 0.0f : 1.0f);
+                parameter->endChangeGesture();
+            }
+            juce::ignoreUnused (layerOfRow);
+            refreshSwitches();
+            repaint();
+        };
+        switches->solo.onClick = [this, layerOfRow]
+        {
+            processor.soloMask ^= layerOfRow == Pattern::kickLayer ? PluginBase::kickSoloBit : 1 << layerOfRow;
+            refreshSwitches();
+            repaint();
+        };
+        rowSwitches.push_back (std::move (switches));
     }
 
     followButton.setClickingTogglesState (true);
@@ -261,6 +297,33 @@ Pattern::Note* StepSequencer::noteAt (int layer, int step) const
     return tick >= 0 ? &processor.pattern.note (layer, tick) : nullptr;
 }
 
+bool StepSequencer::rowSilent (int layer) const
+{
+    const auto solo = processor.soloMask.load();
+    const auto isOn = processor.apvts.getRawParameterValue (layer == Pattern::kickLayer ? juce::String (ParamID::kickOn) : ParamID::bass (layer, BassField::on))->load() >= 0.5f;
+    const auto soloed = (solo & (layer == Pattern::kickLayer ? PluginBase::kickSoloBit : 1 << layer)) != 0;
+    return ! isOn || (solo != 0 && ! soloed);
+}
+
+void StepSequencer::refreshSwitches()
+{
+    auto bits = 0;
+    for (size_t row = 0; row < rowSwitches.size(); ++row)
+    {
+        const auto layerOfRow = row == 0 ? Pattern::kickLayer : (int) row - 1;
+        if (layerOfRow != Pattern::kickLayer && layerOfRow >= processor.activeInstruments())
+            continue;
+        const auto muted = processor.apvts.getRawParameterValue (row == 0 ? juce::String (ParamID::kickOn) : ParamID::bass (layerOfRow, BassField::on))->load() < 0.5f;
+        const auto soloed = (processor.soloMask.load() & (layerOfRow == Pattern::kickLayer ? PluginBase::kickSoloBit : 1 << layerOfRow)) != 0;
+        rowSwitches[row]->mute.setToggleState (muted, juce::dontSendNotification);
+        rowSwitches[row]->solo.setToggleState (soloed, juce::dontSendNotification);
+        bits |= (muted ? 1 : 0) << (row * 2);
+        bits |= (soloed ? 1 : 0) << (row * 2 + 1);
+    }
+    bits |= processor.soloMask.load() != 0 ? 1 << 30 : 0; // något soloat: de andra raderna tonas ner
+    lastSwitchBits = bits;
+}
+
 void StepSequencer::timerCallback()
 {
     // Rita om bara när något synligt ändrats: markörerna, mönstret, mönsterlängden eller rutnäten.
@@ -312,6 +375,15 @@ void StepSequencer::timerCallback()
         }
     }
 
+    // M och S visar läget (som kan ha ändrats på instrumentets flik eller av automation).
+    if (! processor.isEffectVersion())
+    {
+        const auto before = lastSwitchBits;
+        refreshSwitches();
+        if (lastSwitchBits != before)
+            changed = true;
+    }
+
     // Högtalarknapparna lyser när raden förhandsspelas.
     for (size_t row = 0; row < listenButtons.size(); ++row)
     {
@@ -360,7 +432,7 @@ void StepSequencer::resized()
     else
         rowHeight = juce::jlimit (normalMinHeight, 56, (freeHeight - gap * rows) / std::max (1, rows));
     compactRows = rowHeight < normalMinHeight - 3;
-    labelWidthNow = compactRows ? 196 : 132;
+    labelWidthNow = compactRows ? 246 : 162;
     knobPx = compactRows ? std::min (24, rowHeight - 4) : 28;
     effectiveRowHeight = rowHeight;
     const auto fits = std::max (1, freeHeight / (rowHeight + gap));
@@ -453,6 +525,11 @@ void StepSequencer::resized()
             listenButtons[i]->setVisible (shown && ! processor.isEffectVersion());
             loopToggles[i]->setVisible (shown);
         }
+        if (i < rowSwitches.size())
+        {
+            rowSwitches[i]->mute.setVisible (shown && ! processor.isEffectVersion());
+            rowSwitches[i]->solo.setVisible (shown && ! processor.isEffectVersion());
+        }
         if (! shown)
             continue;
 
@@ -469,6 +546,24 @@ void StepSequencer::resized()
             listenButtons[i]->setBounds (buttonsX, buttonsY, 30, buttonHeight);
             loopToggles[i]->setBounds (buttonsX + 34, buttonsY, 28, buttonHeight);
         }
+        if (i < rowSwitches.size())
+        {
+            // M och S: en tredje kolumn till höger (ovanpå varandra), eller efter loop-knappen i en låg rad.
+            if (compactRows)
+            {
+                const auto height = std::min (24, rowHeight - 4);
+                const auto x = labelColumn.getX() + 2 * (knobPx + 2) + 4 + 66;
+                rowSwitches[i]->mute.setBounds (x, row.getY() + (rowHeight - height) / 2, 24, height);
+                rowSwitches[i]->solo.setBounds (x + 26, row.getY() + (rowHeight - height) / 2, 24, height);
+            }
+            else
+            {
+                const auto height = std::max (14, std::min (22, (rowHeight - 4) / 2));
+                const auto x = labelColumn.getX() + 132;
+                rowSwitches[i]->mute.setBounds (x, row.getY() + 1, 26, height);
+                rowSwitches[i]->solo.setBounds (x, row.getY() + 3 + height, 26, height);
+            }
+        }
     }
 }
 
@@ -477,10 +572,10 @@ juce::Rectangle<int> StepSequencer::selectorBounds (juce::Rectangle<int> row) co
     // Väljaren: namnet med en radioknapp. Ovanför högtalaren och loop-knappen, eller i en låg rad efter dem.
     if (compactRows)
     {
-        const auto x = labelColumn.getX() + 2 * (knobPx + 2) + 4 + 68;
+        const auto x = labelColumn.getX() + 2 * (knobPx + 2) + 4 + 68 + 52;
         return juce::Rectangle<int>::leftTopRightBottom (x, row.getCentreY() - 9, labelColumn.getRight() - 2, row.getCentreY() + 9);
     }
-    return labelColumn.withTrimmedLeft (66).withY (row.getY()).withHeight (18);
+    return labelColumn.withTrimmedLeft (66).withTrimmedRight (30).withY (row.getY()).withHeight (18);
 }
 
 juce::Rectangle<float> StepSequencer::stepBounds (juce::Rectangle<int> row, int step, int numSteps) const
@@ -828,6 +923,22 @@ void StepSequencer::paint (juce::Graphics& g)
     paintLayerRow (Pattern::kickLayer);
     for (int layer = 0; layer < numLayers(); ++layer)
         paintLayerRow (layer);
+    if (! processor.isEffectVersion())
+    {
+        // En rad som inte hörs (avstängd, eller något annat är soloat) tonas ner.
+        auto dimRow = [&] (int layer)
+        {
+            const auto row = rowBounds (layer);
+            if (! row.isEmpty() && rowSilent (layer))
+            {
+                g.setColour (juce::Colour (0xff0d0f1a).withAlpha (0.6f));
+                g.fillRoundedRectangle (juce::Rectangle<int>::leftTopRightBottom (stepsColumn.getX(), row.getY(), stepsColumn.getRight(), row.getBottom()).toFloat(), 3.0f);
+            }
+        };
+        dimRow (Pattern::kickLayer);
+        for (int layer = 0; layer < numLayers(); ++layer)
+            dimRow (layer);
+    }
     if (mode == Mode::notes)
         paintLane (g);
 

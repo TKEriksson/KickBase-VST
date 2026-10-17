@@ -77,6 +77,8 @@ private:
     int lastActive = -1;
     PresetButton presets;
     ChoiceComponent mode, length;
+    juce::Viewport depthViewport;                       // instrumentens rader rullar lodrätt när de är många
+    juce::Component depthContent;
     std::vector<std::unique_ptr<DuckRow>> depthRows;    // en per instrument
     std::unique_ptr<KnobComponent> depthKnob;           // FX-versionen: ett enda djup
     DuckCurveView curve;

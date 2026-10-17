@@ -234,7 +234,10 @@ void InstrumentProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
 void InstrumentProcessor::readBlockParams()
 {
     lengths = Params::readPatternLengthsWith ([this] (const char* id) { return params.get (id); });
-    kickOn = params.getBool (ParamID::kickOn);
+    swing = params.get (ParamID::patSwing);
+    humanize = params.get (ParamID::patHumanize);
+    const auto solo = soloMask.load();
+    kickOn = params.getBool (ParamID::kickOn) && (solo == 0 || (solo & kickSoloBit) != 0);
 
     // Instrument som tagits bort tystas direkt; deras mönster och inställningar finns kvar om de läggs till igen.
     const auto newActive = params.instruments();
@@ -245,9 +248,12 @@ void InstrumentProcessor::readBlockParams()
 
     for (int layer = 0; layer < activeLayers; ++layer)
     {
-        layerOn[(size_t) layer] = params.bass (layer, BassField::on) >= 0.5f;
+        layerOn[(size_t) layer] = params.bass (layer, BassField::on) >= 0.5f && (solo == 0 || (solo & (1 << layer)) != 0);
         duckAmounts[(size_t) layer] = params.bass (layer, BassField::duck); // med LFO-modulering
         gateScales[(size_t) layer] = params.bass (layer, BassField::gate);
+        delayMs[(size_t) layer] = params.bass (layer, BassField::delay);
+        swingRow[(size_t) layer] = params.bass (layer, BassField::swing);
+        humanizeRow[(size_t) layer] = params.bass (layer, BassField::humanize);
         gateOn[(size_t) layer] = params.bass (layer, BassField::gateOn) >= 0.5f;
         gateGrid[(size_t) layer] = juce::jlimit (0, Pattern::numGrids - 1, (int) params.bass (layer, BassField::gateGrid));
         gateDepth[(size_t) layer] = params.bass (layer, BassField::gateDepth);
@@ -408,6 +414,30 @@ void InstrumentProcessor::stopPattern (int sampleOffset)
     }
 }
 
+int InstrumentProcessor::delaySamplesFor (const StepEvent& event)
+{
+    const auto samplesPerTick = clock.getSamplesPerQuarter() / Pattern::ticksPerQuarter;
+    auto delay = 0.0;
+
+    // Swing: de ojämna sextondelarna (andra halvan av varje åttondel) skjuts upp till som mest en tredjedels åttondel (swing 100 % = trioler).
+    // Patternets swing och instrumentets egen läggs ihop (högst 100 %).
+    const auto swingNow = std::min (1.0f, swing + swingRow[(size_t) event.layer]);
+    if (swingNow > 0.0f && event.step % (Pattern::ticksPerQuarter / 2) >= Pattern::ticksPerQuarter / 4)
+        delay += (double) swingNow * (Pattern::ticksPerQuarter / 6.0) * samplesPerTick;
+
+    auto ms = (double) delayMs[(size_t) event.layer];
+    const auto humanizeNow = std::min (1.0f, humanize + humanizeRow[(size_t) event.layer]);
+    if (humanizeNow > 0.0f)
+    {
+        humanizeState ^= humanizeState << 13;
+        humanizeState ^= humanizeState >> 17;
+        humanizeState ^= humanizeState << 5;
+        ms += (double) humanizeNow * 20.0 * ((double) (humanizeState >> 8) / (double) (1u << 24)); // 0-20 ms senare, slumpat
+    }
+    delay += ms * 0.001 * getSampleRate();
+    return (int) delay;
+}
+
 void InstrumentProcessor::renderSegment (int startSample, int endSample)
 {
     if (endSample <= startSample)
@@ -418,13 +448,65 @@ void InstrumentProcessor::renderSegment (int startSample, int endSample)
     if (patternActive)
     {
         scheduler.collect (clock, pattern, lengths, startSample, endSample, stopAtPpq);
-        for (const auto& event : scheduler)
+
+        // Händelserna i tidsordning: det som väntat från tidigare segment och det som schemaläggaren gav (med swing och fördröjning).
+        auto numDue = 0;
+        auto addDue = [this, &numDue] (StepEvent event)
         {
-            renderSamples (position, event.offset);
-            handleEvent (event);
-            position = event.offset;
+            if (numDue >= (int) due.size())
+                return;
+            auto i = numDue++;
+            while (i > 0 && due[(size_t) i - 1].offset > event.offset)
+            {
+                due[(size_t) i] = due[(size_t) i - 1];
+                --i;
+            }
+            due[(size_t) i] = event;
+        };
+
+        const auto length = endSample - startSample;
+        for (int i = 0; i < numPending;)
+        {
+            if (pending[(size_t) i].remaining < length)
+            {
+                auto event = pending[(size_t) i].event;
+                event.offset = startSample + pending[(size_t) i].remaining;
+                addDue (event);
+                pending[(size_t) i] = pending[(size_t) --numPending];
+            }
+            else
+            {
+                pending[(size_t) i].remaining -= length;
+                ++i;
+            }
+        }
+
+        for (auto event : scheduler)
+        {
+            if (event.type == StepEvent::Type::bass)
+                if (const auto delay = delaySamplesFor (event); delay > 0)
+                {
+                    const auto target = event.offset + delay;
+                    if (target >= endSample)
+                    {
+                        if (numPending < (int) pending.size())
+                            pending[(size_t) numPending++] = { event, target - endSample };
+                        continue;
+                    }
+                    event.offset = target;
+                }
+            addDue (event);
+        }
+
+        for (int i = 0; i < numDue; ++i)
+        {
+            renderSamples (position, due[(size_t) i].offset);
+            handleEvent (due[(size_t) i]);
+            position = due[(size_t) i].offset;
         }
     }
+    else
+        numPending = 0;
 
     renderSamples (position, endSample);
 
@@ -433,6 +515,7 @@ void InstrumentProcessor::renderSegment (int startSample, int endSample)
         patternActive = false;
         previewLayer = -1; // förhandsspelningen har spelat ett varv
         stoppedAtPpq = stopAtPpq;
+        numPending = 0;
     }
 }
 

@@ -143,13 +143,19 @@ struct Pattern
 
     // Fyller hela mönstret enligt en mall: kicken och första baslagret, övriga lager töms.
     // Returnerar det rutnät mallen är skriven för.
-    BassGrid applyTemplate (PatternTemplate t);
+    // `keepOtherInstruments`: bara kicken och instrument 1 skrivs om; de övriga instrumentens toner och gate rörs inte.
+    BassGrid applyTemplate (PatternTemplate t, bool keepOtherInstruments = false);
 
     // Fyller bara ett baslager enligt en mall (kicken och andra lager orörda).
     BassGrid applyLayerTemplate (int layer, PatternTemplate t);
 
     juce::ValueTree toValueTree() const;
-    void fromValueTree (const juce::ValueTree& tree);
+
+    // En enda rad (instrument 0-9, eller kicken = kickLayer): dess toner (med pianorullens flagga) och GATE-steg. `rowFromValueTree` skriver raden
+    // på det lager man anger (en rad sparad från ett instrument kan laddas i ett annat).
+    juce::ValueTree rowToValueTree (int layer) const;
+    void rowFromValueTree (int layer, const juce::ValueTree& tree);
+    void fromValueTree (const juce::ValueTree& tree, bool clearUnmentionedLayers = true); // false: lager som trädet inte nämner lämnas orörda (en enskild rad)
 
     static inline const juce::Identifier treeType { "Pattern" };
     static constexpr int currentVersion = 6; // 6: upp till 10 instrument, kicken är lager 10 (före det lager 3); 5: kicken som notlager; 4: fria toner (ticks); 3: baslager med steg per rutnät

@@ -158,7 +158,7 @@ void EnvelopeView::paint (juce::Graphics& g)
         if (it->name.isEmpty())
             continue;
         g.setColour (it->colour);
-        g.drawText (it->name, legend.removeFromRight (60), juce::Justification::right);
+        g.drawText (it->name, legend.removeFromRight (44), juce::Justification::right);
     }
 
     // Handtagen.

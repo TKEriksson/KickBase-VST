@@ -14,6 +14,11 @@ public:
 
     void resized() override { button.setBounds (getLocalBounds()); }
 
+    // För mönster-presets: knappen gäller den valda raden. `emptyLabel` är texten när inget preset är laddat (t.ex. "Pattern preset").
+    void setLayer (int newLayer, juce::Colour accent);
+    void setEmptyLabel (const juce::String& text) { emptyLabel = text; updateText(); }
+    void setTooltip (const juce::String& text) { button.setTooltip (text); }
+
 private:
     void timerCallback() override { updateText(); }
     void updateText();
@@ -22,7 +27,8 @@ private:
 
     PluginBase& processor;
     const Presets::Section section;
-    const int layer;
+    int layer;
+    juce::String emptyLabel { "Preset" };
     juce::TextButton button;
 
     // Spara-dialogen lånar editorns LookAndFeel och måste stängas om editorn stängs.

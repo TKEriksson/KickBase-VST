@@ -1141,8 +1141,52 @@ namespace
         std::printf ("laddad %d, kick tune %.2f (väntat 5), bas cutoff %.1f (väntat 500, orörd)\n",
                      loaded ? 1 : 0, pitchBack, cutoffAfter);
 
-        const auto ok = loaded && std::abs (pitchBack - 5.0f) < 0.02f && std::abs (cutoffAfter - 500.0f) < 1.0f
+        auto ok = loaded && std::abs (pitchBack - 5.0f) < 0.02f && std::abs (cutoffAfter - 500.0f) < 1.0f
                      && processor.getPresetName (Presets::Section::kick) == name;
+
+        // Mönster-preset: en rad (noter, GATE, rutnät, längd) sparas och laddas i en annan rad; övriga rader rörs inte.
+        {
+            auto& pattern = processor.pattern;
+            const auto rowName = juce::String ("__rowpresettest__");
+            pattern.clearNotes (1);
+            pattern.addNote (1, 96, 24, 7, 0.5f);
+            pattern.addNote (1, 192, 48, -5, 0.9f, true);
+            pattern.setCustom (1, true);
+            pattern.gateStep (1, 3) = false;
+            pattern.addNote (2, 0, 24, 1, 0.8f);
+            pattern.addNote (Pattern::kickLayer, 0, 24, 0, 1.0f);
+            auto* gridParameter = processor.apvts.getParameter (ParamID::bass (1, BassField::grid));
+            auto* delayParameter = processor.apvts.getParameter (ParamID::bass (1, BassField::delay));
+            gridParameter->setValueNotifyingHost (gridParameter->convertTo0to1 ((float) (int) BassGrid::eighthTriplet));
+            delayParameter->setValueNotifyingHost (delayParameter->convertTo0to1 (12.0f));
+
+            const auto saved = processor.saveUserPreset (Presets::Section::pattern, rowName, 1);
+            const auto rowFile = Presets::folder (Presets::Section::pattern, false).getChildFile (rowName + ".mofp");
+            const auto listed = processor.getUserPresets (Presets::Section::pattern, 1).contains (rowFile);
+            const auto listedForKick = processor.getUserPresets (Presets::Section::pattern, Pattern::kickLayer).contains (rowFile);
+            const auto intoKick = processor.loadUserPreset (Presets::Section::pattern, rowFile, Pattern::kickLayer); // en instrumentrad får inte in i kicken
+
+            const auto loadedRow = processor.loadUserPreset (Presets::Section::pattern, rowFile, 4);
+            const auto& note = pattern.note (4, 192);
+            auto* otherGrid = processor.apvts.getParameter (ParamID::bass (4, BassField::grid));
+            const auto movedGrid = (int) std::lround (otherGrid->convertFrom0to1 (otherGrid->getValue()));
+            const auto movedDelay = processor.apvts.getParameter (ParamID::bass (4, BassField::delay))->convertFrom0to1 (processor.apvts.getParameter (ParamID::bass (4, BassField::delay))->getValue());
+            const auto rowOk = saved && listed && ! listedForKick && ! intoKick && loadedRow
+                            && pattern.note (4, 96).on.load() && pattern.note (4, 96).pitch.load() == 7
+                            && note.on.load() && note.slide.load() && note.pitch.load() == -5 && note.length.load() == 48
+                            && pattern.isCustom (4) && ! pattern.isGateStepOn (4, 3)
+                            && movedGrid == (int) BassGrid::eighthTriplet && std::abs (movedDelay - 12.0f) < 0.5f
+                            && pattern.note (2, 0).on.load() && pattern.note (Pattern::kickLayer, 0).on.load()
+                            && processor.getPresetName (Presets::Section::pattern, 4) == rowName;
+            std::printf ("  saved %d listed %d listedForKick %d intoKick %d loaded %d n96 %d/%d n192 %d slide %d pitch %d len %d custom %d gate3 %d grid %d(%d) delay %.1f other %d kick %d name '%s'\n",
+                         saved, listed, listedForKick, intoKick, loadedRow, (int) pattern.note (4, 96).on.load(), pattern.note (4, 96).pitch.load(), (int) note.on.load(), (int) note.slide.load(), note.pitch.load(),
+                         note.length.load(), (int) pattern.isCustom (4), (int) pattern.isGateStepOn (4, 3), movedGrid, (int) BassGrid::eighthTriplet, movedDelay,
+                         (int) pattern.note (2, 0).on.load(), (int) pattern.note (Pattern::kickLayer, 0).on.load(), processor.getPresetName (Presets::Section::pattern, 4).toRawUTF8());
+            rowFile.deleteFile();
+            std::printf ("mönster-preset (en rad): " "%s" "\n", rowOk ? "ok" : "FEL");
+            ok = ok && rowOk;
+        }
+
         std::puts (ok ? "Presettest OK" : "FEL: presettest");
         return ok ? 0 : 1;
     }

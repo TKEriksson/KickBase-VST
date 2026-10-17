@@ -109,7 +109,7 @@ void KickEngine::trigger (float velocity, int transposeSemitones)
     voice.fmPhase = 0.0;
     voice.pitchScale = 1.0f - params.velPitch * (1.0f - juce::jlimit (0.0f, 1.0f, velocity));
     voice.sampleFollower = 0.0f;
-    voice.samplePosition = 0.0;
+    voice.samplePosition = -(double) params.sampleOffsetMs * 0.001 * sampleRate * std::exp2 ((double) params.sampleTuneSemis / 12.0); // plus = väntar, minus = hoppar in
     voice.clickFilter.reset();
     voice.noiseFilter.reset();
 }
@@ -226,10 +226,13 @@ float KickEngine::renderVoice (Voice& voice)
         const auto length = audio.getNumSamples();
         if (voice.samplePosition < (double) length - 1.0)
         {
-            const auto* data = audio.getReadPointer (0);
-            const auto index = (int) voice.samplePosition;
-            const auto fraction = (float) (voice.samplePosition - (double) index);
-            sampled = data[index] + fraction * (data[index + 1] - data[index]);
+            if (voice.samplePosition >= 0.0)
+            {
+                const auto* data = audio.getReadPointer (0);
+                const auto index = (int) voice.samplePosition;
+                const auto fraction = (float) (voice.samplePosition - (double) index);
+                sampled = data[index] + fraction * (data[index + 1] - data[index]);
+            }
             voice.samplePosition += std::exp2 ((double) params.sampleTuneSemis / 12.0);
         }
         voice.sampleFollower = std::max (std::abs (sampled) * (layered ? params.sampleLevel : params.clickLevel),
@@ -261,7 +264,8 @@ double KickEngine::totalSeconds (const KickParams& p, const ClickSample* sample,
     if (sample == nullptr || sample->audio.getNumSamples() <= 0 || p.sampleMode == 0)
         return synth;
 
-    const auto sampleSeconds = (double) sample->audio.getNumSamples() / sampleRate / std::exp2 ((double) p.sampleTuneSemis / 12.0);
+    const auto sampleSeconds = (double) sample->audio.getNumSamples() / sampleRate / std::exp2 ((double) p.sampleTuneSemis / 12.0)
+                             + std::max (0.0, (double) p.sampleOffsetMs * 0.001);
     return p.sampleMode == 2 ? sampleSeconds : std::max (synth, sampleSeconds);
 }
 

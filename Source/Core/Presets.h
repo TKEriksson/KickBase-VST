@@ -29,6 +29,11 @@ namespace Presets
     // Samma parameter i ett annat baslager ("bass1Cutoff", 2 -> "bass3Cutoff").
     juce::String toBassLayer (const juce::String& paramID, int layer);
 
+    // Mönster-presets gäller en rad (layer = instrument 0-9 eller Pattern::kickLayer). Parametrarnas ID skrivs som för instrument 1 / kicken i filen
+    // och flyttas till raden de laddas i.
+    juce::String patternIdToCanonical (const juce::String& paramID, int layer);
+    juce::String patternIdFromCanonical (const juce::String& paramID, int layer);
+
     // Mappen där användarens presets för delen sparas. Full och Bass har en mapp per plugin,
     // eftersom instrumentet och FX-versionen har olika parametrar där.
     juce::File folder (Section section, bool effectVersion);

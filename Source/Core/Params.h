@@ -16,6 +16,8 @@ namespace ParamID
     // Mönster
     inline constexpr auto patternBars = "patternBars";
     inline constexpr auto noteEnd     = "noteEnd";
+    inline constexpr auto patSwing    = "patSwing";     // swing: de ojämna sextondelarna fördröjs (bara instrumenten)
+    inline constexpr auto patHumanize = "patHumanize";  // slumpad fördröjning av varje instrumentton
     inline constexpr auto rowGridKick = "rowGridKick"; // kickens rutnät (som bassidornas Grid); heter inte kick... så att det hör till mönstret
 
     // Hur många instrument (baslager 1-10) som används. De övriga finns kvar som parametrar men spelas, visas och mixas inte.
@@ -55,6 +57,7 @@ namespace ParamID
     inline constexpr auto kickSampleMode  = "kickSampleMode";  // sampling som klick, lager eller hel kick
     inline constexpr auto kickSampleLevel = "kickSampleLevel";
     inline constexpr auto kickSampleTune  = "kickSampleTune";
+    inline constexpr auto kickSampleOffset = "kickSampleOffset"; // samplingens startpunkt i förhållande till kicken (ms): plus = senare, minus = börjar inne i samplingen
     inline constexpr auto kickClipMode    = "kickClipMode";
     inline constexpr auto kickDrive       = "kickDrive";
     inline constexpr auto kickHighCut     = "kickHighCut";
@@ -89,6 +92,8 @@ enum class BassField
     env2Attack, env2Decay, env2Sustain, env2Release,              // ENV 2 och ENV 3: modulationsenveloper
     env3Attack, env3Decay, env3Sustain, env3Release,
     subWave, noiseTone, pitchEnvAmount, pitchEnvDecay, driveMode,
+    delay,                                                        // instrumentets fördröjning (ms): läggs efter kicken
+    swing, humanize,                                              // instrumentets egen swing och humanize (läggs till patternets)
     envAttack,                                                    // filterenvelopens attack (före envDecay i signalen, men sist här så att gamla projekt är orörda)
     count
 };

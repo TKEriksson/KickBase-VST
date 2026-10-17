@@ -99,6 +99,17 @@ private:
     void handlePreviewRequest (int row);
     void stopPreview(); // provlyssning av en enda källa (se PluginBase::requestAudition)
     bool kickOn = true;
+
+    // Swing, humanize och instrumentens fördröjning: en ton kan skjutas framåt i tiden (aldrig bakåt: det skulle kräva latens). Toner som hamnar efter
+    // slutet av segmentet väntar i `pending` och spelas i ett senare segment. Läses en gång per block.
+    float swing = 0.0f, humanize = 0.0f;
+    std::array<float, numLayers> delayMs = filledArray<float, numLayers> (0.0f), swingRow = filledArray<float, numLayers> (0.0f), humanizeRow = filledArray<float, numLayers> (0.0f);
+    struct PendingEvent { StepEvent event; int remaining = 0; };
+    std::array<PendingEvent, 256> pending {};
+    int numPending = 0;
+    std::array<StepEvent, 768> due {};
+    juce::uint32 humanizeState = 0x9e3779b9u;
+    int delaySamplesFor (const StepEvent& event);
     int activeLayers = ParamID::defaultInstrumentCount; // instrument som används (instrumentCount); de övriga rörs inte
     std::array<bool, numLayers> layerOn = filledArray<bool, numLayers> (true);
     std::array<float, numLayers> duckAmounts = filledArray<float, numLayers> (0.8f), gateScales = filledArray<float, numLayers> (1.0f);

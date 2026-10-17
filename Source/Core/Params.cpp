@@ -89,7 +89,7 @@ namespace ParamID
                                      "GateOn", "GateGrid", "GateDepth", "GateSmooth",
                                      "SampleLevel", "SampleRoot", "SampleLoop", "SampleKey", "SampleStart", "SampleOn",
                                      "Env2Attack", "Env2Decay", "Env2Sustain", "Env2Release", "Env3Attack", "Env3Decay", "Env3Sustain", "Env3Release",
-                                     "SubWave", "NoiseTone", "PitchEnvAmount", "PitchEnvDecay", "DriveMode", "EnvAttack" };
+                                     "SubWave", "NoiseTone", "PitchEnvAmount", "PitchEnvDecay", "DriveMode", "Delay", "Swing", "Humanize", "EnvAttack" };
         static_assert (std::size (names) == (size_t) BassField::count);
         return names[(size_t) field];
     }
@@ -149,6 +149,8 @@ namespace Params
                                                                 StringArray { "Cut", "Finish bar", "Finish pattern" }, 0));
             layout.add (std::make_unique<AudioParameterInt> (ParameterID { ParamID::instrumentCount, 1 }, "Instruments", 1, ParamID::numBassLayers,
                                                              ParamID::defaultInstrumentCount));
+            layout.add (percent (ParamID::patSwing, "Swing", 0.0f));
+            layout.add (percent (ParamID::patHumanize, "Humanize", 0.0f));
         }
     }
 
@@ -190,6 +192,8 @@ namespace Params
         layout.add (percent (ParamID::kickSampleLevel, "Kick Sample Level", 1.0f));
         layout.add (floatParam (ParamID::kickSampleTune, "Kick Sample Tune", NormalisableRange<float> (-12.0f, 12.0f, 0.01f), 0.0f,
                                 [] (float v) { return formatSemis (v, 2); }));
+        layout.add (floatParam (ParamID::kickSampleOffset, "Kick Sample Offset", NormalisableRange<float> (-20.0f, 20.0f, 0.05f), 0.0f,
+                                [] (float v) { return String (v, 1) + " ms"; }));
         layout.add (percent (ParamID::kickDrive, "Kick Drive", 0.2f));
         layout.add (floatParam (ParamID::kickHighCut, "Kick High Cut", skewed (500.0f, 20000.0f, 4000.0f, 1.0f), 20000.0f, formatHz));
         layout.add (percent (ParamID::kickLevel, "Kick Level", 0.8f));
@@ -274,6 +278,9 @@ namespace Params
                                 [] (float v) { return String (v, 1) + " oct"; }));
         layout.add (ms (5.0f, 1000.0f, 150.0f, 120.0f, id (F::envDecay), title + "Env Decay"));
         layout.add (ms (0.0f, 300.0f, 10.0f, 1.0f, id (F::envAttack), title + "Env Attack")); // 1 ms = som filtret alltid var före
+        layout.add (ms (0.0f, 50.0f, 10.0f, 0.0f, id (F::delay), title + "Delay")); // fördröjer instrumentets toner (bara senare, aldrig tidigare)
+        layout.add (percent (id (F::swing), title + "Swing", 0.0f));
+        layout.add (percent (id (F::humanize), title + "Humanize", 0.0f));
         layout.add (percent (id (F::velToEnv), title + "Vel > Env", 0.5f));
         layout.add (ms (0.0f, 50.0f, 5.0f, 1.0f, id (F::attack), title + "Attack"));
         layout.add (ms (5.0f, 2000.0f, 200.0f, 200.0f, id (F::decay), title + "Decay"));
@@ -443,6 +450,7 @@ KickParams ParamRefs::readKick (int keyPitchClass) const
     p.sampleMode    = getChoice (ParamID::kickSampleMode);
     p.sampleLevel   = get (ParamID::kickSampleLevel);
     p.sampleTuneSemis = get (ParamID::kickSampleTune);
+    p.sampleOffsetMs = get (ParamID::kickSampleOffset);
     p.drive         = get (ParamID::kickDrive);
     p.highCutHz     = get (ParamID::kickHighCut);
     p.level         = get (ParamID::kickLevel);

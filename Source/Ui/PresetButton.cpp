@@ -7,7 +7,8 @@ namespace
         factoryBase = 1,
         userBase = 1000,
         saveId = 5000,
-        openFolderId = 5001
+        openFolderId = 5001,
+        nothingId = 5002
     };
 
     juce::String displayName (const PluginBase& processor, Presets::Section section)
@@ -32,6 +33,13 @@ PresetButton::PresetButton (PluginBase& p, Presets::Section sectionIn, juce::Col
     startTimerHz (4); // projekt och presets kan laddas medan fönstret är öppet
 }
 
+void PresetButton::setLayer (int newLayer, juce::Colour accent)
+{
+    layer = newLayer;
+    button.setColour (juce::TextButton::buttonOnColourId, accent);
+    updateText();
+}
+
 PresetButton::~PresetButton()
 {
     if (saveDialog != nullptr)
@@ -44,7 +52,7 @@ PresetButton::~PresetButton()
 void PresetButton::updateText()
 {
     const auto name = processor.getPresetName (section, layer);
-    const auto text = (name.isEmpty() ? juce::String ("Preset") : name) + arrow;
+    const auto text = (name.isEmpty() || (emptyLabel != "Preset" && name == "Default") ? emptyLabel : name) + arrow;
     if (button.getButtonText() != text)
         button.setButtonText (text);
 }
@@ -53,19 +61,32 @@ void PresetButton::showMenu()
 {
     const auto effectVersion = processor.isEffectVersion();
     const auto current = processor.getPresetName (section, layer);
-    const auto userPresets = processor.getUserPresets (section);
+    const auto userPresets = processor.getUserPresets (section, layer);
 
     juce::PopupMenu menu;
-    menu.addSectionHeader ("FACTORY");
-    for (int i = 0; i < Presets::factoryCount (section, effectVersion); ++i)
+    // Mönster: bara de man sparat själv. Ett sparat mönster innehåller alla rader (kick, instrument, pianorullar, längder, GATE och groove), så ingen
+    // rad råkar bli kvar eller tömd. Färdiga rytmer för en rad finns i FILL.
+    const auto patterns = section == Presets::Section::pattern;
+    if (! patterns)
     {
-        const auto name = Presets::factoryName (section, effectVersion, i);
-        menu.addItem (factoryBase + i, name, true, name == current);
+        menu.addSectionHeader ("FACTORY");
+        for (int i = 0; i < Presets::factoryCount (section, effectVersion); ++i)
+        {
+            const auto name = Presets::factoryName (section, effectVersion, i);
+            menu.addItem (factoryBase + i, name, true, name == current);
+        }
     }
 
+    if (patterns)
+    {
+        menu.addSectionHeader ("PATTERN PRESETS - " + (layer == Pattern::kickLayer ? juce::String ("KICK") : processor.getLayerName (layer)));
+        if (userPresets.isEmpty())
+            menu.addItem (nothingId, "(none saved yet)", false);
+    }
     if (! userPresets.isEmpty())
     {
-        menu.addSectionHeader ("USER");
+        if (! patterns)
+            menu.addSectionHeader ("USER");
         for (int i = 0; i < userPresets.size(); ++i)
         {
             const auto name = userPresets[i].getFileNameWithoutExtension();
@@ -81,7 +102,41 @@ void PresetButton::showMenu()
                         [this, userPresets] (int result)
     {
         if (result >= userBase && result < userBase + userPresets.size())
-            processor.loadUserPreset (section, userPresets[result - userBase], layer);
+        {
+            const auto file = userPresets[result - userBase];
+            if (section != Presets::Section::pattern)
+            {
+                processor.loadUserPreset (section, file, layer);
+            }
+            else
+            {
+                // Ett mönster-preset ersätter den valda radens toner (pianorulle, GATE och inställningar): fråga först om något finns att förlora.
+                auto hasNotes = false;
+                for (int tick = 0; tick < Pattern::maxTicks && ! hasNotes; ++tick)
+                    hasNotes = processor.pattern.note (layer, tick).on.load();
+                if (! hasNotes)
+                {
+                    processor.loadUserPreset (section, file, layer);
+                }
+                else
+                {
+                    juce::Component::SafePointer<PresetButton> safeThis (this);
+                    const auto rowName = layer == Pattern::kickLayer ? juce::String ("KICK") : processor.getLayerName (layer);
+                    juce::AlertWindow::showAsync (juce::MessageBoxOptions().withIconType (juce::MessageBoxIconType::QuestionIcon)
+                                                      .withTitle ("Load pattern preset")
+                                                      .withMessage ("Loading \"" + file.getFileNameWithoutExtension() + "\" replaces the notes, piano roll and GATE of " + rowName
+                                                                    + ". The other rows are not touched. Continue?")
+                                                      .withButton ("Replace").withButton ("Cancel"),
+                                                  [safeThis, file] (int choice)
+                    {
+                        if (safeThis == nullptr || choice != 1)
+                            return;
+                        safeThis->processor.loadUserPreset (safeThis->section, file, safeThis->layer);
+                        safeThis->updateText();
+                    });
+                }
+            }
+        }
         else if (result >= factoryBase && result < userBase)
             processor.loadFactoryPreset (section, result - factoryBase, layer);
         else if (result == saveId)

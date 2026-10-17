@@ -437,9 +437,9 @@ KickModule::KickModule (PluginBase& p)
                      "The body's waveform, a sine sub one octave down, and FM (a second sine bends the body's phase at the start: punchier, more metallic)." },
                      { "TOP", { knob (ParamID::kickNoise, "NOISE"), knob (ParamID::kickNoiseDecay, "DECAY"), knob (ParamID::kickNoiseTone, "TONE") },
                      "A noisy top layer on top of the kick: snap and air, with its own decay and high-pass tone." },
-                     { "SAMPLE", { choice (ParamID::kickSampleMode, "MODE"), knob (ParamID::kickSampleLevel, "LEVEL"), knob (ParamID::kickSampleTune, "TUNE") },
+                     { "SAMPLE", { choice (ParamID::kickSampleMode, "MODE"), knob (ParamID::kickSampleLevel, "LEVEL"), knob (ParamID::kickSampleTune, "TUNE"), knob (ParamID::kickSampleOffset, "OFFSET") },
                      "How a loaded sample is used: Click = only the first moments (the CLICK level), Layer = the whole sample on top of the synth kick, "
-                     "Replace = the sample is the kick (the synth is silent). LEVEL and TUNE apply to Layer and Replace." },
+                     "Replace = the sample is the kick (the synth is silent). LEVEL and TUNE apply to Layer and Replace. OFFSET moves the sample against the synth kick: plus = later, minus = it starts a few ms into the sample, so the two do not cancel each other in phase." },
                      { "CRUSH", { knob (ParamID::kickCrush, "BITS") } },
                      { "FILTER", { knob (ParamID::kickLowCut, "LOW CUT"), knob (ParamID::kickVelPitch, "VEL>PITCH") } } });
 
@@ -575,6 +575,11 @@ BassModule::BassModule (PluginBase& p, int layerIn)
     envelope.addCurve ({ [this] (double t) { return BassSynth::filterEnvelopeAt (current, t) * current.envAmount / 8.0f; },
                          accent, true, "FILTER" });
     envelope.addCurve ({ [this] (double t) { return ampValueAt (t); }, Theme::text.withAlpha (0.8f), false, "AMP" });
+    envelope.addCurve ({ [this] (double t) { return pitchValueAt (t); }, juce::Colour (0xffe6c23c).withAlpha (0.9f), false, "PITCH" }); // tonhöjdsenvelopen (storleken, uppåt eller nedåt)
+    envelope.addHandle ({ [this] {
+                              const auto t = current.pitchEnvDecayMs * 0.001 / 3.0;
+                              return juce::Point<float> ((float) t, pitchValueAt (t)); },
+                          param (p, id (F::pitchEnvDecay)), nullptr, false, juce::Colour (0xffe6c23c) });
 
     envelope.addHandle ({ [this] { return juce::Point<float> (std::max (0.0015f, current.envAttackMs * 0.001f), current.envAmount / 8.0f); },
                           param (p, id (F::envAttack)), param (p, id (F::envAmount)), false, accent });
@@ -917,6 +922,13 @@ void SamplePage::resized()
 }
 
 //==============================================================================
+float BassModule::pitchValueAt (double seconds) const
+{
+    // Hur långt tonhöjden är från tonen (0..1 av 48 halvtoner), faller exponentiellt: -60 dB efter ENV DEC.
+    const auto decay = std::max (0.001, current.pitchEnvDecayMs * 0.001);
+    return (float) (std::abs (current.pitchEnvSemis) / 48.0f * std::exp (std::log (0.001) * seconds / decay));
+}
+
 EnvelopeView::NoteOff BassModule::noteOffNow() const
 {
     const auto real = processor.typicalNoteSeconds (layer);
@@ -1291,11 +1303,20 @@ PatternModule::PatternModule (PluginBase& p, bool isInstrument)
       pianoRoll (p, instrumentColours (true))
 {
     addAndMakeVisible (length);
+    presets.setEmptyLabel ("Pattern preset");
+    presets.setTooltip ("PATTERN PRESET - Saves or loads the selected row (kick or instrument): its notes and piano roll, GATE, grid, note length, swing, humanize, delay, length and loop. "
+                        "The other rows are not touched. The whole sound is not part of it: that is the instrument's own preset.");
     addAndMakeVisible (presets);
     if (instrument)
     {
         noteEnd = std::make_unique<ChoiceComponent> (p.apvts, ParamID::noteEnd, "NOTE END");
         addAndMakeVisible (*noteEnd);
+        swingKnob = std::make_unique<KnobComponent> (p.apvts, ParamID::patSwing, "SWING", Theme::pattern);
+        humanizeKnob = std::make_unique<KnobComponent> (p.apvts, ParamID::patHumanize, "HUMANIZE", Theme::pattern);
+        swingKnob->setDescription ("SWING - For the whole pattern: pushes the off-beat sixteenths of ALL instruments later (0 % = straight, 100 % = triplet feel). Each instrument can add its own swing under GRID. The kick stays on the grid.");
+        humanizeKnob->setDescription ("HUMANIZE - For the whole pattern: every note of ALL instruments comes a random 0-20 ms late, so it feels played rather than programmed. Each instrument can add its own under GRID. The kick stays on the grid.");
+        addAndMakeVisible (*swingKnob);
+        addAndMakeVisible (*humanizeKnob);
     }
 
     // Lanerna för tonerna: velocity, tonlängd och tonhöjd (glide ritas i pianorullen), valda i en rullgardinslista.
@@ -1326,6 +1347,18 @@ PatternModule::PatternModule (PluginBase& p, bool isInstrument)
                                         "Lower = shorter, punchier notes. Set a single note's length with EDIT IN LANE > Note length or in the piano roll.");
         addChildComponent (*grids.back());
         addChildComponent (*lengths.back());
+        if (instrument)
+        {
+            delays.push_back (std::make_unique<KnobComponent> (p.apvts, ParamID::bass (layer, BassField::delay), "DELAY", colour));
+            delays.back()->setDescription ("DELAY - Pushes this instrument's notes later by 0-50 ms, for example to let the kick come first. It can only move notes later, never earlier.");
+            addChildComponent (*delays.back());
+            swings.push_back (std::make_unique<KnobComponent> (p.apvts, ParamID::bass (layer, BassField::swing), "SWING", colour));
+            swings.back()->setDescription ("SWING - This instrument's own swing: its off-beat sixteenths come later. It is added to the SWING of the whole pattern (top left), up to 100 %.");
+            addChildComponent (*swings.back());
+            humanizes.push_back (std::make_unique<KnobComponent> (p.apvts, ParamID::bass (layer, BassField::humanize), "HUMAN", colour));
+            humanizes.back()->setDescription ("HUMANIZE - This instrument's own random timing: every note comes 0-20 ms late at random. It is added to the HUMANIZE of the whole pattern (top left).");
+            addChildComponent (*humanizes.back());
+        }
 
         if (instrument)
         {
@@ -1661,6 +1694,12 @@ void PatternModule::updateVisibility()
     {
         const auto shown = (int) i == shownLayer;
         grids[i]->setVisible (shown && ! gating);
+        if (i < delays.size())
+        {
+            delays[i]->setVisible (shown && ! gating);
+            swings[i]->setVisible (shown && ! gating);
+            humanizes[i]->setVisible (shown && ! gating);
+        }
         if (i < gateGrids.size())
         {
             gateGrids[i]->setVisible (shown && gating);
@@ -1693,11 +1732,14 @@ void PatternModule::selectLane (StepSequencer::Lane lane)
         if (laneOrder[i] == lane)
             laneBox.setSelectedId ((int) i + 1, juce::dontSendNotification);
     updateLengthKnobs();
+    resized();
+    repaint();
 }
 
 void PatternModule::showLayer (int layer)
 {
     shownLayer = layer;
+    presets.setLayer (layer, layer == Pattern::kickLayer ? Theme::kick : instrument ? Theme::layerColour (layer) : Theme::gate);
     processor.selectedPatternLayer = layer;
     pianoRoll.setLayer (layer);
     updateVisibility();
@@ -1789,6 +1831,15 @@ void PatternModule::showGateFillMenu()
 
 void PatternModule::paint (juce::Graphics& g)
 {
+    if (! blockFrame.isEmpty() && instrument)
+    {
+        const auto colour = shownLayer == Pattern::kickLayer ? Theme::kick : Theme::layerColour (shownLayer);
+        g.setColour (colour.withAlpha (0.07f));
+        g.fillRoundedRectangle (blockFrame.toFloat(), 6.0f);
+        g.setColour (colour.withAlpha (0.9f));
+        g.drawRoundedRectangle (blockFrame.toFloat().reduced (0.9f), 6.0f, 1.8f);
+    }
+
     // Rubrik för det valda lagrets inställningar.
     if (! headingBounds.isEmpty())
     {
@@ -1815,7 +1866,18 @@ void PatternModule::resized()
         noteEnd->setBounds (column.removeFromTop (40));
         column.removeFromTop (6);
     }
-    presets.setBounds (column.removeFromTop (24));
+    column.removeFromTop (2);
+    if (swingKnob != nullptr)
+    {
+        auto groove = column.removeFromTop (52);
+        swingKnob->setBounds (groove.removeFromLeft (groove.getWidth() / 2));
+        humanizeKnob->setBounds (groove);
+        column.removeFromTop (6);
+    }
+
+    // Kortet runt det valda instrumentets inställningar: luft mellan ramen och innehållet.
+    const auto blockTop = column.getY();
+    column = column.reduced (8, 0);
     column.removeFromTop (8);
 
     headingBounds = column.removeFromTop (16);
@@ -1834,13 +1896,36 @@ void PatternModule::resized()
     if (kickGrid != nullptr)
         kickGrid->setBounds (notesColumn.getX(), notesColumn.getY(), notesColumn.getWidth(), 40);
     notesColumn.removeFromTop (44);
+
+    // Instrumentets egen groove: SWING, HUMAN och DELAY (kickens rad ligger alltid på rutnätet).
+    if (shownLayer >= 0 && shownLayer < (int) delays.size())
+    {
+        auto groove = notesColumn.removeFromTop (50);
+        const auto third = groove.getWidth() / 3;
+        const auto swingBounds = groove.removeFromLeft (third), humanizeBounds = groove.removeFromLeft (third);
+        for (size_t i = 0; i < delays.size(); ++i)
+        {
+            swings[i]->setBounds (swingBounds);
+            humanizes[i]->setBounds (humanizeBounds);
+            delays[i]->setBounds (groove);
+        }
+        notesColumn.removeFromTop (2);
+    }
     laneLabel.setBounds (notesColumn.removeFromTop (14));
     laneBox.setBounds (notesColumn.removeFromTop (24));
     notesColumn.removeFromTop (6);
-    auto knobRow = notesColumn.removeFromTop (66);
+    // ALL LENGTHS-ratten tar plats bara när den syns (annars hamnar FILL långt ner).
+    const auto knobShown = shownLayer >= 0 && shownLayer < (int) lengths.size() && lengths[(size_t) shownLayer]->isVisible();
+    auto knobRow = notesColumn.removeFromTop (knobShown ? 66 : 0);
     for (auto& lengthKnob : lengths)
         lengthKnob->setBounds (knobRow.withSizeKeepingCentre (knobRow.getWidth() * 3 / 4, knobRow.getHeight()));
-    notesColumn.removeFromTop (3);
+    notesColumn.removeFromTop (knobShown ? 3 : 0);
+    const auto gatingNow = instrument && mode == StepSequencer::Mode::gate;
+    if (! gatingNow)
+    {
+        presets.setBounds (notesColumn.removeFromTop (24));
+        notesColumn.removeFromTop (4);
+    }
     fillButton.setBounds (notesColumn.removeFromTop (24));
     notesColumn.removeFromTop (4);
     pianoButton.setBounds (notesColumn.removeFromTop (30));
@@ -1860,7 +1945,22 @@ void PatternModule::resized()
     for (auto& smooth : gateSmooths)
         smooth->setBounds (gateKnobs.withTrimmedLeft (half));
     gateColumn.removeFromTop (4);
+    if (gatingNow)
+    {
+        presets.setBounds (gateColumn.removeFromTop (24));
+        gateColumn.removeFromTop (4);
+    }
     gateFillButton.setBounds (gateColumn.removeFromTop (24));
+
+    // Ramen runt allt som hör till det valda instrumentet (i dess färg, som ramen runt dess rad i mönstret).
+    auto bottom = headingBounds.getBottom();
+    for (auto* component : std::initializer_list<juce::Component*> { &presets, &pianoButton, &fillButton, &gateFillButton })
+        if (component->isVisible())
+            bottom = std::max (bottom, component->getBottom());
+    for (auto& depth : gateDepths)
+        if (depth->isVisible())
+            bottom = std::max (bottom, depth->getBottom());
+    blockFrame = juce::Rectangle<int>::leftTopRightBottom (0, blockTop, 134, bottom + 8);
 
     sequencer.setBounds (area);
     pianoRoll.setBounds (area);

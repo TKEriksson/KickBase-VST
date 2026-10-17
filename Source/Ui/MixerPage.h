@@ -52,7 +52,7 @@ private:
     juce::Rectangle<int> meterArea;
 };
 
-// Mixern: en remsa per ljudkälla och mastern.
+// Mixern: en remsa per ljudkälla som används (med rullning i sidled när de inte får plats) och mastern.
 class MixerView : public juce::Component, private juce::Timer
 {
 public:
@@ -62,14 +62,18 @@ public:
 private:
     void timerCallback() override;
 
+    static constexpr int stripWidth = 88; // så bred att SC och MAX alltid syns på knapparna; får de inte plats rullar man i sidled
+
     PluginBase& processor;
     int lastActive = -1, lastFxMask = -1;
+    juce::Viewport viewport;
+    juce::Component content;
     std::vector<std::unique_ptr<MixerStrip>> strips;
-    MasterStrip master;
+    MasterStrip master; // fast till höger, rullar inte
 };
 
-// En rad av brytare, en per ljudkälla (kicken och instrumenten) och en meny med flerval för effektkanalerna, för sidechainen (field "Duck") eller maximizern (field "Max").
-// De är samma parametrar som SC- och MAX-knapparna i mixern.
+// En rad för sidechainen (field "Duck") eller maximizern (field "Max"): kicken som en knapp, och instrumenten och effektkanalerna var och en i en
+// meny med flerval (10 instrument och 11 effektkanaler får inte plats som knappar). Samma parametrar som SC- och MAX-knapparna i mixern.
 class SourceToggles : public juce::Component, private juce::Timer
 {
 public:
@@ -80,15 +84,15 @@ public:
 
 private:
     void timerCallback() override;
-    void showFxMenu();
-    int fxOnCount() const;
+    void showMenu (bool instruments);
+    int onCount (bool instruments) const;
+    void updateTexts();
 
     PluginBase& processor;
     juce::String field;
-    int lastActive = -1, lastNamesVersion = -1, lastFxOn = -1;
-    std::vector<int> sourceOfButton;
+    int lastActive = -1, lastNamesVersion = -1, lastInstrumentsOn = -1, lastFxOn = -1;
     juce::String title;
-    std::vector<std::unique_ptr<juce::TextButton>> buttons;
-    std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment>> attachments;
-    juce::TextButton fxButton; // alla effektkanaler i en meny med flerval (11 knappar får inte plats bredvid 10 instrument)
+    std::unique_ptr<juce::TextButton> kickButton;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> kickAttachment;
+    juce::TextButton instrumentsButton, fxButton;
 };

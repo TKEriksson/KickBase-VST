@@ -41,6 +41,7 @@ struct KickParams
     int sampleMode = 0;         // inladdad sampling: 0 klick (de första millisekunderna), 1 lager (hela, ovanpå kicken), 2 ersätter (bara sampling)
     float sampleLevel = 1.0f;   // nivå för sampling i läge lager/ersätt (klicket använder clickLevel)
     float sampleTuneSemis = 0.0f; // samplingens uppspelningshastighet i halvtoner
+    float sampleOffsetMs = 0.0f;  // plus: samplingen startar senare än kicken, minus: den startar inne i samplingen (så att faserna inte tar ut varandra)
 
     // Den enkla modellen:
     float pitchSemis = 42.0f;   // hur högt över svansen svepet börjar

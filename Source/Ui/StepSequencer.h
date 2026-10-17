@@ -129,6 +129,14 @@ private:
     std::vector<std::unique_ptr<juce::ComboBox>> lengthBoxes; // radens längd: [0] kick, sedan baslagren
     std::vector<std::unique_ptr<ListenButton>> listenButtons; // högtalare: spelar raden
     std::vector<std::unique_ptr<LoopToggle>> loopToggles;     // loopar raden?
+    // M (mute: samma som instrumentets på/av) och S (solo: bara de soloade spelar), för kicken och varje instrument. Samma index som listenButtons.
+    struct RowSwitches
+    {
+        juce::TextButton mute { "M" }, solo { "S" };
+    };
+    std::vector<std::unique_ptr<RowSwitches>> rowSwitches;
+    void refreshSwitches();
+    bool rowSilent (int layer) const; // raden hörs inte nu: avstängd, eller något annat är soloat
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment>> loopAttachments;
     juce::Rectangle<int> overviewArea;                        // remsan som visar radernas längder och var man är
     bool overviewDragging = false;
@@ -170,6 +178,7 @@ private:
     bool edited = false;
     int hoverStep = -1;
 
+    int lastSwitchBits = -1;
     int lastKickStep = -2, lastBars = 0, lastVersion = -1, lastCustomBits = -1, lastNamesVersion = -1, lastActive = -1;
     juce::Component::SafePointer<juce::AlertWindow> renameDialog;
     std::array<int, Pattern::numLayers> lastBassSteps = filledArray<int, Pattern::numLayers> (-2), lastGrids = filledArray<int, Pattern::numLayers> (-1),

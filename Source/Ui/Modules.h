@@ -169,6 +169,7 @@ private:
     ParamRefs refs;
     BassParams current;
     float ampValueAt (double seconds) const;
+    float pitchValueAt (double seconds) const;
     EnvelopeView::NoteOff noteOffNow() const;
 
     EnvelopeView envelope { 0.5 };
@@ -272,6 +273,8 @@ private:
     const bool instrument;
     ChoiceComponent length;
     std::unique_ptr<ChoiceComponent> noteEnd;
+    std::unique_ptr<KnobComponent> swingKnob, humanizeKnob; // groove för hela mönstret (instrumenten)
+    std::vector<std::unique_ptr<KnobComponent>> delays, swings, humanizes; // instrumentets egna SWING, HUMAN och DELAY, under GRID
     PresetButton presets;
     // EDIT: vad lanet under det valda lagrets rad visar och ändrar (velocity, tonlängd, tonhöjd), som en rullgardinslista.
     juce::Label laneLabel;
@@ -305,6 +308,6 @@ private:
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment>> gateOnAttachments;
     juce::TextButton fillButton { "FILL..." }, gateFillButton { "FILL..." };
     StepSequencer::Mode mode = StepSequencer::Mode::notes;
-    juce::Rectangle<int> headingBounds;
+    juce::Rectangle<int> headingBounds, blockFrame; // blockFrame: ramen runt det valda instrumentets inställningar
     int shownLayer = 0;
 };

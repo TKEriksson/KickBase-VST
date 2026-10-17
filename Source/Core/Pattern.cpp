@@ -84,7 +84,7 @@ void Pattern::clearNotes (int layer)
     }
 }
 
-BassGrid Pattern::applyTemplate (PatternTemplate t)
+BassGrid Pattern::applyTemplate (PatternTemplate t, bool keepOtherInstruments)
 {
     // Kick på varje fjärdedel i alla mallar utom Clear.
     clearNotes (kickLayer);
@@ -92,9 +92,10 @@ BassGrid Pattern::applyTemplate (PatternTemplate t)
         for (int tick = 0; tick < maxTicks; tick += ticksPerQuarter)
             addNote (kickLayer, tick, ticksPerQuarter / 4, 0, defaultKickVelocity);
 
-    for (int layer = 1; layer < numLayers; ++layer)
-        clearNotes (layer);
-    for (int layer = 0; layer < numLayers; ++layer)
+    if (! keepOtherInstruments)
+        for (int layer = 1; layer < numLayers; ++layer)
+            clearNotes (layer);
+    for (int layer = 0; layer < (keepOtherInstruments ? 1 : numLayers); ++layer)
         setGate (layer, true);
     return applyLayerTemplate (0, t);
 }
@@ -179,7 +180,30 @@ juce::ValueTree Pattern::toValueTree() const
     return tree;
 }
 
-void Pattern::fromValueTree (const juce::ValueTree& tree)
+juce::ValueTree Pattern::rowToValueTree (int layer) const
+{
+    const auto full = toValueTree();
+    juce::ValueTree row (treeType);
+    row.setProperty ("version", currentVersion, nullptr);
+    for (const auto& child : full)
+        if ((int) child.getProperty ("layer", -1) == layer)
+            row.appendChild (child.createCopy(), nullptr);
+    return row;
+}
+
+void Pattern::rowFromValueTree (int layer, const juce::ValueTree& tree)
+{
+    if (! tree.hasType (treeType) || ! juce::isPositiveAndBelow (layer, numNoteLayers))
+        return;
+    auto copy = tree.createCopy();
+    for (auto child : copy)
+        child.setProperty ("layer", layer, nullptr);
+    // Det finns alltid en Notes-rad (även utan toner) i en sparad rad: raden töms först, så att inget gammalt blir kvar.
+    clearNotes (layer);
+    fromValueTree (copy, false);
+}
+
+void Pattern::fromValueTree (const juce::ValueTree& tree, bool clearUnmentionedLayers)
 {
     if (! tree.hasType (treeType))
         return;
@@ -268,7 +292,7 @@ void Pattern::fromValueTree (const juce::ValueTree& tree)
     }
 
     // Lager som projektet inte nämner (t.ex. instrument 4-10 i ett äldre projekt) töms, så att inget gammalt blir kvar.
-    for (int layer = 0; layer < numNoteLayers; ++layer)
+    for (int layer = 0; layer < numNoteLayers && clearUnmentionedLayers; ++layer)
         if (! cleared[(size_t) layer] && ! (layer == kickLayer && tree.hasProperty ("kick")))
         {
             clearNotes (layer);

@@ -224,10 +224,14 @@ void MasterStrip::paint (juce::Graphics& g)
 //==============================================================================
 MixerView::MixerView (PluginBase& p) : processor (p), master (p)
 {
+    viewport.setViewedComponent (&content, false);
+    viewport.setScrollBarsShown (false, true);
+    viewport.setScrollBarThickness (10);
+    addAndMakeVisible (viewport);
     for (int s = 0; s < Mixer::numSources; ++s)
     {
         strips.push_back (std::make_unique<MixerStrip> (p, s));
-        addAndMakeVisible (*strips.back());
+        content.addAndMakeVisible (*strips.back());
     }
     addAndMakeVisible (master);
     startTimerHz (Settings::animationHz (30));
@@ -253,14 +257,28 @@ void MixerView::timerCallback()
 void MixerView::resized()
 {
     auto area = getLocalBounds();
+    master.setBounds (area.removeFromRight (stripWidth));
+    area.removeFromRight (8);
+    viewport.setBounds (area);
+
     const auto fxMask = processor.fxChannelUsageMask();
-    auto count = 1;
+    auto count = 0, gaps = 0;
     for (size_t i = 0; i < strips.size(); ++i)
         if (inUse (processor, (int) i, fxMask))
             ++count;
-    const auto width = std::min (70, (area.getWidth() - 16) / count);
+    for (int i = Mixer::firstFxSource; i < Mixer::numSources; ++i)
+        if (inUse (processor, i, fxMask))
+        {
+            gaps = 8;
+            break;
+        }
+    const auto wanted = count * stripWidth + gaps;
+    const auto scrolling = wanted > area.getWidth();
+    const auto height = area.getHeight() - (scrolling ? viewport.getScrollBarThickness() : 0);
+    content.setSize (std::max (wanted, area.getWidth()), height);
 
-    // Kick och instrument, ett litet glapp, sedan effektkanalerna som används och mastern.
+    // Kick och instrument, ett litet glapp, sedan effektkanalerna som används.
+    auto x = 0;
     auto gapDone = false;
     for (size_t i = 0; i < strips.size(); ++i)
     {
@@ -270,56 +288,67 @@ void MixerView::resized()
             continue;
         if (! gapDone && (int) i >= Mixer::firstFxSource)
         {
-            area.removeFromLeft (8);
+            x += 8;
             gapDone = true;
         }
-        strips[i]->setBounds (area.removeFromLeft (width));
+        strips[i]->setBounds (x, 0, stripWidth, height);
+        x += stripWidth;
     }
-    area.removeFromLeft (8);
-    master.setBounds (area.removeFromLeft (width));
 }
 
 //==============================================================================
 SourceToggles::SourceToggles (PluginBase& p, const juce::String& fieldIn, const juce::String& titleIn) : processor (p), field (fieldIn), title (titleIn)
 {
-    for (int s = 0; s < Mixer::firstFxSource; ++s)
+    if (field != "Duck") // kicken ducks inte sig själv
     {
-        if (field == "Duck" && ! Mixer::hasDuck (s))
-            continue;
-
-        auto button = std::make_unique<juce::TextButton> (labelOf (p, s));
-        styleToggle (*button, mixerSourceColour (s), Mixer::sourceName (s) + " - " + Help::forParameter (Mixer::paramID (s, field)));
-        addAndMakeVisible (*button);
-        attachments.push_back (std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, Mixer::paramID (s, field), *button));
-        buttons.push_back (std::move (button));
-        sourceOfButton.push_back (s);
+        kickButton = std::make_unique<juce::TextButton> (labelOf (p, Mixer::kickSource));
+        styleToggle (*kickButton, mixerSourceColour (Mixer::kickSource), "KICK - " + Help::forParameter (Mixer::paramID (Mixer::kickSource, field)));
+        addAndMakeVisible (*kickButton);
+        kickAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, Mixer::paramID (Mixer::kickSource, field), *kickButton);
     }
 
+    instrumentsButton.setColour (juce::TextButton::buttonColourId, Theme::layerColour (0).withAlpha (0.25f));
+    instrumentsButton.setTooltip ("The instruments: click to choose which of them this applies to. The menu stays open so you can tick several.");
     fxButton.setColour (juce::TextButton::buttonColourId, Theme::effects.withAlpha (0.25f));
-    fxButton.setColour (juce::TextButton::textColourOffId, Theme::text);
     fxButton.setTooltip ("The effect channels (FX1-FX11): click to choose which of them this applies to. The menu stays open so you can tick several.");
-    fxButton.onClick = [this] { showFxMenu(); };
-    addAndMakeVisible (fxButton);
+    for (auto* button : { &instrumentsButton, &fxButton })
+    {
+        button->setColour (juce::TextButton::textColourOffId, Theme::text);
+        addAndMakeVisible (*button);
+    }
+    instrumentsButton.onClick = [this] { showMenu (true); };
+    fxButton.onClick = [this] { showMenu (false); };
     startTimerHz (4);
 }
 
-int SourceToggles::fxOnCount() const
+int SourceToggles::onCount (bool instruments) const
 {
     auto count = 0;
-    for (int s = Mixer::firstFxSource; s < Mixer::numSources; ++s)
+    const auto first = instruments ? Mixer::firstBassSource : Mixer::firstFxSource;
+    const auto end = instruments ? Mixer::firstBassSource + processor.activeInstruments() : Mixer::numSources;
+    for (int s = first; s < end; ++s)
         if (processor.apvts.getRawParameterValue (Mixer::paramID (s, field))->load() >= 0.5f)
             ++count;
     return count;
 }
 
-void SourceToggles::showFxMenu()
+void SourceToggles::updateTexts()
+{
+    const auto arrow = juce::String (juce::CharPointer_UTF8 ("\xe2\x96\xbe"));
+    instrumentsButton.setButtonText ("INSTRUMENTS  " + juce::String (lastInstrumentsOn) + "/" + juce::String (processor.activeInstruments()) + "  " + arrow);
+    fxButton.setButtonText ("FX CHANNELS  " + juce::String (lastFxOn) + "/" + juce::String (Mixer::numSources - Mixer::firstFxSource) + "  " + arrow);
+}
+
+void SourceToggles::showMenu (bool instruments)
 {
     const auto mask = processor.fxChannelUsageMask();
+    const auto first = instruments ? Mixer::firstBassSource : Mixer::firstFxSource;
+    const auto end = instruments ? Mixer::firstBassSource + processor.activeInstruments() : Mixer::numSources;
     juce::PopupMenu menu;
-    for (int s = Mixer::firstFxSource; s < Mixer::numSources; ++s)
+    for (int s = first; s < end; ++s)
     {
-        const auto used = (mask & (1 << (s - Mixer::firstFxSource))) != 0;
-        menu.addItem (s + 1, Mixer::sourceName (s) + (used ? "" : "   (not used yet)"), true,
+        const auto used = instruments || (mask & (1 << (s - Mixer::firstFxSource))) != 0;
+        menu.addItem (s + 1, labelOf (processor, s) + (used ? "" : "   (not used yet)"), true,
                       processor.apvts.getRawParameterValue (Mixer::paramID (s, field))->load() >= 0.5f);
     }
     menu.addSeparator();
@@ -327,7 +356,7 @@ void SourceToggles::showFxMenu()
     menu.addItem (1001, "All off");
 
     juce::Component::SafePointer<SourceToggles> safeThis (this);
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&fxButton), [safeThis] (int result)
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (instruments ? &instrumentsButton : &fxButton), [safeThis, instruments, first, end] (int result)
     {
         if (safeThis == nullptr || result == 0)
             return;
@@ -342,7 +371,7 @@ void SourceToggles::showFxMenu()
         };
         if (result >= 1000)
         {
-            for (int s = Mixer::firstFxSource; s < Mixer::numSources; ++s)
+            for (int s = first; s < end; ++s)
                 set (s, result == 1000);
         }
         else
@@ -351,25 +380,20 @@ void SourceToggles::showFxMenu()
             set (source, safeThis->processor.apvts.getRawParameterValue (Mixer::paramID (source, safeThis->field))->load() < 0.5f);
         }
         safeThis->timerCallback();
-        juce::MessageManager::callAsync ([safeThis] { if (safeThis != nullptr) safeThis->showFxMenu(); }); // öppnas igen: flera kan kryssas i
+        juce::MessageManager::callAsync ([safeThis, instruments] { if (safeThis != nullptr) safeThis->showMenu (instruments); }); // öppnas igen: flera kan kryssas i
     });
 }
 
 void SourceToggles::timerCallback()
 {
-    const auto fxOn = fxOnCount();
-    if (fxOn != lastFxOn)
+    const auto instrumentsOn = onCount (true), fxOn = onCount (false);
+    if (instrumentsOn != lastInstrumentsOn || fxOn != lastFxOn || processor.activeInstruments() != lastActive)
     {
+        lastInstrumentsOn = instrumentsOn;
         lastFxOn = fxOn;
-        fxButton.setButtonText ("FX CHANNELS  " + juce::String (fxOn) + "/" + juce::String (Mixer::numSources - Mixer::firstFxSource) + "  " + juce::String (juce::CharPointer_UTF8 ("\xe2\x96\xbe")));
+        lastActive = processor.activeInstruments();
+        updateTexts();
     }
-    if (processor.activeInstruments() == lastActive && processor.layerNamesVersion.load() == lastNamesVersion)
-        return;
-    lastActive = processor.activeInstruments();
-    lastNamesVersion = processor.layerNamesVersion.load();
-    for (size_t i = 0; i < buttons.size(); ++i)
-        buttons[i]->setButtonText (labelOf (processor, sourceOfButton[i]));
-    resized();
 }
 
 void SourceToggles::paint (juce::Graphics& g)
@@ -383,20 +407,10 @@ void SourceToggles::resized()
 {
     auto area = getLocalBounds();
     area.removeFromLeft (150);
-    constexpr int fxWidth = 150;
-    auto used = 0;
-    for (size_t i = 0; i < buttons.size(); ++i)
-        used += inUse (processor, sourceOfButton[i], 0) ? 1 : 0;
-    const auto width = std::min (62, (area.getWidth() - fxWidth) / std::max (1, used));
-    for (size_t i = 0; i < buttons.size(); ++i)
-    {
-        const auto shown = inUse (processor, sourceOfButton[i], 0);
-        buttons[i]->setVisible (shown);
-        if (shown)
-            buttons[i]->setBounds (area.removeFromLeft (width).reduced (2, 0));
-    }
-    area.removeFromLeft (6);
-    fxButton.setBounds (area.removeFromLeft (fxWidth).reduced (2, 0));
+    if (kickButton != nullptr)
+        kickButton->setBounds (area.removeFromLeft (62).reduced (2, 0));
+    instrumentsButton.setBounds (area.removeFromLeft (170).reduced (2, 0));
+    fxButton.setBounds (area.removeFromLeft (170).reduced (2, 0));
     if (lastFxOn < 0)
         timerCallback();
 }

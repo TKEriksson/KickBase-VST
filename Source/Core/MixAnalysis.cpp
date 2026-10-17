@@ -1092,7 +1092,7 @@ namespace MixAnalysis
                         in.pitchEnv->setProperty (field.substring (8), value);
                     else if (field == "Octave" || field == "Tune")
                         in.pitch->setProperty (field, value);
-                    else if (field == "On" || field == "Level" || field == "Duck" || field == "Grid" || field == "FxChannel" || field == "FxAmount" || field == "Gate")
+                    else if (field == "On" || field == "Level" || field == "Duck" || field == "Grid" || field == "FxChannel" || field == "FxAmount" || field == "Gate" || field == "Delay" || field == "Swing" || field == "Humanize")
                         in.routing->setProperty (field == "Gate" ? juce::String ("NoteLength") : field, value);
                     else
                         in.rest->setProperty (field, value);

@@ -267,6 +267,8 @@ void EffectSlotEditor::resized()
 EffectsPage::EffectsPage (PluginBase& p)
     : processor (p), presets (p, Presets::Section::effects, Theme::effects), strip (p), editor (p), eq (p)
 {
+    presets.setEmptyLabel ("FX Preset");
+    presets.setTooltip ("FX PRESET - Saves or loads all the effect channels: the effects in every slot with their settings, the channel EQ and compressor, and which instruments are sent where.");
     addAndMakeVisible (presets);
 
     const char* viewNames[] { "EQ", "COMP", "FX" };

@@ -76,7 +76,8 @@ private:
     {
         juce::Colour colour;
         juce::String name;
-        std::vector<float> column;        // dB per bildpunkt, utjämnad (analysen görs direkt i bildpunkter: mycket billigare än per steg)
+        std::vector<float> column;        // dB per bildpunkt som visas: följer `target` mjukt (snabbt upp, faller jämnt), så att det inte hackar mellan analyserna
+        std::vector<float> target;        // dB per bildpunkt från den senaste analysen (analysen görs direkt i bildpunkter: mycket billigare än per steg)
         std::array<float, lowBinCount> low {}; // dB per steg för de lägsta stegen, till grundtonen
         float fundamental = 0.0f;         // grundtonens frekvens (Hz), 0 = ingen hittad
         bool selected = true;
@@ -88,6 +89,7 @@ private:
     void updateSources();
     void ensureMapping (int width, double rate);
     void analyse (int source);
+    void smoothColumns(); // varje bildruta: kurvorna närmar sig det senaste analysresultatet (upp snabbt, ner med jämn fart)
     void findFundamental (Source& source) const;
     float xFor (float hz) const;
     float hzFor (float x) const;
@@ -157,7 +159,10 @@ private:
     bool running = false;
 
     // Hur ofta analysen körs och ritas (SPEED), och hur snabbt kurvorna faller (anpassat till takten).
-    int fps = 15;
+    int fps = 15;          // analyser per sekund (SPEED)
+    int displayHz = 30;    // bildrutor per sekund: oberoende av analysen, så att kurvorna faller mjukt mellan analyserna
+    int analysisEvery = 2; // analysera var n:te bildruta
+    int analysisCount = 0;
     float smoothing = 0.3f;
 
     // Bildpunkt -> steg i FFT:n, beräknat när bredden eller samplingsfrekvensen ändras.

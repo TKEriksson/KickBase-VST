@@ -320,12 +320,19 @@ void SpectrumPage::updateRunning()
             for (auto& source : sources)
             {
                 source.column.clear();
+                source.target.clear();
                 source.low.fill (-120.0f);
                 source.fundamental = 0.0f;
             }
     }
     if (running)
-        startTimerHz (Settings::reduceAnimations() ? std::min (fps, 8) : fps);
+    {
+        // Bildrutorna går i egen takt (30, eller 15 med REDUCE ANIMATIONS) och analysen var n:te ruta: SPEED styr bara hur ofta analysen körs.
+        displayHz = Settings::reduceAnimations() ? 15 : 30;
+        const auto analysesPerSecond = Settings::reduceAnimations() ? std::min (fps, 8) : fps;
+        analysisEvery = std::max (1, (int) std::lround ((double) displayHz / (double) analysesPerSecond));
+        startTimerHz (displayHz);
+    }
     else
         startTimerHz (analysing ? 10 : 2);
     repaint();
@@ -426,6 +433,15 @@ void SpectrumPage::resized()
     else
     {
         plotBody = area;
+    }
+
+    // Ändrad storlek: kurvorna räknas om till de nya bildpunkterna direkt (annars är de tomma tills nästa analys).
+    if (running)
+    {
+        for (int i = 0; i < numSources; ++i)
+            if (sources[(size_t) i].present && sources[(size_t) i].selected)
+                analyse (i);
+        smoothColumns();
     }
 }
 
@@ -1020,8 +1036,8 @@ void SpectrumPage::analyse (int index)
     auto& source = sources[(size_t) index];
     const auto width = juce::jmax (1, (int) plotArea().getWidth());
     ensureMapping (width, std::max (8000.0, processor.getSampleRate()));
-    if ((int) source.column.size() != width)
-        source.column.assign ((size_t) width, -120.0f);
+    if ((int) source.target.size() != width)
+        source.target.assign ((size_t) width, -120.0f);
 
     for (int px = 0; px < width; ++px)
     {
@@ -1036,14 +1052,33 @@ void SpectrumPage::analyse (int index)
             for (int b = first; b <= last; ++b)
                 magnitude = std::max (magnitude, fftData[(size_t) b]);
         }
-        const auto db = juce::Decibels::gainToDecibels (magnitude * norm, -120.0f);
-        auto& value = source.column[(size_t) px];
-        value = db > value ? db : value + (db - value) * smoothing; // snabbt upp, mjukt ner
+        source.target[(size_t) px] = juce::Decibels::gainToDecibels (magnitude * norm, -120.0f);
     }
     for (int b = 0; b < lowBinCount; ++b)
     {
         const auto db = juce::Decibels::gainToDecibels (fftData[(size_t) b] * norm, -120.0f);
         source.low[(size_t) b] = db > source.low[(size_t) b] ? db : source.low[(size_t) b] + (db - source.low[(size_t) b]) * smoothing;
+    }
+}
+
+void SpectrumPage::smoothColumns()
+{
+    // Uppåt: närma sig snabbt (så att slag syns direkt men inte hoppar). Neråt: en jämn fart i dB per sekund, oberoende av hur ofta analysen körs,
+    // så att kurvan tonar ut mellan analyserna i stället för att stå still och hoppa.
+    constexpr float riseFraction = 0.55f, fallDbPerSecond = 40.0f;
+    const auto fall = fallDbPerSecond / (float) displayHz;
+    for (auto& source : sources)
+    {
+        if (! source.present || ! source.selected || source.target.empty())
+            continue;
+        if (source.column.size() != source.target.size())
+            source.column = source.target;
+        for (size_t px = 0; px < source.target.size(); ++px)
+        {
+            const auto goal = source.target[px];
+            auto& value = source.column[px];
+            value = goal > value ? value + (goal - value) * riseFraction : std::max (goal, value - fall);
+        }
     }
 }
 
@@ -1157,15 +1192,20 @@ void SpectrumPage::timerCallback()
     if (running)
     {
         ++tick;
-        for (int i = 0; i < numSources; ++i)
+        if ((tick - 1) % analysisEvery == 0) // den första bildrutan analyserar direkt
         {
-            auto& source = sources[(size_t) i];
-            if (! source.present || ! source.selected)
-                continue;
-            analyse (i);
-            if (i != masterSource && tick % 3 == 1)
-                findFundamental (source);
+            ++analysisCount;
+            for (int i = 0; i < numSources; ++i)
+            {
+                auto& source = sources[(size_t) i];
+                if (! source.present || ! source.selected)
+                    continue;
+                analyse (i);
+                if (i != masterSource && analysisCount % 3 == 1)
+                    findFundamental (source);
+            }
         }
+        smoothColumns();
     }
     if (running)
         repaint (plotBody.expanded (2));
