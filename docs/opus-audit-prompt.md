@@ -10,6 +10,7 @@ Tobias vill att **allt kollas noga**. Det här är ingen snabb genomgång. Det �
 2. Minnet: `C:\Users\hunga\.claude\projects\c--Users-hunga-Documents-GitHub-MyOwnFruit\memory\MEMORY.md` och `project-status-handoff.md` (vad som är byggt, i vilken ordning, kända fällor).
 3. `docs/DESIGN.md`, `docs/sound-design-roadmap.md`, `docs/AGENT_GUIDE.md` (den guide en AI får via MCP-bryggan: den ska stämma med verkligheten), `docs/preset-links-plan.md` (historik över presetarbetet).
 4. `git log --oneline -40` på `dev`.
+5. **Den andra agenten.** Tobias har en annan chatt som heter "VST-synthesizer-idé": där byggdes i stort sett hela appen, så den har mer bakgrund än minnesfilerna ("varför är det så här?", vad Tobias menade med en funktion, tidigare beslut). Har du en fråga som inte går att läsa ut ur koden, minnet eller docs: försök nå den med `ListAgents` och `SendMessage` (namnet måste kopieras exakt som `ListAgents` skriver det). Regler: fråga bara när du verkligen behöver det; räkna svaret som en ledtråd, inte som sanning, och kontrollera det mot koden innan du agerar; be den inte ändra något; ändra inte något i repot som den kan hålla på med samtidigt utan att först kolla `git status`/`git log`. Når du den inte, eller svarar den inte: skriv frågan i `docs/audit/questions-for-tobias.md` och gå vidare.
 
 Målet med projektet: ett psytrance-instrument där kick och bas (och fler instrument) ska bli rätt tillsammans, och där en AI kan hjälpa till via verktygen. Nuvarande ljud är fortfarande ett utkast på många ställen.
 
