@@ -25,6 +25,7 @@ FxEditor::FxEditor (FxProcessor& p)
     tools.addTab ("EFFECTS", Theme::effects, effects);
     tools.addTab ("SIDECHAIN", Theme::mix, sidechain);
     tools.addTab ("LFO", Theme::lfo, lfo);
+    tools.addTab ("MATRIX", Theme::lfo, matrix);
     tools.addTab ("MASTER", Theme::master, masterPage);
     tools.addTab ("SOUNDSTAGE", Theme::mix, soundstage);
 

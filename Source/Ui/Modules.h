@@ -5,6 +5,7 @@
 #include "ListenButton.h"
 #include "Cursors.h"
 #include "KickDisplay.h"
+#include "LfoPage.h"
 #include "OscPanel.h"
 #include "EnvelopeView.h"
 #include "PianoRoll.h"
@@ -139,7 +140,13 @@ class BassModule : public ModulePanel, public juce::FileDragAndDropTarget
 public:
     BassModule (PluginBase& processor, int layer);
     void resized() override;
-    void paint (juce::Graphics& g) override { ModulePanel::paint (g); groups.paint (g, getAccent()); }
+    void paint (juce::Graphics& g) override
+    {
+        ModulePanel::paint (g);
+        groups.paint (g, getAccent());
+        if (modOpen)
+            modGroups.paint (g, getAccent());
+    }
     void paintOverChildren (juce::Graphics&) override;
 
     bool isInterestedInFileDrag (const juce::StringArray& files) override;
@@ -163,6 +170,13 @@ private:
     std::unique_ptr<SamplePage> samplePage;
     std::vector<std::unique_ptr<juce::Component>> controls;
     ControlGroups groups; // PITCH, SUB, NOISE, FILTER, FILTER ENV, VOLUME ENV, WARP ENV, DRIVE, OUT
+
+    // MODULATION (dragspel, stängt som standard): ENV 2, ENV 3 och instrumentets övriga källor, med handtag att dra till rattar.
+    juce::TextButton modToggle;
+    std::vector<juce::Component*> modControls;
+    ControlGroups modGroups;
+    bool modOpen = false;
+    void updateModToggle();
     PresetButton presets;
     std::unique_ptr<FxSendControl> fxSend;
 };

@@ -63,15 +63,17 @@ void LfoDragHandle::paint (juce::Graphics& g)
     g.setColour (colour);
     g.drawRoundedRectangle (bounds, 4.0f, 1.2f);
 
-    // Ett kors med pilar, som i Massive.
-    auto icon = bounds.removeFromLeft (bounds.getHeight()).reduced (4.0f);
+    // Ett kors med pilar, som i Massive. I en smal ruta ligger texten under korset.
+    const auto narrow = bounds.getWidth() < 110.0f;
+    auto icon = narrow ? bounds.removeFromTop (bounds.getHeight() * 0.55f).withSizeKeepingCentre (22.0f, 22.0f).reduced (3.0f)
+                       : bounds.removeFromLeft (bounds.getHeight()).reduced (4.0f);
     const auto c = icon.getCentre();
     const auto r = icon.getWidth() / 2.0f;
     g.drawLine (c.x - r, c.y, c.x + r, c.y, 1.6f);
     g.drawLine (c.x, c.y - r, c.x, c.y + r, 1.6f);
     g.fillEllipse (juce::Rectangle<float> (4.0f, 4.0f).withCentre (c));
 
-    g.setFont (Theme::font (10.5f, true));
+    g.setFont (Theme::font (narrow ? 9.5f : 10.5f, true));
     g.drawFittedText (label, bounds.toNearestInt(), juce::Justification::centred, 1, 0.7f);
 }
 

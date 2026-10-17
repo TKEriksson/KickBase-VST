@@ -84,6 +84,7 @@ set(PLUGIN_SOURCES
     Source/Ui/MasterPage.cpp
     Source/Ui/MixerPage.cpp
     Source/Ui/LfoPage.cpp
+    Source/Ui/MatrixPage.cpp
     Source/Ui/Components.cpp
     Source/Ui/Help.cpp
     Source/Ui/OscPanel.cpp

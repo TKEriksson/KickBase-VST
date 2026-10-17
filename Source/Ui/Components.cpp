@@ -533,25 +533,32 @@ void ControlGroups::layout (juce::Rectangle<int> area, int rowHeight)
 {
     frames.clear();
 
+    // Valrutor (rullgardinslistor) får en och en halv ratts bredd, så att texten i dem syns.
+    auto weightOf = [] (const juce::Component* control) { return dynamic_cast<const ChoiceComponent*> (control) != nullptr ? 1.6f : 1.0f; };
+
     for (const auto& row : rows)
     {
         // Varje rad fyller hela bredden.
-        size_t count = 0;
+        auto total = 0.0f;
         for (const auto& group : row)
-            count += group.controls.size();
-        const auto cellWidth = area.getWidth() / (int) std::max ((size_t) 1, count);
+            for (auto* control : group.controls)
+                total += weightOf (control);
+        const auto cellWidth = (float) area.getWidth() / std::max (1.0f, total);
 
         auto rowArea = area.removeFromTop (titleHeight + rowHeight);
         area.removeFromTop (3);
         for (const auto& group : row)
         {
-            auto groupArea = rowArea.removeFromLeft (cellWidth * (int) group.controls.size());
+            auto groupWeight = 0.0f;
+            for (auto* control : group.controls)
+                groupWeight += weightOf (control);
+            auto groupArea = rowArea.removeFromLeft (juce::roundToInt (cellWidth * groupWeight));
             frames.push_back ({ groupArea.reduced (2, 0), group.title });
 
             auto controlsArea = groupArea.withTrimmedTop (titleHeight);
             for (auto* control : group.controls)
             {
-                auto cell = controlsArea.removeFromLeft (cellWidth);
+                auto cell = controlsArea.removeFromLeft (juce::roundToInt (cellWidth * weightOf (control)));
                 if (dynamic_cast<ChoiceComponent*> (control) != nullptr)
                     control->setBounds (cell.reduced (4, 0).withSizeKeepingCentre (cell.getWidth() - 8, 40));
                 else

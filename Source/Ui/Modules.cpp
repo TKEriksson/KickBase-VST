@@ -629,9 +629,10 @@ BassModule::BassModule (PluginBase& p, int layerIn)
     };
 
     // Under oscillatorerna, i signalens ordning: tonhöjd, sub/brus, filter -> volym och utgång.
-    groups.addRow ({ { "PITCH", { knob (id (F::octave), "OCTAVE"), knob (id (F::tune), "TUNE") } },
-                     { "SUB", { knob (id (F::sub), "LEVEL"), choice (id (F::subOctave), "OCTAVE") } },
-                     { "NOISE", { knob (id (F::noise), "LEVEL") } },
+    groups.addRow ({ { "PITCH", { knob (id (F::octave), "OCTAVE"), knob (id (F::tune), "TUNE"),
+                                  knob (id (F::pitchEnvAmount), "ENV AMT"), knob (id (F::pitchEnvDecay), "ENV DEC") } },
+                     { "SUB", { knob (id (F::sub), "LEVEL"), choice (id (F::subWave), "WAVE"), choice (id (F::subOctave), "OCTAVE") } },
+                     { "NOISE", { knob (id (F::noise), "LEVEL"), knob (id (F::noiseTone), "TONE") } },
                      { "FILTER", { choice (id (F::filterType), "TYPE"), knob (id (F::cutoff), "CUTOFF"),
                                    knob (id (F::resonance), "RESO"), knob (id (F::keyTrack), "KEYTRK") } },
                      { "FILTER ENVELOPE", { knob (id (F::envAmount), "AMOUNT"), knob (id (F::envDecay), "DECAY"),
@@ -639,8 +640,48 @@ BassModule::BassModule (PluginBase& p, int layerIn)
     groups.addRow ({ { "VOLUME ENVELOPE", { knob (id (F::attack), "ATTACK"), knob (id (F::decay), "DECAY"),
                                             knob (id (F::sustain), "SUSTAIN"), knob (id (F::release), "RELEASE") } },
                      { "WARP ENV", { knob (id (F::warpEnv), "AMOUNT") } },
-                     { "DRIVE", { knob (id (F::drive), "AMOUNT") } },
+                     { "DRIVE", { knob (id (F::drive), "AMOUNT"), choice (id (F::driveMode), "MODE") } },
                      { "LAYER OUT", { knob (id (F::level), "LEVEL"), knob (id (F::duck), "DUCK"), knob (id (F::gate), "GATE") } } });
+
+    // MODULATION: ENV 2 och ENV 3 (egna envelopes att modulera med), och velocity och slump som källor. Varje källa har ett handtag
+    // som dras till en ratt (eller sätts i MATRIX-fliken).
+    auto handle = [&] (int kind, const char* label) -> juce::Component*
+    {
+        controls.push_back (std::make_unique<LfoDragHandle> (Modulation::instrumentSource (layer, kind), label));
+        addAndMakeVisible (*controls.back());
+        return controls.back().get();
+    };
+    const auto modStart = controls.size();
+    const auto env2 = (int) F::env2Attack, env3 = (int) F::env3Attack;
+    modGroups.addRow ({ { "ENV 2", { knob (id ((F) env2), "ATTACK"), knob (id ((F) (env2 + 1)), "DECAY"), knob (id ((F) (env2 + 2)), "SUSTAIN"),
+                                     knob (id ((F) (env2 + 3)), "RELEASE"), handle (0, "DRAG") } },
+                        { "ENV 3", { knob (id ((F) env3), "ATTACK"), knob (id ((F) (env3 + 1)), "DECAY"), knob (id ((F) (env3 + 2)), "SUSTAIN"),
+                                     knob (id ((F) (env3 + 3)), "RELEASE"), handle (1, "DRAG") } },
+                        { "MORE SOURCES", { handle (2, "VELOCITY"), handle (3, "RANDOM") } } });
+    for (auto i = modStart; i < controls.size(); ++i)
+        modControls.push_back (controls[i].get());
+
+    modOpen = p.modEnvelopesOpen;
+    modToggle.onClick = [this]
+    {
+        modOpen = ! modOpen;
+        processor.modEnvelopesOpen = modOpen;
+        updateModToggle();
+        resized();
+        repaint();
+    };
+    modToggle.setTooltip ("MODULATION - Open or close ENV 2 and ENV 3: two extra envelopes (attack, decay, sustain, release) that do not play the sound but move other "
+                          "knobs, plus the note's VELOCITY and a RANDOM value per note as sources. Drag a source's handle onto any knob, or use the MATRIX tab.");
+    addAndMakeVisible (modToggle);
+    updateModToggle();
+}
+
+void BassModule::updateModToggle()
+{
+    modToggle.setButtonText (juce::String (modOpen ? juce::String::fromUTF8 ("\xe2\x96\xbe") : juce::String::fromUTF8 ("\xe2\x96\xb8"))
+                             + "  MODULATION   ENV 2, ENV 3, VELOCITY, RANDOM");
+    for (auto* control : modControls)
+        control->setVisible (modOpen);
 }
 
 bool BassModule::isInterestedInFileDrag (const juce::StringArray& files)
@@ -918,8 +959,18 @@ void BassModule::resized()
     leftColumn.removeFromBottom (4);
     envelope.setBounds (leftColumn.reduced (0, 2));
     area.removeFromLeft (6);
-    const auto rowHeight = juce::jlimit (44, 84, area.getHeight() / groups.numRows() - ControlGroups::titleHeight - 3);
+
+    // Raderna, sedan dragspelet MODULATION (en rad till när det är öppet).
+    constexpr int toggleHeight = 20;
+    const auto rows = groups.numRows() + (modOpen ? 1 : 0);
+    const auto rowHeight = juce::jlimit (40, 84, (area.getHeight() - toggleHeight - 4) / rows - ControlGroups::titleHeight - 3);
     groups.layout (area, rowHeight);
+    const auto used = groups.numRows() * (ControlGroups::titleHeight + rowHeight + 3);
+    auto rest = area.withTrimmedTop (used);
+    modToggle.setBounds (rest.removeFromTop (toggleHeight));
+    rest.removeFromTop (4);
+    if (modOpen)
+        modGroups.layout (rest, rowHeight);
 }
 
 //==============================================================================
