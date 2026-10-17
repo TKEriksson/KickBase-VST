@@ -190,6 +190,48 @@ int renderSignaturesWide()
     return 0;
 }
 
+// Hur mycket ljudet beror på DAW:ens blockstorlek (moduleringen och flera inställningar läses en gång per block). Nolltest mot block 32.
+int blockSizeTest()
+{
+    juce::ScopedJuceInitialiser_GUI gui;
+    auto renderWith = [] (bool heavy, int blockSize)
+    {
+        auto processor = make (false);
+        if (heavy)
+            Scenarios::makeHeavy (*processor, 3);
+        processor->ensureTablesInUse();
+        OfflineRender::Settings settings;
+        settings.sampleRate = 48000.0;
+        settings.blockSize = blockSize;
+        settings.bpm = 145.0;
+        settings.bars = 2;
+        settings.notes = { 52 };
+        settings.extraBars = 1;
+        return OfflineRender::render (*processor, settings);
+    };
+    for (const auto heavy : { false, true })
+    {
+        const auto reference = renderWith (heavy, 32);
+        const auto referenceRms = reference.getRMSLevel (0, 0, reference.getNumSamples());
+        for (const auto blockSize : { 64, 256, 512, 1024, 2048 })
+        {
+            const auto audio = renderWith (heavy, blockSize);
+            auto peak = 0.0f;
+            auto sum = 0.0;
+            for (int i = 0; i < std::min (audio.getNumSamples(), reference.getNumSamples()); ++i)
+            {
+                const auto d = audio.getSample (0, i) - reference.getSample (0, i);
+                peak = std::max (peak, std::abs (d));
+                sum += (double) d * d;
+            }
+            const auto rms = std::sqrt (sum / std::max (1, audio.getNumSamples()));
+            std::printf ("%s, block %4d mot 32: skillnad topp %.1f dBFS, rms %.1f dB under signalen\n", heavy ? "tungt läge (LFO, ENV 2/3)" : "Init", blockSize,
+                         juce::Decibels::gainToDecibels (peak, -200.0f), juce::Decibels::gainToDecibels (referenceRms, -200.0f) - juce::Decibels::gainToDecibels ((float) rms, -200.0f));
+        }
+    }
+    return 0;
+}
+
 int audioThreadTest()
 {
     juce::ScopedJuceInitialiser_GUI gui;

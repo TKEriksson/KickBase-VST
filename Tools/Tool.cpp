@@ -1532,6 +1532,7 @@ int profileCommand (const juce::String& scenario, int instruments, double second
 int uiProfileCommand (int tab, const juce::String& scenario, int instruments, double seconds); // Tools/Profile.cpp
 int renderSignaturesWide(); // Tools/AudioTests.cpp
 int audioThreadTest();      // Tools/AudioTests.cpp
+int blockSizeTest();        // Tools/AudioTests.cpp
 int persistTest();          // Tools/StateTests.cpp
 
 // Verktygets kommandon. Startas av KickbaseMcp.exe när det heter MyOwnFruitTool.exe eller får `tool` som första argument.
@@ -1584,6 +1585,8 @@ int toolMain (int argc, char* argv[])
         return persistTest();
     if (argc == 2 && juce::String (argv[1]) == "rendersigwide")
         return renderSignaturesWide();
+    if (argc == 2 && juce::String (argv[1]) == "blocksizetest")
+        return blockSizeTest();
     if (argc == 2 && juce::String (argv[1]) == "audiotest")
         return audioThreadTest();
     // uiprofile <flik> <init|heavy> [instrument] [sekunder]: gränssnittets CPU och var meddelandetråden lägger tiden.
