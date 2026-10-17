@@ -82,7 +82,7 @@ HeaderBar::HeaderBar (PluginBase& p, const juce::String& subtitleIn)
     };
     addAndMakeVisible (aiButton);
     updateAiTooltip();
-    startTimerHz (30);
+    startTimerHz (Settings::animationHz (30));
 }
 
 void HeaderBar::updateAiTooltip()
@@ -245,7 +245,40 @@ void HeaderBar::timerCallback()
         bassStrength = juce::jlimit (0.35, 1.0, (double) bassPeak * 3.0);
     }
     lastBassPeak = bassPeak > lastBassPeak ? bassPeak : lastBassPeak * 0.85f;
-    repaint();
+
+    // Rita bara om det som rör sig: mätaren (30 gånger i sekunden), loggan så länge glöden går, och resten när tempo, takt, tonart eller
+    // synk ändras. Att rita hela rubriken 30 gånger i sekunden kostade onödigt mycket.
+    const auto reduced = Settings::reduceAnimations();
+    if (reduced != reducedLast)
+    {
+        reducedLast = reduced;
+        startTimerHz (Settings::animationHz (30));
+    }
+    // Neonet lyser med ljudets nivå (utgångens topp): släckt när inget spelas, så att man ser ljuden.
+    {
+        const auto level = juce::jmax (peakL, peakR);
+        const auto target = juce::jlimit (0.0f, 1.0f, (juce::Decibels::gainToDecibels (level, -80.0f) + 54.0f) / 30.0f);
+        glow += (target - glow) * (target > glow ? 0.45f : 0.1f);
+        if (glow < 0.01f)
+            glow = 0.0f;
+    }
+    const auto glowMoved = std::abs (glow - glowShown) > 0.02f || (glow == 0.0f && glowShown != 0.0f);
+    if (glowMoved)
+        glowShown = glow;
+    const auto logoActive = glowMoved || (! reduced && (now - lastKickTime < 1.9 || bassStrength * std::exp (-(now - lastBassTime) * 2.2) > 0.01));
+    if (logoActive || logoWasActive)
+        repaint (0, 0, 14 + logo.getWidth() + 24, getHeight());
+    logoWasActive = logoActive;
+    repaint (meterBounds().expanded (2));
+
+    const auto& status = processor.transportStatus;
+    const auto hash = juce::roundToInt ((float) status.bpm.load() * 10.0f) * 31 + status.patternBar.load() * 7 + status.beat.load() * 3 + status.keyNote.load() * 11
+                    + (status.followingHost.load() ? 1 : 0);
+    if (hash != lastStatusHash)
+    {
+        lastStatusHash = hash;
+        repaint();
+    }
 }
 
 // Färgerna glider sakta mellan varandra (en ny färg var sjätte sekund).
@@ -266,10 +299,12 @@ void HeaderBar::paint (juce::Graphics& g)
         // Loggan: glöden följer ljudet. En ny kick startar en våg åt höger, en ny stöt från instrumenten en våg åt vänster.
         const auto now = juce::Time::getMillisecondCounterHiRes() * 0.001;
         const auto kickAge = now - lastKickTime, bassAge = now - lastBassTime;
-        LogoPainter::Sweep kick { juce::jlimit (0.0f, 1.0f, (float) (kickAge / 0.30)), (float) std::exp (-kickAge * 5.5), fadeColour ({ 0xffff5fa8, 0xffff9a3c, 0xffb98cff, 0xffffc857 }, 0.0, now) };
-        LogoPainter::Sweep bass { 1.0f - juce::jlimit (0.0f, 1.0f, (float) (bassAge / 0.38)), (float) (bassStrength * std::exp (-bassAge * 4.5)),
+        // Halv fart mot förut (glöden går över loggan på 0,6 s och tonar ut på ~1,5 s), och starkare. Med minskade animationer står loggan still.
+        const auto still = Settings::reduceAnimations();
+        LogoPainter::Sweep kick { juce::jlimit (0.0f, 1.0f, (float) (kickAge / 0.60)), still ? 0.0f : (float) std::exp (-kickAge * 2.6), fadeColour ({ 0xffff5fa8, 0xffff9a3c, 0xffb98cff, 0xffffc857 }, 0.0, now) };
+        LogoPainter::Sweep bass { 1.0f - juce::jlimit (0.0f, 1.0f, (float) (bassAge / 0.76)), still ? 0.0f : (float) (bassStrength * std::exp (-bassAge * 2.2)),
                                   fadeColour ({ 0xff3fd2ff, 0xff5fffb0, 0xff6b8cff, 0xff5ef2d6 }, 9.0, now) };
-        logo.paint (g, { 14.0f, ((float) getHeight() - (float) LogoPainter::height) * 0.5f }, now, kick, bass);
+        logo.paint (g, { 14.0f, ((float) getHeight() - (float) LogoPainter::height) * 0.5f }, glowShown, kick, bass);
     }
 
     // Tonart med lampan under (DAW SYNC eller FREE RUN) längst till höger.
@@ -334,7 +369,7 @@ void HeaderBar::paint (juce::Graphics& g)
 
     // Utgångsmätare (L och R, -48 till 0 dB): visar att synten faktiskt ger ljud.
     {
-        auto meter = juce::Rectangle<float> ((float) toolsEnd() + 16.0f, ((float) getHeight() - 28.0f) * 0.5f, (float) meterWidth, 28.0f);
+        auto meter = meterBounds().toFloat();
         g.setFont (Theme::font (9.0f, true));
         g.setColour (Theme::textDim);
         g.drawText ("OUT", meter.removeFromLeft (26.0f), juce::Justification::centredLeft);

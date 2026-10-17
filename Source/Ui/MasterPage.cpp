@@ -3,7 +3,7 @@
 LevelMeter::LevelMeter (std::function<float()> readIn, float minIn, float maxIn, bool fromTopIn, juce::Colour colourIn, juce::String labelIn)
     : read (std::move (readIn)), minDb (minIn), maxDb (maxIn), fromTop (fromTopIn), colour (colourIn), label (std::move (labelIn))
 {
-    startTimerHz (30);
+    startTimerHz (Settings::animationHz (30));
 }
 
 void LevelMeter::paint (juce::Graphics& g)

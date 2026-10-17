@@ -968,7 +968,7 @@ bool MixAnalyser::start (PluginBase& source, const MixAnalysis::Options& newOpti
     copy = MixAnalysis::prepareCopy (source);
     progress = 0.0f;
     running = true;
-    startThread();
+    startThread (juce::Thread::Priority::low); // lågt: ljudtråden i värden ska inte få konkurrens
     return true;
 }
 

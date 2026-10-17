@@ -30,6 +30,7 @@ private:
     void showExportMenu();
     static constexpr int meterWidth = 72;
     int toolsEnd() const { return previewGroup.isEmpty() ? exportButton.getRight() : previewGroup.getRight(); }
+    juce::Rectangle<int> meterBounds() const { return { toolsEnd() + 16, (getHeight() - 28) / 2, meterWidth, 28 }; }
     void updateAiTooltip();
     void chooseExportTarget (int part, int bars); // part: 0-2 = PluginBase::ExportPart, 3 = alla tre
 
@@ -39,6 +40,9 @@ private:
     double lastKickTime = -100.0, lastBassTime = -100.0, bassStrength = 0.0;
     int lastKickTriggers = -1;
     float lastBassPeak = 0.0f;
+    bool logoWasActive = true, reducedLast = false;
+    float glow = 0.0f, glowShown = 0.0f; // neonets styrka: följer ljudets nivå (släckt utan ljud)
+    int lastStatusHash = 0; // tempo, takt, tonart och synk: rubriken ritas bara om när något av det ändras
 
     PluginBase& processor;
     juce::String subtitle;

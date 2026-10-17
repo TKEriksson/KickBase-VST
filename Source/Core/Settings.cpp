@@ -1,4 +1,5 @@
 #include "Settings.h"
+#include <atomic>
 
 #if JUCE_WINDOWS
  #include <windows.h>
@@ -152,6 +153,28 @@ namespace Settings
     void setChatModel (const juce::String& model)
     {
         set ("chatModel", model == "claude-sonnet-5-5" ? juce::String() : model);
+    }
+
+    namespace
+    {
+        std::atomic<int> reduceState { -1 }; // -1 = inte läst än
+    }
+
+    bool reduceAnimations()
+    {
+        auto state = reduceState.load();
+        if (state < 0)
+        {
+            state = get ("reduceAnimations") == "1" ? 1 : 0;
+            reduceState = state;
+        }
+        return state == 1;
+    }
+
+    void setReduceAnimations (bool reduce)
+    {
+        reduceState = reduce ? 1 : 0;
+        set ("reduceAnimations", reduce ? "1" : juce::String());
     }
 
     float uiScale()

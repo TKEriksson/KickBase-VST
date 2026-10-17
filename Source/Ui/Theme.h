@@ -1,5 +1,7 @@
 #pragma once
 
+#include "../Core/Settings.h"
+
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <unordered_map>
 #include <vector>

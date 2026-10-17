@@ -228,7 +228,7 @@ MixerView::MixerView (PluginBase& p) : processor (p), master (p)
         addAndMakeVisible (*strips.back());
     }
     addAndMakeVisible (master);
-    startTimerHz (30);
+    startTimerHz (Settings::animationHz (30));
 }
 
 void MixerView::timerCallback()

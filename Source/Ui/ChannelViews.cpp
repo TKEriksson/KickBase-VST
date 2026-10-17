@@ -14,7 +14,7 @@ EqView::EqView (PluginBase& p) : processor (p)
     setTooltip ("EQ - Drag the nodes: left/right = frequency, up/down = boost or cut. HP and LP are high and low pass (drag them sideways). "
                 "Scroll on a bell (II, III) to change its width (Q); double-click a node to reset it. "
                 "The orange area is the sound reaching the EQ, so you can see which frequencies to fix.");
-    startTimerHz (30);
+    startTimerHz (Settings::animationHz (30));
 }
 
 void EqView::setChannel (int newChannel)

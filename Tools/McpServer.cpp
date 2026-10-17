@@ -145,7 +145,7 @@ namespace
                 put (result, "serverInfo", info);
                 put (result, "instructions", "Kickbase is a psytrance kick and bass synth. Call get_guide first: it explains the tools, units, the pattern language and the verification workflow. "
                                              "Work in a loop: change the sound, render_preview, read the metrics and the spectrogram, adjust. Save good sounds with save_preset. "
-                                             "To check how the kick and instruments share the frequencies (collisions, a kick that is out of tune, rumble, the limiter) call analyse_mix; the guide (section 9) says how to fix what it finds: EQ per source, "
+                                             "To check how the kick and instruments share the frequencies (collisions, a kick that is out of tune, rumble, the limiter) call analyse_mix (it starts a background analysis) and then get_mix_report until the status is done; the guide (section 9) says how to fix what it finds: EQ per source, "
                                              "a Sidechain effect so one instrument ducks under another, retuning.");
                 return reply (id, result);
             }
@@ -340,7 +340,7 @@ namespace
         std::printf ("instans %s, länk %s\n", live.getBridgeId().toRawUTF8(), live.isBridgeEnabled() ? "på" : "av");
 
         std::atomic<bool> done { false };
-        bool keyedOk = false, reconnectOk = false, secondOk = false;
+        bool keyedOk = false, reconnectOk = false, secondOk = false, busyOk = false;
         std::vector<juce::String> lines;
         std::thread worker ([&]
         {
@@ -372,6 +372,16 @@ namespace
                     secondOk = second.connect (instances[0].pipes) && (bool) second.call ("get_state", object())["ok"] && client.isConnected();
                     lines.push_back (juce::String (secondOk ? "ok" : "FEL") + ": en andra brygga kan vara ansluten samtidigt");
                 }
+
+                // Upptagen huvudtråd: medan den sover i fem sekunder (som under en lång rendering) ska länken ändå svara på ping direkt.
+                juce::MessageManager::callAsync ([] { juce::Thread::sleep (5000); });
+                juce::Thread::sleep (300);
+                const auto pingStart = juce::Time::getMillisecondCounterHiRes();
+                const auto pong = client.call ("ping", object(), 4000);
+                const auto pingMs = juce::Time::getMillisecondCounterHiRes() - pingStart;
+                busyOk = (bool) pong["ok"] && pingMs < 1500.0;
+                lines.push_back (juce::String (busyOk ? "ok" : "FEL") + ": ping besvaras medan huvudtråden är upptagen (" + juce::String (pingMs, 0) + " ms)");
+                juce::Thread::sleep (5000); // huvudtråden blir ledig igen
 
                 // Tappad länk: nästa anrop kopplar upp sig igen av sig självt.
                 client.disconnect();
@@ -411,7 +421,7 @@ namespace
         const auto tune = live.apvts.getRawParameterValue (ParamID::kickTune)->load();
         std::printf ("kickTune i instansen efter undo: %.1f (väntat 0)\n", tune);
         live.setBridgeEnabled (false);
-        return done && keyedOk && reconnectOk && secondOk && std::abs (tune) < 0.01f ? 0 : 1;
+        return done && keyedOk && reconnectOk && secondOk && busyOk && std::abs (tune) < 0.01f ? 0 : 1;
     }
 }
 

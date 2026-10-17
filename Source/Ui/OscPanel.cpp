@@ -8,7 +8,7 @@ WavetableView::WavetableView (PluginBase& p, int layerIn, int oscIn, juce::Colou
     setTooltip ("OSC " + juce::String (osc + 1)
                 + " - The wavetable: all its waveforms stacked from back to front. CLICK it to hear just this oscillator (even if it is off). "
                   "POS chooses which waveform plays (drag an LFO onto POS to sweep through them); WARP bends the waveform you see in front.");
-    startTimerHz (30);
+    startTimerHz (Settings::animationHz (30));
 }
 
 float WavetableView::raw (BassField field) const

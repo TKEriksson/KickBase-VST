@@ -228,8 +228,10 @@ std::vector<ToolLayer::ToolInfo> ToolLayer::tools()
           R"({"type":"object","properties":{"layer":{"type":"integer"},"file":{"type":"string"},"level":{"type":"number"},"key_track":{"type":"boolean"},"root_note":{"type":"integer"},"loop":{"type":"boolean"},"start":{"type":"number"}},"required":["layer"]})" },
         { "load_kick_sample", "Loads a WAV/AIFF/FLAC file (max 2 s, mono-summed) as the kick's sample. kickSampleMode (Click | Layer | Replace) decides how it is used: Click = the first moments of every kick on top of the synthesized body, scaled by kickClick; Layer = the whole sample on top of the synthesized kick (kickSampleLevel); Replace = the sample is the kick (the synthesized body is silent). kickSampleTune plays it faster or slower. Empty or missing file clears it.",
           R"({"type":"object","properties":{"file":{"type":"string"}}})" },
-        { "analyse_mix", "Plays the pattern through once offline (all bars of the pattern, at most 16) and analyses how the kick, each instrument and the master share the frequencies, bar by bar. Returns findings with severity (problem, warning, info), the sources involved, the frequency range and the bars where it happens: collisions between sources at the same loudness and frequency, an instrument covering the kick, a kick tail tuned too low or high, instruments that are out of tune with each other or the kick (octaves and unison count as in tune), rumble under 30 Hz, a master limiter that works too hard, and (with reference_file) where the master has more or less energy than a reference track. Measured on the real signals after ducking and EQ, so a collision the sidechain already solved does not show. Kick and instrument sharing low frequencies is only a warning because that is normal when the sidechain gives the kick the hit. sensitivity: low (clear problems only), normal (default) or high (smaller overlaps too). Use it after a change to check that you fixed what you meant to; the user sees the same report in the SPECTRUM tab.",
+        { "analyse_mix", "STARTS an analysis of the mix and returns at once (it runs in the background, a few seconds up to half a minute depending on the project; the plugin keeps working). It plays the pattern through once offline (all bars of the pattern, at most 16) and analyses how the kick, each instrument and the master share the frequencies, bar by bar. Then call get_mix_report (repeat while it says status running) to get the findings. Findings have severity (problem, warning, info), the sources involved, the frequency range and the bars where it happens: collisions between sources at the same loudness and frequency, an instrument covering the kick, a kick tail tuned too low or high, instruments that are out of tune with each other or the kick (octaves and unison count as in tune), rumble under 30 Hz, a master limiter that works too hard, and (with reference_file) where the master has more or less energy than a reference track. Measured on the real signals after ducking and EQ, so a collision the sidechain already solved does not show. Kick and instrument sharing low frequencies is only a warning because that is normal when the sidechain gives the kick the hit. sensitivity: low (clear problems only), normal (default) or high (smaller overlaps too). Use it after a change to check that you fixed what you meant to; the user sees the same report in the SPECTRUM tab. The analysis uses the pattern and sound as they are when you start it: do not change anything until the report is done.",
           R"({"type":"object","properties":{"sensitivity":{"type":"string","enum":["low","normal","high"]},"bpm":{"type":"number"},"note":{"type":"integer"},"max_bars":{"type":"integer"},"reference_file":{"type":"string"}}})" },
+        { "get_mix_report", "Returns the result of analyse_mix: {status:'running', progress} while it works (call again in a few seconds), or the report when it is done (status 'done'). wait_seconds (0-60) lets the call wait for the result when this is the headless instance; against the live plugin it never waits (so the link stays responsive).",
+          R"({"type":"object","properties":{"wait_seconds":{"type":"number"}}})" },
         { "undo", "Undoes the last change made through these tools.", R"({"type":"object","properties":{}})" },
         { "redo", "Redoes what undo undid.", R"({"type":"object","properties":{}})" },
         { "reset", "Resets everything to the Init sound (all parameters at their defaults, default pattern, no routes).", R"({"type":"object","properties":{}})" },
@@ -265,6 +267,7 @@ var ToolLayer::call (const juce::String& tool, const var& args)
     if (tool == "list_presets")     return listPresets (args);
     if (tool == "render_preview")   return renderPreview (args);
     if (tool == "analyse_mix")      return analyseMix (args);
+    if (tool == "get_mix_report")   return getMixReport (args);
     if (tool == "analyze_audio")    return analyzeAudio (args);
     if (tool == "export_midi" || tool == "save_piano_roll")
         return pianoRollFiles (tool, args);
@@ -926,15 +929,22 @@ var ToolLayer::analyseMix (const var& args)
     if (processor.isEffectVersion())
         return fail ("analyse_mix works in the instrument version of Kickbase (the FX version has no instruments to compare).");
 
+    if (analyser == nullptr)
+        analyser = std::make_unique<MixAnalyser>();
+    if (analyser->isRunning())
+    {
+        auto data = object();
+        put (data, "status", "running");
+        put (data, "progress", round4 (analyser->getProgress()));
+        put (data, "next", "An analysis is already running. Call get_mix_report.");
+        return ok (data);
+    }
+
     MixAnalysis::Options options;
     const auto sensitivity = args["sensitivity"].toString().toLowerCase();
     options.sensitivity = sensitivity == "low" ? 0 : sensitivity == "high" ? 2 : 1;
     if (args.hasProperty ("max_bars"))
         options.maxBars = juce::jlimit (1, 32, (int) args["max_bars"]);
-
-    const auto bpm = args.hasProperty ("bpm") ? juce::jlimit (60.0, 220.0, (double) args["bpm"]) : (processor.transportStatus.bpm.load() > 0.0 ? (double) processor.transportStatus.bpm.load() : 145.0);
-    const auto keyNote = processor.transportStatus.keyNote.load();
-    const auto note = args.hasProperty ("note") ? juce::jlimit (0, 127, (int) args["note"]) : (keyNote >= 0 ? keyNote : 52);
 
     std::shared_ptr<const MixAnalysis::Reference> reference;
     if (const auto path = args["reference_file"].toString(); path.isNotEmpty())
@@ -945,11 +955,41 @@ var ToolLayer::analyseMix (const var& args)
             return fail (error);
     }
 
-    auto copy = MixAnalysis::prepareCopy (processor);
-    const auto report = MixAnalysis::run (*copy, bpm, note, options, reference.get(), {}, {});
+    if (! analyser->start (processor, options, reference))
+        return fail ("Could not start the analysis.");
+
+    auto data = object();
+    put (data, "status", "started");
+    put (data, "next", "The analysis runs in the background. Call get_mix_report (repeat while status is running).");
+    return ok (data);
+}
+
+var ToolLayer::getMixReport (const var& args)
+{
+    if (analyser == nullptr || (! analyser->isRunning() && ! analyser->hasReport()))
+        return fail ("No analysis yet. Call analyse_mix first.");
+
+    // Mot den fristående instansen (ett annat tråd än huvudtråden) kan anropet vänta; mot pluginet aldrig (huvudtråden svarar på länkens ping).
+    const auto wait = juce::jlimit (0.0, 60.0, (double) args["wait_seconds"]);
+    if (wait > 0.0 && ! juce::MessageManager::getInstance()->isThisTheMessageThread())
+        for (auto waited = 0.0; analyser->isRunning() && waited < wait; waited += 0.1)
+            juce::Thread::sleep (100);
+
+    if (analyser->isRunning())
+    {
+        auto data = object();
+        put (data, "status", "running");
+        put (data, "progress", round4 (analyser->getProgress()));
+        put (data, "next", "Still working. Call get_mix_report again in a few seconds.");
+        return ok (data);
+    }
+
+    const auto report = analyser->getReport();
     if (! report.valid)
         return fail (report.error);
-    return report.toVar();
+    auto data = report.toVar();
+    put (data, "status", "done");
+    return ok (data);
 }
 
 var ToolLayer::renderPreview (const var& args)
@@ -1022,7 +1062,8 @@ var ToolLayer::renderPreview (const var& args)
         put (metrics, "expected_bass1_root_hz", round4 (bassRoot));
         if (tail > 0.0f)
         {
-            const auto semitones = 12.0 * std::log2 (tail / bassRoot);
+            auto semitones = 12.0 * std::log2 (tail / bassRoot);
+            semitones -= 12.0 * std::round (semitones / 12.0); // en oktav (eller flera) ifrån rotens ton räknas som i stämning
             check ("kick_tail_matches_bass_root", std::abs (semitones) <= 2.5, "tail " + juce::String (tail, 1) + " Hz vs bass root " + juce::String (bassRoot, 1) + " Hz: "
                                                                                  + juce::String (semitones, 1) + " semitones (within about 2 is normal; exactly 0 is safest)");
         }

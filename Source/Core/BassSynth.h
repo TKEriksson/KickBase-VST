@@ -152,6 +152,11 @@ public:
     struct Oscillator
     {
         std::array<double, maxUnison> phases {};
+
+        // Tonhöjdskvoterna (halvtoner, finstämning, stämmornas spridning) räknas om bara när inställningarna ändras, inte varje sample.
+        float lastSemis = 1.0e30f, lastFine = 1.0e30f, pitchRatio = 1.0f, lastDetune = 1.0e30f;
+        int lastVoices = -1;
+        std::array<double, maxUnison> detuneRatios {};
         void retrigger (const OscParams& p, juce::Random& random);
         Stereo next (const OscParams& p, double frequency, double sampleRate, float warpAmount, float fmInput);
     };
@@ -160,6 +165,23 @@ private:
     enum class Stage { idle, attack, decay, release };
 
     static double coefficientFor (double milliseconds, double sampleRate);
+
+    // Minns det senaste svaret från en dyr beräkning (exp, pow) så länge indata är oförändrad, vilket de allra flesta samples är: exakt samma
+    // värden som förut, men utan att räkna om dem 48 000 gånger i sekunden.
+    struct CoefficientMemo
+    {
+        double milliseconds = -1.0, rate = -1.0, value = 0.0;
+        double get (double ms, double sampleRate)
+        {
+            if (ms != milliseconds || sampleRate != rate)
+            {
+                milliseconds = ms;
+                rate = sampleRate;
+                value = coefficientFor (ms, sampleRate);
+            }
+            return value;
+        }
+    };
 
     BassParams params;
     double sampleRate = 44100.0;
@@ -176,6 +198,7 @@ private:
         enum class EnvStage { idle, attack, decay, release };
         EnvStage envStage = EnvStage::idle;
         float level = 0.0f;
+        CoefficientMemo decayMemo, releaseMemo;
         void trigger() { envStage = EnvStage::attack; }
         void release() { if (envStage != EnvStage::idle) envStage = EnvStage::release; }
         void reset() { envStage = EnvStage::idle; level = 0.0f; }
@@ -196,5 +219,13 @@ private:
     // Filtren för mitten (filter1, filter2) och sidan: samma inställning, så att det blir stereo utan att
     // ljudet låter olika i vänster och höger.
     juce::dsp::StateVariableTPTFilter<float> filter1, filter2, sideFilter1, sideFilter2;
+
+    // Vad filtren senast ställdes in på: SVF:ns set-funktioner räknar om koefficienterna (tan) varje gång, även med samma värde.
+    float appliedCutoff1 = -1.0f, appliedCutoff2 = -1.0f, appliedResonance2 = -1.0f;
+    int appliedType2 = -1;
+    float lastResonance = -1.0f, cachedQ = 0.5f; // q = 0,5 * 16^resonans
+    float lastKeyFrequency = -1.0f, lastKeyTrack = -1.0f, cachedKeyFollow = 1.0f;
+    double lastLogFrequency = 1.0e30, lastPitchOffset = 1.0e30, cachedFrequency = 0.0;
+    CoefficientMemo ampDecayMemo, ampReleaseMemo, pitchEnvMemo;
     juce::Random random { 1 };
 };

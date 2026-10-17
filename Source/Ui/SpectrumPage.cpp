@@ -190,6 +190,20 @@ SpectrumPage::SpectrumPage (PluginBase& p) : processor (p)
     referenceButton.onClick = [this] { chooseReference(); };
     addAndMakeVisible (referenceButton);
 
+    speedBox.addItem ("SPEED: FULL", 1);
+    speedBox.addItem ("SPEED: HALF", 2);
+    speedBox.addItem ("SPEED: SLOW", 3);
+    speedBox.setSelectedId (2, juce::dontSendNotification);
+    speedBox.setTooltip ("SPEED - How often the live spectrum is analysed and drawn: full (30 per second), half (15) or slow (8). A slower speed uses less CPU and is easier to read. "
+                         "Half is the default.");
+    speedBox.onChange = [this]
+    {
+        fps = speedBox.getSelectedId() == 1 ? 30 : speedBox.getSelectedId() == 3 ? 8 : 15;
+        smoothing = 1.0f - std::pow (0.7f, 30.0f / (float) fps); // kurvorna faller lika fort i sekunden oavsett takt
+        updateRunning();
+    };
+    addAndMakeVisible (speedBox);
+
     sensitivityBox.addItem ("SENS: LOW", 1);
     sensitivityBox.addItem ("SENS: NORMAL", 2);
     sensitivityBox.addItem ("SENS: HIGH", 3);
@@ -208,7 +222,7 @@ SpectrumPage::SpectrumPage (PluginBase& p) : processor (p)
     addChildComponent (viewport);
 
     for (auto& source : sources)
-        source.level.fill (-120.0f);
+        source.low.fill (-120.0f);
 
     updateSources();
 
@@ -245,7 +259,7 @@ SpectrumPage::~SpectrumPage()
 
 void SpectrumPage::updateRunning()
 {
-    const auto shouldRun = analyserButton.getToggleState() && (isShowing() || processor.snapshotSpectrum);
+    const auto shouldRun = analyserButton.getToggleState() && ! analysing && (isShowing() || processor.snapshotSpectrum); // (pausad under en analys)
     if (shouldRun != running)
     {
         running = shouldRun;
@@ -253,12 +267,13 @@ void SpectrumPage::updateRunning()
         if (running)
             for (auto& source : sources)
             {
-                source.level.fill (-120.0f);
+                source.column.clear();
+                source.low.fill (-120.0f);
                 source.fundamental = 0.0f;
             }
     }
     if (running || analysing)
-        startTimerHz (30);
+        startTimerHz (analysing && ! running ? 10 : (Settings::reduceAnimations() ? std::min (fps, 8) : fps));
     else
         stopTimer();
     repaint();
@@ -295,26 +310,28 @@ void SpectrumPage::resized()
 {
     auto area = getLocalBounds().reduced (8, 6);
     auto top = area.removeFromTop (stripHeight);
-    sensitivityBox.setBounds (top.removeFromRight (104));
+    sensitivityBox.setBounds (top.removeFromRight (98));
     top.removeFromRight (4);
-    referenceButton.setBounds (top.removeFromRight (100));
+    referenceButton.setBounds (top.removeFromRight (92));
     top.removeFromRight (4);
-    analyseButton.setBounds (top.removeFromRight (100));
+    analyseButton.setBounds (top.removeFromRight (92));
     top.removeFromRight (4);
-    copyButton.setBounds (top.removeFromRight (copyButton.isVisible() ? 56 : 0));
+    copyButton.setBounds (top.removeFromRight (copyButton.isVisible() ? 50 : 0));
     top.removeFromRight (8);
-    analyserButton.setBounds (top.removeFromLeft (80));
+    analyserButton.setBounds (top.removeFromLeft (76));
     top.removeFromLeft (4);
-    collisionsButton.setBounds (top.removeFromLeft (92));
+    collisionsButton.setBounds (top.removeFromLeft (88));
     top.removeFromLeft (4);
-    harmonicsButton.setBounds (top.removeFromLeft (92));
+    harmonicsButton.setBounds (top.removeFromLeft (88));
     top.removeFromLeft (4);
-    showButton.setBounds (top.removeFromLeft (190));
-    top.removeFromLeft (8);
-    eqButton.setBounds (top.removeFromLeft (40));
+    speedBox.setBounds (top.removeFromLeft (92));
+    top.removeFromLeft (4);
+    showButton.setBounds (top.removeFromLeft (150));
+    top.removeFromLeft (6);
+    eqButton.setBounds (top.removeFromLeft (38));
     top.removeFromLeft (4);
     eqTargetBox.setVisible (eqButton.getToggleState());
-    eqTargetBox.setBounds (top.removeFromLeft (112));
+    eqTargetBox.setBounds (top.removeFromLeft (100));
 
     area.removeFromTop (4);
     if (reportShown)
@@ -373,6 +390,7 @@ void SpectrumPage::startAnalysis()
         analyser.cancel();
         return;
     }
+    processor.requestAudition (PluginBase::previewStop); // förhandslyssningar stoppas först, så att inget annat spelar under analysen
     MixAnalysis::Options options;
     options.sensitivity = juce::jlimit (0, 2, sensitivityBox.getSelectedId() - 1);
     if (! analyser.start (processor, options, reference))
@@ -797,7 +815,7 @@ void SpectrumPage::mouseMove (const juce::MouseEvent& e)
     hoverX = (float) e.x;
     hoverPoint = e.position;
     if (running)
-        repaint();
+        repaint (plotBody);
 }
 
 void SpectrumPage::mouseExit (const juce::MouseEvent&)
@@ -822,13 +840,65 @@ void SpectrumPage::analyse (int index)
     window.multiplyWithWindowingTable (fftData.data(), size);
     fft.performFrequencyOnlyForwardTransform (fftData.data(), true);
 
-    // Normaliserat så att en sinus i full skala blir 0 dB.
+    // Normaliserat så att en sinus i full skala blir 0 dB. Analysen görs direkt i bildpunkter (en logaritm per punkt, inte per steg).
     constexpr float norm = 4.0f / (float) size;
-    auto& level = sources[(size_t) index].level;
-    for (int b = 0; b < bins; ++b)
+    auto& source = sources[(size_t) index];
+    const auto width = juce::jmax (1, (int) plotArea().getWidth());
+    ensureMapping (width, std::max (8000.0, processor.getSampleRate()));
+    if ((int) source.column.size() != width)
+        source.column.assign ((size_t) width, -120.0f);
+
+    for (int px = 0; px < width; ++px)
+    {
+        const auto first = pixelFirst[(size_t) px], last = pixelLast[(size_t) px];
+        auto magnitude = 0.0f;
+        if (last <= first)
+        {
+            magnitude = fftData[(size_t) first] + (fftData[(size_t) first + 1] - fftData[(size_t) first]) * pixelFraction[(size_t) px]; // under ett steg per punkt: interpolera
+        }
+        else
+        {
+            for (int b = first; b <= last; ++b)
+                magnitude = std::max (magnitude, fftData[(size_t) b]);
+        }
+        const auto db = juce::Decibels::gainToDecibels (magnitude * norm, -120.0f);
+        auto& value = source.column[(size_t) px];
+        value = db > value ? db : value + (db - value) * smoothing; // snabbt upp, mjukt ner
+    }
+    for (int b = 0; b < lowBinCount; ++b)
     {
         const auto db = juce::Decibels::gainToDecibels (fftData[(size_t) b] * norm, -120.0f);
-        level[(size_t) b] = db > level[(size_t) b] ? db : level[(size_t) b] + (db - level[(size_t) b]) * 0.3f; // snabbt upp, mjukt ner
+        source.low[(size_t) b] = db > source.low[(size_t) b] ? db : source.low[(size_t) b] + (db - source.low[(size_t) b]) * smoothing;
+    }
+}
+
+void SpectrumPage::ensureMapping (int width, double rate)
+{
+    if (width == mappedWidth && rate == mappedRate)
+        return;
+    mappedWidth = width;
+    mappedRate = rate;
+    pixelFirst.assign ((size_t) width, 0);
+    pixelLast.assign ((size_t) width, 0);
+    pixelFraction.assign ((size_t) width, 0.0f);
+    for (int px = 0; px < width; ++px)
+    {
+        const auto hz0 = lowHz * std::pow (highHz / lowHz, (float) px / (float) width);
+        const auto hz1 = lowHz * std::pow (highHz / lowHz, (float) (px + 1) / (float) width);
+        const auto exact0 = (float) (hz0 / (rate * 0.5) * bins), exact1 = (float) (hz1 / (rate * 0.5) * bins);
+        const auto b0 = (int) exact0, b1 = (int) exact1;
+        if (b1 <= b0)
+        {
+            const auto position = 0.5f * (exact0 + exact1) - 0.5f;
+            const auto lower = juce::jlimit (0, bins - 2, (int) std::floor (position));
+            pixelFirst[(size_t) px] = pixelLast[(size_t) px] = lower;
+            pixelFraction[(size_t) px] = juce::jlimit (0.0f, 1.0f, position - (float) lower);
+        }
+        else
+        {
+            pixelFirst[(size_t) px] = juce::jlimit (0, bins - 2, b0);
+            pixelLast[(size_t) px] = juce::jlimit (pixelFirst[(size_t) px] + 1, bins - 1, b1);
+        }
     }
 }
 
@@ -837,10 +907,10 @@ void SpectrumPage::findFundamental (Source& source) const
 {
     const auto rate = std::max (8000.0, processor.getSampleRate());
     const auto binHz = (float) rate * 0.5f / (float) bins;
-    const auto first = std::max (2, (int) (28.0f / binHz)), last = std::min (bins - 2, (int) (400.0f / binHz));
+    const auto first = std::max (2, (int) (28.0f / binHz)), last = std::min (lowBinCount - 2, (int) (400.0f / binHz));
     auto strongest = -120.0f;
     for (int b = first; b <= last; ++b)
-        strongest = std::max (strongest, source.level[(size_t) b]);
+        strongest = std::max (strongest, source.low[(size_t) b]);
     if (strongest < -58.0f)
     {
         source.fundamental = 0.0f;
@@ -848,10 +918,10 @@ void SpectrumPage::findFundamental (Source& source) const
     }
     for (int b = first; b <= last; ++b)
     {
-        const auto level = source.level[(size_t) b];
-        if (level >= strongest - 10.0f && level >= source.level[(size_t) b - 1] && level >= source.level[(size_t) b + 1])
+        const auto level = source.low[(size_t) b];
+        if (level >= strongest - 10.0f && level >= source.low[(size_t) b - 1] && level >= source.low[(size_t) b + 1])
         {
-            const auto a = source.level[(size_t) b - 1], c = source.level[(size_t) b + 1];
+            const auto a = source.low[(size_t) b - 1], c = source.low[(size_t) b + 1];
             const auto denominator = a - 2.0f * level + c;
             const auto delta = std::abs (denominator) > 1.0e-3f ? juce::jlimit (-0.5f, 0.5f, 0.5f * (a - c) / denominator) : 0.0f;
             source.fundamental = ((float) b + delta) * binHz;
@@ -895,7 +965,8 @@ void SpectrumPage::timerCallback()
                 findFundamental (source);
         }
     }
-    repaint();
+    if (running)
+        repaint (plotBody.expanded (2));
 }
 
 void SpectrumPage::paint (juce::Graphics& g)
@@ -958,39 +1029,14 @@ void SpectrumPage::paint (juce::Graphics& g)
         return;
     }
 
-    // Starkaste nivån (dB) per bildpunkt och källa.
-    const auto rate = std::max (8000.0, processor.getSampleRate());
+    // Nivån (dB) per bildpunkt och källa kommer färdig från analysen.
     const auto width = juce::jmax (1, (int) area.getWidth());
     std::array<std::vector<float>, numSources> columns;
     for (int i = 0; i < numSources; ++i)
     {
         const auto& source = sources[(size_t) i];
-        if (! source.present || ! source.selected)
-            continue;
-        auto& column = columns[(size_t) i];
-        column.resize ((size_t) width);
-        for (int px = 0; px < width; ++px)
-        {
-            const auto hz0 = lowHz * std::pow (highHz / lowHz, (float) px / (float) width);
-            const auto hz1 = lowHz * std::pow (highHz / lowHz, (float) (px + 1) / (float) width);
-            const auto exact0 = (float) (hz0 / (rate * 0.5) * bins), exact1 = (float) (hz1 / (rate * 0.5) * bins);
-            const auto b0 = (int) exact0, b1 = (int) exact1;
-            auto db = -120.0f;
-            if (b1 <= b0)
-            {
-                // Under ett steg per bildpunkt (låga frekvenser): interpolera mellan stegen, så att kurvan inte blir trappig.
-                const auto position = 0.5f * (exact0 + exact1) - 0.5f;
-                const auto lower = juce::jlimit (0, bins - 2, (int) std::floor (position));
-                const auto fraction = juce::jlimit (0.0f, 1.0f, position - (float) lower);
-                db = source.level[(size_t) lower] + (source.level[(size_t) lower + 1] - source.level[(size_t) lower]) * fraction;
-            }
-            else
-            {
-                for (int b = std::max (0, b0); b <= std::min (b1, bins - 1); ++b)
-                    db = std::max (db, source.level[(size_t) b]);
-            }
-            column[(size_t) px] = db;
-        }
+        if (source.present && source.selected && (int) source.column.size() == width)
+            columns[(size_t) i] = source.column;
     }
 
     // Krockar: under den näst starkaste källans nivå har minst två källor energi. Rött, starkare med nivå och antal.
@@ -999,6 +1045,14 @@ void SpectrumPage::paint (juce::Graphics& g)
         shown += (i != masterSource && ! columns[(size_t) i].empty()) ? 1 : 0;
     if (collisionsButton.getToggleState() && shown >= 2)
     {
+        // Intilliggande bildpunkter med (nästan) samma rödhet och höjd ritas som en enda ruta.
+        auto runStart = -1, runAlpha = 0, runTop = 0;
+        auto flush = [&] (int end)
+        {
+            if (runStart >= 0 && runAlpha > 0)
+                g.fillRect (juce::Rectangle<float> (area.getX() + (float) runStart, (float) runTop, (float) (end - runStart), area.getBottom() - (float) runTop));
+            runStart = -1;
+        };
         for (int px = 0; px < width; ++px)
         {
             auto best = -120.0f, second = -120.0f;
@@ -1019,22 +1073,37 @@ void SpectrumPage::paint (juce::Graphics& g)
                     second = db;
                 }
             }
-            if (second <= collisionFloor)
-                continue;
-            const auto strength = juce::jlimit (0.0f, 1.0f, (second - collisionFloor) / 46.0f);
-            const auto alpha = juce::jlimit (0.0f, 0.95f, 0.12f + 0.6f * strength + 0.1f * (float) std::max (0, count - 2));
-            const auto topY = yFor (second);
-            g.setColour (juce::Colour (0xffff2a3a).withAlpha (alpha));
-            g.fillRect (area.getX() + (float) px, topY, 1.0f, area.getBottom() - topY);
+            auto alphaStep = 0, top = 0;
+            if (second > collisionFloor)
+            {
+                const auto strength = juce::jlimit (0.0f, 1.0f, (second - collisionFloor) / 46.0f);
+                const auto alpha = juce::jlimit (0.0f, 0.95f, 0.12f + 0.6f * strength + 0.1f * (float) std::max (0, count - 2));
+                alphaStep = juce::roundToInt (alpha * 20.0f);
+                top = ((int) yFor (second) / 3) * 3;
+            }
+            if (alphaStep != runAlpha || top != runTop)
+            {
+                flush (px);
+                runAlpha = alphaStep;
+                runTop = top;
+                runStart = px;
+                g.setColour (juce::Colour (0xffff2a3a).withAlpha ((float) alphaStep / 20.0f));
+            }
         }
+        flush (width);
     }
 
     // Referenslåten: medelspektrumet, nivån anpassad till mastern (långsamt, så att linjen inte hoppar).
     if (reference != nullptr)
     {
         const auto refRate = std::max (8000.0, reference->rate);
-        std::vector<float> refColumn ((size_t) width);
-        for (int px = 0; px < width; ++px)
+        const auto rebuild = refKey != reference.get() || (int) refColumn.size() != width;
+        if (rebuild)
+        {
+            refKey = reference.get();
+            refColumn.assign ((size_t) width, -120.0f);
+        }
+        for (int px = 0; rebuild && px < width; ++px)
         {
             const auto hz0 = lowHz * std::pow (highHz / lowHz, (float) px / (float) width);
             const auto hz1 = lowHz * std::pow (highHz / lowHz, (float) (px + 1) / (float) width);
@@ -1089,11 +1158,12 @@ void SpectrumPage::paint (juce::Graphics& g)
         g.drawText ("REFERENCE: " + reference->name, juce::Rectangle<float> (area.getRight() - 260.0f, area.getY() + 2.0f, 254.0f, 12.0f), juce::Justification::centredRight);
     }
 
+    const auto stride = width > 700 ? 2 : 1; // varannan punkt räcker för kurvorna när diagrammet är brett
     auto pathFor = [&] (const std::vector<float>& column, bool close)
     {
         juce::Path path;
         path.startNewSubPath (area.getX(), area.getBottom());
-        for (int px = 0; px < width; ++px)
+        for (int px = 0; px < width; px += stride)
             path.lineTo (area.getX() + (float) px, yFor (column[(size_t) px]));
         if (close)
         {
@@ -1239,5 +1309,7 @@ void SpectrumPage::paintOverChildren (juce::Graphics& g)
                 juce::Rectangle<float> (400.0f, 20.0f).withCentre (bounds.getCentre().translated (0.0f, -6.0f)), juce::Justification::centred);
     g.setColour (Theme::textDim);
     g.setFont (Theme::font (10.5f));
-    g.drawText ("The plugin keeps working. Press CANCEL to stop.", juce::Rectangle<float> (400.0f, 16.0f).withCentre (bounds.getCentre().translated (0.0f, 42.0f)), juce::Justification::centred);
+    g.drawText (processor.transportStatus.patternActive.load() ? "The DAW is playing: stop it for a faster analysis (a plugin cannot stop the DAW itself). CANCEL stops the analysis."
+                                                                : "The plugin keeps working. Press CANCEL to stop.",
+                juce::Rectangle<float> (bounds.getWidth() - 20.0f, 16.0f).withCentre (bounds.getCentre().translated (0.0f, 42.0f)), juce::Justification::centred);
 }

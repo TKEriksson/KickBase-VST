@@ -9,7 +9,7 @@ namespace
 
 EnvelopeView::EnvelopeView (double displaySecondsIn) : displaySeconds (displaySecondsIn)
 {
-    startTimerHz (30); // följer med när parametrar ändras via rattar eller automation
+    startTimerHz (Settings::animationHz (30)); // följer med när parametrar ändras via rattar eller automation
 }
 
 void EnvelopeView::timerCallback()

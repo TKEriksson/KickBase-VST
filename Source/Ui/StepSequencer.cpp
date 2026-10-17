@@ -79,7 +79,7 @@ StepSequencer::StepSequencer (PluginBase& p, juce::StringArray names, std::vecto
     addChildComponent (previousPageButton);
     addChildComponent (nextPageButton);
 
-    startTimerHz (30);
+    startTimerHz (Settings::animationHz (30));
 }
 
 void StepSequencer::setPage (int newPage)

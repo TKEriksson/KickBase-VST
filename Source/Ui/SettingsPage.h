@@ -36,6 +36,7 @@ private:
 
     // FÖNSTER
     juce::Label scaleLabel, windowHint;
+    juce::TextButton reduceAnimationsToggle { "REDUCE ANIMATIONS" }; // lyser när den är på
     juce::Slider scaleSlider;
     std::array<juce::TextButton, 4> sizeButtons;
 

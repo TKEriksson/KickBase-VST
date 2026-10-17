@@ -125,7 +125,7 @@ PianoRoll::PianoRoll (PluginBase& p, std::vector<juce::Colour> colours) : proces
     attachLengthBox();
     updateToolButtons();
     updateToolbarVisibility();
-    startTimerHz (30);
+    startTimerHz (Settings::animationHz (30));
 }
 
 void PianoRoll::attachLengthBox()

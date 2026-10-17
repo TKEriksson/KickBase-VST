@@ -2,8 +2,8 @@
 
 #include "Theme.h"
 
-// Loggan: ett neonskylt (ikonen och KICKBASE) under en glaskupol på en blank sockel, med en spegling i golvet under. Glöden som följer
-// ljudet (kicken åt höger, instrumenten åt vänster) glider genom neonet och reflekteras i glaset.
+// Loggan: KICKBASE och ikonen som glasrör med neon längs kanten (rosa till blått), med en spegling i golvet under. Glöden som följer ljudet
+// (kicken åt höger, instrumenten åt vänster) glider genom glaset: bokstäverna tänds inifrån och ett ljusband speglas i dem.
 class LogoPainter
 {
 public:
@@ -21,19 +21,22 @@ public:
     int getWidth() const { return width; }
 
     // `origin` är loggans övre vänstra hörn.
-    void paint (juce::Graphics&, juce::Point<float> origin, double now, const Sweep& kick, const Sweep& bass);
+    // `glow` (0..1) är hur mycket neonet lyser: 0 när inget ljud spelas (släckt glas), upp mot 1 med ljudets nivå, så att man "ser" ljuden.
+    void paint (juce::Graphics&, juce::Point<float> origin, float glow, const Sweep& kick, const Sweep& bass);
 
 private:
     void build();
-    void paintNeon (juce::Graphics&, double now, float intensity, bool detailed) const;
-    void paintGlass (juce::Graphics&, const Sweep& kick, const Sweep& bass) const;
-    void paintReflection (juce::Graphics&, double now, float scale);
+    void paintGlassLogo (juce::Graphics&, bool detailed, bool body, bool neon) const;
+    void paintReflection (juce::Graphics&, float scale);
+    void renderCache (float scale);
 
     juce::String subtitle;
     int width = 0;
 
-    juce::Rectangle<float> domeRect, plateRect, iconRect, textBounds;
-    juce::Path dome, textPath, ringPath, bPath, pulsePath, glowPath;
-    juce::Image reflection;
-    float reflectionScale = 0.0f;
+    juce::Rectangle<float> iconRect, textBounds;
+    float floorY = 60.0f;
+    juce::Path textPath, ringPath, bPath, pulsePath, glowPath;
+    juce::Image reflection, cache, neonCache; // cache: det släckta glaset, neonCache: neonet och spegelbilden (läggs ovanpå med glödens styrka)
+    float cacheScale = 0.0f;
+    int cacheLeft = -8, cacheWidth = 0;
 };

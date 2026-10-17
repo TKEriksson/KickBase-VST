@@ -80,7 +80,7 @@ KnobComponent::KnobComponent (juce::AudioProcessorValueTreeState& apvts, const j
             description = parameter->getName (64);
     }
     updateTooltip (-1);
-    startTimerHz (30);
+    startTimerHz (Settings::animationHz (30));
 }
 
 KnobComponent::~KnobComponent() = default;

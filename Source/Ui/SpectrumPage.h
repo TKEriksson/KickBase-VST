@@ -64,13 +64,15 @@ private:
     static constexpr int order = 13;
     static constexpr int size = 1 << order; // 8192 punkter: ~5 Hz per steg vid 44,1 kHz, så att de låga övertonerna skiljs åt
     static constexpr int bins = size / 2;
+    static constexpr int lowBinCount = 96; // upp till ~560 Hz
     static constexpr int kickSource = 0, firstInstrument = 1, masterSource = 1 + ParamID::numBassLayers, numSources = masterSource + 1;
 
     struct Source
     {
         juce::Colour colour;
         juce::String name;
-        std::array<float, bins> level {}; // dB, utjämnad
+        std::vector<float> column;        // dB per bildpunkt, utjämnad (analysen görs direkt i bildpunkter: mycket billigare än per steg)
+        std::array<float, lowBinCount> low {}; // dB per steg för de lägsta stegen, till grundtonen
         float fundamental = 0.0f;         // grundtonens frekvens (Hz), 0 = ingen hittad
         bool selected = true;
         bool present = true;              // instrumentet finns (inom instrumentantalet)
@@ -79,6 +81,7 @@ private:
     void timerCallback() override;
     void updateRunning();
     void updateSources();
+    void ensureMapping (int width, double rate);
     void analyse (int source);
     void findFundamental (Source& source) const;
     float xFor (float hz) const;
@@ -110,7 +113,7 @@ private:
     PluginBase& processor;
     juce::TextButton analyserButton { "ANALYSER" }, collisionsButton { "COLLISIONS" }, harmonicsButton { "HARMONICS" }, eqButton { "EQ" };
     juce::TextButton analyseButton { "ANALYSE" }, referenceButton { "REFERENCE" }, copyButton { "COPY" };
-    juce::ComboBox sensitivityBox, eqTargetBox;
+    juce::ComboBox sensitivityBox, eqTargetBox, speedBox;
     juce::TextButton showButton { "SHOW" }; // flervalslista över vilka källor som visas
     std::array<Source, numSources> sources;
 
@@ -139,4 +142,18 @@ private:
     float hoverX = -1.0f;
     juce::Point<float> hoverPoint;
     bool running = false;
+
+    // Hur ofta analysen körs och ritas (SPEED), och hur snabbt kurvorna faller (anpassat till takten).
+    int fps = 15;
+    float smoothing = 0.3f;
+
+    // Bildpunkt -> steg i FFT:n, beräknat när bredden eller samplingsfrekvensen ändras.
+    std::vector<int> pixelFirst, pixelLast;
+    std::vector<float> pixelFraction;
+    int mappedWidth = 0;
+    double mappedRate = 0.0;
+
+    // Referenslåtens kurva i bildpunkter (beräknas bara när den eller bredden ändras).
+    std::vector<float> refColumn;
+    const MixAnalysis::Reference* refKey = nullptr;
 };

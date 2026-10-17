@@ -41,6 +41,14 @@ SettingsPage::SettingsPage (PluginBase& p) : processor (p)
         };
         addAndMakeVisible (sizeButtons[i]);
     }
+    reduceAnimationsToggle.setClickingTogglesState (true);
+    reduceAnimationsToggle.setToggleState (Settings::reduceAnimations(), juce::dontSendNotification);
+    reduceAnimationsToggle.setColour (juce::TextButton::buttonOnColourId, Theme::mix.withAlpha (0.6f));
+    reduceAnimationsToggle.setTooltip ("REDUCE ANIMATIONS - Uses less CPU: the animated views (scopes, meters, playhead, knob rings) update half as often, the logo's glow is off "
+                                       "and the live spectrum runs at the slow speed. The header and the spectrum follow at once; the other views when the window is opened again. "
+                                       "Applies to every Kickbase window and is remembered.");
+    reduceAnimationsToggle.onClick = [this] { Settings::setReduceAnimations (reduceAnimationsToggle.getToggleState()); };
+    addAndMakeVisible (reduceAnimationsToggle);
     styleLabel (windowHint, 10.5f, Theme::textDim);
     windowHint.setText ("Drag the window corner for any size. Applies to all Kickbase windows.", juce::dontSendNotification);
     windowHint.setJustificationType (juce::Justification::topLeft);
@@ -279,6 +287,8 @@ void SettingsPage::resized()
         for (auto& button : sizeButtons)
             button.setBounds (buttons.removeFromLeft (width).reduced (2, 0));
         box.removeFromTop (8);
+        reduceAnimationsToggle.setBounds (box.removeFromTop (24));
+        box.removeFromTop (6);
         windowHint.setBounds (box);
     }
 

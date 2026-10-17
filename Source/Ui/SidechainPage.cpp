@@ -7,7 +7,7 @@ namespace
 
 DuckCurveView::DuckCurveView (PluginBase& p) : processor (p)
 {
-    startTimerHz (15);
+    startTimerHz (Settings::animationHz (15));
 }
 
 bool DuckCurveView::curveMode() const
@@ -333,7 +333,7 @@ DuckRow::DuckRow (PluginBase& p, int layerIn) : processor (p), layer (layerIn)
     attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (p.apvts, ParamID::bass (layer, BassField::duck), slider);
     if (auto* parameter = p.apvts.getParameter (ParamID::bass (layer, BassField::duck)))
         slider.setDoubleClickReturnValue (true, parameter->convertFrom0to1 (parameter->getDefaultValue()));
-    startTimerHz (20);
+    startTimerHz (Settings::animationHz (20));
 }
 
 void DuckRow::timerCallback()

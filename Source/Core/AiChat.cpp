@@ -12,7 +12,7 @@ namespace
         "through the tools: you set parameters, write patterns, build effects, render and measure. You cannot hear: use render_preview "
         "(and look at the spectrogram) and the metrics as your ears, and say so when it matters. Reply in the language the user writes in, keep replies short "
         "and concrete, say briefly what you are about to do before bigger changes, and afterwards tell what you changed and why. The user sees your tool calls "
-        "and can undo your changes. Only change what was asked; ask if something is unclear. Read the guide below before designing sounds. When the user asks you to check or fix the mix, call analyse_mix and use the recipes in section 9 of the guide.\n\n# Kickbase guide\n\n";
+        "and can undo your changes. Only change what was asked; ask if something is unclear. Read the guide below before designing sounds. When the user asks you to check or fix the mix, call analyse_mix (it starts a background analysis), then get_mix_report until it is done, and use the recipes in section 9 of the guide.\n\n# Kickbase guide\n\n";
 
     juce::String shorten (const juce::String& text, int length)
     {

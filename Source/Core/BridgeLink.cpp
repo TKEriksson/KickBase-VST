@@ -112,8 +112,11 @@ namespace BridgeLink
     class Server::Slot : public juce::InterprocessConnection, private juce::Timer
     {
     public:
-        Slot (Server& ownerIn, int indexIn, const juce::String& name) : InterprocessConnection (true), owner (ownerIn), index (indexIn), pipeName (name) {}
-        ~Slot() override { stopTimer(); disconnect(); }
+        // Anslutningens egen tråd tar emot meddelandena (inte huvudtråden): pingen besvaras direkt där, så att länken inte tappas medan huvudtråden
+        // är upptagen med ett långt verktygsanrop (en rendering, en inläsning). Verktygen körs fortfarande på huvudtråden.
+        Slot (Server& ownerIn, int indexIn, const juce::String& name)
+            : InterprocessConnection (false), owner (ownerIn), index (indexIn), pipeName (name), alive (std::make_shared<std::atomic<bool>> (true)) {}
+        ~Slot() override { alive->store (false); stopTimer(); disconnect(); }
 
         bool open() { return createPipe (pipeName, -1, false); }
         void close() { stopTimer(); disconnect(); }
@@ -126,11 +129,32 @@ namespace BridgeLink
         void connectionLost() override
         {
             log ("plugin", "the bridge on pipe " + juce::String (index + 1) + " disconnected, listening again");
-            if (running)
-                startTimer (50);
+            juce::MessageManager::callAsync ([this, stillAlive = alive]
+            {
+                if (stillAlive->load() && running)
+                    startTimer (50);
+            });
         }
 
-        void messageReceived (const juce::MemoryBlock& message) override { owner.handleMessage (*this, message); }
+        void messageReceived (const juce::MemoryBlock& message) override
+        {
+            const auto request = fromBlock (message);
+            if (request["tool"].toString() == "ping")
+            {
+                auto pong = new juce::DynamicObject();
+                pong->setProperty ("ok", true);
+                auto response = new juce::DynamicObject();
+                response->setProperty ("id", request["id"]);
+                response->setProperty ("result", juce::var (pong));
+                sendMessage (toBlock (juce::var (response)));
+                return;
+            }
+            juce::MessageManager::callAsync ([this, message, stillAlive = alive]
+            {
+                if (stillAlive->load())
+                    owner.handleMessage (*this, message);
+            });
+        }
 
         void timerCallback() override
         {
@@ -149,6 +173,7 @@ namespace BridgeLink
         Server& owner;
         const int index;
         const juce::String pipeName;
+        std::shared_ptr<std::atomic<bool>> alive;
         bool running = false;
     };
 

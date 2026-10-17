@@ -32,7 +32,7 @@ KickDisplay::KickDisplay (PluginBase& p) : processor (p)
                 "right-click a node to remove it, drag the small diamond on a segment to bend it.");
     lastHash = stateHash();
     renderWaveform();
-    startTimerHz (30);
+    startTimerHz (Settings::animationHz (30));
 }
 
 void KickDisplay::setMode (bool showAmp)

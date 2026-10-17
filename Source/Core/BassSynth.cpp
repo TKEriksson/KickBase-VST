@@ -42,6 +42,8 @@ void BassSynth::prepare (double newSampleRate)
         filter->prepare ({ sampleRate, 512, 1 });
         filter->setType (juce::dsp::StateVariableTPTFilterType::lowpass);
     }
+    appliedCutoff1 = appliedCutoff2 = appliedResonance2 = -1.0f;
+    appliedType2 = -1;
 
     reset();
 }
@@ -111,14 +113,27 @@ BassSynth::Stereo BassSynth::Oscillator::next (const OscParams& p, double freque
     const auto& table = p.table == Wavetables::userIndex() ? (p.user != nullptr ? *p.user : Wavetables::get (0))
                                                            : Wavetables::get (p.table);
     const auto voices = juce::jlimit (1, maxUnison, p.unison);
-    const auto base = frequency * std::exp2 ((p.semis + p.fineCents * 0.01f) / 12.0f);
+    if (p.semis != lastSemis || p.fineCents != lastFine)
+    {
+        lastSemis = p.semis;
+        lastFine = p.fineCents;
+        pitchRatio = std::exp2 ((p.semis + p.fineCents * 0.01f) / 12.0f);
+    }
+    const auto base = frequency * pitchRatio;
+    if (voices != lastVoices || p.detuneCents != lastDetune)
+    {
+        lastVoices = voices;
+        lastDetune = p.detuneCents;
+        for (int v = 0; v < voices; ++v)
+            detuneRatios[(size_t) v] = std::exp2 ((voices > 1 ? (double) v / (voices - 1) * 2.0 - 1.0 : 0.0) * p.detuneCents / 1200.0);
+    }
 
     // Sidostämmorna sprids jämnt ±detune; mittstämman (eller de två mittersta) har full nivå.
     auto sumLeft = 0.0f, sumRight = 0.0f, gainSum = 0.0f;
     for (int v = 0; v < voices; ++v)
     {
         const auto spread = voices > 1 ? (double) v / (voices - 1) * 2.0 - 1.0 : 0.0;
-        const auto hz = base * std::exp2 (spread * p.detuneCents / 1200.0);
+        const auto hz = base * detuneRatios[(size_t) v];
         const auto centre = voices == 1 || std::abs (spread) < 1.0 / voices + 1.0e-6;
         const auto gain = centre ? 1.0f : p.blend;
 
@@ -207,10 +222,10 @@ void BassSynth::ModEnv::next (const ModEnvParams& p, double rate)
             }
             break;
         case EnvStage::decay:
-            level += (p.sustain - level) * (float) coefficientFor (p.decayMs, rate);
+            level += (p.sustain - level) * (float) decayMemo.get (p.decayMs, rate);
             break;
         case EnvStage::release:
-            level -= level * (float) coefficientFor (p.releaseMs, rate);
+            level -= level * (float) releaseMemo.get (p.releaseMs, rate);
             if (level < 1.0e-4f)
                 reset();
             break;
@@ -260,10 +275,10 @@ BassSynth::Output BassSynth::next()
             }
             break;
         case Stage::decay:
-            ampLevel += (params.sustain - ampLevel) * (float) coefficientFor (params.decayMs, sampleRate);
+            ampLevel += (params.sustain - ampLevel) * (float) ampDecayMemo.get (params.decayMs, sampleRate);
             break;
         case Stage::release:
-            ampLevel -= ampLevel * (float) coefficientFor (params.releaseMs, sampleRate);
+            ampLevel -= ampLevel * (float) ampReleaseMemo.get (params.releaseMs, sampleRate);
             if (ampLevel < 1.0e-4f)
             {
                 stage = Stage::idle;
@@ -279,7 +294,7 @@ BassSynth::Output BassSynth::next()
     env2.next (params.env2, sampleRate);
     env3.next (params.env3, sampleRate);
     if (params.pitchEnvSemis != 0.0f)
-        pitchEnv -= pitchEnv * (float) coefficientFor (params.pitchEnvDecayMs, sampleRate);
+        pitchEnv -= pitchEnv * (float) pitchEnvMemo.get (params.pitchEnvDecayMs, sampleRate);
 
     // Glide-tonen: linjärt i log-frekvens, så att varje halvton tar lika lång tid, och tonen blir kvar på målet.
     if (glideSamplesLeft > 0)
@@ -289,7 +304,14 @@ BassSynth::Output BassSynth::next()
             logFrequency = targetLogFrequency;
     }
 
-    const auto frequency = juce::jlimit (1.0, sampleRate * 0.45, std::exp2 (logFrequency + params.pitchEnvSemis * pitchEnv / 12.0)); // extrema tonhöjder (±96 halvtoner) får inte ge aliasing
+    const auto pitchOffset = params.pitchEnvSemis * pitchEnv / 12.0;
+    if (logFrequency != lastLogFrequency || pitchOffset != lastPitchOffset)
+    {
+        lastLogFrequency = logFrequency;
+        lastPitchOffset = pitchOffset;
+        cachedFrequency = juce::jlimit (1.0, sampleRate * 0.45, std::exp2 (logFrequency + pitchOffset)); // extrema tonhöjder (±96 halvtoner) får inte ge aliasing
+    }
+    const auto frequency = cachedFrequency;
     const auto envelope = filterEnvelopeAt (params, noteTime);
 
     // OSC B först: den kan frekvensmodulera OSC A (warp FM). Warp env lägger till warp på A
@@ -357,29 +379,54 @@ BassSynth::Output BassSynth::next()
 
     // Filter: grundcutoff öppnas av envelopen, mer ju hårdare steget slås an.
     const auto envDepth = params.envAmount * (1.0f - params.velToEnv + params.velToEnv * velocity);
-    const auto keyFollow = params.keyTrack > 0.0f ? std::pow ((float) frequency / 65.41f, params.keyTrack) : 1.0f;
+    auto keyFollow = 1.0f;
+    if (params.keyTrack > 0.0f)
+    {
+        if ((float) frequency != lastKeyFrequency || params.keyTrack != lastKeyTrack)
+        {
+            lastKeyFrequency = (float) frequency;
+            lastKeyTrack = params.keyTrack;
+            cachedKeyFollow = std::pow ((float) frequency / 65.41f, params.keyTrack);
+        }
+        keyFollow = cachedKeyFollow;
+    }
     const auto cutoff = params.cutoffHz * keyFollow * std::exp2 (envDepth * envelope);
     const auto clampedCutoff = juce::jlimit (20.0f, (float) sampleRate * 0.45f, cutoff);
-    const auto q = 0.5f * std::pow (16.0f, params.resonance);
+    if (params.resonance != lastResonance)
+    {
+        lastResonance = params.resonance;
+        cachedQ = 0.5f * std::pow (16.0f, params.resonance);
+    }
+    const auto q = cachedQ;
 
     // LP 24 = två lågpass efter varandra; övriga typer ett filter (12 dB).
     using Type = juce::dsp::StateVariableTPTFilterType;
     const auto type = params.filterType == BassFilterType::bandpass ? Type::bandpass
                     : params.filterType == BassFilterType::highpass ? Type::highpass
                                                                     : Type::lowpass;
-    for (auto* filter : { &filter2, &sideFilter2 })
+    if ((int) type != appliedType2 || clampedCutoff != appliedCutoff2 || q != appliedResonance2)
     {
-        filter->setType (type);
-        filter->setCutoffFrequency (clampedCutoff);
-        filter->setResonance (q);
+        for (auto* filter : { &filter2, &sideFilter2 })
+        {
+            filter->setType (type);
+            filter->setCutoffFrequency (clampedCutoff);
+            filter->setResonance (q);
+        }
+        appliedType2 = (int) type;
+        appliedCutoff2 = clampedCutoff;
+        appliedResonance2 = q;
     }
 
     if (params.filterType == BassFilterType::lowpass24)
     {
-        for (auto* filter : { &filter1, &sideFilter1 })
+        if (clampedCutoff != appliedCutoff1)
         {
-            filter->setCutoffFrequency (clampedCutoff);
-            filter->setResonance (0.707f);
+            for (auto* filter : { &filter1, &sideFilter1 })
+            {
+                filter->setCutoffFrequency (clampedCutoff);
+                filter->setResonance (0.707f);
+            }
+            appliedCutoff1 = clampedCutoff;
         }
         sample = filter1.processSample (0, sample);
         side = sideFilter1.processSample (0, side);

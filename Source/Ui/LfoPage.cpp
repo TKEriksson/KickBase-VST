@@ -2,7 +2,7 @@
 
 LfoDisplay::LfoDisplay (PluginBase& p, int lfoIndex) : processor (p), index (lfoIndex)
 {
-    startTimerHz (30);
+    startTimerHz (Settings::animationHz (30));
 }
 
 bool LfoDisplay::isCustom() const

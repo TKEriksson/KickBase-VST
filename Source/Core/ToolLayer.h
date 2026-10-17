@@ -1,5 +1,6 @@
 #pragma once
 
+#include "MixAnalysis.h"
 #include "PluginBase.h"
 
 // Verktygslagret: det en AI-agent (via MCP-bryggan) kan göra med Kickbase. Samma lager används av
@@ -44,6 +45,7 @@ private:
     juce::var savePreset (const juce::var& args);
     juce::var renderPreview (const juce::var& args);
     juce::var analyseMix (const juce::var& args);
+    juce::var getMixReport (const juce::var& args);
     juce::var analyzeAudio (const juce::var& args);
     juce::var pianoRollFiles (const juce::String& tool, const juce::var& args);
     juce::var loadKickSample (const juce::var& args);
@@ -55,4 +57,5 @@ private:
 
     PluginBase& processor;
     std::vector<juce::MemoryBlock> undoStack, redoStack;
+    std::unique_ptr<MixAnalyser> analyser; // analysen körs i bakgrunden (se analyse_mix): ett långt anrop på huvudtråden fick länken att tappa
 };

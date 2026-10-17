@@ -13,7 +13,7 @@ ScopeView::ScopeView (PluginBase& p, std::vector<Trace> tracesIn, Mode modeIn)
     : processor (p), traces (std::move (tracesIn)), mode (modeIn)
 {
     data.resize (traces.size());
-    startTimerHz (30);
+    startTimerHz (Settings::animationHz (30));
 }
 
 double ScopeView::windowSeconds() const
@@ -210,7 +210,7 @@ SpectrumView::SpectrumView (PluginBase& p) : processor (p)
 
     setTooltip ("SPECTRUM - Which frequencies play and how loud, live: the kick, the instruments and the master output. "
                 "The thin line is the master's peak hold.");
-    startTimerHz (30);
+    startTimerHz (Settings::animationHz (30));
 }
 
 void SpectrumView::analyse (Band& band)
@@ -335,7 +335,7 @@ StereoView::StereoView (PluginBase& p) : processor (p)
 {
     setTooltip ("STEREO - The stereo image of the output. A vertical line is mono, a wide ball is wide stereo, horizontal means "
                 "out of phase (bad in mono). The bar shows correlation: +1 = mono, 0 = wide, -1 = out of phase.");
-    startTimerHz (30);
+    startTimerHz (Settings::animationHz (30));
 }
 
 void StereoView::timerCallback()

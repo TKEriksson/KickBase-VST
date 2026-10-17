@@ -373,7 +373,9 @@ namespace
 
         MixAnalysis::Options options;
         options.sensitivity = sensitivity;
+        const auto prepareStart = juce::Time::getMillisecondCounterHiRes();
         auto copy = MixAnalysis::prepareCopy (processor);
+        std::printf ("prepareCopy: %.0f ms\n", juce::Time::getMillisecondCounterHiRes() - prepareStart);
         const auto start = juce::Time::getMillisecondCounterHiRes();
         const auto report = MixAnalysis::run (*copy, 145.0, 52, options, nullptr, {}, {});
         std::printf ("%s\n(%.1f s)\n", report.toText().toRawUTF8(), (juce::Time::getMillisecondCounterHiRes() - start) / 1000.0);
@@ -459,6 +461,21 @@ namespace
                 setValue (mixerGain (source), 1.0f);
         }
 
+        // analyse_mix körs i bakgrunden: ett anrop som startar den och svarar direkt, och get_mix_report som ger svaret när det är klart.
+        {
+            ToolLayer tools (processor);
+            const auto started = tools.call ("analyse_mix", juce::JSON::parse ("{}"));
+            check ((bool) started["ok"] && started["data"]["status"].toString() == "started", "analyse_mix startar och svarar direkt");
+            auto answer = tools.call ("get_mix_report", juce::JSON::parse ("{}"));
+            for (int i = 0; i < 600 && answer["data"]["status"].toString() != "done"; ++i)
+            {
+                juce::Thread::sleep (100);
+                answer = tools.call ("get_mix_report", juce::JSON::parse ("{}"));
+            }
+            check ((bool) answer["ok"] && answer["data"]["status"].toString() == "done" && answer["data"]["findings"].isArray(), "get_mix_report ger rapporten (utan att vänta i anropet)");
+            check (answer["data"]["kick_tail_hz"].operator double() > 25.0, "rapporten kommer med i svaret (data)");
+        }
+
         // Instrumentets EQ följer med när instrumentet töms.
         setValue ("bass2EqHp", 300.0f);
         processor.wipeInstrument (1);
@@ -526,8 +543,9 @@ namespace
         const juce::Colour kickColour (0xffff9a3c), bassColour (0xff3fd2ff);
         for (int row = 0; row < 3; ++row)
         {
-            LogoPainter::Sweep kick { 0.15f + 0.3f * (float) row, row == 0 ? 0.0f : 0.9f, kickColour }, bass { 0.85f - 0.3f * (float) row, row == 1 ? 0.0f : 0.9f, bassColour };
-            logo.paint (g, { 8.0f, (float) (row * LogoPainter::height) }, 1.0 + row, kick, bass);
+            // Rad 0: inget ljud (släckt), rad 1: kickens glöd, rad 2: instrumentens glöd.
+            LogoPainter::Sweep kick { 0.15f + 0.3f * (float) row, row == 1 ? 0.9f : 0.0f, kickColour }, bass { 0.85f - 0.3f * (float) row, row == 2 ? 0.9f : 0.0f, bassColour };
+            logo.paint (g, { 8.0f, (float) (row * LogoPainter::height) }, row == 0 ? 0.0f : 1.0f, kick, bass);
         }
         outFile.deleteFile();
         juce::FileOutputStream stream (outFile);
@@ -574,6 +592,56 @@ namespace
 
         std::puts (failed ? "FEL: listentest" : "Lyssnartestet gick igenom");
         return failed ? 1 : 0;
+    }
+
+    // Ett fingeravtryck av ljudet för varje fabrikspreset (hash över utsignalens bitar): före och efter en optimering ska de vara lika.
+    // Alla hela presets, alla kickpresets (på Init) och alla instrumentpresets (i instrument 1 på Init).
+    int renderSignatures()
+    {
+        juce::ScopedJuceInitialiser_GUI gui;
+        const auto owner = std::make_unique<InstrumentProcessor>();
+        auto& processor = *owner;
+        auto signature = [&processor] (const juce::String& label)
+        {
+            OfflineRender::Settings settings;
+            settings.sampleRate = renderRate;
+            settings.blockSize = blockSize;
+            settings.bpm = 145.0;
+            settings.bars = 2;
+            settings.notes = { 52 };
+            settings.extraBars = 1;
+            const auto audio = processor.renderOffline (settings, PluginBase::ExportPart::full);
+            juce::uint64 hash = 1469598103934665603ull;
+            for (int ch = 0; ch < audio.getNumChannels(); ++ch)
+                for (int i = 0; i < audio.getNumSamples(); ++i)
+                {
+                    juce::uint32 bits;
+                    const auto value = audio.getSample (ch, i);
+                    std::memcpy (&bits, &value, sizeof (bits));
+                    hash = (hash ^ bits) * 1099511628211ull;
+                }
+            std::printf ("%-34s %016llx peak %.4f rms %.4f\n", label.toRawUTF8(), (unsigned long long) hash,
+                         audio.getMagnitude (0, audio.getNumSamples()), audio.getRMSLevel (0, 0, audio.getNumSamples()));
+        };
+
+        for (int index = 0; index < Presets::factoryCount (Presets::Section::full, false); ++index)
+        {
+            processor.loadFactoryPreset (Presets::Section::full, index);
+            signature ("full " + juce::String (index) + " " + processor.getPresetName (Presets::Section::full));
+        }
+        for (int index = 0; index < Presets::factoryCount (Presets::Section::kick, false); ++index)
+        {
+            processor.loadFactoryPreset (Presets::Section::full, 0);
+            processor.loadFactoryPreset (Presets::Section::kick, index);
+            signature ("kick " + juce::String (index) + " " + processor.getPresetName (Presets::Section::kick));
+        }
+        for (int index = 0; index < Presets::factoryCount (Presets::Section::bass, false); ++index)
+        {
+            processor.loadFactoryPreset (Presets::Section::full, 0);
+            processor.loadFactoryPreset (Presets::Section::bass, index, 0);
+            signature ("instr " + juce::String (index) + " " + processor.getPresetName (Presets::Section::bass, 0));
+        }
+        return 0;
     }
 
     // Flera instrument: lägga till, spara/läsa, ta bort (allt ska rensas) och gamla projekt (kicken var lager 3).
@@ -1146,6 +1214,8 @@ int toolMain (int argc, char* argv[])
         return lengthTest();
     if (argc == 3 && juce::String (argv[1]) == "logoimage")
         return logoImage (juce::File::getCurrentWorkingDirectory().getChildFile (argv[2]));
+    if (argc == 2 && juce::String (argv[1]) == "rendersig")
+        return renderSignatures();
     if (argc == 2 && juce::String (argv[1]) == "listentest")
         return listenTest();
     if (argc == 2 && juce::String (argv[1]) == "eqtest")

@@ -35,6 +35,12 @@ namespace Settings
     float uiScale();
     void setUiScale (float scale);
 
+    // Minskade animationer: lägre bildhastighet för de flesta vyer och ingen glöd i loggan. Värdet minns programmet (det frågas ofta),
+    // så ett fönster som redan är öppet följer med först när det öppnas igen (rubriken och spektrumet följer med direkt).
+    bool reduceAnimations();
+    void setReduceAnimations (bool reduce);
+    inline int animationHz (int normalHz) { return reduceAnimations() ? (normalHz > 8 ? normalHz / 2 : normalHz) : normalHz; }
+
     // Bara för tester: använd en annan fil.
     void useFile (const juce::File& file);
 }
