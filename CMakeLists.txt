@@ -86,6 +86,7 @@ set(PLUGIN_SOURCES
     Source/Ui/MixerPage.cpp
     Source/Ui/LfoPage.cpp
     Source/Ui/MatrixPage.cpp
+    Source/Ui/EnvPage.cpp
     Source/Ui/SettingsPage.cpp
     Source/Core/WavetablePack.cpp
     Source/Ui/Components.cpp

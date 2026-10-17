@@ -383,6 +383,20 @@ namespace
             processor.setInstrumentCount (3);
         }
 
+        // LFO med egen kurva och fri hastighet (verktyget), och att kurvan överlever spara/läsa.
+        {
+            ToolLayer tools (processor);
+            tools.call ("set_modulation", juce::JSON::parse (R"({"lfos":[{"lfo":2,"points":[[0,1,0],[0.5,-1,0],[1,1,0]],"hz":3.5}]})"));
+            check ((int) processor.apvts.getRawParameterValue ("lfo2Shape")->load() == 6 && processor.lfoCurves[1].getPoints().size() == 3
+                       && (int) processor.apvts.getRawParameterValue ("lfo2Mode")->load() == 1 && std::abs (processor.apvts.getRawParameterValue ("lfo2Hz")->load() - 3.5f) < 0.01f,
+                   "en egen LFO-kurva och fri hastighet sätts via verktyget");
+            juce::MemoryBlock state;
+            processor.getStateInformation (state);
+            const auto other = std::make_unique<InstrumentProcessor>();
+            other->setStateInformation (state.getData(), (int) state.getSize());
+            check (other->lfoCurves[1].getPoints().size() == 3 && std::abs (other->lfoCurves[1].evaluate (0.5f) - 1.0f) < 0.01f, "LFO-kurvan sparas och läses tillbaka i projektet");
+        }
+
         // Gamla projekt (version 5): kicken var lager 3.
         {
             auto legacy = std::make_unique<Pattern>();
@@ -600,6 +614,18 @@ namespace
         if (processor->selectedPatternLayer == 9)
             processor->selectedPatternLayer = Pattern::kickLayer;
         processor->sequencerRowHeight = juce::SystemStats::getEnvironmentVariable ("KB_ROWHEIGHT", "0").getIntValue(); // radhöjden (zoom)
+        if (juce::SystemStats::getEnvironmentVariable ("KB_LFOCUSTOM", "0").getIntValue() != 0) // LFO 1 och 2 med egna kurvor, LFO 3 i Hz
+        {
+            auto set = [&processor] (const char* id, float value)
+            {
+                if (auto* parameter = processor->apvts.getParameter (id))
+                    parameter->setValueNotifyingHost (parameter->convertTo0to1 (value));
+            };
+            set ("lfo1Shape", 6.0f);
+            set ("lfo2Shape", 6.0f);
+            set ("lfo3Mode", 1.0f);
+            processor->lfoCurves[1].setPoints ({ { 0.0f, 1.0f, 0.0f }, { 0.2f, 0.0f, -0.6f }, { 0.35f, 0.7f, 0.0f }, { 0.6f, 0.2f, 0.0f }, { 1.0f, 1.0f, 0.0f } });
+        }
         processor->modEnvelopesOpen = juce::SystemStats::getEnvironmentVariable ("KB_MODOPEN", "0").getIntValue() != 0; // MODULATION-dragspelet öppet
         processor->selectedInstrument = juce::SystemStats::getEnvironmentVariable ("KB_INSTRUMENT", "0").getIntValue(); // valt instrument (0-9)
         if (const auto count = juce::SystemStats::getEnvironmentVariable ("KB_INSTRUMENTS", {}); count.isNotEmpty())

@@ -4,17 +4,18 @@ namespace Modulation
 {
     juce::StringArray shapeNames()
     {
-        return { "Sine", "Triangle", "Saw Up", "Saw Down", "Square", "Random" };
+        return { "Sine", "Triangle", "Saw Up", "Saw Down", "Square", "Random", "Custom" };
     }
 
     juce::StringArray rateNames()
     {
-        return { "1/32", "1/16 T", "1/16", "1/8 T", "1/8", "1/4 T", "1/4", "1/2", "1 bar", "2 bars", "4 bars" };
+        return { "1/32", "1/16 T", "1/16", "1/8 T", "1/8", "1/4 T", "1/4", "1/2", "1 bar", "2 bars", "4 bars",
+                 "3/16", "3/8", "3/4", "3 bars", "6 bars", "8 bars", "16 bars" };
     }
 
     double rateInQuarters (int index)
     {
-        constexpr double quarters[] { 0.125, 1.0 / 6.0, 0.25, 1.0 / 3.0, 0.5, 2.0 / 3.0, 1.0, 2.0, 4.0, 8.0, 16.0 };
+        constexpr double quarters[] { 0.125, 1.0 / 6.0, 0.25, 1.0 / 3.0, 0.5, 2.0 / 3.0, 1.0, 2.0, 4.0, 8.0, 16.0, 0.75, 1.5, 3.0, 12.0, 24.0, 32.0, 64.0 };
         return quarters[juce::jlimit (0, (int) std::size (quarters) - 1, index)];
     }
 
@@ -65,6 +66,11 @@ namespace Modulation
             layout.add (std::make_unique<AudioParameterBool> (ParameterID { paramID (i, "On"), 1 }, title + " On", true));
             layout.add (std::make_unique<AudioParameterChoice> (ParameterID { paramID (i, "Shape"), 1 }, title + " Shape", shapeNames(), 0));
             layout.add (std::make_unique<AudioParameterChoice> (ParameterID { paramID (i, "Rate"), 1 }, title + " Rate", rateNames(), 8));
+            layout.add (std::make_unique<AudioParameterChoice> (ParameterID { paramID (i, "Mode"), 1 }, title + " Rate Mode", StringArray { "Sync", "Hz" }, 0));
+            NormalisableRange<float> hzRange (0.02f, 40.0f, 0.001f);
+            hzRange.setSkewForCentre (2.0f);
+            layout.add (std::make_unique<AudioParameterFloat> (ParameterID { paramID (i, "Hz"), 1 }, title + " Free Rate", hzRange, 1.0f,
+                                                               AudioParameterFloatAttributes().withStringFromValueFunction ([] (float v, int) { return String (v, 2) + " Hz"; })));
         }
 
         // Makron: fyra rattar att vrida för hand, som i Serum, och att dra till andra rattar eller sätta i matrisen.
@@ -191,6 +197,8 @@ Modulator::Modulator (juce::AudioProcessorValueTreeState& apvts, const ModRoutes
         lfo.on = apvts.getRawParameterValue (paramID (i, "On"));
         lfo.shape = apvts.getRawParameterValue (paramID (i, "Shape"));
         lfo.rate = apvts.getRawParameterValue (paramID (i, "Rate"));
+        lfo.mode = apvts.getRawParameterValue (paramID (i, "Mode"));
+        lfo.hz = apvts.getRawParameterValue (paramID (i, "Hz"));
     }
     for (int m = 0; m < numMacros; ++m)
         macros[(size_t) m] = apvts.getRawParameterValue (macroID (m));
@@ -219,7 +227,7 @@ int Modulator::indexOf (const juce::String& paramID) const
     return -1;
 }
 
-void Modulator::update (double ppq)
+void Modulator::update (double ppq, double bpm)
 {
     using namespace Modulation;
 
@@ -231,11 +239,14 @@ void Modulator::update (double ppq)
     for (int i = 0; i < numLfos; ++i)
     {
         const auto& lfo = lfos[(size_t) i];
-        const auto period = rateInQuarters ((int) lfo.rate->load());
-        const auto position = ppq / period;
+        // Tempo-synkad (en period i fjärdedelar) eller fri hastighet i Hz (sekunder räknade ur positionen och tempot).
+        const auto position = lfo.mode->load() >= 0.5f ? ppq * 60.0 / std::max (20.0, bpm) * (double) lfo.hz->load()
+                                                       : ppq / rateInQuarters ((int) lfo.rate->load());
         const auto cycle = (juce::int64) std::floor (position);
         const auto lfoPhase = position - std::floor (position);
-        lfoValues[(size_t) i] = shapeValue ((int) lfo.shape->load(), lfoPhase, cycle);
+        const auto shapeIndex = (int) lfo.shape->load();
+        lfoValues[(size_t) i] = shapeIndex == 6 ? (lfoCurves != nullptr ? 1.0f - 2.0f * (*lfoCurves)[(size_t) i].lookup (lfoPhase) : 0.0f)
+                                                : shapeValue (shapeIndex, lfoPhase, cycle);
         lfoOn[(size_t) i] = lfo.on->load() >= 0.5f;
 
         phase[(size_t) i] = (float) lfoPhase;

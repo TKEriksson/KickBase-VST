@@ -5,28 +5,152 @@ LfoDisplay::LfoDisplay (PluginBase& p, int lfoIndex) : processor (p), index (lfo
     startTimerHz (30);
 }
 
+bool LfoDisplay::isCustom() const
+{
+    return (int) processor.apvts.getRawParameterValue (Modulation::paramID (index, "Shape"))->load() == 6;
+}
+
+void LfoDisplay::timerCallback()
+{
+    repaint();
+}
+
+juce::Rectangle<float> LfoDisplay::plotArea() const
+{
+    return getLocalBounds().toFloat().reduced (8.0f, 10.0f);
+}
+
+// y = 0 är överst (värdet +1), y = 1 underst (-1).
+juce::Point<float> LfoDisplay::toScreen (float x, float y) const
+{
+    const auto area = plotArea();
+    return { area.getX() + x * area.getWidth(), area.getY() + y * area.getHeight() };
+}
+
+juce::Point<float> LfoDisplay::fromScreen (juce::Point<float> point) const
+{
+    const auto area = plotArea();
+    return { juce::jlimit (0.0f, 1.0f, (point.x - area.getX()) / area.getWidth()), juce::jlimit (0.0f, 1.0f, (point.y - area.getY()) / area.getHeight()) };
+}
+
+juce::Point<float> LfoDisplay::tensionHandle (const std::vector<NodeEnvelope::Point>& points, size_t segment) const
+{
+    const auto& a = points[segment];
+    const auto& b = points[segment + 1];
+    return toScreen ((a.x + b.x) * 0.5f, a.y + (b.y - a.y) * NodeEnvelope::shape (0.5f, a.tension));
+}
+
+int LfoDisplay::pointAt (juce::Point<float> point) const
+{
+    const auto& points = curve().getPoints();
+    for (int i = 0; i < (int) points.size(); ++i)
+        if (toScreen (points[(size_t) i].x, points[(size_t) i].y).getDistanceFrom (point) < 9.0f)
+            return i;
+    return -1;
+}
+
+int LfoDisplay::tensionHandleAt (juce::Point<float> point) const
+{
+    const auto& points = curve().getPoints();
+    for (size_t i = 0; i + 1 < points.size(); ++i)
+        if (tensionHandle (points, i).getDistanceFrom (point) < 9.0f)
+            return (int) i;
+    return -1;
+}
+
+void LfoDisplay::commit (std::vector<NodeEnvelope::Point> points)
+{
+    curve().setPoints (std::move (points));
+    processor.markStateChanged();
+    repaint();
+}
+
+// Mallarna: formerna man kan börja från (fas 0..1 i x, 0 = uppe i y).
+std::vector<NodeEnvelope::Point> LfoDisplay::templatePoints (int which)
+{
+    switch (which)
+    {
+        case 0:  return PluginBase::sineCurve();
+        case 1:  return { { 0.0f, 0.5f, 0.0f }, { 0.25f, 0.0f, 0.0f }, { 0.75f, 1.0f, 0.0f }, { 1.0f, 0.5f, 0.0f } };               // triangel
+        case 2:  return { { 0.0f, 1.0f, 0.0f }, { 1.0f, 0.0f, 0.0f } };                                                             // såg upp
+        case 3:  return { { 0.0f, 0.0f, 0.0f }, { 1.0f, 1.0f, 0.0f } };                                                             // såg ner
+        case 4:  return { { 0.0f, 0.0f, 0.0f }, { 0.499f, 0.0f, 0.0f }, { 0.501f, 1.0f, 0.0f }, { 1.0f, 1.0f, 0.0f } };             // fyrkant
+        case 5:  return { { 0.0f, 0.0f, -0.7f }, { 1.0f, 1.0f, 0.0f } };                                                            // fall: snabbt först
+        default:
+        {
+            // Slumpsteg: åtta platåer.
+            std::vector<NodeEnvelope::Point> points;
+            auto& random = juce::Random::getSystemRandom();
+            for (int step = 0; step < 8; ++step)
+            {
+                const auto y = random.nextFloat();
+                points.push_back ({ (float) step / 8.0f + (step > 0 ? 0.002f : 0.0f), y, 0.0f });
+                points.push_back ({ (float) (step + 1) / 8.0f - (step < 7 ? 0.002f : 0.0f), y, 0.0f });
+            }
+            return points;
+        }
+    }
+}
+
+void LfoDisplay::makeCustom (int templateIndex)
+{
+    curve().setPoints (templatePoints (templateIndex));
+    if (auto* parameter = processor.apvts.getParameter (Modulation::paramID (index, "Shape")))
+        Presets::setParameter (*parameter, parameter->convertTo0to1 (6.0f));
+    processor.markStateChanged();
+    repaint();
+}
+
+void LfoDisplay::showTemplates()
+{
+    juce::PopupMenu menu;
+    const char* names[] { "Sine", "Triangle", "Saw up", "Saw down", "Square", "Fall (fast, then slow)", "Random steps" };
+    menu.addSectionHeader ("Start from a shape");
+    for (int i = 0; i < 7; ++i)
+        menu.addItem (i + 1, names[i]);
+    juce::Component::SafePointer<LfoDisplay> safeThis (this);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this), [safeThis] (int result)
+    {
+        if (safeThis != nullptr && result > 0)
+            safeThis->makeCustom (result - 1);
+    });
+}
+
 void LfoDisplay::paint (juce::Graphics& g)
 {
     const auto bounds = getLocalBounds().toFloat();
     g.setColour (Theme::knobBodyDark.withAlpha (0.7f));
     g.fillRoundedRectangle (bounds, 6.0f);
 
-    const auto area = bounds.reduced (6.0f, 8.0f);
-    g.setColour (Theme::grid);
-    g.drawHorizontalLine ((int) area.getCentreY(), area.getX(), area.getRight());
-
+    const auto area = plotArea();
     const auto shape = (int) processor.apvts.getRawParameterValue (Modulation::paramID (index, "Shape"))->load();
     const auto on = processor.apvts.getRawParameterValue (Modulation::paramID (index, "On"))->load() >= 0.5f;
+    const auto custom = shape == 6;
     const auto colour = on ? Theme::lfoColour (index) : Theme::textDim;
+
+    // Rutnät: nollinjen och åttondelar av perioden.
+    g.setColour (Theme::grid);
+    for (int i = 1; i < 8; ++i)
+        g.drawVerticalLine ((int) (area.getX() + area.getWidth() * (float) i / 8.0f), area.getY(), area.getBottom());
+    g.setColour (Theme::textDim.withAlpha (0.5f));
+    g.drawHorizontalLine ((int) area.getCentreY(), area.getX(), area.getRight());
 
     // En period av formen (random ritas som fyra slumpsteg).
     juce::Path path;
-    constexpr int resolution = 120;
+    constexpr int resolution = 160;
+    const auto& points = editing.empty() ? curve().getPoints() : editing;
+    NodeEnvelope preview (1.0f, 1.0f, points.empty() ? std::vector<NodeEnvelope::Point> { { 0.0f, 0.5f, 0.0f }, { 1.0f, 0.5f, 0.0f } } : points);
     for (int i = 0; i <= resolution; ++i)
     {
         const auto phase = (double) i / resolution;
-        const auto cycle = shape == 5 ? (juce::int64) (phase * 4.0) : 0;
-        const auto value = Modulation::shapeValue (shape, std::fmod (phase * (shape == 5 ? 4.0 : 1.0), 1.0), cycle);
+        float value;
+        if (custom)
+            value = 1.0f - 2.0f * preview.evaluate ((float) phase);
+        else
+        {
+            const auto cycle = shape == 5 ? (juce::int64) (phase * 4.0) : 0;
+            value = Modulation::shapeValue (shape, std::fmod (phase * (shape == 5 ? 4.0 : 1.0), 1.0), cycle);
+        }
         const juce::Point<float> point { area.getX() + (float) phase * area.getWidth(), area.getCentreY() - value * area.getHeight() * 0.5f };
         if (i == 0)
             path.startNewSubPath (point);
@@ -44,6 +168,131 @@ void LfoDisplay::paint (juce::Graphics& g)
     const juce::Point<float> dot { area.getX() + phase * area.getWidth(), area.getCentreY() - value * area.getHeight() * 0.5f };
     g.setColour (juce::Colours::white);
     g.fillEllipse (juce::Rectangle<float> (7.0f, 7.0f).withCentre (dot));
+
+    g.setFont (Theme::font (9.5f));
+    g.setColour (Theme::textDim);
+    if (! custom)
+    {
+        g.drawText ("Double-click to draw your own curve", getLocalBounds().reduced (8, 3), juce::Justification::bottomLeft);
+        return;
+    }
+
+    // Punkterna och rombernas handtag för böjning.
+    for (int i = 0; i < (int) points.size(); ++i)
+    {
+        const auto screen = toScreen (points[(size_t) i].x, points[(size_t) i].y);
+        const auto active = i == hovered || i == draggedPoint;
+        g.setColour (Theme::knobBodyDark);
+        g.fillEllipse (juce::Rectangle<float> (10.0f, 10.0f).withCentre (screen));
+        g.setColour (colour);
+        g.drawEllipse (juce::Rectangle<float> (active ? 12.0f : 10.0f, active ? 12.0f : 10.0f).withCentre (screen), 2.0f);
+    }
+    for (size_t i = 0; i + 1 < points.size(); ++i)
+    {
+        juce::Path diamond;
+        diamond.addPolygon (tensionHandle (points, i), 4, 4.0f, juce::MathConstants<float>::pi / 4.0f);
+        g.setColour (colour.withAlpha ((int) i == draggedTension ? 1.0f : 0.5f));
+        g.fillPath (diamond);
+    }
+    g.setColour (Theme::textDim);
+    g.drawText ("Double-click: add point   Right-click: remove", getLocalBounds().reduced (8, 3), juce::Justification::bottomLeft);
+}
+
+void LfoDisplay::mouseMove (const juce::MouseEvent& event)
+{
+    const auto point = isCustom() ? pointAt (event.position) : -1;
+    if (point != hovered)
+    {
+        hovered = point;
+        repaint();
+    }
+}
+
+void LfoDisplay::mouseDown (const juce::MouseEvent& event)
+{
+    if (! isCustom())
+        return;
+
+    auto points = curve().getPoints();
+    const auto point = pointAt (event.position);
+
+    if (event.mods.isPopupMenu())
+    {
+        if (point > 0 && point < (int) points.size() - 1)
+        {
+            points.erase (points.begin() + point);
+            commit (std::move (points));
+        }
+        else if (point < 0)
+            showTemplates();
+        return;
+    }
+
+    draggedPoint = point;
+    draggedTension = point < 0 ? tensionHandleAt (event.position) : -1;
+    if (draggedTension >= 0)
+    {
+        tensionStart = points[(size_t) draggedTension].tension;
+        dragStartY = event.position.y;
+    }
+    editing = points;
+}
+
+void LfoDisplay::mouseDrag (const juce::MouseEvent& event)
+{
+    if (editing.empty())
+        return;
+
+    if (draggedPoint >= 0)
+    {
+        auto value = fromScreen (event.position);
+        auto& point = editing[(size_t) draggedPoint];
+
+        // Punkten får inte passera grannarna; första och sista ligger kvar på kanterna. Skift = hela åttondelar i tid.
+        const auto isEdge = draggedPoint == 0 || draggedPoint == (int) editing.size() - 1;
+        if (event.mods.isShiftDown())
+            value.x = std::round (value.x * 16.0f) / 16.0f;
+        if (! isEdge)
+            point.x = juce::jlimit (editing[(size_t) draggedPoint - 1].x, editing[(size_t) draggedPoint + 1].x, value.x);
+        point.y = event.mods.isShiftDown() ? std::round (value.y * 8.0f) / 8.0f : value.y;
+        repaint();
+    }
+    else if (draggedTension >= 0)
+    {
+        const auto& a = editing[(size_t) draggedTension];
+        const auto& b = editing[(size_t) draggedTension + 1];
+        const auto direction = b.y >= a.y ? 1.0f : -1.0f;
+        editing[(size_t) draggedTension].tension = juce::jlimit (-1.0f, 1.0f, tensionStart + direction * (event.position.y - dragStartY) / 80.0f);
+        repaint();
+    }
+}
+
+void LfoDisplay::mouseUp (const juce::MouseEvent&)
+{
+    if (! editing.empty() && (draggedPoint >= 0 || draggedTension >= 0))
+        commit (editing);
+    editing.clear();
+    draggedPoint = draggedTension = -1;
+}
+
+void LfoDisplay::mouseDoubleClick (const juce::MouseEvent& event)
+{
+    if (! isCustom())
+    {
+        // En vanlig form blir en egen kurva att redigera (samma form som den hade).
+        const auto shape = (int) processor.apvts.getRawParameterValue (Modulation::paramID (index, "Shape"))->load();
+        makeCustom (shape == 5 ? 6 : shape);
+        return;
+    }
+    if (pointAt (event.position) >= 0)
+        return;
+
+    auto points = curve().getPoints();
+    if ((int) points.size() >= NodeEnvelope::maxPoints)
+        return;
+    const auto value = fromScreen (event.position);
+    points.push_back ({ value.x, value.y, 0.0f });
+    commit (std::move (points));
 }
 
 //==============================================================================
@@ -162,8 +411,10 @@ void LfoTargets::mouseDown (const juce::MouseEvent&)
 
 //==============================================================================
 LfoPanel::LfoPanel (PluginBase& p, int lfoIndex)
-    : index (lfoIndex),
+    : processor (p),
+      index (lfoIndex),
       shape (p.apvts, Modulation::paramID (lfoIndex, "Shape").toRawUTF8(), "SHAPE"),
+      mode (p.apvts, Modulation::paramID (lfoIndex, "Mode").toRawUTF8(), "RATE MODE"),
       rate (p.apvts, Modulation::paramID (lfoIndex, "Rate").toRawUTF8(), "RATE"),
       display (p, lfoIndex),
       handle (lfoIndex),
@@ -175,8 +426,35 @@ LfoPanel::LfoPanel (PluginBase& p, int lfoIndex)
     powerAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
         p.apvts, Modulation::paramID (lfoIndex, "On"), power);
 
-    for (auto* c : std::initializer_list<juce::Component*> { &shape, &rate, &display, &handle, &targets })
+    hzLabel.setText ("FREE RATE", juce::dontSendNotification);
+    hzLabel.setFont (Theme::font (11.0f, true));
+    hzLabel.setColour (juce::Label::textColourId, Theme::textDim);
+    hzSlider.setSliderStyle (juce::Slider::LinearHorizontal);
+    hzSlider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 80, 16);
+    hzSlider.setColour (juce::Slider::trackColourId, Theme::lfoColour (lfoIndex));
+    hzSlider.setColour (juce::Slider::thumbColourId, Theme::text);
+    hzSlider.setColour (juce::Slider::textBoxTextColourId, Theme::text);
+    hzSlider.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+    hzSlider.setTooltip ("FREE RATE - How fast the LFO runs, in cycles per second (Hz), independent of the song's note values. It still follows the DAW's position, "
+                         "so it stays in step with the playhead. Double-click for 1 Hz.");
+    hzAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (p.apvts, Modulation::paramID (lfoIndex, "Hz"), hzSlider);
+    hzSlider.setDoubleClickReturnValue (true, 1.0);
+    mode.box.setTooltip ("RATE MODE - Sync: the LFO runs in note values of the tempo (RATE). Hz: it runs at its own speed in cycles per second.");
+    for (auto* c : std::initializer_list<juce::Component*> { &shape, &mode, &rate, &hzLabel, &hzSlider, &display, &handle, &targets })
         addAndMakeVisible (c);
+    startTimerHz (6);
+    timerCallback();
+}
+
+void LfoPanel::timerCallback()
+{
+    const auto current = (int) processor.apvts.getRawParameterValue (Modulation::paramID (index, "Mode"))->load();
+    if (current == lastMode)
+        return;
+    lastMode = current;
+    rate.setVisible (current == 0);
+    hzLabel.setVisible (current == 1);
+    hzSlider.setVisible (current == 1);
 }
 
 void LfoPanel::paint (juce::Graphics& g)
@@ -199,10 +477,16 @@ void LfoPanel::resized()
     targets.setBounds (area.removeFromBottom (28));
     area.removeFromBottom (2);
 
-    auto left = area.removeFromLeft (84);
-    shape.setBounds (left.removeFromTop (40));
-    left.removeFromTop (4);
-    rate.setBounds (left.removeFromTop (40));
+    auto left = area.removeFromLeft (96);
+    shape.setBounds (left.removeFromTop (38));
+    left.removeFromTop (2);
+    mode.setBounds (left.removeFromTop (38));
+    left.removeFromTop (2);
+    const auto rateSlot = left.removeFromTop (38);
+    rate.setBounds (rateSlot);
+    auto hzArea = rateSlot.withHeight (rateSlot.getHeight() + left.getHeight()); // fri hastighet tar rattens plats (och lite mer)
+    hzLabel.setBounds (hzArea.removeFromTop (15));
+    hzSlider.setBounds (hzArea.removeFromTop (40));
     area.removeFromLeft (6);
     display.setBounds (area);
 }

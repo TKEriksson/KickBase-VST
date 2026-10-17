@@ -1072,6 +1072,10 @@ void InstrumentHost::refresh()
 
 void InstrumentHost::timerCallback()
 {
+    // ENV-fliken (och andra) kan byta instrument: följ med.
+    if (processor.selectedInstrument != current && juce::isPositiveAndBelow (processor.selectedInstrument, processor.activeInstruments()))
+        select (processor.selectedInstrument);
+
     if (processor.activeInstruments() != lastCount || processor.layerNamesVersion.load() != lastNamesVersion)
         refresh();
 }

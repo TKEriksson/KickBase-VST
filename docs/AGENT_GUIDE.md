@@ -51,7 +51,7 @@ Values are in the parameter's own unit: Hz, ms, dB, semitones, octaves; percenta
 - **FX channels** FX1–FX11 (parameter ids `fxA…fxK`: FX1 = `fxA`, FX2 = `fxB` … FX11 = `fxK`): `fxALevel` (0..1.5), `fxADuck`, EQ (`fxAEqHp`, `fxAEqLp`, `fxAEq1F/1G/1Q … 4F/4G/4Q`), compressor (`fxACompThr/Ratio/Att/Rel/Makeup`; ratio 1 = off). Slots with effects: `set_effect`.
 - **mixer**: `mix<Kick|Bass1…Bass10|FxA…FxK><Gain|Pan|Duck|Max>` (Gain in dB −60..+12; Duck = sidechain applies; Max = goes through the maximizer).
 - **master**: `masterOn`, `masterDrive` (dB), `masterClip`, `masterCeiling` (dB), `masterWidth`, `masterEnhance`, `masterMonoBelow` (Hz), `masterRelease`, and `gain` (output).
-- **LFOs**: `lfo1…lfo3` `On`, `Shape`, `Rate` (tempo synced); routes with `set_modulation`.
+- **LFOs**: `lfo1…lfo3` `On`, `Shape` (Sine, Triangle, Saw Up, Saw Down, Square, Random, **Custom**), `Rate` (tempo synced, 1/32 … 16 bars), `Mode` (Sync | Hz) and `Hz` (0.02–40, its own speed). A Custom LFO is a curve of points: write it with `set_modulation` `lfos:[{"lfo":1,"points":[[0,0,0],[0.25,1,0],[0.5,-0.5,-0.4],[1,0,0]]}]` (phase 0..1, value -1..1, tension -1..1 bends the segment to the next point); routes with `set_modulation`. The instrument's envelopes (volume, filter, ENV 2, ENV 3) are drawn and edited as diagrams on the plugin's ENV tab.
 - **Macros**: `macro1…macro4` (0..1): knobs you turn yourself (or automate) that can move other knobs through routes (source "macro" 1-4).
 - **Matrix** (`set_modulation`): up to 64 routes. A route is a source (`lfo` 1-3, `macro` 1-4, or `instrument` 1-10 with `source` "ENV 2" | "ENV 3" | "VELOCITY" | "RANDOM"), a `param` (any kick*, bass*, fx* knob) and an `amount` (-1..1 of the knob's travel).
 

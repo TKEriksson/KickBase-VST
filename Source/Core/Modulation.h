@@ -3,6 +3,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <array>
 #include <atomic>
+#include "NodeEnvelope.h"
 #include "Pattern.h"
 
 // Modulationskällor och vart de modulerar.
@@ -82,8 +83,11 @@ class Modulator
 public:
     Modulator (juce::AudioProcessorValueTreeState& apvts, const ModRoutes& routes);
 
-    // Anropas en gång per block med positionen i fjärdedelar (från TransportClock).
-    void update (double ppq);
+    // Anropas en gång per block med positionen i fjärdedelar (från TransportClock) och tempot (för LFO:er som går i Hz).
+    void update (double ppq, double bpm = 120.0);
+
+    // LFO:ernas egna kurvor (formen Custom): x = fas 0..1, y = 0..1 (uppåt = positivt). Ägs av processorn.
+    void setLfoCurves (const std::array<NodeEnvelope, Modulation::numLfos>* curves) { lfoCurves = curves; }
 
     // Parameterns värde med modulering, i parameterns egen enhet. `index` är parameterns
     // plats i processorns parameterlista; `value` det omodulerade värdet.
@@ -115,7 +119,10 @@ private:
         std::atomic<float>* on;
         std::atomic<float>* shape;
         std::atomic<float>* rate;
+        std::atomic<float>* mode;  // 0 = tempo-synkad (rate), 1 = fri hastighet (hz)
+        std::atomic<float>* hz;
     };
+    const std::array<NodeEnvelope, Modulation::numLfos>* lfoCurves = nullptr;
 
     const ModRoutes& routes;
     std::array<Lfo, Modulation::numLfos> lfos;

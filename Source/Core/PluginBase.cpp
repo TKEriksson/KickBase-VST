@@ -18,6 +18,7 @@ PluginBase::PluginBase (const BusesProperties& buses, juce::AudioProcessorValueT
       effectVersion (isEffect)
 {
     params.setModulator (&modulator); // ljudtrådens parametrar läses med LFO-modulering
+    modulator.setLfoCurves (&lfoCurves);
     presetNames.fill ("Default");
     bassPresetNames.fill ("Default");
     presetNames[(size_t) Presets::Section::full] = "Init";
@@ -369,6 +370,8 @@ void PluginBase::getStateInformation (juce::MemoryBlock& destData)
     state.appendChild (userTablesToValueTree(), nullptr);
     state.appendChild (sidechainCurve.toValueTree(), nullptr);
     state.appendChild (modRoutes.toValueTree (getParameters()), nullptr);
+    for (int i = 0; i < Modulation::numLfos; ++i)
+        state.appendChild (lfoCurves[(size_t) i].toValueTree ("LfoCurve" + juce::String (i + 1)), nullptr);
     state.appendChild (kickPitchEnv.toValueTree (kickPitchType), nullptr);
     state.appendChild (kickAmpEnv.toValueTree (kickAmpType), nullptr);
 
@@ -439,6 +442,18 @@ void PluginBase::setStateInformation (const void* data, int sizeInBytes)
             envelope->reset();
     }
 
+    for (int i = 0; i < Modulation::numLfos; ++i)
+    {
+        const juce::Identifier type ("LfoCurve" + juce::String (i + 1));
+        if (auto tree = state.getChildWithName (type); tree.isValid())
+        {
+            lfoCurves[(size_t) i].fromValueTree (tree);
+            state.removeChild (tree, nullptr);
+        }
+        else
+            lfoCurves[(size_t) i].reset();
+    }
+
     modRoutes.fromValueTree (state.getChildWithName (ModRoutes::treeType), getParameters());
     if (auto routesTree = state.getChildWithName (ModRoutes::treeType); routesTree.isValid())
         state.removeChild (routesTree, nullptr);
@@ -470,7 +485,11 @@ void PluginBase::loadFactoryPreset (Presets::Section section, int index, int lay
     Presets::applyFactory (section, effectVersion, index, apvts, pattern, sidechainCurve, layer);
 
     if (section == Presets::Section::full || section == Presets::Section::lfo)
+    {
         modRoutes.clear();
+        for (auto& curve : lfoCurves)
+            curve.reset();
+    }
 
     if (section == Presets::Section::full || section == Presets::Section::kick)
     {
@@ -571,7 +590,11 @@ bool PluginBase::saveUserPreset (Presets::Section section, const juce::String& n
         root.addChildElement (sidechainCurve.toValueTree().createXml().release());
 
     if (section == Presets::Section::full || section == Presets::Section::lfo)
+    {
         root.addChildElement (modRoutes.toValueTree (getParameters()).createXml().release());
+        for (int i = 0; i < Modulation::numLfos; ++i)
+            root.addChildElement (lfoCurves[(size_t) i].toValueTree ("LfoCurve" + juce::String (i + 1)).createXml().release());
+    }
 
     if (! root.writeTo (directory.getChildFile (fileName + presetFileExtension)))
         return false;
@@ -654,6 +677,13 @@ bool PluginBase::loadUserPreset (Presets::Section section, const juce::File& fil
             modRoutes.fromValueTree (juce::ValueTree::fromXml (*routesXml), getParameters());
         else
             modRoutes.clear();
+        for (int i = 0; i < Modulation::numLfos; ++i)
+        {
+            if (const auto* curveXml = xml->getChildByName ("LfoCurve" + juce::String (i + 1)))
+                lfoCurves[(size_t) i].fromValueTree (juce::ValueTree::fromXml (*curveXml));
+            else
+                lfoCurves[(size_t) i].reset();
+        }
     }
 
     if (section == Presets::Section::full)

@@ -61,7 +61,8 @@ När DAW:en står still släpps ljudet igenom orört och ingen kick spelas.
   (dra noderna, live-spektrum) och COMP (kompressor med vågformsvy). Dra platserna för att byta ordning.
 - **SIDECHAIN:** ducka basen efter kickens envelope eller en egen kurva; DUCK per lager, och vilka
   källor som påverkas.
-- **LFO:** tre tempo-synkade LFO:er. Dra en LFO på en ratt för att modulera den.
+- **LFO:** tre LFO:er. Hastigheten är tempo-synkad (1/32 till 16 takter) eller egen i Hz, och formen kan vara en egen kurva (**Custom**): dubbelklicka på en vanlig form för att rita om den, dra punkterna, dra rombernas mitt för att böja, dubbelklicka för en ny punkt, högerklicka för att ta bort en punkt eller välja en mall (Skift = hela åttondelar). Dra en LFO på en ratt för att modulera den.
+- **ENV:** det valda instrumentets envelopes som diagram du kan dra i: VOLUME (ENV 1), FILTER, ENV 2 och ENV 3. ENV 2 och ENV 3 har ett handtag som dras till en ratt i fönstret ovanför.
 - **MATRIX:** alla modulationskopplingar i en lista (högst 64): källa (LFO, MACRO 1-4, ett instruments ENV 2, ENV 3, VELOCITY eller RANDOM), hur mycket och vilken ratt (menyer med grupper). Överst till vänster fyra makrorattar med handtag att dra till rattar.
 - **MASTER:** **MIXER** (gain, pan, dB-mätare, SC och MAX per källa) och **MAXIMIZER** (drive, clip,
   limiter med tak).

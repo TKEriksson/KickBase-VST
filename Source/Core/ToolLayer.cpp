@@ -202,7 +202,7 @@ std::vector<ToolLayer::ToolInfo> ToolLayer::tools()
           R"({"type":"object","properties":{"mode":{"type":"string"},"length":{"type":"string"},"points":{"type":"array","items":{"type":"array","items":{"type":"number"}}}}})" },
         { "set_instruments", "Sets how many instruments are used (1-10; each has its own pattern, oscillators, filter, envelopes, effect send and sidechain depth; the default is 3). Removing instruments deletes the last ones completely (pattern, sound, sample, wavetables, name, mixer and modulation routes). Adding gives instruments with default settings and an empty pattern.",
           R"({"type":"object","properties":{"count":{"type":"integer","minimum":1,"maximum":10}},"required":["count"]})" },
-        { "set_modulation", "Sets up LFOs and routes (the matrix). lfos: [{\"lfo\":1,\"shape\":\"Sine\",\"rate\":\"1 bar\",\"on\":true}] (shapes: Sine, Triangle, Saw Up, Saw Down, Square, Random; rates 1/32 ... 4 bars). routes: [{\"lfo\":1,\"param\":\"bass1Cutoff\",\"amount\":0.3}] (amount -1..1 of the knob's travel, only sound parameters: kick*, bass*, fx*). The source is \"lfo\" 1-3, or \"macro\" 1-4 (turn macro1..macro4 with set_parameters), or \"instrument\" 1-10 with \"source\":\"ENV 2\" | \"ENV 3\" | \"VELOCITY\" | \"RANDOM\" (ENV 2/3 are set with bassNEnv2Attack ... bassNEnv3Release). Up to 64 routes. clear_routes removes all routes first.",
+        { "set_modulation", "Sets up LFOs and routes (the matrix). lfos: [{\"lfo\":1,\"shape\":\"Sine\",\"rate\":\"1 bar\",\"on\":true}] (shapes: Sine, Triangle, Saw Up, Saw Down, Square, Random, Custom; synced rates 1/32 ... 16 bars; \"hz\":0.02-40 runs the LFO at its own speed instead, \"mode\":\"Sync\"|\"Hz\"; \"points\":[[phase 0..1, value -1..1, tension -1..1],...] draws a custom curve, at least two points, and selects the Custom shape). routes: [{\"lfo\":1,\"param\":\"bass1Cutoff\",\"amount\":0.3}] (amount -1..1 of the knob's travel, only sound parameters: kick*, bass*, fx*). The source is \"lfo\" 1-3, or \"macro\" 1-4 (turn macro1..macro4 with set_parameters), or \"instrument\" 1-10 with \"source\":\"ENV 2\" | \"ENV 3\" | \"VELOCITY\" | \"RANDOM\" (ENV 2/3 are set with bassNEnv2Attack ... bassNEnv3Release). Up to 64 routes. clear_routes removes all routes first.",
           R"({"type":"object","properties":{"lfos":{"type":"array","items":{"type":"object"}},"routes":{"type":"array","items":{"type":"object"}},"clear_routes":{"type":"boolean"}}})" },
         { "list_presets", "Lists factory and user presets. section: Full, Kick, Bass, Pattern, Effects, Sidechain, Master or LFO (default: all).",
           R"({"type":"object","properties":{"section":{"type":"string"}}})" },
@@ -768,7 +768,35 @@ var ToolLayer::setModulation (const var& args)
                 problems.add ("lfo must be 1-3");
                 continue;
             }
-            for (const auto& [key, suffix] : { std::pair<const char*, const char*> { "shape", "Shape" }, { "rate", "Rate" }, { "on", "On" } })
+            // Egen kurva: "points" = [[fas 0..1, värde -1..1, böjning -1..1] ...] (minst två punkter). Formen blir Custom.
+            if (auto* pointList = lfo["points"].getArray())
+            {
+                std::vector<NodeEnvelope::Point> points;
+                for (const auto& item : *pointList)
+                    if (auto* triple = item.getArray(); triple != nullptr && triple->size() >= 2)
+                        points.push_back ({ juce::jlimit (0.0f, 1.0f, (float) (double) (*triple)[0]), 0.5f - 0.5f * juce::jlimit (-1.0f, 1.0f, (float) (double) (*triple)[1]),
+                                            triple->size() > 2 ? juce::jlimit (-1.0f, 1.0f, (float) (double) (*triple)[2]) : 0.0f });
+                if (points.size() < 2)
+                    problems.add ("An LFO curve needs at least two points [phase, value, tension]");
+                else
+                {
+                    processor.lfoCurves[(size_t) index].setPoints (std::move (points));
+                    if (auto* shapeParameter = findParameter (processor, Modulation::paramID (index, "Shape")))
+                        Presets::setParameter (*shapeParameter, shapeParameter->convertTo0to1 (6.0f));
+                }
+            }
+            // Fri hastighet: "hz" sätter hastigheten och växlar till Hz.
+            if (lfo.hasProperty ("hz"))
+            {
+                if (auto* hzParameter = findParameter (processor, Modulation::paramID (index, "Hz")))
+                {
+                    Presets::setParameter (*hzParameter, hzParameter->convertTo0to1 ((float) (double) lfo["hz"]));
+                    if (auto* modeParameter = findParameter (processor, Modulation::paramID (index, "Mode")))
+                        Presets::setParameter (*modeParameter, modeParameter->convertTo0to1 (1.0f));
+                }
+            }
+
+            for (const auto& [key, suffix] : { std::pair<const char*, const char*> { "shape", "Shape" }, { "rate", "Rate" }, { "mode", "Mode" }, { "on", "On" } })
                 if (lfo.hasProperty (key))
                     if (auto* parameter = findParameter (processor, Modulation::paramID (index, suffix)))
                     {

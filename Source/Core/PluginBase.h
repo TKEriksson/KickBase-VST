@@ -125,6 +125,17 @@ public:
     NodeEnvelope kickPitchEnv { 0.5f, 72.0f, { { 0.0f, 42.0f, -0.6f }, { 0.045f, 0.0f, 0.0f } } };
     NodeEnvelope kickAmpEnv { 2.0f, 1.0f, { { 0.0f, 0.0f, 0.0f }, { 0.0004f, 1.0f, 0.0f }, { 0.015f, 1.0f, -0.5f }, { 0.155f, 0.0f, 0.0f } } };
 
+    // LFO:ernas egna former (shape Custom): fas 0..1 i x, 0..1 i y (uppåt = positivt). Startar som en sinus; redigeras på LFO-fliken.
+    static std::vector<NodeEnvelope::Point> sineCurve()
+    {
+        std::vector<NodeEnvelope::Point> points;
+        for (int i = 0; i <= 8; ++i)
+            points.push_back ({ (float) i / 8.0f, 0.5f - 0.5f * std::sin (juce::MathConstants<float>::twoPi * (float) i / 8.0f), 0.0f });
+        return points;
+    }
+    std::array<NodeEnvelope, Modulation::numLfos> lfoCurves { NodeEnvelope (1.0f, 1.0f, sineCurve()), NodeEnvelope (1.0f, 1.0f, sineCurve()),
+                                                              NodeEnvelope (1.0f, 1.0f, sineCurve()) };
+
     // Kickens inställningar som de är just nu, utan LFO (för gränssnittets bilder).
     KickParams kickForDisplay (int keyPitchClass) const;
     TransportStatus transportStatus;

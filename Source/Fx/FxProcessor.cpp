@@ -70,7 +70,7 @@ void FxProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuff
     const auto numSamples = buffer.getNumSamples();
     ensureScratchSize (numSamples);
     clock.beginBlock (getHostPosition(), numSamples);
-    modulator.update (clock.getPpqAt (0));
+    modulator.update (clock.getPpqAt (0), clock.getBpm());
 
     for (auto ch = getTotalNumInputChannels(); ch < getTotalNumOutputChannels(); ++ch)
         buffer.clear (ch, 0, numSamples);

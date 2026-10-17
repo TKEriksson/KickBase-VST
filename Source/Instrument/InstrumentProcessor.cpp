@@ -109,7 +109,7 @@ void InstrumentProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
         else
             modulator.setInstrumentSources (layer, 0.0f, 0.0f, 0.0f, 0.0f);
     }
-    modulator.update (clock.getPpqAt (0));
+    modulator.update (clock.getPpqAt (0), clock.getBpm());
 
     // Räknaren och mönstret börjar om vid 1.1 (egen klocka).
     if (restartRequest.exchange (false) && ! clock.isFollowingHost())

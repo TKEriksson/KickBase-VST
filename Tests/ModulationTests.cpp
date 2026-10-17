@@ -140,9 +140,47 @@ namespace
     }
 }
 
+namespace
+{
+    void testCustomShapeAndFreeRate()
+    {
+        std::puts ("LFO: egen kurva och fri hastighet");
+        DummyProcessor processor;
+        ModRoutes routes;
+        Modulator modulator (processor.apvts, routes);
+        const auto cutoff = modulator.indexOf ("bassCutoff");
+
+        // En rak ramp: y går från 0 till 1, så värdet (1 - 2 y) går från +1 till -1.
+        const std::array<NodeEnvelope, Modulation::numLfos> curves { NodeEnvelope (1.0f, 1.0f, { { 0.0f, 0.0f, 0.0f }, { 1.0f, 1.0f, 0.0f } }),
+                                                                     NodeEnvelope (1.0f, 1.0f, { { 0.0f, 0.0f, 0.0f }, { 1.0f, 1.0f, 0.0f } }),
+                                                                     NodeEnvelope (1.0f, 1.0f, { { 0.0f, 0.0f, 0.0f }, { 1.0f, 1.0f, 0.0f } }) };
+        modulator.setLfoCurves (&curves);
+        routes.add (0, cutoff, 0.2f);
+        processor.set ("lfo1Shape", 6.0f); // Custom
+        processor.set ("lfo1Rate", 6.0f);  // 1/4: en period per fjärdedel
+
+        modulator.update (0.0);
+        check (std::abs (modulator.apply (cutoff, 500.0f) - 700.0f) < 1.0f, "kurvan börjar på +1");
+        modulator.update (0.5);
+        check (std::abs (modulator.apply (cutoff, 500.0f) - 500.0f) < 1.0f, "kurvan är 0 vid halva perioden", modulator.apply (cutoff, 500.0f));
+
+        // Fri hastighet: 2 Hz vid 120 BPM är en period per halv sekund = per fjärdedel; ppq 0.125 = 1/16 period... 0.25 av en period.
+        processor.set ("lfo1Mode", 1.0f);
+        processor.set ("lfo1Hz", 1.0f);
+        modulator.update (0.5, 120.0); // 0.25 s * 1 Hz = 0.25 period: värdet 1 - 2 * 0.25 = 0.5
+        check (std::abs (modulator.apply (cutoff, 500.0f) - 600.0f) < 1.0f, "fri hastighet i Hz följer tempot", modulator.apply (cutoff, 500.0f));
+        modulator.update (0.5, 60.0);  // dubbelt så lång tid per fjärdedel: 0.5 s * 1 Hz = 0.5 period: värdet 0
+        check (std::abs (modulator.apply (cutoff, 500.0f) - 500.0f) < 1.0f, "ett långsammare tempo ger en annan fas", modulator.apply (cutoff, 500.0f));
+
+        check (Modulation::rateNames().size() == 18 && Modulation::rateInQuarters (17) == 64.0 && Modulation::rateInQuarters (11) == 0.75, "fler synkade hastigheter (3/16 ... 16 takter)");
+        check (Modulation::shapeNames().size() == 7 && Modulation::shapeNames()[6] == "Custom", "formen Custom finns");
+    }
+}
+
 void runModulationTests()
 {
     testShapes();
     testModulator();
     testSources();
+    testCustomShapeAndFreeRate();
 }

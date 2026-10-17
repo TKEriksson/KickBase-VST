@@ -7,6 +7,7 @@
 #include "../Ui/EffectsPage.h"
 #include "../Ui/LfoPage.h"
 #include "../Ui/MasterPage.h"
+#include "../Ui/EnvPage.h"
 #include "../Ui/MatrixPage.h"
 #include "../Ui/SettingsPage.h"
 #include "../Ui/SidechainPage.h"
@@ -41,6 +42,7 @@ private:
     EffectsPage effects { processor };
     SidechainPage sidechain { processor };
     LfoPage lfo { processor };
+    EnvPage env { processor };
     MatrixPage matrix { processor };
     SettingsPage settings { processor };
     MasterPage masterPage { processor };
