@@ -16,6 +16,7 @@
 
 #include "../Source/Core/MixAnalysis.h"
 #include "../Source/Ui/LogoPainter.h"
+#include "../Source/Ui/ListenButton.h"
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_audio_utils/juce_audio_utils.h>
 #include "../Source/Fx/FxProcessor.h"
@@ -532,6 +533,47 @@ namespace
         juce::FileOutputStream stream (outFile);
         juce::PNGImageFormat png;
         return stream.openedOk() && png.writeImageToStream (image, stream) ? 0 : 1;
+    }
+
+    // Lyssnarknappen: ett klick spelar medan man håller, och ett dubbelklick låser så att det fortsätter spela (stoppas inte av det andra klickets släpp).
+    int listenTest()
+    {
+        juce::ScopedJuceInitialiser_GUI gui;
+        ListenButton button;
+        button.setBounds (0, 0, 30, 24);
+        auto starts = 0, stops = 0;
+        button.onStart = [&starts] { ++starts; };
+        button.onStop = [&stops] { ++stops; };
+
+        auto event = [&button] (int clicks)
+        {
+            const auto now = juce::Time::getCurrentTime();
+            return juce::MouseEvent (juce::Desktop::getInstance().getMainMouseSource(), juce::Point<float> (10.0f, 10.0f), juce::ModifierKeys(), 1.0f,
+                                     juce::MouseInputSource::defaultOrientation, juce::MouseInputSource::defaultRotation, juce::MouseInputSource::defaultTiltX,
+                                     juce::MouseInputSource::defaultTiltY, &button, &button, now, juce::Point<float> (10.0f, 10.0f), now, clicks, false);
+        };
+        auto failed = false;
+        auto check = [&failed] (bool ok, const char* what) { std::printf ("%s: %s\n", ok ? "ok" : "FEL", what); failed |= ! ok; };
+
+        button.mouseDown (event (1));
+        check (starts == 1 && stops == 0, "ett tryck startar");
+        button.mouseUp (event (1));
+        check (stops == 1, "ett släpp stoppar");
+
+        starts = stops = 0;
+        button.mouseDown (event (1));
+        button.mouseUp (event (1));
+        button.mouseDown (event (2));
+        button.mouseUp (event (2));
+        button.mouseDoubleClick (event (2));
+        check (starts == 2 && stops == 1, "dubbelklick: det andra släppet stoppar inte (startar 2, stoppar 1)");
+
+        button.mouseDown (event (1)); // ett klick medan den är låst stänger av den
+        button.mouseUp (event (1));
+        check (stops == 2, "ett klick stänger av det som låsts");
+
+        std::puts (failed ? "FEL: listentest" : "Lyssnartestet gick igenom");
+        return failed ? 1 : 0;
     }
 
     // Flera instrument: lägga till, spara/läsa, ta bort (allt ska rensas) och gamla projekt (kicken var lager 3).
@@ -1104,6 +1146,8 @@ int toolMain (int argc, char* argv[])
         return lengthTest();
     if (argc == 3 && juce::String (argv[1]) == "logoimage")
         return logoImage (juce::File::getCurrentWorkingDirectory().getChildFile (argv[2]));
+    if (argc == 2 && juce::String (argv[1]) == "listentest")
+        return listenTest();
     if (argc == 2 && juce::String (argv[1]) == "eqtest")
         return eqTest();
     if (argc >= 2 && juce::String (argv[1]) == "analysetest")

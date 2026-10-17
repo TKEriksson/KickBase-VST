@@ -73,20 +73,23 @@ public:
         repaint();
     }
 
-    void mouseUp (const juce::MouseEvent&) override
+    // JUCE skickar mouseDoubleClick efter det andra klickets mouseUp, så fastlåsningen måste ske redan här: annars stoppar mouseUp ljudet
+    // innan mouseDoubleClick hinner låsa det (och knappen låter ingenting).
+    void mouseUp (const juce::MouseEvent& event) override
     {
+        if (held && event.getNumberOfClicks() >= 2)
+        {
+            latched = true;
+            held = false;
+            repaint();
+            return;
+        }
         if (held && ! latched)
         {
             held = false;
             if (onStop)
                 onStop();
         }
-        repaint();
-    }
-
-    void mouseDoubleClick (const juce::MouseEvent&) override
-    {
-        latched = true; // fortsätter spela tills man klickar igen
         repaint();
     }
 
