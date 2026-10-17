@@ -347,6 +347,7 @@ private:
     const bool effectVersion;
     std::array<juce::String, Presets::numSections> presetNames; // bara message thread
     std::array<juce::String, ParamID::numBassLayers> bassPresetNames;
+    std::array<juce::String, numEffectChannels> fxPresetNames;       // FX-presets: ett namn per effektkanal
     std::array<juce::String, Pattern::numNoteLayers> rowPresetNames; // mönster-presets: ett namn per rad (instrument 0-9, kicken sist)
     std::array<juce::String, ParamID::numBassLayers> layerNames;
 

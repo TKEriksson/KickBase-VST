@@ -203,6 +203,16 @@ namespace Presets
         return "bass" + juce::String (layer + 1) + id.substring (4 + digits);
     }
 
+    juce::String effectIdToCanonical (const juce::String& id, int)
+    {
+        return Effects::isEffectParameter (id) ? "fxA" + id.substring (3) : id;
+    }
+
+    juce::String effectIdFromCanonical (const juce::String& id, int channel)
+    {
+        return Effects::isEffectParameter (id) ? "fx" + Effects::channelName (channel) + id.substring (3) : id;
+    }
+
     juce::String patternIdToCanonical (const juce::String& id, int layer)
     {
         if (layer == Pattern::kickLayer)
@@ -255,7 +265,8 @@ namespace Presets
                             || isLayerField (BassField::swing) || isLayerField (BassField::humanize)))
                     || id == ParamID::rowBars (layer + 1) || id == ParamID::rowLoop (layer + 1);
             case Section::effects:
-                return Effects::isEffectParameter (id) || id == ParamID::kickFxChannel || id == ParamID::kickFxAmount || isLayerField (BassField::fxChannel) || isLayerField (BassField::fxAmount);
+                // En kanal: dess fem platser (typ och rattar), EQ, kompressor, nivå och duck. Inte vem som skickar dit (det hör till instrumentet).
+                return Effects::isEffectParameter (id) && (int) (id[2] - 'A') == layer;
             case Section::sidechain:
                 return id.startsWith ("sc") || isLayerField (BassField::duck);
             case Section::master:

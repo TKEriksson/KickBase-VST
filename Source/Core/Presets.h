@@ -34,6 +34,10 @@ namespace Presets
     juce::String patternIdToCanonical (const juce::String& paramID, int layer);
     juce::String patternIdFromCanonical (const juce::String& paramID, int layer);
 
+    // FX-presets gäller en effektkanal (layer = kanal 0-10). ID:n skrivs som för FX1 ("fxA...") och flyttas till kanalen man laddar i.
+    juce::String effectIdToCanonical (const juce::String& paramID, int channel);
+    juce::String effectIdFromCanonical (const juce::String& paramID, int channel);
+
     // Mappen där användarens presets för delen sparas. Full och Bass har en mapp per plugin,
     // eftersom instrumentet och FX-versionen har olika parametrar där.
     juce::File folder (Section section, bool effectVersion);

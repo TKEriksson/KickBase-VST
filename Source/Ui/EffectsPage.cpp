@@ -268,7 +268,8 @@ EffectsPage::EffectsPage (PluginBase& p)
     : processor (p), presets (p, Presets::Section::effects, Theme::effects), strip (p), editor (p), eq (p)
 {
     presets.setEmptyLabel ("FX Preset");
-    presets.setTooltip ("FX PRESET - Saves or loads all the effect channels: the effects in every slot with their settings, the channel EQ and compressor, and which instruments are sent where.");
+    presets.setTooltip ("FX PRESET - Saves or loads the selected effect channel (FX1-FX11): its five effects with their settings, its EQ and compressor, level and duck. "
+                        "The other channels are not touched, and who sends to the channel is not part of it.");
     addAndMakeVisible (presets);
 
     const char* viewNames[] { "EQ", "COMP", "FX" };
@@ -341,6 +342,7 @@ void EffectsPage::selectChannel (int newChannel)
     }
     strip.setChannel (channel);
     eq.setChannel (channel);
+    presets.setLayer (channel, Theme::effects);
     for (int ch = 0; ch < numEffectChannels; ++ch)
         comps[(size_t) ch]->setVisible (view == View::comp && ch == channel);
     selectSlot (slot);

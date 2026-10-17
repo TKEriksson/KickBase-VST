@@ -24,6 +24,7 @@ PluginBase::PluginBase (const BusesProperties& buses, juce::AudioProcessorValueT
     presetNames.fill ("Default");
     bassPresetNames.fill ("Default");
     rowPresetNames.fill ({});
+    fxPresetNames.fill ({});
     presetNames[(size_t) Presets::Section::full] = "Init";
 }
 
@@ -397,6 +398,8 @@ juce::String& PluginBase::presetNameSlot (Presets::Section section, int layer)
 {
     if (section == Presets::Section::pattern)
         return rowPresetNames[(size_t) juce::jlimit (0, Pattern::numNoteLayers - 1, layer)];
+    if (section == Presets::Section::effects)
+        return fxPresetNames[(size_t) juce::jlimit (0, numEffectChannels - 1, layer)];
     return section == Presets::Section::bass ? bassPresetNames[(size_t) juce::jlimit (0, ParamID::numBassLayers - 1, layer)]
                                              : presetNames[(size_t) section];
 }
@@ -405,6 +408,8 @@ juce::String PluginBase::getPresetName (Presets::Section section, int layer) con
 {
     if (section == Presets::Section::pattern)
         return rowPresetNames[(size_t) juce::jlimit (0, Pattern::numNoteLayers - 1, layer)];
+    if (section == Presets::Section::effects)
+        return fxPresetNames[(size_t) juce::jlimit (0, numEffectChannels - 1, layer)];
     return section == Presets::Section::bass ? bassPresetNames[(size_t) juce::jlimit (0, ParamID::numBassLayers - 1, layer)]
                                              : presetNames[(size_t) section];
 }
@@ -438,6 +443,8 @@ void PluginBase::getStateInformation (juce::MemoryBlock& destData)
         state.setProperty ("presetBass" + juce::String (layer + 1), bassPresetNames[(size_t) layer], nullptr);
     for (int row = 0; row < Pattern::numNoteLayers; ++row)
         state.setProperty ("presetRow" + juce::String (row + 1), rowPresetNames[(size_t) row], nullptr);
+    for (int channel = 0; channel < numEffectChannels; ++channel)
+        state.setProperty ("presetFx" + juce::String (channel + 1), fxPresetNames[(size_t) channel], nullptr);
     state.setProperty ("previewNote", previewNote.load(), nullptr);
     for (int layer = 0; layer < ParamID::numBassLayers; ++layer)
         state.setProperty ("layerName" + juce::String (layer + 1), layerNames[(size_t) layer], nullptr);
@@ -469,6 +476,8 @@ void PluginBase::setStateInformation (const void* data, int sizeInBytes)
         bassPresetNames[(size_t) layer] = state.getProperty ("presetBass" + juce::String (layer + 1), bassPresetNames[(size_t) layer]).toString();
     for (int row = 0; row < Pattern::numNoteLayers; ++row)
         rowPresetNames[(size_t) row] = state.getProperty ("presetRow" + juce::String (row + 1), rowPresetNames[(size_t) row]).toString();
+    for (int channel = 0; channel < numEffectChannels; ++channel)
+        fxPresetNames[(size_t) channel] = state.getProperty ("presetFx" + juce::String (channel + 1), fxPresetNames[(size_t) channel]).toString();
     previewNote = juce::jlimit (0, 127, (int) state.getProperty ("previewNote", 60));
     for (int layer = 0; layer < ParamID::numBassLayers; ++layer)
         layerNames[(size_t) layer] = state.getProperty ("layerName" + juce::String (layer + 1), juce::String()).toString();
@@ -609,6 +618,7 @@ void PluginBase::loadFactoryPreset (Presets::Section section, int index, int lay
         presetNames.fill ({}); // delarna kommer inte längre från sina egna presets
         bassPresetNames.fill ({});
         rowPresetNames.fill ({});
+        fxPresetNames.fill ({});
     }
 
     presetNameSlot (section, layer) = Presets::factoryName (section, effectVersion, index);
@@ -620,6 +630,15 @@ juce::Array<juce::File> PluginBase::getUserPresets (Presets::Section section, in
 {
     auto files = Presets::folder (section, effectVersion).findChildFiles (juce::File::findFiles, false, "*" + presetFileExtension);
     files.sort();
+    if (section == Presets::Section::effects)
+    {
+        // FX Preset: bara kanal-presets (äldre filer med alla kanaler visas inte).
+        juce::Array<juce::File> channels;
+        for (const auto& file : files)
+            if (auto xml = juce::XmlDocument::parse (file); xml != nullptr && xml->getStringAttribute ("scope") == "channel")
+                channels.add (file);
+        return channels;
+    }
     if (section != Presets::Section::pattern)
         return files;
 
@@ -643,6 +662,8 @@ bool PluginBase::saveUserPreset (Presets::Section section, const juce::String& n
     root.setAttribute ("section", Presets::sectionName (section));
     root.setAttribute ("plugin", effectVersion ? "fx" : "instrument");
     root.setAttribute ("version", 1);
+    if (section == Presets::Section::effects)
+        root.setAttribute ("scope", "channel"); // en effektkanal
     if (section == Presets::Section::pattern)
     {
         root.setAttribute ("scope", "row"); // en rad: en kick- eller instrumentrad, med sina toner, GATE och inställningar
@@ -662,6 +683,7 @@ bool PluginBase::saveUserPreset (Presets::Section section, const juce::String& n
         auto* entry = paramsXml->createNewChildElement ("Param");
         entry->setAttribute ("id", section == Presets::Section::bass ? Presets::toBassLayer (ranged->getParameterID(), 0)
                                    : section == Presets::Section::pattern ? Presets::patternIdToCanonical (ranged->getParameterID(), layer)
+                                   : section == Presets::Section::effects ? Presets::effectIdToCanonical (ranged->getParameterID(), layer)
                                                                           : ranged->getParameterID());
         entry->setAttribute ("value", (double) ranged->convertFrom0to1 (ranged->getValue()));
     }
@@ -707,6 +729,8 @@ bool PluginBase::loadUserPreset (Presets::Section section, const juce::File& fil
     if (xml == nullptr || ! xml->hasTagName ("KickbasePreset")
         || xml->getStringAttribute ("section") != Presets::sectionName (section))
         return false;
+    if (section == Presets::Section::effects && xml->getStringAttribute ("scope") != "channel")
+        return false; // ett äldre FX-preset med alla kanaler
     if (section == Presets::Section::pattern
         && (xml->getStringAttribute ("scope") != "row" || xml->getStringAttribute ("rowKind") != (layer == Pattern::kickLayer ? "kick" : "instrument")))
         return false; // ett äldre preset med hela mönstret, eller en kickrad i ett instrument (eller tvärtom)
@@ -724,6 +748,8 @@ bool PluginBase::loadUserPreset (Presets::Section section, const juce::File& fil
                 id = Presets::toBassLayer (id, layer);
             else if (section == Presets::Section::pattern)
                 id = Presets::patternIdFromCanonical (id, layer);
+            else if (section == Presets::Section::effects)
+                id = Presets::effectIdFromCanonical (id, layer);
             if (auto* parameter = apvts.getParameter (id); parameter != nullptr && Presets::belongsTo (section, id, layer))
                 Presets::setParameter (*parameter, parameter->convertTo0to1 ((float) entry->getDoubleAttribute ("value")));
         }
@@ -796,6 +822,7 @@ bool PluginBase::loadUserPreset (Presets::Section section, const juce::File& fil
         presetNames.fill ({});
         bassPresetNames.fill ({});
         rowPresetNames.fill ({});
+        fxPresetNames.fill ({});
     }
 
     presetNameSlot (section, layer) = file.getFileNameWithoutExtension();

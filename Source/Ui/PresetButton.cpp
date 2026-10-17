@@ -67,7 +67,8 @@ void PresetButton::showMenu()
     // Mönster: bara de man sparat själv. Ett sparat mönster innehåller alla rader (kick, instrument, pianorullar, längder, GATE och groove), så ingen
     // rad råkar bli kvar eller tömd. Färdiga rytmer för en rad finns i FILL.
     const auto patterns = section == Presets::Section::pattern;
-    if (! patterns)
+    const auto channelPresets = section == Presets::Section::effects;
+    if (! patterns && ! channelPresets)
     {
         menu.addSectionHeader ("FACTORY");
         for (int i = 0; i < Presets::factoryCount (section, effectVersion); ++i)
@@ -77,15 +78,16 @@ void PresetButton::showMenu()
         }
     }
 
-    if (patterns)
+    if (patterns || channelPresets)
     {
-        menu.addSectionHeader ("PATTERN PRESETS - " + (layer == Pattern::kickLayer ? juce::String ("KICK") : processor.getLayerName (layer)));
+        menu.addSectionHeader (patterns ? "PATTERN PRESETS - " + (layer == Pattern::kickLayer ? juce::String ("KICK") : processor.getLayerName (layer))
+                                        : "FX PRESETS - " + Effects::channelLabel (layer));
         if (userPresets.isEmpty())
             menu.addItem (nothingId, "(none saved yet)", false);
     }
     if (! userPresets.isEmpty())
     {
-        if (! patterns)
+        if (! patterns && ! channelPresets)
             menu.addSectionHeader ("USER");
         for (int i = 0; i < userPresets.size(); ++i)
         {
@@ -104,16 +106,24 @@ void PresetButton::showMenu()
         if (result >= userBase && result < userBase + userPresets.size())
         {
             const auto file = userPresets[result - userBase];
-            if (section != Presets::Section::pattern)
+            if (section != Presets::Section::pattern && section != Presets::Section::effects)
             {
                 processor.loadUserPreset (section, file, layer);
             }
             else
             {
-                // Ett mönster-preset ersätter den valda radens toner (pianorulle, GATE och inställningar): fråga först om något finns att förlora.
+                // Ett mönster-preset ersätter den valda radens toner (pianorulle, GATE och inställningar), ett FX-preset kanalens effekter: fråga först om något finns att förlora.
                 auto hasNotes = false;
-                for (int tick = 0; tick < Pattern::maxTicks && ! hasNotes; ++tick)
-                    hasNotes = processor.pattern.note (layer, tick).on.load();
+                if (section == Presets::Section::pattern)
+                {
+                    for (int tick = 0; tick < Pattern::maxTicks && ! hasNotes; ++tick)
+                        hasNotes = processor.pattern.note (layer, tick).on.load();
+                }
+                else
+                {
+                    for (int slot = 0; slot < slotsPerChannel && ! hasNotes; ++slot)
+                        hasNotes = Effects::slotType (processor.apvts, layer, slot) != EffectType::off;
+                }
                 if (! hasNotes)
                 {
                     processor.loadUserPreset (section, file, layer);
@@ -122,10 +132,12 @@ void PresetButton::showMenu()
                 {
                     juce::Component::SafePointer<PresetButton> safeThis (this);
                     const auto rowName = layer == Pattern::kickLayer ? juce::String ("KICK") : processor.getLayerName (layer);
+                    const auto message = section == Presets::Section::pattern
+                        ? "Loading \"" + file.getFileNameWithoutExtension() + "\" replaces the notes, piano roll and GATE of " + rowName + ". The other rows are not touched. Continue?"
+                        : "Loading \"" + file.getFileNameWithoutExtension() + "\" replaces the effects, EQ and compressor of " + Effects::channelLabel (layer) + ". The other channels are not touched. Continue?";
                     juce::AlertWindow::showAsync (juce::MessageBoxOptions().withIconType (juce::MessageBoxIconType::QuestionIcon)
-                                                      .withTitle ("Load pattern preset")
-                                                      .withMessage ("Loading \"" + file.getFileNameWithoutExtension() + "\" replaces the notes, piano roll and GATE of " + rowName
-                                                                    + ". The other rows are not touched. Continue?")
+                                                      .withTitle (section == Presets::Section::pattern ? "Load pattern preset" : "Load FX preset")
+                                                      .withMessage (message)
                                                       .withButton ("Replace").withButton ("Cancel"),
                                                   [safeThis, file] (int choice)
                     {

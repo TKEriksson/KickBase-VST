@@ -1187,6 +1187,30 @@ namespace
             ok = ok && rowOk;
         }
 
+        // FX Preset: en enda effektkanal sparas och laddas i en annan; den första rörs inte.
+        {
+            const auto fxName = juce::String ("__fxpresettest__");
+            Effects::setSlotType (processor.apvts, 3, 0, EffectType::ducker);
+            auto* hp = processor.apvts.getParameter (Effects::channelParamID (3, "EqHp"));
+            hp->setValueNotifyingHost (hp->convertTo0to1 (90.0f));
+            const auto savedFx = processor.saveUserPreset (Presets::Section::effects, fxName, 3);
+            const auto fxFile = Presets::folder (Presets::Section::effects, false).getChildFile (fxName + ".mofp");
+            const auto listedFx = processor.getUserPresets (Presets::Section::effects, 3).contains (fxFile);
+            Effects::setSlotType (processor.apvts, 3, 0, EffectType::off);
+            hp->setValueNotifyingHost (hp->convertTo0to1 (30.0f));
+            const auto loadedFx = processor.loadUserPreset (Presets::Section::effects, fxFile, 7);
+            auto* hp7 = processor.apvts.getParameter (Effects::channelParamID (7, "EqHp"));
+            const auto movedType = Effects::slotType (processor.apvts, 7, 0) == EffectType::ducker;
+            const auto movedHp = std::abs (hp7->convertFrom0to1 (hp7->getValue()) - 90.0f) < 1.0f;
+            const auto untouched = Effects::slotType (processor.apvts, 3, 0) == EffectType::off
+                                && std::abs (hp->convertFrom0to1 (hp->getValue()) - 30.0f) < 1.0f;
+            const auto fxOk = savedFx && listedFx && loadedFx && movedType && movedHp && untouched
+                           && processor.getPresetName (Presets::Section::effects, 7) == fxName;
+            fxFile.deleteFile();
+            std::printf ("FX-preset (en kanal): %s" "\n", fxOk ? "ok" : "FEL");
+            ok = ok && fxOk;
+        }
+
         std::puts (ok ? "Presettest OK" : "FEL: presettest");
         return ok ? 0 : 1;
     }
