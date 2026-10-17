@@ -68,7 +68,16 @@ private:
 
     // Fördröjning (ringbuffert) per kanal, och limiterns mellansteg.
     std::vector<std::vector<float>> delayLines;
-    std::vector<float> minWindow, boxWindow;
+    std::vector<float> boxWindow;
+
+    // Minsta förstärkningen över fönstret (de senaste `lookahead` värdena), som en monoton kö: kön har stigande värden och det äldsta
+    // ligger först, så minimum är det första. Samma värde som att gå igenom hela fönstret, men med i snitt ett par jämförelser per sample
+    // i stället för `lookahead` (72 vid 48 kHz).
+    std::vector<float> minValues;
+    std::vector<juce::int64> minIndices;
+    int minFront = 0, minCount = 0;
+    juce::int64 minCounter = 0;
+    void pushMin (float value);
     int writeIndex = 0;
     float released = 1.0f;  // förstärkning efter release (sjunker direkt, stiger långsamt)
     double boxSum = 0.0;

@@ -3,31 +3,6 @@
 namespace
 {
 
-    // Drive: 0 mjuk (tanh), 1 hård (klippning), 2 vikning (wavefolder), 3 asymmetrisk (jämna övertoner), 4 krossad (bitar).
-    float softClip (float x, float drive, int mode = 0)
-    {
-        if (drive <= 0.0f)
-            return x;
-
-        const auto gain = 1.0f + drive * 9.0f;
-        switch (mode)
-        {
-            case 1:  return juce::jlimit (-1.0f, 1.0f, gain * x);
-            case 2:  return std::sin (juce::MathConstants<float>::halfPi * 0.6f * gain * x);
-            case 3:
-            {
-                const auto bias = 0.35f * drive;
-                return (std::tanh (gain * x + bias) - std::tanh (bias)) / std::max (0.2f, std::tanh (gain));
-            }
-            case 4:
-            {
-                const auto levels = std::exp2 (8.0f - 6.0f * drive);
-                return std::round (std::tanh (gain * 0.5f * x) * levels) / levels;
-            }
-            default: return std::tanh (gain * x) / std::tanh (gain);
-        }
-    }
-
     double wrap (double phase) { return phase - std::floor (phase); }
 }
 
@@ -41,6 +16,8 @@ void BassSynth::prepare (double newSampleRate)
         filter->prepare ({ sampleRate, 512, 1 });
         filter->setType (juce::dsp::StateVariableTPTFilterType::lowpass);
     }
+    for (auto* filter : { &filter1, &sideFilter1 })
+        filter->setResonance (0.707f); // det första LP-steget i LP 24 har alltid den resonansen (sätts här, inte vid varje ny cutoff)
     appliedCutoff1 = appliedCutoff2 = appliedResonance2 = -1.0f;
     appliedType2 = -1;
 
@@ -404,16 +381,24 @@ BassSynth::Output BassSynth::next()
     const auto type = params.filterType == BassFilterType::bandpass ? Type::bandpass
                     : params.filterType == BassFilterType::highpass ? Type::highpass
                                                                     : Type::lowpass;
-    if ((int) type != appliedType2 || clampedCutoff != appliedCutoff2 || q != appliedResonance2)
+    // Bara det som ändrats sätts: varje set-funktion räknar om koefficienterna (tan) ur alla värden, så resultatet är detsamma som att sätta
+    // allt, men filter-envelopen ändrar cutoff varje sample och då räknades de om dubbelt så många gånger som behövs.
+    if ((int) type != appliedType2)
     {
-        for (auto* filter : { &filter2, &sideFilter2 })
-        {
-            filter->setType (type);
-            filter->setCutoffFrequency (clampedCutoff);
-            filter->setResonance (q);
-        }
+        filter2.setType (type);
+        sideFilter2.setType (type);
         appliedType2 = (int) type;
+    }
+    if (clampedCutoff != appliedCutoff2)
+    {
+        filter2.setCutoffFrequency (clampedCutoff);
+        sideFilter2.setCutoffFrequency (clampedCutoff);
         appliedCutoff2 = clampedCutoff;
+    }
+    if (q != appliedResonance2)
+    {
+        filter2.setResonance (q);
+        sideFilter2.setResonance (q);
         appliedResonance2 = q;
     }
 
@@ -421,11 +406,8 @@ BassSynth::Output BassSynth::next()
     {
         if (clampedCutoff != appliedCutoff1)
         {
-            for (auto* filter : { &filter1, &sideFilter1 })
-            {
-                filter->setCutoffFrequency (clampedCutoff);
-                filter->setResonance (0.707f);
-            }
+            filter1.setCutoffFrequency (clampedCutoff);
+            sideFilter1.setCutoffFrequency (clampedCutoff);
             appliedCutoff1 = clampedCutoff;
         }
         sample = filter1.processSample (0, sample);
@@ -436,5 +418,6 @@ BassSynth::Output BassSynth::next()
     noteTime += 1.0 / sampleRate;
 
     // Drive verkar på källan (före gaten), så att distorsionen låter likadant oavsett envelope.
-    return { softClip (sample + side, params.drive, params.driveMode), softClip (sample - side, params.drive, params.driveMode), ampLevel * velocity * params.level };
+    driveShape.update (params.drive, params.driveMode);
+    return { driveShape.apply (sample + side), driveShape.apply (sample - side), ampLevel * velocity * params.level };
 }

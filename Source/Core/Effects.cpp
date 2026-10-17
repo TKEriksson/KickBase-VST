@@ -1,4 +1,5 @@
 #include "Effects.h"
+#include "Biquad.h"
 
 namespace
 {
@@ -611,23 +612,19 @@ namespace
 
     struct EqFx
     {
-        std::array<dsp::IIR::Filter<float>, 2> lowFilters, midFilters, highFilters;
+        std::array<Biquad, 2> lowFilters, midFilters, highFilters; // räknar som dsp::IIR::Filter, bit för bit
         double sampleRate = 44100.0;
         float lastLow = -100.0f, lastMidFreq = -1.0f, lastMid = -100.0f, lastHigh = -100.0f;
 
         void prepare (const dsp::ProcessSpec& spec)
         {
             sampleRate = spec.sampleRate;
-            const dsp::ProcessSpec mono { spec.sampleRate, spec.maximumBlockSize, 1 };
             for (auto* filters : { &lowFilters, &midFilters, &highFilters })
-            {
                 for (auto& filter : *filters)
                 {
-                    // Koefficientobjekten skapas här; ljudtråden skriver bara över värdena.
-                    filter.coefficients = new dsp::IIR::Coefficients<float> (1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f);
-                    filter.prepare (mono);
+                    filter.setIdentity();
+                    filter.reset();
                 }
-            }
             lastLow = lastMidFreq = lastMid = lastHigh = -100.0f;
         }
 
@@ -645,20 +642,20 @@ namespace
 
             if (l != lastLow)
                 for (auto& f : lowFilters)
-                    *f.coefficients = Array::makeLowShelf (sampleRate, 120.0f, 0.7f, Decibels::decibelsToGain (l));
+                    f.setCoefficients (Array::makeLowShelf (sampleRate, 120.0f, 0.7f, Decibels::decibelsToGain (l)));
             if (mf != lastMidFreq || m != lastMid)
                 for (auto& f : midFilters)
-                    *f.coefficients = Array::makePeakFilter (sampleRate, mf, 0.9f, Decibels::decibelsToGain (m));
+                    f.setCoefficients (Array::makePeakFilter (sampleRate, mf, 0.9f, Decibels::decibelsToGain (m)));
             if (h != lastHigh)
                 for (auto& f : highFilters)
-                    *f.coefficients = Array::makeHighShelf (sampleRate, 6000.0f, 0.7f, Decibels::decibelsToGain (h));
+                    f.setCoefficients (Array::makeHighShelf (sampleRate, 6000.0f, 0.7f, Decibels::decibelsToGain (h)));
             lastLow = l; lastMidFreq = mf; lastMid = m; lastHigh = h;
 
             for (int ch = 0; ch < std::min (2, buffer.getNumChannels()); ++ch)
             {
                 auto* data = buffer.getWritePointer (ch);
                 for (int i = 0; i < numSamples; ++i)
-                    data[i] = highFilters[(size_t) ch].processSample (midFilters[(size_t) ch].processSample (lowFilters[(size_t) ch].processSample (data[i])));
+                    data[i] = highFilters[(size_t) ch].process (midFilters[(size_t) ch].process (lowFilters[(size_t) ch].process (data[i])));
             }
         }
     };
@@ -1271,7 +1268,7 @@ namespace
     // Kanalens EQ och kompressor (alltid med, neutrala som standard). Allt skapas i prepare.
     struct ChannelStrip
     {
-        std::array<std::array<dsp::IIR::Filter<float>, 2>, Effects::eqBands + 2> filters;
+        std::array<std::array<Biquad, 2>, Effects::eqBands + 2> filters; // räknar som dsp::IIR::Filter, bit för bit
         Effects::EqSettings last;
         bool coefficientsValid = false;
         float env = 0.0f, gainState = 1.0f;
@@ -1283,7 +1280,7 @@ namespace
             for (auto& pair : filters)
                 for (auto& filter : pair)
                 {
-                    filter.coefficients = new dsp::IIR::Coefficients<float> (1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f);
+                    filter.setIdentity();
                     filter.reset();
                 }
             coefficientsValid = false;
@@ -1299,12 +1296,12 @@ namespace
             if (coefficientsValid && ! differs())
                 return;
 
-            for (auto& f : filters[0]) *f.coefficients = Array::makeHighPass (sampleRate, s.hp <= 21.0f ? 5.0f : jmin (s.hp, limit), 0.7071f);
-            for (auto& f : filters[1]) *f.coefficients = Array::makeLowShelf (sampleRate, jmin (s.freq[0], limit), 0.7f, Decibels::decibelsToGain (s.gain[0]));
-            for (auto& f : filters[2]) *f.coefficients = Array::makePeakFilter (sampleRate, jmin (s.freq[1], limit), s.q[1], Decibels::decibelsToGain (s.gain[1]));
-            for (auto& f : filters[3]) *f.coefficients = Array::makePeakFilter (sampleRate, jmin (s.freq[2], limit), s.q[2], Decibels::decibelsToGain (s.gain[2]));
-            for (auto& f : filters[4]) *f.coefficients = Array::makeHighShelf (sampleRate, jmin (s.freq[3], limit), 0.7f, Decibels::decibelsToGain (s.gain[3]));
-            for (auto& f : filters[5]) *f.coefficients = Array::makeLowPass (sampleRate, s.lp >= 19500.0f ? limit : jmin (s.lp, limit), 0.7071f);
+            for (auto& f : filters[0]) f.setCoefficients (Array::makeHighPass (sampleRate, s.hp <= 21.0f ? 5.0f : jmin (s.hp, limit), 0.7071f));
+            for (auto& f : filters[1]) f.setCoefficients (Array::makeLowShelf (sampleRate, jmin (s.freq[0], limit), 0.7f, Decibels::decibelsToGain (s.gain[0])));
+            for (auto& f : filters[2]) f.setCoefficients (Array::makePeakFilter (sampleRate, jmin (s.freq[1], limit), s.q[1], Decibels::decibelsToGain (s.gain[1])));
+            for (auto& f : filters[3]) f.setCoefficients (Array::makePeakFilter (sampleRate, jmin (s.freq[2], limit), s.q[2], Decibels::decibelsToGain (s.gain[2])));
+            for (auto& f : filters[4]) f.setCoefficients (Array::makeHighShelf (sampleRate, jmin (s.freq[3], limit), 0.7f, Decibels::decibelsToGain (s.gain[3])));
+            for (auto& f : filters[5]) f.setCoefficients (Array::makeLowPass (sampleRate, s.lp >= 19500.0f ? limit : jmin (s.lp, limit), 0.7071f));
             last = s;
             coefficientsValid = true;
         }
@@ -1318,7 +1315,7 @@ namespace
                 {
                     auto x = data[i];
                     for (auto& pair : filters)
-                        x = pair[(size_t) ch].processSample (x);
+                        x = pair[(size_t) ch].process (x);
                     data[i] = x;
                 }
             }

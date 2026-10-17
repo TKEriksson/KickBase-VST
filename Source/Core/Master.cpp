@@ -65,8 +65,9 @@ void MasterSection::prepare (double newSampleRate, int numChannels)
 
     dcCoefficient = (float) (1.0 - juce::MathConstants<double>::twoPi * 5.0 / sampleRate);
     delayLines.assign ((size_t) channels, std::vector<float> ((size_t) lookahead, 0.0f));
-    minWindow.assign ((size_t) lookahead, 1.0f);
     boxWindow.assign ((size_t) lookahead, 1.0f);
+    minValues.assign ((size_t) lookahead + 1, 1.0f);
+    minIndices.assign ((size_t) lookahead + 1, 0);
     extraDelays.assign (numExtraDelays, std::vector<std::vector<float>> (2, std::vector<float> ((size_t) lookahead, 0.0f)));
     extraIndex.assign (numExtraDelays, 0);
     reset();
@@ -82,8 +83,13 @@ void MasterSection::reset()
     dcOutput.assign ((size_t) channels, 0.0f);
     for (auto& line : delayLines)
         std::fill (line.begin(), line.end(), 0.0f);
-    std::fill (minWindow.begin(), minWindow.end(), 1.0f);
     std::fill (boxWindow.begin(), boxWindow.end(), 1.0f);
+    // Fönstret börjar fullt av 1 (ingen förstärkningsminskning): det nyaste av dem räcker, de har samma värde.
+    minFront = 0;
+    minCount = 1;
+    minValues[0] = 1.0f;
+    minIndices[0] = -1;
+    minCounter = 0;
     boxSum = (double) lookahead;
     released = 1.0f;
     writeIndex = 0;
@@ -159,7 +165,8 @@ void MasterSection::process (juce::AudioBuffer<float>& buffer, int numSamples)
                 dcInput[(size_t) ch] = x;
                 dcOutput[(size_t) ch] = blocked;
                 x = blocked * driveGain;
-                x += (std::tanh (x) - x) * clipAmount;
+                // Med CLIP 0 blir uttrycket x + (±0), alltså x (och -0 blir +0): samma sak utan tanh för varje sample.
+                x += clipAmount != 0.0f ? (std::tanh (x) - x) * clipAmount : 0.0f;
             }
             buffer.setSample (ch, i, x);
             inputPeak = std::max (inputPeak, std::abs (x));
@@ -172,10 +179,8 @@ void MasterSection::process (juce::AudioBuffer<float>& buffer, int numSamples)
 
         // 3. Minsta värdet över fönstret, och sedan medelvärdet över fönstret: förstärkningen
         //    hinner glida ner under lookahead-tiden och är som lägst när toppen når utgången.
-        minWindow[(size_t) writeIndex] = released;
-        auto windowMin = 1.0f;
-        for (const auto value : minWindow)
-            windowMin = std::min (windowMin, value);
+        pushMin (released);
+        const auto windowMin = minValues[(size_t) minFront];
 
         boxSum += windowMin - boxWindow[(size_t) writeIndex];
         boxWindow[(size_t) writeIndex] = windowMin;
@@ -205,6 +210,25 @@ void MasterSection::process (juce::AudioBuffer<float>& buffer, int numSamples)
     outputPeakDb = std::max (peakDb, outputPeakDb.load() - 1.5f);
     const auto reduction = juce::Decibels::gainToDecibels (lowestGain, -60.0f);
     gainReductionDb = std::min (reduction, gainReductionDb.load() + 1.0f);
+}
+
+void MasterSection::pushMin (float value)
+{
+    // Kön: värden som aldrig kan bli minimum (ett nyare värde är lika litet eller mindre) tas bort bakifrån, och värden som lämnat fönstret
+    // (äldre än `lookahead` samples) framifrån.
+    const auto capacity = (int) minValues.size();
+    while (minCount > 0 && minValues[(size_t) ((minFront + minCount - 1) % capacity)] >= value)
+        --minCount;
+    const auto back = (minFront + minCount) % capacity;
+    minValues[(size_t) back] = value;
+    minIndices[(size_t) back] = minCounter;
+    ++minCount;
+    while (minIndices[(size_t) minFront] <= minCounter - lookahead)
+    {
+        minFront = (minFront + 1) % capacity;
+        --minCount;
+    }
+    ++minCounter;
 }
 
 void MasterSection::delayOnly (juce::AudioBuffer<float>& buffer, int numSamples, int delaySlot)

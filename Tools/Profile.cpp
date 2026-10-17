@@ -110,6 +110,37 @@ namespace
             };
             std::printf ("%d prov\n", total);
             printTop ("Själv (där tiden faktiskt går):", self, selfLines);
+
+            // Vem som anropar de dyraste funktionerna (första ramen utanför funktionen själv), med källrad.
+            {
+                std::vector<std::pair<int, juce::String>> sorted;
+                for (const auto& [name, count] : self)
+                    sorted.push_back ({ count, name });
+                std::sort (sorted.begin(), sorted.end(), [] (auto& a, auto& b) { return a.first > b.first; });
+                std::printf ("\nAnropas från (de tio dyraste):\n");
+                for (int i = 0; i < std::min (10, (int) sorted.size()); ++i)
+                {
+                    std::map<juce::String, int> callers;
+                    for (const auto& stack : stacks)
+                    {
+                        if (stack.empty() || functionOf (stack[0]) != sorted[(size_t) i].second)
+                            continue;
+                        for (size_t f = 1; f < stack.size(); ++f)
+                            if (functionOf (stack[f]) != sorted[(size_t) i].second)
+                            {
+                                ++callers[functionOf (stack[f]).substring (0, 70) + " (" + lineOf (stack[f]) + ")"];
+                                break;
+                            }
+                    }
+                    std::vector<std::pair<int, juce::String>> top;
+                    for (const auto& [name, count] : callers)
+                        top.push_back ({ count, name });
+                    std::sort (top.begin(), top.end(), [] (auto& a, auto& b) { return a.first > b.first; });
+                    std::printf ("  %s:\n", sorted[(size_t) i].second.substring (0, 70).toRawUTF8());
+                    for (int c = 0; c < std::min (3, (int) top.size()); ++c)
+                        std::printf ("      %5.1f %%  %s\n", 100.0 * top[(size_t) c].first / std::max (1, total), top[(size_t) c].second.toRawUTF8());
+                }
+            }
             printTop ("Inklusive anropade funktioner:", inclusive, inclusiveLines);
             printTop ("Källrader:", lines, sourceLines);
         }

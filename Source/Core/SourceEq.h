@@ -4,6 +4,7 @@
 #include <juce_dsp/juce_dsp.h>
 #include <array>
 #include "Effects.h"
+#include "Biquad.h"
 
 // En EQ för en ljudkälla (kicken, ett instrument eller mastern): högpass, fyra band (lågt hyllfilter, två klockor, högt hyllfilter) och lågpass,
 // samma uppbyggnad som effektkanalernas EQ. Neutral som standard, och då körs ingen bearbetning alls. Redigeras i ANALYZER-fliken.
@@ -31,7 +32,7 @@ public:
     Effects::EqSettings settings() const;
 
 private:
-    using Filter = juce::dsp::IIR::Filter<float>;
+    using Filter = Biquad; // räknar som juce::dsp::IIR::Filter, bit för bit
     static constexpr int numFilters = Effects::eqBands + 2;
 
     std::array<std::atomic<float>*, 2 + Effects::eqBands * 3> values {};

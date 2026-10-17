@@ -64,6 +64,7 @@ void KickEngine::prepare (double newSampleRate)
         voice.noiseFilter.prepare ({ sampleRate, 512, 1 });
         voice.noiseFilter.setType (juce::dsp::StateVariableTPTFilterType::highpass);
         voice.noiseFilter.setResonance (0.7071f);
+        voice.clickToneSet = voice.noiseToneSet = -1.0f;
     }
     highCut.prepare ({ sampleRate, 512, 1 });
     highCut.setType (juce::dsp::StateVariableTPTFilterType::lowpass);
@@ -71,6 +72,7 @@ void KickEngine::prepare (double newSampleRate)
     lowCut.prepare ({ sampleRate, 512, 1 });
     lowCut.setType (juce::dsp::StateVariableTPTFilterType::highpass);
     lowCut.setResonance (0.7071f);
+    highCutSet = lowCutSet = -1.0f;
 
     reset();
 }
@@ -132,14 +134,23 @@ float KickEngine::nextSample()
         const auto levels = std::exp2 (15.0f - params.crush * 12.0f); // 16 bitar ... 4 bitar
         y = std::round (y * levels) / levels;
     }
+    // Filtren ställs bara in när värdet ändras (set-funktionen räknar om koefficienterna ur alla värden: samma resultat).
     if (params.lowCutHz > 21.0f)
     {
-        lowCut.setCutoffFrequency (juce::jlimit (20.0f, 400.0f, params.lowCutHz));
+        if (const auto hz = juce::jlimit (20.0f, 400.0f, params.lowCutHz); hz != lowCutSet)
+        {
+            lowCut.setCutoffFrequency (hz);
+            lowCutSet = hz;
+        }
         y = lowCut.processSample (0, y);
     }
     if (params.highCutHz < 19000.0f)
     {
-        highCut.setCutoffFrequency (juce::jlimit (200.0f, (float) sampleRate * 0.45f, params.highCutHz));
+        if (const auto hz = juce::jlimit (200.0f, (float) sampleRate * 0.45f, params.highCutHz); hz != highCutSet)
+        {
+            highCut.setCutoffFrequency (hz);
+            highCutSet = hz;
+        }
         y = highCut.processSample (0, y);
     }
     return y * params.level;
@@ -195,13 +206,20 @@ float KickEngine::renderVoice (Voice& voice)
         // Övertoner 2-9 på kroppen (följer svepet), som klingar av för sig.
         if (params.harmonics > 0.0f)
         {
-            auto sum = 0.0f, norm = 0.0f;
-            for (int n = 2; n <= 9; ++n)
+            if (params.harmonicsTilt != harmonicsTiltSet)
             {
-                const auto gain = std::pow ((float) n, -params.harmonicsTilt);
-                sum += gain * (float) std::sin (twoPi * n * (voice.phase + params.startPhase));
-                norm += gain;
+                harmonicsTiltSet = params.harmonicsTilt;
+                harmonicsNorm = 0.0f;
+                for (int n = 2; n <= 9; ++n)
+                {
+                    harmonicsGains[(size_t) (n - 2)] = std::pow ((float) n, -params.harmonicsTilt);
+                    harmonicsNorm += harmonicsGains[(size_t) (n - 2)];
+                }
             }
+            auto sum = 0.0f;
+            const auto norm = harmonicsNorm;
+            for (int n = 2; n <= 9; ++n)
+                sum += harmonicsGains[(size_t) (n - 2)] * (float) std::sin (twoPi * n * (voice.phase + params.startPhase));
             const auto decay = (float) std::exp (-t / std::max (0.001, params.harmonicsDecayMs * 0.001));
             body += params.harmonics * decay * sum / std::max (1.0f, norm);
         }
@@ -212,7 +230,11 @@ float KickEngine::renderVoice (Voice& voice)
         // Brusig topp: högpassat brus som avtar för sig (luft och snärt ovanpå kicken).
         if (params.noise > 0.0f)
         {
-            voice.noiseFilter.setCutoffFrequency (juce::jlimit (200.0f, (float) sampleRate * 0.45f, params.noiseToneHz));
+            if (const auto hz = juce::jlimit (200.0f, (float) sampleRate * 0.45f, params.noiseToneHz); hz != voice.noiseToneSet)
+            {
+                voice.noiseFilter.setCutoffFrequency (hz);
+                voice.noiseToneSet = hz;
+            }
             const auto decay = (float) std::exp (-t / std::max (0.002, params.noiseDecayMs * 0.001));
             top = voice.noiseFilter.processSample (0, random.nextFloat() * 2.0f - 1.0f) * decay * params.noise;
         }
@@ -244,7 +266,11 @@ float KickEngine::renderVoice (Voice& voice)
         if (t < clickSeconds)
         {
             const auto shape = (float) (1.0 - t / clickSeconds);
-            voice.clickFilter.setCutoffFrequency (juce::jlimit (100.0f, (float) sampleRate * 0.45f, params.clickToneHz));
+            if (const auto hz = juce::jlimit (100.0f, (float) sampleRate * 0.45f, params.clickToneHz); hz != voice.clickToneSet)
+            {
+                voice.clickFilter.setCutoffFrequency (hz);
+                voice.clickToneSet = hz;
+            }
             click = voice.clickFilter.processSample (0, random.nextFloat() * 2.0f - 1.0f) * shape * shape * 2.0f;
         }
     }

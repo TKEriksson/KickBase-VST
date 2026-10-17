@@ -112,6 +112,7 @@ private:
         float fade = 1.0f;       // < 1 när rösten tonas ut för att ge plats åt en ny
         bool fadingOut = false;
         juce::dsp::StateVariableTPTFilter<float> clickFilter, noiseFilter;
+        float clickToneSet = -1.0f, noiseToneSet = -1.0f; // vad filtren senast ställdes in på (set-funktionerna räknar om tan varje gång)
     };
 
     float renderVoice (Voice& voice);
@@ -125,5 +126,10 @@ private:
     float fadeStep = 0.0f;
     float envelope = 0.0f;
     juce::dsp::StateVariableTPTFilter<float> highCut, lowCut;
+    float highCutSet = -1.0f, lowCutSet = -1.0f;
+
+    // Övertonernas nivåer (n^-tilt) räknas bara om när TILT ändras.
+    float harmonicsTiltSet = -1.0e30f, harmonicsNorm = 0.0f;
+    std::array<float, 8> harmonicsGains {};
     juce::Random random { 1 };
 };

@@ -228,5 +228,41 @@ private:
     float lastKeyFrequency = -1.0f, lastKeyTrack = -1.0f, cachedKeyFollow = 1.0f;
     double lastLogFrequency = 1.0e30, lastPitchOffset = 1.0e30, cachedFrequency = 0.0;
     CoefficientMemo ampDecayMemo, ampReleaseMemo, pitchEnvMemo;
+
+    // Drive: 0 mjuk (tanh), 1 hård (klippning), 2 vikning (wavefolder), 3 asymmetrisk (jämna övertoner), 4 krossad (bitar).
+    // Kurvans konstanter (tanh av förstärkningen m.m.) räknas bara om när DRIVE eller läget ändras; själva uträkningen är densamma som förut.
+    struct DriveShape
+    {
+        float drive = -1.0f;
+        int mode = -1;
+        float gain = 1.0f, bias = 0.0f, tanhGain = 1.0f, tanhBias = 0.0f, levels = 1.0f;
+
+        void update (float newDrive, int newMode)
+        {
+            if (newDrive == drive && newMode == mode)
+                return;
+            drive = newDrive;
+            mode = newMode;
+            gain = 1.0f + drive * 9.0f;
+            bias = 0.35f * drive;
+            tanhGain = std::tanh (gain);
+            tanhBias = std::tanh (bias);
+            levels = std::exp2 (8.0f - 6.0f * drive);
+        }
+
+        float apply (float x) const
+        {
+            if (drive <= 0.0f)
+                return x;
+            switch (mode)
+            {
+                case 1:  return juce::jlimit (-1.0f, 1.0f, gain * x);
+                case 2:  return std::sin (juce::MathConstants<float>::halfPi * 0.6f * gain * x);
+                case 3:  return (std::tanh (gain * x + bias) - tanhBias) / std::max (0.2f, tanhGain);
+                case 4:  return std::round (std::tanh (gain * 0.5f * x) * levels) / levels;
+                default: return std::tanh (gain * x) / tanhGain;
+            }
+        }
+    } driveShape;
     juce::Random random { 1 };
 };
