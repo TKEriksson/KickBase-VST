@@ -84,6 +84,13 @@ public:
     const Wavetable* userTable (int layer, int osc) const { return userTables[(size_t) (layer * ParamID::oscsPerLayer + osc)].load(); }
     juce::String getUserTableName (int layer, int osc) const { return userNames[(size_t) (layer * ParamID::oscsPerLayer + osc)]; }
 
+    // Instrumenten (baslager 1-10). Antalet sätts här: tas ett instrument bort rensas det helt (mönster, alla inställningar, sampling,
+    // egna tabeller, namn, mixer och LFO-kopplingar) så att inget ligger kvar i minnet. `instrumentHasContent` säger om något går
+    // förlorat (för bekräftelsen) och beskriver vad i `what`. Anropas från gränssnittet (message thread).
+    void setInstrumentCount (int count);
+    void wipeInstrument (int layer);
+    bool instrumentHasContent (int layer, juce::String* what = nullptr) const;
+
     // AI-länken till MCP-bryggan (se BridgeLink). Av som standard; användaren slår på den med AI-knappen. Message thread.
     void setBridgeEnabled (bool enabled);
     bool isBridgeEnabled() const { return bridge != nullptr && bridge->isRunning(); }
@@ -122,15 +129,16 @@ public:
     TransportStatus transportStatus;
 
     // Provlyssning från gränssnittet (en klick på kickens, wavetablens eller samplingens ruta, eller en LISTEN-knapp). Ljudtråden
-    // slår an ljudet nästa block: 0 = kicken, 1-3 = baslager 1-3 (lagrets hela ton en sekund), 10 + lager * 10 + källa = bara en
+    // slår an ljudet nästa block: 0 = kicken, 200 + lager = instrumentets hela ton en sekund, 300 + lager * 10 + källa = bara en
     // källa i ett lager (källa 0-2 = OSC 1-3, 3 = samplingen). 5 = bara kickens sampling (oavsett läge).
     void requestAudition (int what) { auditionRequest = what; }
-    static int soloAudition (int layer, int source) { return 10 + layer * 10 + source; }
+    static int layerAudition (int layer) { return 200 + layer; }
+    static int soloAudition (int layer, int source) { return 300 + layer * 10 + source; }
 
-    // Förhandsspelning av en enskild rad (en pianorulle): spelar raden en gång med den egna klockan, utan DAW-ton (100 + rad,
-    // där rad 0-2 = baslager och 3 = kicken; samma anrop igen avbryter). `previewingLayer` visar vilken rad som spelas, -1 = ingen.
-    // Raden 4 är hela synthen (alla rader). Förhandsspelningen loopar tills `previewStop` skickas, och ett nytt anrop börjar om från början.
-    static constexpr int previewAllRows = 4;
+    // Förhandsspelning av en enskild rad (en pianorulle): spelar raden en gång med den egna klockan, utan DAW-ton (100 + notlager,
+    // där 0-9 = instrument och 10 = kicken; samma anrop igen avbryter). `previewingLayer` visar vilken rad som spelas, -1 = ingen.
+    // Raden efter kicken är hela synthen (alla rader). Förhandsspelningen loopar tills `previewStop` skickas, och ett nytt anrop börjar om från början.
+    static constexpr int previewAllRows = Pattern::numNoteLayers;
     static constexpr int previewStop = 99;
     static int previewRequest (int noteLayer) { return 100 + noteLayer; }
 
@@ -159,7 +167,7 @@ public:
     juce::String getLayerName (int layer) const
     {
         const auto index = (size_t) juce::jlimit (0, ParamID::numBassLayers - 1, layer);
-        return layerNames[index].isEmpty() ? "BASS " + juce::String (layer + 1) : layerNames[index];
+        return layerNames[index].isEmpty() ? "INSTR " + juce::String (layer + 1) : layerNames[index];
     }
     void setLayerName (int layer, const juce::String& name)
     {
@@ -167,6 +175,14 @@ public:
         ++layerNamesVersion;
     }
     std::atomic<int> layerNamesVersion { 0 };
+
+    // Hur många instrument som används (1-10; FX-versionen: 1). Läses av gränssnittet.
+    int activeInstruments() const
+    {
+        if (effectVersion)
+            return 1;
+        return juce::jlimit (1, ParamID::numBassLayers, (int) std::lround (apvts.getRawParameterValue (ParamID::instrumentCount)->load()));
+    }
     std::atomic<int> auditionRequest { -1 };
 
     std::atomic<bool> followPlayhead { true }; // pianorullen och stegvyn bläddrar med uppspelningen
@@ -175,7 +191,8 @@ public:
     int selectedSynthTab = 0;              // finns kvar när fönstret öppnas igen
     int selectedPatternMode = 0;           // PATTERN-flikens läge: 0 PATTERN (toner), 1 GATE
     std::array<int, ParamID::numBassLayers> selectedBassSource {}; // baslagrets valda källflik: OSC 1-3 eller SAMPLE
-    int selectedPatternLayer = 0;          // PATTERN-flikens valda lager: 0-2 bas, 3 kick
+    int selectedPatternLayer = 0;          // PATTERN-flikens valda lager: 0-9 instrument, 10 kick
+    int selectedInstrument = 0;            // INSTRUMENT-flikens valda instrument (0-9)
     bool pianoRollOpen = false;            // PATTERN-flikens vy: stegen eller pianorullen
     int selectedFxView = 2;                // EFFECTS-sidans vy: 0 EQ, 1 COMP, 2 FX
 
@@ -227,7 +244,7 @@ private:
     std::unique_ptr<BridgeLink::Server> bridge;
 
     SampleSlot kickSample { 2.0 };
-    std::array<SampleSlot, ParamID::numBassLayers> bassSamples { SampleSlot (12.0), SampleSlot (12.0), SampleSlot (12.0) };
+    std::array<SampleSlot, ParamID::numBassLayers> bassSamples; // 12 s var (minne används först när en sampling laddats)
 
     void resetSectionToDefaults (Presets::Section section, int layer);
     juce::String& presetNameSlot (Presets::Section section, int layer);

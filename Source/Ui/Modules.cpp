@@ -481,7 +481,7 @@ void KickModule::resized()
 
 //==============================================================================
 BassModule::BassModule (PluginBase& p, int layerIn)
-    : ModulePanel ("BASS " + juce::String (layerIn + 1), Theme::layerColour (layerIn), &p.apvts, ParamID::bass (layerIn, BassField::on)),
+    : ModulePanel ("INSTR " + juce::String (layerIn + 1), Theme::layerColour (layerIn), &p.apvts, ParamID::bass (layerIn, BassField::on)),
       processor (p),
       layer (layerIn),
       refs (p.apvts),
@@ -532,7 +532,7 @@ BassModule::BassModule (PluginBase& p, int layerIn)
     }
     listenButton.setTooltip ("LISTEN - Plays this layer's sound (one second, the key's root note) so you can hear it without a DAW note. "
                              "Click an oscillator's picture to hear just that oscillator.");
-    listenButton.onClick = [this] { processor.requestAudition (1 + layer); };
+    listenButton.onClick = [this] { processor.requestAudition (PluginBase::layerAudition (layer)); };
     addAndMakeVisible (listenButton);
     sources.addTab ("SAMPLE", accent, *samplePage);
     sources.addPower (ParamID::oscsPerLayer, p.apvts, ParamID::bass (layer, F::sampleOn));
@@ -845,6 +845,219 @@ void BassModule::resized()
 }
 
 //==============================================================================
+void InstrumentHost::Header::resized()
+{
+    auto area = getLocalBounds();
+    selector.setBounds (area.removeFromLeft (150));
+    area.removeFromLeft (4);
+    addButton.setBounds (area.removeFromLeft (24));
+    area.removeFromLeft (2);
+    removeButton.setBounds (area.removeFromLeft (24));
+    area.removeFromLeft (10);
+    if (extras != nullptr)
+        extras->setBounds (area);
+}
+
+InstrumentHost::InstrumentHost (PluginBase& p) : processor (p)
+{
+    header.selector.setTooltip ("INSTRUMENT - Choose which instrument you are editing (up to 10). Right-click or use the menu to rename it. "
+                                "Every instrument has its own pattern, oscillators, filter, envelopes, effect send and sidechain depth.");
+    header.selector.onClick = [this] { showSelector(); };
+    header.addButton.setTooltip ("ADD INSTRUMENT - Adds another instrument (max 10). It starts with default settings and an empty pattern.");
+    header.addButton.onClick = [this] { addInstrument(); };
+    header.removeButton.setTooltip ("REMOVE INSTRUMENT - Removes the LAST instrument and deletes everything in it from memory (pattern, sound, sample, "
+                                    "wavetables, modulation). You are asked first if it has anything in it. To silence another one, turn it off with its power button.");
+    header.removeButton.onClick = [this] { removeInstrument(); };
+    for (auto* component : std::initializer_list<juce::Component*> { &header.selector, &header.addButton, &header.removeButton })
+        header.addAndMakeVisible (component);
+
+    current = juce::jlimit (0, p.activeInstruments() - 1, p.selectedInstrument);
+    select (current);
+    refresh();
+    startTimerHz (4);
+}
+
+InstrumentHost::~InstrumentHost()
+{
+    for (auto* e : extras)
+        if (e != nullptr)
+            header.removeChildComponent (e);
+}
+
+BassModule& InstrumentHost::moduleFor (int layer)
+{
+    auto& slot = modules[(size_t) layer];
+    if (slot == nullptr)
+    {
+        slot = std::make_unique<BassModule> (processor, layer);
+        addChildComponent (*slot);
+        extras[(size_t) layer] = slot->embedInTab();
+        header.addChildComponent (*extras[(size_t) layer]);
+        slot->setBounds (getLocalBounds());
+    }
+    return *slot;
+}
+
+void InstrumentHost::resized()
+{
+    for (auto& module : modules)
+        if (module != nullptr)
+            module->setBounds (getLocalBounds());
+}
+
+void InstrumentHost::select (int layer)
+{
+    layer = juce::jlimit (0, processor.activeInstruments() - 1, layer);
+    current = layer;
+    processor.selectedInstrument = layer;
+    moduleFor (layer);
+
+    for (int i = 0; i < ParamID::numBassLayers; ++i)
+    {
+        if (modules[(size_t) i] != nullptr)
+            modules[(size_t) i]->setVisible (i == layer);
+        if (extras[(size_t) i] != nullptr)
+            extras[(size_t) i]->setVisible (i == layer);
+    }
+    header.extras = extras[(size_t) layer];
+    header.resized();
+    lastNamesVersion = -1;
+    refresh();
+}
+
+void InstrumentHost::refresh()
+{
+    const auto count = processor.activeInstruments();
+    if (current >= count)
+    {
+        select (count - 1);
+        return;
+    }
+    lastCount = count;
+    lastNamesVersion = processor.layerNamesVersion.load();
+    header.selector.setButtonText (processor.getLayerName (current) + juce::String::fromUTF8 ("  \xe2\x96\xbe"));
+    header.selector.setColour (juce::TextButton::textColourOffId, Theme::layerColour (current));
+    header.addButton.setEnabled (count < ParamID::numBassLayers);
+    header.removeButton.setEnabled (count > 1);
+}
+
+void InstrumentHost::timerCallback()
+{
+    if (processor.activeInstruments() != lastCount || processor.layerNamesVersion.load() != lastNamesVersion)
+        refresh();
+}
+
+void InstrumentHost::showSelector()
+{
+    juce::PopupMenu menu;
+    const auto count = processor.activeInstruments();
+    for (int i = 0; i < count; ++i)
+    {
+        const auto on = processor.apvts.getRawParameterValue (ParamID::bass (i, BassField::on))->load() >= 0.5f;
+        menu.addItem (i + 1, juce::String (i + 1) + "   " + processor.getLayerName (i) + (on ? "" : "   (off)"), true, i == current);
+    }
+    menu.addSeparator();
+    menu.addItem (100, "Rename " + processor.getLayerName (current) + " ...");
+    menu.addItem (101, "Add instrument", count < ParamID::numBassLayers);
+    menu.addItem (102, "Remove last instrument", count > 1);
+
+    juce::Component::SafePointer<InstrumentHost> safeThis (this);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&header.selector).withMinimumWidth (header.selector.getWidth()),
+                        [safeThis] (int result)
+                        {
+                            if (safeThis == nullptr || result == 0)
+                                return;
+                            if (result == 100)
+                                safeThis->rename (safeThis->current);
+                            else if (result == 101)
+                                safeThis->addInstrument();
+                            else if (result == 102)
+                                safeThis->removeInstrument();
+                            else
+                                safeThis->select (result - 1);
+                        });
+}
+
+void InstrumentHost::rename (int layer)
+{
+    auto* window = new juce::AlertWindow ("Rename", "Name for this instrument (it is shown in the pattern, the mixer and the piano roll):", juce::MessageBoxIconType::NoIcon);
+    window->setLookAndFeel (&getLookAndFeel());
+    renameDialog = window;
+    window->addTextEditor ("name", processor.getLayerName (layer));
+    window->addButton ("OK", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    window->addButton ("Default name", 2);
+    window->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+
+    juce::Component::SafePointer<InstrumentHost> safeThis (this);
+    window->enterModalState (true, juce::ModalCallbackFunction::create ([safeThis, window, layer] (int result)
+    {
+        if (safeThis == nullptr || result == 0)
+            return;
+        safeThis->processor.setLayerName (layer, result == 2 ? juce::String() : window->getTextEditorContents ("name"));
+        safeThis->processor.markStateChanged();
+    }), true);
+}
+
+void InstrumentHost::addInstrument()
+{
+    const auto count = processor.activeInstruments();
+    if (count >= ParamID::numBassLayers)
+        return;
+    processor.setInstrumentCount (count + 1);
+    select (count);
+}
+
+void InstrumentHost::removeInstrument()
+{
+    const auto count = processor.activeInstruments();
+    if (count <= 1 || confirmOpen)
+        return;
+
+    const auto layer = count - 1;
+    juce::Component::SafePointer<InstrumentHost> safeThis (this);
+    auto remove = [safeThis, layer, count]
+    {
+        if (safeThis == nullptr)
+            return;
+        auto& host = *safeThis;
+        if (host.current == layer)
+            host.select (layer - 1);
+
+        // Panelen rivs först, så att inget i den lyssnar på parametrarna som nollställs.
+        if (host.extras[(size_t) layer] != nullptr)
+        {
+            host.header.removeChildComponent (host.extras[(size_t) layer]);
+            host.extras[(size_t) layer] = nullptr;
+        }
+        host.modules[(size_t) layer].reset();
+        host.processor.setInstrumentCount (count - 1);
+        host.refresh();
+    };
+
+    juce::String what;
+    if (! processor.instrumentHasContent (layer, &what))
+    {
+        remove();
+        return;
+    }
+
+    confirmOpen = true;
+    juce::AlertWindow::showAsync (juce::MessageBoxOptions::makeOptionsOkCancel (
+                                      juce::MessageBoxIconType::WarningIcon, "Remove instrument",
+                                      "Remove " + processor.getLayerName (layer) + "?\n\nIt has " + what + ".\n\nEverything in it is deleted (pattern, sound, sample, "
+                                      "wavetables, modulation) and it can't be undone. Presets you have saved are not touched.",
+                                      "Remove", "Cancel"),
+                                  [safeThis, remove] (int choice)
+    {
+        if (safeThis == nullptr)
+            return;
+        safeThis->confirmOpen = false;
+        if (choice == 1)
+            remove();
+    });
+}
+
+//==============================================================================
 GateModule::GateModule (PluginBase& p)
     : ModulePanel ("GATE", Theme::gate, &p.apvts, ParamID::bass (0, BassField::on)),
       refs (p.apvts),
@@ -912,15 +1125,35 @@ void GateModule::resized()
 }
 
 //==============================================================================
+namespace
+{
+    juce::StringArray instrumentNames()
+    {
+        juce::StringArray names;
+        for (int layer = 0; layer < ParamID::numBassLayers; ++layer)
+            names.add ("INSTR " + juce::String (layer + 1));
+        return names;
+    }
+
+    // Instrumentens färger, och (för pianorullen) kickens efter dem.
+    std::vector<juce::Colour> instrumentColours (bool withKick = false)
+    {
+        std::vector<juce::Colour> colours;
+        for (int layer = 0; layer < ParamID::numBassLayers; ++layer)
+            colours.push_back (Theme::layerColour (layer));
+        if (withKick)
+            colours.push_back (Theme::kick);
+        return colours;
+    }
+}
+
 PatternModule::PatternModule (PluginBase& p, bool isInstrument)
     : processor (p), instrument (isInstrument),
       length (p.apvts, ParamID::patternBars, "TOTAL LENGTH"),
       presets (p, Presets::Section::pattern, Theme::pattern),
-      sequencer (p,
-                 isInstrument ? juce::StringArray { "BASS 1", "BASS 2", "BASS 3" } : juce::StringArray { "GATE" },
-                 isInstrument ? std::vector<juce::Colour> { Theme::layerColour (0), Theme::layerColour (1), Theme::layerColour (2) }
-                              : std::vector<juce::Colour> { Theme::gate }),
-      pianoRoll (p, { Theme::layerColour (0), Theme::layerColour (1), Theme::layerColour (2), Theme::kick })
+      sequencer (p, isInstrument ? instrumentNames() : juce::StringArray { "GATE" },
+                 isInstrument ? instrumentColours() : std::vector<juce::Colour> { Theme::gate }),
+      pianoRoll (p, instrumentColours (true))
 {
     addAndMakeVisible (length);
     addAndMakeVisible (presets);
@@ -985,7 +1218,7 @@ PatternModule::PatternModule (PluginBase& p, bool isInstrument)
             button->addMouseListener (this, false);
             button->setColour (juce::TextButton::buttonOnColourId, colour.withAlpha (0.55f));
             button->setColour (juce::TextButton::textColourOffId, colour);
-            button->setTooltip ("BASS " + juce::String (layer + 1) + " - Edit this layer: its note grid, length, FILL, the lane and the gate settings "
+            button->setTooltip ("INSTR " + juce::String (layer + 1) + " - Edit this instrument: its note grid, length, FILL, the lane and the gate settings "
                                 "apply to the selected layer.");
             button->onClick = [this, layer] { sequencer.selectLayer (layer); showLayer (layer); };
             addAndMakeVisible (*button);
@@ -1112,15 +1345,14 @@ void PatternModule::trimRow (int row, int bars)
     processor.patternChanged();
 }
 
-void PatternModule::restoreChoices (const std::array<int, 5>& choices)
+void PatternModule::restoreChoices (const std::array<int, numPatternRows + 1>& choices)
 {
-    const char* ids[] { ParamID::patternBars, ParamID::rowBars (0), ParamID::rowBars (1), ParamID::rowBars (2), ParamID::rowBars (3) };
-    for (size_t i = 0; i < 5; ++i)
+    for (size_t i = 0; i < choices.size(); ++i)
         if (choices[i] >= 0)
-            if (auto* parameter = processor.apvts.getParameter (ids[i]))
+            if (auto* parameter = processor.apvts.getParameter (i == 0 ? ParamID::patternBars : ParamID::rowBars ((int) i - 1)))
                 Presets::setParameter (*parameter, parameter->convertTo0to1 ((float) choices[i]));
     const auto restored = Params::readPatternLengths (processor.apvts);
-    for (int row = 0; row < 4; ++row)
+    for (int row = 0; row < numPatternRows; ++row)
         lastRowBars[(size_t) row] = restored.barsOf (row);
     lastPatternVersion = processor.patternVersion.load();
 }
@@ -1135,8 +1367,10 @@ void PatternModule::checkLengthChanges()
 
     auto& apvts = processor.apvts;
     auto choiceOf = [&apvts] (const char* id) { return (int) std::round (apvts.getRawParameterValue (id)->load()); };
-    const std::array<int, 5> choices { choiceOf (ParamID::patternBars), choiceOf (ParamID::rowBars (0)), choiceOf (ParamID::rowBars (1)),
-                                       choiceOf (ParamID::rowBars (2)), choiceOf (ParamID::rowBars (3)) };
+    std::array<int, numPatternRows + 1> choices {};
+    choices[0] = choiceOf (ParamID::patternBars);
+    for (int row = 0; row < numPatternRows; ++row)
+        choices[(size_t) row + 1] = choiceOf (ParamID::rowBars (row));
     const auto lengthsNow = Params::readPatternLengths (apvts);
     auto& pattern = processor.pattern;
     const auto layerOf = [] (int row) { return row == 0 ? Pattern::kickLayer : row - 1; };
@@ -1144,7 +1378,7 @@ void PatternModule::checkLengthChanges()
     const auto fresh = lastRowBars[0] < 0 || processor.patternVersion.load() != lastPatternVersion;
     std::vector<int> shrunk, grown;
     if (! fresh)
-        for (int row = 0; row < 4; ++row)
+        for (int row = 0; row < numPatternRows; ++row)
         {
             if (lengthsNow.barsOf (row) > lastRowBars[(size_t) row])
                 grown.push_back (row);
@@ -1154,8 +1388,8 @@ void PatternModule::checkLengthChanges()
 
     const auto previousChoices = lastChoices;
     const auto previousBars = lastRowBars;
-    std::array<int, 4> nowBars {};
-    for (int row = 0; row < 4; ++row)
+    std::array<int, numPatternRows> nowBars {};
+    for (int row = 0; row < numPatternRows; ++row)
         nowBars[(size_t) row] = lengthsNow.barsOf (row);
 
     juce::Component::SafePointer<PatternModule> safeThis (this);
@@ -1201,7 +1435,7 @@ void PatternModule::checkLengthChanges()
                     for (const auto row : grown)
                         safeThis->extendRow (row, previousBars[(size_t) row], nowBars[(size_t) row],
                                              choice == 1 && std::find (withNotes.begin(), withNotes.end(), row) != withNotes.end());
-                    for (int row = 0; row < 4; ++row)
+                    for (int row = 0; row < numPatternRows; ++row)
                         safeThis->lastRowBars[(size_t) row] = nowBars[(size_t) row];
                     safeThis->lastPatternVersion = safeThis->processor.patternVersion.load();
                 }
@@ -1259,7 +1493,7 @@ void PatternModule::checkLengthChanges()
                 {
                     for (const auto row : shrunk)
                         safeThis->trimRow (row, nowBars[(size_t) row]);
-                    for (int row = 0; row < 4; ++row)
+                    for (int row = 0; row < numPatternRows; ++row)
                         safeThis->lastRowBars[(size_t) row] = nowBars[(size_t) row];
                     safeThis->lastPatternVersion = safeThis->processor.patternVersion.load();
                 }
@@ -1283,6 +1517,19 @@ void PatternModule::checkLengthChanges()
 void PatternModule::timerCallback()
 {
     checkLengthChanges();
+
+    // Instrument som lagts till eller tagits bort: knapparna och raderna följer, och ett borttaget instrument kan inte vara valt.
+    if (instrument && processor.activeInstruments() != lastActive)
+    {
+        lastActive = processor.activeInstruments();
+        if (shownLayer != Pattern::kickLayer && shownLayer >= lastActive)
+        {
+            sequencer.selectLayer (0);
+            showLayer (0);
+        }
+        resized();
+        repaint();
+    }
 
     // (Kickens toner spelar hela sitt ljud, så deras längd gör inget.)
     const auto custom = processor.pattern.isCustom (shownLayer);
@@ -1497,10 +1744,15 @@ void PatternModule::resized()
         kickLayerButton.setBounds (first.removeFromTop (24));
         first.removeFromTop (4);
     }
-    for (auto& button : layerButtons)
+    for (size_t i = 0; i < layerButtons.size(); ++i)
     {
-        button->setBounds (first.removeFromTop (24));
-        first.removeFromTop (4);
+        const auto shown = ! instrument || (int) i < processor.activeInstruments();
+        layerButtons[i]->setVisible (shown);
+        if (shown)
+        {
+            layerButtons[i]->setBounds (first.removeFromTop (24));
+            first.removeFromTop (4);
+        }
     }
 
     headingBounds = second.removeFromTop (16);

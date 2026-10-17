@@ -4,18 +4,19 @@
 #include <array>
 #include <atomic>
 #include "Effects.h"
+#include "Pattern.h"
 
-// Mixern: varje ljudkälla (kicken, de tre baslagren och de fem effektkanalernas retur) har en
+// Mixern: varje ljudkälla (kicken, instrumenten och de fem effektkanalernas retur) har en
 // gain-fader, panorering, en mätare och två brytare: om sidechainen ducker källan, och om den går
 // genom maximizern (master) eller förbi den.
 class Mixer
 {
 public:
-    static constexpr int numSources = 4 + numEffectChannels; // kick, bas 1-3, FX A-E
-    static constexpr int kickSource = 0, firstBassSource = 1, firstFxSource = 4;
+    static constexpr int numSources = 1 + maxInstruments + numEffectChannels; // kick, instrument 1-10, FX A-E
+    static constexpr int kickSource = 0, firstBassSource = 1, firstFxSource = 1 + maxInstruments;
     static constexpr float minGainDb = -60.0f, maxGainDb = 12.0f;
 
-    static juce::String sourceName (int source);                         // "KICK", "BASS 1", "FX A"
+    static juce::String sourceName (int source);                         // "KICK", "INSTR 1", "FX A"
     static juce::String paramID (int source, const juce::String& field); // field: Gain, Pan, Duck, Max
     static bool hasDuck (int source) { return source != kickSource; }   // kicken ducker inte sig själv
 

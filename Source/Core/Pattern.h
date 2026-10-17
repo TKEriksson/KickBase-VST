@@ -20,17 +20,31 @@ enum class BassGrid
     sixtyFourth         // 64 steg per takt
 };
 
-// Mönstrets längd: hela mönstret (`total`) och varje rads egen längd (kicken är rad 0, sedan baslagren; 0 = hela
+// Så många instrument (baslager) kan synthen ha som mest; hur många som används just nu styrs av parametern instrumentCount.
+constexpr int maxInstruments = 10;
+constexpr int numPatternRows = maxInstruments + 1; // rad 0 = kicken, rad 1... = instrumenten
+
+// En array där alla platser har samma värde (std::array kan bara fyllas med en lista).
+template <typename T, size_t N>
+constexpr std::array<T, N> filledArray (T value)
+{
+    std::array<T, N> result {};
+    for (auto& item : result)
+        item = value;
+    return result;
+}
+
+// Mönstrets längd: hela mönstret (`total`) och varje rads egen längd (kicken är rad 0, sedan instrumenten; 0 = hela
 // mönstret). En rad som är kortare än mönstret loopar (`loops`, per rad) eller spelar en gång och tystnar tills mönstret börjar om.
 struct PatternLengths
 {
     int total = 1;
-    std::array<bool, 4> loops { true, true, true, true }; // loopar raden? (annars spelar den en gång och tystnar)
-    std::array<int, 4> rows { 0, 0, 0, 0 };
+    std::array<bool, numPatternRows> loops = [] { std::array<bool, numPatternRows> all {}; all.fill (true); return all; }(); // loopar raden? (annars spelar den en gång och tystnar)
+    std::array<int, numPatternRows> rows {};
 
     int barsOf (int row) const
     {
-        const auto r = rows[(size_t) juce::jlimit (0, 3, row)];
+        const auto r = rows[(size_t) juce::jlimit (0, numPatternRows - 1, row)];
         return r <= 0 ? total : std::min (r, total);
     }
 
@@ -39,7 +53,7 @@ struct PatternLengths
     {
         const auto inPattern = (int) (((bar % total) + total) % total);
         const auto rowBars = barsOf (row);
-        if (! loops[(size_t) juce::jlimit (0, 3, row)] && inPattern >= rowBars)
+        if (! loops[(size_t) juce::jlimit (0, numPatternRows - 1, row)] && inPattern >= rowBars)
             return -1;
         return inPattern % rowBars;
     }
@@ -55,9 +69,9 @@ struct Pattern
     static constexpr int numGrids = 8;
     static constexpr int minPitch = -96; // halvtoner från tonarten (basens grundton med lagrets oktav)
     static constexpr int maxPitch = 96;
-    static constexpr int numLayers = 3; // baslager med var sitt mönster (FX-versionen använder bara det första)
+    static constexpr int numLayers = maxInstruments; // instrument med var sitt mönster (FX-versionen använder bara det första)
 
-    // Kicken är ett fjärde "notlager" (lager 3): fritt placerade toner, på samma sätt som baslagren. Tonhöjden flyttar
+    // Kicken är ett extra "notlager" efter instrumenten (lager 10): fritt placerade toner, på samma sätt som baslagren. Tonhöjden flyttar
     // kickens svans (halvtoner från tonarten), velocity styr volymen. Kicken har ingen gate.
     static constexpr int kickLayer = numLayers;
     static constexpr int numNoteLayers = numLayers + 1;
@@ -138,7 +152,7 @@ struct Pattern
     void fromValueTree (const juce::ValueTree& tree);
 
     static inline const juce::Identifier treeType { "Pattern" };
-    static constexpr int currentVersion = 5; // 5: kicken som notlager; 4: fria toner (ticks); 3: baslager med steg per rutnät
+    static constexpr int currentVersion = 6; // 6: upp till 10 instrument, kicken är lager 10 (före det lager 3); 5: kicken som notlager; 4: fria toner (ticks); 3: baslager med steg per rutnät
 
 private:
     static size_t noteIndex (int layer, int tick)

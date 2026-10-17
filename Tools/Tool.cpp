@@ -285,6 +285,108 @@ namespace
         return failed ? 1 : 0;
     }
 
+    // Flera instrument: lägga till, spara/läsa, ta bort (allt ska rensas) och gamla projekt (kicken var lager 3).
+    int instrumentTest()
+    {
+        const auto owner = std::make_unique<InstrumentProcessor>();
+        auto& processor = *owner;
+        processor.setPlayConfigDetails (0, 2, renderRate, blockSize);
+        processor.prepareToPlay (renderRate, blockSize);
+
+        auto failed = false;
+        auto check = [&failed] (bool ok, const char* what) { std::printf ("%s: %s\n", ok ? "ok" : "FEL", what); failed |= ! ok; };
+        auto heardOf = [] (InstrumentProcessor& target, int what)
+        {
+            target.requestAudition (what);
+            juce::AudioBuffer<float> buffer (2, blockSize);
+            juce::MidiBuffer midi;
+            auto peak = 0.0f;
+            for (int block = 0; block < 40; ++block)
+            {
+                buffer.clear();
+                target.processBlock (buffer, midi);
+                peak = std::max (peak, buffer.getMagnitude (0, buffer.getNumSamples()));
+            }
+            return peak > 0.01f;
+        };
+        auto setValue = [&processor] (const juce::String& id, float real)
+        {
+            auto* parameter = processor.apvts.getParameter (id);
+            parameter->setValueNotifyingHost (parameter->convertTo0to1 (real));
+        };
+
+        check (Presets::bassLayerOf ("bass10Cutoff") == 9 && Presets::bassLayerOf ("bass1Cutoff") == 0 && Presets::bassLayerOf ("bass3On") == 2
+                   && Presets::toBassLayer ("bass1Cutoff", 9) == "bass10Cutoff" && Presets::toBassLayer ("bass10Cutoff", 1) == "bass2Cutoff",
+               "lagernumret läses ur parameter-ID:n (ett och två tecken)");
+        check (processor.activeInstruments() == 3, "tre instrument från början");
+
+        processor.setInstrumentCount (6);
+        check (processor.activeInstruments() == 6, "sex instrument efter att ha lagt till tre");
+        check (heardOf (processor, PluginBase::layerAudition (5)), "instrument 6 hörs");
+
+        // Innehåll i instrument 5: ton, namn, ändrad inställning, och en LFO-koppling.
+        processor.pattern.addNote (4, 0, 48, 3);
+        processor.pattern.setCustom (4, true);
+        processor.setLayerName (4, "Lead");
+        setValue (ParamID::bass (4, BassField::cutoff), 777.0f);
+        const auto& parameters = processor.getParameters();
+        for (int i = 0; i < parameters.size(); ++i)
+            if (auto* withId = dynamic_cast<juce::AudioProcessorParameterWithID*> (parameters[i]); withId != nullptr && withId->paramID == ParamID::bass (4, BassField::cutoff))
+                processor.modRoutes.add (0, i, 0.3f);
+        juce::String what;
+        check (processor.instrumentHasContent (4, &what) && what.contains ("piano roll") && what.contains ("Lead") && what.contains ("modulation"), "innehållet i instrument 5 beskrivs");
+        std::printf ("  (%s)\n", what.toRawUTF8());
+        check (! processor.instrumentHasContent (5), "ett orört instrument har inget innehåll");
+
+        // Spara och läs: antal, namn, ton och inställning följer med.
+        juce::MemoryBlock state;
+        processor.getStateInformation (state);
+        {
+            const auto other = std::make_unique<InstrumentProcessor>();
+            other->setStateInformation (state.getData(), (int) state.getSize());
+            check (other->activeInstruments() == 6 && other->getLayerName (4) == "Lead" && other->pattern.note (4, 0).on.load() && other->pattern.note (4, 0).pitch.load() == 3
+                       && std::abs (other->apvts.getRawParameterValue (ParamID::bass (4, BassField::cutoff))->load() - 777.0f) < 1.0f,
+                   "sex instrument sparas och läses tillbaka med namn, toner och inställningar");
+        }
+
+        // Ta bort: instrument 4-6 rensas helt.
+        processor.setInstrumentCount (3);
+        check (processor.activeInstruments() == 3, "tillbaka till tre instrument");
+        check (! processor.pattern.note (4, 0).on.load() && ! processor.pattern.isCustom (4), "mönstret i det borttagna instrumentet är tomt");
+        check (processor.getLayerName (4) == "INSTR 5", "namnet är tillbaka till standard");
+        check (std::abs (processor.apvts.getRawParameterValue (ParamID::bass (4, BassField::cutoff))->load()
+                         - processor.apvts.getParameter (ParamID::bass (4, BassField::cutoff))->convertFrom0to1 (processor.apvts.getParameter (ParamID::bass (4, BassField::cutoff))->getDefaultValue())) < 1.0f,
+               "inställningarna är tillbaka till standard");
+        auto routes = 0;
+        for (const auto& route : processor.modRoutes.routes)
+            if (route.source.load() >= 0)
+                if (auto* withId = dynamic_cast<juce::AudioProcessorParameterWithID*> (parameters[route.target.load()]); withId != nullptr && Presets::bassLayerOf (withId->paramID) == 4)
+                    ++routes;
+        check (routes == 0, "LFO-kopplingarna till instrumentet är borta");
+        check (! processor.instrumentHasContent (4) && processor.instrumentHasContent (0), "det borttagna är tomt, de kvarvarande har innehåll");
+
+        // Gamla projekt (version 5): kicken var lager 3.
+        {
+            auto legacy = std::make_unique<Pattern>();
+            auto tree = legacy->toValueTree();
+            tree.setProperty ("version", 5, nullptr);
+            for (auto child : tree)
+                if (child.hasType ("Notes") && (int) child["layer"] == Pattern::kickLayer)
+                    child.setProperty ("layer", 3, nullptr);
+            for (int i = tree.getNumChildren() - 1; i >= 0; --i)
+                if ((int) tree.getChild (i)["layer"] > 3 && (int) tree.getChild (i)["layer"] != Pattern::kickLayer)
+                    tree.removeChild (i, nullptr);
+            auto fresh = std::make_unique<Pattern>();
+            fresh->addNote (5, 96, 24); // ska rensas: projektet nämner inte instrument 6
+            fresh->fromValueTree (tree);
+            check (fresh->note (Pattern::kickLayer, 0).on.load() && ! fresh->note (3, 0).on.load(), "ett gammalt projekt: kicken hamnar i kicklagret, inte i instrument 4");
+            check (! fresh->note (5, 96).on.load(), "ett gammalt projekt: instrument som det inte nämner töms");
+        }
+
+        std::puts (failed ? "FEL: instrumenttestet misslyckades" : "Instrumenttestet gick igenom");
+        return failed ? 1 : 0;
+    }
+
     // Provlyssning: requestAudition ska ge ljud (kick och baslager) och publicera kickens spelmarkör.
     int auditionTest()
     {
@@ -315,7 +417,7 @@ namespace
         run (0, heard, marker);
         std::printf ("kick: hörs %s, markör %.3f s\n", heard ? "ja" : "NEJ", marker);
         failed |= ! heard || marker < 0.0f;
-        run (1, heard, marker);
+        run (PluginBase::layerAudition (0), heard, marker);
         std::printf ("bas 1: hörs %s\n", heard ? "ja" : "NEJ");
         failed |= ! heard;
 
@@ -386,7 +488,12 @@ namespace
         processor->pianoRollOpen = tab / 1000 % 10 > 0; // pianorullen i stället för stegen (tusental)
         processor->selectedPatternMode = tab / 10000 % 10; // 1 = GATE-läget (tiotusental)
         processor->snapshotPaste = tab / 100000000 % 10 > 0; // pianorullen visar en inklistring (hundramiljontal)
-        processor->selectedPatternLayer = tab / 10000000 % 10; // valt lager i PATTERN: 3 = kicken (tiomiljontal)
+        processor->selectedPatternLayer = tab / 10000000 % 10; // valt lager i PATTERN: 0-8 instrument, 9 = kicken (tiomiljontal)
+        if (processor->selectedPatternLayer == 9)
+            processor->selectedPatternLayer = Pattern::kickLayer;
+        processor->selectedInstrument = juce::SystemStats::getEnvironmentVariable ("KB_INSTRUMENT", "0").getIntValue(); // valt instrument (0-9)
+        if (const auto count = juce::SystemStats::getEnvironmentVariable ("KB_INSTRUMENTS", {}); count.isNotEmpty())
+            processor->setInstrumentCount (count.getIntValue()); // antal instrument i bilden
         if (tab / 1000000 > 0)
         {
             // Exempel: 16 takter, bas 1 på 4 takter och bas 2 på 1 takt (miljontal).
@@ -451,6 +558,8 @@ int toolMain (int argc, char* argv[])
         return presetTest();
     if (argc == 2 && juce::String (argv[1]) == "auditiontest")
         return auditionTest();
+    if (argc == 2 && juce::String (argv[1]) == "instrumenttest")
+        return instrumentTest();
     if (argc == 2 && juce::String (argv[1]) == "lengthtest")
         return lengthTest();
 

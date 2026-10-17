@@ -115,7 +115,7 @@ void ScopeView::paint (juce::Graphics& g)
     for (size_t t = 0; t < traces.size(); ++t)
     {
         const auto& samples = data[t];
-        if (samples.empty())
+        if (samples.empty() || (traces[t].instrument >= 0 && traces[t].instrument >= processor.activeInstruments()))
             continue;
 
         const auto n = (int) samples.size();
@@ -187,6 +187,8 @@ void ScopeView::paint (juce::Graphics& g)
     g.setFont (Theme::font (9.5f, true));
     for (const auto& trace : traces)
     {
+        if (trace.instrument >= 0 && trace.instrument >= processor.activeInstruments())
+            continue;
         const auto width = (float) juce::GlyphArrangement::getStringWidthInt (Theme::font (9.5f, true), trace.name) + 14.0f;
         g.setColour (trace.colour);
         g.fillRoundedRectangle (legend.getX(), legend.getCentreY() - 3.0f, 6.0f, 6.0f, 2.0f);

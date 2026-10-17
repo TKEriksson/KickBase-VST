@@ -40,7 +40,7 @@ public:
 
     // `headerExtras` (t.ex. sidans på/av-knapp och presetknapp) visas till höger i flikraden
     // när fliken är vald, så att sidan inte behöver en egen rubrikrad.
-    void addTab (const juce::String& name, juce::Colour accent, juce::Component& page, juce::Component* headerExtras = nullptr)
+    void addTab (const juce::String& name, juce::Colour accent, juce::Component& page, juce::Component* headerExtras = nullptr, int extrasWidth = 380)
     {
         auto button = std::make_unique<juce::TextButton> (name);
         button->setColour (juce::TextButton::buttonOnColourId, accent);
@@ -50,7 +50,7 @@ public:
         addChildComponent (page);
         if (headerExtras != nullptr)
             addChildComponent (headerExtras);
-        tabs.push_back ({ std::move (button), &page, accent, headerExtras });
+        tabs.push_back ({ std::move (button), &page, accent, headerExtras, extrasWidth });
 
         // initialTab, inte *remembered: den skrivs över när de första flikarna läggs till.
         setCurrentTab (juce::jmin (initialTab, (int) tabs.size() - 1));
@@ -116,10 +116,14 @@ public:
     void resized() override
     {
         auto header = getLocalBounds().removeFromTop (headerHeight).reduced (10, 4).withTrimmedTop (2);
-        const auto extrasArea = header.removeFromRight (380);
+        auto reserved = 0;
         for (auto& tab : tabs)
             if (tab.headerExtras != nullptr)
-                tab.headerExtras->setBounds (extrasArea);
+                reserved = std::max (reserved, tab.extrasWidth);
+        const auto extrasArea = header.removeFromRight (reserved);
+        for (auto& tab : tabs)
+            if (tab.headerExtras != nullptr)
+                tab.headerExtras->setBounds (extrasArea.withTrimmedLeft (extrasArea.getWidth() - tab.extrasWidth));
         const auto count = std::max (1, (int) tabs.size());
         const auto width = std::min (110, (header.getWidth() - 6 * (count - 1)) / count);
         for (auto& tab : tabs)
@@ -153,6 +157,7 @@ private:
         juce::Component* page;
         juce::Colour accent;
         juce::Component* headerExtras;
+        int extrasWidth = 380;
         std::unique_ptr<PowerButton> power;
         std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> powerAttachment;
         std::function<juce::String()> nameProvider;

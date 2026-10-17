@@ -36,9 +36,16 @@ InstrumentProcessor::InstrumentProcessor()
     : PluginBase (BusesProperties()
                       .withOutput ("Main", juce::AudioChannelSet::stereo(), true)
                       .withOutput ("Kick", juce::AudioChannelSet::stereo(), false)
-                      .withOutput ("Bass 1", juce::AudioChannelSet::stereo(), false)
-                      .withOutput ("Bass 2", juce::AudioChannelSet::stereo(), false)
-                      .withOutput ("Bass 3", juce::AudioChannelSet::stereo(), false),
+                      .withOutput ("Instr 1", juce::AudioChannelSet::stereo(), false)
+                      .withOutput ("Instr 2", juce::AudioChannelSet::stereo(), false)
+                      .withOutput ("Instr 3", juce::AudioChannelSet::stereo(), false)
+                      .withOutput ("Instr 4", juce::AudioChannelSet::stereo(), false)
+                      .withOutput ("Instr 5", juce::AudioChannelSet::stereo(), false)
+                      .withOutput ("Instr 6", juce::AudioChannelSet::stereo(), false)
+                      .withOutput ("Instr 7", juce::AudioChannelSet::stereo(), false)
+                      .withOutput ("Instr 8", juce::AudioChannelSet::stereo(), false)
+                      .withOutput ("Instr 9", juce::AudioChannelSet::stereo(), false)
+                      .withOutput ("Instr 10", juce::AudioChannelSet::stereo(), false),
                   createLayout(), false)
 {
     // Ett nytt instrument börjar som Init: tre lager som låter bra ihop (ett sparat projekt skriver över det).
@@ -106,10 +113,10 @@ void InstrumentProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
         currentNote = previewNote.load(); // all provlyssning (kick, oscillatorer, sampling) spelas på den valda tonen
     if (audition == 5)
         kickSoloSamplesLeft = (int) (getSampleRate() * 2.0);
-    if (audition >= 10 && audition < PluginBase::previewStop)
+    if (audition >= 300)
     {
-        soloLayer = juce::jlimit (0, numLayers - 1, (audition - 10) / 10);
-        soloSource = (audition - 10) % 10;
+        soloLayer = juce::jlimit (0, numLayers - 1, (audition - 300) / 10);
+        soloSource = (audition - 300) % 10;
         soloSamplesLeft = (int) getSampleRate();
     }
     readBlockParams();
@@ -119,21 +126,22 @@ void InstrumentProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
         duckCurve.trigger();
         kick.trigger (1.0f);
     }
-    else if (juce::isPositiveAndBelow (audition - 1, numLayers))
-    {
-        basses[(size_t) (audition - 1)].noteOn (0, 1.0f, (int) getSampleRate());
-    }
     else if (audition == PluginBase::previewStop)
     {
         stopPreview();
     }
+    else if (audition >= 300)
+    {
+        basses[(size_t) soloLayer].noteOn (0, 1.0f, (int) getSampleRate());
+    }
+    else if (audition >= 200)
+    {
+        if (juce::isPositiveAndBelow (audition - 200, numLayers))
+            basses[(size_t) (audition - 200)].noteOn (0, 1.0f, (int) getSampleRate());
+    }
     else if (audition >= 100)
     {
         handlePreviewRequest (audition - 100);
-    }
-    else if (audition >= 10)
-    {
-        basses[(size_t) soloLayer].noteOn (0, 1.0f, (int) getSampleRate());
     }
 
     // Var kick och bas ska skrivas. Huvudutgången får alltid hela mixen; kick- och
@@ -176,7 +184,7 @@ void InstrumentProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
 
     // Källor som mixern tagit förbi maximizern läggs på efteråt, lika fördröjda som resten.
     bypassBus.applyGain (0, numSamples, params.get (ParamID::gain));
-    master.delayOnly (bypassBus, numSamples, 4);
+    master.delayOnly (bypassBus, numSamples, numLayers + 1);
     for (int ch = 0; ch < mainBus.getNumChannels(); ++ch)
         mainBus.addFrom (ch, 0, bypassBus, mainBus.getNumChannels() == 1 ? 0 : ch, 0, numSamples, mainBus.getNumChannels() == 1 ? 0.5f : 1.0f);
     if (mainBus.getNumChannels() == 1)
@@ -201,7 +209,7 @@ void InstrumentProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
     transportStatus.kickPlayTime = kick.getPlayTime();
     transportStatus.kickTriggers = kick.getTriggerCount();
     for (int layer = 0; layer < numLayers; ++layer)
-        transportStatus.bassSamplePosition[(size_t) layer] = basses[(size_t) layer].getSampleFraction();
+        transportStatus.bassSamplePosition[(size_t) layer] = layer < activeLayers ? basses[(size_t) layer].getSampleFraction() : -1.0f;
     transportStatus.kickStep = patternActive ? scheduler.getLastKickStep() : -1;
     for (int layer = 0; layer < numLayers; ++layer)
         transportStatus.bassSteps[(size_t) layer] = patternActive ? scheduler.getLastBassStep (layer) : -1;
@@ -211,7 +219,15 @@ void InstrumentProcessor::readBlockParams()
 {
     lengths = Params::readPatternLengthsWith ([this] (const char* id) { return params.get (id); });
     kickOn = params.getBool (ParamID::kickOn);
-    for (int layer = 0; layer < numLayers; ++layer)
+
+    // Instrument som tagits bort tystas direkt; deras mönster och inställningar finns kvar om de läggs till igen.
+    const auto newActive = params.instruments();
+    for (int layer = newActive; layer < activeLayers; ++layer)
+        basses[(size_t) layer].reset();
+    activeLayers = newActive;
+    scheduler.setNumLayers (activeLayers);
+
+    for (int layer = 0; layer < activeLayers; ++layer)
     {
         layerOn[(size_t) layer] = params.bass (layer, BassField::on) >= 0.5f;
         duckAmounts[(size_t) layer] = params.bass (layer, BassField::duck); // med LFO-modulering
@@ -241,7 +257,7 @@ void InstrumentProcessor::refreshEngineParams()
         kickParams.sampleLevel = 1.0f;
     }
     kick.setParams (kickParams);
-    for (int layer = 0; layer < numLayers; ++layer)
+    for (int layer = 0; layer < activeLayers; ++layer)
     {
         auto bassParams = readModulatedBass (layer, bassRootNote());
         if (soloSamplesLeft > 0 && layer == soloLayer)
@@ -417,7 +433,7 @@ void InstrumentProcessor::renderSamples (int startSample, int endSample)
         duckData[i] = useCurve ? curveValue : kick.getEnvelope();
     }
 
-    for (int layer = 0; layer < numLayers; ++layer)
+    for (int layer = 0; layer < activeLayers; ++layer)
     {
         auto& bass = basses[(size_t) layer];
         auto* sourceData = layerBuffer.getWritePointer (layer);
@@ -448,7 +464,7 @@ void InstrumentProcessor::finishBlock (int numSamples)
     tapBuffer.clear (0, numSamples);
     tapBuffer.clear (1, numSamples);
 
-    for (int layer = 0; layer < numLayers; ++layer)
+    for (int layer = 0; layer < activeLayers; ++layer)
     {
         auto* data = layerBuffer.getWritePointer (layer);
         auto* dataRight = layerBufferRight.getWritePointer (layer);
@@ -578,7 +594,7 @@ void InstrumentProcessor::handleEvent (const StepEvent& event)
     }
 
     const auto layer = event.layer;
-    if (! layerOn[(size_t) layer])
+    if (layer >= activeLayers || ! layerOn[(size_t) layer])
         return;
 
     const auto& note = pattern.note (layer, event.step);

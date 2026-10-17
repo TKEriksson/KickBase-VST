@@ -11,7 +11,7 @@
 #include "../Ui/Modules.h"
 #include "../Ui/TabbedPanel.h"
 
-// Överst syntarna (kick och de tre baslagren), nedanför verktygen (mönster, effekter, sidechain,
+// Överst syntarna (mönster, kick och instrumenten, ett i taget), nedanför verktygen (mönster, effekter, sidechain,
 // LFO:er, master), så att mönstret syns och LFO:er kan dras till rattarna ovanför.
 // DragAndDropContainer: LFO:er dras till rattarna.
 class InstrumentEditor : public juce::AudioProcessorEditor, public juce::DragAndDropContainer
@@ -32,7 +32,7 @@ private:
     TabbedPanel synths { &processor.selectedSynthTab };
     PatternModule pattern { processor, true };
     KickModule kick { processor };
-    BassModule bass1 { processor, 0 }, bass2 { processor, 1 }, bass3 { processor, 2 };
+    InstrumentHost instruments { processor };
     TabbedPanel tools { &processor.selectedTab };
     EffectsPage effects { processor };
     SidechainPage sidechain { processor };

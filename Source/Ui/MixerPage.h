@@ -62,13 +62,15 @@ public:
 private:
     void timerCallback() override;
 
+    PluginBase& processor;
+    int lastActive = -1;
     std::vector<std::unique_ptr<MixerStrip>> strips;
     MasterStrip master;
 };
 
 // En rad av brytare, en per ljudkälla, för sidechainen (field "Duck") eller maximizern (field "Max").
 // De är samma parametrar som SC- och MAX-knapparna i mixern.
-class SourceToggles : public juce::Component
+class SourceToggles : public juce::Component, private juce::Timer
 {
 public:
     SourceToggles (PluginBase& processor, const juce::String& field, const juce::String& title);
@@ -77,6 +79,11 @@ public:
     void resized() override;
 
 private:
+    void timerCallback() override;
+
+    PluginBase& processor;
+    int lastActive = -1, lastNamesVersion = -1;
+    std::vector<int> sourceOfButton;
     juce::String title;
     std::vector<std::unique_ptr<juce::TextButton>> buttons;
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment>> attachments;

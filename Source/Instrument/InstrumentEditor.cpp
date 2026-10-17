@@ -10,17 +10,10 @@ InstrumentEditor::InstrumentEditor (InstrumentProcessor& p)
 
     synths.addTab ("PATTERN", Theme::pattern, pattern);
     synths.addTab ("KICK", Theme::kick, kick, kick.embedInTab());
-    synths.addTab ("BASS 1", Theme::layerColour (0), bass1, bass1.embedInTab());
-    synths.addTab ("BASS 2", Theme::layerColour (1), bass2, bass2.embedInTab());
-    synths.addTab ("BASS 3", Theme::layerColour (2), bass3, bass3.embedInTab());
+    synths.addTab ("INSTRUMENT", Theme::bass, instruments, instruments.getHeader(), InstrumentHost::headerWidth);
 
-    // På/av direkt på flikarna, och lagrens egna namn.
+    // På/av direkt på kickens flik (instrumenten har sin på/av i flikraden, bredvid väljaren).
     synths.addPower (1, processor.apvts, ParamID::kickOn);
-    for (int layer = 0; layer < ParamID::numBassLayers; ++layer)
-    {
-        synths.addPower (2 + layer, processor.apvts, ParamID::bass (layer, BassField::on));
-        synths.setNameProvider (2 + layer, [this, layer] { return processor.getLayerName (layer); });
-    }
 
     tools.addTab ("EFFECTS", Theme::effects, effects);
     tools.addTab ("SIDECHAIN", Theme::mix, sidechain);

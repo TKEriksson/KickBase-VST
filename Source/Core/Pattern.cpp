@@ -217,7 +217,9 @@ void Pattern::fromValueTree (const juce::ValueTree& tree)
 
     for (const auto& child : tree)
     {
-        const auto layer = (int) child.getProperty ("layer", 0);
+        auto layer = (int) child.getProperty ("layer", 0);
+        if (version <= 5 && child.hasType ("Notes") && layer == 3)
+            layer = kickLayer; // före version 6 var kicken lager 3 (det fanns tre instrument)
         if (! juce::isPositiveAndBelow (layer, numNoteLayers))
             continue;
 
@@ -264,4 +266,13 @@ void Pattern::fromValueTree (const juce::ValueTree& tree)
             }
         }
     }
+
+    // Lager som projektet inte nämner (t.ex. instrument 4-10 i ett äldre projekt) töms, så att inget gammalt blir kvar.
+    for (int layer = 0; layer < numNoteLayers; ++layer)
+        if (! cleared[(size_t) layer] && ! (layer == kickLayer && tree.hasProperty ("kick")))
+        {
+            clearNotes (layer);
+            if (layer < numLayers)
+                setGate (layer, true);
+        }
 }

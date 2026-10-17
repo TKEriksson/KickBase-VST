@@ -189,13 +189,17 @@ namespace Presets
     {
         if (! id.startsWith ("bass") || id.length() < 5 || ! juce::CharacterFunctions::isDigit (id[4]))
             return -1;
-        const auto layer = id[4] - '1';
+        const auto digits = id.length() > 5 && juce::CharacterFunctions::isDigit (id[5]) ? 2 : 1; // bass1 ... bass10
+        const auto layer = id.substring (4, 4 + digits).getIntValue() - 1;
         return juce::isPositiveAndBelow (layer, ParamID::numBassLayers) ? layer : -1;
     }
 
     juce::String toBassLayer (const juce::String& id, int layer)
     {
-        return bassLayerOf (id) >= 0 ? "bass" + juce::String (layer + 1) + id.substring (5) : id;
+        if (bassLayerOf (id) < 0)
+            return id;
+        const auto digits = id.length() > 5 && juce::CharacterFunctions::isDigit (id[5]) ? 2 : 1;
+        return "bass" + juce::String (layer + 1) + id.substring (4 + digits);
     }
 
     bool belongsTo (Section section, const juce::String& id, int layer)

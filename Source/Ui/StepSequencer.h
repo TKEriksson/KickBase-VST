@@ -18,7 +18,7 @@ public:
     enum class Lane { velocity, gate, pitch, slide }; // gate = tonlängd (LENGTH); slide används inte längre
     enum class Mode { notes, gate };
 
-    // `layerNames`: en rad per baslager (FX-versionen: bara gaten).
+    // `layerNames`: en rad per instrument (högst 10; FX-versionen: bara gaten). Hur många som visas styrs av instrumentCount.
     StepSequencer (PluginBase& processor, juce::StringArray layerNames, std::vector<juce::Colour> layerColours);
 
     void setLane (Lane newLane) { lane = newLane; repaint(); }
@@ -50,7 +50,8 @@ private:
 
     void timerCallback() override;
 
-    int numLayers() const { return layerNames.size(); }
+    int totalLayers() const { return layerNames.size(); }   // alla instrument som finns i gränssnittet
+    int numLayers() const { return processor.isEffectVersion() ? 1 : std::min (totalLayers(), processor.activeInstruments()); } // de som används
     int bars() const;
     PatternLengths lengths() const { return Params::readPatternLengths (processor.apvts); }
 
@@ -67,15 +68,15 @@ private:
     int gateSteps (int layer) const { return viewBars() * Pattern::bassStepsPerBar (gateGrid (layer)); }
 
     // Radens egna längd i steg (kortare än mönstret när raden har en egen längd): efter den loopar eller tystnar raden.
-    // Lager 0-2 är baslagren och lager 3 (Pattern::kickLayer) är kicken. Radens nummer för längderna: kick 0, bas 1-3.
+    // Lager 0-9 är instrumenten och lager 10 (Pattern::kickLayer) är kicken. Radens nummer för längderna: kick 0, instrument 1-10.
     static int rowOf (int layer) { return layer == Pattern::kickLayer ? 0 : layer + 1; }
     int bassOwnSteps (const PatternLengths& l, int layer) const { return l.barsOf (rowOf (layer)) * Pattern::bassStepsPerBar (grid (layer)); }
     int gateOwnSteps (const PatternLengths& l, int layer) const { return l.barsOf (rowOf (layer)) * Pattern::bassStepsPerBar (gateGrid (layer)); }
 
-    juce::Rectangle<int> rowBounds (int layer) const { return layer == Pattern::kickLayer ? kickRow : bassRows[(size_t) layer]; }
+    juce::Rectangle<int> rowBounds (int layer) const { return rowRects[(size_t) rowOf (layer)]; }
     juce::Colour colourOf (int layer) const { return layer == Pattern::kickLayer ? Theme::kick : layerColours[(size_t) layer]; }
     juce::String nameOf (int layer) const;
-    bool renameable() const { return numLayers() > 1; } // instrumentets baslager kan döpas om; FX-versionens GATE-rad inte
+    bool renameable() const { return totalLayers() > 1; } // instrumentets lager kan döpas om; FX-versionens GATE-rad inte
 
     int laneStepAt (int x) const { const auto l = lengths(); return stepAt (x, selectedLayer, bassSteps (selectedLayer), bassOwnSteps (l, selectedLayer)); }
     bool isCustom (int layer) const { return processor.pattern.isCustom (layer); }
@@ -135,8 +136,13 @@ private:
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment>> lengthAttachments;
     juce::Rectangle<int> pageArea, headerLabels;
 
-    juce::Rectangle<int> labelColumn, kickRow, laneArea;
-    std::vector<juce::Rectangle<int>> bassRows;
+    juce::Rectangle<int> labelColumn, stepsColumn, laneArea;
+    std::array<juce::Rectangle<int>, numPatternRows> rowRects; // radernas ytor (tom = utanför, bortscrollad eller instrumentet används inte)
+    int rowsTop = 0, rowsBottom = 0;
+    bool revealSelected = true;
+    int rowScroll = 0, visibleRows = numPatternRows; // första synliga rad och hur många som får plats (fler rader än plats: scrolla)
+    juce::TextButton rowUpButton { "^" }, rowDownButton { "v" };
+    void scrollRows (int delta);
 
     Target dragTarget = Target::none;
     int dragLayer = 0;
@@ -145,7 +151,8 @@ private:
     bool edited = false;
     int hoverStep = -1;
 
-    int lastKickStep = -2, lastBars = 0, lastVersion = -1, lastCustomBits = -1, lastNamesVersion = -1;
+    int lastKickStep = -2, lastBars = 0, lastVersion = -1, lastCustomBits = -1, lastNamesVersion = -1, lastActive = -1;
     juce::Component::SafePointer<juce::AlertWindow> renameDialog;
-    std::array<int, Pattern::numLayers> lastBassSteps { -2, -2, -2 }, lastGrids { -1, -1, -1 }, lastGateGrids { -1, -1, -1 };
+    std::array<int, Pattern::numLayers> lastBassSteps = filledArray<int, Pattern::numLayers> (-2), lastGrids = filledArray<int, Pattern::numLayers> (-1),
+                                       lastGateGrids = filledArray<int, Pattern::numLayers> (-1);
 };

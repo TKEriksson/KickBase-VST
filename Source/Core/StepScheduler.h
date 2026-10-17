@@ -47,11 +47,10 @@ private:
     // Kickens och baslagrens toner ligger fritt i tiden, så markörerna går i ticks (96 per fjärdedel).
     StepCursor kickCursor { (double) Pattern::ticksPerQuarter };
     static constexpr double bassTicksPerQuarter = Pattern::ticksPerQuarter;
-    std::array<StepCursor, Pattern::numLayers> bassCursors { StepCursor { bassTicksPerQuarter }, StepCursor { bassTicksPerQuarter },
-                                                             StepCursor { bassTicksPerQuarter } };
+    std::array<StepCursor, Pattern::numLayers> bassCursors {}; // alla med bassTicksPerQuarter (standardvärdet)
 
     std::array<StepEvent, 512> events {};
     int numEvents = 0;
     int lastKickStep = -1;
-    std::array<int, Pattern::numLayers> lastBassSteps { -1, -1, -1 };
+    std::array<int, Pattern::numLayers> lastBassSteps = filledArray<int, Pattern::numLayers> (-1);
 };

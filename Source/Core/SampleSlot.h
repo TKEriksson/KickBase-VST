@@ -9,7 +9,7 @@
 class SampleSlot
 {
 public:
-    explicit SampleSlot (double maxSecondsToLoad = 2.0) : maxSeconds (maxSecondsToLoad) {}
+    explicit SampleSlot (double maxSecondsToLoad = 12.0) : maxSeconds (maxSecondsToLoad) {}
 
     bool loadFile (const juce::File& file);                  // message thread
     void clear();

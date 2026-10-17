@@ -97,13 +97,15 @@ private:
     void handlePreviewRequest (int row);
     void stopPreview(); // provlyssning av en enda källa (se PluginBase::requestAudition)
     bool kickOn = true;
-    std::array<bool, numLayers> layerOn { true, true, true };
-    std::array<float, numLayers> duckAmounts { 0.8f, 0.8f, 0.8f }, gateScales { 1.0f, 1.0f, 1.0f };
+    int activeLayers = ParamID::defaultInstrumentCount; // instrument som används (instrumentCount); de övriga rörs inte
+    std::array<bool, numLayers> layerOn = filledArray<bool, numLayers> (true);
+    std::array<float, numLayers> duckAmounts = filledArray<float, numLayers> (0.8f), gateScales = filledArray<float, numLayers> (1.0f);
 
     // GATE per lager: en egen av/på-rytm (eget rutnät) som hackar ljudet, med mjuka kanter. Läses en gång per block.
-    std::array<bool, numLayers> gateOn { false, false, false };
-    std::array<int, numLayers> gateGrid { (int) BassGrid::sixteenth, (int) BassGrid::sixteenth, (int) BassGrid::sixteenth };
-    std::array<float, numLayers> gateDepth { 1.0f, 1.0f, 1.0f }, gateCoefficient { 0.01f, 0.01f, 0.01f }, gateGain { 1.0f, 1.0f, 1.0f };
+    std::array<bool, numLayers> gateOn = filledArray<bool, numLayers> (false);
+    std::array<int, numLayers> gateGrid = filledArray<int, numLayers> ((int) BassGrid::sixteenth);
+    std::array<float, numLayers> gateDepth = filledArray<float, numLayers> (1.0f), gateCoefficient = filledArray<float, numLayers> (0.01f),
+                                 gateGain = filledArray<float, numLayers> (1.0f);
     Sidechain::Mode sidechainMode = Sidechain::Mode::kickEnvelope;
     double duckLengthSamples = 1.0;
     NoteEnd noteEnd = NoteEnd::cut;

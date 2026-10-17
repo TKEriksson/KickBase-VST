@@ -1,5 +1,7 @@
 #include "Params.h"
 #include "Modulation.h"
+#include <map>
+#include <string>
 
 namespace
 {
@@ -82,16 +84,31 @@ namespace ParamID
         return "bass" + juce::String (layer + 1) + bassFieldName (field);
     }
 
+    namespace
+    {
+        // ID:n byggs en gång och lever hela programmet ut (funktionerna returnerar const char*).
+        const std::array<std::string, numPatternRows>& rowNames (const char* prefix, const char* kick)
+        {
+            static std::map<std::string, std::array<std::string, numPatternRows>> cache;
+            auto& names = cache[prefix];
+            if (names[0].empty())
+            {
+                names[0] = std::string (prefix) + kick;
+                for (int row = 1; row < numPatternRows; ++row)
+                    names[(size_t) row] = std::string (prefix) + "Bass" + std::to_string (row);
+            }
+            return names;
+        }
+    }
+
     const char* rowLoop (int row)
     {
-        static const char* names[] { "rowLoopKick", "rowLoopBass1", "rowLoopBass2", "rowLoopBass3" };
-        return names[juce::jlimit (0, 3, row)];
+        return rowNames ("rowLoop", "Kick")[(size_t) juce::jlimit (0, numPatternRows - 1, row)].c_str();
     }
 
     const char* rowBars (int row)
     {
-        static const char* names[] { "rowBarsKick", "rowBarsBass1", "rowBarsBass2", "rowBarsBass3" };
-        return names[juce::jlimit (0, 3, row)];
+        return rowNames ("rowBars", "Kick")[(size_t) juce::jlimit (0, numPatternRows - 1, row)].c_str();
     }
 }
 
@@ -104,16 +121,20 @@ namespace Params
         juce::StringArray rowLengths { "Total" };
         for (int bars = 1; bars <= Pattern::maxBars; bars *= 2)
             rowLengths.add (juce::String (bars) + (bars == 1 ? " bar" : " bars"));
-        for (int row = 0; row < 4; ++row)
+        for (int row = 0; row < numPatternRows; ++row)
             layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::rowBars (row), 1 },
-                                                                row == 0 ? juce::String ("Kick Length") : "Bass " + juce::String (row) + " Length", rowLengths, 0));
-        for (int row = 0; row < 4; ++row)
+                                                                row == 0 ? juce::String ("Kick Length") : "Instr " + juce::String (row) + " Length", rowLengths, 0));
+        for (int row = 0; row < numPatternRows; ++row)
             layout.add (std::make_unique<AudioParameterBool> (ParameterID { ParamID::rowLoop (row), 1 },
-                                                              row == 0 ? juce::String ("Kick Loop") : "Bass " + juce::String (row) + " Loop", true));
+                                                              row == 0 ? juce::String ("Kick Loop") : "Instr " + juce::String (row) + " Loop", true));
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::rowGridKick, 1 }, "Kick Grid", Pattern::gridNames(), (int) BassGrid::sixteenth));
         if (includeNoteEnd)
+        {
             layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::noteEnd, 1 }, "Note End",
                                                                 StringArray { "Cut", "Finish bar", "Finish pattern" }, 0));
+            layout.add (std::make_unique<AudioParameterInt> (ParameterID { ParamID::instrumentCount, 1 }, "Instruments", 1, ParamID::numBassLayers,
+                                                             ParamID::defaultInstrumentCount));
+        }
     }
 
     void addKickParams (Layout& layout)
@@ -166,7 +187,7 @@ namespace Params
     {
         using F = BassField;
         auto id = [layer] (F f) { return ParamID::bass (layer, f); };
-        const auto title = "Bass " + String (layer + 1) + " ";
+        const auto title = "Instr " + String (layer + 1) + " ";
 
         layout.add (std::make_unique<AudioParameterBool> (ParameterID { id (F::on), 1 }, title + "On", true));
         layout.add (percent (id (F::level), title + "Level", defaultLevel));
@@ -191,7 +212,7 @@ namespace Params
     {
         using F = BassField;
         auto id = [layer] (F f) { return ParamID::bass (layer, f); };
-        const auto title = "Bass " + String (layer + 1) + " ";
+        const auto title = "Instr " + String (layer + 1) + " ";
 
         layout.add (std::make_unique<AudioParameterInt> (ParameterID { id (F::octave), 1 }, title + "Octave", -2, 1, 0));
         layout.add (floatParam (id (F::tune), title + "Tune", NormalisableRange<float> (-12.0f, 12.0f, 0.01f), 0.0f,

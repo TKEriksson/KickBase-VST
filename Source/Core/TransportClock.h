@@ -8,7 +8,7 @@
 // gräns spelas två gånger när den hamnar precis på en blockgräns.
 struct StepCursor
 {
-    explicit StepCursor (double stepsPerQuarterIn) : stepsPerQuarter (stepsPerQuarterIn) {}
+    StepCursor (double stepsPerQuarterIn = 96.0) : stepsPerQuarter (stepsPerQuarterIn) {}
 
     double stepsPerQuarter; // 1 = fjärdedelar, 4 = sextondelar, 3 = åttondelstrioler, 6 = sextondelstrioler
     double lastFiredPpq = -std::numeric_limits<double>::infinity();

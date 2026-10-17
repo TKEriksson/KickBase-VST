@@ -157,6 +157,7 @@ OscPanel::OscPanel (PluginBase& p, int layerIn, int oscIn, juce::Colour accentIn
     };
     addAndMakeVisible (wavButton);
     startTimerHz (10);
+    timerCallback(); // tabellens namn syns direkt
 
     using F = BassField;
     const std::pair<F, const char*> specs[] { { F::aPos, "POS" }, { F::aLevel, "LEVEL" }, { F::aSemi, "SEMI" }, { F::aFine, "FINE" },

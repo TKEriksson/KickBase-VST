@@ -160,6 +160,45 @@ private:
     std::unique_ptr<FxSendControl> fxSend;
 };
 
+// INSTRUMENT-fliken: ett instrument i taget (1-10), valt med en väljare i flikraden, med + och − för att lägga till och ta bort. Panelerna
+// (BassModule) skapas när ett instrument först visas och rivs när det tas bort.
+class InstrumentHost : public juce::Component, private juce::Timer
+{
+public:
+    static constexpr int headerWidth = 650;
+
+    explicit InstrumentHost (PluginBase& processor);
+    ~InstrumentHost() override;
+
+    juce::Component* getHeader() { return &header; }
+    void resized() override;
+    void select (int layer);
+
+private:
+    struct Header : public juce::Component
+    {
+        void resized() override;
+        juce::TextButton selector, addButton { "+" }, removeButton { "-" };
+        juce::Component* extras = nullptr;
+    };
+
+    void timerCallback() override;
+    void showSelector();
+    void rename (int layer);
+    void addInstrument();
+    void removeInstrument();
+    void refresh();
+    BassModule& moduleFor (int layer);
+
+    PluginBase& processor;
+    Header header;
+    std::array<std::unique_ptr<BassModule>, ParamID::numBassLayers> modules;
+    std::array<juce::Component*, ParamID::numBassLayers> extras {};
+    int current = 0, lastCount = -1, lastNamesVersion = -1;
+    bool confirmOpen = false;
+    juce::Component::SafePointer<juce::AlertWindow> renameDialog;
+};
+
 // Gaten (bara FX-versionen): formar ljudet från den andra synthen.
 class GateModule : public ModulePanel
 {
@@ -212,21 +251,22 @@ private:
     PianoRoll pianoRoll;
     juce::TextButton patternTab { "PATTERN" }, gateTab { "GATE" };
     juce::TextButton pianoButton { "PIANO ROLL" };
-    std::vector<std::unique_ptr<juce::TextButton>> layerButtons; // BASS 1-3: vilket lager som redigeras
-    juce::TextButton kickLayerButton { "KICK" };                // lager 3: kicken
+    std::vector<std::unique_ptr<juce::TextButton>> layerButtons; // instrumenten: vilket lager som redigeras
+    juce::TextButton kickLayerButton { "KICK" };                // lager 10: kicken
     std::unique_ptr<ChoiceComponent> kickGrid;                   // kickens rutnät
     int lastNamesVersion = -1;
     // Längdändringar: förkortas en rad tas det som inte får plats bort (efter en bekräftelse om något går förlorat), förlängs den
     // upprepas det den spelade. Se checkLengthChanges.
-    std::array<int, 4> lastRowBars { -1, -1, -1, -1 };  // radernas längd förra gången (kick, bas 1-3)
-    std::array<int, 5> lastChoices { -1, -1, -1, -1, -1 }; // valen för TOTAL LENGTH och de fyra radernas längd förra gången
+    std::array<int, numPatternRows> lastRowBars = filledArray<int, numPatternRows> (-1);        // radernas längd förra gången (kick, instrument 1-10)
+    std::array<int, numPatternRows + 1> lastChoices = filledArray<int, numPatternRows + 1> (-1); // valen för TOTAL LENGTH och radernas längd förra gången
+    int lastActive = -1;
     int lastPatternVersion = -1;
     bool confirmOpen = false;
     void checkLengthChanges();
     void extendRow (int row, int beforeBars, int nowBars, bool repeat); // förlängd rad: upprepa det den spelade, eller töm det nya
     void trimRow (int row, int bars);                                   // förkortad rad: ta bort det som inte får plats
     juce::String rowName (int row) const;
-    void restoreChoices (const std::array<int, 5>& choices);
+    void restoreChoices (const std::array<int, numPatternRows + 1>& choices);
 
     // Per lager (bara det valda syns): notrutnätet och tonlängden (PATTERN), och GATE: på/av, rutnät, djup och mjukhet.
     std::vector<std::unique_ptr<ChoiceComponent>> grids, gateGrids;

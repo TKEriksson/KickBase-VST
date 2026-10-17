@@ -44,17 +44,41 @@ private:
     float lastDepths = -1.0f; // summan av lagrens djup, för att se när något ändrats
 };
 
+// En rad i listan över hur djupt kicken ducker varje instrument: namn, ett reglage och en liten mätare som visar hur mycket som ducks nu.
+class DuckRow : public juce::Component, private juce::Timer
+{
+public:
+    DuckRow (PluginBase& processor, int layer);
+    void paint (juce::Graphics&) override;
+    void resized() override;
+
+private:
+    void timerCallback() override;
+
+    PluginBase& processor;
+    const int layer;
+    juce::Slider slider;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> attachment;
+    float reduction = 0.0f;
+    juce::String shownName;
+};
+
 // Fliken SIDECHAIN.
-class SidechainPage : public juce::Component
+class SidechainPage : public juce::Component, private juce::Timer
 {
 public:
     explicit SidechainPage (PluginBase& processor);
     void resized() override;
 
 private:
+    void timerCallback() override;
+
+    PluginBase& processor;
+    int lastActive = -1;
     PresetButton presets;
     ChoiceComponent mode, length;
-    std::vector<std::unique_ptr<KnobComponent>> depths; // en per baslager
+    std::vector<std::unique_ptr<DuckRow>> depthRows;    // en per instrument
+    std::unique_ptr<KnobComponent> depthKnob;           // FX-versionen: ett enda djup
     DuckCurveView curve;
     ScopeView scope;
     std::unique_ptr<SourceToggles> sources; // vilka källor som ducks (samma som SC i mixern)

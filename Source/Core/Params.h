@@ -16,10 +16,14 @@ namespace ParamID
     inline constexpr auto noteEnd     = "noteEnd";
     inline constexpr auto rowGridKick = "rowGridKick"; // kickens rutnät (som bassidornas Grid); heter inte kick... så att det hör till mönstret
 
-    // Radens egen längd: 0 = kicken, 1-3 = baslager (val 0 = hela mönstret, sedan 1 ... 64 takter).
+    // Hur många instrument (baslager 1-10) som används. De övriga finns kvar som parametrar men spelas, visas och mixas inte.
+    inline constexpr auto instrumentCount = "instrumentCount";
+    inline constexpr int defaultInstrumentCount = 3;
+
+    // Radens egen längd: 0 = kicken, 1-10 = instrument (val 0 = hela mönstret, sedan 1 ... 64 takter).
     const char* rowBars (int row);
 
-    // Loopar raden (när den är kortare än mönstret)? Per rad: 0 = kicken, 1-3 = baslager.
+    // Loopar raden (när den är kortare än mönstret)? Per rad: 0 = kicken, 1-10 = instrument.
     const char* rowLoop (int row);
 
     // Kick
@@ -85,7 +89,7 @@ enum class BassField
 
 namespace ParamID
 {
-    constexpr int numBassLayers = 3;
+    constexpr int numBassLayers = maxInstruments; // så många instrument finns som mest (instrumentCount väljer hur många som används)
     constexpr int oscFieldCount = 15; // fält per oscillator (aTable ... aOn)
     constexpr int oscsPerLayer = 3;   // OSC 1, 2 och 3
 
@@ -127,7 +131,7 @@ namespace Params
     {
         PatternLengths lengths;
         lengths.total = barsFromChoice ((int) get (ParamID::patternBars));
-        for (int row = 0; row < 4; ++row)
+        for (int row = 0; row < numPatternRows; ++row)
         {
             lengths.rows[(size_t) row] = rowBarsFromChoice ((int) get (ParamID::rowBars (row)));
             lengths.loops[(size_t) row] = get (ParamID::rowLoop (row)) >= 0.5f;
@@ -162,6 +166,9 @@ public:
 
     // Ett baslagers parameter, utan namnuppslag (index räknade i konstruktorn).
     float bass (int layer, BassField field) const;
+
+    // Antal använda instrument (1-10).
+    int instruments() const { return juce::jlimit (1, ParamID::numBassLayers, (int) std::lround (get (ParamID::instrumentCount))); }
 
     KickParams readKick (int keyPitchClass) const;
     BassParams readBass (int layer, int rootMidiNote) const; // rootMidiNote före Octave och Tune

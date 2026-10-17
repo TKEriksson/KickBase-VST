@@ -22,7 +22,7 @@ float DuckCurveView::depth (int layer) const
 
 int DuckCurveView::numLayers() const
 {
-    return processor.isEffectVersion() ? 1 : ParamID::numBassLayers;
+    return processor.activeInstruments();
 }
 
 void DuckCurveView::timerCallback()
@@ -167,7 +167,7 @@ void DuckCurveView::paint (juce::Graphics& g)
 
     g.setFont (Theme::font (10.0f, true));
     g.setColour (Theme::textDim);
-    g.drawText (numLayers() > 1 ? "VOLUME AFTER EACH KICK  (lines = each bass layer)"
+    g.drawText (numLayers() > 1 ? "VOLUME AFTER EACH KICK  (lines = each instrument)"
                                  : "VOLUME AFTER EACH KICK", getLocalBounds().reduced (12, 2).removeFromTop (12), juce::Justification::left);
 
     if (! editable)
@@ -301,40 +301,120 @@ void DuckCurveView::mouseDoubleClick (const juce::MouseEvent& event)
 }
 
 //==============================================================================
+namespace
+{
+    std::vector<ScopeView::Trace> makeTraces (PluginBase& p)
+    {
+        std::vector<ScopeView::Trace> traces { { &p.bassBeforeDuckTap, 2, juce::Colours::white.withAlpha (0.6f), false, "BASS BEFORE" },
+                                               { &p.bassAfterDuckTap, 2, Theme::bass, true, "BASS DUCKED" },
+                                               { &p.kickTap, 2, Theme::kick, true, "KICK" } };
+        for (int layer = 0; layer < (p.isEffectVersion() ? 1 : ParamID::numBassLayers); ++layer)
+        {
+            ScopeView::Trace trace { &p.duckGainTaps[(size_t) layer], 2, Theme::layerColour (layer), false, "DUCK " + juce::String (layer + 1), true };
+            trace.instrument = p.isEffectVersion() ? -1 : layer;
+            traces.push_back (trace);
+        }
+        return traces;
+    }
+}
+
+DuckRow::DuckRow (PluginBase& p, int layerIn) : processor (p), layer (layerIn)
+{
+    slider.setSliderStyle (juce::Slider::LinearHorizontal);
+    slider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 44, 16);
+    slider.setColour (juce::Slider::trackColourId, Theme::layerColour (layer));
+    slider.setColour (juce::Slider::thumbColourId, Theme::text);
+    slider.setColour (juce::Slider::textBoxTextColourId, Theme::text);
+    slider.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+    slider.setPopupDisplayEnabled (true, true, nullptr);
+    slider.setTooltip ("DUCK - How deeply the kick pushes this instrument's volume down. 0 % = no ducking, 100 % = the volume goes all the way down. "
+                       "The bar under the slider shows how much it is ducked right now.");
+    addAndMakeVisible (slider);
+    attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (p.apvts, ParamID::bass (layer, BassField::duck), slider);
+    if (auto* parameter = p.apvts.getParameter (ParamID::bass (layer, BassField::duck)))
+        slider.setDoubleClickReturnValue (true, parameter->convertFrom0to1 (parameter->getDefaultValue()));
+    startTimerHz (20);
+}
+
+void DuckRow::timerCallback()
+{
+    const auto now = processor.duckReduction[(size_t) layer].load();
+    const auto name = processor.getLayerName (layer);
+    if (std::abs (now - reduction) > 0.005f || name != shownName)
+    {
+        reduction = now;
+        shownName = name;
+        repaint();
+    }
+}
+
+void DuckRow::resized()
+{
+    auto area = getLocalBounds();
+    area.removeFromLeft (74);
+    slider.setBounds (area.withTrimmedBottom (3));
+}
+
+void DuckRow::paint (juce::Graphics& g)
+{
+    g.setFont (Theme::font (10.5f, true));
+    g.setColour (Theme::layerColour (layer));
+    g.drawFittedText (processor.getLayerName (layer), getLocalBounds().withWidth (70), juce::Justification::centredLeft, 1, 0.75f);
+
+    // Hur mycket som ducks just nu, som en smal stapel under reglaget.
+    const auto bar = juce::Rectangle<float> ((float) slider.getX() + 4.0f, (float) getHeight() - 3.0f, (float) slider.getWidth() - 52.0f, 2.0f);
+    g.setColour (Theme::knobBodyDark);
+    g.fillRect (bar);
+    g.setColour (Theme::kick);
+    g.fillRect (bar.withWidth (bar.getWidth() * juce::jlimit (0.0f, 1.0f, reduction)));
+}
+
+//==============================================================================
 SidechainPage::SidechainPage (PluginBase& p)
-    : presets (p, Presets::Section::sidechain, Theme::mix),
+    : processor (p),
+      presets (p, Presets::Section::sidechain, Theme::mix),
       mode (p.apvts, "scMode", "MODE"),
       length (p.apvts, "scLength", "LENGTH"),
       curve (p),
-      scope (p, { { &p.bassBeforeDuckTap, 2, juce::Colours::white.withAlpha (0.6f), false, "BASS BEFORE" },
-                  { &p.bassAfterDuckTap, 2, Theme::bass, true, "BASS DUCKED" },
-                  { &p.kickTap, 2, Theme::kick, true, "KICK" },
-                  { &p.duckGainTaps[0], 2, Theme::layerColour (0), false, "DUCK 1", true },
-                  { &p.duckGainTaps[1], 2, Theme::layerColour (1), false, "DUCK 2", true },
-                  { &p.duckGainTaps[2], 2, Theme::layerColour (2), false, "DUCK 3", true } })
+      scope (p, makeTraces (p))
 {
-    scope.setTooltip ("SIDECHAIN SCOPE - Live: the kick (orange), the bass before the sidechain (white outline) and after it (blue). "
-                      "The blue is the bass the kick lets through: watch it being cut away under each kick. "
-                      "The coloured curves in from the top and bottom edges show how much each bass layer is ducked (DUCK 1, 2, 3).");
+    scope.setTooltip ("SIDECHAIN SCOPE - Live: the kick (orange), the instruments before the sidechain (white outline) and after it (blue). "
+                      "The blue is what the kick lets through: watch it being cut away under each kick. "
+                      "The coloured curves in from the top and bottom edges show how much each instrument is ducked.");
     for (auto* c : std::initializer_list<juce::Component*> { &presets, &mode, &length, &curve, &scope })
         addAndMakeVisible (c);
 
-    const auto numLayers = p.isEffectVersion() ? 1 : ParamID::numBassLayers;
-    for (int layer = 0; layer < numLayers; ++layer)
+    if (p.isEffectVersion())
     {
-        const auto name = p.isEffectVersion() ? juce::String ("DEPTH") : "BASS " + juce::String (layer + 1);
-        depths.push_back (std::make_unique<KnobComponent> (p.apvts, ParamID::bass (layer, BassField::duck), name,
-                                                           p.isEffectVersion() ? Theme::mix : Theme::layerColour (layer)));
-        addAndMakeVisible (*depths.back());
-        depths.back()->setLiveMeter ([&p, layer] { return p.duckReduction[(size_t) layer].load(); }, Theme::kick);
-        depths.back()->setDescription ("DUCK sets how deeply the kick pushes this layer's volume down. 0 % = no ducking, 100 % = the volume goes all the way down. "
-                                       "The orange arc inside the knob shows how much it is ducked right now.");
+        depthKnob = std::make_unique<KnobComponent> (p.apvts, ParamID::bass (0, BassField::duck), "DEPTH", Theme::mix);
+        addAndMakeVisible (*depthKnob);
+        depthKnob->setLiveMeter ([&p] { return p.duckReduction[0].load(); }, Theme::kick);
+        depthKnob->setDescription ("DUCK sets how deeply the kick pushes the volume down. 0 % = no ducking, 100 % = the volume goes all the way down. "
+                                   "The orange arc inside the knob shows how much it is ducked right now.");
+    }
+    else
+    {
+        for (int layer = 0; layer < ParamID::numBassLayers; ++layer)
+        {
+            depthRows.push_back (std::make_unique<DuckRow> (p, layer));
+            addChildComponent (*depthRows.back());
+        }
     }
 
     if (p.getMixer() != nullptr)
     {
         sources = std::make_unique<SourceToggles> (p, "Duck", "SIDECHAIN AFFECTS");
         addAndMakeVisible (*sources);
+    }
+    startTimerHz (4);
+}
+
+void SidechainPage::timerCallback()
+{
+    if (processor.activeInstruments() != lastActive)
+    {
+        lastActive = processor.activeInstruments();
+        resized();
     }
 }
 
@@ -348,7 +428,7 @@ void SidechainPage::resized()
     }
     auto column = area.removeFromLeft (130);
     area.removeFromLeft (10);
-    auto knobColumn = area.removeFromLeft (depths.size() > 1 ? 160 : 90);
+    auto depthColumn = area.removeFromLeft (depthRows.empty() ? 90 : 230);
     area.removeFromLeft (10);
 
     presets.setBounds (column.removeFromTop (24));
@@ -357,12 +437,21 @@ void SidechainPage::resized()
     column.removeFromTop (2);
     length.setBounds (column.removeFromTop (40));
 
-    // Djupet per lager, två och två.
-    const auto cell = depths.size() > 1 ? knobColumn.getWidth() / 2 : knobColumn.getWidth();
-    for (size_t i = 0; i < depths.size(); ++i)
+    // Djupet per instrument: en rad var (med två kolumner när det är fler än fem).
+    if (depthKnob != nullptr)
+        depthKnob->setBounds (depthColumn.withHeight (82));
+    const auto active = processor.activeInstruments();
+    const auto columns = active > 5 ? 2 : 1;
+    const auto perColumn = (active + columns - 1) / columns;
+    const auto rowHeight = std::min (30, depthColumn.getHeight() / std::max (1, perColumn));
+    const auto columnWidth = depthColumn.getWidth() / columns;
+    for (size_t i = 0; i < depthRows.size(); ++i)
     {
-        const auto row = (int) i / 2, col = (int) i % 2;
-        depths[i]->setBounds (knobColumn.getX() + col * cell, knobColumn.getY() + row * 86, cell, 82);
+        const auto shown = (int) i < active;
+        depthRows[i]->setVisible (shown);
+        if (shown)
+            depthRows[i]->setBounds (depthColumn.getX() + ((int) i / perColumn) * columnWidth, depthColumn.getY() + ((int) i % perColumn) * rowHeight,
+                                     columnWidth - (columns > 1 ? 6 : 0), rowHeight);
     }
     curve.setBounds (area.removeFromLeft (area.getWidth() * 4 / 10));
     area.removeFromLeft (8);

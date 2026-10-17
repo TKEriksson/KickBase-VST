@@ -17,6 +17,7 @@ public:
         bool filled = true;    // fylld yta, annars bara en linje
         juce::String name;
         bool edge = false;     // förstärkning (0..1) som ritas från över- och underkanten inåt: så mycket som tas bort
+        int instrument = -1;   // hör till instrument n (0-9): ritas bara när det instrumentet används
     };
 
     enum class Mode { wave, gainReduction };

@@ -1,5 +1,6 @@
 #include "PluginBase.h"
 #include "OfflineRender.h"
+#include "Mixer.h"
 
 namespace
 {
@@ -140,6 +141,127 @@ bool PluginBase::loadUserTable (int layer, int osc, const juce::File& file)
     }
     markStateChanged();
     return true;
+}
+
+bool PluginBase::instrumentHasContent (int layer, juce::String* what) const
+{
+    juce::StringArray parts;
+
+    auto notes = 0;
+    for (int tick = 0; tick < Pattern::maxTicks; ++tick)
+        if (pattern.note (layer, tick).on.load())
+            ++notes;
+    if (notes > 0)
+        parts.add ((pattern.isCustom (layer) ? "a piano roll with " : "") + juce::String (notes) + (notes == 1 ? " note" : " notes"));
+
+    auto changed = false;
+    for (auto* p : getParameters())
+        if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p); ranged != nullptr && Presets::bassLayerOf (ranged->getParameterID()) == layer
+            && ranged->getParameterID() != ParamID::bass (layer, BassField::on) && std::abs (ranged->getValue() - ranged->getDefaultValue()) > 1.0e-4f)
+        {
+            changed = true;
+            break;
+        }
+    if (changed)
+        parts.add (getPresetName (Presets::Section::bass, layer) == "Default" || getPresetName (Presets::Section::bass, layer).isEmpty()
+                       ? juce::String ("changed or unsaved settings")
+                       : "settings from the preset '" + getPresetName (Presets::Section::bass, layer) + "' (changed or not, they are not saved anywhere else)");
+
+    if (bassSamples[(size_t) layer].hasSample())
+        parts.add ("a sample");
+    for (int osc = 0; osc < ParamID::oscsPerLayer; ++osc)
+        if (userTable (layer, osc) != nullptr)
+        {
+            parts.add ("its own wavetable");
+            break;
+        }
+    if (layerNames[(size_t) layer].isNotEmpty())
+        parts.add ("the name '" + layerNames[(size_t) layer] + "'");
+
+    auto routes = 0;
+    const auto& parameters = getParameters();
+    for (const auto& route : modRoutes.routes)
+        if (route.source.load() >= 0 && juce::isPositiveAndBelow (route.target.load(), parameters.size()))
+            if (auto* withId = dynamic_cast<juce::AudioProcessorParameterWithID*> (parameters[route.target.load()]); withId != nullptr && Presets::bassLayerOf (withId->paramID) == layer)
+                ++routes;
+    if (routes > 0)
+        parts.add (juce::String (routes) + (routes == 1 ? " modulation route" : " modulation routes"));
+
+    if (what != nullptr)
+        *what = parts.joinIntoString (", ", 0, std::max (0, parts.size() - 1)) + (parts.size() > 1 ? " and " : "") + (parts.isEmpty() ? juce::String() : parts[parts.size() - 1]);
+    return ! parts.isEmpty();
+}
+
+void PluginBase::wipeInstrument (int layer)
+{
+    if (! juce::isPositiveAndBelow (layer, ParamID::numBassLayers))
+        return;
+
+    // Mönster och gate.
+    pattern.clearNotes (layer);
+    pattern.setGate (layer, true);
+
+    // Alla instrumentets parametrar (ljud, nivå, rutnät, duck, FX) och dess rad i mönstret och mixern tillbaka till standard.
+    const auto row = 1 + layer;
+    for (auto* p : getParameters())
+        if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p))
+        {
+            const auto id = ranged->getParameterID();
+            if (Presets::bassLayerOf (id) == layer || id == ParamID::rowBars (row) || id == ParamID::rowLoop (row)
+                || id == Mixer::paramID (Mixer::firstBassSource + layer, "Gain") || id == Mixer::paramID (Mixer::firstBassSource + layer, "Pan")
+                || id == Mixer::paramID (Mixer::firstBassSource + layer, "Duck") || id == Mixer::paramID (Mixer::firstBassSource + layer, "Max"))
+                Presets::setParameter (*ranged, ranged->getDefaultValue());
+        }
+
+    // Sampling, egna tabeller, namn.
+    bassSamples[(size_t) layer].clear();
+    for (int osc = 0; osc < ParamID::oscsPerLayer; ++osc)
+    {
+        const auto slot = (size_t) (layer * ParamID::oscsPerLayer + osc);
+        userTables[slot].store (nullptr);
+        if (userOwned[slot] != nullptr)
+            retiredTables.push_back (std::move (userOwned[slot]));
+        userFrames[slot].clear();
+        userFrames[slot].shrink_to_fit();
+        userNames[slot] = {};
+    }
+    while (retiredTables.size() > 4)
+        retiredTables.erase (retiredTables.begin());
+    layerNames[(size_t) layer] = {};
+    bassPresetNames[(size_t) layer] = "Default";
+    ++layerNamesVersion;
+    selectedBassSource[(size_t) layer] = 0;
+
+    // LFO-kopplingar till instrumentets rattar.
+    const auto& parameters = getParameters();
+    for (int i = 0; i < Modulation::maxRoutes; ++i)
+    {
+        const auto target = modRoutes.routes[(size_t) i].target.load();
+        if (modRoutes.routes[(size_t) i].source.load() >= 0 && juce::isPositiveAndBelow (target, parameters.size()))
+            if (auto* withId = dynamic_cast<juce::AudioProcessorParameterWithID*> (parameters[target]); withId != nullptr && Presets::bassLayerOf (withId->paramID) == layer)
+                modRoutes.remove (i);
+    }
+
+    patternChanged();
+}
+
+void PluginBase::setInstrumentCount (int count)
+{
+    if (effectVersion)
+        return;
+
+    count = juce::jlimit (1, ParamID::numBassLayers, count);
+    const auto before = activeInstruments();
+    for (int layer = count; layer < before; ++layer)
+        wipeInstrument (layer);
+
+    if (auto* parameter = apvts.getParameter (ParamID::instrumentCount))
+    {
+        parameter->beginChangeGesture();
+        parameter->setValueNotifyingHost (parameter->convertTo0to1 ((float) count));
+        parameter->endChangeGesture();
+    }
+    markStateChanged();
 }
 
 void PluginBase::ensureTablesInUse()
