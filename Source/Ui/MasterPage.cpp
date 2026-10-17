@@ -102,6 +102,7 @@ void MasterPage::showView (bool mixer)
     mixerTab.setToggleState (mixer, juce::dontSendNotification);
     maximizerTab.setToggleState (! mixer, juce::dontSendNotification);
     mixerView->setVisible (mixer);
+    presets.setVisible (! mixer); // mixern har inget preset
     maxSources->setVisible (! mixer);
     for (auto& knob : knobs)
         knob->setVisible (! mixer);

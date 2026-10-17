@@ -206,7 +206,7 @@ std::vector<ToolLayer::ToolInfo> ToolLayer::tools()
           R"({"type":"object","properties":{"count":{"type":"integer","minimum":1,"maximum":10}},"required":["count"]})" },
         { "set_modulation", "Sets up LFOs and routes (the matrix). lfos: [{\"lfo\":1,\"shape\":\"Sine\",\"rate\":\"1 bar\",\"on\":true}] (shapes: Sine, Triangle, Saw Up, Saw Down, Square, Random, Custom; synced rates 1/32 ... 16 bars; \"hz\":0.02-40 runs the LFO at its own speed instead, \"mode\":\"Sync\"|\"Hz\"; \"points\":[[phase 0..1, value -1..1, tension -1..1],...] draws a custom curve, at least two points, and selects the Custom shape). routes: [{\"lfo\":1,\"param\":\"bass1Cutoff\",\"amount\":0.3}] (amount -1..1 of the knob's travel, only sound parameters: kick*, bass*, fx*). The source is \"lfo\" 1-3, or \"macro\" 1-4 (turn macro1..macro4 with set_parameters), or \"instrument\" 1-10 with \"source\":\"ENV 2\" | \"ENV 3\" | \"VELOCITY\" | \"RANDOM\" (ENV 2/3 are set with bassNEnv2Attack ... bassNEnv3Release). Up to 64 routes. clear_routes removes all routes first.",
           R"({"type":"object","properties":{"lfos":{"type":"array","items":{"type":"object"}},"routes":{"type":"array","items":{"type":"object"}},"clear_routes":{"type":"boolean"}}})" },
-        { "list_presets", "Lists factory and user presets. section: Full, Kick, Bass, Pattern, Effects, Sidechain, Master or LFO (default: all).",
+        { "list_presets", "Lists factory and user presets. section: Full, Kick, Bass, Pattern, Effects, Sidechain, Master (the maximizer), Soundstage or LFO (default: all).",
           R"({"type":"object","properties":{"section":{"type":"string"}}})" },
         { "load_preset", "Loads a factory preset (by name or index) or a user preset (by name or file path) into a section. layer 0-9 (the instrument) for Bass. Full replaces everything.",
           R"({"type":"object","properties":{"section":{"type":"string"},"name":{"type":"string"},"index":{"type":"integer"},"file":{"type":"string"},"layer":{"type":"integer"}},"required":["section"]})" },
@@ -966,7 +966,17 @@ var ToolLayer::loadPreset (const var& args)
             if (candidate.getFileNameWithoutExtension().equalsIgnoreCase (name))
                 file = candidate;
 
-    if (file.existsAsFile() && processor.loadUserPreset (section, file, layer))
+    auto loaded = false;
+    if (file.existsAsFile())
+    {
+        if (section == Presets::Section::bass || section == Presets::Section::kick)
+            loaded = processor.loadInstrumentPreset (section, layer, file).ok; // en länkad effekt hamnar på första lediga FX-kanal
+        else if (section == Presets::Section::pattern)
+            loaded = processor.loadPatternPreset (layer, file, false).ok;      // mönstret, inte ett länkat instrument
+        else
+            loaded = processor.loadUserPreset (section, file, layer);
+    }
+    if (loaded)
         return ok ("Loaded user preset " + file.getFileNameWithoutExtension());
     return fail ("No factory or user preset matches. Use list_presets.");
 }

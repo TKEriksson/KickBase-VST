@@ -1,6 +1,6 @@
-# Länkade presets: plan (ej byggt än)
+# Länkade presets: byggt (steg 1-3 klara 2026-10-17)
 
-Beställt av Tobias 2026-10-17, i den här ordningen. Bygg i steg, ett i taget, med tester.
+Beställt av Tobias 2026-10-17. KLART: FX Preset per kanal, länkade instrument-/kick-presets (effekt) och mönster-presets (instrument), se `PluginBase::saveInstrumentPreset/savePatternPreset/loadInstrumentPreset/loadPatternPreset` och dialogerna i `PresetButton`. Testat i `presettest` ("Länkade presets"). Även klart: Maximizer (`Section::master`) och Soundstage (`Section::soundstage`) har egna presets utan routes; mixern har inget preset. Texten nedan är den ursprungliga planen.
 
 ## Läget nu (efter commit "Pattern preset per row")
 

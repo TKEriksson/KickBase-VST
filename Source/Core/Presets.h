@@ -13,9 +13,10 @@
 // t.ex. kan byta kick utan att röra basen, eller ladda ett echo utan att röra reverbet.
 namespace Presets
 {
-    // Effects är hela effektracket: alla kanaler och vilken kanal varje baslager skickar till.
-    enum class Section { full, kick, bass, pattern, sidechain, master, lfo, effects };
-    constexpr int numSections = 8;
+    // Effects: en effektkanal (layer = kanal).
+    // master = MAXIMIZER (drive, clip, limiter), soundstage = bredd, mono under och stereoförstärkning. Mixern har inget eget preset.
+    enum class Section { full, kick, bass, pattern, sidechain, master, lfo, effects, soundstage };
+    constexpr int numSections = 9;
 
     juce::String sectionName (Section section);
 

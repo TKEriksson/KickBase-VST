@@ -98,6 +98,17 @@ namespace
         return presets;
     }
 
+    const std::vector<Preset>& soundstagePresets()
+    {
+        static const std::vector<Preset> presets {
+            { "Neutral", {} },
+            { "Wide", { { "masterWidth", 1.3f }, { "masterEnhance", 0.2f } } },
+            { "Narrow", { { "masterWidth", 0.7f } } },
+            { "Tight Low End", { { "masterMonoBelow", 160.0f } } },
+        };
+        return presets;
+    }
+
     const std::vector<Preset>& lfoPresets()
     {
         static const std::vector<Preset> presets { { "Off", {} } };
@@ -116,6 +127,7 @@ namespace
             case Section::sidechain: return sidechainPresets();
             case Section::master:    return masterPresets();
             case Section::lfo:       return lfoPresets();
+            case Section::soundstage: return soundstagePresets();
             default:                 break;
         }
         return fullPresets();
@@ -181,6 +193,7 @@ namespace Presets
             case Section::sidechain: return "Sidechain";
             case Section::master:    return "Master";
             case Section::lfo:       return "LFO";
+            case Section::soundstage: return "Soundstage";
             default:                 break;
         }
         return {};
@@ -270,7 +283,10 @@ namespace Presets
             case Section::sidechain:
                 return id.startsWith ("sc") || isLayerField (BassField::duck);
             case Section::master:
-                return id.startsWith ("master") || id.startsWith ("mix");
+                // MAXIMIZER: på/av, drive, clip, ceiling och release. Mixerns reglage och soundstage hör inte hit (de skulle annars nollas av ett maximizer-preset).
+                return id == "masterOn" || id == "masterDrive" || id == "masterClip" || id == "masterCeiling" || id == "masterRelease";
+            case Section::soundstage:
+                return id == "masterWidth" || id == "masterMonoBelow" || id == "masterEnhance";
             case Section::lfo:
                 return id.startsWith ("lfo");
             default:

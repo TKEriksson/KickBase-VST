@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include "../Core/PluginBase.h"
 #include "Theme.h"
 
@@ -24,6 +25,11 @@ private:
     void updateText();
     void showMenu();
     void askForNameAndSave();
+    void loadFile (const juce::File& file);          // laddar ett eget preset (med frågor om länkar och om något går förlorat)
+    void loadPatternFile (const juce::File& file);
+    // Där en länkad effekt ska hamna: första lediga FX-kanal, annars frågar menyn vilken som ersätts. `done` får kanalen (0-10), eller -1 för ingen effekt.
+    // Avbryter man anropas `done` inte.
+    void askFxChannel (const juce::String& fxName, std::function<void (int)> done);
 
     PluginBase& processor;
     const Presets::Section section;

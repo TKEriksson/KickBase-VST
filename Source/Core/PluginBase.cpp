@@ -651,7 +651,7 @@ juce::Array<juce::File> PluginBase::getUserPresets (Presets::Section section, in
     return rows;
 }
 
-bool PluginBase::saveUserPreset (Presets::Section section, const juce::String& name, int layer)
+bool PluginBase::saveUserPreset (Presets::Section section, const juce::String& name, int layer, const PresetLink* link)
 {
     const auto fileName = juce::File::createLegalFileName (name.trim());
     const auto directory = Presets::folder (section, effectVersion);
@@ -668,6 +668,14 @@ bool PluginBase::saveUserPreset (Presets::Section section, const juce::String& n
     {
         root.setAttribute ("scope", "row"); // en rad: en kick- eller instrumentrad, med sina toner, GATE och inställningar
         root.setAttribute ("rowKind", layer == Pattern::kickLayer ? "kick" : "instrument");
+    }
+
+    if (link != nullptr && link->valid())
+    {
+        auto* linkXml = root.createNewChildElement ("Link");
+        linkXml->setAttribute ("kind", link->kind);
+        linkXml->setAttribute ("name", link->name);
+        linkXml->setAttribute ("amount", (double) link->amount);
     }
 
     // Värden sparas i parameterns egen enhet (ms, Hz ...) i stället för 0..1, så att filen
@@ -829,6 +837,133 @@ bool PluginBase::loadUserPreset (Presets::Section section, const juce::File& fil
     ensureTablesInUse();
     patternChanged();
     return true;
+}
+
+PluginBase::PresetLink PluginBase::readPresetLink (const juce::File& presetFile)
+{
+    PresetLink link;
+    if (const auto xml = juce::XmlDocument::parse (presetFile))
+        if (const auto* linkXml = xml->getChildByName ("Link"))
+        {
+            link.kind = linkXml->getStringAttribute ("kind");
+            link.name = linkXml->getStringAttribute ("name");
+            link.amount = (float) linkXml->getDoubleAttribute ("amount", 1.0);
+        }
+    return link;
+}
+
+juce::File PluginBase::findUserPreset (Presets::Section section, const juce::String& name) const
+{
+    if (name.isEmpty())
+        return {};
+    return Presets::folder (section, effectVersion).getChildFile (juce::File::createLegalFileName (name) + presetFileExtension);
+}
+
+int PluginBase::sendChannelOf (Presets::Section section, int layer) const
+{
+    const auto kick = section == Presets::Section::kick;
+    const auto channelID = kick ? juce::String (ParamID::kickFxChannel) : ParamID::bass (layer, BassField::fxChannel);
+    const auto amountID = kick ? juce::String (ParamID::kickFxAmount) : ParamID::bass (layer, BassField::fxAmount);
+    const auto channel = (int) apvts.getRawParameterValue (channelID)->load() - 1;
+    if (channel < 0 || channel >= numEffectChannels || apvts.getRawParameterValue (amountID)->load() <= 0.0f)
+        return -1;
+    return channel;
+}
+
+bool PluginBase::fxChannelHasEffects (int channel) const
+{
+    for (int slot = 0; slot < slotsPerChannel; ++slot)
+        if (Effects::slotType (apvts, channel, slot) != EffectType::off)
+            return true;
+    return false;
+}
+
+int PluginBase::firstFreeFxChannel()
+{
+    const auto mask = fxChannelUsageMask();
+    for (int channel = 0; channel < numEffectChannels; ++channel)
+        if ((mask & (1 << channel)) == 0)
+            return channel;
+    return -1;
+}
+
+bool PluginBase::saveInstrumentPreset (Presets::Section section, int layer, const juce::String& name, const juce::String& fxName)
+{
+    PresetLink link;
+    const auto channel = sendChannelOf (section, layer);
+    if (fxName.trim().isNotEmpty() && channel >= 0)
+    {
+        if (! saveUserPreset (Presets::Section::effects, fxName, channel))
+            return false;
+        link.kind = "effect";
+        link.name = juce::File::createLegalFileName (fxName.trim());
+        link.amount = apvts.getRawParameterValue (section == Presets::Section::kick ? juce::String (ParamID::kickFxAmount)
+                                                                                     : ParamID::bass (layer, BassField::fxAmount))->load();
+    }
+    return saveUserPreset (section, name, layer, link.valid() ? &link : nullptr);
+}
+
+bool PluginBase::savePatternPreset (int layer, const juce::String& name, const juce::String& instrumentName, const juce::String& fxName)
+{
+    PresetLink link;
+    if (instrumentName.trim().isNotEmpty())
+    {
+        const auto kick = layer == Pattern::kickLayer;
+        if (! saveInstrumentPreset (kick ? Presets::Section::kick : Presets::Section::bass, kick ? 0 : layer, instrumentName, fxName))
+            return false;
+        link.kind = kick ? "kick" : "instrument";
+        link.name = juce::File::createLegalFileName (instrumentName.trim());
+    }
+    return saveUserPreset (Presets::Section::pattern, name, layer, link.valid() ? &link : nullptr);
+}
+
+PluginBase::LinkedLoad PluginBase::loadInstrumentPreset (Presets::Section section, int layer, const juce::File& file, int fxChannel)
+{
+    LinkedLoad result;
+    const auto link = readPresetLink (file);
+    const auto effectFile = link.kind == "effect" ? findUserPreset (Presets::Section::effects, link.name) : juce::File();
+    result.effectMissing = link.kind == "effect" && link.valid() && ! effectFile.existsAsFile();
+
+    if (! loadUserPreset (section, file, layer))
+        return result;
+    result.ok = true;
+
+    if (! link.valid() || result.effectMissing || fxChannel == -1)
+        return result;
+    if (fxChannel == -2)
+        fxChannel = firstFreeFxChannel();
+    if (fxChannel < 0 || fxChannel >= numEffectChannels || ! loadUserPreset (Presets::Section::effects, effectFile, fxChannel))
+        return result;
+
+    // Instrumentet skickar till kanalen med den mängd det hade när presetet sparades.
+    const auto kick = section == Presets::Section::kick;
+    for (const auto& [id, value] : { std::pair<juce::String, float> { kick ? juce::String (ParamID::kickFxChannel) : ParamID::bass (layer, BassField::fxChannel), (float) (fxChannel + 1) },
+                                     std::pair<juce::String, float> { kick ? juce::String (ParamID::kickFxAmount) : ParamID::bass (layer, BassField::fxAmount), link.amount } })
+        if (auto* parameter = apvts.getParameter (id))
+            Presets::setParameter (*parameter, parameter->convertTo0to1 (value));
+    result.fxChannel = fxChannel;
+    return result;
+}
+
+PluginBase::LinkedLoad PluginBase::loadPatternPreset (int layer, const juce::File& file, bool withInstrument, int fxChannel)
+{
+    LinkedLoad result;
+    const auto link = readPresetLink (file);
+    const auto kick = layer == Pattern::kickLayer;
+    const auto instrumentFile = link.valid() ? findUserPreset (kick ? Presets::Section::kick : Presets::Section::bass, link.name) : juce::File();
+    result.instrumentMissing = link.valid() && ! instrumentFile.existsAsFile();
+
+    if (! loadUserPreset (Presets::Section::pattern, file, layer))
+        return result;
+    result.ok = true;
+
+    if (withInstrument && link.valid() && ! result.instrumentMissing)
+    {
+        const auto instrument = loadInstrumentPreset (kick ? Presets::Section::kick : Presets::Section::bass, kick ? 0 : layer, instrumentFile, fxChannel);
+        result.effectMissing = instrument.effectMissing;
+        result.fxChannel = instrument.fxChannel;
+    }
+    return result;
 }
 
 juce::AudioBuffer<float> PluginBase::renderOffline (const OfflineRender::Settings& settings, ExportPart part)

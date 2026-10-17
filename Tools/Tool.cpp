@@ -1211,6 +1211,79 @@ namespace
             ok = ok && fxOk;
         }
 
+        // Länkade presets: instrument -> FX-preset (första lediga kanal, val när alla är upptagna, saknad länk) och mönster -> instrument.
+        {
+            auto setPlain = [&processor] (const juce::String& id, float value)
+            {
+                auto* parameter = processor.apvts.getParameter (id);
+                parameter->setValueNotifyingHost (parameter->convertTo0to1 (value));
+            };
+            auto plain = [&processor] (const juce::String& id)
+            {
+                auto* parameter = processor.apvts.getParameter (id);
+                return parameter->convertFrom0to1 (parameter->getValue());
+            };
+            const auto fxLink = juce::String ("__linkfx__"), instLink = juce::String ("__linkinst__"), patLink = juce::String ("__linkpat__");
+            const auto fxLinkFile = processor.findUserPreset (Presets::Section::effects, fxLink);
+            const auto instLinkFile = processor.findUserPreset (Presets::Section::bass, instLink);
+            const auto patLinkFile = processor.findUserPreset (Presets::Section::pattern, patLink);
+
+            // Instrument 1 skickar 60 % till FX3, som har en effekt.
+            Effects::setSlotType (processor.apvts, 2, 0, EffectType::ducker);
+            setPlain (ParamID::bass (0, BassField::fxChannel), 3.0f);
+            setPlain (ParamID::bass (0, BassField::fxAmount), 0.6f);
+            setPlain (ParamID::bass (0, BassField::cutoff), 1234.0f);
+            const auto savedLinked = processor.saveInstrumentPreset (Presets::Section::bass, 0, instLink, fxLink);
+            const auto link = PluginBase::readPresetLink (instLinkFile);
+            const auto linkOk = link.kind == "effect" && link.name == fxLink && std::abs (link.amount - 0.6f) < 0.01f;
+
+            // Tillbaka till ett tomt läge, men FX1 är upptagen.
+            Effects::setSlotType (processor.apvts, 2, 0, EffectType::off);
+            setPlain (ParamID::bass (0, BassField::fxChannel), 0.0f);
+            setPlain (ParamID::bass (0, BassField::fxAmount), 0.0f);
+            Effects::setSlotType (processor.apvts, 0, 0, EffectType::ducker);
+            const auto free1 = processor.firstFreeFxChannel() == 1;
+            const auto loaded = processor.loadInstrumentPreset (Presets::Section::bass, 0, instLinkFile);
+            const auto autoOk = loaded.ok && loaded.fxChannel == 1 && Effects::slotType (processor.apvts, 1, 0) == EffectType::ducker
+                             && (int) plain (ParamID::bass (0, BassField::fxChannel)) == 2 && std::abs (plain (ParamID::bass (0, BassField::fxAmount)) - 0.6f) < 0.01f
+                             && std::abs (plain (ParamID::bass (0, BassField::cutoff)) - 1234.0f) < 1.0f;
+
+            // Alla kanaler upptagna: utan val hoppas effekten över, med val ersätts den valda.
+            for (int channel = 0; channel < numEffectChannels; ++channel)
+                Effects::setSlotType (processor.apvts, channel, 0, EffectType::ducker);
+            const auto none = processor.firstFreeFxChannel() == -1;
+            const auto skipped = processor.loadInstrumentPreset (Presets::Section::bass, 0, instLinkFile, -2);
+            const auto replaced = processor.loadInstrumentPreset (Presets::Section::bass, 0, instLinkFile, 5);
+            const auto fullOk = none && skipped.ok && skipped.fxChannel == -1 && replaced.fxChannel == 5 && (int) plain (ParamID::bass (0, BassField::fxChannel)) == 6;
+
+            // Mönster som länkar instrumentet: med och utan "behåll mitt instrument".
+            processor.pattern.addNote (0, 0, 24);
+            const auto savedPattern = processor.savePatternPreset (0, patLink, instLink, fxLink);
+            const auto patternLink = PluginBase::readPresetLink (patLinkFile);
+            setPlain (ParamID::bass (0, BassField::cutoff), 4321.0f);
+            const auto keep = processor.loadPatternPreset (0, patLinkFile, false);
+            const auto keepOk = keep.ok && std::abs (plain (ParamID::bass (0, BassField::cutoff)) - 4321.0f) < 1.0f;
+            const auto replace = processor.loadPatternPreset (0, patLinkFile, true, -1);
+            const auto replaceOk = replace.ok && std::abs (plain (ParamID::bass (0, BassField::cutoff)) - 1234.0f) < 1.0f;
+
+            // Saknad länk: instrumentet laddas utan effekt, mönstret utan instrument.
+            fxLinkFile.deleteFile();
+            const auto noEffect = processor.loadInstrumentPreset (Presets::Section::bass, 0, instLinkFile, -2);
+            instLinkFile.deleteFile();
+            const auto noInstrument = processor.loadPatternPreset (0, patLinkFile, true);
+
+            const auto linkedOk = savedLinked && linkOk && free1 && autoOk && fullOk && savedPattern && patternLink.kind == "instrument" && patternLink.name == instLink
+                               && keepOk && replaceOk && noEffect.ok && noEffect.effectMissing && noInstrument.ok && noInstrument.instrumentMissing;
+            patLinkFile.deleteFile();
+            for (int channel = 0; channel < numEffectChannels; ++channel)
+                Effects::setSlotType (processor.apvts, channel, 0, EffectType::off);
+            std::printf ("Länkade presets: %s" "\n", linkedOk ? "ok" : "FEL");
+            if (! linkedOk)
+                std::printf ("  saved %d link %d free1 %d auto %d full %d pat %d keep %d replace %d noEffect %d/%d noInst %d/%d" "\n", savedLinked, linkOk, free1, autoOk, fullOk,
+                             savedPattern, keepOk, replaceOk, noEffect.ok, noEffect.effectMissing, noInstrument.ok, noInstrument.instrumentMissing);
+            ok = ok && linkedOk;
+        }
+
         std::puts (ok ? "Presettest OK" : "FEL: presettest");
         return ok ? 0 : 1;
     }

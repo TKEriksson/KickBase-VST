@@ -1,7 +1,7 @@
 #include "SoundstagePage.h"
 
 SoundstagePage::SoundstagePage (PluginBase& p)
-    : presets (p, Presets::Section::master, Theme::master),
+    : presets (p, Presets::Section::soundstage, Theme::master),
       width (p.apvts, "masterWidth", "WIDTH", Theme::master),
       monoBelow (p.apvts, "masterMonoBelow", "MONO BELOW", Theme::master),
       enhance (p.apvts, "masterEnhance", "ENHANCE", Theme::master),

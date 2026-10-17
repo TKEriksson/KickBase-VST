@@ -84,7 +84,37 @@ public:
     // det sparade. Anropas från gränssnittet (message thread).
     // `layer` gäller Bass (vilket baslager presetet laddas i eller sparas från).
     void loadFactoryPreset (Presets::Section section, int index, int layer = 0);
-    bool saveUserPreset (Presets::Section section, const juce::String& name, int layer = 0);
+    // Länkade presets: ett instrument- eller kick-preset kan peka på ett FX-preset (kanalen instrumentet skickar till), och ett pattern-preset på ett
+    // instrument- eller kick-preset. Länken är ett namn (filen i respektive mapp), inte en kopia. kind = "effect", "instrument" eller "kick".
+    struct PresetLink
+    {
+        juce::String kind, name;
+        float amount = 1.0f; // bara "effect": hur mycket som skickas till effekten
+        bool valid() const { return name.isNotEmpty(); }
+    };
+    static PresetLink readPresetLink (const juce::File& presetFile);
+    juce::File findUserPreset (Presets::Section section, const juce::String& name) const;
+    int sendChannelOf (Presets::Section section, int layer) const;      // effektkanalen (0-10) som kicken (Section::kick) eller instrumentet skickar till, eller -1
+    bool fxChannelHasEffects (int channel) const;                        // någon plats på kanalen har en effekt
+    int firstFreeFxChannel();                                            // första kanalen utan sändningar, effekter eller EQ, eller -1
+
+    // Sparar ett instrument-/kick-preset; med fxName också effektkanalen det skickar till som FX-preset med det namnet, och en länk dit.
+    bool saveInstrumentPreset (Presets::Section section, int layer, const juce::String& name, const juce::String& fxName = {});
+    // Sparar en rads mönster-preset; med instrumentName också instrumentet (kicken för kickraden) som eget preset, med sin effekt om fxName anges.
+    bool savePatternPreset (int layer, const juce::String& name, const juce::String& instrumentName = {}, const juce::String& fxName = {});
+
+    // fxChannel: kanalen den länkade effekten läggs på; -2 = första lediga (finns ingen hoppas effekten över), -1 = ingen effekt, annars den kanalen.
+    struct LinkedLoad
+    {
+        bool ok = false;
+        bool effectMissing = false;    // presetet länkade en effekt som inte finns längre
+        bool instrumentMissing = false;
+        int fxChannel = -1;            // kanalen effekten lades på, eller -1
+    };
+    LinkedLoad loadInstrumentPreset (Presets::Section section, int layer, const juce::File& file, int fxChannel = -2);
+    LinkedLoad loadPatternPreset (int layer, const juce::File& file, bool withInstrument, int fxChannel = -2);
+
+    bool saveUserPreset (Presets::Section section, const juce::String& name, int layer = 0, const PresetLink* link = nullptr);
     bool loadUserPreset (Presets::Section section, const juce::File& file, int layer = 0);
     juce::Array<juce::File> getUserPresets (Presets::Section section, int layer = -1) const; // Mönster: bara rad-presets, av rätt sort om `layer` anges
     juce::String getPresetName (Presets::Section section, int layer = 0) const;
