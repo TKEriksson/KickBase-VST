@@ -29,6 +29,7 @@
 #include "../Source/Instrument/InstrumentProcessor.h"
 #include "Analyzer.h"
 #include "../Source/Core/AudioAnalysis.h"
+#include "Scenarios.h"
 #include <juce_dsp/juce_dsp.h>
 #include <cstdio>
 
@@ -1485,6 +1486,11 @@ namespace
     }
 }
 
+int profileCommand (const juce::String& scenario, int instruments, double seconds); // Tools/Profile.cpp
+int renderSignaturesWide(); // Tools/AudioTests.cpp
+int audioThreadTest();      // Tools/AudioTests.cpp
+int persistTest();          // Tools/StateTests.cpp
+
 // Verktygets kommandon. Startas av KickbaseMcp.exe när det heter MyOwnFruitTool.exe eller får `tool` som första argument.
 int toolMain (int argc, char* argv[])
 {
@@ -1492,8 +1498,15 @@ int toolMain (int argc, char* argv[])
     // `rendersigreal` använder det riktiga Init (den inbakade filen).
     {
         const juce::String command (argc > 1 ? argv[1] : "");
-        PluginBase::preferCodeInit = ! (command == "snapshot" || command == "render" || command == "export" || command == "repairpresets" || command == "rendersigreal");
+        PluginBase::preferCodeInit = ! (command == "snapshot" || command == "render" || command == "export" || command == "repairpresets" || command == "rendersigreal" || command == "profile");
     }
+
+    // Testerna som sparar presets eller rullar körs i en tillfällig mapp, aldrig i användarens Dokument\Kickbase.
+    std::unique_ptr<Scenarios::TemporaryUserFolders> isolation;
+    if (const juce::String command (argc > 1 ? argv[1] : ""); command == "presettest" || command == "rolltest" || command == "lengthtest"
+        || command == "instrumenttest" || command == "eqtest" || command == "listentest" || command == "auditiontest" || command == "audiotest"
+        || command == "analysetest" || command == "perftest" || command == "rendersig" || command == "rendersigwide")
+        isolation = std::make_unique<Scenarios::TemporaryUserFolders>();
 
     if (argc == 2 && juce::String (argv[1]) == "presettest")
         return presetTest();
@@ -1523,6 +1536,16 @@ int toolMain (int argc, char* argv[])
         return analyseTest (argc > 2 ? juce::String (argv[2]).getIntValue() : 1);
     if (argc == 2 && juce::String (argv[1]) == "rolltest")
         return rollLengthTest (true);
+
+    if (argc == 2 && juce::String (argv[1]) == "persisttest")
+        return persistTest();
+    if (argc == 2 && juce::String (argv[1]) == "rendersigwide")
+        return renderSignaturesWide();
+    if (argc == 2 && juce::String (argv[1]) == "audiotest")
+        return audioThreadTest();
+    // profile <init|heavy|fx> [instrument] [sekunder]: var tiden går (samplande profilerare, Tools/Profile.cpp).
+    if (argc >= 3 && juce::String (argv[1]) == "profile")
+        return profileCommand (juce::String (argv[2]), argc > 3 ? juce::String (argv[3]).getIntValue() : 10, argc > 4 ? juce::String (argv[4]).getDoubleValue() : 5.0);
 
     // params [instrument|fx]: parameterregistret.
     if (argc >= 2 && juce::String (argv[1]) == "params")

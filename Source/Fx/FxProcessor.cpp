@@ -74,6 +74,9 @@ void FxProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuff
 
     for (auto ch = getTotalNumInputChannels(); ch < getTotalNumOutputChannels(); ++ch)
         buffer.clear (ch, 0, numSamples);
+    // En synth före i kedjan kan skicka NaN eller oändliga värden: de skulle fastna i filtren och effekterna för alltid.
+    if (! allFinite (buffer, numSamples))
+        replaceNonFinite (buffer, getTotalNumInputChannels(), numSamples);
 
     const auto key = params.getChoice (ParamID::fxKey);
     lengths = Params::readPatternLengthsWith ([this] (const char* id) { return params.get (id); });
@@ -184,6 +187,18 @@ void FxProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuff
     }
 
     master.process (buffer, numSamples);
+
+    if (! allFinite (buffer, numSamples))
+    {
+        // Något internt gav NaN/inf: töm blocket och börja om med rena tillstånd, i stället för att vara trasig tills pluginet laddas om.
+        buffer.clear();
+        kick.reset();
+        gate.prepare (getSampleRate());
+        ducker.prepare (getSampleRate());
+        effects.reset();
+        master.reset();
+        ++nonFiniteRecoveries;
+    }
 
     transportStatus.publish (clock);
     transportStatus.patternBar = (int) (((clock.getBarIndex() % lengths.total) + lengths.total) % lengths.total) + 1;

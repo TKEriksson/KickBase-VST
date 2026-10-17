@@ -215,6 +215,14 @@ void InstrumentProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
         }
     }
 
+    if (! allFinite (buffer, numSamples))
+    {
+        // Något gav NaN/inf: töm blocket och börja om med rena tillstånd, i stället för att vara trasig tills pluginet laddas om.
+        buffer.clear();
+        resetDspState();
+        ++nonFiniteRecoveries;
+    }
+
     transportStatus.publish (clock);
     transportStatus.patternBar = (int) (((clock.getBarIndex() % lengths.total) + lengths.total) % lengths.total) + 1;
     transportStatus.keyNote = currentNote;
@@ -670,6 +678,22 @@ void InstrumentProcessor::finishBlock (int numSamples)
         mainOut.add (i, left[i], right[i]);
         kickOut.add (i, kickData[i], kickData[i]);
     }
+}
+
+void InstrumentProcessor::resetDspState()
+{
+    kick.reset();
+    for (auto& bass : basses)
+        bass.reset();
+    for (auto& ducker : duckers)
+        ducker.prepare (getSampleRate());
+    effects.reset();
+    master.reset();
+    kickEq.reset();
+    for (auto& eq : layerEqs)
+        eq.reset();
+    gateGain.fill (1.0f);
+    numPending = 0;
 }
 
 void InstrumentProcessor::ensureScratchSize (int numSamples)

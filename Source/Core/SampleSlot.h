@@ -3,6 +3,7 @@
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_data_structures/juce_data_structures.h>
 #include "SampleData.h"
+#include "DeferredRelease.h"
 
 // En plats för en sampling: originalet sparas i projektet, en omsamplad kopia spelas av ljudtråden.
 // Bara message thread och prepareToPlay rör originalet (därför låset, aldrig på ljudtråden); ljudtråden läser `active()`.
@@ -36,5 +37,8 @@ private:
 
     std::atomic<ClickSample*> activeSample { nullptr };
     std::unique_ptr<ClickSample> owned;
-    std::unique_ptr<ClickSample> retired; // föregående: ljudtråden kan läsa den ett block till
+    DeferredRelease<ClickSample> retired; // tidigare samplingar: ljudtråden kan läsa en av dem ett block till, så de frigörs först efter en stund
+
+public:
+    size_t retiredCount() const { const juce::ScopedLock scoped (lock); return retired.size(); } // för testerna
 };

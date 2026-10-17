@@ -346,17 +346,54 @@ namespace Effects
         return s;
     }
 
+    EqRefs::EqRefs (const AudioProcessorValueTreeState& apvts, int channel)
+    {
+        values[0] = apvts.getRawParameterValue (channelParamID (channel, "EqHp"));
+        values[1] = apvts.getRawParameterValue (channelParamID (channel, "EqLp"));
+        for (int b = 0; b < eqBands; ++b)
+        {
+            const auto key = "Eq" + String (b + 1);
+            values[(size_t) (2 + b * 3)] = apvts.getRawParameterValue (channelParamID (channel, key + "F"));
+            values[(size_t) (3 + b * 3)] = apvts.getRawParameterValue (channelParamID (channel, key + "G"));
+            values[(size_t) (4 + b * 3)] = apvts.getRawParameterValue (channelParamID (channel, key + "Q"));
+        }
+    }
+
+    EqSettings EqRefs::read() const
+    {
+        // Samma värden och reservvärden som readEq.
+        auto get = [] (const std::atomic<float>* value, float fallback) { return value != nullptr ? value->load() : fallback; };
+        EqSettings s;
+        s.hp = get (values[0], 20.0f);
+        s.lp = get (values[1], 20000.0f);
+        for (int b = 0; b < eqBands; ++b)
+        {
+            s.freq[b] = get (values[(size_t) (2 + b * 3)], s.freq[b]);
+            s.gain[b] = get (values[(size_t) (3 + b * 3)], 0.0f);
+            s.q[b] = get (values[(size_t) (4 + b * 3)], s.q[b]);
+        }
+        return s;
+    }
+
+    std::array<std::array<float, 6>, eqBands + 2> eqArrayCoefficients (double rate, const EqSettings& s)
+    {
+        using Array = dsp::IIR::ArrayCoefficients<float>;
+        const auto limit = (float) rate * 0.45f;
+        return { Array::makeHighPass (rate, s.hp <= 21.0f ? 5.0f : jmin (s.hp, limit), 0.7071f),
+                 Array::makeLowShelf (rate, jmin (s.freq[0], limit), 0.7f, Decibels::decibelsToGain (s.gain[0])),
+                 Array::makePeakFilter (rate, jmin (s.freq[1], limit), s.q[1], Decibels::decibelsToGain (s.gain[1])),
+                 Array::makePeakFilter (rate, jmin (s.freq[2], limit), s.q[2], Decibels::decibelsToGain (s.gain[2])),
+                 Array::makeHighShelf (rate, jmin (s.freq[3], limit), 0.7f, Decibels::decibelsToGain (s.gain[3])),
+                 Array::makeLowPass (rate, s.lp >= 19500.0f ? limit : jmin (s.lp, limit), 0.7071f) };
+    }
+
     std::array<dsp::IIR::Coefficients<float>::Ptr, eqBands + 2> eqCoefficients (double rate, const EqSettings& s)
     {
-        using Coeffs = dsp::IIR::Coefficients<float>;
-        const auto limit = (float) rate * 0.45f;
-        std::array<Coeffs::Ptr, eqBands + 2> result;
-        result[0] = Coeffs::makeHighPass (rate, s.hp <= 21.0f ? 5.0f : jmin (s.hp, limit), 0.7071f);
-        result[1] = Coeffs::makeLowShelf (rate, jmin (s.freq[0], limit), 0.7f, Decibels::decibelsToGain (s.gain[0]));
-        result[2] = Coeffs::makePeakFilter (rate, jmin (s.freq[1], limit), s.q[1], Decibels::decibelsToGain (s.gain[1]));
-        result[3] = Coeffs::makePeakFilter (rate, jmin (s.freq[2], limit), s.q[2], Decibels::decibelsToGain (s.gain[2]));
-        result[4] = Coeffs::makeHighShelf (rate, jmin (s.freq[3], limit), 0.7f, Decibels::decibelsToGain (s.gain[3]));
-        result[5] = Coeffs::makeLowPass (rate, s.lp >= 19500.0f ? limit : jmin (s.lp, limit), 0.7071f);
+        // Samma som Coefficients::makeHighPass osv. (JUCE bygger dem av ArrayCoefficients på samma sätt).
+        const auto arrays = eqArrayCoefficients (rate, s);
+        std::array<dsp::IIR::Coefficients<float>::Ptr, eqBands + 2> result;
+        for (size_t f = 0; f < result.size(); ++f)
+            result[f] = new dsp::IIR::Coefficients<float> (arrays[f]);
         return result;
     }
 
@@ -1327,12 +1364,14 @@ struct EffectRack::Impl
             chains[(size_t) ch]->setSources (&sources);
             level[(size_t) ch] = apvts.getRawParameterValue (Effects::channelParamID (ch, "Level"));
             duck[(size_t) ch] = apvts.getRawParameterValue (Effects::channelParamID (ch, "Duck"));
+            eqRefs.emplace_back (apvts, ch);
         }
     }
 
     SourceSignals sources; // kickens och instrumentens ljud i det här blocket (för SIDECHAIN-effekterna)
     std::array<std::unique_ptr<EffectChain>, numEffectChannels> chains;
     std::array<ChannelStrip, numEffectChannels> strips;
+    std::vector<Effects::EqRefs> eqRefs; // en per kanal (skapas i konstruktorn)
     AudioProcessorValueTreeState* apvtsPointer = nullptr;
     std::array<std::array<std::atomic<float>*, 5>, numEffectChannels> comp {}; // thr, ratio, att, rel, makeup
     std::array<std::atomic<float>*, numEffectChannels> level {}, duck {};
@@ -1359,6 +1398,22 @@ void EffectRack::prepare (double sampleRate, int maxBlockSize)
         impl->duckState[(size_t) ch] = 1.0f;
     }
     impl->duckCoefficient = (float) (1.0 - std::exp (-1.0 / (0.001 * sampleRate)));
+}
+
+void EffectRack::reset()
+{
+    for (int ch = 0; ch < numEffectChannels; ++ch)
+    {
+        impl->chains[(size_t) ch]->reset();
+        auto& strip = impl->strips[(size_t) ch];
+        for (auto& pair : strip.filters)
+            for (auto& filter : pair)
+                filter.reset();
+        strip.env = 0.0f;
+        strip.gainState = 1.0f;
+        impl->duckState[(size_t) ch] = 1.0f;
+        impl->buffers[(size_t) ch].clear();
+    }
 }
 
 void EffectRack::setSources (const SourceSignals& sources)
@@ -1435,7 +1490,7 @@ void EffectRack::process (int numSamples, const float* kickEnvelope, AudioBuffer
 
         // EQ och kompressor (alltid med, neutrala som standard). Taparna visar vad som når dem.
         auto& strip = impl->strips[(size_t) ch];
-        const auto eq = Effects::readEq (*impl->apvtsPointer, ch);
+        const auto eq = impl->eqRefs[(size_t) ch].read();
         for (int i = 0; i < numSamples; ++i)
             eqInputTap[ch].push (0.5f * (buffer.getSample (0, i) + buffer.getSample (1, i)));
         if (! eq.isNeutral())

@@ -92,6 +92,10 @@ void SourceEq::prepare (double newSampleRate)
 {
     sampleRate = newSampleRate;
     haveCoefficients = false;
+    // Koefficientobjekten skapas här; ljudtråden skriver bara över värdena (att skapa nya allokerar).
+    for (auto& channel : filters)
+        for (auto& filter : channel)
+            filter.coefficients = new juce::dsp::IIR::Coefficients<float> (1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f);
     reset();
 }
 
@@ -131,10 +135,10 @@ bool SourceEq::process (float* left, float* right, int numSamples)
         reset(); // inget gammalt tillstånd från förra gången EQ:n var på
     if (! haveCoefficients || wasNeutral || ! sameSettings (s, last))
     {
-        const auto coefficients = Effects::eqCoefficients (sampleRate, s);
+        const auto coefficients = Effects::eqArrayCoefficients (sampleRate, s);
         for (auto& channel : filters)
             for (size_t f = 0; f < numFilters; ++f)
-                channel[f].coefficients = coefficients[f];
+                *channel[f].coefficients = coefficients[f];
         last = s;
         haveCoefficients = true;
     }

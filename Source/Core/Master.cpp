@@ -87,6 +87,10 @@ void MasterSection::reset()
     boxSum = (double) lookahead;
     released = 1.0f;
     writeIndex = 0;
+    for (auto& lines : extraDelays)
+        for (auto& line : lines)
+            std::fill (line.begin(), line.end(), 0.0f);
+    eq.reset();
 }
 
 void MasterSection::process (juce::AudioBuffer<float>& buffer, int numSamples)

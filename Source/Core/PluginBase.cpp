@@ -4,6 +4,7 @@
 #include "MixAnalysis.h"
 #include "OfflineRender.h"
 #include "Mixer.h"
+#include <map>
 
 namespace
 {
@@ -140,10 +141,7 @@ void PluginBase::setUserTable (int slot, std::unique_ptr<Wavetable> table, std::
     auto old = std::move (userOwned[(size_t) slot]);
     userOwned[(size_t) slot] = std::move (table);
     userTables[(size_t) slot].store (newTable);
-    if (old != nullptr)
-        retiredTables.push_back (std::move (old));
-    while (retiredTables.size() > 4)
-        retiredTables.erase (retiredTables.begin());
+    retiredTables.retire (std::move (old));
 
     userFrames[(size_t) slot] = std::move (frames);
     userNames[(size_t) slot] = name;
@@ -290,17 +288,7 @@ void PluginBase::wipeInstrument (int layer)
     // Sampling, egna tabeller, namn.
     bassSamples[(size_t) layer].clear();
     for (int osc = 0; osc < ParamID::oscsPerLayer; ++osc)
-    {
-        const auto slot = (size_t) (layer * ParamID::oscsPerLayer + osc);
-        userTables[slot].store (nullptr);
-        if (userOwned[slot] != nullptr)
-            retiredTables.push_back (std::move (userOwned[slot]));
-        userFrames[slot].clear();
-        userFrames[slot].shrink_to_fit();
-        userNames[slot] = {};
-    }
-    while (retiredTables.size() > 4)
-        retiredTables.erase (retiredTables.begin());
+        clearUserTable (layer * ParamID::oscsPerLayer + osc);
     layerNames[(size_t) layer] = {};
     bassPresetNames[(size_t) layer] = "Default";
     ++layerNamesVersion;
@@ -346,13 +334,13 @@ void PluginBase::ensureTablesInUse()
                 Wavetables::ensure ((int) std::lround (value->load()));
 }
 
-juce::ValueTree PluginBase::userTablesToValueTree() const
+juce::ValueTree PluginBase::userTablesToValueTree (int onlyLayer) const
 {
     juce::ValueTree tree ("UserTables");
     for (int slot = 0; slot < numUserSlots; ++slot)
     {
         const auto& frames = userFrames[(size_t) slot];
-        if (frames.empty())
+        if (frames.empty() || (onlyLayer >= 0 && slot / ParamID::oscsPerLayer != onlyLayer))
             continue;
 
         // 16 bitar räcker för en tabell och ger 44 kB (base64) per oscillator i stället för 85 kB.
@@ -362,7 +350,7 @@ juce::ValueTree PluginBase::userTablesToValueTree() const
             out[i] = (juce::int16) juce::roundToInt (juce::jlimit (-1.0f, 1.0f, frames[i]) * 32767.0f);
 
         juce::ValueTree child ("Table");
-        child.setProperty ("layer", slot / ParamID::oscsPerLayer, nullptr);
+        child.setProperty ("layer", onlyLayer >= 0 ? 0 : slot / ParamID::oscsPerLayer, nullptr); // ett instrument-preset sparas som lager 1
         child.setProperty ("osc", slot % ParamID::oscsPerLayer, nullptr);
         child.setProperty ("name", userNames[(size_t) slot], nullptr);
         child.setProperty ("data", juce::Base64::toBase64 (block.getData(), block.getSize()), nullptr);
@@ -371,12 +359,32 @@ juce::ValueTree PluginBase::userTablesToValueTree() const
     return tree;
 }
 
-void PluginBase::userTablesFromValueTree (const juce::ValueTree& tree)
+void PluginBase::clearUserTable (int slot)
 {
+    userTables[(size_t) slot].store (nullptr);
+    retiredTables.retire (std::move (userOwned[(size_t) slot]));
+    userFrames[(size_t) slot].clear();
+    userFrames[(size_t) slot].shrink_to_fit();
+    userNames[(size_t) slot] = {};
+}
+
+void PluginBase::userTablesFromValueTree (const juce::ValueTree& tree, int intoLayer)
+{
+    // Trädet är hela sanningen för de lager det gäller: en plats som inte finns i det töms (annars ligger en gammal tabell kvar när ett
+    // projekt, ett preset eller en ångring laddas i en instans som redan har tabeller). `intoLayer` >= 0: ett instrument-preset (lager 0 i
+    // trädet) laddas i det lagret, och bara dess platser rörs.
+    std::array<bool, numUserSlots> found {};
     for (const auto& child : tree)
     {
-        const auto layer = (int) child["layer"], osc = (int) child["osc"];
-        if (! child.hasType ("Table") || ! juce::isPositiveAndBelow (layer, ParamID::numBassLayers) || ! juce::isPositiveAndBelow (osc, 2))
+        auto layer = (int) child["layer"];
+        const auto osc = (int) child["osc"];
+        if (intoLayer >= 0)
+        {
+            if (layer != 0)
+                continue;
+            layer = intoLayer;
+        }
+        if (! child.hasType ("Table") || ! juce::isPositiveAndBelow (layer, ParamID::numBassLayers) || ! juce::isPositiveAndBelow (osc, ParamID::oscsPerLayer))
             continue;
 
         juce::MemoryOutputStream decoded;
@@ -391,8 +399,15 @@ void PluginBase::userTablesFromValueTree (const juce::ValueTree& tree)
 
         const auto name = child["name"].toString();
         if (auto table = Wavetables::fromFrames (name, frames))
+        {
             setUserTable (layer * ParamID::oscsPerLayer + osc, std::move (table), std::move (frames), name);
+            found[(size_t) (layer * ParamID::oscsPerLayer + osc)] = true;
+        }
     }
+
+    for (int slot = 0; slot < numUserSlots; ++slot)
+        if (! found[(size_t) slot] && (intoLayer < 0 || slot / ParamID::oscsPerLayer == intoLayer) && userOwned[(size_t) slot] != nullptr)
+            clearUserTable (slot);
 }
 
 juce::String& PluginBase::presetNameSlot (Presets::Section section, int layer)
@@ -433,6 +448,30 @@ juce::Optional<juce::AudioPlayHead::PositionInfo> PluginBase::getHostPosition() 
         return hostPlayHead->getPosition();
 
     return juce::nullopt;
+}
+
+bool PluginBase::allFinite (const juce::AudioBuffer<float>& buffer, int numSamples)
+{
+    // x - x är 0 för alla ändliga värden och NaN för NaN och ±inf, så summan är 0 precis när allt är ändligt.
+    auto sum = 0.0f;
+    for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+    {
+        const auto* data = buffer.getReadPointer (ch);
+        for (int i = 0; i < numSamples; ++i)
+            sum += data[i] - data[i];
+    }
+    return sum == 0.0f;
+}
+
+void PluginBase::replaceNonFinite (juce::AudioBuffer<float>& buffer, int numChannels, int numSamples)
+{
+    for (int ch = 0; ch < std::min (numChannels, buffer.getNumChannels()); ++ch)
+    {
+        auto* data = buffer.getWritePointer (ch);
+        for (int i = 0; i < numSamples; ++i)
+            if (! std::isfinite (data[i]))
+                data[i] = 0.0f;
+    }
 }
 
 void PluginBase::getStateInformation (juce::MemoryBlock& destData)
@@ -496,6 +535,8 @@ void PluginBase::setStateInformation (const void* data, int sizeInBytes)
         kickSample.fromValueTree (clickTree);
         state.removeChild (clickTree, nullptr);
     }
+    else
+        kickSample.clear(); // (sparas alltid, men ett tillstånd utan den ska inte ärva förra ljudets sampling)
 
     if (auto samplesTree = state.getChildWithName ("BassSamples"); samplesTree.isValid())
     {
@@ -513,6 +554,8 @@ void PluginBase::setStateInformation (const void* data, int sizeInBytes)
         userTablesFromValueTree (userTree);
         state.removeChild (userTree, nullptr);
     }
+    else
+        userTablesFromValueTree (juce::ValueTree ("UserTables")); // inga tabeller i tillståndet: inga kvar från förut
 
     if (auto curveTree = state.getChildWithName (SidechainCurve::treeType); curveTree.isValid())
     {
@@ -562,13 +605,6 @@ void PluginBase::markStateChanged()
     updateHostDisplay (ChangeDetails().withNonParameterStateChanged (true));
 }
 
-void PluginBase::resetSectionToDefaults (Presets::Section section, int layer)
-{
-    for (auto* p : getParameters())
-        if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p); ranged != nullptr && Presets::belongsTo (section, ranged->getParameterID(), layer))
-            Presets::setParameter (*ranged, ranged->getDefaultValue());
-}
-
 void PluginBase::loadFactoryPreset (Presets::Section section, int index, int layer)
 {
     // Instrumentets Init är ett vanligt Full-preset (Resources/InitPreset.mofp); FX-versionen och övriga delar använder fabrikslistorna i koden.
@@ -613,13 +649,19 @@ void PluginBase::loadFactoryPreset (Presets::Section section, int index, int lay
     }
 
     if (section == Presets::Section::bass)
-        clearBassSample (layer); // fabriksljuden har ingen sampling
+    {
+        clearBassSample (layer); // fabriksljuden har ingen sampling och inga egna tabeller
+        for (int osc = 0; osc < ParamID::oscsPerLayer; ++osc)
+            clearUserTable (layer * ParamID::oscsPerLayer + osc);
+    }
 
     if (section == Presets::Section::full)
     {
         clearClickSample();
         for (int l = 0; l < ParamID::numBassLayers; ++l)
             clearBassSample (l);
+        for (int slot = 0; slot < numUserSlots; ++slot)
+            clearUserTable (slot);
         presetNames.fill ({}); // delarna kommer inte längre från sina egna presets
         bassPresetNames.fill ({});
         rowPresetNames.fill ({});
@@ -718,6 +760,12 @@ bool PluginBase::saveUserPreset (Presets::Section section, const juce::String& n
     if (section == Presets::Section::bass && bassSamples[(size_t) layer].hasSample())
         root.addChildElement (bassSamples[(size_t) layer].toValueTree ("BassSample").createXml().release());
 
+    // Oscillatorernas egna wavetables (User WAV): annars laddas presetet med fel tabell (den som råkar finnas, eller Basic).
+    if (section == Presets::Section::full)
+        root.addChildElement (userTablesToValueTree().createXml().release());
+    if (section == Presets::Section::bass)
+        root.addChildElement (userTablesToValueTree (layer).createXml().release());
+
     if (section == Presets::Section::full || section == Presets::Section::sidechain)
         root.addChildElement (sidechainCurve.toValueTree().createXml().release());
 
@@ -763,9 +811,19 @@ bool PluginBase::loadPresetXml (const juce::XmlElement& xmlElement, Presets::Sec
 {
     const auto* xml = &xmlElement;
 
-    // Delen till standard först: parametrar som saknas i filen (t.ex. nya sedan presetet
-    // sparades) får sitt standardvärde i stället för att ärvas från förra ljudet.
-    resetSectionToDefaults (section, layer);
+    // Delens parametrar får filens värden; de som saknas i filen (t.ex. nya sedan presetet sparades) får sitt standardvärde i stället för att
+    // ärvas från förra ljudet. Slutvärdet räknas ut först och varje parameter sätts en gång: ljudtråden spelar under tiden, och med standard
+    // först och filens värde sedan kunde den spela ett block med delen på standardvärden mitt i laddningen.
+    std::vector<juce::RangedAudioParameter*> sectionParameters;
+    std::vector<float> targets;
+    std::map<juce::String, size_t> indexOfId;
+    for (auto* p : getParameters())
+        if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p); ranged != nullptr && Presets::belongsTo (section, ranged->getParameterID(), layer))
+        {
+            indexOfId[ranged->getParameterID()] = sectionParameters.size();
+            sectionParameters.push_back (ranged);
+            targets.push_back (ranged->getDefaultValue());
+        }
 
     if (const auto* paramsXml = xml->getChildByName ("Params"))
     {
@@ -778,10 +836,15 @@ bool PluginBase::loadPresetXml (const juce::XmlElement& xmlElement, Presets::Sec
                 id = Presets::patternIdFromCanonical (id, layer);
             else if (section == Presets::Section::effects)
                 id = Presets::effectIdFromCanonical (id, layer);
-            if (auto* parameter = apvts.getParameter (id); parameter != nullptr && Presets::belongsTo (section, id, layer))
-                Presets::setParameter (*parameter, parameter->convertTo0to1 ((float) entry->getDoubleAttribute ("value")));
+            if (const auto found = indexOfId.find (id); found != indexOfId.end())
+                targets[found->second] = sectionParameters[found->second]->convertTo0to1 ((float) entry->getDoubleAttribute ("value"));
         }
     }
+
+    // Också parametrar som redan har rätt värde sätts: APVTS råa värde (det ljudtråden läser) avrundas till parameterns steg först när den
+    // sätts, och dess startvärde är inte avrundat (t.ex. 59.9999962 i stället för 60).
+    for (size_t i = 0; i < sectionParameters.size(); ++i)
+        Presets::setParameter (*sectionParameters[i], targets[i]);
 
     if (section == Presets::Section::full)
         if (const auto* patternXml = xml->getChildByName (Pattern::treeType))
@@ -820,6 +883,21 @@ bool PluginBase::loadPresetXml (const juce::XmlElement& xmlElement, Presets::Sec
             bassSamples[(size_t) layer].fromValueTree (juce::ValueTree::fromXml (*sampleXml));
         else
             bassSamples[(size_t) layer].clear();
+    }
+
+    // Egna wavetables. Ett Full-preset ersätter alla (äldre filer utan dem: inga); ett instrument-preset bara sitt lagers, och bara om
+    // filen har dem med (äldre instrument-presets rör inte lagrets tabeller, som förut).
+    if (section == Presets::Section::full)
+    {
+        if (const auto* tablesXml = xml->getChildByName ("UserTables"))
+            userTablesFromValueTree (juce::ValueTree::fromXml (*tablesXml));
+        else
+            userTablesFromValueTree (juce::ValueTree ("UserTables"));
+    }
+    else if (section == Presets::Section::bass)
+    {
+        if (const auto* tablesXml = xml->getChildByName ("UserTables"))
+            userTablesFromValueTree (juce::ValueTree::fromXml (*tablesXml), layer);
     }
 
     if (section == Presets::Section::full || section == Presets::Section::sidechain)

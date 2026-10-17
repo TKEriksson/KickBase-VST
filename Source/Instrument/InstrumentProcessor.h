@@ -61,6 +61,7 @@ private:
     void handleEvent (const StepEvent& event);
     void finishBlock (int numSamples);
     void ensureScratchSize (int numSamples);
+    void resetDspState(); // efter NaN/inf: alla filter, effekter och röster tillbaka till tystnad (allokerar inte)
     int keyPitchClass() const { return currentNote >= 0 ? currentNote % 12 : 0; }
     int bassRootNote() const  { return Params::bassRootMidiNote (currentNote >= 0 ? currentNote : 60); }
 

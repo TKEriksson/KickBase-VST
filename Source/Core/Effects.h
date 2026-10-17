@@ -94,8 +94,19 @@ namespace Effects
 
     EqSettings readEq (const juce::AudioProcessorValueTreeState& apvts, int channel);
 
+    // Samma sak för ljudtråden: pekarna till kanalens EQ-värden slås upp en gång (readEq bygger parameter-ID:n som text, vilket allokerar).
+    struct EqRefs
+    {
+        EqRefs (const juce::AudioProcessorValueTreeState& apvts, int channel);
+        EqSettings read() const;
+
+    private:
+        std::array<const std::atomic<float>*, 2 + eqBands * 3> values {}; // hp, lp, sedan frekvens, gain och Q för varje band
+    };
+
     // Filtrens koefficienter i ordningen högpass, band 1-4, lågpass (samma som ljudtråden använder).
     std::array<juce::dsp::IIR::Coefficients<float>::Ptr, eqBands + 2> eqCoefficients (double sampleRate, const EqSettings& settings);
+    std::array<std::array<float, 6>, eqBands + 2> eqArrayCoefficients (double sampleRate, const EqSettings& settings); // samma, utan att allokera (ljudtråden)
 
     // Frekvenssvaret i dB vid en frekvens (för ritningen).
     float eqResponseDb (double sampleRate, const EqSettings& settings, float hz);
@@ -150,6 +161,7 @@ public:
     ~EffectRack();
 
     void prepare (double sampleRate, int maxBlockSize);
+    void reset(); // tömmer effekternas, EQ:ns och kompressorns tillstånd (utan att allokera)
     void setModulator (const Modulator* modulator);
 
     // Ljudet från kicken och instrumenten som kanalernas SIDECHAIN-effekter lyssnar på. Sätts före process, i varje block.

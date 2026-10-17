@@ -54,28 +54,25 @@ void SampleSlot::prepare (double sampleRate)
 void SampleSlot::rebuild()
 {
     std::unique_ptr<ClickSample> fresh;
+    const juce::ScopedLock scoped (lock); // (prepareToPlay kan i vissa värdar komma från en annan tråd än gränssnittet)
 
+    if (original.getNumSamples() > 0 && originalRate > 0.0)
     {
-        const juce::ScopedLock scoped (lock);
+        fresh = std::make_unique<ClickSample>();
+        fresh->name = originalName;
 
-        if (original.getNumSamples() > 0 && originalRate > 0.0)
-        {
-            fresh = std::make_unique<ClickSample>();
-            fresh->name = originalName;
+        const auto ratio = originalRate / currentSampleRate;
+        const auto outLength = std::max (1, (int) (original.getNumSamples() / ratio));
+        fresh->audio.setSize (1, outLength);
 
-            const auto ratio = originalRate / currentSampleRate;
-            const auto outLength = std::max (1, (int) (original.getNumSamples() / ratio));
-            fresh->audio.setSize (1, outLength);
-
-            juce::LagrangeInterpolator interpolator;
-            interpolator.process (ratio, original.getReadPointer (0), fresh->audio.getWritePointer (0), outLength);
-        }
+        juce::LagrangeInterpolator interpolator;
+        interpolator.process (ratio, original.getReadPointer (0), fresh->audio.getWritePointer (0), outLength);
     }
 
-    // Byt atomiskt. Den gamla samplingen hålls kvar tills nästa byte, eftersom ljudtråden kan vara mitt i ett block
-    // som läser den.
+    // Byt atomiskt. Den gamla samplingen frigörs inte direkt: ljudtråden kan vara mitt i ett block som läser den, och byts samplingen flera
+    // gånger i snabb följd (presets eller AI-anrop i rad) får ingen av dem försvinna under ljudtrådens fötter.
     activeSample.store (fresh.get());
-    retired = std::move (owned);
+    retired.retire (std::move (owned));
     owned = std::move (fresh);
 }
 

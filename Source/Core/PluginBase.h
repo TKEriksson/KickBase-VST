@@ -17,6 +17,7 @@
 #include "SampleSlot.h"
 #include "BridgeLink.h"
 #include "Settings.h"
+#include "DeferredRelease.h"
 
 // Det som instrumentet och FX-versionen har gemensamt: parametrar, mönster, klicksampling,
 // sparat läge och klockan.
@@ -46,6 +47,7 @@ public:
     // SOLO i mönstret: bit n = instrument n+1 (bit 10 = kicken). Är något soloat spelar bara de soloade. Inget som sparas med projektet:
     // solo är ett lyssningshjälpmedel, och ett projekt ska inte öppnas med ett instrument tyst.
     std::atomic<int> soloMask { 0 };
+    std::atomic<int> nonFiniteRecoveries { 0 }; // hur många gånger ljudtråden tömt sitt tillstånd efter NaN/inf (se allFinite)
     static constexpr int kickSoloBit = 1 << 10; // en enda analys per instans: samma som visas i ANALYZER-fliken och som en AI hämtar med get_mix_report
 
     // Mastersektionen ägs av underklassen (den behöver bara finnas där ljudet bearbetas).
@@ -141,6 +143,7 @@ public:
     void ensureTablesInUse(); // bygger de inbyggda tabeller som oscillatorerna använder nu (blockerar; inte på ljudtråden)
     const Wavetable* userTable (int layer, int osc) const { return userTables[(size_t) (layer * ParamID::oscsPerLayer + osc)].load(); }
     juce::String getUserTableName (int layer, int osc) const { return userNames[(size_t) (layer * ParamID::oscsPerLayer + osc)]; }
+    size_t retiredTableCount() const { return retiredTables.size(); } // ersatta tabeller som ännu inte frigjorts (för testerna)
 
     // Instrumenten (baslager 1-10). Antalet sätts här: tas ett instrument bort rensas det helt (mönster, alla inställningar, sampling,
     // egna tabeller, namn, mixer och LFO-kopplingar) så att inget ligger kvar i minnet. `instrumentHasContent` säger om något går
@@ -337,6 +340,12 @@ protected:
     // Läser DAW:ens position. Får bara anropas från processBlock.
     juce::Optional<juce::AudioPlayHead::PositionInfo> getHostPosition() const;
 
+    // Skydd mot NaN och oändliga värden (ljudtråden): ett enda sådant värde fastnar annars för alltid i filtrens och effekternas tillstånd,
+    // och pluginet blir tyst eller knastrar tills det laddas om. `allFinite` kollar ett block; hittas något töms blocket och underklassen
+    // nollställer sitt DSP-tillstånd. `nonFiniteRecoveries` räknar hur ofta det hänt (för tester och felsökning).
+    static bool allFinite (const juce::AudioBuffer<float>& buffer, int numSamples);
+    static void replaceNonFinite (juce::AudioBuffer<float>& buffer, int numChannels, int numSamples); // icke-ändliga värden blir 0
+
     // Klicksamplingen som ljudtråden ska använda just nu (kan vara nullptr).
     const ClickSample* getActiveClickSample() const { return kickSample.active(); }
 
@@ -362,12 +371,13 @@ private:
     // prepareToPlay rör originalet, därför låset (aldrig på ljudtråden).
     static constexpr int numUserSlots = ParamID::numBassLayers * ParamID::oscsPerLayer;
     void setUserTable (int slot, std::unique_ptr<Wavetable> table, std::vector<float> frames, const juce::String& name);
-    juce::ValueTree userTablesToValueTree() const;
-    void userTablesFromValueTree (const juce::ValueTree& tree);
+    juce::ValueTree userTablesToValueTree (int onlyLayer = -1) const;              // onlyLayer >= 0: bara det instrumentet, sparat som lager 0
+    void userTablesFromValueTree (const juce::ValueTree& tree, int intoLayer = -1); // intoLayer >= 0: ett instrument-preset i det lagret
+    void clearUserTable (int slot);
 
     std::array<std::atomic<const Wavetable*>, numUserSlots> userTables {};
     std::array<std::unique_ptr<Wavetable>, numUserSlots> userOwned;
-    std::vector<std::unique_ptr<Wavetable>> retiredTables; // ljudtråden kan läsa en ersatt tabell ett block till
+    DeferredRelease<Wavetable> retiredTables; // ljudtråden kan läsa en ersatt tabell ett block till: den frigörs först efter en stund
     std::array<std::vector<float>, numUserSlots> userFrames;
     std::array<juce::String, numUserSlots> userNames;
 
@@ -377,7 +387,6 @@ private:
     SampleSlot kickSample { 2.0 };
     std::array<SampleSlot, ParamID::numBassLayers> bassSamples; // 12 s var (minne används först när en sampling laddats)
 
-    void resetSectionToDefaults (Presets::Section section, int layer);
     juce::String& presetNameSlot (Presets::Section section, int layer);
 
     const bool effectVersion;
