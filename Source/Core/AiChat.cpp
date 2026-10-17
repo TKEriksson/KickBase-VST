@@ -26,7 +26,15 @@ AiChat::~AiChat()
 {
     *alive = false;
     signalThreadShouldExit();
+    cancelRequest();
     stopThread (15000);
+}
+
+void AiChat::cancelRequest()
+{
+    const juce::ScopedLock sl (streamLock);
+    if (activeStream != nullptr)
+        activeStream->cancel();
 }
 
 juce::StringArray AiChat::models()
@@ -101,6 +109,7 @@ void AiChat::stop()
     if (busy)
     {
         signalThreadShouldExit();
+        cancelRequest();
         setStatus ("Stopping ...");
     }
 }
@@ -178,19 +187,30 @@ var AiChat::post (const juce::String& key, const var& body, int& status, juce::S
     url = url.withPOSTData (juce::JSON::toString (body, true));
     const juce::String headers = "content-type: application/json\r\nx-api-key: " + key + "\r\nanthropic-version: 2023-06-01\r\n";
 
-    std::unique_ptr<juce::InputStream> stream (url.createInputStream (juce::URL::InputStreamOptions (juce::URL::ParameterHandling::inPostData)
-                                                                          .withExtraHeaders (headers)
-                                                                          .withConnectionTimeoutMs (240000)
-                                                                          .withStatusCode (&status)
-                                                                          .withNumRedirectsToFollow (2)
-                                                                          .withHttpRequestCmd ("POST")));
-    if (stream == nullptr)
+    // Samma som URL::createInputStream (POST-data i kroppen), men med strömmen åtkomlig så att den kan avbrytas (cancelRequest).
+    juce::WebInputStream stream (url, true);
+    stream.withExtraHeaders (headers).withConnectionTimeout (240000).withNumRedirectsToFollow (2).withCustomRequestCommand ("POST");
     {
-        error = "Could not reach api.anthropic.com (no internet, a firewall, or a proxy?).";
+        const juce::ScopedLock sl (streamLock);
+        if (threadShouldExit())
+            return {};
+        activeStream = &stream;
+    }
+    struct Release
+    {
+        AiChat& owner;
+        ~Release() { const juce::ScopedLock sl (owner.streamLock); owner.activeStream = nullptr; }
+    } release { *this };
+
+    const auto connected = stream.connect (nullptr);
+    status = stream.getStatusCode();
+    if (! connected || stream.isError())
+    {
+        error = threadShouldExit() ? juce::String ("Cancelled.") : juce::String ("Could not reach api.anthropic.com (no internet, a firewall, or a proxy?).");
         return {};
     }
 
-    const auto text = stream->readEntireStreamAsString();
+    const auto text = stream.readEntireStreamAsString();
     const auto parsed = juce::JSON::parse (text);
     if (status >= 400 || parsed["type"].toString() == "error")
     {

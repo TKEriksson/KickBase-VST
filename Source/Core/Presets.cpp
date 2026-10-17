@@ -1,6 +1,7 @@
 #include "Presets.h"
 #include "Settings.h"
 #include "Params.h"
+#include <map>
 
 namespace
 {
@@ -260,7 +261,8 @@ namespace Presets
             case Section::full:
                 return true;
             case Section::kick:
-                return id.startsWith ("kick") && id != ParamID::kickFxChannel && id != ParamID::kickFxAmount;
+                // (På/av är radens M-knapp i mönstret, som för instrumenten: ett kick-preset ska inte stänga av eller slå på kicken.)
+                return id.startsWith ("kick") && id != ParamID::kickFxChannel && id != ParamID::kickFxAmount && id != ParamID::kickOn;
             case Section::bass:
                 return (bassLayerOf (id) == layer && ! isLayerField (BassField::on) && ! isLayerField (BassField::gate) && ! isLayerField (BassField::delay) && ! isLayerField (BassField::swing) && ! isLayerField (BassField::humanize)
                         && ! isLayerField (BassField::duck) && ! isLayerField (BassField::grid)
@@ -333,8 +335,12 @@ namespace Presets
 
         const auto& preset = list[(size_t) index];
 
-        // Delens parametrar till standard först, så att presets inte ärver värden från varandra.
-        // Mönsterlängden behålls av Full: den hör till låten snarare än ljudet.
+        // Delens parametrar får presetets värden, övriga i delen sitt standardvärde (så att presets inte ärver värden från varandra).
+        // Mönsterlängden behålls av Full: den hör till låten snarare än ljudet. Slutvärdet räknas ut först och varje parameter sätts en gång,
+        // som i PluginBase::loadPresetXml: ljudtråden spelar under tiden och ska inte få ett block med standardvärden mitt i laddningen.
+        std::vector<juce::RangedAudioParameter*> sectionParameters;
+        std::vector<float> targets;
+        std::map<juce::String, size_t> indexOfId;
         if (section != Section::pattern)
         {
             for (auto* p : apvts.processor.getParameters())
@@ -344,14 +350,26 @@ namespace Presets
                     continue;
                 if (ranged->getParameterID().startsWith ("rowLoop") || ranged->getParameterID() == ParamID::rowGridKick || ranged->getParameterID().startsWith ("rowBars"))
                     continue;
-                setParameter (*ranged, ranged->getDefaultValue());
+                indexOfId[ranged->getParameterID()] = sectionParameters.size();
+                sectionParameters.push_back (ranged);
+                targets.push_back (ranged->getDefaultValue());
             }
         }
 
-        // Basens presets skrivs för lager 1 och flyttas till det lager de laddas i.
+        // Basens presets skrivs för lager 1 och flyttas till det lager de laddas i. Ett värde utanför delen sätts direkt, som förut.
+        std::vector<std::pair<juce::RangedAudioParameter*, float>> outside;
         for (const auto& [id, value] : preset.values)
-            if (auto* parameter = apvts.getParameter (section == Section::bass ? toBassLayer (id, layer) : juce::String (id)))
-                setParameter (*parameter, parameter->convertTo0to1 (value));
+        {
+            const auto target = section == Section::bass ? toBassLayer (id, layer) : juce::String (id);
+            if (const auto found = indexOfId.find (target); found != indexOfId.end())
+                targets[found->second] = sectionParameters[found->second]->convertTo0to1 (value);
+            else if (auto* parameter = apvts.getParameter (target))
+                outside.push_back ({ parameter, parameter->convertTo0to1 (value) });
+        }
+        for (size_t i = 0; i < sectionParameters.size(); ++i)
+            setParameter (*sectionParameters[i], targets[i]);
+        for (const auto& [parameter, value] : outside)
+            setParameter (*parameter, value);
 
         if (section == Section::full || section == Section::sidechain)
         {

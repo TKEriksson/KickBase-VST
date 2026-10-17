@@ -1143,6 +1143,37 @@ namespace
             }
         }
 
+        // Fönstret (pluginet) stängs mitt i ett anrop som aldrig får svar: det ska gå direkt, inte vänta ut anropet.
+        {
+            juce::StreamingSocket listener;
+            const auto port = 18766;
+            if (listener.createListener (port, "127.0.0.1"))
+            {
+                std::atomic<bool> stopServer { false };
+                std::unique_ptr<juce::StreamingSocket> held;
+                std::thread server ([&]
+                {
+                    held.reset (listener.waitForNextConnection()); // tar emot anropet och svarar aldrig
+                    while (! stopServer)
+                        juce::Thread::sleep (20);
+                });
+                Settings::set ("chatEndpoint", "http://127.0.0.1:" + juce::String (port) + "/v1/messages");
+                auto silentOwner = std::make_unique<InstrumentProcessor>();
+                silentOwner->getAiChat().send ("Hello?");
+                for (int i = 0; i < 25; ++i)
+                    juce::MessageManager::getInstance()->runDispatchLoopUntil (20);
+                const auto start = juce::Time::getMillisecondCounterHiRes();
+                silentOwner.reset();
+                const auto seconds = (juce::Time::getMillisecondCounterHiRes() - start) / 1000.0;
+                std::printf ("  stängning mitt i ett anrop: %.2f s\n", seconds);
+                check (seconds < 2.0, "pluginet stängs direkt även när ett AI-anrop väntar på svar");
+                stopServer = true;
+                listener.close();
+                server.join();
+                Settings::set ("chatEndpoint", {});
+            }
+        }
+
         Settings::setChatApiKey ({});
         check (Settings::chatApiKey().isEmpty(), "nyckeln kan tas bort");
         Settings::useFile ({});

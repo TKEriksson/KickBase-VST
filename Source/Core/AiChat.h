@@ -50,6 +50,12 @@ private:
     std::vector<Entry> log;
     juce::String status;
     std::atomic<bool> busy { false };
+
+    // Anropet som pågår (annars nullptr), så att stop() och destruktorn kan avbryta en blockerande läsning (WebInputStream::cancel är gjord
+    // för att anropas från en annan tråd). Förr väntade destruktorn upp till 15 s på ett svar när fönstret stängdes mitt i ett anrop.
+    juce::CriticalSection streamLock;
+    juce::WebInputStream* activeStream = nullptr;
+    void cancelRequest();
     std::shared_ptr<std::atomic<bool>> alive = std::make_shared<std::atomic<bool>> (true); // läses av väntande anrop till message thread
     std::atomic<juce::int64> tokensIn { 0 }, tokensOut { 0 };
 

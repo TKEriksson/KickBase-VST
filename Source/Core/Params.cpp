@@ -138,7 +138,7 @@ namespace Params
             rowLengths.add (juce::String (bars) + (bars == 1 ? " bar" : " bars"));
         for (int row = 0; row < numPatternRows; ++row)
             layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::rowBars (row), 1 },
-                                                                row == 0 ? juce::String ("Kick Length") : "Instr " + juce::String (row) + " Length", rowLengths, 0));
+                                                                row == 0 ? juce::String ("Kick Row Length") : "Instr " + juce::String (row) + " Row Length", rowLengths, 0));
         for (int row = 0; row < numPatternRows; ++row)
             layout.add (std::make_unique<AudioParameterBool> (ParameterID { ParamID::rowLoop (row), 1 },
                                                               row == 0 ? juce::String ("Kick Loop") : "Instr " + juce::String (row) + " Loop", true));
@@ -211,7 +211,7 @@ namespace Params
         layout.add (std::make_unique<AudioParameterBool> (ParameterID { id (F::on), 1 }, title + "On", true));
         layout.add (percent (id (F::level), title + "Level", defaultLevel));
         // LENGTH: skalar längden på alla toner i lagret (parameter-ID:t heter fortfarande Gate).
-        layout.add (floatParam (id (F::gate), title + "Length", NormalisableRange<float> (0.05f, 1.0f, 0.001f), 1.0f, formatPercent));
+        layout.add (floatParam (id (F::gate), title + "Note Length", NormalisableRange<float> (0.05f, 1.0f, 0.001f), 1.0f, formatPercent));
         layout.add (percent (id (F::duck), title + "Duck", 0.8f));
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::grid), 1 }, title + "Grid",
                                                             Pattern::gridNames(), (int) BassGrid::sixteenth));

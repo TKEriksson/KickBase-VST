@@ -1024,12 +1024,12 @@ void SpectrumPage::analyse (int index)
     else
         processor.instrumentTaps[(size_t) (index - firstInstrument)].copyLatest (size, left, right);
 
+    auto silent = true;
     for (int i = 0; i < size; ++i)
+    {
         fftData[(size_t) i] = 0.5f * (left[(size_t) i] + right[(size_t) i]);
-    std::fill (fftData.begin() + size, fftData.end(), 0.0f);
-
-    window.multiplyWithWindowingTable (fftData.data(), size);
-    fft.performFrequencyOnlyForwardTransform (fftData.data(), true);
+        silent = silent && fftData[(size_t) i] == 0.0f;
+    }
 
     // Normaliserat så att en sinus i full skala blir 0 dB. Analysen görs direkt i bildpunkter (en logaritm per punkt, inte per steg).
     constexpr float norm = 4.0f / (float) size;
@@ -1038,6 +1038,19 @@ void SpectrumPage::analyse (int index)
     ensureMapping (width, std::max (8000.0, processor.getSampleRate()));
     if ((int) source.target.size() != width)
         source.target.assign ((size_t) width, -120.0f);
+
+    if (silent)
+    {
+        // En tyst källa (ett instrument som inte spelar): samma resultat som en FFT av nollor (-120 dB överallt), utan att räkna den.
+        std::fill (source.target.begin(), source.target.end(), -120.0f);
+        for (auto& level : source.low)
+            level = -120.0f > level ? -120.0f : level + (-120.0f - level) * smoothing;
+        return;
+    }
+
+    std::fill (fftData.begin() + size, fftData.end(), 0.0f);
+    window.multiplyWithWindowingTable (fftData.data(), size);
+    fft.performFrequencyOnlyForwardTransform (fftData.data(), true);
 
     for (int px = 0; px < width; ++px)
     {
@@ -1277,14 +1290,21 @@ void SpectrumPage::paint (juce::Graphics& g)
         return;
     }
 
-    // Nivån (dB) per bildpunkt och källa kommer färdig från analysen.
+    // Nivån (dB) per bildpunkt och källa kommer färdig från analysen (läses direkt, utan att kopieras varje bildruta).
     const auto width = juce::jmax (1, (int) area.getWidth());
-    std::array<std::vector<float>, numSources> columns;
+    struct ColumnView
+    {
+        const std::vector<float>* values = nullptr;
+        bool empty() const { return values == nullptr; }
+        float operator[] (size_t px) const { return (*values)[px]; }
+        const std::vector<float>& get() const { return *values; }
+    };
+    std::array<ColumnView, numSources> columns;
     for (int i = 0; i < numSources; ++i)
     {
         const auto& source = sources[(size_t) i];
         if (source.present && source.selected && (int) source.column.size() == width)
-            columns[(size_t) i] = source.column;
+            columns[(size_t) i].values = &source.column;
     }
 
     // Krockar: under den näst starkaste källans nivå har minst två källor energi. Rött, starkare med nivå och antal.
@@ -1429,10 +1449,10 @@ void SpectrumPage::paint (juce::Graphics& g)
         if (i == masterSource)
         {
             g.setColour (colour.withAlpha (0.85f));
-            g.strokePath (pathFor (columns[(size_t) i], false), juce::PathStrokeType (1.4f));
+            g.strokePath (pathFor (columns[(size_t) i].get(), false), juce::PathStrokeType (1.4f));
             continue;
         }
-        const auto path = pathFor (columns[(size_t) i], true);
+        const auto path = pathFor (columns[(size_t) i].get(), true);
         g.setColour (colour.withAlpha (0.16f));
         g.fillPath (path);
         g.setColour (colour);

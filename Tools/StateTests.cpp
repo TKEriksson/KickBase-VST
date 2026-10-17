@@ -119,6 +119,35 @@ int persistTest()
         check (std::abs (cutoff->convertFrom0to1 (cutoff->getValue()) - 2345.0f) < 1.0f, "och har presetets värde efteråt");
     }
 
+    // 6. Ett kick-preset rör inte kickens på/av (radens M-knapp), precis som instrument-presets.
+    {
+        auto processor = std::make_unique<InstrumentProcessor>();
+        auto* kickOn = processor->apvts.getParameter (ParamID::kickOn);
+        kickOn->setValueNotifyingHost (0.0f);
+        processor->saveUserPreset (Presets::Section::kick, "__persist_kick_off__");
+        kickOn->setValueNotifyingHost (1.0f);
+        processor->loadUserPreset (Presets::Section::kick, processor->findUserPreset (Presets::Section::kick, "__persist_kick_off__"));
+        check (kickOn->getValue() > 0.5f, "ett kick-preset sparat med kicken avstängd stänger inte av kicken");
+        kickOn->setValueNotifyingHost (0.0f);
+        processor->loadFactoryPreset (Presets::Section::kick, 2);
+        check (kickOn->getValue() < 0.5f, "ett fabriks-kickljud slår inte på en avstängd kick");
+    }
+
+    // 7. Fabriksljud sätter också varje parameter en gång (ingen omväg via standardvärdet).
+    {
+        auto processor = std::make_unique<InstrumentProcessor>();
+        processor->loadFactoryPreset (Presets::Section::bass, 3, 0);
+        auto* cutoff = processor->apvts.getParameter (ParamID::bass (0, BassField::cutoff));
+        const auto factoryValue = cutoff->getValue();
+        cutoff->setValueNotifyingHost (factoryValue > 0.5f ? 0.1f : 0.9f);
+        Recorder recorder;
+        cutoff->addListener (&recorder);
+        processor->loadFactoryPreset (Presets::Section::bass, 3, 0);
+        cutoff->removeListener (&recorder);
+        check (recorder.values.size() == 1 && std::abs (recorder.values[0] - factoryValue) < 1.0e-4f,
+               "ett fabriks-instrumentljud sätter cutoff en gång (" + juce::String ((int) recorder.values.size()) + " ändringar)");
+    }
+
     std::puts (failed ? "FEL: sparandetestet misslyckades" : "Sparandetestet gick igenom");
     return failed ? 1 : 0;
 }
