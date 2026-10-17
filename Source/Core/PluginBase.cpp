@@ -1,4 +1,5 @@
 #include "PluginBase.h"
+#include <BinaryData.h>
 #include "AiChat.h"
 #include "MixAnalysis.h"
 #include "OfflineRender.h"
@@ -570,6 +571,10 @@ void PluginBase::resetSectionToDefaults (Presets::Section section, int layer)
 
 void PluginBase::loadFactoryPreset (Presets::Section section, int index, int layer)
 {
+    // Instrumentets Init är ett vanligt Full-preset (Resources/InitPreset.mofp); FX-versionen och övriga delar använder fabrikslistorna i koden.
+    if (section == Presets::Section::full && index == 0 && ! preferCodeInit && loadEmbeddedInit())
+        return;
+
     Presets::applyFactory (section, effectVersion, index, apvts, pattern, sidechainCurve, layer);
 
     if (section == Presets::Section::full || section == Presets::Section::lfo)
@@ -743,6 +748,21 @@ bool PluginBase::loadUserPreset (Presets::Section section, const juce::File& fil
         && (xml->getStringAttribute ("scope") != "row" || xml->getStringAttribute ("rowKind") != (layer == Pattern::kickLayer ? "kick" : "instrument")))
         return false; // ett äldre preset med hela mönstret, eller en kickrad i ett instrument (eller tvärtom)
 
+    return loadPresetXml (*xml, section, layer, file.getFileNameWithoutExtension());
+}
+
+bool PluginBase::loadEmbeddedInit()
+{
+    if (effectVersion)
+        return false;
+    const auto xml = juce::XmlDocument::parse (juce::String::fromUTF8 (BinaryData::InitPreset_mofp, BinaryData::InitPreset_mofpSize));
+    return xml != nullptr && loadPresetXml (*xml, Presets::Section::full, 0, "Init");
+}
+
+bool PluginBase::loadPresetXml (const juce::XmlElement& xmlElement, Presets::Section section, int layer, const juce::String& presetName)
+{
+    const auto* xml = &xmlElement;
+
     // Delen till standard först: parametrar som saknas i filen (t.ex. nya sedan presetet
     // sparades) får sitt standardvärde i stället för att ärvas från förra ljudet.
     resetSectionToDefaults (section, layer);
@@ -833,7 +853,7 @@ bool PluginBase::loadUserPreset (Presets::Section section, const juce::File& fil
         fxPresetNames.fill ({});
     }
 
-    presetNameSlot (section, layer) = file.getFileNameWithoutExtension();
+    presetNameSlot (section, layer) = presetName;
     ensureTablesInUse();
     patternChanged();
     return true;

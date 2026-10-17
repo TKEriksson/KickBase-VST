@@ -711,6 +711,88 @@ namespace
         return 0;
     }
 
+    // Reparerar användarens presets (Full, Kick, Bass): läser varje fil och sparar den igen, så att den får alla nuvarande parametrar och
+    // formatet som sparas nu. Utan `apply` bara mäts de. Varje preset kontrolleras: ljudet av filen före och efter ska ha exakt samma fingeravtryck,
+    // annars skrivs originalet tillbaka.
+    int repairPresets (bool apply)
+    {
+        juce::ScopedJuceInitialiser_GUI gui;
+        auto signatureOf = [] (PluginBase& processor)
+        {
+            OfflineRender::Settings settings;
+            settings.sampleRate = renderRate;
+            settings.blockSize = blockSize;
+            settings.bpm = 145.0;
+            settings.bars = 2;
+            settings.notes = { 52 };
+            settings.extraBars = 1;
+            const auto audio = processor.renderOffline (settings, PluginBase::ExportPart::full);
+            juce::uint64 hash = 1469598103934665603ull;
+            for (int ch = 0; ch < audio.getNumChannels(); ++ch)
+                for (int i = 0; i < audio.getNumSamples(); ++i)
+                {
+                    juce::uint32 bits;
+                    const auto value = audio.getSample (ch, i);
+                    std::memcpy (&bits, &value, sizeof (bits));
+                    hash = (hash ^ bits) * 1099511628211ull;
+                }
+            return hash;
+        };
+
+        int same = 0, restored = 0, failed = 0;
+        for (const auto section : { Presets::Section::full, Presets::Section::kick, Presets::Section::bass })
+        {
+            const auto probe = std::make_unique<InstrumentProcessor>();
+            for (const auto& file : probe->getUserPresets (section))
+            {
+                auto load = [&] (InstrumentProcessor& target)
+                {
+                    target.loadFactoryPreset (Presets::Section::full, 0);
+                    return target.loadUserPreset (section, file, 0);
+                };
+                const auto name = file.getFileNameWithoutExtension();
+                const auto label = Presets::sectionName (section) + " / " + name;
+
+                juce::MemoryBlock original;
+                file.loadFileAsData (original);
+                const auto before = std::make_unique<InstrumentProcessor>();
+                if (! load (*before))
+                {
+                    std::printf ("FEL (kan inte läsas): %s" "\n", label.toRawUTF8());
+                    ++failed;
+                    continue;
+                }
+                const auto sigBefore = signatureOf (*before);
+                if (! apply)
+                {
+                    std::printf ("%016llx %s" "\n", (unsigned long long) sigBefore, label.toRawUTF8());
+                    continue;
+                }
+
+                if (! before->saveUserPreset (section, name, 0) || juce::File::createLegalFileName (name.trim()) != name.trim())
+                {
+                    file.replaceWithData (original.getData(), original.getSize());
+                    std::printf ("FEL (kan inte sparas, originalet kvar): %s" "\n", label.toRawUTF8());
+                    ++failed;
+                    continue;
+                }
+
+                const auto after = std::make_unique<InstrumentProcessor>();
+                if (! load (*after) || signatureOf (*after) != sigBefore)
+                {
+                    file.replaceWithData (original.getData(), original.getSize());
+                    std::printf ("SKILJER (originalet återställt): %s" "\n", label.toRawUTF8());
+                    ++restored;
+                    continue;
+                }
+                std::printf ("ok  %6d -> %6d byte  %s" "\n", (int) original.getSize(), (int) file.getSize(), label.toRawUTF8());
+                ++same;
+            }
+        }
+        std::printf ("%d reparerade och verifierade, %d återställda, %d fel" "\n", same, restored, failed);
+        return restored + failed == 0 ? 0 : 1;
+    }
+
     // Flera instrument: lägga till, spara/läsa, ta bort (allt ska rensas) och gamla projekt (kicken var lager 3).
     int instrumentTest()
     {
@@ -1406,6 +1488,13 @@ namespace
 // Verktygets kommandon. Startas av KickbaseMcp.exe när det heter MyOwnFruitTool.exe eller får `tool` som första argument.
 int toolMain (int argc, char* argv[])
 {
+    // Testerna och mätningarna kör mot Init från koden (reproducerbart startläge). Skärmbilder, rendering, export, reparation av presets och
+    // `rendersigreal` använder det riktiga Init (den inbakade filen).
+    {
+        const juce::String command (argc > 1 ? argv[1] : "");
+        PluginBase::preferCodeInit = ! (command == "snapshot" || command == "render" || command == "export" || command == "repairpresets" || command == "rendersigreal");
+    }
+
     if (argc == 2 && juce::String (argv[1]) == "presettest")
         return presetTest();
     if (argc == 2 && juce::String (argv[1]) == "auditiontest")
@@ -1422,8 +1511,10 @@ int toolMain (int argc, char* argv[])
         return lengthTest();
     if (argc == 3 && juce::String (argv[1]) == "logoimage")
         return logoImage (juce::File::getCurrentWorkingDirectory().getChildFile (argv[2]));
-    if (argc == 2 && juce::String (argv[1]) == "rendersig")
+    if (argc == 2 && (juce::String (argv[1]) == "rendersig" || juce::String (argv[1]) == "rendersigreal"))
         return renderSignatures();
+    if (argc >= 2 && juce::String (argv[1]) == "repairpresets")
+        return repairPresets (argc > 2 && juce::String (argv[2]) == "apply");
     if (argc == 2 && juce::String (argv[1]) == "listentest")
         return listenTest();
     if (argc == 2 && juce::String (argv[1]) == "eqtest")

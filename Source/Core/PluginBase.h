@@ -116,6 +116,12 @@ public:
 
     bool saveUserPreset (Presets::Section section, const juce::String& name, int layer = 0, const PresetLink* link = nullptr);
     bool loadUserPreset (Presets::Section section, const juce::File& file, int layer = 0);
+    bool loadPresetXml (const juce::XmlElement& xml, Presets::Section section, int layer, const juce::String& presetName); // själva laddningen (fil eller inbyggt)
+    bool loadEmbeddedInit(); // instrumentets fabrikspreset Init: ett Full-preset inbakat i programmet
+
+    // Bara för utvecklingsverktygen och testerna: använd Init från fabrikslistan i koden (PresetData.inl) i stället för den inbakade filen, så att testerna
+    // får samma startläge som förr oavsett vilket ljud Init har. Aldrig satt i pluginet självt.
+    static inline bool preferCodeInit = false;
     juce::Array<juce::File> getUserPresets (Presets::Section section, int layer = -1) const; // Mönster: bara rad-presets, av rätt sort om `layer` anges
     juce::String getPresetName (Presets::Section section, int layer = 0) const;
 

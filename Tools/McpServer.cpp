@@ -441,6 +441,8 @@ int main (int argc, char** argv)
     }
 
     if (argc > 1 && juce::String (argv[1]) == "--selftest-link")
+        PluginBase::preferCodeInit = true; // testet förutsätter kickTune 0 från Init i koden
+    if (argc > 1 && juce::String (argv[1]) == "--selftest-link")
         return selfTestLink();
 
    #if JUCE_WINDOWS

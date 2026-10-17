@@ -114,7 +114,8 @@ set(FX_SOURCES
 )
 
 # Guiderna som MCP-bryggan serverar till AI:n (get_guide), inbakade i programmet.
-juce_add_binary_data(KickbaseGuides SOURCES docs/AGENT_GUIDE.md docs/psytrance-kick-bass-reference.md)
+# (Resources/InitPreset.mofp: fabrikspresetet Init för instrumentet, ett vanligt Full-preset som läses vid start.)
+juce_add_binary_data(KickbaseGuides SOURCES docs/AGENT_GUIDE.md docs/psytrance-kick-bass-reference.md Resources/InitPreset.mofp)
 
 # Gemensamt för alla mål: samma definitioner och flaggor.
 function(myownfruit_configure target)
