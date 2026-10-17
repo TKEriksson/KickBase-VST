@@ -162,7 +162,7 @@ void HeaderBar::chooseExportTarget (int part, int bars)
     const juce::String partNames[] { "Full", "Kick", "Bass" };
     const auto baseName = "Kickbase " + juce::String (bars) + " bars "
                         + juce::String (juce::roundToInt (processor.transportStatus.bpm.load())) + " BPM";
-    auto folder = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("Kickbase").getChildFile ("Exports");
+    auto folder = Settings::exportsFolder();
     folder.createDirectory();
 
     auto report = [] (bool ok, const juce::String& where)

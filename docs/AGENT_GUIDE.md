@@ -11,6 +11,8 @@ You control **Kickbase**, a psytrance kick + bass synth, through MCP tools. This
 5. Adjust and repeat. Use `undo` freely. Save with `save_preset` (it appears in the plugin's preset menus; ask the user to listen).
 6. Always tell the user what you changed and why, and that you could only measure, not listen.
 
+Access key: if the user set an access key in the plugin (SETTINGS tab, AI LINK), the bridge needs the same key in its environment (`KICKBASE_KEY`, or `install-mcp.ps1 -Key <key>`), otherwise every call is refused with an "access key" error: tell the user.
+
 Instances: `list_instances` shows `headless` (private, no DAW, always available) and any Kickbase in a DAW whose **AI button** (top bar) is on. `use_instance` switches. Changes in a DAW instance are audible immediately; `render_preview` still renders offline from a copy.
 
 ## 2. What the synth is

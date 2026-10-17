@@ -1,4 +1,5 @@
 #include "BridgeLink.h"
+#include "Settings.h"
 #include "PluginBase.h"
 #include "ToolLayer.h"
 
@@ -55,7 +56,7 @@ namespace BridgeLink
     juce::File registryFolder()
     {
         // Dokument, inte AppData: en Store-installerad AI-app (Claude Desktop) virtualiserar AppData för sina barnprocesser.
-        return juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("Kickbase").getChildFile ("Bridge");
+        return Settings::rootFolder().getChildFile ("Bridge");
     }
 
     juce::Array<InstanceInfo> listInstances()
@@ -150,12 +151,23 @@ namespace BridgeLink
         const auto request = fromBlock (message);
         auto response = new juce::DynamicObject();
         response->setProperty ("id", request["id"]);
+
+        // Har användaren satt en åtkomstnyckel (SETTINGS > AI LINK) svarar vi bara en brygga som har samma nyckel.
+        if (const auto expected = Settings::aiKey(); expected.isNotEmpty() && request["key"].toString() != expected)
+        {
+            auto denied = new juce::DynamicObject();
+            denied->setProperty ("ok", false);
+            denied->setProperty ("error", "This Kickbase has an access key (SETTINGS tab, AI LINK). Give the bridge the same key: set KICKBASE_KEY in its environment, or run install-mcp.ps1 -Key <key>.");
+            response->setProperty ("result", juce::var (denied));
+            sendMessage (toBlock (juce::var (response)));
+            return;
+        }
         response->setProperty ("result", tools->call (request["tool"].toString(), request["args"]));
         sendMessage (toBlock (juce::var (response)));
     }
 
     //==========================================================================================
-    Client::Client() : InterprocessConnection (false) {}
+    Client::Client() : InterprocessConnection (false), accessKey (juce::SystemStats::getEnvironmentVariable ("KICKBASE_KEY", {}).trim()) {}
     Client::~Client() { disconnect(); }
 
     bool Client::connect (const juce::String& pipeName, int timeoutMs)
@@ -213,6 +225,8 @@ namespace BridgeLink
         request->setProperty ("id", id);
         request->setProperty ("tool", tool);
         request->setProperty ("args", args);
+        if (accessKey.isNotEmpty())
+            request->setProperty ("key", accessKey);
         if (! sendMessage (toBlock (juce::var (request))))
         {
             connected = false;

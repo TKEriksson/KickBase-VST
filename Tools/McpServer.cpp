@@ -299,6 +299,7 @@ namespace
         std::printf ("instans %s, länk %s\n", live.getBridgeId().toRawUTF8(), live.isBridgeEnabled() ? "på" : "av");
 
         std::atomic<bool> done { false };
+        bool keyedOk = false;
         std::vector<juce::String> lines;
         std::thread worker ([&]
         {
@@ -323,6 +324,27 @@ namespace
                 lines.push_back ("render_preview: " + juce::String ((bool) preview["ok"] ? "ok, kick tail " + preview["data"]["metrics"]["kick_tail_hz"].toString() + " Hz, bilder "
                                                                             + juce::String (preview["images"].size()) : preview["error"].toString()));
                 client.call ("undo", object());
+
+                // Åtkomstnyckel: utan nyckel nekas bryggan, med rätt nyckel släpps den in.
+                client.disconnect();
+                const auto settingsFile = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("kickbase_selftest_settings.xml");
+                Settings::useFile (settingsFile);
+                Settings::set ("aiKey", "k1");
+                BridgeLink::Client keyed;
+                keyed.setAccessKey ({});
+                if (keyed.connect (instances[0].pipe))
+                {
+                    const auto denied = keyed.call ("get_state", object());
+                    keyedOk = ! (bool) denied["ok"] && denied["error"].toString().contains ("access key");
+                    lines.push_back (juce::String (keyedOk ? "ok" : "FEL") + ": utan nyckel nekas bryggan");
+                    keyed.setAccessKey ("k1");
+                    const auto allowed = keyed.call ("get_state", object());
+                    keyedOk = keyedOk && (bool) allowed["ok"];
+                    lines.push_back (juce::String ((bool) allowed["ok"] ? "ok" : "FEL") + ": med rätt nyckel släpps bryggan in");
+                }
+                Settings::set ("aiKey", {});
+                Settings::useFile ({});
+                settingsFile.deleteFile();
             }
             done = true;
         });
@@ -335,7 +357,7 @@ namespace
         const auto tune = live.apvts.getRawParameterValue (ParamID::kickTune)->load();
         std::printf ("kickTune i instansen efter undo: %.1f (väntat 0)\n", tune);
         live.setBridgeEnabled (false);
-        return done && std::abs (tune) < 0.01f ? 0 : 1;
+        return done && keyedOk && std::abs (tune) < 0.01f ? 0 : 1;
     }
 }
 

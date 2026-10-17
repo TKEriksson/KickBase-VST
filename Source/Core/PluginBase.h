@@ -16,6 +16,7 @@
 #include "TransportStatus.h"
 #include "SampleSlot.h"
 #include "BridgeLink.h"
+#include "Settings.h"
 
 // Det som instrumentet och FX-versionen har gemensamt: parametrar, mönster, klicksampling,
 // sparat läge och klockan.
@@ -195,7 +196,17 @@ public:
     int selectedInstrument = 0;            // INSTRUMENT-flikens valda instrument (0-9)
     bool modEnvelopesOpen = false;         // INSTRUMENT-sidans dragspel MODULATION (ENV 2, ENV 3 ...) är öppet
     int sequencerRowHeight = 0;            // radhöjden i mönstret (zoom): 0 = automatisk
-    float editorScale = 0.0f;              // fönstrets skala (0 = standard); sparas i projektet
+    // Fönstrets skala (1 = fullstor). Gäller alla fönster och sparas i inställningarna (Settings), inte i projektet. Editorn sätter
+    // `applyEditorScale` så att inställningssidan kan ändra storleken på det öppna fönstret.
+    float editorScale = 0.0f;
+    std::function<void (float)> applyEditorScale;
+    void requestEditorScale (float scale)
+    {
+        editorScale = juce::jlimit (0.5f, 1.6f, scale);
+        Settings::setUiScale (editorScale);
+        if (applyEditorScale)
+            applyEditorScale (editorScale);
+    }
     bool pianoRollOpen = false;            // PATTERN-flikens vy: stegen eller pianorullen
     int selectedFxView = 2;                // EFFECTS-sidans vy: 0 EQ, 1 COMP, 2 FX
 

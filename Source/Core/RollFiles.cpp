@@ -1,4 +1,5 @@
 #include "RollFiles.h"
+#include "Settings.h"
 #include "Params.h"
 #include "Presets.h"
 
@@ -6,7 +7,7 @@ namespace RollFiles
 {
     juce::File folder()
     {
-        return juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("Kickbase").getChildFile ("Presets").getChildFile ("Piano Roll");
+        return Settings::presetsFolder().getChildFile ("Piano Roll");
     }
 
     juce::Array<juce::File> list()

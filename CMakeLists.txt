@@ -55,6 +55,7 @@ set(CORE_SOURCES
     Source/Core/StepScheduler.cpp
     Source/Core/Sidechain.cpp
     Source/Core/Modulation.cpp
+    Source/Core/Settings.cpp
 )
 
 # Plugin-delarna som båda pluginsen delar, inklusive gränssnittet.
@@ -85,6 +86,8 @@ set(PLUGIN_SOURCES
     Source/Ui/MixerPage.cpp
     Source/Ui/LfoPage.cpp
     Source/Ui/MatrixPage.cpp
+    Source/Ui/SettingsPage.cpp
+    Source/Core/WavetablePack.cpp
     Source/Ui/Components.cpp
     Source/Ui/Help.cpp
     Source/Ui/OscPanel.cpp

@@ -1,4 +1,5 @@
 #include "Presets.h"
+#include "Settings.h"
 #include "Params.h"
 
 namespace
@@ -250,9 +251,7 @@ namespace Presets
         else if (section == Section::bass)
             name = effectVersion ? "Gate" : "Bass";
 
-        auto root = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory)
-                        .getChildFile ("Kickbase").getChildFile ("Presets");
-        return root.getChildFile (name);
+        return Settings::presetsFolder().getChildFile (name);
     }
 
     int factoryCount (Section section, bool effectVersion)

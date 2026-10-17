@@ -29,6 +29,7 @@ InstrumentEditor::InstrumentEditor (InstrumentProcessor& p)
     tools.addTab ("MATRIX", Theme::lfo, matrix);
     tools.addTab ("MASTER", Theme::master, masterPage);
     tools.addTab ("SOUNDSTAGE", Theme::mix, soundstage);
+    tools.addTab ("SETTINGS", Theme::textDim, settings);
 
     keyboard.setOctaveForMiddleC (5); // samma tonnamn som FL Studio (mittens C = C5)
     keyboard.setKeyWidth (14.0f);
@@ -38,13 +39,17 @@ InstrumentEditor::InstrumentEditor (InstrumentProcessor& p)
     setResizable (true, true);
     setResizeLimits (baseWidth * 6 / 10, baseHeight * 6 / 10, baseWidth * 16 / 10, baseHeight * 16 / 10);
     getConstrainer()->setFixedAspectRatio ((double) baseWidth / (double) baseHeight);
-    const auto scale = processor.editorScale > 0.0f ? processor.editorScale : defaultScale;
+    const auto scale = Settings::uiScale() > 0.0f ? Settings::uiScale() : defaultScale;
     setSize (juce::roundToInt ((float) baseWidth * scale), juce::roundToInt ((float) baseHeight * scale));
     sized = true;
+    processor.applyEditorScale = [this] (float newScale) { setSize (juce::roundToInt ((float) baseWidth * newScale), juce::roundToInt ((float) baseHeight * newScale)); };
 }
 
 InstrumentEditor::~InstrumentEditor()
 {
+    processor.applyEditorScale = nullptr;
+    if (sized && processor.editorScale > 0.0f)
+        Settings::setUiScale (processor.editorScale); // storleken man dragit till gäller nästa gång
     setLookAndFeel (nullptr);
 }
 

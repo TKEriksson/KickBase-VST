@@ -8,6 +8,7 @@
 #include "../Ui/LfoPage.h"
 #include "../Ui/MasterPage.h"
 #include "../Ui/MatrixPage.h"
+#include "../Ui/SettingsPage.h"
 #include "../Ui/SidechainPage.h"
 #include "../Ui/SoundstagePage.h"
 #include "../Ui/Modules.h"
@@ -39,6 +40,7 @@ private:
     SidechainPage sidechain { processor };
     LfoPage lfo { processor };
     MatrixPage matrix { processor };
+    SettingsPage settings { processor };
     MasterPage masterPage { processor };
     SoundstagePage soundstage { processor };
     InfoBar info;

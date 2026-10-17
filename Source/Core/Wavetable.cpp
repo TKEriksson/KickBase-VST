@@ -1,4 +1,5 @@
 #include "Wavetable.h"
+#include "Settings.h"
 #include <juce_dsp/juce_dsp.h>
 #include <mutex>
 
@@ -648,7 +649,7 @@ namespace Wavetables
 
     juce::File libraryFolder()
     {
-        return juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("Kickbase").getChildFile ("Wavetables");
+        return Settings::wavetablesFolder();
     }
 
     std::unique_ptr<Wavetable> fromFrames (const juce::String& name, const std::vector<float>& frames)

@@ -1,11 +1,11 @@
 # Installerar MCP-bryggan (KickbaseMcp.exe) för Claude Desktop.
 #
-#   powershell -ExecutionPolicy Bypass -File .\install-mcp.ps1 [RelWithDebInfo|Release]
+#   powershell -ExecutionPolicy Bypass -File .\install-mcp.ps1 [RelWithDebInfo|Release] [-Key <åtkomstnyckel>]
 #
 # Kopierar programmet till %LOCALAPPDATA%\Kickbase och lägger in "kickbase" bland MCP-servrarna i Claude Desktops
 # konfiguration. Resten av konfigurationsfilen rörs inte (en backup sparas som .bak). Starta om Claude Desktop efteråt
 # (Avsluta helt i aktivitetsfältet, inte bara stäng fönstret).
-param([string]$Config = "RelWithDebInfo")
+param([string]$Config = "RelWithDebInfo", [string]$Key = "")
 
 $ErrorActionPreference = "Stop"
 $source = Join-Path $PSScriptRoot "build\$Config\KickbaseMcp_artefacts\$Config\KickbaseMcp.exe"
@@ -31,7 +31,9 @@ New-Item -ItemType Directory -Force (Split-Path $target) | Out-Null
 
 # JSON kräver dubbla backslash i sökvägen.
 $exeJson = $dest -replace '\\', '\\'
-$serverText = '"kickbase": { "command": "' + $exeJson + '", "args": [] }'
+$envText = ""
+if ($Key -ne "") { $envText = ', "env": { "KICKBASE_KEY": "' + $Key + '" }' }  # åtkomstnyckeln från SETTINGS > AI LINK i Kickbase
+$serverText = '"kickbase": { "command": "' + $exeJson + '", "args": []' + $envText + ' }'
 $utf8 = New-Object System.Text.UTF8Encoding($false)
 
 if (Test-Path $target) {
@@ -39,6 +41,7 @@ if (Test-Path $target) {
     $text = [System.IO.File]::ReadAllText($target)
     if ($text -match '"kickbase"\s*:') {
         Write-Host "Kickbase finns redan i $target (inget ändrat)."
+        if ($Key -ne "") { Write-Host "Lägg till nyckeln för hand i 'kickbase': , `"env`": { `"KICKBASE_KEY`": `"$Key`" }" }
     }
     elseif ($text -match '"mcpServers"\s*:\s*\{') {
         # Det finns redan andra servrar: lägg vår först i listan.

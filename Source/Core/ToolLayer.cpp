@@ -1,4 +1,5 @@
 #include "ToolLayer.h"
+#include "Settings.h"
 #include "AudioAnalysis.h"
 #include "RollFiles.h"
 #include <BinaryData.h>
@@ -159,7 +160,7 @@ namespace
         return points;
     }
 
-    juce::File previewFolder() { return juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("Kickbase").getChildFile ("Previews"); }
+    juce::File previewFolder() { return Settings::rootFolder().getChildFile ("Previews"); }
 
     int gridIndex (const juce::String& name)
     {
@@ -1063,7 +1064,6 @@ var ToolLayer::pianoRollFiles (const juce::String& tool, const var& args)
     const auto note = args.hasProperty ("note") ? juce::jlimit (0, 127, (int) args["note"]) : 52;
     const auto root = isKick ? (int) (processor.apvts.getRawParameterValue (ParamID::kickKeyFollow)->load() >= 0.5f ? Params::kickTailMidiNote (note % 12) : 24)
                              : Params::bassRootMidiNote (note) + 12 * (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, BassField::octave))->load();
-    const auto documents = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("Kickbase");
 
     auto applyLoaded = [this, layer, gridParameterID] (int newBars, BassGrid grid)
     {
@@ -1112,7 +1112,7 @@ var ToolLayer::pianoRollFiles (const juce::String& tool, const var& args)
     }
 
     // export_midi
-    auto file = args.hasProperty ("file") ? juce::File (args["file"].toString()) : documents.getChildFile ("Exports").getChildFile ("Kickbase BASS " + juce::String (layer + 1) + ".mid");
+    auto file = args.hasProperty ("file") ? juce::File (args["file"].toString()) : Settings::exportsFolder().getChildFile ("Kickbase BASS " + juce::String (layer + 1) + ".mid");
     file = file.withFileExtension ("mid");
     const auto bpm = args.hasProperty ("bpm") ? juce::jlimit (20.0, 300.0, (double) args["bpm"]) : (double) processor.transportStatus.bpm.load();
     if (! RollFiles::exportMidi (pattern, layer, bars, bpm, root, file))

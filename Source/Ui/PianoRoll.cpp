@@ -338,7 +338,7 @@ void PianoRoll::showMidiMenu()
         if (safeThis == nullptr || result <= 0)
             return;
 
-        const auto folder = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("Kickbase").getChildFile ("Exports");
+        const auto folder = Settings::exportsFolder();
         folder.createDirectory();
 
         if (result == 1)

@@ -61,6 +61,7 @@ namespace BridgeLink
         bool connect (const juce::String& pipeName, int timeoutMs = 3000);
         void disconnect();
         bool isConnected() const { return connected; }
+        void setAccessKey (const juce::String& key) { accessKey = key; } // den nyckel plugin:et kräver (SETTINGS > AI LINK), om den är satt
 
         // Ger verktygets resultat, eller { "ok": false, "error": ... } om anslutningen eller svaret uteblir.
         juce::var call (const juce::String& tool, const juce::var& args, int timeoutMs = 120000);
@@ -70,6 +71,7 @@ namespace BridgeLink
         void connectionLost() override;
         void messageReceived (const juce::MemoryBlock& message) override;
 
+        juce::String accessKey;
         juce::CriticalSection lock;
         juce::WaitableEvent replyArrived;
         juce::var reply;

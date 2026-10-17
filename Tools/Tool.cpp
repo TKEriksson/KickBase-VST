@@ -19,6 +19,9 @@
 #include "../Source/Fx/FxProcessor.h"
 #include "../Source/Core/OfflineRender.h"
 #include "../Source/Core/ToolLayer.h"
+#include "../Source/Core/Settings.h"
+#include "../Source/Core/WavetablePack.h"
+#include "../Source/Core/RollFiles.h"
 #include "../Source/Instrument/InstrumentProcessor.h"
 #include "Analyzer.h"
 #include "../Source/Core/AudioAnalysis.h"
@@ -434,6 +437,64 @@ namespace
         return 0;
     }
 
+    // Inställningarna (mappar, nyckel, skala) och uppackningen av vågformspaketet, utan att röra användarens egna filer.
+    int settingsTest()
+    {
+        auto failed = false;
+        auto check = [&failed] (bool ok, const char* what) { std::printf ("%s: %s\n", ok ? "ok" : "FEL", what); failed |= ! ok; };
+
+        const auto temp = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("kickbase_settings_test");
+        temp.deleteRecursively();
+        temp.createDirectory();
+        Settings::useFile (temp.getChildFile ("settings.xml"));
+
+        check (Settings::presetsFolder() == Settings::defaultFolder ("presetsFolder") && Settings::aiKey().isEmpty() && Settings::uiScale() == 0.0f, "standardvärden utan inställningsfil");
+        const auto custom = temp.getChildFile ("my presets");
+        Settings::setFolder ("presetsFolder", custom);
+        check (Settings::presetsFolder() == custom && Presets::folder (Presets::Section::kick, false) == custom.getChildFile ("Kick"), "egen presetmapp används av presetmenyerna");
+        check (RollFiles::folder() == custom.getChildFile ("Piano Roll"), "pianorullarnas mapp följer presetmappen");
+        Settings::setFolder ("presetsFolder", {});
+        check (Settings::presetsFolder() == Settings::defaultFolder ("presetsFolder") && Settings::get ("presetsFolder").isEmpty(), "tillbaka till standardmappen");
+
+        Settings::set ("aiKey", "  hemlig  ");
+        check (Settings::aiKey() == "hemlig", "åtkomstnyckeln sparas utan mellanslag");
+        const auto key = Settings::makeKey();
+        check (key.length() == 16 && key != Settings::makeKey(), "en ny nyckel är slumpmässig");
+        Settings::setUiScale (0.8f);
+        check (std::abs (Settings::uiScale() - 0.8f) < 0.001f, "fönstrets skala sparas");
+        Settings::set ("uiScale", "9");
+        check (Settings::uiScale() == 0.0f, "orimlig skala ignoreras");
+
+        // Vågformspaketet: ett arkiv med två vågformer, en annan fil och licensen.
+        Settings::setFolder ("wavetablesFolder", temp.getChildFile ("waves"));
+        const auto archive = temp.getChildFile ("pack.zip");
+        {
+            juce::ZipFile::Builder builder;
+            auto add = [&builder] (const juce::String& name)
+            {
+                builder.addEntry (new juce::MemoryInputStream ("RIFFdata", 8, true), 5, name, juce::Time::getCurrentTime());
+            };
+            add ("AKWF-FREE-master/AKWF/AKWF_0001/AKWF_0001.wav");
+            add ("AKWF-FREE-master/AKWF/AKWF_0002/AKWF_0002.wav");
+            add ("AKWF-FREE-master/README.md");
+            add ("AKWF-FREE-master/LICENSE");
+            juce::FileOutputStream out (archive);
+            builder.writeToStream (out, nullptr);
+        }
+        check (WavetablePack::installedCount() == 0, "paketet är inte installerat från början");
+        const auto written = WavetablePack::extract (archive);
+        check (written == 2 && WavetablePack::installedCount() == 2, "bara vågformerna packas upp");
+        check (temp.getChildFile ("waves").getChildFile ("AKWF").getChildFile ("AKWF_0002").getChildFile ("AKWF_0002.wav").existsAsFile()
+                   && temp.getChildFile ("waves").getChildFile ("LICENSE-CC0.md").existsAsFile()
+                   && ! temp.getChildFile ("waves").getChildFile ("README.md").existsAsFile(),
+               "mappstrukturen och licensen kommer med, övrigt inte");
+
+        Settings::useFile ({});
+        temp.deleteRecursively();
+        std::puts (failed ? "FEL: inställningstestet misslyckades" : "Inställningstestet gick igenom");
+        return failed ? 1 : 0;
+    }
+
     // Provlyssning: requestAudition ska ge ljud (kick och baslager) och publicera kickens spelmarkör.
     int auditionTest()
     {
@@ -607,6 +668,8 @@ int toolMain (int argc, char* argv[])
         return presetTest();
     if (argc == 2 && juce::String (argv[1]) == "auditiontest")
         return auditionTest();
+    if (argc == 2 && juce::String (argv[1]) == "settingstest")
+        return settingsTest();
     if (argc == 2 && juce::String (argv[1]) == "perftest")
         return perfTest();
     if (argc == 2 && juce::String (argv[1]) == "instrumenttest")
