@@ -7,10 +7,11 @@
 // Ett "avlyssningsuttag" för gränssnittet: ljudtråden skriver de senaste samplesen i en
 // ringbuffert, gränssnittet läser dem när det ritar vågformer, spektrum och stereobild.
 // Ingen låsning: varje sample är en atomic och skrivpositionen publiceras sist.
-class SignalTap
+template <int Capacity>
+class BasicSignalTap
 {
 public:
-    static constexpr int capacity = 1 << 17; // ~3 s vid 44,1 kHz
+    static constexpr int capacity = Capacity; // standard: 1 << 17 = ~3 s vid 44,1 kHz
 
     // Ljudtråden.
     void push (float left, float right)
@@ -46,3 +47,6 @@ private:
     std::array<std::atomic<float>, capacity> l {}, r {};
     std::atomic<long long> writeIndex { 0 };
 };
+
+using SignalTap = BasicSignalTap<(1 << 17)>;
+using ShortSignalTap = BasicSignalTap<(1 << 14)>; // ~0,37 s: räcker för spektrumet, kostar en åttondel

@@ -68,6 +68,8 @@ När DAW:en står still släpps ljudet igenom orört och ingen kick spelas.
 - **MASTER:** **MIXER** (gain, pan, dB-mätare, SC och MAX per källa) och **MAXIMIZER** (drive, clip,
   limiter med tak).
 - **SOUNDSTAGE:** spektrum, stereobild, bredd, mono under en frekvens och stereoförstärkare.
+- **SPECTRUM:** jämför kickens och varje instruments spektrum samtidigt (välj vilka som visas), med övertonsserier (HARMONICS) och röda krockar där flera källor spelar på samma frekvens (COLLISIONS). Analysen är av som standard (ANALYSER) och kostar ingen processorkraft när den är av eller fliken inte syns.
+- **Dra och håll:** drar du en LFO, ett makro eller en envelope och håller muspekaren över en flik en kort stund byter fönstret till den fliken, så att du kan släppa källan på en ratt där (t.ex. en effekt).
 - **SETTINGS:** inställningar för alla fönster och projekt (sparas i `Dokument\Kickbase\settings.xml`): **WINDOW SIZE** (50-160 %, för små skärmar), **AI LINK** (på/av och en egen **åtkomstnyckel**: är den satt svarar Kickbase bara en AI-brygga med samma nyckel, `KICKBASE_KEY` eller `install-mcp.ps1 -Key <nyckel>`), **FOLDERS** (egna mappar för presets, exporter och wavetables) och **WAVETABLE PACK** (installerar de 4000+ AKWF-vågformerna med en knapp: en nedladdning på cirka 20 MB från GitHub, bara när du trycker, och bara det).
 
 **Presets:** varje del (hela pluginet, kick, bas, mönster, effektkedjan, sidechain, LFO, master) har

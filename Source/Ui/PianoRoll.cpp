@@ -343,7 +343,7 @@ void PianoRoll::showMidiMenu()
 
         if (result == 1)
         {
-            safeThis->chooser = std::make_unique<juce::FileChooser> ("Export the piano roll as MIDI", folder.getChildFile ("Kickbase BASS " + juce::String (safeThis->layer + 1) + ".mid"), "*.mid");
+            safeThis->chooser = std::make_unique<juce::FileChooser> ("Export the piano roll as MIDI", folder.getChildFile ("Kickbase Instr " + juce::String (safeThis->layer + 1) + ".mid"), "*.mid");
             safeThis->chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles | juce::FileBrowserComponent::warnAboutOverwriting,
                                             [safeThis] (const juce::FileChooser& fc)
                                             {
@@ -1018,6 +1018,31 @@ void PianoRoll::paint (juce::Graphics& g)
                         banner.reduced (8.0f, 0.0f), juce::Justification::centredLeft);
         }
 
+        // Pennan: en förhandsvisning av tonen som skulle läggas där man klickar (rutan under spetsen), och ett litet hårkors precis där
+        // musen pekar, så att man ser exakt vart klicket hamnar.
+        if (hoverPointValid && ! pasting && effectiveTool() == Tool::draw && gridArea.contains (hoverPoint))
+        {
+            if (drag == Drag::none && hoverTick < 0)
+            {
+                const auto start = snapped (xToTicks (hoverPoint.x));
+                const auto pitch = juce::jlimit (Pattern::minPitch, Pattern::maxPitch, yToPitch (hoverPoint.y));
+                const auto length = ! glideButton.getToggleState() && lastLength > 0 ? lastLength : Pattern::ticksPerStep (grid());
+                const auto x0 = ticksToX ((float) start), x1 = ticksToX ((float) std::min (start + length, totalTicks()));
+                const auto preview = juce::Rectangle<float> (x0, pitchToY (pitch), std::max (3.0f, x1 - x0), rowHeight()).reduced (0.0f, 0.5f);
+                g.setColour (colour.withAlpha (0.16f));
+                g.fillRoundedRectangle (preview, 2.5f);
+                g.setColour (colour.brighter (0.4f).withAlpha (0.8f));
+                g.drawRoundedRectangle (preview, 2.5f, 1.0f);
+            }
+
+            for (const auto& pass : { std::pair<float, juce::Colour> { 3.0f, juce::Colours::black.withAlpha (0.8f) }, { 1.2f, juce::Colours::white } })
+            {
+                g.setColour (pass.second);
+                g.drawLine (hoverPoint.x - 5.0f, hoverPoint.y, hoverPoint.x + 5.0f, hoverPoint.y, pass.first);
+                g.drawLine (hoverPoint.x, hoverPoint.y - 5.0f, hoverPoint.x, hoverPoint.y + 5.0f, pass.first);
+            }
+        }
+
         // Uppspelningsmarkören.
         const auto playTick = playTickNow();
         if (playTick >= 0)
@@ -1112,15 +1137,16 @@ void PianoRoll::paint (juce::Graphics& g)
 
 void PianoRoll::setHover (int tick)
 {
-    if (tick != hoverTick)
-    {
-        hoverTick = tick;
-        repaint();
-    }
+    const auto changed = tick != hoverTick;
+    hoverTick = tick;
+    if (changed || effectiveTool() == Tool::draw)
+        repaint(); // med pennan följer hårkorset och förhandsvisningen musen
 }
 
 void PianoRoll::mouseMove (const juce::MouseEvent& event)
 {
+    hoverPoint = event.position;
+    hoverPointValid = true;
     bool edge = false;
     const auto tick = gridArea.contains (event.position) && ! pasting ? noteAtPoint (event.position, edge) : -1;
     hoverEdge = edge;
@@ -1129,7 +1155,12 @@ void PianoRoll::mouseMove (const juce::MouseEvent& event)
     updateCursor (event.position, edge);
 }
 
-void PianoRoll::mouseExit (const juce::MouseEvent&) { setHover (-1); }
+void PianoRoll::mouseExit (const juce::MouseEvent&)
+{
+    hoverPointValid = false;
+    setHover (-1);
+    repaint();
+}
 
 void PianoRoll::mouseDown (const juce::MouseEvent& event)
 {
@@ -1295,6 +1326,8 @@ void PianoRoll::mouseDown (const juce::MouseEvent& event)
 
 void PianoRoll::mouseDrag (const juce::MouseEvent& event)
 {
+    hoverPoint = event.position;
+    hoverPointValid = true;
     if (drag == Drag::none)
         return;
 

@@ -88,6 +88,7 @@ set(PLUGIN_SOURCES
     Source/Ui/MatrixPage.cpp
     Source/Ui/EnvPage.cpp
     Source/Ui/SettingsPage.cpp
+    Source/Ui/SpectrumPage.cpp
     Source/Core/WavetablePack.cpp
     Source/Core/AiChat.cpp
     Source/Ui/AiChatPage.cpp

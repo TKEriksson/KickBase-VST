@@ -136,7 +136,7 @@ OscPanel::OscPanel (PluginBase& p, int layerIn, int oscIn, juce::Colour accentIn
     // Klassiska vågformer med ett klick (som i FL:s 3x Osc), utan att behöva förstå wavetables.
     const char* shapeNames[] { "SIN", "TRI", "SAW", "SQR" };
     const char* shapeHelp[] { "Pure sine wave.", "Triangle wave: soft, with only odd overtones.",
-                              "Saw wave: bright and buzzy, all overtones. The classic bass sound.",
+                              "Saw wave: bright and buzzy, all overtones. The classic bass-synth sound.",
                               "Square wave: hollow, with only odd overtones. Use WARP > PWM to change the pulse width." };
     for (size_t i = 0; i < shapeButtons.size(); ++i)
     {

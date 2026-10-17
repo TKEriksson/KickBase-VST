@@ -172,6 +172,8 @@ private:
     std::set<int> boxBase;      // markeringen innan rutan (skift lägger till)
     bool edited = false;
     int hoverTick = -1;
+    juce::Point<float> hoverPoint; // var musen är (för pennans hårkors och förhandsvisningen av tonen som skulle läggas)
+    bool hoverPointValid = false;
     bool hoverEdge = false;
 
     int lastVersion = -1, lastPlayTick = -2, lastBars = 0, lastGrid = -1;

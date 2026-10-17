@@ -249,7 +249,7 @@ namespace Presets
         if (section == Section::full)
             name = effectVersion ? "Full FX" : "Full Instrument";
         else if (section == Section::bass)
-            name = effectVersion ? "Gate" : "Bass";
+            name = effectVersion ? "Gate" : "Bass"; // (mappnamnet behålls så att befintliga presets hittas)
 
         return Settings::presetsFolder().getChildFile (name);
     }

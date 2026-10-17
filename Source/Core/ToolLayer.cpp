@@ -86,7 +86,8 @@ namespace
         if (value.isVoid())
             return true;
         for (int s = 0; s < Presets::numSections; ++s)
-            if (Presets::sectionName ((Presets::Section) s).equalsIgnoreCase (value.toString().trim()))
+            if (Presets::sectionName ((Presets::Section) s).equalsIgnoreCase (value.toString().trim())
+                || ((Presets::Section) s == Presets::Section::bass && value.toString().trim().equalsIgnoreCase ("Instrument")))
             {
                 section = (Presets::Section) s;
                 return true;
@@ -1140,7 +1141,7 @@ var ToolLayer::pianoRollFiles (const juce::String& tool, const var& args)
     }
 
     // export_midi
-    auto file = args.hasProperty ("file") ? juce::File (args["file"].toString()) : Settings::exportsFolder().getChildFile ("Kickbase BASS " + juce::String (layer + 1) + ".mid");
+    auto file = args.hasProperty ("file") ? juce::File (args["file"].toString()) : Settings::exportsFolder().getChildFile ("Kickbase Instr " + juce::String (layer + 1) + ".mid");
     file = file.withFileExtension ("mid");
     const auto bpm = args.hasProperty ("bpm") ? juce::jlimit (20.0, 300.0, (double) args["bpm"]) : (double) processor.transportStatus.bpm.load();
     if (! RollFiles::exportMidi (pattern, layer, bars, bpm, root, file))

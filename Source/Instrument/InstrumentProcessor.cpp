@@ -514,6 +514,9 @@ void InstrumentProcessor::finishBlock (int numSamples)
             lastDuckGain = duckGain;
         }
         duckReduction[(size_t) layer] = numSamples > 0 ? 1.0f - lastDuckGain : 0.0f;
+        if (instrumentTapsOn.load (std::memory_order_relaxed))
+            for (int i = 0; i < numSamples; ++i)
+                instrumentTaps[(size_t) layer].push (0.5f * (data[i] + dataRight[i]));
 
         // Kanal A-C: amount av ljudet går genom kanalen, resten torrt.
         const auto channel = (int) params.bass (layer, BassField::fxChannel) - 1;

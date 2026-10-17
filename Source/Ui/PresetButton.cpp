@@ -10,6 +10,13 @@ namespace
         openFolderId = 5001
     };
 
+    juce::String displayName (const PluginBase& processor, Presets::Section section)
+    {
+        if (section == Presets::Section::bass)
+            return processor.isEffectVersion() ? "Gate" : "Instrument";
+        return Presets::sectionName (section);
+    }
+
     const juce::String arrow = juce::String::fromUTF8 ("  \xe2\x96\xbe"); // "  " + liten pil nedåt
 }
 
@@ -17,7 +24,7 @@ PresetButton::PresetButton (PluginBase& p, Presets::Section sectionIn, juce::Col
     : processor (p), section (sectionIn), layer (layerIn)
 {
     button.setColour (juce::TextButton::buttonOnColourId, accent);
-    button.setTooltip (Presets::sectionName (section) + " presets");
+    button.setTooltip (displayName (processor, section) + " presets");
     button.onClick = [this] { showMenu(); };
     addAndMakeVisible (button);
 
@@ -92,7 +99,7 @@ void PresetButton::showMenu()
 
 void PresetButton::askForNameAndSave()
 {
-    auto* window = new juce::AlertWindow ("Save " + Presets::sectionName (section) + " preset",
+    auto* window = new juce::AlertWindow ("Save " + displayName (processor, section) + " preset",
                                           "Name:", juce::MessageBoxIconType::NoIcon);
     window->setLookAndFeel (&getLookAndFeel());
     saveDialog = window;

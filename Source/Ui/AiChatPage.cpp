@@ -175,7 +175,7 @@ AiChatPage::AiChatPage (PluginBase& p) : processor (p), chat (p.getAiChat())
     stopButton.onClick = [this] { chat.stop(); };
     addChildComponent (stopButton);
 
-    const char* ideas[] { "Make the kick punchier", "Build a rolling acid bass on instrument 3", "Check my mix: is the bass clean under the kick?" };
+    const char* ideas[] { "Make the kick punchier", "Build a rolling acid bass on instrument 3", "Check my mix: is the low end clean under the kick?" };
     for (size_t i = 0; i < suggestions.size(); ++i)
     {
         suggestions[i].setButtonText (ideas[i]);

@@ -49,16 +49,16 @@ namespace Cursors
         }, 6, 16);
     }
 
-    // Penna: spetsen nere till vänster, där den ritar.
+    // Penna: spetsen till vänster i mitten (där den ritar), kroppen snett uppåt höger, så att tonen hamnar mitt för pennan och till vänster.
     inline juce::MouseCursor pencil()
     {
         return fromDrawing ([] (juce::Graphics& g)
         {
-            // Ritad vågrätt med spetsen vid (-8, 0), sedan vriden 45 grader så att spetsen hamnar nere till vänster.
-            const auto rotate = juce::AffineTransform::rotation (-juce::MathConstants<float>::pi / 4.0f);
+            // Ritad vågrätt med spetsen vid (-8, 0), sedan vriden 25 grader så att spetsen hamnar till vänster i mitten.
+            const auto rotate = juce::AffineTransform::rotation (-juce::MathConstants<float>::pi * 25.0f / 180.0f);
             auto tip = juce::Point<float> (-8.0f, 0.0f);
             tip.applyTransform (rotate);
-            const auto place = rotate.followedBy (juce::AffineTransform::translation (3.0f - tip.x, 29.0f - tip.y));
+            const auto place = rotate.followedBy (juce::AffineTransform::translation (4.0f - tip.x, 17.0f - tip.y));
 
             juce::Path body;
             body.addRectangle (0.0f, -3.5f, 17.0f, 7.0f);
@@ -78,7 +78,7 @@ namespace Cursors
             end.applyTransform (place);
             g.setColour (juce::Colour (0xffff7a8a));
             g.fillPath (end);
-        }, 3, 29);
+        }, 4, 17);
     }
 
     // Sudd: en rosa klots, spetsen i mitten.

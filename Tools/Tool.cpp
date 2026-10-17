@@ -793,6 +793,20 @@ namespace
         processor->setPlayConfigDetails (kind == "fx" ? 2 : 0, 2, renderRate, blockSize);
         processor->prepareToPlay (renderRate, blockSize);
 
+        if (juce::SystemStats::getEnvironmentVariable ("KB_SPECTRUM", "0").getIntValue() != 0) // SPECTRUM-fliken med analysen på: spela två takter först
+        {
+            processor->snapshotSpectrum = true;
+            processor->instrumentTapsOn = true;
+            OfflineRender::Settings settings;
+            settings.sampleRate = renderRate;
+            settings.blockSize = blockSize;
+            settings.bpm = 138.0;
+            settings.bars = 2;
+            settings.notes = { 52 };
+            settings.extraBars = 0;
+            OfflineRender::render (*processor, settings);
+        }
+
         if (withModulation)
         {
             // Exempelkopplingar, så att LFO-ringarna syns på bilden.

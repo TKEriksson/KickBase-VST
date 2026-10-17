@@ -13,6 +13,7 @@
 #include "../Ui/SettingsPage.h"
 #include "../Ui/SidechainPage.h"
 #include "../Ui/SoundstagePage.h"
+#include "../Ui/SpectrumPage.h"
 #include "../Ui/Modules.h"
 #include "../Ui/TabbedPanel.h"
 
@@ -49,6 +50,7 @@ private:
     SettingsPage settings { processor };
     MasterPage masterPage { processor };
     SoundstagePage soundstage { processor };
+    SpectrumPage spectrum { processor };
     InfoBar info;
     juce::MidiKeyboardComponent keyboard { processor.keyboardState, juce::MidiKeyboardComponent::horizontalKeyboard };
     juce::TooltipWindow tooltips { this, 1200 };

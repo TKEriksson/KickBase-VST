@@ -45,7 +45,7 @@ HeaderBar::HeaderBar (PluginBase& p, const juce::String& subtitleIn)
     addAndMakeVisible (presets);
     if (! processor.isEffectVersion())
     {
-        exportButton.setTooltip ("Export the kick, the bass or the full mix as a looping WAV file, "
+        exportButton.setTooltip ("Export the kick, the instruments or the full mix as a looping WAV file, "
                                  "at the current tempo and with the last played note.");
         exportButton.onClick = [this] { showExportMenu(); };
         addAndMakeVisible (exportButton);
@@ -53,7 +53,7 @@ HeaderBar::HeaderBar (PluginBase& p, const juce::String& subtitleIn)
 
     if (processor.getKeyboardState() != nullptr) // instrumentet
     {
-        listenAll.setTooltip ("LISTEN - Hold to hear the whole synth (the kick, the bass layers and the pattern) on the note chosen next to it, looping while you hold. "
+        listenAll.setTooltip ("LISTEN - Hold to hear the whole synth (the kick, the instruments and the pattern) on the note chosen next to it, looping while you hold. "
                               "Press again to start over. Double-click to let it keep playing until you click again.");
         listenAll.onStart = [this] { processor.requestAudition (PluginBase::previewRequest (PluginBase::previewAllRows)); };
         listenAll.onStop = [this] { processor.requestAudition (PluginBase::previewStop); };
@@ -140,7 +140,7 @@ void HeaderBar::resized()
 void HeaderBar::showExportMenu()
 {
     juce::PopupMenu menu;
-    const char* names[] { "Full mix", "Kick", "Bass", "Kick + bass + full mix (3 files)" };
+    const char* names[] { "Full mix", "Kick", "Instruments", "Kick + instruments + full mix (3 files)" };
     for (int part = 0; part < 4; ++part)
     {
         juce::PopupMenu lengths;
@@ -159,7 +159,7 @@ void HeaderBar::showExportMenu()
 
 void HeaderBar::chooseExportTarget (int part, int bars)
 {
-    const juce::String partNames[] { "Full", "Kick", "Bass" };
+    const juce::String partNames[] { "Full", "Kick", "Instruments" };
     const auto baseName = "Kickbase " + juce::String (bars) + " bars "
                         + juce::String (juce::roundToInt (processor.transportStatus.bpm.load())) + " BPM";
     auto folder = Settings::exportsFolder();
@@ -1230,7 +1230,7 @@ GateModule::GateModule (PluginBase& p)
     knobs.push_back (std::make_unique<KnobComponent> (p.apvts, ParamID::bass (0, BassField::level), "LEVEL", Theme::gate));
     addAndMakeVisible (*knobs.back());
 
-    help.setText ("Put Kickbase FX on the mixer track of your bass synth. The synth is gated by the "
+    help.setText ("Put Kickbase FX on the mixer track of your instrument or bass synth. The synth is gated by the "
                   "gate steps and ducked under the kick. When the DAW is stopped, audio passes through untouched.",
                   juce::dontSendNotification);
     help.setFont (Theme::font (11.0f));

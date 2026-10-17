@@ -38,13 +38,13 @@ namespace Help
             // Mönster och mix
             { "patternBars", "TOTAL LENGTH: how many bars the whole pattern lasts before it starts over (1 to 64). It is at least as long as the longest row. Rows can be shorter: see the length box under each row's knobs." },
             { "rowLoopKick", "On: the kick row repeats if it is shorter than the pattern. Off: it plays once and is then silent until the pattern starts over." },
-            { "rowLoopBass1", "On: bass 1 repeats if its row is shorter than the pattern. Off: it plays once and is then silent until the pattern starts over." },
-            { "rowLoopBass2", "On: bass 2 repeats if its row is shorter than the pattern. Off: it plays once and is then silent until the pattern starts over." },
-            { "rowLoopBass3", "On: bass 3 repeats if its row is shorter than the pattern. Off: it plays once and is then silent until the pattern starts over." },
+            { "rowLoopBass1", "On: instrument 1 repeats if its row is shorter than the pattern. Off: it plays once and is then silent until the pattern starts over." },
+            { "rowLoopBass2", "On: instrument 2 repeats if its row is shorter than the pattern. Off: it plays once and is then silent until the pattern starts over." },
+            { "rowLoopBass3", "On: instrument 3 repeats if its row is shorter than the pattern. Off: it plays once and is then silent until the pattern starts over." },
             { "rowBarsKick", "The kick row's own length in bars. Total = as long as the whole pattern." },
-            { "rowBarsBass1", "Bass 1's own length in bars. Total = as long as the whole pattern." },
-            { "rowBarsBass2", "Bass 2's own length in bars. Total = as long as the whole pattern." },
-            { "rowBarsBass3", "Bass 3's own length in bars. Total = as long as the whole pattern." },
+            { "rowBarsBass1", "Instrument 1's own length in bars. Total = as long as the whole pattern." },
+            { "rowBarsBass2", "Instrument 2's own length in bars. Total = as long as the whole pattern." },
+            { "rowBarsBass3", "Instrument 3's own length in bars. Total = as long as the whole pattern." },
             { "instrumentCount", "How many instruments are used (1-10). Each has its own pattern, oscillators, filter, envelopes, effect send and sidechain depth." },
             { "bassEnv2Attack", "ENV 2: an extra envelope that does not play the sound but moves other knobs (drag its handle, or use the MATRIX tab). Attack = how fast it rises." },
             { "bassEnv2Decay", "ENV 2: how fast it falls towards the sustain level." },
@@ -67,7 +67,7 @@ namespace Help
             { "bassGateSmooth", "How soft the gate's edges are: short = hard and chopped, longer = smoother." },
             { "gain", "Output volume of the whole plugin." },
             { "bassDuck", "DUCK sets how deeply the kick pushes this layer's volume down. 0 % = no ducking, 100 % = the volume goes all the way down." },
-            { "bassOn", "Turns this bass layer on or off." },
+            { "bassOn", "Turns this instrument on or off." },
             { "kickFxChannel", "Which effect channel (FX1 to FX11) the kick is sent through. None = no effects on the kick." },
             { "kickFxAmount", "How much of the kick goes through its effect channel (the rest stays dry)." },
             { "bassFxChannel", "Which effect channel (FX1 to FX11) this instrument sends its sound through. None = no effects." },
@@ -110,8 +110,8 @@ namespace Help
             { "kickLevel", "Volume of the kick." },
 
             // Bas: oscillator 1
-            { "bassOctave", "Moves the whole bass up or down in octaves." },
-            { "bassTune", "Fine tunes the bass in semitones." },
+            { "bassOctave", "Moves the whole instrument up or down in octaves." },
+            { "bassTune", "Fine tunes the instrument in semitones." },
             { "bassATable", "Which wavetable the oscillator plays: Basic (sine-triangle-saw-square morph), PWM, Sync, Harmonics, FM, Growl, Fold, Formant, Digital, Phase Dist, or a plain Classic Sine/Triangle/Saw/Square (POS does nothing for those, like an old-school oscillator)." },
             { "bassAPos", "Position in the wavetable: which of its waveforms plays. Drag an LFO here to sweep through them for movement." },
             { "bassALevel", "How loud this oscillator is. OSC B at 0 is silent but can still frequency-modulate OSC A (WARP: FM)." },
@@ -127,8 +127,8 @@ namespace Help
             { "bassAStereo", "How far the UNISON voices are spread across the stereo picture: 0 % = all in the middle (mono), 100 % = the outer voices go hard left and right. Does nothing with UNISON = 1. Keep the low end narrow." },
             { "bassARandom", "Randomises the start phase per note: looser and more analog, less punchy." },
             { "bassWarpEnv", "Extra warp on OSC A at the start of each note, following the filter envelope: a bright, digital 'knock' that fades." },
-            { "bassSub", "Level of a pure sine sub under the bass, for weight in the low end." },
-            { "bassSubOctave", "Sub in the same octave as the bass, or one octave lower (careful: very low notes get inaudible)." },
+            { "bassSub", "Level of a pure sine sub under the instrument, for weight in the low end." },
+            { "bassSubOctave", "Sub in the same octave as the instrument, or one octave lower (careful: very low notes get inaudible)." },
             { "bassNoise", "Adds white noise before the filter, for air and grit in the attack." },
 
             // Filter
@@ -140,7 +140,7 @@ namespace Help
             { "bassSampleLoop", "On: the sample repeats while the note is held. Off: it plays once." },
             { "bassSampleKey", "On: the sample follows the note you play (set ROOT to the pitch it was recorded at). Off: it always plays at its own pitch and speed." },
             { "bassSampleStart", "Where in the sample each note starts." },
-            { "bassCutoff", "Where the filter starts cutting the highs. Lower = darker bass." },
+            { "bassCutoff", "Where the filter starts cutting the highs. Lower = darker sound." },
             { "bassResonance", "Boost at the cutoff frequency. High values give the squelchy, acid sound." },
             { "bassKeyTrack", "How much the cutoff follows the note: higher notes get a brighter filter." },
             { "bassEnvAmount", "How far (in octaves) the filter opens at the start of every note. The 'pluck' of a psy bass." },
@@ -149,12 +149,12 @@ namespace Help
             { "bassDrive", "Saturation after the filter: warmer, louder, more harmonics." },
 
             // Amp
-            { "bassAttack", "Fade-in of each bass note." },
+            { "bassAttack", "Fade-in of each note." },
             { "bassDecay", "How fast each note falls from full volume down to the sustain level." },
             { "bassSustain", "Volume while the note is held, after the decay." },
             { "bassRelease", "Fade-out after the note ends." },
             { "bassGlide", "Time to slide between notes on steps with SLIDE on." },
-            { "bassLevel", "Volume of the bass." },
+            { "bassLevel", "Volume of the instrument." },
 
             // Gate (FX-versionen)
             { "fxKey", "The key of your song: the kick is tuned to it." },
@@ -162,9 +162,9 @@ namespace Help
             { "gateRelease", "How fast the gate closes after each step." },
 
             // Sidechain
-            { "scMode", "Kick envelope: the bass ducks exactly as loud as the kick is. Curve: draw your own ducking shape." },
+            { "scMode", "Kick envelope: the instruments duck exactly as loud as the kick is. Curve: draw your own ducking shape." },
             { "scLength", "How long the drawn curve lasts after each kick." },
-            { "scPosition", "Duck the bass after the effects (tails get ducked too) or before them." },
+            { "scPosition", "Duck the instruments after the effects (tails get ducked too) or before them." },
 
             // Master
             { "masterOn", "Turns the master section on or off." },
@@ -197,7 +197,7 @@ namespace Help
             { "Feedback", "How much of the output is fed back: more repeats / stronger effect." },
             { "Rate", "Speed of the effect's movement." }, { "Depth", "How much the effect moves." },
             { "Size", "Size of the room." }, { "Damping", "How fast the highs die out in the room." },
-            { "Width", "Stereo width of the effect." }, { "LowCut", "Removes low end from the effect, so the bass stays tight." },
+            { "Width", "Stereo width of the effect." }, { "LowCut", "Removes low end from the effect, so the low end stays tight." },
             { "HighCut", "Removes highs from the effect, for a darker sound." }, { "Time", "Delay time, synced to the tempo." },
             { "PingPong", "Echoes bounce between left and right." },
         };
@@ -236,7 +236,7 @@ namespace Help
             { "FB MODE", "What the feedback does: Normal repeats on the same side, Invert flips the sound upside down every repeat, Ping-pong bounces the echoes between left and right." },
             { "CUT", "Darkens every repeat: lowers the highs the echo is allowed to keep, so the echoes fade into the background." },
             { "DRY VOL", "Volume of the untouched sound (the echoes are set by IN VOL)." },
-            { "LOW CUT", "Removes low end from the effect so the bass stays tight." },
+            { "LOW CUT", "Removes low end from the effect so the low end stays tight." },
             { "HIGH CUT", "Removes highs from the effect for a darker sound." },
             { "SIZE", "Size of the room." },
             { "DAMPING", "How fast the highs die out." },

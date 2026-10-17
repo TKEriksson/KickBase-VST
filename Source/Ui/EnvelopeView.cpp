@@ -175,7 +175,7 @@ juce::String EnvelopeView::describe (const Handle& handle) const
     for (auto* parameter : { handle.xParam, handle.yParam })
         if (parameter != nullptr)
             parts.add (parameter->getName (32).fromLastOccurrenceOf ("Kick ", false, false)
-                                            .fromLastOccurrenceOf ("Bass ", false, false)
+                                            .fromLastOccurrenceOf ("Instr ", false, false)
                        + " " + parameter->getCurrentValueAsText());
     return parts.joinIntoString ("   ");
 }

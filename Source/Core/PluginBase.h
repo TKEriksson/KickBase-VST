@@ -122,6 +122,11 @@ public:
     // Vad gränssnittet ritar i realtid: kicken, och basen före och efter duckningen under kicken.
     SignalTap kickTap, bassBeforeDuckTap, bassAfterDuckTap;
 
+    // Varje instruments egen signal (efter duckning, före effekter) till SPECTRUM-fliken. Skrivs bara när fliken är öppen och analysen
+    // påslagen (`instrumentTapsOn`), så att den inte kostar något annars.
+    std::array<ShortSignalTap, ParamID::numBassLayers> instrumentTaps;
+    std::atomic<bool> instrumentTapsOn { false };
+
     // Hur mycket varje baslager duckas just nu: förstärkningen (1 = orörd) sample för sample, och
     // det senaste värdet som minskning 0..1 (för ringen runt DUCK-ratten).
     std::array<SignalTap, ParamID::numBassLayers> duckGainTaps;
@@ -175,6 +180,7 @@ public:
         int span = 0;          // hela de kopierade tonernas längd i ticks
         int nextStart = -1;    // var nästa inklistring börjar, -1 = vid vyns början
     } noteClipboard;
+    bool snapshotSpectrum = false; // bara för skärmbildsverktyget: SPECTRUM-analysen är på (även när fönstret inte visas)
     bool snapshotPaste = false; // bara för skärmbildsverktyget: pianorullen startar med en inklistring
     std::atomic<int> previewNote { 60 }; // tonen som LISTEN och förhandsspelningen spelar (MIDI, C5 = 60 som i FL)
 

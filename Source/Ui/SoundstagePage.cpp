@@ -9,10 +9,10 @@ SoundstagePage::SoundstagePage (PluginBase& p)
       stereo (p)
 {
     width.setDescription ("Stereo width of the whole mix: 0 % = mono, 100 % = as it is, 200 % = extra wide. "
-                          "The kick and bass layers are mono; width comes from effects like chorus, echo and reverb.");
+                          "The kick and instruments are mono; width comes from effects like chorus, echo and reverb.");
     monoBelow.setDescription ("Everything below this frequency is made mono, so the low end stays tight and centred "
                               "(and works on club systems). 'Off' = leave the low end as it is.");
-    enhance.setDescription ("Stereo enhancer: widens mono sounds (your kick and bass layers are mono) by putting a delayed copy of the "
+    enhance.setDescription ("Stereo enhancer: widens mono sounds (your kick and instruments are mono) by putting a delayed copy of the "
                             "highs in the sides. Mono-compatible. Watch the stereo view widen from a vertical line.");
     for (auto* c : std::initializer_list<juce::Component*> { &presets, &width, &monoBelow, &enhance, &spectrum, &stereo })
         addAndMakeVisible (c);

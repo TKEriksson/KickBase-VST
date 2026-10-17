@@ -27,6 +27,41 @@ private:
     juce::Colour accent;
 };
 
+// En flikknapp som reagerar på att man drar en modulationskälla ("mod:...") över den: efter en kort stund byter fliken till sig själv,
+// så att man kan släppa källan på en kontroll i en annan flik (t.ex. en effekt) utan att släppa den först. Själv tar den inte emot något.
+class TabButton : public juce::TextButton, public juce::DragAndDropTarget, private juce::Timer
+{
+public:
+    using juce::TextButton::TextButton;
+
+    std::function<void()> onDragHover;
+
+    bool isInterestedInDragSource (const SourceDetails& details) override { return details.description.toString().startsWith ("mod:"); }
+    void itemDragEnter (const SourceDetails&) override { startTimer (hoverMs); highlight (true); }
+    void itemDragExit (const SourceDetails&) override { stopTimer(); highlight (false); }
+    void itemDropped (const SourceDetails&) override { stopTimer(); highlight (false); }
+
+private:
+    static constexpr int hoverMs = 700;
+
+    void highlight (bool on)
+    {
+        if (on)
+            setColour (juce::TextButton::buttonColourId, findColour (juce::TextButton::buttonOnColourId).withAlpha (0.45f));
+        else
+            removeColour (juce::TextButton::buttonColourId);
+        repaint();
+    }
+
+    void timerCallback() override
+    {
+        stopTimer();
+        highlight (false);
+        if (onDragHover)
+            onDragHover();
+    }
+};
+
 // En panel med flikar i rubriken. Varje flik visar en sida (komponent).
 class TabbedPanel : public juce::Component, private juce::Timer
 {
@@ -42,10 +77,11 @@ public:
     // när fliken är vald, så att sidan inte behöver en egen rubrikrad.
     void addTab (const juce::String& name, juce::Colour accent, juce::Component& page, juce::Component* headerExtras = nullptr, int extrasWidth = 380)
     {
-        auto button = std::make_unique<juce::TextButton> (name);
+        auto button = std::make_unique<TabButton> (name);
         button->setColour (juce::TextButton::buttonOnColourId, accent);
         const auto index = (int) tabs.size();
         button->onClick = [this, index] { setCurrentTab (index); };
+        button->onDragHover = [this, index] { setCurrentTab (index); };
         addAndMakeVisible (*button);
         addChildComponent (page);
         if (headerExtras != nullptr)

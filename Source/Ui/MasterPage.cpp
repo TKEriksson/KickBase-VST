@@ -83,7 +83,7 @@ MasterPage::MasterPage (PluginBase& p)
         maxSources = std::make_unique<SourceToggles> (p, "Max", "THROUGH THE MAXIMIZER");
         addChildComponent (*maxSources);
 
-        mixerTab.setTooltip ("MIXER - Gain, pan and level meter for every sound source (kick, bass layers and FX channels), "
+        mixerTab.setTooltip ("MIXER - Gain, pan and level meter for every sound source (kick, instruments and FX channels), "
                              "plus SC (sidechain on/off) and MAX (through the maximizer or not) per source.");
         maximizerTab.setTooltip ("MAXIMIZER - Drive, clip and limiter on the whole mix. Choose which sources go through it at the bottom.");
         mixerTab.onClick = [this] { showView (true); };

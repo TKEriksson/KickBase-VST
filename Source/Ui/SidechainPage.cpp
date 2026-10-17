@@ -305,8 +305,8 @@ namespace
 {
     std::vector<ScopeView::Trace> makeTraces (PluginBase& p)
     {
-        std::vector<ScopeView::Trace> traces { { &p.bassBeforeDuckTap, 2, juce::Colours::white.withAlpha (0.6f), false, "BASS BEFORE" },
-                                               { &p.bassAfterDuckTap, 2, Theme::bass, true, "BASS DUCKED" },
+        std::vector<ScopeView::Trace> traces { { &p.bassBeforeDuckTap, 2, juce::Colours::white.withAlpha (0.6f), false, "INSTRUMENTS BEFORE" },
+                                               { &p.bassAfterDuckTap, 2, Theme::bass, true, "INSTRUMENTS DUCKED" },
                                                { &p.kickTap, 2, Theme::kick, true, "KICK" } };
         for (int layer = 0; layer < (p.isEffectVersion() ? 1 : ParamID::numBassLayers); ++layer)
         {
