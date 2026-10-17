@@ -62,7 +62,7 @@ namespace Effects
     StringArray typeNames()
     {
         return { "Off", "Filter", "Distortion", "EQ", "Chorus", "Phaser", "Echo", "Reverb",
-                 "Compressor", "Trance Gate", "Comb", "Ring Mod", "Bitcrusher", "Auto Filter", "Maximizer" };
+                 "Compressor", "Trance Gate", "Comb", "Ring Mod", "Bitcrusher", "Auto Filter", "Maximizer", "Sidechain" };
     }
 
     String name (EffectType type)
@@ -73,7 +73,7 @@ namespace Effects
     String shortName (EffectType type)
     {
         const char* names[] { "-", "FILT", "DIST", "EQ", "CHOR", "PHAS", "ECHO", "VERB",
-                              "COMP", "GATE", "COMB", "RING", "CRSH", "AUTO", "MAX" };
+                              "COMP", "GATE", "COMB", "RING", "CRSH", "AUTO", "MAX", "SIDE" };
         return names[jlimit (0, numEffectTypes - 1, (int) type)];
     }
 
@@ -224,6 +224,13 @@ namespace Effects
                 value ("CLIP", 0.0f, 1.0f, 0.0f, 0.3f, Unit::percent),
                 value ("CEILING", -12.0f, 0.0f, 0.0f, -0.3f, Unit::db),
                 value ("RELEASE", 5.0f, 500.0f, 60.0f, 60.0f, Unit::ms),
+                mixKnob (1.0f) };
+            table[(size_t) EffectType::ducker] = {
+                choice ("SOURCE", { "Kick", "Instr 1", "Instr 2", "Instr 3", "Instr 4", "Instr 5", "Instr 6", "Instr 7", "Instr 8", "Instr 9", "Instr 10" }, 1),
+                value ("THRESHOLD", -48.0f, 0.0f, -20.0f, -24.0f, Unit::db),
+                value ("DEPTH", 0.0f, 1.0f, 0.0f, 0.8f, Unit::percent),
+                value ("ATTACK", 0.5f, 50.0f, 5.0f, 3.0f, Unit::ms),
+                value ("RELEASE", 20.0f, 800.0f, 150.0f, 200.0f, Unit::ms),
                 mixKnob (1.0f) };
             return table;
         }();
@@ -422,6 +429,7 @@ namespace
         double sampleRate = 44100.0;
         double bpm = 140.0;
         double ppq = 0.0; // position i fjärdedelar vid buffertens första sample
+        const SourceSignals* sources = nullptr; // kickens och instrumentens ljud (för SIDECHAIN)
 
         double samplesPerQuarter() const { return sampleRate * 60.0 / std::max (1.0, bpm); }
     };
@@ -998,6 +1006,42 @@ namespace
             }
         }
     };
+
+    // SIDECHAIN: kanalens ljud sänks av en annan källas (kickens eller ett instruments) nivå. Källans nivå följs med snabb attack och
+    // valbar release; en nivå THRESHOLD och 12 dB över ger full effekt (DEPTH).
+    struct DuckerFx
+    {
+        float envelope = 0.0f;
+
+        void prepare (const dsp::ProcessSpec&) { reset(); }
+        void reset() { envelope = 0.0f; }
+
+        void process (AudioBuffer<float>& buffer, int numSamples, const Values& k, const Context& context)
+        {
+            const auto source = jlimit (0, SourceSignals::count - 1, (int) k[0]);
+            if (context.sources == nullptr || context.sources->left[(size_t) source] == nullptr)
+                return; // källan spelar inte (instrumentet finns inte): inget att ducka efter
+            const auto* keyLeft = context.sources->left[(size_t) source];
+            const auto* keyRight = context.sources->right[(size_t) source];
+
+            const auto thresholdDb = k[1], depth = k[2], wet = k[5];
+            const auto attack = 1.0f - std::exp (-1.0f / (std::max (0.1f, k[3]) * 0.001f * (float) context.sampleRate));
+            const auto release = 1.0f - std::exp (-1.0f / (std::max (1.0f, k[4]) * 0.001f * (float) context.sampleRate));
+
+            for (int i = 0; i < numSamples; ++i)
+            {
+                auto level = std::abs (keyLeft[i]);
+                if (keyRight != nullptr)
+                    level = std::max (level, std::abs (keyRight[i]));
+                envelope += (level - envelope) * (level > envelope ? attack : release);
+                const auto db = 20.0f * std::log10 (envelope + 1.0e-5f);
+                const auto amount = jlimit (0.0f, 1.0f, (db - thresholdDb) / 12.0f);
+                const auto gain = 1.0f + (-depth * amount) * wet;
+                for (int ch = 0; ch < std::min (2, buffer.getNumChannels()); ++ch)
+                    buffer.setSample (ch, i, buffer.getSample (ch, i) * gain);
+            }
+        }
+    };
 }
 
 //==============================================================================
@@ -1025,13 +1069,14 @@ struct EffectChain::Impl
         BitcrusherFx bitcrusher;
         AutoFilterFx autoFilter;
         MaximizerFx maximizer;
+        DuckerFx ducker;
 
         template <typename Function>
         void forEachEffect (Function&& function)
         {
             function (filter); function (distortion); function (eq); function (chorus); function (phaser);
             function (echo); function (reverb); function (compressor); function (gate); function (comb);
-            function (ringMod); function (bitcrusher); function (autoFilter); function (maximizer);
+            function (ringMod); function (bitcrusher); function (autoFilter); function (maximizer); function (ducker);
         }
 
         void resetCurrent()
@@ -1052,6 +1097,7 @@ struct EffectChain::Impl
                 case EffectType::bitcrusher: bitcrusher.reset(); break;
                 case EffectType::autoFilter: autoFilter.reset(); break;
                 case EffectType::maximizer:  maximizer.reset(); break;
+                case EffectType::ducker:     ducker.reset(); break;
                 case EffectType::off:
                 case EffectType::count:      break;
             }
@@ -1075,6 +1121,7 @@ struct EffectChain::Impl
                 case EffectType::bitcrusher: bitcrusher.process (buffer, numSamples, values, context); break;
                 case EffectType::autoFilter: autoFilter.process (buffer, numSamples, values, context); break;
                 case EffectType::maximizer:  maximizer.process (buffer, numSamples, values, context); break;
+                case EffectType::ducker:     ducker.process (buffer, numSamples, values, context); break;
                 case EffectType::off:
                 case EffectType::count:      break;
             }
@@ -1123,6 +1170,11 @@ void EffectChain::reset()
 void EffectChain::setModulator (const Modulator* modulator)
 {
     impl->modulator = modulator;
+}
+
+void EffectChain::setSources (const SourceSignals* sources)
+{
+    impl->context.sources = sources;
 }
 
 void EffectChain::update (double bpm, double ppq)
@@ -1272,11 +1324,13 @@ struct EffectRack::Impl
             for (int k = 0; k < 5; ++k)
                 comp[(size_t) ch][(size_t) k] = apvts.getRawParameterValue (Effects::channelParamID (ch, keys[k]));
             chains[(size_t) ch] = std::make_unique<EffectChain> (apvts, ch);
+            chains[(size_t) ch]->setSources (&sources);
             level[(size_t) ch] = apvts.getRawParameterValue (Effects::channelParamID (ch, "Level"));
             duck[(size_t) ch] = apvts.getRawParameterValue (Effects::channelParamID (ch, "Duck"));
         }
     }
 
+    SourceSignals sources; // kickens och instrumentens ljud i det här blocket (för SIDECHAIN-effekterna)
     std::array<std::unique_ptr<EffectChain>, numEffectChannels> chains;
     std::array<ChannelStrip, numEffectChannels> strips;
     AudioProcessorValueTreeState* apvtsPointer = nullptr;
@@ -1305,6 +1359,11 @@ void EffectRack::prepare (double sampleRate, int maxBlockSize)
         impl->duckState[(size_t) ch] = 1.0f;
     }
     impl->duckCoefficient = (float) (1.0 - std::exp (-1.0 / (0.001 * sampleRate)));
+}
+
+void EffectRack::setSources (const SourceSignals& sources)
+{
+    impl->sources = sources;
 }
 
 void EffectRack::setModulator (const Modulator* modulator)

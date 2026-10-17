@@ -40,7 +40,7 @@ namespace
 
 //==============================================================================
 HeaderBar::HeaderBar (PluginBase& p, const juce::String& subtitleIn)
-    : processor (p), subtitle (subtitleIn), presets (p, Presets::Section::full, Theme::pattern)
+    : processor (p), subtitle (subtitleIn), logo (subtitleIn), presets (p, Presets::Section::full, Theme::pattern)
 {
     addAndMakeVisible (presets);
     if (! processor.isEffectVersion())
@@ -113,12 +113,13 @@ void HeaderBar::resized()
 {
     const auto hasPreviews = processor.getKeyboardState() != nullptr;
     const auto height = getHeight();
-    aiButton.setBounds (14 + Theme::logoWidth (subtitle) + 24, 9, 44, height - 18); // AI-knappen först, till vänster om presetväljaren
-    presets.setBounds (aiButton.getRight() + 10, 9, hasPreviews ? 160 : 200, height - 18);
-    exportButton.setBounds (presets.getRight() + 10, 9, hasPreviews ? 70 : 76, height - 18);
+    const auto controlsHeight = 34, controlsY = (height - controlsHeight) / 2;
+    aiButton.setBounds (14 + logo.getWidth() + 22, controlsY, 44, controlsHeight); // AI-knappen först, till vänster om presetväljaren
+    presets.setBounds (aiButton.getRight() + 10, controlsY, hasPreviews ? 160 : 200, controlsHeight);
+    exportButton.setBounds (presets.getRight() + 10, controlsY, hasPreviews ? 70 : 76, controlsHeight);
 
     // PREVIEWS: en inringad ruta med högtalaren och tonväljaren, så att man ser att de hör ihop.
-    previewGroup = hasPreviews ? juce::Rectangle<int> (exportButton.getRight() + 10, 4, 112, height - 8) : juce::Rectangle<int>();
+    previewGroup = hasPreviews ? juce::Rectangle<int> (exportButton.getRight() + 10, (height - 44) / 2, 112, 44) : juce::Rectangle<int>();
     listenAll.setVisible (hasPreviews);
     noteBox.setVisible (hasPreviews);
     restartButton.setVisible (hasPreviews);
@@ -131,9 +132,9 @@ void HeaderBar::resized()
 
     // Till höger: tonart med lampan under, och en pill med tempo, takt och en knapp som börjar om vid 1.1.
     auto right = getLocalBounds().reduced (14, 0);
-    keyBlock = right.removeFromRight (84);
+    keyBlock = right.removeFromRight (84).withSizeKeepingCentre (84, 40);
     right.removeFromRight (8);
-    bpmPill = right.removeFromRight (214).reduced (0, 9);
+    bpmPill = right.removeFromRight (214).reduced (0, (height - 34) / 2);
     restartButton.setBounds (bpmPill.getRight() - 32, bpmPill.getY() + 4, 26, bpmPill.getHeight() - 8);
 }
 
@@ -247,70 +248,29 @@ void HeaderBar::timerCallback()
     repaint();
 }
 
-void HeaderBar::paintLogoGlow (juce::Graphics& g, juce::Rectangle<int> logoArea)
+// Färgerna glider sakta mellan varandra (en ny färg var sjätte sekund).
+static juce::Colour fadeColour (std::initializer_list<juce::uint32> palette, double offset, double now)
 {
-    const auto now = juce::Time::getMillisecondCounterHiRes() * 0.001;
-
-    // Färgerna glider sakta mellan varandra (en ny färg var sjätte sekund).
-    auto fade = [now] (std::initializer_list<juce::uint32> palette, double offset)
-    {
-        const std::vector<juce::uint32> colours (palette);
-        const auto position = std::fmod ((now + offset) / 6.0, (double) colours.size());
-        const auto index = (int) std::floor (position);
-        const auto mix = (float) (position - index);
-        const auto smooth = mix * mix * (3.0f - 2.0f * mix);
-        return juce::Colour (colours[(size_t) index]).interpolatedWith (juce::Colour (colours[(size_t) ((index + 1) % (int) colours.size())]), smooth);
-    };
-    const auto kickColour = fade ({ 0xffff9a3c, 0xffff5fa8, 0xffb98cff, 0xffffc857 }, 0.0);
-    const auto bassColour = fade ({ 0xff3fd2ff, 0xff5fffb0, 0xff6b8cff, 0xff5ef2d6 }, 9.0);
-
-    const auto outline = Theme::logoOutline (logoArea);
-    const auto bounds = outline.getBounds();
-    if (bounds.isEmpty())
-        return;
-
-    // En våg över loggan: ett ljusband som glöder längs konturerna.
-    auto sweep = [&] (float position, juce::Colour colour, float strength)
-    {
-        if (strength < 0.01f)
-            return;
-        const auto centreX = bounds.getX() + position * bounds.getWidth();
-        const auto half = bounds.getWidth() * 0.24f;
-        for (const auto [width, alpha] : { std::pair<float, float> { 11.0f, 0.12f }, { 6.0f, 0.22f }, { 2.4f, 0.5f } })
-        {
-            juce::ColourGradient gradient (colour.withAlpha (0.0f), centreX - half, 0.0f, colour.withAlpha (0.0f), centreX + half, 0.0f, false);
-            gradient.addColour (0.5, colour.withAlpha (juce::jlimit (0.0f, 1.0f, strength * alpha * 1.6f)));
-            g.setGradientFill (gradient);
-            g.strokePath (outline, juce::PathStrokeType (width, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-        }
-        juce::ColourGradient fillGradient (colour.withAlpha (0.0f), centreX - half, 0.0f, colour.withAlpha (0.0f), centreX + half, 0.0f, false);
-        fillGradient.addColour (0.5, colour.withAlpha (juce::jlimit (0.0f, 1.0f, strength * 0.55f)));
-        g.setGradientFill (fillGradient);
-        g.fillPath (outline);
-    };
-
-    // Svagt andande grundglöd, så att loggan alltid lever lite.
-    {
-        const auto breathing = 0.09f + 0.05f * (float) std::sin (now * 1.3);
-        const auto idle = kickColour.interpolatedWith (bassColour, 0.5f + 0.5f * (float) std::sin (now * 0.4));
-        g.setColour (idle.withAlpha (breathing));
-        g.strokePath (outline, juce::PathStrokeType (7.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-        g.setColour (idle.withAlpha (breathing * 1.6f));
-        g.strokePath (outline, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-    }
-
-    const auto kickAge = now - lastKickTime, bassAge = now - lastBassTime;
-    sweep (juce::jlimit (0.0f, 1.0f, (float) (kickAge / 0.30)), kickColour, (float) std::exp (-kickAge * 5.5)); // vänster -> höger
-    sweep (1.0f - juce::jlimit (0.0f, 1.0f, (float) (bassAge / 0.38)), bassColour, (float) (bassStrength * std::exp (-bassAge * 4.5))); // höger -> vänster
+    const std::vector<juce::uint32> colours (palette);
+    const auto position = std::fmod ((now + offset) / 6.0, (double) colours.size());
+    const auto index = (int) std::floor (position);
+    const auto mix = (float) (position - index);
+    const auto smooth = mix * mix * (3.0f - 2.0f * mix);
+    return juce::Colour (colours[(size_t) index]).interpolatedWith (juce::Colour (colours[(size_t) ((index + 1) % (int) colours.size())]), smooth);
 }
 
 void HeaderBar::paint (juce::Graphics& g)
 {
     const auto& status = processor.transportStatus;
-    auto area = getLocalBounds().reduced (14, 0);
-    const auto logoArea = area.removeFromLeft (420);
-    Theme::paintLogo (g, logoArea, subtitle);
-    paintLogoGlow (g, logoArea);
+    {
+        // Loggan: glöden följer ljudet. En ny kick startar en våg åt höger, en ny stöt från instrumenten en våg åt vänster.
+        const auto now = juce::Time::getMillisecondCounterHiRes() * 0.001;
+        const auto kickAge = now - lastKickTime, bassAge = now - lastBassTime;
+        LogoPainter::Sweep kick { juce::jlimit (0.0f, 1.0f, (float) (kickAge / 0.30)), (float) std::exp (-kickAge * 5.5), fadeColour ({ 0xffff5fa8, 0xffff9a3c, 0xffb98cff, 0xffffc857 }, 0.0, now) };
+        LogoPainter::Sweep bass { 1.0f - juce::jlimit (0.0f, 1.0f, (float) (bassAge / 0.38)), (float) (bassStrength * std::exp (-bassAge * 4.5)),
+                                  fadeColour ({ 0xff3fd2ff, 0xff5fffb0, 0xff6b8cff, 0xff5ef2d6 }, 9.0, now) };
+        logo.paint (g, { 14.0f, ((float) getHeight() - (float) LogoPainter::height) * 0.5f }, now, kick, bass);
+    }
 
     // Tonart med lampan under (DAW SYNC eller FREE RUN) längst till höger.
     {
@@ -374,7 +334,7 @@ void HeaderBar::paint (juce::Graphics& g)
 
     // Utgångsmätare (L och R, -48 till 0 dB): visar att synten faktiskt ger ljud.
     {
-        auto meter = juce::Rectangle<float> ((float) toolsEnd() + 16.0f, 12.0f, (float) meterWidth, (float) getHeight() - 24.0f);
+        auto meter = juce::Rectangle<float> ((float) toolsEnd() + 16.0f, ((float) getHeight() - 28.0f) * 0.5f, (float) meterWidth, 28.0f);
         g.setFont (Theme::font (9.0f, true));
         g.setColour (Theme::textDim);
         g.drawText ("OUT", meter.removeFromLeft (26.0f), juce::Justification::centredLeft);
@@ -1511,55 +1471,10 @@ void PatternModule::checkLengthChanges()
 
     juce::Component::SafePointer<PatternModule> safeThis (this);
 
-    if (! grown.empty())
-    {
-        // Har någon av de förlängda raderna toner som kan upprepas? Då frågar vi; annars töms bara det nya.
-        std::vector<int> withNotes;
-        for (const auto row : grown)
-            for (int tick = 0; tick < previousBars[(size_t) row] * Pattern::ticksPerBar; ++tick)
-                if (pattern.note (layerOf (row), tick).on.load())
-                {
-                    withNotes.push_back (row);
-                    break;
-                }
-
-        if (withNotes.empty())
-        {
-            for (const auto row : grown)
-                extendRow (row, previousBars[(size_t) row], nowBars[(size_t) row], false);
-        }
-        else
-        {
-            juce::String message;
-            for (const auto row : withNotes)
-                message << "  " << rowName (row) << ": " << previousBars[(size_t) row] << " -> " << nowBars[(size_t) row] << " bars\n";
-            message = "These rows are now longer:\n\n" + message + "\nCopy what they play (the repeat) into the new bars?\n"
-                      "Yes = copy it, No = leave the new bars empty, Cancel = keep the old length.";
-
-            confirmOpen = true;
-            juce::AlertWindow::showAsync (juce::MessageBoxOptions::makeOptionsYesNoCancel (juce::MessageBoxIconType::QuestionIcon, "Longer pattern", message,
-                                                                                            "Copy", "Leave empty", "Cancel"),
-                                          [safeThis, grown, withNotes, previousBars, nowBars, previousChoices] (int choice)
-            {
-                if (safeThis == nullptr)
-                    return;
-                if (choice == 0)
-                {
-                    safeThis->restoreChoices (previousChoices); // Avbryt
-                }
-                else
-                {
-                    for (const auto row : grown)
-                        safeThis->extendRow (row, previousBars[(size_t) row], nowBars[(size_t) row],
-                                             choice == 1 && std::find (withNotes.begin(), withNotes.end(), row) != withNotes.end());
-                    for (int row = 0; row < numPatternRows; ++row)
-                        safeThis->lastRowBars[(size_t) row] = nowBars[(size_t) row];
-                    safeThis->lastPatternVersion = safeThis->processor.patternVersion.load();
-                }
-                safeThis->confirmOpen = false;
-            });
-        }
-    }
+    // Förlängs en rad (själv, eller för att totalen blev längre) fortsätter den som förut: en rad som loopar får upprepningen kopierad in i de
+    // nya takterna (det är redan det som spelades), annars töms de. Ingen fråga, och ingen längd som kan avbrytas och hoppa tillbaka.
+    for (const auto row : grown)
+        extendRow (row, previousBars[(size_t) row], nowBars[(size_t) row], lengthsNow.loops[(size_t) row]);
 
     if (! shrunk.empty())
     {

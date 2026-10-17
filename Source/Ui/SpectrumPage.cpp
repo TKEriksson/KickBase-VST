@@ -1,4 +1,5 @@
 #include "SpectrumPage.h"
+#include "../Core/Settings.h"
 
 namespace
 {
@@ -6,8 +7,124 @@ namespace
     constexpr float dbTop = 0.0f, dbBottom = -90.0f;
     constexpr float collisionFloor = -66.0f; // under den nivån räknas en källa inte som "spelar"
     constexpr int stripHeight = 24;
+    constexpr int panelWidth = 350;
+
+    juce::Colour severityColour (MixAnalysis::Severity severity)
+    {
+        return severity == MixAnalysis::Severity::problem ? juce::Colour (0xffff4d5e)
+             : severity == MixAnalysis::Severity::warning ? juce::Colour (0xffffb347)
+                                                          : juce::Colour (0xff6bb8ff);
+    }
 }
 
+//==============================================================================
+void ReportContent::setReport (const MixAnalysis::Report& newReport)
+{
+    report = newReport;
+    selected = -1;
+    layoutRows();
+}
+
+void ReportContent::setWidth (int newWidth)
+{
+    width = std::max (120, newWidth);
+    layoutRows();
+}
+
+void ReportContent::layoutRows()
+{
+    rows.clear();
+    auto top = 4;
+    auto add = [&] (juce::AttributedString text)
+    {
+        Row row;
+        row.layout.createLayout (text, (float) (width - 26));
+        row.top = top;
+        row.height = (int) std::ceil (row.layout.getHeight()) + 14;
+        top += row.height + 4;
+        rows.push_back (std::move (row));
+    };
+
+    if (! report.valid)
+    {
+        juce::AttributedString text;
+        text.append (report.error.isEmpty() ? "Press ANALYSE to play the pattern once through and get a report of what to look at."
+                                            : report.error,
+                     Theme::font (11.0f), Theme::textDim);
+        add (text);
+    }
+    else
+    {
+        juce::AttributedString summary;
+        summary.append (juce::String (report.bars) + " bars at " + juce::String (juce::roundToInt (report.bpm)) + " BPM"
+                            + (report.kickTailHz > 0.0f ? ", kick tail " + juce::String (report.kickTailHz, 1) + " Hz" : juce::String())
+                            + (report.referenceName.isNotEmpty() ? ", reference: " + report.referenceName : juce::String()) + ".",
+                        Theme::font (10.5f), Theme::textDim);
+        add (summary);
+
+        if (report.findings.empty())
+        {
+            juce::AttributedString none;
+            none.append ("Nothing to report at this sensitivity. Raise it (SENS) to see smaller things.", Theme::font (11.0f, true), Theme::mix);
+            add (none);
+        }
+        for (const auto& finding : report.findings)
+        {
+            juce::AttributedString text;
+            text.append (finding.severity == MixAnalysis::Severity::problem ? "PROBLEM  " : finding.severity == MixAnalysis::Severity::warning ? "WARNING  " : "INFO  ",
+                         Theme::font (10.0f, true), severityColour (finding.severity));
+            text.append (finding.title + "\n", Theme::font (11.5f, true), Theme::text);
+            text.append (finding.detail, Theme::font (10.5f), Theme::textDim.brighter (0.25f));
+            if (! finding.bars.empty())
+            {
+                juce::String bars = "\nBars: ";
+                for (size_t i = 0; i < finding.bars.size(); ++i)
+                    bars << (i > 0 ? ", " : "") << finding.bars[i];
+                text.append (bars, Theme::font (10.5f, true), severityColour (finding.severity).withAlpha (0.9f));
+            }
+            add (text);
+        }
+    }
+    setSize (width, top + 4);
+    repaint();
+}
+
+void ReportContent::paint (juce::Graphics& g)
+{
+    const auto clip = g.getClipBounds();
+    for (size_t i = 0; i < rows.size(); ++i)
+    {
+        const auto& row = rows[i];
+        if (row.top + row.height < clip.getY() || row.top > clip.getBottom())
+            continue;
+        const auto bounds = juce::Rectangle<float> (2.0f, (float) row.top, (float) width - 4.0f, (float) row.height);
+        const auto isFinding = report.valid && i >= 1 && i - 1 < report.findings.size();
+        const auto colour = isFinding ? severityColour (report.findings[i - 1].severity) : Theme::textDim;
+        g.setColour (juce::Colours::black.withAlpha (selected == (int) i - 1 && isFinding ? 0.55f : 0.3f));
+        g.fillRoundedRectangle (bounds, 5.0f);
+        if (isFinding)
+        {
+            g.setColour (colour.withAlpha (selected == (int) i - 1 ? 0.95f : 0.7f));
+            g.fillRoundedRectangle (bounds.withWidth (4.0f), 2.0f);
+            if (selected == (int) i - 1)
+                g.drawRoundedRectangle (bounds, 5.0f, 1.2f);
+        }
+        row.layout.draw (g, bounds.reduced (12.0f, 7.0f));
+    }
+}
+
+void ReportContent::mouseDown (const juce::MouseEvent& event)
+{
+    for (size_t i = 1; i < rows.size(); ++i)
+        if (event.y >= rows[i].top && event.y < rows[i].top + rows[i].height && report.valid && i - 1 < report.findings.size())
+        {
+            if (onSelect)
+                onSelect ((int) i - 1);
+            return;
+        }
+}
+
+//==============================================================================
 SpectrumPage::SpectrumPage (PluginBase& p) : processor (p)
 {
     sources[kickSource].colour = Theme::kick;
@@ -27,7 +144,7 @@ SpectrumPage::SpectrumPage (PluginBase& p) : processor (p)
     };
 
     setUpToggle (analyserButton, Theme::mix, false,
-                 "ANALYSER - Starts the analysis. It is off by default because it uses some CPU while it runs; it stops by itself when you leave this tab.");
+                 "ANALYSER - Starts the live spectrum. It is off by default because it uses some CPU while it runs; it stops by itself when you leave this tab.");
     analyserButton.onClick = [this] { updateRunning(); };
     setUpToggle (collisionsButton, Theme::master, true,
                  "COLLISIONS - Marks in red where two or more of the shown sources play the same frequency at the same time. "
@@ -37,27 +154,87 @@ SpectrumPage::SpectrumPage (PluginBase& p) : processor (p)
                  "HARMONICS - Marks each shown source's fundamental and its overtones (2x, 3x, 4x ...) with ticks in its own colour, "
                  "so you can see which of the overtones line up with another source's.");
     harmonicsButton.onClick = [this] { repaint(); };
+    setUpToggle (eqButton, Theme::effects, false,
+                 "EQ - Shows the EQ of the chosen source (pick it in the list) as a curve in the diagram, and lets you drag its four bands: "
+                 "drag a dot to change frequency and gain, mouse wheel on a dot changes its width (Q), double-click resets it. "
+                 "The two triangles at the bottom are the high-pass and low-pass. The curve is drawn around the -45 dB line (1 dB = 1 dB on the scale). "
+                 "Every kick, instrument and the master has its own EQ.");
+    eqButton.onClick = [this] { resized(); repaint(); };
 
-    for (size_t i = 0; i < chips.size(); ++i)
+    eqTargetBox.setTooltip ("Which source the EQ edits.");
+    eqTargetBox.onChange = [this]
     {
-        auto& chip = chips[i];
-        setUpToggle (chip, sources[i].colour, true,
-                     i == (size_t) kickSource ? "Show or hide the kick." : i == (size_t) masterSource ? "Show or hide the master output (a thin white line)."
-                                                                                                      : "Show or hide this instrument.");
-        chip.onClick = [this, i] { sources[i].selected = chips[i].getToggleState(); repaint(); };
-    }
+        eqSource = juce::jlimit (0, numSources - 1, eqTargetBox.getSelectedId() - 1);
+        eqTargetBox.setColour (juce::ComboBox::outlineColourId, sources[(size_t) eqSource].colour);
+        eqTargetBox.setColour (juce::ComboBox::textColourId, sources[(size_t) eqSource].colour);
+        repaint();
+    };
+    addChildComponent (eqTargetBox);
+
+    showButton.setTooltip ("SHOW - Which sources the diagram shows at the same time: the kick, each instrument and the master. Click to tick or untick them "
+                           "(the list stays open so you can pick several).");
+    showButton.onClick = [this] { showSourceMenu(); };
+    addAndMakeVisible (showButton);
+
+    // ANALYSE, referens och känslighet.
+    analyseButton.setColour (juce::TextButton::buttonColourId, Theme::mix.withAlpha (0.35f));
+    analyseButton.setTooltip ("ANALYSE - Plays the pattern once through offline (the plugin keeps working while it runs) and writes a report of what to look at: "
+                              "collisions between the kick and the instruments (and between instruments), an instrument covering the kick, a kick that is tuned too high or too low, "
+                              "instruments that are out of tune with each other or the kick, rumble under 30 Hz and a master limiter that works too hard. "
+                              "It lists the bars and frequencies. Click a finding to show it in the diagram. An AI can read the same report (tool analyse_mix).");
+    analyseButton.onClick = [this] { startAnalysis(); };
+    addAndMakeVisible (analyseButton);
+
+    referenceButton.setTooltip ("REFERENCE - Load a track to compare against (WAV, FLAC, MP3 ...). Its average spectrum is drawn behind the master "
+                                "(level-matched), and the report tells where your master has more or less energy than the reference.");
+    referenceButton.onClick = [this] { chooseReference(); };
+    addAndMakeVisible (referenceButton);
+
+    sensitivityBox.addItem ("SENS: LOW", 1);
+    sensitivityBox.addItem ("SENS: NORMAL", 2);
+    sensitivityBox.addItem ("SENS: HIGH", 3);
+    sensitivityBox.setSelectedId (2, juce::dontSendNotification);
+    sensitivityBox.setTooltip ("SENSITIVITY - How much the analysis reports. Low: only clear problems. High: also smaller overlaps. It sets how close in level two sources must be "
+                               "to count as colliding, how loud they must be and for how long in a bar.");
+    addAndMakeVisible (sensitivityBox);
+
+    copyButton.setTooltip ("COPY - Copies the report as text (to paste into an AI chat, for example).");
+    copyButton.onClick = [this] { copyReport(); };
+    addChildComponent (copyButton);
+
+    content.onSelect = [this] (int index) { selectFinding (index); };
+    viewport.setViewedComponent (&content, false);
+    viewport.setScrollBarsShown (true, false);
+    addChildComponent (viewport);
 
     for (auto& source : sources)
         source.level.fill (-120.0f);
 
     updateSources();
 
+    // Referensen från förra gången.
+    if (const auto path = Settings::get ("referencePath"); path.isNotEmpty() && juce::File (path).existsAsFile())
+        loadReferenceFile (juce::File (path));
+
+    // Skärmbildsverktyget: analysen på, och (KB_REPORT) rapporten färdig.
     if (processor.snapshotSpectrum)
     {
         analyserButton.setToggleState (true, juce::dontSendNotification);
         harmonicsButton.setToggleState (juce::SystemStats::getEnvironmentVariable ("KB_HARMONICS", "0").getIntValue() != 0, juce::dontSendNotification);
+        eqButton.setToggleState (juce::SystemStats::getEnvironmentVariable ("KB_EQ", "0").getIntValue() != 0, juce::dontSendNotification);
         updateRunning();
         timerCallback();
+        if (const auto mode = juce::SystemStats::getEnvironmentVariable ("KB_REPORT", "0").getIntValue(); mode > 0)
+        {
+            startAnalysis();
+            while (analyser.isRunning())
+                juce::Thread::sleep (20);
+            takeReport();
+            analysing = false;
+            analyseButton.setButtonText ("ANALYSE");
+            if (mode > 1 && ! content.getReport().findings.empty())
+                selectFinding (0);
+        }
     }
 }
 
@@ -69,26 +246,21 @@ SpectrumPage::~SpectrumPage()
 void SpectrumPage::updateRunning()
 {
     const auto shouldRun = analyserButton.getToggleState() && (isShowing() || processor.snapshotSpectrum);
-    if (shouldRun == running)
+    if (shouldRun != running)
     {
-        repaint();
-        return;
+        running = shouldRun;
+        processor.instrumentTapsOn = running;
+        if (running)
+            for (auto& source : sources)
+            {
+                source.level.fill (-120.0f);
+                source.fundamental = 0.0f;
+            }
     }
-    running = shouldRun;
-    processor.instrumentTapsOn = running;
-    if (running)
-    {
-        for (auto& source : sources)
-        {
-            source.level.fill (-120.0f);
-            source.fundamental = 0.0f;
-        }
+    if (running || analysing)
         startTimerHz (30);
-    }
     else
-    {
         stopTimer();
-    }
     repaint();
 }
 
@@ -106,11 +278,16 @@ void SpectrumPage::updateSources()
         auto& source = sources[(size_t) (firstInstrument + i)];
         source.present = i < count;
         source.name = processor.getLayerName (i).toUpperCase();
-        chips[(size_t) (firstInstrument + i)].setButtonText (source.name);
-        chips[(size_t) (firstInstrument + i)].setVisible (source.present);
     }
-    for (size_t i = 0; i < chips.size(); ++i)
-        chips[i].setButtonText (sources[i].name);
+    updateShowText();
+
+    eqTargetBox.clear (juce::dontSendNotification);
+    for (int i = 0; i < numSources; ++i)
+        if (sources[(size_t) i].present)
+            eqTargetBox.addItem (sources[(size_t) i].name, i + 1);
+    if (! sources[(size_t) eqSource].present)
+        eqSource = 0;
+    eqTargetBox.setSelectedId (eqSource + 1, juce::dontSendNotification);
     resized();
 }
 
@@ -118,28 +295,42 @@ void SpectrumPage::resized()
 {
     auto area = getLocalBounds().reduced (8, 6);
     auto top = area.removeFromTop (stripHeight);
-    analyserButton.setBounds (top.removeFromLeft (92));
-    top.removeFromLeft (8);
-    collisionsButton.setBounds (top.removeFromLeft (100));
+    sensitivityBox.setBounds (top.removeFromRight (104));
+    top.removeFromRight (4);
+    referenceButton.setBounds (top.removeFromRight (100));
+    top.removeFromRight (4);
+    analyseButton.setBounds (top.removeFromRight (100));
+    top.removeFromRight (4);
+    copyButton.setBounds (top.removeFromRight (copyButton.isVisible() ? 56 : 0));
+    top.removeFromRight (8);
+    analyserButton.setBounds (top.removeFromLeft (80));
     top.removeFromLeft (4);
-    harmonicsButton.setBounds (top.removeFromLeft (100));
+    collisionsButton.setBounds (top.removeFromLeft (92));
+    top.removeFromLeft (4);
+    harmonicsButton.setBounds (top.removeFromLeft (92));
+    top.removeFromLeft (4);
+    showButton.setBounds (top.removeFromLeft (190));
+    top.removeFromLeft (8);
+    eqButton.setBounds (top.removeFromLeft (40));
+    top.removeFromLeft (4);
+    eqTargetBox.setVisible (eqButton.getToggleState());
+    eqTargetBox.setBounds (top.removeFromLeft (112));
 
     area.removeFromTop (4);
-    auto row = area.removeFromTop (stripHeight);
-    const auto font = Theme::font (11.0f, true);
-    for (size_t i = 0; i < chips.size(); ++i)
+    if (reportShown)
     {
-        if (! chips[i].isVisible())
-            continue;
-        const auto width = juce::jmax (52, juce::GlyphArrangement::getStringWidthInt (font, chips[i].getButtonText()) + 22);
-        chips[i].setBounds (row.removeFromLeft (width));
-        row.removeFromLeft (4);
+        auto panel = area.removeFromRight (panelWidth);
+        area.removeFromRight (8);
+        viewport.setBounds (panel);
+        content.setWidth (viewport.getMaximumVisibleWidth());
     }
+    viewport.setVisible (reportShown);
+    plotBody = area;
 }
 
 juce::Rectangle<float> SpectrumPage::plotArea() const
 {
-    return getLocalBounds().toFloat().reduced (8.0f, 6.0f).withTrimmedTop ((float) (stripHeight * 2 + 12)).withTrimmedBottom (14.0f).withTrimmedLeft (22.0f);
+    return plotBody.toFloat().reduced (4.0f, 6.0f).withTrimmedLeft (22.0f).withTrimmedBottom (14.0f);
 }
 
 float SpectrumPage::xFor (float hz) const
@@ -154,15 +345,457 @@ float SpectrumPage::hzFor (float x) const
     return lowHz * std::pow (highHz / lowHz, (x - area.getX()) / area.getWidth());
 }
 
+float SpectrumPage::dbToY (float db) const
+{
+    const auto area = plotArea();
+    return area.getY() + juce::jlimit (0.0f, 1.0f, (dbTop - db) / (dbTop - dbBottom)) * area.getHeight();
+}
+
+float SpectrumPage::yToDb (float y) const
+{
+    const auto area = plotArea();
+    return dbTop - (y - area.getY()) / area.getHeight() * (dbTop - dbBottom);
+}
+
 juce::String SpectrumPage::describe (float hz) const
 {
     const auto note = juce::roundToInt (69.0f + 12.0f * std::log2 (hz / 440.0f));
     return (hz < 100.0f ? juce::String (hz, 1) : juce::String (juce::roundToInt (hz))) + " Hz  " + juce::MidiMessage::getMidiNoteName (note, true, true, 5);
 }
 
+//==============================================================================
+// ANALYSE, rapport och referens
+
+void SpectrumPage::startAnalysis()
+{
+    if (analyser.isRunning())
+    {
+        analyser.cancel();
+        return;
+    }
+    MixAnalysis::Options options;
+    options.sensitivity = juce::jlimit (0, 2, sensitivityBox.getSelectedId() - 1);
+    if (! analyser.start (processor, options, reference))
+        return;
+    analysing = true;
+    analyseButton.setButtonText ("CANCEL");
+    for (auto* c : std::initializer_list<juce::Component*> { &referenceButton, &sensitivityBox, &eqButton, &eqTargetBox })
+        c->setEnabled (false);
+    updateRunning();
+}
+
+void SpectrumPage::takeReport()
+{
+    content.setReport (analyser.getReport());
+    reportShown = true;
+    highlightLow = highlightHigh = 0.0f;
+    reportVersion = analyser.getVersion();
+    copyButton.setVisible (true);
+    copyButton.setEnabled (content.getReport().valid);
+    resized();
+    viewport.setViewPosition (0, 0);
+    repaint();
+}
+
+void SpectrumPage::selectFinding (int index)
+{
+    const auto& report = content.getReport();
+    if (index < 0 || index >= (int) report.findings.size())
+        return;
+    const auto& finding = report.findings[(size_t) index];
+    content.selected = index;
+    content.repaint();
+    highlightLow = finding.lowHz;
+    highlightHigh = finding.highHz;
+
+    // Visa de inblandade källorna, och sätt EQ:n på den första (helst ett instrument).
+    auto first = -1;
+    for (int i = 0; i < numSources; ++i)
+    {
+        if (! sources[(size_t) i].present)
+            continue;
+        auto involved = false;
+        for (const auto& name : finding.sources)
+            involved = involved || (i == kickSource && name == "Kick") || (i == masterSource && name == "Master")
+                       || (i >= firstInstrument && i < masterSource && name.equalsIgnoreCase (processor.getLayerName (i - firstInstrument)));
+        sources[(size_t) i].selected = involved || finding.sources.isEmpty();
+        if (involved && (first < 0 || (first == kickSource && i != masterSource)))
+            first = i;
+    }
+    updateShowText();
+    if (first >= 0)
+    {
+        eqSource = first;
+        eqTargetBox.setSelectedId (eqSource + 1, juce::dontSendNotification);
+    }
+    if (! analyserButton.getToggleState())
+    {
+        analyserButton.setToggleState (true, juce::dontSendNotification);
+        updateRunning();
+    }
+    repaint();
+}
+
+void SpectrumPage::copyReport()
+{
+    juce::SystemClipboard::copyTextToClipboard (content.getReport().toText());
+}
+
+void SpectrumPage::updateShowText()
+{
+    juce::StringArray names;
+    auto presentCount = 0;
+    for (const auto& source : sources)
+    {
+        presentCount += source.present ? 1 : 0;
+        if (source.present && source.selected)
+            names.add (source.name);
+    }
+    juce::String text;
+    if (names.isEmpty())
+        text = "SHOW: NOTHING";
+    else if (names.size() == presentCount)
+        text = "SHOW: ALL";
+    else
+        text = "SHOW: " + names.joinIntoString (", ");
+    showButton.setButtonText (text);
+    showButton.setTooltip ("SHOW - " + (names.isEmpty() ? juce::String ("nothing is shown") : names.joinIntoString (", ") + " " + (names.size() == 1 ? "is" : "are") + " shown")
+                           + " in the diagram. Click to tick or untick the kick, each instrument and the master (the list stays open so you can pick several).");
+}
+
+void SpectrumPage::showSourceMenu()
+{
+    juce::PopupMenu menu;
+    menu.addItem (1000, "All", true, false);
+    menu.addItem (1001, "None", true, false);
+    menu.addSeparator();
+    for (int i = 0; i < numSources; ++i)
+    {
+        if (! sources[(size_t) i].present)
+            continue;
+        juce::PopupMenu::Item item (sources[(size_t) i].name);
+        item.setID (i + 1).setTicked (sources[(size_t) i].selected).setColour (sources[(size_t) i].colour);
+        menu.addItem (item);
+    }
+
+    juce::Component::SafePointer<SpectrumPage> safeThis (this);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&showButton), [safeThis] (int result)
+    {
+        if (safeThis == nullptr || result == 0)
+            return;
+        if (result == 1000 || result == 1001)
+            for (auto& source : safeThis->sources)
+                source.selected = result == 1000;
+        else
+            safeThis->sources[(size_t) (result - 1)].selected = ! safeThis->sources[(size_t) (result - 1)].selected;
+        safeThis->updateShowText();
+        safeThis->repaint();
+        // Listan öppnas igen: man väljer ofta flera.
+        juce::MessageManager::callAsync ([safeThis] { if (safeThis != nullptr) safeThis->showSourceMenu(); });
+    });
+}
+
+void SpectrumPage::chooseReference()
+{
+    juce::PopupMenu menu;
+    menu.addItem (1, "Load a reference track ...");
+    if (reference != nullptr)
+        menu.addItem (2, "Remove the reference (" + reference->name + ")");
+    juce::Component::SafePointer<SpectrumPage> safeThis (this);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&referenceButton), [safeThis] (int result)
+    {
+        if (safeThis == nullptr)
+            return;
+        if (result == 2)
+        {
+            safeThis->reference.reset();
+            Settings::set ("referencePath", {});
+            safeThis->referenceButton.setButtonText ("REFERENCE");
+            safeThis->repaint();
+        }
+        else if (result == 1)
+        {
+            safeThis->chooser = std::make_unique<juce::FileChooser> ("Choose a reference track", juce::File::getSpecialLocation (juce::File::userMusicDirectory),
+                                                                     "*.wav;*.aif;*.aiff;*.flac;*.ogg;*.mp3");
+            safeThis->chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles, [safeThis] (const juce::FileChooser& fc)
+            {
+                if (safeThis != nullptr && fc.getResult().existsAsFile())
+                    safeThis->loadReferenceFile (fc.getResult());
+            });
+        }
+    });
+}
+
+void SpectrumPage::loadReferenceFile (const juce::File& file)
+{
+    referenceButton.setButtonText ("LOADING ...");
+    juce::Component::SafePointer<SpectrumPage> safeThis (this);
+    juce::Thread::launch ([safeThis, file]
+    {
+        juce::String error;
+        auto loaded = MixAnalysis::loadReference (file, error);
+        juce::MessageManager::callAsync ([safeThis, file, loaded, error]
+        {
+            if (safeThis == nullptr)
+                return;
+            safeThis->reference = loaded;
+            safeThis->referenceError = error;
+            if (loaded != nullptr)
+            {
+                Settings::set ("referencePath", file.getFullPathName());
+                safeThis->referenceButton.setButtonText ("REF: " + loaded->name.substring (0, 9).toUpperCase());
+            }
+            else
+            {
+                safeThis->referenceButton.setButtonText ("REFERENCE");
+                juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Reference", error);
+            }
+            safeThis->repaint();
+        });
+    });
+}
+
+//==============================================================================
+// EQ i diagrammet
+
+juce::String SpectrumPage::eqKey (int node, const char* field) const
+{
+    return SourceEq::prefixFor (eqSource) + "Eq" + juce::String (node + 1) + field;
+}
+
+float SpectrumPage::eqParameter (const juce::String& suffix) const
+{
+    if (const auto* value = processor.apvts.getRawParameterValue (SourceEq::prefixFor (eqSource) + suffix))
+        return value->load();
+    return 0.0f;
+}
+
+void SpectrumPage::setEqParameter (const juce::String& suffix, float value)
+{
+    if (auto* parameter = processor.apvts.getParameter (SourceEq::prefixFor (eqSource) + suffix))
+        parameter->setValueNotifyingHost (parameter->convertTo0to1 (value));
+}
+
+std::vector<SpectrumPage::EqNode> SpectrumPage::eqNodes() const
+{
+    std::vector<EqNode> nodes;
+    const auto area = plotArea();
+    for (int b = 0; b < Effects::eqBands; ++b)
+    {
+        const auto freq = eqParameter ("Eq" + juce::String (b + 1) + "F"), gain = eqParameter ("Eq" + juce::String (b + 1) + "G");
+        nodes.push_back ({ { xFor (freq), dbToY (eqCentreDb + gain) }, b });
+    }
+    nodes.push_back ({ { xFor (std::max (lowHz, eqParameter ("EqHp"))), area.getBottom() - 7.0f }, 4 });
+    nodes.push_back ({ { xFor (std::min (highHz, eqParameter ("EqLp"))), area.getBottom() - 7.0f }, 5 });
+    return nodes;
+}
+
+int SpectrumPage::eqHit (juce::Point<float> position) const
+{
+    auto best = -1;
+    auto bestDistance = 11.0f;
+    for (const auto& node : eqNodes())
+    {
+        const auto distance = node.position.getDistanceFrom (position);
+        if (distance < bestDistance)
+        {
+            bestDistance = distance;
+            best = node.id;
+        }
+    }
+    return best;
+}
+
+void SpectrumPage::paintEq (juce::Graphics& g, juce::Rectangle<float> area)
+{
+    const auto colour = sources[(size_t) eqSource].colour;
+    const auto settings = SourceEq::read (processor.apvts, SourceEq::prefixFor (eqSource));
+    const auto rate = std::max (8000.0, processor.getSampleRate());
+    const auto coefficients = Effects::eqCoefficients (rate, settings);
+
+    g.setColour (Theme::effects.withAlpha (0.35f));
+    const float dashes[] { 4.0f, 4.0f };
+    g.drawDashedLine (juce::Line<float> (area.getX(), dbToY (eqCentreDb), area.getRight(), dbToY (eqCentreDb)), dashes, 2, 1.0f);
+
+    juce::Path curve;
+    const auto width = juce::jmax (1, (int) area.getWidth());
+    const auto pixelsPerDb = area.getHeight() / (dbTop - dbBottom);
+    for (int px = 0; px <= width; ++px)
+    {
+        const auto hz = lowHz * std::pow (highHz / lowHz, (float) px / (float) width);
+        auto magnitude = 1.0f;
+        for (const auto& c : coefficients)
+            magnitude *= c->getMagnitudeForFrequency (hz, rate);
+        const auto db = juce::jlimit (-60.0f, 30.0f, juce::Decibels::gainToDecibels (magnitude, -60.0f));
+        const auto y = dbToY (eqCentreDb) - db * pixelsPerDb;
+        if (px == 0)
+            curve.startNewSubPath (area.getX(), y);
+        else
+            curve.lineTo (area.getX() + (float) px, y);
+    }
+    g.setColour (juce::Colours::black.withAlpha (0.6f));
+    g.strokePath (curve, juce::PathStrokeType (4.0f));
+    g.setColour (colour.brighter (0.3f));
+    g.strokePath (curve, juce::PathStrokeType (2.2f));
+
+    g.setFont (Theme::font (9.5f, true));
+    for (const auto& node : eqNodes())
+    {
+        const auto active = dragNode == node.id;
+        if (node.id < Effects::eqBands)
+        {
+            g.setColour (juce::Colours::black.withAlpha (0.7f));
+            g.fillEllipse (juce::Rectangle<float> (16.0f, 16.0f).withCentre (node.position));
+            g.setColour (active ? juce::Colours::white : colour);
+            g.fillEllipse (juce::Rectangle<float> (12.0f, 12.0f).withCentre (node.position));
+            g.setColour (juce::Colours::black);
+            g.drawText (juce::String (node.id + 1), juce::Rectangle<float> (14.0f, 14.0f).withCentre (node.position), juce::Justification::centred);
+        }
+        else
+        {
+            juce::Path triangle;
+            const auto p = node.position;
+            if (node.id == 4)
+                triangle.addTriangle (p.x - 6.0f, p.y + 6.0f, p.x - 6.0f, p.y - 6.0f, p.x + 6.0f, p.y);
+            else
+                triangle.addTriangle (p.x + 6.0f, p.y + 6.0f, p.x + 6.0f, p.y - 6.0f, p.x - 6.0f, p.y);
+            g.setColour (juce::Colours::black.withAlpha (0.7f));
+            g.strokePath (triangle, juce::PathStrokeType (3.0f));
+            g.setColour (active ? juce::Colours::white : Theme::effects);
+            g.fillPath (triangle);
+            g.setColour (Theme::textDim);
+            const auto text = node.id == 4 ? (settings.hp <= 21.0f ? juce::String ("HP off") : "HP " + juce::String (juce::roundToInt (settings.hp)) + " Hz")
+                                           : (settings.lp >= 19500.0f ? juce::String ("LP off") : "LP " + juce::String (settings.lp / 1000.0f, 1) + " kHz");
+            g.drawText (text, juce::Rectangle<float> (60.0f, 11.0f).withCentre ({ p.x + (node.id == 4 ? 36.0f : -36.0f), p.y - 1.0f }), juce::Justification::centred);
+        }
+    }
+
+    if (dragNode >= 0 && dragNode < Effects::eqBands)
+    {
+        const auto text = "BAND " + juce::String (dragNode + 1) + "   " + describe (settings.freq[dragNode]) + "   " + (settings.gain[dragNode] > 0 ? "+" : "")
+                          + juce::String (settings.gain[dragNode], 1) + " dB   Q " + juce::String (settings.q[dragNode], 2);
+        g.setColour (Theme::knobBodyDark.withAlpha (0.92f));
+        g.fillRoundedRectangle (area.getX() + 6.0f, area.getY() + 6.0f, 270.0f, 18.0f, 4.0f);
+        g.setColour (Theme::text);
+        g.setFont (Theme::font (10.5f, true));
+        g.drawText (text, juce::Rectangle<float> (area.getX() + 12.0f, area.getY() + 6.0f, 262.0f, 18.0f), juce::Justification::centredLeft);
+    }
+}
+
+void SpectrumPage::mouseDown (const juce::MouseEvent& event)
+{
+    if (! eqButton.getToggleState() || ! plotArea().expanded (8.0f).contains (event.position))
+        return;
+    dragNode = eqHit (event.position);
+    if (dragNode < 0)
+        return;
+    gestureParameters.clear();
+    const auto prefix = SourceEq::prefixFor (eqSource);
+    auto add = [this, &prefix] (const juce::String& suffix)
+    {
+        if (auto* parameter = processor.apvts.getParameter (prefix + suffix))
+        {
+            parameter->beginChangeGesture();
+            gestureParameters.push_back (parameter);
+        }
+    };
+    if (dragNode < Effects::eqBands)
+    {
+        add ("Eq" + juce::String (dragNode + 1) + "F");
+        add ("Eq" + juce::String (dragNode + 1) + "G");
+    }
+    else
+    {
+        add (dragNode == 4 ? "EqHp" : "EqLp");
+    }
+    repaint();
+}
+
+void SpectrumPage::mouseDrag (const juce::MouseEvent& event)
+{
+    if (dragNode < 0)
+        return;
+    const auto area = plotArea();
+    const auto hz = hzFor (juce::jlimit (area.getX(), area.getRight(), event.position.x));
+    if (dragNode < Effects::eqBands)
+    {
+        const auto key = "Eq" + juce::String (dragNode + 1);
+        setEqParameter (key + "F", hz);
+        setEqParameter (key + "G", juce::jlimit (-15.0f, 15.0f, yToDb (event.position.y) - eqCentreDb));
+    }
+    else if (dragNode == 4)
+    {
+        setEqParameter ("EqHp", hz < 24.0f ? 20.0f : hz);
+    }
+    else
+    {
+        setEqParameter ("EqLp", hz > 18500.0f ? 20000.0f : hz);
+    }
+    repaint();
+}
+
+void SpectrumPage::mouseUp (const juce::MouseEvent&)
+{
+    for (auto* parameter : gestureParameters)
+        parameter->endChangeGesture();
+    gestureParameters.clear();
+    dragNode = -1;
+    repaint();
+}
+
+void SpectrumPage::mouseDoubleClick (const juce::MouseEvent& event)
+{
+    if (! eqButton.getToggleState())
+        return;
+    const auto hit = eqHit (event.position);
+    if (hit < 0)
+        return;
+    auto reset = [this] (const juce::String& suffix)
+    {
+        if (auto* parameter = processor.apvts.getParameter (SourceEq::prefixFor (eqSource) + suffix))
+        {
+            parameter->beginChangeGesture();
+            parameter->setValueNotifyingHost (parameter->getDefaultValue());
+            parameter->endChangeGesture();
+        }
+    };
+    if (hit < Effects::eqBands)
+    {
+        const auto key = "Eq" + juce::String (hit + 1);
+        reset (key + "F");
+        reset (key + "G");
+        reset (key + "Q");
+    }
+    else
+    {
+        reset (hit == 4 ? "EqHp" : "EqLp");
+    }
+    repaint();
+}
+
+void SpectrumPage::mouseWheelMove (const juce::MouseEvent& event, const juce::MouseWheelDetails& wheel)
+{
+    if (! eqButton.getToggleState())
+        return;
+    const auto hit = eqHit (event.position);
+    if (hit < 0 || hit >= Effects::eqBands)
+        return;
+    const auto key = "Eq" + juce::String (hit + 1) + "Q";
+    if (auto* parameter = processor.apvts.getParameter (SourceEq::prefixFor (eqSource) + key))
+    {
+        const auto q = juce::jlimit (0.3f, 8.0f, eqParameter (key) * std::exp (wheel.deltaY * 0.6f));
+        parameter->beginChangeGesture();
+        parameter->setValueNotifyingHost (parameter->convertTo0to1 (q));
+        parameter->endChangeGesture();
+        repaint();
+    }
+}
+
+//==============================================================================
 void SpectrumPage::mouseMove (const juce::MouseEvent& e)
 {
     hoverX = (float) e.x;
+    hoverPoint = e.position;
     if (running)
         repaint();
 }
@@ -231,27 +864,54 @@ void SpectrumPage::findFundamental (Source& source) const
 void SpectrumPage::timerCallback()
 {
     updateSources();
-    ++tick;
-    for (int i = 0; i < numSources; ++i)
+
+    if (analysing)
     {
-        auto& source = sources[(size_t) i];
-        if (! source.present || ! source.selected)
-            continue;
-        analyse (i);
-        if (i != masterSource && tick % 3 == 1)
-            findFundamental (source);
+        if (! analyser.isRunning())
+        {
+            analysing = false;
+            analyseButton.setButtonText ("ANALYSE");
+            for (auto* c : std::initializer_list<juce::Component*> { &referenceButton, &sensitivityBox, &eqButton, &eqTargetBox })
+                c->setEnabled (true);
+            takeReport();
+            updateRunning();
+        }
+        else
+        {
+            analyseButton.setButtonText ("CANCEL " + juce::String (juce::roundToInt (analyser.getProgress() * 100.0f)) + " %");
+        }
+    }
+
+    if (running)
+    {
+        ++tick;
+        for (int i = 0; i < numSources; ++i)
+        {
+            auto& source = sources[(size_t) i];
+            if (! source.present || ! source.selected)
+                continue;
+            analyse (i);
+            if (i != masterSource && tick % 3 == 1)
+                findFundamental (source);
+        }
     }
     repaint();
 }
 
 void SpectrumPage::paint (juce::Graphics& g)
 {
-    const auto bounds = getLocalBounds().toFloat();
+    // Källväljaren har samma färg som källan (bara när den ändras: setColour ritar om).
+    if (const auto tint = sources[(size_t) eqSource].colour; eqTargetBox.findColour (juce::ComboBox::outlineColourId) != tint)
+    {
+        eqTargetBox.setColour (juce::ComboBox::outlineColourId, tint);
+        eqTargetBox.setColour (juce::ComboBox::textColourId, tint);
+    }
+
     g.setColour (Theme::knobBodyDark.withAlpha (0.85f));
-    g.fillRoundedRectangle (bounds.withTrimmedTop ((float) (stripHeight * 2 + 10)), 6.0f);
+    g.fillRoundedRectangle (plotBody.toFloat(), 6.0f);
 
     const auto area = plotArea();
-    auto yFor = [&] (float db) { return area.getY() + juce::jlimit (0.0f, 1.0f, (dbTop - db) / (dbTop - dbBottom)) * area.getHeight(); };
+    auto yFor = [this] (float db) { return dbToY (db); };
 
     g.setFont (Theme::font (9.0f));
     for (const auto hz : { 30.0f, 50.0f, 100.0f, 200.0f, 500.0f, 1000.0f, 2000.0f, 5000.0f, 10000.0f })
@@ -271,12 +931,30 @@ void SpectrumPage::paint (juce::Graphics& g)
         g.drawText (juce::String ((int) db), juce::Rectangle<float> (area.getX() - 22.0f, yFor (db) - 5.0f, 20.0f, 10.0f), juce::Justification::right);
     }
 
+    // Det rapporten pekar på: frekvensområdet.
+    if (highlightHigh > 0.0f)
+    {
+        const auto x0 = xFor (std::max (lowHz, highlightLow)), x1 = xFor (std::min (highHz, highlightHigh));
+        g.setColour (juce::Colour (0xffffe27a).withAlpha (0.12f));
+        g.fillRect (juce::Rectangle<float> (x0, area.getY(), std::max (2.0f, x1 - x0), area.getHeight()));
+        g.setColour (juce::Colour (0xffffe27a).withAlpha (0.55f));
+        g.drawVerticalLine ((int) x0, area.getY(), area.getBottom());
+        g.drawVerticalLine ((int) std::max (x0 + 1.0f, x1), area.getY(), area.getBottom());
+    }
+
     if (! running)
     {
-        g.setColour (Theme::textDim);
-        g.setFont (Theme::font (13.0f, true));
-        g.drawFittedText (analyserButton.getToggleState() ? "Open this tab to see the spectrum." : "The analyser is off.\nPress ANALYSER to start it. It uses some CPU while it runs.",
-                          area.toNearestInt().reduced (20), juce::Justification::centred, 3);
+        if (! eqButton.getToggleState())
+        {
+            g.setColour (Theme::textDim);
+            g.setFont (Theme::font (13.0f, true));
+            g.drawFittedText (analyserButton.getToggleState() ? "Open this tab to see the spectrum." : "The live spectrum is off.\nPress ANALYSER to start it (it uses some CPU while it runs),\nor ANALYSE to get a report on the whole pattern.",
+                              area.toNearestInt().reduced (20), juce::Justification::centred, 4);
+        }
+        else
+        {
+            paintEq (g, area);
+        }
         return;
     }
 
@@ -345,10 +1023,70 @@ void SpectrumPage::paint (juce::Graphics& g)
                 continue;
             const auto strength = juce::jlimit (0.0f, 1.0f, (second - collisionFloor) / 46.0f);
             const auto alpha = juce::jlimit (0.0f, 0.95f, 0.12f + 0.6f * strength + 0.1f * (float) std::max (0, count - 2));
-            const auto top = yFor (second);
+            const auto topY = yFor (second);
             g.setColour (juce::Colour (0xffff2a3a).withAlpha (alpha));
-            g.fillRect (area.getX() + (float) px, top, 1.0f, area.getBottom() - top);
+            g.fillRect (area.getX() + (float) px, topY, 1.0f, area.getBottom() - topY);
         }
+    }
+
+    // Referenslåten: medelspektrumet, nivån anpassad till mastern (långsamt, så att linjen inte hoppar).
+    if (reference != nullptr)
+    {
+        const auto refRate = std::max (8000.0, reference->rate);
+        std::vector<float> refColumn ((size_t) width);
+        for (int px = 0; px < width; ++px)
+        {
+            const auto hz0 = lowHz * std::pow (highHz / lowHz, (float) px / (float) width);
+            const auto hz1 = lowHz * std::pow (highHz / lowHz, (float) (px + 1) / (float) width);
+            const auto e0 = (float) (hz0 / (refRate * 0.5) * bins), e1 = (float) (hz1 / (refRate * 0.5) * bins);
+            const auto b0 = std::min (bins - 2, (int) e0), b1 = std::min (bins - 1, (int) e1);
+            auto power = 0.0f;
+            if (b1 <= b0)
+            {
+                const auto position = 0.5f * (e0 + e1) - 0.5f;
+                const auto lower = juce::jlimit (0, bins - 2, (int) std::floor (position));
+                const auto fraction = juce::jlimit (0.0f, 1.0f, position - (float) lower);
+                power = reference->power[(size_t) lower] + (reference->power[(size_t) lower + 1] - reference->power[(size_t) lower]) * fraction;
+            }
+            else
+            {
+                for (int b = b0; b <= b1; ++b)
+                    power = std::max (power, reference->power[(size_t) b]);
+            }
+            refColumn[(size_t) px] = 10.0f * std::log10 (power + 1.0e-12f);
+        }
+        if (! columns[(size_t) masterSource].empty())
+        {
+            auto sum = 0.0f;
+            auto count = 0;
+            for (int px = 0; px < width; ++px)
+            {
+                const auto hz = lowHz * std::pow (highHz / lowHz, (float) px / (float) width);
+                if (hz >= 120.0f && hz <= 5000.0f && columns[(size_t) masterSource][(size_t) px] > -80.0f)
+                {
+                    sum += columns[(size_t) masterSource][(size_t) px] - refColumn[(size_t) px];
+                    ++count;
+                }
+            }
+            if (count > 20)
+                referenceOffset += (sum / (float) count - referenceOffset) * 0.06f;
+        }
+        juce::Path path;
+        for (int px = 0; px < width; ++px)
+        {
+            const auto y = yFor (refColumn[(size_t) px] + referenceOffset);
+            if (px == 0)
+                path.startNewSubPath (area.getX(), y);
+            else
+                path.lineTo (area.getX() + (float) px, y);
+        }
+        g.setColour (juce::Colour (0xffffe27a).withAlpha (0.8f));
+        const float dashes[] { 5.0f, 3.0f };
+        juce::Path dashed;
+        juce::PathStrokeType (1.4f).createDashedStroke (dashed, path, dashes, 2);
+        g.fillPath (dashed);
+        g.setFont (Theme::font (9.5f, true));
+        g.drawText ("REFERENCE: " + reference->name, juce::Rectangle<float> (area.getRight() - 260.0f, area.getY() + 2.0f, 254.0f, 12.0f), juce::Justification::centredRight);
     }
 
     auto pathFor = [&] (const std::vector<float>& column, bool close)
@@ -421,8 +1159,11 @@ void SpectrumPage::paint (juce::Graphics& g)
         }
     }
 
+    if (eqButton.getToggleState())
+        paintEq (g, area);
+
     // Muspekaren: frekvens, ton och nivå för varje visad källa.
-    if (hoverX >= area.getX() && hoverX <= area.getRight())
+    if (dragNode < 0 && hoverX >= area.getX() && hoverX <= area.getRight() && hoverPoint.y >= area.getY() && hoverPoint.y <= area.getBottom())
     {
         const auto hz = hzFor (hoverX);
         g.setColour (Theme::text.withAlpha (0.4f));
@@ -460,7 +1201,43 @@ void SpectrumPage::paint (juce::Graphics& g)
     if (collisionsButton.getToggleState() && shown >= 2)
     {
         g.setColour (juce::Colour (0xffff5060).withAlpha (0.9f));
-        g.setFont (Theme::font (10.0f, true));
-        g.drawText ("RED = SEVERAL SOURCES AT THE SAME FREQUENCY", bounds.reduced (10.0f, 6.0f).withHeight ((float) stripHeight), juce::Justification::centredRight);
+        g.setFont (Theme::font (9.5f, true));
+        g.drawText ("RED = SEVERAL SOURCES AT THE SAME FREQUENCY", area.withTrimmedLeft (area.getWidth() - 300.0f).withHeight (12.0f).translated (-4.0f, 14.0f),
+                    juce::Justification::centredRight);
     }
+}
+
+// Under en pågående analys: en slöja och ett förlopp över diagrammet.
+void SpectrumPage::paintOverChildren (juce::Graphics& g)
+{
+    // EQ-läget: en ram runt EQ-knappen och källväljaren, och en ring runt samma källas knapp i raden under, så att man ser vad EQ:n gäller.
+    if (eqButton.getToggleState() && eqTargetBox.isVisible())
+    {
+        const auto colour = Theme::effects;
+        const auto group = eqButton.getBounds().getUnion (eqTargetBox.getBounds()).toFloat().expanded (3.0f, 3.0f);
+        g.setColour (colour.withAlpha (0.14f));
+        g.fillRoundedRectangle (group, 7.0f);
+        g.setColour (colour.withAlpha (0.95f));
+        g.drawRoundedRectangle (group, 7.0f, 1.8f);
+
+    }
+
+    if (! analysing)
+        return;
+    const auto bounds = plotBody.toFloat();
+    g.setColour (juce::Colours::black.withAlpha (0.55f));
+    g.fillRoundedRectangle (bounds, 6.0f);
+
+    const auto bar = juce::Rectangle<float> (300.0f, 10.0f).withCentre (bounds.getCentre().translated (0.0f, 18.0f));
+    g.setColour (Theme::track);
+    g.fillRoundedRectangle (bar, 5.0f);
+    g.setColour (Theme::mix);
+    g.fillRoundedRectangle (bar.withWidth (bar.getWidth() * analyser.getProgress()), 5.0f);
+    g.setColour (Theme::text);
+    g.setFont (Theme::font (13.0f, true));
+    g.drawText ("ANALYSING THE PATTERN ...  " + juce::String (juce::roundToInt (analyser.getProgress() * 100.0f)) + " %",
+                juce::Rectangle<float> (400.0f, 20.0f).withCentre (bounds.getCentre().translated (0.0f, -6.0f)), juce::Justification::centred);
+    g.setColour (Theme::textDim);
+    g.setFont (Theme::font (10.5f));
+    g.drawText ("The plugin keeps working. Press CANCEL to stop.", juce::Rectangle<float> (400.0f, 16.0f).withCentre (bounds.getCentre().translated (0.0f, 42.0f)), juce::Justification::centred);
 }

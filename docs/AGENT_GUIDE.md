@@ -77,7 +77,7 @@ A glide note needs a sounding note to glide: write a long note, then a short `~`
 
 ## 6. Effects
 
-`list_effects` gives all 14 types and their knobs. The **Maximizer** (GAIN, CLIP, CEILING, RELEASE, MIX; no latency) is a loudness maximizer you can put on one channel only: send the kick to a channel with a Maximizer (`kickFxChannel`, `kickFxAmount` = 1) to make the kick loud and even on its own, separately from the master maximizer. Use `set_effect` with channel FX1–FX11, slot 1–5, type and knobs by name. Sources reach a channel through their sends (`bassNFxChannel` = 1 for FX1 … 11 for FX11; `bassNFxAmount` = how much goes through, the rest stays dry); the channel returns with its `Level` and `Duck`. For parallel effects (reverb, echo) send a moderate amount and give the channel an EQ high-pass (`fxAEqHp` ≈ 150–300 Hz for FX1) so the low end stays clean, and `fxADuck` so tails pump with the kick.
+`list_effects` gives all 15 types and their knobs. The **Maximizer** (GAIN, CLIP, CEILING, RELEASE, MIX; no latency) is a loudness maximizer you can put on one channel only: send the kick to a channel with a Maximizer (`kickFxChannel`, `kickFxAmount` = 1) to make the kick loud and even on its own, separately from the master maximizer. Use `set_effect` with channel FX1–FX11, slot 1–5, type and knobs by name. Sources reach a channel through their sends (`bassNFxChannel` = 1 for FX1 … 11 for FX11; `bassNFxAmount` = how much goes through, the rest stays dry); the channel returns with its `Level` and `Duck`. For parallel effects (reverb, echo) send a moderate amount and give the channel an EQ high-pass (`fxAEqHp` ≈ 150–300 Hz for FX1) so the low end stays clean, and `fxADuck` so tails pump with the kick.
 The Echo is modelled on FL's Fruity Delay 2 (TIME, OFFSET, IN PAN, IN VOL, FB MODE Normal/Invert/Ping-pong, FEEDBACK, CUT, DRY VOL; echoes are IN VOL × input, the dry sound DRY VOL).
 
 ## 7. What `render_preview` tells you
@@ -95,3 +95,30 @@ Also check yourself: the first bass note after a kick is a little softer (rollin
 - Presets `section=Bass` store an instrument's sound (not its on/off, gate, duck, grid, sends); `Full` stores everything. User presets are plain files in `Documents\Kickbase\Presets\<Section>`.
 - FX knob parameters (`fxA1P1…`) are normalized 0..1 and depend on the slot's type: always use `set_effect`.
 - The user wants **intuitive, clear** sounds with good names; do not leave a project in a half-edited state without saying so; never claim to have heard a sound.
+
+## 9. Checking the mix: `analyse_mix`, EQ and SIDECHAIN
+
+- `analyse_mix` plays the pattern once through offline (all bars of the pattern, at most 16) and reports what to look at, bar by bar: collisions between the kick and instruments (and between instruments), an instrument covering the kick, a kick tail tuned too low (< 30 Hz) or high (> 62 Hz), instruments that are out of tune with each other or the kick (octaves and unison count as in tune), rumble under 30 Hz, a master limiter that works too hard, and with `reference_file` where the master has more or less energy than a reference track. Each finding has `severity` (problem, warning, info), `sources`, `low_hz`/`high_hz` and `bars`. The user sees the same report in the SPECTRUM tab (ANALYSE).
+- It measures the real signals after ducking and EQ, so a collision the sidechain already solved does not show. Kick and instrument sharing low frequencies is only a warning (normal when the sidechain gives the kick the hit). `sensitivity` low/normal/high scales how close in level, how loud and for how long something must be to count. Raise it only when the user wants the small things. Do not "fix" info findings unless asked.
+- Run it after a change to check that you fixed what you meant to. The fixes it suggests:
+  - **EQ** for the kick, each instrument and the master: parameters `kickEqHp`, `kickEq1F`/`kickEq1G`/`kickEq1Q` ... `kickEq4Q`, `kickEqLp` (instrument n: `bassnEq...`, master: `masterEq...`). Bands 1 and 4 are low/high shelves, 2 and 3 bells. Gain is in dB, neutral by default (no processing). The high-pass `EqHp` (20 = off) is the usual fix for rumble.
+  - **Ducking one source under another**: put an effect of type `Sidechain` in an FX channel (`set_effect`, knobs SOURCE = Kick or Instr 1-10, THRESHOLD, DEPTH, ATTACK, RELEASE), and send the instrument that should duck 100 % to that channel (`bassNFxChannel`, `bassNFxAmount` = 1, so none of it stays dry). The channel is ducked when the source plays.
+  - Retune (kick `kickTune`, instrument `bassNTune`/`bassNOctave`), or lower/raise levels.
+
+### Recipes (the exact steps)
+
+**Duck instrument 2 under instrument 1** (so they stop colliding, a pump between two instruments):
+1. `set_effect` channel `FX1` (any free channel), slot 1, type `Sidechain`, knobs `{"SOURCE":"Instr 1","THRESHOLD":-24,"DEPTH":0.8,"ATTACK":3,"RELEASE":200}`. The channel is ducked whenever the source plays; THRESHOLD is where ducking starts and 12 dB above it ducks fully.
+2. `set_parameters` `{"bass2FxChannel":1,"bass2FxAmount":1}`: instrument 2 goes 100 % through FX1 (`bassNFxChannel` 1 = FX1; amount below 1 leaves a dry part that is not ducked).
+3. `analyse_mix` again to check that the collision is gone. Undo with `undo`, or set the slot back to `Off` and `bass2FxChannel` to 0.
+The source can also be the kick (`"SOURCE":"Kick"`): an effect channel ducked by the kick, as an alternative to the DUCK knobs in the SIDECHAIN tab (which already duck the instruments directly under the kick).
+
+**The kick is covered by an instrument** (`analyse_mix` category `masking`): first check the instrument's own duck (`bassNDuck`, or the instrument's DUCK in the SIDECHAIN tab; the report says how many dB it is ducked at the kick). Raise it, or shorten the sidechain release. If it still covers the kick, cut the instrument where the kick lives with its EQ (`bassNEq2F`/`bassNEq2G`/`bassNEq2Q`, a bell at the kick's tail frequency, -3 to -6 dB) or lower its `bassNLevel`.
+
+**Two instruments collide** (category `collision`): give them different registers (`bassNOctave`), retune if the report says they are about a semitone apart (`bassNTune`), high-pass the higher one (`bassNEqHp` 100-200 Hz) so only one owns the low end, or duck one under the other (recipe above).
+
+**Rumble under 30 Hz**: `bassNEqHp` (or `masterEqHp`) 30-40 Hz.
+
+**Kick tail too low/high**: `kickTune` (semitones) until `analyse_mix` reports a tail around 40-55 Hz; the tail also follows the key note.
+
+Always verify with `analyse_mix` after a fix, and tell the user what you changed and why. Do not fix `info` findings unless asked.

@@ -12,10 +12,12 @@ namespace
         Params::Layout layout;
         Params::addPatternParams (layout, true);
         Params::addKickParams (layout);
+        SourceEq::addParameters (layout, "kick", "Kick");
         for (int layer = 0; layer < Pattern::numLayers; ++layer)
         {
             Params::addBassCommonParams (layout, layer, 0.7f);
             Params::addBassSynthParams (layout, layer);
+            SourceEq::addParameters (layout, SourceEq::prefixFor (1 + layer), "Instr " + juce::String (layer + 1));
         }
         Effects::addParameters (layout);
         Sidechain::addParameters (layout);
@@ -49,6 +51,8 @@ InstrumentProcessor::InstrumentProcessor()
                   createLayout(), false)
 {
     // Ett nytt instrument börjar som Init: tre lager som låter bra ihop (ett sparat projekt skriver över det).
+    for (int layer = 0; layer < numLayers; ++layer)
+        layerEqs.emplace_back (apvts, SourceEq::prefixFor (1 + layer));
     loadFactoryPreset (Presets::Section::full, 0, 0);
 }
 
@@ -66,6 +70,9 @@ void InstrumentProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     effects.prepare (sampleRate, samplesPerBlock);
     effects.setModulator (&modulator);
     master.prepare (sampleRate, 2);
+    kickEq.prepare (sampleRate);
+    for (auto& eq : layerEqs)
+        eq.prepare (sampleRate);
     mixer.prepare (sampleRate);
     setLatencySamples (master.getLatencySamples());
     ensureScratchSize (samplesPerBlock);
@@ -463,6 +470,7 @@ void InstrumentProcessor::finishBlock (int numSamples)
     // Varje baslager: källa * amplitud (envelope) * ducking med lagrets egen mängd. Lagret går
     // sedan (helt eller delvis) genom sin effektkanal; varje lagers egen utgång får lagret
     // utan effekter.
+    kickEq.process (kickBuffer.getWritePointer (0), nullptr, numSamples);
     const auto* duckData = duckBuffer.getReadPointer (0);
     mixer.beginBlock();
     maxBus.clear (0, numSamples);
@@ -514,6 +522,7 @@ void InstrumentProcessor::finishBlock (int numSamples)
             lastDuckGain = duckGain;
         }
         duckReduction[(size_t) layer] = numSamples > 0 ? 1.0f - lastDuckGain : 0.0f;
+        layerEqs[(size_t) layer].process (data, dataRight, numSamples);
         if (instrumentTapsOn.load (std::memory_order_relaxed))
             for (int i = 0; i < numSamples; ++i)
                 instrumentTaps[(size_t) layer].push (0.5f * (data[i] + dataRight[i]));
@@ -544,6 +553,15 @@ void InstrumentProcessor::finishBlock (int numSamples)
     std::array<bool, numEffectChannels> channelDuck {};
     for (int ch = 0; ch < numEffectChannels; ++ch)
         channelDuck[(size_t) ch] = mixer.duckEnabled (Mixer::firstFxSource + ch);
+    // Det som SIDECHAIN-effekterna lyssnar på: kickens och instrumentens ljud (efter duckning och EQ, före effekter).
+    SourceSignals signals;
+    signals.left[0] = kickBuffer.getReadPointer (0);
+    for (int layer = 0; layer < activeLayers; ++layer)
+    {
+        signals.left[(size_t) layer + 1] = layerBuffer.getReadPointer (layer);
+        signals.right[(size_t) layer + 1] = layerBufferRight.getReadPointer (layer);
+    }
+    effects.setSources (signals);
     effects.process (numSamples, duckData, nullptr, channelDuck.data());
     for (int ch = 0; ch < numEffectChannels; ++ch)
     {

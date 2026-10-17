@@ -21,6 +21,12 @@ namespace OfflineRender
 
         // Fyller insignalen (FX-versionen) för blocket som börjar på given sample; annars tyst.
         std::function<void (juce::AudioBuffer<float>&, int startSample)> fillInput;
+
+        // Anropas efter varje bearbetat block (utsignalen, blockets första sample och längd), t.ex. för analys medan det renderas.
+        std::function<void (const juce::AudioBuffer<float>&, int startSample, int numSamples)> onBlock;
+
+        // Avbryter renderingen när den ger true (kollas före varje block); resten av utsignalen blir tyst.
+        std::function<bool()> shouldStop;
     };
 
     juce::AudioBuffer<float> render (juce::AudioProcessor& processor, const Settings& settings);

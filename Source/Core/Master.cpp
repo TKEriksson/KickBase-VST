@@ -13,7 +13,8 @@ MasterSection::MasterSection (juce::AudioProcessorValueTreeState& apvts)
       releaseMs (apvts.getRawParameterValue ("masterRelease")),
       width (apvts.getRawParameterValue ("masterWidth")),
       monoBelowHz (apvts.getRawParameterValue ("masterMonoBelow")),
-      enhance (apvts.getRawParameterValue ("masterEnhance"))
+      enhance (apvts.getRawParameterValue ("masterEnhance")),
+      eq (apvts, "master")
 {
     jassert (on != nullptr && driveDb != nullptr && clip != nullptr && ceilingDb != nullptr && releaseMs != nullptr);
 }
@@ -21,6 +22,7 @@ MasterSection::MasterSection (juce::AudioProcessorValueTreeState& apvts)
 void MasterSection::addParameters (juce::AudioProcessorValueTreeState::ParameterLayout& layout)
 {
     using namespace juce;
+    SourceEq::addParameters (layout, "master", "Master");
     auto db = [] (float v, int) { return (v > 0.0f ? "+" : "") + String (v, 1) + " dB"; };
 
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { "masterOn", 1 }, "Master On", true));
@@ -57,6 +59,7 @@ void MasterSection::addParameters (juce::AudioProcessorValueTreeState::Parameter
 void MasterSection::prepare (double newSampleRate, int numChannels)
 {
     sampleRate = newSampleRate;
+    eq.prepare (newSampleRate);
     channels = std::max (1, numChannels);
     lookahead = std::max (2, (int) std::round (lookaheadSeconds * sampleRate));
 
@@ -88,6 +91,8 @@ void MasterSection::reset()
 
 void MasterSection::process (juce::AudioBuffer<float>& buffer, int numSamples)
 {
+    eq.process (buffer.getWritePointer (0), buffer.getNumChannels() > 1 ? buffer.getWritePointer (1) : nullptr, numSamples);
+
     const auto enabled = on->load() >= 0.5f;
     const auto driveGain = juce::Decibels::decibelsToGain (driveDb->load());
     const auto clipAmount = clip->load();

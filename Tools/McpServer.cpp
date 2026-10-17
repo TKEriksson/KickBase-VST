@@ -144,7 +144,9 @@ namespace
                 put (info, "version", serverVersion);
                 put (result, "serverInfo", info);
                 put (result, "instructions", "Kickbase is a psytrance kick and bass synth. Call get_guide first: it explains the tools, units, the pattern language and the verification workflow. "
-                                             "Work in a loop: change the sound, render_preview, read the metrics and the spectrogram, adjust. Save good sounds with save_preset.");
+                                             "Work in a loop: change the sound, render_preview, read the metrics and the spectrogram, adjust. Save good sounds with save_preset. "
+                                             "To check how the kick and instruments share the frequencies (collisions, a kick that is out of tune, rumble, the limiter) call analyse_mix; the guide (section 9) says how to fix what it finds: EQ per source, "
+                                             "a Sidechain effect so one instrument ducks under another, retuning.");
                 return reply (id, result);
             }
             if (method == "ping")

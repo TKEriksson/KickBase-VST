@@ -17,11 +17,19 @@
 // Rattarna är parametrar 0..1 (så att parameteruppsättningen är fast, som VST3 kräver);
 // Effects::knobs(typ) säger vad de betyder och hur de räknas om till riktiga enheter.
 enum class EffectType { off, filter, distortion, eq, chorus, phaser, echo, reverb,
-                        compressor, gate, comb, ringMod, bitcrusher, autoFilter, maximizer, count };
+                        compressor, gate, comb, ringMod, bitcrusher, autoFilter, maximizer, ducker, count };
 constexpr int numEffectTypes = (int) EffectType::count; // inklusive Off
 constexpr int numEffectChannels = 11; // FX1 ... FX11
 constexpr int slotsPerChannel = 5;
 constexpr int knobsPerSlot = 8;
+
+// Ljudet från kicken och instrumenten som effekten SIDECHAIN lyssnar på (sida för sida, per block): 0 = kicken, 1-10 = instrumenten.
+// Pekarna gäller bara under det pågående blocket. Instrumentet fyller i dem; tomma pekare betyder att källan inte spelar.
+struct SourceSignals
+{
+    static constexpr int count = 11;
+    std::array<const float*, count> left {}, right {}; // right = nullptr för mono (kicken)
+};
 
 namespace Effects
 {
@@ -118,6 +126,9 @@ public:
     // LFO-modulering av effekternas rattar (kan vara nullptr).
     void setModulator (const Modulator* modulator);
 
+    // Källorna som SIDECHAIN-effekten lyssnar på (kan vara nullptr).
+    void setSources (const SourceSignals* sources);
+
     // Kör kanalens påslagna platser. `buffer` är stereo.
     void process (juce::AudioBuffer<float>& buffer, int numSamples);
 
@@ -140,6 +151,9 @@ public:
 
     void prepare (double sampleRate, int maxBlockSize);
     void setModulator (const Modulator* modulator);
+
+    // Ljudet från kicken och instrumenten som kanalernas SIDECHAIN-effekter lyssnar på. Sätts före process, i varje block.
+    void setSources (const SourceSignals& sources);
 
     // Börja ett block: töm kanalernas ingångar och läs parametrarna.
     void beginBlock (int numSamples, double bpm, double ppq);

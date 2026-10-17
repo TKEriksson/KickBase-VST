@@ -35,6 +35,8 @@ namespace OfflineRender
 
         for (int done = 0; done < totalSamples; done += blockSize)
         {
+            if (settings.shouldStop && settings.shouldStop())
+                break;
             const auto n = std::min (blockSize, totalSamples - done);
             block.setSize (block.getNumChannels(), n, false, false, true);
             block.clear();
@@ -74,6 +76,8 @@ namespace OfflineRender
             processor.processBlock (block, midi);
             for (int ch = 0; ch < 2; ++ch)
                 output.copyFrom (ch, done, block, ch, 0, n);
+            if (settings.onBlock)
+                settings.onBlock (block, done, n);
         }
 
         processor.setPlayHead (nullptr);

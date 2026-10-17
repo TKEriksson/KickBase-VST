@@ -5,6 +5,7 @@
 #include <vector>
 #include <array>
 #include "SignalTap.h"
+#include "SourceEq.h"
 
 // Mastersektionen: stereobredd (med mono under en frekvens), drive, soft clip och en limiter
 // med lookahead och tak (ceiling).
@@ -71,6 +72,9 @@ private:
     int writeIndex = 0;
     float released = 1.0f;  // förstärkning efter release (sjunker direkt, stiger långsamt)
     double boxSum = 0.0;
+
+    // Masterns EQ (SPECTRUM-fliken), före bredd, drive och limiter.
+    SourceEq eq;
 
     // Extra fördröjningar för andra utgångar (kick och bas).
     std::vector<std::vector<std::vector<float>>> extraDelays;

@@ -62,6 +62,8 @@ set(CORE_SOURCES
 set(PLUGIN_SOURCES
     ${CORE_SOURCES}
     Source/Core/Effects.cpp
+    Source/Core/SourceEq.cpp
+    Source/Core/MixAnalysis.cpp
     Source/Core/Master.cpp
     Source/Core/Mixer.cpp
     Source/Core/OfflineRender.cpp
@@ -89,6 +91,7 @@ set(PLUGIN_SOURCES
     Source/Ui/EnvPage.cpp
     Source/Ui/SettingsPage.cpp
     Source/Ui/SpectrumPage.cpp
+    Source/Ui/LogoPainter.cpp
     Source/Core/WavetablePack.cpp
     Source/Core/AiChat.cpp
     Source/Ui/AiChatPage.cpp
@@ -194,6 +197,8 @@ target_sources(MyOwnFruitTests PRIVATE
     Tests/ModulationTests.cpp
     Source/Core/Params.cpp
     Source/Core/Master.cpp
+    Source/Core/SourceEq.cpp
+    Source/Core/Effects.cpp
     Tests/TestMain.cpp
 )
 target_link_libraries(MyOwnFruitTests PRIVATE juce::juce_audio_processors juce::juce_dsp)

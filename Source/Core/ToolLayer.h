@@ -43,6 +43,7 @@ private:
     juce::var loadPreset (const juce::var& args);
     juce::var savePreset (const juce::var& args);
     juce::var renderPreview (const juce::var& args);
+    juce::var analyseMix (const juce::var& args);
     juce::var analyzeAudio (const juce::var& args);
     juce::var pianoRollFiles (const juce::String& tool, const juce::var& args);
     juce::var loadKickSample (const juce::var& args);

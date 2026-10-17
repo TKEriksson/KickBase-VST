@@ -102,6 +102,7 @@ public:
     void setBridgeEnabled (bool enabled);
     bool isBridgeEnabled() const { return bridge != nullptr && bridge->isRunning(); }
     juce::String getBridgeId() const { return bridge != nullptr ? bridge->getId() : juce::String(); }
+    std::unique_ptr<PluginBase> cloneForOffline() const { return createOfflineCopy(); } // en egen instans för analys och rendering
     int getBridgeConnections() const { return bridge != nullptr ? bridge->getConnectedCount() : 0; }
 
     // Kickens sampling (klick eller hel kick) och baslagrens samplingar. Anropas från gränssnittet (message thread).

@@ -55,7 +55,7 @@ void FxEditor::resized()
         processor.editorScale = scale;
 
     auto area = juce::Rectangle<int> (0, 0, baseWidth, baseHeight).reduced (10);
-    header.setBounds (area.removeFromTop (52));
+    header.setBounds (area.removeFromTop (LogoPainter::height));
     area.removeFromTop (4);
     info.setBounds (area.removeFromBottom (22));
     area.removeFromBottom (6);

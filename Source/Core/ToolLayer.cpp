@@ -2,6 +2,7 @@
 #include "Settings.h"
 #include "AudioAnalysis.h"
 #include "RollFiles.h"
+#include "MixAnalysis.h"
 #include <BinaryData.h>
 
 using juce::var;
@@ -191,7 +192,7 @@ std::vector<ToolLayer::ToolInfo> ToolLayer::tools()
           R"({"type":"object","properties":{"all_parameters":{"type":"boolean"}}})" },
         { "set_parameters", "Sets parameters in their own units (Hz, ms, dB, semitones, 0..1 for percentages). Choices accept the option name or index (e.g. \"bass1ATable\": \"Classic Saw\"), switches accept true/false. Example: {\"values\":{\"bass1Cutoff\":250,\"kickDrive\":0.3,\"bass1FilterType\":\"LP 24\"}}.",
           R"({"type":"object","properties":{"values":{"type":"object","additionalProperties":true}},"required":["values"]})" },
-        { "set_effect", "Puts an effect in a slot. channel FX1-FX11 (or the old letters A-K), slot 1-5, type e.g. 'Echo', 'Reverb', 'Distortion' ('Off' clears the slot), knobs by name in real units, e.g. {\"TIME\":\"3/16\",\"FEEDBACK\":0.4}. Unmentioned knobs get the effect's defaults. Bass layers and the kick send to a channel with bassNFxChannel / bassNFxAmount (1 = A) via set_parameters.",
+        { "set_effect", "Puts an effect in a slot. channel FX1-FX11 (or the old letters A-K), slot 1-5, type e.g. 'Echo', 'Reverb', 'Distortion' ('Off' clears the slot), knobs by name in real units, e.g. {\"TIME\":\"3/16\",\"FEEDBACK\":0.4}. Unmentioned knobs get the effect's defaults. Bass layers and the kick send to a channel with bassNFxChannel / bassNFxAmount (1 = A) via set_parameters. Type 'Sidechain' ducks the channel by another source: knobs SOURCE ('Kick', 'Instr 1' ... 'Instr 10'), THRESHOLD (dB), DEPTH (0-1), ATTACK (ms), RELEASE (ms). To duck instrument B under instrument A: put a Sidechain effect with SOURCE 'Instr A' in an FX channel and send B 100 % to that channel (bassBFxChannel = that channel number, bassBFxAmount = 1, so nothing of B stays dry). See the guide (get_guide) section 9 for recipes.",
           R"({"type":"object","properties":{"channel":{"type":"string"},"slot":{"type":"integer"},"type":{"type":"string"},"knobs":{"type":"object","additionalProperties":true}},"required":["channel","slot","type"]})" },
         { "set_kick_envelopes", "Sets the kick's free envelopes as arrays of [time_seconds, value, tension] nodes. pitch: semitones above the tail pitch (0..72, max 0.5 s). amp: volume 0..1 (max 2 s; the kick ends at the last node, which should be 0). Tension -1..1: negative falls/rises fast first, positive holds then moves late. Omit one to leave it unchanged.",
           R"({"type":"object","properties":{"pitch":{"type":"array","items":{"type":"array","items":{"type":"number"}}},"amp":{"type":"array","items":{"type":"array","items":{"type":"number"}}}}})" },
@@ -227,6 +228,8 @@ std::vector<ToolLayer::ToolInfo> ToolLayer::tools()
           R"({"type":"object","properties":{"layer":{"type":"integer"},"file":{"type":"string"},"level":{"type":"number"},"key_track":{"type":"boolean"},"root_note":{"type":"integer"},"loop":{"type":"boolean"},"start":{"type":"number"}},"required":["layer"]})" },
         { "load_kick_sample", "Loads a WAV/AIFF/FLAC file (max 2 s, mono-summed) as the kick's sample. kickSampleMode (Click | Layer | Replace) decides how it is used: Click = the first moments of every kick on top of the synthesized body, scaled by kickClick; Layer = the whole sample on top of the synthesized kick (kickSampleLevel); Replace = the sample is the kick (the synthesized body is silent). kickSampleTune plays it faster or slower. Empty or missing file clears it.",
           R"({"type":"object","properties":{"file":{"type":"string"}}})" },
+        { "analyse_mix", "Plays the pattern through once offline (all bars of the pattern, at most 16) and analyses how the kick, each instrument and the master share the frequencies, bar by bar. Returns findings with severity (problem, warning, info), the sources involved, the frequency range and the bars where it happens: collisions between sources at the same loudness and frequency, an instrument covering the kick, a kick tail tuned too low or high, instruments that are out of tune with each other or the kick (octaves and unison count as in tune), rumble under 30 Hz, a master limiter that works too hard, and (with reference_file) where the master has more or less energy than a reference track. Measured on the real signals after ducking and EQ, so a collision the sidechain already solved does not show. Kick and instrument sharing low frequencies is only a warning because that is normal when the sidechain gives the kick the hit. sensitivity: low (clear problems only), normal (default) or high (smaller overlaps too). Use it after a change to check that you fixed what you meant to; the user sees the same report in the SPECTRUM tab.",
+          R"({"type":"object","properties":{"sensitivity":{"type":"string","enum":["low","normal","high"]},"bpm":{"type":"number"},"note":{"type":"integer"},"max_bars":{"type":"integer"},"reference_file":{"type":"string"}}})" },
         { "undo", "Undoes the last change made through these tools.", R"({"type":"object","properties":{}})" },
         { "redo", "Redoes what undo undid.", R"({"type":"object","properties":{}})" },
         { "reset", "Resets everything to the Init sound (all parameters at their defaults, default pattern, no routes).", R"({"type":"object","properties":{}})" },
@@ -261,6 +264,7 @@ var ToolLayer::call (const juce::String& tool, const var& args)
     if (tool == "get_state")        return getState (args);
     if (tool == "list_presets")     return listPresets (args);
     if (tool == "render_preview")   return renderPreview (args);
+    if (tool == "analyse_mix")      return analyseMix (args);
     if (tool == "analyze_audio")    return analyzeAudio (args);
     if (tool == "export_midi" || tool == "save_piano_roll")
         return pianoRollFiles (tool, args);
@@ -915,6 +919,37 @@ var ToolLayer::savePreset (const var& args)
     auto data = object();
     put (data, "saved", Presets::folder (section, processor.isEffectVersion()).getChildFile (juce::File::createLegalFileName (name) + ".mofp").getFullPathName());
     return ok (data);
+}
+
+var ToolLayer::analyseMix (const var& args)
+{
+    if (processor.isEffectVersion())
+        return fail ("analyse_mix works in the instrument version of Kickbase (the FX version has no instruments to compare).");
+
+    MixAnalysis::Options options;
+    const auto sensitivity = args["sensitivity"].toString().toLowerCase();
+    options.sensitivity = sensitivity == "low" ? 0 : sensitivity == "high" ? 2 : 1;
+    if (args.hasProperty ("max_bars"))
+        options.maxBars = juce::jlimit (1, 32, (int) args["max_bars"]);
+
+    const auto bpm = args.hasProperty ("bpm") ? juce::jlimit (60.0, 220.0, (double) args["bpm"]) : (processor.transportStatus.bpm.load() > 0.0 ? (double) processor.transportStatus.bpm.load() : 145.0);
+    const auto keyNote = processor.transportStatus.keyNote.load();
+    const auto note = args.hasProperty ("note") ? juce::jlimit (0, 127, (int) args["note"]) : (keyNote >= 0 ? keyNote : 52);
+
+    std::shared_ptr<const MixAnalysis::Reference> reference;
+    if (const auto path = args["reference_file"].toString(); path.isNotEmpty())
+    {
+        juce::String error;
+        reference = MixAnalysis::loadReference (juce::File (path), error);
+        if (reference == nullptr)
+            return fail (error);
+    }
+
+    auto copy = MixAnalysis::prepareCopy (processor);
+    const auto report = MixAnalysis::run (*copy, bpm, note, options, reference.get(), {}, {});
+    if (! report.valid)
+        return fail (report.error);
+    return report.toVar();
 }
 
 var ToolLayer::renderPreview (const var& args)

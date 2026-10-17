@@ -14,6 +14,8 @@
 //   MyOwnFruitTool fitbeat  <ljudfil> <start> <slut> [rolling|galloping|triplet|offbeat]
 //   MyOwnFruitTool comparebeat <ljudfil> <start> <slut> <mönster> <rendering.wav>
 
+#include "../Source/Core/MixAnalysis.h"
+#include "../Source/Ui/LogoPainter.h"
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_audio_utils/juce_audio_utils.h>
 #include "../Source/Fx/FxProcessor.h"
@@ -288,6 +290,248 @@ namespace
         editor.reset();
         std::puts (failed ? "FEL: längdtestet misslyckades" : "Längdtestet gick igenom");
         return failed ? 1 : 0;
+    }
+
+    // En pianorulle längre än totalen: totalen följer med, och rullen spelar hela sin längd.
+    int rollLengthTest (bool withEditor)
+    {
+        juce::ScopedJuceInitialiser_GUI gui;
+        const auto owner = std::make_unique<InstrumentProcessor>();
+        auto& processor = *owner;
+        processor.setPlayConfigDetails (0, 2, renderRate, blockSize);
+        processor.prepareToPlay (renderRate, blockSize);
+        std::unique_ptr<juce::AudioProcessorEditor> editor;
+        if (withEditor)
+            editor.reset (processor.createEditorAndMakeActive());
+
+        auto runFor = [] (int milliseconds) { juce::MessageManager::getInstance()->runDispatchLoopUntil (milliseconds); };
+        auto setChoice = [&processor] (const juce::String& id, int index)
+        {
+            auto* parameter = processor.apvts.getParameter (id);
+            parameter->setValueNotifyingHost (parameter->convertTo0to1 ((float) index));
+        };
+        auto failed = false;
+        auto check = [&failed] (bool ok, const juce::String& what) { std::printf ("%s: %s\n", ok ? "ok" : "FEL", what.toRawUTF8()); failed |= ! ok; };
+
+        // Bara instrument 1 ska höras: pianorulle med en ton i takt 1 och en i takt 2 (totalen är 2 takter).
+        setChoice (ParamID::kickOn, 0);
+        for (int layer = 1; layer < 3; ++layer)
+            setChoice (ParamID::bass (layer, BassField::on), 0);
+        processor.pattern.clearNotes (0);
+        processor.pattern.addNote (0, 0, 96, 0);
+        processor.pattern.addNote (0, Pattern::ticksPerBar, 96, 0);
+        processor.pattern.setCustom (0, true);
+        setChoice (ParamID::patternBars, 1); // totalt 2 takter
+        runFor (300);
+        setChoice (ParamID::rowBars (1), 3); // rullen: 4 takter
+        runFor (600);
+        const auto lengths = Params::readPatternLengths (processor.apvts);
+        check (lengths.total >= 4 && lengths.barsOf (1) == 4, "totalen (" + juce::String (lengths.total) + ") är minst rullens längd (4 takter)");
+        const auto totalIndex = (int) std::round (processor.apvts.getRawParameterValue (ParamID::patternBars)->load());
+        check (totalIndex >= 2, "TOTAL LENGTH visar minst 4 takter (index " + juce::String (totalIndex) + ")");
+        // Frågan om att kopiera upprepningen in i de nya takterna: svara "Copy" (1), som en användare skulle.
+        if (auto* modal = juce::ModalComponentManager::getInstance()->getModalComponent (0))
+        {
+            std::puts ("en fråga öppnades (Longer pattern): svarar Copy");
+            modal->exitModalState (1);
+            runFor (300);
+        }
+
+        OfflineRender::Settings settings;
+        settings.sampleRate = renderRate;
+        settings.blockSize = blockSize;
+        settings.bpm = 140.0;
+        settings.bars = 4;
+        settings.notes = { 52 };
+        const auto audio = OfflineRender::render (processor, settings);
+        const auto barSamples = (int) (renderRate * 60.0 / 140.0 * 4.0);
+        std::array<float, 4> peaks {};
+        for (int bar = 0; bar < 4; ++bar)
+            peaks[(size_t) bar] = audio.getMagnitude (0, bar * barSamples, std::min (barSamples, audio.getNumSamples() - bar * barSamples));
+        std::printf("toppar per takt: %.3f %.3f %.3f %.3f\n", peaks[0], peaks[1], peaks[2], peaks[3]);
+        check (peaks[0] > 0.01f && peaks[1] > 0.01f && peaks[2] > 0.01f && peaks[3] > 0.01f, "rullen spelar alla fyra takterna");
+
+        editor.reset();
+        std::puts (failed ? "FEL: rolltest" : "Rolltestet gick igenom");
+        return failed ? 1 : 0;
+    }
+
+    // Mixanalysen på det som ligger i pluginet (Init eller preset 1) och skriver rapporten.
+    int analyseTest (int sensitivity)
+    {
+        juce::ScopedJuceInitialiser_GUI gui;
+        const auto owner = std::make_unique<InstrumentProcessor>();
+        auto& processor = *owner;
+        processor.setPlayConfigDetails (0, 2, renderRate, blockSize);
+        processor.prepareToPlay (renderRate, blockSize);
+        processor.transportStatus.bpm = 145.0;
+        processor.transportStatus.keyNote = 52;
+        const auto preset = juce::SystemStats::getEnvironmentVariable ("KB_PRESET", "-1").getIntValue();
+        if (preset >= 0)
+            processor.loadFactoryPreset (Presets::Section::full, preset);
+
+        MixAnalysis::Options options;
+        options.sensitivity = sensitivity;
+        auto copy = MixAnalysis::prepareCopy (processor);
+        const auto start = juce::Time::getMillisecondCounterHiRes();
+        const auto report = MixAnalysis::run (*copy, 145.0, 52, options, nullptr, {}, {});
+        std::printf ("%s\n(%.1f s)\n", report.toText().toRawUTF8(), (juce::Time::getMillisecondCounterHiRes() - start) / 1000.0);
+        for (const auto& source : report.sources)
+            if (source.present)
+                std::printf ("  %s: peak %.1f dB, f0 %.1f Hz %s\n", source.name.toRawUTF8(), source.peakDb, source.fundamentalHz, source.note.toRawUTF8());
+        return report.valid ? 0 : 1;
+    }
+
+    // EQ per källa: högpass på kicken, ett instrument och mastern tar bort bas, och ett lyft ökar nivån. Mixanalysen ska också ge ett giltigt svar.
+    int eqTest()
+    {
+        juce::ScopedJuceInitialiser_GUI gui;
+        const auto owner = std::make_unique<InstrumentProcessor>();
+        auto& processor = *owner;
+        processor.setPlayConfigDetails (0, 2, renderRate, blockSize);
+        processor.prepareToPlay (renderRate, blockSize);
+
+        auto failed = false;
+        auto check = [&failed] (bool ok, const juce::String& what) { std::printf ("%s: %s\n", ok ? "ok" : "FEL", what.toRawUTF8()); failed |= ! ok; };
+        auto setValue = [&processor] (const juce::String& id, float real)
+        {
+            auto* parameter = processor.apvts.getParameter (id);
+            parameter->setValueNotifyingHost (parameter->convertTo0to1 (real));
+        };
+        auto rmsOf = [&processor] (PluginBase::ExportPart part)
+        {
+            OfflineRender::Settings settings;
+            settings.sampleRate = renderRate;
+            settings.bpm = 140.0;
+            settings.bars = 2;
+            settings.notes = { 52 };
+            settings.extraBars = 1;
+            const auto audio = processor.renderOffline (settings, part);
+            return audio.getRMSLevel (0, 0, audio.getNumSamples());
+        };
+
+        const auto kickFlat = rmsOf (PluginBase::ExportPart::kick);
+        setValue ("kickEqHp", 400.0f);
+        const auto kickHighPassed = rmsOf (PluginBase::ExportPart::kick);
+        check (kickHighPassed < 0.5f * kickFlat, "högpass på kicken tar bort det mesta (" + juce::String (kickFlat, 3) + " -> " + juce::String (kickHighPassed, 3) + ")");
+        setValue ("kickEqHp", 20.0f);
+        check (std::abs (rmsOf (PluginBase::ExportPart::kick) - kickFlat) < 0.01f * kickFlat, "med högpasset av är kicken som förut");
+
+        const auto bassFlat = rmsOf (PluginBase::ExportPart::bass);
+        setValue ("bass1EqHp", 500.0f);
+        setValue ("bass2EqHp", 500.0f);
+        setValue ("bass3EqHp", 500.0f);
+        const auto bassHighPassed = rmsOf (PluginBase::ExportPart::bass);
+        check (bassHighPassed < 0.7f * bassFlat, "högpass på instrumenten minskar dem (" + juce::String (bassFlat, 3) + " -> " + juce::String (bassHighPassed, 3) + ")");
+        for (int i = 1; i <= 3; ++i)
+            setValue ("bass" + juce::String (i) + "EqHp", 20.0f);
+
+        setValue ("masterEq1G", 12.0f);
+        setValue ("masterEq1F", 60.0f);
+        const auto boosted = rmsOf (PluginBase::ExportPart::full);
+        setValue ("masterEq1G", 0.0f);
+        const auto neutral = rmsOf (PluginBase::ExportPart::full);
+        check (boosted > 1.15f * neutral || boosted < 0.9f * neutral, "ett lyft i masterns EQ ändrar ljudet (" + juce::String (neutral, 3) + " -> " + juce::String (boosted, 3) + ")");
+
+        // SIDECHAIN som effekt: instrument 2 går 100 % genom FX1, och ett SIDECHAIN med instrument 1 som källa sänker det.
+        {
+            const auto mixerGain = [] (int source) { return Mixer::paramID (Mixer::firstBassSource + source, "Gain"); };
+            for (const auto source : { 0, 2 })
+                setValue (mixerGain (source), 0.0f); // instrument 1 och 3 hörs inte, men finns kvar som källor
+            setValue (ParamID::bass (1, BassField::fxChannel), 1.0f);
+            setValue (ParamID::bass (1, BassField::fxAmount), 1.0f);
+            const auto routed = rmsOf (PluginBase::ExportPart::bass);
+            Effects::setSlotType (processor.apvts, 0, 0, EffectType::ducker);
+            const auto ducked = rmsOf (PluginBase::ExportPart::bass);
+            check (routed > 0.01f && ducked < 0.92f * routed, "SIDECHAIN-effekten sänker instrument 2 efter instrument 1 (" + juce::String (routed, 3) + " -> " + juce::String (ducked, 3) + ")");
+            Effects::setSlotType (processor.apvts, 0, 0, EffectType::off);
+
+            // Samma sak som en AI gör den: set_effect med typen Sidechain och källan vald med namn.
+            ToolLayer tools (processor);
+            const auto result = tools.call ("set_effect", juce::JSON::parse (R"({"channel":"FX1","slot":1,"type":"Sidechain","knobs":{"SOURCE":"Instr 1","THRESHOLD":-24,"DEPTH":0.8}})"));
+            check ((bool) result["ok"] && Effects::slotType (processor.apvts, 0, 0) == EffectType::ducker, "set_effect kan lägga en Sidechain-effekt: " + juce::JSON::toString (result, true).substring (0, 120));
+            const auto viaTool = rmsOf (PluginBase::ExportPart::bass);
+            check (viaTool < 0.92f * routed, "sidechainen som AI:n lägger fungerar (" + juce::String (viaTool, 3) + ")");
+            Effects::setSlotType (processor.apvts, 0, 0, EffectType::off);
+            setValue (ParamID::bass (1, BassField::fxChannel), 0.0f);
+            for (const auto source : { 0, 2 })
+                setValue (mixerGain (source), 1.0f);
+        }
+
+        // Instrumentets EQ följer med när instrumentet töms.
+        setValue ("bass2EqHp", 300.0f);
+        processor.wipeInstrument (1);
+        check (processor.apvts.getRawParameterValue ("bass2EqHp")->load() <= 20.5f, "EQ:n nollställs när instrumentet töms");
+
+        // Mixanalysen: ett giltigt svar med rimliga uppgifter.
+        MixAnalysis::Options options;
+        auto copy = MixAnalysis::prepareCopy (processor);
+        const auto report = MixAnalysis::run (*copy, 145.0, 52, options, nullptr, {}, {});
+        check (report.valid && report.bars >= 1 && report.kickTailHz > 25.0f && report.kickTailHz < 70.0f, "mixanalysen ger en rapport (kickens svans " + juce::String (report.kickTailHz, 1) + " Hz)");
+
+        // En påhittad ögonblicksbild: två källor som spelar exakt lika starkt i samma band ska ge en krock, och en tyst källa ingen.
+        {
+            MixAnalysis::Capture capture;
+            capture.rate = 48000.0;
+            capture.bpm = 140.0;
+            capture.bars = 2;
+            capture.resize (24);
+            for (int f = 0; f < 24; ++f)
+                capture.frameBar[(size_t) f] = f / 12;
+            capture.present[(size_t) MixAnalysis::kickSource] = capture.present[(size_t) MixAnalysis::firstInstrument] = capture.present[(size_t) MixAnalysis::firstInstrument + 1] = true;
+            capture.present[(size_t) MixAnalysis::masterSource] = true;
+            capture.names[(size_t) MixAnalysis::kickSource] = "Kick";
+            capture.names[(size_t) MixAnalysis::firstInstrument] = "A";
+            capture.names[(size_t) MixAnalysis::firstInstrument + 1] = "B";
+            capture.names[(size_t) MixAnalysis::masterSource] = "Master";
+            for (int f = 0; f < 24; ++f)
+            {
+                capture.band (MixAnalysis::firstInstrument, f, 6) = -10.0f;      // 100-125 Hz
+                capture.band (MixAnalysis::firstInstrument + 1, f, 6) = -12.0f;  // lika starkt
+                capture.band (MixAnalysis::kickSource, f, 3) = -20.0f;            // kicken ligger någon annanstans
+                capture.band (MixAnalysis::masterSource, f, 6) = -8.0f;
+            }
+            const auto fake = MixAnalysis::evaluate (capture, options, nullptr);
+            auto found = false, falseKick = false;
+            for (const auto& finding : fake.findings)
+            {
+                found = found || (finding.category == "collision" && finding.sources.contains ("A") && finding.sources.contains ("B"));
+                falseKick = falseKick || (finding.category == "collision" && finding.sources.contains ("Kick"));
+            }
+            check (fake.valid && found, "två lika starka källor i samma band ger en krock");
+            check (! falseKick, "kicken i ett annat band ger ingen krock");
+            for (int f = 0; f < 24; ++f)
+                capture.band (MixAnalysis::firstInstrument + 1, f, 6) = -40.0f; // B är tydligt svagare och under golvet
+            const auto quiet = MixAnalysis::evaluate (capture, options, nullptr);
+            auto stillThere = false;
+            for (const auto& finding : quiet.findings)
+                stillThere = stillThere || finding.category == "collision";
+            check (! stillThere, "en tydligt svagare källa ger ingen krock");
+        }
+
+        std::puts (failed ? "FEL: eqtest" : "EQ- och analystestet gick igenom");
+        return failed ? 1 : 0;
+    }
+
+    // Loggan ensam (med glöden på väg åt höger och åt vänster) som en bild, för att se glaset och reflektionerna.
+    int logoImage (const juce::File& outFile)
+    {
+        juce::ScopedJuceInitialiser_GUI gui;
+        LogoPainter logo ("FX");
+        juce::Image image (juce::Image::ARGB, logo.getWidth() * 4 + 60, LogoPainter::height * 4 * 3, true, juce::SoftwareImageType());
+        juce::Graphics g (image);
+        g.fillAll (juce::Colour (0xff1b1e30));
+        g.addTransform (juce::AffineTransform::scale (4.0f));
+        const juce::Colour kickColour (0xffff9a3c), bassColour (0xff3fd2ff);
+        for (int row = 0; row < 3; ++row)
+        {
+            LogoPainter::Sweep kick { 0.15f + 0.3f * (float) row, row == 0 ? 0.0f : 0.9f, kickColour }, bass { 0.85f - 0.3f * (float) row, row == 1 ? 0.0f : 0.9f, bassColour };
+            logo.paint (g, { 8.0f, (float) (row * LogoPainter::height) }, 1.0 + row, kick, bass);
+        }
+        outFile.deleteFile();
+        juce::FileOutputStream stream (outFile);
+        juce::PNGImageFormat png;
+        return stream.openedOk() && png.writeImageToStream (image, stream) ? 0 : 1;
     }
 
     // Flera instrument: lägga till, spara/läsa, ta bort (allt ska rensas) och gamla projekt (kicken var lager 3).
@@ -858,6 +1102,14 @@ int toolMain (int argc, char* argv[])
         return instrumentTest();
     if (argc == 2 && juce::String (argv[1]) == "lengthtest")
         return lengthTest();
+    if (argc == 3 && juce::String (argv[1]) == "logoimage")
+        return logoImage (juce::File::getCurrentWorkingDirectory().getChildFile (argv[2]));
+    if (argc == 2 && juce::String (argv[1]) == "eqtest")
+        return eqTest();
+    if (argc >= 2 && juce::String (argv[1]) == "analysetest")
+        return analyseTest (argc > 2 ? juce::String (argv[2]).getIntValue() : 1);
+    if (argc == 2 && juce::String (argv[1]) == "rolltest")
+        return rollLengthTest (true);
 
     // params [instrument|fx]: parameterregistret.
     if (argc >= 2 && juce::String (argv[1]) == "params")

@@ -64,7 +64,7 @@ void InstrumentEditor::resized()
 
     auto area = juce::Rectangle<int> (0, 0, baseWidth, baseHeight).reduced (10);
 
-    header.setBounds (area.removeFromTop (52));
+    header.setBounds (area.removeFromTop (LogoPainter::height));
     area.removeFromTop (4);
 
     keyboard.setBounds (area.removeFromBottom (50));
@@ -72,7 +72,7 @@ void InstrumentEditor::resized()
     info.setBounds (area.removeFromBottom (22));
     area.removeFromBottom (6);
 
-    synths.setBounds (area.removeFromTop (580));
+    synths.setBounds (area.removeFromTop (540));
     area.removeFromTop (6);
     tools.setBounds (area);
 }

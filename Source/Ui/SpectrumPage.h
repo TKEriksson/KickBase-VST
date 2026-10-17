@@ -1,13 +1,46 @@
 #pragma once
 
 #include <juce_dsp/juce_dsp.h>
+#include "../Core/MixAnalysis.h"
 #include "../Core/PluginBase.h"
+#include "../Core/SourceEq.h"
 #include "Theme.h"
+
+// Rapportens rader (en per fynd), i en rullningsbar lista.
+class ReportContent : public juce::Component
+{
+public:
+    std::function<void (int)> onSelect;
+    int selected = -1;
+
+    void setReport (const MixAnalysis::Report& newReport);
+    void setWidth (int width);
+    void paint (juce::Graphics&) override;
+    void mouseDown (const juce::MouseEvent&) override;
+    const MixAnalysis::Report& getReport() const { return report; }
+
+private:
+    struct Row
+    {
+        juce::TextLayout layout;
+        int top = 0, height = 0;
+    };
+
+    void layoutRows();
+
+    MixAnalysis::Report report;
+    std::vector<Row> rows;
+    int width = 300;
+};
 
 // Fliken SPECTRUM: ett spektrum i realtid där man väljer vilka ljudkällor som visas samtidigt (kicken, varje instrument, mastern), för att
 // jämföra deras övertonsserier och se var de krockar. Där två eller fler källor har energi på samma frekvens blir ytan under dem röd
 // (starkare röd = högre nivå och fler källor). Analysen är avstängd som standard och bara igång när fliken är öppen och ANALYSER är på,
 // så att den inte tar processorkraft i onödan.
+//
+// ANALYSE spelar mönstret ett helt varv offline och skriver en rapport (MixAnalysis) med saker att titta på, takt för takt. En
+// referenslåt kan läsas in och visas bakom mastern, och rapporten jämför balansen mot den. EQ-knappen visar och redigerar EQ:n
+// för vald källa direkt i diagrammet (dra punkterna).
 class SpectrumPage : public juce::Component, private juce::Timer
 {
 public:
@@ -15,11 +48,17 @@ public:
     ~SpectrumPage() override;
 
     void paint (juce::Graphics&) override;
+    void paintOverChildren (juce::Graphics&) override;
     void resized() override;
     void visibilityChanged() override { updateRunning(); }
     void parentHierarchyChanged() override { updateRunning(); }
     void mouseMove (const juce::MouseEvent&) override;
     void mouseExit (const juce::MouseEvent&) override;
+    void mouseDown (const juce::MouseEvent&) override;
+    void mouseDrag (const juce::MouseEvent&) override;
+    void mouseUp (const juce::MouseEvent&) override;
+    void mouseDoubleClick (const juce::MouseEvent&) override;
+    void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 
 private:
     static constexpr int order = 13;
@@ -47,9 +86,32 @@ private:
     juce::Rectangle<float> plotArea() const;
     juce::String describe (float hz) const;
 
+    void startAnalysis();
+    void takeReport();
+    void selectFinding (int index);
+    void chooseReference();
+    void loadReferenceFile (const juce::File& file);
+    void copyReport();
+    void showSourceMenu();
+    void updateShowText();
+
+    // EQ
+    static constexpr float eqCentreDb = -45.0f; // diagrammets nivå där EQ:ns förstärkning 0 dB ritas
+    struct EqNode { juce::Point<float> position; int id = -1; };
+    float dbToY (float db) const;
+    float yToDb (float y) const;
+    std::vector<EqNode> eqNodes() const;
+    int eqHit (juce::Point<float> position) const;
+    void setEqParameter (const juce::String& suffix, float value);
+    float eqParameter (const juce::String& suffix) const;
+    juce::String eqKey (int node, const char* field) const;
+    void paintEq (juce::Graphics&, juce::Rectangle<float> area);
+
     PluginBase& processor;
-    juce::TextButton analyserButton { "ANALYSER" }, collisionsButton { "COLLISIONS" }, harmonicsButton { "HARMONICS" };
-    std::array<juce::TextButton, numSources> chips;
+    juce::TextButton analyserButton { "ANALYSER" }, collisionsButton { "COLLISIONS" }, harmonicsButton { "HARMONICS" }, eqButton { "EQ" };
+    juce::TextButton analyseButton { "ANALYSE" }, referenceButton { "REFERENCE" }, copyButton { "COPY" };
+    juce::ComboBox sensitivityBox, eqTargetBox;
+    juce::TextButton showButton { "SHOW" }; // flervalslista över vilka källor som visas
     std::array<Source, numSources> sources;
 
     juce::dsp::FFT fft { order };
@@ -57,7 +119,24 @@ private:
     std::vector<float> left, right;
     std::array<float, size * 2> fftData {};
 
+    MixAnalyser analyser;
+    juce::Rectangle<int> plotBody; // diagrammets yta (rapporten ligger till höger om den)
+    juce::Viewport viewport;
+    ReportContent content;
+    bool reportShown = false, analysing = false;
+    int reportVersion = 0;
+    float highlightLow = 0.0f, highlightHigh = 0.0f;
+
+    std::shared_ptr<const MixAnalysis::Reference> reference;
+    float referenceOffset = 0.0f;
+    juce::String referenceError;
+    std::unique_ptr<juce::FileChooser> chooser;
+
+    int eqSource = 0, dragNode = -1;
+    std::vector<juce::RangedAudioParameter*> gestureParameters;
+
     int namesVersion = -1, instrumentsShown = -1, tick = 0;
     float hoverX = -1.0f;
+    juce::Point<float> hoverPoint;
     bool running = false;
 };
