@@ -100,6 +100,15 @@ void InstrumentProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
     ensureScratchSize (numSamples);
     keyboardState.processNextMidiBuffer (midi, 0, numSamples, true);
     clock.beginBlock (getHostPosition(), numSamples);
+    for (int layer = 0; layer < numLayers; ++layer)
+    {
+        // Instrumentens källor (ENV 2, ENV 3, velocity, slump) som de var vid blockets början.
+        if (layer < activeLayers)
+            modulator.setInstrumentSources (layer, basses[(size_t) layer].getModulationValue (0), basses[(size_t) layer].getModulationValue (1),
+                                            basses[(size_t) layer].getModulationValue (2), basses[(size_t) layer].getModulationValue (3));
+        else
+            modulator.setInstrumentSources (layer, 0.0f, 0.0f, 0.0f, 0.0f);
+    }
     modulator.update (clock.getPpqAt (0));
 
     // Räknaren och mönstret börjar om vid 1.1 (egen klocka).

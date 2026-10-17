@@ -491,6 +491,7 @@ namespace
         processor->selectedPatternLayer = tab / 10000000 % 10; // valt lager i PATTERN: 0-8 instrument, 9 = kicken (tiomiljontal)
         if (processor->selectedPatternLayer == 9)
             processor->selectedPatternLayer = Pattern::kickLayer;
+        processor->sequencerRowHeight = juce::SystemStats::getEnvironmentVariable ("KB_ROWHEIGHT", "0").getIntValue(); // radhöjden (zoom)
         processor->selectedInstrument = juce::SystemStats::getEnvironmentVariable ("KB_INSTRUMENT", "0").getIntValue(); // valt instrument (0-9)
         if (const auto count = juce::SystemStats::getEnvironmentVariable ("KB_INSTRUMENTS", {}); count.isNotEmpty())
             processor->setInstrumentCount (count.getIntValue()); // antal instrument i bilden

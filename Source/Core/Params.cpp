@@ -87,7 +87,9 @@ namespace ParamID
                                      "FilterType", "KeyTrack", "Cutoff", "Resonance", "EnvAmount", "EnvDecay", "VelToEnv",
                                      "Attack", "Decay", "Sustain", "Release", "Glide", "Drive",
                                      "GateOn", "GateGrid", "GateDepth", "GateSmooth",
-                                     "SampleLevel", "SampleRoot", "SampleLoop", "SampleKey", "SampleStart", "SampleOn" };
+                                     "SampleLevel", "SampleRoot", "SampleLoop", "SampleKey", "SampleStart", "SampleOn",
+                                     "Env2Attack", "Env2Decay", "Env2Sustain", "Env2Release", "Env3Attack", "Env3Decay", "Env3Sustain", "Env3Release",
+                                     "SubWave", "NoiseTone", "PitchEnvAmount", "PitchEnvDecay", "DriveMode" };
         static_assert (std::size (names) == (size_t) BassField::count);
         return names[(size_t) field];
     }
@@ -247,8 +249,8 @@ namespace Params
                                     [] (float v) { return String (v, 1) + " ct"; }));
             layout.add (percent (oid (F::aBlend), oscTitle + "Blend", 0.5f));
             layout.add (std::make_unique<AudioParameterChoice> (ParameterID { oid (F::aWarp), 1 }, oscTitle + "Warp",
-                                                                osc == 0 ? StringArray { "Off", "Sync", "Bend", "PWM", "Mirror", "FM (B)" }
-                                                                         : StringArray { "Off", "Sync", "Bend", "PWM", "Mirror" }, 0));
+                                                                osc == 0 ? StringArray { "Off", "Sync", "Bend", "PWM", "Mirror", "FM (B)", "Flip", "Quantize", "AM" }
+                                                                         : StringArray { "Off", "Sync", "Bend", "PWM", "Mirror", "Flip", "Quantize", "AM" }, 0));
             layout.add (percent (oid (F::aWarpAmount), oscTitle + "Warp Amount", 0.0f));
             layout.add (percent (oid (F::aPhase), oscTitle + "Phase", 0.0f));
             layout.add (percent (oid (F::aRandom), oscTitle + "Random Phase", 0.0f));
@@ -291,6 +293,25 @@ namespace Params
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::sampleKey), 1 }, title + "Sample Key Track", StringArray { "Off", "On" }, 0));
         layout.add (percent (id (F::sampleStart), title + "Sample Start", 0.0f));
         layout.add (std::make_unique<AudioParameterBool> (ParameterID { id (F::sampleOn), 1 }, title + "Sample On", false));
+
+        // ENV 2 och ENV 3: envelopes som inte styr ljudet själva utan används som modulationskällor.
+        for (int env = 0; env < 2; ++env)
+        {
+            const auto envTitle = title + "Env " + String (env + 2) + " ";
+            const auto base = (F) ((int) F::env2Attack + env * 4);
+            layout.add (ms (0.1f, 3000.0f, 40.0f, 5.0f, id (base), envTitle + "Attack"));
+            layout.add (ms (5.0f, 6000.0f, 400.0f, 400.0f, id ((F) ((int) base + 1)), envTitle + "Decay"));
+            layout.add (percent (id ((F) ((int) base + 2)), envTitle + "Sustain", 0.0f));
+            layout.add (ms (5.0f, 6000.0f, 300.0f, 250.0f, id ((F) ((int) base + 3)), envTitle + "Release"));
+        }
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::subWave), 1 }, title + "Sub Wave",
+                                                            StringArray { "Sine", "Triangle", "Square", "Saw" }, 0));
+        layout.add (percent (id (F::noiseTone), title + "Noise Tone", 1.0f));
+        layout.add (floatParam (id (F::pitchEnvAmount), title + "Pitch Env Amount", NormalisableRange<float> (-48.0f, 48.0f, 0.01f), 0.0f,
+                                [] (float v) { return formatSemis (v, 1); }));
+        layout.add (ms (5.0f, 1000.0f, 80.0f, 60.0f, id (F::pitchEnvDecay), title + "Pitch Env Decay"));
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::driveMode), 1 }, title + "Drive Mode",
+                                                            StringArray { "Soft", "Hard", "Fold", "Asym", "Crush" }, 0));
     }
 
     void addFxParams (Layout& layout)
@@ -443,7 +464,11 @@ BassParams ParamRefs::readBass (int layer, int rootMidiNote) const
         o.unison      = (int) oget (F::aUnison);
         o.detuneCents = oget (F::aDetune);
         o.blend       = oget (F::aBlend);
-        o.warp        = (WarpMode) (int) oget (F::aWarp);
+        {
+            // OSC 2 och 3 har ingen FM (B) i listan: Flip, Quantize och AM ligger en plats tidigare.
+            const auto choice = (int) oget (F::aWarp);
+            o.warp = (WarpMode) (osc > 0 && choice >= (int) WarpMode::fm ? choice + 1 : choice);
+        }
         o.warpAmount  = oget (F::aWarpAmount);
         o.phase       = oget (F::aPhase);
         o.randomPhase = oget (F::aRandom);
@@ -468,6 +493,13 @@ BassParams ParamRefs::readBass (int layer, int rootMidiNote) const
     p.releaseMs  = get (F::release);
     p.glideMs    = get (F::glide);
     p.drive      = get (F::drive);
+    p.driveMode  = (int) get (F::driveMode);
+    p.env2 = { get (F::env2Attack), get (F::env2Decay), get (F::env2Sustain), get (F::env2Release) };
+    p.env3 = { get (F::env3Attack), get (F::env3Decay), get (F::env3Sustain), get (F::env3Release) };
+    p.subWave = (int) get (F::subWave);
+    p.noiseTone = get (F::noiseTone);
+    p.pitchEnvSemis = get (F::pitchEnvAmount);
+    p.pitchEnvDecayMs = get (F::pitchEnvDecay);
     p.level      = get (F::level);
     p.sampleLevel    = get (F::sampleLevel);
     p.sampleRootHz   = Params::midiToHz (get (F::sampleRoot));

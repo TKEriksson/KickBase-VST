@@ -4,13 +4,29 @@ namespace
 {
     constexpr double filterAttackSeconds = 0.001;
 
-    float softClip (float x, float drive)
+    // Drive: 0 mjuk (tanh), 1 hård (klippning), 2 vikning (wavefolder), 3 asymmetrisk (jämna övertoner), 4 krossad (bitar).
+    float softClip (float x, float drive, int mode = 0)
     {
         if (drive <= 0.0f)
             return x;
 
         const auto gain = 1.0f + drive * 9.0f;
-        return std::tanh (gain * x) / std::tanh (gain);
+        switch (mode)
+        {
+            case 1:  return juce::jlimit (-1.0f, 1.0f, gain * x);
+            case 2:  return std::sin (juce::MathConstants<float>::halfPi * 0.6f * gain * x);
+            case 3:
+            {
+                const auto bias = 0.35f * drive;
+                return (std::tanh (gain * x + bias) - std::tanh (bias)) / std::max (0.2f, std::tanh (gain));
+            }
+            case 4:
+            {
+                const auto levels = std::exp2 (8.0f - 6.0f * drive);
+                return std::round (std::tanh (gain * 0.5f * x) * levels) / levels;
+            }
+            default: return std::tanh (gain * x) / std::tanh (gain);
+        }
     }
 
     double wrap (double phase) { return phase - std::floor (phase); }
@@ -37,6 +53,10 @@ void BassSynth::reset()
     gateRemaining = 0;
     glideSamplesLeft = 0;
     samplePosition = 0.0;
+    env2.reset();
+    env3.reset();
+    pitchEnv = 0.0f;
+    noiseState = 0.0f;
     filter1.reset();
     filter2.reset();
     sideFilter1.reset();
@@ -64,6 +84,17 @@ double BassSynth::warpPhase (WarpMode mode, float amount, double phase, float fm
             return wrap (phase + a * (mirrored * 0.5 - phase));
         }
         case WarpMode::fm:     return wrap (phase + a * 2.0 * fmInput);
+        case WarpMode::flip:
+        {
+            const auto mirrored = phase < 0.5 ? phase : 1.5 - phase;
+            return phase + a * (mirrored - phase);
+        }
+        case WarpMode::quantize:
+        {
+            const auto steps = std::pow (2.0, 7.0 - 6.0 * a); // 128 steg ... 2 steg
+            return std::floor (phase * steps) / steps;
+        }
+        case WarpMode::am:
         case WarpMode::off:    break;
     }
     return phase;
@@ -93,7 +124,13 @@ BassSynth::Stereo BassSynth::Oscillator::next (const OscParams& p, double freque
 
         auto& phase = phases[(size_t) v];
         const auto warped = warpPhase (p.warp, warpAmount, phase, fmInput);
-        const auto voice = gain * table.sample (p.position, warped, rate * 0.5 / std::max (1.0, hz));
+        auto voice = gain * table.sample (p.position, warped, rate * 0.5 / std::max (1.0, hz));
+        if (p.warp == WarpMode::am && warpAmount > 0.0f)
+        {
+            // AM: vågen multipliceras med en sinus en oktav upp (Serums AM-warp).
+            const auto depth = juce::jlimit (0.0f, 1.0f, warpAmount);
+            voice *= 1.0f - depth + depth * (0.5f + 0.5f * (float) std::sin (juce::MathConstants<double>::twoPi * 2.0 * phase));
+        }
 
         // Stämmorna sprids över stereobilden (balans: mitten oförändrad, ytterkanten tystnar åt andra sidan).
         const auto voicePan = voices > 1 ? (float) spread * p.stereo : 0.0f;
@@ -126,6 +163,10 @@ void BassSynth::noteOn (int semitones, float newVelocity, int gateSamples)
     }
 
     noteTime = 0.0;
+    env2.trigger();
+    env3.trigger();
+    pitchEnv = 1.0f;
+    randomValue = modRandom.nextFloat();
     samplePosition = params.sampleData != nullptr ? (double) params.sampleStart * (double) params.sampleData->audio.getNumSamples() : 0.0;
     velocity = newVelocity;
     stage = Stage::attack; // attacken börjar från nuvarande nivå, så inget knäpp
@@ -146,7 +187,36 @@ bool BassSynth::glideTo (int semitones, int samples)
 void BassSynth::release()
 {
     if (stage != Stage::idle)
+    {
         stage = Stage::release;
+        env2.release();
+        env3.release();
+    }
+}
+
+void BassSynth::ModEnv::next (const ModEnvParams& p, double rate)
+{
+    switch (envStage)
+    {
+        case EnvStage::attack:
+            level += (float) (1.0 / (std::max (0.05f, p.attackMs) * 0.001 * rate));
+            if (level >= 1.0f)
+            {
+                level = 1.0f;
+                envStage = EnvStage::decay;
+            }
+            break;
+        case EnvStage::decay:
+            level += (p.sustain - level) * (float) coefficientFor (p.decayMs, rate);
+            break;
+        case EnvStage::release:
+            level -= level * (float) coefficientFor (p.releaseMs, rate);
+            if (level < 1.0e-4f)
+                reset();
+            break;
+        case EnvStage::idle:
+            break;
+    }
 }
 
 float BassSynth::filterEnvelopeAt (const BassParams& p, double seconds)
@@ -168,7 +238,11 @@ double BassSynth::coefficientFor (double milliseconds, double rate)
 BassSynth::Output BassSynth::next()
 {
     if (stage == Stage::idle)
+    {
+        env2.reset();
+        env3.reset();
         return {};
+    }
 
     // Gate: när tonens tid är slut börjar release, om den inte väntar på en slide.
     if (gateRemaining > 0 && --gateRemaining == 0)
@@ -201,6 +275,12 @@ BassSynth::Output BassSynth::next()
             break;
     }
 
+    // Modulationsenvelopes och tonhöjdsenvelopen.
+    env2.next (params.env2, sampleRate);
+    env3.next (params.env3, sampleRate);
+    if (params.pitchEnvSemis != 0.0f)
+        pitchEnv -= pitchEnv * (float) coefficientFor (params.pitchEnvDecayMs, sampleRate);
+
     // Glide-tonen: linjärt i log-frekvens, så att varje halvton tar lika lång tid, och tonen blir kvar på målet.
     if (glideSamplesLeft > 0)
     {
@@ -209,7 +289,7 @@ BassSynth::Output BassSynth::next()
             logFrequency = targetLogFrequency;
     }
 
-    const auto frequency = juce::jlimit (1.0, sampleRate * 0.45, std::exp2 (logFrequency)); // extrema tonhöjder (±96 halvtoner) får inte ge aliasing
+    const auto frequency = juce::jlimit (1.0, sampleRate * 0.45, std::exp2 (logFrequency + params.pitchEnvSemis * pitchEnv / 12.0)); // extrema tonhöjder (±96 halvtoner) får inte ge aliasing
     const auto envelope = filterEnvelopeAt (params, noteTime);
 
     // OSC B först: den kan frekvensmodulera OSC A (warp FM). Warp env lägger till warp på A
@@ -227,9 +307,28 @@ BassSynth::Output BassSynth::next()
     // blir sedan vänster och höger igen.
     auto left = a.left * levelA + b.left * levelB + c.left * levelC;
     auto right = a.right * levelA + b.right * levelB + c.right * levelC;
-    auto centre = params.sub * (float) std::sin (juce::MathConstants<double>::twoPi * subPhase);
+    float subShape;
+    switch (params.subWave)
+    {
+        case 1:  subShape = 1.0f - 4.0f * (float) std::abs (subPhase - 0.5); break;                                 // triangel
+        case 2:  subShape = std::tanh (4.0f * (float) std::sin (juce::MathConstants<double>::twoPi * subPhase)); break; // mjuk fyrkant
+        case 3:  subShape = 2.0f * (float) subPhase - 1.0f; break;                                                   // såg
+        default: subShape = (float) std::sin (juce::MathConstants<double>::twoPi * subPhase); break;
+    }
+    auto centre = params.sub * subShape;
     if (params.noise > 0.0f)
-        centre += params.noise * (random.nextFloat() * 2.0f - 1.0f);
+    {
+        auto white = random.nextFloat() * 2.0f - 1.0f;
+        if (params.noiseTone < 0.999f)
+        {
+            // NOISE TONE: ett lågpass som gör bruset mörkare (100 Hz ... 20 kHz); nivån hålls uppe så att det inte försvinner.
+            const auto cutoffHz = 100.0f * std::pow (200.0f, params.noiseTone);
+            const auto coefficient = 1.0f - std::exp (-juce::MathConstants<float>::twoPi * cutoffHz / (float) sampleRate);
+            noiseState += coefficient * (white - noiseState);
+            white = noiseState * (1.0f + 2.5f * (1.0f - params.noiseTone));
+        }
+        centre += params.noise * white;
+    }
 
     // Samplingen: linjär interpolation. Med KEY följer hastigheten noten (samplingens egen tonhöjd = sampleRootHz).
     if (params.sampleOn && params.sampleData != nullptr && params.sampleLevel > 0.0f)
@@ -290,5 +389,5 @@ BassSynth::Output BassSynth::next()
     noteTime += 1.0 / sampleRate;
 
     // Drive verkar på källan (före gaten), så att distorsionen låter likadant oavsett envelope.
-    return { softClip (sample + side, params.drive), softClip (sample - side, params.drive), ampLevel * velocity * params.level };
+    return { softClip (sample + side, params.drive, params.driveMode), softClip (sample - side, params.drive, params.driveMode), ampLevel * velocity * params.level };
 }

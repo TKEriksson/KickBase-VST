@@ -102,8 +102,47 @@ namespace
     }
 }
 
+namespace
+{
+    void testSources()
+    {
+        std::puts("Modulering: makron och instrumentens källor");
+        DummyProcessor processor;
+        ModRoutes routes;
+        Modulator modulator (processor.apvts, routes);
+        const auto cutoff = modulator.indexOf ("bassCutoff");
+
+        processor.set ("macro2", 0.5f);
+        routes.add (Modulation::firstMacro + 1, cutoff, 0.4f);
+        modulator.update (0.0);
+        const auto withMacro = modulator.apply (cutoff, 500.0f);
+        check (std::abs (withMacro - 700.0f) < 1.0f, "makro 2 på 50 % med 40 % koppling ger +20 %", withMacro);
+
+        routes.add (Modulation::instrumentSource (2, 0), cutoff, 1.0f);
+        modulator.setInstrumentSources (2, 0.25f, 0.0f, 0.0f, 0.0f);
+        modulator.update (0.0);
+        const auto withEnvelope = modulator.apply (cutoff, 500.0f);
+        check (std::abs (withEnvelope - 950.0f) < 1.0f, "instrument 3:s ENV 2 läggs till", withEnvelope);
+        check (std::abs (modulator.sourceValue (Modulation::instrumentSource (2, 0)) - 0.25f) < 1.0e-5f, "gränssnittet ser källans värde");
+
+        check (Modulation::sourceName (Modulation::instrumentSource (2, 1)) == "INSTR 3 ENV 3" && Modulation::sourceName (4) == "MACRO 2"
+                   && Modulation::layerOfSource (Modulation::instrumentSource (9, 3)) == 9 && Modulation::kindOfSource (Modulation::instrumentSource (9, 3)) == 3,
+               "källornas namn och nummer");
+
+        // Många kopplingar ryms, och de sparas med källans nummer.
+        routes.clear();
+        for (int source = 0; source < Modulation::numSources; ++source)
+            check (routes.add (source, cutoff, 0.01f) >= 0, "alla källor ryms");
+        const auto tree = routes.toValueTree (processor.getParameters());
+        routes.clear();
+        routes.fromValueTree (tree, processor.getParameters());
+        check (routes.find (Modulation::instrumentSource (9, 3), cutoff) >= 0 && routes.find (4, cutoff) >= 0, "källor över 2 sparas och läses tillbaka");
+    }
+}
+
 void runModulationTests()
 {
     testShapes();
     testModulator();
+    testSources();
 }

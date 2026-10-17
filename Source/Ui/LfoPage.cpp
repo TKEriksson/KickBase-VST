@@ -47,16 +47,16 @@ void LfoDisplay::paint (juce::Graphics& g)
 }
 
 //==============================================================================
-LfoDragHandle::LfoDragHandle (int lfoIndex) : index (lfoIndex)
+LfoDragHandle::LfoDragHandle (int source, const juce::String& labelIn) : index (source), label (labelIn)
 {
     setMouseCursor (juce::MouseCursor::DraggingHandCursor);
-    setTooltip ("DRAG - Drag this onto any knob (kick, bass or effects) to let " + Modulation::sourceName (index)
+    setTooltip ("DRAG - Drag this onto any knob (kick, instrument or effects) to let " + Modulation::sourceName (index)
                 + " move it. Then drag the coloured ring on the knob to set how much.");
 }
 
 void LfoDragHandle::paint (juce::Graphics& g)
 {
-    const auto colour = Theme::lfoColour (index);
+    const auto colour = Theme::sourceColour (index);
     auto bounds = getLocalBounds().toFloat().reduced (1.0f);
     g.setColour (colour.withAlpha (isMouseOver() ? 0.35f : 0.18f));
     g.fillRoundedRectangle (bounds, 4.0f);
@@ -72,7 +72,7 @@ void LfoDragHandle::paint (juce::Graphics& g)
     g.fillEllipse (juce::Rectangle<float> (4.0f, 4.0f).withCentre (c));
 
     g.setFont (Theme::font (10.5f, true));
-    g.drawText ("DRAG TO A KNOB", bounds, juce::Justification::centred);
+    g.drawFittedText (label, bounds.toNearestInt(), juce::Justification::centred, 1, 0.7f);
 }
 
 void LfoDragHandle::mouseDrag (const juce::MouseEvent&)
@@ -85,13 +85,13 @@ void LfoDragHandle::mouseDrag (const juce::MouseEvent&)
             juce::Image image (juce::Image::ARGB, 64, 22, true);
             {
                 juce::Graphics g (image);
-                g.setColour (Theme::lfoColour (index));
+                g.setColour (Theme::sourceColour (index));
                 g.fillRoundedRectangle (0.0f, 0.0f, 64.0f, 22.0f, 5.0f);
                 g.setColour (Theme::knobBodyDark);
                 g.setFont (Theme::font (12.0f, true));
-                g.drawText (Modulation::sourceName (index), 0, 0, 64, 22, juce::Justification::centred);
+                g.drawFittedText (Modulation::sourceName (index), 0, 0, 64, 22, juce::Justification::centred, 1, 0.6f);
             }
-            container->startDragging ("lfo:" + juce::String (index), this, juce::ScaledImage (image));
+            container->startDragging ("mod:" + juce::String (index), this, juce::ScaledImage (image));
         }
     }
 }

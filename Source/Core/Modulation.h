@@ -3,23 +3,41 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <array>
 #include <atomic>
+#include "Pattern.h"
 
-// LFO:er och vart de modulerar.
+// Modulationskällor och vart de modulerar.
 //
-// Som i Massive: en LFO dras till valfri ratt, och en koppling (route) säger hur mycket den
-// rör ratten. Moduleringen läggs på i parameterns normaliserade skala (0..1), så att +20 %
-// betyder 20 % av rattens vandring. Den räknas en gång per ljudblock.
+// Som i Massive och Serum: en källa dras till valfri ratt (eller sätts i matrisen), och en koppling (route) säger hur mycket den
+// rör ratten. Moduleringen läggs på i parameterns normaliserade skala (0..1), så att +20 % betyder 20 % av rattens vandring.
+// Den räknas en gång per ljudblock.
+//
+// Källor (numren används i sparade projekt): 0-2 LFO 1-3, 3-6 makro 1-4 (rattar man vrider själv), sedan fyra per instrument:
+// ENV 2, ENV 3, VELOCITY (senaste tonens) och RANDOM (ett slumptal per ton).
 namespace Modulation
 {
     constexpr int numLfos = 3;
-    constexpr int maxRoutes = 24;
+    constexpr int numMacros = 4;
+    constexpr int instrumentSources = 4;
+    constexpr int firstMacro = numLfos;
+    constexpr int firstInstrumentSource = numLfos + numMacros;
+    constexpr int numSources = firstInstrumentSource + maxInstruments * instrumentSources;
+    constexpr int maxRoutes = 64;
+
+    inline bool isLfo (int source)             { return source >= 0 && source < numLfos; }
+    inline bool isMacro (int source)           { return source >= firstMacro && source < firstInstrumentSource; }
+    inline bool isInstrumentSource (int source) { return source >= firstInstrumentSource && source < numSources; }
+    inline int instrumentSource (int layer, int kind) { return firstInstrumentSource + layer * instrumentSources + kind; }
+    inline int layerOfSource (int source)      { return (source - firstInstrumentSource) / instrumentSources; }
+    inline int kindOfSource (int source)       { return (source - firstInstrumentSource) % instrumentSources; }
+    juce::String macroID (int macro);          // "macro1" ...
+    juce::String kindName (int kind);          // "ENV 2", "ENV 3", "VELOCITY", "RANDOM"
 
     juce::StringArray shapeNames();
     juce::StringArray rateNames();
     double rateInQuarters (int index);
 
     juce::String paramID (int lfo, const char* suffix); // "lfo1Shape" ...
-    juce::String sourceName (int lfo);                  // "LFO 1" ...
+    juce::String sourceName (int source);               // "LFO 1", "MACRO 2", "INSTR 3 ENV 2" ...
 
     // Kan en LFO dras till den här parametern? (Rattar för ljudet: kick, bas, effekter, ducking.)
     bool isModulatable (const juce::RangedAudioParameter& parameter);
@@ -81,6 +99,16 @@ public:
     std::array<std::atomic<float>, Modulation::numLfos> phase {}, value {};
     float currentOffset (int index) const;
 
+    // Instrumentens källor, skrivs av ljudtråden före update(): ENV 2, ENV 3, velocity och slump.
+    void setInstrumentSources (int layer, float env2, float env3, float velocity, float random)
+    {
+        auto& s = layerSources[(size_t) layer];
+        s = { env2, env3, velocity, random };
+    }
+
+    // Källans värde just nu (för gränssnittets visning): LFO -1..1, övriga 0..1.
+    float sourceValue (int source) const { return juce::isPositiveAndBelow (source, Modulation::numSources) ? sourceDisplay[(size_t) source].load() : 0.0f; }
+
 private:
     struct Lfo
     {
@@ -91,6 +119,9 @@ private:
 
     const ModRoutes& routes;
     std::array<Lfo, Modulation::numLfos> lfos;
+    std::array<std::atomic<float>*, Modulation::numMacros> macros {};
+    std::array<std::array<float, Modulation::instrumentSources>, maxInstruments> layerSources {};
+    std::array<std::atomic<float>, Modulation::numSources> sourceDisplay {};
     std::vector<juce::RangedAudioParameter*> parameters;
     std::vector<const std::atomic<float>*> raws;
     std::vector<float> offsets;                          // ljudtråden

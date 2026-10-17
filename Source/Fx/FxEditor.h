@@ -2,6 +2,7 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "FxProcessor.h"
+#include "../Ui/EditorRoot.h"
 #include "../Ui/FruitLookAndFeel.h"
 #include "../Ui/EffectsPage.h"
 #include "../Ui/LfoPage.h"
@@ -18,13 +19,14 @@ public:
     explicit FxEditor (FxProcessor&);
     ~FxEditor() override;
 
-    void paint (juce::Graphics&) override;
     void resized() override;
 
 private:
     juce::SharedResourcePointer<Theme::TextureCache> textures; // håller texturerna vid liv så länge editorn finns
     FruitLookAndFeel lookAndFeel; // först: måste leva längre än komponenterna som ritas med den
     FxProcessor& processor;
+    EditorRoot root; // allt ligger i roten, som skalas efter fönstrets storlek
+    bool sized = false; // true när startstorleken är satt (före det sparas ingen skala)
 
     HeaderBar header { processor, "FX" };
     TabbedPanel synths { &processor.selectedSynthTab };

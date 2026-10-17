@@ -227,7 +227,7 @@ void KnobComponent::paintOverChildren (juce::Graphics& g)
         const auto from = angleAt (value), to = angleAt (value + ring.amount);
         juce::Path path;
         path.addCentredArc (centre.x, centre.y, radius, radius, 0.0f, std::min (from, to), std::max (from, to), true);
-        const auto colour = Theme::lfoColour (ring.source);
+        const auto colour = Theme::sourceColour (ring.source);
         g.setColour (colour.withAlpha (0.25f));
         g.drawEllipse (juce::Rectangle<float> (radius * 2.0f, radius * 2.0f).withCentre (centre), 1.0f);
         g.setColour (colour);
@@ -239,7 +239,7 @@ void KnobComponent::paintOverChildren (juce::Graphics& g)
         // Var ratten är just nu, med LFO:erna.
         const auto offset = findProcessor (*this) != nullptr ? findProcessor (*this)->modulator.currentOffset (parameterIndex()) : 0.0f;
         const auto dot = centre.getPointOnCircumference (trackRadius(), angleAt (value + offset));
-        g.setColour (Theme::lfoColour (list.front().source));
+        g.setColour (Theme::sourceColour (list.front().source));
         g.fillEllipse (juce::Rectangle<float> (8.0f, 8.0f).withCentre (dot));
         g.setColour (juce::Colours::white);
         g.fillEllipse (juce::Rectangle<float> (4.0f, 4.0f).withCentre (dot));
@@ -297,7 +297,7 @@ void KnobComponent::showMenu()
 
 bool KnobComponent::isInterestedInDragSource (const SourceDetails& details)
 {
-    return modulatable && details.description.toString().startsWith ("lfo:");
+    return modulatable && details.description.toString().startsWith ("mod:");
 }
 
 void KnobComponent::itemDropped (const SourceDetails& details)
@@ -307,8 +307,8 @@ void KnobComponent::itemDropped (const SourceDetails& details)
     const auto index = parameterIndex();
     if (processor != nullptr && index >= 0)
     {
-        const auto source = details.description.toString().fromFirstOccurrenceOf ("lfo:", false, false).getIntValue();
-        processor->modRoutes.add (juce::jlimit (0, Modulation::numLfos - 1, source), index, 0.25f);
+        const auto source = details.description.toString().fromFirstOccurrenceOf ("mod:", false, false).getIntValue();
+        processor->modRoutes.add (juce::jlimit (0, Modulation::numSources - 1, source), index, 0.25f);
         processor->markStateChanged();
     }
     repaint();

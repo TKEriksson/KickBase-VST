@@ -18,11 +18,12 @@ private:
     const int index;
 };
 
-// Handtaget man drar till en ratt för att modulera den (som korset i Massive).
+// Handtaget man drar till en ratt för att modulera den (som korset i Massive). Gäller vilken modulationskälla som helst (LFO, makro,
+// ENV 2/3 ...): `source` är källans nummer (se Modulation).
 class LfoDragHandle : public juce::Component, public juce::SettableTooltipClient
 {
 public:
-    explicit LfoDragHandle (int lfoIndex);
+    explicit LfoDragHandle (int source, const juce::String& label = "DRAG TO A KNOB");
     void paint (juce::Graphics&) override;
     void mouseDrag (const juce::MouseEvent&) override;
     void mouseEnter (const juce::MouseEvent&) override { repaint(); }
@@ -30,6 +31,7 @@ public:
 
 private:
     const int index;
+    juce::String label;
 };
 
 // Listan över rattarna som LFO:n styr. Högerklick tar bort en koppling.

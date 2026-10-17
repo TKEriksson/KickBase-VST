@@ -193,6 +193,8 @@ public:
     std::array<int, ParamID::numBassLayers> selectedBassSource {}; // baslagrets valda källflik: OSC 1-3 eller SAMPLE
     int selectedPatternLayer = 0;          // PATTERN-flikens valda lager: 0-9 instrument, 10 kick
     int selectedInstrument = 0;            // INSTRUMENT-flikens valda instrument (0-9)
+    int sequencerRowHeight = 0;            // radhöjden i mönstret (zoom): 0 = automatisk
+    float editorScale = 0.0f;              // fönstrets skala (0 = standard); sparas i projektet
     bool pianoRollOpen = false;            // PATTERN-flikens vy: stegen eller pianorullen
     int selectedFxView = 2;                // EFFECTS-sidans vy: 0 EQ, 1 COMP, 2 FX
 

@@ -270,6 +270,49 @@ namespace
         check (! bass.isActive(), "tyst efter release");
     }
 
+    void testBassModulationSources()
+    {
+        std::puts("Bas: ENV 2, tonhöjdsenvelope och källor");
+        BassSynth synth;
+        synth.setSeed (1);
+        synth.prepare (rate);
+        BassParams p;
+        p.oscA.level = 0.0f;
+        p.oscB.on = false;
+        p.sub = 1.0f;
+        p.drive = 0.0f;
+        p.cutoffHz = 20000.0f;
+        p.pitchEnvSemis = 12.0f;
+        p.pitchEnvDecayMs = 100.0f;
+        p.env2 = { 1.0f, 200.0f, 0.5f, 50.0f };
+        synth.setParams (p);
+
+        std::vector<float> audio;
+        synth.noteOn (0, 0.8f, (int) (rate * 0.5));
+        float peak = 0.0f, velocity = 0.0f, random = 0.0f, afterRelease = 1.0f;
+        for (int i = 0; i < (int) (rate * 0.7); ++i)
+        {
+            const auto out = synth.next();
+            audio.push_back (out.left * out.amplitude);
+            peak = std::max (peak, synth.getModulationValue (0));
+            if (i == 1000)
+            {
+                velocity = synth.getModulationValue (2);
+                random = synth.getModulationValue (3);
+            }
+            if (i == (int) (rate * 0.65))
+                afterRelease = synth.getModulationValue (0);
+        }
+        check (peak > 0.95f, "ENV 2 når toppen efter attacken", peak);
+        check (afterRelease < 0.01f, "ENV 2 har släppt efter gaten", afterRelease);
+        check (std::abs (velocity - 0.8f) < 1.0e-5f, "VELOCITY är tonens velocity", velocity);
+        check (random > 0.0f && random < 1.0f, "RANDOM är ett slumptal per ton", random);
+
+        const auto early = estimateFrequency (audio, 0, (size_t) (rate * 0.03));
+        const auto late = estimateFrequency (audio, (size_t) (rate * 0.35), (size_t) (rate * 0.5));
+        check (early > late * 1.15 && std::abs (late - p.rootHz) < p.rootHz * 0.06, "tonhöjdsenvelopen börjar högt och faller till tonen", early);
+    }
+
     void testBassGlide()
     {
         std::puts ("Bas: en glide-ton glider den klingande tonen utan nytt anslag och blir kvar");
@@ -613,6 +656,7 @@ void runEngineTests()
     testBassSample();
     testBassPitchAndRelease();
     testBassGlide();
+    testBassModulationSources();
     testBassRetriggerWithoutClick();
     testDuckerIsSmooth();
     testGate();

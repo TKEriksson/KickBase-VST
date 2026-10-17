@@ -12,7 +12,7 @@
 //
 // Raderna är tidsjusterade: kicken har alltid 16 steg per takt, varje baslager sitt eget
 // rutnät (16, 12, 24 ...), men en takt tar lika stor bredd i alla.
-class StepSequencer : public juce::Component, public juce::SettableTooltipClient, private juce::Timer
+class StepSequencer : public juce::Component, public juce::SettableTooltipClient, private juce::Timer, private juce::ScrollBar::Listener
 {
 public:
     enum class Lane { velocity, gate, pitch, slide }; // gate = tonlängd (LENGTH); slide används inte längre
@@ -141,8 +141,27 @@ private:
     int rowsTop = 0, rowsBottom = 0;
     bool revealSelected = true;
     int rowScroll = 0, visibleRows = numPatternRows; // första synliga rad och hur många som får plats (fler rader än plats: scrolla)
-    juce::TextButton rowUpButton { "^" }, rowDownButton { "v" };
     void scrollRows (int delta);
+    void scrollBarMoved (juce::ScrollBar*, double newRangeStart) override;
+
+    // Hörnet där rullningslisten slutar: dra uppåt/neråt för att zooma radernas höjd.
+    struct ZoomCorner : public juce::Component, public juce::SettableTooltipClient
+    {
+        ZoomCorner();
+        void paint (juce::Graphics&) override;
+        void mouseDown (const juce::MouseEvent&) override;
+        void mouseDrag (const juce::MouseEvent&) override;
+        void mouseDoubleClick (const juce::MouseEvent&) override;
+        std::function<void()> onStart, onReset;
+        std::function<void (int)> onDragBy;
+    };
+    juce::ScrollBar scrollBar { true };
+    ZoomCorner zoomCorner;
+    int effectiveRowHeight = 50, zoomStartHeight = 50;
+    bool compactRows = false;          // låga rader: rattarna och knapparna ligger på en rad
+    int labelWidthNow = 132, knobPx = 28;
+    juce::Rectangle<int> selectionFrame; // ramen runt det valda lagrets rad och dess lane
+    juce::Rectangle<int> selectorBounds (juce::Rectangle<int> row) const;
 
     Target dragTarget = Target::none;
     int dragLayer = 0;

@@ -29,6 +29,13 @@ private:
     int toolsEnd() const { return previewGroup.isEmpty() ? exportButton.getRight() : previewGroup.getRight(); }
     void updateAiTooltip();
     void chooseExportTarget (int part, int bars); // part: 0-2 = PluginBase::ExportPart, 3 = alla tre
+    void paintLogoGlow (juce::Graphics&, juce::Rectangle<int> logoArea);
+
+    // Loggans glöd: en våg från vänster till höger för varje kick och en från höger till vänster för varje bastoner, i färger som sakta
+    // glider mellan varandra. Tiderna är sekunder (väggklocka).
+    double lastKickTime = -100.0, lastBassTime = -100.0, bassStrength = 0.0;
+    int lastKickTriggers = -1;
+    float lastBassPeak = 0.0f;
 
     PluginBase& processor;
     juce::String subtitle;
@@ -245,7 +252,11 @@ private:
     ChoiceComponent length;
     std::unique_ptr<ChoiceComponent> noteEnd;
     PresetButton presets;
-    std::vector<std::pair<std::unique_ptr<juce::TextButton>, StepSequencer::Lane>> laneButtons;
+    // EDIT: vad lanet under det valda lagrets rad visar och ändrar (velocity, tonlängd, tonhöjd), som en rullgardinslista.
+    juce::Label laneLabel;
+    juce::ComboBox laneBox;
+    std::vector<StepSequencer::Lane> laneOrder;
+    void updateLengthKnobs();
     StepSequencer sequencer;
     PianoRoll pianoRoll;
     juce::TextButton patternTab { "PATTERN" }, gateTab { "GATE" };

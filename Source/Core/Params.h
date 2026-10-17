@@ -84,6 +84,9 @@ enum class BassField
     attack, decay, sustain, release, glide, drive,
     gateOn, gateGrid, gateDepth, gateSmooth,                      // lagrets GATE: en egen av/på-rytm som hackar ljudet
     sampleLevel, sampleRoot, sampleLoop, sampleKey, sampleStart, sampleOn, // lagrets sampling som ljudkälla
+    env2Attack, env2Decay, env2Sustain, env2Release,              // ENV 2 och ENV 3: modulationsenveloper
+    env3Attack, env3Decay, env3Sustain, env3Release,
+    subWave, noiseTone, pitchEnvAmount, pitchEnvDecay, driveMode,
     count
 };
 

@@ -44,6 +44,21 @@ namespace Theme
         return colours[juce::jlimit (0, 2, index)];
     }
 
+    // Färgen för vilken modulationskälla som helst (LFO, makro, instrumentets envelopes): ringarna på rattarna och handtagen.
+    inline juce::Colour sourceColour (int source)
+    {
+        if (source < 3)
+            return lfoColour (source);
+        if (source < 7)
+        {
+            const juce::Colour macros[] { juce::Colour (0xfff2a65a), juce::Colour (0xffe9d35c), juce::Colour (0xfff08a6a), juce::Colour (0xffe08cff) };
+            return macros[juce::jlimit (0, 3, source - 3)];
+        }
+        const auto layer = (source - 7) / 4, kind = (source - 7) % 4;
+        const auto base = layerColour (layer);
+        return kind == 0 ? base : kind == 1 ? base.brighter (0.35f) : kind == 2 ? base.withMultipliedSaturation (0.45f) : base.darker (0.35f);
+    }
+
     // Marginal runt rattarna där LFO-ringarna ritas.
     inline constexpr float knobRingMargin = 8.0f;
 
@@ -57,39 +72,8 @@ namespace Theme
     // krascha eller hänga sig vid avslut. Editorerna har en `juce::SharedResourcePointer<Theme::TextureCache>`.
     struct TextureCache
     {
-        juce::Image brushed;
         std::unordered_map<int, juce::Image> circular;
     };
-
-    // Högkvalitativ borstad satin-metall för chassit: mycket fina, jämna vågräta mikrostreck
-    // utan grova repor, sömlöst upprepningsbar.
-    inline const juce::Image& brushedTexture()
-    {
-        juce::SharedResourcePointer<TextureCache> cache;
-        if (cache->brushed.isNull())
-            cache->brushed = []
-        {
-            constexpr int size = 512;
-            juce::Image texture (juce::Image::ARGB, size, size, true);
-            juce::Graphics g (texture);
-            juce::Random random (4711);
-            for (int y = 0; y < size; ++y)
-            {
-                for (int streak = 0; streak < 10; ++streak)
-                {
-                    const auto x = random.nextInt (size);
-                    const auto length = 40 + random.nextInt (220);
-                    const auto light = random.nextBool();
-                    g.setColour ((light ? juce::Colours::white : juce::Colours::black).withAlpha (0.006f + random.nextFloat() * 0.012f));
-                    g.fillRect (x, y, length, 1);
-                    if (x + length > size)
-                        g.fillRect (0, y, x + length - size, 1);
-                }
-            }
-            return texture;
-        }();
-        return cache->brushed;
-    }
 
     // Koncentriskt borstad ring-struktur ("lathe-turned circular brushed metal"):
     // Skapar autentiska mikroräfflor och dubbla anisotropa spegellober vinkelrätt
@@ -180,7 +164,7 @@ namespace Theme
         return cache[size];
     }
 
-    // Borstad metall i en yta: skulpterad metallbädd med mjuk skugga, subtil gradient och fasade kanter.
+    // En panel: mjuk skugga, subtil gradient och fasade kanter (ingen textur).
     inline void paintMetal (juce::Graphics& g, juce::Rectangle<float> area, float corner, juce::Colour top, juce::Colour bottom,
                             bool bevel = true)
     {
@@ -190,15 +174,6 @@ namespace Theme
 
         g.setGradientFill (juce::ColourGradient (top, area.getX(), area.getY(), bottom, area.getX(), area.getBottom(), false));
         g.fillRoundedRectangle (area, corner);
-
-        {
-            juce::Graphics::ScopedSaveState state (g);
-            juce::Path clip;
-            clip.addRoundedRectangle (area, corner);
-            g.reduceClipRegion (clip);
-            g.setTiledImageFill (brushedTexture(), 0, 0, 1.0f);
-            g.fillRect (area);
-        }
 
         if (bevel)
         {
@@ -216,7 +191,7 @@ namespace Theme
         }
     }
 
-    // Fönstrets bakgrund: djup skiffer- och marinblå bas med mjukt studioljus i mitten och borstad textur.
+    // Fönstrets bakgrund: djup skiffer- och marinblå bas med mjukt studioljus i mitten.
     inline void paintBackground (juce::Graphics& g, juce::Rectangle<int> area)
     {
         const auto a = area.toFloat();
@@ -227,9 +202,6 @@ namespace Theme
         // Mjukt omgivande ljussken uppe i mitten som på professionella rackpaneler
         g.setGradientFill (juce::ColourGradient (juce::Colours::white.withAlpha (0.045f), a.getCentreX(), a.getY() + 40.0f,
                                                  juce::Colours::transparentWhite, a.getCentreX(), a.getY() + a.getHeight() * 0.65f, true));
-        g.fillRect (area);
-
-        g.setTiledImageFill (brushedTexture(), 0, 0, 1.0f);
         g.fillRect (area);
 
         // Subtil yttre ram
@@ -315,6 +287,19 @@ namespace Theme
         // Skarp ljusreflex i överkanten
         g.setColour (juce::Colours::white.withAlpha (0.6f));
         g.fillEllipse (juce::Rectangle<float> (2.0f, 2.0f).withCentre ({ x + w * 0.40f, y + h * 0.16f }));
+    }
+
+    // Loggans konturer (ikonens ring och texten KICKBASE) som en bana, så att glöden kan ritas längs dem.
+    inline juce::Path logoOutline (juce::Rectangle<int> area)
+    {
+        juce::Path path;
+        auto row = area.toFloat();
+        path.addEllipse (row.removeFromLeft (36.0f).withSizeKeepingCentre (34.0f, 34.0f).reduced (1.0f));
+        row.removeFromLeft (10.0f);
+        juce::GlyphArrangement glyphs;
+        glyphs.addLineOfText (logoFont(), "KICKBASE", row.getX(), row.getCentreY() + 8.0f);
+        glyphs.createPath (path);
+        return path;
     }
 
     // Bredden loggan tar (ikon + text + ev. undertitel).

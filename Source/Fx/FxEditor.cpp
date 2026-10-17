@@ -1,12 +1,19 @@
 #include "FxEditor.h"
 
+namespace
+{
+    constexpr int baseWidth = 1060, baseHeight = 830;
+    constexpr float defaultScale = 0.95f;
+}
+
 FxEditor::FxEditor (FxProcessor& p)
     : AudioProcessorEditor (&p), processor (p)
 {
     setLookAndFeel (&lookAndFeel);
 
+    addAndMakeVisible (root);
     for (auto* component : std::initializer_list<juce::Component*> { &header, &synths, &tools, &info })
-        addAndMakeVisible (component);
+        root.addAndMakeVisible (component);
 
     synths.addTab ("PATTERN", Theme::pattern, pattern);
     synths.addTab ("KICK", Theme::kick, kick, kick.embedInTab());
@@ -21,7 +28,12 @@ FxEditor::FxEditor (FxProcessor& p)
     tools.addTab ("MASTER", Theme::master, masterPage);
     tools.addTab ("SOUNDSTAGE", Theme::mix, soundstage);
 
-    setSize (1060, 830);
+    setResizable (true, true);
+    setResizeLimits (baseWidth * 6 / 10, baseHeight * 6 / 10, baseWidth * 16 / 10, baseHeight * 16 / 10);
+    getConstrainer()->setFixedAspectRatio ((double) baseWidth / (double) baseHeight);
+    const auto scale = processor.editorScale > 0.0f ? processor.editorScale : defaultScale;
+    setSize (juce::roundToInt ((float) baseWidth * scale), juce::roundToInt ((float) baseHeight * scale));
+    sized = true;
 }
 
 FxEditor::~FxEditor()
@@ -29,14 +41,13 @@ FxEditor::~FxEditor()
     setLookAndFeel (nullptr);
 }
 
-void FxEditor::paint (juce::Graphics& g)
-{
-    Theme::paintBackground (g, getLocalBounds());
-}
-
 void FxEditor::resized()
 {
-    auto area = getLocalBounds().reduced (10);
+    const auto scale = root.fitTo (*this, baseWidth, baseHeight);
+    if (sized)
+        processor.editorScale = scale;
+
+    auto area = juce::Rectangle<int> (0, 0, baseWidth, baseHeight).reduced (10);
     header.setBounds (area.removeFromTop (52));
     area.removeFromTop (4);
     info.setBounds (area.removeFromBottom (22));

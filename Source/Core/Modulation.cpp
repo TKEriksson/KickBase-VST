@@ -23,9 +23,26 @@ namespace Modulation
         return "lfo" + juce::String (lfo + 1) + suffix;
     }
 
-    juce::String sourceName (int lfo)
+    juce::String macroID (int macro)
     {
-        return "LFO " + juce::String (lfo + 1);
+        return "macro" + juce::String (macro + 1);
+    }
+
+    juce::String kindName (int kind)
+    {
+        static const char* names[] { "ENV 2", "ENV 3", "VELOCITY", "RANDOM" };
+        return names[juce::jlimit (0, instrumentSources - 1, kind)];
+    }
+
+    juce::String sourceName (int source)
+    {
+        if (isLfo (source))
+            return "LFO " + juce::String (source + 1);
+        if (isMacro (source))
+            return "MACRO " + juce::String (source - firstMacro + 1);
+        if (isInstrumentSource (source))
+            return "INSTR " + juce::String (layerOfSource (source) + 1) + " " + kindName (kindOfSource (source));
+        return "?";
     }
 
     bool isModulatable (const juce::RangedAudioParameter& parameter)
@@ -49,6 +66,12 @@ namespace Modulation
             layout.add (std::make_unique<AudioParameterChoice> (ParameterID { paramID (i, "Shape"), 1 }, title + " Shape", shapeNames(), 0));
             layout.add (std::make_unique<AudioParameterChoice> (ParameterID { paramID (i, "Rate"), 1 }, title + " Rate", rateNames(), 8));
         }
+
+        // Makron: fyra rattar att vrida för hand, som i Serum, och att dra till andra rattar eller sätta i matrisen.
+        for (int m = 0; m < numMacros; ++m)
+            layout.add (std::make_unique<AudioParameterFloat> (ParameterID { macroID (m), 1 }, "Macro " + String (m + 1),
+                                                               NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.0f,
+                                                               AudioParameterFloatAttributes().withStringFromValueFunction ([] (float v, int) { return String (roundToInt (v * 100.0f)) + " %"; })));
     }
 
     float shapeValue (int shape, double phase, juce::int64 cycle)
@@ -149,7 +172,7 @@ void ModRoutes::fromValueTree (const juce::ValueTree& tree, const juce::Array<ju
         {
             if (auto* withId = dynamic_cast<juce::AudioProcessorParameterWithID*> (parameters[i]); withId != nullptr && withId->paramID == id)
             {
-                add (juce::jlimit (0, Modulation::numLfos - 1, (int) child.getProperty ("source")), i,
+                add (juce::jlimit (0, Modulation::numSources - 1, (int) child.getProperty ("source")), i,
                      (float) (double) child.getProperty ("amount"));
                 break;
             }
@@ -169,6 +192,10 @@ Modulator::Modulator (juce::AudioProcessorValueTreeState& apvts, const ModRoutes
         lfo.shape = apvts.getRawParameterValue (paramID (i, "Shape"));
         lfo.rate = apvts.getRawParameterValue (paramID (i, "Rate"));
     }
+    for (int m = 0; m < numMacros; ++m)
+        macros[(size_t) m] = apvts.getRawParameterValue (macroID (m));
+    for (auto& display : sourceDisplay)
+        display = 0.0f;
 
     // Samma ordning som processorns parameterlista, så att index stämmer överallt.
     for (auto* p : apvts.processor.getParameters())
@@ -196,8 +223,11 @@ void Modulator::update (double ppq)
 {
     using namespace Modulation;
 
-    std::array<float, numLfos> lfoValues {};
-    std::array<bool, numLfos> lfoOn {};
+    std::array<float, numSources> sourceValues {};
+    std::array<bool, numSources> sourceOn {};
+    sourceOn.fill (true);
+    auto& lfoValues = sourceValues;
+    auto& lfoOn = sourceOn;
     for (int i = 0; i < numLfos; ++i)
     {
         const auto& lfo = lfos[(size_t) i];
@@ -211,6 +241,13 @@ void Modulator::update (double ppq)
         phase[(size_t) i] = (float) lfoPhase;
         value[(size_t) i] = lfoValues[(size_t) i];
     }
+    for (int m = 0; m < numMacros; ++m)
+        sourceValues[(size_t) (firstMacro + m)] = macros[(size_t) m] != nullptr ? macros[(size_t) m]->load() : 0.0f;
+    for (int layer = 0; layer < maxInstruments; ++layer)
+        for (int kind = 0; kind < instrumentSources; ++kind)
+            sourceValues[(size_t) instrumentSource (layer, kind)] = layerSources[(size_t) layer][(size_t) kind];
+    for (int s = 0; s < numSources; ++s)
+        sourceDisplay[(size_t) s] = sourceValues[(size_t) s];
 
     // Nollställ det som modulerades förra blocket och lägg på kopplingarna.
     for (auto index : touched)
@@ -224,10 +261,10 @@ void Modulator::update (double ppq)
     {
         const auto source = route.source.load();
         const auto target = route.target.load();
-        if (source < 0 || source >= numLfos || ! lfoOn[(size_t) source] || target < 0 || target >= (int) offsets.size())
+        if (source < 0 || source >= numSources || ! sourceOn[(size_t) source] || target < 0 || target >= (int) offsets.size())
             continue;
 
-        offsets[(size_t) target] += lfoValues[(size_t) source] * route.amount.load();
+        offsets[(size_t) target] += sourceValues[(size_t) source] * route.amount.load();
         if (touched.size() < touched.capacity())
             touched.push_back (target);
     }

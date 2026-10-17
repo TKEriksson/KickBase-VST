@@ -1,12 +1,20 @@
 #include "InstrumentEditor.h"
 
+namespace
+{
+    // Gränssnittet ritas i den här storleken (logiska punkter) och skalas sedan till fönstret. Standardskalan är lite under 1.
+    constexpr int baseWidth = 1180, baseHeight = 1010;
+    constexpr float defaultScale = 0.9f;
+}
+
 InstrumentEditor::InstrumentEditor (InstrumentProcessor& p)
     : AudioProcessorEditor (&p), processor (p)
 {
     setLookAndFeel (&lookAndFeel);
 
+    addAndMakeVisible (root);
     for (auto* component : std::initializer_list<juce::Component*> { &header, &synths, &tools, &info, &keyboard })
-        addAndMakeVisible (component);
+        root.addAndMakeVisible (component);
 
     synths.addTab ("PATTERN", Theme::pattern, pattern);
     synths.addTab ("KICK", Theme::kick, kick, kick.embedInTab());
@@ -25,7 +33,13 @@ InstrumentEditor::InstrumentEditor (InstrumentProcessor& p)
     keyboard.setKeyWidth (14.0f);
     keyboard.setLowestVisibleKey (24);
 
-    setSize (1060, 900);
+    // Fönstret går att dra större och mindre; hela gränssnittet skalas med.
+    setResizable (true, true);
+    setResizeLimits (baseWidth * 6 / 10, baseHeight * 6 / 10, baseWidth * 16 / 10, baseHeight * 16 / 10);
+    getConstrainer()->setFixedAspectRatio ((double) baseWidth / (double) baseHeight);
+    const auto scale = processor.editorScale > 0.0f ? processor.editorScale : defaultScale;
+    setSize (juce::roundToInt ((float) baseWidth * scale), juce::roundToInt ((float) baseHeight * scale));
+    sized = true;
 }
 
 InstrumentEditor::~InstrumentEditor()
@@ -33,14 +47,13 @@ InstrumentEditor::~InstrumentEditor()
     setLookAndFeel (nullptr);
 }
 
-void InstrumentEditor::paint (juce::Graphics& g)
-{
-    Theme::paintBackground (g, getLocalBounds());
-}
-
 void InstrumentEditor::resized()
 {
-    auto area = getLocalBounds().reduced (10);
+    const auto scale = root.fitTo (*this, baseWidth, baseHeight);
+    if (sized)
+        processor.editorScale = scale;
+
+    auto area = juce::Rectangle<int> (0, 0, baseWidth, baseHeight).reduced (10);
 
     header.setBounds (area.removeFromTop (52));
     area.removeFromTop (4);
@@ -50,7 +63,7 @@ void InstrumentEditor::resized()
     info.setBounds (area.removeFromBottom (22));
     area.removeFromBottom (6);
 
-    synths.setBounds (area.removeFromTop (520));
+    synths.setBounds (area.removeFromTop (580));
     area.removeFromTop (6);
     tools.setBounds (area);
 }

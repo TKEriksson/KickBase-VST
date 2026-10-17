@@ -7,8 +7,8 @@
 
 enum class BassFilterType { lowpass24, lowpass12, bandpass, highpass };
 
-// Hur fasen förvrängs innan wavetablen läses (Serums "warp").
-enum class WarpMode { off, sync, bend, pwm, mirror, fm };
+// Hur fasen förvrängs innan wavetablen läses (Serums "warp"). AM är ingen fasförvrängning utan amplitudmodulerar vågen.
+enum class WarpMode { off, sync, bend, pwm, mirror, fm, flip, quantize, am };
 
 // En wavetable-oscillator.
 struct OscParams
@@ -29,6 +29,12 @@ struct OscParams
     float pan = 0.0f;         // -1 (vänster) ... 1 (höger)
     float stereo = 0.5f;      // hur långt unison-stämmorna sprids i stereobilden, 0..1
     bool on = true;           // av = oscillatorn hörs inte (och OSC B modulerar inte OSC A)
+};
+
+// En extra envelope (ENV 2 och ENV 3) som inte styr ljudet själv utan används som modulationskälla (dras till ratter eller sätts i matrisen).
+struct ModEnvParams
+{
+    float attackMs = 5.0f, decayMs = 400.0f, sustain = 0.0f, releaseMs = 250.0f;
 };
 
 struct BassParams
@@ -52,7 +58,14 @@ struct BassParams
     float releaseMs = 15.0f;
     float glideMs = 60.0f;
     float drive = 0.2f;          // 0..1
+    int driveMode = 0;           // 0 mjuk, 1 hård, 2 vikning, 3 asymmetrisk, 4 krossad
     float level = 0.7f;
+
+    ModEnvParams env2, env3;     // modulationsenveloper
+    int subWave = 0;             // 0 sinus, 1 triangel, 2 fyrkant, 3 såg
+    float noiseTone = 1.0f;      // 0 mörkt brus ... 1 vitt brus
+    float pitchEnvSemis = 0.0f;  // tonhöjdsenvelope: så många halvtoner över (eller under) tonen i början av varje ton
+    float pitchEnvDecayMs = 60.0f;
 
     // Samplingen som tredje ljudkälla (lagrets egen inladdade sampling, eller nullptr): spelas före filtret.
     const ClickSample* sampleData = nullptr;
@@ -98,6 +111,18 @@ public:
     Output next();
     float nextSample() { const auto o = next(); return 0.5f * (o.left + o.right) * o.amplitude; }
     bool isActive() const { return stage != Stage::idle; }
+
+    // Modulationskällorna: 0 = ENV 2, 1 = ENV 3, 2 = senaste tonens velocity, 3 = ett slumptal per ton (alla 0..1).
+    float getModulationValue (int source) const
+    {
+        switch (source)
+        {
+            case 0:  return env2.level;
+            case 1:  return env3.level;
+            case 2:  return stage == Stage::idle ? 0.0f : velocity;
+            default: return randomValue;
+        }
+    }
 
     // Var i samplingen den spelar (0..1), eller -1 när ingen sampling klingar. För gränssnittets markör.
     float getSampleFraction() const
@@ -145,6 +170,22 @@ private:
     double logFrequency = 0.0, targetLogFrequency = 0.0; // log2(Hz), så att glide låter jämnt
     int glideSamplesLeft = 0;
     double glideStep = 0.0;  // ändring i log-frekvens per sample under ett glide
+
+    struct ModEnv
+    {
+        enum class EnvStage { idle, attack, decay, release };
+        EnvStage envStage = EnvStage::idle;
+        float level = 0.0f;
+        void trigger() { envStage = EnvStage::attack; }
+        void release() { if (envStage != EnvStage::idle) envStage = EnvStage::release; }
+        void reset() { envStage = EnvStage::idle; level = 0.0f; }
+        void next (const ModEnvParams& p, double rate);
+    };
+    ModEnv env2, env3;
+    float pitchEnv = 0.0f;       // 1 vid anslaget, faller mot 0 (tonhöjdsenvelopen)
+    float noiseState = 0.0f;     // brusets lågpass (NOISE TONE)
+    float randomValue = 0.0f;    // modulationskällan RANDOM: nytt för varje ton
+    juce::Random modRandom { 99 };
 
     Stage stage = Stage::idle;
     float ampLevel = 0.0f;

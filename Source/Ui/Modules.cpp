@@ -82,7 +82,7 @@ HeaderBar::HeaderBar (PluginBase& p, const juce::String& subtitleIn)
     };
     addAndMakeVisible (aiButton);
     updateAiTooltip();
-    startTimerHz (15);
+    startTimerHz (30);
 }
 
 void HeaderBar::updateAiTooltip()
@@ -225,14 +225,92 @@ void HeaderBar::timerCallback()
     peakR = ro > peakR ? ro : peakR * 0.8f;
     holdL = std::max (peakL, holdL * 0.985f);
     holdR = std::max (peakR, holdR * 0.985f);
+
+    // Loggans glöd följer ljudet: en ny kick startar en våg åt höger, en ny basstöt en våg åt vänster.
+    const auto now = juce::Time::getMillisecondCounterHiRes() * 0.001;
+    const auto triggers = processor.transportStatus.kickTriggers.load();
+    if (lastKickTriggers >= 0 && triggers != lastKickTriggers)
+        lastKickTime = now;
+    lastKickTriggers = triggers;
+
+    std::vector<float> bassLeft, bassRight;
+    processor.bassAfterDuckTap.copyLatest (256, bassLeft, bassRight);
+    auto bassPeak = 0.0f;
+    for (const auto sample : bassLeft)
+        bassPeak = std::max (bassPeak, std::abs (sample));
+    if (bassPeak > 0.03f && bassPeak > lastBassPeak * 1.35f + 0.01f && now - lastBassTime > 0.06)
+    {
+        lastBassTime = now;
+        bassStrength = juce::jlimit (0.35, 1.0, (double) bassPeak * 3.0);
+    }
+    lastBassPeak = bassPeak > lastBassPeak ? bassPeak : lastBassPeak * 0.85f;
     repaint();
+}
+
+void HeaderBar::paintLogoGlow (juce::Graphics& g, juce::Rectangle<int> logoArea)
+{
+    const auto now = juce::Time::getMillisecondCounterHiRes() * 0.001;
+
+    // Färgerna glider sakta mellan varandra (en ny färg var sjätte sekund).
+    auto fade = [now] (std::initializer_list<juce::uint32> palette, double offset)
+    {
+        const std::vector<juce::uint32> colours (palette);
+        const auto position = std::fmod ((now + offset) / 6.0, (double) colours.size());
+        const auto index = (int) std::floor (position);
+        const auto mix = (float) (position - index);
+        const auto smooth = mix * mix * (3.0f - 2.0f * mix);
+        return juce::Colour (colours[(size_t) index]).interpolatedWith (juce::Colour (colours[(size_t) ((index + 1) % (int) colours.size())]), smooth);
+    };
+    const auto kickColour = fade ({ 0xffff9a3c, 0xffff5fa8, 0xffb98cff, 0xffffc857 }, 0.0);
+    const auto bassColour = fade ({ 0xff3fd2ff, 0xff5fffb0, 0xff6b8cff, 0xff5ef2d6 }, 9.0);
+
+    const auto outline = Theme::logoOutline (logoArea);
+    const auto bounds = outline.getBounds();
+    if (bounds.isEmpty())
+        return;
+
+    // En våg över loggan: ett ljusband som glöder längs konturerna.
+    auto sweep = [&] (float position, juce::Colour colour, float strength)
+    {
+        if (strength < 0.01f)
+            return;
+        const auto centreX = bounds.getX() + position * bounds.getWidth();
+        const auto half = bounds.getWidth() * 0.24f;
+        for (const auto [width, alpha] : { std::pair<float, float> { 11.0f, 0.12f }, { 6.0f, 0.22f }, { 2.4f, 0.5f } })
+        {
+            juce::ColourGradient gradient (colour.withAlpha (0.0f), centreX - half, 0.0f, colour.withAlpha (0.0f), centreX + half, 0.0f, false);
+            gradient.addColour (0.5, colour.withAlpha (juce::jlimit (0.0f, 1.0f, strength * alpha * 1.6f)));
+            g.setGradientFill (gradient);
+            g.strokePath (outline, juce::PathStrokeType (width, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        }
+        juce::ColourGradient fillGradient (colour.withAlpha (0.0f), centreX - half, 0.0f, colour.withAlpha (0.0f), centreX + half, 0.0f, false);
+        fillGradient.addColour (0.5, colour.withAlpha (juce::jlimit (0.0f, 1.0f, strength * 0.55f)));
+        g.setGradientFill (fillGradient);
+        g.fillPath (outline);
+    };
+
+    // Svagt andande grundglöd, så att loggan alltid lever lite.
+    {
+        const auto breathing = 0.09f + 0.05f * (float) std::sin (now * 1.3);
+        const auto idle = kickColour.interpolatedWith (bassColour, 0.5f + 0.5f * (float) std::sin (now * 0.4));
+        g.setColour (idle.withAlpha (breathing));
+        g.strokePath (outline, juce::PathStrokeType (7.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        g.setColour (idle.withAlpha (breathing * 1.6f));
+        g.strokePath (outline, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    }
+
+    const auto kickAge = now - lastKickTime, bassAge = now - lastBassTime;
+    sweep (juce::jlimit (0.0f, 1.0f, (float) (kickAge / 0.30)), kickColour, (float) std::exp (-kickAge * 5.5)); // vänster -> höger
+    sweep (1.0f - juce::jlimit (0.0f, 1.0f, (float) (bassAge / 0.38)), bassColour, (float) (bassStrength * std::exp (-bassAge * 4.5))); // höger -> vänster
 }
 
 void HeaderBar::paint (juce::Graphics& g)
 {
     const auto& status = processor.transportStatus;
     auto area = getLocalBounds().reduced (14, 0);
-    Theme::paintLogo (g, area.removeFromLeft (420), subtitle);
+    const auto logoArea = area.removeFromLeft (420);
+    Theme::paintLogo (g, logoArea, subtitle);
+    paintLogoGlow (g, logoArea);
 
     // Tonart med lampan under (DAW SYNC eller FREE RUN) längst till höger.
     {
@@ -1163,33 +1241,32 @@ PatternModule::PatternModule (PluginBase& p, bool isInstrument)
         addAndMakeVisible (*noteEnd);
     }
 
-    // Lanerna för tonerna: velocity, längd och tonhöjd (glide ritas i pianorullen).
-    std::vector<std::pair<juce::String, StepSequencer::Lane>> lanes { { "VEL", StepSequencer::Lane::velocity },
-                                                                      { "LENGTH", StepSequencer::Lane::gate } };
+    // Lanerna för tonerna: velocity, tonlängd och tonhöjd (glide ritas i pianorullen), valda i en rullgardinslista.
+    laneOrder = { StepSequencer::Lane::velocity, StepSequencer::Lane::gate };
+    laneBox.addItem ("Velocity", 1);
+    laneBox.addItem ("Note length", 2);
     if (instrument)
-        lanes.push_back ({ "PITCH", StepSequencer::Lane::pitch });
-
-    for (const auto& [name, lane] : lanes)
     {
-        auto button = std::make_unique<juce::TextButton> (name);
-        button->setClickingTogglesState (false);
-        button->setColour (juce::TextButton::buttonOnColourId, Theme::pattern);
-        button->setTooltip (name + " - Shows the selected layer's note " + name.toLowerCase() + " in the lane under the rows. "
-                            "Not available for a layer that is edited in the piano roll (set those there).");
-        const auto laneCopy = lane;
-        button->onClick = [this, laneCopy] { selectLane (laneCopy); };
-        addAndMakeVisible (*button);
-        laneButtons.emplace_back (std::move (button), lane);
+        laneOrder.push_back (StepSequencer::Lane::pitch);
+        laneBox.addItem ("Pitch", 3);
     }
+    laneLabel.setText ("EDIT IN LANE", juce::dontSendNotification);
+    laneLabel.setFont (Theme::font (11.0f, true));
+    laneLabel.setColour (juce::Label::textColourId, Theme::textDim);
+    laneBox.setTooltip ("EDIT IN LANE - What the strip under the selected row shows and edits for each note: its VELOCITY (volume), its NOTE LENGTH or its PITCH. "
+                        "Not available for a row that is edited in the piano roll (set those there).");
+    laneBox.onChange = [this] { selectLane (laneOrder[(size_t) juce::jlimit (0, (int) laneOrder.size() - 1, laneBox.getSelectedId() - 1)]); };
+    addAndMakeVisible (laneLabel);
+    addAndMakeVisible (laneBox);
 
     const auto numLayers = instrument ? ParamID::numBassLayers : 1;
     for (int layer = 0; layer < numLayers; ++layer)
     {
         const auto colour = instrument ? Theme::layerColour (layer) : Theme::gate;
         grids.push_back (std::make_unique<ChoiceComponent> (p.apvts, ParamID::bass (layer, BassField::grid), "GRID"));
-        lengths.push_back (std::make_unique<KnobComponent> (p.apvts, ParamID::bass (layer, BassField::gate), "LENGTH", colour));
-        lengths.back()->setDescription ("Scales the length of every note in this layer. Lower = shorter, punchier notes. (Set a single note's length "
-                                        "with the LENGTH lane or in the piano roll.)");
+        lengths.push_back (std::make_unique<KnobComponent> (p.apvts, ParamID::bass (layer, BassField::gate), "ALL LENGTHS", colour));
+        lengths.back()->setDescription ("NOTE LENGTH SCALE - Scales the length of every note in this instrument at once (100 % = as long as written). "
+                                        "Lower = shorter, punchier notes. Set a single note's length with EDIT IN LANE > Note length or in the piano roll.");
         addChildComponent (*grids.back());
         addChildComponent (*lengths.back());
 
@@ -1518,8 +1595,8 @@ void PatternModule::timerCallback()
 
     // (Kickens toner spelar hela sitt ljud, så deras längd gör inget.)
     const auto custom = processor.pattern.isCustom (shownLayer);
-    for (auto& [button, lane] : laneButtons)
-        button->setEnabled (! custom && ! (shownLayer == Pattern::kickLayer && lane == StepSequencer::Lane::gate));
+    laneBox.setEnabled (! custom);
+    laneBox.setItemEnabled (2, shownLayer != Pattern::kickLayer);
     if (shownLayer == Pattern::kickLayer && sequencer.getLane() == StepSequencer::Lane::gate)
         selectLane (StepSequencer::Lane::velocity);
 
@@ -1565,14 +1642,13 @@ void PatternModule::updateVisibility()
     pianoButton.setVisible (instrument && ! gating);
     fillButton.setVisible (! gating);
     gateFillButton.setVisible (gating);
-    for (auto& [button, lane] : laneButtons)
-        button->setVisible (! gating && ! rollOpen);
+    laneLabel.setVisible (! gating && ! rollOpen);
+    laneBox.setVisible (! gating && ! rollOpen);
 
     for (size_t i = 0; i < grids.size(); ++i)
     {
         const auto shown = (int) i == shownLayer;
         grids[i]->setVisible (shown && ! gating);
-        lengths[i]->setVisible (shown && ! gating);
         if (i < gateGrids.size())
         {
             gateGrids[i]->setVisible (shown && gating);
@@ -1583,16 +1659,28 @@ void PatternModule::updateVisibility()
     }
     if (kickGrid != nullptr)
         kickGrid->setVisible (shownLayer == Pattern::kickLayer && ! gating);
+    updateLengthKnobs();
     updatePianoButton();
     resized();
     repaint();
 }
 
+// ALL LENGTHS (instrumentets noters längd, alla på en gång) hör ihop med tonlängden: knappen visas bara när EDIT IN LANE står på Note length.
+void PatternModule::updateLengthKnobs()
+{
+    const auto gating = instrument && mode == StepSequencer::Mode::gate;
+    const auto wanted = ! gating && sequencer.getLane() == StepSequencer::Lane::gate && shownLayer != Pattern::kickLayer;
+    for (size_t i = 0; i < lengths.size(); ++i)
+        lengths[i]->setVisible (wanted && (int) i == shownLayer);
+}
+
 void PatternModule::selectLane (StepSequencer::Lane lane)
 {
     sequencer.setLane (lane);
-    for (auto& [button, buttonLane] : laneButtons)
-        button->setToggleState (buttonLane == lane, juce::dontSendNotification);
+    for (size_t i = 0; i < laneOrder.size(); ++i)
+        if (laneOrder[i] == lane)
+            laneBox.setSelectedId ((int) i + 1, juce::dontSendNotification);
+    updateLengthKnobs();
 }
 
 void PatternModule::showLayer (int layer)
@@ -1734,12 +1822,9 @@ void PatternModule::resized()
     if (kickGrid != nullptr)
         kickGrid->setBounds (notesColumn.getX(), notesColumn.getY(), notesColumn.getWidth(), 40);
     notesColumn.removeFromTop (44);
-    for (auto& [button, lane] : laneButtons)
-    {
-        button->setBounds (notesColumn.removeFromTop (24));
-        notesColumn.removeFromTop (3);
-    }
-    notesColumn.removeFromTop (3);
+    laneLabel.setBounds (notesColumn.removeFromTop (14));
+    laneBox.setBounds (notesColumn.removeFromTop (24));
+    notesColumn.removeFromTop (6);
     auto knobRow = notesColumn.removeFromTop (66);
     for (auto& lengthKnob : lengths)
         lengthKnob->setBounds (knobRow.withSizeKeepingCentre (knobRow.getWidth() * 3 / 4, knobRow.getHeight()));
