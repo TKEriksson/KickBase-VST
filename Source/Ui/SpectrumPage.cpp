@@ -159,7 +159,7 @@ void ReportContent::mouseDown (const juce::MouseEvent& event)
 }
 
 //==============================================================================
-SpectrumPage::SpectrumPage (PluginBase& p) : processor (p)
+SpectrumPage::SpectrumPage (PluginBase& p) : processor (p), analyser (p.getMixAnalyser())
 {
     sources[kickSource].colour = Theme::kick;
     sources[kickSource].name = "KICK";
@@ -1122,6 +1122,20 @@ void SpectrumPage::timerCallback()
     }
     if (reportView && viewReportButton.getButtonText().endsWith ("*"))
         viewReportButton.setButtonText ("ANALYSIS + REPORT");
+
+    // En analys som en AI startade (eller en som redan finns när fliken öppnas) visas här som om den kördes härifrån.
+    if (! analysing && analyser.isRunning())
+    {
+        analysing = true;
+        analyseButton.setButtonText ("CANCEL");
+        for (auto* c : std::initializer_list<juce::Component*> { &referenceButton, &sensitivityBox, &eqButton, &eqTargetBox })
+            c->setEnabled (false);
+        updateRunning();
+    }
+    else if (! analysing && analyser.getVersion() != reportVersion)
+    {
+        takeReport();
+    }
 
     if (analysing)
     {

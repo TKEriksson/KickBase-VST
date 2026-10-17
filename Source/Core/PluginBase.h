@@ -21,6 +21,7 @@
 // Det som instrumentet och FX-versionen har gemensamt: parametrar, mönster, klicksampling,
 // sparat läge och klockan.
 class AiChat;
+class MixAnalyser;
 
 class PluginBase : public juce::AudioProcessor
 {
@@ -32,6 +33,7 @@ public:
 
     // AI-chatten i synten (skapas första gången den behövs; samtalet finns kvar medan pluginet lever). Message thread.
     AiChat& getAiChat();
+    MixAnalyser& getMixAnalyser(); // en enda analys per instans: samma som visas i ANALYZER-fliken och som en AI hämtar med get_mix_report
 
     // Mastersektionen ägs av underklassen (den behöver bara finnas där ljudet bearbetas).
     virtual const MasterSection& getMasterSection() const = 0;
@@ -338,5 +340,6 @@ private:
 
     mutable juce::CriticalSection aiNotesLock;
     std::vector<AiNote> aiNotes;
+    std::unique_ptr<MixAnalyser> mixAnalyser;
     std::unique_ptr<AiChat> aiChat; // sist: rivs först, så att dess tråd är klar innan resten försvinner
 };

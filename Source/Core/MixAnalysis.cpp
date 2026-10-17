@@ -63,6 +63,58 @@ namespace MixAnalysis
             return map;
         }
 
+        // Frekvensen i en bit av en signal ur autokorrelationen (25-100 Hz): första toppen som är nästan lika hög som den högsta, så att
+        // en multipel av perioden inte väljs. Tidsdomänen ger rätt värde även när svepet ännu rör sig lite, till skillnad från en topp i ett medelspektrum.
+        float periodHz (const std::vector<float>& x, int from, int to, double rate)
+        {
+            const auto n = to - from;
+            if (n < (int) (rate * 0.06))
+                return 0.0f;
+            std::vector<float> y ((size_t) n);
+            auto mean = 0.0;
+            for (int i = 0; i < n; ++i)
+                mean += x[(size_t) (from + i)];
+            mean /= n;
+            auto energy = 0.0;
+            for (int i = 0; i < n; ++i)
+            {
+                y[(size_t) i] = x[(size_t) (from + i)] - (float) mean;
+                energy += (double) y[(size_t) i] * y[(size_t) i];
+            }
+            if (energy / n < 1.0e-8)
+                return 0.0f;
+
+            const auto minLag = (int) (rate / 100.0), maxLag = std::min ((int) (rate / 25.0), n / 2);
+            if (maxLag - minLag < 4)
+                return 0.0f;
+            std::vector<double> r ((size_t) maxLag + 2, 0.0);
+            for (int lag = minLag - 1; lag <= maxLag + 1; ++lag)
+            {
+                double dot = 0.0, a = 0.0, b = 0.0;
+                for (int i = 0; i + lag < n; ++i)
+                {
+                    dot += (double) y[(size_t) i] * y[(size_t) (i + lag)];
+                    a += (double) y[(size_t) i] * y[(size_t) i];
+                    b += (double) y[(size_t) (i + lag)] * y[(size_t) (i + lag)];
+                }
+                r[(size_t) lag] = dot / std::sqrt (a * b + 1.0e-20);
+            }
+            auto highest = 0.0;
+            for (int lag = minLag; lag <= maxLag; ++lag)
+                highest = std::max (highest, r[(size_t) lag]);
+            if (highest < 0.5)
+                return 0.0f;
+            for (int lag = minLag; lag <= maxLag; ++lag)
+                if (r[(size_t) lag] >= 0.9 * highest && r[(size_t) lag] >= r[(size_t) lag - 1] && r[(size_t) lag] >= r[(size_t) lag + 1])
+                {
+                    const auto a = r[(size_t) lag - 1], m = r[(size_t) lag], z = r[(size_t) lag + 1];
+                    const auto denominator = a - 2.0 * m + z;
+                    const auto delta = std::abs (denominator) > 1.0e-12 ? juce::jlimit (-0.5, 0.5, 0.5 * (a - z) / denominator) : 0.0;
+                    return (float) (rate / ((double) lag + delta));
+                }
+            return 0.0f;
+        }
+
         // Grundtonen ur ett effektspektrum (de lägsta stegen): den lägsta toppen inom 10 dB från den starkaste mellan 28 och 400 Hz.
         float findFundamental (const float* power, double rate, float minDb)
         {
@@ -211,7 +263,14 @@ namespace MixAnalysis
                 }
             }
         }
+        // Svansen mätt i tidsdomänen efter slagen är säkrare än toppen i medelspektrumet (som drar mot slagets svep och mot överton).
+        if (c.kickTailMeasuredHz > 0.0f)
+        {
+            kickTail = c.kickTailMeasuredHz;
+            r.kickTailFromTime = true;
+        }
         r.kickTailHz = kickTail;
+        r.kickTailDesignHz = c.kickTailDesignHz;
 
         for (int src = 0; src < numSources; ++src)
         {
@@ -219,6 +278,16 @@ namespace MixAnalysis
             info.name = c.names[(size_t) src];
             info.present = c.present[(size_t) src];
             info.peakDb = ownMax[(size_t) src];
+            if (! c.framePeakDb.empty())
+            {
+                auto powerSum = 0.0;
+                for (int f = 0; f < frames; ++f)
+                {
+                    info.samplePeakDb = std::max (info.samplePeakDb, c.framePeakDb[(size_t) f * numSources + (size_t) src]);
+                    powerSum += std::pow (10.0, 0.1 * c.frameRmsDb[(size_t) f * numSources + (size_t) src]);
+                }
+                info.rmsDb = frames > 0 ? (float) (10.0 * std::log10 (powerSum / frames + 1.0e-12)) : -120.0f;
+            }
             info.fundamentalHz = src == kickSource ? kickTail : fundamental[(size_t) src];
             info.note = info.fundamentalHz > 0.0f ? noteName (info.fundamentalHz) : juce::String();
             r.sources.push_back (info);
@@ -632,6 +701,9 @@ namespace MixAnalysis
         root->setProperty ("bpm", bpm);
         root->setProperty ("sensitivity", sensitivity == 0 ? "low" : sensitivity == 1 ? "normal" : "high");
         root->setProperty ("kick_tail_hz", kickTailHz);
+        if (kickTailDesignHz > 0.0f)
+            root->setProperty ("kick_tail_design_hz", kickTailDesignHz);
+        root->setProperty ("kick_tail_measured_in", kickTailFromTime ? "time domain, 120-340 ms after each hit (median)" : "average spectrum");
         root->setProperty ("limiter_max_reduction_db", limiterMaxDb);
         if (referenceName.isNotEmpty())
             root->setProperty ("reference", referenceName);
@@ -643,7 +715,9 @@ namespace MixAnalysis
                 continue;
             auto* o = new juce::DynamicObject();
             o->setProperty ("name", source.name);
-            o->setProperty ("peak_db", source.peakDb);
+            o->setProperty ("peak_band_db", source.peakDb);
+            o->setProperty ("sample_peak_db", source.samplePeakDb);
+            o->setProperty ("rms_db", source.rmsDb);
             if (source.fundamentalHz > 0.0f)
             {
                 o->setProperty ("fundamental_hz", source.fundamentalHz);
@@ -1176,6 +1250,18 @@ namespace MixAnalysis
         // --- Mått och förklaringar
         auto* meta = new juce::DynamicObject();
         meta->setProperty ("format", "kickbase-analysis-2");
+        {
+            // Var tiden finns i just den här filen (det som saknas står uttryckligen): en AI som bara läser början ska ändå hitta den.
+            juce::String time;
+            time << "Time is measured from the start of the analysed loop; bar numbers start at 1 and beats at 1.0. ";
+            time << (o.frames ? "frames: a SNAPSHOT of every source about every 45 ms (frames.seconds, frames.bar, frames.beat_in_bar) with the level in every frequency band, rms/peak/brightness, the ducking per instrument"
+                                 + juce::String (o.modulation ? ", the limiter reduction and the value of every modulation source and every modulated parameter at that time. " : ". ")
+                              : "frames: NOT included in this file (it is the big per-frame section; export again with frames to get a snapshot every 45 ms). ");
+            time << (o.synth ? "pattern_timeline: every note of the pattern by bar and beat (which instrument, pitch, length), and synth: all settings and the notes. " : "pattern_timeline and synth (notes, all settings): NOT included in this file. ");
+            time << (o.kicks ? "kick_hits: the time, bar and beat of every kick hit and how deep each instrument is ducked at it. " : "kick_hits: NOT included. ");
+            time << (o.bars ? "per_bar: levels and harmonics per source and bar." : "per_bar: NOT included.");
+            meta->setProperty ("where_is_time_and_snapshots", time);
+        }
         meta->setProperty ("generated", juce::Time::getCurrentTime().toISO8601 (true));
         meta->setProperty ("bars_analysed", c.bars);
         meta->setProperty ("bpm", c.bpm);
@@ -1226,6 +1312,8 @@ namespace MixAnalysis
             const auto base = toVar();
             root->setProperty ("findings", base["findings"]);
             root->setProperty ("kick_tail_hz", kickTailHz);
+            if (kickTailDesignHz > 0.0f)
+                root->setProperty ("kick_tail_design_hz", kickTailDesignHz);
             root->setProperty ("limiter_max_reduction_db", limiterMaxDb);
             if (! aiNotes.isVoid())
                 root->setProperty ("ai_notes", aiNotes);
@@ -1263,6 +1351,8 @@ namespace MixAnalysis
                 auto* entry = new juce::DynamicObject();
                 entry->setProperty ("name", c.names[(size_t) s]);
                 entry->setProperty ("peak_band_db", round1 (sources[(size_t) s].peakDb));
+                entry->setProperty ("sample_peak_db", round1 (sources[(size_t) s].samplePeakDb));
+                entry->setProperty ("rms_db", round1 (sources[(size_t) s].rmsDb));
                 if (sources[(size_t) s].fundamentalHz > 0.0f)
                 {
                     entry->setProperty ("fundamental_hz", round1 (sources[(size_t) s].fundamentalHz));
@@ -1777,6 +1867,7 @@ namespace MixAnalysis
         std::vector<float> left, right;
         std::vector<std::array<float, numInstruments>> duckMin;
         std::vector<int> onsets; // sample
+        std::vector<float> kickSignal; // hela kickens signal (mono), för svansmätningen
         auto previousKickPeak = 0.0f;
         auto lastOnsetBlock = -100;
         auto limiterMin = 1.0f;
@@ -1802,6 +1893,8 @@ namespace MixAnalysis
             auto peak = 0.0f;
             for (auto v : left)
                 peak = std::max (peak, std::abs (v));
+            for (size_t k = 0; k < left.size(); ++k)
+                kickSignal.push_back (0.5f * (left[k] + right[k]));
             const auto blockIndex = done / blockSize;
             if (peak > 0.15f && peak > previousKickPeak * 1.8f + 0.05f && blockIndex - lastOnsetBlock > 3)
             {
@@ -1947,6 +2040,34 @@ namespace MixAnalysis
         capture.barFrameCount = barFrames;
         for (const auto onset : onsets)
             capture.kickOnsetSeconds.push_back ((double) (onset - preRollSamples) / rate);
+
+        // Kickens svansfrekvens: i fönstret 120-340 ms efter varje slag (före nästa slag), median över slagen.
+        {
+            std::vector<float> estimates;
+            const auto step = std::max<size_t> (1, onsets.size() / 24);
+            for (size_t i = 0; i < onsets.size(); i += step)
+            {
+                const auto from = onsets[i] + (int) (0.12 * rate);
+                auto to = onsets[i] + (int) (0.34 * rate);
+                if (i + 1 < onsets.size())
+                    to = std::min (to, onsets[i + 1] - (int) (0.01 * rate));
+                to = std::min (to, (int) kickSignal.size());
+                if (to - from < (int) (0.06 * rate))
+                    continue;
+                if (const auto hz = periodHz (kickSignal, from, to, rate); hz > 0.0f)
+                    estimates.push_back (hz);
+            }
+            if (! estimates.empty())
+            {
+                std::sort (estimates.begin(), estimates.end());
+                capture.kickTailMeasuredHz = estimates[estimates.size() / 2];
+            }
+
+            const auto follow = copy.apvts.getRawParameterValue (ParamID::kickKeyFollow)->load() >= 0.5f;
+            const auto tune = copy.apvts.getRawParameterValue (ParamID::kickTune)->load();
+            const auto pitchClass = ((keyNote >= 0 ? keyNote : 60) % 12 + 12) % 12;
+            capture.kickTailDesignHz = Params::midiToHz ((float) (follow ? Params::kickTailMidiNote (pitchClass) : 24) + tune);
+        }
         capture.limiterMaxReductionDb = limiterMin < 0.999f ? -20.0f * std::log10 (std::max (limiterMin, 1.0e-3f)) : 0.0f;
 
         for (const auto onset : onsets)

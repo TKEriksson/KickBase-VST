@@ -56,7 +56,8 @@ namespace MixAnalysis
     {
         juce::String name;
         bool present = false;
-        float peakDb = -120.0f;     // starkaste bandet
+        float peakDb = -120.0f;     // starkaste bandet (nivån på ENERGIN i ett band, inte samplets topp: kan vara över 0)
+        float samplePeakDb = -120.0f, rmsDb = -120.0f; // signalens riktiga toppvärde och RMS över hela loopen (dBFS)
         float fundamentalHz = 0.0f; // lägsta starka grundtonen, 0 = ingen
         juce::String note;
     };
@@ -106,6 +107,8 @@ namespace MixAnalysis
         std::vector<SourceInfo> sources;
         std::vector<Finding> findings;
         float kickTailHz = 0.0f, limiterMaxDb = 0.0f;
+        float kickTailDesignHz = 0.0f;          // vad kickens TUNE och tonart ger (0 = okänt): jämförs med den uppmätta svansen
+        bool kickTailFromTime = false;           // svansen är mätt i tidsdomänen (annars ur medelspektrumet)
         juce::String referenceName;
         std::shared_ptr<const Capture> capture; // rådata från körningen (för sparad analys)
         juce::var synthState;                   // alla inställningar när analysen startade (om anroparen gav dem)
@@ -144,6 +147,8 @@ namespace MixAnalysis
         float limiterMaxReductionDb = 0.0f;
         std::vector<double> frameSeconds;       // ramens mitt, sekunder från loopens början
         std::vector<double> kickOnsetSeconds;   // kickens slag
+        float kickTailMeasuredHz = 0.0f;        // kickens svansfrekvens uppmätt i tidsdomänen efter varje slag (0 = ej mätbar)
+        float kickTailDesignHz = 0.0f;          // kickens svans enligt inställningarna (tonart + TUNE)
         std::vector<float> barPower;            // [takt][källa][fftSize/2]: medeleffekt per steg över takten
         std::vector<int> barFrameCount;         // antal ramar per takt
         std::vector<float> framePeakDb, frameRmsDb; // [ram][källa]: toppnivå och RMS över ramens 171 ms (dB, 0 = full skala)

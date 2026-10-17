@@ -991,13 +991,12 @@ var ToolLayer::analyseMix (const var& args)
     if (processor.isEffectVersion())
         return fail ("analyse_mix works in the instrument version of Kickbase (the FX version has no instruments to compare).");
 
-    if (analyser == nullptr)
-        analyser = std::make_unique<MixAnalyser>();
-    if (analyser->isRunning())
+    auto& analyser = processor.getMixAnalyser();
+    if (analyser.isRunning())
     {
         auto data = object();
         put (data, "status", "running");
-        put (data, "progress", round4 (analyser->getProgress()));
+        put (data, "progress", round4 (analyser.getProgress()));
         put (data, "next", "An analysis is already running. Call get_mix_report.");
         return ok (data);
     }
@@ -1022,7 +1021,7 @@ var ToolLayer::analyseMix (const var& args)
     put (stateArgs, "all_parameters", true);
     const auto state = getState (stateArgs);
     processor.clearAiNotes();
-    if (! analyser->start (processor, options, reference, state["data"]))
+    if (! analyser.start (processor, options, reference, state["data"]))
         return fail ("Could not start the analysis.");
 
     auto data = object();
@@ -1063,25 +1062,26 @@ namespace
 
 var ToolLayer::getMixReport (const var& args)
 {
-    if (analyser == nullptr || (! analyser->isRunning() && ! analyser->hasReport()))
+    auto& analyser = processor.getMixAnalyser();
+    if (! analyser.isRunning() && ! analyser.hasReport())
         return fail ("No analysis yet. Call analyse_mix first.");
 
     // Mot den fristående instansen (ett annat tråd än huvudtråden) kan anropet vänta; mot pluginet aldrig (huvudtråden svarar på länkens ping).
     const auto wait = juce::jlimit (0.0, 60.0, (double) args["wait_seconds"]);
     if (wait > 0.0 && ! juce::MessageManager::getInstance()->isThisTheMessageThread())
-        for (auto waited = 0.0; analyser->isRunning() && waited < wait; waited += 0.1)
+        for (auto waited = 0.0; analyser.isRunning() && waited < wait; waited += 0.1)
             juce::Thread::sleep (100);
 
-    if (analyser->isRunning())
+    if (analyser.isRunning())
     {
         auto data = object();
         put (data, "status", "running");
-        put (data, "progress", round4 (analyser->getProgress()));
+        put (data, "progress", round4 (analyser.getProgress()));
         put (data, "next", "Still working. Call get_mix_report again in a few seconds.");
         return ok (data);
     }
 
-    auto report = analyser->getReport();
+    auto report = analyser.getReport();
     if (! report.valid)
         return fail (report.error);
 
@@ -1106,12 +1106,13 @@ var ToolLayer::getMixReport (const var& args)
 
 var ToolLayer::saveMixReport (const var& args)
 {
-    if (analyser == nullptr || (! analyser->isRunning() && ! analyser->hasReport()))
+    auto& analyser = processor.getMixAnalyser();
+    if (! analyser.isRunning() && ! analyser.hasReport())
         return fail ("No analysis yet. Call analyse_mix first.");
-    if (analyser->isRunning())
+    if (analyser.isRunning())
         return fail ("The analysis is still running. Call get_mix_report until the status is done, then save it.");
 
-    auto report = analyser->getReport();
+    auto report = analyser.getReport();
     if (! report.valid)
         return fail (report.error);
 

@@ -1,5 +1,6 @@
 #include "PluginBase.h"
 #include "AiChat.h"
+#include "MixAnalysis.h"
 #include "OfflineRender.h"
 #include "Mixer.h"
 
@@ -27,6 +28,13 @@ PluginBase::PluginBase (const BusesProperties& buses, juce::AudioProcessorValueT
 }
 
 PluginBase::~PluginBase() = default;
+
+MixAnalyser& PluginBase::getMixAnalyser()
+{
+    if (mixAnalyser == nullptr)
+        mixAnalyser = std::make_unique<MixAnalyser>();
+    return *mixAnalyser;
+}
 
 AiChat& PluginBase::getAiChat()
 {

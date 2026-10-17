@@ -483,6 +483,14 @@ namespace
             }
             check ((bool) answer["ok"] && answer["data"]["status"].toString() == "done" && answer["data"]["findings"].isArray(), "get_mix_report ger rapporten (utan att vänta i anropet)");
             check (answer["data"]["kick_tail_hz"].operator double() > 25.0, "rapporten kommer med i svaret (data)");
+            {
+                // Samma analys delas med fliken i pluginet: den som verktygen startade är den som ligger hos processorn.
+                check (processor.getMixAnalyser().hasReport() && processor.getMixAnalyser().getReport().valid, "analysen ligger hos processorn (delas med ANALYZER-fliken)");
+                const auto measured = answer["data"]["kick_tail_hz"].operator double(), design = answer["data"]["kick_tail_design_hz"].operator double();
+                check (design > 25.0 && std::abs (12.0 * std::log2 (measured / design)) < 1.0, "kickens svans mäts i tidsdomänen nära det inställningarna ger (" + juce::String (measured, 1) + " av " + juce::String (design, 1) + " Hz)");
+                const auto sourcesList = answer["data"]["sources"];
+                check (sourcesList[0]["sample_peak_db"].isDouble() && (double) sourcesList[0]["sample_peak_db"] < 12.0 && sourcesList[0]["rms_db"].isDouble(), "källorna har riktig toppnivå och RMS (inte bara bandnivå)");
+            }
 
             // Mer data: bandnivåer och övertoner per takt via get_mix_report, och hela analysen som fil.
             auto detailArgs = juce::DynamicObject::Ptr (new juce::DynamicObject());
@@ -515,6 +523,7 @@ namespace
                 check (series.size() > 5 && high - low > 1.0 && parsed["frames"]["modulation_sources"].isObject() && parsed["frames"]["limiter_reduction_db"].isArray()
                            && parsed["frames"]["beat_in_bar"].isArray(), "filen har moduleringen genom loopen (cutoff " + juce::String (low, 0) + "-" + juce::String (high, 0) + " Hz), limitern och taktslaget per ram");
             }
+            check (parsed["meta"]["where_is_time_and_snapshots"].toString().contains ("SNAPSHOT"), "meta säger var tiden och ögonblicksbilderna finns");
             check (parsed["per_bar"][1]["bars"][0]["rms_db"].isDouble() && parsed["frames"]["rms_db"].isObject() && parsed["frames"]["ducking_db"].isObject(), "filen har nivå, ljusstyrka och duckning per takt och ram");
 
             // Filter: bara kicken, takt 1 och 30-300 Hz ger en mycket mindre fil.

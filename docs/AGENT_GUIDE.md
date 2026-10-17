@@ -92,6 +92,8 @@ Also check yourself: the first bass note after a kick is a little softer (rollin
 - A pattern note beyond the pattern length (`patternBars`) is not played but is kept.
 - Do not confuse note LENGTH (`bassNGate`, how long notes sound) with the GATE (an on/off chopping rhythm). A glide note is not a normal note: with nothing sounding it plays as a normal note.
 - `bassNLevel` is the layer's own volume; the mixer gain (`mixBass1Gain`) comes after it. Use one of them consistently.
+- The mixer comes BEFORE the master limiter, but an instrument's strip (`mixBassNGain`) only scales its DRY part. The part sent to an FX channel (`bassNFxAmount`) is scaled by that channel's strip (`mixFxAGain` ... `mixFxKGain`). To lower an instrument that is sent 100 % to FX channel 1, lower `mixFxAGain` (or `bassNLevel`, which scales both). The analysis measures each instrument BEFORE the mixer (so its peak and rms do not change with the mixer gain); the Master source is after everything.
+- Levels in the analysis: `sample_peak_db` / `rms_db` are real signal levels (dBFS; above 0 = clipping before the limiter). `peak_band_db` and `band_db` are the level of the energy inside one frequency band: a value above 0 there is normal and is NOT clipping.
 - Presets `section=Bass` store an instrument's sound (not its on/off, gate, duck, grid, sends); `Full` stores everything. User presets are plain files in `Documents\Kickbase\Presets\<Section>`.
 - FX knob parameters (`fxA1P1…`) are normalized 0..1 and depend on the slot's type: always use `set_effect`.
 - The user wants **intuitive, clear** sounds with good names; do not leave a project in a half-edited state without saying so; never claim to have heard a sound.

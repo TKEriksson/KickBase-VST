@@ -132,7 +132,7 @@ private:
     std::vector<float> left, right;
     std::array<float, size * 2> fftData {};
 
-    MixAnalyser analyser;
+    MixAnalyser& analyser; // delas med verktygslagret: en AI kan starta och hämta samma analys
     juce::Rectangle<int> plotBody; // diagrammets yta (rapporten ligger till höger om den)
     juce::Viewport viewport;
     ReportContent content;

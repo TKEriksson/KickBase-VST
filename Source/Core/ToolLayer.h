@@ -59,5 +59,4 @@ private:
 
     PluginBase& processor;
     std::vector<juce::MemoryBlock> undoStack, redoStack;
-    std::unique_ptr<MixAnalyser> analyser; // analysen körs i bakgrunden (se analyse_mix): ett långt anrop på huvudtråden fick länken att tappa
 };
