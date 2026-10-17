@@ -31,7 +31,7 @@ InstrumentEditor::InstrumentEditor (InstrumentProcessor& p)
     tools.addTab ("MATRIX", Theme::lfo, matrix);
     tools.addTab ("MASTER", Theme::master, masterPage);
     tools.addTab ("SOUNDSTAGE", Theme::mix, soundstage);
-    tools.addTab ("SPECTRUM", Theme::lfo, spectrum);
+    tools.addTab ("ANALYZER", Theme::lfo, spectrum);
     tools.addTab ("SETTINGS", Theme::textDim, settings);
 
     keyboard.setOctaveForMiddleC (5); // samma tonnamn som FL Studio (mittens C = C5)

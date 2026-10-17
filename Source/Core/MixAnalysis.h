@@ -8,7 +8,7 @@
 
 class PluginBase;
 
-// Mixanalysen (SPECTRUM-fliken, knappen ANALYSE, och AI-verktyget analyse_mix): spelar mönstret ett helt varv offline och mäter
+// Mixanalysen (ANALYZER-fliken, knappen ANALYSE, och AI-verktyget analyse_mix): spelar mönstret ett helt varv offline och mäter
 // hur kicken, varje instrument och mastern delar på frekvenserna, takt för takt, och skriver en rapport med saker man bör titta på.
 //
 // Principer (så att rapporten inte ger falsklarm):
@@ -61,6 +61,41 @@ namespace MixAnalysis
         juce::String note;
     };
 
+    struct Capture;
+
+    // Vad som tas med när analysen sparas eller hämtas som data (allt som standard).
+    struct ExportOptions
+    {
+        bool findings = true;   // fynden (krockar m.m.)
+        bool sources = true;    // översikt per källa (toppnivå, grundton, medelspektrum över hela loopen)
+        bool bars = true;       // bandnivåer (medel och topp) för varje källa och takt
+        bool harmonics = true;  // grundton och övertonsserie för varje källa och takt
+        bool spectra = true;    // spektrum i 1/12-oktavsteg för varje källa och takt
+        bool frames = true;     // bandnivåer för varje ram genom hela loopen (bara i filen: mycket data)
+        bool kicks = true;      // kickens slag (takt, taktslag) och hur mycket varje instrument duckades vid dem
+        bool presets = true;    // vilka presets som är laddade (hela, kick, varje instrument, effekter, sidechain ...)
+        bool overview = true;   // alla inställningar ordnade: kicken, varje instruments oscillatorer (A/B/C med wavetable), filter, envelopes, EQ, effektkanalerna med platser, mastern, mixern, modulering
+        bool dynamics = true;   // nivå (RMS, topp, crest), ljusstyrka (spektral tyngdpunkt) och energi i sex frekvensområden för varje källa och takt (och varje ram)
+        bool about = true;      // en förklaring för en AI som inte känner till Kickbase: vad pluginet är, vad datan är och hur man analyserar den
+        bool synth = true;      // alla inställningar: oscillatorer, wavetables, filter, effekter, modulering, mönster och toner
+
+        juce::String toString() const;
+        static ExportOptions fromString (const juce::String& text);                 // bokstäver: f s b h p r k y
+        static ExportOptions fromNames (const juce::StringArray& names, bool allIfEmpty = true);
+    };
+
+    // Begränsar vad som tas med: några källor, några takter, ett frekvensområde, och hur tätt ramarna tas (för att hålla datan liten).
+    struct ExportFilter
+    {
+        juce::StringArray sources;   // delar av namn, t.ex. "kick" eller "instr 2" (tom = alla)
+        std::vector<int> bars;       // 1-baserade takter (tom = alla)
+        float minHz = 0.0f, maxHz = 1.0e9f;
+        int frameStep = 1;           // varannan ram = 2 ...
+
+        static std::vector<int> parseBars (const juce::var& value); // en lista med tal, eller en text som "1-4,7"
+        bool wantsBar (int bar1Based) const;
+    };
+
     struct Report
     {
         bool valid = false;
@@ -71,9 +106,17 @@ namespace MixAnalysis
         std::vector<Finding> findings;
         float kickTailHz = 0.0f, limiterMaxDb = 0.0f;
         juce::String referenceName;
+        std::shared_ptr<const Capture> capture; // rådata från körningen (för sparad analys)
+        juce::var synthState;                   // alla inställningar när analysen startade (om anroparen gav dem)
+        juce::var aiNotes;                      // en AI:s anteckningar i rapporten (förslag och det som fixats), om anroparen gav dem
 
         juce::var toVar() const;
         juce::String toText() const;
+
+        // Allt man kan få ut: se ExportOptions. `sourceFilter` begränsar källorna (delar av namn, t.ex. "kick" eller "instr 2").
+        juce::var toExportVar (const ExportOptions& options, const ExportFilter& filter = {}) const;
+        juce::String toExportJson (const ExportOptions& options, const ExportFilter& filter = {}) const; // som toExportVar, med nivåerna för varje ram om options.frames
+        bool saveExport (const juce::File& file, const ExportOptions& options, const ExportFilter& filter = {}) const;
     };
 
     // En referenslåt: långtidsmedelvärdet av spektrumet (effekt per steg).
@@ -98,6 +141,12 @@ namespace MixAnalysis
         std::vector<int> frameBar;     // takt (0-baserad) per ram
         std::vector<std::array<float, numInstruments>> duckDepthDb; // per kickslag: hur mycket varje instrument duckades (dB)
         float limiterMaxReductionDb = 0.0f;
+        std::vector<double> frameSeconds;       // ramens mitt, sekunder från loopens början
+        std::vector<double> kickOnsetSeconds;   // kickens slag
+        std::vector<float> barPower;            // [takt][källa][fftSize/2]: medeleffekt per steg över takten
+        std::vector<int> barFrameCount;         // antal ramar per takt
+        std::vector<float> framePeakDb, frameRmsDb; // [ram][källa]: toppnivå och RMS över ramens 171 ms (dB, 0 = full skala)
+        std::vector<float> frameDuckDb;         // [ram][instrument]: hur mycket instrumentet duckades under ramen (dB)
 
         float& band (int source, int frame, int b);
         float band (int source, int frame, int b) const;
@@ -120,7 +169,7 @@ public:
     ~MixAnalyser() override;
 
     // Meddelandetråden.
-    bool start (PluginBase& source, const MixAnalysis::Options& options, std::shared_ptr<const MixAnalysis::Reference> reference);
+    bool start (PluginBase& source, const MixAnalysis::Options& options, std::shared_ptr<const MixAnalysis::Reference> reference, juce::var synthState = {});
     void cancel();
 
     bool isRunning() const { return running.load(); }
@@ -135,6 +184,7 @@ private:
     std::unique_ptr<PluginBase> copy;
     MixAnalysis::Options options;
     std::shared_ptr<const MixAnalysis::Reference> reference;
+    juce::var synthState;
     double bpm = 140.0;
     int keyNote = 60;
 

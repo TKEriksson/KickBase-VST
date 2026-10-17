@@ -74,7 +74,7 @@ private:
     DuckCurvePlayer duckCurve;
     MasterSection master { apvts };
     SourceEq kickEq { apvts, "kick" };
-    std::vector<SourceEq> layerEqs; // ett per instrument (SPECTRUM-fliken)
+    std::vector<SourceEq> layerEqs; // ett per instrument (ANALYZER-fliken)
     Mixer mixer { apvts };
 
     // Blockets mellanresultat: kick, hur mycket basen ska duckas (före varje lagers mängd),

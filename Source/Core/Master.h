@@ -73,7 +73,7 @@ private:
     float released = 1.0f;  // förstärkning efter release (sjunker direkt, stiger långsamt)
     double boxSum = 0.0;
 
-    // Masterns EQ (SPECTRUM-fliken), före bredd, drive och limiter.
+    // Masterns EQ (ANALYZER-fliken), före bredd, drive och limiter.
     SourceEq eq;
 
     // Extra fördröjningar för andra utgångar (kick och bas).

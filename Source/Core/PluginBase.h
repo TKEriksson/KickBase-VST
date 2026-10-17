@@ -103,6 +103,47 @@ public:
     bool isBridgeEnabled() const { return bridge != nullptr && bridge->isRunning(); }
     juce::String getBridgeId() const { return bridge != nullptr ? bridge->getId() : juce::String(); }
     std::unique_ptr<PluginBase> cloneForOffline() const { return createOfflineCopy(); } // en egen instans för analys och rendering
+    // Anteckningar från en AI (via verktyget add_report_note, eller chatten i synten) som visas i ANALYZER-flikens rapport: förslag och det som redan är fixat.
+    struct AiNote
+    {
+        juce::String title, text;
+        int finding = 0;       // 1-baserat nummer på fyndet anteckningen gäller (0 = inget särskilt)
+        bool applied = false;  // redan genomfört (annars ett förslag)
+    };
+    void addAiNote (AiNote note)
+    {
+        const juce::ScopedLock lock (aiNotesLock);
+        aiNotes.push_back (std::move (note));
+        if (aiNotes.size() > 40)
+            aiNotes.erase (aiNotes.begin());
+        ++aiNotesVersion;
+    }
+    void clearAiNotes()
+    {
+        const juce::ScopedLock lock (aiNotesLock);
+        aiNotes.clear();
+        ++aiNotesVersion;
+    }
+    std::vector<AiNote> getAiNotes() const
+    {
+        const juce::ScopedLock lock (aiNotesLock);
+        return aiNotes;
+    }
+    juce::var getAiNotesVar() const
+    {
+        juce::Array<juce::var> list;
+        for (const auto& note : getAiNotes())
+        {
+            auto* entry = new juce::DynamicObject();
+            entry->setProperty ("title", note.title);
+            entry->setProperty ("text", note.text);
+            entry->setProperty ("finding", note.finding);
+            entry->setProperty ("applied", note.applied);
+            list.add (juce::var (entry));
+        }
+        return list;
+    }
+    std::atomic<int> aiNotesVersion { 0 };
     int getBridgeConnections() const { return bridge != nullptr ? bridge->getConnectedCount() : 0; }
 
     // Kickens sampling (klick eller hel kick) och baslagrens samplingar. Anropas från gränssnittet (message thread).
@@ -123,7 +164,7 @@ public:
     // Vad gränssnittet ritar i realtid: kicken, och basen före och efter duckningen under kicken.
     SignalTap kickTap, bassBeforeDuckTap, bassAfterDuckTap;
 
-    // Varje instruments egen signal (efter duckning, före effekter) till SPECTRUM-fliken. Skrivs bara när fliken är öppen och analysen
+    // Varje instruments egen signal (efter duckning, före effekter) till ANALYZER-fliken. Skrivs bara när fliken är öppen och analysen
     // påslagen (`instrumentTapsOn`), så att den inte kostar något annars.
     std::array<ShortSignalTap, ParamID::numBassLayers> instrumentTaps;
     std::atomic<bool> instrumentTapsOn { false };
@@ -295,5 +336,7 @@ private:
 
     double currentSampleRate = 44100.0;
 
+    mutable juce::CriticalSection aiNotesLock;
+    std::vector<AiNote> aiNotes;
     std::unique_ptr<AiChat> aiChat; // sist: rivs först, så att dess tråd är klar innan resten försvinner
 };

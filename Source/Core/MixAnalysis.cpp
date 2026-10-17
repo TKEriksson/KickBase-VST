@@ -4,6 +4,7 @@
 #include <set>
 #include "PluginBase.h"
 #include "OfflineRender.h"
+#include "AnalysisAbout.h"
 
 namespace MixAnalysis
 {
@@ -391,7 +392,7 @@ namespace MixAnalysis
                     if (withKick)
                         f.detail += " Kick and instrument may share frequencies when the sidechain gives the kick the hit and the instrument the gaps, so it is only a problem if the kick gets buried or the low end turns muddy." + duckHint (j) + tuningHint (i, j);
                     else
-                        f.detail += tuningHint (i, j) + " Give them different registers (octave or tune), EQ one of them (SPECTRUM > EQ), or duck one under the other (EFFECTS tab: a SIDECHAIN effect with one as SOURCE, and send the other 100 % to that FX channel).";
+                        f.detail += tuningHint (i, j) + " Give them different registers (octave or tune), EQ one of them (ANALYZER > SPECTRUM > EQ), or duck one under the other (EFFECTS tab: a SIDECHAIN effect with one as SOURCE, and send the other 100 % to that FX channel).";
                     r.findings.push_back (std::move (f));
                 }
             }
@@ -439,7 +440,7 @@ namespace MixAnalysis
                     f.title = c.names[(size_t) j] + " covers the kick at " + rangeText (low, high);
                     f.detail = "When the kick plays, " + c.names[(size_t) j] + " is more than " + juce::String (juce::roundToInt (s.maskMargin)) + " dB louder than the kick here in "
                              + juce::String ((int) group.bars.size()) + " of " + juce::String (bars) + " bars (bars " + barsText (f.bars) + "), so the kick loses punch."
-                             + duckHint (j) + tuningHint (j, kickSource) + " You can also lower " + c.names[(size_t) j] + " or cut it here with the EQ (SPECTRUM > EQ).";
+                             + duckHint (j) + tuningHint (j, kickSource) + " You can also lower " + c.names[(size_t) j] + " or cut it here with the EQ (ANALYZER > SPECTRUM > EQ).";
                     r.findings.push_back (std::move (f));
                 }
             }
@@ -504,8 +505,8 @@ namespace MixAnalysis
                 f.share = (float) std::set<int> (barList.begin(), barList.end()).size() / (float) bars;
                 f.title = c.names[(size_t) src] + " has strong energy below 30 Hz";
                 f.detail = "Energy that low is hard to hear, rumbles on large systems and eats headroom (bars " + barsText (barList) + "). "
-                           + (src == masterSource ? "Check which source it comes from, and high-pass it (SPECTRUM > EQ, HP about 30 Hz)."
-                                                  : "Raise its octave or tune, or high-pass it with the EQ (SPECTRUM > EQ, HP 30-40 Hz).");
+                           + (src == masterSource ? "Check which source it comes from, and high-pass it (ANALYZER > SPECTRUM > EQ, HP about 30 Hz)."
+                                                  : "Raise its octave or tune, or high-pass it with the EQ (ANALYZER > SPECTRUM > EQ, HP 30-40 Hz).");
                 r.findings.push_back (std::move (f));
             }
         }
@@ -590,8 +591,8 @@ namespace MixAnalysis
                     f.highHz = edges[(size_t) end + 1];
                     f.title = "Master has " + juce::String (std::abs (average), 1) + " dB " + (average > 0.0f ? "more" : "less") + " at " + rangeText (f.lowHz, f.highHz) + " than the reference";
                     f.detail = "Compared with " + reference->name + " with the levels matched over 120 Hz-5 kHz. It is a hint, not an error: a different style or loop can differ on purpose. "
-                               + (average > 0.0f ? "To match it, cut here with the EQ (SPECTRUM > EQ) on the instrument that fills this range, or on the master."
-                                                 : "To match it, boost here with the EQ (SPECTRUM > EQ), or give an instrument more energy in this range.");
+                               + (average > 0.0f ? "To match it, cut here with the EQ (ANALYZER > SPECTRUM > EQ) on the instrument that fills this range, or on the master."
+                                                 : "To match it, boost here with the EQ (ANALYZER > SPECTRUM > EQ), or give an instrument more energy in this range.");
                     r.findings.push_back (std::move (f));
                     b = end + 1;
                 }
@@ -691,6 +692,899 @@ namespace MixAnalysis
         if (findings.empty())
             text << "Nothing to report at this sensitivity.\n";
         return text;
+    }
+
+
+    //==========================================================================================
+    // Sparad analys: allt som mättes, för en AI eller för att analysera för hand.
+    juce::String ExportOptions::toString() const
+    {
+        juce::String text;
+        if (findings) text << "f";
+        if (sources) text << "s";
+        if (bars) text << "b";
+        if (harmonics) text << "h";
+        if (spectra) text << "p";
+        if (frames) text << "r";
+        if (kicks) text << "k";
+        if (synth) text << "y";
+        if (presets) text << "t";
+        if (overview) text << "o";
+        if (dynamics) text << "d";
+        if (about) text << "a";
+        return text;
+    }
+
+    ExportOptions ExportOptions::fromString (const juce::String& text)
+    {
+        ExportOptions o;
+        if (text.isEmpty())
+            return o;
+        o.findings = text.containsChar ('f');
+        o.sources = text.containsChar ('s');
+        o.bars = text.containsChar ('b');
+        o.harmonics = text.containsChar ('h');
+        o.spectra = text.containsChar ('p');
+        o.frames = text.containsChar ('r');
+        o.kicks = text.containsChar ('k');
+        o.synth = text.containsChar ('y');
+        o.presets = text.containsChar ('t');
+        o.overview = text.containsChar ('o');
+        o.dynamics = text.containsChar ('d');
+        o.about = text.containsChar ('a');
+        return o;
+    }
+
+    ExportOptions ExportOptions::fromNames (const juce::StringArray& names, bool allIfEmpty)
+    {
+        ExportOptions o;
+        if (names.isEmpty() && allIfEmpty)
+            return o;
+        auto has = [&names] (std::initializer_list<const char*> aliases)
+        {
+            for (const auto* alias : aliases)
+                for (const auto& name : names)
+                    if (name.equalsIgnoreCase (alias))
+                        return true;
+            return false;
+        };
+        o.findings = has ({ "findings", "report" });
+        o.sources = has ({ "sources", "overview_per_source" });
+        o.bars = has ({ "bars", "bar_levels", "band_levels" });
+        o.harmonics = has ({ "harmonics", "overtones" });
+        o.spectra = has ({ "spectra", "spectrum", "spectra_12th_octave" });
+        o.frames = has ({ "frames", "frame_levels", "spectrogram" });
+        o.kicks = has ({ "kicks", "ducking" });
+        o.synth = has ({ "synth", "settings", "state", "parameters" });
+        o.presets = has ({ "presets" });
+        o.overview = has ({ "overview", "structured", "settings_overview" });
+        o.dynamics = has ({ "dynamics", "levels", "loudness" });
+        o.about = has ({ "about", "readme", "explanation" });
+        if (has ({ "all" }))
+            return ExportOptions();
+        return o;
+    }
+
+    std::vector<int> ExportFilter::parseBars (const juce::var& value)
+    {
+        std::vector<int> bars;
+        auto add = [&bars] (int bar) { if (bar >= 1 && bar <= 256) bars.push_back (bar); };
+        if (auto* list = value.getArray())
+        {
+            for (const auto& item : *list)
+                add ((int) item);
+        }
+        else if (value.isString() || value.isInt())
+        {
+            for (const auto& part : juce::StringArray::fromTokens (value.toString(), ", ", {}))
+            {
+                const auto dash = part.indexOfChar ('-');
+                if (dash > 0)
+                {
+                    for (int bar = part.substring (0, dash).getIntValue(); bar <= part.substring (dash + 1).getIntValue() && bar <= 256; ++bar)
+                        add (bar);
+                }
+                else
+                {
+                    add (part.getIntValue());
+                }
+            }
+        }
+        return bars;
+    }
+
+    bool ExportFilter::wantsBar (int bar1Based) const
+    {
+        return bars.empty() || std::find (bars.begin(), bars.end(), bar1Based) != bars.end();
+    }
+
+    namespace
+    {
+        double round1 (double v) { return std::round (v * 10.0) / 10.0; }
+
+        juce::Array<juce::var> numbers (const float* values, int count)
+        {
+            juce::Array<juce::var> list;
+            for (int i = 0; i < count; ++i)
+                list.add (round1 (values[i]));
+            return list;
+        }
+
+        bool matchesFilter (const juce::String& name, const juce::StringArray& filter)
+        {
+            if (filter.isEmpty())
+                return true;
+            for (const auto& f : filter)
+                if (name.containsIgnoreCase (f.trim()) || f.trim().equalsIgnoreCase ("all"))
+                    return true;
+            return false;
+        }
+
+        constexpr int octaveBins = 120; // 1/12-oktav från 20 Hz
+
+        // Bandets mitt (geometriskt), och spektrets tyngdpunkt ur en rad bandnivåer (dB).
+        double bandCentre (int b) { return std::sqrt ((double) bandEdges()[(size_t) b] * (double) bandEdges()[(size_t) b + 1]); }
+
+        double centroidOfDb (const float* levels)
+        {
+            double sum = 0.0, weighted = 0.0;
+            for (int b = 0; b < numBands(); ++b)
+            {
+                const auto p = std::pow (10.0, levels[b] / 10.0);
+                sum += p;
+                weighted += p * bandCentre (b);
+            }
+            return sum > 1.0e-12 ? weighted / sum : 0.0;
+        }
+
+        // Sex frekvensområden: energi (dB) ur en rad bandnivåer.
+        const char* const groupNames[] { "sub_20_60", "bass_60_250", "low_mid_250_500", "mid_500_2k", "high_mid_2k_6k", "high_6k_20k" };
+        int groupOf (double hz) { return hz < 60.0 ? 0 : hz < 250.0 ? 1 : hz < 500.0 ? 2 : hz < 2000.0 ? 3 : hz < 6000.0 ? 4 : 5; }
+
+        juce::var groupsOfDb (const float* levels)
+        {
+            std::array<double, 6> sums {};
+            for (int b = 0; b < numBands(); ++b)
+                sums[(size_t) groupOf (bandCentre (b))] += std::pow (10.0, levels[b] / 10.0);
+            auto* o = new juce::DynamicObject();
+            for (size_t i = 0; i < sums.size(); ++i)
+                o->setProperty (groupNames[i], round1 (10.0 * std::log10 (sums[i] + 1.0e-12)));
+            return juce::var (o);
+        }
+
+        // Förklaringen (JSON i flera delar, se AnalysisAbout.h).
+        juce::var aboutVar()
+        {
+            juce::String json;
+            for (const auto* part : AnalysisAbout::parts)
+                json << juce::String::fromUTF8 (part);
+            auto parsed = juce::JSON::parse (json);
+            return parsed.isVoid() ? juce::var ("(the explanation could not be read)") : parsed;
+        }
+
+        // Mönstret omräknat till loopens egen tid: för varje takt och varje rad de toner som börjar där (takt, taktslag, längd i taktslag).
+        juce::var patternTimeline (const juce::var& state, int bars, const ExportFilter& filter)
+        {
+            const auto pattern = state["pattern"];
+            const auto ticksPerBar = std::max (1, (int) pattern["ticks_per_bar"]);
+            const auto loopBars = std::max (1, (int) pattern["bars"]);
+            const auto* layers = pattern["layers (instruments 0-9 and 'kick')"].getArray();
+            const auto parameters = state["parameters"];
+            if (layers == nullptr)
+                return {};
+
+            struct Row { juce::String name; const juce::Array<juce::var>* notes = nullptr; int rowBars = 1; bool loops = true; };
+            std::vector<Row> rows;
+            for (const auto& layer : *layers)
+            {
+                Row row;
+                const auto isKick = layer["layer"].isString();
+                row.name = isKick ? juce::String ("Kick") : layer["name"].toString();
+                row.notes = layer["notes [tick, length, pitch, velocity, glide]"].getArray();
+                if (row.notes == nullptr || row.notes->isEmpty())
+                    continue;
+                const auto suffix = isKick ? juce::String ("Kick") : "Bass" + juce::String ((int) layer["layer"] + 1);
+                const auto lengthText = parameters[juce::Identifier ("rowBars" + suffix)].toString();
+                row.rowBars = lengthText.containsAnyOf ("0123456789") ? std::max (1, lengthText.getIntValue()) : loopBars;
+                if (parameters.hasProperty (juce::Identifier ("rowLoop" + suffix)))
+                    row.loops = (bool) parameters[juce::Identifier ("rowLoop" + suffix)];
+                if (matchesFilter (row.name, filter.sources))
+                    rows.push_back (row);
+            }
+
+            juce::Array<juce::var> timeline;
+            for (int bar = 0; bar < bars; ++bar)
+            {
+                if (! filter.wantsBar (bar + 1))
+                    continue;
+                auto* entry = new juce::DynamicObject();
+                entry->setProperty ("bar", bar + 1);
+                auto* notesByRow = new juce::DynamicObject();
+                for (const auto& row : rows)
+                {
+                    const auto barInRow = row.loops ? bar % row.rowBars : (bar < row.rowBars ? bar : -1);
+                    if (barInRow < 0)
+                        continue;
+                    juce::Array<juce::var> list;
+                    for (const auto& note : *row.notes)
+                    {
+                        const auto tick = (int) note[0];
+                        if (tick / ticksPerBar != barInRow)
+                            continue;
+                        auto* n = new juce::DynamicObject();
+                        n->setProperty ("beat", std::round ((1.0 + (tick % ticksPerBar) / (ticksPerBar / 4.0)) * 100.0) / 100.0);
+                        n->setProperty ("length_beats", std::round (((int) note[1] / (ticksPerBar / 4.0)) * 100.0) / 100.0);
+                        n->setProperty ("pitch_semitones", (int) note[2]);
+                        n->setProperty ("velocity", note[3]);
+                        if ((bool) note[4])
+                            n->setProperty ("glide", true);
+                        list.add (juce::var (n));
+                    }
+                    if (! list.isEmpty())
+                        notesByRow->setProperty (row.name, list);
+                }
+                entry->setProperty ("notes", juce::var (notesByRow));
+                timeline.add (juce::var (entry));
+            }
+            return timeline;
+        }
+
+        // Alla inställningar ordnade efter vad de hör till: kicken, varje instruments oscillatorer (A/B/C med wavetable), filter, envelopes, EQ
+        // och sändningar, effektkanalerna med sina platser, mastern, mixern, sidechainen, moduleringen och mönstrets inställningar.
+        juce::var buildOverview (const juce::var& state)
+        {
+            auto* parameters = state["parameters"].getDynamicObject();
+            if (parameters == nullptr)
+                return {};
+
+            juce::StringArray instrumentNames;
+            if (auto* layers = state["pattern"]["layers (instruments 0-9 and 'kick')"].getArray())
+                for (const auto& layer : *layers)
+                    if (! layer["layer"].isString())
+                        instrumentNames.set ((int) layer["layer"], layer["name"].toString());
+
+            auto* root = new juce::DynamicObject();
+            auto* kick = new juce::DynamicObject();
+            auto* kickEq = new juce::DynamicObject();
+            auto* master = new juce::DynamicObject();
+            auto* masterEq = new juce::DynamicObject();
+            auto* mixer = new juce::DynamicObject();
+            auto* sidechain = new juce::DynamicObject();
+            auto* modulation = new juce::DynamicObject();
+            auto* patternSettings = new juce::DynamicObject();
+            auto* other = new juce::DynamicObject();
+
+            struct Instrument
+            {
+                juce::DynamicObject::Ptr whole { new juce::DynamicObject() };
+                juce::DynamicObject::Ptr oscillators { new juce::DynamicObject() }, oscA { new juce::DynamicObject() }, oscB { new juce::DynamicObject() }, oscC { new juce::DynamicObject() };
+                juce::DynamicObject::Ptr pitch { new juce::DynamicObject() }, subNoise { new juce::DynamicObject() }, filter { new juce::DynamicObject() }, amp { new juce::DynamicObject() };
+                juce::DynamicObject::Ptr drive { new juce::DynamicObject() }, gate { new juce::DynamicObject() }, sample { new juce::DynamicObject() };
+                juce::DynamicObject::Ptr env2 { new juce::DynamicObject() }, env3 { new juce::DynamicObject() }, pitchEnv { new juce::DynamicObject() };
+                juce::DynamicObject::Ptr eq { new juce::DynamicObject() }, routing { new juce::DynamicObject() }, rest { new juce::DynamicObject() };
+                bool used = false;
+            };
+            std::array<Instrument, numInstruments> instruments;
+
+            struct Channel
+            {
+                juce::DynamicObject::Ptr level { new juce::DynamicObject() }, eq { new juce::DynamicObject() }, comp { new juce::DynamicObject() };
+                bool touched = false;
+            };
+            std::array<Channel, 11> channels;
+
+            static const juce::StringArray oscFields { "Table", "Pos", "Level", "Semi", "Fine", "Unison", "Detune", "Blend", "Warp", "WarpAmount", "Phase", "Random", "Pan", "Stereo", "On" };
+
+            for (const auto& property : parameters->getProperties())
+            {
+                const auto id = property.name.toString();
+                const auto& value = property.value;
+
+                if (id.startsWith ("bass") && id.length() > 5 && juce::CharacterFunctions::isDigit (id[4]))
+                {
+                    const auto digits = juce::CharacterFunctions::isDigit (id[5]) ? 2 : 1;
+                    const auto index = id.substring (4, 4 + digits).getIntValue() - 1;
+                    if (! juce::isPositiveAndBelow (index, numInstruments))
+                        continue;
+                    const auto field = id.substring (4 + digits);
+                    auto& in = instruments[(size_t) index];
+                    in.used = true;
+                    const char oscLetter = field.isNotEmpty() ? (char) field[0] : 0;
+                    const auto oscField = field.substring (1);
+                    if ((oscLetter == 'A' || oscLetter == 'B' || oscLetter == 'C') && oscFields.contains (oscField))
+                        (oscLetter == 'A' ? in.oscA : oscLetter == 'B' ? in.oscB : in.oscC)->setProperty (oscField, value);
+                    else if (field.startsWith ("Eq"))
+                        in.eq->setProperty (field.substring (2), value);
+                    else if (field == "WarpEnv" || field == "Sub" || field == "SubOctave" || field == "SubWave" || field == "Noise" || field == "NoiseTone")
+                        in.subNoise->setProperty (field, value);
+                    else if (field == "FilterType" || field == "KeyTrack" || field == "Cutoff" || field == "Resonance" || field == "EnvAmount" || field == "EnvDecay" || field == "VelToEnv")
+                        in.filter->setProperty (field, value);
+                    else if (field == "Attack" || field == "Decay" || field == "Sustain" || field == "Release" || field == "Glide")
+                        in.amp->setProperty (field, value);
+                    else if (field == "Drive" || field == "DriveMode")
+                        in.drive->setProperty (field, value);
+                    else if (field.startsWith ("Gate") && field != "Gate")
+                        in.gate->setProperty (field.substring (4), value);
+                    else if (field.startsWith ("Sample"))
+                        in.sample->setProperty (field.substring (6), value);
+                    else if (field.startsWith ("Env2"))
+                        in.env2->setProperty (field.substring (4), value);
+                    else if (field.startsWith ("Env3"))
+                        in.env3->setProperty (field.substring (4), value);
+                    else if (field.startsWith ("PitchEnv"))
+                        in.pitchEnv->setProperty (field.substring (8), value);
+                    else if (field == "Octave" || field == "Tune")
+                        in.pitch->setProperty (field, value);
+                    else if (field == "On" || field == "Level" || field == "Duck" || field == "Grid" || field == "FxChannel" || field == "FxAmount" || field == "Gate")
+                        in.routing->setProperty (field == "Gate" ? juce::String ("NoteLength") : field, value);
+                    else
+                        in.rest->setProperty (field, value);
+                }
+                else if (id.startsWith ("kickEq"))
+                    kickEq->setProperty (id.substring (6), value);
+                else if (id.startsWith ("kick"))
+                    kick->setProperty (id.substring (4), value);
+                else if (id.startsWith ("masterEq"))
+                    masterEq->setProperty (id.substring (8), value);
+                else if (id.startsWith ("master"))
+                    master->setProperty (id.substring (6), value);
+                else if (id.startsWith ("mix"))
+                    mixer->setProperty (id.substring (3), value);
+                else if (id.startsWith ("sc"))
+                    sidechain->setProperty (id.substring (2), value);
+                else if (id.startsWith ("lfo") || id.startsWith ("macro"))
+                    modulation->setProperty (id, value);
+                else if (id.startsWith ("fx") && id.length() > 3 && id[2] >= 'A' && id[2] <= 'K' && id != "fxKey")
+                {
+                    auto& channel = channels[(size_t) (id[2] - 'A')];
+                    const auto rest = id.substring (3);
+                    if (rest.length() >= 2 && juce::CharacterFunctions::isDigit (rest[0]))
+                        continue; // effektplatserna beskrivs under "effects" nedan
+                    if (rest == "Level" || rest == "Duck")
+                        channel.level->setProperty (rest, value);
+                    else if (rest.startsWith ("Eq"))
+                        channel.eq->setProperty (rest.substring (2), value);
+                    else if (rest.startsWith ("Comp"))
+                        channel.comp->setProperty (rest.substring (4), value);
+                    if (rest == "Level" && std::abs ((double) value - 1.0) > 1.0e-3)
+                        channel.touched = true;
+                    else if (rest == "Duck" && (double) value > 1.0e-3)
+                        channel.touched = true;
+                    else if ((rest.endsWith ("EqHp") && (double) value > 21.0) || (rest.endsWith ("EqLp") && (double) value < 19500.0) || (rest.startsWith ("Eq") && rest.endsWith ("G") && std::abs ((double) value) > 0.05))
+                        channel.touched = true;
+                    else if (rest == "CompRatio" && (double) value > 1.01)
+                        channel.touched = true;
+                }
+                else if (id == "patternBars" || id == "noteEnd" || id.startsWith ("rowBars") || id.startsWith ("rowLoop") || id.startsWith ("rowGrid"))
+                    patternSettings->setProperty (id, value);
+                else
+                    other->setProperty (id, value);
+            }
+
+            juce::Array<juce::var> instrumentList;
+            for (int i = 0; i < numInstruments; ++i)
+            {
+                auto& in = instruments[(size_t) i];
+                if (! in.used)
+                    continue;
+                in.oscillators->setProperty ("A", juce::var (in.oscA.get()));
+                in.oscillators->setProperty ("B", juce::var (in.oscB.get()));
+                in.oscillators->setProperty ("C", juce::var (in.oscC.get()));
+                auto* entry = in.whole.get();
+                entry->setProperty ("number", i + 1);
+                entry->setProperty ("name", instrumentNames[i].isNotEmpty() ? instrumentNames[i] : "Instr " + juce::String (i + 1));
+                entry->setProperty ("parameter_prefix", "bass" + juce::String (i + 1));
+                entry->setProperty ("routing_and_levels", juce::var (in.routing.get()));
+                entry->setProperty ("pitch", juce::var (in.pitch.get()));
+                entry->setProperty ("oscillators", juce::var (in.oscillators.get()));
+                entry->setProperty ("sub_and_noise", juce::var (in.subNoise.get()));
+                entry->setProperty ("filter", juce::var (in.filter.get()));
+                entry->setProperty ("amp_envelope", juce::var (in.amp.get()));
+                entry->setProperty ("drive", juce::var (in.drive.get()));
+                entry->setProperty ("gate_chopper", juce::var (in.gate.get()));
+                entry->setProperty ("sample", juce::var (in.sample.get()));
+                entry->setProperty ("modulation_envelope_2", juce::var (in.env2.get()));
+                entry->setProperty ("modulation_envelope_3", juce::var (in.env3.get()));
+                entry->setProperty ("pitch_envelope", juce::var (in.pitchEnv.get()));
+                entry->setProperty ("eq", juce::var (in.eq.get()));
+                if (in.rest->getProperties().size() > 0)
+                    entry->setProperty ("other", juce::var (in.rest.get()));
+                instrumentList.add (juce::var (entry));
+            }
+
+            // Effektkanalerna: nivå, duckning, EQ, kompressor och platserna (från state.effects).
+            juce::Array<juce::var> channelList;
+            for (int ch = 0; ch < 11; ++ch)
+            {
+                const auto label = "FX" + juce::String (ch + 1);
+                juce::Array<juce::var> slots;
+                if (auto* effects = state["effects"].getArray())
+                    for (const auto& slot : *effects)
+                        if (slot["channel"].toString() == label)
+                            slots.add (slot);
+                auto& channel = channels[(size_t) ch];
+                if (slots.isEmpty() && ! channel.touched)
+                    continue;
+                auto* entry = new juce::DynamicObject();
+                entry->setProperty ("channel", label);
+                entry->setProperty ("parameter_prefix", "fx" + juce::String ("ABCDEFGHIJK").substring (ch, ch + 1));
+                entry->setProperty ("level_and_duck", juce::var (channel.level.get()));
+                entry->setProperty ("slots_in_order", slots);
+                entry->setProperty ("eq", juce::var (channel.eq.get()));
+                entry->setProperty ("compressor", juce::var (channel.comp.get()));
+                channelList.add (juce::var (entry));
+            }
+
+            kick->setProperty ("note", "Parameter ids are 'kick' + the name here.");
+            root->setProperty ("kick", juce::var (kick));
+            root->setProperty ("kick_eq", juce::var (kickEq));
+            root->setProperty ("instruments", instrumentList);
+            root->setProperty ("effect_channels", channelList);
+            root->setProperty ("master", juce::var (master));
+            root->setProperty ("master_eq", juce::var (masterEq));
+            root->setProperty ("mixer", juce::var (mixer));
+            root->setProperty ("sidechain", juce::var (sidechain));
+            root->setProperty ("modulation_sources", juce::var (modulation));
+            root->setProperty ("modulation_routes", state["lfo_routes"]);
+            root->setProperty ("pattern_settings", juce::var (patternSettings));
+            root->setProperty ("kick_envelopes", juce::var ([&state] { auto* e = new juce::DynamicObject(); e->setProperty ("pitch", state["kick_pitch_envelope"]); e->setProperty ("amplitude", state["kick_amp_envelope"]); return e; }()));
+            root->setProperty ("sidechain_curve", state["sidechain_curve"]);
+            root->setProperty ("other", juce::var (other));
+            return juce::var (root);
+        }
+    }
+
+    juce::var Report::toExportVar (const ExportOptions& o, const ExportFilter& filter) const
+    {
+        auto* root = new juce::DynamicObject();
+        if (! valid || capture == nullptr)
+        {
+            root->setProperty ("ok", false);
+            root->setProperty ("error", valid ? juce::String ("The analysis data is not available.") : error);
+            return juce::var (root);
+        }
+
+        const auto& c = *capture;
+        const auto nb = numBands();
+        const auto& edges = bandEdges();
+        const auto binHz = c.rate / fftSize;
+        const auto binsCount = fftSize / 2;
+
+        // Bandområdet som tas med: de band som överlappar minHz-maxHz.
+        auto b0 = 0, b1 = nb;
+        while (b0 < nb && edges[(size_t) b0 + 1] <= filter.minHz)
+            ++b0;
+        while (b1 > b0 && edges[(size_t) b1 - 1] >= filter.maxHz)
+            --b1;
+        if (b1 <= b0)
+        {
+            b0 = 0;
+            b1 = nb;
+        }
+        const auto bandCount = b1 - b0;
+        const auto keepSource = [&] (int s) { return c.present[(size_t) s] && matchesFilter (c.names[(size_t) s], filter.sources); };
+
+        if (o.about)
+            root->setProperty ("about", aboutVar());
+
+        // --- Mått och förklaringar
+        auto* meta = new juce::DynamicObject();
+        meta->setProperty ("format", "kickbase-analysis-2");
+        meta->setProperty ("generated", juce::Time::getCurrentTime().toISO8601 (true));
+        meta->setProperty ("bars_analysed", c.bars);
+        meta->setProperty ("bpm", c.bpm);
+        meta->setProperty ("beats_per_bar", 4);
+        meta->setProperty ("sample_rate", c.rate);
+        meta->setProperty ("fft_size", fftSize);
+        meta->setProperty ("frame_window_ms", round1 (1000.0 * fftSize / c.rate));
+        meta->setProperty ("frame_spacing_ms", "about 43-53");
+        meta->setProperty ("frame_count", c.frames);
+        meta->setProperty ("sensitivity", sensitivity == 0 ? "low" : sensitivity == 1 ? "normal" : "high");
+        juce::Array<juce::var> edgeList;
+        for (auto e : edges)
+            edgeList.add (e);
+        meta->setProperty ("band_edges_hz", edgeList);
+        auto* bandsIncluded = new juce::DynamicObject();
+        bandsIncluded->setProperty ("first_band_index", b0);
+        bandsIncluded->setProperty ("last_band_index", b1 - 1);
+        bandsIncluded->setProperty ("note", "Every band array in this file holds the bands first_band_index..last_band_index of band_edges_hz (all bands unless a frequency filter was used).");
+        meta->setProperty ("bands_included", juce::var (bandsIncluded));
+        auto* filters = new juce::DynamicObject();
+        juce::Array<juce::var> filterSources, filterBars;
+        for (const auto& name : filter.sources)
+            filterSources.add (name);
+        for (auto bar : filter.bars)
+            filterBars.add (bar);
+        filters->setProperty ("sources", filterSources);
+        filters->setProperty ("bars", filterBars);
+        filters->setProperty ("min_hz", filter.minHz);
+        filters->setProperty ("max_hz", filter.maxHz > 1.0e8f ? 20000.0f : filter.maxHz);
+        filters->setProperty ("frame_step", filter.frameStep);
+        meta->setProperty ("filters_applied (empty = everything)", juce::var (filters));
+        meta->setProperty ("units", "All levels are in dB where 0 dB is a full-scale sine wave. Band levels are the summed power of the FFT bins in the band (a pure tone shows about 0 dB). "
+                                    "Source signals are mono mixes taken after ducking and EQ and before the effect sends; Master is the output after the limiter. "
+                                    "Bar numbers start at 1 and are positions in the pattern loop; beat positions run 1.0 to 4.99.");
+        juce::Array<juce::var> sourceNames;
+        for (int s = 0; s < numSources; ++s)
+            if (keepSource (s))
+                sourceNames.add (c.names[(size_t) s]);
+        meta->setProperty ("sources", sourceNames);
+        if (referenceName.isNotEmpty())
+            meta->setProperty ("reference", referenceName);
+        root->setProperty ("ok", true);
+        root->setProperty ("meta", juce::var (meta));
+
+        // --- Fynden
+        if (o.findings)
+        {
+            const auto base = toVar();
+            root->setProperty ("findings", base["findings"]);
+            root->setProperty ("kick_tail_hz", kickTailHz);
+            root->setProperty ("limiter_max_reduction_db", limiterMaxDb);
+            if (! aiNotes.isVoid())
+                root->setProperty ("ai_notes", aiNotes);
+        }
+
+        // Medelnivå (i effekt) och toppnivå för en källa över ramar [first, last).
+        auto bandStats = [&] (int source, int firstFrame, int lastFrame, std::vector<float>& average, std::vector<float>& peak)
+        {
+            average.assign ((size_t) nb, -120.0f);
+            peak.assign ((size_t) nb, -120.0f);
+            const auto frames = std::max (1, lastFrame - firstFrame);
+            for (int b = 0; b < nb; ++b)
+            {
+                double sum = 0.0;
+                for (int f = firstFrame; f < lastFrame; ++f)
+                {
+                    const auto level = c.band (source, f, b);
+                    sum += std::pow (10.0, level / 10.0);
+                    peak[(size_t) b] = std::max (peak[(size_t) b], level);
+                }
+                average[(size_t) b] = (float) (10.0 * std::log10 (sum / frames + 1.0e-12));
+            }
+        };
+
+        // --- Översikt per källa, hela loopen
+        if (o.sources)
+        {
+            juce::Array<juce::var> list;
+            for (int s = 0; s < numSources; ++s)
+            {
+                if (! keepSource (s))
+                    continue;
+                std::vector<float> average, peak;
+                bandStats (s, 0, c.frames, average, peak);
+                auto* entry = new juce::DynamicObject();
+                entry->setProperty ("name", c.names[(size_t) s]);
+                entry->setProperty ("peak_band_db", round1 (sources[(size_t) s].peakDb));
+                if (sources[(size_t) s].fundamentalHz > 0.0f)
+                {
+                    entry->setProperty ("fundamental_hz", round1 (sources[(size_t) s].fundamentalHz));
+                    entry->setProperty ("note", sources[(size_t) s].note);
+                }
+                entry->setProperty ("average_band_db", numbers (average.data() + b0, bandCount));
+                entry->setProperty ("max_band_db", numbers (peak.data() + b0, bandCount));
+                if (o.dynamics)
+                {
+                    entry->setProperty ("centroid_hz", round1 (centroidOfDb (average.data())));
+                    entry->setProperty ("energy_by_range_db", groupsOfDb (average.data()));
+                }
+                list.add (juce::var (entry));
+            }
+            root->setProperty ("sources", list);
+        }
+
+        // --- Takt för takt
+        if (o.bars || o.harmonics || o.spectra || o.dynamics)
+        {
+            juce::Array<juce::var> list;
+            for (int s = 0; s < numSources; ++s)
+            {
+                if (! keepSource (s))
+                    continue;
+                juce::Array<juce::var> barList;
+                for (int bar = 0; bar < c.bars; ++bar)
+                {
+                    if (! filter.wantsBar (bar + 1))
+                        continue;
+                    auto firstFrame = -1, lastFrame = -1;
+                    for (int f = 0; f < c.frames; ++f)
+                        if (c.frameBar[(size_t) f] == bar)
+                        {
+                            if (firstFrame < 0)
+                                firstFrame = f;
+                            lastFrame = f + 1;
+                        }
+                    if (firstFrame < 0)
+                        continue;
+
+                    auto* entry = new juce::DynamicObject();
+                    entry->setProperty ("bar", bar + 1);
+                    entry->setProperty ("frames", lastFrame - firstFrame);
+                    std::vector<float> average, peak;
+                    bandStats (s, firstFrame, lastFrame, average, peak);
+                    if (o.bars)
+                    {
+                        double total = 0.0;
+                        for (int b = 0; b < nb; ++b)
+                            total += std::pow (10.0, average[(size_t) b] / 10.0);
+                        entry->setProperty ("loudness_db", round1 (10.0 * std::log10 (total + 1.0e-12)));
+                        entry->setProperty ("average_band_db", numbers (average.data() + b0, bandCount));
+                        entry->setProperty ("max_band_db", numbers (peak.data() + b0, bandCount));
+                    }
+                    if (o.dynamics)
+                    {
+                        auto topDb = -120.0f;
+                        double rmsPower = 0.0;
+                        for (int f = firstFrame; f < lastFrame; ++f)
+                        {
+                            topDb = std::max (topDb, c.framePeakDb[(size_t) f * numSources + (size_t) s]);
+                            rmsPower += std::pow (10.0, c.frameRmsDb[(size_t) f * numSources + (size_t) s] / 10.0);
+                        }
+                        const auto rmsDb = 10.0 * std::log10 (rmsPower / std::max (1, lastFrame - firstFrame) + 1.0e-12);
+                        entry->setProperty ("rms_db", round1 (rmsDb));
+                        entry->setProperty ("peak_db", round1 (topDb));
+                        entry->setProperty ("crest_db", round1 (topDb - rmsDb));
+                        entry->setProperty ("centroid_hz", round1 (centroidOfDb (average.data())));
+                        entry->setProperty ("energy_by_range_db", groupsOfDb (average.data()));
+                    }
+
+                    // Medelspektrumet för takten (effekt per steg).
+                    const auto framesInBar = std::max (1, c.barFrameCount.empty() ? 1 : c.barFrameCount[(size_t) bar]);
+                    const auto* power = c.barPower.empty() ? nullptr : &c.barPower[((size_t) bar * numSources + (size_t) s) * (size_t) binsCount];
+                    if (power != nullptr && (o.harmonics || o.spectra))
+                    {
+                        std::vector<float> mean ((size_t) binsCount);
+                        for (int k = 0; k < binsCount; ++k)
+                            mean[(size_t) k] = power[k] / (float) framesInBar;
+
+                        if (o.harmonics)
+                        {
+                            const auto f0 = findFundamental (mean.data(), c.rate, -75.0f);
+                            if (f0 > 0.0f)
+                            {
+                                entry->setProperty ("fundamental_hz", round1 (f0));
+                                entry->setProperty ("note", noteName (f0));
+                                const auto fundamentalBin = juce::jlimit (1, binsCount - 2, (int) std::round (f0 / binHz));
+                                const auto fundamentalDb = 10.0 * std::log10 (std::max ({ mean[(size_t) fundamentalBin - 1], mean[(size_t) fundamentalBin], mean[(size_t) fundamentalBin + 1] }) + 1.0e-12);
+                                juce::Array<juce::var> harmonicList;
+                                for (int n = 1; n <= 32; ++n)
+                                {
+                                    const auto hz = (double) f0 * n;
+                                    if (hz > std::min (20000.0, c.rate * 0.48))
+                                        break;
+                                    if (hz < filter.minHz || hz > filter.maxHz)
+                                        continue;
+                                    const auto centre = (int) std::round (hz / binHz);
+                                    const auto reach = std::max (1, (int) std::ceil (0.02 * hz / binHz));
+                                    auto best = 0.0f;
+                                    auto bestBin = centre;
+                                    for (int k = std::max (1, centre - reach); k <= std::min (binsCount - 1, centre + reach); ++k)
+                                        if (mean[(size_t) k] > best)
+                                        {
+                                            best = mean[(size_t) k];
+                                            bestBin = k;
+                                        }
+                                    auto* h = new juce::DynamicObject();
+                                    h->setProperty ("n", n);
+                                    h->setProperty ("hz", round1 (bestBin * binHz));
+                                    const auto db = 10.0 * std::log10 (best + 1.0e-12);
+                                    h->setProperty ("db", round1 (db));
+                                    h->setProperty ("db_vs_fundamental", round1 (db - fundamentalDb));
+                                    harmonicList.add (juce::var (h));
+                                }
+                                entry->setProperty ("harmonics", harmonicList);
+                            }
+                        }
+
+                        if (o.spectra)
+                        {
+                            std::vector<double> sums ((size_t) octaveBins, 0.0);
+                            for (int k = 1; k < binsCount; ++k)
+                            {
+                                const auto hz = k * binHz;
+                                if (hz < 20.0)
+                                    continue;
+                                const auto index = (int) std::floor (12.0 * std::log2 (hz / 20.0));
+                                if (index >= 0 && index < octaveBins)
+                                    sums[(size_t) index] += mean[(size_t) k];
+                            }
+                            juce::Array<juce::var> spectrum;
+                            for (int i = 0; i < octaveBins; ++i)
+                            {
+                                const auto centreHz = 20.0 * std::pow (2.0, (i + 0.5) / 12.0);
+                                if (centreHz >= filter.minHz && centreHz <= filter.maxHz)
+                                    spectrum.add (round1 (10.0 * std::log10 (sums[(size_t) i] / lobePower + 1.0e-12)));
+                            }
+                            entry->setProperty ("spectrum_12th_octave_db", spectrum);
+                        }
+                    }
+                    barList.add (juce::var (entry));
+                }
+                auto* sourceEntry = new juce::DynamicObject();
+                sourceEntry->setProperty ("name", c.names[(size_t) s]);
+                sourceEntry->setProperty ("bars", barList);
+                list.add (juce::var (sourceEntry));
+            }
+            root->setProperty ("per_bar", list);
+            if (o.spectra)
+            {
+                juce::Array<juce::var> centres;
+                for (int i = 0; i < octaveBins; ++i)
+                {
+                    const auto centreHz = 20.0 * std::pow (2.0, (i + 0.5) / 12.0);
+                    if (centreHz >= filter.minHz && centreHz <= filter.maxHz)
+                        centres.add (round1 (centreHz));
+                }
+                root->setProperty ("spectrum_12th_octave_centre_hz", centres);
+            }
+        }
+
+        // --- Kickens slag och duckningen
+        if (o.kicks)
+        {
+            juce::Array<juce::var> list;
+            const auto secondsPerBeat = 60.0 / std::max (1.0, c.bpm);
+            for (size_t i = 0; i < c.kickOnsetSeconds.size(); ++i)
+            {
+                const auto t = std::max (0.0, c.kickOnsetSeconds[i]);
+                auto bar = (int) std::floor (t / (4.0 * secondsPerBeat) + 0.01); // ett slag strax före taktstrecket hör till nästa takt
+                if (! filter.wantsBar (bar + 1))
+                    continue;
+                auto beat = (t - bar * 4.0 * secondsPerBeat) / secondsPerBeat + 1.0;
+                if (beat < 1.0)
+                    beat = 1.0;
+                auto* hit = new juce::DynamicObject();
+                hit->setProperty ("bar", bar + 1);
+                hit->setProperty ("beat", std::round (beat * 100.0) / 100.0);
+                hit->setProperty ("time_s", std::round (t * 1000.0) / 1000.0);
+                if (i < c.duckDepthDb.size())
+                {
+                    auto* ducking = new juce::DynamicObject();
+                    for (int instrument = 0; instrument < numInstruments; ++instrument)
+                        if (keepSource (firstInstrument + instrument))
+                            ducking->setProperty (c.names[(size_t) (firstInstrument + instrument)], round1 (c.duckDepthDb[i][(size_t) instrument]));
+                    hit->setProperty ("ducking_db", juce::var (ducking));
+                }
+                list.add (juce::var (hit));
+            }
+            root->setProperty ("kick_hits", list);
+        }
+
+        // --- Presets, alla inställningar och mönstret i loopens tid
+        const auto state = synthState["data"].isVoid() ? synthState : synthState["data"];
+        if (! synthState.isVoid())
+        {
+            if (o.presets && ! state["presets"].isVoid())
+                root->setProperty ("presets", state["presets"]);
+            if (o.overview)
+                root->setProperty ("synth_overview", buildOverview (state));
+            if (o.synth)
+            {
+                root->setProperty ("synth", state);
+                const auto timeline = patternTimeline (state, c.bars, filter);
+                if (! timeline.isVoid())
+                    root->setProperty ("pattern_timeline", timeline);
+            }
+        }
+
+        return juce::var (root);
+    }
+
+    juce::String Report::toExportJson (const ExportOptions& o, const ExportFilter& filter) const
+    {
+        auto base = toExportVar (o, filter);
+        auto json = juce::JSON::toString (base, true);
+        if (! o.frames || capture == nullptr || ! (bool) base["ok"])
+            return json;
+
+        // Nivåerna för varje ram (spektrogrammet) skrivs för hand (en decimal): som vanlig JSON blir de flera gånger större.
+        const auto& c = *capture;
+        const auto nb = numBands();
+        const auto& edges = bandEdges();
+        auto b0 = 0, b1 = nb;
+        while (b0 < nb && edges[(size_t) b0 + 1] <= filter.minHz)
+            ++b0;
+        while (b1 > b0 && edges[(size_t) b1 - 1] >= filter.maxHz)
+            --b1;
+        if (b1 <= b0)
+        {
+            b0 = 0;
+            b1 = nb;
+        }
+        std::vector<int> frameList;
+        {
+            auto counter = 0;
+            for (int f = 0; f < c.frames; ++f)
+                if (filter.wantsBar (c.frameBar[(size_t) f] + 1) && (counter++ % std::max (1, filter.frameStep)) == 0)
+                    frameList.push_back (f);
+        }
+        const auto keep = [&] (int s) { return c.present[(size_t) s] && matchesFilter (c.names[(size_t) s], filter.sources); };
+
+        juce::String frames;
+        frames.preallocateBytes ((size_t) frameList.size() * numSources * (size_t) (b1 - b0) * 7);
+        frames << ",\n  \"frames\": {\n    \"note\": \"One column per frame (about every 43-53 ms) through the loop = a spectrogram. band_db[source][frame][band] uses the bands first_band_index..last_band_index of meta.band_edges_hz. seconds[frame] is the middle of the frame's 171 ms window, bar[frame] the bar it belongs to. "
+               << "rms_db and peak_db are the source's level in the frame, centroid_hz the brightness (the power-weighted mean frequency). ducking_db[instrument][frame] is how many dB each instrument was ducked in the frame.\",\n";
+        frames << "    \"seconds\": [";
+        for (size_t i = 0; i < frameList.size(); ++i)
+            frames << (i > 0 ? "," : "") << juce::String (c.frameSeconds[(size_t) frameList[i]], 3);
+        frames << "],\n    \"bar\": [";
+        for (size_t i = 0; i < frameList.size(); ++i)
+            frames << (i > 0 ? "," : "") << (c.frameBar[(size_t) frameList[i]] + 1);
+        frames << "],\n    \"band_db\": {\n";
+        auto first = true;
+        for (int s = 0; s < numSources; ++s)
+        {
+            if (! keep (s))
+                continue;
+            frames << (first ? "" : ",\n") << "      \"" << c.names[(size_t) s].replace ("\"", "'") << "\": [";
+            first = false;
+            for (size_t i = 0; i < frameList.size(); ++i)
+            {
+                frames << (i > 0 ? "," : "") << "[";
+                for (int b = b0; b < b1; ++b)
+                    frames << (b > b0 ? "," : "") << juce::String (c.band (s, frameList[i], b), 1);
+                frames << "]";
+            }
+            frames << "]";
+        }
+        frames << "\n    }";
+
+        if (o.dynamics)
+        {
+            auto writeSeries = [&] (const char* key, auto valueOf)
+            {
+                frames << ",\n    \"" << key << "\": {\n";
+                auto firstSource = true;
+                for (int s = 0; s < numSources; ++s)
+                {
+                    if (! keep (s))
+                        continue;
+                    frames << (firstSource ? "" : ",\n") << "      \"" << c.names[(size_t) s].replace ("\"", "'") << "\": [";
+                    firstSource = false;
+                    for (size_t i = 0; i < frameList.size(); ++i)
+                        frames << (i > 0 ? "," : "") << juce::String (valueOf (s, frameList[i]), 1);
+                    frames << "]";
+                }
+                frames << "\n    }";
+            };
+            writeSeries ("rms_db", [&c] (int s, int f) { return c.frameRmsDb[(size_t) f * numSources + (size_t) s]; });
+            writeSeries ("peak_db", [&c] (int s, int f) { return c.framePeakDb[(size_t) f * numSources + (size_t) s]; });
+            writeSeries ("centroid_hz", [&c] (int s, int f)
+            {
+                std::vector<float> row ((size_t) numBands());
+                for (int b = 0; b < numBands(); ++b)
+                    row[(size_t) b] = c.band (s, f, b);
+                return (float) centroidOfDb (row.data());
+            });
+        }
+
+        if (o.kicks && ! c.frameDuckDb.empty())
+        {
+            frames << ",\n    \"ducking_db\": {\n";
+            auto firstInst = true;
+            for (int i = 0; i < numInstruments; ++i)
+            {
+                if (! keep (firstInstrument + i))
+                    continue;
+                frames << (firstInst ? "" : ",\n") << "      \"" << c.names[(size_t) (firstInstrument + i)].replace ("\"", "'") << "\": [";
+                firstInst = false;
+                for (size_t k = 0; k < frameList.size(); ++k)
+                    frames << (k > 0 ? "," : "") << juce::String (c.frameDuckDb[(size_t) frameList[k] * numInstruments + (size_t) i], 1);
+                frames << "]";
+            }
+            frames << "\n    }";
+        }
+        frames << "\n  }\n}";
+
+        const auto end = json.lastIndexOfChar ('}');
+        return json.substring (0, end).trimEnd() + frames;
+    }
+
+    bool Report::saveExport (const juce::File& file, const ExportOptions& o, const ExportFilter& filter) const
+    {
+        file.getParentDirectory().createDirectory();
+        return file.replaceWithText (toExportJson (o, filter), false, false, "\n");
     }
 
     //==========================================================================================
@@ -801,8 +1695,13 @@ namespace MixAnalysis
         const auto totalSamples = (int) ((preRoll + analyseBars) * samplesPerBar);
 
         // Rådata per ram, samlas i listor och läggs sedan i Capture.
-        std::vector<float> bandRows, lowRows;
+        std::vector<float> bandRows, lowRows, peakRows, rmsRows, duckRows;
+        std::array<float, numInstruments> duckSinceFrame;
+        duckSinceFrame.fill (1.0f);
         std::vector<int> barRows;
+        std::vector<double> frameSecondsRows;
+        std::vector<float> barPower ((size_t) analyseBars * numSources * (size_t) (fftSize / 2), 0.0f);
+        std::vector<int> barFrames ((size_t) analyseBars, 0);
         const auto nb = numBands();
         const auto map = binBands (rate);
         juce::dsp::FFT fft (fftOrder);
@@ -811,7 +1710,8 @@ namespace MixAnalysis
         std::vector<float> left, right;
         std::vector<std::array<float, numInstruments>> duckMin;
         std::vector<int> onsets; // sample
-        auto kickHeld = false;
+        auto previousKickPeak = 0.0f;
+        auto lastOnsetBlock = -100;
         auto limiterMin = 1.0f;
         auto nextFrame = 0;
 
@@ -829,19 +1729,24 @@ namespace MixAnalysis
         {
             const auto end = done + n;
 
-            // Kickens slag: bladets topp stiger över ett tröskelvärde efter tystnad.
+            // Kickens slag: bladets topp hoppar upp jämfört med förra blocket (ett nytt slag börjar nära full nivå även när det förra slagets svans
+            // ännu klingar, så en enkel tystnadströskel missar slag som ligger tätt).
             copy.kickTap.copyLatest (n, left, right);
             auto peak = 0.0f;
             for (auto v : left)
                 peak = std::max (peak, std::abs (v));
-            if (peak < 0.03f)
-                kickHeld = false;
-            else if (peak > 0.12f && ! kickHeld)
+            const auto blockIndex = done / blockSize;
+            if (peak > 0.15f && peak > previousKickPeak * 1.8f + 0.05f && blockIndex - lastOnsetBlock > 3)
             {
-                kickHeld = true;
-                if (done >= preRollSamples)
-                    onsets.push_back (done);
+                // Samplet där slaget börjar (första som är över 40 % av blockets topp), så att takt och taktslag blir rätt.
+                auto offset = 0;
+                while (offset < (int) left.size() - 1 && std::abs (left[(size_t) offset]) < 0.4f * peak)
+                    ++offset;
+                if (done + offset >= preRollSamples - 48)
+                    onsets.push_back (std::max (preRollSamples, done + offset));
+                lastOnsetBlock = blockIndex;
             }
+            previousKickPeak = peak;
 
             // Duckningens förstärkning (lägsta) per instrument och block.
             std::array<float, numInstruments> minimum;
@@ -853,6 +1758,8 @@ namespace MixAnalysis
                     minimum[(size_t) i] = std::min (minimum[(size_t) i], v);
             }
             duckMin.push_back (minimum);
+            for (int i = 0; i < numInstruments; ++i)
+                duckSinceFrame[(size_t) i] = std::min (duckSinceFrame[(size_t) i], minimum[(size_t) i]);
 
             if (done >= preRollSamples)
             {
@@ -875,6 +1782,16 @@ namespace MixAnalysis
                 return;
 
             barRows.push_back (bar);
+            for (int i = 0; i < numInstruments; ++i)
+            {
+                duckRows.push_back (-20.0f * std::log10 (std::max (duckSinceFrame[(size_t) i], 1.0e-3f)));
+                duckSinceFrame[(size_t) i] = 1.0f;
+            }
+            const auto levelOffset = peakRows.size();
+            peakRows.resize (levelOffset + (size_t) numSources, -120.0f);
+            rmsRows.resize (levelOffset + (size_t) numSources, -120.0f);
+            frameSecondsRows.push_back ((double) (centre - preRollSamples) / rate);
+            ++barFrames[(size_t) bar];
             const auto bandOffset = bandRows.size(), lowOffset = lowRows.size();
             bandRows.resize (bandOffset + (size_t) numSources * (size_t) nb, -120.0f);
             lowRows.resize (lowOffset + (size_t) numSources * lowBins, 0.0f);
@@ -889,8 +1806,16 @@ namespace MixAnalysis
                 else
                     copy.instrumentTaps[(size_t) (src - firstInstrument)].copyLatest (fftSize, left, right);
 
+                auto peakValue = 0.0f;
+                auto sumSquares = 0.0;
                 for (int k = 0; k < fftSize; ++k)
+                {
                     data[(size_t) k] = 0.5f * (left[(size_t) k] + right[(size_t) k]);
+                    peakValue = std::max (peakValue, std::abs (data[(size_t) k]));
+                    sumSquares += (double) data[(size_t) k] * data[(size_t) k];
+                }
+                peakRows[levelOffset + (size_t) src] = juce::Decibels::gainToDecibels (peakValue, -120.0f);
+                rmsRows[levelOffset + (size_t) src] = (float) (10.0 * std::log10 (sumSquares / fftSize + 1.0e-12));
                 std::fill (data.begin() + fftSize, data.end(), 0.0f);
                 window.multiplyWithWindowingTable (data.data(), fftSize);
                 fft.performFrequencyOnlyForwardTransform (data.data(), true);
@@ -904,6 +1829,7 @@ namespace MixAnalysis
                         power[(size_t) map[(size_t) k]] += p;
                     if (k < lowBins)
                         lowRows[lowOffset + (size_t) src * lowBins + (size_t) k] = p;
+                    barPower[((size_t) bar * numSources + (size_t) src) * (size_t) (fftSize / 2) + (size_t) k] += p;
                 }
                 for (int b = 0; b < nb; ++b)
                     bandRows[bandOffset + (size_t) src * (size_t) nb + (size_t) b] = (float) (10.0 * std::log10 (power[(size_t) b] / lobePower + 1.0e-12));
@@ -924,6 +1850,14 @@ namespace MixAnalysis
         capture.bandDb = bandRows;
         capture.lowPower = lowRows;
         capture.frameBar = barRows;
+        capture.frameSeconds = frameSecondsRows;
+        capture.framePeakDb = peakRows;
+        capture.frameRmsDb = rmsRows;
+        capture.frameDuckDb = duckRows;
+        capture.barPower = std::move (barPower);
+        capture.barFrameCount = barFrames;
+        for (const auto onset : onsets)
+            capture.kickOnsetSeconds.push_back ((double) (onset - preRollSamples) / rate);
         capture.limiterMaxReductionDb = limiterMin < 0.999f ? -20.0f * std::log10 (std::max (limiterMin, 1.0e-3f)) : 0.0f;
 
         for (const auto onset : onsets)
@@ -942,6 +1876,7 @@ namespace MixAnalysis
         }
 
         auto report = evaluate (capture, options, reference);
+        report.capture = std::make_shared<const Capture> (std::move (capture));
         if (progress)
             progress (1.0f);
         return report;
@@ -956,13 +1891,14 @@ MixAnalyser::~MixAnalyser()
     stopThread (30000);
 }
 
-bool MixAnalyser::start (PluginBase& source, const MixAnalysis::Options& newOptions, std::shared_ptr<const MixAnalysis::Reference> newReference)
+bool MixAnalyser::start (PluginBase& source, const MixAnalysis::Options& newOptions, std::shared_ptr<const MixAnalysis::Reference> newReference, juce::var newSynthState)
 {
     if (isThreadRunning())
         return false;
     copy.reset();
     options = newOptions;
     reference = std::move (newReference);
+    synthState = std::move (newSynthState);
     bpm = std::max (40.0, (double) source.transportStatus.bpm.load());
     keyNote = source.transportStatus.keyNote.load();
     copy = MixAnalysis::prepareCopy (source);
@@ -990,6 +1926,7 @@ void MixAnalyser::run()
     {
         const juce::ScopedLock sl (lock);
         report = std::move (result);
+        report.synthState = synthState;
     }
     ++version;
     running = false;

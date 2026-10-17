@@ -228,10 +228,14 @@ std::vector<ToolLayer::ToolInfo> ToolLayer::tools()
           R"({"type":"object","properties":{"layer":{"type":"integer"},"file":{"type":"string"},"level":{"type":"number"},"key_track":{"type":"boolean"},"root_note":{"type":"integer"},"loop":{"type":"boolean"},"start":{"type":"number"}},"required":["layer"]})" },
         { "load_kick_sample", "Loads a WAV/AIFF/FLAC file (max 2 s, mono-summed) as the kick's sample. kickSampleMode (Click | Layer | Replace) decides how it is used: Click = the first moments of every kick on top of the synthesized body, scaled by kickClick; Layer = the whole sample on top of the synthesized kick (kickSampleLevel); Replace = the sample is the kick (the synthesized body is silent). kickSampleTune plays it faster or slower. Empty or missing file clears it.",
           R"({"type":"object","properties":{"file":{"type":"string"}}})" },
-        { "analyse_mix", "STARTS an analysis of the mix and returns at once (it runs in the background, a few seconds up to half a minute depending on the project; the plugin keeps working). It plays the pattern through once offline (all bars of the pattern, at most 16) and analyses how the kick, each instrument and the master share the frequencies, bar by bar. Then call get_mix_report (repeat while it says status running) to get the findings. Findings have severity (problem, warning, info), the sources involved, the frequency range and the bars where it happens: collisions between sources at the same loudness and frequency, an instrument covering the kick, a kick tail tuned too low or high, instruments that are out of tune with each other or the kick (octaves and unison count as in tune), rumble under 30 Hz, a master limiter that works too hard, and (with reference_file) where the master has more or less energy than a reference track. Measured on the real signals after ducking and EQ, so a collision the sidechain already solved does not show. Kick and instrument sharing low frequencies is only a warning because that is normal when the sidechain gives the kick the hit. sensitivity: low (clear problems only), normal (default) or high (smaller overlaps too). Use it after a change to check that you fixed what you meant to; the user sees the same report in the SPECTRUM tab. The analysis uses the pattern and sound as they are when you start it: do not change anything until the report is done.",
+        { "analyse_mix", "STARTS an analysis of the mix and returns at once (it runs in the background, a few seconds up to half a minute depending on the project; the plugin keeps working). It plays the pattern through once offline (all bars of the pattern, at most 16) and analyses how the kick, each instrument and the master share the frequencies, bar by bar. Then call get_mix_report (repeat while it says status running) to get the findings. Findings have severity (problem, warning, info), the sources involved, the frequency range and the bars where it happens: collisions between sources at the same loudness and frequency, an instrument covering the kick, a kick tail tuned too low or high, instruments that are out of tune with each other or the kick (octaves and unison count as in tune), rumble under 30 Hz, a master limiter that works too hard, and (with reference_file) where the master has more or less energy than a reference track. Measured on the real signals after ducking and EQ, so a collision the sidechain already solved does not show. Kick and instrument sharing low frequencies is only a warning because that is normal when the sidechain gives the kick the hit. sensitivity: low (clear problems only), normal (default) or high (smaller overlaps too). Use it after a change to check that you fixed what you meant to; the user sees the same report in the ANALYZER tab. The analysis uses the pattern and sound as they are when you start it: do not change anything until the report is done.",
           R"({"type":"object","properties":{"sensitivity":{"type":"string","enum":["low","normal","high"]},"bpm":{"type":"number"},"note":{"type":"integer"},"max_bars":{"type":"integer"},"reference_file":{"type":"string"}}})" },
-        { "get_mix_report", "Returns the result of analyse_mix: {status:'running', progress} while it works (call again in a few seconds), or the report when it is done (status 'done'). wait_seconds (0-60) lets the call wait for the result when this is the headless instance; against the live plugin it never waits (so the link stays responsive).",
-          R"({"type":"object","properties":{"wait_seconds":{"type":"number"}}})" },
+        { "get_mix_report", "Returns the result of analyse_mix: {status:'running', progress} while it works (call again in a few seconds), or the report when it is done (status 'done'). By default the findings and a short overview. For MORE DATA pass detail:'bars' (adds, for every source and every bar of the loop: the level in each frequency band, the fundamental and the harmonic series, plus the kick hits and how much each instrument is ducked at them), or choose exactly what you want with include (any of: findings, sources = overview per source, bars = band levels per source and bar, harmonics = fundamental and harmonic series per source and bar, spectra = 1/12-octave spectrum per source and bar, dynamics = rms/peak/crest/brightness/energy in six frequency ranges per source and bar, kicks = every kick hit with the ducking, presets, overview = ALL settings arranged by section (kick, every instrument with oscillators A/B/C and wavetables, filter, envelopes, EQ, sends; the effect channels with their slots; master, mixer, modulation), synth = the same settings as the raw flat parameter list plus the pattern notes (also gives pattern_timeline = the notes by bar and beat), about = an explanation for a reader who knows nothing about Kickbase). To keep the answer small, limit it: sources (parts of names, e.g. ['kick','instr 2']), bars (e.g. [3,4] or '1-4'), min_hz and max_hz (a frequency range: band arrays then only hold those bands, see meta.bands_included). The data is large with many sources and bars, so ask for what you need. For everything including every frame, use save_mix_report (a file). wait_seconds (0-60) lets the call wait for the result when this is the headless instance; against the live plugin it never waits (so the link stays responsive).",
+          R"({"type":"object","properties":{"detail":{"type":"string","enum":["summary","bars"]},"include":{"type":"array","items":{"type":"string"}},"sources":{"type":"array","items":{"type":"string"}},"bars":{"type":["array","string"],"items":{"type":"integer"}},"min_hz":{"type":"number"},"max_hz":{"type":"number"},"wait_seconds":{"type":"number"}}})" },
+        { "save_mix_report", "Saves the finished analysis as a JSON file with ALL the data (so it can be read by hand or by another AI): findings, an overview per source, band levels, the fundamental and harmonic series and a 1/12-octave spectrum for every source and every bar, the kick hits with the ducking, the level of every frequency band in every frame through the whole loop (about every 43 ms), and all synth settings (every parameter, wavetables, effects, modulation, pattern and notes). include limits what is saved (same names as get_mix_report, plus frames = the level of every band in every frame = the spectrogram, with rms/peak/brightness per frame and the ducking per frame; default everything), and sources, bars, min_hz, max_hz and frame_step (every n-th frame) limit it further (e.g. only the kick and Instr 1, bars 3-4, 30-300 Hz) to keep the file small. file is optional (default Documents\\Kickbase\\Analysis\\kickbase-analysis-<time>.json). Returns the path.",
+          R"({"type":"object","properties":{"file":{"type":"string"},"include":{"type":"array","items":{"type":"string"}},"sources":{"type":"array","items":{"type":"string"}},"bars":{"type":["array","string"],"items":{"type":"integer"}},"min_hz":{"type":"number"},"max_hz":{"type":"number"},"frame_step":{"type":"integer"}}})" },
+        { "add_report_note", "Writes a note in the report box of the plugin's ANALYZER tab, under the findings, where the user reads it: your suggested FIX for a finding, or what you changed. title is short (e.g. 'Duck Instr 2 under Instr 1'), text explains what to do or what you did (parameters and values), finding is the 1-based number of the finding it answers (the findings are listed in order in the report; 0 = general), applied:true if you have already made the change (shown as APPLIED), otherwise it is a SUGGESTION. Notes are cleared when a new analysis starts. Use this after analyse_mix so the user can see in the plugin what you found and fixed.",
+          R"({"type":"object","properties":{"title":{"type":"string"},"text":{"type":"string"},"finding":{"type":"integer"},"applied":{"type":"boolean"}},"required":["title","text"]})" },
         { "undo", "Undoes the last change made through these tools.", R"({"type":"object","properties":{}})" },
         { "redo", "Redoes what undo undid.", R"({"type":"object","properties":{}})" },
         { "reset", "Resets everything to the Init sound (all parameters at their defaults, default pattern, no routes).", R"({"type":"object","properties":{}})" },
@@ -268,6 +272,8 @@ var ToolLayer::call (const juce::String& tool, const var& args)
     if (tool == "render_preview")   return renderPreview (args);
     if (tool == "analyse_mix")      return analyseMix (args);
     if (tool == "get_mix_report")   return getMixReport (args);
+    if (tool == "save_mix_report")  return saveMixReport (args);
+    if (tool == "add_report_note")  return addReportNote (args);
     if (tool == "analyze_audio")    return analyzeAudio (args);
     if (tool == "export_midi" || tool == "save_piano_roll")
         return pianoRollFiles (tool, args);
@@ -487,6 +493,28 @@ var ToolLayer::getState (const var& args) const
     put (pattern, "instrument_count", processor.activeInstruments());
     put (pattern, "layers (instruments 0-9 and 'kick')", layers);
     put (data, "pattern", pattern);
+
+    // Vilka presets som är laddade (namn; en ändrad inställning efter inladdningen syns inte här).
+    {
+        auto presets = object();
+        for (int section = 0; section < Presets::numSections; ++section)
+        {
+            const auto sectionId = (Presets::Section) section;
+            if (sectionId == Presets::Section::bass)
+                continue;
+            put (presets, Presets::sectionName (sectionId), processor.getPresetName (sectionId));
+        }
+        juce::Array<var> instrumentPresets;
+        for (int layer = 0; layer < processor.activeInstruments(); ++layer)
+        {
+            auto entry = object();
+            put (entry, "instrument", processor.getLayerName (layer));
+            put (entry, "preset", processor.getPresetName (Presets::Section::bass, layer));
+            instrumentPresets.add (entry);
+        }
+        put (presets, "Instruments", instrumentPresets);
+        put (data, "presets", presets);
+    }
 
     put (data, "kick_pitch_envelope", pointsToVar (processor.kickPitchEnv.getPoints()));
     put (data, "kick_amp_envelope", pointsToVar (processor.kickAmpEnv.getPoints()));
@@ -955,13 +983,48 @@ var ToolLayer::analyseMix (const var& args)
             return fail (error);
     }
 
-    if (! analyser->start (processor, options, reference))
+    // Alla inställningar när analysen startar följer med i rapporten (oscillatorer, wavetables, effekter, modulering, mönster, toner).
+    auto stateArgs = object();
+    put (stateArgs, "all_parameters", true);
+    const auto state = getState (stateArgs);
+    processor.clearAiNotes();
+    if (! analyser->start (processor, options, reference, state["data"]))
         return fail ("Could not start the analysis.");
 
     auto data = object();
     put (data, "status", "started");
     put (data, "next", "The analysis runs in the background. Call get_mix_report (repeat while status is running).");
     return ok (data);
+}
+
+namespace
+{
+    MixAnalysis::ExportFilter filterFrom (const var& args)
+    {
+        MixAnalysis::ExportFilter filter;
+        if (auto* list = args["sources"].getArray())
+            for (const auto& item : *list)
+                filter.sources.add (item.toString());
+        else if (args["sources"].isString())
+            filter.sources.add (args["sources"].toString());
+        filter.bars = MixAnalysis::ExportFilter::parseBars (args["bars"]);
+        if (args.hasProperty ("min_hz"))
+            filter.minHz = (float) (double) args["min_hz"];
+        if (args.hasProperty ("max_hz"))
+            filter.maxHz = (float) (double) args["max_hz"];
+        if (args.hasProperty ("frame_step"))
+            filter.frameStep = juce::jlimit (1, 64, (int) args["frame_step"]);
+        return filter;
+    }
+
+    juce::StringArray includeFrom (const var& args)
+    {
+        juce::StringArray include;
+        if (auto* list = args["include"].getArray())
+            for (const auto& item : *list)
+                include.add (item.toString());
+        return include;
+    }
 }
 
 var ToolLayer::getMixReport (const var& args)
@@ -984,12 +1047,66 @@ var ToolLayer::getMixReport (const var& args)
         return ok (data);
     }
 
-    const auto report = analyser->getReport();
+    auto report = analyser->getReport();
     if (! report.valid)
         return fail (report.error);
+
+    // Mer data: en egen lista (include), eller detail:'bars'. Filtren (sources, bars, min_hz, max_hz) begränsar det som tas med.
+    const auto include = includeFrom (args);
+    if (! include.isEmpty() || args["detail"].toString().equalsIgnoreCase ("bars"))
+    {
+        auto options = include.isEmpty() ? MixAnalysis::ExportOptions::fromNames ({ "findings", "sources", "bars", "harmonics", "kicks", "dynamics" })
+                                         : MixAnalysis::ExportOptions::fromNames (include, false);
+        options.frames = false; // varje ram är för mycket för ett verktygssvar: se save_mix_report
+        report.aiNotes = processor.getAiNotesVar();
+        auto data = report.toExportVar (options, filterFrom (args));
+        put (data, "status", "done");
+        return ok (data);
+    }
+
     auto data = report.toVar();
     put (data, "status", "done");
+    put (data, "more_data", "Pass detail:'bars' or include:[...] (with sources, bars, min_hz, max_hz to limit it) for band levels, harmonics, dynamics and the kick hits per bar, or call save_mix_report for a file with everything.");
     return ok (data);
+}
+
+var ToolLayer::saveMixReport (const var& args)
+{
+    if (analyser == nullptr || (! analyser->isRunning() && ! analyser->hasReport()))
+        return fail ("No analysis yet. Call analyse_mix first.");
+    if (analyser->isRunning())
+        return fail ("The analysis is still running. Call get_mix_report until the status is done, then save it.");
+
+    auto report = analyser->getReport();
+    if (! report.valid)
+        return fail (report.error);
+
+    const auto options = MixAnalysis::ExportOptions::fromNames (includeFrom (args));
+    report.aiNotes = processor.getAiNotesVar();
+
+    auto file = args["file"].toString().isNotEmpty() ? juce::File (args["file"].toString()) : Settings::rootFolder().getChildFile ("Analysis").getChildFile ("kickbase-analysis-" + juce::Time::getCurrentTime().formatted ("%Y-%m-%d_%H%M%S") + ".json");
+    if (! report.saveExport (file, options, filterFrom (args)))
+        return fail ("Could not write " + file.getFullPathName());
+
+    auto data = object();
+    put (data, "file", file.getFullPathName());
+    put (data, "bytes", (int) file.getSize());
+    put (data, "content", options.toString());
+    return ok (data);
+}
+
+var ToolLayer::addReportNote (const var& args)
+{
+    const auto title = args["title"].toString().trim(), text = args["text"].toString().trim();
+    if (title.isEmpty() && text.isEmpty())
+        return fail ("title and text are needed.");
+    PluginBase::AiNote note;
+    note.title = title.substring (0, 90);
+    note.text = text.substring (0, 1200);
+    note.finding = juce::jmax (0, (int) args["finding"]);
+    note.applied = (bool) args["applied"];
+    processor.addAiNote (std::move (note));
+    return ok ("The note is in the report box of the ANALYZER tab.");
 }
 
 var ToolLayer::renderPreview (const var& args)

@@ -1,4 +1,5 @@
 #include "SpectrumPage.h"
+#include "../Core/ToolLayer.h"
 #include "../Core/Settings.h"
 
 namespace
@@ -25,6 +26,12 @@ void ReportContent::setReport (const MixAnalysis::Report& newReport)
     layoutRows();
 }
 
+void ReportContent::setNotes (std::vector<PluginBase::AiNote> newNotes)
+{
+    notes = std::move (newNotes);
+    layoutRows();
+}
+
 void ReportContent::setWidth (int newWidth)
 {
     width = std::max (120, newWidth);
@@ -35,12 +42,15 @@ void ReportContent::layoutRows()
 {
     rows.clear();
     auto top = 4;
-    auto add = [&] (juce::AttributedString text)
+    auto add = [&] (juce::AttributedString text, int kind, int finding, bool applied = false)
     {
         Row row;
         row.layout.createLayout (text, (float) (width - 26));
         row.top = top;
         row.height = (int) std::ceil (row.layout.getHeight()) + 14;
+        row.kind = kind;
+        row.finding = finding;
+        row.applied = applied;
         top += row.height + 4;
         rows.push_back (std::move (row));
     };
@@ -48,29 +58,32 @@ void ReportContent::layoutRows()
     if (! report.valid)
     {
         juce::AttributedString text;
-        text.append (report.error.isEmpty() ? "Press ANALYSE to play the pattern once through and get a report of what to look at."
+        text.append (report.error.isEmpty() ? "Press ANALYSE to play the pattern once through and get a report of what to look at. The report can then be saved with everything that was measured (EXPORT), "
+                                              "and an AI can read it and write suggestions here."
                                             : report.error,
                      Theme::font (11.0f), Theme::textDim);
-        add (text);
+        add (text, 0, -1);
     }
     else
     {
         juce::AttributedString summary;
         summary.append (juce::String (report.bars) + " bars at " + juce::String (juce::roundToInt (report.bpm)) + " BPM"
                             + (report.kickTailHz > 0.0f ? ", kick tail " + juce::String (report.kickTailHz, 1) + " Hz" : juce::String())
-                            + (report.referenceName.isNotEmpty() ? ", reference: " + report.referenceName : juce::String()) + ".",
+                            + (report.referenceName.isNotEmpty() ? ", reference: " + report.referenceName : juce::String()) + ". Click a finding to see it in the spectrum.",
                         Theme::font (10.5f), Theme::textDim);
-        add (summary);
+        add (summary, 0, -1);
 
         if (report.findings.empty())
         {
             juce::AttributedString none;
             none.append ("Nothing to report at this sensitivity. Raise it (SENS) to see smaller things.", Theme::font (11.0f, true), Theme::mix);
-            add (none);
+            add (none, 0, -1);
         }
+        auto number = 0;
         for (const auto& finding : report.findings)
         {
             juce::AttributedString text;
+            text.append (juce::String (++number) + "  ", Theme::font (10.0f, true), Theme::textDim);
             text.append (finding.severity == MixAnalysis::Severity::problem ? "PROBLEM  " : finding.severity == MixAnalysis::Severity::warning ? "WARNING  " : "INFO  ",
                          Theme::font (10.0f, true), severityColour (finding.severity));
             text.append (finding.title + "\n", Theme::font (11.5f, true), Theme::text);
@@ -82,7 +95,25 @@ void ReportContent::layoutRows()
                     bars << (i > 0 ? ", " : "") << finding.bars[i];
                 text.append (bars, Theme::font (10.5f, true), severityColour (finding.severity).withAlpha (0.9f));
             }
-            add (text);
+            add (text, 1, number - 1);
+        }
+    }
+
+    // En AI:s förslag och det den fixat (verktyget add_report_note).
+    if (! notes.empty())
+    {
+        juce::AttributedString header;
+        header.append ("AI SUGGESTIONS AND FIXES", Theme::font (10.5f, true), Theme::mix);
+        add (header, 0, -1);
+        for (const auto& note : notes)
+        {
+            juce::AttributedString text;
+            text.append (note.applied ? "APPLIED  " : "SUGGESTION  ", Theme::font (10.0f, true), note.applied ? Theme::lfo : Theme::mix);
+            text.append (note.title + "\n", Theme::font (11.5f, true), Theme::text);
+            text.append (note.text, Theme::font (10.5f), Theme::textDim.brighter (0.25f));
+            if (note.finding >= 1 && note.finding <= (int) report.findings.size())
+                text.append ("\nAbout finding " + juce::String (note.finding) + ": " + report.findings[(size_t) note.finding - 1].title, Theme::font (10.0f, true), Theme::textDim);
+            add (text, 2, note.finding >= 1 && note.finding <= (int) report.findings.size() ? note.finding - 1 : -1, note.applied);
         }
     }
     setSize (width, top + 4);
@@ -92,21 +123,24 @@ void ReportContent::layoutRows()
 void ReportContent::paint (juce::Graphics& g)
 {
     const auto clip = g.getClipBounds();
-    for (size_t i = 0; i < rows.size(); ++i)
+    for (const auto& row : rows)
     {
-        const auto& row = rows[i];
         if (row.top + row.height < clip.getY() || row.top > clip.getBottom())
             continue;
         const auto bounds = juce::Rectangle<float> (2.0f, (float) row.top, (float) width - 4.0f, (float) row.height);
-        const auto isFinding = report.valid && i >= 1 && i - 1 < report.findings.size();
-        const auto colour = isFinding ? severityColour (report.findings[i - 1].severity) : Theme::textDim;
-        g.setColour (juce::Colours::black.withAlpha (selected == (int) i - 1 && isFinding ? 0.55f : 0.3f));
+        const auto isSelected = row.finding >= 0 && selected == row.finding;
+        auto colour = Theme::textDim;
+        if (row.kind == 1 && row.finding < (int) report.findings.size())
+            colour = severityColour (report.findings[(size_t) row.finding].severity);
+        else if (row.kind == 2)
+            colour = row.applied ? Theme::lfo : Theme::mix;
+        g.setColour (juce::Colours::black.withAlpha (isSelected && row.kind == 1 ? 0.55f : 0.3f));
         g.fillRoundedRectangle (bounds, 5.0f);
-        if (isFinding)
+        if (row.kind != 0)
         {
-            g.setColour (colour.withAlpha (selected == (int) i - 1 ? 0.95f : 0.7f));
+            g.setColour (colour.withAlpha (isSelected ? 0.95f : 0.7f));
             g.fillRoundedRectangle (bounds.withWidth (4.0f), 2.0f);
-            if (selected == (int) i - 1)
+            if (isSelected && row.kind == 1)
                 g.drawRoundedRectangle (bounds, 5.0f, 1.2f);
         }
         row.layout.draw (g, bounds.reduced (12.0f, 7.0f));
@@ -115,11 +149,11 @@ void ReportContent::paint (juce::Graphics& g)
 
 void ReportContent::mouseDown (const juce::MouseEvent& event)
 {
-    for (size_t i = 1; i < rows.size(); ++i)
-        if (event.y >= rows[i].top && event.y < rows[i].top + rows[i].height && report.valid && i - 1 < report.findings.size())
+    for (const auto& row : rows)
+        if (event.y >= row.top && event.y < row.top + row.height && row.kind != 0 && row.finding >= 0 && row.finding < (int) report.findings.size())
         {
             if (onSelect)
-                onSelect ((int) i - 1);
+                onSelect (row.finding);
             return;
         }
 }
@@ -212,9 +246,23 @@ SpectrumPage::SpectrumPage (PluginBase& p) : processor (p)
                                "to count as colliding, how loud they must be and for how long in a bar.");
     addAndMakeVisible (sensitivityBox);
 
-    copyButton.setTooltip ("COPY - Copies the report as text (to paste into an AI chat, for example).");
-    copyButton.onClick = [this] { copyReport(); };
-    addChildComponent (copyButton);
+    exportButton.setTooltip ("EXPORT - Copies the report as text, or saves the whole analysis as a JSON file for an AI or for studying by hand. In the list you choose what to include: "
+                             "findings, an overview per source, band levels and harmonic series and 1/12-octave spectra for every source and every bar, the kick hits with the ducking, "
+                             "the level of every band in every frame through the loop, and all the synth's settings (oscillators, wavetables, filters, effects, modulation, pattern, notes).");
+    exportButton.onClick = [this] { showExportMenu(); };
+    addChildComponent (exportButton);
+
+    for (auto* button : { &viewSpectrumButton, &viewReportButton })
+    {
+        button->setClickingTogglesState (false);
+        button->setColour (juce::TextButton::buttonOnColourId, Theme::lfo.withAlpha (0.55f));
+        addAndMakeVisible (*button);
+    }
+    viewSpectrumButton.setTooltip ("SPECTRUM - The live spectrum of the kick, the instruments and the master, with harmonics, collisions and the EQ.");
+    viewReportButton.setTooltip ("ANALYSIS + REPORT - Analyse the whole pattern and read the report: what to look at, and what an AI suggests or has fixed.");
+    viewSpectrumButton.onClick = [this] { setView (false); };
+    viewReportButton.onClick = [this] { setView (true); };
+    exportOptions = MixAnalysis::ExportOptions::fromString (Settings::get ("exportContent"));
 
     content.onSelect = [this] (int index) { selectFinding (index); };
     viewport.setViewedComponent (&content, false);
@@ -225,6 +273,8 @@ SpectrumPage::SpectrumPage (PluginBase& p) : processor (p)
         source.low.fill (-120.0f);
 
     updateSources();
+    setView (false);
+    startTimerHz (2); // anteckningar från en AI dyker upp även när inget annat rör sig
 
     // Referensen från förra gången.
     if (const auto path = Settings::get ("referencePath"); path.isNotEmpty() && juce::File (path).existsAsFile())
@@ -249,6 +299,8 @@ SpectrumPage::SpectrumPage (PluginBase& p) : processor (p)
             if (mode > 1 && ! content.getReport().findings.empty())
                 selectFinding (0);
         }
+        if (juce::SystemStats::getEnvironmentVariable ("KB_VIEW", "0").getIntValue() != 0)
+            setView (true);
     }
 }
 
@@ -259,7 +311,7 @@ SpectrumPage::~SpectrumPage()
 
 void SpectrumPage::updateRunning()
 {
-    const auto shouldRun = analyserButton.getToggleState() && ! analysing && (isShowing() || processor.snapshotSpectrum); // (pausad under en analys)
+    const auto shouldRun = analyserButton.getToggleState() && ! analysing && ! reportView && (isShowing() || processor.snapshotSpectrum); // (pausad under en analys och i rapportvyn)
     if (shouldRun != running)
     {
         running = shouldRun;
@@ -272,10 +324,10 @@ void SpectrumPage::updateRunning()
                 source.fundamental = 0.0f;
             }
     }
-    if (running || analysing)
-        startTimerHz (analysing && ! running ? 10 : (Settings::reduceAnimations() ? std::min (fps, 8) : fps));
+    if (running)
+        startTimerHz (Settings::reduceAnimations() ? std::min (fps, 8) : fps);
     else
-        stopTimer();
+        startTimerHz (analysing ? 10 : 2);
     repaint();
 }
 
@@ -306,43 +358,75 @@ void SpectrumPage::updateSources()
     resized();
 }
 
+void SpectrumPage::setView (bool report)
+{
+    reportView = report;
+    viewSpectrumButton.setToggleState (! report, juce::dontSendNotification);
+    viewReportButton.setToggleState (report, juce::dontSendNotification);
+    for (auto* c : std::initializer_list<juce::Component*> { &analyserButton, &collisionsButton, &harmonicsButton, &speedBox, &showButton, &eqButton })
+        c->setVisible (! report);
+    for (auto* c : std::initializer_list<juce::Component*> { &analyseButton, &referenceButton, &sensitivityBox, &exportButton })
+        c->setVisible (report);
+    viewport.setVisible (report);
+    updateRunning();
+    resized();
+    repaint();
+}
+
+juce::Rectangle<int> SpectrumPage::overlayBounds() const
+{
+    return reportView ? viewport.getBounds() : plotBody;
+}
+
 void SpectrumPage::resized()
 {
     auto area = getLocalBounds().reduced (8, 6);
     auto top = area.removeFromTop (stripHeight);
-    sensitivityBox.setBounds (top.removeFromRight (98));
-    top.removeFromRight (4);
-    referenceButton.setBounds (top.removeFromRight (92));
-    top.removeFromRight (4);
-    analyseButton.setBounds (top.removeFromRight (92));
-    top.removeFromRight (4);
-    copyButton.setBounds (top.removeFromRight (copyButton.isVisible() ? 50 : 0));
-    top.removeFromRight (8);
-    analyserButton.setBounds (top.removeFromLeft (76));
-    top.removeFromLeft (4);
-    collisionsButton.setBounds (top.removeFromLeft (88));
-    top.removeFromLeft (4);
-    harmonicsButton.setBounds (top.removeFromLeft (88));
-    top.removeFromLeft (4);
-    speedBox.setBounds (top.removeFromLeft (92));
-    top.removeFromLeft (4);
-    showButton.setBounds (top.removeFromLeft (150));
-    top.removeFromLeft (6);
-    eqButton.setBounds (top.removeFromLeft (38));
-    top.removeFromLeft (4);
-    eqTargetBox.setVisible (eqButton.getToggleState());
-    eqTargetBox.setBounds (top.removeFromLeft (100));
+    viewSpectrumButton.setBounds (top.removeFromLeft (92));
+    top.removeFromLeft (3);
+    viewReportButton.setBounds (top.removeFromLeft (150));
+    top.removeFromLeft (14);
+
+    if (reportView)
+    {
+        analyseButton.setBounds (top.removeFromLeft (110));
+        top.removeFromLeft (4);
+        sensitivityBox.setBounds (top.removeFromLeft (110));
+        top.removeFromLeft (4);
+        referenceButton.setBounds (top.removeFromLeft (112));
+        top.removeFromLeft (4);
+        exportButton.setBounds (top.removeFromLeft (76));
+        eqTargetBox.setVisible (false);
+    }
+    else
+    {
+        analyserButton.setBounds (top.removeFromLeft (76));
+        top.removeFromLeft (4);
+        collisionsButton.setBounds (top.removeFromLeft (88));
+        top.removeFromLeft (4);
+        harmonicsButton.setBounds (top.removeFromLeft (88));
+        top.removeFromLeft (4);
+        speedBox.setBounds (top.removeFromLeft (92));
+        top.removeFromLeft (4);
+        showButton.setBounds (top.removeFromLeft (150));
+        top.removeFromLeft (6);
+        eqButton.setBounds (top.removeFromLeft (38));
+        top.removeFromLeft (4);
+        eqTargetBox.setVisible (eqButton.getToggleState());
+        eqTargetBox.setBounds (top.removeFromLeft (100));
+    }
 
     area.removeFromTop (4);
-    if (reportShown)
+    if (reportView)
     {
-        auto panel = area.removeFromRight (panelWidth);
-        area.removeFromRight (8);
-        viewport.setBounds (panel);
+        viewport.setBounds (area);
         content.setWidth (viewport.getMaximumVisibleWidth());
+        plotBody = {};
     }
-    viewport.setVisible (reportShown);
-    plotBody = area;
+    else
+    {
+        plotBody = area;
+    }
 }
 
 juce::Rectangle<float> SpectrumPage::plotArea() const
@@ -393,7 +477,13 @@ void SpectrumPage::startAnalysis()
     processor.requestAudition (PluginBase::previewStop); // förhandslyssningar stoppas först, så att inget annat spelar under analysen
     MixAnalysis::Options options;
     options.sensitivity = juce::jlimit (0, 2, sensitivityBox.getSelectedId() - 1);
-    if (! analyser.start (processor, options, reference))
+    // Alla inställningar när analysen startar följer med i rapporten (oscillatorer, wavetables, effekter, modulering, mönster, toner).
+    ToolLayer tools (processor);
+    auto stateArgs = juce::DynamicObject::Ptr (new juce::DynamicObject());
+    stateArgs->setProperty ("all_parameters", true);
+    const auto state = tools.call ("get_state", juce::var (stateArgs.get()));
+    processor.clearAiNotes();
+    if (! analyser.start (processor, options, reference, state["data"]))
         return;
     analysing = true;
     analyseButton.setButtonText ("CANCEL");
@@ -408,8 +498,7 @@ void SpectrumPage::takeReport()
     reportShown = true;
     highlightLow = highlightHigh = 0.0f;
     reportVersion = analyser.getVersion();
-    copyButton.setVisible (true);
-    copyButton.setEnabled (content.getReport().valid);
+    exportButton.setEnabled (content.getReport().valid);
     resized();
     viewport.setViewPosition (0, 0);
     repaint();
@@ -447,16 +536,101 @@ void SpectrumPage::selectFinding (int index)
         eqTargetBox.setSelectedId (eqSource + 1, juce::dontSendNotification);
     }
     if (! analyserButton.getToggleState())
-    {
         analyserButton.setToggleState (true, juce::dontSendNotification);
-        updateRunning();
-    }
+    setView (false); // visa fyndet i spektrumet
     repaint();
 }
 
 void SpectrumPage::copyReport()
 {
-    juce::SystemClipboard::copyTextToClipboard (content.getReport().toText());
+    auto text = content.getReport().toText();
+    const auto notes = processor.getAiNotes();
+    if (! notes.empty())
+    {
+        text << "\nAI suggestions and fixes:\n";
+        for (const auto& note : notes)
+            text << (note.applied ? "[APPLIED] " : "[SUGGESTION] ") << note.title << "\n    " << note.text << "\n";
+    }
+    juce::SystemClipboard::copyTextToClipboard (text);
+}
+
+// EXPORT: kopiera som text, eller spara allt som mättes i en fil. Listan väljer vad som tas med och ligger kvar öppen.
+void SpectrumPage::showExportMenu()
+{
+    juce::PopupMenu menu;
+    menu.addItem (1, "Copy the report as text");
+    menu.addItem (2, "Save the analysis to a file ...");
+    menu.addSeparator();
+    menu.addSectionHeader ("WHAT THE FILE CONTAINS");
+    struct Entry { int id; const char* text; bool MixAnalysis::ExportOptions::* flag; };
+    const Entry entries[] { { 10, "Findings", &MixAnalysis::ExportOptions::findings },
+                            { 11, "Overview per source", &MixAnalysis::ExportOptions::sources },
+                            { 12, "Band levels per source and bar", &MixAnalysis::ExportOptions::bars },
+                            { 13, "Harmonic series per source and bar", &MixAnalysis::ExportOptions::harmonics },
+                            { 14, "1/12-octave spectrum per source and bar", &MixAnalysis::ExportOptions::spectra },
+                            { 15, "Band levels in every frame (large)", &MixAnalysis::ExportOptions::frames },
+                            { 16, "Kick hits and ducking", &MixAnalysis::ExportOptions::kicks },
+                            { 17, "All synth settings, flat list and the notes", &MixAnalysis::ExportOptions::synth },
+                            { 19, "All settings arranged (oscillators A/B/C, filters, effects ...)", &MixAnalysis::ExportOptions::overview },
+                            { 20, "Loaded presets", &MixAnalysis::ExportOptions::presets },
+                            { 21, "Levels, brightness and energy ranges (dynamics)", &MixAnalysis::ExportOptions::dynamics },
+                            { 18, "Explanation for an AI (the plugin, the data, how to analyse)", &MixAnalysis::ExportOptions::about } };
+    for (const auto& entry : entries)
+        menu.addItem (entry.id, entry.text, true, exportOptions.*entry.flag);
+    menu.addSeparator();
+    menu.addItem (30, "Only the sources chosen in SHOW", true, exportOnlyShown);
+
+    juce::Component::SafePointer<SpectrumPage> safeThis (this);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&exportButton), [safeThis, entries] (int result)
+    {
+        if (safeThis == nullptr || result == 0)
+            return;
+        if (result == 1)
+        {
+            safeThis->copyReport();
+            return;
+        }
+        if (result == 2)
+        {
+            safeThis->saveExportFile();
+            return;
+        }
+        for (const auto& entry : entries)
+            if (entry.id == result)
+                safeThis->exportOptions.*entry.flag = ! (safeThis->exportOptions.*entry.flag);
+        if (result == 30)
+            safeThis->exportOnlyShown = ! safeThis->exportOnlyShown;
+        Settings::set ("exportContent", safeThis->exportOptions.toString());
+        juce::MessageManager::callAsync ([safeThis] { if (safeThis != nullptr) safeThis->showExportMenu(); });
+    });
+}
+
+void SpectrumPage::saveExportFile()
+{
+    if (! content.getReport().valid)
+        return;
+    const auto folder = Settings::rootFolder().getChildFile ("Analysis");
+    folder.createDirectory();
+    chooser = std::make_unique<juce::FileChooser> ("Save the analysis", folder.getChildFile ("kickbase-analysis-" + juce::Time::getCurrentTime().formatted ("%Y-%m-%d_%H%M%S") + ".json"), "*.json");
+    juce::Component::SafePointer<SpectrumPage> safeThis (this);
+    chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles | juce::FileBrowserComponent::warnAboutOverwriting,
+                          [safeThis] (const juce::FileChooser& fc)
+    {
+        if (safeThis == nullptr || fc.getResult() == juce::File())
+            return;
+        auto report = safeThis->analyser.getReport();
+        report.aiNotes = safeThis->processor.getAiNotesVar();
+        const auto file = fc.getResult().withFileExtension ("json");
+        MixAnalysis::ExportFilter filter;
+        if (safeThis->exportOnlyShown)
+            for (const auto& source : safeThis->sources)
+                if (source.present && source.selected)
+                    filter.sources.add (source.name);
+        if (report.saveExport (file, safeThis->exportOptions, filter))
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "Analysis saved", file.getFullPathName() + "\n(" + juce::String (file.getSize() / 1024) + " kB)");
+        else
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Analysis", "Could not write " + file.getFullPathName());
+    });
 }
 
 void SpectrumPage::updateShowText()
@@ -702,7 +876,7 @@ void SpectrumPage::paintEq (juce::Graphics& g, juce::Rectangle<float> area)
 
 void SpectrumPage::mouseDown (const juce::MouseEvent& event)
 {
-    if (! eqButton.getToggleState() || ! plotArea().expanded (8.0f).contains (event.position))
+    if (reportView || ! eqButton.getToggleState() || ! plotArea().expanded (8.0f).contains (event.position))
         return;
     dragNode = eqHit (event.position);
     if (dragNode < 0)
@@ -763,7 +937,7 @@ void SpectrumPage::mouseUp (const juce::MouseEvent&)
 
 void SpectrumPage::mouseDoubleClick (const juce::MouseEvent& event)
 {
-    if (! eqButton.getToggleState())
+    if (reportView || ! eqButton.getToggleState())
         return;
     const auto hit = eqHit (event.position);
     if (hit < 0)
@@ -793,7 +967,7 @@ void SpectrumPage::mouseDoubleClick (const juce::MouseEvent& event)
 
 void SpectrumPage::mouseWheelMove (const juce::MouseEvent& event, const juce::MouseWheelDetails& wheel)
 {
-    if (! eqButton.getToggleState())
+    if (reportView || ! eqButton.getToggleState())
         return;
     const auto hit = eqHit (event.position);
     if (hit < 0 || hit >= Effects::eqBands)
@@ -935,6 +1109,19 @@ void SpectrumPage::timerCallback()
 {
     updateSources();
 
+    // Anteckningar från en AI: de visas i rapporten, och rapportvyn visas inte automatiskt (man kan vara i spektrumet).
+    if (const auto version = processor.aiNotesVersion.load(); version != notesVersionShown)
+    {
+        notesVersionShown = version;
+        const auto notes = processor.getAiNotes();
+        content.setNotes (notes);
+        content.setWidth (reportView ? viewport.getMaximumVisibleWidth() : content.getWidth());
+        if (! reportView && ! notes.empty())
+            viewReportButton.setButtonText ("ANALYSIS + REPORT *"); // en stjärna: något nytt i rapporten
+    }
+    if (reportView && viewReportButton.getButtonText().endsWith ("*"))
+        viewReportButton.setButtonText ("ANALYSIS + REPORT");
+
     if (analysing)
     {
         if (! analyser.isRunning())
@@ -971,6 +1158,12 @@ void SpectrumPage::timerCallback()
 
 void SpectrumPage::paint (juce::Graphics& g)
 {
+    if (reportView)
+    {
+        g.setColour (Theme::knobBodyDark.withAlpha (0.85f));
+        g.fillRoundedRectangle (viewport.getBounds().toFloat().expanded (2.0f), 6.0f);
+        return;
+    }
     // Källväljaren har samma färg som källan (bara när den ändras: setColour ritar om).
     if (const auto tint = sources[(size_t) eqSource].colour; eqTargetBox.findColour (juce::ComboBox::outlineColourId) != tint)
     {
@@ -1294,7 +1487,7 @@ void SpectrumPage::paintOverChildren (juce::Graphics& g)
 
     if (! analysing)
         return;
-    const auto bounds = plotBody.toFloat();
+    const auto bounds = overlayBounds().toFloat();
     g.setColour (juce::Colours::black.withAlpha (0.55f));
     g.fillRoundedRectangle (bounds, 6.0f);
 

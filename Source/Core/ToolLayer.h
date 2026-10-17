@@ -46,6 +46,8 @@ private:
     juce::var renderPreview (const juce::var& args);
     juce::var analyseMix (const juce::var& args);
     juce::var getMixReport (const juce::var& args);
+    juce::var saveMixReport (const juce::var& args);
+    juce::var addReportNote (const juce::var& args);
     juce::var analyzeAudio (const juce::var& args);
     juce::var pianoRollFiles (const juce::String& tool, const juce::var& args);
     juce::var loadKickSample (const juce::var& args);

@@ -474,6 +474,43 @@ namespace
             }
             check ((bool) answer["ok"] && answer["data"]["status"].toString() == "done" && answer["data"]["findings"].isArray(), "get_mix_report ger rapporten (utan att vänta i anropet)");
             check (answer["data"]["kick_tail_hz"].operator double() > 25.0, "rapporten kommer med i svaret (data)");
+
+            // Mer data: bandnivåer och övertoner per takt via get_mix_report, och hela analysen som fil.
+            auto detailArgs = juce::DynamicObject::Ptr (new juce::DynamicObject());
+            detailArgs->setProperty ("detail", "bars");
+            const auto detailed = tools.call ("get_mix_report", juce::var (detailArgs.get()));
+            check ((bool) detailed["ok"] && detailed["data"]["per_bar"].isArray() && detailed["data"]["kick_hits"].isArray(), "get_mix_report detail:'bars' ger data per takt och kickens slag");
+            if (auto* perBar = detailed["data"]["per_bar"].getArray())
+                check (perBar->size() >= 3 && (*perBar)[0]["bars"][0]["average_band_db"].isArray(), "bandnivåer per källa och takt finns");
+
+            const auto exportFile = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("kickbase_test_analysis.json");
+            auto saveArgs = juce::DynamicObject::Ptr (new juce::DynamicObject());
+            saveArgs->setProperty ("file", exportFile.getFullPathName());
+            const auto saved = tools.call ("save_mix_report", juce::var (saveArgs.get()));
+            check ((bool) saved["ok"] && exportFile.existsAsFile(), "save_mix_report sparar en fil");
+            const auto parsed = juce::JSON::parse (exportFile.loadFileAsString());
+            check (parsed["about"]["plugin"].isObject() && parsed["about"]["how_to_analyse"].isArray(), "filen har förklaringen för en ny AI");
+            check (parsed["frames"]["seconds"].isArray() && parsed["frames"]["seconds"].size() > 5 && parsed["frames"]["band_db"].isObject(), "filen har bandnivåerna för varje ram");
+            check (parsed["per_bar"].isArray() && parsed["sources"].isArray() && parsed["kick_hits"].isArray(), "filen har översikt, takt för takt och kickens slag");
+            check (parsed["synth"]["parameters"].isObject() && parsed["pattern_timeline"].isArray() && parsed["pattern_timeline"].size() >= 1, "filen har alla inställningar och mönstret i loopens tid");
+            check (parsed["synth_overview"]["instruments"].isArray() && parsed["synth_overview"]["instruments"][0]["oscillators"]["A"]["Table"].isString() && parsed["presets"].isObject(), "filen har inställningarna ordnade (oscillatorer med wavetable) och presets");
+            check (parsed["per_bar"][1]["bars"][0]["rms_db"].isDouble() && parsed["frames"]["rms_db"].isObject() && parsed["frames"]["ducking_db"].isObject(), "filen har nivå, ljusstyrka och duckning per takt och ram");
+
+            // Filter: bara kicken, takt 1 och 30-300 Hz ger en mycket mindre fil.
+            auto smallArgs = juce::DynamicObject::Ptr (new juce::DynamicObject());
+            smallArgs->setProperty ("file", exportFile.getFullPathName());
+            smallArgs->setProperty ("sources", juce::JSON::parse ("[\"kick\"]"));
+            smallArgs->setProperty ("bars", "1");
+            smallArgs->setProperty ("min_hz", 30.0);
+            smallArgs->setProperty ("max_hz", 300.0);
+            smallArgs->setProperty ("include", juce::JSON::parse ("[\"bars\",\"frames\",\"kicks\"]"));
+            const auto bytesBefore = exportFile.getSize();
+            const auto savedSmall = tools.call ("save_mix_report", juce::var (smallArgs.get()));
+            const auto small = juce::JSON::parse (exportFile.loadFileAsString());
+            check ((bool) savedSmall["ok"] && exportFile.getSize() < bytesBefore / 4 && small["per_bar"].size() == 1 && small["meta"]["sources"].size() == 1
+                       && small["meta"]["bands_included"]["first_band_index"].operator int() >= 1, "filter (källor, takt, frekvensområde) gör filen mindre");
+            std::printf ("exportfilen: %lld kB\n", (long long) (exportFile.getSize() / 1024));
+            exportFile.deleteFile();
         }
 
         // Instrumentets EQ följer med när instrumentet töms.
@@ -1147,7 +1184,7 @@ namespace
         processor->setPlayConfigDetails (kind == "fx" ? 2 : 0, 2, renderRate, blockSize);
         processor->prepareToPlay (renderRate, blockSize);
 
-        if (juce::SystemStats::getEnvironmentVariable ("KB_SPECTRUM", "0").getIntValue() != 0) // SPECTRUM-fliken med analysen på: spela två takter först
+        if (juce::SystemStats::getEnvironmentVariable ("KB_SPECTRUM", "0").getIntValue() != 0) // ANALYZER-fliken med analysen på: spela två takter först
         {
             processor->snapshotSpectrum = true;
             processor->instrumentTapsOn = true;

@@ -6,7 +6,7 @@
 #include "Effects.h"
 
 // En EQ för en ljudkälla (kicken, ett instrument eller mastern): högpass, fyra band (lågt hyllfilter, två klockor, högt hyllfilter) och lågpass,
-// samma uppbyggnad som effektkanalernas EQ. Neutral som standard, och då körs ingen bearbetning alls. Redigeras i SPECTRUM-fliken.
+// samma uppbyggnad som effektkanalernas EQ. Neutral som standard, och då körs ingen bearbetning alls. Redigeras i ANALYZER-fliken.
 //
 // Parameter-ID:n: prefix + "EqHp", "EqLp", "Eq1F", "Eq1G", "Eq1Q" ... "Eq4Q". Prefixet är "kick", "bass3" (instrument 3) eller "master", så att
 // EQ:n följer med kickens, instrumentets och masterns presets.
@@ -17,7 +17,7 @@ public:
 
     static void addParameters (juce::AudioProcessorValueTreeState::ParameterLayout& layout, const juce::String& prefix, const juce::String& title);
 
-    // Prefixet för en källa i SPECTRUM-fliken: 0 = kicken, 1-10 = instrument, 11 = mastern.
+    // Prefixet för en källa i ANALYZER-fliken: 0 = kicken, 1-10 = instrument, 11 = mastern.
     static juce::String prefixFor (int source);
 
     static Effects::EqSettings read (const juce::AudioProcessorValueTreeState& apvts, const juce::String& prefix);

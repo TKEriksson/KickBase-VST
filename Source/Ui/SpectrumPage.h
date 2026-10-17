@@ -14,6 +14,7 @@ public:
     int selected = -1;
 
     void setReport (const MixAnalysis::Report& newReport);
+    void setNotes (std::vector<PluginBase::AiNote> newNotes);
     void setWidth (int width);
     void paint (juce::Graphics&) override;
     void mouseDown (const juce::MouseEvent&) override;
@@ -24,11 +25,15 @@ private:
     {
         juce::TextLayout layout;
         int top = 0, height = 0;
+        int kind = 0;       // 0 = text, 1 = ett fynd, 2 = en AI-anteckning
+        int finding = -1;   // fyndet raden gäller (kind 1: dess nummer, kind 2: fyndet anteckningen svarar på)
+        bool applied = false;
     };
 
     void layoutRows();
 
     MixAnalysis::Report report;
+    std::vector<PluginBase::AiNote> notes;
     std::vector<Row> rows;
     int width = 300;
 };
@@ -95,6 +100,10 @@ private:
     void chooseReference();
     void loadReferenceFile (const juce::File& file);
     void copyReport();
+    void showExportMenu();
+    void saveExportFile();
+    void setView (bool report);
+    juce::Rectangle<int> overlayBounds() const;
     void showSourceMenu();
     void updateShowText();
 
@@ -112,7 +121,8 @@ private:
 
     PluginBase& processor;
     juce::TextButton analyserButton { "ANALYSER" }, collisionsButton { "COLLISIONS" }, harmonicsButton { "HARMONICS" }, eqButton { "EQ" };
-    juce::TextButton analyseButton { "ANALYSE" }, referenceButton { "REFERENCE" }, copyButton { "COPY" };
+    juce::TextButton analyseButton { "ANALYSE" }, referenceButton { "REFERENCE" }, exportButton { "EXPORT" };
+    juce::TextButton viewSpectrumButton { "SPECTRUM" }, viewReportButton { "ANALYSIS + REPORT" }; // flikarna i fliken
     juce::ComboBox sensitivityBox, eqTargetBox, speedBox;
     juce::TextButton showButton { "SHOW" }; // flervalslista över vilka källor som visas
     std::array<Source, numSources> sources;
@@ -126,7 +136,10 @@ private:
     juce::Rectangle<int> plotBody; // diagrammets yta (rapporten ligger till höger om den)
     juce::Viewport viewport;
     ReportContent content;
-    bool reportShown = false, analysing = false;
+    bool reportShown = false, analysing = false, reportView = false;
+    int notesVersionShown = -1;
+    MixAnalysis::ExportOptions exportOptions;
+    bool exportOnlyShown = false; // bara de källor som visas i SHOW
     int reportVersion = 0;
     float highlightLow = 0.0f, highlightHigh = 0.0f;
 
