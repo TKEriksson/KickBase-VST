@@ -71,10 +71,12 @@ namespace
         return Mixer::sourceName (source);
     }
 
-    // Används källan just nu? (Instrument som inte finns har ingen remsa.)
-    bool inUse (const PluginBase& processor, int source)
+    // Används källan just nu? (Instrument som inte finns har ingen remsa, och en effektkanal som inget skickas till och som saknar effekt döljs.)
+    bool inUse (const PluginBase& processor, int source, int fxMask)
     {
-        return source < Mixer::firstBassSource || source >= Mixer::firstFxSource || source - Mixer::firstBassSource < processor.activeInstruments();
+        if (source >= Mixer::firstFxSource)
+            return (fxMask & (1 << (source - Mixer::firstFxSource))) != 0;
+        return source < Mixer::firstBassSource || source - Mixer::firstBassSource < processor.activeInstruments();
     }
 }
 
@@ -235,9 +237,11 @@ void MixerView::timerCallback()
 {
     if (! isShowing())
         return;
-    if (processor.activeInstruments() != lastActive)
+    const auto fxMask = processor.fxChannelUsageMask();
+    if (processor.activeInstruments() != lastActive || fxMask != lastFxMask)
     {
         lastActive = processor.activeInstruments();
+        lastFxMask = fxMask;
         resized();
     }
     for (size_t i = 0; i < strips.size(); ++i)
@@ -249,21 +253,26 @@ void MixerView::timerCallback()
 void MixerView::resized()
 {
     auto area = getLocalBounds();
+    const auto fxMask = processor.fxChannelUsageMask();
     auto count = 1;
     for (size_t i = 0; i < strips.size(); ++i)
-        if (inUse (processor, (int) i))
+        if (inUse (processor, (int) i, fxMask))
             ++count;
     const auto width = std::min (70, (area.getWidth() - 16) / count);
 
-    // Kick och instrument, ett litet glapp, sedan effektkanalerna och mastern.
+    // Kick och instrument, ett litet glapp, sedan effektkanalerna som används och mastern.
+    auto gapDone = false;
     for (size_t i = 0; i < strips.size(); ++i)
     {
-        const auto used = inUse (processor, (int) i);
+        const auto used = inUse (processor, (int) i, fxMask);
         strips[i]->setVisible (used);
         if (! used)
             continue;
-        if ((int) i == Mixer::firstFxSource)
+        if (! gapDone && (int) i >= Mixer::firstFxSource)
+        {
             area.removeFromLeft (8);
+            gapDone = true;
+        }
         strips[i]->setBounds (area.removeFromLeft (width));
     }
     area.removeFromLeft (8);
@@ -271,9 +280,9 @@ void MixerView::resized()
 }
 
 //==============================================================================
-SourceToggles::SourceToggles (PluginBase& p, const juce::String& field, const juce::String& titleIn) : processor (p), title (titleIn)
+SourceToggles::SourceToggles (PluginBase& p, const juce::String& fieldIn, const juce::String& titleIn) : processor (p), field (fieldIn), title (titleIn)
 {
-    for (int s = 0; s < Mixer::numSources; ++s)
+    for (int s = 0; s < Mixer::firstFxSource; ++s)
     {
         if (field == "Duck" && ! Mixer::hasDuck (s))
             continue;
@@ -285,11 +294,75 @@ SourceToggles::SourceToggles (PluginBase& p, const juce::String& field, const ju
         buttons.push_back (std::move (button));
         sourceOfButton.push_back (s);
     }
+
+    fxButton.setColour (juce::TextButton::buttonColourId, Theme::effects.withAlpha (0.25f));
+    fxButton.setColour (juce::TextButton::textColourOffId, Theme::text);
+    fxButton.setTooltip ("The effect channels (FX1-FX11): click to choose which of them this applies to. The menu stays open so you can tick several.");
+    fxButton.onClick = [this] { showFxMenu(); };
+    addAndMakeVisible (fxButton);
     startTimerHz (4);
+}
+
+int SourceToggles::fxOnCount() const
+{
+    auto count = 0;
+    for (int s = Mixer::firstFxSource; s < Mixer::numSources; ++s)
+        if (processor.apvts.getRawParameterValue (Mixer::paramID (s, field))->load() >= 0.5f)
+            ++count;
+    return count;
+}
+
+void SourceToggles::showFxMenu()
+{
+    const auto mask = processor.fxChannelUsageMask();
+    juce::PopupMenu menu;
+    for (int s = Mixer::firstFxSource; s < Mixer::numSources; ++s)
+    {
+        const auto used = (mask & (1 << (s - Mixer::firstFxSource))) != 0;
+        menu.addItem (s + 1, Mixer::sourceName (s) + (used ? "" : "   (not used yet)"), true,
+                      processor.apvts.getRawParameterValue (Mixer::paramID (s, field))->load() >= 0.5f);
+    }
+    menu.addSeparator();
+    menu.addItem (1000, "All on");
+    menu.addItem (1001, "All off");
+
+    juce::Component::SafePointer<SourceToggles> safeThis (this);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&fxButton), [safeThis] (int result)
+    {
+        if (safeThis == nullptr || result == 0)
+            return;
+        auto set = [safeThis] (int source, bool on)
+        {
+            if (auto* parameter = safeThis->processor.apvts.getParameter (Mixer::paramID (source, safeThis->field)))
+            {
+                parameter->beginChangeGesture();
+                parameter->setValueNotifyingHost (on ? 1.0f : 0.0f);
+                parameter->endChangeGesture();
+            }
+        };
+        if (result >= 1000)
+        {
+            for (int s = Mixer::firstFxSource; s < Mixer::numSources; ++s)
+                set (s, result == 1000);
+        }
+        else
+        {
+            const auto source = result - 1;
+            set (source, safeThis->processor.apvts.getRawParameterValue (Mixer::paramID (source, safeThis->field))->load() < 0.5f);
+        }
+        safeThis->timerCallback();
+        juce::MessageManager::callAsync ([safeThis] { if (safeThis != nullptr) safeThis->showFxMenu(); }); // öppnas igen: flera kan kryssas i
+    });
 }
 
 void SourceToggles::timerCallback()
 {
+    const auto fxOn = fxOnCount();
+    if (fxOn != lastFxOn)
+    {
+        lastFxOn = fxOn;
+        fxButton.setButtonText ("FX CHANNELS  " + juce::String (fxOn) + "/" + juce::String (Mixer::numSources - Mixer::firstFxSource) + "  " + juce::String (juce::CharPointer_UTF8 ("\xe2\x96\xbe")));
+    }
     if (processor.activeInstruments() == lastActive && processor.layerNamesVersion.load() == lastNamesVersion)
         return;
     lastActive = processor.activeInstruments();
@@ -310,15 +383,20 @@ void SourceToggles::resized()
 {
     auto area = getLocalBounds();
     area.removeFromLeft (150);
+    constexpr int fxWidth = 150;
     auto used = 0;
     for (size_t i = 0; i < buttons.size(); ++i)
-        used += inUse (processor, sourceOfButton[i]) ? 1 : 0;
-    const auto width = std::min (62, area.getWidth() / std::max (1, used));
+        used += inUse (processor, sourceOfButton[i], 0) ? 1 : 0;
+    const auto width = std::min (62, (area.getWidth() - fxWidth) / std::max (1, used));
     for (size_t i = 0; i < buttons.size(); ++i)
     {
-        const auto shown = inUse (processor, sourceOfButton[i]);
+        const auto shown = inUse (processor, sourceOfButton[i], 0);
         buttons[i]->setVisible (shown);
         if (shown)
             buttons[i]->setBounds (area.removeFromLeft (width).reduced (2, 0));
     }
+    area.removeFromLeft (6);
+    fxButton.setBounds (area.removeFromLeft (fxWidth).reduced (2, 0));
+    if (lastFxOn < 0)
+        timerCallback();
 }

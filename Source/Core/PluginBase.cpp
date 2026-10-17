@@ -63,6 +63,32 @@ double PluginBase::typicalNoteSeconds (int layer)
     return seconds;
 }
 
+int PluginBase::fxChannelUsageMask()
+{
+    auto mask = 0;
+    auto sentTo = [this, &mask] (const char* channelID, const char* amountID)
+    {
+        const auto channel = (int) apvts.getRawParameterValue (channelID)->load() - 1;
+        if (channel >= 0 && channel < numEffectChannels && apvts.getRawParameterValue (amountID)->load() > 0.0f)
+            mask |= 1 << channel;
+    };
+    sentTo (ParamID::kickFxChannel, ParamID::kickFxAmount);
+    for (int layer = 0; layer < activeInstruments(); ++layer)
+        sentTo (ParamID::bass (layer, BassField::fxChannel).toRawUTF8(), ParamID::bass (layer, BassField::fxAmount).toRawUTF8());
+
+    for (int channel = 0; channel < numEffectChannels; ++channel)
+    {
+        if ((mask & (1 << channel)) != 0)
+            continue;
+        for (int slot = 0; slot < slotsPerChannel; ++slot)
+            if (Effects::slotType (apvts, channel, slot) != EffectType::off)
+                mask |= 1 << channel;
+        if ((mask & (1 << channel)) == 0 && ! Effects::readEq (apvts, channel).isNeutral())
+            mask |= 1 << channel;
+    }
+    return mask;
+}
+
 AiChat& PluginBase::getAiChat()
 {
     if (aiChat == nullptr)

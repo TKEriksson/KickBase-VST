@@ -52,7 +52,20 @@ private:
     SoundstagePage soundstage { processor };
     SpectrumPage spectrum { processor };
     InfoBar info;
-    juce::MidiKeyboardComponent keyboard { processor.keyboardState, juce::MidiKeyboardComponent::horizontalKeyboard };
+    // Tangentbordet: en tonetikett som inte får plats på tangenten utelämnas (C10 klipptes annars till "C1").
+    class Keyboard : public juce::MidiKeyboardComponent
+    {
+    public:
+        using juce::MidiKeyboardComponent::MidiKeyboardComponent;
+        juce::String getWhiteNoteText (int midiNoteNumber) override
+        {
+            auto text = juce::MidiKeyboardComponent::getWhiteNoteText (midiNoteNumber);
+            if (text.isNotEmpty() && (float) text.length() * 6.0f > getKeyWidth() - 2.0f)
+                return {};
+            return text;
+        }
+    };
+    Keyboard keyboard { processor.keyboardState, juce::MidiKeyboardComponent::horizontalKeyboard };
     juce::TooltipWindow tooltips { this, 1200 };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (InstrumentEditor)

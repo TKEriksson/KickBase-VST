@@ -37,7 +37,11 @@ public:
 
     // Hur länge en typisk ton i instrumentets mönster hålls, i sekunder (mediannotens längd gånger lagrets LENGTH, vid DAW:ens tempo); 0 om lagret
     // inte har några toner. Meddelandetråden. Räknas om högst fyra gånger per sekund, så att diagram kan fråga ofta.
-    double typicalNoteSeconds (int layer); // en enda analys per instans: samma som visas i ANALYZER-fliken och som en AI hämtar med get_mix_report
+    double typicalNoteSeconds (int layer);
+
+    // Vilka effektkanaler som används (bit n = FX n+1): något skickas dit (kicken eller ett instrument), en effekt ligger på någon plats eller kanalens EQ är inställd.
+    // Gränssnittet döljer de andra. Meddelandetråden.
+    int fxChannelUsageMask(); // en enda analys per instans: samma som visas i ANALYZER-fliken och som en AI hämtar med get_mix_report
 
     // Mastersektionen ägs av underklassen (den behöver bara finnas där ljudet bearbetas).
     virtual const MasterSection& getMasterSection() const = 0;
