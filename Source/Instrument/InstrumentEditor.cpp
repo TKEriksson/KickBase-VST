@@ -19,6 +19,7 @@ InstrumentEditor::InstrumentEditor (InstrumentProcessor& p)
     synths.addTab ("PATTERN", Theme::pattern, pattern);
     synths.addTab ("KICK", Theme::kick, kick, kick.embedInTab());
     synths.addTab ("INSTRUMENT", Theme::bass, instruments, instruments.getHeader(), InstrumentHost::headerWidth);
+    synths.addTab ("AI", Theme::gate, aiPage);
 
     // På/av direkt på kickens flik (instrumenten har sin på/av i flikraden, bredvid väljaren).
     synths.addPower (1, processor.apvts, ParamID::kickOn);

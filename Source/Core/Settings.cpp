@@ -1,5 +1,11 @@
 #include "Settings.h"
 
+#if JUCE_WINDOWS
+ #include <windows.h>
+ #include <wincrypt.h>
+ #pragma comment (lib, "crypt32.lib")
+#endif
+
 namespace
 {
     // Sökvägen (som vanlig text: ingen statisk JUCE-resurs som måste rivas när DLL:en laddas ur).
@@ -88,6 +94,64 @@ namespace Settings
         for (int i = 0; i < 4; ++i)
             key << juce::String::toHexString (juce::Random::getSystemRandom().nextInt (0x10000)).paddedLeft ('0', 4);
         return key.toLowerCase();
+    }
+
+    // Nyckeln krypteras med Windows DPAPI (annars bara base64: det finns ingen nyckelring att luta sig mot).
+    static juce::String protect (const juce::String& plain)
+    {
+       #if JUCE_WINDOWS
+        const auto utf8 = plain.toStdString();
+        DATA_BLOB in { (DWORD) utf8.size(), (BYTE*) utf8.data() }, out {};
+        if (CryptProtectData (&in, L"Kickbase", nullptr, nullptr, nullptr, 0, &out))
+        {
+            const auto text = "dpapi:" + juce::Base64::toBase64 (out.pbData, out.cbData);
+            LocalFree (out.pbData);
+            return text;
+        }
+       #endif
+        return "plain:" + juce::Base64::toBase64 (plain);
+    }
+
+    static juce::String unprotect (const juce::String& stored)
+    {
+        juce::MemoryOutputStream decoded;
+        if (stored.startsWith ("plain:") && juce::Base64::convertFromBase64 (decoded, stored.fromFirstOccurrenceOf (":", false, false)))
+            return decoded.toString();
+       #if JUCE_WINDOWS
+        if (stored.startsWith ("dpapi:") && juce::Base64::convertFromBase64 (decoded, stored.fromFirstOccurrenceOf (":", false, false)))
+        {
+            DATA_BLOB in { (DWORD) decoded.getDataSize(), (BYTE*) decoded.getData() }, out {};
+            if (CryptUnprotectData (&in, nullptr, nullptr, nullptr, nullptr, 0, &out))
+            {
+                const auto text = juce::String::fromUTF8 ((const char*) out.pbData, (int) out.cbData);
+                LocalFree (out.pbData);
+                return text;
+            }
+        }
+       #endif
+        return {};
+    }
+
+    juce::String chatApiKey()
+    {
+        const auto stored = get ("chatApiKey");
+        return stored.isEmpty() ? juce::String() : unprotect (stored).trim();
+    }
+
+    void setChatApiKey (const juce::String& key)
+    {
+        set ("chatApiKey", key.trim().isEmpty() ? juce::String() : protect (key.trim()));
+    }
+
+    juce::String chatModel()
+    {
+        const auto model = get ("chatModel").trim();
+        return model.isEmpty() ? juce::String ("claude-sonnet-5-5") : model;
+    }
+
+    void setChatModel (const juce::String& model)
+    {
+        set ("chatModel", model == "claude-sonnet-5-5" ? juce::String() : model);
     }
 
     float uiScale()

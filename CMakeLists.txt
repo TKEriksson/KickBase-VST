@@ -89,6 +89,8 @@ set(PLUGIN_SOURCES
     Source/Ui/EnvPage.cpp
     Source/Ui/SettingsPage.cpp
     Source/Core/WavetablePack.cpp
+    Source/Core/AiChat.cpp
+    Source/Ui/AiChatPage.cpp
     Source/Ui/Components.cpp
     Source/Ui/Help.cpp
     Source/Ui/OscPanel.cpp

@@ -24,6 +24,13 @@ namespace Settings
     juce::String aiKey();
     juce::String makeKey();      // en ny slumpmässig nyckel
 
+    // AI-chatten i synten: användarens egen API-nyckel (Anthropic) och vilken modell som används. Nyckeln sparas krypterad (Windows DPAPI,
+    // bara den här användaren kan läsa den på den här datorn) och skickas bara till api.anthropic.com.
+    juce::String chatApiKey();
+    void setChatApiKey (const juce::String& key);   // tom = ta bort
+    juce::String chatModel();                       // standard: claude-sonnet-5-5
+    void setChatModel (const juce::String& model);
+
     // Fönstrets skala (1 = fullstor): 0 = ingen vald, då används standardstorleken.
     float uiScale();
     void setUiScale (float scale);

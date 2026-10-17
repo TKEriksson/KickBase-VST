@@ -4,6 +4,7 @@
 #include "FxProcessor.h"
 #include "../Ui/EditorRoot.h"
 #include "../Ui/FruitLookAndFeel.h"
+#include "../Ui/AiChatPage.h"
 #include "../Ui/EffectsPage.h"
 #include "../Ui/LfoPage.h"
 #include "../Ui/MasterPage.h"
@@ -35,6 +36,7 @@ private:
     PatternModule pattern { processor, false };
     KickModule kick { processor };
     GateModule gate { processor };
+    AiChatPage aiPage { processor };
     TabbedPanel tools { &processor.selectedTab };
     EffectsPage effects { processor };
     SidechainPage sidechain { processor };

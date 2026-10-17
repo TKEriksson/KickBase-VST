@@ -4,6 +4,7 @@
 #include "InstrumentProcessor.h"
 #include "../Ui/EditorRoot.h"
 #include "../Ui/FruitLookAndFeel.h"
+#include "../Ui/AiChatPage.h"
 #include "../Ui/EffectsPage.h"
 #include "../Ui/LfoPage.h"
 #include "../Ui/MasterPage.h"
@@ -37,6 +38,7 @@ private:
     TabbedPanel synths { &processor.selectedSynthTab };
     PatternModule pattern { processor, true };
     KickModule kick { processor };
+    AiChatPage aiPage { processor };
     InstrumentHost instruments { processor };
     TabbedPanel tools { &processor.selectedTab };
     EffectsPage effects { processor };

@@ -20,12 +20,18 @@
 
 // Det som instrumentet och FX-versionen har gemensamt: parametrar, mönster, klicksampling,
 // sparat läge och klockan.
+class AiChat;
+
 class PluginBase : public juce::AudioProcessor
 {
 public:
     PluginBase (const BusesProperties& buses, juce::AudioProcessorValueTreeState::ParameterLayout layout, bool effectVersion);
+    ~PluginBase() override;
 
     bool isEffectVersion() const { return effectVersion; }
+
+    // AI-chatten i synten (skapas första gången den behövs; samtalet finns kvar medan pluginet lever). Message thread.
+    AiChat& getAiChat();
 
     // Mastersektionen ägs av underklassen (den behöver bara finnas där ljudet bearbetas).
     virtual const MasterSection& getMasterSection() const = 0;
@@ -96,6 +102,7 @@ public:
     void setBridgeEnabled (bool enabled);
     bool isBridgeEnabled() const { return bridge != nullptr && bridge->isRunning(); }
     juce::String getBridgeId() const { return bridge != nullptr ? bridge->getId() : juce::String(); }
+    int getBridgeConnections() const { return bridge != nullptr ? bridge->getConnectedCount() : 0; }
 
     // Kickens sampling (klick eller hel kick) och baslagrens samplingar. Anropas från gränssnittet (message thread).
     bool loadClickSample (const juce::File& file);
@@ -280,4 +287,6 @@ private:
     std::array<juce::String, ParamID::numBassLayers> layerNames;
 
     double currentSampleRate = 44100.0;
+
+    std::unique_ptr<AiChat> aiChat; // sist: rivs först, så att dess tråd är klar innan resten försvinner
 };

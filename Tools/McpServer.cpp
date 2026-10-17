@@ -11,6 +11,9 @@
 #include <cstdio>
 #include <iostream>
 #include <thread>
+#include <mutex>
+#include <condition_variable>
+#include <deque>
 
 #if JUCE_WINDOWS
  #include <fcntl.h>
@@ -26,8 +29,11 @@ namespace
     var object() { return var (new juce::DynamicObject()); }
     void put (var& target, const juce::String& key, const var& value) { target.getDynamicObject()->setProperty (key, value); }
 
+    // Flera trådar skriver svar (läsartråden och verktygstråden): ett svar i taget, annars blandas raderna.
     void send (const var& message)
     {
+        static std::mutex outputLock;
+        const std::lock_guard<std::mutex> guard (outputLock);
         const auto text = juce::JSON::toString (message, true);
         std::fwrite (text.toRawUTF8(), 1, text.getNumBytesAsUTF8(), stdout);
         std::fputc ('\n', stdout);
@@ -213,6 +219,7 @@ namespace
                 {
                     client.disconnect();
                     selected = "headless";
+                    BridgeLink::setLastSelectedInstance ({});
                     put (result, "ok", true);
                     put (result, "data", "Now controlling the headless instance.");
                     return toToolResult (result);
@@ -221,9 +228,10 @@ namespace
                 for (const auto& instance : BridgeLink::listInstances())
                     if (instance.id == id)
                     {
-                        if (client.connect (instance.pipe))
+                        if (client.connect (instance.pipes))
                         {
                             selected = id;
+                            BridgeLink::setLastSelectedInstance (id);
                             put (result, "ok", true);
                             put (result, "data", "Now controlling " + instance.name + ". Changes are heard live.");
                         }
@@ -240,12 +248,43 @@ namespace
                 return toToolResult (result);
             }
 
+            // En omstartad brygga (t.ex. när AI-appen startar om den) hamnar först i "headless": ta upp tråden mot instansen man valde senast.
+            if (selected == "headless")
+            {
+                const auto remembered = BridgeLink::lastSelectedInstance();
+                if (remembered.isNotEmpty())
+                    for (const auto& instance : BridgeLink::listInstances())
+                        if (instance.id == remembered && client.connect (instance.pipes))
+                        {
+                            selected = remembered;
+                            BridgeLink::log ("bridge", "picked the instance " + remembered + " up again after a restart");
+                        }
+            }
+
             if (selected == "headless")
                 return toToolResult (tools.call (name, arguments));
 
             auto result = client.call (name, arguments);
-            if (! client.isConnected())
-                selected = "headless";
+            if (! (bool) result["ok"] && ! client.isConnected())
+            {
+                // Länken tappade. Bryggan försökte redan ansluta igen. Lever instansen fortfarande behåller vi valet (nästa anrop försöker igen);
+                // är den borta byter vi till headless och säger det tydligt.
+                auto stillThere = false;
+                for (const auto& instance : BridgeLink::listInstances())
+                    stillThere = stillThere || instance.id == selected;
+                if (! stillThere)
+                {
+                    const auto gone = selected;
+                    selected = "headless";
+                    BridgeLink::setLastSelectedInstance ({});
+                    BridgeLink::log ("bridge", "the instance " + gone + " is gone: back to headless");
+                    auto failure = object();
+                    put (failure, "ok", false);
+                    put (failure, "error", "The Kickbase instance " + gone + " has closed (or its AI button was switched off). You are now controlling the headless instance: nothing you do here is heard in the DAW. "
+                                           "Use list_instances and use_instance to pick the instance in the DAW again.");
+                    return toToolResult (failure);
+                }
+            }
             return toToolResult (result);
         }
 
@@ -299,14 +338,14 @@ namespace
         std::printf ("instans %s, länk %s\n", live.getBridgeId().toRawUTF8(), live.isBridgeEnabled() ? "på" : "av");
 
         std::atomic<bool> done { false };
-        bool keyedOk = false;
+        bool keyedOk = false, reconnectOk = false, secondOk = false;
         std::vector<juce::String> lines;
         std::thread worker ([&]
         {
             BridgeLink::Client client;
             auto instances = BridgeLink::listInstances();
             lines.push_back ("instanser: " + juce::String (instances.size()));
-            if (instances.isEmpty() || ! client.connect (instances[0].pipe))
+            if (instances.isEmpty() || ! client.connect (instances[0].pipes))
                 lines.push_back ("FEL: kunde inte ansluta");
             else
             {
@@ -325,6 +364,19 @@ namespace
                                                                             + juce::String (preview["images"].size()) : preview["error"].toString()));
                 client.call ("undo", object());
 
+                // Två bryggor samtidigt (t.ex. två AI-fönster): den andra tar en annan pipe i stället för att nekas.
+                {
+                    BridgeLink::Client second;
+                    secondOk = second.connect (instances[0].pipes) && (bool) second.call ("get_state", object())["ok"] && client.isConnected();
+                    lines.push_back (juce::String (secondOk ? "ok" : "FEL") + ": en andra brygga kan vara ansluten samtidigt");
+                }
+
+                // Tappad länk: nästa anrop kopplar upp sig igen av sig självt.
+                client.disconnect();
+                const auto again = client.call ("get_state", object());
+                reconnectOk = (bool) again["ok"];
+                lines.push_back (juce::String (reconnectOk ? "ok" : "FEL") + ": bryggan kopplar upp sig igen efter ett tapp");
+
                 // Åtkomstnyckel: utan nyckel nekas bryggan, med rätt nyckel släpps den in.
                 client.disconnect();
                 const auto settingsFile = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("kickbase_selftest_settings.xml");
@@ -332,7 +384,7 @@ namespace
                 Settings::set ("aiKey", "k1");
                 BridgeLink::Client keyed;
                 keyed.setAccessKey ({});
-                if (keyed.connect (instances[0].pipe))
+                if (keyed.connect (instances[0].pipes))
                 {
                     const auto denied = keyed.call ("get_state", object());
                     keyedOk = ! (bool) denied["ok"] && denied["error"].toString().contains ("access key");
@@ -357,7 +409,7 @@ namespace
         const auto tune = live.apvts.getRawParameterValue (ParamID::kickTune)->load();
         std::printf ("kickTune i instansen efter undo: %.1f (väntat 0)\n", tune);
         live.setBridgeEnabled (false);
-        return done && keyedOk && std::abs (tune) < 0.01f ? 0 : 1;
+        return done && keyedOk && reconnectOk && secondOk && std::abs (tune) < 0.01f ? 0 : 1;
     }
 }
 
@@ -387,10 +439,80 @@ int main (int argc, char** argv)
     juce::ScopedJuceInitialiser_GUI juceInitialiser;
     Bridge bridge;
     log ("ready");
+    BridgeLink::log ("bridge", "MCP server started");
+
+    // Verktygsanrop körs en i taget på en egen tråd, så att läsartråden kan fortsätta svara (ping, listor, avbrott) medan ett långt anrop
+    // (t.ex. en rendering i DAW:en) pågår. En AI-app som inte får svar på sin ping eller sina listor kan annars tro att servern dött.
+    struct Worker
+    {
+        explicit Worker (Bridge& bridgeToUse) : bridge (bridgeToUse), thread ([this] { run(); }) {}
+
+        ~Worker()
+        {
+            {
+                const std::lock_guard<std::mutex> guard (mutex);
+                finished = true;
+            }
+            wake.notify_all();
+            thread.join();
+        }
+
+        void push (const var& request)
+        {
+            {
+                const std::lock_guard<std::mutex> guard (mutex);
+                queue.push_back (request);
+            }
+            wake.notify_one();
+        }
+
+    private:
+        void run()
+        {
+            for (;;)
+            {
+                var request;
+                {
+                    std::unique_lock<std::mutex> lock (mutex);
+                    wake.wait (lock, [this] { return finished || ! queue.empty(); });
+                    if (queue.empty())
+                        return;
+                    request = queue.front();
+                    queue.pop_front();
+                }
+
+                try
+                {
+                    const auto response = bridge.handle (request);
+                    if (response.isObject())
+                        send (response);
+                }
+                catch (const std::exception& e)
+                {
+                    BridgeLink::log ("bridge", juce::String ("error in a tool call: ") + e.what());
+                    send (errorReply (request["id"], -32603, juce::String ("Internal error: ") + e.what()));
+                }
+                catch (...)
+                {
+                    BridgeLink::log ("bridge", "unknown error in a tool call");
+                    send (errorReply (request["id"], -32603, "Internal error"));
+                }
+            }
+        }
+
+        Bridge& bridge;
+        std::mutex mutex;
+        std::condition_variable wake;
+        std::deque<var> queue;
+        bool finished = false;
+        std::thread thread;
+    } worker (bridge);
 
     std::string line;
     while (std::getline (std::cin, line))
     {
+        if (line.size() >= 3 && line.compare (0, 3, "\xEF\xBB\xBF") == 0)
+            line.erase (0, 3); // en byte order mark (UTF-8) först i strömmen: ignorera
         if (! line.empty() && line.back() == '\r')
             line.pop_back();
         if (line.empty())
@@ -403,6 +525,12 @@ int main (int argc, char** argv)
             continue;
         }
 
+        if (request["method"].toString() == "tools/call")
+        {
+            worker.push (request);
+            continue;
+        }
+
         try
         {
             const auto response = bridge.handle (request);
@@ -411,8 +539,18 @@ int main (int argc, char** argv)
         }
         catch (const std::exception& e)
         {
+            BridgeLink::log ("bridge", juce::String ("error in a request: ") + e.what());
             send (errorReply (request["id"], -32603, juce::String ("Internal error: ") + e.what()));
         }
+        catch (...)
+        {
+            BridgeLink::log ("bridge", "unknown error in a request");
+            send (errorReply (request["id"], -32603, "Internal error"));
+        }
     }
-    return 0;
+
+    // AI-appen stängde strömmen: avsluta direkt (ett pågående verktygsanrop behöver inte vänta ut sina 120 sekunder).
+    BridgeLink::log ("bridge", "MCP server ended (the AI app closed the connection)");
+    std::fflush (stdout);
+    std::_Exit (0);
 }

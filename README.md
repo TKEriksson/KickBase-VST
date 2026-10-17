@@ -54,6 +54,7 @@ bestämmer vad som händer när tonen tar slut mitt i ett mönster.
 När DAW:en står still släpps ljudet igenom orört och ingen kick spelas.
 
 **Flikarna:**
+- **AI** (överst, bredvid INSTRUMENT): chatta med din egen AI direkt i synten. Den ändrar ljudet med samma verktyg som MCP-bryggan (parametrar, mönster, effekter, rendering och mätning) och du ser varje anrop i samtalet; UNDO ångrar dess senaste ändring. Det kräver din egen API-nyckel från Anthropic (console.anthropic.com): första gången frågar sidan efter den, och KEY-knappen byter eller tar bort den. Nyckeln sparas krypterad på datorn (Windows DPAPI) och skickas bara till api.anthropic.com; användningen debiteras ditt Anthropic-konto (tokenräknaren visar åtgången). Välj modell högst upp. Utan nyckel gör fliken ingenting.
 - **PATTERN, KICK, INSTRUMENT** (överst): mönstret, kicken och instrumenten. INSTRUMENT-fliken visar ett instrument i taget: välj det i listan i flikraden, lägg till ett med **+** och ta bort det sista med **-** (det rensas helt ur minnet, med en bekräftelse om det har toner, ändrade inställningar, sampling eller kopplingar). Alla instrument kan döpas (menyn i väljaren, eller dubbelklicka på namnet i mönstret). Mönstret har två lägen,
   **PATTERN** (tonerna: stegen är en enkel pianorulle, **PIANO ROLL** den avancerade varianten, och ett lager som
   redigerats där visas som en miniatyr) och **GATE** (en egen av/på-rytm per lager med eget rutnät som hackar ljudet). Uppe i hörnet på varje flik väljer du effektkanal och mängd (FX).
@@ -118,6 +119,13 @@ spara presets och ångra. Verktygen och guiden som AI:n läser finns i `Source/C
 2. Starta om Claude Desktop helt. Be Claude använda Kickbase-verktygen (den läser `get_guide` först).
 3. Utan DAW jobbar AI:n mot en egen instans ("headless"). Vill du att den ska styra pluginet i FL: klicka på **AI** i
    pluginets topprad, och be AI:n köra `list_instances` och `use_instance`. Länken är lokal (named pipe) och av som standard.
+
+**Stabil länk.** Varje Kickbase lyssnar på fyra pipes, så flera AI-fönster kan vara anslutna samtidigt. Tappar länken kopplar bryggan upp
+sig igen själv (och skickar om anropet om det inte kom iväg), kollar med en ping efter en paus, och lägger tillbaka valet av instans om
+AI-appen startar om bryggan. Långa anrop (rendering) blockerar inte bryggans svar på ping/listor. Händelser från båda sidor loggas i
+`Dokument\Kickbase\Bridge\bridge.log`. Under SETTINGS > AI LINK ser du hur många som är anslutna. Efter en uppdatering: avsluta Claude
+Desktop helt (den håller den gamla `KickbaseMcp.exe` låst), kör `install-mcp.ps1` igen och starta Claude Desktop. AI-chatten i pluginet
+provar om vid nätverksfel, 429 och 5xx (2, 4 och 8 sekunder).
 
 Förhandslyssningar och spektrogram hamnar i `Dokument\Kickbase\Previews`, presets i `Dokument\Kickbase\Presets`.
 `KickbaseMcp --selftest-link` testar länken, och `KickbaseHostTest <plugin.vst3>` laddar pluginet som en värd

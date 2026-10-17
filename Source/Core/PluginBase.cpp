@@ -1,4 +1,5 @@
 #include "PluginBase.h"
+#include "AiChat.h"
 #include "OfflineRender.h"
 #include "Mixer.h"
 
@@ -23,6 +24,15 @@ PluginBase::PluginBase (const BusesProperties& buses, juce::AudioProcessorValueT
     bassPresetNames.fill ("Default");
     presetNames[(size_t) Presets::Section::full] = "Init";
     presetNames[(size_t) Presets::Section::pattern] = "Rolling";
+}
+
+PluginBase::~PluginBase() = default;
+
+AiChat& PluginBase::getAiChat()
+{
+    if (aiChat == nullptr)
+        aiChat = std::make_unique<AiChat> (*this);
+    return *aiChat;
 }
 
 void PluginBase::prepareBase (double sampleRate)

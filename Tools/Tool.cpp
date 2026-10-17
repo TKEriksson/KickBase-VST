@@ -19,6 +19,7 @@
 #include "../Source/Fx/FxProcessor.h"
 #include "../Source/Core/OfflineRender.h"
 #include "../Source/Core/ToolLayer.h"
+#include "../Source/Core/AiChat.h"
 #include "../Source/Core/Settings.h"
 #include "../Source/Core/WavetablePack.h"
 #include "../Source/Core/RollFiles.h"
@@ -509,6 +510,132 @@ namespace
         return failed ? 1 : 0;
     }
 
+    // AI-chatten: nyckeln sparas krypterad, och ett riktigt anrop med en ogiltig nyckel ska ge ett begripligt fel (visar att nätverksvägen fungerar).
+    int chatTest()
+    {
+        juce::ScopedJuceInitialiser_GUI gui;
+        auto failed = false;
+        auto check = [&failed] (bool ok, const char* what) { std::printf ("%s: %s\n", ok ? "ok" : "FEL", what); failed |= ! ok; };
+
+        const auto settingsFile = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("kickbase_chat_test.xml");
+        settingsFile.deleteFile();
+        Settings::useFile (settingsFile);
+
+        Settings::setChatApiKey ("sk-ant-api03-hemlig-nyckel");
+        check (Settings::chatApiKey() == "sk-ant-api03-hemlig-nyckel", "nyckeln läses tillbaka");
+        check (! settingsFile.loadFileAsString().contains ("hemlig"), "nyckeln ligger inte i klartext i filen");
+        check (Settings::chatModel() == "claude-sonnet-5-5", "standardmodellen");
+        Settings::setChatApiKey ("sk-ant-invalid-test-key");
+
+        const auto owner = std::make_unique<InstrumentProcessor>();
+        auto& chat = owner->getAiChat();
+        chat.send ("Hej");
+        for (int i = 0; i < 1500 && (chat.isBusy() || i < 5); ++i)
+            juce::MessageManager::getInstance()->runDispatchLoopUntil (40);
+        const auto entries = chat.getEntries();
+        auto sawUser = false, sawError = false;
+        juce::String errorText;
+        for (const auto& entry : entries)
+        {
+            sawUser = sawUser || entry.kind == AiChat::Entry::Kind::user;
+            if (entry.kind == AiChat::Entry::Kind::error)
+            {
+                sawError = true;
+                errorText = entry.text;
+            }
+        }
+        std::puts (("  svar: " + errorText).toRawUTF8());
+        check (sawUser && sawError && ! chat.isBusy(), "ett ogiltigt anrop ger ett fel i samtalet och avslutas");
+        check (errorText.contains ("401") || errorText.contains ("Could not reach"), "felet är begripligt (nyckeln nekas, eller ingen anslutning)");
+
+        // Hela slingan mot en liten lokal låtsasserver: AI:n svarar med ett verktygsanrop, får resultatet och svarar med text.
+        {
+            std::atomic<int> requests { 0 };
+            std::atomic<bool> sawToolResult { false }, stopServer { false };
+            juce::StreamingSocket listener;
+            const auto port = 18765;
+            if (! listener.createListener (port, "127.0.0.1"))
+            {
+                check (false, "kunde inte starta låtsasservern");
+            }
+            else
+            {
+                std::thread server ([&]
+                {
+                    while (! stopServer)
+                    {
+                        std::unique_ptr<juce::StreamingSocket> client (listener.waitForNextConnection());
+                        if (client == nullptr || stopServer)
+                            continue;
+                        std::string request;
+                        char byte;
+                        auto headerEnd = std::string::npos;
+                        while (headerEnd == std::string::npos && client->read (&byte, 1, true) == 1)
+                        {
+                            request.push_back (byte);
+                            headerEnd = request.find ("\r\n\r\n");
+                        }
+                        auto length = 0;
+                        auto lower = request;
+                        std::transform (lower.begin(), lower.end(), lower.begin(), [] (unsigned char c) { return (char) std::tolower (c); });
+                        if (const auto at = lower.find ("content-length:"); at != std::string::npos)
+                            length = std::atoi (request.c_str() + at + 15);
+                        std::string body;
+                        for (int i = 0; i < length && client->read (&byte, 1, true) == 1; ++i)
+                            body.push_back (byte);
+
+                        const auto number = ++requests;
+                        juce::String reply;
+                        if (number == 1)
+                            reply = R"({"type":"message","role":"assistant","stop_reason":"tool_use","usage":{"input_tokens":1000,"output_tokens":50},"content":[{"type":"text","text":"Raising the kick tune."},{"type":"tool_use","id":"toolu_test1","name":"set_parameters","input":{"values":{"kickTune":2.0}}}]})";
+                        else
+                        {
+                            sawToolResult = body.find ("tool_result") != std::string::npos && body.find ("toolu_test1") != std::string::npos;
+                            reply = R"({"type":"message","role":"assistant","stop_reason":"end_turn","usage":{"input_tokens":1200,"output_tokens":20},"content":[{"type":"text","text":"Done: the kick is tuned up."}]})";
+                        }
+                        const auto text = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " + juce::String (reply.getNumBytesAsUTF8())
+                                        + "\r\nConnection: close\r\n\r\n" + reply;
+                        client->write (text.toRawUTF8(), (int) text.getNumBytesAsUTF8());
+                    }
+                });
+
+                Settings::set ("chatEndpoint", "http://127.0.0.1:" + juce::String (port) + "/v1/messages");
+                chat.newChat();
+                chat.send ("Tune the kick up");
+                for (int i = 0; i < 1500 && (chat.isBusy() || i < 5); ++i)
+                    juce::MessageManager::getInstance()->runDispatchLoopUntil (40);
+
+                stopServer = true;
+                juce::StreamingSocket wake;
+                wake.connect ("127.0.0.1", port, 500); // väcker servern så att den ser stopSignalen
+                wake.close();
+                server.join();
+
+                for (const auto& entry : chat.getEntries())
+                    std::puts (("  [" + juce::String ((int) entry.kind) + "] " + entry.text.substring (0, 200)).toRawUTF8());
+                std::printf ("  anrop: %d\n", (int) requests);
+                auto toolShown = false, answerShown = false;
+                for (const auto& entry : chat.getEntries())
+                {
+                    toolShown = toolShown || (entry.kind == AiChat::Entry::Kind::tool && entry.text.contains ("set_parameters"));
+                    answerShown = answerShown || (entry.kind == AiChat::Entry::Kind::assistant && entry.text.contains ("tuned up"));
+                }
+                check (requests >= 2 && sawToolResult, "AI:n får verktygsresultatet i nästa anrop");
+                check (std::abs (owner->apvts.getRawParameterValue (ParamID::kickTune)->load() - 2.0f) < 0.01f, "verktygsanropet ändrade ljudet (kickTune = 2)");
+                check (toolShown && answerShown, "anropet och svaret visas i samtalet");
+                check (chat.getUsage().contains ("in"), "tokenräknaren visar användningen");
+                Settings::set ("chatEndpoint", {});
+            }
+        }
+
+        Settings::setChatApiKey ({});
+        check (Settings::chatApiKey().isEmpty(), "nyckeln kan tas bort");
+        Settings::useFile ({});
+        settingsFile.deleteFile();
+        std::puts (failed ? "FEL: chatten misslyckades" : "Chatten gick igenom");
+        return failed ? 1 : 0;
+    }
+
     // Provlyssning: requestAudition ska ge ljud (kick och baslager) och publicera kickens spelmarkör.
     int auditionTest()
     {
@@ -614,6 +741,19 @@ namespace
         if (processor->selectedPatternLayer == 9)
             processor->selectedPatternLayer = Pattern::kickLayer;
         processor->sequencerRowHeight = juce::SystemStats::getEnvironmentVariable ("KB_ROWHEIGHT", "0").getIntValue(); // radhöjden (zoom)
+        if (juce::SystemStats::getEnvironmentVariable ("KB_CHATDEMO", "0").getIntValue() != 0) // AI-fliken med ett exempelsamtal (och en nyckel i en tillfällig fil)
+        {
+            Settings::useFile (juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("kickbase_demo_settings.xml"));
+            Settings::setChatApiKey ("demo");
+            auto& chat = processor->getAiChat();
+            using Kind = AiChat::Entry::Kind;
+            chat.addEntry ({ Kind::user, "Make the kick punchier and the bass tighter under it.", {} });
+            chat.addEntry ({ Kind::assistant, "I will shorten the kick's tail a little, add a short click on top, and give the bass a faster sidechain so it gets out of the way. Let me first look at the current sound.", {} });
+            chat.addEntry ({ Kind::tool, "get_state  {}", {} });
+            chat.addEntry ({ Kind::tool, "set_parameters  {\"values\":{\"kickClick\":0.5,\"kickLength\":0.85}}", {} });
+            chat.addEntry ({ Kind::error, "The API key was not accepted (401). Check it with the KEY button.", {} });
+            chat.addEntry ({ Kind::note, "Undid the last change.", {} });
+        }
         if (juce::SystemStats::getEnvironmentVariable ("KB_LFOCUSTOM", "0").getIntValue() != 0) // LFO 1 och 2 med egna kurvor, LFO 3 i Hz
         {
             auto set = [&processor] (const char* id, float value)
@@ -694,6 +834,8 @@ int toolMain (int argc, char* argv[])
         return presetTest();
     if (argc == 2 && juce::String (argv[1]) == "auditiontest")
         return auditionTest();
+    if (argc == 2 && juce::String (argv[1]) == "chattest")
+        return chatTest();
     if (argc == 2 && juce::String (argv[1]) == "settingstest")
         return settingsTest();
     if (argc == 2 && juce::String (argv[1]) == "perftest")

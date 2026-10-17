@@ -14,6 +14,9 @@ if (-not (Test-Path $source)) { throw "Hittar inte $source. Bygg först: .\build
 $destFolder = Join-Path $env:LOCALAPPDATA "Kickbase"
 New-Item -ItemType Directory -Force $destFolder | Out-Null
 $dest = Join-Path $destFolder "KickbaseMcp.exe"
+$running = Get-Process KickbaseMcp -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $dest }
+if ($running) { throw "Bryggan körs just nu (Claude Desktop har startat den). Avsluta Claude Desktop helt (Avsluta i aktivitetsfältet) och kör skriptet igen." }
+$dest = Join-Path $destFolder "KickbaseMcp.exe"
 Copy-Item $source $dest -Force
 Write-Host "Kopierade bryggan till $dest"
 

@@ -92,7 +92,7 @@ SettingsPage::SettingsPage (PluginBase& p) : processor (p)
 
     styleLabel (aiHint, 10.5f, Theme::textDim);
     aiHint.setJustificationType (juce::Justification::topLeft);
-    aiHint.setText ("With a key, only an AI bridge that has the same key can connect: set KICKBASE_KEY for the bridge, or run install-mcp.ps1 -Key <key>.",
+    aiHint.setText ("With a key, only an AI bridge that has the same key can connect: set KICKBASE_KEY for the bridge, or run install-mcp.ps1 -Key <key>. To chat with your own AI inside the synth, use the AI tab (top) and its KEY button.",
                     juce::dontSendNotification);
     addAndMakeVisible (aiHint);
 
@@ -211,7 +211,9 @@ void SettingsPage::refresh (bool includeFiles)
 
     aiToggle.setToggleState (processor.isBridgeEnabled(), juce::dontSendNotification);
     aiToggle.setButtonText (processor.isBridgeEnabled() ? "AI LINK: ON" : "AI LINK: OFF");
-    aiStatus.setText (processor.isBridgeEnabled() ? "Instance " + processor.getBridgeId() + (Settings::aiKey().isNotEmpty() ? " (needs the key)" : " (no key)") : "Off",
+    aiStatus.setText (processor.isBridgeEnabled() ? "Instance " + processor.getBridgeId() + ", " + juce::String (processor.getBridgeConnections()) + " connected"
+                                                      + (Settings::aiKey().isNotEmpty() ? " (key on)" : "")
+                                                  : "Off",
                       juce::dontSendNotification);
 
     if (includeFiles)
