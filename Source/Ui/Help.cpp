@@ -8,10 +8,18 @@ namespace Help
         // Baslagrens parametrar har samma förklaring i alla lager.
         auto paramID = rawID;
         if (paramID.startsWith ("bass") && paramID.length() > 4 && juce::CharacterFunctions::isDigit (paramID[4]))
-            paramID = "bass" + paramID.substring (5);
+            paramID = "bass" + paramID.substring (paramID.length() > 5 && juce::CharacterFunctions::isDigit (paramID[5]) ? 6 : 5); // bass1 ... bass10
         // OSC 2 (B) och OSC 3 (C) har samma förklaringar som OSC 1 (A).
         if ((paramID.startsWith ("bassB") || paramID.startsWith ("bassC")) && paramID.length() > 5 && juce::CharacterFunctions::isUpperCase (paramID[5]))
             paramID = "bassA" + paramID.substring (5);
+
+        // Radernas längd och loop: samma förklaring för alla instrument.
+        if (rawID.startsWith ("rowLoopBass"))
+            return "On: this instrument's row repeats if it is shorter than the pattern. Off: it plays once and is then silent until the pattern starts over.";
+        if (rawID.startsWith ("rowBarsBass"))
+            return "This instrument's own pattern length in bars. Total = as long as the whole pattern.";
+        if (rawID.startsWith ("macro"))
+            return "A macro: a knob of your own. Turn it by hand (or automate it) and let it move other knobs: drag its handle in the MATRIX tab onto a knob, or set it up in the route list.";
 
         // Mixern: samma förklaring för alla källor.
         if (rawID.startsWith ("mix"))
@@ -37,8 +45,22 @@ namespace Help
             { "rowBarsBass1", "Bass 1's own length in bars. Total = as long as the whole pattern." },
             { "rowBarsBass2", "Bass 2's own length in bars. Total = as long as the whole pattern." },
             { "rowBarsBass3", "Bass 3's own length in bars. Total = as long as the whole pattern." },
+            { "instrumentCount", "How many instruments are used (1-10). Each has its own pattern, oscillators, filter, envelopes, effect send and sidechain depth." },
+            { "bassEnv2Attack", "ENV 2: an extra envelope that does not play the sound but moves other knobs (drag its handle, or use the MATRIX tab). Attack = how fast it rises." },
+            { "bassEnv2Decay", "ENV 2: how fast it falls towards the sustain level." },
+            { "bassEnv2Sustain", "ENV 2: the level it stays at while the note is held (0 % = it falls all the way back)." },
+            { "bassEnv2Release", "ENV 2: how fast it falls when the note ends." },
+            { "bassEnv3Attack", "ENV 3: a second extra envelope for modulation. Attack = how fast it rises." },
+            { "bassEnv3Decay", "ENV 3: how fast it falls towards the sustain level." },
+            { "bassEnv3Sustain", "ENV 3: the level it stays at while the note is held (0 % = it falls all the way back)." },
+            { "bassEnv3Release", "ENV 3: how fast it falls when the note ends." },
+            { "bassSubWave", "The sub oscillator's waveform: sine (pure), triangle, square (hollow, punchy) or saw (bright)." },
+            { "bassNoiseTone", "NOISE TONE - how dark the noise is: 100 % = white noise (bright), lower = darker, like a rumble or breath." },
+            { "bassPitchEnvAmount", "PITCH ENV AMOUNT - how many semitones the pitch starts above (or, negative, below) the note and then glides to it: a thump or a laser. 0 = off." },
+            { "bassPitchEnvDecay", "PITCH ENV DECAY - how fast the pitch glides to the note." },
+            { "bassDriveMode", "How the drive distorts: Soft (warm), Hard (clipped), Fold (wavefolder, metallic), Asym (even overtones, gritty) or Crush (stepped, digital)." },
             { "noteEnd", "What happens when the DAW note ends in the middle of the pattern: stop at once, finish the bar or finish the whole pattern." },
-            { "bassGate", "LENGTH - scales the length of every note in this layer. Lower = shorter, punchier notes." },
+            { "bassGate", "NOTE LENGTH SCALE - scales the length of every note in this instrument at once (100 % = as long as written). Lower = shorter, punchier notes." },
             { "bassGateOn", "Turns this layer's GATE on: a separate on/off rhythm (its own grid) that chops the layer's sound. It does not change the notes." },
             { "bassGateGrid", "The grid of this layer's gate steps (independent of the note grid)." },
             { "bassGateDepth", "How much the gate cuts the sound in its closed steps: 0 % = nothing, 100 % = fully silent." },
@@ -98,7 +120,7 @@ namespace Help
             { "bassAUnison", "Number of stacked, slightly detuned voices. More = wider and fatter (use carefully in the low end)." },
             { "bassADetune", "How far apart the unison voices are tuned." },
             { "bassABlend", "Level of the outer unison voices compared to the centre one." },
-            { "bassAWarp", "Bends the waveform before it is played: Sync (screaming), Bend, PWM (narrower), Mirror, FM (B) = OSC B modulates OSC A." },
+            { "bassAWarp", "Bends the waveform before it is played: Sync (screaming), Bend, PWM (narrower), Mirror, FM (B) = OSC B modulates OSC A, Flip (mirrors the second half), Quantize (stepped, digital) and AM (the wave is multiplied by a sine an octave up)." },
             { "bassAWarpAmount", "How much the WARP mode changes the waveform." },
             { "bassAPhase", "Where in the waveform each note starts. The same start every note gives a tight, punchy attack." },
             { "bassAPan", "Pans this oscillator left or right. Centre (C) leaves it in the middle." },

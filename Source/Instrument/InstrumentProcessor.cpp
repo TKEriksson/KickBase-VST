@@ -544,6 +544,8 @@ void InstrumentProcessor::finishBlock (int numSamples)
     effects.process (numSamples, duckData, nullptr, channelDuck.data());
     for (int ch = 0; ch < numEffectChannels; ++ch)
     {
+        if (effects.isIdle (ch))
+            continue; // inget i kanalen: ingenting att mixa
         const auto& returned = effects.output (ch);
         mixer.mix (Mixer::firstFxSource + ch, returned.getReadPointer (0), returned.getReadPointer (1), numSamples, 1.0f, maxBus, bypassBus);
     }

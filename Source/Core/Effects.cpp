@@ -1285,6 +1285,8 @@ struct EffectRack::Impl
     std::array<AudioBuffer<float>, numEffectChannels> buffers;
     std::array<float, numEffectChannels> gains {}, duckAmounts {};
     std::array<bool, numEffectChannels> active {};
+    std::array<bool, numEffectChannels> sent {};    // fick kanalen ljud från någon källa i det här blocket?
+    std::array<bool, numEffectChannels> idle {};    // kanalen hade inget att göra i blocket (inget skickat, ingen effekt): hoppades över
     std::array<float, numEffectChannels> duckState {};
     float duckCoefficient = 0.02f;
     const Modulator* modulator = nullptr;
@@ -1324,6 +1326,7 @@ void EffectRack::beginBlock (int numSamples, double bpm, double ppq)
         auto& chain = *impl->chains[(size_t) ch];
         chain.update (bpm, ppq);
         impl->active[(size_t) ch] = true; // en neutral kanal släpper igenom ljudet orört
+        impl->sent[(size_t) ch] = false;
 
         auto read = [this] (std::atomic<float>* raw)
         {
@@ -1342,9 +1345,15 @@ bool EffectRack::isActive (int channel) const
 
 void EffectRack::send (int channel, const float* left, const float* right, int numSamples, float amount)
 {
+    impl->sent[(size_t) channel] = true;
     auto& buffer = impl->buffers[(size_t) channel];
     buffer.addFrom (0, 0, left, numSamples, amount);
     buffer.addFrom (1, 0, right != nullptr ? right : left, numSamples, amount);
+}
+
+bool EffectRack::isIdle (int channel) const
+{
+    return jlimit (0, numEffectChannels - 1, channel) == channel && impl->idle[(size_t) channel];
 }
 
 const AudioBuffer<float>& EffectRack::output (int channel) const
@@ -1357,6 +1366,12 @@ void EffectRack::process (int numSamples, const float* kickEnvelope, AudioBuffer
     for (int ch = 0; ch < numEffectChannels; ++ch)
     {
         auto& buffer = impl->buffers[(size_t) ch];
+
+        // En kanal som ingen skickat något till och som inte har någon effekt (som kan ha en svans) har inget att göra: hoppa över den.
+        impl->idle[(size_t) ch] = ! impl->sent[(size_t) ch] && ! impl->chains[(size_t) ch]->hasActive();
+        if (impl->idle[(size_t) ch])
+            continue;
+
         impl->chains[(size_t) ch]->process (buffer, numSamples);
 
         // EQ och kompressor (alltid med, neutrala som standard). Taparna visar vad som når dem.

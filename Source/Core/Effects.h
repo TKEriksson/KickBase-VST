@@ -163,6 +163,7 @@ public:
 
     // Kanalens färdiga ljud (stereo, efter effekter, EQ, kompressor, duckning och nivå) efter process.
     const juce::AudioBuffer<float>& output (int channel) const;
+    bool isIdle (int channel) const; // kanalen hoppades över i det här blocket (inget skickat, ingen effekt): dess buffert är tom
 
 private:
     struct Impl;

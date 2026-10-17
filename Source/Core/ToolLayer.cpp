@@ -105,6 +105,24 @@ namespace
         return text.containsOnly ("0123456789") && juce::isPositiveAndBelow (number - 1, numEffectChannels) ? number - 1 : -1;
     }
 
+    // Källan i en koppling: "lfo" 1-3, "macro" 1-4, eller "instrument" 1-10 med "source" ENV 2 / ENV 3 / VELOCITY / RANDOM. -1 = ogiltig.
+    int modulationSource (const var& route)
+    {
+        if (route.hasProperty ("lfo"))
+            return juce::isPositiveAndBelow ((int) route["lfo"] - 1, Modulation::numLfos) ? (int) route["lfo"] - 1 : -1;
+        if (route.hasProperty ("macro"))
+            return juce::isPositiveAndBelow ((int) route["macro"] - 1, Modulation::numMacros) ? Modulation::firstMacro + (int) route["macro"] - 1 : -1;
+        if (route.hasProperty ("instrument"))
+        {
+            const auto layer = (int) route["instrument"] - 1;
+            if (! juce::isPositiveAndBelow (layer, maxInstruments))
+                return -1;
+            const auto kind = route["source"].toString().toUpperCase().removeCharacters (" ");
+            return Modulation::instrumentSource (layer, kind.contains ("ENV3") ? 1 : kind.startsWith ("VEL") ? 2 : kind.startsWith ("RAND") ? 3 : 0);
+        }
+        return -1;
+    }
+
     juce::String unitName (Effects::Knob::Unit unit)
     {
         using U = Effects::Knob::Unit;
@@ -171,21 +189,23 @@ std::vector<ToolLayer::ToolInfo> ToolLayer::tools()
           R"({"type":"object","properties":{"all_parameters":{"type":"boolean"}}})" },
         { "set_parameters", "Sets parameters in their own units (Hz, ms, dB, semitones, 0..1 for percentages). Choices accept the option name or index (e.g. \"bass1ATable\": \"Classic Saw\"), switches accept true/false. Example: {\"values\":{\"bass1Cutoff\":250,\"kickDrive\":0.3,\"bass1FilterType\":\"LP 24\"}}.",
           R"({"type":"object","properties":{"values":{"type":"object","additionalProperties":true}},"required":["values"]})" },
-        { "set_effect", "Puts an effect in a slot. channel A-E, slot 1-5, type e.g. 'Echo', 'Reverb', 'Distortion' ('Off' clears the slot), knobs by name in real units, e.g. {\"TIME\":\"3/16\",\"FEEDBACK\":0.4}. Unmentioned knobs get the effect's defaults. Bass layers and the kick send to a channel with bassNFxChannel / bassNFxAmount (1 = A) via set_parameters.",
+        { "set_effect", "Puts an effect in a slot. channel FX1-FX11 (or the old letters A-K), slot 1-5, type e.g. 'Echo', 'Reverb', 'Distortion' ('Off' clears the slot), knobs by name in real units, e.g. {\"TIME\":\"3/16\",\"FEEDBACK\":0.4}. Unmentioned knobs get the effect's defaults. Bass layers and the kick send to a channel with bassNFxChannel / bassNFxAmount (1 = A) via set_parameters.",
           R"({"type":"object","properties":{"channel":{"type":"string"},"slot":{"type":"integer"},"type":{"type":"string"},"knobs":{"type":"object","additionalProperties":true}},"required":["channel","slot","type"]})" },
         { "set_kick_envelopes", "Sets the kick's free envelopes as arrays of [time_seconds, value, tension] nodes. pitch: semitones above the tail pitch (0..72, max 0.5 s). amp: volume 0..1 (max 2 s; the kick ends at the last node, which should be 0). Tension -1..1: negative falls/rises fast first, positive holds then moves late. Omit one to leave it unchanged.",
           R"({"type":"object","properties":{"pitch":{"type":"array","items":{"type":"array","items":{"type":"number"}}},"amp":{"type":"array","items":{"type":"array","items":{"type":"number"}}}}})" },
-        { "set_pattern", "Writes notes. layer 0-2 = bass layer 1-3, or 'kick'. For a bass layer give 'bars' (one text per bar; the list is repeated to fill the pattern, so give as many distinct bars as you need, up to 64) in the pattern language, with a 'grid' such as '1/16', '1/8 T', '1/32'. Step words separated by spaces: '.' rest, g/m/x/X = velocity ghost/soft/normal/accent, then optional pitch (+7, -5), '~' glide note, ':50' length in percent of the step. A GLIDE note (flag '~' / slide:true) works like an FL Studio slide note: it does not play a new note, it glides the note that is sounding to its pitch during its own length and the pitch stays there until that note ends. Example 1/16 rolling bass: [\". m x x . m x x . m x x . m x x\"]. Or give 'notes': [{\"tick\":0,\"length\":24,\"pitch\":0,\"velocity\":0.8,\"slide\":false}] (96 ticks per quarter note, 384 per bar). For 'kick' give 'bars' of 16 characters 'x' or '.', e.g. [\"x...x...x...x...\"]. Set the pattern length with set_parameters patternBars (1, 2, 4, 8, 16, 32 or 64 bars), and build a whole section by giving that many distinct bars.",
+        { "set_pattern", "Writes notes. layer 0-9 = instrument 1-10 (only the first instrumentCount play, see set_instruments), or 'kick'. For an instrument give 'bars' (one text per bar; the list is repeated to fill the pattern, so give as many distinct bars as you need, up to 64) in the pattern language, with a 'grid' such as '1/16', '1/8 T', '1/32'. Step words separated by spaces: '.' rest, g/m/x/X = velocity ghost/soft/normal/accent, then optional pitch (+7, -5), '~' glide note, ':50' length in percent of the step. A GLIDE note (flag '~' / slide:true) works like an FL Studio slide note: it does not play a new note, it glides the note that is sounding to its pitch during its own length and the pitch stays there until that note ends. Example 1/16 rolling bass: [\". m x x . m x x . m x x . m x x\"]. Or give 'notes': [{\"tick\":0,\"length\":24,\"pitch\":0,\"velocity\":0.8,\"slide\":false}] (96 ticks per quarter note, 384 per bar). For 'kick' give 'bars' of 16 characters 'x' or '.', e.g. [\"x...x...x...x...\"]. Set the pattern length with set_parameters patternBars (1, 2, 4, 8, 16, 32 or 64 bars), and build a whole section by giving that many distinct bars.",
           R"({"type":"object","properties":{"layer":{},"bars":{"type":"array","items":{"type":"string"}},"grid":{"type":"string"},"gate":{"type":"number"},"notes":{"type":"array","items":{"type":"object"}},"clear":{"type":"boolean"}},"required":["layer"]})" },
-        { "set_gate", "Sets a bass layer's GATE: a separate on/off rhythm that chops the layer's sound, with its own grid, independent of the notes. layer 0-2; on (true/false), grid ('1/16' ...), depth 0..1 (1 = fully closed in the off steps), smooth_ms (edge softness), and the steps as 'bars' (one text per bar, repeated over four bars): 'x' = open, '.' = closed, e.g. [\"x.x.x.x.x.x.x.x.\"] on a 1/16 grid. all:'open' or 'closed' fills every step.",
+        { "set_gate", "Sets a bass layer's GATE: a separate on/off rhythm that chops the layer's sound, with its own grid, independent of the notes. layer 0-9; on (true/false), grid ('1/16' ...), depth 0..1 (1 = fully closed in the off steps), smooth_ms (edge softness), and the steps as 'bars' (one text per bar, repeated over four bars): 'x' = open, '.' = closed, e.g. [\"x.x.x.x.x.x.x.x.\"] on a 1/16 grid. all:'open' or 'closed' fills every step.",
           R"({"type":"object","properties":{"layer":{"type":"integer"},"on":{"type":"boolean"},"grid":{"type":"string"},"depth":{"type":"number"},"smooth_ms":{"type":"number"},"bars":{"type":"array","items":{"type":"string"}},"all":{"type":"string","enum":["open","closed"]}},"required":["layer"]})" },
-        { "set_sidechain_curve", "Sets how the kick ducks the bass. mode 'Kick envelope' follows the kick; mode 'Curve' uses 'points' [[x,y,tension]...] where x is 0..1 across the length (1/16, 1/8, 3/16, 1/4, 1/2, or Kick) and y 0..1 is the ducking (1 = fully ducked). The depth per bass layer is bass1Duck/bass2Duck/bass3Duck.",
+        { "set_sidechain_curve", "Sets how the kick ducks the bass. mode 'Kick envelope' follows the kick; mode 'Curve' uses 'points' [[x,y,tension]...] where x is 0..1 across the length (1/16, 1/8, 3/16, 1/4, 1/2, or Kick) and y 0..1 is the ducking (1 = fully ducked). The depth per instrument is bass1Duck, bass2Duck ... bass10Duck.",
           R"({"type":"object","properties":{"mode":{"type":"string"},"length":{"type":"string"},"points":{"type":"array","items":{"type":"array","items":{"type":"number"}}}}})" },
-        { "set_modulation", "Sets up LFOs and routes. lfos: [{\"lfo\":1,\"shape\":\"Sine\",\"rate\":\"1 bar\",\"on\":true}] (shapes: Sine, Triangle, Saw Up, Saw Down, Square, Random; rates 1/32 ... 4 bars). routes: [{\"lfo\":1,\"param\":\"bass1Cutoff\",\"amount\":0.3}] (amount -1..1 of the knob's travel, only sound parameters: kick*, bass*, fx*). clear_routes removes all routes first.",
+        { "set_instruments", "Sets how many instruments are used (1-10; each has its own pattern, oscillators, filter, envelopes, effect send and sidechain depth; the default is 3). Removing instruments deletes the last ones completely (pattern, sound, sample, wavetables, name, mixer and modulation routes). Adding gives instruments with default settings and an empty pattern.",
+          R"({"type":"object","properties":{"count":{"type":"integer","minimum":1,"maximum":10}},"required":["count"]})" },
+        { "set_modulation", "Sets up LFOs and routes (the matrix). lfos: [{\"lfo\":1,\"shape\":\"Sine\",\"rate\":\"1 bar\",\"on\":true}] (shapes: Sine, Triangle, Saw Up, Saw Down, Square, Random; rates 1/32 ... 4 bars). routes: [{\"lfo\":1,\"param\":\"bass1Cutoff\",\"amount\":0.3}] (amount -1..1 of the knob's travel, only sound parameters: kick*, bass*, fx*). The source is \"lfo\" 1-3, or \"macro\" 1-4 (turn macro1..macro4 with set_parameters), or \"instrument\" 1-10 with \"source\":\"ENV 2\" | \"ENV 3\" | \"VELOCITY\" | \"RANDOM\" (ENV 2/3 are set with bassNEnv2Attack ... bassNEnv3Release). Up to 64 routes. clear_routes removes all routes first.",
           R"({"type":"object","properties":{"lfos":{"type":"array","items":{"type":"object"}},"routes":{"type":"array","items":{"type":"object"}},"clear_routes":{"type":"boolean"}}})" },
         { "list_presets", "Lists factory and user presets. section: Full, Kick, Bass, Pattern, Effects, Sidechain, Master or LFO (default: all).",
           R"({"type":"object","properties":{"section":{"type":"string"}}})" },
-        { "load_preset", "Loads a factory preset (by name or index) or a user preset (by name or file path) into a section. layer 0-2 for Bass. Full replaces everything.",
+        { "load_preset", "Loads a factory preset (by name or index) or a user preset (by name or file path) into a section. layer 0-9 (the instrument) for Bass. Full replaces everything.",
           R"({"type":"object","properties":{"section":{"type":"string"},"name":{"type":"string"},"index":{"type":"integer"},"file":{"type":"string"},"layer":{"type":"integer"}},"required":["section"]})" },
         { "save_preset", "Saves the current sound as a user preset file (Documents\\Kickbase\\Presets\\<Section>), which then shows up in the plugin's preset menus. section Full saves everything.",
           R"({"type":"object","properties":{"section":{"type":"string"},"name":{"type":"string"},"layer":{"type":"integer"}},"required":["section","name"]})" },
@@ -201,7 +221,7 @@ std::vector<ToolLayer::ToolInfo> ToolLayer::tools()
           R"({"type":"object","properties":{"layer":{"type":"integer"},"file":{"type":"string"},"note":{"type":"integer"}},"required":["layer","file"]})" },
         { "analyze_audio", "Measures an audio file (WAV, AIFF, FLAC or MP3) the same way render_preview measures the synth, so you can compare a reference (a kick sample, a snippet of a track) with your sound: metrics, spectrogram image and, for kind 'kick', the kick length and tail frequency. start/seconds select a part (default: the first 20 s). Use bpm for the beat lines.",
           R"({"type":"object","properties":{"file":{"type":"string"},"kind":{"type":"string","enum":["kick","music"]},"start":{"type":"number"},"seconds":{"type":"number"},"bpm":{"type":"number"}},"required":["file"]})" },
-        { "load_bass_sample", "Loads a WAV/AIFF/FLAC file (max 12 s, mono-summed) as a bass layer's sample source: it plays alongside the oscillators (through the filter and envelope), scaled by bassNSampleLevel (set here with 'level', default 1); it switches bassNSampleOn on. layer 0-2. key_track true makes it follow the notes (root_note = the MIDI note the sample was recorded at, C5 = 60), loop repeats it while the note is held, start 0..1. Empty or missing file clears the sample. Turn the oscillators off (bassNAOn, bassNBOn, bassNCOn = false) and bassNSub/bassNNoise down to hear the sample alone.",
+        { "load_bass_sample", "Loads a WAV/AIFF/FLAC file (max 12 s, mono-summed) as an instrument's sample source: it plays alongside the oscillators (through the filter and envelope), scaled by bassNSampleLevel (set here with 'level', default 1); it switches bassNSampleOn on. layer 0-9. key_track true makes it follow the notes (root_note = the MIDI note the sample was recorded at, C5 = 60), loop repeats it while the note is held, start 0..1. Empty or missing file clears the sample. Turn the oscillators off (bassNAOn, bassNBOn, bassNCOn = false) and bassNSub/bassNNoise down to hear the sample alone.",
           R"({"type":"object","properties":{"layer":{"type":"integer"},"file":{"type":"string"},"level":{"type":"number"},"key_track":{"type":"boolean"},"root_note":{"type":"integer"},"loop":{"type":"boolean"},"start":{"type":"number"}},"required":["layer"]})" },
         { "load_kick_sample", "Loads a WAV/AIFF/FLAC file (max 2 s, mono-summed) as the kick's sample. kickSampleMode (Click | Layer | Replace) decides how it is used: Click = the first moments of every kick on top of the synthesized body, scaled by kickClick; Layer = the whole sample on top of the synthesized kick (kickSampleLevel); Replace = the sample is the kick (the synthesized body is silent). kickSampleTune plays it faster or slower. Empty or missing file clears it.",
           R"({"type":"object","properties":{"file":{"type":"string"}}})" },
@@ -246,6 +266,17 @@ var ToolLayer::call (const juce::String& tool, const var& args)
     if (tool == "redo")             return undo (true);
 
     // Resten ändrar ljudet: ett ångra-steg först.
+    if (tool == "set_instruments")
+    {
+        snapshot();
+        const auto before = processor.activeInstruments();
+        processor.setInstrumentCount ((int) args["count"]);
+        auto data = object();
+        put (data, "instruments", processor.activeInstruments());
+        put (data, "removed", std::max (0, before - processor.activeInstruments()));
+        return ok (data);
+    }
+
     if (tool == "set_parameters" || tool == "set_effect" || tool == "set_kick_envelopes" || tool == "set_pattern" || tool == "set_sidechain_curve" || tool == "set_gate"
         || tool == "set_modulation" || tool == "load_preset" || tool == "reset" || tool == "load_kick_sample" || tool == "load_bass_sample" || tool == "load_piano_roll" || tool == "import_midi")
         snapshot();
@@ -444,7 +475,8 @@ var ToolLayer::getState (const var& args) const
         put (entry, "gate", gateInfo);
         layers.add (entry);
     }
-    put (pattern, "layers (bass 0-2 and 'kick')", layers);
+    put (pattern, "instrument_count", processor.activeInstruments());
+    put (pattern, "layers (instruments 0-9 and 'kick')", layers);
     put (data, "pattern", pattern);
 
     put (data, "kick_pitch_envelope", pointsToVar (processor.kickPitchEnv.getPoints()));
@@ -508,7 +540,7 @@ var ToolLayer::setEffect (const var& args)
     const auto channel = channelIndex (args["channel"]);
     const auto slot = (int) args["slot"] - 1;
     if (channel < 0 || ! juce::isPositiveAndBelow (slot, slotsPerChannel))
-        return fail ("channel must be A-E and slot 1-5.");
+        return fail ("channel must be FX1-FX11 (or A-K) and slot 1-5.");
 
     const auto typeIndex = Effects::typeNames().indexOf (args["type"].toString().trim(), true);
     if (typeIndex < 0)
@@ -592,7 +624,7 @@ var ToolLayer::setPattern (const var& args)
     const auto isKick = layerArg.toString().equalsIgnoreCase ("kick");
     const auto layer = isKick ? Pattern::kickLayer : (int) layerArg;
     if (! juce::isPositiveAndBelow (layer, Pattern::numNoteLayers))
-        return fail ("layer must be 0, 1, 2 or 'kick'.");
+        return fail ("layer must be 0-9 or 'kick'.");
 
     const auto gridParameterID = isKick ? juce::String (ParamID::rowGridKick) : ParamID::bass (layer, BassField::grid);
     auto grid = (int) processor.apvts.getRawParameterValue (gridParameterID)->load();
@@ -660,7 +692,7 @@ var ToolLayer::setGate (const var& args)
 {
     const auto layer = (int) args["layer"];
     if (! juce::isPositiveAndBelow (layer, Pattern::numLayers))
-        return fail ("layer must be 0, 1 or 2.");
+        return fail ("layer must be 0-9.");
 
     juce::String problem;
     for (const auto& [key, field] : { std::pair<const char*, BassField> { "on", BassField::gateOn }, { "grid", BassField::gateGrid },
@@ -748,21 +780,21 @@ var ToolLayer::setModulation (const var& args)
     if (auto* routes = args["routes"].getArray())
         for (const auto& route : *routes)
         {
-            const auto source = (int) route["lfo"] - 1;
+            const auto source = modulationSource (route);
             const auto id = route["param"].toString();
             const auto index = parameterIndex (id);
             auto* parameter = findParameter (processor, id);
-            if (! juce::isPositiveAndBelow (source, Modulation::numLfos) || parameter == nullptr || index < 0)
-                problems.add ("Bad route: lfo 1-3 and a parameter id are needed (" + id + ")");
+            if (source < 0 || parameter == nullptr || index < 0)
+                problems.add ("Bad route: a source (lfo 1-3, macro 1-4, or instrument 1-10 with source ENV 2 / ENV 3 / VELOCITY / RANDOM) and a parameter id are needed (" + id + ")");
             else if (! Modulation::isModulatable (*parameter))
                 problems.add (id + " can't be modulated (only kick*, bass*, fx* sound parameters)");
             else if (processor.modRoutes.add (source, index, juce::jlimit (-1.0f, 1.0f, (float) (double) route["amount"])) < 0)
-                problems.add ("All 24 routes are in use");
+                problems.add ("All " + juce::String (Modulation::maxRoutes) + " routes are in use");
         }
 
     processor.markStateChanged();
     auto data = object();
-    data.getDynamicObject()->setProperty ("note", "LFO routes updated.");
+    data.getDynamicObject()->setProperty ("note", "Modulation updated.");
     if (! problems.isEmpty())
         put (data, "problems", problems);
     return ok (data);
@@ -1022,7 +1054,7 @@ var ToolLayer::pianoRollFiles (const juce::String& tool, const var& args)
     const auto isKick = args["layer"].toString().equalsIgnoreCase ("kick");
     const auto layer = isKick ? Pattern::kickLayer : (int) args["layer"];
     if (! juce::isPositiveAndBelow (layer, Pattern::numNoteLayers))
-        return fail ("layer must be 0, 1, 2 or 'kick'.");
+        return fail ("layer must be 0-9 or 'kick'.");
 
     auto& pattern = processor.pattern;
     const auto bars = Params::readPatternLengths (processor.apvts).barsOf (isKick ? 0 : 1 + layer);
@@ -1108,7 +1140,7 @@ var ToolLayer::loadBassSample (const var& args)
 {
     const auto layer = (int) args["layer"];
     if (! juce::isPositiveAndBelow (layer, Pattern::numLayers))
-        return fail ("layer must be 0, 1 or 2.");
+        return fail ("layer must be 0-9.");
 
     const auto path = args["file"].toString().trim();
     if (path.isEmpty())

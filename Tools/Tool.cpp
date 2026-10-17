@@ -18,6 +18,7 @@
 #include <juce_audio_utils/juce_audio_utils.h>
 #include "../Source/Fx/FxProcessor.h"
 #include "../Source/Core/OfflineRender.h"
+#include "../Source/Core/ToolLayer.h"
 #include "../Source/Instrument/InstrumentProcessor.h"
 #include "Analyzer.h"
 #include "../Source/Core/AudioAnalysis.h"
@@ -365,6 +366,20 @@ namespace
         check (routes == 0, "LFO-kopplingarna till instrumentet är borta");
         check (! processor.instrumentHasContent (4) && processor.instrumentHasContent (0), "det borttagna är tomt, de kvarvarande har innehåll");
 
+        // Verktygslagret (MCP): antal instrument och källor i matrisen.
+        {
+            ToolLayer tools (processor);
+            tools.call ("set_instruments", juce::JSON::parse (R"({"count":4})"));
+            check (processor.activeInstruments() == 4, "set_instruments sätter antalet");
+            tools.call ("set_modulation", juce::JSON::parse (R"({"routes":[{"instrument":2,"source":"ENV 3","param":"bass1Cutoff","amount":0.5},{"macro":2,"param":"kickTune","amount":0.2}]})"));
+            check (processor.modRoutes.find (Modulation::instrumentSource (1, 1), processor.modulator.indexOf ("bass1Cutoff")) >= 0
+                       && processor.modRoutes.find (Modulation::firstMacro + 1, processor.modulator.indexOf ("kickTune")) >= 0,
+                   "matriskopplingar med instrument- och makrokällor sätts via verktyget");
+            tools.call ("set_instruments", juce::JSON::parse (R"({"count":2})"));
+            check (processor.activeInstruments() == 2, "set_instruments tar bort de sista");
+            processor.setInstrumentCount (3);
+        }
+
         // Gamla projekt (version 5): kicken var lager 3.
         {
             auto legacy = std::make_unique<Pattern>();
@@ -385,6 +400,38 @@ namespace
 
         std::puts (failed ? "FEL: instrumenttestet misslyckades" : "Instrumenttestet gick igenom");
         return failed ? 1 : 0;
+    }
+
+    // Hur tungt det är: tid per sekund ljud med 3 och med 10 instrument som alla spelar (under 1,0 = snabbare än realtid på en kärna).
+    int perfTest()
+    {
+        auto timeIt = [] (int count)
+        {
+            const auto owner = std::make_unique<InstrumentProcessor>();
+            auto& processor = *owner;
+            processor.setPlayConfigDetails (0, 2, renderRate, blockSize);
+            processor.prepareToPlay (renderRate, blockSize);
+            processor.setInstrumentCount (count);
+            for (int layer = 3; layer < count; ++layer)
+                processor.pattern.applyLayerTemplate (layer, PatternTemplate::rolling);
+            juce::MidiBuffer first, none;
+            first.addEvent (juce::MidiMessage::noteOn (1, 52, (juce::uint8) 100), 0);
+            juce::AudioBuffer<float> buffer (2, blockSize);
+            const auto seconds = 5.0;
+            const auto blocks = (int) (renderRate * seconds / blockSize);
+            const auto start = juce::Time::getMillisecondCounterHiRes();
+            for (int block = 0; block < blocks; ++block)
+            {
+                buffer.clear();
+                processor.processBlock (buffer, block == 0 ? first : none);
+            }
+            return (juce::Time::getMillisecondCounterHiRes() - start) / 1000.0 / seconds;
+        };
+        const auto one = timeIt (1), few = timeIt (3), many = timeIt (10);
+        std::puts (("1 instrument:  " + juce::String (one, 3) + " s CPU per sekund ljud").toRawUTF8());
+        std::puts (("3 instrument:  " + juce::String (few, 3) + " s CPU per sekund ljud").toRawUTF8());
+        std::puts (("10 instrument: " + juce::String (many, 3) + " s CPU per sekund ljud").toRawUTF8());
+        return 0;
     }
 
     // Provlyssning: requestAudition ska ge ljud (kick och baslager) och publicera kickens spelmarkör.
@@ -560,6 +607,8 @@ int toolMain (int argc, char* argv[])
         return presetTest();
     if (argc == 2 && juce::String (argv[1]) == "auditiontest")
         return auditionTest();
+    if (argc == 2 && juce::String (argv[1]) == "perftest")
+        return perfTest();
     if (argc == 2 && juce::String (argv[1]) == "instrumenttest")
         return instrumentTest();
     if (argc == 2 && juce::String (argv[1]) == "lengthtest")

@@ -1,6 +1,8 @@
 #pragma once
 
 #include <juce_audio_processors/juce_audio_processors.h>
+#include <string_view>
+#include <unordered_map>
 #include "BassSynth.h"
 #include "KickEngine.h"
 #include "Pattern.h"
@@ -187,6 +189,7 @@ private:
     float valueOf (const Entry& entry) const;
 
     std::vector<Entry> entries; // byggs en gång i konstruktorn, ändras aldrig efter det
+    std::unordered_map<std::string_view, int> lookup; // parameter-ID -> plats i entries (nycklarna pekar in i entries; ljudtråden slår upp utan att allokera)
     std::array<std::array<int, (size_t) BassField::count>, ParamID::numBassLayers> bassEntries {}; // index i entries, -1 = saknas
     const Modulator* modulator = nullptr;
 };

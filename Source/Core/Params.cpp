@@ -370,6 +370,10 @@ ParamRefs::ParamRefs (juce::AudioProcessorValueTreeState& apvts)
             entries.push_back ({ withId->paramID, apvts.getRawParameterValue (withId->paramID), i });
     }
 
+    lookup.reserve (entries.size() * 2);
+    for (size_t e = 0; e < entries.size(); ++e)
+        lookup.emplace (std::string_view (entries[e].id.toRawUTF8()), (int) e);
+
     // Baslagrens parametrar slås upp en gång här, så att ljudtråden läser dem med index.
     for (int layer = 0; layer < ParamID::numBassLayers; ++layer)
     {
@@ -399,9 +403,8 @@ float ParamRefs::bass (int layer, BassField field) const
 
 float ParamRefs::get (const char* paramID) const
 {
-    for (const auto& entry : entries)
-        if (entry.id == paramID) // jämför utan att allokera
-            return valueOf (entry);
+    if (const auto found = lookup.find (std::string_view (paramID)); found != lookup.end())
+        return valueOf (entries[(size_t) found->second]);
 
     jassertfalse; // okänt parameter-ID
     return 0.0f;
