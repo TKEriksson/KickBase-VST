@@ -711,6 +711,7 @@ namespace MixAnalysis
         if (presets) text << "t";
         if (overview) text << "o";
         if (dynamics) text << "d";
+        if (modulation) text << "m";
         if (about) text << "a";
         return text;
     }
@@ -731,6 +732,7 @@ namespace MixAnalysis
         o.presets = text.containsChar ('t');
         o.overview = text.containsChar ('o');
         o.dynamics = text.containsChar ('d');
+        o.modulation = text.containsChar ('m');
         o.about = text.containsChar ('a');
         return o;
     }
@@ -759,6 +761,7 @@ namespace MixAnalysis
         o.presets = has ({ "presets" });
         o.overview = has ({ "overview", "structured", "settings_overview" });
         o.dynamics = has ({ "dynamics", "levels", "loudness" });
+        o.modulation = has ({ "modulation", "lfo", "limiter" });
         o.about = has ({ "about", "readme", "explanation" });
         if (has ({ "all" }))
             return ExportOptions();
@@ -1129,6 +1132,9 @@ namespace MixAnalysis
             root->setProperty ("pattern_settings", juce::var (patternSettings));
             root->setProperty ("kick_envelopes", juce::var ([&state] { auto* e = new juce::DynamicObject(); e->setProperty ("pitch", state["kick_pitch_envelope"]); e->setProperty ("amplitude", state["kick_amp_envelope"]); return e; }()));
             root->setProperty ("sidechain_curve", state["sidechain_curve"]);
+            root->setProperty ("lfo_custom_curves", state["lfo_custom_curves"]);
+            root->setProperty ("samples_loaded", state["samples_loaded"]);
+            root->setProperty ("user_wavetables_loaded", state["user_wavetables_loaded"]);
             root->setProperty ("other", juce::var (other));
             return juce::var (root);
         }
@@ -1511,6 +1517,14 @@ namespace MixAnalysis
         frames << "],\n    \"bar\": [";
         for (size_t i = 0; i < frameList.size(); ++i)
             frames << (i > 0 ? "," : "") << (c.frameBar[(size_t) frameList[i]] + 1);
+        frames << "],\n    \"beat_in_bar\": [";
+        for (size_t i = 0; i < frameList.size(); ++i)
+        {
+            const auto secondsPerBeat = 60.0 / std::max (1.0, c.bpm);
+            const auto t = c.frameSeconds[(size_t) frameList[i]];
+            const auto bar = c.frameBar[(size_t) frameList[i]];
+            frames << (i > 0 ? "," : "") << juce::String (1.0 + (t - bar * 4.0 * secondsPerBeat) / secondsPerBeat, 2);
+        }
         frames << "],\n    \"band_db\": {\n";
         auto first = true;
         for (int s = 0; s < numSources; ++s)
@@ -1574,6 +1588,41 @@ namespace MixAnalysis
                 frames << "]";
             }
             frames << "\n    }";
+        }
+        if (o.modulation)
+        {
+            if (! c.frameLimiterDb.empty())
+            {
+                frames << ",\n    \"limiter_reduction_db\": [";
+                for (size_t i = 0; i < frameList.size(); ++i)
+                    frames << (i > 0 ? "," : "") << juce::String (c.frameLimiterDb[(size_t) frameList[i]], 1);
+                frames << "]";
+            }
+            const auto sourceCount = (int) c.modSourceNames.size(), targetCount = (int) c.modTargetIds.size();
+            if (sourceCount > 0)
+            {
+                frames << ",\n    \"modulation_sources\": {\n";
+                for (int j = 0; j < sourceCount; ++j)
+                {
+                    frames << (j > 0 ? ",\n" : "") << "      \"" << c.modSourceNames[(size_t) j].replace ("\"", "'") << "\": [";
+                    for (size_t i = 0; i < frameList.size(); ++i)
+                        frames << (i > 0 ? "," : "") << juce::String (c.frameModSources[(size_t) frameList[i] * (size_t) sourceCount + (size_t) j], 3);
+                    frames << "]";
+                }
+                frames << "\n    }";
+            }
+            if (targetCount > 0)
+            {
+                frames << ",\n    \"modulated_parameters\": {\n";
+                for (int j = 0; j < targetCount; ++j)
+                {
+                    frames << (j > 0 ? ",\n" : "") << "      \"" << c.modTargetIds[(size_t) j] << "\": [";
+                    for (size_t i = 0; i < frameList.size(); ++i)
+                        frames << (i > 0 ? "," : "") << juce::String (c.frameModTargets[(size_t) frameList[i] * (size_t) targetCount + (size_t) j], 3);
+                    frames << "]";
+                }
+                frames << "\n    }";
+            }
         }
         frames << "\n  }\n}";
 
@@ -1698,6 +1747,24 @@ namespace MixAnalysis
         std::vector<float> bandRows, lowRows, peakRows, rmsRows, duckRows;
         std::array<float, numInstruments> duckSinceFrame;
         duckSinceFrame.fill (1.0f);
+        auto limiterSinceFrame = 1.0f;
+        std::vector<float> limiterRows, modSourceRows, modTargetRows;
+
+        // Modulationen som är kopplad: vilka källor och vilka parametrar, så att deras värden kan följas genom loopen.
+        std::vector<int> routeSources, routeTargets;
+        {
+            const auto& parameterList = copy.getParameters();
+            for (const auto& route : copy.modRoutes.routes)
+            {
+                const auto source = route.source.load(), target = route.target.load();
+                if (source < 0 || ! juce::isPositiveAndBelow (target, parameterList.size()))
+                    continue;
+                if (std::find (routeSources.begin(), routeSources.end(), source) == routeSources.end())
+                    routeSources.push_back (source);
+                if (std::find (routeTargets.begin(), routeTargets.end(), target) == routeTargets.end())
+                    routeTargets.push_back (target);
+            }
+        }
         std::vector<int> barRows;
         std::vector<double> frameSecondsRows;
         std::vector<float> barPower ((size_t) analyseBars * numSources * (size_t) (fftSize / 2), 0.0f);
@@ -1765,7 +1832,10 @@ namespace MixAnalysis
             {
                 copy.getMasterSection().gainTap.copyLatest (n, left, right);
                 for (auto v : left)
+                {
                     limiterMin = std::min (limiterMin, v);
+                    limiterSinceFrame = std::min (limiterSinceFrame, v);
+                }
             }
 
             if (progress)
@@ -1786,6 +1856,15 @@ namespace MixAnalysis
             {
                 duckRows.push_back (-20.0f * std::log10 (std::max (duckSinceFrame[(size_t) i], 1.0e-3f)));
                 duckSinceFrame[(size_t) i] = 1.0f;
+            }
+            limiterRows.push_back (-20.0f * std::log10 (std::max (limiterSinceFrame, 1.0e-3f)));
+            limiterSinceFrame = 1.0f;
+            for (const auto source : routeSources)
+                modSourceRows.push_back (copy.modulator.sourceValue (source));
+            for (const auto target : routeTargets)
+            {
+                auto* parameter = dynamic_cast<juce::RangedAudioParameter*> (copy.getParameters()[target]);
+                modTargetRows.push_back (parameter != nullptr ? parameter->convertFrom0to1 (juce::jlimit (0.0f, 1.0f, parameter->getValue() + copy.modulator.currentOffset (target))) : 0.0f);
             }
             const auto levelOffset = peakRows.size();
             peakRows.resize (levelOffset + (size_t) numSources, -120.0f);
@@ -1854,6 +1933,16 @@ namespace MixAnalysis
         capture.framePeakDb = peakRows;
         capture.frameRmsDb = rmsRows;
         capture.frameDuckDb = duckRows;
+        capture.frameLimiterDb = limiterRows;
+        capture.frameModSources = modSourceRows;
+        capture.frameModTargets = modTargetRows;
+        for (const auto source : routeSources)
+            capture.modSourceNames.push_back (Modulation::sourceName (source));
+        for (const auto target : routeTargets)
+            if (auto* withId = dynamic_cast<juce::AudioProcessorParameterWithID*> (copy.getParameters()[target]))
+                capture.modTargetIds.push_back (withId->paramID);
+            else
+                capture.modTargetIds.push_back ("?");
         capture.barPower = std::move (barPower);
         capture.barFrameCount = barFrames;
         for (const auto onset : onsets)

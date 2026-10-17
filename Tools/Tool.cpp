@@ -463,6 +463,15 @@ namespace
 
         // analyse_mix körs i bakgrunden: ett anrop som startar den och svarar direkt, och get_mix_report som ger svaret när det är klart.
         {
+            // En LFO på instrument 1:s cutoff, så att moduleringen syns i ramarna.
+            {
+                const auto& parameterList = processor.getParameters();
+                for (int i = 0; i < parameterList.size(); ++i)
+                    if (auto* withId = dynamic_cast<juce::AudioProcessorParameterWithID*> (parameterList[i]); withId != nullptr && withId->paramID == "bass1Cutoff")
+                        processor.modRoutes.add (0, i, 0.4f);
+                if (auto* lfoOn = processor.apvts.getParameter ("lfo1On"))
+                    lfoOn->setValueNotifyingHost (1.0f);
+            }
             ToolLayer tools (processor);
             const auto started = tools.call ("analyse_mix", juce::JSON::parse ("{}"));
             check ((bool) started["ok"] && started["data"]["status"].toString() == "started", "analyse_mix startar och svarar direkt");
@@ -494,6 +503,18 @@ namespace
             check (parsed["per_bar"].isArray() && parsed["sources"].isArray() && parsed["kick_hits"].isArray(), "filen har översikt, takt för takt och kickens slag");
             check (parsed["synth"]["parameters"].isObject() && parsed["pattern_timeline"].isArray() && parsed["pattern_timeline"].size() >= 1, "filen har alla inställningar och mönstret i loopens tid");
             check (parsed["synth_overview"]["instruments"].isArray() && parsed["synth_overview"]["instruments"][0]["oscillators"]["A"]["Table"].isString() && parsed["presets"].isObject(), "filen har inställningarna ordnade (oscillatorer med wavetable) och presets");
+            {
+                const auto series = parsed["frames"]["modulated_parameters"]["bass1Cutoff"];
+                auto low = 1.0e9, high = -1.0e9;
+                if (auto* list = series.getArray())
+                    for (const auto& v : *list)
+                    {
+                        low = std::min (low, (double) v);
+                        high = std::max (high, (double) v);
+                    }
+                check (series.size() > 5 && high - low > 1.0 && parsed["frames"]["modulation_sources"].isObject() && parsed["frames"]["limiter_reduction_db"].isArray()
+                           && parsed["frames"]["beat_in_bar"].isArray(), "filen har moduleringen genom loopen (cutoff " + juce::String (low, 0) + "-" + juce::String (high, 0) + " Hz), limitern och taktslaget per ram");
+            }
             check (parsed["per_bar"][1]["bars"][0]["rms_db"].isDouble() && parsed["frames"]["rms_db"].isObject() && parsed["frames"]["ducking_db"].isObject(), "filen har nivå, ljusstyrka och duckning per takt och ram");
 
             // Filter: bara kicken, takt 1 och 30-300 Hz ger en mycket mindre fil.

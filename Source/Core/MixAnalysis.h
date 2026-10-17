@@ -73,6 +73,7 @@ namespace MixAnalysis
         bool spectra = true;    // spektrum i 1/12-oktavsteg för varje källa och takt
         bool frames = true;     // bandnivåer för varje ram genom hela loopen (bara i filen: mycket data)
         bool kicks = true;      // kickens slag (takt, taktslag) och hur mycket varje instrument duckades vid dem
+        bool modulation = true; // hur moduleringen rör sig genom loopen: källornas värden (LFO, makron, envelopes) och de modulerade parametrarnas verkliga värden, per ram, och limiterns sänkning
         bool presets = true;    // vilka presets som är laddade (hela, kick, varje instrument, effekter, sidechain ...)
         bool overview = true;   // alla inställningar ordnade: kicken, varje instruments oscillatorer (A/B/C med wavetable), filter, envelopes, EQ, effektkanalerna med platser, mastern, mixern, modulering
         bool dynamics = true;   // nivå (RMS, topp, crest), ljusstyrka (spektral tyngdpunkt) och energi i sex frekvensområden för varje källa och takt (och varje ram)
@@ -147,6 +148,10 @@ namespace MixAnalysis
         std::vector<int> barFrameCount;         // antal ramar per takt
         std::vector<float> framePeakDb, frameRmsDb; // [ram][källa]: toppnivå och RMS över ramens 171 ms (dB, 0 = full skala)
         std::vector<float> frameDuckDb;         // [ram][instrument]: hur mycket instrumentet duckades under ramen (dB)
+        std::vector<float> frameLimiterDb;      // [ram]: limiterns största sänkning under ramen (dB)
+        std::vector<juce::String> modSourceNames, modTargetIds; // de modulationskällor och parametrar som har kopplingar
+        std::vector<float> frameModSources;     // [ram][källa]: källans värde (LFO -1..1, övriga 0..1)
+        std::vector<float> frameModTargets;     // [ram][parameter]: parameterns verkliga värde med modulering, i dess egen enhet
 
         float& band (int source, int frame, int b);
         float band (int source, int frame, int b) const;

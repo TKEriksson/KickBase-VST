@@ -574,6 +574,7 @@ void SpectrumPage::showExportMenu()
                             { 19, "All settings arranged (oscillators A/B/C, filters, effects ...)", &MixAnalysis::ExportOptions::overview },
                             { 20, "Loaded presets", &MixAnalysis::ExportOptions::presets },
                             { 21, "Levels, brightness and energy ranges (dynamics)", &MixAnalysis::ExportOptions::dynamics },
+                            { 22, "Modulation, limiter and ducking through the loop", &MixAnalysis::ExportOptions::modulation },
                             { 18, "Explanation for an AI (the plugin, the data, how to analyse)", &MixAnalysis::ExportOptions::about } };
     for (const auto& entry : entries)
         menu.addItem (entry.id, entry.text, true, exportOptions.*entry.flag);

@@ -494,6 +494,40 @@ var ToolLayer::getState (const var& args) const
     put (pattern, "layers (instruments 0-9 and 'kick')", layers);
     put (data, "pattern", pattern);
 
+    // Egna LFO-kurvor (LFO 1-3, form Custom): [fas 0..1, värde -1..1, spänning].
+    {
+        juce::Array<var> curves;
+        for (int lfo = 0; lfo < 3; ++lfo)
+        {
+            juce::Array<var> points;
+            for (const auto& point : processor.lfoCurves[(size_t) lfo].getPoints())
+                points.add (var (juce::Array<var> { round4 (point.x), round4 (1.0f - 2.0f * point.y), round4 (point.tension) }));
+            auto entry = object();
+            put (entry, "lfo", lfo + 1);
+            put (entry, "points [phase, value, tension]", points);
+            curves.add (entry);
+        }
+        put (data, "lfo_custom_curves", curves);
+    }
+
+    // Samplingar (kickens och instrumentens) och egna wavetables: namnen (själva ljuddatan sparas inte).
+    {
+        auto samples = object();
+        if (processor.getClickSampleName().isNotEmpty())
+            put (samples, "kick", processor.getClickSampleName());
+        auto userWavetables = object();
+        for (int layer = 0; layer < processor.activeInstruments(); ++layer)
+        {
+            if (processor.getBassSampleName (layer).isNotEmpty())
+                put (samples, processor.getLayerName (layer), processor.getBassSampleName (layer));
+            for (int osc = 0; osc < ParamID::oscsPerLayer; ++osc)
+                if (processor.getUserTableName (layer, osc).isNotEmpty())
+                    put (userWavetables, processor.getLayerName (layer) + " osc " + juce::String ("ABC").substring (osc, osc + 1), processor.getUserTableName (layer, osc));
+        }
+        put (data, "samples_loaded", samples);
+        put (data, "user_wavetables_loaded", userWavetables);
+    }
+
     // Vilka presets som är laddade (namn; en ändrad inställning efter inladdningen syns inte här).
     {
         auto presets = object();
