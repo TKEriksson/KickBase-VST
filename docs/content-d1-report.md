@@ -41,13 +41,13 @@ Rättning: pimpl, Open303:s headers finns bara i `Tb303Filter.cpp` (JUCE-headers
 - **Sparat tillstånd** (`KickbaseHostTest`): ett tillstånd sparat med `content-a`-bygget laddas av det nya pluginet utan skillnad i någon parameter, och **Filter Model = Kickbase för alla 10 instrument** (kontrollerat explicit).
   Det nya pluginets eget tillstånd sparas och laddas tillbaka lika. Jämförelsen görs mot värdena från en ny instans som laddar tillståndet (MIDI-CC-parametrar och växlar snäpper, så en rå jämförelse ger falska skillnader).
 - **Gränssnitt:** 42 skärmbilder jämförda med `content-a` (samma uiScale, `Tools/pngdiff.py`): 15 identiska, 27 INSTRUMENT-vyer skiljer bara i området x 194–885, y 271–344 (FILTER-raden, där MODEL tillkommit). Inget klipps.
-- **Build:** `Release` med varningsnivå /W4 utan varningar. Se punkt 6 för Release-bygget.
+- **Build:** `Release` (/W4) utan varningar, hela sviten grön. Se punkt 6.
 
 ## 4. Avvikelser från planen
 
 1. **Pimpl i stället för en vanlig header** (punkt 2). Planen sa "kopiera filerna och ändra inget"; det gjordes, men inkluderingen måste isoleras.
 2. **Fyra ändringar i Open303** (i stället för "inget utom det som krävs"): alla krävs för x64-kompilering utan varningar och finns förtecknade i `README.txt`.
-3. **Ingen `bassNAccent`-ratt:** velocity räckte inte att pröva som sämre, så den lades inte till (planen: "pröva först utan").
+3. **Ingen `bassNAccent`-ratt:** velocity räckte i provningen, så den lades inte till (planen: "pröva först utan").
 4. **Halvbandsfiltret är ett IIR** (fasdistorsion nära Nyquist, ingen linjärfas): valt av Opus för CPU och minsta fördröjning.
 
 ## 5. Felrättning i samma gren: dubbel kick vid mönsterbyte (cherry-pick-bar till `dev`)
@@ -66,5 +66,5 @@ Commits `0ddc04f`, `e955126` och `5b1a62c` kan plockas till `dev` var för sig u
 ## 6. Kända saker och kvar
 
 - Marginalen i `boundarytest` är liten (−40,5 mot gränsen −40 dBFS); resten är en låg svans från den avbrutna kickens första millisekunder och hörs inte mot den föregående kickens svans.
-- Tobias har provat bara RelWithDebInfo-bygget i FL. Release-bygget (`build.bat Release all`) kördes efter den här rapporten; resultatet står i commit-meddelandet för rapporten eller i PROGRESS-anteckningen.
+- Tobias har provat bara RelWithDebInfo-bygget i FL. **Release-bygget** (`build.bat Release all`, ren build av alla 171 mål inklusive verktygen och `KickbaseHostTest`) gick igenom utan varningar och utan fel; `KickbaseTests` (hela enhetssviten) kördes av skriptet efteråt: *Alla tester gick igenom*.
 - Fortfarande öppet från tidigare: Tobias måste rotera `ARTCRAFT_API` (ligger i gammal historia, commit cb45841) innan repot blir publikt.
