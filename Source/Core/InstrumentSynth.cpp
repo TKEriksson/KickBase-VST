@@ -14,6 +14,9 @@ void InstrumentSynth::prepare (double newSampleRate)
 
     filterMid.prepare (sampleRate); // (allokerar kamfiltrets fördröjningslinje och bygger halvbandsdesignen: aldrig på ljudtråden)
     filterSide.prepare (sampleRate);
+    filter2Mid.prepare (sampleRate);
+    filter2Side.prepare (sampleRate);
+    filter2WasOn = false;
 
     reset();
 }
@@ -31,6 +34,8 @@ void InstrumentSynth::reset()
     noiseState = 0.0f;
     filterMid.reset();
     filterSide.reset();
+    filter2Mid.reset();
+    filter2Side.reset();
 }
 
 double InstrumentSynth::warpPhase (WarpMode mode, float amount, double phase, float fmInput)
@@ -391,10 +396,34 @@ InstrumentSynth::Output InstrumentSynth::next()
     const auto clampedCutoff = juce::jlimit (20.0f, (float) sampleRate * 0.45f, cutoff);
     // Filtret (FilterUnit.h: Kickbase, TB-303, Ladder, Formant eller Comb) för mitten och sidan: samma inställning, så att det blir stereo utan att ljudet låter
     // olika i vänster och höger. Cutoff och resonans uppdateras här, i samma takt som filter-envelopen ändrar cutoff (per sampling).
+    const auto filterInMid = sample, filterInSide = side; // (Filter 2 i läget Parallel får samma insignal som Filter 1)
     filterMid.set (params.filterModel, clampedCutoff, params.resonance, params.filterP1, params.filterP2, (int) params.filterType);
     filterSide.set (params.filterModel, clampedCutoff, params.resonance, params.filterP1, params.filterP2, (int) params.filterType);
     sample = filterMid.process (sample);
     side = filterSide.process (side);
+
+    // Filter 2 (fas D3), direkt efter Filter 1: Serial = Filter 1 -> Filter 2 med MIX som Filter 2:s torr/våt (0 = bara Filter 1); Parallel = (1 - MIX) Filter 1 + MIX Filter 2,
+    // båda med samma insignal. Av: körs inte alls (ingen CPU), och ljudet är oförändrat. Ingen envelope och ingen keytrack: cutoff är den inställda (och moduleringen).
+    if (params.filter2On)
+    {
+        if (! filter2WasOn)
+        {
+            filter2Mid.reset();
+            filter2Side.reset();
+            filter2WasOn = true;
+        }
+        const auto cutoff2 = juce::jlimit (20.0f, (float) sampleRate * 0.45f, params.filter2CutoffHz);
+        filter2Mid.set (params.filter2Model, cutoff2, params.filter2Resonance, params.filter2P1, params.filter2P2, params.filter2Type);
+        filter2Side.set (params.filter2Model, cutoff2, params.filter2Resonance, params.filter2P1, params.filter2P2, params.filter2Type);
+        const auto parallel = params.filterRouting == 1;
+        const auto wetMid = filter2Mid.process (parallel ? filterInMid : sample);
+        const auto wetSide = filter2Side.process (parallel ? filterInSide : side);
+        const auto mix = juce::jlimit (0.0f, 1.0f, params.filterMix);
+        sample += mix * (wetMid - sample);
+        side += mix * (wetSide - side);
+    }
+    else
+        filter2WasOn = false;
     noteTime += 1.0 / sampleRate;
 
     // Drive verkar på källan (före gaten), så att distorsionen låter likadant oavsett envelope.

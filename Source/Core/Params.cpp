@@ -91,7 +91,8 @@ namespace ParamID
                                      "Env2Attack", "Env2Decay", "Env2Sustain", "Env2Release", "Env3Attack", "Env3Decay", "Env3Sustain", "Env3Release",
                                      "SubWave", "NoiseTone", "PitchEnvAmount", "PitchEnvDecay", "DriveMode", "Delay", "Swing", "Humanize", "EnvAttack", "FilterModel", "AMorph", "BMorph", "CMorph",
                                      "Env2Mode", "Env2AttackSync", "Env2DecaySync", "Env2ReleaseSync", "Env3Mode", "Env3AttackSync", "Env3DecaySync", "Env3ReleaseSync",
-                                     "FilterP1", "FilterP2" };
+                                     "FilterP1", "FilterP2",
+                                     "Filter2On", "Filter2Model", "Filter2Type", "Filter2Cutoff", "Filter2Reso", "Filter2P1", "Filter2P2", "FilterRouting", "FilterMix" };
         static_assert (std::size (names) == (size_t) InstrumentField::count);
         return names[(size_t) field];
     }
@@ -330,6 +331,19 @@ namespace Params
         // Filtermodellens två ratter (betydelsen beror på modellen; Kickbase och TB-303 använder dem inte, så standardvärdena ändrar inget ljud).
         layout.add (percent (id (F::filterP1), title + "Filter P1", 0.0f));
         layout.add (percent (id (F::filterP2), title + "Filter P2", 1.0f));
+        // Filter 2 (fas D3): direkt efter Filter 1, före drive. Av som standard (då körs det inte alls och ljudet är oförändrat). Ingen egen envelope och ingen keytrack: den är
+        // statisk men modulerbar (ENV 2/3, LFO och matrisen styr alla dess rattar).
+        layout.add (std::make_unique<AudioParameterBool> (ParameterID { id (F::filter2On), 1 }, title + "Filter 2 On", false));
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::filter2Model), 1 }, title + "Filter 2 Model",
+                                                            StringArray { "Kickbase", "TB-303", "Ladder", "Formant", "Comb" }, 0));
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::filter2Type), 1 }, title + "Filter 2 Type",
+                                                            StringArray { "LP 24", "LP 12", "Band", "High" }, 3));
+        layout.add (floatParam (id (F::filter2Cutoff), title + "Filter 2 Cutoff", skewed (20.0f, 20000.0f, 600.0f, 0.1f), 120.0f, formatHz));
+        layout.add (percent (id (F::filter2Reso), title + "Filter 2 Resonance", 0.2f));
+        layout.add (percent (id (F::filter2P1), title + "Filter 2 P1", 0.0f));
+        layout.add (percent (id (F::filter2P2), title + "Filter 2 P2", 1.0f));
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::filterRouting), 1 }, title + "Filter Routing", StringArray { "Serial", "Parallel" }, 0));
+        layout.add (percent (id (F::filterMix), title + "Filter Mix", 1.0f));
         // Morph på/av för varje oscillator (på = dagens ljud): sist, i fältens ordning.
         for (int osc = 0; osc < ParamID::oscsPerLayer; ++osc)
             layout.add (std::make_unique<AudioParameterBool> (ParameterID { id (ParamID::oscMorphField (osc)), 1 }, title + "Osc " + String (osc + 1) + " Morph", true));
@@ -545,6 +559,15 @@ InstrumentParams ParamRefs::readInstrument (int layer, int rootMidiNote) const
     p.filterModel = (int) get (F::filterModel);
     p.filterP1 = get (F::filterP1);
     p.filterP2 = get (F::filterP2);
+    p.filter2On = get (F::filter2On) >= 0.5f;
+    p.filter2Model = (int) get (F::filter2Model);
+    p.filter2Type = (int) get (F::filter2Type);
+    p.filter2CutoffHz = get (F::filter2Cutoff);
+    p.filter2Resonance = get (F::filter2Reso);
+    p.filter2P1 = get (F::filter2P1);
+    p.filter2P2 = get (F::filter2P2);
+    p.filterRouting = (int) get (F::filterRouting);
+    p.filterMix = get (F::filterMix);
     p.keyTrack   = get (F::keyTrack);
     p.cutoffHz   = get (F::cutoff);
     p.resonance  = get (F::resonance);

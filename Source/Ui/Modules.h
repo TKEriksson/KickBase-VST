@@ -192,7 +192,7 @@ private:
     std::vector<std::unique_ptr<juce::Component>> controls;
     ChoiceComponent* filterTypeChoice = nullptr;                          // TYPE: nedtonad med TB-303-modellen
     std::unique_ptr<juce::ParameterAttachment> filterModelAttachment;     // följer MODEL (också automation och preset)
-    void updateFilterModelView (bool tb303);
+    void updateFilterModelView (int model);
     ControlGroups groups; // PITCH, SUB, NOISE, FILTER, FILTER ENV, VOLUME ENV, WARP ENV, DRIVE, OUT
 
     // MODULATION (dragspel, stängt som standard): ENV 2, ENV 3 och instrumentets övriga källor, med handtag att dra till rattar.

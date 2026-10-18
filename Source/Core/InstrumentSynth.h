@@ -55,6 +55,12 @@ struct InstrumentParams
     InstrumentFilterType filterType = InstrumentFilterType::lowpass24;
     int filterModel = 0;         // 0 = Kickbase (SVF, filterType gäller), 1 = TB-303 (filterType ignoreras), 2 = Ladder, 3 = Formant, 4 = Comb (FilterModels.h)
     float filterP1 = 0.0f, filterP2 = 1.0f; // modellens två ratter (0..1), se ModelFilter
+    // Filter 2 (fas D3): av som standard; sitter direkt efter Filter 1 (före drive), utan egen envelope och keytrack.
+    bool filter2On = false;
+    int filter2Model = 0, filter2Type = 3; // modell som filterModel; typ som filterType (3 = High)
+    float filter2CutoffHz = 120.0f, filter2Resonance = 0.2f, filter2P1 = 0.0f, filter2P2 = 1.0f;
+    int filterRouting = 0;       // 0 = Serial (Filter 1 -> Filter 2, MIX = Filter 2 torr/våt), 1 = Parallel (båda får samma insignal, (1-MIX) F1 + MIX F2)
+    float filterMix = 1.0f;
     float keyTrack = 0.0f;       // 0..1: hur mycket cutoff följer tonhöjden (1 = helt, från C2)
     float cutoffHz = 300.0f;
     float resonance = 0.3f;      // 0..1
@@ -236,6 +242,8 @@ private:
 
     // Filtret för mitten och sidan: samma inställning, så att det blir stereo utan att ljudet låter olika i vänster och höger. Modellbyte nollställer filtret som tar över.
     FilterUnit filterMid, filterSide;
+    FilterUnit filter2Mid, filter2Side; // Filter 2 (körs bara när det är på)
+    bool filter2WasOn = false;           // av -> på nollställer Filter 2 (gammalt tillstånd ska inte höras)
     float lastKeyFrequency = -1.0f, lastKeyTrack = -1.0f, cachedKeyFollow = 1.0f;
     double lastLogFrequency = 1.0e30, lastPitchOffset = 1.0e30, cachedFrequency = 0.0;
     CoefficientMemo ampDecayMemo, ampReleaseMemo, pitchEnvMemo;

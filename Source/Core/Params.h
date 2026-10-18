@@ -100,6 +100,8 @@ enum class InstrumentField
     env2Mode, env2AttackSync, env2DecaySync, env2ReleaseSync,     // ENV 2 och ENV 3: ms (standard) eller Sync (notvärden följer tempot); envModeField / envSyncField
     env3Mode, env3AttackSync, env3DecaySync, env3ReleaseSync,
     filterP1, filterP2,                                           // filtermodellens två ratter (0..1): Ladder DRIVE; Formant MORPH och BLEND; Comb DAMPING och BLEND
+    filter2On, filter2Model, filter2Type, filter2Cutoff, filter2Reso, filter2P1, filter2P2, // Filter 2 (fas D3): av som standard; ingen egen envelope eller keytrack, men modulerbar
+    filterRouting, filterMix,                                     // routing: Serial (Filter 1 -> Filter 2) eller Parallel; MIX: Serial = Filter 2 torr/våt, Parallel = (1-MIX) F1 + MIX F2
     count
 };
 

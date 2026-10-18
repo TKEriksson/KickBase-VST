@@ -703,7 +703,7 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
                      { "LAYER OUT", { knob (id (F::level), "LEVEL"), knob (id (F::duck), "DUCK"), knob (id (F::gate), "LENGTH") } } }); // (notlängden: GATE är hackrytmen)
 
     // TYPE gäller inte med TB-303-modellen: den tonas ned och säger det i verktygstipset (följer också automation och preset).
-    filterModelAttachment = std::make_unique<juce::ParameterAttachment> (*param (p, id (F::filterModel)), [this] (float value) { updateFilterModelView (value >= 0.5f); });
+    filterModelAttachment = std::make_unique<juce::ParameterAttachment> (*param (p, id (F::filterModel)), [this] (float value) { updateFilterModelView ((int) std::lround (value)); });
     filterModelAttachment->sendInitialUpdate();
 
     // MODULATION: ENV 2 och ENV 3 (egna envelopes att modulera med), och velocity och slump som källor. Varje källa har ett handtag
@@ -1019,13 +1019,16 @@ float InstrumentModule::ampValueAt (double seconds) const
     return (float) (held (gateSeconds) * std::exp (ln * (seconds - gateSeconds) / release));
 }
 
-void InstrumentModule::updateFilterModelView (bool tb303)
+void InstrumentModule::updateFilterModelView (int model)
 {
     if (filterTypeChoice == nullptr)
         return;
-    filterTypeChoice->setAlpha (tb303 ? 0.4f : 1.0f);
-    filterTypeChoice->box.setTooltip (tb303 ? juce::String ("TYPE - ignored with the TB-303 model (the TB-303 filter is always its own 24 dB low-pass ladder). Switch MODEL to Kickbase to use TYPE.")
-                                            : Help::forParameter (ParamID::bass (layer, InstrumentField::filterType)));
+    // TYPE gäller Kickbase (0) och Ladder (2); TB-303 (1), Formant (3) och Comb (4) har sin egen form.
+    const auto ignored = model == 1 || model >= 3;
+    filterTypeChoice->setAlpha (ignored ? 0.4f : 1.0f);
+    const char* names[] { "Kickbase", "TB-303", "Ladder", "Formant", "Comb" };
+    filterTypeChoice->box.setTooltip (ignored ? "TYPE - ignored with the " + juce::String (names[juce::jlimit (0, 4, model)]) + " model (it has its own shape). Switch MODEL to Kickbase or Ladder to use TYPE."
+                                              : Help::forParameter (ParamID::bass (layer, InstrumentField::filterType)));
 }
 
 void InstrumentModule::resized()
