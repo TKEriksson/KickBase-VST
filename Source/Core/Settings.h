@@ -17,6 +17,7 @@ namespace Settings
     juce::File presetsFolder();    // Presets
     juce::File exportsFolder();    // Exports
     juce::File wavetablesFolder(); // Wavetables
+    juce::File folderOf (const juce::String& key); // en av nycklarna presetsFolder, exportsFolder, wavetablesFolder, libraryFolder
     juce::File libraryFolder();    // Library (kickar, basar, synthljud och loopar, se Core/LibraryManifest.h)
     juce::File defaultFolder (const juce::String& key); // standardmappen för "presetsFolder", "exportsFolder", "wavetablesFolder" eller "libraryFolder"
     void setFolder (const juce::String& key, const juce::File& folder); // ogiltig/tom mapp = tillbaka till standard

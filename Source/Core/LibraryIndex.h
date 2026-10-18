@@ -38,6 +38,7 @@ public:
     // Aktuell lista (aldrig null). Kan anropas från vilken tråd som helst.
     Snapshot entries() const;
     juce::StringArray problems() const;   // ett fel per rad: paketet som inte lästes och varför
+    int packageCount() const;             // antal paket med giltigt manifest (de som problems() inte nämner)
     juce::File folder() const;            // mappen som senast skannades
     int version() const { return publishedVersion.load(); } // ökar vid varje ny lista (också en oförändrad vid rescan)
     bool isScanning() const { return scanning.load(); }
@@ -64,6 +65,7 @@ private:
         Snapshot entries;
         juce::StringArray problems;
         juce::String signature;
+        int packages = 0;
         bool aborted = false;
     };
     using AbortCheck = std::function<bool()>; // tomt = fortsätt alltid
@@ -77,6 +79,7 @@ private:
     mutable juce::CriticalSection lock;       // skyddar det som delas mellan trådarna (aldrig ljudtråden)
     Snapshot current;
     juce::StringArray currentProblems;
+    int currentPackages = 0;
     juce::String currentSignature;
     juce::File currentRoot;
 

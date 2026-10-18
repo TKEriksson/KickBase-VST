@@ -80,6 +80,7 @@ namespace Settings
     juce::File exportsFolder()    { return chosenOrDefault ("exportsFolder"); }
     juce::File wavetablesFolder() { return chosenOrDefault ("wavetablesFolder"); }
     juce::File libraryFolder()    { return chosenOrDefault ("libraryFolder"); }
+    juce::File folderOf (const juce::String& key) { return chosenOrDefault (key); }
 
     void setFolder (const juce::String& key, const juce::File& folder)
     {

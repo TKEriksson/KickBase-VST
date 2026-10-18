@@ -25,6 +25,7 @@
 #include "../Source/Core/AiChat.h"
 #include "../Source/Core/Settings.h"
 #include "../Source/Core/WavetablePack.h"
+#include "../Source/Core/LibraryIndex.h"
 #include "../Source/Core/RollFiles.h"
 #include "../Source/Instrument/InstrumentProcessor.h"
 #include "Analyzer.h"
@@ -1417,7 +1418,16 @@ namespace
     {
         juce::ScopedJuceInitialiser_GUI gui;
 
+        // KB_LIBRARYDIR=<mapp>: skärmbilden använder den mappen som bibliotek, i en tillfällig inställningsfil (användarens inställningar rörs aldrig).
+        std::unique_ptr<Scenarios::TemporaryUserFolders> isolatedFolders;
+        if (const auto libraryDir = juce::SystemStats::getEnvironmentVariable ("KB_LIBRARYDIR", {}); libraryDir.isNotEmpty())
+        {
+            isolatedFolders = std::make_unique<Scenarios::TemporaryUserFolders>();
+            Settings::setFolder ("libraryFolder", juce::File::getCurrentWorkingDirectory().getChildFile (libraryDir));
+        }
+
         auto processor = createProcessor (kind);
+        processor->kickTab = juce::SystemStats::getEnvironmentVariable ("KB_KICKTAB", "0").getIntValue() != 0 ? 1 : 0; // KICK-flikens vy: 1 = SAMPLE
         processor->selectedTab = tab % 10;            // nedre panelen
         processor->selectedSynthTab = tab / 10 % 10;  // övre panelen (tiotal)
         processor->selectedFxView = tab / 100 % 10;   // EFFECTS-vyn (hundratal)
@@ -1479,6 +1489,14 @@ namespace
         }
         processor->setPlayConfigDetails (kind == "fx" ? 2 : 0, 2, renderRate, blockSize);
         processor->prepareToPlay (renderRate, blockSize);
+
+        // Biblioteket skannas på en bakgrundstråd: vänta tills listan finns, så att den syns på bilden (editorn läser den när den skapas).
+        if (isolatedFolders != nullptr) // (bara med KB_LIBRARYDIR: övriga bilder ska ta samma väg som förut)
+        {
+            juce::SharedResourcePointer<LibraryIndex> libraryIndex;
+            libraryIndex->refreshIfChanged (Settings::libraryFolder());
+            libraryIndex->waitUntilIdle();
+        }
 
         if (juce::SystemStats::getEnvironmentVariable ("KB_SPECTRUM", "0").getIntValue() != 0) // ANALYZER-fliken med analysen på: spela två takter först
         {

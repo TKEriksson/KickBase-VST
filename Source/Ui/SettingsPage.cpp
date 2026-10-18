@@ -106,7 +106,8 @@ SettingsPage::SettingsPage (PluginBase& p) : processor (p), optimizations (p, [t
     addAndMakeVisible (aiHint);
 
     // ---- MAPPAR
-    const std::array<std::pair<const char*, const char*>, 3> specs { { { "presetsFolder", "PRESETS" }, { "exportsFolder", "EXPORTS" }, { "wavetablesFolder", "WAVETABLES" } } };
+    const std::array<std::pair<const char*, const char*>, 4> specs { { { "presetsFolder", "PRESETS" }, { "exportsFolder", "EXPORTS" }, { "wavetablesFolder", "WAVETABLES" },
+                                                                          { "libraryFolder", "LIBRARY" } } };
     for (size_t i = 0; i < folders.size(); ++i)
     {
         auto& row = folders[i];
@@ -123,7 +124,7 @@ SettingsPage::SettingsPage (PluginBase& p) : processor (p), optimizations (p, [t
         row.open.setTooltip ("Open the folder");
         row.open.onClick = [&row]
         {
-            const auto folder = row.key == "presetsFolder" ? Settings::presetsFolder() : row.key == "exportsFolder" ? Settings::exportsFolder() : Settings::wavetablesFolder();
+            const auto folder = Settings::folderOf (row.key);
             folder.createDirectory();
             folder.startAsProcess();
         };
@@ -132,7 +133,7 @@ SettingsPage::SettingsPage (PluginBase& p) : processor (p), optimizations (p, [t
     }
     styleLabel (folderHint, 10.5f, Theme::textDim);
     folderHint.setJustificationType (juce::Justification::topLeft);
-    folderHint.setText ("Presets: your saved sounds and piano rolls. Exports: WAV and MIDI files. Wavetables: your own waves (and the AKWF pack).", juce::dontSendNotification);
+    folderHint.setText ("Presets: your saved sounds and piano rolls. Exports: WAV and MIDI files. Wavetables: your own waves (and the AKWF pack). Library: kick packs and other sounds.", juce::dontSendNotification);
     addAndMakeVisible (folderHint);
 
     // ---- VÅGFORMSPAKETET
@@ -169,11 +170,13 @@ SettingsPage::SettingsPage (PluginBase& p) : processor (p), optimizations (p, [t
     if (processor.isEffectVersion())
     {
         for (auto* component : std::initializer_list<juce::Component*> { &packStatus, &packCount, &packHint, &installButton, &cancelButton, &packFolderButton,
-                                                                           &folders[2].name, &folders[2].path, &folders[2].change, &folders[2].reset, &folders[2].open })
+                                                                           &folders[2].name, &folders[2].path, &folders[2].change, &folders[2].reset, &folders[2].open,
+                                                                           &folders[3].name, &folders[3].path, &folders[3].change, &folders[3].reset, &folders[3].open })
             component->setVisible (false);
         folderHint.setText ("Presets: your saved sounds and patterns. Exports: WAV and MIDI files.", juce::dontSendNotification);
     }
 
+    libraryIndex->addChangeListener (this);
     refresh (false); // mapparna och vågformerna läses först när sidan visas (inte varje gång fönstret öppnas)
     startTimerHz (10);
     if (juce::SystemStats::getEnvironmentVariable ("KB_OPTIMIZATIONS", "0").getIntValue() != 0)
@@ -184,6 +187,7 @@ SettingsPage::SettingsPage (PluginBase& p) : processor (p), optimizations (p, [t
 
 SettingsPage::~SettingsPage()
 {
+    libraryIndex->removeChangeListener (this);
     pack.onFinished = nullptr;
     pack.cancel();
 }
@@ -227,7 +231,7 @@ void SettingsPage::setBridge (bool on)
 
 void SettingsPage::chooseFolder (FolderRow& row)
 {
-    const auto current = row.key == "presetsFolder" ? Settings::presetsFolder() : row.key == "exportsFolder" ? Settings::exportsFolder() : Settings::wavetablesFolder();
+    const auto current = Settings::folderOf (row.key);
     current.createDirectory();
     chooser = std::make_unique<juce::FileChooser> ("Choose the " + row.title.toLowerCase() + " folder", current);
     chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
@@ -272,16 +276,33 @@ void SettingsPage::refresh (bool includeFiles)
     {
         for (auto& row : folders)
         {
-            const auto folder = row.key == "presetsFolder" ? Settings::presetsFolder() : row.key == "exportsFolder" ? Settings::exportsFolder() : Settings::wavetablesFolder();
+            const auto folder = Settings::folderOf (row.key);
             const auto isDefault = Settings::get (row.key).isEmpty();
             row.path.setText (folder.getFullPathName() + (isDefault ? "  (standard)" : ""), juce::dontSendNotification);
             row.path.setTooltip (folder.getFullPathName());
             row.reset.setEnabled (! isDefault);
         }
+        updateLibraryRow();
         installedWaveforms = WavetablePack::installedCount();
         packCount.setText (installedWaveforms > 0 ? juce::String (installedWaveforms) + " waveforms installed" : "Not installed", juce::dontSendNotification);
     }
     updatePack();
+}
+
+void SettingsPage::updateLibraryRow()
+{
+    auto& row = folders[3];
+    if (processor.isEffectVersion())
+        return;
+    const auto folder = Settings::folderOf (row.key);
+    const auto isDefault = Settings::get (row.key).isEmpty();
+    const auto sounds = (int) libraryIndex->entries()->size();
+    const auto problems = libraryIndex->problems();
+    juce::String text = folder.getFullPathName() + (isDefault ? "  (standard)" : "") + "  -  " + juce::String (sounds) + " sounds in " + juce::String (libraryIndex->packageCount()) + " packages";
+    if (! problems.isEmpty())
+        text << ", " << problems.size() << " with problems";
+    row.path.setText (text, juce::dontSendNotification);
+    row.path.setTooltip (folder.getFullPathName() + (problems.isEmpty() ? juce::String() : "\n\nNot shown:\n" + problems.joinIntoString ("\n")));
 }
 
 void SettingsPage::timerCallback()
@@ -304,7 +325,11 @@ void SettingsPage::visibilityChanged()
         if (optimizations.isVisible())
             optimizations.refresh(); // (SPEED kan ha ändrats på ANALYZER-fliken)
         else if (! about.isVisible())
+        {
             refresh (true);
+            if (! processor.isEffectVersion())
+                libraryIndex->refreshIfChanged (Settings::libraryFolder()); // (inte i en timer) bara när sidan visas
+        }
         filesShown = true;
     }
 }
@@ -408,7 +433,7 @@ void SettingsPage::resized()
         auto box = folderBox.reduced (10, 0).withTrimmedTop (20);
         for (auto& row : folders)
         {
-            if (&row == &folders[2] && ! withPack)
+            if ((&row == &folders[2] || &row == &folders[3]) && ! withPack)
                 continue;
             auto line = box.removeFromTop (24);
             row.name.setBounds (line.removeFromLeft (110));

@@ -9,6 +9,7 @@
 #include "ListenButton.h"
 #include "Cursors.h"
 #include "KickDisplay.h"
+#include "KickLibraryPanel.h"
 #include "LfoPage.h"
 #include "OscPanel.h"
 #include "EnvelopeView.h"
@@ -71,7 +72,7 @@ class KickModule : public ModulePanel, public juce::FileDragAndDropTarget, priva
 public:
     explicit KickModule (PluginBase& processor);
     void resized() override;
-    void paint (juce::Graphics& g) override { ModulePanel::paint (g); groups.paint (g, getAccent()); }
+    void paint (juce::Graphics& g) override { ModulePanel::paint (g); (sampleTabShown() ? sampleGroups : groups).paint (g, getAccent()); }
     void paintOverChildren (juce::Graphics&) override;
 
     bool isInterestedInFileDrag (const juce::StringArray& files) override;
@@ -83,6 +84,8 @@ private:
     void timerCallback() override;
     void loadSample (const juce::File& file);
     void updateSampleLabel();
+    void applyTab(); // SYNTH eller SAMPLE (processor.kickTab): visar och döljer vyernas delar
+    bool sampleTabShown() const { return processor.kickTab.load() == 1; }
 
     PluginBase& processor;
 
@@ -91,6 +94,12 @@ private:
     ControlGroups groups; // KEY, PITCH, LENGTH, BODY, CLICK, DRIVE, OUT
     ChoiceComponent keyMode;
     PresetButton presets;
+    KickTabs viewTabs { Theme::kick };         // SYNTH | SAMPLE i rubrikraden
+    KickSampleView sampleView;                 // SAMPLE: samplingens vågform
+    KickLibraryPanel library;                  // SAMPLE: biblioteket
+    ControlGroups sampleGroups;                // SAMPLE: MODE, LEVEL, TUNE, OFFSET
+    std::vector<juce::Component*> sampleControls;
+    juce::Label sampleHelp;
     std::unique_ptr<FxSendControl> fxSend;
 
     juce::Label sampleLabel;

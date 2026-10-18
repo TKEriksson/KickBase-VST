@@ -4,6 +4,8 @@
 #include "../Source/Core/LibraryManifest.h"
 #include "../Source/Core/LibraryImport.h"
 #include "../Source/Core/LibraryIndex.h"
+#include "../Source/Instrument/InstrumentProcessor.h"
+#include "../Source/Ui/KickLibraryPanel.h"
 #include "../Source/Core/Settings.h"
 #include "Scenarios.h"
 
@@ -24,18 +26,20 @@ int libraryImport (const juce::StringArray& args)
 {
     juce::StringArray positional;
     Library::ImportOptions options;
+    auto libraryRoot = Settings::libraryFolder(); // --library=<mapp>: ett annat bibliotek (t.ex. för skärmbilder)
     for (const auto& arg : args)
     {
         if (arg.startsWith ("--package="))     options.package = arg.fromFirstOccurrenceOf ("=", false, false);
         else if (arg.startsWith ("--author=")) options.author = arg.fromFirstOccurrenceOf ("=", false, false);
         else if (arg.startsWith ("--source=")) options.source = arg.fromFirstOccurrenceOf ("=", false, false);
         else if (arg.startsWith ("--date="))   options.date = arg.fromFirstOccurrenceOf ("=", false, false);
+        else if (arg.startsWith ("--library=")) libraryRoot = juce::File::getCurrentWorkingDirectory().getChildFile (arg.fromFirstOccurrenceOf ("=", false, false));
         else if (arg.startsWith ("--tags="))   options.tags.addTokens (arg.fromFirstOccurrenceOf ("=", false, false), ",", "");
         else                                   positional.add (arg);
     }
     if (positional.size() < 3)
     {
-        std::printf ("usage: tool importlibrary <folder|file> <category> <license> [source-url] [--package=name] [--author=name] [--source=text] [--tags=a,b] [--date=YYYY-MM-DD]\n"
+        std::printf ("usage: tool importlibrary <folder|file> <category> <license> [source-url] [--package=name] [--author=name] [--source=text] [--tags=a,b] [--date=YYYY-MM-DD] [--library=folder]\n"
                      "  categories: %s\n  licenses: CC0-1.0, MIT, BSD-2-Clause, BSD-3-Clause, PERSONAL\n"
                      "  reads wav, aiff, flac and ogg (mp3 is not supported in this build: such files are reported as not readable)\n"
                      "  an existing package gets more files; its source, url and date are kept\n", Library::categories().joinIntoString (", ").toRawUTF8());
@@ -47,7 +51,7 @@ int libraryImport (const juce::StringArray& args)
     options.license = positional[2];
     options.url = positional.size() > 3 ? positional[3] : juce::String();
     const auto input = juce::File::getCurrentWorkingDirectory().getChildFile (positional[0]);
-    const auto result = Library::importFiles (Library::findAudioFiles (input), options, Settings::libraryFolder());
+    const auto result = Library::importFiles (Library::findAudioFiles (input), options, libraryRoot);
     for (const auto& note : result.notes)
         std::printf ("  %s\n", note.toRawUTF8());
     for (const auto& error : result.errors)
@@ -575,6 +579,58 @@ int libraryTest()
             idle.shutDown();
             check ((int) (juce::Time::getMillisecondCounter() - start) < 100, "ett index utan arbete stängs direkt (stopThread väcker tråden)");
         }
+    }
+
+    // 8j. Kickens SAMPLE-vy: ett klick i listan laddar kicken, MODE blir REPLACE (en gest) bara om den stod på CLICK, och vyfliken sparas inte.
+    {
+        writeTestAudio (source.getChildFile ("ui/a.wav"), 44100.0, 1, 16, 0.5, 0.0, 60.0, 5.0);
+        writeTestAudio (source.getChildFile ("ui/b.wav"), 44100.0, 1, 16, 0.5, 0.0, 70.0, 5.0);
+        Library::ImportOptions options;
+        options.category = "Kicks";
+        options.package = "Ui pack";
+        options.license = "CC0-1.0";
+        check (Library::importFiles (Library::findAudioFiles (source.getChildFile ("ui")), options, libraryRoot).imported == 2, "två kickar för vyn importeras");
+
+        struct ModeRecorder : juce::AudioProcessorParameter::Listener
+        {
+            int values = 0, gestures = 0;
+            void parameterValueChanged (int, float) override { ++values; }
+            void parameterGestureChanged (int, bool) override { ++gestures; }
+        } recorder;
+
+        auto processor = std::make_unique<InstrumentProcessor>();
+        auto* mode = dynamic_cast<juce::AudioParameterChoice*> (processor->apvts.getParameter (ParamID::kickSampleMode));
+        check (mode != nullptr && mode->getIndex() == 0, "MODE står på CLICK från början");
+        {
+            KickLibraryPanel panel (*processor, juce::Colours::orange);
+            juce::SharedResourcePointer<LibraryIndex> shared;
+            shared->waitUntilIdle();
+            juce::MessageManager::getInstance()->runDispatchLoopUntil (150); // indexets ändringsmeddelande når panelen
+
+            mode->addListener (&recorder);
+            panel.loadRow (0);
+            check (processor->getClickSampleName().isNotEmpty() && processor->clickForDisplay() != nullptr, "ett klick i listan laddar kicken (" + processor->getClickSampleName() + ")");
+            check (mode->getIndex() == 2, "MODE blev REPLACE när den stod på CLICK");
+            check (recorder.values == 1 && recorder.gestures == 2, "MODE ändrades med en gest (börja, ett värde, sluta)");
+
+            mode->setValueNotifyingHost (mode->convertTo0to1 (1.0f)); // LAYER
+            recorder.values = recorder.gestures = 0;
+            panel.loadRow (1);
+            check (mode->getIndex() == 1 && recorder.values == 0 && recorder.gestures == 0, "MODE rörs inte när den stod på LAYER");
+            const auto before = processor->getClickSampleName();
+            panel.loadRow (-1);
+            panel.loadRow (9999);
+            check (processor->getClickSampleName() == before && mode->getIndex() == 1, "en rad som inte finns gör ingenting");
+            mode->removeListener (&recorder);
+        }
+
+        // Att byta vyflik ändrar inget som sparas.
+        juce::MemoryBlock stateA, stateB;
+        processor->getStateInformation (stateA);
+        processor->kickTab = 1;
+        processor->getStateInformation (stateB);
+        processor->kickTab = 0;
+        check (stateA == stateB, "kickTab ingår inte i det sparade tillståndet");
     }
 
     // 8. Inget skrivs i Dokument\Kickbase.

@@ -312,6 +312,7 @@ public:
     int selectedSynthTab = 0;              // finns kvar när fönstret öppnas igen
     int selectedPatternMode = 0;           // PATTERN-flikens läge: 0 PATTERN (toner), 1 GATE
     std::array<int, ParamID::numInstrumentLayers> selectedInstrumentSource {}; // baslagrets valda källflik: OSC 1-3 eller SAMPLE
+    std::atomic<int> kickTab { 0 };                // kickens vyflik: 0 SYNTH, 1 SAMPLE (bara gränssnittet, sparas inte och ändrar inget ljud)
     int selectedPatternLayer = 0;          // PATTERN-flikens valda lager: 0-9 instrument, 10 kick
     int selectedInstrument = 0;            // INSTRUMENT-flikens valda instrument (0-9)
     bool modEnvelopesOpen = false;         // INSTRUMENT-sidans dragspel MODULATION (ENV 2, ENV 3 ...) är öppet

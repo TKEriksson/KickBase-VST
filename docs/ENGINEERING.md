@@ -46,7 +46,8 @@ mycket det ändrades (nolltest). `tool repairpresets` (utan `apply`) mäter alla
 
 **Gränssnittet bevisas med skärmbilder:**
 - Kommandot är `tool snapshot instrument|fx <ut.png> <flik>`. Flikcifferet: lägre siffra 0 EFFECTS … 8 SETTINGS, tiotal = övre flik, 20 = INSTRUMENT.
-- Miljövariabler: `KB_INSTRUMENTS=10`, `KB_SPECTRUM=1`, `KB_OPTIMIZATIONS=1` m.fl.
+- Miljövariabler: `KB_INSTRUMENTS=10`, `KB_SPECTRUM=1`, `KB_OPTIMIZATIONS=1` m.fl. `KB_KICKTAB=1` visar kickens SAMPLE-vy; `KB_LIBRARYDIR=<mapp>` låter bilden använda den mappen som bibliotek
+  (i en tillfällig inställningsfil, så att användarens inställningar rörs aldrig; ett testbibliotek görs med `tool importlibrary ... --library=<mapp>`).
 - Jämför pixel för pixel mot bilder från före ändringen. `Tools\snapshots.ps1 -Exe <KickbaseMcp.exe> -Out <mapp>` tar 42 bilder (instrumentet med 1/3/10
   instrument, övre flikarna och Kickbase FX); kör det med det gamla och det nya bygget och jämför mapparna med `python Tools\pngdiff.py <före> <efter>`
   (utan PIL; skriver de bilder som skiljer, med pixelantal och rutan). `KB_ABOUT=1` / `KB_OPTIMIZATIONS=1` visar SETTINGS-panelerna.

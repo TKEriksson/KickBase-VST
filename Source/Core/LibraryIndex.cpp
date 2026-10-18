@@ -28,6 +28,12 @@ juce::StringArray LibraryIndex::problems() const
     return currentProblems;
 }
 
+int LibraryIndex::packageCount() const
+{
+    const juce::ScopedLock sl (lock);
+    return currentPackages;
+}
+
 juce::File LibraryIndex::folder() const
 {
     const juce::ScopedLock sl (lock);
@@ -175,6 +181,7 @@ LibraryIndex::Scan LibraryIndex::scan (const juce::File& root, const AbortCheck&
                         result.problems.add (category + "\\" + packageFolder.getFileName() + ": " + error);
                     continue;
                 }
+                ++result.packages;
                 for (const auto& item : parsed.manifest.items)
                 {
                     Entry entry;
@@ -206,6 +213,7 @@ void LibraryIndex::publish (Scan&& result, const juce::File& root)
         const juce::ScopedLock sl (lock);
         current = std::move (result.entries);
         currentProblems = std::move (result.problems);
+        currentPackages = result.packages;
         currentSignature = std::move (result.signature);
         currentRoot = root;
     }

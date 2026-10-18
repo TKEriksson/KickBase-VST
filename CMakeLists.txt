@@ -79,6 +79,7 @@ set(PLUGIN_SOURCES
     Source/Core/Presets.cpp
     Source/Core/PluginBase.cpp
     Source/Ui/KickbaseLookAndFeel.cpp
+    Source/Ui/KickLibraryPanel.cpp
     Source/Ui/EnvelopeView.cpp
     Source/Ui/StepSequencer.cpp
     Source/Ui/PianoRoll.cpp

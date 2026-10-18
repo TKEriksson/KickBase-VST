@@ -211,6 +211,8 @@ public:
 
     juce::Colour getAccent() const { return accent; }
     bool isEmbedded() const { return embedded; }
+    // Bredden flikraden ska reservera för modulens kontroller i rubriken (på/av, vyflikar, preset, FX-send).
+    int headerExtrasWidth() const { return 380 + (headerTabs != nullptr ? headerTabsWidth + 8 : 0); }
 
     // I en flikpanel: ingen egen rubrik (fliken heter likadant). På/av-knappen och presetknappen
     // flyttas till komponenten som returneras, som flikpanelen visar i flikraden.
@@ -219,11 +221,15 @@ public:
         embedded = true;
         if (power != nullptr)
             headerControls.addAndMakeVisible (*power);
+        if (headerTabs != nullptr)
+            headerControls.addAndMakeVisible (*headerTabs);
         if (headerPreset != nullptr)
             headerControls.addAndMakeVisible (*headerPreset);
         if (headerFxSend != nullptr)
             headerControls.addAndMakeVisible (*headerFxSend);
         headerControls.power = power.get();
+        headerControls.tabs = headerTabs;
+        headerControls.tabsWidth = headerTabsWidth;
         headerControls.preset = headerPreset;
         headerControls.fxSend = headerFxSend;
         repaint();
@@ -259,12 +265,17 @@ protected:
     // FX-send (kanal och mängd) som visas i flikraden, mellan på/av-knappen och presetknappen.
     void setHeaderFxSend (juce::Component* fxSend) { headerFxSend = fxSend; }
 
+    // Vyflikar (t.ex. SYNTH | SAMPLE) i flikraden, till vänster om presetknappen.
+    void setHeaderTabs (juce::Component* tabs, int width) { headerTabs = tabs; headerTabsWidth = width; }
+
 private:
     struct HeaderControls : juce::Component
     {
         juce::Component* power = nullptr;
         juce::Component* preset = nullptr;
         juce::Component* fxSend = nullptr;
+        juce::Component* tabs = nullptr;
+        int tabsWidth = 0;
 
         void resized() override
         {
@@ -272,6 +283,11 @@ private:
             if (power != nullptr)
                 power->setBounds (area.removeFromLeft (24));
             area.removeFromLeft (8);
+            if (tabs != nullptr)
+            {
+                tabs->setBounds (area.removeFromLeft (tabsWidth));
+                area.removeFromLeft (8);
+            }
             if (fxSend != nullptr)
             {
                 fxSend->setBounds (area.removeFromRight (168));
@@ -285,6 +301,8 @@ private:
     HeaderControls headerControls;
     juce::Component* headerPreset = nullptr;
     juce::Component* headerFxSend = nullptr;
+    juce::Component* headerTabs = nullptr;
+    int headerTabsWidth = 0;
     bool embedded = false;
     juce::String title;
     juce::Colour accent;

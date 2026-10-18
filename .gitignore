@@ -11,3 +11,5 @@ fits/
 # Hemligheter (API-nycklar): aldrig i repot
 .env-local
 .env*
+
+__pycache__/

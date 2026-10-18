@@ -393,10 +393,15 @@ KickModule::KickModule (PluginBase& p)
     : ModulePanel ("KICK", Theme::kick, &p.apvts, ParamID::kickOn), processor (p),
       keyMode (p.apvts, ParamID::kickKeyFollow, "KEY"),
       presets (p, Presets::Section::kick, Theme::kick),
+      sampleView (p),
+      library (p, Theme::kick),
       display (p)
 {
     setHeaderPreset (&presets);
     addAndMakeVisible (presets);
+    viewTabs.onChange = [this] (int tab) { processor.kickTab = tab; applyTab(); };
+    setHeaderTabs (&viewTabs, 150);
+    addAndMakeVisible (viewTabs);
     fxSend = std::make_unique<FxSendControl> (p.apvts, ParamID::kickFxChannel, ParamID::kickFxAmount, "FX SEND", Theme::kick);
     addAndMakeVisible (*fxSend);
     setHeaderFxSend (fxSend.get());
@@ -427,15 +432,19 @@ KickModule::KickModule (PluginBase& p)
                      { "DRIVE", { choice (ParamID::kickClipMode, "MODE"), knob (ParamID::kickDrive, "AMOUNT") } },
                      { "OUT", { knob (ParamID::kickHighCut, "HIGH CUT"), knob (ParamID::kickLevel, "LEVEL") } } });
 
-    // Fler lager och former: kroppens form och FM, sub, brusig topp, sampling som hel kick, bitkrossning, lågt skär.
+    // SAMPLE-vyn: hur samplingen används (MODE, LEVEL, TUNE, OFFSET). Rattarna är desamma som förut, bara i en egen vy.
+    sampleControls = { choice (ParamID::kickSampleMode, "MODE"), knob (ParamID::kickSampleLevel, "LEVEL"),
+                       knob (ParamID::kickSampleTune, "TUNE"), knob (ParamID::kickSampleOffset, "OFFSET") };
+    sampleGroups.addRow ({ { "SAMPLE", sampleControls,
+                             "How a loaded sample is used: Click = only the first moments (the CLICK level in the SYNTH view), Layer = the whole sample on top of the synth kick, "
+                             "Replace = the sample is the kick (the synth is silent). LEVEL and TUNE apply to Layer and Replace. OFFSET moves the sample against the synth kick: plus = later, minus = it starts a few ms into the sample, so the two do not cancel each other in phase." } });
+
+    // Fler lager och former: kroppens form och FM, sub, brusig topp, bitkrossning, lågt skär (samplingen har en egen vy, SAMPLE).
     groups.addRow ({ { "SHAPE", { choice (ParamID::kickWave, "WAVE"), knob (ParamID::kickSub, "SUB"), knob (ParamID::kickFm, "FM"),
                                   knob (ParamID::kickFmRatio, "RATIO"), knob (ParamID::kickFmDecay, "FM DECAY") },
                      "The body's waveform, a sine sub one octave down, and FM (a second sine bends the body's phase at the start: punchier, more metallic)." },
                      { "TOP", { knob (ParamID::kickNoise, "NOISE"), knob (ParamID::kickNoiseDecay, "DECAY"), knob (ParamID::kickNoiseTone, "TONE") },
                      "A noisy top layer on top of the kick: snap and air, with its own decay and high-pass tone." },
-                     { "SAMPLE", { choice (ParamID::kickSampleMode, "MODE"), knob (ParamID::kickSampleLevel, "LEVEL"), knob (ParamID::kickSampleTune, "TUNE"), knob (ParamID::kickSampleOffset, "OFFSET") },
-                     "How a loaded sample is used: Click = only the first moments (the CLICK level), Layer = the whole sample on top of the synth kick, "
-                     "Replace = the sample is the kick (the synth is silent). LEVEL and TUNE apply to Layer and Replace. OFFSET moves the sample against the synth kick: plus = later, minus = it starts a few ms into the sample, so the two do not cancel each other in phase." },
                      { "CRUSH", { knob (ParamID::kickCrush, "BITS") } },
                      { "FILTER", { knob (ParamID::kickLowCut, "LOW CUT"), knob (ParamID::kickVelPitch, "VEL>PITCH") } } });
 
@@ -467,19 +476,50 @@ KickModule::KickModule (PluginBase& p)
     listenSampleButton.onClick = [this] { processor.requestAudition (5); };
     addAndMakeVisible (listenSampleButton);
 
+    addAndMakeVisible (sampleView);
+    addAndMakeVisible (library);
+    library.onLoaded = [this] { updateSampleLabel(); sampleView.refresh(); };
+    sampleHelp.setFont (Theme::font (10.5f));
+    sampleHelp.setColour (juce::Label::textColourId, Theme::textDim);
+    sampleHelp.setJustificationType (juce::Justification::topLeft);
+    sampleHelp.setText ("Click a kick in the library to load it. CLICK adds only the sample's first moments to your synth kick, LAYER plays the whole sample on top of it, "
+                        "REPLACE makes the sample the kick. Hover MODE for the details.", juce::dontSendNotification);
+    addAndMakeVisible (sampleHelp);
+
+    viewTabs.select (processor.kickTab.load());
     updateSampleLabel();
+    applyTab();
     startTimerHz (2); // projektet kan laddas om medan fönstret är öppet
+}
+
+void KickModule::applyTab()
+{
+    const auto sample = sampleTabShown();
+    viewTabs.select (sample ? 1 : 0);
+    display.setVisible (! sample);
+    sampleView.setVisible (sample);
+    library.setVisible (sample);
+    sampleHelp.setVisible (sample);
+    loadButton.setVisible (sample);
+    clearButton.setVisible (sample);
+    listenSampleButton.setVisible (sample);
+    for (auto& control : controls)
+        control->setVisible (std::find (sampleControls.begin(), sampleControls.end(), control.get()) != sampleControls.end() ? sample : ! sample);
+    resized();
+    repaint();
 }
 
 void KickModule::timerCallback()
 {
     updateSampleLabel();
+    sampleView.refresh();
+    library.setLoadedName (processor.getClickSampleName());
 }
 
 void KickModule::updateSampleLabel()
 {
     const auto name = processor.getClickSampleName();
-    const auto text = name.isEmpty() ? juce::String ("CLICK: synth  (drop a WAV here)") : "CLICK: " + name;
+    const auto text = name.isEmpty() ? juce::String ("SAMPLE: none  (drop a WAV here)") : "SAMPLE: " + name;
     if (sampleLabel.getText() != text)
         sampleLabel.setText (text, juce::dontSendNotification);
     clearButton.setEnabled (name.isNotEmpty());
@@ -491,7 +531,11 @@ void KickModule::loadSample (const juce::File& file)
     if (! processor.loadClickSample (file))
         sampleLabel.setText ("Could not read " + file.getFileName(), juce::dontSendNotification);
     else
+    {
         updateSampleLabel();
+        sampleView.refresh();
+        library.setLoadedName (processor.getClickSampleName());
+    }
 }
 
 bool KickModule::isInterestedInFileDrag (const juce::StringArray& files)
@@ -521,7 +565,10 @@ void KickModule::resized()
 {
     ModulePanel::resized();
     if (! isEmbedded())
+    {
         presets.setBounds (presetBounds (*this));
+        viewTabs.setBounds (presetBounds (*this).translated (-158, 0).withWidth (150));
+    }
     auto area = getContentBounds();
 
     // Nedersta raden: KEY-väljaren (etikett + ruta) och klicksamplingen bredvid.
@@ -539,6 +586,21 @@ void KickModule::resized()
     sampleRow.removeFromRight (10);
     sampleLabel.setBounds (sampleRow);
     area.removeFromBottom (4);
+
+    if (sampleTabShown())
+    {
+        // SAMPLE: vågformen överst, under den biblioteket till vänster och hur samplingen används till höger.
+        sampleView.setBounds (area.removeFromTop (juce::jlimit (90, 150, area.getHeight() / 3)));
+        area.removeFromTop (6);
+        auto right = area.removeFromRight (340);
+        area.removeFromRight (8);
+        library.setBounds (area);
+        const auto rowHeight = juce::jlimit (60, 100, right.getHeight() / 2 - ControlGroups::titleHeight - 3);
+        sampleGroups.layout (right.removeFromTop (ControlGroups::titleHeight + rowHeight + 3), rowHeight);
+        right.removeFromTop (8);
+        sampleHelp.setBounds (right);
+        return;
+    }
 
     // En rad rattar under displayen, som får resten av höjden.
     const auto rowHeight = juce::jlimit (60, 100, area.getHeight() / 3 - ControlGroups::titleHeight - 3);

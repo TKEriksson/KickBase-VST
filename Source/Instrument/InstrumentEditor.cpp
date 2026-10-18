@@ -17,7 +17,7 @@ InstrumentEditor::InstrumentEditor (InstrumentProcessor& p)
         root.addAndMakeVisible (component);
 
     synths.addTab ("PATTERN", Theme::pattern, pattern);
-    synths.addTab ("KICK", Theme::kick, kick, kick.embedInTab());
+    synths.addTab ("KICK", Theme::kick, kick, kick.embedInTab(), kick.headerExtrasWidth());
     synths.addTab ("INSTRUMENT", Theme::bass, instruments, instruments.getHeader(), InstrumentHost::headerWidth);
     synths.addTab ("AI", Theme::gate, aiPage);
 
