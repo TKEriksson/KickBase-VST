@@ -138,9 +138,15 @@ void KickbaseLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int
         g.drawEllipse (readout.reduced (0.5f), 1.0f);
 
         g.setColour (Theme::text);
-        g.setFont (Theme::font (juce::jlimit (8.5f, 11.5f, bodyRadius * 0.44f), true));
-        g.drawFittedText (slider.getTextFromValue (slider.getValue()),
-                          readout.toNearestInt(), juce::Justification::centred, 1);
+        // Texten krymps så att den ryms i displayen (de mindre rattarna i FILTER-fliken blev annars "900..").
+        const auto text = slider.getTextFromValue (slider.getValue());
+        auto font = Theme::font (juce::jlimit (8.5f, 11.5f, bodyRadius * 0.44f), true);
+        const auto available = readout.getWidth() * 0.92f;
+        const auto textWidth = (float) juce::GlyphArrangement::getStringWidthInt (font, text);
+        if (textWidth > available)
+            font = font.withHeight (juce::jmax (5.5f, font.getHeight() * available / textWidth));
+        g.setFont (font);
+        g.drawText (text, readout, juce::Justification::centred, false);
     }
 }
 
