@@ -7,10 +7,10 @@ sample-nivå, något som separata plugins inte kan göra.
 Produktnamn: **Kickbase** (instrument) och **Kickbase FX** (effekt), tillverkare TKDEV.
 Kodnamnet i repot och i verktygen är fortfarande MyOwnFruit.
 
-Status (16 okt 2026, gren `natt-kick-och-bas`): allt nedan finns och är renderat offline och
-testat med enhetstesterna; plugin:et har körts i FL Studio (utseende och laddning), men
-pianorullen, mixern och de senaste effekterna är **inte provade i FL Studio än**. Pluginval
-ska köras om innan en release.
+Status (18 okt 2026, gren `audit`): allt nedan finns och är renderat offline och testat (se
+`docs/audit/audit-report.md` för testerna och granskningen). Mycket är **inte provat i FL Studio än**
+(pianorullen, mixern, ANALYZER, AI-chatten). Pluginval ska köras innan en release. Avsnitten om "bas"
+nedan gäller i dag upp till tio instrument (i gränssnittet "INSTR 1-10", internt `bass1`-`bass10`).
 
 ## Grundmodell
 
@@ -38,7 +38,7 @@ ska köras om innan en release.
 
 ## Bas
 
-- **Tre baslager**, vart och ett med eget mönster, eget ljud, egen ducking och egen effektkanal.
+- **Upp till tio instrument** (tre från början), vart och ett med eget mönster, eget ljud, egen ducking och egen effektkanal.
 - **Toner** ligger fritt i tiden (96 ticks per fjärdedel): ett lager kan ha 16-delar, ett annat
   8-delar och ett tredje 64-delar. Stegsekvensen (rutnät 1/4 ... 1/64 och trioler) och
   **pianorullen** (som FL Studios: dra, förläng, ±96 halvtoner från tonarten, slide-triangel,
@@ -46,7 +46,7 @@ ska köras om innan en release.
 - **Per ton:** start, längd, tonhöjd, velocity och en glide-flagga: en glide-ton (som en slide-ton i FL Studio) slår inte
   an utan glider tonen som klingar till sin tonhöjd under sin egen längd.
 - **GATE:** per lager en egen av/på-rytm (eget rutnät, djup, mjukhet) som hackar ljudet, oberoende av tonerna.
-- **Ljud:** två oscillatorer per lager. Wavetables (Basic, PWM, Sync, Harmonics, FM, Growl, ...)
+- **Ljud:** tre oscillatorer per instrument (och en sampling). Wavetables (Basic, PWM, Sync, Harmonics, FM, Growl, ...)
   eller klassiska vågformer med ett klick (SIN/TRI/SAW/SQR), med warp (sync, bend, PWM, mirror,
   FM), unison (≤ 7), detune, blend, fas, slumpfas, **pan och stereospridning per oscillator** →
   sub (samma oktav eller en ner) och brus → filter (LP24/LP12/band/high, keytrack) med en egen kort
@@ -62,11 +62,11 @@ ska köras om innan en release.
 - Ducking av basen under kicken, sample-exakt, utan extern sidechain. Varje lager har ett eget
   djup (DUCK); kurvan är kickens envelope eller en egen ritad kurva. SIDECHAIN-fliken visar
   varje lagers ducking i sin färg, och en ring i DUCK-ratten visar hur mycket som duckas just nu.
-- **FX-kanaler A–E:** kick och lager skickar (kanal + mängd, uppe i hörnet på respektive flik) till
-  en kanal med fem platser (13 effekttyper), en alltid-närvarande EQ (parametrisk, med spektrum
+- **FX-kanaler FX1–FX11** (ID:n `fxA`–`fxK`): kick och instrument skickar (kanal + mängd, uppe i hörnet på respektive flik) till
+  en kanal med fem platser (15 effekttyper), en alltid-närvarande EQ (parametrisk, med spektrum
   av ljudet som kommer in) och kompressor (med vågformsvy), nivå och en egen duckning under kicken.
 - **MASTER-fliken:** en mixer med gain, pan och dB-mätare för varje källa (kick, lager 1-3,
-  FX A-E) samt master, och brytarna SC (sidechain på/av) och MAX (genom maximizern eller förbi
+  FX1-FX11) samt master, och brytarna SC (sidechain på/av) och MAX (genom maximizern eller förbi
   den). Maximizern har drive, clip och en limiter med lookahead; SOUNDSTAGE visar spektrum,
   stereobild (vektorskop), bredd, mono-under-frekvens och en stereoförstärkare.
 - **Rendering är deterministisk:** slumpen (brus, slumpfas) är seedad, så samma inställningar
@@ -110,8 +110,8 @@ egen identitet, inga lånade logotyper eller grafik.
 
 ## Presets
 
-Fabrikspresets togs bort medvetet när synten byggdes om (bara Init/Default finns); nya byggs
-med `fitbeat` när synten är klar. Egna presets sparas som filer. Delarna har var sin presetmeny.
+Fabrikspresets togs bort medvetet när synten byggdes om; i dag finns Init (instrumentets Init är filen
+`Resources/InitPreset.mofp`) och fabriksljud för kicken och instrumenten. Fler byggs med `fitbeat` när synten är klar. Egna presets sparas som filer. Delarna har var sin presetmeny.
 Menyn finns i plugin:ets egen meny. De exponeras medvetet **inte**
 som VST3-"programs": en värd kan sätta program-parametern när ett projekt laddas och skulle
 då skriva över det sparade ljudet. Mönsterlängden behålls när ett preset laddas.

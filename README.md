@@ -20,7 +20,7 @@ build.bat RelWithDebInfo     # snabbare att bygga under utveckling
 build.bat RelWithDebInfo all # bygger också utvecklingsverktygen (KickbaseMcp / MyOwnFruitTool) och KickbaseHostTest
 ```
 
-I PowerShell skriver du `.uild.bat RelWithDebInfo` (med `.\` framför); i vanliga kommandotolken räcker `build.bat RelWithDebInfo`.
+I PowerShell skriver du `.\build.bat RelWithDebInfo` (med `.\` framför); i vanliga kommandotolken räcker `build.bat RelWithDebInfo`.
 
 JUCE laddas ner automatiskt första gången. `build.bat` kör testerna efter bygget. Utan `all` byggs bara det som behövs för att
 prova: instrumentet, FX-pluginet och testerna.
@@ -33,16 +33,17 @@ program (`KickbaseMcp.exe`, som också kopieras till `MyOwnFruitTool.exe`) så a
 
 ## Installera
 
-Stäng FL Studio och kör i en PowerShell som administratör, i projektmappen:
+Stäng FL Studio och kör `createVst.bat` som administratör (högerklick > Kör som administratör), eller i en PowerShell som administratör, i projektmappen:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\install.ps1
+powershell -ExecutionPolicy Bypass -File .\install.ps1          # Release (standard)
+powershell -ExecutionPolicy Bypass -File .\install.ps1 RelWithDebInfo
 ```
 
 Skriptet kopierar båda pluginsen till `C:\Program Files\Common Files\VST3\`, tar bort gamla
 kopior och städar bort en felplacerad `VST3\Contents`-mapp om en tidigare kopiering hamnat fel.
 Scanna sedan om plugins i DAW:en. Instrumentet finns också som fristående app:
-`build\Release\MyOwnFruit_artefacts\Release\Standalone\MyOwnFruit.exe`.
+`build\Release\MyOwnFruit_artefacts\Release\Standalone\Kickbase.exe`.
 
 ## Använda
 
@@ -58,7 +59,7 @@ När DAW:en står still släpps ljudet igenom orört och ingen kick spelas.
 - **PATTERN, KICK, INSTRUMENT** (överst): mönstret, kicken och instrumenten. INSTRUMENT-fliken visar ett instrument i taget: välj det i listan i flikraden, lägg till ett med **+** och ta bort det sista med **-** (det rensas helt ur minnet, med en bekräftelse om det har toner, ändrade inställningar, sampling eller kopplingar). Alla instrument kan döpas (menyn i väljaren, eller dubbelklicka på namnet i mönstret). Mönstret har två lägen,
   **PATTERN** (tonerna: stegen är en enkel pianorulle, **PIANO ROLL** den avancerade varianten, och ett lager som
   redigerats där visas som en miniatyr) och **GATE** (en egen av/på-rytm per lager med eget rutnät som hackar ljudet). Uppe i hörnet på varje flik väljer du effektkanal och mängd (FX).
-- **EFFECTS** (nederst): elva kanaler, FX1-FX11, var och en med flikarna FX (fem platser, 13 effekttyper), EQ
+- **EFFECTS** (nederst): elva kanaler, FX1-FX11, var och en med flikarna FX (fem platser, 15 effekttyper), EQ
   (dra noderna, live-spektrum) och COMP (kompressor med vågformsvy). Dra platserna för att byta ordning.
 - **SIDECHAIN:** ducka basen efter kickens envelope eller en egen kurva; DUCK per lager, och vilka
   källor som påverkas.
@@ -81,10 +82,10 @@ När DAW:en står still släpps ljudet igenom orört och ingen kick spelas.
 - **Dra och håll:** drar du en LFO, ett makro eller en envelope och håller muspekaren över en flik en kort stund byter fönstret till den fliken, så att du kan släppa källan på en ratt där (t.ex. en effekt).
 - **SETTINGS:** inställningar för alla fönster och projekt (sparas i `Dokument\Kickbase\settings.xml`): **WINDOW SIZE** (50-160 %, för små skärmar), **AI LINK** (på/av och en egen **åtkomstnyckel**: är den satt svarar Kickbase bara en AI-brygga med samma nyckel, `KICKBASE_KEY` eller `install-mcp.ps1 -Key <nyckel>`), **FOLDERS** (egna mappar för presets, exporter och wavetables) och **WAVETABLE PACK** (installerar de 4000+ AKWF-vågformerna med en knapp: en nedladdning på cirka 20 MB från GitHub, bara när du trycker, och bara det).
 
-**Presets:** varje del (hela pluginet, kick, bas, mönster, effektkedjan, sidechain, LFO, master) har
-en egen presetmeny med egna presets, "Save preset..." och "Open preset folder". Egna presets sparas
-som filer under `Dokument\Kickbase\Presets\`. Fabrikspresets byggs om med `fitbeat` (se nedan) när
-synten är klar; tills dess finns bara Init/Default.
+**Presets:** varje del (hela pluginet, kicken, varje instrument, varje mönsterrad, en effektkanal, sidechain, LFO, maximizer och
+soundstage) har en egen presetmeny med egna presets, "Save preset..." och "Open preset folder". Egna presets sparas som filer under
+`Dokument\Kickbase\Presets\`. Ett instrument- eller kickpreset kan länka en effektkanal, och ett mönsterpreset ett instrument (ett namn,
+ingen kopia). Fabriksljud finns för kicken och instrumenten; fler byggs med `fitbeat` (se nedan) när synten är klar.
 
 **EXPORT** (instrumentet): exporterar kicken, basen, hela mixen eller alla tre som WAV-loopar på
 4, 8 eller 16 takter, i DAW:ens senaste tempo och med den senast spelade tonen. Filerna föreslås
