@@ -21,6 +21,42 @@ namespace Help
         if (rawID.startsWith ("macro"))
             return "A macro: a knob of your own. Turn it by hand (or automate it) and let it move other knobs: drag its handle in the MATRIX tab onto a knob, or set it up in the route list.";
 
+        // EQ:n (kicken, instrumenten, mastern och effektkanalerna har samma): högpass, fyra band, lågpass. Redigeras i diagrammet.
+        if (rawID.contains ("Eq"))
+        {
+            if (rawID.endsWith ("EqHp"))
+                return "EQ HIGH PASS - Removes everything below this frequency (20 Hz = off). The usual fix for rumble under the kick and bass.";
+            if (rawID.endsWith ("EqLp"))
+                return "EQ LOW PASS - Removes everything above this frequency (20 kHz = off): darker, softer.";
+            const auto band = rawID.fromLastOccurrenceOf ("Eq", false, false);
+            const auto bandName = band.startsWith ("1") ? juce::String ("band 1 (low shelf)") : band.startsWith ("4") ? juce::String ("band 4 (high shelf)")
+                                                                                          : "band " + band.substring (0, 1) + " (bell)";
+            if (band.endsWith ("F"))
+                return "EQ " + bandName + ": its frequency.";
+            if (band.endsWith ("G"))
+                return "EQ " + bandName + ": boost or cut in dB (0 dB = does nothing).";
+            if (band.endsWith ("Q"))
+                return "EQ " + bandName + ": how wide the band is (higher Q = narrower). Only the bells use it.";
+        }
+        if (rawID.startsWith ("fx") && rawID.contains ("Comp"))
+        {
+            if (rawID.endsWith ("CompThr"))   return "COMPRESSOR THRESHOLD - the level above which the channel's compressor lowers the volume.";
+            if (rawID.endsWith ("CompRatio")) return "COMPRESSOR RATIO - how strongly it lowers what is above the threshold. 1:1 = off.";
+            if (rawID.endsWith ("CompAtt"))   return "COMPRESSOR ATTACK - how fast it reacts to a peak.";
+            if (rawID.endsWith ("CompRel"))   return "COMPRESSOR RELEASE - how fast it lets go again.";
+            if (rawID.endsWith ("CompMakeup")) return "COMPRESSOR MAKEUP - volume added after the compression.";
+        }
+        if (rawID.startsWith ("fx") && rawID.length() > 4 && juce::CharacterFunctions::isDigit (rawID[3]))
+        {
+            if (rawID.endsWith ("Type"))
+                return "The effect in this slot of the channel (Off = empty). The slots run in order 1 to 5.";
+            return "A knob of the effect in this slot: what it does depends on the effect type (see the knob's name on the EFFECTS tab). An AI sets it with set_effect.";
+        }
+        if (rawID.startsWith ("lfo") && rawID.endsWith ("Mode"))
+            return "RATE MODE - Sync: the LFO follows the song tempo (RATE). Hz: it runs at its own speed (FREE RATE), independent of the tempo.";
+        if (rawID.startsWith ("lfo") && rawID.endsWith ("Hz"))
+            return "FREE RATE - the LFO's own speed in Hz (cycles per second), used when RATE MODE is Hz.";
+
         // Mixern: samma förklaring för alla källor.
         if (rawID.startsWith ("mix"))
         {
@@ -46,6 +82,13 @@ namespace Help
             { "rowBarsBass2", "Instrument 2's own length in bars. Total = as long as the whole pattern." },
             { "rowBarsBass3", "Instrument 3's own length in bars. Total = as long as the whole pattern." },
             { "instrumentCount", "How many instruments are used (1-10). Each has its own pattern, oscillators, filter, envelopes, effect send and sidechain depth." },
+            { "patSwing", "SWING - For the whole pattern: pushes the off-beat sixteenths of ALL instruments later (0 % = straight, 100 % = triplet feel). Each instrument can add its own swing. The kick stays on the grid." },
+            { "patHumanize", "HUMANIZE - For the whole pattern: every note of ALL instruments comes a random 0-20 ms late, so it feels played rather than programmed. The kick stays on the grid." },
+            { "bassDelay", "DELAY - Pushes this instrument's notes later by 0-50 ms, for example to let the kick come first. It can only move notes later, never earlier." },
+            { "bassSwing", "SWING - This instrument's own swing: its off-beat sixteenths come later. It is added to the SWING of the whole pattern, up to 100 %." },
+            { "bassHumanize", "HUMANIZE - This instrument's own random timing: every note comes 0-20 ms late at random. It is added to the HUMANIZE of the whole pattern." },
+            { "rowGridKick", "The kick row's step grid (1/16 for a four-on-the-floor kick, and finer grids for rolls). It is also the piano roll's snap for the kick." },
+            { "kickOn", "Turns the kick on or off (the M button on the kick's row). Kick presets do not change it." },
             { "bassEnv2Attack", "ENV 2: an extra envelope that does not play the sound but moves other knobs (drag its handle, or use the MATRIX tab). Attack = how fast it rises." },
             { "bassEnv2Decay", "ENV 2: how fast it falls towards the sustain level." },
             { "bassEnv2Sustain", "ENV 2: the level it stays at while the note is held (0 % = it falls all the way back)." },
@@ -105,7 +148,7 @@ namespace Help
             { "kickClick", "Level of the short click at the start (synthesized, or your sample)." },
             { "kickClickLength", "How long the click lasts." },
             { "kickClickTone", "Brightness of the synthesized click." },
-            { "kickClipMode", "Drive character: Soft (smooth tanh), Hard (clipping), Tube (asymmetric, adds even harmonics)." },
+            { "kickClipMode", "Drive character: Soft (smooth tanh), Hard (clipping), Tube (asymmetric, adds even harmonics) or Fold (loud parts fold back: metallic)." },
             { "kickDrive", "Saturation on the kick: rounder and louder, more harmonics." },
             { "kickHighCut", "Low-pass filter on the kick. Tames the click and the top end." },
             { "kickLevel", "Volume of the kick." },
@@ -115,19 +158,19 @@ namespace Help
             { "bassTune", "Fine tunes the instrument in semitones." },
             { "bassATable", "Which wavetable the oscillator plays: Basic (sine-triangle-saw-square morph), PWM, Sync, Harmonics, FM, Growl, Fold, Formant, Digital, Phase Dist, or a plain Classic Sine/Triangle/Saw/Square (POS does nothing for those, like an old-school oscillator)." },
             { "bassAPos", "Position in the wavetable: which of its waveforms plays. Drag an LFO here to sweep through them for movement." },
-            { "bassALevel", "How loud this oscillator is. OSC B at 0 is silent but can still frequency-modulate OSC A (WARP: FM)." },
+            { "bassALevel", "How loud this oscillator is. OSC 2 at 0 is silent but can still frequency-modulate OSC 1 (WARP: FM)." },
             { "bassASemi", "Pitch in semitones (+12 = an octave up, +7 = a fifth)." },
             { "bassAFine", "Fine tuning in cents." },
             { "bassAUnison", "Number of stacked, slightly detuned voices. More = wider and fatter (use carefully in the low end)." },
             { "bassADetune", "How far apart the unison voices are tuned." },
             { "bassABlend", "Level of the outer unison voices compared to the centre one." },
-            { "bassAWarp", "Bends the waveform before it is played: Sync (screaming), Bend, PWM (narrower), Mirror, FM (B) = OSC B modulates OSC A, Flip (mirrors the second half), Quantize (stepped, digital) and AM (the wave is multiplied by a sine an octave up)." },
+            { "bassAWarp", "Bends the waveform before it is played: Sync (screaming), Bend, PWM (narrower), Mirror, FM (B) = OSC 2 modulates OSC 1 (only on OSC 1), Flip (mirrors the second half), Quantize (stepped, digital) and AM (the wave is multiplied by a sine an octave up)." },
             { "bassAWarpAmount", "How much the WARP mode changes the waveform." },
             { "bassAPhase", "Where in the waveform each note starts. The same start every note gives a tight, punchy attack." },
             { "bassAPan", "Pans this oscillator left or right. Centre (C) leaves it in the middle." },
             { "bassAStereo", "How far the UNISON voices are spread across the stereo picture: 0 % = all in the middle (mono), 100 % = the outer voices go hard left and right. Does nothing with UNISON = 1. Keep the low end narrow." },
             { "bassARandom", "Randomises the start phase per note: looser and more analog, less punchy." },
-            { "bassWarpEnv", "Extra warp on OSC A at the start of each note, following the filter envelope: a bright, digital 'knock' that fades." },
+            { "bassWarpEnv", "Extra warp on OSC 1 at the start of each note, following the filter envelope: a bright, digital 'knock' that fades." },
             { "bassSub", "Level of a pure sine sub under the instrument, for weight in the low end." },
             { "bassSubOctave", "Sub in the same octave as the instrument, or one octave lower (careful: very low notes get inaudible)." },
             { "bassNoise", "Adds white noise before the filter, for air and grit in the attack." },
@@ -155,7 +198,7 @@ namespace Help
             { "bassDecay", "How fast each note falls from full volume down to the sustain level." },
             { "bassSustain", "Volume while the note is held, after the decay." },
             { "bassRelease", "Fade-out after the note ends." },
-            { "bassGlide", "Time to slide between notes on steps with SLIDE on." },
+            { "bassGlide", "Not used any more: a glide note glides during its own length (draw it in the piano roll). Kept so that old projects load." },
             { "bassLevel", "Volume of the instrument." },
 
             // Gate (FX-versionen)
@@ -165,8 +208,7 @@ namespace Help
 
             // Sidechain
             { "scMode", "Kick envelope: the instruments duck exactly as loud as the kick is. Curve: draw your own ducking shape." },
-            { "scLength", "How long the drawn curve lasts after each kick." },
-            { "scPosition", "Duck the instruments after the effects (tails get ducked too) or before them." },
+            { "scLength", "How long the drawn curve lasts after each kick (Kick = as long as the kick)." },
 
             // Master
             { "masterOn", "Turns the master section on or off." },
@@ -188,31 +230,28 @@ namespace Help
 
         if (const auto found = texts.find (paramID); found != texts.end())
             return found->second;
-
-        // Effekterna: förklaring efter rattens namn.
-        static const std::map<juce::String, juce::String> effectTexts {
-            { "On", "Turns the effect on or off." },
-            { "Post", "PRE: before the gate (gets chopped by it). POST: after the gate (tails ring out)." },
-            { "Mix", "How much of the effect you hear." },
-            { "Cutoff", "Filter frequency." }, { "Reso", "Boost at the cutoff frequency." },
-            { "Drive", "How hard the signal is pushed into the distortion." }, { "Tone", "Brightness after the distortion." },
-            { "Feedback", "How much of the output is fed back: more repeats / stronger effect." },
-            { "Rate", "Speed of the effect's movement." }, { "Depth", "How much the effect moves." },
-            { "Size", "Size of the room." }, { "Damping", "How fast the highs die out in the room." },
-            { "Width", "Stereo width of the effect." }, { "LowCut", "Removes low end from the effect, so the low end stays tight." },
-            { "HighCut", "Removes highs from the effect, for a darker sound." }, { "Time", "Delay time, synced to the tempo." },
-            { "PingPong", "Echoes bounce between left and right." },
-        };
-        if (paramID.startsWith ("fx"))
-            for (const auto& [suffix, text] : effectTexts)
-                if (paramID.endsWith (suffix))
-                    return text;
-
         return {};
     }
 
-    juce::String forEffectKnob (const juce::String& name)
+    juce::String forEffectKnob (const juce::String& name, const juce::String& typeName)
     {
+        // Samma namn betyder något annat i SIDECHAIN-effekten (den lyssnar på en annan källa) och i Maximizer.
+        if (typeName == "Sidechain")
+        {
+            static const std::map<juce::String, juce::String> sidechain {
+                { "SOURCE", "Which sound ducks this channel: the kick or one of the instruments. Send the sound you want ducked 100 % to this channel." },
+                { "THRESHOLD", "How loud the SOURCE must be before the ducking starts; 12 dB above it ducks fully (DEPTH)." },
+                { "DEPTH", "How far the channel is pushed down when the SOURCE plays: 100 % = silent." },
+                { "ATTACK", "How fast the ducking follows when the SOURCE starts." },
+                { "RELEASE", "How fast the channel comes back after the SOURCE." },
+            };
+            if (const auto found = sidechain.find (name); found != sidechain.end())
+                return found->second;
+        }
+        if (typeName == "Maximizer" && name == "RELEASE")
+            return "Maximizer: how fast the limiter lets go after a peak. Short = louder but can pump.";
+        if (typeName == "Auto Filter" && name == "DEPTH")
+            return "How far the filter sweeps around CUTOFF, in octaves.";
         static const std::map<juce::String, juce::String> texts {
             { "TYPE", "Which kind of filter: low pass keeps the lows, high pass the highs, band pass a band around the frequency." },
             { "SLOPE", "How steeply the filter cuts: 24 dB/oct is stronger than 12 dB/oct." },

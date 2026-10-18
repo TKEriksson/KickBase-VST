@@ -9,8 +9,9 @@ namespace Help
     // Tom sträng om parametern saknar förklaring.
     juce::String forParameter (const juce::String& paramID);
 
-    // Förklaring till en effektratt, efter dess namn (t.ex. "CUTOFF").
-    juce::String forEffectKnob (const juce::String& knobName);
+    // Förklaring till en effektratt, efter dess namn (t.ex. "CUTOFF"). `typeName` (t.ex. "Sidechain") ger texten för den effekten när samma
+    // namn betyder olika saker (THRESHOLD i kompressorn och i Sidechain).
+    juce::String forEffectKnob (const juce::String& knobName, const juce::String& typeName = {});
 
     // Hur man använder LFO-ringarna, visas för rattar som kan moduleras.
     juce::String modulationHint();

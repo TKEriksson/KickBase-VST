@@ -1534,6 +1534,7 @@ int renderSignaturesWide(); // Tools/AudioTests.cpp
 int audioThreadTest();      // Tools/AudioTests.cpp
 int blockSizeTest();        // Tools/AudioTests.cpp
 int persistTest();          // Tools/StateTests.cpp
+int helpCheck();            // Tools/StateTests.cpp
 
 // Verktygets kommandon. Startas av KickbaseMcp.exe när det heter MyOwnFruitTool.exe eller får `tool` som första argument.
 int toolMain (int argc, char* argv[])
@@ -1581,6 +1582,8 @@ int toolMain (int argc, char* argv[])
     if (argc == 2 && juce::String (argv[1]) == "rolltest")
         return rollLengthTest (true);
 
+    if (argc == 2 && juce::String (argv[1]) == "helpcheck")
+        return helpCheck();
     if (argc == 2 && juce::String (argv[1]) == "persisttest")
         return persistTest();
     if (argc == 2 && juce::String (argv[1]) == "rendersigwide")

@@ -3,6 +3,8 @@
 
 #include "../Source/Instrument/InstrumentProcessor.h"
 #include "Scenarios.h"
+#include "../Source/Fx/FxProcessor.h"
+#include "../Source/Ui/Help.h"
 
 namespace
 {
@@ -22,6 +24,43 @@ namespace
         void parameterValueChanged (int, float newValue) override { values.push_back (newValue); }
         void parameterGestureChanged (int, bool) override {}
     };
+}
+
+// `tool helpcheck`: parametrar och effektrattar som saknar en förklaring (tooltip). Instrument 2-10 och FX2-FX11 hoppas över (samma texter).
+int helpCheck()
+{
+    juce::ScopedJuceInitialiser_GUI gui;
+    auto missing = 0;
+    for (const auto fx : { false, true })
+    {
+        std::unique_ptr<PluginBase> processor;
+        if (fx)
+            processor = std::make_unique<FxProcessor>();
+        else
+            processor = std::make_unique<InstrumentProcessor>();
+        for (auto* p : processor->getParameters())
+            if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p))
+            {
+                const auto id = ranged->getParameterID();
+                if ((Presets::bassLayerOf (id) > 0) || (Effects::isEffectParameter (id) && id[2] != 'A') || id.startsWith ("mixBass") && ! id.startsWith ("mixBass1")
+                    || (id.startsWith ("mixFx") && ! id.startsWith ("mixFxA")))
+                    continue;
+                if (Help::forParameter (id).isEmpty())
+                {
+                    std::printf ("%s: %s (%s)\n", fx ? "fx" : "instrument", id.toRawUTF8(), ranged->getName (40).toRawUTF8());
+                    ++missing;
+                }
+            }
+    }
+    for (int type = 1; type < numEffectTypes; ++type)
+        for (const auto& knob : Effects::knobs ((EffectType) type))
+            if (const auto text = Help::forEffectKnob (knob.name, Effects::typeNames()[type]); text.isEmpty() || text == knob.name) // (utan text ger den namnet)
+            {
+                std::printf ("effekt %s: %s\n", Effects::name ((EffectType) type).toRawUTF8(), knob.name.toRawUTF8());
+                ++missing;
+            }
+    std::printf ("%d utan förklaring\n", missing);
+    return 0;
 }
 
 int persistTest()

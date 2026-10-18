@@ -4,6 +4,7 @@
 #include "RollFiles.h"
 #include "MixAnalysis.h"
 #include <BinaryData.h>
+#include "../Ui/Help.h"
 
 using juce::var;
 
@@ -185,7 +186,7 @@ std::vector<ToolLayer::ToolInfo> ToolLayer::tools()
     return {
         { "get_guide", "READ THIS FIRST. Returns the guide for working with Kickbase: how the synth is built, units, the pattern language, workflow and pitfalls. topic 'agent' (default) is the manual; topic 'psytrance' is the sound design reference for psytrance kick and bass.",
           R"({"type":"object","properties":{"topic":{"type":"string","enum":["agent","psytrance"]}}})" },
-        { "list_parameters", "Lists the synth's parameters with id, name, type (float/choice/bool), min, max, default, current value and a display text. Filter with prefix (e.g. 'kick', 'bass1', 'fxA', 'sc', 'lfo1', 'master', 'mix') or contains. Effect slot knobs are not listed here, see list_effects and set_effect.",
+        { "list_parameters", "Lists the synth's parameters with id, name, type (float/choice/bool), min, max, default, current value, a display text and help (what the knob does, the same text as its tooltip in the plugin). Filter with prefix (e.g. 'kick', 'bass1', 'fxA', 'sc', 'lfo1', 'master', 'mix') or contains. Effect slot knobs are not listed here, see list_effects and set_effect.",
           R"({"type":"object","properties":{"prefix":{"type":"string"},"contains":{"type":"string"},"limit":{"type":"integer"}}})" },
         { "list_effects", "Lists the 13 effect types and their knobs (name, range, default, unit, choices) for use with set_effect.", R"({"type":"object","properties":{}})" },
         { "get_state", "Reads the current sound: parameters that differ from their defaults (or all), the effect chains, the pattern (notes per bass layer and kick steps), the sidechain curve, the kick envelopes and the LFO routes.",
@@ -365,6 +366,8 @@ var ToolLayer::listParameters (const var& args) const
         }
         put (entry, "value", valueOf (*parameter));
         put (entry, "display", parameter->getText (parameter->getValue(), 32));
+        if (const auto help = Help::forParameter (id); help.isNotEmpty())
+            put (entry, "help", help); // samma förklaring som rattens tooltip i pluginet
         list.add (entry);
     }
 
@@ -402,6 +405,7 @@ var ToolLayer::listEffects() const
                 put (entry, "default", round4 (knob.defaultValue));
                 put (entry, "unit", unitName (knob.unit));
             }
+            put (entry, "help", Help::forEffectKnob (knob.name, Effects::typeNames()[t]));
             knobs.add (entry);
         }
         put (type, "knobs", knobs);

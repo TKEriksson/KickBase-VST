@@ -130,7 +130,7 @@ public:
 
         for (int i = 0; i < knob.choices.size(); ++i)
             box.addItem (knob.choices[i], i + 1);
-        box.setTooltip (knob.name + " - " + Help::forEffectKnob (knob.name));
+        box.setTooltip (knob.name + " - " + Help::forEffectKnob (knob.name, Effects::typeNames()[(int) Effects::slotType (p.apvts, (int) (paramID[2] - 'A'), (int) (paramID[3] - '1'))]));
         box.onChange = [this]
         {
             if (! updating)
@@ -228,7 +228,7 @@ void EffectSlotEditor::rebuild()
         {
             auto control = std::make_unique<KnobComponent> (processor.apvts, id, knob.name, Theme::effects);
             control->slider.textFromValueFunction = [knob] (double v) { return knob.text (knob.fromNormalised ((float) v)); };
-            control->setDescription (Help::forEffectKnob (knob.name));
+            control->setDescription (Help::forEffectKnob (knob.name, Effects::typeNames()[(int) shownType]));
             controls.push_back (std::move (control));
         }
         addAndMakeVisible (*controls.back());
