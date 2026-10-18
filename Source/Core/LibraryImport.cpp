@@ -7,14 +7,78 @@ namespace Library
         return category == "Kicks" ? 2.0 : 30.0;
     }
 
-    std::vector<float> resampleToLibraryRate (const std::vector<float>& input, double sourceRate)
+    namespace
     {
-        if (input.empty() || sourceRate <= 0.0)
+        double besselI0 (double x) // modifierad Besselfunktion, första slaget, nollte ordningen (serie)
+        {
+            auto sum = 1.0, term = 1.0;
+            for (int k = 1; k < 60; ++k)
+            {
+                term *= (x / (2.0 * k)) * (x / (2.0 * k));
+                sum += term;
+            }
+            return sum;
+        }
+
+        // Linjärfas-FIR (Kaiser-fönster) vid källans takt: passband upp till 20 kHz, stopp från 22,05 kHz med minst 95 dB dämpning. Jämn ordning,
+        // så att gruppfördröjningen (ordning / 2) är ett helt antal samplingar.
+        std::vector<float> designAntiAlias (double sourceRate)
+        {
+            constexpr double passHz = 20000.0, stopAttenuationDb = 95.0;
+            const auto stopHz = libraryRate / 2.0;
+            const auto transition = (stopHz - passHz) / sourceRate;                  // normaliserad
+            const auto cutoff = 0.5 * (passHz + stopHz) / sourceRate;                // mitt i övergången, normaliserad
+            const auto beta = 0.1102 * (stopAttenuationDb - 8.7);
+            auto order = (int) std::ceil ((stopAttenuationDb - 7.95) / (2.285 * transition * juce::MathConstants<double>::twoPi));
+            order += order % 2;
+            std::vector<float> taps ((size_t) order + 1);
+            const auto denominator = besselI0 (beta);
+            auto sum = 0.0;
+            std::vector<double> raw ((size_t) order + 1);
+            for (int n = 0; n <= order; ++n)
+            {
+                const auto m = (double) n - 0.5 * (double) order;
+                const auto sinc = std::abs (m) < 1.0e-12 ? 2.0 * cutoff : std::sin (juce::MathConstants<double>::twoPi * cutoff * m) / (juce::MathConstants<double>::pi * m);
+                const auto r = 2.0 * (double) n / (double) order - 1.0;
+                raw[(size_t) n] = sinc * besselI0 (beta * std::sqrt (juce::jmax (0.0, 1.0 - r * r))) / denominator;
+                sum += raw[(size_t) n];
+            }
+            for (size_t n = 0; n < taps.size(); ++n)
+                taps[n] = (float) (raw[n] / sum); // förstärkning 1 vid 0 Hz
+            return taps;
+        }
+
+        // Filtrerar utan fördröjning: utsignalen ligger på samma plats som insignalen (gruppfördröjningen order / 2 är kompenserad, svansen töms).
+        std::vector<float> filterZeroDelay (const std::vector<float>& input, const std::vector<float>& taps)
+        {
+            const auto order = (int) taps.size() - 1;
+            const auto half = order / 2;
+            const auto length = (int) input.size();
+            std::vector<float> out ((size_t) length, 0.0f);
+            for (int i = 0; i < length; ++i)
+            {
+                const auto firstK = juce::jmax (0, i + half - (length - 1)); // x[i + half - k] måste vara inom 0..length-1
+                const auto lastK = juce::jmin (order, i + half);
+                auto sum = 0.0f;
+                for (int k = firstK; k <= lastK; ++k)
+                    sum += taps[(size_t) k] * input[(size_t) (i + half - k)];
+                out[(size_t) i] = sum;
+            }
+            return out;
+        }
+    }
+
+    std::vector<float> resampleToLibraryRate (const std::vector<float>& source, double sourceRate)
+    {
+        if (source.empty() || sourceRate <= 0.0)
             return {};
         if (juce::approximatelyEqual (sourceRate, libraryRate))
-            return input;
+            return source;
 
         const auto ratio = sourceRate / libraryRate; // indatasamplingar per utsampling
+        // Nedsampling: JUCE:s interpolator har en fast kärna vid indatats takt och filtrerar inte, så innehåll mellan 22,05 kHz och källans
+        // Nyquist skulle vikas in. Lågpassa först (bara när ratio > 1).
+        const auto input = ratio > 1.0 ? filterZeroDelay (source, designAntiAlias (sourceRate)) : source;
         juce::WindowedSincInterpolator interpolator;
         // Latensen är getBaseLatency() indatasamplingar, alltså getBaseLatency() / ratio utsamplingar. Fyll ut med nollor efter signalen så
         // att svansen töms ur filtret, och kasta de första utsamplingarna så att attacken hamnar där den ska.
@@ -233,6 +297,9 @@ namespace Library
                 return result;
             }
             manifest = existing.manifest;
+            if ((options.source.isNotEmpty() && options.source != manifest.source) || (options.url.isNotEmpty() && options.url != manifest.url)
+                || (options.date.isNotEmpty() && options.date != manifest.date))
+                result.notes.add ("the package " + packageName + " already exists: its source, url and date were kept as they are (the new files get the given author and tags)");
         }
         else
         {

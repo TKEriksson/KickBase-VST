@@ -3,6 +3,7 @@
 
 #include "../Source/Core/LibraryManifest.h"
 #include "../Source/Core/LibraryImport.h"
+#include "../Source/Core/LibraryIndex.h"
 #include "../Source/Core/Settings.h"
 #include "Scenarios.h"
 
@@ -35,7 +36,9 @@ int libraryImport (const juce::StringArray& args)
     if (positional.size() < 3)
     {
         std::printf ("usage: tool importlibrary <folder|file> <category> <license> [source-url] [--package=name] [--author=name] [--source=text] [--tags=a,b] [--date=YYYY-MM-DD]\n"
-                     "  categories: %s\n  licenses: CC0-1.0, MIT, BSD-2-Clause, BSD-3-Clause, PERSONAL\n", Library::categories().joinIntoString (", ").toRawUTF8());
+                     "  categories: %s\n  licenses: CC0-1.0, MIT, BSD-2-Clause, BSD-3-Clause, PERSONAL\n"
+                     "  reads wav, aiff, flac and ogg (mp3 is not supported in this build: such files are reported as not readable)\n"
+                     "  an existing package gets more files; its source, url and date are kept\n", Library::categories().joinIntoString (", ").toRawUTF8());
         return 1;
     }
     options.tags.trim();
@@ -294,6 +297,34 @@ int libraryTest()
             const auto toneOut = Library::resampleToLibraryRate (tone, rate);
             check (toneOut.size() > 40 && peakOf (std::vector<float> (toneOut.end() - 12, toneOut.end())) > 0.7f, "tonen har full nivå ända till slutet vid " + juce::String (rate, 0) + " Hz");
         }
+        // Antialias vid nedsampling: en ton över 22,05 kHz dämpas minst 60 dB (annars viks den in), en ton på 1 kHz ändras högst 0,1 dB.
+        auto rmsMiddle = [] (const std::vector<float>& audio)
+        {
+            auto sum = 0.0;
+            const auto from = audio.size() / 4, to = audio.size() * 3 / 4;
+            for (auto i = from; i < to; ++i)
+                sum += (double) audio[i] * audio[i];
+            return std::sqrt (sum / (double) (to - from));
+        };
+        auto sine = [] (double hz, double rate)
+        {
+            std::vector<float> tone ((size_t) (rate * 0.3));
+            for (size_t i = 0; i < tone.size(); ++i)
+                tone[i] = (float) std::sin (juce::MathConstants<double>::twoPi * hz * (double) i / rate);
+            return tone;
+        };
+        for (const auto& [hz, rate] : { std::pair { 23000.0, 48000.0 }, std::pair { 30000.0, 96000.0 }, std::pair { 40000.0, 96000.0 }, std::pair { 25000.0, 88200.0 } })
+        {
+            const auto in = sine (hz, rate);
+            const auto db = juce::Decibels::gainToDecibels (rmsMiddle (Library::resampleToLibraryRate (in, rate)) / rmsMiddle (in), -200.0);
+            check (db < -60.0, juce::String (hz, 0) + " Hz vid " + juce::String (rate, 0) + " Hz dämpas till " + juce::String (db, 1) + " dB (kravet är under -60)");
+        }
+        for (const auto rate : { 48000.0, 96000.0, 192000.0, 22050.0 })
+        {
+            const auto in = sine (1000.0, rate);
+            const auto db = juce::Decibels::gainToDecibels (rmsMiddle (Library::resampleToLibraryRate (in, rate)) / rmsMiddle (in));
+            check (std::abs (db) < 0.1, "1 kHz vid " + juce::String (rate, 0) + " Hz ändras " + juce::String (db, 3) + " dB (högst 0,1)");
+        }
         const std::vector<float> same { 0.1f, -0.2f, 0.3f };
         check (Library::resampleToLibraryRate (same, 44100.0) == same, "samma samplingsfrekvens kopieras oförändrad");
     }
@@ -422,6 +453,9 @@ int libraryTest()
         const auto added = Library::importFiles ({ file }, first, libraryRoot);
         const auto grown = Library::parseFile (a.packageFolder.getChildFile (Library::manifestName), true);
         check (added.ok() && grown.ok() && grown.manifest.items.size() == 2 && grown.manifest.items[1].file == "tone 2.wav", "ett befintligt paket får fler filer, och samma namn får ett nummer");
+        auto otherSource = first;
+        otherSource.source = "Another source";
+        check (Library::importFiles ({ file }, otherSource, libraryRoot).notes.joinIntoString ("|").contains ("already exists"), "ett befintligt paket behåller sina källfält och säger det");
         auto otherLicense = first;
         otherLicense.license = "MIT";
         check (! Library::importFiles ({ file }, otherLicense, libraryRoot).ok(), "ett befintligt paket med en annan licens vägras");
@@ -434,6 +468,71 @@ int libraryTest()
         const auto report = Library::checkFolder (libraryRoot, true);
         check (report.errors.isEmpty() && report.packages >= 6, "checkFolder över de importerade paketen: " + juce::String (report.packages) + " paket, "
                                                                      + juce::String (report.errors.size()) + " fel");
+    }
+
+    // 8h. Indexet: alla poster i giltiga paket, paket med fel döljs men syns i problems(), filter, bakgrundsskanning och ändringskontroll.
+    {
+        makePackage (libraryRoot, "Kicks", "BadLicense", variant ("\"CC0-1.0\"", "\"GPL-3.0\""), { "kick1.wav", "sub/kick2.wav" });
+        makePackage (libraryRoot, "Kicks", "MissingFile", variant ("Test kicks", "MissingFile"), { "kick1.wav" });
+        LibraryIndex index;
+        const auto count = index.scanNow (libraryRoot);
+        const auto list = index.entries();
+        check (count == 8 && (int) list->size() == 8, "indexet har alla poster i de giltiga paketen (" + juce::String (count) + ")");
+        auto allFiles = true;
+        juce::StringArray ids;
+        for (const auto& entry : *list)
+        {
+            allFiles = allFiles && entry.file.existsAsFile() && entry.file.isAChildOf (libraryRoot);
+            ids.add (entry.id());
+        }
+        ids.removeDuplicates (false);
+        check (allFiles && ids.size() == 8, "varje post har en fil i biblioteket och ett eget id");
+        auto personalCount = 0;
+        for (const auto& entry : *list)
+            personalCount += entry.personal ? 1 : 0;
+        check (personalCount == 1, "PERSONAL-posten är märkt");
+        const auto problems = index.problems().joinIntoString ("|");
+        check (index.problems().size() >= 2 && problems.contains ("BadLicense") && problems.contains ("license") && problems.contains ("MissingFile") && problems.contains ("does not exist"),
+               "paket med okänd licens eller saknad fil döljs och syns i problems()");
+        check (! problems.isEmpty() && index.folder() == libraryRoot, "indexet minns mappen");
+
+        check (LibraryIndex::filter (*list, "Kicks", {}).size() == 1, "filter på kategori");
+        check (LibraryIndex::filter (*list, {}, "kick test").size() == 1, "filter på ord i taggar (alla ord måste finnas)");
+        check (LibraryIndex::filter (*list, {}, "TESTER").size() == 1, "filter är skiftlägesokänsligt och söker i upphovsperson");
+        check (LibraryIndex::filter (*list, {}, "personal").size() == 1, "filter på licens");
+        check (LibraryIndex::filter (*list, {}, "zzz").empty() && LibraryIndex::filter (*list, "Pads", "kick").empty(), "filter utan träff");
+        check (LibraryIndex::filter (*list, {}, {}).size() == 8, "tomt filter ger allt");
+
+        // Bakgrundstråden: rescan ger en ny lista, refreshIfChanged gör inget om inget ändrats, och märker en ändring.
+        const auto v0 = index.version();
+        index.rescan (libraryRoot);
+        check (index.waitUntilIdle() && index.version() > v0 && index.entries()->size() == 8, "rescan på bakgrundstråden ger samma lista");
+        const auto v1 = index.version();
+        index.refreshIfChanged (libraryRoot);
+        check (index.waitUntilIdle() && index.version() == v1, "refreshIfChanged skannar inte om inget ändrats");
+        makePackage (libraryRoot, "Bass", "Extra", variant ("Test kicks", "Extra"), { "kick1.wav", "sub/kick2.wav" });
+        index.refreshIfChanged (libraryRoot);
+        check (index.waitUntilIdle() && index.version() > v1 && index.entries()->size() == 10, "refreshIfChanged märker ett nytt paket (" + juce::String ((int) index.entries()->size()) + " poster)");
+        const auto v2 = index.version();
+        {
+            auto manifest = Library::parseFile (libraryRoot.getChildFile ("Bass/Extra").getChildFile (Library::manifestName), true).manifest;
+            manifest.items[0].name = "A much longer name than before";
+            Library::write (libraryRoot.getChildFile ("Bass/Extra").getChildFile (Library::manifestName), manifest);
+        }
+        index.refreshIfChanged (libraryRoot);
+        check (index.waitUntilIdle() && index.version() > v2, "refreshIfChanged märker ett ändrat manifest");
+        index.refreshIfChanged (folders.root.getChildFile ("Annan mapp"));
+        check (index.waitUntilIdle() && index.entries()->empty() && index.folder() == folders.root.getChildFile ("Annan mapp"), "en annan mapp skannas om, en saknad mapp ger en tom lista");
+
+        // Förstörs mitt i en beställning utan hängning eller krasch.
+        for (int i = 0; i < 5; ++i)
+        {
+            LibraryIndex quick;
+            quick.rescan (libraryRoot);
+        }
+        check (true, "indexet kan förstöras direkt efter en beställning");
+        juce::SharedResourcePointer<LibraryIndex> a, b;
+        check (&*a == &*b, "SharedResourcePointer ger samma index till alla");
     }
 
     // 8. Inget skrivs i Dokument\Kickbase.

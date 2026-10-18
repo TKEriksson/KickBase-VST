@@ -58,6 +58,7 @@ set(CORE_SOURCES
     Source/Core/Settings.cpp
     Source/Core/LibraryManifest.cpp
     Source/Core/LibraryImport.cpp
+    Source/Core/LibraryIndex.cpp
 )
 
 # Plugin-delarna som båda pluginsen delar, inklusive gränssnittet.
