@@ -24,5 +24,6 @@ Skriven av Sonnet 18 okt 2026 (spec godkänd av Opus). Tobias önskade en Morph-
 
 ## 3. Anmärkningar
 
+- **Cykler som inte delar 15 jämnt:** för en WAV med N cykler där 15/(N−1) inte är ett heltal (N = 3, 5, 6 ...) hamnar steget på närmaste frame, som kan vara en blandning nära cykeln i stället för exakt cykeln. Acceptabelt, men inte exakt. N = 2, 4, 16 ger exakta cykler.
 - **Klick:** Morph av ger hårda hopp. Snabb modulering av POS (LFO) kan klicka, som i Pigments. Står i hjälptexten. En 1–2 ms mjukning kan läggas till om det hörs.
 - **Init-instrumentet använder tabellen Classic Sine**, inte Basic (där POS gör något). Tobias vill ha Basic som standard för ett nytt instrument; att ändra fabrikspresetet "Init" ändrar `rendersigreal` (regel 4), så det är en fråga till Opus och Tobias, inte gjort här.
