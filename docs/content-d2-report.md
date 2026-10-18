@@ -42,6 +42,21 @@ Rättat: DRIVE mättar nu **ingången** före slingan (`tanh(drive·x)/drive`, l
 - **Kurvan visar inte** keytrack, filter-envelope och modulering (de flyttar det riktiga filtret runt det som ritas) och är en linjär approximation för Ladder och TB-303 (små signaler); en hård drivning ger lite annat i verkligheten. Det står i verktygstipset.
 - **Layout:** Tobias bad om en "tydlig, snygg och enkel" layout utan att välja mellan alternativ ("jag litar på att du får till en okej layout"). Valt: filtren i en egen flik (fyller källpanelens höjd, plats för kurvan), inte i raderna (tre rader med reglage ryms inte i instrumentvyn utan att rattarna blir för små). Kan justeras efteråt.
 
-## 5. Gränssnittskontroll
+## 5. Gränssnittskontroll (bildjämförelse mot `content-e2`)
 
-Bilder (`KickbaseTool snapshot instrument ... 20` med `KB_SOURCETAB=4`, ny miljövariabel i verktyget; `KB_FILTER2=1` ställer in ett exempel med Ladder + Filter 2 på): `snap-f/filter_off.png` och `snap-f/filter_on.png` i scratchpad. Resten av gränssnittet är oförändrat utom raden under källorna (FILTER-gruppen borta).
+Bilderna är tagna av båda grenarnas tippar (`e7a7475` och denna gren) med samma 42 anrop (`snapshot fx` flik 0–8; `snapshot instrument` med 1, 3 och 10 instrument × nedre flik 0–8; sex bilder med övre flik 0, 1 och 3) och jämförda pixel för pixel (zlib, ingen PIL).
+**15 av 42 är identiska:** alla nio FX-bilder och de sex bilderna med övre flik PATTERN, KICK och AI. **Alla nedre flikar är identiska i varje INSTRUMENT-bild** (0 skilda pixlar från y 475 och neråt, och 0 i rubriken y 0–96).
+De 27 INSTRUMENT-bilderna (3 antal × 9 nedre flikar) skiljer sig *exakt lika* (samma antal pixlar i alla 27), på tre ställen och inget annat:
+1. **Källflikarna** (x 380–463, y 98–112): den nya FILTER-fliken.
+2. **OSC-panelens formknappsrad** (x 45–257, y 172–186): MORPH och WAV har bytt plats (WAV hör ihop med SIN/TRI/SAW/SQR, MORPH längst till höger, Tobias önskemål). Den ändringen hamnade i D2-DSP-incheckningen (`34ff60f`) och nämndes inte där; den hör egentligen till fas W.
+3. **Raden under källorna** (x 194–885, y 292–399): FILTER-gruppen är borta, övriga grupper fyller bredden.
+
+Bilder av själva FILTER-fliken (`KickbaseTool snapshot instrument ... 20` med `KB_SOURCETAB=4`, ny miljövariabel; `KB_FILTER2=1` ställer in ett exempel med Ladder och Filter 2 på): `snap-f/filter_off.png` och `snap-f/filter_on.png` i scratchpad.
+CUTOFF-rattens värde (en inbyggd display i ratten) krymper nu sin text så att den ryms i de mindre rattarna i fliken ("900 Hz" i stället för "900..").
+
+## 6. Tillståndsladdning (regel 11, `KickbaseHostTest state load`)
+
+Ett tillstånd sparat med VST3-bygget av `content-e2` (4253 parametrar, varje 97:e satt till 0,37 och körd 20 block) laddat i bygget av denna gren (4363 parametrar):
+- **0 av 4253 gamla parametrar skiljer** (samma id, samma värde).
+- **110 nya parametrar** (10 instrument × 11: Filter P1/P2 och de nio Filter 2-fälten): alla på sitt standardvärde (0 inte på standardvärdet). Filter 2 On: 10 st, 0 på. Filter P1: 10 st, 0 inte 0. Filter P2: 10 st, 0 inte 1. Filter Model: 10 st, alla på Kickbase.
+- Tillståndet sparas inte identiskt igen (fler parametrar), vilket är väntat; testet godkänner det bara när inget gammalt värde ändrats. Kontrollen av nya parametrar är ny i `KickbaseHostTest` (`Tools/HostTest.cpp`).
