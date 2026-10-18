@@ -169,6 +169,8 @@ namespace
         // Mot de sparade värdena (om den gamla versionens parametrar finns i filen): varje parameter som finns i båda ska ha samma värde, och en ny
         // parameter får inte ha ändrats; alla Filter Model (instrument 1-10) ska stå på Kickbase (värde 0), som i ett projekt som är äldre än parametern.
         auto valueMismatches = 0, compared = 0, filterModels = 0, filterModelsNotDefault = 0, notInSavedFile = 0;
+        // Nya parametrar (inte i den sparade filen) ska stå på sitt standardvärde, och särskilt: Filter 2 av, Filter P1 = 0, Filter P2 = 1 (fas D2/D3).
+        auto newNotDefault = 0, filter2Count = 0, filter2NotOff = 0, p1Count = 0, p1NotZero = 0, p2Count = 0, p2NotOne = 0;
         const auto valuesFile = stateFile.withFileExtension ("params.txt");
         if (valuesFile.existsAsFile())
         {
@@ -188,6 +190,24 @@ namespace
                 if (savedEntry == savedValues.end())
                 {
                     ++notInSavedFile;
+                    if (! juce::approximatelyEqual (parameter->getValue(), parameter->getDefaultValue()))
+                        if (++newNotDefault <= 10)
+                            std::printf ("    ny parameter inte på standardvärdet: %s (%s)\n", name.toRawUTF8(), parameter->getCurrentValueAsText().toRawUTF8());
+                    if (name.endsWith ("Filter 2 On"))
+                    {
+                        ++filter2Count;
+                        filter2NotOff += parameter->getValue() < 0.5f ? 0 : 1;
+                    }
+                    if (name.endsWith ("Filter P1"))
+                    {
+                        ++p1Count;
+                        p1NotZero += juce::approximatelyEqual (parameter->getValue(), 0.0f) ? 0 : 1;
+                    }
+                    if (name.endsWith ("Filter P2"))
+                    {
+                        ++p2Count;
+                        p2NotOne += juce::approximatelyEqual (parameter->getValue(), 1.0f) ? 0 : 1;
+                    }
                     continue;
                 }
                 ++compared;
@@ -199,6 +219,10 @@ namespace
             }
             std::printf ("  %d parametrar jämförda mot den sparade filen: %d skiljer; %d parametrar fanns inte i den (nya); Filter Model: %d st, %d inte på Kickbase\n",
                          compared, valueMismatches, notInSavedFile, filterModels, filterModelsNotDefault);
+            if (notInSavedFile > 0)
+                std::printf ("  nya parametrar: %d inte på standardvärdet; Filter 2 On: %d st, %d på; Filter P1: %d st, %d inte 0; Filter P2: %d st, %d inte 1\n",
+                             newNotDefault, filter2Count, filter2NotOff, p1Count, p1NotZero, p2Count, p2NotOne);
+            filterModelsNotDefault += newNotDefault + filter2NotOff + p1NotZero + p2NotOne; // (räknas som fel på samma sätt)
         }
         instance->releaseResources();
         // En nyare version har fler parametrar än filen: då sparas tillståndet inte identiskt igen, men inget gammalt värde får ha ändrats.
