@@ -10,7 +10,7 @@
 #include "../Core/PluginBase.h"
 #include "../Core/StepScheduler.h"
 
-// MyOwnFruit (instrument): spelar kick och bas efter mönstret så länge en ton hålls i DAW:en.
+// Kickbase (instrument): spelar kick och bas efter mönstret så länge en ton hålls i DAW:en.
 // Tonen bestämmer tonarten; DAW:ens taktstreck bestämmer var stegen hamnar.
 class InstrumentProcessor : public PluginBase
 {

@@ -1,18 +1,18 @@
 // Utvecklingsverktyg: renderar ljud offline och tar skärmbilder av gränssnittet, så att
 // pluginsen kan kontrolleras utan DAW.
 //
-//   MyOwnFruitTool render   instrument|fx <ut.wav> [bpm] [takter] [ton eller toner, t.ex. 66,64,61,59] [preset] [effektpreset]
+//   KickbaseTool render   instrument|fx <ut.wav> [bpm] [takter] [ton eller toner, t.ex. 66,64,61,59] [preset] [effektpreset]
 //   (flera toner: en per takt, bytet sker exakt på taktstrecket; preset kan följas av kick- och
 //   baspreset, t.ex. 16+k3+b5 = helpreset 16, sedan kickpreset 3 och baspreset 5; p:id=värde sätter
 //   en parameter, t.ex. p:fxA1Type=2+p:bass1FxChannel=1)
-//   MyOwnFruitTool export   <ut.wav> full|kick|bass <takter> [bpm] [ton] [preset]   (som EXPORT-knappen)
-//   MyOwnFruitTool snapshot instrument|fx <ut.png> [flik] [mod]   (mod = med exempel-LFO-kopplingar)
-//   MyOwnFruitTool presettest
-//   MyOwnFruitTool analyze  <ljudfil> [start-sekund] [slut-sekund]
-//   MyOwnFruitTool fitbass  <ljudfil> <start> <slut> [steg per slag]
-//   MyOwnFruitTool fitkick  <ljudfil> <start> <slut>
-//   MyOwnFruitTool fitbeat  <ljudfil> <start> <slut> [rolling|galloping|triplet|offbeat]
-//   MyOwnFruitTool comparebeat <ljudfil> <start> <slut> <mönster> <rendering.wav>
+//   KickbaseTool export   <ut.wav> full|kick|bass <takter> [bpm] [ton] [preset]   (som EXPORT-knappen)
+//   KickbaseTool snapshot instrument|fx <ut.png> [flik] [mod]   (mod = med exempel-LFO-kopplingar)
+//   KickbaseTool presettest
+//   KickbaseTool analyze  <ljudfil> [start-sekund] [slut-sekund]
+//   KickbaseTool fitbass  <ljudfil> <start> <slut> [steg per slag]
+//   KickbaseTool fitkick  <ljudfil> <start> <slut>
+//   KickbaseTool fitbeat  <ljudfil> <start> <slut> [rolling|galloping|triplet|offbeat]
+//   KickbaseTool comparebeat <ljudfil> <start> <slut> <mönster> <rendering.wav>
 
 #include "../Source/Core/MixAnalysis.h"
 #include "../Source/Ui/LogoPainter.h"
@@ -1536,7 +1536,7 @@ int blockSizeTest();        // Tools/AudioTests.cpp
 int persistTest();          // Tools/StateTests.cpp
 int helpCheck();            // Tools/StateTests.cpp
 
-// Verktygets kommandon. Startas av KickbaseMcp.exe när det heter MyOwnFruitTool.exe eller får `tool` som första argument.
+// Verktygets kommandon. Startas av KickbaseMcp.exe när det heter KickbaseTool.exe eller får `tool` som första argument.
 int toolMain (int argc, char* argv[])
 {
     // Testerna och mätningarna kör mot Init från koden (reproducerbart startläge). Skärmbilder, rendering, export, reparation av presets och
@@ -1652,8 +1652,8 @@ int toolMain (int argc, char* argv[])
     if (argc < 4)
     {
         std::puts ("Användning:\n"
-                   "  MyOwnFruitTool render   instrument|fx <ut.wav> [bpm] [takter] [ton]\n"
-                   "  MyOwnFruitTool snapshot instrument|fx <ut.png>");
+                   "  KickbaseTool render   instrument|fx <ut.wav> [bpm] [takter] [ton]\n"
+                   "  KickbaseTool snapshot instrument|fx <ut.png>");
         return 1;
     }
 

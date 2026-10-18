@@ -2,11 +2,11 @@
 
 #include "Theme.h"
 
-// Ritar rattar, knappar och menyer i MyOwnFruits stil.
-class FruitLookAndFeel : public juce::LookAndFeel_V4
+// Ritar rattar, knappar och menyer i Kickbases stil.
+class KickbaseLookAndFeel : public juce::LookAndFeel_V4
 {
 public:
-    FruitLookAndFeel();
+    KickbaseLookAndFeel();
 
     void drawRotarySlider (juce::Graphics&, int x, int y, int width, int height, float sliderPos,
                            float rotaryStartAngle, float rotaryEndAngle, juce::Slider&) override;

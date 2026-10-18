@@ -105,7 +105,7 @@ juce::Point<float> KnobComponent::knobCentre() const
 
 float KnobComponent::trackRadius() const
 {
-    // Samma mått som FruitLookAndFeel::drawRotarySlider.
+    // Samma mått som KickbaseLookAndFeel::drawRotarySlider.
     const auto bounds = slider.getBounds().toFloat().reduced (Theme::knobRingMargin);
     return std::min (bounds.getWidth(), bounds.getHeight()) / 2.0f - 3.0f;
 }

@@ -5,7 +5,7 @@ så att de kan låta perfekt ihop: exakt ducking, gemensam stämning och fasjust
 sample-nivå, något som separata plugins inte kan göra.
 
 Produktnamn: **Kickbase** (instrument) och **Kickbase FX** (effekt), tillverkare TKDEV.
-Kodnamnet i repot och i verktygen är fortfarande MyOwnFruit.
+CMake-målen heter också Kickbase (förr MyOwnFruit; repots mapp heter fortfarande så, se docs/audit/questions-for-tobias.md fråga 8).
 
 Status (18 okt 2026, gren `audit`): allt nedan finns och är renderat offline och testat (se
 `docs/audit/audit-report.md` för testerna och granskningen). Mycket är **inte provat i FL Studio än**
@@ -83,8 +83,8 @@ Basljudet ska kunna komma från en annan synth (t.ex. Serum) som hackas upp av b
 I FL Studio kan plugins i Channel Rack (generatorer) inte ta emot ljud; det kan bara plugins
 i mixerns effektplatser. Därför byggs samma kod som **två plugins**:
 
-- **MyOwnFruit** (instrument, Channel Rack): kick + syntetiserad bas, tonart från DAW-tonen.
-- **MyOwnFruit FX** (effekt, mixerkanalen där den andra synthen hamnar): synthens ljud är
+- **Kickbase** (instrument, Channel Rack): kick + syntetiserad bas, tonart från DAW-tonen.
+- **Kickbase FX** (effekt, mixerkanalen där den andra synthen hamnar): synthens ljud är
   effektens ingång. FX:en gate:ar det med basmönstret, duckar det under sin egen kick och
   lägger till kicken. Tonarten ställs med en parameter (ingen MIDI behövs); tempo och
   position kommer från DAW:en som vanligt. Tonhöjd och glide kommer från den andra synthen.
@@ -139,7 +139,7 @@ Varje steg ska gå att höra och testa för sig.
 4. ✅ **Basmotor** med stegsekvenser, tonhöjd/slide per steg och filter-envelope per slag.
 5. ✅ **Kick + bas:** ducking efter kickens envelope, fas, stämning.
 6. ✅ **Utbyggnad:** trioler, samplat klick, Note End, separata utgångar, presets.
-7. ✅ **Egna presets** per del (fil per preset under Dokument\MyOwnFruit\Presets), fler rutnät.
+7. ✅ **Egna presets** per del (fil per preset under Dokument\Kickbase\Presets), fler rutnät.
 8. ✅ **Effekter** (7 st, PRE/POST gate, valbar ordning) i en EFFECTS-flik.
 9. ✅ **SIDECHAIN** (ritbar duckkurva) och **MASTER** (drive, clip, lookahead-limiter).
 10. ✅ **LFO:er** (2 st, tempo-synkade, två mål var).

@@ -8,7 +8,7 @@
 #include "../Core/StepGate.h"
 #include "../Core/StepScheduler.h"
 
-// MyOwnFruit FX: läggs på mixerkanalen där en annan synth hamnar. Synthens ljud gate:as av
+// Kickbase FX: läggs på mixerkanalen där en annan synth hamnar. Synthens ljud gate:as av
 // basmönstret och duckas under en egen kick, som läggs till i utgången.
 // När DAW:en står still släpps ljudet igenom orört och ingen kick spelas.
 class FxProcessor : public PluginBase

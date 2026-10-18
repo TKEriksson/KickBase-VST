@@ -429,7 +429,7 @@ int toolMain (int argc, char* argv[]); // Tools/Tool.cpp: utvecklingsverktyget b
 
 int main (int argc, char** argv)
 {
-    // Samma körbara fil är också MyOwnFruitTool (en kopia med det namnet görs efter bygget), eller körs med `tool <kommando>`.
+    // Samma körbara fil är också KickbaseTool (en kopia med det namnet görs efter bygget), eller körs med `tool <kommando>`.
     if (juce::File (juce::String (argv[0])).getFileNameWithoutExtension().containsIgnoreCase ("Tool"))
         return toolMain (argc, argv);
     if (argc > 1 && juce::String (argv[1]) == "tool")

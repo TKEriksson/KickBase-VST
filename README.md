@@ -17,7 +17,7 @@ Kräver Visual Studio Build Tools med C++-verktygen (CMake och Ninja följer med
 ```
 build.bat                    # Release (med link-time optimization, långsam att länka)
 build.bat RelWithDebInfo     # snabbare att bygga under utveckling
-build.bat RelWithDebInfo all # bygger också utvecklingsverktygen (KickbaseMcp / MyOwnFruitTool) och KickbaseHostTest
+build.bat RelWithDebInfo all # bygger också utvecklingsverktygen (KickbaseMcp / KickbaseTool) och KickbaseHostTest
 ```
 
 I PowerShell skriver du `.\build.bat RelWithDebInfo` (med `.\` framför); i vanliga kommandotolken räcker `build.bat RelWithDebInfo`.
@@ -27,7 +27,7 @@ prova: instrumentet, FX-pluginet och testerna.
 
 **Snabbare byggen:** JUCE:s tunga headers är förkompilerade (`Source/PchPlugin.h`, `Source/PchCore.h`), felsökningsinformationen
 ligger i objektfilerna (/Z7) så att kompileringarna inte väntar på en gemensam PDB, och verktyget och MCP-bryggan är ett och samma
-program (`KickbaseMcp.exe`, som också kopieras till `MyOwnFruitTool.exe`) så att all kod bara kompileras en gång. Om `sccache` (eller
+program (`KickbaseMcp.exe`, som också kopieras till `KickbaseTool.exe`) så att all kod bara kompileras en gång. Om `sccache` (eller
 `ccache`) finns installerat används det automatiskt, vilket gör ren ombyggnad och byte av gren mycket snabbare
 (`winget install Mozilla.sccache`). Det hjälper också att utesluta mappen `build` och repot ur Windows Defender.
 
@@ -43,7 +43,7 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1 RelWithDebInfo
 Skriptet kopierar båda pluginsen till `C:\Program Files\Common Files\VST3\`, tar bort gamla
 kopior och städar bort en felplacerad `VST3\Contents`-mapp om en tidigare kopiering hamnat fel.
 Scanna sedan om plugins i DAW:en. Instrumentet finns också som fristående app:
-`build\Release\MyOwnFruit_artefacts\Release\Standalone\Kickbase.exe`.
+`build\Release\Kickbase_artefacts\Release\Standalone\Kickbase.exe`.
 
 ## Använda
 
@@ -145,15 +145,15 @@ Förhandslyssningar och spektrogram hamnar i `Dokument\Kickbase\Previews`, prese
 
 ## Utvecklingsverktyg
 
-`MyOwnFruitTool` (byggs med `build.bat RelWithDebInfo all`; samma program som `KickbaseMcp`, som också går att köra som `KickbaseMcp tool <kommando>`) testar utan DAW:
+`KickbaseTool` (byggs med `build.bat RelWithDebInfo all`; samma program som `KickbaseMcp`, som också går att köra som `KickbaseMcp tool <kommando>`) testar utan DAW:
 
 ```
-MyOwnFruitTool render      instrument|fx <ut.wav> [bpm] [takter] [ton] [preset, t.ex. 16+k3+b5]
-MyOwnFruitTool export      <ut.wav> full|kick|bass <takter> [bpm] [ton] [preset]
-MyOwnFruitTool snapshot    instrument|fx <ut.png> [flik]
-MyOwnFruitTool analyze     <ljudfil> [start] [slut]
-MyOwnFruitTool fitbeat     <ljudfil> <start> <slut> rolling|galloping|triplet|offbeat
-MyOwnFruitTool comparebeat <ljudfil> <start> <slut> <mönster> <rendering.wav>
+KickbaseTool render      instrument|fx <ut.wav> [bpm] [takter] [ton] [preset, t.ex. 16+k3+b5]
+KickbaseTool export      <ut.wav> full|kick|bass <takter> [bpm] [ton] [preset]
+KickbaseTool snapshot    instrument|fx <ut.png> [flik]
+KickbaseTool analyze     <ljudfil> [start] [slut]
+KickbaseTool fitbeat     <ljudfil> <start> <slut> rolling|galloping|triplet|offbeat
+KickbaseTool comparebeat <ljudfil> <start> <slut> <mönster> <rendering.wav>
 ```
 
 - `render` skriver en WAV och en PNG med vågformen och skriver ut toppvärde per sextondel. Slumpen
@@ -178,5 +178,5 @@ Source/Ui/          utseende, rattar, kurvredigerare, stegsekvenserare, moduler
 Source/Instrument/  instrumentets processor och editor
 Source/Fx/          FX-versionens processor och editor
 Tests/              tester för kärnan, körs av build.bat
-Tools/              MyOwnFruitTool
+Tools/              KickbaseTool
 ```

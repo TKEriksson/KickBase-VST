@@ -4,6 +4,29 @@ Gren `audit` (från `dev` 08dedcf). Skrivs löpande. Allvarlighet: **krasch**, *
 **prestanda**, **förvirrande**, **kosmetiskt**. Status: *rättad (commit)*, *fråga N* (se [questions-for-tobias.md](questions-for-tobias.md)),
 *föreslagen*, *ok* (granskat, inget fel).
 
+## Sammanfattning
+
+**Rättat (allt testat; ljudet bit-identiskt om inget annat står, se avsnitt 0 för hur det kontrolleras):**
+- *Krascher och häng:* minne som ljudtråden läste kunde frigöras när samplingar/wavetables byttes snabbt (avsnitt 1); fönstret hängde
+  upp till 15 s om det stängdes under ett AI-anrop; ett enda NaN gjorde pluginet tyst tills det laddades om.
+- *Knaster:* ~700 minnesallokeringar per ljudblock (EQ-läsningen) och nya filterobjekt på ljudtråden vid varje EQ-ändring.
+- *Sparande:* egen wavetable på OSC 3 lästes inte tillbaka; presets sparade inte egna wavetables; gamla tabeller/kicksampling blev kvar
+  när ett annat tillstånd laddades; preset-byte kunde spela ett block med standardvärden; testerna skrev i din presetmapp.
+- *Prestanda:* fönstret tog ~½ processorkärna bara av att vara öppet (SETTINGS räknade 4000 filer 10 gånger/s), mönstret ritades om helt
+  10 gånger/s, ljudtråden ~⅓ snabbare, analysen ~35 % snabbare och dess kopia 561 → 123 ms.
+- *Texter:* varje parameter och effektratt har en förklaring (AI:n får dem också), dubbla och missvisande DAW-namn, README/DESIGN/AGENT_GUIDE.
+- *Design:* klippta etiketter med 10 instrument, Kickbase FX:s huvud och SETTINGS, LENGTH-ratten, vyer som visade fel första bilden.
+- *Kod:* 0 kompilatorvarningar (15), död kod, `static_assert`, namnbytena bass → instrument (C++) och MyOwnFruit → Kickbase (mål/skript),
+  plugin-identiteten och alla ID:n orörda.
+
+**Behöver ditt beslut:** [questions-for-tobias.md](questions-for-tobias.md): 1 (moduleringen beror på DAW:ens buffertstorlek: hörbart),
+2 och 3 (spektrumet och analysen ännu lättare), 4 (sidechain-fabriksljudens djup), 7 (gamla filer i repots rot), 8 (mappen/GitHub).
+5 och 6 är gjorda, säg till om du vill ha dem som förut.
+
+**Inte gjort / inte granskat på djupet:** inget är provat i FL Studio (bara i testvärden `KickbaseHostTest`); pluginval är inte kört;
+länkade presets och deras dialoger är bara täckta av de befintliga testerna; varje parameters intervall och standardvärde är genomläst i
+listorna men inte provlyssnat ett och ett; förslagen i 4b och avsnitt 5.
+
 ## 0. Inventering och verktyg
 
 | Vad | Resultat |
@@ -123,3 +146,15 @@ Skärmbilder av alla flikar med 1, 3 och 10 instrument, och av Kickbase FX. Allt
 | SETTINGS | "INSTALL AKWF PACK" står kvar när paketet redan finns (knappen installerar om). | kosmetiskt | föreslagen |
 | Kickbase FX | Sidechain-förklaringen säger "INSTRUMENTS DUCKED"/"DUCK 1" fast det i FX är ljudet som kommer in. | förvirrande | föreslagen |
 | KICK-fliken | 22 rattar i två rader; grupperna är tydliga men BODY/CLICK/TOP/SAMPLE kunde ha en egen färgnyans per grupp. | – | föreslagen (smak) |
+
+## 5. Kodkvalitet, städning och namnbyten
+
+| Var | Vad | Status |
+|---|---|---|
+| Kompilatorvarningar | En ren ombyggnad gav 15 varningar i vår kod (0 i JUCE) med JUCE:s rekommenderade nivå (`/W4`): skuggade namn (C4456/C4458), `double` → `float` (C4244), utfasade JUCE-anrop (C4996: `addFormat(new ...)`, `createEditorIfNeeded`, `ZipFile::Builder::addEntry(new ...)`) och ett kastat returvärde (C4858). Nu 0. `float *= double` skrevs om till `(float) (f * d)`, alltså samma avrundning; de utfasade anropen har direkta ersättare med samma beteende i 8.0.15 (`createEditorIfNeeded` anropar bara `createEditorAndMakeActive`). | rättad 840083d |
+| Död kod | Oåtkomliga hjälptexter (`rowLoopBass1-3`, `rowBarsBass1-3`: fångades redan av en regel ovanför), oanvända `apvtsPointer` i effektracket, kontrollen av `duckAmount` (finns inte) i `Modulation::isModulatable`. | rättad 840083d |
+| [PluginBase.cpp:9-14](../../Source/Core/PluginBase.cpp#L9-L14) | `static_assert` för talen som sparade projekt bygger på: kicken är mönsterlager 10, FX-kanalerna fxA–fxK med fem platser, modulationskällornas nummer (LFO 0–2, makro 3–6, sedan fyra per instrument), tre oscillatorer per instrument. | rättad 840083d |
+| **bass → instrument** | 57 C++-namn bytta mekaniskt (`BassSynth` → `InstrumentSynth`, även filen; `BassField` → `InstrumentField`, `BassGrid`, `numBassLayers` → `numInstrumentLayers`, `bassLayerOf`, `setBass`, …). Ett skript bytte bara namn *utanför* strängar och teckenkonstanter, och den sorterade listan över **alla** strängkonstanter i `Source`, `Tools` och `Tests` är identisk före och efter: parameter-ID:n (`bass1Cutoff`), XML-taggar (`BassSample`), presetmappen `Bass`, `Section::bass` och AI-verktygens namn är orörda. Kvar med "bass": där det betyder basljud (fabriksljuden `bassAcid`, `bassReese`, analysen av en referenslåt `fitbass`), JUCE:s genererade BinaryData-namn, och fem namn där det nya namnet redan fanns (`bass`, `addBass`, `bassPreset(s)`, `firstBassSource`). | rättad 656a526 |
+| **MyOwnFruit → Kickbase** | CMake-projektet och målen (`Kickbase_VST3`, `KickbaseFX_VST3`, `Kickbase_Standalone`, `KickbaseTests`, `KickbaseTool.exe`), `build.bat`, `install.ps1` (städningen av gamla `MyOwnFruit.vst3` i FL:s mapp är kvar), README, DESIGN, kommentarer, `FruitLookAndFeel` → `KickbaseLookAndFeel`. **Plugin-identiteten är orörd:** i JUCE 8.0.15 räknas VST3-klassens id ur `PLUGIN_MANUFACTURER_CODE` och `PLUGIN_CODE` ([juce_VST3ModuleInfo.h:54-62](../../build/RelWithDebInfo/_deps/juce-src/modules/juce_audio_plugin_client/VST3/juce_VST3ModuleInfo.h), `JUCE_VST3_CAN_REPLACE_VST2=0`), inte ur målets namn; `BUNDLE_ID` står kvar som `com.tobiaseriksson.myownfruit(fx)`. Bevis: `moduleinfo.json` (klass-id:na) är identisk före och efter, och `KickbaseHostTest <vst3> state save` med det gamla bygget följt av `state load` med det nya ger samma id och ett tillstånd som sparas byte för byte identiskt (båda pluginsen). | rättad (se nedan) |
+| Mappen och GitHub-repot | Kan inte bytas inifrån en session. | fråga 8 |
+| Stora filer (`PluginBase.cpp`, `Modules.cpp`, `Tool.cpp`) | Inte uppdelade: det skulle ge en stor diff utan att ändra något, och krocka med annat arbete på `dev`. | föreslagen (vid tillfälle) |

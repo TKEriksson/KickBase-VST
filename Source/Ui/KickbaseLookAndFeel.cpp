@@ -1,7 +1,7 @@
-#include "FruitLookAndFeel.h"
+#include "KickbaseLookAndFeel.h"
 #include <juce_audio_utils/juce_audio_utils.h>
 
-FruitLookAndFeel::FruitLookAndFeel()
+KickbaseLookAndFeel::KickbaseLookAndFeel()
 {
     setColour (juce::PopupMenu::backgroundColourId, Theme::knobBodyDark);
     setColour (juce::PopupMenu::textColourId, Theme::text);
@@ -34,7 +34,7 @@ FruitLookAndFeel::FruitLookAndFeel()
     setColour (juce::MidiKeyboardComponent::upDownButtonArrowColourId, Theme::textDim);
 }
 
-void FruitLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int width, int height, float sliderPos,
+void KickbaseLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int width, int height, float sliderPos,
                                          float rotaryStartAngle, float rotaryEndAngle, juce::Slider& slider)
 {
     const auto accent = slider.findColour (juce::Slider::rotarySliderFillColourId);
@@ -144,7 +144,7 @@ void FruitLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int wi
     }
 }
 
-void FruitLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int width, int height, float sliderPos,
+void KickbaseLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int width, int height, float sliderPos,
                                          float minSliderPos, float maxSliderPos, juce::Slider::SliderStyle style, juce::Slider& slider)
 {
     if (style != juce::Slider::LinearVertical)
@@ -168,7 +168,7 @@ void FruitLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int wi
     g.fillRect (cap.withHeight (1.5f).withCentre (cap.getCentre()));
 }
 
-void FruitLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButton& button, bool highlighted, bool)
+void KickbaseLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButton& button, bool highlighted, bool)
 {
     // På/av-knapp: lysande neonring med brytarstreck
     const auto accent = button.findColour (juce::ToggleButton::tickColourId);
@@ -192,7 +192,7 @@ void FruitLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButton& 
     g.drawLine (icon.getCentreX(), icon.getY() + size * 0.1f, icon.getCentreX(), icon.getCentreY(), 2.0f);
 }
 
-void FruitLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button& button, const juce::Colour&,
+void KickbaseLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button& button, const juce::Colour&,
                                              bool highlighted, bool down)
 {
     const auto bounds = button.getLocalBounds().toFloat().reduced (0.5f);
@@ -238,7 +238,7 @@ void FruitLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button& bu
     }
 }
 
-void FruitLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& button, bool, bool)
+void KickbaseLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& button, bool, bool)
 {
     const auto on = button.getToggleState();
     auto bounds = button.getLocalBounds().reduced (4, 0);
@@ -265,7 +265,7 @@ void FruitLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& butt
     g.drawText (text, bounds, juce::Justification::centred, true);
 }
 
-void FruitLookAndFeel::drawComboBox (juce::Graphics& g, int width, int height, bool, int, int, int, int, juce::ComboBox& box)
+void KickbaseLookAndFeel::drawComboBox (juce::Graphics& g, int width, int height, bool, int, int, int, int, juce::ComboBox& box)
 {
     const auto bounds = juce::Rectangle<int> (width, height).toFloat().reduced (0.5f);
 
@@ -288,7 +288,7 @@ void FruitLookAndFeel::drawComboBox (juce::Graphics& g, int width, int height, b
     g.fillPath (path);
 }
 
-void FruitLookAndFeel::positionComboBoxText (juce::ComboBox& box, juce::Label& label)
+void KickbaseLookAndFeel::positionComboBoxText (juce::ComboBox& box, juce::Label& label)
 {
     label.setBounds (8, 1, box.getWidth() - 24, box.getHeight() - 2);
     label.setFont (getComboBoxFont (box));

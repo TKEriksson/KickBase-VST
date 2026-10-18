@@ -36,8 +36,8 @@ foreach ($old in @("MyOwnFruit.vst3", "MyOwnFruit FX.vst3")) {
 }
 
 $plugins = @(
-    @{ Name = "Kickbase.vst3";    Source = "$build\MyOwnFruit_artefacts\$Config\VST3\Kickbase.vst3" },
-    @{ Name = "Kickbase FX.vst3"; Source = "$build\MyOwnFruitFX_artefacts\$Config\VST3\Kickbase FX.vst3" }
+    @{ Name = "Kickbase.vst3";    Source = "$build\Kickbase_artefacts\$Config\VST3\Kickbase.vst3" },
+    @{ Name = "Kickbase FX.vst3"; Source = "$build\KickbaseFX_artefacts\$Config\VST3\Kickbase FX.vst3" }
 )
 
 foreach ($plugin in $plugins) {

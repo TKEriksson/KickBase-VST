@@ -1,6 +1,6 @@
 // Fabrikspresets (inkluderas av Presets.cpp, i samma namnrymd som Preset och Value).
 //
-// Ljuden är formade efter docs/psytrance-kick-bass-reference.md och mätta med `MyOwnFruitTool audit`
+// Ljuden är formade efter docs/psytrance-kick-bass-reference.md och mätta med `KickbaseTool audit`
 // (topp, RMS, band, stereo, kickens längd) och spektrogram. Tonerna i helpresets är relativa till tonen i
 // pianorullen (E4 ger basgrundton E1 på 41 Hz; spela i låtens tempo). Värden är i parameterns egna enheter.
 
