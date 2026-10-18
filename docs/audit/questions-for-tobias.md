@@ -138,3 +138,39 @@ dina projekt som förut.
 SVAR: A
 
 **Om du inte svarar:** inget ändras. **Status:** fråga (bara du kan göra det).
+
+---
+
+## 9. Biblioteket: en personlig nivå? (innehållsplanen)
+
+**Sammanhang.** Biblioteket (`Dokument\Kickbase\Library`) får ljud från CC0-källor, som får följa med när Kickbase delas. Vissa gratisljud
+(t.ex. Looperman-loopar) får bara användas i egna låtar. Se [docs/content-plan.md](../content-plan.md).
+
+**Alternativ.** **A (rekommenderas):** en PERSONAL-nivå: sådana ljud kan ligga i ditt bibliotek med ett märke, men följer aldrig med i en
+installation och hamnar aldrig i repot. B: bara CC0 i biblioteket.
+
+**Om du inte svarar:** bara CC0. **Status:** fråga.
+
+---
+
+## 10. Kickens SAMPLE-flik: MODE CLICK / LAYER / REPLACE
+
+**Sammanhang.** KICK-sidan får två flikar, SYNTH (dagens) och SAMPLE (biblioteket med kickar). Kickmotorn kan redan spela en sampling som
+klick, som lager ovanpå synten, eller i stället för synten (`kickSampleMode`). Flikarna byter bara vy; ljudet ändras av MODE.
+
+**Alternativ.** **A (rekommenderas):** MODE-väljaren med alla tre ligger i SAMPLE-fliken; att välja en kick i biblioteket sätter REPLACE om
+den stod på CLICK. B: bara REPLACE i SAMPLE-fliken.
+
+**Om du inte svarar:** A. **Status:** fråga.
+
+---
+
+## 11. Polyfoni (för piano, klockor, music box, pads)
+
+**Sammanhang.** Varje instrument spelar i dag en ton i taget: en ny ton klipper den förra. Det är rätt för bas och lead, men piano och
+klockor med lång utklingning låter fel, och ackord går inte.
+
+**Alternativ.** **A (rekommenderas):** en VOICES-ratt per instrument (1–8, standard 1 = exakt som i dag). B: låt det vara (piano och
+klockor blir sämre).
+
+**Om du inte svarar:** A byggs, med 1 som standard (inget ändras förrän du vrider på den). **Status:** fråga.
