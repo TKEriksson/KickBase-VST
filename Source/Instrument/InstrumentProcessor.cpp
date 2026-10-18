@@ -445,6 +445,11 @@ void InstrumentProcessor::fadeOutStepsBefore (int sampleOffset)
     for (int layer = 0; layer < activeLayers; ++layer)
         if (recent (lastInstrumentStartPpq[(size_t) layer]))
             basses[(size_t) layer].fadeOutQuickly (3.0);
+    forgetStepStarts();
+}
+
+void InstrumentProcessor::forgetStepStarts()
+{
     lastKickStartPpq = -std::numeric_limits<double>::infinity();
     lastInstrumentStartPpq.fill (-std::numeric_limits<double>::infinity());
 }
@@ -496,6 +501,7 @@ void InstrumentProcessor::handleMidi (const juce::MidiMessage& message, int samp
 
 void InstrumentProcessor::startPattern (int sampleOffset)
 {
+    forgetStepStarts();
     // Utan DAW-transport börjar den egna klockan om på tonen, men bara efter en paus på mer
     // än en takt. Kommer nästa ton snabbare (man spelar en basgång) fortsätter den i takt.
     const auto pause = clock.getPpqAt (sampleOffset) - stoppedAtPpq;
@@ -514,6 +520,7 @@ void InstrumentProcessor::startPattern (int sampleOffset)
 
 void InstrumentProcessor::stopPattern (int sampleOffset)
 {
+    forgetStepStarts();
     if (noteEnd == NoteEnd::cut)
     {
         patternActive = false;

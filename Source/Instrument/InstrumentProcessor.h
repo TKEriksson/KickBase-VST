@@ -62,6 +62,7 @@ private:
 
     void readBlockParams();
     void refreshEngineParams();
+    void forgetStepStarts(); // glömmer när senaste steget startade ljud (nytt mönster, mönstret slutar, hopp): ett gammalt värde ska aldrig kunna matcha
     void fadeOutStepsBefore (int sampleOffset); // tonar ut ljud som ett steg startade strax före en "ton av" som slutar mönstret (också i en tidigare bit eller ett tidigare block)
     bool noteOffEndsPattern (const juce::MidiMessage& message) const; // en "ton av" som tystar mönstret (NOTE END = Cut)
     void handleMidi (const juce::MidiMessage& message, int sampleOffset);

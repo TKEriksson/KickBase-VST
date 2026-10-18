@@ -35,9 +35,11 @@ namespace
     juce::int64 barThreeSample() { return (juce::int64) std::ceil (2.0 * rate * 60.0 / bpm * 4.0); }
 
     // Kicken (instrumenten av) från 44 samplingar före till 60 ms efter takt 3. `noteOffOffset` = "ton av" så här många samplingar efter takten (noNoteOff = ingen);
-    // `restart`: 1 = "ton på" på samma ton och sample direkt efter "ton av", 2 = "ton på" före "ton av". `shift` flyttar värdens samplingsräkning mot kontrollrutnätet.
+    // `restart`: 1 = "ton på" på samma ton och sample direkt efter "ton av", 2 = "ton på" före "ton av", 3 = "ton av" på blockets sista sampling och "ton på" på nästa blocks första (`shift` ignoreras: blockgränsen läggs efter "ton av"). `shift` flyttar värdens samplingsräkning mot kontrollrutnätet.
     std::vector<float> render (int shift, int noteOffOffset, int restart, int blockSize)
     {
+        if (restart == 3)
+            shift = (int) ((barThreeSample() + noteOffOffset + 1) % blockSize);
         auto processor = std::make_unique<InstrumentProcessor>();
         processor->setPlayConfigDetails (0, 2, rate, blockSize);
         processor->prepareToPlay (rate, blockSize);
@@ -61,7 +63,14 @@ namespace
             midi.clear();
             if (start == 0)
                 midi.addEvent (juce::MidiMessage::noteOn (1, 52, (juce::uint8) 100), 0);
-            if (noteOffAt >= hostStart && noteOffAt < hostStart + blockSize)
+            if (restart == 3)
+            {
+                if (noteOffAt >= hostStart && noteOffAt < hostStart + blockSize)
+                    midi.addEvent (juce::MidiMessage::noteOff (1, 52), (int) (noteOffAt - hostStart));
+                if (noteOffAt + 1 >= hostStart && noteOffAt + 1 < hostStart + blockSize)
+                    midi.addEvent (juce::MidiMessage::noteOn (1, 52, (juce::uint8) 100), (int) (noteOffAt + 1 - hostStart));
+            }
+            else if (noteOffAt >= hostStart && noteOffAt < hostStart + blockSize)
             {
                 const auto position = (int) (noteOffAt - hostStart);
                 if (restart == 2)
@@ -142,25 +151,24 @@ int boundaryTest()
 
     // 2. Nästa mönster i SAMMA instans: "ton av" och "ton på" på samma ton och sample, i båda ordningarna: kicken på takten spelas som vanligt, en gång
     //    (nivån efter tiden är densamma som när tonen aldrig släppts; en dubbel kick skulle ge +6 dB).
-    for (const auto restart : { 1, 2 })
+    for (const auto restart : { 1, 2, 3 })
         for (const auto blockSize : { 32, 512 })
         {
             auto bad = 0, cases = 0;
             auto worstRatio = 0.0f;
-            for (int shift = 0; shift < 32; shift += 3)
-            {
-                const auto reference = rmsAfter (render (shift, noNoteOff, 0, blockSize));
-                for (int offset = 0; offset <= 6; offset += 3)
+            for (int shift = 0; shift < 32; shift += (restart == 3 ? 32 : 3))
+                for (int offset = 0; offset <= 6; offset += (restart == 3 ? 1 : 3))
                 {
+                    const auto reference = rmsAfter (render (restart == 3 ? (int) ((barThreeSample() + offset + 1) % blockSize) : shift, noNoteOff, 0, blockSize));
                     const auto level = rmsAfter (render (shift, offset, restart, blockSize));
                     const auto ratioDb = std::abs (juce::Decibels::gainToDecibels (level / std::max (1.0e-6f, reference)));
                     ++cases;
                     worstRatio = std::max (worstRatio, ratioDb);
-                    bad += ratioDb > 1.5f ? 1 : 0;
+                    bad += ratioDb > 1.0f ? 1 : 0;
                 }
-            }
-            check (bad == 0, juce::String (restart == 1 ? "ton av, sedan ton på" : "ton på, sedan ton av") + " på samma sample (block " + juce::String (blockSize) + ", " + juce::String (cases)
-                               + " lägen): kicken på takten spelas en gång, nivån skiljer högst " + juce::String (worstRatio, 2) + " dB från en ton som aldrig släpptes (gräns 1,5)");
+            check (bad == 0, juce::String (restart == 1 ? "ton av, sedan ton på på samma sample" : restart == 2 ? "ton på, sedan ton av på samma sample" : "ton av på blockets sista sampling, ton på på nästa blocks första")
+                               + " (block " + juce::String (blockSize) + ", " + juce::String (cases)
+                               + " lägen): kicken på takten spelas en gång, nivån skiljer högst " + juce::String (worstRatio, 2) + " dB från en ton som aldrig släpptes (gräns 1)");
         }
 
     std::printf (failed ? "Mönstergränsen: FEL\n" : "Mönstergränsen gick igenom\n");
