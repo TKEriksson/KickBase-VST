@@ -30,6 +30,7 @@ private:
     int positionIndex = -1;
     float lastPosition = -1.0f, lastWarp = -1.0f;
     int lastTable = -1, lastWarpMode = -1;
+    bool lastMorph = true;
     bool lastReady = false; // tabellen var byggd vid förra ritningen (byggs den i bakgrunden ritas vyn om när den blir klar)
 };
 
@@ -58,6 +59,8 @@ private:
     juce::TextButton tableButton;
     std::array<juce::TextButton, 4> shapeButtons; // SIN, TRI, SAW, SQR: de klassiska vågformerna
     juce::TextButton wavButton { "WAV" };
+    juce::TextButton morphButton { "MORPH" };
+    std::unique_ptr<juce::ButtonParameterAttachment> morphAttachment;
     std::unique_ptr<juce::FileChooser> chooser;
     int lastTable = -1;
     WavetableView view;

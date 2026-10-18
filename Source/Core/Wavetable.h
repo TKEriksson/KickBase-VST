@@ -31,8 +31,15 @@ public:
     const juce::String& getName() const { return name; }
 
     // Ett sampel. `position` 0..1 (frames interpoleras), `phase` 0..1, `maxHarmonics` = hur
-    // många övertoner som ryms (Nyquist / tonens frekvens).
-    float sample (float position, double phase, double maxHarmonics) const;
+    // många övertoner som ryms (Nyquist / tonens frekvens). `morph` av: positionen snäpps till ett av tabellens steg (stepCount) och
+    // frame läses direkt, utan interpolation mellan frames: ljudet hoppar mellan vågformerna i stället för att tona över.
+    float sample (float position, double phase, double maxHarmonics, bool morph = true) const;
+
+    // Antal vågformer som Morph av hoppar mellan (1..numFrames): Basic 4 (sinus, triangel, såg, fyrkant), övriga inbyggda 16, en tabell av
+    // ljud så många cykler filen hade (en enkel cykel 1). Sparas med tabellen, så att ett projekt låter likadant när det laddas om.
+    int getSteps() const { return steps; }
+    void setSteps (int count) { steps = juce::jlimit (1, numFrames, count); }
+    int stepFrame (float position) const; // frame som Morph av spelar vid positionen
 
     // En frame utan band-begränsning (för gränssnittets bild), frameSize samples.
     const float* displayFrame (int frame) const { return frameData (0, frame); }
@@ -47,6 +54,7 @@ private:
     void storeFrame (int frame, std::vector<float>& spectrum);
 
     juce::String name;
+    int steps = numFrames;
     std::vector<float> data; // [nivå][frame][frameSize + 1], sista sampelt = första (för interpolation)
 };
 
@@ -77,7 +85,7 @@ namespace Wavetables
     // som POS sveper igenom; en kort fil räknas som en enda cykel. `framesOut` får de 16 frames
     // (numFrames * frameSize) som tabellen byggdes av, så att den kan sparas i projektet.
     std::unique_ptr<Wavetable> fromAudio (const std::vector<float>& mono, const juce::String& name, std::vector<float>& framesOut);
-    std::unique_ptr<Wavetable> fromFrames (const juce::String& name, const std::vector<float>& frames);
+    std::unique_ptr<Wavetable> fromFrames (const juce::String& name, const std::vector<float>& frames, int steps = Wavetable::numFrames);
 }
 
 // Bakgrundstråden som bygger tabeller som ljudtråden bett om men som inte är klara. Hålls av pluginets processor (delad, så att

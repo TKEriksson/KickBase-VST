@@ -141,6 +141,44 @@ int persistTest()
         check (processor->retiredTableCount() >= 7, "tabellerna från borttagna instrument frigörs inte direkt (" + juce::String ((int) processor->retiredTableCount()) + " väntar)");
     }
 
+    // 4b. Morph av: en WAV med fyra cykler ger fyra steg, och Morph av + antalet steg följer med projektet, Full- och instrument-presets (annars låter
+    //     ett projekt annorlunda efter omladdning).
+    {
+        constexpr int cycle = 2048;
+        juce::AudioBuffer<float> audio (1, 4 * cycle);
+        for (int c = 0; c < 4; ++c)
+            for (int i = 0; i < cycle; ++i)
+                audio.setSample (0, c * cycle + i, 0.8f * (float) std::sin (juce::MathConstants<double>::twoPi * (c + 1) * (double) i / cycle));
+        const auto fourCycles = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("kickbase_scenario_persist_four.wav");
+        OfflineRender::writeWav (audio, 44100.0, fourCycles);
+
+        auto morphOf = [] (PluginBase& p, int layer, int osc) { return p.apvts.getRawParameterValue (ParamID::bass (layer, ParamID::oscMorphField (osc)))->load(); };
+        // Tabellen sparas som 16 bitar: det som mäts är att samma steg spelas, inte bit för bit (under -70 dB).
+        auto sameSound = [] (const Wavetable& a, const Wavetable& b)
+        {
+            auto worst = 0.0f;
+            for (const auto position : { 0.0f, 0.2f, 0.45f, 0.5f, 0.8f, 1.0f })
+                for (const auto phase : { 0.05, 0.4, 0.9 })
+                    worst = std::max (worst, std::abs (a.sample (position, phase, 512.0, false) - b.sample (position, phase, 512.0, false)));
+            return worst < 3.0e-4f;
+        };
+
+        auto processor = std::make_unique<InstrumentProcessor>();
+        check (processor->loadUserTable (0, 1, fourCycles) && processor->userTable (0, 1)->getSteps() == 4, "en WAV med 4 cykler ger en tabell med 4 steg");
+        check (morphOf (*processor, 0, 1) > 0.5f, "Morph är på som standard");
+        processor->apvts.getParameter (ParamID::bass (0, ParamID::oscMorphField (1)))->setValueNotifyingHost (0.0f);
+
+        auto copy = copyOf (*processor);
+        check (copy->userTable (0, 1) != nullptr && copy->userTable (0, 1)->getSteps() == 4 && morphOf (*copy, 0, 1) < 0.5f && sameSound (*copy->userTable (0, 1), *processor->userTable (0, 1)),
+               "spara och ladda: Morph av och 4 steg, samma ljud med Morph av");
+
+        check (processor->saveUserPreset (Presets::Section::bass, "__persist_morph__", 0), "instrument-preset med Morph av sparas");
+        auto other = std::make_unique<InstrumentProcessor>();
+        other->loadUserPreset (Presets::Section::bass, processor->findUserPreset (Presets::Section::bass, "__persist_morph__"), 3);
+        check (other->userTable (3, 1) != nullptr && other->userTable (3, 1)->getSteps() == 4 && morphOf (*other, 3, 1) < 0.5f && sameSound (*other->userTable (3, 1), *processor->userTable (0, 1)),
+               "instrument-preset: 4 steg och Morph av följer med (instrument 4)");
+    }
+
     // 5. Preset-laddningen sätter varje parameter en gång: en ratt som ändras passerar inte sitt standardvärde på vägen.
     {
         auto processor = std::make_unique<InstrumentProcessor>();

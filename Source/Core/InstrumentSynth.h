@@ -30,6 +30,7 @@ struct OscParams
     float pan = 0.0f;         // -1 (vänster) ... 1 (höger)
     float stereo = 0.5f;      // hur långt unison-stämmorna sprids i stereobilden, 0..1
     bool on = true;           // av = oscillatorn hörs inte (och OSC B modulerar inte OSC A)
+    bool morph = true;        // på = positionen tonar över mellan vågformerna; av = hoppar mellan tabellens steg
 };
 
 // En extra envelope (ENV 2 och ENV 3) som inte styr ljudet själv utan används som modulationskälla (dras till ratter eller sätts i matrisen).

@@ -536,6 +536,32 @@ namespace
                    && singleTable->sample (0.0f, 0.25, 512.0) > 0.9f,
                "en kort fil blir en enda cykel");
 
+        // Morph av: tabellen hoppar mellan sina steg (4 cykler = 4 steg, en enkel cykel = 1, Basic = 4), frame läses direkt utan blandning.
+        check (table->getSteps() == 4 && singleTable->getSteps() == 1 && Wavetables::get (0).getSteps() == 4, "antal steg: 4 cykler 4, en enkel cykel 1, Basic 4");
+        {
+            auto worstOn = 0.0f, worstJump = 0.0f;
+            for (int step = 0; step < 4; ++step)
+            {
+                const auto position = (float) step / 3.0f; // stegets egen plats: Morph på och av ger samma våg (utom avrundning)
+                for (const auto phase : { 0.1, 0.37, 0.8 })
+                    worstOn = std::max (worstOn, std::abs (table->sample (position, phase, 512.0, false) - table->sample (position, phase, 512.0, true)));
+            }
+            check (worstOn < 1.0e-6f, "Morph av på ett stegs egen plats = Morph på (under -120 dB)", worstOn);
+            // Mellan två steg hoppar den: 0,45 av tredjedelen 0,33 och 0,67 hör till steg 1, och ingen blandning med nästa.
+            for (const auto phase : { 0.1, 0.37, 0.8 })
+                worstJump = std::max (worstJump, std::abs (table->sample (0.45f, phase, 512.0, false) - table->sample (1.0f / 3.0f, phase, 512.0, false)));
+            check (worstJump < 1.0e-6f, "Morph av håller samma vågform genom hela steget", worstJump);
+            check (std::abs (table->sample (0.1667f, 0.3, 512.0, true) - table->sample (0.1667f, 0.3, 512.0, false)) > 0.01f, "Morph på blandar mellan stegen (olika än Morph av)");
+            check (std::abs (singleTable->sample (0.0f, 0.25, 512.0, false) - singleTable->sample (1.0f, 0.25, 512.0, false)) < 1.0e-6f, "en enkel cykel: Morph av gör ingen skillnad vid olika positioner");
+            const auto& basic = Wavetables::get (0);
+            auto basicOk = true;
+            for (int step = 0; step < 4; ++step)
+                basicOk = basicOk && std::abs (basic.sample ((float) step / 3.0f, 0.2, 512.0, false) - basic.sample ((float) step / 3.0f, 0.2, 512.0, true)) < 1.0e-6f;
+            check (basicOk && std::abs (basic.sample (0.5f, 0.2, 512.0, false) - basic.sample (2.0f / 3.0f, 0.2, 512.0, false)) < 1.0e-6f, "Basic: Morph av hoppar mellan sinus, triangel, såg och fyrkant");
+        }
+        auto fourSteps = Wavetables::fromFrames ("test", frames, 4);
+        check (fourSteps != nullptr && fourSteps->getSteps() == 4 && restored->getSteps() == Wavetable::numFrames, "fromFrames: antalet steg följer med, saknas det blir det 16");
+
         check (Wavetables::fromAudio ({ 0.0f, 0.0f, 0.0f }, "tom", singleFrames) == nullptr, "för kort eller tyst ljud ger ingen tabell");
         check (Wavetables::names().size() == Wavetables::listSize() && Wavetables::names()[Wavetables::userIndex()] == "User WAV"
                    && Wavetables::userIndex() == 14,

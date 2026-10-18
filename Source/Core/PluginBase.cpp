@@ -362,6 +362,8 @@ juce::ValueTree PluginBase::userTablesToValueTree (int onlyLayer) const
         child.setProperty ("layer", onlyLayer >= 0 ? 0 : slot / ParamID::oscsPerLayer, nullptr); // ett instrument-preset sparas som lager 1
         child.setProperty ("osc", slot % ParamID::oscsPerLayer, nullptr);
         child.setProperty ("name", userNames[(size_t) slot], nullptr);
+        if (const auto* table = userTables[(size_t) slot].load())
+            child.setProperty ("steps", table->getSteps(), nullptr); // så många vågformer Morph av hoppar mellan; saknas = 16 (äldre projekt)
         child.setProperty ("data", juce::Base64::toBase64 (block.getData(), block.getSize()), nullptr);
         tree.appendChild (child, nullptr);
     }
@@ -407,7 +409,7 @@ void PluginBase::userTablesFromValueTree (const juce::ValueTree& tree, int intoL
             frames[i] = (float) in[i] / 32767.0f;
 
         const auto name = child["name"].toString();
-        if (auto table = Wavetables::fromFrames (name, frames))
+        if (auto table = Wavetables::fromFrames (name, frames, (int) child.getProperty ("steps", Wavetable::numFrames)))
         {
             setUserTable (layer * ParamID::oscsPerLayer + osc, std::move (table), std::move (frames), name);
             found[(size_t) (layer * ParamID::oscsPerLayer + osc)] = true;

@@ -96,6 +96,7 @@ enum class InstrumentField
     swing, humanize,                                              // instrumentets egen swing och humanize (läggs till patternets)
     envAttack,                                                    // filterenvelopens attack (före envDecay i signalen, men sist här så att gamla projekt är orörda)
     filterModel,                                                  // filtermodell: 0 Kickbase (SVF, standard), 1 TB-303 (Open303:s TeeBeeFilter); ny parameter, filterType rörs inte
+    aMorph, bMorph, cMorph,                                       // wavetable-position: på = tonar över mellan vågformerna (standard), av = hoppar mellan dem (oscMorphField)
     count
 };
 
@@ -107,6 +108,8 @@ namespace ParamID
 
     // Samma fält för OSC 1 (osc 0), OSC 2 (osc 1) eller OSC 3 (osc 2): oscField (1, InstrumentField::aPos) = bPos.
     inline InstrumentField oscField (int osc, InstrumentField aField) { return (InstrumentField) ((int) aField + osc * oscFieldCount); }
+    // Morph-fälten ligger sist i listan (så att gamla projekt är orörda) och följer inte oscField: OSC 1 (osc 0) = aMorph, OSC 2 = bMorph, OSC 3 = cMorph.
+    inline InstrumentField oscMorphField (int osc) { return (InstrumentField) ((int) InstrumentField::aMorph + osc); }
     juce::String bass (int layer, InstrumentField field);   // "bass1Cutoff" ...
     const char* instrumentFieldName (InstrumentField field);      // "Cutoff" ...
 }

@@ -89,7 +89,7 @@ namespace ParamID
                                      "GateOn", "GateGrid", "GateDepth", "GateSmooth",
                                      "SampleLevel", "SampleRoot", "SampleLoop", "SampleKey", "SampleStart", "SampleOn",
                                      "Env2Attack", "Env2Decay", "Env2Sustain", "Env2Release", "Env3Attack", "Env3Decay", "Env3Sustain", "Env3Release",
-                                     "SubWave", "NoiseTone", "PitchEnvAmount", "PitchEnvDecay", "DriveMode", "Delay", "Swing", "Humanize", "EnvAttack", "FilterModel" };
+                                     "SubWave", "NoiseTone", "PitchEnvAmount", "PitchEnvDecay", "DriveMode", "Delay", "Swing", "Humanize", "EnvAttack", "FilterModel", "AMorph", "BMorph", "CMorph" };
         static_assert (std::size (names) == (size_t) InstrumentField::count);
         return names[(size_t) field];
     }
@@ -325,6 +325,9 @@ namespace Params
         // Ny parameter (filterType rörs inte): Kickbase = dagens SVF, TB-303 = Open303:s TeeBeeFilter. Standardvärdet ger dagens ljud.
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::filterModel), 1 }, title + "Filter Model",
                                                             StringArray { "Kickbase", "TB-303" }, 0));
+        // Morph på/av för varje oscillator (på = dagens ljud): sist, i fältens ordning.
+        for (int osc = 0; osc < ParamID::oscsPerLayer; ++osc)
+            layout.add (std::make_unique<AudioParameterBool> (ParameterID { id (ParamID::oscMorphField (osc)), 1 }, title + "Osc " + String (osc + 1) + " Morph", true));
     }
 
     void addFxParams (Layout& layout)
@@ -517,6 +520,7 @@ InstrumentParams ParamRefs::readInstrument (int layer, int rootMidiNote) const
         o.pan = oget (F::aPan);
         o.stereo = oget (F::aStereo);
         o.on = oget (F::aOn) >= 0.5f;
+        o.morph = get (ParamID::oscMorphField (osc)) >= 0.5f;
     }
     p.warpEnv    = get (F::warpEnv);
     p.noise      = get (F::noise);

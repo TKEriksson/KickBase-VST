@@ -120,7 +120,7 @@ InstrumentSynth::Stereo InstrumentSynth::Oscillator::next (const OscParams& p, d
 
         auto& phase = phases[(size_t) v];
         const auto warped = warpPhase (p.warp, warpAmount, phase, fmInput);
-        auto voice = gain * table.sample (p.position, warped, rate * 0.5 / std::max (1.0, hz));
+        auto voice = gain * table.sample (p.position, warped, rate * 0.5 / std::max (1.0, hz), p.morph);
         if (p.warp == WarpMode::am && warpAmount > 0.0f)
         {
             // AM: vågen multipliceras med en sinus en oktav upp (Serums AM-warp).

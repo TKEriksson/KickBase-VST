@@ -96,16 +96,20 @@ void Wavetable::storeFrame (int f, std::vector<float>& full)
     }
 }
 
-float Wavetable::sample (float position, double phase, double maxHarmonicsNow) const
+int Wavetable::stepFrame (float position) const
+{
+    if (steps <= 1)
+        return 0;
+    const auto step = (int) std::lround (juce::jlimit (0.0f, 1.0f, position) * (float) (steps - 1));
+    return std::min (numFrames - 1, (int) std::lround ((double) step * (numFrames - 1) / (steps - 1)));
+}
+
+float Wavetable::sample (float position, double phase, double maxHarmonicsNow, bool morph) const
 {
     // Nivån vars övertoner ryms: 512 >> nivå <= maxHarmonics.
     auto level = 0;
     while (level < numLevels - 1 && ((frameSize / 2) >> level) > maxHarmonicsNow)
         ++level;
-
-    const auto framePosition = juce::jlimit (0.0f, 1.0f, position) * (numFrames - 1);
-    const auto frame0 = std::min (numFrames - 2, (int) framePosition);
-    const auto frameMix = framePosition - (float) frame0;
 
     const auto index = phase * frameSize;
     const auto i0 = juce::jlimit (0, frameSize - 1, (int) index);
@@ -116,6 +120,13 @@ float Wavetable::sample (float position, double phase, double maxHarmonicsNow) c
         const auto* d = frameData (level, frame);
         return d[i0] + (d[i0 + 1] - d[i0]) * fraction;
     };
+
+    if (! morph)
+        return read (stepFrame (position));
+
+    const auto framePosition = juce::jlimit (0.0f, 1.0f, position) * (numFrames - 1);
+    const auto frame0 = std::min (numFrames - 2, (int) framePosition);
+    const auto frameMix = framePosition - (float) frame0;
 
     const auto a = read (frame0);
     if (frameMix <= 0.0f)
@@ -166,6 +177,8 @@ namespace
         if (e.ready.load() != nullptr)
             return;
         e.owned = e.additive ? std::make_unique<Wavetable> (e.name, e.additive, e.count) : std::make_unique<Wavetable> (e.name, e.shape, e.order);
+        if (e.name == "Basic")
+            e.owned->setSteps (4); // sinus, triangel, såg, fyrkant: Morph av hoppar mellan dem
         e.ready.store (e.owned.get());
     }
 
@@ -652,13 +665,13 @@ namespace Wavetables
         return Settings::wavetablesFolder();
     }
 
-    std::unique_ptr<Wavetable> fromFrames (const juce::String& name, const std::vector<float>& frames)
+    std::unique_ptr<Wavetable> fromFrames (const juce::String& name, const std::vector<float>& frames, int steps)
     {
         constexpr int size = Wavetable::frameSize, numFrames = Wavetable::numFrames;
         if (frames.size() < (size_t) (size * numFrames))
             return nullptr;
 
-        return std::make_unique<Wavetable> (name, [&frames] (double position, double phase)
+        auto table = std::make_unique<Wavetable> (name, [&frames] (double position, double phase)
         {
             const auto framePosition = juce::jlimit (0.0, 1.0, position) * (numFrames - 1);
             const auto f0 = std::min (numFrames - 2, (int) framePosition);
@@ -673,6 +686,8 @@ namespace Wavetables
             };
             return read (f0) * (1.0 - mix) + read (f0 + 1) * mix;
         });
+        table->setSteps (steps);
+        return table;
     }
 
     std::unique_ptr<Wavetable> fromAudio (const std::vector<float>& mono, const juce::String& name, std::vector<float>& framesOut)
@@ -683,11 +698,13 @@ namespace Wavetables
             return nullptr;
 
         framesOut.assign ((size_t) (size * numFrames), 0.0f);
+        auto steps = 1; // en enda cykel: Morph av har bara en vågform att spela
 
         if (length >= 2 * cycle)
         {
             // Cykler om 2048 samples (Serums format): frames väljs jämnt över filen och halveras till 1024.
             const auto cycles = length / cycle;
+            steps = std::min (numFrames, cycles);
             for (int f = 0; f < numFrames; ++f)
             {
                 const auto source = (int) std::lround ((double) f * (cycles - 1) / (numFrames - 1));
@@ -732,7 +749,7 @@ namespace Wavetables
         for (auto& v : framesOut)
             v /= peak;
 
-        return fromFrames (name, framesOut);
+        return fromFrames (name, framesOut, steps);
     }
 }
 

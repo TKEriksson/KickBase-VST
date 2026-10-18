@@ -26,8 +26,10 @@ void WavetableView::timerCallback()
     const auto warpMode = (int) raw (InstrumentField::aWarp);
     const auto warp = raw (InstrumentField::aWarpAmount);
     const auto ready = table == Wavetables::userIndex() || Wavetables::isReady (table);
-    if (position != lastPosition || table != lastTable || warpMode != lastWarpMode || warp != lastWarp || ready != lastReady)
+    const auto morph = processor.apvts.getRawParameterValue (ParamID::bass (layer, ParamID::oscMorphField (osc)))->load() >= 0.5f;
+    if (position != lastPosition || table != lastTable || warpMode != lastWarpMode || warp != lastWarp || ready != lastReady || morph != lastMorph)
     {
+        lastMorph = morph;
         lastPosition = position;
         lastTable = table;
         lastWarpMode = warpMode;
@@ -91,9 +93,9 @@ void WavetableView::paint (juce::Graphics& g)
     auto current = [&] (double phase)
     {
         const auto warped = InstrumentSynth::warpPhase (mode == WarpMode::fm ? WarpMode::off : mode, warpAmount, phase, 0.0f);
-        return table.sample (position, warped, 512.0);
+        return table.sample (position, warped, 512.0, lastMorph);
     };
-    const auto z = position;
+    const auto z = lastMorph ? position : (float) table.stepFrame (position) / (Wavetable::numFrames - 1); // utan Morph ligger kurvan på en av vågformerna
     const auto path = pathFor (current, z, 1.0f);
     g.setColour (accent.withAlpha (0.3f));
     g.strokePath (path, juce::PathStrokeType (5.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
@@ -160,6 +162,13 @@ OscPanel::OscPanel (PluginBase& p, int layerIn, int oscIn, juce::Colour accentIn
         chooseWavFile();
     };
     addAndMakeVisible (wavButton);
+
+    morphButton.setTooltip ("MORPH - On: POS fades smoothly from one waveform of the table to the next. Off: POS jumps between the table's waveforms "
+                            "(Basic has four: sine, triangle, saw, square), like stepping through them. Steps jump; fast modulation of POS can click.");
+    morphButton.setClickingTogglesState (true);
+    morphButton.setColour (juce::TextButton::buttonOnColourId, accent.withAlpha (0.6f));
+    morphAttachment = std::make_unique<juce::ButtonParameterAttachment> (*p.apvts.getParameter (ParamID::bass (layer, ParamID::oscMorphField (osc))), morphButton);
+    addAndMakeVisible (morphButton);
     startTimerHz (10);
     timerCallback(); // tabellens namn syns direkt
 
@@ -343,6 +352,7 @@ void OscPanel::resized()
     auto shapes = left.removeFromTop (20);
     const auto shapeWidth = shapes.getWidth() / (int) shapeButtons.size();
     wavButton.setBounds (shapes.removeFromRight (shapes.getWidth() / 5).reduced (1, 0));
+    morphButton.setBounds (shapes.removeFromRight (shapes.getWidth() / 4 + 4).reduced (1, 0));
     for (auto& button : shapeButtons)
         button.setBounds (shapes.removeFromLeft (shapes.getWidth() / ((int) shapeButtons.size() - (int) (&button - shapeButtons.data()))).reduced (1, 0));
     juce::ignoreUnused (shapeWidth);
