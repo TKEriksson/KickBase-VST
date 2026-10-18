@@ -164,3 +164,42 @@ int tb303Unit()
     std::printf (ok ? "Tb303Filter: mätningen klar, passbandet inom kravet\n" : "Tb303Filter: FEL, passbandet utanför kravet\n");
     return ok ? 0 : 1;
 }
+
+// `tool includecheck [rotmapp]`: håller isoleringen av Open303:s headers (de definierar globala makron och funktioner som ändrade ljudet i ett instrument när de
+// läckte in via InstrumentSynth.h). Ger 1 om någon fil i Source/ eller Tools/ utom de tillåtna inkluderar en av dem.
+int includeCheck (const juce::String& rootArgument)
+{
+    const auto root = rootArgument.isNotEmpty() ? juce::File::getCurrentWorkingDirectory().getChildFile (rootArgument) : juce::File::getCurrentWorkingDirectory();
+    // Tillåtna: själva Open303-mappen, filtrets .cpp (pimpl) och Tools/Tb303Tests.cpp (en blad-fil i verktyget som jämför mot TeeBeeFilter ensam).
+    const auto allowed = [] (const juce::String& relative)
+    {
+        return relative.startsWith ("Source/ThirdParty/open303/") || relative == "Source/Core/Tb303Filter.cpp" || relative == "Tools/Tb303Tests.cpp";
+    };
+    auto checked = 0, violations = 0;
+    for (const auto* folder : { "Source", "Tools" })
+        for (const auto& file : root.getChildFile (folder).findChildFiles (juce::File::findFiles, true, "*.h;*.cpp;*.inl"))
+        {
+            const auto relative = file.getRelativePathFrom (root).replaceCharacter ('\\', '/');
+            ++checked;
+            juce::StringArray lines;
+            file.readLines (lines);
+            for (int i = 0; i < lines.size(); ++i)
+            {
+                const auto line = lines[i].trim();
+                if (! line.startsWith ("#include"))
+                    continue;
+                if ((line.contains ("open303/") || line.contains ("rosic_") || line.contains ("GlobalFunctions.h") || line.contains ("GlobalDefinitions.h")) && ! allowed (relative))
+                {
+                    std::printf ("FEL: %s:%d inkluderar Open303: %s\n", relative.toRawUTF8(), i + 1, line.toRawUTF8());
+                    ++violations;
+                }
+            }
+        }
+    if (checked == 0)
+    {
+        std::printf ("FEL: hittade inga filer under %s (kör från repots rot eller ange den)\n", root.getFullPathName().toRawUTF8());
+        return 1;
+    }
+    std::printf (violations == 0 ? "Open303:s headers ligger bara där de ska (%d filer granskade)\n" : "FEL: %d bryt mot isoleringen\n", violations == 0 ? checked : violations);
+    return violations == 0 ? 0 : 1;
+}

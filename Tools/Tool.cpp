@@ -1561,6 +1561,7 @@ int freesoundTest();        // Tools/Freesound.cpp
 int tb303Measure();         // Tools/Tb303Tests.cpp
 int tb303Unit();            // Tools/Tb303Unit.cpp
 int tb303Test();            // Tools/Tb303Tests.cpp
+int includeCheck (const juce::String& root); // Tools/Tb303Unit.cpp
 int renderSignaturesTb303(); // Tools/AudioTests.cpp
 
 // Verktygets kommandon. Startas av KickbaseMcp.exe när det heter KickbaseTool.exe eller får `tool` som första argument.
@@ -1620,6 +1621,8 @@ int toolMain (int argc, char* argv[])
         return libraryTest();
     if (argc == 2 && juce::String (argv[1]) == "rendersigtb303")
         return renderSignaturesTb303();
+    if (argc >= 2 && juce::String (argv[1]) == "includecheck")
+        return includeCheck (argc > 2 ? juce::String (argv[2]) : juce::String());
     if (argc == 2 && juce::String (argv[1]) == "tb303test")
         return tb303Test();
     if (argc == 2 && juce::String (argv[1]) == "tb303unit")

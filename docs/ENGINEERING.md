@@ -34,7 +34,7 @@ biblioteket: det bygger ingen VST3.) Installera: `createVst.bat` som administrat
 - `KickbaseMcp --selftest-link`;
 - `KickbaseHostTest <Kickbase.vst3>` och `KickbaseHostTest <Kickbase FX.vst3>`;
 - `tool rendersig`, `tool rendersigreal`, `tool rendersigwide`;
-- TB-303-modellen (fas D1): `tool rendersigtb303` mot `docs/audit/baseline-tb303.txt` (alla instrument med TB-303 påslaget), `tool tb303test` (svar mot Open303:s 4x, extrema inställningar, utklingning utan denormaler, modellbyte med resonans 100 %), `tool tb303measure` och `tool tb303unit` (mätningar). `blocksizetest` och `audiotest` har egna TB-303-lägen.
+- TB-303-modellen (fas D1): `tool rendersigtb303` mot `docs/audit/baseline-tb303.txt` (alla instrument med TB-303 påslaget), `tool tb303test` (svar mot Open303:s 4x, extrema inställningar, utklingning utan denormaler, modellbyte med resonans 100 %), `tool tb303measure` och `tool tb303unit` (mätningar), `tool includecheck` (kör från repots rot: Open303:s headers får bara inkluderas av `Source/Core/Tb303Filter.cpp`, `Source/ThirdParty/open303/*` och `Tools/Tb303Tests.cpp`). `blocksizetest` och `audiotest` har egna TB-303-lägen.
 
 **Bit-identiskt ljud bevisas med fingeravtrycken:**
 - `rendersig` = Init från koden + fabriksljuden;
