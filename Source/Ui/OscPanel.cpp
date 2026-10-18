@@ -176,12 +176,14 @@ OscPanel::OscPanel (PluginBase& p, int layerIn, int oscIn, juce::Colour accentIn
     const std::pair<F, const char*> specs[] { { F::aPos, "POS" }, { F::aLevel, "LEVEL" }, { F::aSemi, "SEMI" }, { F::aFine, "FINE" },
                                               { F::aPhase, "PHASE" }, { F::aUnison, "UNISON" }, { F::aDetune, "DETUNE" },
                                               { F::aBlend, "BLEND" }, { F::aPan, "PAN" }, { F::aStereo, "STEREO" },
-                                              { F::aWarpAmount, "WARP" }, { F::aRandom, "RAND" } };
+                                              { F::aRandom, "RAND" } };
     for (const auto& [field, name] : specs)
     {
         knobs.push_back (std::make_unique<KnobComponent> (p.apvts, ParamID::bass (layer, ParamID::oscField (osc, field)), name, accent));
         addAndMakeVisible (*knobs.back());
     }
+    warpKnob = std::make_unique<KnobComponent> (p.apvts, ParamID::bass (layer, ParamID::oscField (osc, F::aWarpAmount)), "AMOUNT", accent);
+    addAndMakeVisible (*warpKnob);
 }
 
 juce::String OscPanel::currentTableName() const
@@ -343,11 +345,13 @@ void OscPanel::resized()
 
     // Vänster: tabell, warp och bilden. Höger: rattarna i två rader över hela höjden.
     auto left = area.removeFromLeft (juce::jmin (300, area.getWidth() / 3));
-    auto choices = left.removeFromTop (40);
-    auto tableArea = choices.removeFromLeft (choices.getWidth() / 2 + 10).withTrimmedRight (3);
+    auto choices = left.removeFromTop (74);
+    auto tableArea = choices.removeFromLeft (choices.getWidth() * 2 / 5).withTrimmedRight (3);
     tableLabel.setBounds (tableArea.removeFromTop (14));
     tableButton.setBounds (tableArea.removeFromTop (24));
-    warp.setBounds (choices.withTrimmedLeft (3));
+    // WARP: valet (menyn) och, direkt till höger, mängden (ratten).
+    warpKnob->setBounds (choices.removeFromRight (choices.getWidth() * 2 / 5));
+    warp.setBounds (choices.withTrimmedLeft (3).removeFromTop (44));
     left.removeFromTop (4);
     auto shapes = left.removeFromTop (20);
     const auto shapeWidth = shapes.getWidth() / (int) shapeButtons.size();
@@ -365,7 +369,7 @@ void OscPanel::resized()
     {
         auto rowArea = area.removeFromTop (rowHeight);
         const auto width = rowArea.getWidth() / 6;
-        for (int i = 0; i < 6; ++i)
+        for (int i = 0; i < 6 && (size_t) (row * 6 + i) < knobs.size(); ++i)
             knobs[(size_t) (row * 6 + i)]->setBounds (rowArea.removeFromLeft (width));
     }
 }

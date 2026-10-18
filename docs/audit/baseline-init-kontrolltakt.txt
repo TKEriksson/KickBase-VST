@@ -1,4 +1,5 @@
 full 0 Init                        fcbfb273f1fbe70b peak 0.5248 rms 0.2221
+full 1 Basic Morph                 f7d9d390f481771d peak 0.6526 rms 0.2540
 kick 0 Full-On Punch               5303a9fe580cf7bc peak 0.5248 rms 0.2471
 kick 1 Dark Forest Boom            a724b404bee93a32 peak 0.5248 rms 0.2870
 kick 2 Progressive Round           dbcf1e05b0563b14 peak 0.5248 rms 0.2523

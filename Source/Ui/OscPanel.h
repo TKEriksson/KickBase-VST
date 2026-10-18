@@ -65,4 +65,5 @@ private:
     int lastTable = -1;
     WavetableView view;
     std::vector<std::unique_ptr<KnobComponent>> knobs;
+    std::unique_ptr<KnobComponent> warpKnob; // WARP-mängden sitter bredvid WARP-valet (menyn), inte bland de övriga rattarna
 };

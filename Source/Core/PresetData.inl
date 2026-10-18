@@ -229,6 +229,25 @@ namespace
         return init;
     }
 
+    // Basic Morph: en bas i tabellen Basic (sinus, triangel, såg, fyrkant) med Morph AV. LFO 1 (en såg, en takt) sveper POS från 0 till 1, så att
+    // vågformen HOPPAR mellan de fyra formerna under takten i stället för att tona över. Sätt Morph på (MORPH-knappen i OSC 1) för att höra skillnaden.
+    Preset basicMorphPreset()
+    {
+        constexpr int l = 0;
+        Preset preset { "Basic Morph", join ({ std::vector<Value> {
+                 { ParamID::instrumentCount, 1 }, { "patternBars", 1 }, { "lfo1On", 1 }, { "lfo1Shape", 2 }, { "lfo1Rate", 8 },
+                 osc (l, 0, F::aTable, 0), osc (l, 0, F::aPos, 0.5f), osc (l, 0, F::aLevel, 1.0f), osc (l, 1, F::aLevel, 0.0f),
+                 b (l, ParamID::oscMorphField (0), 0.0f), b (l, F::sub, 0.0f), b (l, F::filterType, 0), b (l, F::cutoff, 2400.0f),
+                 b (l, F::resonance, 0.15f), b (l, F::envAmount, 1.2f), b (l, F::envDecay, 140.0f), b (l, F::velToEnv, 0.4f), b (l, F::attack, 0.5f),
+                 b (l, F::decay, 160.0f), b (l, F::sustain, 0.85f), b (l, F::release, 35.0f), b (l, F::drive, 0.12f), b (l, F::duck, 0.8f),
+                 b (l, F::level, 0.6f) } }) };
+        preset.extras.pattern = {
+            { 0, InstrumentGrid::sixteenth, { ". x x x . x x x . x x x . x x x" }, 0.7f },
+        };
+        preset.extras.routes = { { 0, "bass1APos", 0.5f } };
+        return preset;
+    }
+
     Preset bassPreset (const char* name, std::vector<Value> values) { return { name, std::move (values) }; }
 }
 
@@ -236,7 +255,7 @@ namespace
 {
     const std::vector<Preset>& fullPresets()
     {
-        static const std::vector<Preset> presets { initPreset() };
+        static const std::vector<Preset> presets { initPreset(), basicMorphPreset() };
         return presets;
     }
 
