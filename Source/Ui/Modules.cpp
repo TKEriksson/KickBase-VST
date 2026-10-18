@@ -688,12 +688,15 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
         return controls.back().get();
     };
 
+    // En valruta med längre text (MODEL: Kickbase / TB-303) får mer plats än de vanliga.
+    auto wide = [] (juce::Component* control, float weight) { static_cast<ChoiceComponent*> (control)->weight = weight; return control; };
+
     // Under oscillatorerna, i signalens ordning: tonhöjd, sub/brus, filter -> volym och utgång.
     groups.addRow ({ { "PITCH", { knob (id (F::octave), "OCTAVE"), knob (id (F::tune), "TUNE"),
                                   knob (id (F::pitchEnvAmount), "ENV AMT"), knob (id (F::pitchEnvDecay), "ENV DEC") } },
                      { "SUB", { knob (id (F::sub), "LEVEL"), choice (id (F::subWave), "WAVE"), choice (id (F::subOctave), "OCTAVE") } },
                      { "NOISE", { knob (id (F::noise), "LEVEL"), knob (id (F::noiseTone), "TONE") } },
-                     { "FILTER", { choice (id (F::filterModel), "MODEL"), filterTypeChoice = static_cast<ChoiceComponent*> (choice (id (F::filterType), "TYPE")),
+                     { "FILTER", { wide (choice (id (F::filterModel), "MODEL"), 2.2f), filterTypeChoice = static_cast<ChoiceComponent*> (choice (id (F::filterType), "TYPE")),
                                    knob (id (F::cutoff), "CUTOFF"), knob (id (F::resonance), "RESO"), knob (id (F::keyTrack), "KEYTRK") } },
                      { "FILTER ENVELOPE", { knob (id (F::envAmount), "AMOUNT"), knob (id (F::envAttack), "ATTACK"), knob (id (F::envDecay), "DECAY"),
                                             knob (id (F::velToEnv), "VEL") } } });

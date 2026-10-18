@@ -6,6 +6,11 @@ namespace
     // En ton som börjar så här mycket efter ett steg räknas som "på steget".
     constexpr double noteOnToleranceSeconds = 0.003;
 
+    // Och en "ton av" som kommer så här mycket efter ett steg räknas som att tonen slutade på steget: steget spelas inte. DAW:en (FL) skickar "ton av" när ett
+    // mönster tar slut, och med avrundning till hela samplingar kan den hamna en eller några samplingar efter taktens första steg. Utan den här gränsen
+    // spelade den gamla instansen ett sista steg (en kick) på taktens första slag samtidigt som nästa instans började: en dubbel kick.
+    constexpr double noteOffToleranceSeconds = 0.003;
+
 
     juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     {
@@ -218,8 +223,11 @@ void InstrumentProcessor::processChunk (juce::AudioBuffer<float>& buffer, juce::
     for (const auto metadata : midi)
     {
         const auto eventPosition = juce::jlimit (0, numSamples, metadata.samplePosition);
-        renderSegment (position, eventPosition);
-        handleMidi (metadata.getMessage(), eventPosition);
+        const auto message = metadata.getMessage();
+        // Slutar tonen mönstret (Cut) startas inga steg från strax före "ton av" och framåt (se noteOffToleranceSeconds).
+        const auto stepLimit = noteOffEndsPattern (message) ? eventPosition - (int) (noteOffToleranceSeconds * getSampleRate()) : std::numeric_limits<int>::max();
+        renderSegment (position, eventPosition, stepLimit);
+        handleMidi (message, eventPosition);
         position = eventPosition;
     }
     renderSegment (position, numSamples);
@@ -414,6 +422,15 @@ void InstrumentProcessor::stopPreview()
         bass.release();
 }
 
+bool InstrumentProcessor::noteOffEndsPattern (const juce::MidiMessage& message) const
+{
+    if (! patternActive || noteEnd != NoteEnd::cut || numHeldNotes <= 0)
+        return false;
+    if (message.isNoteOff())
+        return numHeldNotes == 1 && heldNotes[(size_t) message.getNoteNumber()] == 1; // sista tonen som hålls (FL:s "på före av" räknas av handleMidi)
+    return message.isAllNotesOff() || message.isAllSoundOff();
+}
+
 void InstrumentProcessor::handleMidi (const juce::MidiMessage& message, int sampleOffset)
 {
     if (message.isNoteOn())
@@ -520,7 +537,7 @@ int InstrumentProcessor::delaySamplesFor (const StepEvent& event)
     return (int) delay;
 }
 
-void InstrumentProcessor::renderSegment (int startSample, int endSample)
+void InstrumentProcessor::renderSegment (int startSample, int endSample, int stepLimit)
 {
     if (endSample <= startSample)
         return;
@@ -529,7 +546,7 @@ void InstrumentProcessor::renderSegment (int startSample, int endSample)
 
     if (patternActive)
     {
-        scheduler.collect (clock, pattern, lengths, startSample, endSample, stopAtPpq);
+        scheduler.collect (clock, pattern, lengths, startSample, std::max (startSample, std::min (endSample, stepLimit)), stopAtPpq);
 
         // Händelserna i tidsordning: det som väntat från tidigare segment och det som schemaläggaren gav (med swing och fördröjning).
         auto numDue = 0;

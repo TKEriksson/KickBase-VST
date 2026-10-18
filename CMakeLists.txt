@@ -240,6 +240,7 @@ target_sources(KickbaseMcp PRIVATE
     Tools/Freesound.cpp
     Tools/Tb303Tests.cpp
     Tools/Tb303Unit.cpp
+    Tools/PatternTests.cpp
 )
 target_compile_definitions(KickbaseMcp PRIVATE JucePlugin_Name="Kickbase" JUCE_MODAL_LOOPS_PERMITTED=1)
 target_link_libraries(KickbaseMcp PRIVATE juce::juce_audio_utils juce::juce_dsp KickbaseGuides)

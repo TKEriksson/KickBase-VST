@@ -928,7 +928,7 @@ namespace
     // Hur tungt det är: tid per sekund ljud med 3 och med 10 instrument som alla spelar (under 1,0 = snabbare än realtid på en kärna).
     int perfTest()
     {
-        auto timeIt = [] (int count)
+        auto timeIt = [] (int count, bool tb303 = false)
         {
             const auto owner = std::make_unique<InstrumentProcessor>();
             auto& processor = *owner;
@@ -937,6 +937,10 @@ namespace
             processor.setInstrumentCount (count);
             for (int layer = 3; layer < count; ++layer)
                 processor.pattern.applyLayerTemplate (layer, PatternTemplate::rolling);
+            if (tb303) // fas D1: alla instrument med TB-303-modellen
+                for (int layer = 0; layer < count; ++layer)
+                    if (auto* model = processor.apvts.getParameter (ParamID::bass (layer, InstrumentField::filterModel)))
+                        model->setValueNotifyingHost (1.0f);
             juce::MidiBuffer first, none;
             first.addEvent (juce::MidiMessage::noteOn (1, 52, (juce::uint8) 100), 0);
             juce::AudioBuffer<float> buffer (2, blockSize);
@@ -965,6 +969,9 @@ namespace
         std::puts (("1 instrument:  " + juce::String (one, 3) + " s CPU per sekund ljud").toRawUTF8());
         std::puts (("3 instrument:  " + juce::String (few, 3) + " s CPU per sekund ljud").toRawUTF8());
         std::puts (("10 instrument: " + juce::String (many, 3) + " s CPU per sekund ljud").toRawUTF8());
+        const auto manyTb = timeIt (10, true), fewTb = timeIt (3, true);
+        std::puts (("3 instrument med TB-303:  " + juce::String (fewTb, 3) + " s CPU per sekund ljud").toRawUTF8());
+        std::puts (("10 instrument med TB-303: " + juce::String (manyTb, 3) + " s CPU per sekund ljud (" + juce::String (manyTb / many, 2) + " x standard)").toRawUTF8());
         return 0;
     }
 
@@ -1561,6 +1568,7 @@ int freesoundTest();        // Tools/Freesound.cpp
 int tb303Measure();         // Tools/Tb303Tests.cpp
 int tb303Unit();            // Tools/Tb303Unit.cpp
 int tb303Test();            // Tools/Tb303Tests.cpp
+int boundaryTest();         // Tools/PatternTests.cpp
 int includeCheck (const juce::String& root); // Tools/Tb303Unit.cpp
 int renderSignaturesTb303(); // Tools/AudioTests.cpp
 
@@ -1623,6 +1631,8 @@ int toolMain (int argc, char* argv[])
         return renderSignaturesTb303();
     if (argc >= 2 && juce::String (argv[1]) == "includecheck")
         return includeCheck (argc > 2 ? juce::String (argv[2]) : juce::String());
+    if (argc == 2 && juce::String (argv[1]) == "boundarytest")
+        return boundaryTest();
     if (argc == 2 && juce::String (argv[1]) == "tb303test")
         return tb303Test();
     if (argc == 2 && juce::String (argv[1]) == "tb303unit")

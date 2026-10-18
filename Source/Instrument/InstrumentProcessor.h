@@ -62,10 +62,11 @@ private:
 
     void readBlockParams();
     void refreshEngineParams();
+    bool noteOffEndsPattern (const juce::MidiMessage& message) const; // en "ton av" som tystar mönstret (NOTE END = Cut)
     void handleMidi (const juce::MidiMessage& message, int sampleOffset);
     void startPattern (int sampleOffset);
     void stopPattern (int sampleOffset);
-    void renderSegment (int startSample, int endSample);
+    void renderSegment (int startSample, int endSample, int stepLimit = std::numeric_limits<int>::max()); // stepLimit: steg från och med den samplingen startas inte
     void renderSamples (int startSample, int endSample);
     void handleEvent (const StepEvent& event);
     void finishBlock (int numSamples);

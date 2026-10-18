@@ -535,7 +535,12 @@ void ControlGroups::layout (juce::Rectangle<int> area, int rowHeight)
     frames.clear();
 
     // Valrutor (rullgardinslistor) får en och en halv ratts bredd, så att texten i dem syns.
-    auto weightOf = [] (const juce::Component* control) { return dynamic_cast<const ChoiceComponent*> (control) != nullptr ? 1.6f : 1.0f; };
+    auto weightOf = [] (const juce::Component* control)
+    {
+        if (const auto* choice = dynamic_cast<const ChoiceComponent*> (control))
+            return choice->weight;
+        return 1.0f;
+    };
 
     for (const auto& row : rows)
     {

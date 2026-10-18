@@ -113,6 +113,7 @@ public:
     };
 
     Box box;
+    float weight = 1.6f; // bredd i rattceller i ControlGroups (valrutor får mer än en ratt; höj den för långa texter)
 
 private:
     juce::Label label;

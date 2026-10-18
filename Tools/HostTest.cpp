@@ -11,6 +11,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <cstdio>
+#include <map>
 
 namespace
 {
@@ -129,7 +130,23 @@ namespace
             out.writeInt64 ((juce::int64) state.getSize());
             out.write (state.getData(), state.getSize());
             stateFile.replaceWithData (out.getData(), out.getDataSize());
-            std::printf ("  sparade %d byte\n", (int) state.getSize());
+            // Alla parametrars namn och värden, så att en nyare version kan jämföras mot dem (state load): nya parametrar får inte ändra något gammalt.
+            // Värdena i en NY instans som laddat tillståndet: det är de som tillståndet verkligen definierar (valparametrar snappas till sina steg, och
+            // värdens MIDI CC-parametrar sparas inte alls).
+            auto second = formats.createPluginInstance (description, 44100.0, 512, error);
+            if (second == nullptr)
+            {
+                std::printf ("FEL: kunde inte skapa den andra instansen: %s\n", error.toRawUTF8());
+                return 1;
+            }
+            second->prepareToPlay (44100.0, 512);
+            second->setStateInformation (state.getData(), (int) state.getSize());
+            juce::String values;
+            for (auto* parameter : second->getParameters())
+                values << parameter->getName (200) << "|" << juce::String (parameter->getValue(), 9) << "\n";
+            second->releaseResources();
+            stateFile.withFileExtension ("params.txt").replaceWithText (values);
+            std::printf ("  sparade %d byte och %d parametrar\n", (int) state.getSize(), instance->getParameters().size());
             return 0;
         }
 
@@ -149,8 +166,44 @@ namespace
         const auto sameId = savedId == id, sameState = again == saved;
         std::printf ("  id %s, tillståndet sparas %s igen (%d byte)\n", sameId ? "samma" : ("ANNAT (sparat " + savedId + ")").toRawUTF8(),
                      sameState ? "identiskt" : "OLIKT", (int) again.getSize());
+        // Mot de sparade värdena (om den gamla versionens parametrar finns i filen): varje parameter som finns i båda ska ha samma värde, och en ny
+        // parameter får inte ha ändrats; alla Filter Model (instrument 1-10) ska stå på Kickbase (värde 0), som i ett projekt som är äldre än parametern.
+        auto valueMismatches = 0, compared = 0, filterModels = 0, filterModelsNotDefault = 0, notInSavedFile = 0;
+        const auto valuesFile = stateFile.withFileExtension ("params.txt");
+        if (valuesFile.existsAsFile())
+        {
+            std::map<juce::String, float> savedValues;
+            for (const auto& line : juce::StringArray::fromLines (valuesFile.loadFileAsString()))
+                if (line.contains ("|"))
+                    savedValues[line.upToLastOccurrenceOf ("|", false, false)] = line.fromLastOccurrenceOf ("|", false, false).getFloatValue();
+            for (auto* parameter : instance->getParameters())
+            {
+                const auto name = parameter->getName (200);
+                const auto savedEntry = savedValues.find (name);
+                if (name.contains ("Filter Model"))
+                {
+                    ++filterModels;
+                    filterModelsNotDefault += juce::approximatelyEqual (parameter->getValue(), 0.0f) && parameter->getText (parameter->getValue(), 20) == "Kickbase" ? 0 : 1;
+                }
+                if (savedEntry == savedValues.end())
+                {
+                    ++notInSavedFile;
+                    continue;
+                }
+                ++compared;
+                if (std::abs (savedEntry->second - parameter->getValue()) > 1.0e-6f)
+                {
+                    if (++valueMismatches <= 30)
+                        std::printf ("    skiljer: %s sparad %.6f nu %.6f (%s)\n", name.toRawUTF8(), savedEntry->second, parameter->getValue(), parameter->getCurrentValueAsText().toRawUTF8());
+                }
+            }
+            std::printf ("  %d parametrar jämförda mot den sparade filen: %d skiljer; %d parametrar fanns inte i den (nya); Filter Model: %d st, %d inte på Kickbase\n",
+                         compared, valueMismatches, notInSavedFile, filterModels, filterModelsNotDefault);
+        }
         instance->releaseResources();
-        return sameId && sameState ? 0 : 1;
+        // En nyare version har fler parametrar än filen: då sparas tillståndet inte identiskt igen, men inget gammalt värde får ha ändrats.
+        const auto newerOk = ! sameState && valuesFile.existsAsFile() && notInSavedFile > 0 && valueMismatches == 0 && filterModelsNotDefault == 0;
+        return sameId && (sameState || newerOk) && valueMismatches == 0 && filterModelsNotDefault == 0 ? 0 : 1;
     }
 }
 
