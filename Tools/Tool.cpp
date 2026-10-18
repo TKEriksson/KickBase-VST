@@ -895,10 +895,10 @@ namespace
             check ((int) processor.apvts.getRawParameterValue ("lfo2Shape")->load() == 6 && processor.lfoCurves[1].getPoints().size() == 3
                        && (int) processor.apvts.getRawParameterValue ("lfo2Mode")->load() == 1 && std::abs (processor.apvts.getRawParameterValue ("lfo2Hz")->load() - 3.5f) < 0.01f,
                    "en egen LFO-kurva och fri hastighet sätts via verktyget");
-            juce::MemoryBlock state;
-            processor.getStateInformation (state);
+            juce::MemoryBlock curveState;
+            processor.getStateInformation (curveState);
             const auto other = std::make_unique<InstrumentProcessor>();
-            other->setStateInformation (state.getData(), (int) state.getSize());
+            other->setStateInformation (curveState.getData(), (int) curveState.getSize());
             check (other->lfoCurves[1].getPoints().size() == 3 && std::abs (other->lfoCurves[1].evaluate (0.5f) - 1.0f) < 0.01f, "LFO-kurvan sparas och läses tillbaka i projektet");
         }
 
@@ -956,7 +956,7 @@ namespace
             const auto start = juce::Time::getMillisecondCounterHiRes();
             constexpr int count = 5;
             for (int i = 0; i < count; ++i)
-                std::make_unique<InstrumentProcessor>();
+                [[maybe_unused]] const auto instance = std::make_unique<InstrumentProcessor>(); // (bara tiden mäts)
             std::printf ("ny instans (med Init): %.0f ms\n", (juce::Time::getMillisecondCounterHiRes() - start) / count);
             PluginBase::preferCodeInit = codeInit;
         }
@@ -1002,7 +1002,7 @@ namespace
             juce::ZipFile::Builder builder;
             auto add = [&builder] (const juce::String& name)
             {
-                builder.addEntry (new juce::MemoryInputStream ("RIFFdata", 8, true), 5, name, juce::Time::getCurrentTime());
+                builder.addEntry (std::make_unique<juce::MemoryInputStream> ("RIFFdata", 8, true), 5, name, juce::Time::getCurrentTime());
             };
             add ("AKWF-FREE-master/AKWF/AKWF_0001/AKWF_0001.wav");
             add ("AKWF-FREE-master/AKWF/AKWF_0002/AKWF_0002.wav");
@@ -1368,8 +1368,8 @@ namespace
             setPlain (ParamID::bass (0, BassField::fxAmount), 0.0f);
             Effects::setSlotType (processor.apvts, 0, 0, EffectType::ducker);
             const auto free1 = processor.firstFreeFxChannel() == 1;
-            const auto loaded = processor.loadInstrumentPreset (Presets::Section::bass, 0, instLinkFile);
-            const auto autoOk = loaded.ok && loaded.fxChannel == 1 && Effects::slotType (processor.apvts, 1, 0) == EffectType::ducker
+            const auto linked = processor.loadInstrumentPreset (Presets::Section::bass, 0, instLinkFile);
+            const auto autoOk = linked.ok && linked.fxChannel == 1 && Effects::slotType (processor.apvts, 1, 0) == EffectType::ducker
                              && (int) plain (ParamID::bass (0, BassField::fxChannel)) == 2 && std::abs (plain (ParamID::bass (0, BassField::fxAmount)) - 0.6f) < 0.01f
                              && std::abs (plain (ParamID::bass (0, BassField::cutoff)) - 1234.0f) < 1.0f;
 

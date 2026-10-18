@@ -834,7 +834,7 @@ void SpectrumPage::paintEq (juce::Graphics& g, juce::Rectangle<float> area)
         const auto hz = lowHz * std::pow (highHz / lowHz, (float) px / (float) width);
         auto magnitude = 1.0f;
         for (const auto& c : coefficients)
-            magnitude *= c->getMagnitudeForFrequency (hz, rate);
+            magnitude = (float) (magnitude * c->getMagnitudeForFrequency (hz, rate));
         const auto db = juce::jlimit (-60.0f, 30.0f, juce::Decibels::gainToDecibels (magnitude, -60.0f));
         const auto y = dbToY (eqCentreDb) - db * pixelsPerDb;
         if (px == 0)

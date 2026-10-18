@@ -173,9 +173,9 @@ void FxProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuff
 
     for (int i = 0; i < numSamples; ++i)
     {
-        const auto kickSample = kickData[i] * masterGain;
-        const auto left = synthBuffer.getSample (0, i) * inputLevel + kickSample;
-        const auto right = synthBuffer.getSample (1, i) * inputLevel + kickSample;
+        const auto kickValue = kickData[i] * masterGain;
+        const auto left = synthBuffer.getSample (0, i) * inputLevel + kickValue;
+        const auto right = synthBuffer.getSample (1, i) * inputLevel + kickValue;
 
         if (buffer.getNumChannels() == 1)
             buffer.setSample (0, i, 0.5f * (left + right));

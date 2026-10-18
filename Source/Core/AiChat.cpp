@@ -180,9 +180,9 @@ var AiChat::buildRequest() const
     return body;
 }
 
-var AiChat::post (const juce::String& key, const var& body, int& status, juce::String& error)
+var AiChat::post (const juce::String& key, const var& body, int& httpStatus, juce::String& error)
 {
-    status = 0;
+    httpStatus = 0;
     juce::URL url (Settings::get ("chatEndpoint", "https://api.anthropic.com/v1/messages")); // (chatEndpoint: bara för tester)
     url = url.withPOSTData (juce::JSON::toString (body, true));
     const juce::String headers = "content-type: application/json\r\nx-api-key: " + key + "\r\nanthropic-version: 2023-06-01\r\n";
@@ -203,7 +203,7 @@ var AiChat::post (const juce::String& key, const var& body, int& status, juce::S
     } release { *this };
 
     const auto connected = stream.connect (nullptr);
-    status = stream.getStatusCode();
+    httpStatus = stream.getStatusCode();
     if (! connected || stream.isError())
     {
         error = threadShouldExit() ? juce::String ("Cancelled.") : juce::String ("Could not reach api.anthropic.com (no internet, a firewall, or a proxy?).");
@@ -212,12 +212,12 @@ var AiChat::post (const juce::String& key, const var& body, int& status, juce::S
 
     const auto text = stream.readEntireStreamAsString();
     const auto parsed = juce::JSON::parse (text);
-    if (status >= 400 || parsed["type"].toString() == "error")
+    if (httpStatus >= 400 || parsed["type"].toString() == "error")
     {
         const auto message = parsed["error"]["message"].toString();
-        error = status == 401 ? "The API key was not accepted (401). Check it with the KEY button."
-              : status == 429 ? "Rate limit or no credit left on your Anthropic account (429): " + message
-              : "The AI service answered with an error" + (status > 0 ? " (" + juce::String (status) + ")" : juce::String()) + ": " + (message.isNotEmpty() ? message : shorten (text, 300));
+        error = httpStatus == 401 ? "The API key was not accepted (401). Check it with the KEY button."
+              : httpStatus == 429 ? "Rate limit or no credit left on your Anthropic account (429): " + message
+              : "The AI service answered with an error" + (httpStatus > 0 ? " (" + juce::String (httpStatus) + ")" : juce::String()) + ": " + (message.isNotEmpty() ? message : shorten (text, 300));
         return {};
     }
     if (! parsed.isObject())

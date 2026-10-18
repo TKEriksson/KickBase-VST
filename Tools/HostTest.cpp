@@ -18,7 +18,7 @@ namespace
     bool runOnce (const juce::File& file, int round)
     {
         juce::AudioPluginFormatManager formats;
-        formats.addFormat (new juce::VST3PluginFormat());
+        formats.addFormat (std::make_unique<juce::VST3PluginFormat>());
 
         juce::OwnedArray<juce::PluginDescription> found;
         formats.getFormat (0)->findAllTypesForFile (found, file.getFullPathName());
@@ -54,7 +54,7 @@ namespace
             // Öppna editorn, låt den rita och ticka en stund, stäng den.
             if (instance->hasEditor())
             {
-                std::unique_ptr<juce::AudioProcessorEditor> editor (instance->createEditorIfNeeded());
+                std::unique_ptr<juce::AudioProcessorEditor> editor (instance->createEditorAndMakeActive());
                 if (editor != nullptr)
                 {
                     editor->setVisible (false);
@@ -73,7 +73,7 @@ namespace
 
             // En editor till (som när fönstret öppnas igen) och sedan avslut i samma ordning som en värd.
             {
-                std::unique_ptr<juce::AudioProcessorEditor> second (instance->createEditorIfNeeded());
+                std::unique_ptr<juce::AudioProcessorEditor> second (instance->createEditorAndMakeActive());
                 pump (150);
             }
             instance->releaseResources();

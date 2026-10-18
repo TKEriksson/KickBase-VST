@@ -368,7 +368,7 @@ void StepSequencer::timerCallback()
         {
             lengthBoxes[row]->setEnabled (! inRoll);
             lengthBoxes[row]->setTooltip (inRoll ? juce::String ("This row is a piano roll: set its length in the piano roll (LENGTH in its toolbar).")
-                                                 : (row == 0 ? juce::String ("KICK") : layerNames[row - 1]) + " LENGTH - How many bars this row lasts. Total = as long as the whole pattern "
+                                                 : (row == 0 ? juce::String ("KICK") : layerNames[(int) row - 1]) + " LENGTH - How many bars this row lasts. Total = as long as the whole pattern "
                                                    "(which is at least as long as the longest row). A shorter row repeats (shown dimmed) while the longest row plays out, "
                                                    "or plays once if its loop button is off.");
         }

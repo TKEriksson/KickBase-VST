@@ -115,7 +115,7 @@ BassGrid Pattern::applyLayerTemplate (int layer, PatternTemplate t)
     {
         const auto inBeat = i % perQuarter;
         auto on = false;
-        auto gate = defaultGate;
+        const auto noteLength = defaultGate;
 
         switch (t)
         {
@@ -127,7 +127,7 @@ BassGrid Pattern::applyLayerTemplate (int layer, PatternTemplate t)
         }
 
         if (on)
-            addNote (layer, i * stepTicks, juce::roundToInt (gate * (float) stepTicks));
+            addNote (layer, i * stepTicks, juce::roundToInt (noteLength * (float) stepTicks));
     }
 
     return grid;
@@ -279,7 +279,7 @@ void Pattern::fromValueTree (const juce::ValueTree& tree, bool clearUnmentionedL
             const auto grid = (BassGrid) g;
             const auto stepTicks = ticksPerStep (grid);
             const auto on = split (child["on"], ","), pitch = split (child["pitch"], ","), slide = split (child["slide"], ",");
-            const auto gate = split (child["gate"], ","), velocity = split (child["velocity"], ",");
+            const auto gates = split (child["gate"], ","), velocity = split (child["velocity"], ",");
 
             for (int i = 0; i < on.size(); ++i)
             {
@@ -287,7 +287,7 @@ void Pattern::fromValueTree (const juce::ValueTree& tree, bool clearUnmentionedL
                 if (on[i].getIntValue() == 0 || tick >= maxTicks)
                     continue;
 
-                const auto gateFraction = i < gate.size() ? juce::jlimit (0.05f, 1.0f, gate[i].getFloatValue()) : defaultGate;
+                const auto gateFraction = i < gates.size() ? juce::jlimit (0.05f, 1.0f, gates[i].getFloatValue()) : defaultGate;
                 addNote (layer, tick, juce::roundToInt (gateFraction * (float) stepTicks), i < pitch.size() ? pitch[i].getIntValue() : 0,
                          i < velocity.size() ? velocity[i].getFloatValue() : 0.8f, i < slide.size() && slide[i].getIntValue() != 0);
             }

@@ -563,17 +563,17 @@ BassModule::BassModule (PluginBase& p, int layerIn)
 {
     using F = BassField;
     auto id = [this] (F f) { return ParamID::bass (layer, f); };
-    const auto accent = Theme::layerColour (layer);
+    const auto layerAccent = Theme::layerColour (layer);
 
     setHeaderPreset (&presets);
     addAndMakeVisible (presets);
-    fxSend = std::make_unique<FxSendControl> (p.apvts, id (F::fxChannel), id (F::fxAmount), "FX SEND", accent);
+    fxSend = std::make_unique<FxSendControl> (p.apvts, id (F::fxChannel), id (F::fxAmount), "FX SEND", layerAccent);
     addAndMakeVisible (*fxSend);
     setHeaderFxSend (fxSend.get());
     envelope.onBeforePaint = [this] { current = refs.readBass (layer, 36); };
 
     envelope.addCurve ({ [this] (double t) { return BassSynth::filterEnvelopeAt (current, t) * current.envAmount / 8.0f; },
-                         accent, true, "FILTER" });
+                         layerAccent, true, "FILTER" });
     envelope.addCurve ({ [this] (double t) { return ampValueAt (t); }, Theme::text.withAlpha (0.8f), false, "AMP" });
     envelope.addCurve ({ [this] (double t) { return pitchValueAt (t); }, juce::Colour (0xffe6c23c).withAlpha (0.9f), false, "PITCH" }); // tonhöjdsenvelopen (storleken, uppåt eller nedåt)
     envelope.addHandle ({ [this] {
@@ -582,11 +582,11 @@ BassModule::BassModule (PluginBase& p, int layerIn)
                           param (p, id (F::pitchEnvDecay)), nullptr, false, juce::Colour (0xffe6c23c) });
 
     envelope.addHandle ({ [this] { return juce::Point<float> (std::max (0.0015f, current.envAttackMs * 0.001f), current.envAmount / 8.0f); },
-                          param (p, id (F::envAttack)), param (p, id (F::envAmount)), false, accent });
+                          param (p, id (F::envAttack)), param (p, id (F::envAmount)), false, layerAccent });
     envelope.addHandle ({ [this] {
                               const auto t = current.envAttackMs * 0.001 + current.envDecayMs * 0.001 / 3.0;
                               return juce::Point<float> ((float) t, BassSynth::filterEnvelopeAt (current, t) * current.envAmount / 8.0f); },
-                          param (p, id (F::envDecay)), nullptr, false, accent });
+                          param (p, id (F::envDecay)), nullptr, false, layerAccent });
 
     envelope.addHandle ({ [this] { return juce::Point<float> (current.attackMs * 0.001f, 1.0f); },
                           param (p, id (F::attack)), nullptr, false, Theme::text });
@@ -601,24 +601,24 @@ BassModule::BassModule (PluginBase& p, int layerIn)
 
     // Källorna i flikar: OSC 1, OSC 2, OSC 3 och SAMPLE, var och en med en på/av-knapp på fliken.
     for (int osc = 0; osc < ParamID::oscsPerLayer; ++osc)
-        oscs[(size_t) osc] = std::make_unique<OscPanel> (p, layer, osc, accent);
-    samplePage = std::make_unique<SamplePage> (p, layer, accent);
+        oscs[(size_t) osc] = std::make_unique<OscPanel> (p, layer, osc, layerAccent);
+    samplePage = std::make_unique<SamplePage> (p, layer, layerAccent);
     addAndMakeVisible (sources);
     for (int osc = 0; osc < ParamID::oscsPerLayer; ++osc)
     {
-        sources.addTab ("OSC " + juce::String (osc + 1), accent, *oscs[(size_t) osc]);
+        sources.addTab ("OSC " + juce::String (osc + 1), layerAccent, *oscs[(size_t) osc]);
         sources.addPower (osc, p.apvts, ParamID::bass (layer, ParamID::oscField (osc, F::aOn)));
     }
     listenButton.setTooltip ("LISTEN - Plays this layer's sound (one second, the key's root note) so you can hear it without a DAW note. "
                              "Click an oscillator's picture to hear just that oscillator.");
     listenButton.onClick = [this] { processor.requestAudition (PluginBase::layerAudition (layer)); };
     addAndMakeVisible (listenButton);
-    sources.addTab ("SAMPLE", accent, *samplePage);
+    sources.addTab ("SAMPLE", layerAccent, *samplePage);
     sources.addPower (ParamID::oscsPerLayer, p.apvts, ParamID::bass (layer, F::sampleOn));
 
     auto knob = [&] (const juce::String& paramID, const char* name) -> juce::Component*
     {
-        controls.push_back (std::make_unique<KnobComponent> (p.apvts, paramID, name, accent));
+        controls.push_back (std::make_unique<KnobComponent> (p.apvts, paramID, name, layerAccent));
         addAndMakeVisible (*controls.back());
         return controls.back().get();
     };

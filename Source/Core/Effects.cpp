@@ -402,7 +402,7 @@ namespace Effects
     {
         float magnitude = 1.0f;
         for (auto& c : eqCoefficients (rate, s))
-            magnitude *= c->getMagnitudeForFrequency (hz, rate);
+            magnitude = (float) (magnitude * c->getMagnitudeForFrequency (hz, rate));
         return Decibels::gainToDecibels (magnitude, -60.0f);
     }
 
@@ -1351,7 +1351,6 @@ struct EffectRack::Impl
 {
     explicit Impl (AudioProcessorValueTreeState& apvts)
     {
-        apvtsPointer = &apvts;
         for (int ch = 0; ch < numEffectChannels; ++ch)
         {
             const char* keys[] { "CompThr", "CompRatio", "CompAtt", "CompRel", "CompMakeup" };
@@ -1369,7 +1368,6 @@ struct EffectRack::Impl
     std::array<std::unique_ptr<EffectChain>, numEffectChannels> chains;
     std::array<ChannelStrip, numEffectChannels> strips;
     std::vector<Effects::EqRefs> eqRefs; // en per kanal (skapas i konstruktorn)
-    AudioProcessorValueTreeState* apvtsPointer = nullptr;
     std::array<std::array<std::atomic<float>*, 5>, numEffectChannels> comp {}; // thr, ratio, att, rel, makeup
     std::array<std::atomic<float>*, numEffectChannels> level {}, duck {};
     std::array<AudioBuffer<float>, numEffectChannels> buffers;

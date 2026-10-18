@@ -74,13 +74,7 @@ namespace Help
             // Mönster och mix
             { "patternBars", "TOTAL LENGTH: how many bars the whole pattern lasts before it starts over (1 to 64). It is at least as long as the longest row. Rows can be shorter: see the length box under each row's knobs." },
             { "rowLoopKick", "On: the kick row repeats if it is shorter than the pattern. Off: it plays once and is then silent until the pattern starts over." },
-            { "rowLoopBass1", "On: instrument 1 repeats if its row is shorter than the pattern. Off: it plays once and is then silent until the pattern starts over." },
-            { "rowLoopBass2", "On: instrument 2 repeats if its row is shorter than the pattern. Off: it plays once and is then silent until the pattern starts over." },
-            { "rowLoopBass3", "On: instrument 3 repeats if its row is shorter than the pattern. Off: it plays once and is then silent until the pattern starts over." },
             { "rowBarsKick", "The kick row's own length in bars. Total = as long as the whole pattern." },
-            { "rowBarsBass1", "Instrument 1's own length in bars. Total = as long as the whole pattern." },
-            { "rowBarsBass2", "Instrument 2's own length in bars. Total = as long as the whole pattern." },
-            { "rowBarsBass3", "Instrument 3's own length in bars. Total = as long as the whole pattern." },
             { "instrumentCount", "How many instruments are used (1-10). Each has its own pattern, oscillators, filter, envelopes, effect send and sidechain depth." },
             { "patSwing", "SWING - For the whole pattern: pushes the off-beat sixteenths of ALL instruments later (0 % = straight, 100 % = triplet feel). Each instrument can add its own swing. The kick stays on the grid." },
             { "patHumanize", "HUMANIZE - For the whole pattern: every note of ALL instruments comes a random 0-20 ms late, so it feels played rather than programmed. The kick stays on the grid." },

@@ -6,6 +6,13 @@
 #include "Mixer.h"
 #include <map>
 
+// Tal som sparade projekt och presets bygger på: ändras de läses gamla filer fel (eller måste migreras).
+static_assert (Pattern::numLayers == 10 && Pattern::kickLayer == 10, "mönstrets lager sparas med index; kicken är lager 10 sedan version 6");
+static_assert (numEffectChannels == 11 && slotsPerChannel == 5, "FX-kanalernas id:n är fxA-fxK med fem platser");
+static_assert (Modulation::numLfos == 3 && Modulation::numMacros == 4 && Modulation::firstInstrumentSource == 7
+                   && Modulation::instrumentSources == 4, "modulationskällorna sparas som tal i modRoutes");
+static_assert (ParamID::oscsPerLayer == 3, "projektens egna wavetables sparas med lager och oscillator (OSC 1-3)");
+
 namespace
 {
     const juce::Identifier clickTreeType { "ClickSample" };
