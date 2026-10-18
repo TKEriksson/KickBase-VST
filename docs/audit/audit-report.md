@@ -72,10 +72,54 @@ Mätt med de nya profilerarna. Alla siffror RelWithDebInfo (Release är snabbare
 | [MixAnalysis.cpp](../../Source/Core/MixAnalysis.cpp) `periodHz` | Kickens svans: energierna räknades om för varje fördröjning. | en analys 1,93 → 1,28 s, rapporterna identiska | rättad f6885fe |
 | [SpectrumPage.cpp](../../Source/Ui/SpectrumPage.cpp) | Tysta källor hoppar över FFT:n, kurvorna kopieras inte varje bildruta. Resten är själva ritningen. | ~44 % av en kärna med 10 tunga instrument | delvis rättad f2272d1; fråga 2 |
 | ANALYSE | Kör med låg prioritet; kan göras ännu snällare mot DAW:en. | | fråga 3 |
-| Ljudtråden, tungt läge med 10 instrument | 58 % av en kärna (RelWithDebInfo). Största posterna: JUCE:s IIR-filter (EQ:erna) ~20 %, oscillatorerna och wavetables ~17 %, effektkanalerna ~10 %, filtrens koefficientomräkning (`tan`) 5–15 %. | | se avsnitt 3b (fortsätter) |
+| Ljudtråden, tungt läge med 10 instrument | 58 % av en kärna (RelWithDebInfo). Största posterna: JUCE:s IIR-filter (EQ:erna) ~20 %, oscillatorerna och wavetables ~17 %, effektkanalerna ~10 %, filtrens koefficientomräkning (`tan`) 5–15 %. | | se 3b |
+
+### 3b. Ljudtråden (commit 05c999e)
+
+Profilerat med `tool profile` (riktiga Init med 3 instrument, och det tunga läget med 10). Allt nedan är **bit-identiskt** (`rendersig`,
+`rendersigreal`, `rendersigwide`, dina 165 presets).
+
+| Var | Vad | Status |
+|---|---|---|
+| [Biquad.h](../../Source/Core/Biquad.h), [SourceEq.cpp](../../Source/Core/SourceEq.cpp), [Effects.cpp](../../Source/Core/Effects.cpp) | EQ:erna (kick, instrument, master, FX-kanalerna, EQ-effekten) använde `juce::dsp::IIR::Filter::processSample`, som för *varje sample* anropar `check()` och `getFilterOrder()` och kör en generell slinga. `Biquad` gör samma räkneoperationer i samma ordning, med samma normalisering av koefficienterna som JUCE:s `Coefficients::assignImpl` (därför identiska bitar). | rättad |
+| [BassSynth.cpp](../../Source/Core/BassSynth.cpp) | Cutoff *och* resonans sattes på alla fyra filter varje gång filterenvelopen rörde sig: 8 `tan` per sample och röst. `StateVariableTPTFilter::update` räknar om från sina medlemmar, så nu anropas bara den setter vars värde ändrats. | rättad |
+| [KickEngine.cpp](../../Source/Core/KickEngine.cpp) | Kickens low/high cut-, brus- och klickfilter sattes varje sample; nu bara vid ändring. Övertonernas `n^-tilt` sparas per tilt. | rättad |
+| Drive (instrument och kick) | `tanh(gain)` (och `tanh(bias)`, `exp2`) räknades två gånger per sample; nu en gång per ändrad drive/läge. | rättad |
+| [Master.cpp](../../Source/Core/Master.cpp) | Limiterns fönsterminimum (72 värden vid 48 kHz, varje sample) är nu en monoton kö (O(1)). CLIP på 0 hoppar över `tanh` (x + 0 ger samma bitar, också −0). | rättad |
+
+CPU per sekund ljud (RelWithDebInfo): riktiga Init med 3 instrument 0,056 → 0,036 s, tungt läge med 10 instrument 0,583 → 0,383 s,
+`perftest` 0,022/0,041/0,133 → 0,018/0,036/0,100 s. Alltså ungefär en tredjedel snabbare.
+
+Kvar (inte gjort, skulle ändra ljudet en aning eller kräver mer arbete): oscillatorernas wavetable-läsning (~17 %) och
+effektkanalernas reverb/delay. Ingen av dem är ett problem i dag.
 
 ## 4. Texter, namn och dokumentation
 
 | Var | Vad | Allvar | Status |
 |---|---|---|---|
 | [Params.cpp:141, 214](../../Source/Core/Params.cpp) | Två parametrar hette "Kick Length" (`rowBarsKick`, `kickLength`) och två "Instr N Length" (`rowBarsBassN`, `bassNGate`) i DAW:ens automationslista. Nu "Kick Row Length", "Instr N Row Length", "Instr N Note Length". ID:n orörda. | förvirrande | rättad f2272d1 |
+| [Effects.cpp](../../Source/Core/Effects.cpp) | Effektplatsernas namn i DAW:en, "FX1 1 Type", såg ut som kanal FX11. Nu "FX1 Slot 1 Type". | förvirrande | rättad 312d572 |
+| [Params.cpp](../../Source/Core/Params.cpp) | Oscillatorerna hette A/B/C i DAW:en men OSC 1–3 i gränssnittet; mixern "Bass N"; `bassNGlide` (används inte längre) såg ut som en vanlig ratt och fanns bland MATRIX-målen; Kick Low Cut visade 20 Hz när den är av. Nu "Osc 1–3", "Mixer Kick/Instr N", "Glide (unused)" (borttagen ur MATRIX), "Off". | förvirrande | rättad 312d572 |
+| [Help.cpp](../../Source/Ui/Help.cpp) | Varje parameter och varje effektratt har nu en förklaring (`tool helpcheck`: 0 saknas). Fel texter rättade: Glide, Kick Clip Mode (Fold saknades), OSC A/B, och sidechain-effektens rattar visade kompressorns THRESHOLD/ATTACK/RELEASE-texter (`forEffectKnob` får nu effekttypen). Döda poster borttagna. | förvirrande | rättad cb75289 |
+| [ToolLayer.cpp](../../Source/Core/ToolLayer.cpp) | `list_parameters` och `list_effects` ger AI:n förklaringen (`help`), som [sound-design-roadmap.md](../sound-design-roadmap.md) ber om för registret. | – | rättad cb75289 |
+| README.md | Raden `.\build.bat` var trasig (ett backsteg i filen), 13 effekttyper (15 finns), fel exe-namn, presets-beskrivningen gammal, `createVst.bat` nämndes inte. | förvirrande | rättad dd9c596 |
+| docs/DESIGN.md | Hette annat än länkarna i CLAUDE.md och README; beskrev tre baslager och FX A–E. Nu upp till tio instrument, FX1–FX11 (ID:n `fxA`–`fxK`). | förvirrande | rättad dd9c596 |
+| docs/AGENT_GUIDE.md, [AnalysisAbout.h](../../Source/Core/AnalysisAbout.h) | AI:ns guide: fältet `help`, vad presets sparar, att kicken inte har DUCK. Analysens "om"-text: kickens svans mäts i tidsdomänen. | förvirrande | rättad dd9c596 |
+
+### 4b. Design och användbarhet
+
+Skärmbilder av alla flikar med 1, 3 och 10 instrument, och av Kickbase FX. Allt utom raderna nedan var pixel-identiskt mot det gamla bygget.
+
+| Var | Vad | Allvar | Status |
+|---|---|---|---|
+| [OscPanel.cpp](../../Source/Ui/OscPanel.cpp) | Wavetable-bilden visade "Basic" tills timern gått en gång, och ritades inte om när en tabell blev klar i bakgrunden. | kosmetiskt | rättad b6d3abb |
+| [LfoPage.cpp](../../Source/Ui/LfoPage.cpp) | "→ Instr 2 Cutoff +26 %"-raden under en LFO syntes först efter en stund. | kosmetiskt | rättad b6d3abb |
+| [Scopes.cpp](../../Source/Ui/Scopes.cpp) | Sidechain-förklaringen (DUCK 1–10) klipptes med många instrument: nu radbryts den. SOUNDSTAGE: "INSTRUMENTS" krockade med "MASTER". | kosmetiskt | rättad b6d3abb, a8553d5 |
+| [EnvelopeView.cpp](../../Source/Ui/EnvelopeView.cpp) | Tidsetiketterna (10ms/50ms) skrevs ovanpå varandra i smala envelopes. | kosmetiskt | rättad b6d3abb |
+| [Modules.cpp](../../Source/Ui/Modules.cpp) | LAYER OUT-ratten hette GATE men är notlängden (GATE är hackrytmen i mönstret). Nu LENGTH. | förvirrande | rättad b6d3abb |
+| [Modules.h](../../Source/Ui/Modules.h) | Kickbase FX: OUT-mätaren låg över "140.0 BPM" (den placerades efter EXPORT, som inte finns i FX). | kosmetiskt | rättad a8553d5 |
+| [SettingsPage.cpp](../../Source/Ui/SettingsPage.cpp) | Kickbase FX: WAVETABLE PACK-kolumnen klipptes (och FX har inga oscillatorer); hjälptexter syntes som halva rader. Nu utan vågformspaketet och wavetable-mappen i FX. | kosmetiskt | rättad a8553d5 |
+| [SidechainPage.cpp](../../Source/Ui/SidechainPage.cpp) | Kickbase FX: "Set MODE to Curve to draw your o…" klipptes. | kosmetiskt | rättad a8553d5 |
+| SETTINGS | "INSTALL AKWF PACK" står kvar när paketet redan finns (knappen installerar om). | kosmetiskt | föreslagen |
+| Kickbase FX | Sidechain-förklaringen säger "INSTRUMENTS DUCKED"/"DUCK 1" fast det i FX är ljudet som kommer in. | förvirrande | föreslagen |
+| KICK-fliken | 22 rattar i två rader; grupperna är tydliga men BODY/CLICK/TOP/SAMPLE kunde ha en egen färgnyans per grupp. | – | föreslagen (smak) |

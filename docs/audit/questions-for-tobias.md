@@ -105,3 +105,30 @@ utdata från tidigare sessioner (enligt agenten som byggde dem). `createVst.bat`
 **Alternativ.** **A (rekommenderas):** jag raderar de sex gamla filerna och checkar in `createVst.bat`. B: låt dem ligga.
 
 **Om du inte svarar:** inget raderas. **Status:** fråga.
+
+---
+
+## 8. Mappen och GitHub-repot heter fortfarande MyOwnFruit
+
+**Sammanhang.** CMake-målen, skripten och dokumenten heter nu Kickbase (se rapporten). Kvar är själva mappen
+`C:\Users\hunga\Documents\GitHub\MyOwnFruit` och repot `github.com/TKEriksson/MyOwnFruit`. Det kan jag inte byta mitt i en session:
+Claude Codes minne är knutet till sökvägen, CMake-cachen i `build\` innehåller den, och att döpa om repot är en ändring på GitHub.
+Plugin-identiteten påverkas inte (VST3-id:t räknas bara från `PLUGIN_MANUFACTURER_CODE` och `PLUGIN_CODE`, se rapporten), så FL hittar
+dina projekt som förut.
+
+**Om du vill byta (ca 15 minuter, plus ett bygge):**
+1. Stäng FL Studio, VS Code och alla Claude Code-fönster. (Claude Desktops MCP-brygga ligger i `%LOCALAPPDATA%\Kickbase` och påverkas inte.)
+2. Döp om mappen i Utforskaren: `Documents\GitHub\MyOwnFruit` → `Documents\GitHub\Kickbase`.
+3. Kopiera Claude Codes minne (kopiera, så att det gamla finns kvar som backup):
+   `C:\Users\hunga\.claude\projects\c--Users-hunga-Documents-GitHub-MyOwnFruit` →
+   `C:\Users\hunga\.claude\projects\c--Users-hunga-Documents-GitHub-Kickbase`
+4. Radera mappen `build` i den omdöpta mappen (CMake-cachen har den gamla sökvägen) och bygg om:
+   `.\build.bat Release all` (tar en stund), sedan `createVst.bat` som administratör.
+5. GitHub: repot → **Settings** → **General** → *Repository name* → `Kickbase` → **Rename**. GitHub skickar den gamla adressen vidare.
+   Sedan i den omdöpta mappen: `git remote set-url origin https://github.com/TKEriksson/Kickbase.git` och `git fetch` för att se att det fungerar.
+6. Öppna mappen i VS Code och starta Claude Code där. Kör `install-mcp.ps1 Release` om du vill uppdatera bryggan också.
+
+**Alternativ.** **A (rekommenderas):** gör det när granskningen är sammanslagen, så att inget annat pågår samtidigt. B: låt det vara
+(allt fungerar med det gamla mappnamnet).
+
+**Om du inte svarar:** inget ändras. **Status:** fråga (bara du kan göra det).
