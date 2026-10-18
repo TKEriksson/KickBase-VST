@@ -89,7 +89,7 @@ private:
     std::unique_ptr<FxSendControl> fxSend;
 
     juce::Label sampleLabel;
-    juce::TextButton loadButton { "Load" }, clearButton { "X" }, listenButton { "LISTEN" }, listenSampleButton { "HEAR SAMPLE" };
+    juce::TextButton loadButton { "LOAD" }, clearButton { "X" }, listenButton { "LISTEN" }, listenSampleButton { "HEAR SAMPLE" };
     std::unique_ptr<juce::FileChooser> chooser;
     bool dragHover = false;
 };

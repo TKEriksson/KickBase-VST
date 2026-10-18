@@ -9,6 +9,7 @@ WavetableView::WavetableView (PluginBase& p, int layerIn, int oscIn, juce::Colou
                 + " - The wavetable: all its waveforms stacked from back to front. CLICK it to hear just this oscillator (even if it is off). "
                   "POS chooses which waveform plays (drag an LFO onto POS to sweep through them); WARP bends the waveform you see in front.");
     startTimerHz (Settings::animationHz (30));
+    timerCallback(); // rätt tabell redan i första bilden (annars ritades Basic tills timern gått en gång)
 }
 
 float WavetableView::raw (BassField field) const
@@ -23,12 +24,14 @@ void WavetableView::timerCallback()
     const auto table = (int) raw (BassField::aTable);
     const auto warpMode = (int) raw (BassField::aWarp);
     const auto warp = raw (BassField::aWarpAmount);
-    if (position != lastPosition || table != lastTable || warpMode != lastWarpMode || warp != lastWarp)
+    const auto ready = table == Wavetables::userIndex() || Wavetables::isReady (table);
+    if (position != lastPosition || table != lastTable || warpMode != lastWarpMode || warp != lastWarp || ready != lastReady)
     {
         lastPosition = position;
         lastTable = table;
         lastWarpMode = warpMode;
         lastWarp = warp;
+        lastReady = ready;
         repaint();
     }
 }

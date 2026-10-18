@@ -28,6 +28,7 @@ private:
     int positionIndex = -1;
     float lastPosition = -1.0f, lastWarp = -1.0f;
     int lastTable = -1, lastWarpMode = -1;
+    bool lastReady = false; // tabellen var byggd vid förra ritningen (byggs den i bakgrunden ritas vyn om när den blir klar)
 };
 
 // En oscillator (OSC 1, 2 eller 3) i ett baslager: tabell, warp, bilden och rattarna.

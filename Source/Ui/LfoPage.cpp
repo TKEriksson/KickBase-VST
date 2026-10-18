@@ -351,6 +351,7 @@ void LfoDragHandle::mouseDrag (const juce::MouseEvent&)
 LfoTargets::LfoTargets (PluginBase& p, int lfoIndex) : processor (p), index (lfoIndex)
 {
     startTimerHz (5);
+    timerCallback(); // kopplingarna syns redan i första bilden (annars "Not connected" en stund)
 }
 
 juce::String LfoTargets::describe() const

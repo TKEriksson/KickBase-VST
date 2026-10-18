@@ -78,6 +78,7 @@ void EnvelopeView::paint (juce::Graphics& g)
     // Rutnät: lodräta linjer vid jämna tider.
     const auto area = plotArea();
     g.setFont (Theme::font (9.0f));
+    auto labelsEnd = -1.0e9f; // högerkanten på förra etiketten: en etikett som skulle hamna ovanpå den hoppas över (linjen ritas ändå)
     for (const auto ms : { 10, 50, 100, 200, 400, 800, 1600 })
     {
         if (ms / 1000.0 > displaySeconds)
@@ -86,8 +87,13 @@ void EnvelopeView::paint (juce::Graphics& g)
         const auto x = timeToX (ms / 1000.0);
         g.setColour (Theme::grid);
         g.drawVerticalLine ((int) x, area.getY(), area.getBottom());
+        const auto label = juce::String (ms) + "ms";
+        const auto labelWidth = (float) juce::GlyphArrangement::getStringWidthInt (Theme::font (9.0f), label);
+        if (x + 2.0f < labelsEnd + 3.0f)
+            continue;
         g.setColour (Theme::textDim.withAlpha (0.6f));
-        g.drawText (juce::String (ms) + "ms", (int) x + 2, (int) area.getY() - 9, 40, 10, juce::Justification::left);
+        g.drawText (label, (int) x + 2, (int) area.getY() - 9, 40, 10, juce::Justification::left);
+        labelsEnd = x + 2.0f + labelWidth;
     }
     g.setColour (Theme::grid);
     g.drawHorizontalLine ((int) area.getBottom(), area.getX(), area.getRight());

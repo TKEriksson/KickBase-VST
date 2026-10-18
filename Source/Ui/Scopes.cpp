@@ -183,13 +183,16 @@ void ScopeView::paint (juce::Graphics& g)
     }
 
     // Namn på vågformerna.
-    auto legend = bounds.reduced (8.0f, 3.0f).withHeight (12.0f);
+    const auto legendRow = bounds.reduced (8.0f, 3.0f).withHeight (12.0f);
+    auto legend = legendRow;
     g.setFont (Theme::font (9.5f, true));
     for (const auto& trace : traces)
     {
         if (trace.instrument >= 0 && trace.instrument >= processor.activeInstruments())
             continue;
         const auto width = (float) juce::GlyphArrangement::getStringWidthInt (Theme::font (9.5f, true), trace.name) + 14.0f;
+        if (legend.getWidth() < width && legend.getX() > legendRow.getX())
+            legend = legendRow.withY (legend.getBottom() + 1.0f); // får inte plats: ny rad (med många instrument blir det flera)
         g.setColour (trace.colour);
         g.fillRoundedRectangle (legend.getX(), legend.getCentreY() - 3.0f, 6.0f, 6.0f, 2.0f);
         g.drawText (trace.name, legend.withTrimmedLeft (10.0f).withWidth (width), juce::Justification::centredLeft);
