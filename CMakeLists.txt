@@ -56,6 +56,7 @@ set(CORE_SOURCES
     Source/Core/Sidechain.cpp
     Source/Core/Modulation.cpp
     Source/Core/Settings.cpp
+    Source/Core/LibraryManifest.cpp
 )
 
 # Plugin-delarna som båda pluginsen delar, inklusive gränssnittet.
@@ -226,6 +227,7 @@ target_sources(KickbaseMcp PRIVATE
     Tools/Profile.cpp
     Tools/AudioTests.cpp
     Tools/StateTests.cpp
+    Tools/LibraryTests.cpp
 )
 target_compile_definitions(KickbaseMcp PRIVATE JucePlugin_Name="Kickbase" JUCE_MODAL_LOOPS_PERMITTED=1)
 target_link_libraries(KickbaseMcp PRIVATE juce::juce_audio_utils juce::juce_dsp KickbaseGuides)

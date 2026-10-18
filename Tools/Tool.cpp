@@ -1535,6 +1535,8 @@ int audioThreadTest();      // Tools/AudioTests.cpp
 int blockSizeTest();        // Tools/AudioTests.cpp
 int persistTest();          // Tools/StateTests.cpp
 int helpCheck();            // Tools/StateTests.cpp
+int libraryCheck (const juce::String& folder); // Tools/LibraryTests.cpp
+int libraryTest();          // Tools/LibraryTests.cpp
 
 // Verktygets kommandon. Startas av KickbaseMcp.exe när det heter KickbaseTool.exe eller får `tool` som första argument.
 int toolMain (int argc, char* argv[])
@@ -1586,6 +1588,11 @@ int toolMain (int argc, char* argv[])
         return helpCheck();
     if (argc == 2 && juce::String (argv[1]) == "persisttest")
         return persistTest();
+    // librarycheck [mapp]: validerar biblioteksmanifesten (läser bara). librarytest: reglerna, i en tillfällig mapp.
+    if (argc >= 2 && juce::String (argv[1]) == "librarycheck")
+        return libraryCheck (argc > 2 ? juce::String (argv[2]) : juce::String());
+    if (argc == 2 && juce::String (argv[1]) == "librarytest")
+        return libraryTest();
     if (argc == 2 && juce::String (argv[1]) == "rendersigwide")
         return renderSignaturesWide();
     if (argc == 2 && juce::String (argv[1]) == "blocksizetest")

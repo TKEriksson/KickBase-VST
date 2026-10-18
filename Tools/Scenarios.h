@@ -19,6 +19,7 @@ namespace Scenarios
             Settings::useFile (root.getChildFile ("settings.xml"));
             Settings::setFolder ("presetsFolder", root.getChildFile ("Presets"));
             Settings::setFolder ("exportsFolder", root.getChildFile ("Exports"));
+            Settings::setFolder ("libraryFolder", root.getChildFile ("Library"));
         }
 
         ~TemporaryUserFolders()

@@ -64,7 +64,7 @@ namespace Settings
 
     juce::File defaultFolder (const juce::String& key)
     {
-        const auto name = key == "presetsFolder" ? "Presets" : key == "exportsFolder" ? "Exports" : "Wavetables";
+        const auto name = key == "presetsFolder" ? "Presets" : key == "exportsFolder" ? "Exports" : key == "libraryFolder" ? "Library" : "Wavetables";
         return rootFolder().getChildFile (name);
     }
 
@@ -79,6 +79,7 @@ namespace Settings
     juce::File presetsFolder()    { return chosenOrDefault ("presetsFolder"); }
     juce::File exportsFolder()    { return chosenOrDefault ("exportsFolder"); }
     juce::File wavetablesFolder() { return chosenOrDefault ("wavetablesFolder"); }
+    juce::File libraryFolder()    { return chosenOrDefault ("libraryFolder"); }
 
     void setFolder (const juce::String& key, const juce::File& folder)
     {
