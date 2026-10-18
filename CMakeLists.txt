@@ -58,6 +58,7 @@ set(CORE_SOURCES
     Source/Core/Settings.cpp
     Source/Core/Tb303Filter.cpp
     Source/Core/FilterModels.cpp
+    Source/Core/FilterUnit.cpp
     Source/ThirdParty/open303/rosic_TeeBeeFilter.cpp
     Source/ThirdParty/open303/rosic_OnePoleFilter.cpp
     Source/ThirdParty/open303/rosic_RealFunctions.cpp

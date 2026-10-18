@@ -12,20 +12,8 @@ void InstrumentSynth::prepare (double newSampleRate)
     sampleRate = newSampleRate;
     Wavetables::ensure (0); // Basic måste finnas; övriga tabeller byggs av TableBuilder / ensureTablesInUse (inte på ljudtråden)
 
-    for (auto* filter : { &filter1, &filter2, &sideFilter1, &sideFilter2 })
-    {
-        filter->prepare ({ sampleRate, 512, 1 });
-        filter->setType (juce::dsp::StateVariableTPTFilterType::lowpass);
-    }
-    for (auto* filter : { &filter1, &sideFilter1 })
-        filter->setResonance (0.707f); // det första LP-steget i LP 24 har alltid den resonansen (sätts här, inte vid varje ny cutoff)
-    appliedCutoff1 = appliedCutoff2 = appliedResonance2 = -1.0f;
-    appliedType2 = -1;
-    tbMid.prepare (sampleRate); // (den funktionsstatiska halvbandsdesignen skapas här, aldrig på ljudtråden)
-    tbSide.prepare (sampleRate);
-    modelMid.prepare (sampleRate); // allokerar kamfiltrets fördröjningslinje: aldrig på ljudtråden
-    modelSide.prepare (sampleRate);
-    appliedModel = 0;
+    filterMid.prepare (sampleRate); // (allokerar kamfiltrets fördröjningslinje och bygger halvbandsdesignen: aldrig på ljudtråden)
+    filterSide.prepare (sampleRate);
 
     reset();
 }
@@ -41,14 +29,8 @@ void InstrumentSynth::reset()
     env3.reset();
     pitchEnv = 0.0f;
     noiseState = 0.0f;
-    filter1.reset();
-    filter2.reset();
-    sideFilter1.reset();
-    sideFilter2.reset();
-    tbMid.reset();
-    tbSide.reset();
-    modelMid.reset();
-    modelSide.reset();
+    filterMid.reset();
+    filterSide.reset();
 }
 
 double InstrumentSynth::warpPhase (WarpMode mode, float amount, double phase, float fmInput)
@@ -407,93 +389,12 @@ InstrumentSynth::Output InstrumentSynth::next()
     }
     const auto cutoff = params.cutoffHz * keyFollow * std::exp2 (envDepth * envelope);
     const auto clampedCutoff = juce::jlimit (20.0f, (float) sampleRate * 0.45f, cutoff);
-    if (params.resonance != lastResonance)
-    {
-        lastResonance = params.resonance;
-        cachedQ = 0.5f * std::pow (16.0f, params.resonance);
-    }
-    const auto q = cachedQ;
-
-    // Filtermodellen: TB-303 (Open303:s TeeBeeFilter på 2x, filterType ignoreras) eller Kickbase (SVF, som alltid). Cutoff och resonans uppdateras här, på samma
-    // ställe och i samma takt som SVF:ns cutoff (per sampling när den ändrats av filter-envelopen). Vid ett modellbyte nollställs filtret som tar över.
-    if (params.filterModel >= 2)
-    {
-        // Ladder, Formant och Comb (FilterModels.h): cutoff efter keytrack och envelope, resonans 0..1, modellens två ratter.
-        if (appliedModel != params.filterModel)
-        {
-            modelMid.reset();
-            modelSide.reset();
-            appliedModel = params.filterModel;
-        }
-        const auto model = (ModelFilter::Model) juce::jlimit (2, 4, params.filterModel);
-        modelMid.setParameters (model, (double) clampedCutoff, (double) params.resonance, (double) params.filterP1, (double) params.filterP2, (int) params.filterType);
-        modelSide.setParameters (model, (double) clampedCutoff, (double) params.resonance, (double) params.filterP1, (double) params.filterP2, (int) params.filterType);
-        sample = modelMid.process (sample);
-        side = modelSide.process (side);
-    }
-    else if (params.filterModel == 1)
-    {
-        if (appliedModel != 1)
-        {
-            tbMid.reset();
-            tbSide.reset();
-            appliedModel = 1;
-        }
-        const auto resonancePercent = 100.0 * (double) params.resonance;
-        tbMid.setParameters ((double) clampedCutoff, resonancePercent);
-        tbSide.setParameters ((double) clampedCutoff, resonancePercent);
-        sample = tbMid.process (sample);
-        side = tbSide.process (side);
-    }
-    else
-    {
-    if (appliedModel != 0)
-    {
-        for (auto* filter : { &filter1, &filter2, &sideFilter1, &sideFilter2 })
-            filter->reset();
-        appliedModel = 0;
-    }
-
-    // LP 24 = två lågpass efter varandra; övriga typer ett filter (12 dB).
-    using Type = juce::dsp::StateVariableTPTFilterType;
-    const auto type = params.filterType == InstrumentFilterType::bandpass ? Type::bandpass
-                    : params.filterType == InstrumentFilterType::highpass ? Type::highpass
-                                                                    : Type::lowpass;
-    // Bara det som ändrats sätts: varje set-funktion räknar om koefficienterna (tan) ur alla värden, så resultatet är detsamma som att sätta
-    // allt, men filter-envelopen ändrar cutoff varje sample och då räknades de om dubbelt så många gånger som behövs.
-    if ((int) type != appliedType2)
-    {
-        filter2.setType (type);
-        sideFilter2.setType (type);
-        appliedType2 = (int) type;
-    }
-    if (clampedCutoff != appliedCutoff2)
-    {
-        filter2.setCutoffFrequency (clampedCutoff);
-        sideFilter2.setCutoffFrequency (clampedCutoff);
-        appliedCutoff2 = clampedCutoff;
-    }
-    if (q != appliedResonance2)
-    {
-        filter2.setResonance (q);
-        sideFilter2.setResonance (q);
-        appliedResonance2 = q;
-    }
-
-    if (params.filterType == InstrumentFilterType::lowpass24)
-    {
-        if (clampedCutoff != appliedCutoff1)
-        {
-            filter1.setCutoffFrequency (clampedCutoff);
-            sideFilter1.setCutoffFrequency (clampedCutoff);
-            appliedCutoff1 = clampedCutoff;
-        }
-        sample = filter1.processSample (0, sample);
-        side = sideFilter1.processSample (0, side);
-    }
-    sample = filter2.processSample (0, sample);
-    side = sideFilter2.processSample (0, side);
-    } // Kickbase-modellen
+    // Filtret (FilterUnit.h: Kickbase, TB-303, Ladder, Formant eller Comb) för mitten och sidan: samma inställning, så att det blir stereo utan att ljudet låter
+    // olika i vänster och höger. Cutoff och resonans uppdateras här, i samma takt som filter-envelopen ändrar cutoff (per sampling).
+    filterMid.set (params.filterModel, clampedCutoff, params.resonance, params.filterP1, params.filterP2, (int) params.filterType);
+    filterSide.set (params.filterModel, clampedCutoff, params.resonance, params.filterP1, params.filterP2, (int) params.filterType);
+    sample = filterMid.process (sample);
+    side = filterSide.process (side);
     noteTime += 1.0 / sampleRate;
 
     // Drive verkar på källan (före gaten), så att distorsionen låter likadant oavsett envelope.

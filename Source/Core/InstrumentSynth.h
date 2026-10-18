@@ -4,8 +4,7 @@
 #include <array>
 #include "SampleData.h"
 #include "Wavetable.h"
-#include "Tb303Filter.h"
-#include "FilterModels.h"
+#include "FilterUnit.h"
 
 enum class InstrumentFilterType { lowpass24, lowpass12, bandpass, highpass };
 
@@ -235,20 +234,8 @@ private:
     float velocity = 1.0f;
     double noteTime = 0.0;   // sekunder sedan senaste anslag (för filter-envelopen)
 
-    // Filtren för mitten (filter1, filter2) och sidan: samma inställning, så att det blir stereo utan att
-    // ljudet låter olika i vänster och höger.
-    juce::dsp::StateVariableTPTFilter<float> filter1, filter2, sideFilter1, sideFilter2;
-
-    // TB-303-modellen: samma mitt/sida-uppdelning som SVF-paret, i samma objekt (fas P multiplicerar rösterna). appliedModel: vilken modell som senast filtrerade;
-    // vid byte nollställs filtret som tar över (params ändras bara vid kontrollfönstrens gränser, så bytet sker där).
-    Tb303Filter tbMid, tbSide;
-    ModelFilter modelMid, modelSide; // Ladder, Formant och Comb (fas D2)
-    int appliedModel = 0;
-
-    // Vad filtren senast ställdes in på: SVF:ns set-funktioner räknar om koefficienterna (tan) varje gång, även med samma värde.
-    float appliedCutoff1 = -1.0f, appliedCutoff2 = -1.0f, appliedResonance2 = -1.0f;
-    int appliedType2 = -1;
-    float lastResonance = -1.0f, cachedQ = 0.5f; // q = 0,5 * 16^resonans
+    // Filtret för mitten och sidan: samma inställning, så att det blir stereo utan att ljudet låter olika i vänster och höger. Modellbyte nollställer filtret som tar över.
+    FilterUnit filterMid, filterSide;
     float lastKeyFrequency = -1.0f, lastKeyTrack = -1.0f, cachedKeyFollow = 1.0f;
     double lastLogFrequency = 1.0e30, lastPitchOffset = 1.0e30, cachedFrequency = 0.0;
     CoefficientMemo ampDecayMemo, ampReleaseMemo, pitchEnvMemo;
