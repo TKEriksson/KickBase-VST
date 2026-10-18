@@ -45,7 +45,8 @@ AboutPanel::AboutPanel (PluginBase& processor, std::function<void()> onBack)
     licenseButton.onClick = [this] { showText (true); };
     addAndMakeVisible (licenseButton);
 
-    thirdPartyText = juce::String::fromUTF8 (BinaryData::THIRDPARTY_md, BinaryData::THIRDPARTY_mdSize);
+    // THIRD-PARTY.md visas som vanlig text: markdownens ** och ` tas bort (LICENSE visas som den är).
+    thirdPartyText = juce::String::fromUTF8 (BinaryData::THIRDPARTY_md, BinaryData::THIRDPARTY_mdSize).replace ("**", "").replace ("`", "");
     licenseText = juce::String::fromUTF8 (BinaryData::LICENSE, BinaryData::LICENSESize);
 
     text.setMultiLine (true, true);

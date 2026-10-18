@@ -288,7 +288,7 @@ void SettingsPage::timerCallback()
 {
     // Sidan finns i fönstret även när en annan flik visas: då gör den ingenting (räkningen av vågformer och läsningen av inställningsfilen
     // tog annars en stor del av en processorkärna hela tiden).
-    if (! isShowing() || optimizations.isVisible())
+    if (! isShowing() || panelShown())
     {
         filesShown = filesShown && isShowing();
         return;
@@ -303,7 +303,7 @@ void SettingsPage::visibilityChanged()
     {
         if (optimizations.isVisible())
             optimizations.refresh(); // (SPEED kan ha ändrats på ANALYZER-fliken)
-        else
+        else if (! about.isVisible())
             refresh (true);
         filesShown = true;
     }
@@ -328,7 +328,7 @@ void SettingsPage::paint (juce::Graphics& g)
         g.setFont (Theme::font (9.5f, true).withExtraKerningFactor (0.08f));
         g.drawText (title, area.withHeight (16).withTrimmedLeft (8), juce::Justification::centredLeft);
     };
-    if (optimizations.isVisible())
+    if (panelShown())
         return; // panelen ritar sig själv över hela sidan
     frame (windowBox, "WINDOW SIZE");
     frame (aiBox, "AI LINK");
@@ -355,7 +355,7 @@ void SettingsPage::resized()
     auto placeHint = [this] (juce::Label& hint, juce::Rectangle<int> bounds)
     {
         hint.setBounds (bounds);
-        if (! optimizations.isVisible() && ! about.isVisible()) // (en panel döljer allt annat; det återställs när den stängs)
+        if (! panelShown()) // (en panel döljer allt annat; det återställs när den stängs)
             hint.setVisible (bounds.getHeight() >= 13);
     };
 

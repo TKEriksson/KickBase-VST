@@ -33,6 +33,7 @@ private:
     void setBridge (bool on);
     void updatePack();
     void showPanel (juce::Component* panel); // OPTIMIZATIONS eller ABOUT över hela sidan; nullptr = tillbaka
+    bool panelShown() const { return optimizations.isVisible() || about.isVisible(); } // sidan under en panel gör ingenting
 
     PluginBase& processor;
     std::unique_ptr<juce::FileChooser> chooser;
