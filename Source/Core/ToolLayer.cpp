@@ -306,7 +306,7 @@ var ToolLayer::call (const juce::String& tool, const var& args)
     if (tool == "set_modulation")      return setModulation (args);
     if (tool == "load_preset")         return loadPreset (args);
     if (tool == "load_kick_sample")    return loadKickSample (args);
-    if (tool == "load_bass_sample")    return loadBassSample (args);
+    if (tool == "load_bass_sample")    return loadInstrumentSample (args);
     if (tool == "load_piano_roll" || tool == "import_midi")
         return pianoRollFiles (tool, args);
     if (tool == "save_preset")         return savePreset (args);
@@ -472,7 +472,7 @@ var ToolLayer::getState (const var& args) const
         if (! isKick)
             put (entry, "name", processor.getLayerName (layer));
         put (entry, "grid", Pattern::gridNames()[isKick ? (int) processor.apvts.getRawParameterValue (ParamID::rowGridKick)->load()
-                                                         : (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, BassField::grid))->load()]);
+                                                         : (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, InstrumentField::grid))->load()]);
         put (entry, "notes [tick, length, pitch, velocity, glide]", notes);
         put (entry, "piano_roll_layer", processor.pattern.isCustom (layer));
         if (isKick)
@@ -482,13 +482,13 @@ var ToolLayer::getState (const var& args) const
         }
 
         auto gateInfo = object();
-        const auto gateGrid = juce::jlimit (0, Pattern::numGrids - 1, (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, BassField::gateGrid))->load());
-        put (gateInfo, "on", processor.apvts.getRawParameterValue (ParamID::bass (layer, BassField::gateOn))->load() >= 0.5f);
+        const auto gateGrid = juce::jlimit (0, Pattern::numGrids - 1, (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, InstrumentField::gateGrid))->load());
+        put (gateInfo, "on", processor.apvts.getRawParameterValue (ParamID::bass (layer, InstrumentField::gateOn))->load() >= 0.5f);
         put (gateInfo, "grid", Pattern::gridNames()[gateGrid]);
-        put (gateInfo, "depth", round4 (processor.apvts.getRawParameterValue (ParamID::bass (layer, BassField::gateDepth))->load()));
+        put (gateInfo, "depth", round4 (processor.apvts.getRawParameterValue (ParamID::bass (layer, InstrumentField::gateDepth))->load()));
         juce::String steps;
         const auto barCount = Params::barsFromChoice ((int) processor.apvts.getRawParameterValue (ParamID::patternBars)->load());
-        for (int i = 0; i < barCount * Pattern::bassStepsPerBar ((BassGrid) gateGrid); ++i)
+        for (int i = 0; i < barCount * Pattern::instrumentStepsPerBar ((InstrumentGrid) gateGrid); ++i)
             steps << (processor.pattern.isGateStepOn (layer, i) ? 'x' : '.');
         put (gateInfo, "steps (x open, . closed)", steps);
         put (entry, "gate", gateInfo);
@@ -522,8 +522,8 @@ var ToolLayer::getState (const var& args) const
         auto userWavetables = object();
         for (int layer = 0; layer < processor.activeInstruments(); ++layer)
         {
-            if (processor.getBassSampleName (layer).isNotEmpty())
-                put (samples, processor.getLayerName (layer), processor.getBassSampleName (layer));
+            if (processor.getInstrumentSampleName (layer).isNotEmpty())
+                put (samples, processor.getLayerName (layer), processor.getInstrumentSampleName (layer));
             for (int osc = 0; osc < ParamID::oscsPerLayer; ++osc)
                 if (processor.getUserTableName (layer, osc).isNotEmpty())
                     put (userWavetables, processor.getLayerName (layer) + " osc " + juce::String ("ABC").substring (osc, osc + 1), processor.getUserTableName (layer, osc));
@@ -701,7 +701,7 @@ var ToolLayer::setPattern (const var& args)
     if (! juce::isPositiveAndBelow (layer, Pattern::numNoteLayers))
         return fail ("layer must be 0-9 or 'kick'.");
 
-    const auto gridParameterID = isKick ? juce::String (ParamID::rowGridKick) : ParamID::bass (layer, BassField::grid);
+    const auto gridParameterID = isKick ? juce::String (ParamID::rowGridKick) : ParamID::bass (layer, InstrumentField::grid);
     auto grid = (int) processor.apvts.getRawParameterValue (gridParameterID)->load();
     if (args.hasProperty ("grid"))
     {
@@ -718,7 +718,7 @@ var ToolLayer::setPattern (const var& args)
             const auto tick = (int) note["tick"];
             if (! juce::isPositiveAndBelow (tick, Pattern::maxTicks))
                 continue;
-            pattern.addNote (layer, tick, note.hasProperty ("length") ? (int) note["length"] : Pattern::ticksPerStep ((BassGrid) grid),
+            pattern.addNote (layer, tick, note.hasProperty ("length") ? (int) note["length"] : Pattern::ticksPerStep ((InstrumentGrid) grid),
                              (int) note["pitch"], note.hasProperty ("velocity") ? (float) (double) note["velocity"] : Pattern::defaultVelocity (layer), (bool) note["slide"]);
         }
         pattern.setCustom (layer, true);
@@ -727,7 +727,7 @@ var ToolLayer::setPattern (const var& args)
     {
         Presets::Extras::PatternLine line;
         line.layer = layer;
-        line.grid = (BassGrid) grid;
+        line.grid = (InstrumentGrid) grid;
         line.gate = args.hasProperty ("gate") ? (float) (double) args["gate"] : 0.7f;
         for (const auto& bar : *bars)
         {
@@ -770,8 +770,8 @@ var ToolLayer::setGate (const var& args)
         return fail ("layer must be 0-9.");
 
     juce::String problem;
-    for (const auto& [key, field] : { std::pair<const char*, BassField> { "on", BassField::gateOn }, { "grid", BassField::gateGrid },
-                                      { "depth", BassField::gateDepth }, { "smooth_ms", BassField::gateSmooth } })
+    for (const auto& [key, field] : { std::pair<const char*, InstrumentField> { "on", InstrumentField::gateOn }, { "grid", InstrumentField::gateGrid },
+                                      { "depth", InstrumentField::gateDepth }, { "smooth_ms", InstrumentField::gateSmooth } })
         if (args.hasProperty (key))
         {
             auto* parameter = findParameter (processor, ParamID::bass (layer, field));
@@ -779,8 +779,8 @@ var ToolLayer::setGate (const var& args)
                 return fail (problem.isEmpty() ? juce::String ("No such gate parameter.") : problem);
         }
 
-    const auto gridIndexNow = juce::jlimit (0, Pattern::numGrids - 1, (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, BassField::gateGrid))->load());
-    const auto stepsPerBar = Pattern::bassStepsPerBar ((BassGrid) gridIndexNow);
+    const auto gridIndexNow = juce::jlimit (0, Pattern::numGrids - 1, (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, InstrumentField::gateGrid))->load());
+    const auto stepsPerBar = Pattern::instrumentStepsPerBar ((InstrumentGrid) gridIndexNow);
 
     if (auto* bars = args["bars"].getArray(); bars != nullptr && ! bars->isEmpty())
     {
@@ -1222,15 +1222,15 @@ var ToolLayer::renderPreview (const var& args)
         check ("kick_at_most_an_eighth_note", length <= eighth, juce::String (juce::roundToInt (length)) + " ms of " + juce::String (juce::roundToInt (eighth)) + " ms (1/8 note)");
 
         // Svansen mot basens grundton (lager 1).
-        const auto bassRoot = Params::midiToHz ((float) Params::bassRootMidiNote (note)
-                                                + (float) processor.apvts.getRawParameterValue (ParamID::bass (0, BassField::octave))->load() * 12.0f
-                                                + processor.apvts.getRawParameterValue (ParamID::bass (0, BassField::tune))->load());
-        put (metrics, "expected_bass1_root_hz", round4 (bassRoot));
+        const auto instrumentRoot = Params::midiToHz ((float) Params::instrumentRootMidiNote (note)
+                                                + (float) processor.apvts.getRawParameterValue (ParamID::bass (0, InstrumentField::octave))->load() * 12.0f
+                                                + processor.apvts.getRawParameterValue (ParamID::bass (0, InstrumentField::tune))->load());
+        put (metrics, "expected_bass1_root_hz", round4 (instrumentRoot));
         if (tail > 0.0f)
         {
-            auto semitones = 12.0 * std::log2 (tail / bassRoot);
+            auto semitones = 12.0 * std::log2 (tail / instrumentRoot);
             semitones -= 12.0 * std::round (semitones / 12.0); // en oktav (eller flera) ifrån rotens ton räknas som i stämning
-            check ("kick_tail_matches_bass_root", std::abs (semitones) <= 2.5, "tail " + juce::String (tail, 1) + " Hz vs bass root " + juce::String (bassRoot, 1) + " Hz: "
+            check ("kick_tail_matches_bass_root", std::abs (semitones) <= 2.5, "tail " + juce::String (tail, 1) + " Hz vs bass root " + juce::String (instrumentRoot, 1) + " Hz: "
                                                                                  + juce::String (semitones, 1) + " semitones (within about 2 is normal; exactly 0 is safest)");
         }
     }
@@ -1330,13 +1330,13 @@ var ToolLayer::pianoRollFiles (const juce::String& tool, const var& args)
 
     auto& pattern = processor.pattern;
     const auto bars = Params::readPatternLengths (processor.apvts).barsOf (isKick ? 0 : 1 + layer);
-    const auto gridParameterID = isKick ? juce::String (ParamID::rowGridKick) : ParamID::bass (layer, BassField::grid);
+    const auto gridParameterID = isKick ? juce::String (ParamID::rowGridKick) : ParamID::bass (layer, InstrumentField::grid);
     const auto gridIndex = juce::jlimit (0, Pattern::numGrids - 1, (int) processor.apvts.getRawParameterValue (gridParameterID)->load());
     const auto note = args.hasProperty ("note") ? juce::jlimit (0, 127, (int) args["note"]) : 52;
     const auto root = isKick ? (int) (processor.apvts.getRawParameterValue (ParamID::kickKeyFollow)->load() >= 0.5f ? Params::kickTailMidiNote (note % 12) : 24)
-                             : Params::bassRootMidiNote (note) + 12 * (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, BassField::octave))->load();
+                             : Params::instrumentRootMidiNote (note) + 12 * (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, InstrumentField::octave))->load();
 
-    auto applyLoaded = [this, layer, gridParameterID] (int newBars, BassGrid grid)
+    auto applyLoaded = [this, layer, gridParameterID] (int newBars, InstrumentGrid grid)
     {
         if (auto* gridParameter = findParameter (processor, gridParameterID))
             Presets::setParameter (*gridParameter, gridParameter->convertTo0to1 ((float) grid));
@@ -1350,7 +1350,7 @@ var ToolLayer::pianoRollFiles (const juce::String& tool, const var& args)
         if (name.isEmpty())
             return fail ("Give a name.");
         const auto file = RollFiles::folder().getChildFile (name + ".roll");
-        if (! RollFiles::save (pattern, layer, bars, (BassGrid) gridIndex, file))
+        if (! RollFiles::save (pattern, layer, bars, (InstrumentGrid) gridIndex, file))
             return fail ("Could not write " + file.getFullPathName());
         auto data = object();
         put (data, "saved", file.getFullPathName());
@@ -1365,7 +1365,7 @@ var ToolLayer::pianoRollFiles (const juce::String& tool, const var& args)
                 if (candidate.getFileNameWithoutExtension().equalsIgnoreCase (args["name"].toString().trim()))
                     file = candidate;
         int newBars = 1;
-        auto grid = BassGrid::sixteenth;
+        auto grid = InstrumentGrid::sixteenth;
         if (! file.existsAsFile() || ! RollFiles::load (pattern, layer, file, newBars, grid))
             return fail ("No such piano roll preset. The plugin's PRESET menu lists the saved ones; save one first with save_piano_roll.");
         applyLoaded (newBars, grid);
@@ -1378,7 +1378,7 @@ var ToolLayer::pianoRollFiles (const juce::String& tool, const var& args)
         const juce::File file (args["file"].toString());
         if (! file.existsAsFile() || ! RollFiles::importMidi (pattern, layer, file, root, newBars))
             return fail ("Could not read notes from that MIDI file.");
-        applyLoaded (newBars, (BassGrid) gridIndex);
+        applyLoaded (newBars, (InstrumentGrid) gridIndex);
         return ok ("Imported into layer " + juce::String (layer) + "; pattern length set to " + juce::String (newBars) + " bar(s).");
     }
 
@@ -1407,7 +1407,7 @@ var ToolLayer::loadKickSample (const var& args)
     return ok ("Loaded " + processor.getClickSampleName() + " as the kick's sample (kickSampleMode: Click = click layer, Layer, Replace = the sample is the whole kick).");
 }
 
-var ToolLayer::loadBassSample (const var& args)
+var ToolLayer::loadInstrumentSample (const var& args)
 {
     const auto layer = (int) args["layer"];
     if (! juce::isPositiveAndBelow (layer, Pattern::numLayers))
@@ -1416,25 +1416,25 @@ var ToolLayer::loadBassSample (const var& args)
     const auto path = args["file"].toString().trim();
     if (path.isEmpty())
     {
-        processor.clearBassSample (layer);
+        processor.clearInstrumentSample (layer);
         return ok ("Sample cleared from layer " + juce::String (layer) + ".");
     }
-    if (! processor.loadBassSample (layer, juce::File (path)))
+    if (! processor.loadInstrumentSample (layer, juce::File (path)))
         return fail ("Could not load that file as a sample (WAV, AIFF or FLAC, readable path).");
 
-    auto set = [this, layer] (BassField field, float real)
+    auto set = [this, layer] (InstrumentField field, float real)
     {
         if (auto* parameter = findParameter (processor, ParamID::bass (layer, field)))
             Presets::setParameter (*parameter, parameter->convertTo0to1 (real));
     };
-    set (BassField::sampleOn, 1.0f);
-    set (BassField::sampleLevel, args.hasProperty ("level") ? (float) (double) args["level"] : 1.0f);
-    if (args.hasProperty ("key_track"))  set (BassField::sampleKey, (bool) args["key_track"] ? 1.0f : 0.0f);
-    if (args.hasProperty ("root_note"))  set (BassField::sampleRoot, (float) (int) args["root_note"]);
-    if (args.hasProperty ("loop"))       set (BassField::sampleLoop, (bool) args["loop"] ? 1.0f : 0.0f);
-    if (args.hasProperty ("start"))      set (BassField::sampleStart, (float) (double) args["start"]);
+    set (InstrumentField::sampleOn, 1.0f);
+    set (InstrumentField::sampleLevel, args.hasProperty ("level") ? (float) (double) args["level"] : 1.0f);
+    if (args.hasProperty ("key_track"))  set (InstrumentField::sampleKey, (bool) args["key_track"] ? 1.0f : 0.0f);
+    if (args.hasProperty ("root_note"))  set (InstrumentField::sampleRoot, (float) (int) args["root_note"]);
+    if (args.hasProperty ("loop"))       set (InstrumentField::sampleLoop, (bool) args["loop"] ? 1.0f : 0.0f);
+    if (args.hasProperty ("start"))      set (InstrumentField::sampleStart, (float) (double) args["start"]);
     processor.patternChanged();
-    return ok ("Loaded " + processor.getBassSampleName (layer) + " into layer " + juce::String (layer) + ".");
+    return ok ("Loaded " + processor.getInstrumentSampleName (layer) + " into layer " + juce::String (layer) + ".");
 }
 
 var ToolLayer::undo (bool redo)

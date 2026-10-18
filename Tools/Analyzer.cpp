@@ -1,5 +1,5 @@
 #include "Analyzer.h"
-#include "../Source/Core/BassSynth.h"
+#include "../Source/Core/InstrumentSynth.h"
 #include "../Source/Core/KickEngine.h"
 #include "../Source/Core/Ducker.h"
 #include <juce_dsp/juce_dsp.h>

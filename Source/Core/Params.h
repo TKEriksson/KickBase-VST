@@ -3,7 +3,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <string_view>
 #include <unordered_map>
-#include "BassSynth.h"
+#include "InstrumentSynth.h"
 #include "KickEngine.h"
 #include "Pattern.h"
 
@@ -77,7 +77,7 @@ namespace ParamID
 }
 
 // Varje baslagers parametrar. ID:t är "bass" + lagrets nummer + fältets namn, t.ex. "bass2Cutoff".
-enum class BassField
+enum class InstrumentField
 {
     on, level, gate, duck, grid, fxChannel, fxAmount,             // lagrets utgång, mönster och effektkanal
     octave, tune,
@@ -100,14 +100,14 @@ enum class BassField
 
 namespace ParamID
 {
-    constexpr int numBassLayers = maxInstruments; // så många instrument finns som mest (instrumentCount väljer hur många som används)
+    constexpr int numInstrumentLayers = maxInstruments; // så många instrument finns som mest (instrumentCount väljer hur många som används)
     constexpr int oscFieldCount = 15; // fält per oscillator (aTable ... aOn)
     constexpr int oscsPerLayer = 3;   // OSC 1, 2 och 3
 
-    // Samma fält för OSC 1 (osc 0), OSC 2 (osc 1) eller OSC 3 (osc 2): oscField (1, BassField::aPos) = bPos.
-    inline BassField oscField (int osc, BassField aField) { return (BassField) ((int) aField + osc * oscFieldCount); }
-    juce::String bass (int layer, BassField field);   // "bass1Cutoff" ...
-    const char* bassFieldName (BassField field);      // "Cutoff" ...
+    // Samma fält för OSC 1 (osc 0), OSC 2 (osc 1) eller OSC 3 (osc 2): oscField (1, InstrumentField::aPos) = bPos.
+    inline InstrumentField oscField (int osc, InstrumentField aField) { return (InstrumentField) ((int) aField + osc * oscFieldCount); }
+    juce::String bass (int layer, InstrumentField field);   // "bass1Cutoff" ...
+    const char* instrumentFieldName (InstrumentField field);      // "Cutoff" ...
 }
 
 enum class NoteEnd { cut, finishBar, finishPattern };
@@ -118,8 +118,8 @@ namespace Params
 
     void addPatternParams (Layout& layout, bool includeNoteEnd);
     void addKickParams (Layout& layout);
-    void addBassCommonParams (Layout& layout, int layer, float defaultLevel);
-    void addBassSynthParams (Layout& layout, int layer);
+    void addInstrumentCommonParams (Layout& layout, int layer, float defaultLevel);
+    void addInstrumentSynthParams (Layout& layout, int layer);
     void addFxParams (Layout& layout);
     void addMasterParams (Layout& layout);
 
@@ -132,7 +132,7 @@ namespace Params
 
     // Basens grundton för en ton från DAW:en: samma tonnamn två oktaver ner (FL:s C5 -> C2),
     // så att en basgång som går nedåt i pianorullen också går nedåt i basen.
-    int bassRootMidiNote (int dawNote);
+    int instrumentRootMidiNote (int dawNote);
     int barsFromChoice (int choiceIndex); // 0 ... 6 -> 1, 2, 4, 8, 16, 32, 64 takter
     int rowBarsFromChoice (int choiceIndex); // 0 = hela mönstret (0), 1 ... 7 -> 1, 2 ... 64 takter
 
@@ -176,13 +176,13 @@ public:
     int getChoice (const char* paramID) const { return (int) get (paramID); }
 
     // Ett baslagers parameter, utan namnuppslag (index räknade i konstruktorn).
-    float bass (int layer, BassField field) const;
+    float bass (int layer, InstrumentField field) const;
 
     // Antal använda instrument (1-10).
-    int instruments() const { return juce::jlimit (1, ParamID::numBassLayers, (int) std::lround (get (ParamID::instrumentCount))); }
+    int instruments() const { return juce::jlimit (1, ParamID::numInstrumentLayers, (int) std::lround (get (ParamID::instrumentCount))); }
 
     KickParams readKick (int keyPitchClass) const;
-    BassParams readBass (int layer, int rootMidiNote) const; // rootMidiNote före Octave och Tune
+    InstrumentParams readInstrument (int layer, int rootMidiNote) const; // rootMidiNote före Octave och Tune
 
 private:
     struct Entry
@@ -196,6 +196,6 @@ private:
 
     std::vector<Entry> entries; // byggs en gång i konstruktorn, ändras aldrig efter det
     std::unordered_map<std::string_view, int> lookup; // parameter-ID -> plats i entries (nycklarna pekar in i entries; ljudtråden slår upp utan att allokera)
-    std::array<std::array<int, (size_t) BassField::count>, ParamID::numBassLayers> bassEntries {}; // index i entries, -1 = saknas
+    std::array<std::array<int, (size_t) InstrumentField::count>, ParamID::numInstrumentLayers> instrumentEntries {}; // index i entries, -1 = saknas
     const Modulator* modulator = nullptr;
 };

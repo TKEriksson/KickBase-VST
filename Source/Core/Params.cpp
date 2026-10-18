@@ -76,7 +76,7 @@ namespace
 
 namespace ParamID
 {
-    const char* bassFieldName (BassField field)
+    const char* instrumentFieldName (InstrumentField field)
     {
         static const char* names[] { "On", "Level", "Gate", "Duck", "Grid", "FxChannel", "FxAmount",
                                      "Octave", "Tune",
@@ -90,13 +90,13 @@ namespace ParamID
                                      "SampleLevel", "SampleRoot", "SampleLoop", "SampleKey", "SampleStart", "SampleOn",
                                      "Env2Attack", "Env2Decay", "Env2Sustain", "Env2Release", "Env3Attack", "Env3Decay", "Env3Sustain", "Env3Release",
                                      "SubWave", "NoiseTone", "PitchEnvAmount", "PitchEnvDecay", "DriveMode", "Delay", "Swing", "Humanize", "EnvAttack" };
-        static_assert (std::size (names) == (size_t) BassField::count);
+        static_assert (std::size (names) == (size_t) InstrumentField::count);
         return names[(size_t) field];
     }
 
-    juce::String bass (int layer, BassField field)
+    juce::String bass (int layer, InstrumentField field)
     {
-        return "bass" + juce::String (layer + 1) + bassFieldName (field);
+        return "bass" + juce::String (layer + 1) + instrumentFieldName (field);
     }
 
     namespace
@@ -142,12 +142,12 @@ namespace Params
         for (int row = 0; row < numPatternRows; ++row)
             layout.add (std::make_unique<AudioParameterBool> (ParameterID { ParamID::rowLoop (row), 1 },
                                                               row == 0 ? juce::String ("Kick Loop") : "Instr " + juce::String (row) + " Loop", true));
-        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::rowGridKick, 1 }, "Kick Grid", Pattern::gridNames(), (int) BassGrid::sixteenth));
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::rowGridKick, 1 }, "Kick Grid", Pattern::gridNames(), (int) InstrumentGrid::sixteenth));
         if (includeNoteEnd)
         {
             layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::noteEnd, 1 }, "Note End",
                                                                 StringArray { "Cut", "Finish bar", "Finish pattern" }, 0));
-            layout.add (std::make_unique<AudioParameterInt> (ParameterID { ParamID::instrumentCount, 1 }, "Instruments", 1, ParamID::numBassLayers,
+            layout.add (std::make_unique<AudioParameterInt> (ParameterID { ParamID::instrumentCount, 1 }, "Instruments", 1, ParamID::numInstrumentLayers,
                                                              ParamID::defaultInstrumentCount));
             layout.add (percent (ParamID::patSwing, "Swing", 0.0f));
             layout.add (percent (ParamID::patHumanize, "Humanize", 0.0f));
@@ -203,9 +203,9 @@ namespace Params
         layout.add (percent (ParamID::kickFxAmount, "Kick FX Amount", 1.0f));
     }
 
-    void addBassCommonParams (Layout& layout, int layer, float defaultLevel)
+    void addInstrumentCommonParams (Layout& layout, int layer, float defaultLevel)
     {
-        using F = BassField;
+        using F = InstrumentField;
         auto id = [layer] (F f) { return ParamID::bass (layer, f); };
         const auto title = "Instr " + String (layer + 1) + " ";
 
@@ -215,7 +215,7 @@ namespace Params
         layout.add (floatParam (id (F::gate), title + "Note Length", NormalisableRange<float> (0.05f, 1.0f, 0.001f), 1.0f, formatPercent));
         layout.add (percent (id (F::duck), title + "Duck", 0.8f));
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::grid), 1 }, title + "Grid",
-                                                            Pattern::gridNames(), (int) BassGrid::sixteenth));
+                                                            Pattern::gridNames(), (int) InstrumentGrid::sixteenth));
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::fxChannel), 1 }, title + "FX Channel",
                                                             fxChannelChoices(), 0));
         layout.add (percent (id (F::fxAmount), title + "FX Amount", 1.0f));
@@ -223,14 +223,14 @@ namespace Params
         // GATE: en egen av/på-rytm (eget rutnät) som hackar lagrets ljud; stegen ligger i mönstret.
         layout.add (std::make_unique<AudioParameterBool> (ParameterID { id (F::gateOn), 1 }, title + "Gate On", false));
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::gateGrid), 1 }, title + "Gate Grid",
-                                                            Pattern::gridNames(), (int) BassGrid::sixteenth));
+                                                            Pattern::gridNames(), (int) InstrumentGrid::sixteenth));
         layout.add (percent (id (F::gateDepth), title + "Gate Depth", 1.0f));
         layout.add (ms (0.5f, 50.0f, 4.0f, 3.0f, id (F::gateSmooth), title + "Gate Smooth"));
     }
 
-    void addBassSynthParams (Layout& layout, int layer)
+    void addInstrumentSynthParams (Layout& layout, int layer)
     {
-        using F = BassField;
+        using F = InstrumentField;
         auto id = [layer] (F f) { return ParamID::bass (layer, f); };
         const auto title = "Instr " + String (layer + 1) + " ";
 
@@ -355,7 +355,7 @@ namespace Params
         return note;
     }
 
-    int bassRootMidiNote (int dawNote)
+    int instrumentRootMidiNote (int dawNote)
     {
         return dawNote - 24;
     }
@@ -385,12 +385,12 @@ ParamRefs::ParamRefs (juce::AudioProcessorValueTreeState& apvts)
         lookup.emplace (std::string_view (entries[e].id.toRawUTF8()), (int) e);
 
     // Baslagrens parametrar slås upp en gång här, så att ljudtråden läser dem med index.
-    for (int layer = 0; layer < ParamID::numBassLayers; ++layer)
+    for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
     {
-        for (int f = 0; f < (int) BassField::count; ++f)
+        for (int f = 0; f < (int) InstrumentField::count; ++f)
         {
-            auto& slot = bassEntries[(size_t) layer][(size_t) f];
-            const auto id = ParamID::bass (layer, (BassField) f);
+            auto& slot = instrumentEntries[(size_t) layer][(size_t) f];
+            const auto id = ParamID::bass (layer, (InstrumentField) f);
             const auto found = lookup.find (std::string_view (id.toRawUTF8())); // (förr en jämförelse mot alla ~2000 ID:n per fält)
             slot = found != lookup.end() ? found->second : -1;
         }
@@ -402,9 +402,9 @@ float ParamRefs::valueOf (const Entry& entry) const
     return modulator != nullptr ? modulator->apply (entry.index, entry.value->load()) : entry.value->load();
 }
 
-float ParamRefs::bass (int layer, BassField field) const
+float ParamRefs::bass (int layer, InstrumentField field) const
 {
-    const auto index = bassEntries[(size_t) layer][(size_t) field];
+    const auto index = instrumentEntries[(size_t) layer][(size_t) field];
     jassert (index >= 0); // parametern finns inte i det här pluginet
     return index >= 0 ? valueOf (entries[(size_t) index]) : 0.0f;
 }
@@ -457,12 +457,12 @@ KickParams ParamRefs::readKick (int keyPitchClass) const
     return p;
 }
 
-BassParams ParamRefs::readBass (int layer, int rootMidiNote) const
+InstrumentParams ParamRefs::readInstrument (int layer, int rootMidiNote) const
 {
-    using F = BassField;
+    using F = InstrumentField;
     auto get = [this, layer] (F f) { return bass (layer, f); };
 
-    BassParams p;
+    InstrumentParams p;
     p.rootHz     = Params::midiToHz ((float) rootMidiNote + 12.0f * get (F::octave) + get (F::tune));
     for (int osc = 0; osc < ParamID::oscsPerLayer; ++osc)
     {
@@ -492,7 +492,7 @@ BassParams ParamRefs::readBass (int layer, int rootMidiNote) const
     p.noise      = get (F::noise);
     p.sub        = get (F::sub);
     p.subOctave  = (int) get (F::subOctave) == 1 ? 0 : -1;
-    p.filterType = (BassFilterType) (int) get (F::filterType);
+    p.filterType = (InstrumentFilterType) (int) get (F::filterType);
     p.keyTrack   = get (F::keyTrack);
     p.cutoffHz   = get (F::cutoff);
     p.resonance  = get (F::resonance);

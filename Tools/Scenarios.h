@@ -39,7 +39,7 @@ namespace Scenarios
             std::printf ("Scenarios: okänd parameter %s\n", id.toRawUTF8());
     }
 
-    inline void setBass (PluginBase& processor, int layer, BassField field, float value)
+    inline void setInstrument (PluginBase& processor, int layer, InstrumentField field, float value)
     {
         setPlain (processor, ParamID::bass (layer, field), value);
     }
@@ -104,47 +104,47 @@ namespace Scenarios
 
             for (int osc = 0; osc < ParamID::oscsPerLayer; ++osc)
             {
-                auto field = [osc] (BassField aField) { return ParamID::oscField (osc, aField); };
-                setBass (processor, layer, field (BassField::aOn), 1.0f);
-                setBass (processor, layer, field (BassField::aLevel), 0.6f);
-                setBass (processor, layer, field (BassField::aTable), (float) tables[(layer + osc * 3) % 10]);
-                setBass (processor, layer, field (BassField::aPos), 0.2f + 0.3f * (float) osc);
-                setBass (processor, layer, field (BassField::aUnison), (float) (osc == 0 ? 7 : osc == 1 ? 4 : 3));
-                setBass (processor, layer, field (BassField::aDetune), 18.0f);
-                setBass (processor, layer, field (BassField::aWarp), (float) ((layer + osc) % 9));
-                setBass (processor, layer, field (BassField::aWarpAmount), 0.35f);
-                setBass (processor, layer, field (BassField::aRandom), 0.3f);
-                setBass (processor, layer, field (BassField::aStereo), 0.6f);
+                auto field = [osc] (InstrumentField aField) { return ParamID::oscField (osc, aField); };
+                setInstrument (processor, layer, field (InstrumentField::aOn), 1.0f);
+                setInstrument (processor, layer, field (InstrumentField::aLevel), 0.6f);
+                setInstrument (processor, layer, field (InstrumentField::aTable), (float) tables[(layer + osc * 3) % 10]);
+                setInstrument (processor, layer, field (InstrumentField::aPos), 0.2f + 0.3f * (float) osc);
+                setInstrument (processor, layer, field (InstrumentField::aUnison), (float) (osc == 0 ? 7 : osc == 1 ? 4 : 3));
+                setInstrument (processor, layer, field (InstrumentField::aDetune), 18.0f);
+                setInstrument (processor, layer, field (InstrumentField::aWarp), (float) ((layer + osc) % 9));
+                setInstrument (processor, layer, field (InstrumentField::aWarpAmount), 0.35f);
+                setInstrument (processor, layer, field (InstrumentField::aRandom), 0.3f);
+                setInstrument (processor, layer, field (InstrumentField::aStereo), 0.6f);
             }
-            setBass (processor, layer, BassField::filterType, (float) (layer % 4));
-            setBass (processor, layer, BassField::cutoff, 400.0f + 80.0f * (float) layer);
-            setBass (processor, layer, BassField::resonance, 0.4f);
-            setBass (processor, layer, BassField::envAmount, 3.0f);
-            setBass (processor, layer, BassField::envDecay, 140.0f);
-            setBass (processor, layer, BassField::keyTrack, 0.5f);
-            setBass (processor, layer, BassField::sub, 0.3f);
-            setBass (processor, layer, BassField::subWave, (float) (layer % 4));
-            setBass (processor, layer, BassField::noise, 0.1f);
-            setBass (processor, layer, BassField::noiseTone, 0.5f);
-            setBass (processor, layer, BassField::drive, 0.3f);
-            setBass (processor, layer, BassField::driveMode, (float) (layer % 5));
-            setBass (processor, layer, BassField::pitchEnvAmount, 3.0f);
-            setBass (processor, layer, BassField::warpEnv, 0.3f);
-            setBass (processor, layer, BassField::gateOn, layer % 3 == 0 ? 1.0f : 0.0f);
-            setBass (processor, layer, BassField::delay, (float) (layer % 3) * 4.0f);
-            setBass (processor, layer, BassField::swing, layer % 2 == 0 ? 0.3f : 0.0f);
-            setBass (processor, layer, BassField::humanize, layer % 3 == 1 ? 0.4f : 0.0f);
-            setBass (processor, layer, BassField::fxChannel, (float) (1 + layer % numEffectChannels));
-            setBass (processor, layer, BassField::fxAmount, 0.6f);
+            setInstrument (processor, layer, InstrumentField::filterType, (float) (layer % 4));
+            setInstrument (processor, layer, InstrumentField::cutoff, 400.0f + 80.0f * (float) layer);
+            setInstrument (processor, layer, InstrumentField::resonance, 0.4f);
+            setInstrument (processor, layer, InstrumentField::envAmount, 3.0f);
+            setInstrument (processor, layer, InstrumentField::envDecay, 140.0f);
+            setInstrument (processor, layer, InstrumentField::keyTrack, 0.5f);
+            setInstrument (processor, layer, InstrumentField::sub, 0.3f);
+            setInstrument (processor, layer, InstrumentField::subWave, (float) (layer % 4));
+            setInstrument (processor, layer, InstrumentField::noise, 0.1f);
+            setInstrument (processor, layer, InstrumentField::noiseTone, 0.5f);
+            setInstrument (processor, layer, InstrumentField::drive, 0.3f);
+            setInstrument (processor, layer, InstrumentField::driveMode, (float) (layer % 5));
+            setInstrument (processor, layer, InstrumentField::pitchEnvAmount, 3.0f);
+            setInstrument (processor, layer, InstrumentField::warpEnv, 0.3f);
+            setInstrument (processor, layer, InstrumentField::gateOn, layer % 3 == 0 ? 1.0f : 0.0f);
+            setInstrument (processor, layer, InstrumentField::delay, (float) (layer % 3) * 4.0f);
+            setInstrument (processor, layer, InstrumentField::swing, layer % 2 == 0 ? 0.3f : 0.0f);
+            setInstrument (processor, layer, InstrumentField::humanize, layer % 3 == 1 ? 0.4f : 0.0f);
+            setInstrument (processor, layer, InstrumentField::fxChannel, (float) (1 + layer % numEffectChannels));
+            setInstrument (processor, layer, InstrumentField::fxAmount, 0.6f);
         }
 
         if (! processor.isEffectVersion())
         {
             // Samplingar och egna wavetables (också på OSC 3).
-            processor.loadBassSample (0, writeTestWav ("bass", 110.0, 0.5));
-            setBass (processor, 0, BassField::sampleOn, 1.0f);
-            setBass (processor, 0, BassField::sampleLevel, 0.5f);
-            setBass (processor, 0, BassField::sampleKey, 1.0f);
+            processor.loadInstrumentSample (0, writeTestWav ("bass", 110.0, 0.5));
+            setInstrument (processor, 0, InstrumentField::sampleOn, 1.0f);
+            setInstrument (processor, 0, InstrumentField::sampleLevel, 0.5f);
+            setInstrument (processor, 0, InstrumentField::sampleKey, 1.0f);
             if (count > 1)
                 processor.loadUserTable (1, 2, writeTestWav ("table", 21.533, 0.2, 44100.0));
             setPlain (processor, ParamID::patSwing, 0.2f);
@@ -167,8 +167,8 @@ namespace Scenarios
         }
         if (processor.isEffectVersion())
         {
-            setBass (processor, 0, BassField::fxChannel, 1.0f);
-            setBass (processor, 0, BassField::fxAmount, 0.6f);
+            setInstrument (processor, 0, InstrumentField::fxChannel, 1.0f);
+            setInstrument (processor, 0, InstrumentField::fxAmount, 0.6f);
         }
 
         // Källornas EQ och mastern.
@@ -187,15 +187,15 @@ namespace Scenarios
         setPlain (processor, "lfo3Shape", 6.0f);
         setPlain (processor, "lfo3Mode", 1.0f);
         setPlain (processor, "lfo3Hz", 3.0f);
-        processor.modRoutes.add (0, indexOf (processor, ParamID::bass (0, BassField::cutoff)), 0.3f);
-        processor.modRoutes.add (1, indexOf (processor, ParamID::bass (0, BassField::aPos)), 0.4f);
+        processor.modRoutes.add (0, indexOf (processor, ParamID::bass (0, InstrumentField::cutoff)), 0.3f);
+        processor.modRoutes.add (1, indexOf (processor, ParamID::bass (0, InstrumentField::aPos)), 0.4f);
         processor.modRoutes.add (2, indexOf (processor, Effects::knobParamID (0, 0, 1)), 0.3f);
         processor.modRoutes.add (Modulation::firstMacro, indexOf (processor, ParamID::kickDrive), 0.2f);
         if (! processor.isEffectVersion())
         {
             for (int layer = 1; layer < count; ++layer)
                 processor.modRoutes.add (Modulation::instrumentSource (layer, layer % Modulation::instrumentSources),
-                                         indexOf (processor, ParamID::bass (layer, BassField::cutoff)), 0.25f);
+                                         indexOf (processor, ParamID::bass (layer, InstrumentField::cutoff)), 0.25f);
             setPlain (processor, "macro1", 0.5f);
         }
         processor.ensureTablesInUse();

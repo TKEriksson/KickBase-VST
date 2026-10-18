@@ -40,9 +40,9 @@ private:
     // Loggans glöd: en våg från vänster till höger för varje kick och en från höger till vänster för varje bastoner, i färger som sakta
     // glider mellan varandra. Tiderna är sekunder (väggklocka).
     LogoPainter logo;
-    double lastKickTime = -100.0, lastBassTime = -100.0, bassStrength = 0.0;
+    double lastKickTime = -100.0, lastInstrumentTime = -100.0, instrumentStrength = 0.0;
     int lastKickTriggers = -1;
-    float lastBassPeak = 0.0f;
+    float lastInstrumentPeak = 0.0f;
     bool logoWasActive = true, reducedLast = false;
     float glow = 0.0f, glowShown = 0.0f; // neonets styrka: följer ljudets nivå (släckt utan ljud)
     int lastStatusHash = 0; // tempo, takt, tonart och synk: rubriken ritas bara om när något av det ändras
@@ -144,10 +144,10 @@ private:
 
 // Ett baslager (bara instrumentet): källorna i flikar (OSC 1-3 och SAMPLE, var och en med av/på), filter- och
 // amplitud-envelope och rattar. En WAV kan släppas på sidan (eller laddas med LOAD på SAMPLE-fliken).
-class BassModule : public ModulePanel, public juce::FileDragAndDropTarget
+class InstrumentModule : public ModulePanel, public juce::FileDragAndDropTarget
 {
 public:
-    BassModule (PluginBase& processor, int layer);
+    InstrumentModule (PluginBase& processor, int layer);
     void resized() override;
     void paint (juce::Graphics& g) override
     {
@@ -170,7 +170,7 @@ private:
 
     const int layer;
     ParamRefs refs;
-    BassParams current;
+    InstrumentParams current;
     float ampValueAt (double seconds) const;
     float pitchValueAt (double seconds) const;
     EnvelopeView::NoteOff noteOffNow() const;
@@ -193,7 +193,7 @@ private:
 };
 
 // INSTRUMENT-fliken: ett instrument i taget (1-10), valt med en väljare i flikraden, med + och − för att lägga till och ta bort. Panelerna
-// (BassModule) skapas när ett instrument först visas och rivs när det tas bort.
+// (InstrumentModule) skapas när ett instrument först visas och rivs när det tas bort.
 class InstrumentHost : public juce::Component, private juce::Timer
 {
 public:
@@ -220,12 +220,12 @@ private:
     void addInstrument();
     void removeInstrument();
     void refresh();
-    BassModule& moduleFor (int layer);
+    InstrumentModule& moduleFor (int layer);
 
     PluginBase& processor;
     Header header;
-    std::array<std::unique_ptr<BassModule>, ParamID::numBassLayers> modules;
-    std::array<juce::Component*, ParamID::numBassLayers> extras {};
+    std::array<std::unique_ptr<InstrumentModule>, ParamID::numInstrumentLayers> modules;
+    std::array<juce::Component*, ParamID::numInstrumentLayers> extras {};
     int current = 0, lastCount = -1, lastNamesVersion = -1;
     bool confirmOpen = false;
     juce::Component::SafePointer<juce::AlertWindow> renameDialog;

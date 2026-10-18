@@ -148,7 +148,7 @@ namespace Presets
         pattern.clearNotes (line.layer);
         auto melodic = false; // toner med tonhöjd eller glide visas som pianorulle (miniatyr) i stället för stegknappar
         const auto stepTicks = Pattern::ticksPerStep (line.grid);
-        const auto stepsPerBar = Pattern::bassStepsPerBar (line.grid);
+        const auto stepsPerBar = Pattern::instrumentStepsPerBar (line.grid);
 
         for (int bar = 0; bar < Pattern::maxBars; ++bar)
         {
@@ -200,18 +200,18 @@ namespace Presets
         return {};
     }
 
-    int bassLayerOf (const juce::String& id)
+    int instrumentLayerOf (const juce::String& id)
     {
         if (! id.startsWith ("bass") || id.length() < 5 || ! juce::CharacterFunctions::isDigit (id[4]))
             return -1;
         const auto digits = id.length() > 5 && juce::CharacterFunctions::isDigit (id[5]) ? 2 : 1; // bass1 ... bass10
         const auto layer = id.substring (4, 4 + digits).getIntValue() - 1;
-        return juce::isPositiveAndBelow (layer, ParamID::numBassLayers) ? layer : -1;
+        return juce::isPositiveAndBelow (layer, ParamID::numInstrumentLayers) ? layer : -1;
     }
 
-    juce::String toBassLayer (const juce::String& id, int layer)
+    juce::String toInstrumentLayer (const juce::String& id, int layer)
     {
-        if (bassLayerOf (id) < 0)
+        if (instrumentLayerOf (id) < 0)
             return id;
         const auto digits = id.length() > 5 && juce::CharacterFunctions::isDigit (id[5]) ? 2 : 1;
         return "bass" + juce::String (layer + 1) + id.substring (4 + digits);
@@ -234,7 +234,7 @@ namespace Presets
         for (const char* prefix : { "rowBars", "rowLoop" })
             if (id == juce::String (prefix) + "Bass" + juce::String (layer + 1))
                 return juce::String (prefix) + "Bass1";
-        return toBassLayer (id, 0);
+        return toInstrumentLayer (id, 0);
     }
 
     juce::String patternIdFromCanonical (const juce::String& id, int layer)
@@ -244,15 +244,15 @@ namespace Presets
         for (const char* prefix : { "rowBars", "rowLoop" })
             if (id == juce::String (prefix) + "Bass1")
                 return juce::String (prefix) + "Bass" + juce::String (layer + 1);
-        return toBassLayer (id, layer);
+        return toInstrumentLayer (id, layer);
     }
 
     bool belongsTo (Section section, const juce::String& id, int layer)
     {
         // Ett baslagers fält som hör till mönstret eller sidechainen snarare än till ljudet.
-        auto isLayerField = [&id] (BassField field)
+        auto isLayerField = [&id] (InstrumentField field)
         {
-            const auto l = bassLayerOf (id);
+            const auto l = instrumentLayerOf (id);
             return l >= 0 && id == ParamID::bass (l, field);
         };
 
@@ -264,26 +264,26 @@ namespace Presets
                 // (På/av är radens M-knapp i mönstret, som för instrumenten: ett kick-preset ska inte stänga av eller slå på kicken.)
                 return id.startsWith ("kick") && id != ParamID::kickFxChannel && id != ParamID::kickFxAmount && id != ParamID::kickOn;
             case Section::bass:
-                return (bassLayerOf (id) == layer && ! isLayerField (BassField::on) && ! isLayerField (BassField::gate) && ! isLayerField (BassField::delay) && ! isLayerField (BassField::swing) && ! isLayerField (BassField::humanize)
-                        && ! isLayerField (BassField::duck) && ! isLayerField (BassField::grid)
-                        && ! isLayerField (BassField::fxChannel) && ! isLayerField (BassField::fxAmount)
-                        && ! isLayerField (BassField::gateOn) && ! isLayerField (BassField::gateGrid)
-                        && ! isLayerField (BassField::gateDepth) && ! isLayerField (BassField::gateSmooth))
+                return (instrumentLayerOf (id) == layer && ! isLayerField (InstrumentField::on) && ! isLayerField (InstrumentField::gate) && ! isLayerField (InstrumentField::delay) && ! isLayerField (InstrumentField::swing) && ! isLayerField (InstrumentField::humanize)
+                        && ! isLayerField (InstrumentField::duck) && ! isLayerField (InstrumentField::grid)
+                        && ! isLayerField (InstrumentField::fxChannel) && ! isLayerField (InstrumentField::fxAmount)
+                        && ! isLayerField (InstrumentField::gateOn) && ! isLayerField (InstrumentField::gateGrid)
+                        && ! isLayerField (InstrumentField::gateDepth) && ! isLayerField (InstrumentField::gateSmooth))
                     || id == ParamID::gateAttack || id == ParamID::gateRelease;
             case Section::pattern:
                 // En rad: dess rutnät, noternas längdskala (GATE-ratten), GATE, fördröjning, längd och loop. Inte tonart, swing eller antal instrument.
                 if (layer == Pattern::kickLayer)
                     return id == "rowBarsKick" || id == "rowLoopKick" || id == ParamID::rowGridKick;
-                return (bassLayerOf (id) == layer
-                        && (isLayerField (BassField::grid) || isLayerField (BassField::gate) || isLayerField (BassField::gateOn) || isLayerField (BassField::gateGrid)
-                            || isLayerField (BassField::gateDepth) || isLayerField (BassField::gateSmooth) || isLayerField (BassField::delay)
-                            || isLayerField (BassField::swing) || isLayerField (BassField::humanize)))
+                return (instrumentLayerOf (id) == layer
+                        && (isLayerField (InstrumentField::grid) || isLayerField (InstrumentField::gate) || isLayerField (InstrumentField::gateOn) || isLayerField (InstrumentField::gateGrid)
+                            || isLayerField (InstrumentField::gateDepth) || isLayerField (InstrumentField::gateSmooth) || isLayerField (InstrumentField::delay)
+                            || isLayerField (InstrumentField::swing) || isLayerField (InstrumentField::humanize)))
                     || id == ParamID::rowBars (layer + 1) || id == ParamID::rowLoop (layer + 1);
             case Section::effects:
                 // En kanal: dess fem platser (typ och rattar), EQ, kompressor, nivå och duck. Inte vem som skickar dit (det hör till instrumentet).
                 return Effects::isEffectParameter (id) && (int) (id[2] - 'A') == layer;
             case Section::sidechain:
-                return id.startsWith ("sc") || isLayerField (BassField::duck);
+                return id.startsWith ("sc") || isLayerField (InstrumentField::duck);
             case Section::master:
                 // MAXIMIZER: på/av, drive, clip, ceiling och release. Mixerns reglage och soundstage hör inte hit (de skulle annars nollas av ett maximizer-preset).
                 return id == "masterOn" || id == "masterDrive" || id == "masterClip" || id == "masterCeiling" || id == "masterRelease";
@@ -360,7 +360,7 @@ namespace Presets
         std::vector<std::pair<juce::RangedAudioParameter*, float>> outside;
         for (const auto& [id, value] : preset.values)
         {
-            const auto target = section == Section::bass ? toBassLayer (id, layer) : juce::String (id);
+            const auto target = section == Section::bass ? toInstrumentLayer (id, layer) : juce::String (id);
             if (const auto found = indexOfId.find (target); found != indexOfId.end())
                 targets[found->second] = sectionParameters[found->second]->convertTo0to1 (value);
             else if (auto* parameter = apvts.getParameter (target))
@@ -402,14 +402,14 @@ namespace Presets
             }
         }
 
-        if (auto* gridParam = apvts.getParameter (ParamID::bass (0, BassField::grid)))
+        if (auto* gridParam = apvts.getParameter (ParamID::bass (0, InstrumentField::grid)))
             setParameter (*gridParam, gridParam->convertTo0to1 ((float) grid));
 
         // Egna rader per lager (rutnätet sätts med).
         for (const auto& line : preset.extras.pattern)
         {
             writePatternLine (pattern, line);
-            if (auto* lineGrid = apvts.getParameter (ParamID::bass (line.layer, BassField::grid)))
+            if (auto* lineGrid = apvts.getParameter (ParamID::bass (line.layer, InstrumentField::grid)))
                 setParameter (*lineGrid, lineGrid->convertTo0to1 ((float) line.grid));
         }
     }

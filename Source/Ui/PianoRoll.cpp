@@ -17,7 +17,7 @@ namespace
     juce::String gridNameFor (int ticks)
     {
         for (int g = 0; g < Pattern::numGrids; ++g)
-            if (Pattern::ticksPerStep ((BassGrid) g) == ticks)
+            if (Pattern::ticksPerStep ((InstrumentGrid) g) == ticks)
                 return Pattern::gridNames()[g];
         return juce::String (ticks) + " ticks";
     }
@@ -162,12 +162,12 @@ int PianoRoll::bars() const
 
 juce::String PianoRoll::gridParameterId() const
 {
-    return layer == Pattern::kickLayer ? juce::String (ParamID::rowGridKick) : ParamID::bass (layer, BassField::grid);
+    return layer == Pattern::kickLayer ? juce::String (ParamID::rowGridKick) : ParamID::bass (layer, InstrumentField::grid);
 }
 
 int PianoRoll::playTickNow() const
 {
-    return layer == Pattern::kickLayer ? processor.transportStatus.kickStep.load() : processor.transportStatus.bassSteps[(size_t) layer].load();
+    return layer == Pattern::kickLayer ? processor.transportStatus.kickStep.load() : processor.transportStatus.instrumentSteps[(size_t) layer].load();
 }
 
 juce::String PianoRoll::layerName() const
@@ -175,9 +175,9 @@ juce::String PianoRoll::layerName() const
     return layer == Pattern::kickLayer ? juce::String ("KICK") : processor.getLayerName (layer);
 }
 
-BassGrid PianoRoll::grid() const
+InstrumentGrid PianoRoll::grid() const
 {
-    return (BassGrid) juce::jlimit (0, Pattern::numGrids - 1, (int) processor.apvts.getRawParameterValue (gridParameterId())->load());
+    return (InstrumentGrid) juce::jlimit (0, Pattern::numGrids - 1, (int) processor.apvts.getRawParameterValue (gridParameterId())->load());
 }
 
 int PianoRoll::snapTicks() const { return snapEnabled ? Pattern::ticksPerStep (grid()) : 1; }
@@ -197,7 +197,7 @@ int PianoRoll::rootNote() const
         const auto follow = (int) processor.apvts.getRawParameterValue (ParamID::kickKeyFollow)->load() == 1;
         return follow ? Params::kickTailMidiNote ((key >= 0 ? key : 60) % 12) : 24;
     }
-    return Params::bassRootMidiNote (key >= 0 ? key : 60);
+    return Params::instrumentRootMidiNote (key >= 0 ? key : 60);
 }
 
 int PianoRoll::rootPitchClass() const { return rootNote() % 12; }
@@ -253,10 +253,10 @@ int PianoRoll::soundingRoot() const
 {
     if (layer == Pattern::kickLayer)
         return rootNote();
-    return rootNote() + 12 * (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, BassField::octave))->load();
+    return rootNote() + 12 * (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, InstrumentField::octave))->load();
 }
 
-void PianoRoll::afterLoad (int bars, BassGrid newGrid)
+void PianoRoll::afterLoad (int bars, InstrumentGrid newGrid)
 {
     if (auto* gridParameter = processor.apvts.getParameter (gridParameterId()))
         Presets::setParameter (*gridParameter, gridParameter->convertTo0to1 ((float) newGrid));
@@ -295,7 +295,7 @@ void PianoRoll::showPresetMenu()
         else if (juce::isPositiveAndBelow (result - 100, files.size()))
         {
             int bars = 1;
-            auto newGrid = BassGrid::sixteenth;
+            auto newGrid = InstrumentGrid::sixteenth;
             if (RollFiles::load (safeThis->processor.pattern, safeThis->layer, files[result - 100], bars, newGrid))
                 safeThis->afterLoad (bars, newGrid);
             else

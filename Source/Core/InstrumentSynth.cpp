@@ -1,4 +1,4 @@
-#include "BassSynth.h"
+#include "InstrumentSynth.h"
 
 namespace
 {
@@ -6,7 +6,7 @@ namespace
     double wrap (double phase) { return phase - std::floor (phase); }
 }
 
-void BassSynth::prepare (double newSampleRate)
+void InstrumentSynth::prepare (double newSampleRate)
 {
     sampleRate = newSampleRate;
     Wavetables::ensure (0); // Basic måste finnas; övriga tabeller byggs av TableBuilder / ensureTablesInUse (inte på ljudtråden)
@@ -24,7 +24,7 @@ void BassSynth::prepare (double newSampleRate)
     reset();
 }
 
-void BassSynth::reset()
+void InstrumentSynth::reset()
 {
     stage = Stage::idle;
     ampLevel = 0.0f;
@@ -41,7 +41,7 @@ void BassSynth::reset()
     sideFilter2.reset();
 }
 
-double BassSynth::warpPhase (WarpMode mode, float amount, double phase, float fmInput)
+double InstrumentSynth::warpPhase (WarpMode mode, float amount, double phase, float fmInput)
 {
     const auto a = (double) juce::jlimit (0.0f, 1.0f, amount);
     if (a <= 0.0)
@@ -78,13 +78,13 @@ double BassSynth::warpPhase (WarpMode mode, float amount, double phase, float fm
     return phase;
 }
 
-void BassSynth::Oscillator::retrigger (const OscParams& p, juce::Random& rng)
+void InstrumentSynth::Oscillator::retrigger (const OscParams& p, juce::Random& rng)
 {
     for (auto& ph : phases)
         ph = wrap (p.phase + p.randomPhase * rng.nextDouble());
 }
 
-BassSynth::Stereo BassSynth::Oscillator::next (const OscParams& p, double frequency, double rate, float warpAmount, float fmInput)
+InstrumentSynth::Stereo InstrumentSynth::Oscillator::next (const OscParams& p, double frequency, double rate, float warpAmount, float fmInput)
 {
     const auto& table = p.table == Wavetables::userIndex() ? (p.user != nullptr ? *p.user : Wavetables::get (0))
                                                            : Wavetables::get (p.table);
@@ -136,7 +136,7 @@ BassSynth::Stereo BassSynth::Oscillator::next (const OscParams& p, double freque
     return { sumLeft * normal * (pan > 0.0f ? 1.0f - pan : 1.0f), sumRight * normal * (pan < 0.0f ? 1.0f + pan : 1.0f) };
 }
 
-void BassSynth::noteOn (int semitones, float newVelocity, int gateSamples)
+void InstrumentSynth::noteOn (int semitones, float newVelocity, int gateSamples)
 {
     const auto frequency = params.rootHz * std::exp2 (semitones / 12.0f);
     targetLogFrequency = std::log2 ((double) frequency);
@@ -164,7 +164,7 @@ void BassSynth::noteOn (int semitones, float newVelocity, int gateSamples)
     gateRemaining = gateSamples;
 }
 
-bool BassSynth::glideTo (int semitones, int samples)
+bool InstrumentSynth::glideTo (int semitones, int samples)
 {
     if (stage == Stage::idle)
         return false;
@@ -175,7 +175,7 @@ bool BassSynth::glideTo (int semitones, int samples)
     return true;
 }
 
-void BassSynth::release()
+void InstrumentSynth::release()
 {
     if (stage != Stage::idle)
     {
@@ -185,7 +185,7 @@ void BassSynth::release()
     }
 }
 
-void BassSynth::ModEnv::next (const ModEnvParams& p, double rate)
+void InstrumentSynth::ModEnv::next (const ModEnvParams& p, double rate)
 {
     switch (envStage)
     {
@@ -210,7 +210,7 @@ void BassSynth::ModEnv::next (const ModEnvParams& p, double rate)
     }
 }
 
-float BassSynth::filterEnvelopeAt (const BassParams& p, double seconds)
+float InstrumentSynth::filterEnvelopeAt (const InstrumentParams& p, double seconds)
 {
     const auto attack = std::max (0.0001, p.envAttackMs * 0.001);
     if (seconds < attack)
@@ -221,13 +221,13 @@ float BassSynth::filterEnvelopeAt (const BassParams& p, double seconds)
     return (float) std::exp (std::log (0.001) * (seconds - attack) / decay);
 }
 
-double BassSynth::coefficientFor (double milliseconds, double rate)
+double InstrumentSynth::coefficientFor (double milliseconds, double rate)
 {
     // Andel av avståndet till målet per sample, så att -60 dB nås efter `milliseconds`.
     return 1.0 - std::exp (std::log (0.001) / (std::max (0.1, milliseconds) * 0.001 * rate));
 }
 
-BassSynth::Output BassSynth::next()
+InstrumentSynth::Output InstrumentSynth::next()
 {
     if (stage == Stage::idle)
     {
@@ -378,8 +378,8 @@ BassSynth::Output BassSynth::next()
 
     // LP 24 = två lågpass efter varandra; övriga typer ett filter (12 dB).
     using Type = juce::dsp::StateVariableTPTFilterType;
-    const auto type = params.filterType == BassFilterType::bandpass ? Type::bandpass
-                    : params.filterType == BassFilterType::highpass ? Type::highpass
+    const auto type = params.filterType == InstrumentFilterType::bandpass ? Type::bandpass
+                    : params.filterType == InstrumentFilterType::highpass ? Type::highpass
                                                                     : Type::lowpass;
     // Bara det som ändrats sätts: varje set-funktion räknar om koefficienterna (tan) ur alla värden, så resultatet är detsamma som att sätta
     // allt, men filter-envelopen ändrar cutoff varje sample och då räknades de om dubbelt så många gånger som behövs.
@@ -402,7 +402,7 @@ BassSynth::Output BassSynth::next()
         appliedResonance2 = q;
     }
 
-    if (params.filterType == BassFilterType::lowpass24)
+    if (params.filterType == InstrumentFilterType::lowpass24)
     {
         if (clampedCutoff != appliedCutoff1)
         {

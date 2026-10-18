@@ -21,7 +21,7 @@ FxEditor::FxEditor (FxProcessor& p)
     synths.addTab ("AI", Theme::mix, aiPage);
 
     synths.addPower (1, processor.apvts, ParamID::kickOn);
-    synths.addPower (2, processor.apvts, ParamID::bass (0, BassField::on));
+    synths.addPower (2, processor.apvts, ParamID::bass (0, InstrumentField::on));
 
     tools.addTab ("EFFECTS", Theme::effects, effects);
     tools.addTab ("SIDECHAIN", Theme::mix, sidechain);

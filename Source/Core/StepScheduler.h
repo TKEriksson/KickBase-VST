@@ -36,7 +36,7 @@ public:
 
     // Senast passerade steg i mönstret, för gränssnittets uppspelningsmarkör.
     int getLastKickStep() const          { return lastKickStep; }
-    int getLastBassStep (int layer) const { return lastBassSteps[(size_t) layer]; }
+    int getLastInstrumentStep (int layer) const { return lastInstrumentSteps[(size_t) layer]; }
 
 private:
     void addKick (const Pattern& pattern, const PatternLengths& lengths, int offset, StepPosition position);
@@ -46,11 +46,11 @@ private:
     int numLayers = Pattern::numLayers;
     // Kickens och baslagrens toner ligger fritt i tiden, så markörerna går i ticks (96 per fjärdedel).
     StepCursor kickCursor { (double) Pattern::ticksPerQuarter };
-    static constexpr double bassTicksPerQuarter = Pattern::ticksPerQuarter;
-    std::array<StepCursor, Pattern::numLayers> bassCursors {}; // alla med bassTicksPerQuarter (standardvärdet)
+    static constexpr double instrumentTicksPerQuarter = Pattern::ticksPerQuarter;
+    std::array<StepCursor, Pattern::numLayers> instrumentCursors {}; // alla med instrumentTicksPerQuarter (standardvärdet)
 
     std::array<StepEvent, 512> events {};
     int numEvents = 0;
     int lastKickStep = -1;
-    std::array<int, Pattern::numLayers> lastBassSteps = filledArray<int, Pattern::numLayers> (-1);
+    std::array<int, Pattern::numLayers> lastInstrumentSteps = filledArray<int, Pattern::numLayers> (-1);
 };

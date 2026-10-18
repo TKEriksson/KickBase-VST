@@ -50,7 +50,7 @@ juce::String SourceEq::prefixFor (int source)
 {
     if (source <= 0)
         return "kick";
-    if (source > ParamID::numBassLayers)
+    if (source > ParamID::numInstrumentLayers)
         return "master";
     return "bass" + juce::String (source);
 }

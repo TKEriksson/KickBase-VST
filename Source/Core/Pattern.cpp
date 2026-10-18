@@ -1,24 +1,24 @@
 #include "Pattern.h"
 
-int Pattern::bassStepsPerBar (BassGrid grid)
+int Pattern::instrumentStepsPerBar (InstrumentGrid grid)
 {
     switch (grid)
     {
-        case BassGrid::quarter:             return 4;
-        case BassGrid::eighth:              return 8;
-        case BassGrid::eighthTriplet:       return 12;
-        case BassGrid::sixteenth:           return 16;
-        case BassGrid::sixteenthTriplet:    return 24;
-        case BassGrid::thirtySecond:        return 32;
-        case BassGrid::thirtySecondTriplet: return 48;
-        case BassGrid::sixtyFourth:         return 64;
+        case InstrumentGrid::quarter:             return 4;
+        case InstrumentGrid::eighth:              return 8;
+        case InstrumentGrid::eighthTriplet:       return 12;
+        case InstrumentGrid::sixteenth:           return 16;
+        case InstrumentGrid::sixteenthTriplet:    return 24;
+        case InstrumentGrid::thirtySecond:        return 32;
+        case InstrumentGrid::thirtySecondTriplet: return 48;
+        case InstrumentGrid::sixtyFourth:         return 64;
     }
     return 16;
 }
 
-double Pattern::bassStepsPerQuarter (BassGrid grid)
+double Pattern::instrumentStepsPerQuarter (InstrumentGrid grid)
 {
-    return bassStepsPerBar (grid) / 4.0;
+    return instrumentStepsPerBar (grid) / 4.0;
 }
 
 int Pattern::firstNoteIn (int layer, int fromTick, int toTick) const
@@ -84,7 +84,7 @@ void Pattern::clearNotes (int layer)
     }
 }
 
-BassGrid Pattern::applyTemplate (PatternTemplate t, bool keepOtherInstruments)
+InstrumentGrid Pattern::applyTemplate (PatternTemplate t, bool keepOtherInstruments)
 {
     // Kick på varje fjärdedel i alla mallar utom Clear.
     clearNotes (kickLayer);
@@ -100,18 +100,18 @@ BassGrid Pattern::applyTemplate (PatternTemplate t, bool keepOtherInstruments)
     return applyLayerTemplate (0, t);
 }
 
-BassGrid Pattern::applyLayerTemplate (int layer, PatternTemplate t)
+InstrumentGrid Pattern::applyLayerTemplate (int layer, PatternTemplate t)
 {
-    auto grid = BassGrid::sixteenth;
+    auto grid = InstrumentGrid::sixteenth;
     if (t == PatternTemplate::triplet)
-        grid = BassGrid::eighthTriplet;
+        grid = InstrumentGrid::eighthTriplet;
 
     clearNotes (layer);
 
-    const auto perQuarter = (int) bassStepsPerQuarter (grid);
+    const auto perQuarter = (int) instrumentStepsPerQuarter (grid);
     const auto stepTicks = ticksPerStep (grid);
 
-    for (int i = 0; i < maxBars * bassStepsPerBar (grid); ++i)
+    for (int i = 0; i < maxBars * instrumentStepsPerBar (grid); ++i)
     {
         const auto inBeat = i % perQuarter;
         auto on = false;
@@ -225,7 +225,7 @@ void Pattern::fromValueTree (const juce::ValueTree& tree, bool clearUnmentionedL
     {
         if (version >= 2)
             return stored;
-        constexpr BassGrid oldOrder[] { BassGrid::sixteenth, BassGrid::eighthTriplet, BassGrid::sixteenthTriplet };
+        constexpr InstrumentGrid oldOrder[] { InstrumentGrid::sixteenth, InstrumentGrid::eighthTriplet, InstrumentGrid::sixteenthTriplet };
         return juce::isPositiveAndBelow (stored, 3) ? (int) oldOrder[stored] : -1;
     };
 
@@ -276,7 +276,7 @@ void Pattern::fromValueTree (const juce::ValueTree& tree, bool clearUnmentionedL
                 continue;
 
             clearOnce (layer);
-            const auto grid = (BassGrid) g;
+            const auto grid = (InstrumentGrid) g;
             const auto stepTicks = ticksPerStep (grid);
             const auto on = split (child["on"], ","), pitch = split (child["pitch"], ","), slide = split (child["slide"], ",");
             const auto gates = split (child["gate"], ","), velocity = split (child["velocity"], ",");

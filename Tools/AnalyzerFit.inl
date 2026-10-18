@@ -102,13 +102,13 @@ namespace
 
     struct BassCandidate
     {
-        BassParams params;
+        InstrumentParams params;
         float gate = 0.6f; // tonens längd, andel av steget
     };
 
     BassMeasure renderBass (const BassCandidate& c, double f0, double stepSeconds)
     {
-        BassSynth synth;
+        InstrumentSynth synth;
         synth.prepare (fitRate);
         auto p = c.params;
         p.rootHz = (float) f0;
@@ -133,7 +133,7 @@ namespace
                      Wavetables::get (p.oscB.table).getName().toRawUTF8(), p.oscB.position, p.oscB.level, p.oscB.semis, p.oscB.fineCents);
         std::printf ("  warp FM %.2f  warp env %.2f  sub %.2f (oct %d)  noise %.2f\n", p.oscA.warpAmount, p.warpEnv, p.sub, p.subOctave, p.noise);
         std::printf ("  filter: %s  cutoff %.0f Hz  reso %.2f  env %.2f oct  envDecay %.0f ms  drive %.2f\n",
-                     p.filterType == BassFilterType::lowpass24 ? "LP24" : "LP12", p.cutoffHz, p.resonance, p.envAmount, p.envDecayMs, p.drive);
+                     p.filterType == InstrumentFilterType::lowpass24 ? "LP24" : "LP12", p.cutoffHz, p.resonance, p.envAmount, p.envDecayMs, p.drive);
         std::printf ("  amp: attack %.1f  decay %.0f  sustain %.2f  release %.1f ms  gate %.2f av steget\n",
                      p.attackMs, p.decayMs, p.sustain, p.releaseMs, c.gate);
     }
@@ -275,7 +275,7 @@ int fitBass (const juce::File& file, double start, double end, int stepsPerBeat)
         p.oscA.warp = WarpMode::fm;
         p.oscA.warpAmount = uniform (0.0f, 1.0f) < 0.4f ? 0.0f : uniform (0.0f, 0.6f);
         p.warpEnv = uniform (0.0f, 1.0f) < 0.4f ? 0.0f : uniform (0.0f, 0.6f);
-        p.filterType = uniform (0.0f, 1.0f) < 0.5f ? BassFilterType::lowpass24 : BassFilterType::lowpass12;
+        p.filterType = uniform (0.0f, 1.0f) < 0.5f ? InstrumentFilterType::lowpass24 : InstrumentFilterType::lowpass12;
         p.cutoffHz = logUniform (40.0f, 2500.0f);
         p.resonance = uniform (0.0f, 0.7f);
         p.envAmount = uniform (0.0f, 6.0f);

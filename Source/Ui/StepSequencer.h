@@ -62,23 +62,23 @@ private:
     int pageOffset (int visibleSteps) const { return page * visibleSteps; } // första synliga stegets plats i mönstret
     void setPage (int newPage);
 
-    BassGrid grid (int layer) const;
-    int bassSteps (int layer) const { return viewBars() * Pattern::bassStepsPerBar (grid (layer)); }
-    BassGrid gateGrid (int layer) const;
-    int gateSteps (int layer) const { return viewBars() * Pattern::bassStepsPerBar (gateGrid (layer)); }
+    InstrumentGrid grid (int layer) const;
+    int instrumentSteps (int layer) const { return viewBars() * Pattern::instrumentStepsPerBar (grid (layer)); }
+    InstrumentGrid gateGrid (int layer) const;
+    int gateSteps (int layer) const { return viewBars() * Pattern::instrumentStepsPerBar (gateGrid (layer)); }
 
     // Radens egna längd i steg (kortare än mönstret när raden har en egen längd): efter den loopar eller tystnar raden.
     // Lager 0-9 är instrumenten och lager 10 (Pattern::kickLayer) är kicken. Radens nummer för längderna: kick 0, instrument 1-10.
     static int rowOf (int layer) { return layer == Pattern::kickLayer ? 0 : layer + 1; }
-    int bassOwnSteps (const PatternLengths& l, int layer) const { return l.barsOf (rowOf (layer)) * Pattern::bassStepsPerBar (grid (layer)); }
-    int gateOwnSteps (const PatternLengths& l, int layer) const { return l.barsOf (rowOf (layer)) * Pattern::bassStepsPerBar (gateGrid (layer)); }
+    int instrumentOwnSteps (const PatternLengths& l, int layer) const { return l.barsOf (rowOf (layer)) * Pattern::instrumentStepsPerBar (grid (layer)); }
+    int gateOwnSteps (const PatternLengths& l, int layer) const { return l.barsOf (rowOf (layer)) * Pattern::instrumentStepsPerBar (gateGrid (layer)); }
 
     juce::Rectangle<int> rowBounds (int layer) const { return rowRects[(size_t) rowOf (layer)]; }
     juce::Colour colourOf (int layer) const { return layer == Pattern::kickLayer ? Theme::kick : layerColours[(size_t) layer]; }
     juce::String nameOf (int layer) const;
     bool renameable() const { return totalLayers() > 1; } // instrumentets lager kan döpas om; FX-versionens GATE-rad inte
 
-    int laneStepAt (int x) const { const auto l = lengths(); return stepAt (x, selectedLayer, bassSteps (selectedLayer), bassOwnSteps (l, selectedLayer)); }
+    int laneStepAt (int x) const { const auto l = lengths(); return stepAt (x, selectedLayer, instrumentSteps (selectedLayer), instrumentOwnSteps (l, selectedLayer)); }
     bool isCustom (int layer) const { return processor.pattern.isCustom (layer); }
 
     Target targetAt (juce::Point<int> point, int& layer) const;

@@ -15,7 +15,7 @@ void StepScheduler::collect (const TransportClock& clock, const Pattern& pattern
 
     for (int layer = 0; layer < numLayers; ++layer)
     {
-        clock.forEachStep (bassCursors[(size_t) layer], startSample, endSample, [&] (int offset, StepPosition position)
+        clock.forEachStep (instrumentCursors[(size_t) layer], startSample, endSample, [&] (int offset, StepPosition position)
         {
             if (beforeStop (offset))
                 addBass (layer, pattern, lengths, offset, position);
@@ -32,7 +32,7 @@ void StepScheduler::collectJustPassed (const TransportClock& clock, const Patter
         addKick (pattern, lengths, sampleOffset, *position);
 
     for (int layer = 0; layer < numLayers; ++layer)
-        if (const auto position = clock.takeStepJustPassed (bassCursors[(size_t) layer], sampleOffset, toleranceSamples))
+        if (const auto position = clock.takeStepJustPassed (instrumentCursors[(size_t) layer], sampleOffset, toleranceSamples))
             addBass (layer, pattern, lengths, sampleOffset, *position);
 }
 
@@ -50,7 +50,7 @@ void StepScheduler::addBass (int layer, const Pattern& pattern, const PatternLen
 {
     const auto barInRow = lengths.barInRow (1 + layer, position.bar);
     const auto tick = barInRow < 0 ? -1 : barInRow * Pattern::ticksPerBar + position.stepInBar;
-    lastBassSteps[(size_t) layer] = tick;
+    lastInstrumentSteps[(size_t) layer] = tick;
 
     if (tick >= 0 && pattern.note (layer, tick).on.load())
         add ({ offset, StepEvent::Type::bass, tick, layer });

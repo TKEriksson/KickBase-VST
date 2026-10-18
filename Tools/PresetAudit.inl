@@ -66,8 +66,8 @@ namespace
                     p->setValueNotifyingHost (p->convertTo0to1 (value));
             };
             if (section == Section::kick)
-                for (int layer = 0; layer < ParamID::numBassLayers; ++layer)
-                    set (ParamID::bass (layer, BassField::on).toRawUTF8(), 0.0f);
+                for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
+                    set (ParamID::bass (layer, InstrumentField::on).toRawUTF8(), 0.0f);
             if (section == Section::bass)
                 set (ParamID::kickOn, 0.0f);
 

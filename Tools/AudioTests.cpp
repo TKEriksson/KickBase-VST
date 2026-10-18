@@ -320,7 +320,7 @@ int audioThreadTest()
         auto between = [&p] (int block)
         {
             const auto t = (float) (block % 50) / 50.0f;
-            Scenarios::setPlain (p, ParamID::bass (0, BassField::cutoff), 200.0f + 2000.0f * t);
+            Scenarios::setPlain (p, ParamID::bass (0, InstrumentField::cutoff), 200.0f + 2000.0f * t);
             Scenarios::setPlain (p, "kickEq2G", -6.0f + 12.0f * t);
             Scenarios::setPlain (p, "bass2Eq3G", 6.0f * t);
             Scenarios::setPlain (p, "masterEq1F", 60.0f + 100.0f * t);
@@ -328,7 +328,7 @@ int audioThreadTest()
             Scenarios::setPlain (p, Effects::channelParamID (3, "CompThr"), -30.0f * t);
             Scenarios::setPlain (p, Effects::knobParamID (1, 0, 1), t);
             Scenarios::setPlain (p, "masterDrive", 6.0f * t);
-            Scenarios::setPlain (p, ParamID::bass (3, BassField::aUnison), (float) (1 + block % 7));
+            Scenarios::setPlain (p, ParamID::bass (3, InstrumentField::aUnison), (float) (1 + block % 7));
             if (block % 40 == 20)
                 Scenarios::setPlain (p, Effects::slotParamID (4, 2, "Type"), (float) (1 + (block / 40) % (numEffectTypes - 1)));
         };
@@ -391,7 +391,7 @@ int audioThreadTest()
         processor->prepareToPlay (48000.0, 256);
         juce::AudioBuffer<float> buffer (2, 256);
         juce::MidiBuffer midi;
-        auto* cutoff = processor->apvts.getParameter (ParamID::bass (0, BassField::cutoff));
+        auto* cutoff = processor->apvts.getParameter (ParamID::bass (0, InstrumentField::cutoff));
         auto* knob = processor->apvts.getParameter (Effects::knobParamID (0, 0, 1));
         const auto cutoffBefore = cutoff->getValue(), knobBefore = knob->getValue();
         auto lastFinite = true;

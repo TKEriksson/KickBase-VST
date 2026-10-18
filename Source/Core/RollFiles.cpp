@@ -38,7 +38,7 @@ namespace RollFiles
         set (ParamID::rowBars (layer == Pattern::kickLayer ? 0 : 1 + layer), bars >= total ? 0 : barsToChoice (bars) + 1);
     }
 
-    bool save (const Pattern& pattern, int layer, int bars, BassGrid grid, const juce::File& file)
+    bool save (const Pattern& pattern, int layer, int bars, InstrumentGrid grid, const juce::File& file)
     {
         juce::XmlElement root ("KickbaseRoll");
         root.setAttribute ("version", 1);
@@ -62,7 +62,7 @@ namespace RollFiles
         return root.writeTo (file);
     }
 
-    bool load (Pattern& pattern, int layer, const juce::File& file, int& bars, BassGrid& grid)
+    bool load (Pattern& pattern, int layer, const juce::File& file, int& bars, InstrumentGrid& grid)
     {
         const auto xml = juce::XmlDocument::parse (file);
         if (xml == nullptr || ! xml->hasTagName ("KickbaseRoll"))
@@ -80,7 +80,7 @@ namespace RollFiles
 
         bars = 1 << barsToChoice (juce::jlimit (1, Pattern::maxBars, xml->getIntAttribute ("bars", 1)));
         const auto gridIndex = Pattern::gridNames().indexOf (xml->getStringAttribute ("grid"), true);
-        grid = gridIndex >= 0 ? (BassGrid) gridIndex : BassGrid::sixteenth;
+        grid = gridIndex >= 0 ? (InstrumentGrid) gridIndex : InstrumentGrid::sixteenth;
         return true;
     }
 

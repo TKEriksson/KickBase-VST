@@ -234,17 +234,17 @@ void HeaderBar::timerCallback()
         lastKickTime = now;
     lastKickTriggers = triggers;
 
-    std::vector<float> bassLeft, bassRight;
-    processor.bassAfterDuckTap.copyLatest (256, bassLeft, bassRight);
-    auto bassPeak = 0.0f;
-    for (const auto sample : bassLeft)
-        bassPeak = std::max (bassPeak, std::abs (sample));
-    if (bassPeak > 0.03f && bassPeak > lastBassPeak * 1.35f + 0.01f && now - lastBassTime > 0.06)
+    std::vector<float> instrumentLeft, instrumentRight;
+    processor.instrumentAfterDuckTap.copyLatest (256, instrumentLeft, instrumentRight);
+    auto instrumentPeak = 0.0f;
+    for (const auto sample : instrumentLeft)
+        instrumentPeak = std::max (instrumentPeak, std::abs (sample));
+    if (instrumentPeak > 0.03f && instrumentPeak > lastInstrumentPeak * 1.35f + 0.01f && now - lastInstrumentTime > 0.06)
     {
-        lastBassTime = now;
-        bassStrength = juce::jlimit (0.35, 1.0, (double) bassPeak * 3.0);
+        lastInstrumentTime = now;
+        instrumentStrength = juce::jlimit (0.35, 1.0, (double) instrumentPeak * 3.0);
     }
-    lastBassPeak = bassPeak > lastBassPeak ? bassPeak : lastBassPeak * 0.85f;
+    lastInstrumentPeak = instrumentPeak > lastInstrumentPeak ? instrumentPeak : lastInstrumentPeak * 0.85f;
 
     // Rita bara om det som rör sig: mätaren (30 gånger i sekunden), loggan så länge glöden går, och resten när tempo, takt, tonart eller
     // synk ändras. Att rita hela rubriken 30 gånger i sekunden kostade onödigt mycket.
@@ -265,7 +265,7 @@ void HeaderBar::timerCallback()
     const auto glowMoved = std::abs (glow - glowShown) > 0.02f || (glow == 0.0f && glowShown != 0.0f);
     if (glowMoved)
         glowShown = glow;
-    const auto logoActive = glowMoved || (! reduced && (now - lastKickTime < 1.9 || bassStrength * std::exp (-(now - lastBassTime) * 2.2) > 0.01));
+    const auto logoActive = glowMoved || (! reduced && (now - lastKickTime < 1.9 || instrumentStrength * std::exp (-(now - lastInstrumentTime) * 2.2) > 0.01));
     if (logoActive || logoWasActive)
         repaint (0, 0, 14 + logo.getWidth() + 24, getHeight());
     logoWasActive = logoActive;
@@ -298,11 +298,11 @@ void HeaderBar::paint (juce::Graphics& g)
     {
         // Loggan: glöden följer ljudet. En ny kick startar en våg åt höger, en ny stöt från instrumenten en våg åt vänster.
         const auto now = juce::Time::getMillisecondCounterHiRes() * 0.001;
-        const auto kickAge = now - lastKickTime, bassAge = now - lastBassTime;
+        const auto kickAge = now - lastKickTime, instrumentAge = now - lastInstrumentTime;
         // Halv fart mot förut (glöden går över loggan på 0,6 s och tonar ut på ~1,5 s), och starkare. Med minskade animationer står loggan still.
         const auto still = Settings::reduceAnimations();
         LogoPainter::Sweep kick { juce::jlimit (0.0f, 1.0f, (float) (kickAge / 0.60)), still ? 0.0f : (float) std::exp (-kickAge * 2.6), fadeColour ({ 0xffff5fa8, 0xffff9a3c, 0xffb98cff, 0xffffc857 }, 0.0, now) };
-        LogoPainter::Sweep bass { 1.0f - juce::jlimit (0.0f, 1.0f, (float) (bassAge / 0.76)), still ? 0.0f : (float) (bassStrength * std::exp (-bassAge * 2.2)),
+        LogoPainter::Sweep bass { 1.0f - juce::jlimit (0.0f, 1.0f, (float) (instrumentAge / 0.76)), still ? 0.0f : (float) (instrumentStrength * std::exp (-instrumentAge * 2.2)),
                                   fadeColour ({ 0xff3fd2ff, 0xff5fffb0, 0xff6b8cff, 0xff5ef2d6 }, 9.0, now) };
         logo.paint (g, { 14.0f, ((float) getHeight() - (float) LogoPainter::height) * 0.5f }, glowShown, kick, bass);
     }
@@ -553,15 +553,15 @@ void KickModule::resized()
 }
 
 //==============================================================================
-BassModule::BassModule (PluginBase& p, int layerIn)
-    : ModulePanel ("INSTR " + juce::String (layerIn + 1), Theme::layerColour (layerIn), &p.apvts, ParamID::bass (layerIn, BassField::on)),
+InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
+    : ModulePanel ("INSTR " + juce::String (layerIn + 1), Theme::layerColour (layerIn), &p.apvts, ParamID::bass (layerIn, InstrumentField::on)),
       processor (p),
       layer (layerIn),
       refs (p.apvts),
-      sources (&p.selectedBassSource[(size_t) layerIn]),
+      sources (&p.selectedInstrumentSource[(size_t) layerIn]),
       presets (p, Presets::Section::bass, Theme::layerColour (layerIn), layerIn)
 {
-    using F = BassField;
+    using F = InstrumentField;
     auto id = [this] (F f) { return ParamID::bass (layer, f); };
     const auto layerAccent = Theme::layerColour (layer);
 
@@ -570,9 +570,9 @@ BassModule::BassModule (PluginBase& p, int layerIn)
     fxSend = std::make_unique<FxSendControl> (p.apvts, id (F::fxChannel), id (F::fxAmount), "FX SEND", layerAccent);
     addAndMakeVisible (*fxSend);
     setHeaderFxSend (fxSend.get());
-    envelope.onBeforePaint = [this] { current = refs.readBass (layer, 36); };
+    envelope.onBeforePaint = [this] { current = refs.readInstrument (layer, 36); };
 
-    envelope.addCurve ({ [this] (double t) { return BassSynth::filterEnvelopeAt (current, t) * current.envAmount / 8.0f; },
+    envelope.addCurve ({ [this] (double t) { return InstrumentSynth::filterEnvelopeAt (current, t) * current.envAmount / 8.0f; },
                          layerAccent, true, "FILTER" });
     envelope.addCurve ({ [this] (double t) { return ampValueAt (t); }, Theme::text.withAlpha (0.8f), false, "AMP" });
     envelope.addCurve ({ [this] (double t) { return pitchValueAt (t); }, juce::Colour (0xffe6c23c).withAlpha (0.9f), false, "PITCH" }); // tonhöjdsenvelopen (storleken, uppåt eller nedåt)
@@ -585,7 +585,7 @@ BassModule::BassModule (PluginBase& p, int layerIn)
                           param (p, id (F::envAttack)), param (p, id (F::envAmount)), false, layerAccent });
     envelope.addHandle ({ [this] {
                               const auto t = current.envAttackMs * 0.001 + current.envDecayMs * 0.001 / 3.0;
-                              return juce::Point<float> ((float) t, BassSynth::filterEnvelopeAt (current, t) * current.envAmount / 8.0f); },
+                              return juce::Point<float> ((float) t, InstrumentSynth::filterEnvelopeAt (current, t) * current.envAmount / 8.0f); },
                           param (p, id (F::envDecay)), nullptr, false, layerAccent });
 
     envelope.addHandle ({ [this] { return juce::Point<float> (current.attackMs * 0.001f, 1.0f); },
@@ -677,7 +677,7 @@ BassModule::BassModule (PluginBase& p, int layerIn)
     updateModToggle();
 }
 
-void BassModule::updateModToggle()
+void InstrumentModule::updateModToggle()
 {
     modToggle.setButtonText (juce::String (modOpen ? juce::String::fromUTF8 ("\xe2\x96\xbe") : juce::String::fromUTF8 ("\xe2\x96\xb8"))
                              + "  MODULATION   ENV 2, ENV 3, VELOCITY, RANDOM");
@@ -685,12 +685,12 @@ void BassModule::updateModToggle()
         control->setVisible (modOpen);
 }
 
-bool BassModule::isInterestedInFileDrag (const juce::StringArray& files)
+bool InstrumentModule::isInterestedInFileDrag (const juce::StringArray& files)
 {
     return files.size() == 1 && juce::File (files[0]).hasFileExtension ("wav;aif;aiff;flac");
 }
 
-void BassModule::filesDropped (const juce::StringArray& files, int, int)
+void InstrumentModule::filesDropped (const juce::StringArray& files, int, int)
 {
     dragHover = false;
     samplePage->loadSample (juce::File (files[0]));
@@ -698,7 +698,7 @@ void BassModule::filesDropped (const juce::StringArray& files, int, int)
     repaint();
 }
 
-void BassModule::paintOverChildren (juce::Graphics& g)
+void InstrumentModule::paintOverChildren (juce::Graphics& g)
 {
     if (dragHover)
     {
@@ -720,9 +720,9 @@ SampleView::SampleView (PluginBase& p, int layerIn, juce::Colour accentIn) : pro
 
 void SampleView::timerCallback()
 {
-    const auto* sample = processor.getActiveBassSample (layer);
-    const auto start = processor.apvts.getRawParameterValue (ParamID::bass (layer, BassField::sampleStart))->load();
-    const auto position = processor.transportStatus.bassSamplePosition[(size_t) layer].load();
+    const auto* sample = processor.getActiveInstrumentSample (layer);
+    const auto start = processor.apvts.getRawParameterValue (ParamID::bass (layer, InstrumentField::sampleStart))->load();
+    const auto position = processor.transportStatus.instrumentSamplePosition[(size_t) layer].load();
     if (position >= 0.0f && (marker < 0.0f || position < marker))
         flashWallTime = juce::Time::getMillisecondCounterHiRes(); // en ny ton (positionen började om)
     const auto flashing = juce::Time::getMillisecondCounterHiRes() - flashWallTime < 500.0;
@@ -741,7 +741,7 @@ void SampleView::paint (juce::Graphics& g)
     g.setColour (Theme::knobBodyDark.withAlpha (0.85f));
     g.fillRoundedRectangle (bounds, 6.0f);
 
-    const auto* sample = processor.getActiveBassSample (layer);
+    const auto* sample = processor.getActiveInstrumentSample (layer);
     if (sample == nullptr || sample->audio.getNumSamples() < 2)
     {
         g.setColour (Theme::textDim);
@@ -810,14 +810,14 @@ void SampleView::paint (juce::Graphics& g)
 
 void SampleView::mouseDown (const juce::MouseEvent&)
 {
-    if (processor.getActiveBassSample (layer) != nullptr)
+    if (processor.getActiveInstrumentSample (layer) != nullptr)
         processor.requestAudition (PluginBase::soloAudition (layer, 3)); // bara samplingen
 }
 
 SamplePage::SamplePage (PluginBase& p, int layerIn, juce::Colour accent)
     : processor (p), layer (layerIn), view (p, layerIn, accent)
 {
-    using F = BassField;
+    using F = InstrumentField;
     auto id = [layerIn] (F f) { return ParamID::bass (layerIn, f); };
     auto knob = [&] (F f, const char* name)
     {
@@ -854,7 +854,7 @@ SamplePage::SamplePage (PluginBase& p, int layerIn, juce::Colour accent)
     };
     addAndMakeVisible (loadButton);
     clearButton.setTooltip ("Remove the sample from this layer");
-    clearButton.onClick = [this] { processor.clearBassSample (layer); updateLabel(); };
+    clearButton.onClick = [this] { processor.clearInstrumentSample (layer); updateLabel(); };
     addAndMakeVisible (clearButton);
     hearButton.setTooltip ("HEAR - Plays just this layer's sample (you can also click the waveform).");
     hearButton.onClick = [this] { processor.requestAudition (PluginBase::soloAudition (layer, 3)); };
@@ -871,7 +871,7 @@ void SamplePage::timerCallback()
 
 void SamplePage::updateLabel()
 {
-    const auto name = processor.getBassSampleName (layer);
+    const auto name = processor.getInstrumentSampleName (layer);
     const auto text = name.isEmpty() ? juce::String ("No sample loaded") : name;
     if (label.getText() != text)
         label.setText (text, juce::dontSendNotification);
@@ -881,16 +881,16 @@ void SamplePage::updateLabel()
 
 void SamplePage::loadSample (const juce::File& file)
 {
-    if (! processor.loadBassSample (layer, file))
+    if (! processor.loadInstrumentSample (layer, file))
     {
         label.setText ("Could not read " + file.getFileName(), juce::dontSendNotification);
         return;
     }
 
     // En sampling som inte hörs är förvirrande: slå på den och höj nivån om den står på noll.
-    if (auto* on = processor.apvts.getParameter (ParamID::bass (layer, BassField::sampleOn)))
+    if (auto* on = processor.apvts.getParameter (ParamID::bass (layer, InstrumentField::sampleOn)))
         Presets::setParameter (*on, 1.0f);
-    if (auto* level = processor.apvts.getParameter (ParamID::bass (layer, BassField::sampleLevel)); level != nullptr && level->getValue() <= 0.0f)
+    if (auto* level = processor.apvts.getParameter (ParamID::bass (layer, InstrumentField::sampleLevel)); level != nullptr && level->getValue() <= 0.0f)
         Presets::setParameter (*level, 1.0f);
     updateLabel();
 }
@@ -922,20 +922,20 @@ void SamplePage::resized()
 }
 
 //==============================================================================
-float BassModule::pitchValueAt (double seconds) const
+float InstrumentModule::pitchValueAt (double seconds) const
 {
     // Hur långt tonhöjden är från tonen (0..1 av 48 halvtoner), faller exponentiellt: -60 dB efter ENV DEC.
     const auto decay = std::max (0.001, current.pitchEnvDecayMs * 0.001);
     return (float) (std::abs (current.pitchEnvSemis) / 48.0f * std::exp (std::log (0.001) * seconds / decay));
 }
 
-EnvelopeView::NoteOff BassModule::noteOffNow() const
+EnvelopeView::NoteOff InstrumentModule::noteOffNow() const
 {
     const auto real = processor.typicalNoteSeconds (layer);
     return { real > 0.0 ? real : 0.18, real > 0.0 };
 }
 
-float BassModule::ampValueAt (double seconds) const
+float InstrumentModule::ampValueAt (double seconds) const
 {
     // Envelopen för en typisk ton i instrumentets mönster (finns ingen, ett exempel på 180 ms).
     const auto gateSeconds = noteOffNow().seconds;
@@ -957,7 +957,7 @@ float BassModule::ampValueAt (double seconds) const
     return (float) (held (gateSeconds) * std::exp (ln * (seconds - gateSeconds) / release));
 }
 
-void BassModule::resized()
+void InstrumentModule::resized()
 {
     ModulePanel::resized();
     if (! isEmbedded())
@@ -1027,12 +1027,12 @@ InstrumentHost::~InstrumentHost()
             header.removeChildComponent (e);
 }
 
-BassModule& InstrumentHost::moduleFor (int layer)
+InstrumentModule& InstrumentHost::moduleFor (int layer)
 {
     auto& slot = modules[(size_t) layer];
     if (slot == nullptr)
     {
-        slot = std::make_unique<BassModule> (processor, layer);
+        slot = std::make_unique<InstrumentModule> (processor, layer);
         addChildComponent (*slot);
         extras[(size_t) layer] = slot->embedInTab();
         header.addChildComponent (*extras[(size_t) layer]);
@@ -1055,7 +1055,7 @@ void InstrumentHost::select (int layer)
     processor.selectedInstrument = layer;
     moduleFor (layer);
 
-    for (int i = 0; i < ParamID::numBassLayers; ++i)
+    for (int i = 0; i < ParamID::numInstrumentLayers; ++i)
     {
         if (modules[(size_t) i] != nullptr)
             modules[(size_t) i]->setVisible (i == layer);
@@ -1080,7 +1080,7 @@ void InstrumentHost::refresh()
     lastNamesVersion = processor.layerNamesVersion.load();
     header.selector.setButtonText (processor.getLayerName (current) + juce::String::fromUTF8 ("  \xe2\x96\xbe"));
     header.selector.setColour (juce::TextButton::textColourOffId, Theme::layerColour (current));
-    header.addButton.setEnabled (count < ParamID::numBassLayers);
+    header.addButton.setEnabled (count < ParamID::numInstrumentLayers);
     header.removeButton.setEnabled (count > 1);
 }
 
@@ -1100,12 +1100,12 @@ void InstrumentHost::showSelector()
     const auto count = processor.activeInstruments();
     for (int i = 0; i < count; ++i)
     {
-        const auto on = processor.apvts.getRawParameterValue (ParamID::bass (i, BassField::on))->load() >= 0.5f;
+        const auto on = processor.apvts.getRawParameterValue (ParamID::bass (i, InstrumentField::on))->load() >= 0.5f;
         menu.addItem (i + 1, juce::String (i + 1) + "   " + processor.getLayerName (i) + (on ? "" : "   (off)"), true, i == current);
     }
     menu.addSeparator();
     menu.addItem (100, "Rename " + processor.getLayerName (current) + " ...");
-    menu.addItem (101, "Add instrument", count < ParamID::numBassLayers);
+    menu.addItem (101, "Add instrument", count < ParamID::numInstrumentLayers);
     menu.addItem (102, "Remove last instrument", count > 1);
 
     juce::Component::SafePointer<InstrumentHost> safeThis (this);
@@ -1148,7 +1148,7 @@ void InstrumentHost::rename (int layer)
 void InstrumentHost::addInstrument()
 {
     const auto count = processor.activeInstruments();
-    if (count >= ParamID::numBassLayers)
+    if (count >= ParamID::numInstrumentLayers)
         return;
     processor.setInstrumentCount (count + 1);
     select (count);
@@ -1206,7 +1206,7 @@ void InstrumentHost::removeInstrument()
 
 //==============================================================================
 GateModule::GateModule (PluginBase& p)
-    : ModulePanel ("GATE", Theme::gate, &p.apvts, ParamID::bass (0, BassField::on)),
+    : ModulePanel ("GATE", Theme::gate, &p.apvts, ParamID::bass (0, InstrumentField::on)),
       refs (p.apvts),
       key (p.apvts, ParamID::fxKey, "KEY"),
       presets (p, Presets::Section::bass, Theme::gate)
@@ -1241,7 +1241,7 @@ GateModule::GateModule (PluginBase& p)
     addAndMakeVisible (key);
     addKnobs (*this, knobs, p, Theme::gate, {
         { ParamID::gateAttack, "ATTACK" }, { ParamID::gateRelease, "RELEASE" } });
-    knobs.push_back (std::make_unique<KnobComponent> (p.apvts, ParamID::bass (0, BassField::level), "LEVEL", Theme::gate));
+    knobs.push_back (std::make_unique<KnobComponent> (p.apvts, ParamID::bass (0, InstrumentField::level), "LEVEL", Theme::gate));
     addAndMakeVisible (*knobs.back());
 
     help.setText ("Put Kickbase FX on the mixer track of your instrument or bass synth. The synth is gated by the "
@@ -1277,7 +1277,7 @@ namespace
     juce::StringArray instrumentNames()
     {
         juce::StringArray names;
-        for (int layer = 0; layer < ParamID::numBassLayers; ++layer)
+        for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
             names.add ("INSTR " + juce::String (layer + 1));
         return names;
     }
@@ -1286,7 +1286,7 @@ namespace
     std::vector<juce::Colour> instrumentColours (bool withKick = false)
     {
         std::vector<juce::Colour> colours;
-        for (int layer = 0; layer < ParamID::numBassLayers; ++layer)
+        for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
             colours.push_back (Theme::layerColour (layer));
         if (withKick)
             colours.push_back (Theme::kick);
@@ -1337,34 +1337,34 @@ PatternModule::PatternModule (PluginBase& p, bool isInstrument)
     addAndMakeVisible (laneLabel);
     addAndMakeVisible (laneBox);
 
-    const auto numLayers = instrument ? ParamID::numBassLayers : 1;
+    const auto numLayers = instrument ? ParamID::numInstrumentLayers : 1;
     for (int layer = 0; layer < numLayers; ++layer)
     {
         const auto colour = instrument ? Theme::layerColour (layer) : Theme::gate;
-        grids.push_back (std::make_unique<ChoiceComponent> (p.apvts, ParamID::bass (layer, BassField::grid), "GRID"));
-        lengths.push_back (std::make_unique<KnobComponent> (p.apvts, ParamID::bass (layer, BassField::gate), "ALL LENGTHS", colour));
+        grids.push_back (std::make_unique<ChoiceComponent> (p.apvts, ParamID::bass (layer, InstrumentField::grid), "GRID"));
+        lengths.push_back (std::make_unique<KnobComponent> (p.apvts, ParamID::bass (layer, InstrumentField::gate), "ALL LENGTHS", colour));
         lengths.back()->setDescription ("NOTE LENGTH SCALE - Scales the length of every note in this instrument at once (100 % = as long as written). "
                                         "Lower = shorter, punchier notes. Set a single note's length with EDIT IN LANE > Note length or in the piano roll.");
         addChildComponent (*grids.back());
         addChildComponent (*lengths.back());
         if (instrument)
         {
-            delays.push_back (std::make_unique<KnobComponent> (p.apvts, ParamID::bass (layer, BassField::delay), "DELAY", colour));
+            delays.push_back (std::make_unique<KnobComponent> (p.apvts, ParamID::bass (layer, InstrumentField::delay), "DELAY", colour));
             delays.back()->setDescription ("DELAY - Pushes this instrument's notes later by 0-50 ms, for example to let the kick come first. It can only move notes later, never earlier.");
             addChildComponent (*delays.back());
-            swings.push_back (std::make_unique<KnobComponent> (p.apvts, ParamID::bass (layer, BassField::swing), "SWING", colour));
+            swings.push_back (std::make_unique<KnobComponent> (p.apvts, ParamID::bass (layer, InstrumentField::swing), "SWING", colour));
             swings.back()->setDescription ("SWING - This instrument's own swing: its off-beat sixteenths come later. It is added to the SWING of the whole pattern (top left), up to 100 %.");
             addChildComponent (*swings.back());
-            humanizes.push_back (std::make_unique<KnobComponent> (p.apvts, ParamID::bass (layer, BassField::humanize), "HUMAN", colour));
+            humanizes.push_back (std::make_unique<KnobComponent> (p.apvts, ParamID::bass (layer, InstrumentField::humanize), "HUMAN", colour));
             humanizes.back()->setDescription ("HUMANIZE - This instrument's own random timing: every note comes 0-20 ms late at random. It is added to the HUMANIZE of the whole pattern (top left).");
             addChildComponent (*humanizes.back());
         }
 
         if (instrument)
         {
-            gateGrids.push_back (std::make_unique<ChoiceComponent> (p.apvts, ParamID::bass (layer, BassField::gateGrid), "GATE GRID"));
-            gateDepths.push_back (std::make_unique<KnobComponent> (p.apvts, ParamID::bass (layer, BassField::gateDepth), "DEPTH", colour));
-            gateSmooths.push_back (std::make_unique<KnobComponent> (p.apvts, ParamID::bass (layer, BassField::gateSmooth), "SMOOTH", colour));
+            gateGrids.push_back (std::make_unique<ChoiceComponent> (p.apvts, ParamID::bass (layer, InstrumentField::gateGrid), "GATE GRID"));
+            gateDepths.push_back (std::make_unique<KnobComponent> (p.apvts, ParamID::bass (layer, InstrumentField::gateDepth), "DEPTH", colour));
+            gateSmooths.push_back (std::make_unique<KnobComponent> (p.apvts, ParamID::bass (layer, InstrumentField::gateSmooth), "SMOOTH", colour));
             gateDepths.back()->setDescription ("How much the gate cuts the sound in its closed steps: 0 % = nothing, 100 % = fully silent.");
             gateSmooths.back()->setDescription ("How soft the gate's edges are. Short = hard chopped, longer = smoother.");
 
@@ -1374,7 +1374,7 @@ PatternModule::PatternModule (PluginBase& p, bool isInstrument)
             onButton->setTooltip ("GATE ON - Turns this layer's gate on. The gate is a separate on/off rhythm (its own grid) that chops the layer's sound; "
                                   "it does not change the notes. Click the steps to the right to open and close it.");
             gateOnAttachments.push_back (std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
-                p.apvts, ParamID::bass (layer, BassField::gateOn), *onButton));
+                p.apvts, ParamID::bass (layer, InstrumentField::gateOn), *onButton));
             gateOnButtons.push_back (std::move (onButton));
             addChildComponent (*gateGrids.back());
             addChildComponent (*gateDepths.back());
@@ -1471,8 +1471,8 @@ void PatternModule::extendRow (int row, int beforeBars, int nowBars, bool repeat
     }
     if (layer != Pattern::kickLayer)
     {
-        const auto stepsPerBar = Pattern::bassStepsPerBar ((BassGrid) juce::jlimit (0, Pattern::numGrids - 1,
-            (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, BassField::gateGrid))->load()));
+        const auto stepsPerBar = Pattern::instrumentStepsPerBar ((InstrumentGrid) juce::jlimit (0, Pattern::numGrids - 1,
+            (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, InstrumentField::gateGrid))->load()));
         const auto oldSteps = beforeBars * stepsPerBar, newSteps = nowBars * stepsPerBar;
         for (int step = oldSteps; step < newSteps && step < Pattern::maxGateSteps; ++step)
             pattern.gateStep (layer, step) = repeat ? pattern.isGateStepOn (layer, step % oldSteps) : true;
@@ -1764,9 +1764,9 @@ void PatternModule::showKickFillMenu()
         juce::String steps;
         for (int bar = 0; bar < Pattern::maxBars; ++bar)
             steps << bars[result - 1];
-        p.pattern.setKickSteps (steps, Pattern::ticksPerStep (BassGrid::sixteenth));
+        p.pattern.setKickSteps (steps, Pattern::ticksPerStep (InstrumentGrid::sixteenth));
         if (auto* gridParam = p.apvts.getParameter (ParamID::rowGridKick))
-            Presets::setParameter (*gridParam, gridParam->convertTo0to1 ((float) BassGrid::sixteenth));
+            Presets::setParameter (*gridParam, gridParam->convertTo0to1 ((float) InstrumentGrid::sixteenth));
         p.patternChanged();
     });
 }
@@ -1792,7 +1792,7 @@ void PatternModule::showFillMenu()
         auto& p = safeThis->processor;
         const auto layer = safeThis->shownLayer;
         const auto grid = p.pattern.applyLayerTemplate (layer, (PatternTemplate) (result - 1));
-        if (auto* gridParam = p.apvts.getParameter (ParamID::bass (layer, BassField::grid)))
+        if (auto* gridParam = p.apvts.getParameter (ParamID::bass (layer, InstrumentField::grid)))
             Presets::setParameter (*gridParam, gridParam->convertTo0to1 ((float) grid));
         p.patternChanged();
     });
@@ -1814,8 +1814,8 @@ void PatternModule::showGateFillMenu()
             return;
         auto& p = safeThis->processor;
         const auto layer = safeThis->shownLayer;
-        const auto gridIndex = juce::jlimit (0, Pattern::numGrids - 1, (int) p.apvts.getRawParameterValue (ParamID::bass (layer, BassField::gateGrid))->load());
-        const auto stepsPerBar = Pattern::bassStepsPerBar ((BassGrid) gridIndex);
+        const auto gridIndex = juce::jlimit (0, Pattern::numGrids - 1, (int) p.apvts.getRawParameterValue (ParamID::bass (layer, InstrumentField::gateGrid))->load());
+        const auto stepsPerBar = Pattern::instrumentStepsPerBar ((InstrumentGrid) gridIndex);
 
         for (int i = 0; i < Pattern::maxGateSteps; ++i)
         {
@@ -1823,7 +1823,7 @@ void PatternModule::showGateFillMenu()
             const auto open = result == 1 || (result == 2 && step % 2 == 0) || (result == 3 && step % 2 == 1) || (result == 4 && step % 4 != 3);
             p.pattern.gateStep (layer, i) = open;
         }
-        if (auto* on = p.apvts.getParameter (ParamID::bass (layer, BassField::gateOn)))
+        if (auto* on = p.apvts.getParameter (ParamID::bass (layer, InstrumentField::gateOn)))
             Presets::setParameter (*on, 1.0f); // en fylld gate är till för att höras
         p.patternChanged();
     });

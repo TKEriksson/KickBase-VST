@@ -17,7 +17,7 @@ bool DuckCurveView::curveMode() const
 
 float DuckCurveView::depth (int layer) const
 {
-    return processor.apvts.getRawParameterValue (ParamID::bass (layer, BassField::duck))->load();
+    return processor.apvts.getRawParameterValue (ParamID::bass (layer, InstrumentField::duck))->load();
 }
 
 int DuckCurveView::numLayers() const
@@ -308,10 +308,10 @@ namespace
 {
     std::vector<ScopeView::Trace> makeTraces (PluginBase& p)
     {
-        std::vector<ScopeView::Trace> traces { { &p.bassBeforeDuckTap, 2, juce::Colours::white.withAlpha (0.6f), false, "INSTRUMENTS BEFORE" },
-                                               { &p.bassAfterDuckTap, 2, Theme::bass, true, "INSTRUMENTS DUCKED" },
+        std::vector<ScopeView::Trace> traces { { &p.instrumentBeforeDuckTap, 2, juce::Colours::white.withAlpha (0.6f), false, "INSTRUMENTS BEFORE" },
+                                               { &p.instrumentAfterDuckTap, 2, Theme::bass, true, "INSTRUMENTS DUCKED" },
                                                { &p.kickTap, 2, Theme::kick, true, "KICK" } };
-        for (int layer = 0; layer < (p.isEffectVersion() ? 1 : ParamID::numBassLayers); ++layer)
+        for (int layer = 0; layer < (p.isEffectVersion() ? 1 : ParamID::numInstrumentLayers); ++layer)
         {
             ScopeView::Trace trace { &p.duckGainTaps[(size_t) layer], 2, Theme::layerColour (layer), false, "DUCK " + juce::String (layer + 1), true };
             trace.instrument = p.isEffectVersion() ? -1 : layer;
@@ -333,8 +333,8 @@ DuckRow::DuckRow (PluginBase& p, int layerIn) : processor (p), layer (layerIn)
     slider.setTooltip ("DUCK - How deeply the kick pushes this instrument's volume down. 0 % = no ducking, 100 % = the volume goes all the way down. "
                        "The bar under the slider shows how much it is ducked right now.");
     addAndMakeVisible (slider);
-    attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (p.apvts, ParamID::bass (layer, BassField::duck), slider);
-    if (auto* parameter = p.apvts.getParameter (ParamID::bass (layer, BassField::duck)))
+    attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (p.apvts, ParamID::bass (layer, InstrumentField::duck), slider);
+    if (auto* parameter = p.apvts.getParameter (ParamID::bass (layer, InstrumentField::duck)))
         slider.setDoubleClickReturnValue (true, parameter->convertFrom0to1 (parameter->getDefaultValue()));
     startTimerHz (Settings::animationHz (20));
 }
@@ -389,7 +389,7 @@ SidechainPage::SidechainPage (PluginBase& p)
 
     if (p.isEffectVersion())
     {
-        depthKnob = std::make_unique<KnobComponent> (p.apvts, ParamID::bass (0, BassField::duck), "DEPTH", Theme::mix);
+        depthKnob = std::make_unique<KnobComponent> (p.apvts, ParamID::bass (0, InstrumentField::duck), "DEPTH", Theme::mix);
         addAndMakeVisible (*depthKnob);
         depthKnob->setLiveMeter ([&p] { return p.duckReduction[0].load(); }, Theme::kick);
         depthKnob->setDescription ("DUCK sets how deeply the kick pushes the volume down. 0 % = no ducking, 100 % = the volume goes all the way down. "
@@ -401,7 +401,7 @@ SidechainPage::SidechainPage (PluginBase& p)
         depthViewport.setScrollBarsShown (true, false);
         depthViewport.setScrollBarThickness (10);
         addAndMakeVisible (depthViewport);
-        for (int layer = 0; layer < ParamID::numBassLayers; ++layer)
+        for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
         {
             depthRows.push_back (std::make_unique<DuckRow> (p, layer));
             depthContent.addChildComponent (*depthRows.back());

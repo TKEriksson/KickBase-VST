@@ -8,7 +8,7 @@
 // Basens rutnät: upplösningen i stegsekvenseraren och förvalda "snap" i pianorullen.
 // Själva tonerna ligger fritt i tid (se Pattern::Note), så ett lager kan ha 16-delar, 8-delar
 // och 64-delar i samma mönster. Ordningen är den som visas i listan; nya rutnät läggs sist.
-enum class BassGrid
+enum class InstrumentGrid
 {
     quarter,            //  4 steg per takt
     eighth,             //  8 steg per takt
@@ -85,9 +85,9 @@ struct Pattern
     static constexpr int maxGateSteps = maxBars * 64; // GATE-stegen: högst 64 per takt (rutnätet 1/64)
     static constexpr float defaultGate = 1.0f; // en ny ton fyller hela steget (lagrets GATE kortar den vid behov)
 
-    static int bassStepsPerBar (BassGrid grid);
-    static double bassStepsPerQuarter (BassGrid grid);
-    static int ticksPerStep (BassGrid grid) { return ticksPerBar / bassStepsPerBar (grid); }
+    static int instrumentStepsPerBar (InstrumentGrid grid);
+    static double instrumentStepsPerQuarter (InstrumentGrid grid);
+    static int ticksPerStep (InstrumentGrid grid) { return ticksPerBar / instrumentStepsPerBar (grid); }
     static juce::StringArray gridNames()     { return { "1/4", "1/8", "1/8 T", "1/16", "1/16 T", "1/32", "1/32 T", "1/64" }; }
     static juce::StringArray templateNames() { return { "Rolling", "Galloping", "Triplet", "Offbeat", "Clear" }; }
 
@@ -144,10 +144,10 @@ struct Pattern
     // Fyller hela mönstret enligt en mall: kicken och första baslagret, övriga lager töms.
     // Returnerar det rutnät mallen är skriven för.
     // `keepOtherInstruments`: bara kicken och instrument 1 skrivs om; de övriga instrumentens toner och gate rörs inte.
-    BassGrid applyTemplate (PatternTemplate t, bool keepOtherInstruments = false);
+    InstrumentGrid applyTemplate (PatternTemplate t, bool keepOtherInstruments = false);
 
     // Fyller bara ett baslager enligt en mall (kicken och andra lager orörda).
-    BassGrid applyLayerTemplate (int layer, PatternTemplate t);
+    InstrumentGrid applyLayerTemplate (int layer, PatternTemplate t);
 
     juce::ValueTree toValueTree() const;
 

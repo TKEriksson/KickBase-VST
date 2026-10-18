@@ -15,7 +15,7 @@ StepSequencer::StepSequencer (PluginBase& p, juce::StringArray names, std::vecto
                 "click it to open the piano roll, right-click to delete it. GATE mode edits the on/off rhythm that chops the sound.");
     addRowKnobs ("KICK", ParamID::kickLevel, ParamID::kickFxAmount, Theme::kick);
     for (int layer = 0; layer < totalLayers(); ++layer)
-        addRowKnobs (layerNames[layer], ParamID::bass (layer, BassField::level), ParamID::bass (layer, BassField::fxAmount), layerColours[(size_t) layer]);
+        addRowKnobs (layerNames[layer], ParamID::bass (layer, InstrumentField::level), ParamID::bass (layer, InstrumentField::fxAmount), layerColours[(size_t) layer]);
 
     // Radens egen längd (kick och varje lager): Pattern = lika lång som hela mönstret.
     for (int row = 0; row <= totalLayers(); ++row)
@@ -66,7 +66,7 @@ StepSequencer::StepSequencer (PluginBase& p, juce::StringArray names, std::vecto
         }
         switches->mute.onClick = [this, row, layerOfRow]
         {
-            const auto id = row == 0 ? juce::String (ParamID::kickOn) : ParamID::bass (row - 1, BassField::on);
+            const auto id = row == 0 ? juce::String (ParamID::kickOn) : ParamID::bass (row - 1, InstrumentField::on);
             if (auto* parameter = processor.apvts.getParameter (id))
             {
                 parameter->beginChangeGesture();
@@ -237,10 +237,10 @@ int StepSequencer::bars() const
     return Params::barsFromChoice ((int) processor.apvts.getRawParameterValue (ParamID::patternBars)->load());
 }
 
-BassGrid StepSequencer::grid (int layer) const
+InstrumentGrid StepSequencer::grid (int layer) const
 {
-    const auto id = layer == Pattern::kickLayer ? juce::String (ParamID::rowGridKick) : ParamID::bass (layer, BassField::grid);
-    return (BassGrid) juce::jlimit (0, Pattern::numGrids - 1, (int) processor.apvts.getRawParameterValue (id)->load());
+    const auto id = layer == Pattern::kickLayer ? juce::String (ParamID::rowGridKick) : ParamID::bass (layer, InstrumentField::grid);
+    return (InstrumentGrid) juce::jlimit (0, Pattern::numGrids - 1, (int) processor.apvts.getRawParameterValue (id)->load());
 }
 
 juce::String StepSequencer::nameOf (int layer) const
@@ -273,9 +273,9 @@ void StepSequencer::renameLayer (int layer)
     }), true);
 }
 
-BassGrid StepSequencer::gateGrid (int layer) const
+InstrumentGrid StepSequencer::gateGrid (int layer) const
 {
-    return (BassGrid) juce::jlimit (0, Pattern::numGrids - 1, (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, BassField::gateGrid))->load());
+    return (InstrumentGrid) juce::jlimit (0, Pattern::numGrids - 1, (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, InstrumentField::gateGrid))->load());
 }
 
 void StepSequencer::setMode (Mode newMode)
@@ -300,7 +300,7 @@ Pattern::Note* StepSequencer::noteAt (int layer, int step) const
 bool StepSequencer::rowSilent (int layer) const
 {
     const auto solo = processor.soloMask.load();
-    const auto isOn = processor.apvts.getRawParameterValue (layer == Pattern::kickLayer ? juce::String (ParamID::kickOn) : ParamID::bass (layer, BassField::on))->load() >= 0.5f;
+    const auto isOn = processor.apvts.getRawParameterValue (layer == Pattern::kickLayer ? juce::String (ParamID::kickOn) : ParamID::bass (layer, InstrumentField::on))->load() >= 0.5f;
     const auto soloed = (solo & (layer == Pattern::kickLayer ? PluginBase::kickSoloBit : 1 << layer)) != 0;
     return ! isOn || (solo != 0 && ! soloed);
 }
@@ -313,7 +313,7 @@ void StepSequencer::refreshSwitches()
         const auto layerOfRow = row == 0 ? Pattern::kickLayer : (int) row - 1;
         if (layerOfRow != Pattern::kickLayer && layerOfRow >= processor.activeInstruments())
             continue;
-        const auto muted = processor.apvts.getRawParameterValue (row == 0 ? juce::String (ParamID::kickOn) : ParamID::bass (layerOfRow, BassField::on))->load() < 0.5f;
+        const auto muted = processor.apvts.getRawParameterValue (row == 0 ? juce::String (ParamID::kickOn) : ParamID::bass (layerOfRow, InstrumentField::on))->load() < 0.5f;
         const auto soloed = (processor.soloMask.load() & (layerOfRow == Pattern::kickLayer ? PluginBase::kickSoloBit : 1 << layerOfRow)) != 0;
         rowSwitches[row]->mute.setToggleState (muted, juce::dontSendNotification);
         rowSwitches[row]->solo.setToggleState (soloed, juce::dontSendNotification);
@@ -438,7 +438,7 @@ void StepSequencer::timerCallback()
 int StepSequencer::markerStep (int layer) const
 {
     const auto isKick = layer == Pattern::kickLayer;
-    const auto playTick = isKick ? processor.transportStatus.kickStep.load() : processor.transportStatus.bassSteps[(size_t) layer].load();
+    const auto playTick = isKick ? processor.transportStatus.kickStep.load() : processor.transportStatus.instrumentSteps[(size_t) layer].load();
     if (mode == Mode::gate && ! isKick)
         return playTick < 0 ? -1 : playTick / Pattern::ticksPerStep (gateGrid (layer)); // samma som paint i GATE-läget
     return stepOfTick (layer, playTick);
@@ -459,9 +459,9 @@ void StepSequencer::repaintMarker (int layer, int oldStep, int newStep)
 
     // Samma celler som paintToggleRow tänder: alla synliga kopior av radens steg (en kortare rad som loopar visas flera gånger).
     const auto lengthsNow = lengths();
-    const auto numSteps = gate ? gateSteps (layer) : bassSteps (layer);
+    const auto numSteps = gate ? gateSteps (layer) : instrumentSteps (layer);
     const auto offset = pageOffset (numSteps);
-    const auto ownSteps = std::max (1, gate ? gateOwnSteps (lengthsNow, layer) : bassOwnSteps (lengthsNow, layer));
+    const auto ownSteps = std::max (1, gate ? gateOwnSteps (lengthsNow, layer) : instrumentOwnSteps (lengthsNow, layer));
     const auto loops = lengthsNow.loops[(size_t) rowOf (layer)];
     for (int step = 0; step < numSteps; ++step)
     {
@@ -764,9 +764,9 @@ void StepSequencer::paintToggleRow (juce::Graphics& g, juce::Rectangle<int> row,
 
 void StepSequencer::paintLane (juce::Graphics& g) const
 {
-    const auto numSteps = bassSteps (selectedLayer);
+    const auto numSteps = instrumentSteps (selectedLayer);
     const auto lengthsNow = lengths();
-    const auto ownSteps = bassOwnSteps (lengthsNow, selectedLayer);
+    const auto ownSteps = instrumentOwnSteps (lengthsNow, selectedLayer);
     const auto area = laneArea.toFloat();
     const auto colourOn = colourOf (selectedLayer);
 
@@ -962,14 +962,14 @@ void StepSequencer::paint (juce::Graphics& g)
             return;
         const auto colour = colourOf (layer);
         const auto isKick = layer == Pattern::kickLayer;
-        const auto playTick = isKick ? processor.transportStatus.kickStep.load() : processor.transportStatus.bassSteps[(size_t) layer].load();
+        const auto playTick = isKick ? processor.transportStatus.kickStep.load() : processor.transportStatus.instrumentSteps[(size_t) layer].load();
         const auto dimmedRow = isKick ? mode == Mode::gate : layer != selectedLayer; // kicken är en vanlig rad, men har ingen gate
 
         if (mode == Mode::gate && ! isKick)
         {
             // GATE: en egen av/på-rytm med eget rutnät. Raden dämpas när lagrets gate är avstängd.
             const auto gateTicks = Pattern::ticksPerStep (gateGrid (layer));
-            const auto gateIsOn = processor.apvts.getRawParameterValue (ParamID::bass (layer, BassField::gateOn))->load() >= 0.5f;
+            const auto gateIsOn = processor.apvts.getRawParameterValue (ParamID::bass (layer, InstrumentField::gateOn))->load() >= 0.5f;
             paintToggleRow (g, row, gateSteps (layer), pageOffset (gateSteps (layer)), gateOwnSteps (lengthsNow, layer), lengthsNow.loops[(size_t) rowOf (layer)], colour, playTick < 0 ? -1 : playTick / gateTicks,
                             [this, layer] (int step) { return processor.pattern.isGateStepOn (layer, step); },
                             layer != selectedLayer || ! gateIsOn);
@@ -977,7 +977,7 @@ void StepSequencer::paint (juce::Graphics& g)
         else if (isCustom (layer))
             paintMiniature (g, row, layer, colour, playTick, dimmedRow);
         else
-            paintToggleRow (g, row, bassSteps (layer), pageOffset (bassSteps (layer)), bassOwnSteps (lengthsNow, layer), lengthsNow.loops[(size_t) rowOf (layer)], colour, stepOfTick (layer, playTick),
+            paintToggleRow (g, row, instrumentSteps (layer), pageOffset (instrumentSteps (layer)), instrumentOwnSteps (lengthsNow, layer), lengthsNow.loops[(size_t) rowOf (layer)], colour, stepOfTick (layer, playTick),
                             [this, layer] (int step) { return noteTickAt (layer, step) >= 0; }, dimmedRow);
     };
     paintLayerRow (Pattern::kickLayer);
@@ -1152,7 +1152,7 @@ void StepSequencer::editAt (juce::Point<int> point, bool firstEvent)
             if (isCustom (dragLayer))
                 return; // pianorulle: stegen redigeras inte här
 
-            const auto step = stepAt (point.x, dragLayer, bassSteps (dragLayer), bassOwnSteps (lengths(), dragLayer));
+            const auto step = stepAt (point.x, dragLayer, instrumentSteps (dragLayer), instrumentOwnSteps (lengths(), dragLayer));
             if (step < 0)
                 return;
             const auto tps = ticksPerStep (dragLayer);

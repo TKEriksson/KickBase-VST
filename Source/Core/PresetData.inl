@@ -6,7 +6,7 @@
 
 namespace
 {
-    using F = BassField;
+    using F = InstrumentField;
     using Env = std::vector<NodeEnvelope::Point>;
 
     std::vector<Value> join (std::initializer_list<std::vector<Value>> parts)
@@ -221,9 +221,9 @@ namespace
         Preset init { "Init", join ({ initSub (0), initMid (1), initAcid (2),
                                       { { "patternBars", 1 }, { "lfo1On", 1 }, { "lfo1Shape", 0 }, { "lfo1Rate", 8 } } }) };
         init.extras.pattern = {
-            { 0, BassGrid::sixteenth, { ". . x:190 . . . x:190 . . . x:190 . . . x:190 .", ". . x:190 . . . x:190 . . . x:190 . . . x:190 ." }, 0.7f },
-            { 1, BassGrid::sixteenth, { ". m x x . m x x . m x x . m x X", ". m x x . m x x . m x x . x m x" }, 0.7f },
-            { 2, BassGrid::sixteenth, { "x . m . x+3 . x . m+7 . x . X+12 . x+10 .", "x . . m x . x+7 . m . x+3 . x . X+5 x" }, 0.7f },
+            { 0, InstrumentGrid::sixteenth, { ". . x:190 . . . x:190 . . . x:190 . . . x:190 .", ". . x:190 . . . x:190 . . . x:190 . . . x:190 ." }, 0.7f },
+            { 1, InstrumentGrid::sixteenth, { ". m x x . m x x . m x x . m x X", ". m x x . m x x . m x x . x m x" }, 0.7f },
+            { 2, InstrumentGrid::sixteenth, { "x . m . x+3 . x . m+7 . x . X+12 . x+10 .", "x . . m x . x+7 . m . x+3 . x . X+5 x" }, 0.7f },
         };
         init.extras.routes = { { 0, "bass3Cutoff", 0.35f } };
         return init;

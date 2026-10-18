@@ -65,7 +65,7 @@ private:
 
     int bars() const;
     int totalTicks() const { return bars() * Pattern::ticksPerBar; }
-    BassGrid grid() const;
+    InstrumentGrid grid() const;
     int snapTicks() const;
     int snapped (float tick) const;           // närmaste steg (nedåt) i ticks
     int rootNote() const;                     // basens grundton (midi)
@@ -111,7 +111,7 @@ private:
     void showPresetMenu();
     void showMidiMenu();
     void askForNameAndSave();
-    void afterLoad (int bars, BassGrid newGrid); // sätter mönsterlängd och rutnät efter att en pianorulle laddats
+    void afterLoad (int bars, InstrumentGrid newGrid); // sätter mönsterlängd och rutnät efter att en pianorulle laddats
     int soundingRoot() const;
     juce::String gridParameterId() const; // lagrets rutnät (kickens eget för kicken)
     int playTickNow() const;              // uppspelningsmarkören i radens ticks, eller -1

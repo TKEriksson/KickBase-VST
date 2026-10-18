@@ -206,27 +206,27 @@ public:
     juce::String getClickSampleName() const { return kickSample.name(); }
     const ClickSample* clickForDisplay() const { return getActiveClickSample(); } // message thread
 
-    bool loadBassSample (int layer, const juce::File& file);
-    void clearBassSample (int layer);
-    juce::String getBassSampleName (int layer) const { return bassSamples[(size_t) juce::jlimit (0, ParamID::numBassLayers - 1, layer)].name(); }
-    const ClickSample* getActiveBassSample (int layer) const { return bassSamples[(size_t) juce::jlimit (0, ParamID::numBassLayers - 1, layer)].active(); }
+    bool loadInstrumentSample (int layer, const juce::File& file);
+    void clearInstrumentSample (int layer);
+    juce::String getInstrumentSampleName (int layer) const { return instrumentSamples[(size_t) juce::jlimit (0, ParamID::numInstrumentLayers - 1, layer)].name(); }
+    const ClickSample* getActiveInstrumentSample (int layer) const { return instrumentSamples[(size_t) juce::jlimit (0, ParamID::numInstrumentLayers - 1, layer)].active(); }
 
     juce::AudioProcessorValueTreeState apvts;
     Pattern pattern;
     SidechainCurve sidechainCurve;
 
     // Vad gränssnittet ritar i realtid: kicken, och basen före och efter duckningen under kicken.
-    SignalTap kickTap, bassBeforeDuckTap, bassAfterDuckTap;
+    SignalTap kickTap, instrumentBeforeDuckTap, instrumentAfterDuckTap;
 
     // Varje instruments egen signal (efter duckning, före effekter) till ANALYZER-fliken. Skrivs bara när fliken är öppen och analysen
     // påslagen (`instrumentTapsOn`), så att den inte kostar något annars.
-    std::array<ShortSignalTap, ParamID::numBassLayers> instrumentTaps;
+    std::array<ShortSignalTap, ParamID::numInstrumentLayers> instrumentTaps;
     std::atomic<bool> instrumentTapsOn { false };
 
     // Hur mycket varje baslager duckas just nu: förstärkningen (1 = orörd) sample för sample, och
     // det senaste värdet som minskning 0..1 (för ringen runt DUCK-ratten).
-    std::array<SignalTap, ParamID::numBassLayers> duckGainTaps;
-    std::array<std::atomic<float>, ParamID::numBassLayers> duckReduction {};
+    std::array<SignalTap, ParamID::numInstrumentLayers> duckGainTaps;
+    std::array<std::atomic<float>, ParamID::numInstrumentLayers> duckReduction {};
 
     // Kickens pitch-envelope (halvtoner över svansen, upp till 0,5 s) och volym-envelope
     // (upp till 2 s), redigeras i KICK-fliken.
@@ -287,12 +287,12 @@ public:
     // gränssnittet kan uppdatera sina texter.
     juce::String getLayerName (int layer) const
     {
-        const auto index = (size_t) juce::jlimit (0, ParamID::numBassLayers - 1, layer);
+        const auto index = (size_t) juce::jlimit (0, ParamID::numInstrumentLayers - 1, layer);
         return layerNames[index].isEmpty() ? "INSTR " + juce::String (layer + 1) : layerNames[index];
     }
     void setLayerName (int layer, const juce::String& name)
     {
-        layerNames[(size_t) juce::jlimit (0, ParamID::numBassLayers - 1, layer)] = name.trim().substring (0, 10);
+        layerNames[(size_t) juce::jlimit (0, ParamID::numInstrumentLayers - 1, layer)] = name.trim().substring (0, 10);
         ++layerNamesVersion;
     }
     std::atomic<int> layerNamesVersion { 0 };
@@ -302,7 +302,7 @@ public:
     {
         if (effectVersion)
             return 1;
-        return juce::jlimit (1, ParamID::numBassLayers, (int) std::lround (apvts.getRawParameterValue (ParamID::instrumentCount)->load()));
+        return juce::jlimit (1, ParamID::numInstrumentLayers, (int) std::lround (apvts.getRawParameterValue (ParamID::instrumentCount)->load()));
     }
     std::atomic<int> auditionRequest { -1 };
 
@@ -311,7 +311,7 @@ public:
     int selectedTab = 0;                   // gränssnittets valda flikar (nedre och övre panelen), så att de
     int selectedSynthTab = 0;              // finns kvar när fönstret öppnas igen
     int selectedPatternMode = 0;           // PATTERN-flikens läge: 0 PATTERN (toner), 1 GATE
-    std::array<int, ParamID::numBassLayers> selectedBassSource {}; // baslagrets valda källflik: OSC 1-3 eller SAMPLE
+    std::array<int, ParamID::numInstrumentLayers> selectedInstrumentSource {}; // baslagrets valda källflik: OSC 1-3 eller SAMPLE
     int selectedPatternLayer = 0;          // PATTERN-flikens valda lager: 0-9 instrument, 10 kick
     int selectedInstrument = 0;            // INSTRUMENT-flikens valda instrument (0-9)
     bool modEnvelopesOpen = false;         // INSTRUMENT-sidans dragspel MODULATION (ENV 2, ENV 3 ...) är öppet
@@ -361,15 +361,15 @@ public:
 protected:
     // Läser kickens och basens parametrar, med LFO-modulering.
     KickParams readModulatedKick (int keyPitchClass) const;
-    BassParams readModulatedBass (int layer, int rootMidiNote) const;
+    InstrumentParams readModulatedInstrument (int layer, int rootMidiNote) const;
 
 private:
-    juce::ValueTree bassSamplesToValueTree() const;
-    void bassSamplesFromValueTree (const juce::ValueTree& tree);
+    juce::ValueTree instrumentSamplesToValueTree() const;
+    void instrumentSamplesFromValueTree (const juce::ValueTree& tree);
 
     // Originalet sparas i projektet; en omsamplad kopia spelas. Bara message thread och
     // prepareToPlay rör originalet, därför låset (aldrig på ljudtråden).
-    static constexpr int numUserSlots = ParamID::numBassLayers * ParamID::oscsPerLayer;
+    static constexpr int numUserSlots = ParamID::numInstrumentLayers * ParamID::oscsPerLayer;
     void setUserTable (int slot, std::unique_ptr<Wavetable> table, std::vector<float> frames, const juce::String& name);
     juce::ValueTree userTablesToValueTree (int onlyLayer = -1) const;              // onlyLayer >= 0: bara det instrumentet, sparat som lager 0
     void userTablesFromValueTree (const juce::ValueTree& tree, int intoLayer = -1); // intoLayer >= 0: ett instrument-preset i det lagret
@@ -385,16 +385,16 @@ private:
     std::unique_ptr<BridgeLink::Server> bridge;
 
     SampleSlot kickSample { 2.0 };
-    std::array<SampleSlot, ParamID::numBassLayers> bassSamples; // 12 s var (minne används först när en sampling laddats)
+    std::array<SampleSlot, ParamID::numInstrumentLayers> instrumentSamples; // 12 s var (minne används först när en sampling laddats)
 
     juce::String& presetNameSlot (Presets::Section section, int layer);
 
     const bool effectVersion;
     std::array<juce::String, Presets::numSections> presetNames; // bara message thread
-    std::array<juce::String, ParamID::numBassLayers> bassPresetNames;
+    std::array<juce::String, ParamID::numInstrumentLayers> instrumentPresetNames;
     std::array<juce::String, numEffectChannels> fxPresetNames;       // FX-presets: ett namn per effektkanal
     std::array<juce::String, Pattern::numNoteLayers> rowPresetNames; // mönster-presets: ett namn per rad (instrument 0-9, kicken sist)
-    std::array<juce::String, ParamID::numBassLayers> layerNames;
+    std::array<juce::String, ParamID::numInstrumentLayers> layerNames;
 
     double currentSampleRate = 44100.0;
 

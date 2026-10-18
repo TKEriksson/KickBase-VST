@@ -163,7 +163,7 @@ SpectrumPage::SpectrumPage (PluginBase& p) : processor (p), analyser (p.getMixAn
 {
     sources[kickSource].colour = Theme::kick;
     sources[kickSource].name = "KICK";
-    for (int i = 0; i < ParamID::numBassLayers; ++i)
+    for (int i = 0; i < ParamID::numInstrumentLayers; ++i)
         sources[(size_t) (firstInstrument + i)].colour = Theme::layerColour (i);
     sources[masterSource].colour = Theme::text;
     sources[masterSource].name = "MASTER";
@@ -347,7 +347,7 @@ void SpectrumPage::updateSources()
     instrumentsShown = count;
     namesVersion = version;
 
-    for (int i = 0; i < ParamID::numBassLayers; ++i)
+    for (int i = 0; i < ParamID::numInstrumentLayers; ++i)
     {
         auto& source = sources[(size_t) (firstInstrument + i)];
         source.present = i < count;

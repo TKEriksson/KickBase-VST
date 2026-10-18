@@ -1,6 +1,6 @@
 // Tester för ljudmotorerna och mönstret.
 
-#include "../Source/Core/BassSynth.h"
+#include "../Source/Core/InstrumentSynth.h"
 #include "../Source/Core/Ducker.h"
 #include "../Source/Core/KickEngine.h"
 #include "../Source/Core/Params.h"
@@ -198,14 +198,14 @@ namespace
         }
     }
 
-    void testBassSample()
+    void testInstrumentSample()
     {
         std::puts("Bas: sampling som ljudkälla (egen ton och följer noten)");
         const auto sample = makeSine (100.0, 0.6);
-        BassSynth bass;
+        InstrumentSynth bass;
         bass.prepare (rate);
 
-        BassParams p;
+        InstrumentParams p;
         p.rootHz = 200.0f;
         p.oscA.level = 0.0f;
         p.oscB.level = 0.0f;
@@ -243,13 +243,13 @@ namespace
         check (peakOf (silent, 0, silent.size()) < 1.0e-4f, "nivå 0 ger tyst bas utan oscillatorer");
     }
 
-    void testBassPitchAndRelease()
+    void testInstrumentPitchAndRelease()
     {
         std::puts ("Bas: rätt ton och tystnar efter gate + release");
-        BassSynth bass;
+        InstrumentSynth bass;
         bass.prepare (rate);
 
-        BassParams p;
+        InstrumentParams p;
         p.rootHz = 65.41f; // C2
         p.oscA.position = 0.0f; // sinus (Basic-tabellens början)
         p.sub = 0.0f;
@@ -270,13 +270,13 @@ namespace
         check (! bass.isActive(), "tyst efter release");
     }
 
-    void testBassModulationSources()
+    void testInstrumentModulationSources()
     {
         std::puts("Bas: ENV 2, tonhöjdsenvelope och källor");
-        BassSynth synth;
+        InstrumentSynth synth;
         synth.setSeed (1);
         synth.prepare (rate);
-        BassParams p;
+        InstrumentParams p;
         p.oscA.level = 0.0f;
         p.oscB.on = false;
         p.sub = 1.0f;
@@ -313,13 +313,13 @@ namespace
         check (early > late * 1.15 && std::abs (late - p.rootHz) < p.rootHz * 0.06, "tonhöjdsenvelopen börjar högt och faller till tonen", early);
     }
 
-    void testBassGlide()
+    void testInstrumentGlide()
     {
         std::puts ("Bas: en glide-ton glider den klingande tonen utan nytt anslag och blir kvar");
-        BassSynth bass;
+        InstrumentSynth bass;
         bass.prepare (rate);
 
-        BassParams p;
+        InstrumentParams p;
         p.rootHz = 55.0f;
         p.oscA.position = 0.0f; // sinus (Basic-tabellens början)
         p.sub = 0.0f;
@@ -348,12 +348,12 @@ namespace
         check (peakOf (audio, (size_t) step, (size_t) step + 2000) > 0.5f, "ingen dipp: inget nytt anslag");
     }
 
-    void testBassRetriggerWithoutClick()
+    void testInstrumentRetriggerWithoutClick()
     {
         std::puts ("Bas: nytt slag medan det förra klingar ger inget hopp");
-        BassSynth bass;
+        InstrumentSynth bass;
         bass.prepare (rate);
-        BassParams p;
+        InstrumentParams p;
         p.cutoffHz = 20000.0f;
         p.envAmount = 0.0f;
         p.drive = 0.0f;
@@ -419,18 +419,18 @@ namespace
         std::puts ("Mönster: mallar och spara/läsa");
         Pattern pattern;
 
-        check (pattern.applyTemplate (PatternTemplate::rolling) == BassGrid::sixteenth, "Rolling är i sextondelar");
+        check (pattern.applyTemplate (PatternTemplate::rolling) == InstrumentGrid::sixteenth, "Rolling är i sextondelar");
         const auto quarter = Pattern::ticksPerQuarter;
         auto kickOn = [&pattern] (int tick) { return pattern.note (Pattern::kickLayer, tick).on.load(); };
         check (kickOn (0) && ! kickOn (24) && kickOn (quarter) && kickOn (4 * quarter), "kick på fjärdedelar");
-        const auto sixteenth = Pattern::ticksPerStep (BassGrid::sixteenth);
+        const auto sixteenth = Pattern::ticksPerStep (InstrumentGrid::sixteenth);
         check (! pattern.note (0, 0).on && pattern.note (0, sixteenth).on
                    && pattern.note (0, 3 * sixteenth).on && ! pattern.note (0, 4 * sixteenth).on,
                "Rolling: K B B B");
         check (pattern.note (0, sixteenth).length == sixteenth, "en ny ton fyller hela steget", pattern.note (0, sixteenth).length.load());
 
-        const auto triplet = Pattern::ticksPerStep (BassGrid::eighthTriplet);
-        check (pattern.applyTemplate (PatternTemplate::triplet) == BassGrid::eighthTriplet, "Triplet är i åttondelstrioler");
+        const auto triplet = Pattern::ticksPerStep (InstrumentGrid::eighthTriplet);
+        check (pattern.applyTemplate (PatternTemplate::triplet) == InstrumentGrid::eighthTriplet, "Triplet är i åttondelstrioler");
         check (! pattern.note (0, 3 * triplet).on && pattern.note (0, 4 * triplet).on, "Triplet: K B B");
 
         // Ändra några steg och kontrollera att allt överlever spara/läsa, också toner utanför rutnätet.
@@ -467,11 +467,11 @@ namespace
 
         // Version 1 hade rutnäten i ordningen 1/16, 1/8 T, 1/16 T, och ett steg per rutnät (gate som andel).
         juce::ValueTree old (Pattern::treeType);
-        juce::ValueTree oldBass ("Bass");
-        oldBass.setProperty ("grid", 0, nullptr);
-        oldBass.setProperty ("on", "0,1,0,1", nullptr);
-        oldBass.setProperty ("gate", "0.7,0.5,0.7,0.7", nullptr);
-        old.appendChild (oldBass, nullptr);
+        juce::ValueTree oldInstrument ("Bass");
+        oldInstrument.setProperty ("grid", 0, nullptr);
+        oldInstrument.setProperty ("on", "0,1,0,1", nullptr);
+        oldInstrument.setProperty ("gate", "0.7,0.5,0.7,0.7", nullptr);
+        old.appendChild (oldInstrument, nullptr);
 
         Pattern migrated;
         migrated.applyTemplate (PatternTemplate::clear);
@@ -487,9 +487,9 @@ namespace
     void testKeyMapping()
     {
         std::puts ("Tonart: basen följer tonens oktav, kicken håller sig i sitt register");
-        check (Params::bassRootMidiNote (60) == 36, "FL:s C5 ger C2 i basen", Params::bassRootMidiNote (60));
-        check (Params::bassRootMidiNote (59) < Params::bassRootMidiNote (60), "en ton nedåt går nedåt i basen");
-        check (Params::bassRootMidiNote (72) == 48, "C6 ger C3", Params::bassRootMidiNote (72));
+        check (Params::instrumentRootMidiNote (60) == 36, "FL:s C5 ger C2 i basen", Params::instrumentRootMidiNote (60));
+        check (Params::instrumentRootMidiNote (59) < Params::instrumentRootMidiNote (60), "en ton nedåt går nedåt i basen");
+        check (Params::instrumentRootMidiNote (72) == 48, "C6 ger C3", Params::instrumentRootMidiNote (72));
 
         for (int pc = 0; pc < 12; ++pc)
         {
@@ -653,11 +653,11 @@ void runEngineTests()
     testKickLandsOnKey();
     testKickRetriggerFades();
     testKickShapesAndSamples();
-    testBassSample();
-    testBassPitchAndRelease();
-    testBassGlide();
-    testBassModulationSources();
-    testBassRetriggerWithoutClick();
+    testInstrumentSample();
+    testInstrumentPitchAndRelease();
+    testInstrumentGlide();
+    testInstrumentModulationSources();
+    testInstrumentRetriggerWithoutClick();
     testDuckerIsSmooth();
     testGate();
     testPatternTemplatesAndSaving();

@@ -12,10 +12,10 @@ namespace RollFiles
     juce::Array<juce::File> list();
 
     // Sparar lagrets toner (och mönsterlängd och rutnät) som en fil.
-    bool save (const Pattern& pattern, int layer, int bars, BassGrid grid, const juce::File& file);
+    bool save (const Pattern& pattern, int layer, int bars, InstrumentGrid grid, const juce::File& file);
 
     // Ersätter lagrets toner med filens. Ger mönsterlängd och rutnät som filen sparades med.
-    bool load (Pattern& pattern, int layer, const juce::File& file, int& bars, BassGrid& grid);
+    bool load (Pattern& pattern, int layer, const juce::File& file, int& bars, InstrumentGrid& grid);
 
     // Skriver lagrets toner som en MIDI-fil (tempo, 4/4, en spår). `rootMidiNote` är basens grundton (tonhöjden 0);
     // glide-toner skrivs som vanliga toner, eftersom MIDI inte har glide-toner.

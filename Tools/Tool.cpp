@@ -318,7 +318,7 @@ namespace
         // Bara instrument 1 ska höras: pianorulle med en ton i takt 1 och en i takt 2 (totalen är 2 takter).
         setChoice (ParamID::kickOn, 0);
         for (int layer = 1; layer < 3; ++layer)
-            setChoice (ParamID::bass (layer, BassField::on), 0);
+            setChoice (ParamID::bass (layer, InstrumentField::on), 0);
         processor.pattern.clearNotes (0);
         processor.pattern.addNote (0, 0, 96, 0);
         processor.pattern.addNote (0, Pattern::ticksPerBar, 96, 0);
@@ -421,12 +421,12 @@ namespace
         setValue ("kickEqHp", 20.0f);
         check (std::abs (rmsOf (PluginBase::ExportPart::kick) - kickFlat) < 0.01f * kickFlat, "med högpasset av är kicken som förut");
 
-        const auto bassFlat = rmsOf (PluginBase::ExportPart::bass);
+        const auto instrumentFlat = rmsOf (PluginBase::ExportPart::bass);
         setValue ("bass1EqHp", 500.0f);
         setValue ("bass2EqHp", 500.0f);
         setValue ("bass3EqHp", 500.0f);
-        const auto bassHighPassed = rmsOf (PluginBase::ExportPart::bass);
-        check (bassHighPassed < 0.7f * bassFlat, "högpass på instrumenten minskar dem (" + juce::String (bassFlat, 3) + " -> " + juce::String (bassHighPassed, 3) + ")");
+        const auto instrumentHighPassed = rmsOf (PluginBase::ExportPart::bass);
+        check (instrumentHighPassed < 0.7f * instrumentFlat, "högpass på instrumenten minskar dem (" + juce::String (instrumentFlat, 3) + " -> " + juce::String (instrumentHighPassed, 3) + ")");
         for (int i = 1; i <= 3; ++i)
             setValue ("bass" + juce::String (i) + "EqHp", 20.0f);
 
@@ -442,8 +442,8 @@ namespace
             const auto mixerGain = [] (int source) { return Mixer::paramID (Mixer::firstBassSource + source, "Gain"); };
             for (const auto source : { 0, 2 })
                 setValue (mixerGain (source), 0.0f); // instrument 1 och 3 hörs inte, men finns kvar som källor
-            setValue (ParamID::bass (1, BassField::fxChannel), 1.0f);
-            setValue (ParamID::bass (1, BassField::fxAmount), 1.0f);
+            setValue (ParamID::bass (1, InstrumentField::fxChannel), 1.0f);
+            setValue (ParamID::bass (1, InstrumentField::fxAmount), 1.0f);
             const auto routed = rmsOf (PluginBase::ExportPart::bass);
             Effects::setSlotType (processor.apvts, 0, 0, EffectType::ducker);
             const auto ducked = rmsOf (PluginBase::ExportPart::bass);
@@ -457,7 +457,7 @@ namespace
             const auto viaTool = rmsOf (PluginBase::ExportPart::bass);
             check (viaTool < 0.92f * routed, "sidechainen som AI:n lägger fungerar (" + juce::String (viaTool, 3) + ")");
             Effects::setSlotType (processor.apvts, 0, 0, EffectType::off);
-            setValue (ParamID::bass (1, BassField::fxChannel), 0.0f);
+            setValue (ParamID::bass (1, InstrumentField::fxChannel), 0.0f);
             for (const auto source : { 0, 2 })
                 setValue (mixerGain (source), 1.0f);
         }
@@ -608,11 +608,11 @@ namespace
         juce::Graphics g (image);
         g.fillAll (juce::Colour (0xff1b1e30));
         g.addTransform (juce::AffineTransform::scale (4.0f));
-        const juce::Colour kickColour (0xffff9a3c), bassColour (0xff3fd2ff);
+        const juce::Colour kickColour (0xffff9a3c), instrumentColour (0xff3fd2ff);
         for (int row = 0; row < 3; ++row)
         {
             // Rad 0: inget ljud (släckt), rad 1: kickens glöd, rad 2: instrumentens glöd.
-            LogoPainter::Sweep kick { 0.15f + 0.3f * (float) row, row == 1 ? 0.9f : 0.0f, kickColour }, bass { 0.85f - 0.3f * (float) row, row == 2 ? 0.9f : 0.0f, bassColour };
+            LogoPainter::Sweep kick { 0.15f + 0.3f * (float) row, row == 1 ? 0.9f : 0.0f, kickColour }, bass { 0.85f - 0.3f * (float) row, row == 2 ? 0.9f : 0.0f, instrumentColour };
             logo.paint (g, { 8.0f, (float) (row * LogoPainter::height) }, row == 0 ? 0.0f : 1.0f, kick, bass);
         }
         outFile.deleteFile();
@@ -824,8 +824,8 @@ namespace
             parameter->setValueNotifyingHost (parameter->convertTo0to1 (real));
         };
 
-        check (Presets::bassLayerOf ("bass10Cutoff") == 9 && Presets::bassLayerOf ("bass1Cutoff") == 0 && Presets::bassLayerOf ("bass3On") == 2
-                   && Presets::toBassLayer ("bass1Cutoff", 9) == "bass10Cutoff" && Presets::toBassLayer ("bass10Cutoff", 1) == "bass2Cutoff",
+        check (Presets::instrumentLayerOf ("bass10Cutoff") == 9 && Presets::instrumentLayerOf ("bass1Cutoff") == 0 && Presets::instrumentLayerOf ("bass3On") == 2
+                   && Presets::toInstrumentLayer ("bass1Cutoff", 9) == "bass10Cutoff" && Presets::toInstrumentLayer ("bass10Cutoff", 1) == "bass2Cutoff",
                "lagernumret läses ur parameter-ID:n (ett och två tecken)");
         check (processor.activeInstruments() == 3, "tre instrument från början");
 
@@ -837,10 +837,10 @@ namespace
         processor.pattern.addNote (4, 0, 48, 3);
         processor.pattern.setCustom (4, true);
         processor.setLayerName (4, "Lead");
-        setValue (ParamID::bass (4, BassField::cutoff), 777.0f);
+        setValue (ParamID::bass (4, InstrumentField::cutoff), 777.0f);
         const auto& parameters = processor.getParameters();
         for (int i = 0; i < parameters.size(); ++i)
-            if (auto* withId = dynamic_cast<juce::AudioProcessorParameterWithID*> (parameters[i]); withId != nullptr && withId->paramID == ParamID::bass (4, BassField::cutoff))
+            if (auto* withId = dynamic_cast<juce::AudioProcessorParameterWithID*> (parameters[i]); withId != nullptr && withId->paramID == ParamID::bass (4, InstrumentField::cutoff))
                 processor.modRoutes.add (0, i, 0.3f);
         juce::String what;
         check (processor.instrumentHasContent (4, &what) && what.contains ("piano roll") && what.contains ("Lead") && what.contains ("modulation"), "innehållet i instrument 5 beskrivs");
@@ -854,7 +854,7 @@ namespace
             const auto other = std::make_unique<InstrumentProcessor>();
             other->setStateInformation (state.getData(), (int) state.getSize());
             check (other->activeInstruments() == 6 && other->getLayerName (4) == "Lead" && other->pattern.note (4, 0).on.load() && other->pattern.note (4, 0).pitch.load() == 3
-                       && std::abs (other->apvts.getRawParameterValue (ParamID::bass (4, BassField::cutoff))->load() - 777.0f) < 1.0f,
+                       && std::abs (other->apvts.getRawParameterValue (ParamID::bass (4, InstrumentField::cutoff))->load() - 777.0f) < 1.0f,
                    "sex instrument sparas och läses tillbaka med namn, toner och inställningar");
         }
 
@@ -863,13 +863,13 @@ namespace
         check (processor.activeInstruments() == 3, "tillbaka till tre instrument");
         check (! processor.pattern.note (4, 0).on.load() && ! processor.pattern.isCustom (4), "mönstret i det borttagna instrumentet är tomt");
         check (processor.getLayerName (4) == "INSTR 5", "namnet är tillbaka till standard");
-        check (std::abs (processor.apvts.getRawParameterValue (ParamID::bass (4, BassField::cutoff))->load()
-                         - processor.apvts.getParameter (ParamID::bass (4, BassField::cutoff))->convertFrom0to1 (processor.apvts.getParameter (ParamID::bass (4, BassField::cutoff))->getDefaultValue())) < 1.0f,
+        check (std::abs (processor.apvts.getRawParameterValue (ParamID::bass (4, InstrumentField::cutoff))->load()
+                         - processor.apvts.getParameter (ParamID::bass (4, InstrumentField::cutoff))->convertFrom0to1 (processor.apvts.getParameter (ParamID::bass (4, InstrumentField::cutoff))->getDefaultValue())) < 1.0f,
                "inställningarna är tillbaka till standard");
         auto routes = 0;
         for (const auto& route : processor.modRoutes.routes)
             if (route.source.load() >= 0)
-                if (auto* withId = dynamic_cast<juce::AudioProcessorParameterWithID*> (parameters[route.target.load()]); withId != nullptr && Presets::bassLayerOf (withId->paramID) == 4)
+                if (auto* withId = dynamic_cast<juce::AudioProcessorParameterWithID*> (parameters[route.target.load()]); withId != nullptr && Presets::instrumentLayerOf (withId->paramID) == 4)
                     ++routes;
         check (routes == 0, "LFO-kopplingarna till instrumentet är borta");
         check (! processor.instrumentHasContent (4) && processor.instrumentHasContent (0), "det borttagna är tomt, de kvarvarande har innehåll");
@@ -1242,7 +1242,7 @@ namespace
         const auto owner = std::make_unique<InstrumentProcessor>();
         auto& processor = *owner;
         auto* pitch = processor.apvts.getParameter (ParamID::kickTune);
-        auto* cutoff = processor.apvts.getParameter (ParamID::bass (0, BassField::cutoff));
+        auto* cutoff = processor.apvts.getParameter (ParamID::bass (0, InstrumentField::cutoff));
 
         pitch->setValueNotifyingHost (pitch->convertTo0to1 (5.0f));
         cutoff->setValueNotifyingHost (cutoff->convertTo0to1 (1000.0f));
@@ -1280,9 +1280,9 @@ namespace
             pattern.gateStep (1, 3) = false;
             pattern.addNote (2, 0, 24, 1, 0.8f);
             pattern.addNote (Pattern::kickLayer, 0, 24, 0, 1.0f);
-            auto* gridParameter = processor.apvts.getParameter (ParamID::bass (1, BassField::grid));
-            auto* delayParameter = processor.apvts.getParameter (ParamID::bass (1, BassField::delay));
-            gridParameter->setValueNotifyingHost (gridParameter->convertTo0to1 ((float) (int) BassGrid::eighthTriplet));
+            auto* gridParameter = processor.apvts.getParameter (ParamID::bass (1, InstrumentField::grid));
+            auto* delayParameter = processor.apvts.getParameter (ParamID::bass (1, InstrumentField::delay));
+            gridParameter->setValueNotifyingHost (gridParameter->convertTo0to1 ((float) (int) InstrumentGrid::eighthTriplet));
             delayParameter->setValueNotifyingHost (delayParameter->convertTo0to1 (12.0f));
 
             const auto saved = processor.saveUserPreset (Presets::Section::pattern, rowName, 1);
@@ -1293,19 +1293,19 @@ namespace
 
             const auto loadedRow = processor.loadUserPreset (Presets::Section::pattern, rowFile, 4);
             const auto& note = pattern.note (4, 192);
-            auto* otherGrid = processor.apvts.getParameter (ParamID::bass (4, BassField::grid));
+            auto* otherGrid = processor.apvts.getParameter (ParamID::bass (4, InstrumentField::grid));
             const auto movedGrid = (int) std::lround (otherGrid->convertFrom0to1 (otherGrid->getValue()));
-            const auto movedDelay = processor.apvts.getParameter (ParamID::bass (4, BassField::delay))->convertFrom0to1 (processor.apvts.getParameter (ParamID::bass (4, BassField::delay))->getValue());
+            const auto movedDelay = processor.apvts.getParameter (ParamID::bass (4, InstrumentField::delay))->convertFrom0to1 (processor.apvts.getParameter (ParamID::bass (4, InstrumentField::delay))->getValue());
             const auto rowOk = saved && listed && ! listedForKick && ! intoKick && loadedRow
                             && pattern.note (4, 96).on.load() && pattern.note (4, 96).pitch.load() == 7
                             && note.on.load() && note.slide.load() && note.pitch.load() == -5 && note.length.load() == 48
                             && pattern.isCustom (4) && ! pattern.isGateStepOn (4, 3)
-                            && movedGrid == (int) BassGrid::eighthTriplet && std::abs (movedDelay - 12.0f) < 0.5f
+                            && movedGrid == (int) InstrumentGrid::eighthTriplet && std::abs (movedDelay - 12.0f) < 0.5f
                             && pattern.note (2, 0).on.load() && pattern.note (Pattern::kickLayer, 0).on.load()
                             && processor.getPresetName (Presets::Section::pattern, 4) == rowName;
             std::printf ("  saved %d listed %d listedForKick %d intoKick %d loaded %d n96 %d/%d n192 %d slide %d pitch %d len %d custom %d gate3 %d grid %d(%d) delay %.1f other %d kick %d name '%s'\n",
                          saved, listed, listedForKick, intoKick, loadedRow, (int) pattern.note (4, 96).on.load(), pattern.note (4, 96).pitch.load(), (int) note.on.load(), (int) note.slide.load(), note.pitch.load(),
-                         note.length.load(), (int) pattern.isCustom (4), (int) pattern.isGateStepOn (4, 3), movedGrid, (int) BassGrid::eighthTriplet, movedDelay,
+                         note.length.load(), (int) pattern.isCustom (4), (int) pattern.isGateStepOn (4, 3), movedGrid, (int) InstrumentGrid::eighthTriplet, movedDelay,
                          (int) pattern.note (2, 0).on.load(), (int) pattern.note (Pattern::kickLayer, 0).on.load(), processor.getPresetName (Presets::Section::pattern, 4).toRawUTF8());
             rowFile.deleteFile();
             std::printf ("mönster-preset (en rad): " "%s" "\n", rowOk ? "ok" : "FEL");
@@ -1355,23 +1355,23 @@ namespace
 
             // Instrument 1 skickar 60 % till FX3, som har en effekt.
             Effects::setSlotType (processor.apvts, 2, 0, EffectType::ducker);
-            setPlain (ParamID::bass (0, BassField::fxChannel), 3.0f);
-            setPlain (ParamID::bass (0, BassField::fxAmount), 0.6f);
-            setPlain (ParamID::bass (0, BassField::cutoff), 1234.0f);
+            setPlain (ParamID::bass (0, InstrumentField::fxChannel), 3.0f);
+            setPlain (ParamID::bass (0, InstrumentField::fxAmount), 0.6f);
+            setPlain (ParamID::bass (0, InstrumentField::cutoff), 1234.0f);
             const auto savedLinked = processor.saveInstrumentPreset (Presets::Section::bass, 0, instLink, fxLink);
             const auto link = PluginBase::readPresetLink (instLinkFile);
             const auto linkOk = link.kind == "effect" && link.name == fxLink && std::abs (link.amount - 0.6f) < 0.01f;
 
             // Tillbaka till ett tomt läge, men FX1 är upptagen.
             Effects::setSlotType (processor.apvts, 2, 0, EffectType::off);
-            setPlain (ParamID::bass (0, BassField::fxChannel), 0.0f);
-            setPlain (ParamID::bass (0, BassField::fxAmount), 0.0f);
+            setPlain (ParamID::bass (0, InstrumentField::fxChannel), 0.0f);
+            setPlain (ParamID::bass (0, InstrumentField::fxAmount), 0.0f);
             Effects::setSlotType (processor.apvts, 0, 0, EffectType::ducker);
             const auto free1 = processor.firstFreeFxChannel() == 1;
             const auto linked = processor.loadInstrumentPreset (Presets::Section::bass, 0, instLinkFile);
             const auto autoOk = linked.ok && linked.fxChannel == 1 && Effects::slotType (processor.apvts, 1, 0) == EffectType::ducker
-                             && (int) plain (ParamID::bass (0, BassField::fxChannel)) == 2 && std::abs (plain (ParamID::bass (0, BassField::fxAmount)) - 0.6f) < 0.01f
-                             && std::abs (plain (ParamID::bass (0, BassField::cutoff)) - 1234.0f) < 1.0f;
+                             && (int) plain (ParamID::bass (0, InstrumentField::fxChannel)) == 2 && std::abs (plain (ParamID::bass (0, InstrumentField::fxAmount)) - 0.6f) < 0.01f
+                             && std::abs (plain (ParamID::bass (0, InstrumentField::cutoff)) - 1234.0f) < 1.0f;
 
             // Alla kanaler upptagna: utan val hoppas effekten över, med val ersätts den valda.
             for (int channel = 0; channel < numEffectChannels; ++channel)
@@ -1379,17 +1379,17 @@ namespace
             const auto none = processor.firstFreeFxChannel() == -1;
             const auto skipped = processor.loadInstrumentPreset (Presets::Section::bass, 0, instLinkFile, -2);
             const auto replaced = processor.loadInstrumentPreset (Presets::Section::bass, 0, instLinkFile, 5);
-            const auto fullOk = none && skipped.ok && skipped.fxChannel == -1 && replaced.fxChannel == 5 && (int) plain (ParamID::bass (0, BassField::fxChannel)) == 6;
+            const auto fullOk = none && skipped.ok && skipped.fxChannel == -1 && replaced.fxChannel == 5 && (int) plain (ParamID::bass (0, InstrumentField::fxChannel)) == 6;
 
             // Mönster som länkar instrumentet: med och utan "behåll mitt instrument".
             processor.pattern.addNote (0, 0, 24);
             const auto savedPattern = processor.savePatternPreset (0, patLink, instLink, fxLink);
             const auto patternLink = PluginBase::readPresetLink (patLinkFile);
-            setPlain (ParamID::bass (0, BassField::cutoff), 4321.0f);
+            setPlain (ParamID::bass (0, InstrumentField::cutoff), 4321.0f);
             const auto keep = processor.loadPatternPreset (0, patLinkFile, false);
-            const auto keepOk = keep.ok && std::abs (plain (ParamID::bass (0, BassField::cutoff)) - 4321.0f) < 1.0f;
+            const auto keepOk = keep.ok && std::abs (plain (ParamID::bass (0, InstrumentField::cutoff)) - 4321.0f) < 1.0f;
             const auto replace = processor.loadPatternPreset (0, patLinkFile, true, -1);
-            const auto replaceOk = replace.ok && std::abs (plain (ParamID::bass (0, BassField::cutoff)) - 1234.0f) < 1.0f;
+            const auto replaceOk = replace.ok && std::abs (plain (ParamID::bass (0, InstrumentField::cutoff)) - 1234.0f) < 1.0f;
 
             // Saknad länk: instrumentet laddas utan effekt, mönstret utan instrument.
             fxLinkFile.deleteFile();

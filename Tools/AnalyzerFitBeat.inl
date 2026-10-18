@@ -142,7 +142,7 @@ namespace
     struct BeatCandidate
     {
         KickParams kick;
-        BassParams bass;
+        InstrumentParams bass;
         float bassLevel = 0.7f;  // relativt kicken
         float duck = 0.8f;
         float gate = 0.7f;       // basens tonlängd, andel av steget
@@ -154,7 +154,7 @@ namespace
     Signal renderBar (const BeatCandidate& c, const BarLayout& layout, const BeatPattern& pattern, double tailHz)
     {
         KickEngine kick;
-        BassSynth bass;
+        InstrumentSynth bass;
         Ducker ducker;
         kick.prepare (fitRate);
         bass.prepare (fitRate);
@@ -164,10 +164,10 @@ namespace
         kickParams.tailHz = (float) tailHz;
         kickParams.level = 1.0f;
         kick.setParams (kickParams);
-        auto bassParams = c.bass;
-        bassParams.rootHz = (float) layout.rootHz;
-        bassParams.level = 1.0f;
-        bass.setParams (bassParams);
+        auto instrumentParams = c.bass;
+        instrumentParams.rootHz = (float) layout.rootHz;
+        instrumentParams.level = 1.0f;
+        bass.setParams (instrumentParams);
 
         const auto factor = (int) std::round (fitRate / analysisRate);
         const auto beatSamples = layout.beatLength * factor;
@@ -417,7 +417,7 @@ int fitBeat (const juce::File& file, double start, double end, const juce::Strin
         b.oscA.warp = WarpMode::fm;
         b.oscA.warpAmount = chance (0.4f) ? 0.0f : uniform (0.0f, 0.6f);
         b.warpEnv = chance (0.4f) ? 0.0f : uniform (0.0f, 0.6f);
-        b.filterType = chance (0.5f) ? BassFilterType::lowpass24 : BassFilterType::lowpass12;
+        b.filterType = chance (0.5f) ? InstrumentFilterType::lowpass24 : InstrumentFilterType::lowpass12;
         b.cutoffHz = logUniform (40.0f, 2500.0f);
         b.resonance = uniform (0.0f, 0.7f);
         b.envAmount = uniform (0.0f, 6.0f);

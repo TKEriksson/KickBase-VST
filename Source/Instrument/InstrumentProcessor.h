@@ -1,7 +1,7 @@
 #pragma once
 
 #include <array>
-#include "../Core/BassSynth.h"
+#include "../Core/InstrumentSynth.h"
 #include "../Core/Ducker.h"
 #include "../Core/Effects.h"
 #include "../Core/KickEngine.h"
@@ -63,13 +63,13 @@ private:
     void ensureScratchSize (int numSamples);
     void resetDspState(); // efter NaN/inf: alla filter, effekter och röster tillbaka till tystnad (allokerar inte)
     int keyPitchClass() const { return currentNote >= 0 ? currentNote % 12 : 0; }
-    int bassRootNote() const  { return Params::bassRootMidiNote (currentNote >= 0 ? currentNote : 60); }
+    int instrumentRootNote() const  { return Params::instrumentRootMidiNote (currentNote >= 0 ? currentNote : 60); }
 
     static constexpr int numLayers = Pattern::numLayers;
 
     StepScheduler scheduler;
     KickEngine kick;
-    std::array<BassSynth, numLayers> basses;
+    std::array<InstrumentSynth, numLayers> basses;
     std::array<Ducker, numLayers> duckers;
     EffectRack effects { apvts };
     DuckCurvePlayer duckCurve;
@@ -80,7 +80,7 @@ private:
 
     // Blockets mellanresultat: kick, hur mycket basen ska duckas (före varje lagers mängd),
     // varje baslagers källa (vänster i layerBuffer, höger i layerBufferRight) och amplitud, och basens summa.
-    juce::AudioBuffer<float> kickBuffer, duckBuffer, layerBuffer, layerBufferRight, amplitudeBuffer, bassBuffer, tapBuffer;
+    juce::AudioBuffer<float> kickBuffer, duckBuffer, layerBuffer, layerBufferRight, amplitudeBuffer, instrumentBuffer, tapBuffer;
 
     // Mixerns två stereobussar: det som går genom maximizern, och det som går förbi den.
     juce::AudioBuffer<float> maxBus, bypassBus;
@@ -117,7 +117,7 @@ private:
 
     // GATE per lager: en egen av/på-rytm (eget rutnät) som hackar ljudet, med mjuka kanter. Läses en gång per block.
     std::array<bool, numLayers> gateOn = filledArray<bool, numLayers> (false);
-    std::array<int, numLayers> gateGrid = filledArray<int, numLayers> ((int) BassGrid::sixteenth);
+    std::array<int, numLayers> gateGrid = filledArray<int, numLayers> ((int) InstrumentGrid::sixteenth);
     std::array<float, numLayers> gateDepth = filledArray<float, numLayers> (1.0f), gateCoefficient = filledArray<float, numLayers> (0.01f),
                                  gateGain = filledArray<float, numLayers> (1.0f);
     Sidechain::Mode sidechainMode = Sidechain::Mode::kickEnvelope;

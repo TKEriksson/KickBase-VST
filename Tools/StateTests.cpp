@@ -42,7 +42,7 @@ int helpCheck()
             if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p))
             {
                 const auto id = ranged->getParameterID();
-                if ((Presets::bassLayerOf (id) > 0) || (Effects::isEffectParameter (id) && id[2] != 'A') || id.startsWith ("mixBass") && ! id.startsWith ("mixBass1")
+                if ((Presets::instrumentLayerOf (id) > 0) || (Effects::isEffectParameter (id) && id[2] != 'A') || id.startsWith ("mixBass") && ! id.startsWith ("mixBass1")
                     || (id.startsWith ("mixFx") && ! id.startsWith ("mixFxA")))
                     continue;
                 if (Help::forParameter (id).isEmpty())
@@ -125,11 +125,11 @@ int persistTest()
     {
         auto processor = std::make_unique<InstrumentProcessor>();
         const auto sample = Scenarios::writeTestWav ("persist_sample", 110.0, 0.3);
-        processor->loadBassSample (0, sample);
-        const auto* first = processor->getActiveBassSample (0);
-        processor->loadBassSample (0, sample);
-        processor->clearBassSample (0);
-        processor->loadBassSample (0, sample);
+        processor->loadInstrumentSample (0, sample);
+        const auto* first = processor->getActiveInstrumentSample (0);
+        processor->loadInstrumentSample (0, sample);
+        processor->clearInstrumentSample (0);
+        processor->loadInstrumentSample (0, sample);
         // `first` ska fortfarande gå att läsa (förr frigjordes den vid det andra bytet).
         auto readable = first != nullptr && first->audio.getNumSamples() > 0 && std::isfinite (first->audio.getSample (0, 10));
         check (readable, "en sampling som bytts ut tre gånger i rad finns kvar en stund (ljudtråden kan läsa den)");
@@ -144,7 +144,7 @@ int persistTest()
     // 5. Preset-laddningen sätter varje parameter en gång: en ratt som ändras passerar inte sitt standardvärde på vägen.
     {
         auto processor = std::make_unique<InstrumentProcessor>();
-        auto* cutoff = processor->apvts.getParameter (ParamID::bass (0, BassField::cutoff));
+        auto* cutoff = processor->apvts.getParameter (ParamID::bass (0, InstrumentField::cutoff));
         cutoff->setValueNotifyingHost (cutoff->convertTo0to1 (2345.0f));
         processor->saveUserPreset (Presets::Section::bass, "__persist_order__", 0);
         cutoff->setValueNotifyingHost (cutoff->convertTo0to1 (1234.0f));
@@ -176,7 +176,7 @@ int persistTest()
     {
         auto processor = std::make_unique<InstrumentProcessor>();
         processor->loadFactoryPreset (Presets::Section::bass, 3, 0);
-        auto* cutoff = processor->apvts.getParameter (ParamID::bass (0, BassField::cutoff));
+        auto* cutoff = processor->apvts.getParameter (ParamID::bass (0, InstrumentField::cutoff));
         const auto factoryValue = cutoff->getValue();
         cutoff->setValueNotifyingHost (factoryValue > 0.5f ? 0.1f : 0.9f);
         Recorder recorder;

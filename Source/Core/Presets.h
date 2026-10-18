@@ -25,10 +25,10 @@ namespace Presets
     bool belongsTo (Section section, const juce::String& paramID, int layer = 0);
 
     // Vilket baslager ett parameter-ID hör till ("bass2Cutoff" -> 1), eller -1.
-    int bassLayerOf (const juce::String& paramID);
+    int instrumentLayerOf (const juce::String& paramID);
 
     // Samma parameter i ett annat baslager ("bass1Cutoff", 2 -> "bass3Cutoff").
-    juce::String toBassLayer (const juce::String& paramID, int layer);
+    juce::String toInstrumentLayer (const juce::String& paramID, int layer);
 
     // Mönster-presets gäller en rad (layer = instrument 0-9 eller Pattern::kickLayer). Parametrarnas ID skrivs som för instrument 1 / kicken i filen
     // och flyttas till raden de laddas i.
@@ -69,7 +69,7 @@ namespace Presets
         struct PatternLine
         {
             int layer = 0;
-            BassGrid grid = BassGrid::sixteenth;
+            InstrumentGrid grid = InstrumentGrid::sixteenth;
             std::vector<std::string> bars;
             float gate = 0.7f; // längd på toner utan ":procent"
         };

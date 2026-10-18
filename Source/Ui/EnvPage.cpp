@@ -21,7 +21,7 @@ namespace
         return (float) (held (gateSeconds) * std::exp (ln * (seconds - gateSeconds) / release));
     }
 
-    juce::RangedAudioParameter* param (PluginBase& processor, int layer, BassField field)
+    juce::RangedAudioParameter* param (PluginBase& processor, int layer, InstrumentField field)
     {
         return processor.apvts.getParameter (ParamID::bass (layer, field));
     }
@@ -62,7 +62,7 @@ void EnvPage::timerCallback()
 
 void EnvPage::rebuild()
 {
-    using F = BassField;
+    using F = InstrumentField;
     const auto count = processor.activeInstruments();
     layer = juce::jlimit (0, count - 1, processor.selectedInstrument);
     lastActive = count;
@@ -84,7 +84,7 @@ void EnvPage::rebuild()
         tile.hint = hint;
         tile.colour = handleSource >= 0 ? Theme::sourceColour (handleSource) : accent;
         tile.view = std::make_unique<EnvelopeView> (seconds);
-        tile.view->onBeforePaint = [this, thisLayer] { current = refs.readBass (thisLayer, 36); };
+        tile.view->onBeforePaint = [this, thisLayer] { current = refs.readInstrument (thisLayer, 36); };
         addAndMakeVisible (*tile.view);
         if (handleSource >= 0)
         {
@@ -113,12 +113,12 @@ void EnvPage::rebuild()
     // Filter-envelopen: hur mycket och hur länge filtret öppnas i början av varje ton.
     {
         auto* view = addTile ("FILTER ENVELOPE", "Opens the filter at the start of every note and lets it close again: AMOUNT (how far, in octaves), ATTACK (how fast it opens) and DECAY (how fast it closes).", 0.5, -1);
-        view->addCurve ({ [this] (double t) { return BassSynth::filterEnvelopeAt (current, t) * current.envAmount / 8.0f; }, accent, true, "FILTER" });
+        view->addCurve ({ [this] (double t) { return InstrumentSynth::filterEnvelopeAt (current, t) * current.envAmount / 8.0f; }, accent, true, "FILTER" });
         view->addHandle ({ [this] { return juce::Point<float> (std::max (0.0015f, current.envAttackMs * 0.001f), current.envAmount / 8.0f); }, param (processor, layer, F::envAttack), param (processor, layer, F::envAmount), false, accent });
         view->addHandle ({ [this]
                            {
                                const auto t = current.envAttackMs * 0.001 + current.envDecayMs * 0.001 / 3.0;
-                               return juce::Point<float> ((float) t, BassSynth::filterEnvelopeAt (current, t) * current.envAmount / 8.0f); },
+                               return juce::Point<float> ((float) t, InstrumentSynth::filterEnvelopeAt (current, t) * current.envAmount / 8.0f); },
                            param (processor, layer, F::envDecay), nullptr, false, accent });
     }
 

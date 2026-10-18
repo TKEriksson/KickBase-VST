@@ -70,7 +70,7 @@ private:
     static constexpr int size = 1 << order; // 8192 punkter: ~5 Hz per steg vid 44,1 kHz, så att de låga övertonerna skiljs åt
     static constexpr int bins = size / 2;
     static constexpr int lowBinCount = 96; // upp till ~560 Hz
-    static constexpr int kickSource = 0, firstInstrument = 1, masterSource = 1 + ParamID::numBassLayers, numSources = masterSource + 1;
+    static constexpr int kickSource = 0, firstInstrument = 1, masterSource = 1 + ParamID::numInstrumentLayers, numSources = masterSource + 1;
 
     struct Source
     {

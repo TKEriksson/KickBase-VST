@@ -205,7 +205,7 @@ SpectrumView::SpectrumView (PluginBase& p) : processor (p)
 {
     const auto& master = processor.getMasterSection();
     bands.push_back ({ &processor.kickTap, 2, Theme::kick, "KICK", {} });
-    bands.push_back ({ &processor.bassAfterDuckTap, 2, Theme::bass, "INSTRUMENTS", {} });
+    bands.push_back ({ &processor.instrumentAfterDuckTap, 2, Theme::bass, "INSTRUMENTS", {} });
     bands.push_back ({ &master.outputTap, 2, Theme::text, "MASTER", {} });
     for (auto& band : bands)
         band.level.fill (-120.0f);

@@ -5,7 +5,7 @@
 #include "SampleData.h"
 #include "Wavetable.h"
 
-enum class BassFilterType { lowpass24, lowpass12, bandpass, highpass };
+enum class InstrumentFilterType { lowpass24, lowpass12, bandpass, highpass };
 
 // Hur fasen förvrängs innan wavetablen läses (Serums "warp"). AM är ingen fasförvrängning utan amplitudmodulerar vågen.
 enum class WarpMode { off, sync, bend, pwm, mirror, fm, flip, quantize, am };
@@ -37,7 +37,7 @@ struct ModEnvParams
     float attackMs = 5.0f, decayMs = 400.0f, sustain = 0.0f, releaseMs = 250.0f;
 };
 
-struct BassParams
+struct InstrumentParams
 {
     float rootHz = 65.4f;        // tonartens grundton i basens oktav
     OscParams oscA, oscB, oscC;
@@ -45,7 +45,7 @@ struct BassParams
     float sub = 0.3f;            // sinus, 0..1
     int subOctave = 0;           // 0 = samma oktav som grundtonen, -1 = en oktav ner
     float noise = 0.0f;          // vitt brus före filtret, 0..1
-    BassFilterType filterType = BassFilterType::lowpass24;
+    InstrumentFilterType filterType = InstrumentFilterType::lowpass24;
     float keyTrack = 0.0f;       // 0..1: hur mycket cutoff följer tonhöjden (1 = helt, från C2)
     float cutoffHz = 300.0f;
     float resonance = 0.3f;      // 0..1
@@ -77,11 +77,11 @@ struct BassParams
     bool sampleKeyTrack = false; // av = spelas med sin egen tonhöjd och hastighet
     float sampleStart = 0.0f;    // 0..1: var i samplingen varje ton börjar
 
-    BassParams() { oscB.level = 0.0f; oscC.level = 0.0f; oscC.on = false; }
+    InstrumentParams() { oscB.level = 0.0f; oscC.level = 0.0f; oscC.on = false; }
 };
 
 // Monofonisk bassynt som spelas steg för steg av sequencern.
-class BassSynth
+class InstrumentSynth
 {
 public:
     static constexpr int maxUnison = 7;
@@ -91,7 +91,7 @@ public:
     // Slumpen (brus, slumpfas) är seedad, så att samma preset renderar bit-identiskt varje gång.
     void setSeed (juce::int64 seed) { random.setSeed (seed); }
     void reset();
-    void setParams (const BassParams& newParams) { params = newParams; }
+    void setParams (const InstrumentParams& newParams) { params = newParams; }
 
     // Spelar en ton `semitones` från grundtonen i `gateSamples` samples.
     void noteOn (int semitones, float velocity, int gateSamples);
@@ -137,7 +137,7 @@ public:
     }
 
     // Filter-envelopens form (0..1) efter `seconds`. Används även av gränssnittet.
-    static float filterEnvelopeAt (const BassParams& p, double seconds);
+    static float filterEnvelopeAt (const InstrumentParams& p, double seconds);
 
     // Fasen efter warp (för gränssnittets bild och för oscillatorn). `fmInput` -1..1.
     static double warpPhase (WarpMode mode, float amount, double phase, float fmInput);
@@ -184,7 +184,7 @@ private:
         }
     };
 
-    BassParams params;
+    InstrumentParams params;
     double sampleRate = 44100.0;
 
     Oscillator oscA, oscB, oscC;

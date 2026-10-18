@@ -17,7 +17,7 @@ public:
 
 private:
     void timerCallback() override;
-    float raw (BassField field) const;
+    float raw (InstrumentField field) const;
 
     bool hover = false;
     juce::MouseCursor speakerCursor = Cursors::speaker();

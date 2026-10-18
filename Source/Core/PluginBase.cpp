@@ -31,7 +31,7 @@ PluginBase::PluginBase (const BusesProperties& buses, juce::AudioProcessorValueT
     params.setModulator (&modulator); // ljudtrådens parametrar läses med LFO-modulering
     modulator.setLfoCurves (&lfoCurves);
     presetNames.fill ("Default");
-    bassPresetNames.fill ("Default");
+    instrumentPresetNames.fill ("Default");
     rowPresetNames.fill ({});
     fxPresetNames.fill ({});
     presetNames[(size_t) Presets::Section::full] = "Init";
@@ -64,7 +64,7 @@ double PluginBase::typicalNoteSeconds (int layer)
     if (! noteLengths.empty())
     {
         std::nth_element (noteLengths.begin(), noteLengths.begin() + (long) noteLengths.size() / 2, noteLengths.end());
-        const auto scale = apvts.getRawParameterValue (ParamID::bass (layer, BassField::gate))->load();
+        const auto scale = apvts.getRawParameterValue (ParamID::bass (layer, InstrumentField::gate))->load();
         const auto bpm = std::max (40.0, (double) transportStatus.bpm.load());
         seconds = std::max (1.0, (double) noteLengths[noteLengths.size() / 2] * (double) scale) * 60.0 / bpm / Pattern::ticksPerQuarter;
     }
@@ -84,7 +84,7 @@ int PluginBase::fxChannelUsageMask()
     };
     sentTo (ParamID::kickFxChannel, ParamID::kickFxAmount);
     for (int layer = 0; layer < activeInstruments(); ++layer)
-        sentTo (ParamID::bass (layer, BassField::fxChannel).toRawUTF8(), ParamID::bass (layer, BassField::fxAmount).toRawUTF8());
+        sentTo (ParamID::bass (layer, InstrumentField::fxChannel).toRawUTF8(), ParamID::bass (layer, InstrumentField::fxAmount).toRawUTF8());
 
     for (int channel = 0; channel < numEffectChannels; ++channel)
     {
@@ -111,7 +111,7 @@ void PluginBase::prepareBase (double sampleRate)
     currentSampleRate = sampleRate;
     clock.prepare (sampleRate);
     kickSample.prepare (sampleRate);
-    for (auto& slot : bassSamples)
+    for (auto& slot : instrumentSamples)
         slot.prepare (sampleRate);
 }
 
@@ -131,13 +131,13 @@ KickParams PluginBase::kickForDisplay (int keyPitchClass) const
     p.ampEnv = &kickAmpEnv;
     return p;
 }
-BassParams PluginBase::readModulatedBass (int layer, int rootMidiNote) const
+InstrumentParams PluginBase::readModulatedInstrument (int layer, int rootMidiNote) const
 {
-    auto bass = params.readBass (layer, rootMidiNote);
+    auto bass = params.readInstrument (layer, rootMidiNote);
     bass.oscA.user = userTable (layer, 0);
     bass.oscB.user = userTable (layer, 1);
     bass.oscC.user = userTable (layer, 2);
-    bass.sampleData = getActiveBassSample (layer);
+    bass.sampleData = getActiveInstrumentSample (layer);
     return bass;
 }
 
@@ -156,7 +156,7 @@ void PluginBase::setUserTable (int slot, std::unique_ptr<Wavetable> table, std::
 
 bool PluginBase::loadUserTable (int layer, int osc, const juce::File& file)
 {
-    if (! juce::isPositiveAndBelow (layer, ParamID::numBassLayers) || ! juce::isPositiveAndBelow (osc, ParamID::oscsPerLayer))
+    if (! juce::isPositiveAndBelow (layer, ParamID::numInstrumentLayers) || ! juce::isPositiveAndBelow (osc, ParamID::oscsPerLayer))
         return false;
 
     juce::AudioFormatManager formats;
@@ -212,7 +212,7 @@ bool PluginBase::loadUserTable (int layer, int osc, const juce::File& file)
     setUserTable (layer * ParamID::oscsPerLayer + osc, std::move (table), std::move (frames), file.isDirectory() ? file.getFileName() : file.getFileNameWithoutExtension());
 
     // Välj tabellen i oscillatorn.
-    if (auto* parameter = apvts.getParameter (ParamID::bass (layer, ParamID::oscField (osc, BassField::aTable))))
+    if (auto* parameter = apvts.getParameter (ParamID::bass (layer, ParamID::oscField (osc, InstrumentField::aTable))))
     {
         parameter->beginChangeGesture();
         parameter->setValueNotifyingHost (parameter->convertTo0to1 ((float) Wavetables::userIndex()));
@@ -235,8 +235,8 @@ bool PluginBase::instrumentHasContent (int layer, juce::String* what) const
 
     auto changed = false;
     for (auto* p : getParameters())
-        if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p); ranged != nullptr && Presets::bassLayerOf (ranged->getParameterID()) == layer
-            && ranged->getParameterID() != ParamID::bass (layer, BassField::on) && std::abs (ranged->getValue() - ranged->getDefaultValue()) > 1.0e-4f)
+        if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p); ranged != nullptr && Presets::instrumentLayerOf (ranged->getParameterID()) == layer
+            && ranged->getParameterID() != ParamID::bass (layer, InstrumentField::on) && std::abs (ranged->getValue() - ranged->getDefaultValue()) > 1.0e-4f)
         {
             changed = true;
             break;
@@ -246,7 +246,7 @@ bool PluginBase::instrumentHasContent (int layer, juce::String* what) const
                        ? juce::String ("changed or unsaved settings")
                        : "settings from the preset '" + getPresetName (Presets::Section::bass, layer) + "' (changed or not, they are not saved anywhere else)");
 
-    if (bassSamples[(size_t) layer].hasSample())
+    if (instrumentSamples[(size_t) layer].hasSample())
         parts.add ("a sample");
     for (int osc = 0; osc < ParamID::oscsPerLayer; ++osc)
         if (userTable (layer, osc) != nullptr)
@@ -261,7 +261,7 @@ bool PluginBase::instrumentHasContent (int layer, juce::String* what) const
     const auto& parameters = getParameters();
     for (const auto& route : modRoutes.routes)
         if (route.source.load() >= 0 && juce::isPositiveAndBelow (route.target.load(), parameters.size()))
-            if (auto* withId = dynamic_cast<juce::AudioProcessorParameterWithID*> (parameters[route.target.load()]); withId != nullptr && Presets::bassLayerOf (withId->paramID) == layer)
+            if (auto* withId = dynamic_cast<juce::AudioProcessorParameterWithID*> (parameters[route.target.load()]); withId != nullptr && Presets::instrumentLayerOf (withId->paramID) == layer)
                 ++routes;
     if (routes > 0)
         parts.add (juce::String (routes) + (routes == 1 ? " modulation route" : " modulation routes"));
@@ -273,7 +273,7 @@ bool PluginBase::instrumentHasContent (int layer, juce::String* what) const
 
 void PluginBase::wipeInstrument (int layer)
 {
-    if (! juce::isPositiveAndBelow (layer, ParamID::numBassLayers))
+    if (! juce::isPositiveAndBelow (layer, ParamID::numInstrumentLayers))
         return;
 
     // Mönster och gate.
@@ -286,20 +286,20 @@ void PluginBase::wipeInstrument (int layer)
         if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p))
         {
             const auto id = ranged->getParameterID();
-            if (Presets::bassLayerOf (id) == layer || id == ParamID::rowBars (row) || id == ParamID::rowLoop (row)
+            if (Presets::instrumentLayerOf (id) == layer || id == ParamID::rowBars (row) || id == ParamID::rowLoop (row)
                 || id == Mixer::paramID (Mixer::firstBassSource + layer, "Gain") || id == Mixer::paramID (Mixer::firstBassSource + layer, "Pan")
                 || id == Mixer::paramID (Mixer::firstBassSource + layer, "Duck") || id == Mixer::paramID (Mixer::firstBassSource + layer, "Max"))
                 Presets::setParameter (*ranged, ranged->getDefaultValue());
         }
 
     // Sampling, egna tabeller, namn.
-    bassSamples[(size_t) layer].clear();
+    instrumentSamples[(size_t) layer].clear();
     for (int osc = 0; osc < ParamID::oscsPerLayer; ++osc)
         clearUserTable (layer * ParamID::oscsPerLayer + osc);
     layerNames[(size_t) layer] = {};
-    bassPresetNames[(size_t) layer] = "Default";
+    instrumentPresetNames[(size_t) layer] = "Default";
     ++layerNamesVersion;
-    selectedBassSource[(size_t) layer] = 0;
+    selectedInstrumentSource[(size_t) layer] = 0;
 
     // LFO-kopplingar till instrumentets rattar.
     const auto& parameters = getParameters();
@@ -307,7 +307,7 @@ void PluginBase::wipeInstrument (int layer)
     {
         const auto target = modRoutes.routes[(size_t) i].target.load();
         if (modRoutes.routes[(size_t) i].source.load() >= 0 && juce::isPositiveAndBelow (target, parameters.size()))
-            if (auto* withId = dynamic_cast<juce::AudioProcessorParameterWithID*> (parameters[target]); withId != nullptr && Presets::bassLayerOf (withId->paramID) == layer)
+            if (auto* withId = dynamic_cast<juce::AudioProcessorParameterWithID*> (parameters[target]); withId != nullptr && Presets::instrumentLayerOf (withId->paramID) == layer)
                 modRoutes.remove (i);
     }
 
@@ -319,7 +319,7 @@ void PluginBase::setInstrumentCount (int count)
     if (effectVersion)
         return;
 
-    count = juce::jlimit (1, ParamID::numBassLayers, count);
+    count = juce::jlimit (1, ParamID::numInstrumentLayers, count);
     const auto before = activeInstruments();
     for (int layer = count; layer < before; ++layer)
         wipeInstrument (layer);
@@ -335,9 +335,9 @@ void PluginBase::setInstrumentCount (int count)
 
 void PluginBase::ensureTablesInUse()
 {
-    for (int layer = 0; layer < ParamID::numBassLayers; ++layer)
+    for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
         for (int osc = 0; osc < ParamID::oscsPerLayer; ++osc)
-            if (auto* value = apvts.getRawParameterValue (ParamID::bass (layer, ParamID::oscField (osc, BassField::aTable))))
+            if (auto* value = apvts.getRawParameterValue (ParamID::bass (layer, ParamID::oscField (osc, InstrumentField::aTable))))
                 Wavetables::ensure ((int) std::lround (value->load()));
 }
 
@@ -391,7 +391,7 @@ void PluginBase::userTablesFromValueTree (const juce::ValueTree& tree, int intoL
                 continue;
             layer = intoLayer;
         }
-        if (! child.hasType ("Table") || ! juce::isPositiveAndBelow (layer, ParamID::numBassLayers) || ! juce::isPositiveAndBelow (osc, ParamID::oscsPerLayer))
+        if (! child.hasType ("Table") || ! juce::isPositiveAndBelow (layer, ParamID::numInstrumentLayers) || ! juce::isPositiveAndBelow (osc, ParamID::oscsPerLayer))
             continue;
 
         juce::MemoryOutputStream decoded;
@@ -423,7 +423,7 @@ juce::String& PluginBase::presetNameSlot (Presets::Section section, int layer)
         return rowPresetNames[(size_t) juce::jlimit (0, Pattern::numNoteLayers - 1, layer)];
     if (section == Presets::Section::effects)
         return fxPresetNames[(size_t) juce::jlimit (0, numEffectChannels - 1, layer)];
-    return section == Presets::Section::bass ? bassPresetNames[(size_t) juce::jlimit (0, ParamID::numBassLayers - 1, layer)]
+    return section == Presets::Section::bass ? instrumentPresetNames[(size_t) juce::jlimit (0, ParamID::numInstrumentLayers - 1, layer)]
                                              : presetNames[(size_t) section];
 }
 
@@ -433,7 +433,7 @@ juce::String PluginBase::getPresetName (Presets::Section section, int layer) con
         return rowPresetNames[(size_t) juce::jlimit (0, Pattern::numNoteLayers - 1, layer)];
     if (section == Presets::Section::effects)
         return fxPresetNames[(size_t) juce::jlimit (0, numEffectChannels - 1, layer)];
-    return section == Presets::Section::bass ? bassPresetNames[(size_t) juce::jlimit (0, ParamID::numBassLayers - 1, layer)]
+    return section == Presets::Section::bass ? instrumentPresetNames[(size_t) juce::jlimit (0, ParamID::numInstrumentLayers - 1, layer)]
                                              : presetNames[(size_t) section];
 }
 
@@ -486,18 +486,18 @@ void PluginBase::getStateInformation (juce::MemoryBlock& destData)
     auto state = apvts.copyState();
     for (int i = 0; i < Presets::numSections; ++i)
         state.setProperty (presetProperty ((Presets::Section) i), presetNames[(size_t) i], nullptr);
-    for (int layer = 0; layer < ParamID::numBassLayers; ++layer)
-        state.setProperty ("presetBass" + juce::String (layer + 1), bassPresetNames[(size_t) layer], nullptr);
+    for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
+        state.setProperty ("presetBass" + juce::String (layer + 1), instrumentPresetNames[(size_t) layer], nullptr);
     for (int row = 0; row < Pattern::numNoteLayers; ++row)
         state.setProperty ("presetRow" + juce::String (row + 1), rowPresetNames[(size_t) row], nullptr);
     for (int channel = 0; channel < numEffectChannels; ++channel)
         state.setProperty ("presetFx" + juce::String (channel + 1), fxPresetNames[(size_t) channel], nullptr);
     state.setProperty ("previewNote", previewNote.load(), nullptr);
-    for (int layer = 0; layer < ParamID::numBassLayers; ++layer)
+    for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
         state.setProperty ("layerName" + juce::String (layer + 1), layerNames[(size_t) layer], nullptr);
     state.appendChild (pattern.toValueTree(), nullptr);
     state.appendChild (kickSample.toValueTree (clickTreeType), nullptr);
-    state.appendChild (bassSamplesToValueTree(), nullptr);
+    state.appendChild (instrumentSamplesToValueTree(), nullptr);
     state.appendChild (userTablesToValueTree(), nullptr);
     state.appendChild (sidechainCurve.toValueTree(), nullptr);
     state.appendChild (modRoutes.toValueTree (getParameters()), nullptr);
@@ -519,14 +519,14 @@ void PluginBase::setStateInformation (const void* data, int sizeInBytes)
     auto state = juce::ValueTree::fromXml (*xml);
     for (int i = 0; i < Presets::numSections; ++i)
         presetNames[(size_t) i] = state.getProperty (presetProperty ((Presets::Section) i), presetNames[(size_t) i]).toString();
-    for (int layer = 0; layer < ParamID::numBassLayers; ++layer)
-        bassPresetNames[(size_t) layer] = state.getProperty ("presetBass" + juce::String (layer + 1), bassPresetNames[(size_t) layer]).toString();
+    for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
+        instrumentPresetNames[(size_t) layer] = state.getProperty ("presetBass" + juce::String (layer + 1), instrumentPresetNames[(size_t) layer]).toString();
     for (int row = 0; row < Pattern::numNoteLayers; ++row)
         rowPresetNames[(size_t) row] = state.getProperty ("presetRow" + juce::String (row + 1), rowPresetNames[(size_t) row]).toString();
     for (int channel = 0; channel < numEffectChannels; ++channel)
         fxPresetNames[(size_t) channel] = state.getProperty ("presetFx" + juce::String (channel + 1), fxPresetNames[(size_t) channel]).toString();
     previewNote = juce::jlimit (0, 127, (int) state.getProperty ("previewNote", 60));
-    for (int layer = 0; layer < ParamID::numBassLayers; ++layer)
+    for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
         layerNames[(size_t) layer] = state.getProperty ("layerName" + juce::String (layer + 1), juce::String()).toString();
     ++layerNamesVersion;
 
@@ -547,12 +547,12 @@ void PluginBase::setStateInformation (const void* data, int sizeInBytes)
 
     if (auto samplesTree = state.getChildWithName ("BassSamples"); samplesTree.isValid())
     {
-        bassSamplesFromValueTree (samplesTree);
+        instrumentSamplesFromValueTree (samplesTree);
         state.removeChild (samplesTree, nullptr);
     }
     else
     {
-        for (auto& slot : bassSamples)
+        for (auto& slot : instrumentSamples)
             slot.clear();
     }
 
@@ -657,7 +657,7 @@ void PluginBase::loadFactoryPreset (Presets::Section section, int index, int lay
 
     if (section == Presets::Section::bass)
     {
-        clearBassSample (layer); // fabriksljuden har ingen sampling och inga egna tabeller
+        clearInstrumentSample (layer); // fabriksljuden har ingen sampling och inga egna tabeller
         for (int osc = 0; osc < ParamID::oscsPerLayer; ++osc)
             clearUserTable (layer * ParamID::oscsPerLayer + osc);
     }
@@ -665,12 +665,12 @@ void PluginBase::loadFactoryPreset (Presets::Section section, int index, int lay
     if (section == Presets::Section::full)
     {
         clearClickSample();
-        for (int l = 0; l < ParamID::numBassLayers; ++l)
-            clearBassSample (l);
+        for (int l = 0; l < ParamID::numInstrumentLayers; ++l)
+            clearInstrumentSample (l);
         for (int slot = 0; slot < numUserSlots; ++slot)
             clearUserTable (slot);
         presetNames.fill ({}); // delarna kommer inte längre från sina egna presets
-        bassPresetNames.fill ({});
+        instrumentPresetNames.fill ({});
         rowPresetNames.fill ({});
         fxPresetNames.fill ({});
     }
@@ -743,7 +743,7 @@ bool PluginBase::saveUserPreset (Presets::Section section, const juce::String& n
 
         // Basens presets sparas som lager 1, så att de kan laddas i vilket lager som helst.
         auto* entry = paramsXml->createNewChildElement ("Param");
-        entry->setAttribute ("id", section == Presets::Section::bass ? Presets::toBassLayer (ranged->getParameterID(), 0)
+        entry->setAttribute ("id", section == Presets::Section::bass ? Presets::toInstrumentLayer (ranged->getParameterID(), 0)
                                    : section == Presets::Section::pattern ? Presets::patternIdToCanonical (ranged->getParameterID(), layer)
                                    : section == Presets::Section::effects ? Presets::effectIdToCanonical (ranged->getParameterID(), layer)
                                                                           : ranged->getParameterID());
@@ -763,9 +763,9 @@ bool PluginBase::saveUserPreset (Presets::Section section, const juce::String& n
     }
 
     if (section == Presets::Section::full)
-        root.addChildElement (bassSamplesToValueTree().createXml().release());
-    if (section == Presets::Section::bass && bassSamples[(size_t) layer].hasSample())
-        root.addChildElement (bassSamples[(size_t) layer].toValueTree ("BassSample").createXml().release());
+        root.addChildElement (instrumentSamplesToValueTree().createXml().release());
+    if (section == Presets::Section::bass && instrumentSamples[(size_t) layer].hasSample())
+        root.addChildElement (instrumentSamples[(size_t) layer].toValueTree ("BassSample").createXml().release());
 
     // Oscillatorernas egna wavetables (User WAV): annars laddas presetet med fel tabell (den som råkar finnas, eller Basic).
     if (section == Presets::Section::full)
@@ -838,7 +838,7 @@ bool PluginBase::loadPresetXml (const juce::XmlElement& xmlElement, Presets::Sec
         {
             auto id = entry->getStringAttribute ("id");
             if (section == Presets::Section::bass)
-                id = Presets::toBassLayer (id, layer);
+                id = Presets::toInstrumentLayer (id, layer);
             else if (section == Presets::Section::pattern)
                 id = Presets::patternIdFromCanonical (id, layer);
             else if (section == Presets::Section::effects)
@@ -879,17 +879,17 @@ bool PluginBase::loadPresetXml (const juce::XmlElement& xmlElement, Presets::Sec
     if (section == Presets::Section::full)
     {
         if (const auto* samplesXml = xml->getChildByName ("BassSamples"))
-            bassSamplesFromValueTree (juce::ValueTree::fromXml (*samplesXml));
+            instrumentSamplesFromValueTree (juce::ValueTree::fromXml (*samplesXml));
         else
-            for (auto& slot : bassSamples)
+            for (auto& slot : instrumentSamples)
                 slot.clear();
     }
     else if (section == Presets::Section::bass)
     {
         if (const auto* sampleXml = xml->getChildByName ("BassSample"))
-            bassSamples[(size_t) layer].fromValueTree (juce::ValueTree::fromXml (*sampleXml));
+            instrumentSamples[(size_t) layer].fromValueTree (juce::ValueTree::fromXml (*sampleXml));
         else
-            bassSamples[(size_t) layer].clear();
+            instrumentSamples[(size_t) layer].clear();
     }
 
     // Egna wavetables. Ett Full-preset ersätter alla (äldre filer utan dem: inga); ett instrument-preset bara sitt lagers, och bara om
@@ -933,7 +933,7 @@ bool PluginBase::loadPresetXml (const juce::XmlElement& xmlElement, Presets::Sec
     if (section == Presets::Section::full)
     {
         presetNames.fill ({});
-        bassPresetNames.fill ({});
+        instrumentPresetNames.fill ({});
         rowPresetNames.fill ({});
         fxPresetNames.fill ({});
     }
@@ -967,8 +967,8 @@ juce::File PluginBase::findUserPreset (Presets::Section section, const juce::Str
 int PluginBase::sendChannelOf (Presets::Section section, int layer) const
 {
     const auto kick = section == Presets::Section::kick;
-    const auto channelID = kick ? juce::String (ParamID::kickFxChannel) : ParamID::bass (layer, BassField::fxChannel);
-    const auto amountID = kick ? juce::String (ParamID::kickFxAmount) : ParamID::bass (layer, BassField::fxAmount);
+    const auto channelID = kick ? juce::String (ParamID::kickFxChannel) : ParamID::bass (layer, InstrumentField::fxChannel);
+    const auto amountID = kick ? juce::String (ParamID::kickFxAmount) : ParamID::bass (layer, InstrumentField::fxAmount);
     const auto channel = (int) apvts.getRawParameterValue (channelID)->load() - 1;
     if (channel < 0 || channel >= numEffectChannels || apvts.getRawParameterValue (amountID)->load() <= 0.0f)
         return -1;
@@ -1003,7 +1003,7 @@ bool PluginBase::saveInstrumentPreset (Presets::Section section, int layer, cons
         link.kind = "effect";
         link.name = juce::File::createLegalFileName (fxName.trim());
         link.amount = apvts.getRawParameterValue (section == Presets::Section::kick ? juce::String (ParamID::kickFxAmount)
-                                                                                     : ParamID::bass (layer, BassField::fxAmount))->load();
+                                                                                     : ParamID::bass (layer, InstrumentField::fxAmount))->load();
     }
     return saveUserPreset (section, name, layer, link.valid() ? &link : nullptr);
 }
@@ -1042,8 +1042,8 @@ PluginBase::LinkedLoad PluginBase::loadInstrumentPreset (Presets::Section sectio
 
     // Instrumentet skickar till kanalen med den mängd det hade när presetet sparades.
     const auto kick = section == Presets::Section::kick;
-    for (const auto& [id, value] : { std::pair<juce::String, float> { kick ? juce::String (ParamID::kickFxChannel) : ParamID::bass (layer, BassField::fxChannel), (float) (fxChannel + 1) },
-                                     std::pair<juce::String, float> { kick ? juce::String (ParamID::kickFxAmount) : ParamID::bass (layer, BassField::fxAmount), link.amount } })
+    for (const auto& [id, value] : { std::pair<juce::String, float> { kick ? juce::String (ParamID::kickFxChannel) : ParamID::bass (layer, InstrumentField::fxChannel), (float) (fxChannel + 1) },
+                                     std::pair<juce::String, float> { kick ? juce::String (ParamID::kickFxAmount) : ParamID::bass (layer, InstrumentField::fxAmount), link.amount } })
         if (auto* parameter = apvts.getParameter (id))
             Presets::setParameter (*parameter, parameter->convertTo0to1 (value));
     result.fxChannel = fxChannel;
@@ -1084,8 +1084,8 @@ juce::AudioBuffer<float> PluginBase::renderOffline (const OfflineRender::Setting
             parameter->setValueNotifyingHost (0.0f);
     };
     if (part == ExportPart::kick)
-        for (int layer = 0; layer < ParamID::numBassLayers; ++layer)
-            turnOff (ParamID::bass (layer, BassField::on).toRawUTF8());
+        for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
+            turnOff (ParamID::bass (layer, InstrumentField::on).toRawUTF8());
     if (part == ExportPart::bass)
         turnOff (ParamID::kickOn);
 
@@ -1106,8 +1106,8 @@ bool PluginBase::exportWav (const juce::File& file, ExportPart part, int bars)
             parameter->setValueNotifyingHost (0.0f);
     };
     if (part == ExportPart::kick)
-        for (int layer = 0; layer < ParamID::numBassLayers; ++layer)
-            turnOff (ParamID::bass (layer, BassField::on).toRawUTF8());
+        for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
+            turnOff (ParamID::bass (layer, InstrumentField::on).toRawUTF8());
     if (part == ExportPart::bass)
         turnOff (ParamID::kickOn);
 
@@ -1150,44 +1150,44 @@ void PluginBase::clearClickSample()
     patternChanged();
 }
 
-bool PluginBase::loadBassSample (int layer, const juce::File& file)
+bool PluginBase::loadInstrumentSample (int layer, const juce::File& file)
 {
-    if (! juce::isPositiveAndBelow (layer, ParamID::numBassLayers) || ! bassSamples[(size_t) layer].loadFile (file))
+    if (! juce::isPositiveAndBelow (layer, ParamID::numInstrumentLayers) || ! instrumentSamples[(size_t) layer].loadFile (file))
         return false;
     patternChanged();
     return true;
 }
 
-void PluginBase::clearBassSample (int layer)
+void PluginBase::clearInstrumentSample (int layer)
 {
-    if (juce::isPositiveAndBelow (layer, ParamID::numBassLayers))
-        bassSamples[(size_t) layer].clear();
+    if (juce::isPositiveAndBelow (layer, ParamID::numInstrumentLayers))
+        instrumentSamples[(size_t) layer].clear();
     patternChanged();
 }
 
-juce::ValueTree PluginBase::bassSamplesToValueTree() const
+juce::ValueTree PluginBase::instrumentSamplesToValueTree() const
 {
     juce::ValueTree tree ("BassSamples");
-    for (int layer = 0; layer < ParamID::numBassLayers; ++layer)
-        if (bassSamples[(size_t) layer].hasSample())
+    for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
+        if (instrumentSamples[(size_t) layer].hasSample())
         {
-            auto child = bassSamples[(size_t) layer].toValueTree ("BassSample");
+            auto child = instrumentSamples[(size_t) layer].toValueTree ("BassSample");
             child.setProperty ("layer", layer, nullptr);
             tree.appendChild (child, nullptr);
         }
     return tree;
 }
 
-void PluginBase::bassSamplesFromValueTree (const juce::ValueTree& tree)
+void PluginBase::instrumentSamplesFromValueTree (const juce::ValueTree& tree)
 {
-    std::array<bool, ParamID::numBassLayers> found {};
+    std::array<bool, ParamID::numInstrumentLayers> found {};
     for (const auto& child : tree)
-        if (const auto layer = (int) child.getProperty ("layer", -1); juce::isPositiveAndBelow (layer, ParamID::numBassLayers))
+        if (const auto layer = (int) child.getProperty ("layer", -1); juce::isPositiveAndBelow (layer, ParamID::numInstrumentLayers))
         {
-            bassSamples[(size_t) layer].fromValueTree (child);
+            instrumentSamples[(size_t) layer].fromValueTree (child);
             found[(size_t) layer] = true;
         }
-    for (int layer = 0; layer < ParamID::numBassLayers; ++layer)
+    for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
         if (! found[(size_t) layer])
-            bassSamples[(size_t) layer].clear();
+            instrumentSamples[(size_t) layer].clear();
 }

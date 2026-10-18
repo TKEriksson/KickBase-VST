@@ -9,7 +9,7 @@ namespace
         Params::Layout layout;
         Params::addPatternParams (layout, false);
         Params::addKickParams (layout);
-        Params::addBassCommonParams (layout, 0, 1.0f); // gaten är lager 1
+        Params::addInstrumentCommonParams (layout, 0, 1.0f); // gaten är lager 1
         Params::addFxParams (layout);
         Effects::addParameters (layout);
         Sidechain::addParameters (layout);
@@ -101,10 +101,10 @@ void FxProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuff
 
     active = clock.isFollowingHost();
     kickOn = params.getBool (ParamID::kickOn);
-    gateOn = params.bass (0, BassField::on) >= 0.5f;
-    duckAmount = params.bass (0, BassField::duck); // med LFO-modulering
-    gateScale = params.bass (0, BassField::gate);
-    inputLevel = params.bass (0, BassField::level) * params.get (ParamID::gain);
+    gateOn = params.bass (0, InstrumentField::on) >= 0.5f;
+    duckAmount = params.bass (0, InstrumentField::duck); // med LFO-modulering
+    gateScale = params.bass (0, InstrumentField::gate);
+    inputLevel = params.bass (0, InstrumentField::level) * params.get (ParamID::gain);
 
     useCurve = (Sidechain::Mode) params.getChoice ("scMode") == Sidechain::Mode::curve;
     const auto lengthQuarters = Sidechain::lengthInQuarters (params.getChoice ("scLength"));
@@ -134,8 +134,8 @@ void FxProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuff
         juce::FloatVectorOperations::multiply (synthBuffer.getWritePointer (ch), gateBuffer.getReadPointer (0), numSamples);
 
     effects.beginBlock (numSamples, clock.getBpm(), clock.getPpqAt (0));
-    const auto channel = (int) params.bass (0, BassField::fxChannel) - 1;
-    const auto amountToChannel = params.bass (0, BassField::fxAmount);
+    const auto channel = (int) params.bass (0, InstrumentField::fxChannel) - 1;
+    const auto amountToChannel = params.bass (0, InstrumentField::fxAmount);
     const auto routed = channel >= 0 && effects.isActive (channel);
     if (routed)
     {
@@ -145,7 +145,7 @@ void FxProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuff
 
     // För gränssnittets vågformer: synthen före duckningen (mono-summa).
     for (int i = 0; i < numSamples; ++i)
-        bassBeforeDuckTap.push (0.5f * (synthBuffer.getSample (0, i) + synthBuffer.getSample (1, i)));
+        instrumentBeforeDuckTap.push (0.5f * (synthBuffer.getSample (0, i) + synthBuffer.getSample (1, i)));
 
     // Kickens envelope per sample (före duckern) till kanalernas duckning.
     duckRawBuffer.copyFrom (0, 0, duckBuffer, 0, 0, numSamples);
@@ -163,7 +163,7 @@ void FxProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuff
     for (int i = 0; i < numSamples; ++i)
     {
         kickTap.push (kickBuffer.getSample (0, i));
-        bassAfterDuckTap.push (0.5f * (synthBuffer.getSample (0, i) + synthBuffer.getSample (1, i)));
+        instrumentAfterDuckTap.push (0.5f * (synthBuffer.getSample (0, i) + synthBuffer.getSample (1, i)));
     }
 
     effects.process (numSamples, duckRawBuffer.getReadPointer (0), &synthBuffer);
@@ -207,7 +207,7 @@ void FxProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuff
     transportStatus.kickPlayTime = kick.getPlayTime();
     transportStatus.kickTriggers = kick.getTriggerCount();
     transportStatus.kickStep = active ? scheduler.getLastKickStep() : -1;
-    transportStatus.bassSteps[0] = active ? scheduler.getLastBassStep (0) : -1;
+    transportStatus.instrumentSteps[0] = active ? scheduler.getLastInstrumentStep (0) : -1;
 }
 
 void FxProcessor::renderSamples (int startSample, int endSample)

@@ -15,8 +15,8 @@ namespace
         SourceEq::addParameters (layout, "kick", "Kick");
         for (int layer = 0; layer < Pattern::numLayers; ++layer)
         {
-            Params::addBassCommonParams (layout, layer, 0.7f);
-            Params::addBassSynthParams (layout, layer);
+            Params::addInstrumentCommonParams (layout, layer, 0.7f);
+            Params::addInstrumentSynthParams (layout, layer);
             SourceEq::addParameters (layout, SourceEq::prefixFor (1 + layer), "Instr " + juce::String (layer + 1));
         }
         Effects::addParameters (layout);
@@ -233,10 +233,10 @@ void InstrumentProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
     transportStatus.kickPlayTime = kick.getPlayTime();
     transportStatus.kickTriggers = kick.getTriggerCount();
     for (int layer = 0; layer < numLayers; ++layer)
-        transportStatus.bassSamplePosition[(size_t) layer] = layer < activeLayers ? basses[(size_t) layer].getSampleFraction() : -1.0f;
+        transportStatus.instrumentSamplePosition[(size_t) layer] = layer < activeLayers ? basses[(size_t) layer].getSampleFraction() : -1.0f;
     transportStatus.kickStep = patternActive ? scheduler.getLastKickStep() : -1;
     for (int layer = 0; layer < numLayers; ++layer)
-        transportStatus.bassSteps[(size_t) layer] = patternActive ? scheduler.getLastBassStep (layer) : -1;
+        transportStatus.instrumentSteps[(size_t) layer] = patternActive ? scheduler.getLastInstrumentStep (layer) : -1;
 }
 
 void InstrumentProcessor::readBlockParams()
@@ -256,16 +256,16 @@ void InstrumentProcessor::readBlockParams()
 
     for (int layer = 0; layer < activeLayers; ++layer)
     {
-        layerOn[(size_t) layer] = params.bass (layer, BassField::on) >= 0.5f && (solo == 0 || (solo & (1 << layer)) != 0);
-        duckAmounts[(size_t) layer] = params.bass (layer, BassField::duck); // med LFO-modulering
-        gateScales[(size_t) layer] = params.bass (layer, BassField::gate);
-        delayMs[(size_t) layer] = params.bass (layer, BassField::delay);
-        swingRow[(size_t) layer] = params.bass (layer, BassField::swing);
-        humanizeRow[(size_t) layer] = params.bass (layer, BassField::humanize);
-        gateOn[(size_t) layer] = params.bass (layer, BassField::gateOn) >= 0.5f;
-        gateGrid[(size_t) layer] = juce::jlimit (0, Pattern::numGrids - 1, (int) params.bass (layer, BassField::gateGrid));
-        gateDepth[(size_t) layer] = params.bass (layer, BassField::gateDepth);
-        const auto smoothMs = std::max (0.5f, params.bass (layer, BassField::gateSmooth));
+        layerOn[(size_t) layer] = params.bass (layer, InstrumentField::on) >= 0.5f && (solo == 0 || (solo & (1 << layer)) != 0);
+        duckAmounts[(size_t) layer] = params.bass (layer, InstrumentField::duck); // med LFO-modulering
+        gateScales[(size_t) layer] = params.bass (layer, InstrumentField::gate);
+        delayMs[(size_t) layer] = params.bass (layer, InstrumentField::delay);
+        swingRow[(size_t) layer] = params.bass (layer, InstrumentField::swing);
+        humanizeRow[(size_t) layer] = params.bass (layer, InstrumentField::humanize);
+        gateOn[(size_t) layer] = params.bass (layer, InstrumentField::gateOn) >= 0.5f;
+        gateGrid[(size_t) layer] = juce::jlimit (0, Pattern::numGrids - 1, (int) params.bass (layer, InstrumentField::gateGrid));
+        gateDepth[(size_t) layer] = params.bass (layer, InstrumentField::gateDepth);
+        const auto smoothMs = std::max (0.5f, params.bass (layer, InstrumentField::gateSmooth));
         gateCoefficient[(size_t) layer] = (float) (1.0 - std::exp (-1.0 / (0.001 * smoothMs * getSampleRate())));
     }
     noteEnd = (NoteEnd) params.getChoice (ParamID::noteEnd);
@@ -289,24 +289,24 @@ void InstrumentProcessor::refreshEngineParams()
     kick.setParams (kickParams);
     for (int layer = 0; layer < activeLayers; ++layer)
     {
-        auto bassParams = readModulatedBass (layer, bassRootNote());
+        auto instrumentParams = readModulatedInstrument (layer, instrumentRootNote());
         if (soloSamplesLeft > 0 && layer == soloLayer)
         {
             // Lyssna på en enda källa: bara den är på, med full nivå (sub och brus tystas).
             for (int source = 0; source < 3; ++source)
             {
-                auto& osc = source == 0 ? bassParams.oscA : source == 1 ? bassParams.oscB : bassParams.oscC;
+                auto& osc = source == 0 ? instrumentParams.oscA : source == 1 ? instrumentParams.oscB : instrumentParams.oscC;
                 osc.on = source == soloSource;
                 if (source == soloSource)
                     osc.level = 1.0f;
             }
-            bassParams.sub = 0.0f;
-            bassParams.noise = 0.0f;
-            bassParams.sampleOn = soloSource == 3;
+            instrumentParams.sub = 0.0f;
+            instrumentParams.noise = 0.0f;
+            instrumentParams.sampleOn = soloSource == 3;
             if (soloSource == 3)
-                bassParams.sampleLevel = 1.0f;
+                instrumentParams.sampleLevel = 1.0f;
         }
-        basses[(size_t) layer].setParams (bassParams);
+        basses[(size_t) layer].setParams (instrumentParams);
     }
 }
 
@@ -585,7 +585,7 @@ void InstrumentProcessor::finishBlock (int numSamples)
         auto lastDuckGain = 1.0f;
         // GATE: stegen följer samma takt och mönsterlängd som tonerna, men med eget rutnät.
         const auto gating = gateOn[(size_t) layer] && patternActive;
-        const auto gateStepsPerBar = Pattern::bassStepsPerBar ((BassGrid) gateGrid[(size_t) layer]);
+        const auto gateStepsPerBar = Pattern::instrumentStepsPerBar ((InstrumentGrid) gateGrid[(size_t) layer]);
         const auto gateClosed = 1.0f - gateDepth[(size_t) layer];
         auto& gateGainRef = gateGain[(size_t) layer];
 
@@ -619,8 +619,8 @@ void InstrumentProcessor::finishBlock (int numSamples)
                 instrumentTaps[(size_t) layer].push (0.5f * (data[i] + dataRight[i]));
 
         // Kanal A-C: amount av ljudet går genom kanalen, resten torrt.
-        const auto channel = (int) params.bass (layer, BassField::fxChannel) - 1;
-        const auto amountToChannel = params.bass (layer, BassField::fxAmount);
+        const auto channel = (int) params.bass (layer, InstrumentField::fxChannel) - 1;
+        const auto amountToChannel = params.bass (layer, InstrumentField::fxAmount);
         const auto routed = channel >= 0 && effects.isActive (channel);
         if (routed)
             effects.send (channel, data, dataRight, numSamples, amountToChannel);
@@ -665,8 +665,8 @@ void InstrumentProcessor::finishBlock (int numSamples)
     for (int i = 0; i < numSamples; ++i)
     {
         kickTap.push (kickBuffer.getSample (0, i));
-        bassBeforeDuckTap.push (tapBuffer.getSample (0, i));
-        bassAfterDuckTap.push (tapBuffer.getSample (1, i));
+        instrumentBeforeDuckTap.push (tapBuffer.getSample (0, i));
+        instrumentAfterDuckTap.push (tapBuffer.getSample (1, i));
     }
 
     const auto* kickData = kickBuffer.getReadPointer (0);
@@ -708,7 +708,7 @@ void InstrumentProcessor::ensureScratchSize (int numSamples)
     layerBufferRight.setSize (numLayers, numSamples, false, true, true);
     tapBuffer.setSize (2, numSamples, false, true, true);
     amplitudeBuffer.setSize (numLayers, numSamples, false, true, true);
-    bassBuffer.setSize (2, numSamples, false, true, true);
+    instrumentBuffer.setSize (2, numSamples, false, true, true);
     maxBus.setSize (2, numSamples, false, true, true);
     bypassBus.setSize (2, numSamples, false, true, true);
 }

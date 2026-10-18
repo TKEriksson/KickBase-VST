@@ -4,7 +4,7 @@ WavetableView::WavetableView (PluginBase& p, int layerIn, int oscIn, juce::Colou
     : processor (p), layer (layerIn), osc (oscIn), accent (accentIn)
 {
     setMouseCursor (speakerCursor);
-    positionIndex = processor.modulator.indexOf (ParamID::bass (layer, ParamID::oscField (osc, BassField::aPos)));
+    positionIndex = processor.modulator.indexOf (ParamID::bass (layer, ParamID::oscField (osc, InstrumentField::aPos)));
     setTooltip ("OSC " + juce::String (osc + 1)
                 + " - The wavetable: all its waveforms stacked from back to front. CLICK it to hear just this oscillator (even if it is off). "
                   "POS chooses which waveform plays (drag an LFO onto POS to sweep through them); WARP bends the waveform you see in front.");
@@ -12,7 +12,7 @@ WavetableView::WavetableView (PluginBase& p, int layerIn, int oscIn, juce::Colou
     timerCallback(); // rätt tabell redan i första bilden (annars ritades Basic tills timern gått en gång)
 }
 
-float WavetableView::raw (BassField field) const
+float WavetableView::raw (InstrumentField field) const
 {
     return processor.apvts.getRawParameterValue (ParamID::bass (layer, ParamID::oscField (osc, field)))->load();
 }
@@ -20,10 +20,10 @@ float WavetableView::raw (BassField field) const
 void WavetableView::timerCallback()
 {
     // Rita om när tabellen, positionen (med LFO) eller warpen ändras.
-    const auto position = juce::jlimit (0.0f, 1.0f, raw (BassField::aPos) + processor.modulator.currentOffset (positionIndex));
-    const auto table = (int) raw (BassField::aTable);
-    const auto warpMode = (int) raw (BassField::aWarp);
-    const auto warp = raw (BassField::aWarpAmount);
+    const auto position = juce::jlimit (0.0f, 1.0f, raw (InstrumentField::aPos) + processor.modulator.currentOffset (positionIndex));
+    const auto table = (int) raw (InstrumentField::aTable);
+    const auto warpMode = (int) raw (InstrumentField::aWarp);
+    const auto warp = raw (InstrumentField::aWarpAmount);
     const auto ready = table == Wavetables::userIndex() || Wavetables::isReady (table);
     if (position != lastPosition || table != lastTable || warpMode != lastWarpMode || warp != lastWarp || ready != lastReady)
     {
@@ -89,7 +89,7 @@ void WavetableView::paint (juce::Graphics& g)
     const auto warpAmount = std::max (0.0f, lastWarp);
     auto current = [&] (double phase)
     {
-        const auto warped = BassSynth::warpPhase (mode == WarpMode::fm ? WarpMode::off : mode, warpAmount, phase, 0.0f);
+        const auto warped = InstrumentSynth::warpPhase (mode == WarpMode::fm ? WarpMode::off : mode, warpAmount, phase, 0.0f);
         return table.sample (position, warped, 512.0);
     };
     const auto z = position;
@@ -121,7 +121,7 @@ void WavetableView::mouseDown (const juce::MouseEvent&)
 //==============================================================================
 OscPanel::OscPanel (PluginBase& p, int layerIn, int oscIn, juce::Colour accentIn)
     : processor (p), layer (layerIn), osc (oscIn), accent (accentIn),
-      warp (p.apvts, ParamID::bass (layer, ParamID::oscField (oscIn, BassField::aWarp)), "WARP"),
+      warp (p.apvts, ParamID::bass (layer, ParamID::oscField (oscIn, InstrumentField::aWarp)), "WARP"),
       view (p, layer, oscIn, accentIn)
 {
     tableLabel.setText ("TABLE", juce::dontSendNotification);
@@ -162,7 +162,7 @@ OscPanel::OscPanel (PluginBase& p, int layerIn, int oscIn, juce::Colour accentIn
     startTimerHz (10);
     timerCallback(); // tabellens namn syns direkt
 
-    using F = BassField;
+    using F = InstrumentField;
     const std::pair<F, const char*> specs[] { { F::aPos, "POS" }, { F::aLevel, "LEVEL" }, { F::aSemi, "SEMI" }, { F::aFine, "FINE" },
                                               { F::aPhase, "PHASE" }, { F::aUnison, "UNISON" }, { F::aDetune, "DETUNE" },
                                               { F::aBlend, "BLEND" }, { F::aPan, "PAN" }, { F::aStereo, "STEREO" },
@@ -176,7 +176,7 @@ OscPanel::OscPanel (PluginBase& p, int layerIn, int oscIn, juce::Colour accentIn
 
 juce::String OscPanel::currentTableName() const
 {
-    const auto current = (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, ParamID::oscField (osc, BassField::aTable)))->load();
+    const auto current = (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, ParamID::oscField (osc, InstrumentField::aTable)))->load();
     if (current == Wavetables::userIndex())
         return processor.getUserTableName (layer, osc).isEmpty() ? juce::String ("User WAV") : processor.getUserTableName (layer, osc);
     return Wavetables::names()[juce::jlimit (0, Wavetables::listSize() - 1, current)];
@@ -184,7 +184,7 @@ juce::String OscPanel::currentTableName() const
 
 void OscPanel::timerCallback()
 {
-    const auto current = (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, ParamID::oscField (osc, BassField::aTable)))->load();
+    const auto current = (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, ParamID::oscField (osc, InstrumentField::aTable)))->load();
     const auto name = currentTableName();
     if (current != lastTable || name != tableButton.getButtonText())
     {
@@ -218,7 +218,7 @@ void OscPanel::loadFromLibrary (const juce::File& fileOrFolder)
 void OscPanel::showTableMenu()
 {
     juce::PopupMenu menu;
-    const auto current = (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, ParamID::oscField (osc, BassField::aTable)))->load();
+    const auto current = (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, ParamID::oscField (osc, InstrumentField::aTable)))->load();
     const auto names = Wavetables::names();
 
     juce::StringArray categories;
@@ -306,7 +306,7 @@ void OscPanel::showTableMenu()
 void OscPanel::chooseTable (int index)
 {
     Wavetables::ensure (index); // bygg den nu (några hundra ms som mest) så att det låter direkt
-    if (auto* parameter = processor.apvts.getParameter (ParamID::bass (layer, ParamID::oscField (osc, BassField::aTable))))
+    if (auto* parameter = processor.apvts.getParameter (ParamID::bass (layer, ParamID::oscField (osc, InstrumentField::aTable))))
     {
         parameter->beginChangeGesture();
         parameter->setValueNotifyingHost (parameter->convertTo0to1 ((float) index));

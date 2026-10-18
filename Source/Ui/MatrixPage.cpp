@@ -40,9 +40,9 @@ namespace
         return menu;
     }
 
-    juce::String subGroupOf (BassField f)
+    juce::String subGroupOf (InstrumentField f)
     {
-        using F = BassField;
+        using F = InstrumentField;
         const auto n = (int) f;
         if (n >= (int) F::aTable && n < (int) F::aTable + ParamID::oscFieldCount)         return "OSC 1";
         if (n >= (int) F::bTable && n < (int) F::bTable + ParamID::oscFieldCount)         return "OSC 2";
@@ -81,23 +81,23 @@ namespace
             {
                 entries.push_back ({ i, "KICK", {}, name.fromFirstOccurrenceOf ("Kick ", false, false) });
             }
-            else if (const auto layer = Presets::bassLayerOf (id); layer >= 0)
+            else if (const auto layer = Presets::instrumentLayerOf (id); layer >= 0)
             {
                 if (layer >= p.activeInstruments())
                     continue;
                 const auto prefix = "Instr " + juce::String (layer + 1) + " ";
-                auto field = BassField::count;
+                auto field = InstrumentField::count;
                 const auto fieldName = id.substring (id[5] >= '0' && id[5] <= '9' ? 6 : 5);
-                for (int f = 0; f < (int) BassField::count; ++f)
-                    if (fieldName == ParamID::bassFieldName ((BassField) f))
-                        field = (BassField) f;
-                if (field == BassField::glide)
+                for (int f = 0; f < (int) InstrumentField::count; ++f)
+                    if (fieldName == ParamID::instrumentFieldName ((InstrumentField) f))
+                        field = (InstrumentField) f;
+                if (field == InstrumentField::glide)
                     continue; // används inte längre: en koppling dit skulle inte göra något
                 auto label = name.fromFirstOccurrenceOf (prefix, false, false);
                 if (label.startsWith ("Osc "))
                     label = label.substring (6); // "Osc A Pos" -> "Pos"
                 entries.push_back ({ i, p.isEffectVersion() ? juce::String ("GATE") : p.getLayerName (layer),
-                                     field == BassField::count ? juce::String() : subGroupOf (field), label });
+                                     field == InstrumentField::count ? juce::String() : subGroupOf (field), label });
             }
             else if (Effects::isEffectParameter (id))
             {

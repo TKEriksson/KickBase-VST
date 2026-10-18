@@ -49,7 +49,7 @@ set(CORE_SOURCES
     Source/Core/TransportClock.cpp
     Source/Core/Pattern.cpp
     Source/Core/KickEngine.cpp
-    Source/Core/BassSynth.cpp
+    Source/Core/InstrumentSynth.cpp
     Source/Core/Wavetable.cpp
     Source/Core/NodeEnvelope.cpp
     Source/Core/StepScheduler.cpp

@@ -32,7 +32,7 @@ private:
 
     PluginBase& processor;
     ParamRefs refs;
-    BassParams current;
+    InstrumentParams current;
     int layer = -1, lastActive = -1, lastNamesVersion = -1;
     juce::ComboBox instrumentBox;
     juce::Label instrumentLabel;
