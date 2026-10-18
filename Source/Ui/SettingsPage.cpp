@@ -164,6 +164,15 @@ SettingsPage::SettingsPage (PluginBase& p) : processor (p)
         }
     };
 
+    // Kickbase FX har inga oscillatorer: vågformspaketet och wavetable-mappen hör bara till instrumentet (i FX:s lägre fönster fick de inte plats).
+    if (processor.isEffectVersion())
+    {
+        for (auto* component : std::initializer_list<juce::Component*> { &packStatus, &packCount, &packHint, &installButton, &cancelButton, &packFolderButton,
+                                                                           &folders[2].name, &folders[2].path, &folders[2].change, &folders[2].reset, &folders[2].open })
+            component->setVisible (false);
+        folderHint.setText ("Presets: your saved sounds and patterns. Exports: WAV and MIDI files.", juce::dontSendNotification);
+    }
+
     refresh (false); // mapparna och vågformerna läses först när sidan visas (inte varje gång fönstret öppnas)
     startTimerHz (10);
 }
@@ -200,7 +209,7 @@ void SettingsPage::updatePack()
     const auto busy = pack.isBusy();
     installButton.setEnabled (! busy);
     cancelButton.setEnabled (busy);
-    progressBar.setVisible (busy);
+    progressBar.setVisible (busy && ! processor.isEffectVersion());
     packProgress = (double) pack.getProgress();
     const auto status = pack.getStatus();
     packStatus.setText (status.isNotEmpty() ? status : juce::String (installedWaveforms > 0 ? "The pack is installed." : "The pack is not installed."),
@@ -284,19 +293,28 @@ void SettingsPage::paint (juce::Graphics& g)
     frame (windowBox, "WINDOW SIZE");
     frame (aiBox, "AI LINK");
     frame (folderBox, "FOLDERS");
-    frame (packBox, "WAVETABLE PACK");
+    if (! packBox.isEmpty())
+        frame (packBox, "WAVETABLE PACK");
 }
 
 void SettingsPage::resized()
 {
     auto area = getLocalBounds();
+    const auto withPack = ! processor.isEffectVersion();
     windowBox = area.removeFromLeft (230);
     area.removeFromLeft (10);
     aiBox = area.removeFromLeft (330);
     area.removeFromLeft (10);
-    folderBox = area.removeFromLeft (360);
+    folderBox = withPack ? area.removeFromLeft (360) : area;
     area.removeFromLeft (10);
-    packBox = area;
+    packBox = withPack ? area : juce::Rectangle<int>();
+
+    // En hjälptext som bara får plats till en del av en rad visas inte (i ett lågt fönster; verktygstipsen säger detsamma).
+    auto placeHint = [] (juce::Label& hint, juce::Rectangle<int> bounds)
+    {
+        hint.setBounds (bounds);
+        hint.setVisible (bounds.getHeight() >= 13);
+    };
 
     // WINDOW SIZE
     {
@@ -312,7 +330,7 @@ void SettingsPage::resized()
         box.removeFromTop (8);
         reduceAnimationsToggle.setBounds (box.removeFromTop (24));
         box.removeFromTop (6);
-        windowHint.setBounds (box);
+        placeHint (windowHint, box);
     }
 
     // AI LINK
@@ -336,7 +354,7 @@ void SettingsPage::resized()
         keyButtons.removeFromLeft (4);
         clearKeyButton.setBounds (keyButtons.removeFromLeft (62));
         box.removeFromTop (6);
-        aiHint.setBounds (box);
+        placeHint (aiHint, box);
     }
 
     // FOLDERS
@@ -344,6 +362,8 @@ void SettingsPage::resized()
         auto box = folderBox.reduced (10, 0).withTrimmedTop (20);
         for (auto& row : folders)
         {
+            if (&row == &folders[2] && ! withPack)
+                continue;
             auto line = box.removeFromTop (24);
             row.name.setBounds (line.removeFromLeft (110));
             row.open.setBounds (line.removeFromRight (42));
@@ -355,7 +375,7 @@ void SettingsPage::resized()
             box.removeFromTop (6);
         }
         box.removeFromTop (4);
-        folderHint.setBounds (box);
+        placeHint (folderHint, box);
     }
 
     // WAVETABLE PACK
@@ -372,6 +392,7 @@ void SettingsPage::resized()
         box.removeFromTop (4);
         packFolderButton.setBounds (box.removeFromTop (24));
         box.removeFromTop (4);
-        packHint.setBounds (box);
+        placeHint (packHint, box);
+        packHint.setVisible (packHint.isVisible() && withPack);
     }
 }

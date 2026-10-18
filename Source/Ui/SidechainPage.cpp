@@ -173,8 +173,11 @@ void DuckCurveView::paint (juce::Graphics& g)
     if (! editable)
     {
         g.setColour (Theme::textDim);
-        g.drawText ("Follows the kick envelope. Set MODE to Curve to draw your own.",
-                    area.toNearestInt().removeFromBottom (16), juce::Justification::centred);
+        const juce::String text ("Follows the kick envelope. Set MODE to Curve to draw your own.");
+        if ((float) juce::GlyphArrangement::getStringWidthInt (g.getCurrentFont(), text) < area.getWidth() - 4.0f)
+            g.drawText (text, area.toNearestInt().removeFromBottom (16), juce::Justification::centred);
+        else // smal ruta (Kickbase FX): två rader i stället för en avklippt
+            g.drawFittedText (text, area.toNearestInt().removeFromBottom (28), juce::Justification::centred, 2);
         return;
     }
 

@@ -29,7 +29,10 @@ private:
     void timerCallback() override;
     void showExportMenu();
     static constexpr int meterWidth = 72;
-    int toolsEnd() const { return previewGroup.isEmpty() ? exportButton.getRight() : previewGroup.getRight(); }
+    int toolsEnd() const // (i Kickbase FX finns ingen EXPORT: då hamnade mätaren över tempot)
+    {
+        return ! previewGroup.isEmpty() ? previewGroup.getRight() : exportButton.isVisible() ? exportButton.getRight() : presets.getRight();
+    }
     juce::Rectangle<int> meterBounds() const { return { toolsEnd() + 16, (getHeight() - 28) / 2, meterWidth, 28 }; }
     void updateAiTooltip();
     void chooseExportTarget (int part, int bars); // part: 0-2 = PluginBase::ExportPart, 3 = alla tre

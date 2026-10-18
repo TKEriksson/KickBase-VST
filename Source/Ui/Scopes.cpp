@@ -328,8 +328,9 @@ void SpectrumView::paint (juce::Graphics& g)
     {
         g.setColour (band.colour);
         g.fillRoundedRectangle (legend.getX(), legend.getCentreY() - 3.0f, 6.0f, 6.0f, 2.0f);
-        g.drawText (band.name, legend.withTrimmedLeft (10.0f).withWidth (60.0f), juce::Justification::centredLeft);
-        legend.removeFromLeft (64.0f);
+        const auto width = juce::jmax (54.0f, (float) juce::GlyphArrangement::getStringWidthInt (Theme::font (9.5f, true), band.name) + 4.0f); // INSTRUMENTS fick inte plats på 60 px
+        g.drawText (band.name, legend.withTrimmedLeft (10.0f).withWidth (width), juce::Justification::centredLeft);
+        legend.removeFromLeft (width + 14.0f);
     }
 }
 
