@@ -159,6 +159,25 @@ namespace
         }
     }
 
+    // Filter 2 (fas D3) på de `count` första instrumenten: instrument 1 Serial Kickbase High, 2 Parallel Ladder med MIX 0,5, 3 Serial Comb med MIX 0,7 (sedan om från 1).
+    void useFilter2 (PluginBase& processor, int count)
+    {
+        using F = InstrumentField;
+        for (int layer = 0; layer < count; ++layer)
+        {
+            const auto kind = layer % 3;
+            Scenarios::setInstrument (processor, layer, F::filter2On, 1.0f);
+            Scenarios::setInstrument (processor, layer, F::filter2Model, kind == 0 ? 0.0f : kind == 1 ? 2.0f : 4.0f);
+            Scenarios::setInstrument (processor, layer, F::filter2Type, kind == 0 ? 3.0f : 0.0f);
+            Scenarios::setInstrument (processor, layer, F::filter2Cutoff, kind == 0 ? 300.0f : kind == 1 ? 1200.0f : 220.0f);
+            Scenarios::setInstrument (processor, layer, F::filter2Reso, 0.5f);
+            Scenarios::setInstrument (processor, layer, F::filter2P1, 0.4f);
+            Scenarios::setInstrument (processor, layer, F::filter2P2, 0.8f);
+            Scenarios::setInstrument (processor, layer, F::filterRouting, kind == 1 ? 1.0f : 0.0f);
+            Scenarios::setInstrument (processor, layer, F::filterMix, kind == 0 ? 1.0f : kind == 1 ? 0.5f : 0.7f);
+        }
+    }
+
     // ENV 2 och ENV 3 i läget Sync på de `count` första instrumenten (notvärden: attack 1/16, decay 1/4 D, release 1/8).
     void useEnvSync (PluginBase& processor, int count)
     {
@@ -280,6 +299,11 @@ int blockSizeTest()
                 useEnvSync (*processor, 3);
             if (mode == 5)
                 useFilterModels (*processor, 3);
+            if (mode == 6)
+            {
+                useFilterModels (*processor, 3, 3); // (Filter 1 med en annan modell än Filter 2, så att kombinationerna är olika)
+                useFilter2 (*processor, 3);
+            }
             // Felsökning: KB_BS_RESET=ord1,ord2 återställer de parametrar vars ID innehåller något av orden (ringar in vad som beror på blocken).
             const auto tokens = juce::StringArray::fromTokens (juce::SystemStats::getEnvironmentVariable ("KB_BS_RESET", {}), ",", {});
             for (auto* p : processor->getParameters())
@@ -299,8 +323,8 @@ int blockSizeTest()
         settings.fillInput = [] (juce::AudioBuffer<float>& block, int start) { sawInput (block, start, 48000.0); };
         return OfflineRender::render (*processor, settings);
     };
-    const char* names[] { "Init", "tungt läge (LFO, ENV 2/3)", "Kickbase FX, tungt läge", "tungt läge med TB-303", "tungt läge med ENV Sync", "tungt läge: Ladder/Formant/Comb" };
-    for (const auto mode : { 0, 1, 2, 3, 4, 5 })
+    const char* names[] { "Init", "tungt läge (LFO, ENV 2/3)", "Kickbase FX, tungt läge", "tungt läge med TB-303", "tungt läge med ENV Sync", "tungt läge: Ladder/Formant/Comb", "tungt läge med Filter 2" };
+    for (const auto mode : { 0, 1, 2, 3, 4, 5, 6 })
     {
         const auto reference = renderWith (mode, 32);
         const auto referenceRms = reference.getRMSLevel (0, 0, reference.getNumSamples());
@@ -327,6 +351,134 @@ int blockSizeTest()
         }
     }
     std::puts (failed ? "FEL: ljudet beror på blockstorleken" : "Blockstorlekstestet gick igenom (identiskt ljud)");
+    return failed ? 1 : 0;
+}
+
+// Filter 2 (fas D3) i synten: riktiga renderingar av ett instrument (kicken avstängd) med olika inställningar.
+int filter2Test()
+{
+    juce::ScopedJuceInitialiser_GUI gui;
+    using F = InstrumentField;
+    auto failed = false;
+    auto check = [&failed] (bool ok, const juce::String& what) { std::printf ("%s: %s\n", ok ? "ok" : "FEL", what.toRawUTF8()); failed |= ! ok; };
+
+    auto render = [] (const std::function<void (PluginBase&)>& setup)
+    {
+        auto processor = make (false);
+        Scenarios::setPlain (*processor, ParamID::kickOn, 0.0f);
+        Scenarios::setPlain (*processor, ParamID::kickLevel, 0.0f);
+        for (int layer = 1; layer < ParamID::numInstrumentLayers; ++layer)
+            Scenarios::setInstrument (*processor, layer, F::on, 0.0f);
+        setup (*processor);
+        processor->ensureTablesInUse();
+        OfflineRender::Settings settings;
+        settings.sampleRate = 48000.0;
+        settings.blockSize = 480;
+        settings.bpm = 145.0;
+        settings.bars = 1;
+        settings.notes = { 52 };
+        settings.extraBars = 1;
+        return OfflineRender::render (*processor, settings);
+    };
+    auto set = [] (PluginBase& processor, F field, float value) { Scenarios::setInstrument (processor, 0, field, value); };
+    auto rms = [] (const juce::AudioBuffer<float>& audio) { return audio.getRMSLevel (0, 0, audio.getNumSamples()); };
+    auto maxDifference = [] (const juce::AudioBuffer<float>& a, const juce::AudioBuffer<float>& b)
+    {
+        auto peak = 0.0f;
+        for (int i = 0; i < std::min (a.getNumSamples(), b.getNumSamples()); ++i)
+            peak = std::max (peak, std::abs (a.getSample (0, i) - b.getSample (0, i)));
+        return a.getNumSamples() == b.getNumSamples() ? peak : 1.0e9f;
+    };
+
+    // Grundljudet: Filter 1 = LP 12 vid 3 kHz.
+    auto base = [&] (PluginBase& processor)
+    {
+        set (processor, F::aTable, (float) Wavetables::classicIndex (2)); // sågtand: gott om övertoner att filtrera
+        set (processor, F::envAmount, 0.0f); // (filter-envelopen öppnar annars cutoff och döljer skillnaden)
+        set (processor, F::keyTrack, 0.0f);
+        set (processor, F::filterType, 1.0f);
+        set (processor, F::cutoff, 3000.0f);
+        set (processor, F::resonance, 0.2f);
+    };
+    const auto off = render (base);
+    check (rms (off) > 0.01f, "grundljudet hörs (rms " + juce::String (rms (off), 3) + ")");
+    const auto silent = render ([&] (PluginBase& processor) { base (processor); set (processor, F::on, 0.0f); });
+    check (rms (silent) < 1.0e-4f, "med instrumentet av är det tyst (testet mäter bara instrumentet, rms " + juce::String (rms (silent), 5) + ")");
+
+    // Filter 2 med MIX 0: Serial och Parallel lämnar ljudet som med Filter 1 ensamt (exakt: sample += 0 * ...).
+    for (const auto routing : { 0.0f, 1.0f })
+    {
+        const auto audio = render ([&] (PluginBase& processor)
+        {
+            base (processor);
+            set (processor, F::filter2On, 1.0f);
+            set (processor, F::filter2Model, 2.0f);
+            set (processor, F::filter2Cutoff, 400.0f);
+            set (processor, F::filterRouting, routing);
+            set (processor, F::filterMix, 0.0f);
+        });
+        check (maxDifference (off, audio) == 0.0f, juce::String (routing == 0.0f ? "Serial" : "Parallel") + ", MIX 0: ljudet är exakt som med Filter 1 ensamt");
+    }
+
+    // Serial: Filter 1 = LP 12 vid 300 Hz följt av Filter 2 = High vid 4 kHz: nästan ingenting kommer igenom bandet 300 Hz - 4 kHz.
+    const auto lowOnly = render ([&] (PluginBase& processor) { base (processor); set (processor, F::cutoff, 300.0f); });
+    const auto narrow = render ([&] (PluginBase& processor)
+    {
+        base (processor);
+        set (processor, F::cutoff, 300.0f);
+        set (processor, F::filter2On, 1.0f);
+        set (processor, F::filter2Model, 0.0f);
+        set (processor, F::filter2Type, 3.0f);
+        set (processor, F::filter2Cutoff, 4000.0f);
+        set (processor, F::filterMix, 1.0f);
+    });
+    check (rms (narrow) < 0.1f * rms (lowOnly), "Serial: LP 300 Hz följt av High 4 kHz tar nästan bort allt (rms " + juce::String (rms (narrow), 4) + " mot " + juce::String (rms (lowOnly), 4) + ")");
+
+    // Parallel med MIX 1: bara Filter 2 hörs, som om Filter 2:s inställning låg i Filter 1 (inom avrundning).
+    const auto parallel = render ([&] (PluginBase& processor)
+    {
+        base (processor);
+        set (processor, F::cutoff, 300.0f);
+        set (processor, F::filter2On, 1.0f);
+        set (processor, F::filter2Model, 0.0f);
+        set (processor, F::filter2Type, 2.0f);
+        set (processor, F::filter2Cutoff, 1500.0f);
+        set (processor, F::filter2Reso, 0.2f);
+        set (processor, F::filterRouting, 1.0f);
+        set (processor, F::filterMix, 1.0f);
+    });
+    const auto filter2Alone = render ([&] (PluginBase& processor)
+    {
+        base (processor);
+        set (processor, F::filterType, 2.0f);
+        set (processor, F::cutoff, 1500.0f);
+        set (processor, F::resonance, 0.2f);
+    });
+    check (maxDifference (parallel, filter2Alone) < 1.0e-4f, "Parallel, MIX 1: bara Filter 2 hörs (största skillnad " + juce::String (maxDifference (parallel, filter2Alone), 7) + ")");
+
+    // Båda på med resonans 100 %, alla modellkombinationer: inga NaN och ingen skenande nivå.
+    auto worst = 0.0f;
+    auto finite = true;
+    for (int model1 = 0; model1 < 5; ++model1)
+        for (int model2 = 0; model2 < 5; ++model2)
+        {
+            const auto audio = render ([&] (PluginBase& processor)
+            {
+                base (processor);
+                set (processor, F::filterModel, (float) model1);
+                set (processor, F::resonance, 1.0f);
+                set (processor, F::filter2On, 1.0f);
+                set (processor, F::filter2Model, (float) model2);
+                set (processor, F::filter2Reso, 1.0f);
+                set (processor, F::filter2P1, 1.0f);
+                set (processor, F::filterRouting, (float) ((model1 + model2) % 2));
+            });
+            finite = finite && allFiniteIn (audio);
+            worst = std::max (worst, audio.getMagnitude (0, audio.getNumSamples()));
+        }
+    check (finite && worst < 20.0f, "alla 25 modellkombinationer vid resonans 100 %: inga NaN, största topp " + juce::String (worst, 2));
+
+    std::puts (failed ? "Filter 2: FEL" : "Filter 2 gick igenom");
     return failed ? 1 : 0;
 }
 
@@ -442,6 +594,31 @@ int audioThreadTest()
             }
         };
         report ("filtermodellerna byts var sjätte block (Kickbase, TB-303, Ladder, Formant, Comb), resonans 100 %", run (p, 48000.0, 256, 400, between, false));
+    }
+
+    // Fas D3: Filter 2 på alla tio instrument; modellerna i båda filtren, routing, MIX och på/av ändras var femte block, resonans 100 %.
+    {
+        auto processor = make (false);
+        Scenarios::makeHeavy (*processor, 10);
+        auto& p = *processor;
+        useFilter2 (p, 10);
+        for (int layer = 0; layer < 10; ++layer)
+        {
+            Scenarios::setInstrument (p, layer, InstrumentField::resonance, 1.0f);
+            Scenarios::setInstrument (p, layer, InstrumentField::filter2Reso, 1.0f);
+        }
+        auto between = [&p] (int block)
+        {
+            for (int layer = 0; layer < 10; ++layer)
+            {
+                Scenarios::setInstrument (p, layer, InstrumentField::filterModel, (float) (((block / 5) + layer) % 5));
+                Scenarios::setInstrument (p, layer, InstrumentField::filter2Model, (float) (((block / 5) + 2 * layer) % 5));
+                Scenarios::setInstrument (p, layer, InstrumentField::filterRouting, (float) ((block / 5 + layer) % 2));
+                Scenarios::setInstrument (p, layer, InstrumentField::filterMix, (float) (block % 5) / 4.0f);
+                Scenarios::setInstrument (p, layer, InstrumentField::filter2On, (block / 7 + layer) % 3 == 0 ? 0.0f : 1.0f);
+            }
+        };
+        report ("Filter 2 på alla instrument, modeller, routing och MIX ändras var femte block, resonans 100 %", run (p, 48000.0, 256, 400, between, false));
     }
 
     // Rattar, EQ, kompressor, effekttyper och modulering som ändras mellan blocken (som automation eller en användare).

@@ -51,8 +51,12 @@ struct ModelFilter::Impl
         // y4 = G^4 u + (G^3 c1 + G^2 c2 + G c3 + c4); återkopplingen u = x - k y4 löses utan fördröjning.
         const auto G2 = G * G, G4 = G2 * G2;
         const auto feedback = G2 * G * c1 + G2 * c2 + G * c3 + c4;
-        const auto uLinear = (x - ladderK * feedback) / (1.0 + ladderK * G4);
-        const auto u = fastTanh (ladderDrive * uLinear) * ladderDriveGain; // mättnaden; resonansen över 4 självsvänger och begränsas här
+        // DRIVE mättar ingången (före slingan, med liten-signal-förstärkning 1), så att RESO ger samma resonans vid alla DRIVE: ligger drive-förstärkningen i
+        // slingan blir slingförstärkningen k * drive-förstärkningen och filtret självsvänger redan vid måttlig RESO. Slingans egen tanh (enhetslutning) begränsar
+        // amplituden när resonansen går över 4.
+        const auto driven = fastTanh (ladderDrive * x) / ladderDrive;
+        const auto uLinear = (driven - ladderK * feedback) / (1.0 + ladderK * G4);
+        const auto u = fastTanh (uLinear);
 
         const auto y1 = G * u + c1;
         const auto y2 = G * y1 + c2;
@@ -72,7 +76,7 @@ struct ModelFilter::Impl
             case 3:  out = u - 2.0 * y1 + y2; break;       // High (12 dB)
             default: out = y4; break;                      // LP 24
         }
-        return out * ladderMakeup;
+        return out * ladderMakeup * ladderDriveGain; // (efter slingan: en tyngre mättad ingång ger lika hög nivå, inte tystare)
     }
 
     //============================================================================ Formant
@@ -211,7 +215,7 @@ void ModelFilter::setParameters (Model model, double cutoffHz, double resonance,
             s.ladderMode = juce::jlimit (0, 3, filterType);
             s.ladderK = 4.4 * resonance; // över 4: självsvängning, mättnaden begränsar amplituden
             s.ladderDrive = 1.0 + 5.0 * p1;
-            s.ladderDriveGain = 1.0 / std::sqrt (s.ladderDrive); // mättnaden ger (nästan) samma nivå vid olika DRIVE
+            s.ladderDriveGain = std::sqrt (s.ladderDrive); // utgångsnivå som väger upp den mättade ingångens förlorade topp
             const auto kEffective = std::min (s.ladderK, 4.0) * (1.0 - resonance * resonance * resonance * resonance);
             s.ladderMakeup = 1.0 + 0.5 * kEffective; // passbandet tappar nivå med resonansen
             break;

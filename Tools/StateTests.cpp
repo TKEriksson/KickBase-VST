@@ -209,6 +209,30 @@ int persistTest()
         check ((int) value (*tb, InstrumentField::filterModel) == 1, "TB-303 (index 1) överlever spara och ladda");
     }
 
+    // 4e. Filter 2 (fas D3): av som standard (gamla projekt utan fälten får samma ljud som förut); alla inställningar följer med projektet.
+    {
+        auto processor = std::make_unique<InstrumentProcessor>();
+        auto value = [] (PluginBase& p, InstrumentField field) { return p.apvts.getRawParameterValue (ParamID::bass (3, field))->load(); };
+        check (value (*processor, InstrumentField::filter2On) < 0.5f && (int) value (*processor, InstrumentField::filterRouting) == 0 && value (*processor, InstrumentField::filterMix) == 1.0f,
+               "Filter 2 är av som standard (Serial, MIX 100 %)");
+        using F = InstrumentField;
+        Scenarios::setInstrument (*processor, 3, F::filter2On, 1.0f);
+        Scenarios::setInstrument (*processor, 3, F::filter2Model, 4.0f);
+        Scenarios::setInstrument (*processor, 3, F::filter2Type, 1.0f);
+        Scenarios::setInstrument (*processor, 3, F::filter2Cutoff, 777.0f);
+        Scenarios::setInstrument (*processor, 3, F::filter2Reso, 0.35f);
+        Scenarios::setInstrument (*processor, 3, F::filter2P1, 0.6f);
+        Scenarios::setInstrument (*processor, 3, F::filter2P2, 0.2f);
+        Scenarios::setInstrument (*processor, 3, F::filterRouting, 1.0f);
+        Scenarios::setInstrument (*processor, 3, F::filterMix, 0.45f);
+        auto copy = copyOf (*processor);
+        check (value (*copy, F::filter2On) > 0.5f && (int) value (*copy, F::filter2Model) == 4 && (int) value (*copy, F::filter2Type) == 1
+                   && std::abs (value (*copy, F::filter2Cutoff) - 777.0f) < 0.5f && std::abs (value (*copy, F::filter2Reso) - 0.35f) < 1.0e-4f
+                   && std::abs (value (*copy, F::filter2P1) - 0.6f) < 1.0e-4f && std::abs (value (*copy, F::filter2P2) - 0.2f) < 1.0e-4f
+                   && (int) value (*copy, F::filterRouting) == 1 && std::abs (value (*copy, F::filterMix) - 0.45f) < 1.0e-4f,
+               "spara och ladda: Filter 2 (på, Comb, LP 12, 777 Hz, Parallel, MIX 45 %) följer med");
+    }
+
     // 5. Preset-laddningen sätter varje parameter en gång: en ratt som ändras passerar inte sitt standardvärde på vägen.
     {
         auto processor = std::make_unique<InstrumentProcessor>();

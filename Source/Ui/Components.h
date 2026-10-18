@@ -39,6 +39,9 @@ public:
     // Namnet ovanför ratten i stället för under (t.ex. bredvid en meny som har sin rubrik ovanför).
     void setLabelAbove (bool above) { labelAbove = above; resized(); }
 
+    // Ett nytt namn under ratten (t.ex. P1 och P2 byter namn efter filtermodellen).
+    void setLabelText (const juce::String& text) { name = text; label.setText (text, juce::dontSendNotification); slider.setName (text); }
+
     // En liveindikator inuti ratten: en båge som visar ett värde 0..1 just nu (t.ex. hur mycket
     // basen duckas under kicken, så att man ser den pumpa).
     void setLiveMeter (std::function<float()> read, juce::Colour colour) { liveMeter = std::move (read); liveColour = colour; }

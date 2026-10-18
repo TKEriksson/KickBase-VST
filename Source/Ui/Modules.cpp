@@ -670,6 +670,8 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
     }
     sources.addTab ("SAMPLE", layerAccent, *samplePage);
     sources.addPower (ParamID::oscsPerLayer, p.apvts, ParamID::bass (layer, F::sampleOn));
+    filterPage = std::make_unique<FilterPage> (p, layer, layerAccent);
+    sources.addTab ("FILTER", layerAccent, *filterPage);
 
     auto knob = [&] (const juce::String& paramID, const char* name) -> juce::Component*
     {
@@ -684,16 +686,11 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
         return controls.back().get();
     };
 
-    // En valruta med längre text (MODEL: Kickbase / TB-303) får mer plats än de vanliga.
-    auto wide = [] (juce::Component* control, float weight) { static_cast<ChoiceComponent*> (control)->weight = weight; return control; };
-
-    // Under oscillatorerna, i signalens ordning: tonhöjd, sub/brus, filter -> volym och utgång.
+    // Under källorna, i signalens ordning: tonhöjd, sub/brus, filtrets envelope (själva filtren: FILTER-fliken) -> volym och utgång.
     groups.addRow ({ { "PITCH", { knob (id (F::octave), "OCTAVE"), knob (id (F::tune), "TUNE"),
                                   knob (id (F::pitchEnvAmount), "ENV AMT"), knob (id (F::pitchEnvDecay), "ENV DEC") } },
                      { "SUB", { knob (id (F::sub), "LEVEL"), choice (id (F::subWave), "WAVE"), choice (id (F::subOctave), "OCTAVE") } },
                      { "NOISE", { knob (id (F::noise), "LEVEL"), knob (id (F::noiseTone), "TONE") } },
-                     { "FILTER", { wide (choice (id (F::filterModel), "MODEL"), 2.2f), filterTypeChoice = static_cast<ChoiceComponent*> (choice (id (F::filterType), "TYPE")),
-                                   knob (id (F::cutoff), "CUTOFF"), knob (id (F::resonance), "RESO"), knob (id (F::keyTrack), "KEYTRK") } },
                      { "FILTER ENVELOPE", { knob (id (F::envAmount), "AMOUNT"), knob (id (F::envAttack), "ATTACK"), knob (id (F::envDecay), "DECAY"),
                                             knob (id (F::velToEnv), "VEL") } } });
     groups.addRow ({ { "VOLUME ENVELOPE", { knob (id (F::attack), "ATTACK"), knob (id (F::decay), "DECAY"),
@@ -701,10 +698,6 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
                      { "WARP ENV", { knob (id (F::warpEnv), "AMOUNT") } },
                      { "DRIVE", { knob (id (F::drive), "AMOUNT"), choice (id (F::driveMode), "MODE") } },
                      { "LAYER OUT", { knob (id (F::level), "LEVEL"), knob (id (F::duck), "DUCK"), knob (id (F::gate), "LENGTH") } } }); // (notlängden: GATE är hackrytmen)
-
-    // TYPE gäller inte med TB-303-modellen: den tonas ned och säger det i verktygstipset (följer också automation och preset).
-    filterModelAttachment = std::make_unique<juce::ParameterAttachment> (*param (p, id (F::filterModel)), [this] (float value) { updateFilterModelView ((int) std::lround (value)); });
-    filterModelAttachment->sendInitialUpdate();
 
     // MODULATION: ENV 2 och ENV 3 (egna envelopes att modulera med), och velocity och slump som källor. Varje källa har ett handtag
     // som dras till en ratt (eller sätts i MATRIX-fliken).
@@ -1017,18 +1010,6 @@ float InstrumentModule::ampValueAt (double seconds) const
         return (float) held (seconds);
 
     return (float) (held (gateSeconds) * std::exp (ln * (seconds - gateSeconds) / release));
-}
-
-void InstrumentModule::updateFilterModelView (int model)
-{
-    if (filterTypeChoice == nullptr)
-        return;
-    // TYPE gäller Kickbase (0) och Ladder (2); TB-303 (1), Formant (3) och Comb (4) har sin egen form.
-    const auto ignored = model == 1 || model >= 3;
-    filterTypeChoice->setAlpha (ignored ? 0.4f : 1.0f);
-    const char* names[] { "Kickbase", "TB-303", "Ladder", "Formant", "Comb" };
-    filterTypeChoice->box.setTooltip (ignored ? "TYPE - ignored with the " + juce::String (names[juce::jlimit (0, 4, model)]) + " model (it has its own shape). Switch MODEL to Kickbase or Ladder to use TYPE."
-                                              : Help::forParameter (ParamID::bass (layer, InstrumentField::filterType)));
 }
 
 void InstrumentModule::resized()

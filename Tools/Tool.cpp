@@ -928,7 +928,7 @@ namespace
     // Hur tungt det är: tid per sekund ljud med 3 och med 10 instrument som alla spelar (under 1,0 = snabbare än realtid på en kärna).
     int perfTest()
     {
-        auto timeIt = [] (int count, int filterModel = 0) // filterModel: 0 Kickbase, 1 TB-303, 2 Ladder, 3 Formant, 4 Comb (fas D1 och D2)
+        auto timeIt = [] (int count, int filterModel = 0, int filter2Model = -1) // filterModel: 0 Kickbase, 1 TB-303, 2 Ladder, 3 Formant, 4 Comb (fas D1 och D2); filter2Model: -1 = Filter 2 av (fas D3)
         {
             const auto owner = std::make_unique<InstrumentProcessor>();
             auto& processor = *owner;
@@ -941,6 +941,14 @@ namespace
                 for (int layer = 0; layer < count; ++layer)
                     if (auto* model = processor.apvts.getParameter (ParamID::bass (layer, InstrumentField::filterModel)))
                         model->setValueNotifyingHost (model->convertTo0to1 ((float) filterModel));
+            if (filter2Model >= 0) // Filter 2 på med samma modell i alla instrument, Serial
+                for (int layer = 0; layer < count; ++layer)
+                {
+                    if (auto* on = processor.apvts.getParameter (ParamID::bass (layer, InstrumentField::filter2On)))
+                        on->setValueNotifyingHost (1.0f);
+                    if (auto* model = processor.apvts.getParameter (ParamID::bass (layer, InstrumentField::filter2Model)))
+                        model->setValueNotifyingHost (model->convertTo0to1 ((float) filter2Model));
+                }
             juce::MidiBuffer first, none;
             first.addEvent (juce::MidiMessage::noteOn (1, 52, (juce::uint8) 100), 0);
             juce::AudioBuffer<float> buffer (2, blockSize);
@@ -979,6 +987,11 @@ namespace
             const auto heavy = timeIt (10, model);
             std::puts (("10 instrument med " + juce::String (modelNames[model - 2]) + ": " + juce::String (heavy, 3) + " s CPU per sekund ljud (" + juce::String (heavy / many, 2) + " x standard)").toRawUTF8());
         }
+        // Fas D3: Filter 2 på. Kickbase + Kickbase (det vanliga) och det tyngsta: Ladder + Ladder och Comb + Comb.
+        const auto both = timeIt (10, 0, 0), ladders = timeIt (10, 2, 2), combs = timeIt (10, 4, 4);
+        std::puts (("10 instrument med Filter 2 (Kickbase + Kickbase): " + juce::String (both, 3) + " s CPU per sekund ljud (" + juce::String (both / many, 2) + " x standard)").toRawUTF8());
+        std::puts (("10 instrument med Filter 2 (Ladder + Ladder):     " + juce::String (ladders, 3) + " s CPU per sekund ljud (" + juce::String (ladders / many, 2) + " x standard)").toRawUTF8());
+        std::puts (("10 instrument med Filter 2 (Comb + Comb):         " + juce::String (combs, 3) + " s CPU per sekund ljud (" + juce::String (combs / many, 2) + " x standard)").toRawUTF8());
         return 0;
     }
 
@@ -1479,6 +1492,26 @@ namespace
         }
         processor->modEnvelopesOpen = juce::SystemStats::getEnvironmentVariable ("KB_MODOPEN", "0").getIntValue() != 0; // MODULATION-dragspelet öppet
         processor->selectedInstrument = juce::SystemStats::getEnvironmentVariable ("KB_INSTRUMENT", "0").getIntValue(); // valt instrument (0-9)
+        processor->selectedInstrumentSource[(size_t) juce::jlimit (0, 9, processor->selectedInstrument)] =
+            juce::SystemStats::getEnvironmentVariable ("KB_SOURCETAB", "0").getIntValue(); // vald källflik i instrumentet (0-2 = OSC, 3 = SAMPLE, 4 = FILTER)
+        if (juce::SystemStats::getEnvironmentVariable ("KB_FILTER2", "0").getIntValue() != 0) // FILTER-fliken med Filter 2 på (Formant) och ett Ladder-lågpass i Filter 1
+        {
+            auto set = [&processor] (const char* id, float value)
+            {
+                if (auto* p = processor->apvts.getParameter (id))
+                    p->setValueNotifyingHost (p->convertTo0to1 (value));
+            };
+            set ("bass1FilterModel", 2.0f);
+            set ("bass1FilterType", 0.0f);
+            set ("bass1Cutoff", 900.0f);
+            set ("bass1Resonance", 0.55f);
+            set ("bass1FilterP1", 0.4f);
+            set ("bass1Filter2On", 1.0f);
+            set ("bass1Filter2Model", 0.0f);
+            set ("bass1Filter2Type", 3.0f);
+            set ("bass1Filter2Cutoff", 150.0f);
+            set ("bass1Filter2Reso", 0.3f);
+        }
         if (const auto count = juce::SystemStats::getEnvironmentVariable ("KB_INSTRUMENTS", {}); count.isNotEmpty())
             processor->setInstrumentCount (count.getIntValue()); // antal instrument i bilden
         if (tab / 1000000 > 0)
@@ -1575,6 +1608,7 @@ int freesoundTest();        // Tools/Freesound.cpp
 int tb303Measure();         // Tools/Tb303Tests.cpp
 int tb303Unit();            // Tools/Tb303Unit.cpp
 int filterModelTest();      // Tools/FilterModelTests.cpp
+int filter2Test();          // Tools/AudioTests.cpp
 int tb303Test();            // Tools/Tb303Tests.cpp
 int boundaryTest();         // Tools/PatternTests.cpp
 int includeCheck (const juce::String& root); // Tools/Tb303Unit.cpp
@@ -1647,6 +1681,8 @@ int toolMain (int argc, char* argv[])
         return tb303Unit();
     if (argc == 2 && juce::String (argv[1]) == "filtermodels")
         return filterModelTest();
+    if (argc == 2 && juce::String (argv[1]) == "filter2test")
+        return filter2Test();
     if (argc == 2 && juce::String (argv[1]) == "tb303measure")
         return tb303Measure();
     if (argc == 2 && juce::String (argv[1]) == "freesoundtest")
