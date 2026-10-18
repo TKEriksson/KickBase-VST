@@ -10,7 +10,7 @@ namespace
     }
 }
 
-SettingsPage::SettingsPage (PluginBase& p) : processor (p), optimizations (p, [this] { showOptimizations (false); })
+SettingsPage::SettingsPage (PluginBase& p) : processor (p), optimizations (p, [this] { showPanel (nullptr); }), about (p, [this] { showPanel (nullptr); })
 {
     // ---- FÖNSTER
     styleLabel (scaleLabel, 12.0f, Theme::text, true);
@@ -43,9 +43,13 @@ SettingsPage::SettingsPage (PluginBase& p) : processor (p), optimizations (p, [t
     }
     optimizationsButton.setTooltip ("OPTIMIZATIONS - How often each view (spectrum, scopes, meters, playhead ...) is redrawn, whether filled areas are drawn, "
                                     "and REDUCE ANIMATIONS. Lower rates use less CPU.");
-    optimizationsButton.onClick = [this] { showOptimizations (true); };
+    optimizationsButton.onClick = [this] { showPanel (&optimizations); };
     addAndMakeVisible (optimizationsButton);
+    aboutButton.setTooltip ("ABOUT - The version, the licence Kickbase is released under (AGPL-3.0), where the source code is, and the licences of the software it is built with.");
+    aboutButton.onClick = [this] { showPanel (&about); };
+    addAndMakeVisible (aboutButton);
     addChildComponent (optimizations);
+    addChildComponent (about);
     styleLabel (windowHint, 10.5f, Theme::textDim);
     windowHint.setText ("Drag the window corner for any size. Applies to all Kickbase windows.", juce::dontSendNotification);
     windowHint.setJustificationType (juce::Justification::topLeft);
@@ -173,7 +177,9 @@ SettingsPage::SettingsPage (PluginBase& p) : processor (p), optimizations (p, [t
     refresh (false); // mapparna och vågformerna läses först när sidan visas (inte varje gång fönstret öppnas)
     startTimerHz (10);
     if (juce::SystemStats::getEnvironmentVariable ("KB_OPTIMIZATIONS", "0").getIntValue() != 0)
-        showOptimizations (true); // (skärmbilder)
+        showPanel (&optimizations); // (skärmbilder)
+    if (juce::SystemStats::getEnvironmentVariable ("KB_ABOUT", "0").getIntValue() != 0)
+        showPanel (&about);
 }
 
 SettingsPage::~SettingsPage()
@@ -182,30 +188,30 @@ SettingsPage::~SettingsPage()
     pack.cancel();
 }
 
-void SettingsPage::showOptimizations (bool show)
+void SettingsPage::showPanel (juce::Component* panel)
 {
-    if (show == optimizations.isVisible())
-        return;
-    if (show)
+    juce::Component* shown = optimizations.isVisible() ? static_cast<juce::Component*> (&optimizations) : about.isVisible() ? &about : nullptr;
+    if (panel != nullptr && shown == nullptr)
     {
         // Allt annat på sidan döljs medan panelen visas (och kommer tillbaka som det var).
-        hiddenByOptimizations.clear();
+        hiddenByPanel.clear();
         for (auto* child : getChildren())
-            if (child != &optimizations && child->isVisible())
+            if (child != &optimizations && child != &about && child->isVisible())
             {
-                hiddenByOptimizations.emplace_back (child);
+                hiddenByPanel.emplace_back (child);
                 child->setVisible (false);
             }
-        optimizations.refresh();
-        optimizations.setVisible (true);
+        if (panel == &optimizations)
+            optimizations.refresh();
+        panel->setVisible (true);
     }
-    else
+    else if (panel == nullptr && shown != nullptr)
     {
-        optimizations.setVisible (false);
-        for (auto& child : hiddenByOptimizations)
+        shown->setVisible (false);
+        for (auto& child : hiddenByPanel)
             if (child != nullptr)
                 child->setVisible (true);
-        hiddenByOptimizations.clear();
+        hiddenByPanel.clear();
         refresh (false);
         resized();
     }
@@ -334,6 +340,7 @@ void SettingsPage::paint (juce::Graphics& g)
 void SettingsPage::resized()
 {
     optimizations.setBounds (getLocalBounds());
+    about.setBounds (getLocalBounds());
     auto area = getLocalBounds();
     const auto withPack = ! processor.isEffectVersion();
     windowBox = area.removeFromLeft (230);
@@ -348,7 +355,7 @@ void SettingsPage::resized()
     auto placeHint = [this] (juce::Label& hint, juce::Rectangle<int> bounds)
     {
         hint.setBounds (bounds);
-        if (! optimizations.isVisible()) // (panelen döljer allt annat; det återställs när den stängs)
+        if (! optimizations.isVisible() && ! about.isVisible()) // (en panel döljer allt annat; det återställs när den stängs)
             hint.setVisible (bounds.getHeight() >= 13);
     };
 
@@ -364,7 +371,10 @@ void SettingsPage::resized()
         for (auto& button : sizeButtons)
             button.setBounds (buttons.removeFromLeft (width).reduced (2, 0));
         box.removeFromTop (8);
-        optimizationsButton.setBounds (box.removeFromTop (24));
+        auto panelButtons = box.removeFromTop (24);
+        aboutButton.setBounds (panelButtons.removeFromRight (64));
+        panelButtons.removeFromRight (4);
+        optimizationsButton.setBounds (panelButtons);
         box.removeFromTop (6);
         placeHint (windowHint, box);
     }

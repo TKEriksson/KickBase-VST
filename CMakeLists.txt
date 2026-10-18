@@ -91,6 +91,7 @@ set(PLUGIN_SOURCES
     Source/Ui/EnvPage.cpp
     Source/Ui/SettingsPage.cpp
     Source/Ui/OptimizationsPanel.cpp
+    Source/Ui/AboutPanel.cpp
     Source/Ui/SpectrumPage.cpp
     Source/Ui/LogoPainter.cpp
     Source/Core/WavetablePack.cpp
@@ -116,7 +117,10 @@ set(FX_SOURCES
 
 # Guiderna som MCP-bryggan serverar till AI:n (get_guide), inbakade i programmet.
 # (Resources/InitPreset.mofp: fabrikspresetet Init för instrumentet, ett vanligt Full-preset som läses vid start.)
-juce_add_binary_data(KickbaseGuides SOURCES docs/AGENT_GUIDE.md docs/psytrance-kick-bass-reference.md Resources/InitPreset.mofp)
+# Versionen som ABOUT visar: projektets VERSION (bara den här filen kompileras om när den ändras).
+set_source_files_properties(Source/Ui/AboutPanel.cpp PROPERTIES COMPILE_DEFINITIONS "KICKBASE_VERSION=\"${PROJECT_VERSION}\"")
+
+juce_add_binary_data(KickbaseGuides SOURCES docs/AGENT_GUIDE.md docs/psytrance-kick-bass-reference.md Resources/InitPreset.mofp LICENSE THIRD-PARTY.md)
 
 # Gemensamt för alla mål: samma definitioner och flaggor.
 function(kickbase_configure target)

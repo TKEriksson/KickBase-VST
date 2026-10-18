@@ -10,6 +10,12 @@ VST3-plugins för kick och rullande bas i psytrance, byggda med [JUCE](https://j
 Designen finns i [docs/DESIGN.md](docs/DESIGN.md), planerna för ljuddesign-skill och AI-styrning i
 [docs/sound-design-roadmap.md](docs/sound-design-roadmap.md).
 
+## Licens
+
+Kickbase är fri programvara under **GNU Affero General Public License 3.0** (AGPL-3.0), se [LICENSE](LICENSE). Tredjepartskod och
+tredjepartsinnehåll (JUCE, VST3 SDK, AKWF m.fl.) och deras licenser finns i [THIRD-PARTY.md](THIRD-PARTY.md). I pluginet visas samma
+sak under SETTINGS > ABOUT.
+
 ## Bygga
 
 Kräver Visual Studio Build Tools med C++-verktygen (CMake och Ninja följer med).
