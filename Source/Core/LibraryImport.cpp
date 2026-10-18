@@ -339,6 +339,8 @@ namespace Library
             item.name = file.getFileNameWithoutExtension();
             item.tags = options.tags;
             item.author = options.author;
+            if (options.decorateItem)
+                options.decorateItem (file, item);
             manifest.items.push_back (std::move (item));
             ++result.imported;
             for (const auto& note : notes)

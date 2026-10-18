@@ -2,6 +2,7 @@
 #include "Settings.h"
 #include "AudioAnalysis.h"
 #include "RollFiles.h"
+#include "LibraryIndex.h"
 #include "MixAnalysis.h"
 #include <BinaryData.h>
 #include "../Ui/Help.h"
@@ -229,6 +230,10 @@ std::vector<ToolLayer::ToolInfo> ToolLayer::tools()
           R"({"type":"object","properties":{"layer":{"type":"integer"},"file":{"type":"string"},"level":{"type":"number"},"key_track":{"type":"boolean"},"root_note":{"type":"integer"},"loop":{"type":"boolean"},"start":{"type":"number"}},"required":["layer"]})" },
         { "load_kick_sample", "Loads a WAV/AIFF/FLAC file (max 2 s, mono-summed) as the kick's sample. kickSampleMode (Click | Layer | Replace) decides how it is used: Click = the first moments of every kick on top of the synthesized body, scaled by kickClick; Layer = the whole sample on top of the synthesized kick (kickSampleLevel); Replace = the sample is the kick (the synthesized body is silent). kickSampleTune plays it faster or slower. Empty or missing file clears it.",
           R"({"type":"object","properties":{"file":{"type":"string"}}})" },
+        { "list_library", "Lists the sounds in the user's library (Documents\\Kickbase\\Library: kicks, bass sounds, synth sounds, pads and loops from free packs and the user's own recordings). Each item has id, name, category, package, tags, license, author and, if known, bpm and root_note. PERSONAL items are the user's own sounds (personal: true): they may be used but are never included in anything that is shared. Filter with category (Kicks, Bass, Synth, Pads, BassLoops, SynthLoops, Multi) and search (all words must match name, package, tags, author or license). Packages with a broken manifest are not listed; their problems are returned.",
+          R"({"type":"object","properties":{"category":{"type":"string"},"search":{"type":"string"},"limit":{"type":"integer"}}})" },
+        { "load_library_kick", "Loads a kick from the library (a Kicks item from list_library, by id or by exact name) as the kick's sample, like clicking it in the plugin's KICK > SAMPLE view. If kickSampleMode is Click it is switched to Replace (the sample becomes the kick), as in the plugin; pass mode (click, layer or replace) to choose another. Undo restores the previous sample and mode.",
+          R"({"type":"object","properties":{"id":{"type":"string"},"name":{"type":"string"},"mode":{"type":"string","enum":["click","layer","replace"]}}})" },
         { "analyse_mix", "STARTS an analysis of the mix and returns at once (it runs in the background, a few seconds up to half a minute depending on the project; the plugin keeps working). It plays the pattern through once offline (all bars of the pattern, at most 16) and analyses how the kick, each instrument and the master share the frequencies, bar by bar. Then call get_mix_report (repeat while it says status running) to get the findings. Findings have severity (problem, warning, info), the sources involved, the frequency range and the bars where it happens: collisions between sources at the same loudness and frequency, an instrument covering the kick, a kick tail tuned too low or high, instruments that are out of tune with each other or the kick (octaves and unison count as in tune), rumble under 30 Hz, a master limiter that works too hard, and (with reference_file) where the master has more or less energy than a reference track. Measured on the real signals after ducking and EQ, so a collision the sidechain already solved does not show. Kick and instrument sharing low frequencies is only a warning because that is normal when the sidechain gives the kick the hit. sensitivity: low (clear problems only), normal (default) or high (smaller overlaps too). Use it after a change to check that you fixed what you meant to; the user sees the same report in the ANALYZER tab. The analysis uses the pattern and sound as they are when you start it: do not change anything until the report is done.",
           R"({"type":"object","properties":{"sensitivity":{"type":"string","enum":["low","normal","high"]},"bpm":{"type":"number"},"note":{"type":"integer"},"max_bars":{"type":"integer"},"reference_file":{"type":"string"}}})" },
         { "get_mix_report", "Returns the result of analyse_mix: {status:'running', progress} while it works (call again in a few seconds), or the report when it is done (status 'done'). By default the findings and a short overview. For MORE DATA pass detail:'bars' (adds, for every source and every bar of the loop: the level in each frequency band, the fundamental and the harmonic series, plus the kick hits and how much each instrument is ducked at them), or choose exactly what you want with include (any of: findings, sources = overview per source, bars = band levels per source and bar, harmonics = fundamental and harmonic series per source and bar, spectra = 1/12-octave spectrum per source and bar, dynamics = rms/peak/crest/brightness/energy in six frequency ranges per source and bar, kicks = every kick hit with the ducking, presets, overview = ALL settings arranged by section (kick, every instrument with oscillators A/B/C and wavetables, filter, envelopes, EQ, sends; the effect channels with their slots; master, mixer, modulation), synth = the same settings as the raw flat parameter list plus the pattern notes (also gives pattern_timeline = the notes by bar and beat), about = an explanation for a reader who knows nothing about Kickbase). To keep the answer small, limit it: sources (parts of names, e.g. ['kick','instr 2']), bars (e.g. [3,4] or '1-4'), min_hz and max_hz (a frequency range: band arrays then only hold those bands, see meta.bands_included). The data is large with many sources and bars, so ask for what you need. For everything including every frame, use save_mix_report (a file). wait_seconds (0-60) lets the call wait for the result when this is the headless instance; against the live plugin it never waits (so the link stays responsive).",
@@ -270,6 +275,7 @@ var ToolLayer::call (const juce::String& tool, const var& args)
     if (tool == "list_effects")     return listEffects();
     if (tool == "get_state")        return getState (args);
     if (tool == "list_presets")     return listPresets (args);
+    if (tool == "list_library")     return listLibrary (args);
     if (tool == "render_preview")   return renderPreview (args);
     if (tool == "analyse_mix")      return analyseMix (args);
     if (tool == "get_mix_report")   return getMixReport (args);
@@ -294,7 +300,7 @@ var ToolLayer::call (const juce::String& tool, const var& args)
     }
 
     if (tool == "set_parameters" || tool == "set_effect" || tool == "set_kick_envelopes" || tool == "set_pattern" || tool == "set_sidechain_curve" || tool == "set_gate"
-        || tool == "set_modulation" || tool == "load_preset" || tool == "reset" || tool == "load_kick_sample" || tool == "load_bass_sample" || tool == "load_piano_roll" || tool == "import_midi")
+        || tool == "set_modulation" || tool == "load_preset" || tool == "reset" || tool == "load_kick_sample" || tool == "load_library_kick" || tool == "load_bass_sample" || tool == "load_piano_roll" || tool == "import_midi")
         snapshot();
 
     if (tool == "set_parameters")      return setParameters (args);
@@ -306,6 +312,7 @@ var ToolLayer::call (const juce::String& tool, const var& args)
     if (tool == "set_modulation")      return setModulation (args);
     if (tool == "load_preset")         return loadPreset (args);
     if (tool == "load_kick_sample")    return loadKickSample (args);
+    if (tool == "load_library_kick")   return loadLibraryKick (args);
     if (tool == "load_bass_sample")    return loadInstrumentSample (args);
     if (tool == "load_piano_roll" || tool == "import_midi")
         return pianoRollFiles (tool, args);
@@ -1405,6 +1412,107 @@ var ToolLayer::loadKickSample (const var& args)
     if (! processor.loadClickSample (juce::File (path)))
         return fail ("Could not load that file as a sample (WAV, AIFF or FLAC, readable path).");
     return ok ("Loaded " + processor.getClickSampleName() + " as the kick's sample (kickSampleMode: Click = click layer, Layer, Replace = the sample is the whole kick).");
+}
+
+var ToolLayer::listLibrary (const var& args)
+{
+    const auto category = args["category"].toString().trim();
+    if (category.isNotEmpty() && ! Library::categories().contains (category))
+        return fail ("Unknown category \"" + category + "\". Categories: " + Library::categories().joinIntoString (", "));
+
+    juce::SharedResourcePointer<LibraryIndex> index;
+    const auto folder = Settings::libraryFolder();
+    index->refreshIfChanged (folder); // bara om något ändrats (ändringstiderna); skannar på indexets bakgrundstråd
+    index->waitUntilIdle (15000);
+    const auto list = index->entries();
+    const auto matches = LibraryIndex::filter (*list, category, args["search"].toString());
+    const auto limit = args.hasProperty ("limit") ? juce::jlimit (1, 300, (int) args["limit"]) : 50;
+
+    juce::Array<var> items;
+    for (size_t i = 0; i < matches.size() && (int) i < limit; ++i)
+    {
+        const auto& entry = (*list)[(size_t) matches[i]];
+        auto item = object();
+        put (item, "id", entry.id());
+        put (item, "name", entry.name);
+        put (item, "category", entry.category);
+        put (item, "package", entry.package);
+        juce::Array<var> tags;
+        for (const auto& tag : entry.tags)
+            tags.add (tag);
+        put (item, "tags", tags);
+        put (item, "license", entry.license);
+        put (item, "personal", entry.personal);
+        if (entry.author.isNotEmpty())
+            put (item, "author", entry.author);
+        if (entry.bpm > 0.0)
+            put (item, "bpm", entry.bpm);
+        if (entry.rootNote >= 0)
+            put (item, "root_note", entry.rootNote);
+        items.add (item);
+    }
+    auto data = object();
+    put (data, "folder", folder.getFullPathName());
+    put (data, "total", (int) list->size());
+    put (data, "matched", (int) matches.size());
+    put (data, "shown", items.size());
+    put (data, "items", items);
+    const auto problems = index->problems();
+    if (! problems.isEmpty())
+    {
+        juce::Array<var> shown;
+        for (int i = 0; i < problems.size() && i < 10; ++i)
+            shown.add (problems[i]);
+        put (data, "package_problems", shown);
+    }
+    return ok (data);
+}
+
+var ToolLayer::loadLibraryKick (const var& args)
+{
+    const auto id = args["id"].toString().trim(), name = args["name"].toString().trim();
+    if (id.isEmpty() && name.isEmpty())
+        return fail ("Give the id of a Kicks item from list_library (or its exact name).");
+
+    juce::SharedResourcePointer<LibraryIndex> index;
+    index->refreshIfChanged (Settings::libraryFolder());
+    index->waitUntilIdle (15000);
+    const auto list = index->entries();
+    std::vector<const LibraryIndex::Entry*> found;
+    for (const auto& entry : *list)
+        if (entry.category == "Kicks" && (id.isNotEmpty() ? entry.id().equalsIgnoreCase (id) : entry.name.equalsIgnoreCase (name)))
+            found.push_back (&entry);
+    if (found.empty())
+        return fail ("No Kicks item in the library matches that " + juce::String (id.isNotEmpty() ? "id" : "name") + ". Use list_library with category Kicks.");
+    if (found.size() > 1)
+    {
+        juce::StringArray ids;
+        for (const auto* entry : found)
+            ids.add (entry->id());
+        return fail ("Several kicks have that name; use one of these ids: " + ids.joinIntoString (" | "));
+    }
+
+    const auto& entry = *found.front();
+    if (! processor.loadClickSample (entry.file))
+        return fail ("Could not read " + entry.file.getFullPathName());
+
+    if (auto* mode = dynamic_cast<juce::AudioParameterChoice*> (processor.apvts.getParameter (ParamID::kickSampleMode)))
+    {
+        const auto wanted = args["mode"].toString().toLowerCase();
+        const auto target = wanted == "click" ? 0 : wanted == "layer" ? 1 : wanted == "replace" ? 2 : (mode->getIndex() == 0 ? 2 : mode->getIndex());
+        if (target != mode->getIndex())
+        {
+            mode->beginChangeGesture();
+            mode->setValueNotifyingHost (mode->convertTo0to1 ((float) target));
+            mode->endChangeGesture();
+        }
+    }
+    auto data = object();
+    put (data, "loaded", entry.name);
+    put (data, "id", entry.id());
+    put (data, "personal", entry.personal);
+    put (data, "kickSampleMode", processor.apvts.getParameter (ParamID::kickSampleMode)->getCurrentValueAsText());
+    return ok (data);
 }
 
 var ToolLayer::loadInstrumentSample (const var& args)

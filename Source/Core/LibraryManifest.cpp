@@ -39,7 +39,7 @@ namespace Library
     bool Item::operator== (const Item& other) const
     {
         return file == other.file && name == other.name && tags == other.tags && rootNote == other.rootNote
-            && juce::approximatelyEqual (bpm, other.bpm) && key == other.key && author == other.author;
+            && juce::approximatelyEqual (bpm, other.bpm) && key == other.key && author == other.author && url == other.url;
     }
 
     bool Manifest::operator== (const Manifest& other) const
@@ -176,6 +176,7 @@ namespace Library
             }
             readOptionalString (value, "key", where, item.key, errors);
             readOptionalString (value, "author", where, item.author, errors);
+            readOptionalString (value, "url", where, item.url, errors);
             if (ok)
                 items.push_back (std::move (item));
         }
@@ -280,6 +281,8 @@ namespace Library
                 entry->setProperty ("key", item.key);
             if (item.author.isNotEmpty())
                 entry->setProperty ("author", item.author);
+            if (item.url.isNotEmpty())
+                entry->setProperty ("url", item.url);
             items.add (juce::var (entry));
         }
         object->setProperty ("items", items);

@@ -4,6 +4,7 @@
 #include "../Source/Core/LibraryManifest.h"
 #include "../Source/Core/LibraryImport.h"
 #include "../Source/Core/LibraryIndex.h"
+#include "../Source/Core/ToolLayer.h"
 #include "../Source/Instrument/InstrumentProcessor.h"
 #include "../Source/Ui/KickLibraryPanel.h"
 #include "../Source/Core/Settings.h"
@@ -631,6 +632,50 @@ int libraryTest()
         processor->getStateInformation (stateB);
         processor->kickTab = 0;
         check (stateA == stateB, "kickTab ingår inte i det sparade tillståndet");
+    }
+
+    // 8k. AI-verktygen list_library och load_library_kick.
+    {
+        auto processor = std::make_unique<InstrumentProcessor>();
+        ToolLayer tools (*processor);
+        auto args = [] (const char* json) { return juce::JSON::parse (json); };
+        auto* mode = dynamic_cast<juce::AudioParameterChoice*> (processor->apvts.getParameter (ParamID::kickSampleMode));
+
+        const auto kicks = tools.call ("list_library", args (R"({"category":"Kicks"})"));
+        const auto* kickItems = kicks["data"]["items"].getArray();
+        check ((bool) kicks["ok"] && kickItems != nullptr && kickItems->size() >= 3 && (int) kicks["data"]["matched"] == kickItems->size(), "list_library ger kickarna i biblioteket");
+        check (kickItems != nullptr && ! kickItems->isEmpty() && (*kickItems)[0]["id"].toString().startsWith ("Kicks\\") && ! (*kickItems)[0]["personal"] && (*kickItems)[0]["license"].toString() == "CC0-1.0",
+               "posterna har id, licens och personal-märke");
+        const auto mine = tools.call ("list_library", args (R"({"category":"Synth","search":"mine"})"));
+        const auto* mineItems = mine["data"]["items"].getArray();
+        check (mineItems != nullptr && mineItems->size() == 1 && (bool) (*mineItems)[0]["personal"] && (*mineItems)[0]["license"].toString() == "PERSONAL", "en PERSONAL-post listas med märket personal");
+        check (! (bool) tools.call ("list_library", args (R"({"category":"Nope"})"))["ok"], "en okänd kategori ger ett fel");
+        check ((int) tools.call ("list_library", args (R"({"limit":2})"))["data"]["shown"] == 2, "limit begränsar listan");
+
+        const auto id = (*kickItems)[0]["id"].toString();
+        auto* object = new juce::DynamicObject();
+        object->setProperty ("id", id);
+        const auto loaded = tools.call ("load_library_kick", juce::var (object));
+        check ((bool) loaded["ok"] && processor->getClickSampleName().isNotEmpty() && mode->getIndex() == 2 && loaded["data"]["kickSampleMode"].toString() == "Replace",
+               "load_library_kick laddar kicken och byter MODE från CLICK till REPLACE");
+        auto* byName = new juce::DynamicObject();
+        byName->setProperty ("name", (*kickItems)[1]["name"].toString());
+        byName->setProperty ("mode", "layer");
+        const auto layered = tools.call ("load_library_kick", juce::var (byName));
+        check ((bool) layered["ok"] && mode->getIndex() == 1, "ett exakt namn och mode layer: MODE blir LAYER");
+        check (processor->getClickSampleName().isNotEmpty(), "samplingen är laddad");
+        const auto undone = tools.call ("undo", {});
+        check ((bool) undone["ok"] && mode->getIndex() == 2, "undo ger tillbaka MODE från före det senaste laddandet");
+        check (! (bool) tools.call ("load_library_kick", args (R"({"id":"Kicks\\Nope\\x.wav"})"))["ok"], "ett okänt id ger ett fel");
+        check (! (bool) tools.call ("load_library_kick", args (R"({})"))["ok"], "utan id eller namn ger det ett fel");
+        const auto synthId = tools.call ("list_library", args (R"({"category":"Synth"})"))["data"]["items"][0]["id"].toString();
+        auto* wrong = new juce::DynamicObject();
+        wrong->setProperty ("id", synthId);
+        check (! (bool) tools.call ("load_library_kick", juce::var (wrong))["ok"], "bara Kicks kan laddas som kick");
+        auto tooling = false;
+        for (const auto& info : ToolLayer::tools())
+            tooling = tooling || info.name == "list_library" || info.name == "load_library_kick";
+        check (tooling, "verktygen finns i verktygslistan");
     }
 
     // 8. Inget skrivs i Dokument\Kickbase.

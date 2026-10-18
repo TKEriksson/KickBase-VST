@@ -31,6 +31,7 @@ namespace Library
         double bpm = 0.0;           // 0 = okänt
         juce::String key;
         juce::String author;
+        juce::String url;           // valfri: sidan för just det här ljudet (t.ex. https://freesound.org/s/<id>/)
 
         bool operator== (const Item& other) const;
     };

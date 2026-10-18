@@ -26,6 +26,11 @@ namespace Settings
     juce::String aiKey();
     juce::String makeKey();      // en ny slumpmässig nyckel
 
+    // Krypterar en text för den här användaren på den här datorn (Windows DPAPI; annars bara base64) och tillbaka. Används för AI-nyckeln
+    // och för Freesound-verktygets token. Aldrig i klartext i inställningsfilen.
+    juce::String protect (const juce::String& plain);
+    juce::String unprotect (const juce::String& stored);
+
     // AI-chatten i synten: användarens egen API-nyckel (Anthropic) och vilken modell som används. Nyckeln sparas krypterad (Windows DPAPI,
     // bara den här användaren kan läsa den på den här datorn) och skickas bara till api.anthropic.com.
     juce::String chatApiKey();

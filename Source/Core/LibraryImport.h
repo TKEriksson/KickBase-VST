@@ -2,6 +2,7 @@
 
 #include "LibraryManifest.h"
 #include <juce_audio_formats/juce_audio_formats.h>
+#include <functional>
 
 // Import till biblioteket (fas A i docs/content-plan.md): läser ljudfiler, gör om dem till bibliotekets format och skriver ett paket
 // med manifest.json. Allt sker på anroparens tråd (verktyget, aldrig ljudtråden).
@@ -45,6 +46,8 @@ namespace Library
         juce::String author;
         juce::StringArray tags;
         juce::String date;      // ÅÅÅÅ-MM-DD, tomt = i dag
+        // Fyller i en post (namn, upphovsperson, url, taggar) för en källfil, t.ex. med uppgifterna från Freesound. Tomt = bara filnamnet.
+        std::function<void (const juce::File& source, Item& item)> decorateItem;
     };
 
     struct ImportResult

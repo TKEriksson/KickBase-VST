@@ -29,6 +29,7 @@ biblioteket: det bygger ingen VST3.) Installera: `createVst.bat` som administrat
 - `KickbaseTests.exe`;
 - `KickbaseMcp tool` + `eqtest rolltest lengthtest instrumenttest presettest auditiontest settingstest chattest listentest perftest persisttest audiotest blocksizetest librarytest`;
   `tool librarycheck [mapp]` kontrollerar biblioteksmanifesten i `Dokument\Kickbase\Library` (läser bara, ger 1 vid fel);
+  `tool freesound auth|code|status|search|fetch` hämtar CC0-ljud från Freesound (OAuth2; token krypterad i inställningarna; nyckeln ur miljövariabler eller en gitignorerad `.env-local` i arbetsmappen; `tool freesoundtest` provar allt mot en mock-server på 127.0.0.1). **Freesound finns bara i verktyget (`Tools/Freesound.cpp`, bara i KickbaseMcp): inget Freesound i pluginet och ingen nyckel i SETTINGS (Tobias beslut). Bygg det inte in senare utan att fråga honom.**
   `tool importlibrary <mapp|fil> <kategori> <licens> [url]` gör ljudfiler till bibliotekets format (mono, 44,1 kHz, 24 bit, -1 dBFS) och skriver paketet (skriver i den riktiga biblioteksmappen: kör det inte i tester);
 - `KickbaseMcp --selftest-link`;
 - `KickbaseHostTest <Kickbase.vst3>` och `KickbaseHostTest <Kickbase FX.vst3>`;
@@ -52,6 +53,10 @@ mycket det ändrades (nolltest). `tool repairpresets` (utan `apply`) mäter alla
   instrument, övre flikarna och Kickbase FX); kör det med det gamla och det nya bygget och jämför mapparna med `python Tools\pngdiff.py <före> <efter>`
   (utan PIL; skriver de bilder som skiljer, med pixelantal och rutan). `KB_ABOUT=1` / `KB_OPTIMIZATIONS=1` visar SETTINGS-panelerna.
 - Titta också på bilderna: 1, 3 och 10 instrument, och Kickbase FX (lägre fönster).
+- **Två bilder kan skilja mellan körningar utan att koden ändrats:** `inst_n10_tab23` (ENV med 10 instrument) har ibland en liten röd klippt text vid sidfoten
+  (ca x464-471, y708-711), och AI-fliken (`inst_upper3_tab30`/`tab38`) skiljer ibland i ca 175 px vid x157-196, y102-110. De skilde redan mellan ett bygge av 54bc067 och ett
+  före UI-steget i fas A. Räkna dem inte som en regression; titta på rutan. Fas A:s KICK/SAMPLE-steg gav också en enda pixel (514,177), en nivå mörkare, i alla
+  INSTRUMENT-bilder (kanten av SEMI-rattens halo; deterministisk, troligen en cachad rattgradients avrundning).
 
 **Verktyg för att hitta fel och kostnader:**
 - `audiotest`: räknar allokeringar på ljudtråden. Med `KB_ALLOC_TRACE=1` visas varifrån de kommer.

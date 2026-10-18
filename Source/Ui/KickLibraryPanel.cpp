@@ -248,20 +248,20 @@ void KickLibraryPanel::paintListBoxItem (int row, juce::Graphics& g, int width, 
         g.fillEllipse (6.0f, (float) height * 0.5f - 3.0f, 6.0f, 6.0f);
     }
     auto area = juce::Rectangle<int> (0, 0, width, height).withTrimmedLeft (18).withTrimmedRight (8);
-    juce::Rectangle<int> right = area.removeFromRight (juce::jmin (140, area.getWidth() / 3));
+    auto right = area.removeFromRight (entry.personal ? juce::jmin (210, area.getWidth() / 2) : juce::jmin (140, area.getWidth() / 3));
     g.setFont (Theme::font (12.0f, isLoaded));
     g.setColour (isLoaded ? Theme::text : Theme::text.withAlpha (0.9f));
     g.drawText (entry.name, area.removeFromLeft (area.getWidth() * 11 / 20), juce::Justification::centredLeft, true);
     g.setFont (Theme::font (10.5f));
     g.setColour (Theme::textDim);
     g.drawText (entry.tags.joinIntoString (" "), area, juce::Justification::centredLeft, true);
-    if (entry.personal)
+    if (entry.personal) // märket före paketnamnet: man ser både att det är egna ljud och varifrån de kommer
     {
-        g.setColour (juce::Colour (0xffe6c23c));
-        g.drawText ("PERSONAL", right, juce::Justification::centredRight, false);
+        g.setColour (juce::Colour (0xffe6a23c));
+        g.drawText ("PERSONAL", right.removeFromLeft (62), juce::Justification::centredLeft, false);
+        g.setColour (Theme::textDim);
     }
-    else
-        g.drawText (entry.package, right, juce::Justification::centredRight, true);
+    g.drawText (entry.package, right, juce::Justification::centredRight, true);
 }
 
 void KickLibraryPanel::paintOverChildren (juce::Graphics& g)

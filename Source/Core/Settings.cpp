@@ -101,7 +101,7 @@ namespace Settings
     }
 
     // Nyckeln krypteras med Windows DPAPI (annars bara base64: det finns ingen nyckelring att luta sig mot).
-    static juce::String protect (const juce::String& plain)
+    juce::String protect (const juce::String& plain)
     {
        #if JUCE_WINDOWS
         const auto utf8 = plain.toStdString();
@@ -116,7 +116,7 @@ namespace Settings
         return "plain:" + juce::Base64::toBase64 (plain);
     }
 
-    static juce::String unprotect (const juce::String& stored)
+    juce::String unprotect (const juce::String& stored)
     {
         juce::MemoryOutputStream decoded;
         if (stored.startsWith ("plain:") && juce::Base64::convertFromBase64 (decoded, stored.fromFirstOccurrenceOf (":", false, false)))

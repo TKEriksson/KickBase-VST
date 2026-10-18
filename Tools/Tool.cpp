@@ -1556,6 +1556,8 @@ int helpCheck();            // Tools/StateTests.cpp
 int libraryCheck (const juce::String& folder); // Tools/LibraryTests.cpp
 int libraryTest();          // Tools/LibraryTests.cpp
 int libraryImport (const juce::StringArray& args); // Tools/LibraryTests.cpp
+int freesoundMain (const juce::StringArray& args); // Tools/Freesound.cpp (bara verktyget: inget Freesound i pluginet)
+int freesoundTest();        // Tools/Freesound.cpp
 
 // Verktygets kommandon. Startas av KickbaseMcp.exe när det heter KickbaseTool.exe eller får `tool` som första argument.
 int toolMain (int argc, char* argv[])
@@ -1612,6 +1614,15 @@ int toolMain (int argc, char* argv[])
         return libraryCheck (argc > 2 ? juce::String (argv[2]) : juce::String());
     if (argc == 2 && juce::String (argv[1]) == "librarytest")
         return libraryTest();
+    if (argc == 2 && juce::String (argv[1]) == "freesoundtest")
+        return freesoundTest();
+    if (argc >= 2 && juce::String (argv[1]) == "freesound")
+    {
+        juce::StringArray args;
+        for (int i = 2; i < argc; ++i)
+            args.add (argv[i]);
+        return freesoundMain (args);
+    }
     if (argc >= 2 && juce::String (argv[1]) == "importlibrary")
     {
         juce::ScopedJuceInitialiser_GUI gui; // (ljudformaten)
