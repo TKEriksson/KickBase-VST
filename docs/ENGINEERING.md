@@ -160,8 +160,9 @@ mycket det ändrades (nolltest). `tool repairpresets` (utan `apply`) mäter alla
 - **I C++ heter det `instrument`**, inte `bass` (`InstrumentSynth`, `InstrumentField`, `InstrumentGrid`, `numInstrumentLayers` …).
   - "bass" finns kvar i ID:n (`bassN…`), XML-taggar (`BassSample`), mappen `Bass` och `Section::bass`: rör dem inte.
   - "bass" finns också kvar där det betyder basljud (`bassAcid`, `fitbass`).
-- **Projektet heter Kickbase:** mål `Kickbase_*`, `KickbaseFX_*`, `KickbaseLookAndFeel`. Repomappen heter än så länge MyOwnFruit
-  (fråga 8 i `docs/audit/questions-for-tobias.md`).
+- **Projektet heter Kickbase:** mål `Kickbase_*`, `KickbaseFX_*`, `KickbaseLookAndFeel`. Repot och mappen heter KickBase-VST
+  (före namnbytet MyOwnFruit; fråga 8 i `docs/audit/questions-for-tobias.md`). Plugin-koderna `Tbes`/`Mofr`/`Mofx`, filändelsen `.mofp` och
+  `install.ps1`:s städning av gamla `MyOwnFruit.vst3` står kvar med avsikt (VST3-id, användarnas presets och gamla installationer).
 - **Gränssnittets texter är på engelska, kommentarer och docs på svenska.**
 
 ## 9. Fällor vi gått i (läs innan du skriver kod)

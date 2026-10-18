@@ -145,7 +145,7 @@ endfunction()
 # Kickbase: instrumentet som läggs i Channel Rack. Spelar mönstret när en ton hålls.
 juce_add_plugin(Kickbase
     COMPANY_NAME "TKDEV"
-    BUNDLE_ID com.tobiaseriksson.myownfruit
+    BUNDLE_ID com.tkdev.kickbase
     PLUGIN_MANUFACTURER_CODE Tbes
     PLUGIN_CODE Mofr
     FORMATS VST3 Standalone
@@ -171,7 +171,7 @@ kickbase_configure_plugin(Kickbase)
 # Kickbase FX: effekten som läggs i mixern och hackar upp ljudet från en annan synth.
 juce_add_plugin(KickbaseFX
     COMPANY_NAME "TKDEV"
-    BUNDLE_ID com.tobiaseriksson.myownfruitfx
+    BUNDLE_ID com.tkdev.kickbasefx
     PLUGIN_MANUFACTURER_CODE Tbes
     PLUGIN_CODE Mofx
     FORMATS VST3

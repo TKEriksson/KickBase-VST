@@ -1,5 +1,7 @@
 # Uppdrag: full granskning av Kickbase (för Opus)
 
+> Historiskt dokument (granskningen är gjord). Repot heter nu KickBase-VST och CMake-målen `Kickbase_*`; namnen MyOwnFruit nedan är de gamla.
+
 Du granskar **Kickbase** (VST3-instrument: kick + upp till 10 instrument, mönster synkat till DAW:en, JUCE 8.0.15) och **Kickbase FX**. Repo: `C:\Users\hunga\Documents\GitHub\MyOwnFruit`, gren `dev` (main ligger på eb92729 och är inte sammanslagen sedan dess). Tobias (svensk) äger projektet, men Claude skriver all kod. Svara Tobias på svenska.
 
 Tobias vill att **allt kollas noga**. Det här är ingen snabb genomgång. Det är ett jobb som får ta lång tid, och hellre fem timmar för mycket än en missad bugg.

@@ -5,7 +5,7 @@ så att de kan låta perfekt ihop: exakt ducking, gemensam stämning och fasjust
 sample-nivå, något som separata plugins inte kan göra.
 
 Produktnamn: **Kickbase** (instrument) och **Kickbase FX** (effekt), tillverkare TKDEV.
-CMake-målen heter också Kickbase (förr MyOwnFruit; repots mapp heter fortfarande så, se docs/audit/questions-for-tobias.md fråga 8).
+CMake-målen heter också Kickbase (förr MyOwnFruit). Repot och mappen heter KickBase-VST (fråga 8 i docs/audit/questions-for-tobias.md, genomförd).
 
 Status (18 okt 2026, gren `audit`): allt nedan finns och är renderat offline och testat (se
 `docs/audit/audit-report.md` för testerna och granskningen). Mycket är **inte provat i FL Studio än**
