@@ -311,7 +311,7 @@ namespace Effects
 
             for (int slot = 0; slot < slotsPerChannel; ++slot)
             {
-                const auto title = channelTitle + String (slot + 1);
+                const auto title = channelTitle + " Slot " + String (slot + 1); // (förr "FX11" för FX1 plats 1: samma som kanalen FX11)
                 layout.add (std::make_unique<AudioParameterChoice> (ParameterID { slotParamID (channel, slot, "Type"), 1 }, title + " Type", typeNames(), 0));
                 for (int k = 0; k < knobsPerSlot; ++k)
                     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { knobParamID (channel, slot, k), 1 }, title + " Knob " + String (k + 1),

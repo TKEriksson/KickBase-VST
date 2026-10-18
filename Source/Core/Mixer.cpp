@@ -31,7 +31,7 @@ void Mixer::addParameters (AudioProcessorValueTreeState::ParameterLayout& layout
 {
     for (int s = 0; s < numSources; ++s)
     {
-        const auto title = "Mixer " + sourceName (s) + " ";
+        const auto title = "Mixer " + (s == kickSource ? String ("Kick") : s < firstFxSource ? "Instr " + String (s - firstBassSource + 1) : sourceName (s)) + " ";
 
         NormalisableRange<float> gainRange (minGainDb, maxGainDb, 0.1f);
         gainRange.setSkewForCentre (-12.0f);

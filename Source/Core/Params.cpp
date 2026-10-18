@@ -185,7 +185,8 @@ namespace Params
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::kickClipMode, 1 }, "Kick Clip Mode",
                                                             StringArray { "Soft", "Hard", "Tube", "Fold" }, 0));
         layout.add (percent (ParamID::kickCrush, "Kick Crush", 0.0f));
-        layout.add (floatParam (ParamID::kickLowCut, "Kick Low Cut", skewed (20.0f, 150.0f, 40.0f, 0.1f), 20.0f, formatHz));
+        layout.add (floatParam (ParamID::kickLowCut, "Kick Low Cut", skewed (20.0f, 150.0f, 40.0f, 0.1f), 20.0f,
+                                [] (float hz) { return hz <= 21.0f ? String ("Off") : formatHz (hz); })); // under 21 Hz är filtret av (KickEngine)
         layout.add (percent (ParamID::kickVelPitch, "Kick Vel > Pitch", 0.0f));
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::kickSampleMode, 1 }, "Kick Sample Mode",
                                                             StringArray { "Click", "Layer", "Replace" }, 0));
@@ -240,7 +241,7 @@ namespace Params
         for (int osc = 0; osc < ParamID::oscsPerLayer; ++osc)
         {
             auto oid = [&] (F f) { return id (ParamID::oscField (osc, f)); };
-            const auto oscTitle = title + "Osc " + String::charToString ((juce::juce_wchar) ('A' + osc)) + " ";
+            const auto oscTitle = title + "Osc " + String (osc + 1) + " "; // som i gränssnittet (OSC 1-3); ID:t har fortfarande A/B/C
             layout.add (std::make_unique<AudioParameterChoice> (ParameterID { oid (F::aTable), 1 }, oscTitle + "Table", Wavetables::names(), 0));
             layout.add (floatParam (oid (F::aPos), oscTitle + "Position", NormalisableRange<float> (0.0f, 1.0f, 0.001f), osc == 0 ? 2.0f / 3.0f : 0.0f, formatPercent));
             layout.add (percent (oid (F::aLevel), oscTitle + "Level", osc == 0 ? 1.0f : 0.0f));
@@ -286,7 +287,8 @@ namespace Params
         layout.add (ms (5.0f, 2000.0f, 200.0f, 200.0f, id (F::decay), title + "Decay"));
         layout.add (percent (id (F::sustain), title + "Sustain", 0.6f));
         layout.add (ms (1.0f, 300.0f, 30.0f, 15.0f, id (F::release), title + "Release"));
-        layout.add (ms (1.0f, 500.0f, 80.0f, 60.0f, id (F::glide), title + "Glide"));
+        // Används inte längre (en glide-ton glider under sin egen längd), men finns kvar så att gamla projekt och automation pekar rätt.
+        layout.add (ms (1.0f, 500.0f, 80.0f, 60.0f, id (F::glide), title + "Glide (unused)"));
         layout.add (percent (id (F::drive), title + "Drive", 0.2f));
 
         // Samplingen (laddas in på lagrets sida): nivå, samplingens egen ton, loop, om den följer noten, och startpunkt.

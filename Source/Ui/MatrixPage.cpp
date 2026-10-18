@@ -50,7 +50,7 @@ namespace
         if (f == F::sampleLevel || f == F::sampleRoot || f == F::sampleStart)             return "SAMPLE";
         if (n >= (int) F::env2Attack && n <= (int) F::env2Release)                        return "ENV 2";
         if (n >= (int) F::env3Attack && n <= (int) F::env3Release)                        return "ENV 3";
-        if (f == F::octave || f == F::tune || f == F::pitchEnvAmount || f == F::pitchEnvDecay || f == F::glide) return "PITCH";
+        if (f == F::octave || f == F::tune || f == F::pitchEnvAmount || f == F::pitchEnvDecay) return "PITCH";
         if (f == F::sub || f == F::subWave || f == F::subOctave)                          return "SUB";
         if (f == F::noise || f == F::noiseTone)                                           return "NOISE";
         if (f == F::keyTrack || f == F::cutoff || f == F::resonance || f == F::filterType) return "FILTER";
@@ -91,6 +91,8 @@ namespace
                 for (int f = 0; f < (int) BassField::count; ++f)
                     if (fieldName == ParamID::bassFieldName ((BassField) f))
                         field = (BassField) f;
+                if (field == BassField::glide)
+                    continue; // används inte längre: en koppling dit skulle inte göra något
                 auto label = name.fromFirstOccurrenceOf (prefix, false, false);
                 if (label.startsWith ("Osc "))
                     label = label.substring (6); // "Osc A Pos" -> "Pos"
