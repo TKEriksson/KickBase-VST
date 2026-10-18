@@ -1,4 +1,5 @@
 #include "Modules.h"
+#include "Help.h"
 
 namespace
 {
@@ -692,8 +693,8 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
                                   knob (id (F::pitchEnvAmount), "ENV AMT"), knob (id (F::pitchEnvDecay), "ENV DEC") } },
                      { "SUB", { knob (id (F::sub), "LEVEL"), choice (id (F::subWave), "WAVE"), choice (id (F::subOctave), "OCTAVE") } },
                      { "NOISE", { knob (id (F::noise), "LEVEL"), knob (id (F::noiseTone), "TONE") } },
-                     { "FILTER", { choice (id (F::filterType), "TYPE"), knob (id (F::cutoff), "CUTOFF"),
-                                   knob (id (F::resonance), "RESO"), knob (id (F::keyTrack), "KEYTRK") } },
+                     { "FILTER", { choice (id (F::filterModel), "MODEL"), filterTypeChoice = static_cast<ChoiceComponent*> (choice (id (F::filterType), "TYPE")),
+                                   knob (id (F::cutoff), "CUTOFF"), knob (id (F::resonance), "RESO"), knob (id (F::keyTrack), "KEYTRK") } },
                      { "FILTER ENVELOPE", { knob (id (F::envAmount), "AMOUNT"), knob (id (F::envAttack), "ATTACK"), knob (id (F::envDecay), "DECAY"),
                                             knob (id (F::velToEnv), "VEL") } } });
     groups.addRow ({ { "VOLUME ENVELOPE", { knob (id (F::attack), "ATTACK"), knob (id (F::decay), "DECAY"),
@@ -701,6 +702,10 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
                      { "WARP ENV", { knob (id (F::warpEnv), "AMOUNT") } },
                      { "DRIVE", { knob (id (F::drive), "AMOUNT"), choice (id (F::driveMode), "MODE") } },
                      { "LAYER OUT", { knob (id (F::level), "LEVEL"), knob (id (F::duck), "DUCK"), knob (id (F::gate), "LENGTH") } } }); // (notlängden: GATE är hackrytmen)
+
+    // TYPE gäller inte med TB-303-modellen: den tonas ned och säger det i verktygstipset (följer också automation och preset).
+    filterModelAttachment = std::make_unique<juce::ParameterAttachment> (*param (p, id (F::filterModel)), [this] (float value) { updateFilterModelView (value >= 0.5f); });
+    filterModelAttachment->sendInitialUpdate();
 
     // MODULATION: ENV 2 och ENV 3 (egna envelopes att modulera med), och velocity och slump som källor. Varje källa har ett handtag
     // som dras till en ratt (eller sätts i MATRIX-fliken).
@@ -1013,6 +1018,15 @@ float InstrumentModule::ampValueAt (double seconds) const
         return (float) held (seconds);
 
     return (float) (held (gateSeconds) * std::exp (ln * (seconds - gateSeconds) / release));
+}
+
+void InstrumentModule::updateFilterModelView (bool tb303)
+{
+    if (filterTypeChoice == nullptr)
+        return;
+    filterTypeChoice->setAlpha (tb303 ? 0.4f : 1.0f);
+    filterTypeChoice->box.setTooltip (tb303 ? juce::String ("TYPE - ignored with the TB-303 model (the TB-303 filter is always its own 24 dB low-pass ladder). Switch MODEL to Kickbase to use TYPE.")
+                                            : Help::forParameter (ParamID::bass (layer, InstrumentField::filterType)));
 }
 
 void InstrumentModule::resized()

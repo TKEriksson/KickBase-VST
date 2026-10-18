@@ -1558,6 +1558,10 @@ int libraryTest();          // Tools/LibraryTests.cpp
 int libraryImport (const juce::StringArray& args); // Tools/LibraryTests.cpp
 int freesoundMain (const juce::StringArray& args); // Tools/Freesound.cpp (bara verktyget: inget Freesound i pluginet)
 int freesoundTest();        // Tools/Freesound.cpp
+int tb303Measure();         // Tools/Tb303Tests.cpp
+int tb303Unit();            // Tools/Tb303Unit.cpp
+int tb303Test();            // Tools/Tb303Tests.cpp
+int renderSignaturesTb303(); // Tools/AudioTests.cpp
 
 // Verktygets kommandon. Startas av KickbaseMcp.exe när det heter KickbaseTool.exe eller får `tool` som första argument.
 int toolMain (int argc, char* argv[])
@@ -1573,7 +1577,7 @@ int toolMain (int argc, char* argv[])
     std::unique_ptr<Scenarios::TemporaryUserFolders> isolation;
     if (const juce::String command (argc > 1 ? argv[1] : ""); command == "presettest" || command == "rolltest" || command == "lengthtest"
         || command == "instrumenttest" || command == "eqtest" || command == "listentest" || command == "auditiontest" || command == "audiotest"
-        || command == "analysetest" || command == "perftest" || command == "rendersig" || command == "rendersigwide")
+        || command == "analysetest" || command == "perftest" || command == "rendersig" || command == "rendersigwide" || command == "rendersigtb303")
         isolation = std::make_unique<Scenarios::TemporaryUserFolders>();
 
     if (argc == 2 && juce::String (argv[1]) == "presettest")
@@ -1614,6 +1618,14 @@ int toolMain (int argc, char* argv[])
         return libraryCheck (argc > 2 ? juce::String (argv[2]) : juce::String());
     if (argc == 2 && juce::String (argv[1]) == "librarytest")
         return libraryTest();
+    if (argc == 2 && juce::String (argv[1]) == "rendersigtb303")
+        return renderSignaturesTb303();
+    if (argc == 2 && juce::String (argv[1]) == "tb303test")
+        return tb303Test();
+    if (argc == 2 && juce::String (argv[1]) == "tb303unit")
+        return tb303Unit();
+    if (argc == 2 && juce::String (argv[1]) == "tb303measure")
+        return tb303Measure();
     if (argc == 2 && juce::String (argv[1]) == "freesoundtest")
         return freesoundTest();
     if (argc >= 2 && juce::String (argv[1]) == "freesound")

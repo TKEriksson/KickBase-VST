@@ -56,6 +56,12 @@ set(CORE_SOURCES
     Source/Core/Sidechain.cpp
     Source/Core/Modulation.cpp
     Source/Core/Settings.cpp
+    Source/Core/Tb303Filter.cpp
+    Source/ThirdParty/open303/rosic_TeeBeeFilter.cpp
+    Source/ThirdParty/open303/rosic_OnePoleFilter.cpp
+    Source/ThirdParty/open303/rosic_RealFunctions.cpp
+    Source/ThirdParty/open303/GlobalFunctions.cpp
+    Source/ThirdParty/open303/rosic_NumberManipulations.cpp
     Source/Core/LibraryManifest.cpp
     Source/Core/LibraryImport.cpp
     Source/Core/LibraryIndex.cpp
@@ -232,6 +238,8 @@ target_sources(KickbaseMcp PRIVATE
     Tools/StateTests.cpp
     Tools/LibraryTests.cpp
     Tools/Freesound.cpp
+    Tools/Tb303Tests.cpp
+    Tools/Tb303Unit.cpp
 )
 target_compile_definitions(KickbaseMcp PRIVATE JucePlugin_Name="Kickbase" JUCE_MODAL_LOOPS_PERMITTED=1)
 target_link_libraries(KickbaseMcp PRIVATE juce::juce_audio_utils juce::juce_dsp KickbaseGuides)

@@ -20,6 +20,9 @@ void InstrumentSynth::prepare (double newSampleRate)
         filter->setResonance (0.707f); // det första LP-steget i LP 24 har alltid den resonansen (sätts här, inte vid varje ny cutoff)
     appliedCutoff1 = appliedCutoff2 = appliedResonance2 = -1.0f;
     appliedType2 = -1;
+    tbMid.prepare (sampleRate); // (den funktionsstatiska halvbandsdesignen skapas här, aldrig på ljudtråden)
+    tbSide.prepare (sampleRate);
+    appliedModel = 0;
 
     reset();
 }
@@ -39,6 +42,8 @@ void InstrumentSynth::reset()
     filter2.reset();
     sideFilter1.reset();
     sideFilter2.reset();
+    tbMid.reset();
+    tbSide.reset();
 }
 
 double InstrumentSynth::warpPhase (WarpMode mode, float amount, double phase, float fmInput)
@@ -376,6 +381,31 @@ InstrumentSynth::Output InstrumentSynth::next()
     }
     const auto q = cachedQ;
 
+    // Filtermodellen: TB-303 (Open303:s TeeBeeFilter på 2x, filterType ignoreras) eller Kickbase (SVF, som alltid). Cutoff och resonans uppdateras här, på samma
+    // ställe och i samma takt som SVF:ns cutoff (per sampling när den ändrats av filter-envelopen). Vid ett modellbyte nollställs filtret som tar över.
+    if (params.filterModel == 1)
+    {
+        if (appliedModel != 1)
+        {
+            tbMid.reset();
+            tbSide.reset();
+            appliedModel = 1;
+        }
+        const auto resonancePercent = 100.0 * (double) params.resonance;
+        tbMid.setParameters ((double) clampedCutoff, resonancePercent);
+        tbSide.setParameters ((double) clampedCutoff, resonancePercent);
+        sample = tbMid.process (sample);
+        side = tbSide.process (side);
+    }
+    else
+    {
+    if (appliedModel != 0)
+    {
+        for (auto* filter : { &filter1, &filter2, &sideFilter1, &sideFilter2 })
+            filter->reset();
+        appliedModel = 0;
+    }
+
     // LP 24 = två lågpass efter varandra; övriga typer ett filter (12 dB).
     using Type = juce::dsp::StateVariableTPTFilterType;
     const auto type = params.filterType == InstrumentFilterType::bandpass ? Type::bandpass
@@ -415,6 +445,7 @@ InstrumentSynth::Output InstrumentSynth::next()
     }
     sample = filter2.processSample (0, sample);
     side = sideFilter2.processSample (0, side);
+    } // Kickbase-modellen
     noteTime += 1.0 / sampleRate;
 
     // Drive verkar på källan (före gaten), så att distorsionen låter likadant oavsett envelope.

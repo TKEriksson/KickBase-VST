@@ -170,6 +170,7 @@ namespace Help
             { "bassNoise", "Adds white noise before the filter, for air and grit in the attack." },
 
             // Filter
+            { "bassFilterModel", "Filter model. Kickbase = the standard filter (TYPE chooses its shape). TB-303 = an emulation of the Roland TB-303 filter (Open303 by Robin Schmidt, MIT): a 24 dB low-pass ladder with a high-pass in the feedback path, so the resonance thins out at low cutoffs and the sound squelches. TYPE is ignored. CUTOFF, RESO, KEYTRK and the filter ENVELOPE work as usual (RESO 100 % = self-oscillation, the lowest cutoff is 200 Hz); accents come from the note's velocity (VEL in the filter envelope) and slides from glide notes. It uses about three times the CPU of the standard filter." },
             { "bassFilterType", "Filter type. LP 24 = smooth and dark (classic psy), LP 12 = brighter, Band and High for thin sounds." },
             { "bassAOn", "Turns this oscillator on or off. Off = it is not heard (and OSC 2 does not frequency-modulate OSC 1)." },
             { "bassSampleOn", "Turns the sample on or off. Turn the oscillators off (and SUB and NOISE down) to hear only the sample." },

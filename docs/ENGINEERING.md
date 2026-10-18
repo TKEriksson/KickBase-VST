@@ -33,7 +33,8 @@ biblioteket: det bygger ingen VST3.) Installera: `createVst.bat` som administrat
   `tool importlibrary <mapp|fil> <kategori> <licens> [url]` gör ljudfiler till bibliotekets format (mono, 44,1 kHz, 24 bit, -1 dBFS) och skriver paketet (skriver i den riktiga biblioteksmappen: kör det inte i tester);
 - `KickbaseMcp --selftest-link`;
 - `KickbaseHostTest <Kickbase.vst3>` och `KickbaseHostTest <Kickbase FX.vst3>`;
-- `tool rendersig`, `tool rendersigreal`, `tool rendersigwide`.
+- `tool rendersig`, `tool rendersigreal`, `tool rendersigwide`;
+- TB-303-modellen (fas D1): `tool rendersigtb303` mot `docs/audit/baseline-tb303.txt` (alla instrument med TB-303 påslaget), `tool tb303test` (svar mot Open303:s 4x, extrema inställningar, utklingning utan denormaler, modellbyte med resonans 100 %), `tool tb303measure` och `tool tb303unit` (mätningar). `blocksizetest` och `audiotest` har egna TB-303-lägen.
 
 **Bit-identiskt ljud bevisas med fingeravtrycken:**
 - `rendersig` = Init från koden + fabriksljuden;
@@ -193,6 +194,7 @@ mycket det ändrades (nolltest). `tool repairpresets` (utan `apply`) mäter alla
 - **Filer är låsta medan ninja kompilerar dem** (`sed: cannot rename … busy`): vänta tills bygget är klart.
 - **Konsolverktyg måste skapa processorer med `make_unique`**: SignalTaps på flera MB spräcker stacken.
 - **Python saknar PIL** här. PNG kan avkodas med `zlib` (filtertyperna 0–4).
+- **Tredjepartshuvuden med globala makron och funktioner får inte inkluderas i en header som andra filer inkluderar.** Open303:s `GlobalDefinitions.h` och `GlobalFunctions.h` definierar `PI`, `EPS`, `INF` ... och globala `exp2`, `round`, `sign` ...; via `InstrumentSynth.h` läckte de in i andra filer och ändrade ljudet i ett av tio instrument (hittat med ljuddump per instrument mot en worktree av förra grenen). Därför ligger de bara i `Source/Core/Tb303Filter.cpp` (pimpl). Samma regel för varje ny tredjepartskod.
 - **Mät aldrig under bakgrundslast** och jämför aldrig med gamla siffror (avsnitt 2).
 
 ## 10. Arbetsgång för en ny funktion

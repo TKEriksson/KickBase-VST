@@ -95,6 +95,7 @@ enum class InstrumentField
     delay,                                                        // instrumentets fördröjning (ms): läggs efter kicken
     swing, humanize,                                              // instrumentets egen swing och humanize (läggs till patternets)
     envAttack,                                                    // filterenvelopens attack (före envDecay i signalen, men sist här så att gamla projekt är orörda)
+    filterModel,                                                  // filtermodell: 0 Kickbase (SVF, standard), 1 TB-303 (Open303:s TeeBeeFilter); ny parameter, filterType rörs inte
     count
 };
 

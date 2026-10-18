@@ -4,6 +4,7 @@
 #include <array>
 #include "SampleData.h"
 #include "Wavetable.h"
+#include "Tb303Filter.h"
 
 enum class InstrumentFilterType { lowpass24, lowpass12, bandpass, highpass };
 
@@ -46,6 +47,7 @@ struct InstrumentParams
     int subOctave = 0;           // 0 = samma oktav som grundtonen, -1 = en oktav ner
     float noise = 0.0f;          // vitt brus före filtret, 0..1
     InstrumentFilterType filterType = InstrumentFilterType::lowpass24;
+    int filterModel = 0;         // 0 = Kickbase (SVF, filterType gäller), 1 = TB-303 (filterType ignoreras)
     float keyTrack = 0.0f;       // 0..1: hur mycket cutoff följer tonhöjden (1 = helt, från C2)
     float cutoffHz = 300.0f;
     float resonance = 0.3f;      // 0..1
@@ -220,6 +222,11 @@ private:
     // Filtren för mitten (filter1, filter2) och sidan: samma inställning, så att det blir stereo utan att
     // ljudet låter olika i vänster och höger.
     juce::dsp::StateVariableTPTFilter<float> filter1, filter2, sideFilter1, sideFilter2;
+
+    // TB-303-modellen: samma mitt/sida-uppdelning som SVF-paret, i samma objekt (fas P multiplicerar rösterna). appliedModel: vilken modell som senast filtrerade;
+    // vid byte nollställs filtret som tar över (params ändras bara vid kontrollfönstrens gränser, så bytet sker där).
+    Tb303Filter tbMid, tbSide;
+    int appliedModel = 0;
 
     // Vad filtren senast ställdes in på: SVF:ns set-funktioner räknar om koefficienterna (tan) varje gång, även med samma värde.
     float appliedCutoff1 = -1.0f, appliedCutoff2 = -1.0f, appliedResonance2 = -1.0f;

@@ -89,7 +89,7 @@ namespace ParamID
                                      "GateOn", "GateGrid", "GateDepth", "GateSmooth",
                                      "SampleLevel", "SampleRoot", "SampleLoop", "SampleKey", "SampleStart", "SampleOn",
                                      "Env2Attack", "Env2Decay", "Env2Sustain", "Env2Release", "Env3Attack", "Env3Decay", "Env3Sustain", "Env3Release",
-                                     "SubWave", "NoiseTone", "PitchEnvAmount", "PitchEnvDecay", "DriveMode", "Delay", "Swing", "Humanize", "EnvAttack" };
+                                     "SubWave", "NoiseTone", "PitchEnvAmount", "PitchEnvDecay", "DriveMode", "Delay", "Swing", "Humanize", "EnvAttack", "FilterModel" };
         static_assert (std::size (names) == (size_t) InstrumentField::count);
         return names[(size_t) field];
     }
@@ -322,6 +322,9 @@ namespace Params
         layout.add (ms (5.0f, 1000.0f, 80.0f, 60.0f, id (F::pitchEnvDecay), title + "Pitch Env Decay"));
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::driveMode), 1 }, title + "Drive Mode",
                                                             StringArray { "Soft", "Hard", "Fold", "Asym", "Crush" }, 0));
+        // Ny parameter (filterType rörs inte): Kickbase = dagens SVF, TB-303 = Open303:s TeeBeeFilter. Standardvärdet ger dagens ljud.
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::filterModel), 1 }, title + "Filter Model",
+                                                            StringArray { "Kickbase", "TB-303" }, 0));
     }
 
     void addFxParams (Layout& layout)
@@ -520,6 +523,7 @@ InstrumentParams ParamRefs::readInstrument (int layer, int rootMidiNote) const
     p.sub        = get (F::sub);
     p.subOctave  = (int) get (F::subOctave) == 1 ? 0 : -1;
     p.filterType = (InstrumentFilterType) (int) get (F::filterType);
+    p.filterModel = (int) get (F::filterModel);
     p.keyTrack   = get (F::keyTrack);
     p.cutoffHz   = get (F::cutoff);
     p.resonance  = get (F::resonance);

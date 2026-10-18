@@ -141,6 +141,13 @@ namespace
         return std::make_unique<InstrumentProcessor>();
     }
 
+    // TB-303-modellen på de `count` första instrumenten (fas D1).
+    void useTb303 (PluginBase& processor, int count, float model = 1.0f)
+    {
+        for (int layer = 0; layer < count; ++layer)
+            Scenarios::setInstrument (processor, layer, InstrumentField::filterModel, model);
+    }
+
     // FX-versionen: en sågtand i 55 Hz in (som en annan synth).
     void sawInput (juce::AudioBuffer<float>& block, int startSample, double rate)
     {
@@ -190,6 +197,43 @@ int renderSignaturesWide()
     return 0;
 }
 
+// `tool rendersigtb303`: som rendersigwide men med TB-303-modellen påslagen på alla instrument (fas D1). Egna baslinjer: docs/audit/baseline-tb303.txt.
+int renderSignaturesTb303()
+{
+    juce::ScopedJuceInitialiser_GUI gui;
+    struct Case { const char* name; bool fx; int instruments; double rate; int block; };
+    const Case cases[] {
+        { "tb303 instr 10 @48k/512", false, 10, 48000.0, 512 },
+        { "tb303 instr 3 @44.1k/128", false, 3, 44100.0, 128 },
+        { "tb303 instr 1 @96k/1024", false, 1, 96000.0, 1024 },
+        { "tb303 instr 4 @48k/37", false, 4, 48000.0, 37 },
+                    };
+    for (const auto& c : cases)
+    {
+        auto processor = make (c.fx);
+        Scenarios::makeHeavy (*processor, c.instruments);
+        useTb303 (*processor, c.instruments);
+        OfflineRender::Settings settings;
+        settings.sampleRate = c.rate;
+        settings.blockSize = c.block;
+        settings.bpm = 145.0;
+        settings.bars = 2;
+        settings.notes = { 52, 55 };
+        settings.extraBars = 1;
+        const auto rate = c.rate;
+        settings.fillInput = [rate] (juce::AudioBuffer<float>& block, int start) { sawInput (block, start, rate); };
+        processor->ensureTablesInUse();
+        const auto audio = OfflineRender::render (*processor, settings);
+        auto finite = true;
+        for (int ch = 0; ch < audio.getNumChannels(); ++ch)
+            for (int i = 0; i < audio.getNumSamples(); ++i)
+                finite = finite && std::isfinite (audio.getSample (ch, i));
+        std::printf ("%-28s %016llx peak %.4f rms %.4f%s\n", c.name, (unsigned long long) hashOf (audio), audio.getMagnitude (0, audio.getNumSamples()),
+                     audio.getRMSLevel (0, 0, audio.getNumSamples()), finite ? "" : "  ICKE-ÄNDLIGA VÄRDEN");
+    }
+    return 0;
+}
+
 // Att ljudet inte beror på DAW:ens blockstorlek: nolltest mot block 32, också med udda storlekar. Sedan fråga 1 räknas moduleringen
 // och blockbehandlingen var 32:a sample (PluginBase::processInControlChunks), så skillnaden ska vara exakt noll; förut var den
 // upp till -1,7 dBFS. Testet fallerar om något skiljer.
@@ -197,7 +241,8 @@ int blockSizeTest()
 {
     auto failed = false;
     juce::ScopedJuceInitialiser_GUI gui;
-    // läge 0 = instrumentets Init, 1 = instrumentet i tungt läge, 2 = Kickbase FX i tungt läge (med en sågtand som insignal)
+    // läge 0 = instrumentets Init, 1 = instrumentet i tungt läge, 2 = Kickbase FX i tungt läge (med en sågtand som insignal),
+    // 3 = instrumentet i tungt läge med TB-303-modellen (fas D1)
     auto renderWith = [] (int mode, int blockSize)
     {
         const auto heavy = mode > 0;
@@ -205,6 +250,8 @@ int blockSizeTest()
         if (heavy)
         {
             Scenarios::makeHeavy (*processor, mode == 2 ? 1 : 3);
+            if (mode == 3)
+                useTb303 (*processor, 3);
             // Felsökning: KB_BS_RESET=ord1,ord2 återställer de parametrar vars ID innehåller något av orden (ringar in vad som beror på blocken).
             const auto tokens = juce::StringArray::fromTokens (juce::SystemStats::getEnvironmentVariable ("KB_BS_RESET", {}), ",", {});
             for (auto* p : processor->getParameters())
@@ -224,8 +271,8 @@ int blockSizeTest()
         settings.fillInput = [] (juce::AudioBuffer<float>& block, int start) { sawInput (block, start, 48000.0); };
         return OfflineRender::render (*processor, settings);
     };
-    const char* names[] { "Init", "tungt läge (LFO, ENV 2/3)", "Kickbase FX, tungt läge" };
-    for (const auto mode : { 0, 1, 2 })
+    const char* names[] { "Init", "tungt läge (LFO, ENV 2/3)", "Kickbase FX, tungt läge", "tungt läge med TB-303" };
+    for (const auto mode : { 0, 1, 2, 3 })
     {
         const auto reference = renderWith (mode, 32);
         const auto referenceRms = reference.getRMSLevel (0, 0, reference.getNumSamples());
@@ -333,6 +380,21 @@ int audioThreadTest()
         auto processor = make (fx);
         Scenarios::makeHeavy (*processor, 10);
         report (juce::String (fx ? "fx" : "instrument") + " tungt läge, 48k/512", run (*processor, 48000.0, 512, 400, {}, fx));
+    }
+
+    // TB-303-modellen (fas D1): tungt läge med 10 instrument, och modellen som byts mellan blocken medan resonansen står på 100 % (inga allokeringar,
+    // inga icke-ändliga värden). Halvbandsdesignen skapas i konstruktionen/prepare, aldrig på ljudtråden.
+    {
+        auto processor = make (false);
+        Scenarios::makeHeavy (*processor, 10);
+        useTb303 (*processor, 10);
+        report ("TB-303, tungt läge, 10 instrument, 48k/512", run (*processor, 48000.0, 512, 400, {}, false));
+
+        auto& p = *processor;
+        for (int layer = 0; layer < 10; ++layer)
+            Scenarios::setInstrument (p, layer, InstrumentField::resonance, 1.0f);
+        auto between = [&p] (int block) { useTb303 (p, 10, (block / 7) % 2 == 0 ? 1.0f : 0.0f); };
+        report ("modellbyte TB-303 <-> Kickbase var sjunde block, resonans 100 %", run (p, 48000.0, 256, 400, between, false));
     }
 
     // Rattar, EQ, kompressor, effekttyper och modulering som ändras mellan blocken (som automation eller en användare).
