@@ -36,6 +36,9 @@ public:
     // Beskrivning som visas när musen är över ratten (och i inforaden).
     void setDescription (const juce::String& text);
 
+    // Namnet ovanför ratten i stället för under (t.ex. bredvid en meny som har sin rubrik ovanför).
+    void setLabelAbove (bool above) { labelAbove = above; resized(); }
+
     // En liveindikator inuti ratten: en båge som visar ett värde 0..1 just nu (t.ex. hur mycket
     // basen duckas under kicken, så att man ser den pumpa).
     void setLiveMeter (std::function<float()> read, juce::Colour colour) { liveMeter = std::move (read); liveColour = colour; }
@@ -58,6 +61,7 @@ public:
 
 private:
     friend class ModSlider;
+    bool labelAbove = false;
 
     struct Ring
     {

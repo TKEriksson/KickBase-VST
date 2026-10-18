@@ -183,6 +183,7 @@ OscPanel::OscPanel (PluginBase& p, int layerIn, int oscIn, juce::Colour accentIn
         addAndMakeVisible (*knobs.back());
     }
     warpKnob = std::make_unique<KnobComponent> (p.apvts, ParamID::bass (layer, ParamID::oscField (osc, F::aWarpAmount)), "AMOUNT", accent);
+    warpKnob->setLabelAbove (true); // som WARP-menyns rubrik: namnet ovanför
     addAndMakeVisible (*warpKnob);
 }
 

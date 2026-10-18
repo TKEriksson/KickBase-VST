@@ -94,7 +94,7 @@ void KnobComponent::setDescription (const juce::String& text)
 void KnobComponent::resized()
 {
     auto area = getLocalBounds();
-    label.setBounds (area.removeFromBottom (14));
+    label.setBounds (labelAbove ? area.removeFromTop (14) : area.removeFromBottom (14));
     slider.setBounds (area);
 }
 
