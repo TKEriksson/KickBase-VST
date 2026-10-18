@@ -7,3 +7,7 @@ build/
 reference/
 research/
 fits/
+
+# Hemligheter (API-nycklar): aldrig i repot
+.env-local
+.env*
