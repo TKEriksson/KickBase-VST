@@ -99,6 +99,7 @@ enum class InstrumentField
     aMorph, bMorph, cMorph,                                       // wavetable-position: på = tonar över mellan vågformerna (standard), av = hoppar mellan dem (oscMorphField)
     env2Mode, env2AttackSync, env2DecaySync, env2ReleaseSync,     // ENV 2 och ENV 3: ms (standard) eller Sync (notvärden följer tempot); envModeField / envSyncField
     env3Mode, env3AttackSync, env3DecaySync, env3ReleaseSync,
+    filterP1, filterP2,                                           // filtermodellens två ratter (0..1): Ladder DRIVE; Formant MORPH och BLEND; Comb DAMPING och BLEND
     count
 };
 

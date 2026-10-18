@@ -90,7 +90,8 @@ namespace ParamID
                                      "SampleLevel", "SampleRoot", "SampleLoop", "SampleKey", "SampleStart", "SampleOn",
                                      "Env2Attack", "Env2Decay", "Env2Sustain", "Env2Release", "Env3Attack", "Env3Decay", "Env3Sustain", "Env3Release",
                                      "SubWave", "NoiseTone", "PitchEnvAmount", "PitchEnvDecay", "DriveMode", "Delay", "Swing", "Humanize", "EnvAttack", "FilterModel", "AMorph", "BMorph", "CMorph",
-                                     "Env2Mode", "Env2AttackSync", "Env2DecaySync", "Env2ReleaseSync", "Env3Mode", "Env3AttackSync", "Env3DecaySync", "Env3ReleaseSync" };
+                                     "Env2Mode", "Env2AttackSync", "Env2DecaySync", "Env2ReleaseSync", "Env3Mode", "Env3AttackSync", "Env3DecaySync", "Env3ReleaseSync",
+                                     "FilterP1", "FilterP2" };
         static_assert (std::size (names) == (size_t) InstrumentField::count);
         return names[(size_t) field];
     }
@@ -325,7 +326,10 @@ namespace Params
                                                             StringArray { "Soft", "Hard", "Fold", "Asym", "Crush" }, 0));
         // Ny parameter (filterType rörs inte): Kickbase = dagens SVF, TB-303 = Open303:s TeeBeeFilter. Standardvärdet ger dagens ljud.
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::filterModel), 1 }, title + "Filter Model",
-                                                            StringArray { "Kickbase", "TB-303" }, 0));
+                                                            StringArray { "Kickbase", "TB-303", "Ladder", "Formant", "Comb" }, 0));
+        // Filtermodellens två ratter (betydelsen beror på modellen; Kickbase och TB-303 använder dem inte, så standardvärdena ändrar inget ljud).
+        layout.add (percent (id (F::filterP1), title + "Filter P1", 0.0f));
+        layout.add (percent (id (F::filterP2), title + "Filter P2", 1.0f));
         // Morph på/av för varje oscillator (på = dagens ljud): sist, i fältens ordning.
         for (int osc = 0; osc < ParamID::oscsPerLayer; ++osc)
             layout.add (std::make_unique<AudioParameterBool> (ParameterID { id (ParamID::oscMorphField (osc)), 1 }, title + "Osc " + String (osc + 1) + " Morph", true));
@@ -539,6 +543,8 @@ InstrumentParams ParamRefs::readInstrument (int layer, int rootMidiNote) const
     p.subOctave  = (int) get (F::subOctave) == 1 ? 0 : -1;
     p.filterType = (InstrumentFilterType) (int) get (F::filterType);
     p.filterModel = (int) get (F::filterModel);
+    p.filterP1 = get (F::filterP1);
+    p.filterP2 = get (F::filterP2);
     p.keyTrack   = get (F::keyTrack);
     p.cutoffHz   = get (F::cutoff);
     p.resonance  = get (F::resonance);

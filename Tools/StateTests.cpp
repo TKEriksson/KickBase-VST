@@ -191,6 +191,24 @@ int persistTest()
                "spara och ladda: ENV 3 Sync och 1/4 följer med, ENV 2 är kvar i ms");
     }
 
+    // 4d. Filtermodellerna (fas D2): modell och P1/P2 följer med projektet; standard är Kickbase med P1 0 och P2 1 (gamla projekt utan fälten).
+    {
+        auto processor = std::make_unique<InstrumentProcessor>();
+        auto value = [] (PluginBase& p, InstrumentField field) { return p.apvts.getRawParameterValue (ParamID::bass (2, field))->load(); };
+        check ((int) value (*processor, InstrumentField::filterModel) == 0 && value (*processor, InstrumentField::filterP1) == 0.0f && value (*processor, InstrumentField::filterP2) == 1.0f,
+               "filtermodell Kickbase, P1 0 och P2 1 som standard");
+        Scenarios::setInstrument (*processor, 2, InstrumentField::filterModel, 3.0f);
+        Scenarios::setInstrument (*processor, 2, InstrumentField::filterP1, 0.6f);
+        Scenarios::setInstrument (*processor, 2, InstrumentField::filterP2, 0.25f);
+        auto copy = copyOf (*processor);
+        check ((int) value (*copy, InstrumentField::filterModel) == 3 && std::abs (value (*copy, InstrumentField::filterP1) - 0.6f) < 1.0e-4f && std::abs (value (*copy, InstrumentField::filterP2) - 0.25f) < 1.0e-4f,
+               "spara och ladda: Formant, P1 0,6 och P2 0,25 följer med");
+        // TB-303 (index 1) ligger kvar på sin plats efter att listan blev längre.
+        Scenarios::setInstrument (*processor, 2, InstrumentField::filterModel, 1.0f);
+        auto tb = copyOf (*processor);
+        check ((int) value (*tb, InstrumentField::filterModel) == 1, "TB-303 (index 1) överlever spara och ladda");
+    }
+
     // 5. Preset-laddningen sätter varje parameter en gång: en ratt som ändras passerar inte sitt standardvärde på vägen.
     {
         auto processor = std::make_unique<InstrumentProcessor>();

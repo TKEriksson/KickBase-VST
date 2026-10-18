@@ -148,6 +148,17 @@ namespace
             Scenarios::setInstrument (processor, layer, InstrumentField::filterModel, model);
     }
 
+    // Ladder, Formant och Comb (fas D2) på de `count` första instrumenten, reglerna (P1, P2) på mitten: instrument 1 Ladder, 2 Formant, 3 Comb, 4 Ladder ...
+    void useFilterModels (PluginBase& processor, int count, int firstModel = 2)
+    {
+        for (int layer = 0; layer < count; ++layer)
+        {
+            Scenarios::setInstrument (processor, layer, InstrumentField::filterModel, (float) (2 + (firstModel - 2 + layer) % 3));
+            Scenarios::setInstrument (processor, layer, InstrumentField::filterP1, 0.4f);
+            Scenarios::setInstrument (processor, layer, InstrumentField::filterP2, 0.8f);
+        }
+    }
+
     // ENV 2 och ENV 3 i läget Sync på de `count` första instrumenten (notvärden: attack 1/16, decay 1/4 D, release 1/8).
     void useEnvSync (PluginBase& processor, int count)
     {
@@ -255,7 +266,7 @@ int blockSizeTest()
     auto failed = false;
     juce::ScopedJuceInitialiser_GUI gui;
     // läge 0 = instrumentets Init, 1 = instrumentet i tungt läge, 2 = Kickbase FX i tungt läge (med en sågtand som insignal),
-    // 3 = instrumentet i tungt läge med TB-303-modellen (fas D1), 4 = instrumentet i tungt läge med ENV 2/3 i läget Sync
+    // 3 = instrumentet i tungt läge med TB-303-modellen (fas D1), 4 = instrumentet i tungt läge med ENV 2/3 i läget Sync, 5 = tungt läge med Ladder, Formant och Comb (fas D2)
     auto renderWith = [] (int mode, int blockSize)
     {
         const auto heavy = mode > 0;
@@ -267,6 +278,8 @@ int blockSizeTest()
                 useTb303 (*processor, 3);
             if (mode == 4)
                 useEnvSync (*processor, 3);
+            if (mode == 5)
+                useFilterModels (*processor, 3);
             // Felsökning: KB_BS_RESET=ord1,ord2 återställer de parametrar vars ID innehåller något av orden (ringar in vad som beror på blocken).
             const auto tokens = juce::StringArray::fromTokens (juce::SystemStats::getEnvironmentVariable ("KB_BS_RESET", {}), ",", {});
             for (auto* p : processor->getParameters())
@@ -286,8 +299,8 @@ int blockSizeTest()
         settings.fillInput = [] (juce::AudioBuffer<float>& block, int start) { sawInput (block, start, 48000.0); };
         return OfflineRender::render (*processor, settings);
     };
-    const char* names[] { "Init", "tungt läge (LFO, ENV 2/3)", "Kickbase FX, tungt läge", "tungt läge med TB-303", "tungt läge med ENV Sync" };
-    for (const auto mode : { 0, 1, 2, 3, 4 })
+    const char* names[] { "Init", "tungt läge (LFO, ENV 2/3)", "Kickbase FX, tungt läge", "tungt läge med TB-303", "tungt läge med ENV Sync", "tungt läge: Ladder/Formant/Comb" };
+    for (const auto mode : { 0, 1, 2, 3, 4, 5 })
     {
         const auto reference = renderWith (mode, 32);
         const auto referenceRms = reference.getRMSLevel (0, 0, reference.getNumSamples());
@@ -410,6 +423,25 @@ int audioThreadTest()
             Scenarios::setInstrument (p, layer, InstrumentField::resonance, 1.0f);
         auto between = [&p] (int block) { useTb303 (p, 10, (block / 7) % 2 == 0 ? 1.0f : 0.0f); };
         report ("modellbyte TB-303 <-> Kickbase var sjunde block, resonans 100 %", run (p, 48000.0, 256, 400, between, false));
+    }
+
+    // Fas D2: Ladder, Formant och Comb, med byte mellan alla fem modellerna var sjätte block (och olika ratter), resonans 100 %.
+    {
+        auto processor = make (false);
+        Scenarios::makeHeavy (*processor, 10);
+        auto& p = *processor;
+        for (int layer = 0; layer < 10; ++layer)
+            Scenarios::setInstrument (p, layer, InstrumentField::resonance, 1.0f);
+        auto between = [&p] (int block)
+        {
+            for (int layer = 0; layer < 10; ++layer)
+            {
+                Scenarios::setInstrument (p, layer, InstrumentField::filterModel, (float) (((block / 6) + layer) % 5));
+                Scenarios::setInstrument (p, layer, InstrumentField::filterP1, (float) (block % 11) / 10.0f);
+                Scenarios::setInstrument (p, layer, InstrumentField::filterP2, (float) ((block / 3) % 5) / 4.0f);
+            }
+        };
+        report ("filtermodellerna byts var sjätte block (Kickbase, TB-303, Ladder, Formant, Comb), resonans 100 %", run (p, 48000.0, 256, 400, between, false));
     }
 
     // Rattar, EQ, kompressor, effekttyper och modulering som ändras mellan blocken (som automation eller en användare).

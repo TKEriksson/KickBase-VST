@@ -357,8 +357,8 @@ void OscPanel::resized()
     warp.setBounds (choices.withTrimmedLeft (3));
     top.removeFromTop (4);
     auto shapes = top;
-    wavButton.setBounds (shapes.removeFromRight (shapes.getWidth() / 5).reduced (1, 0));
-    morphButton.setBounds (shapes.removeFromRight (shapes.getWidth() / 4 + 4).reduced (1, 0));
+    morphButton.setBounds (shapes.removeFromRight (shapes.getWidth() / 4 + 4).reduced (1, 0)); // längst till höger: MORPH är inte en vågform
+    wavButton.setBounds (shapes.removeFromRight (shapes.getWidth() / 5 + 2).reduced (1, 0));
     for (auto& button : shapeButtons)
         button.setBounds (shapes.removeFromLeft (shapes.getWidth() / ((int) shapeButtons.size() - (int) (&button - shapeButtons.data()))).reduced (1, 0));
     left.removeFromTop (4);

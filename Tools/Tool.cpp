@@ -928,7 +928,7 @@ namespace
     // Hur tungt det är: tid per sekund ljud med 3 och med 10 instrument som alla spelar (under 1,0 = snabbare än realtid på en kärna).
     int perfTest()
     {
-        auto timeIt = [] (int count, bool tb303 = false)
+        auto timeIt = [] (int count, int filterModel = 0) // filterModel: 0 Kickbase, 1 TB-303, 2 Ladder, 3 Formant, 4 Comb (fas D1 och D2)
         {
             const auto owner = std::make_unique<InstrumentProcessor>();
             auto& processor = *owner;
@@ -937,10 +937,10 @@ namespace
             processor.setInstrumentCount (count);
             for (int layer = 3; layer < count; ++layer)
                 processor.pattern.applyLayerTemplate (layer, PatternTemplate::rolling);
-            if (tb303) // fas D1: alla instrument med TB-303-modellen
+            if (filterModel > 0) // alla instrument med samma filtermodell
                 for (int layer = 0; layer < count; ++layer)
                     if (auto* model = processor.apvts.getParameter (ParamID::bass (layer, InstrumentField::filterModel)))
-                        model->setValueNotifyingHost (1.0f);
+                        model->setValueNotifyingHost (model->convertTo0to1 ((float) filterModel));
             juce::MidiBuffer first, none;
             first.addEvent (juce::MidiMessage::noteOn (1, 52, (juce::uint8) 100), 0);
             juce::AudioBuffer<float> buffer (2, blockSize);
@@ -969,9 +969,16 @@ namespace
         std::puts (("1 instrument:  " + juce::String (one, 3) + " s CPU per sekund ljud").toRawUTF8());
         std::puts (("3 instrument:  " + juce::String (few, 3) + " s CPU per sekund ljud").toRawUTF8());
         std::puts (("10 instrument: " + juce::String (many, 3) + " s CPU per sekund ljud").toRawUTF8());
-        const auto manyTb = timeIt (10, true), fewTb = timeIt (3, true);
+        const auto manyTb = timeIt (10, 1), fewTb = timeIt (3, 1);
         std::puts (("3 instrument med TB-303:  " + juce::String (fewTb, 3) + " s CPU per sekund ljud").toRawUTF8());
         std::puts (("10 instrument med TB-303: " + juce::String (manyTb, 3) + " s CPU per sekund ljud (" + juce::String (manyTb / many, 2) + " x standard)").toRawUTF8());
+        // Fas D2: 10 instrument med Ladder, Formant och Comb.
+        const char* modelNames[] { "Ladder", "Formant", "Comb" };
+        for (int model = 2; model <= 4; ++model)
+        {
+            const auto heavy = timeIt (10, model);
+            std::puts (("10 instrument med " + juce::String (modelNames[model - 2]) + ": " + juce::String (heavy, 3) + " s CPU per sekund ljud (" + juce::String (heavy / many, 2) + " x standard)").toRawUTF8());
+        }
         return 0;
     }
 
@@ -1567,6 +1574,7 @@ int freesoundMain (const juce::StringArray& args); // Tools/Freesound.cpp (bara 
 int freesoundTest();        // Tools/Freesound.cpp
 int tb303Measure();         // Tools/Tb303Tests.cpp
 int tb303Unit();            // Tools/Tb303Unit.cpp
+int filterModelTest();      // Tools/FilterModelTests.cpp
 int tb303Test();            // Tools/Tb303Tests.cpp
 int boundaryTest();         // Tools/PatternTests.cpp
 int includeCheck (const juce::String& root); // Tools/Tb303Unit.cpp
@@ -1637,6 +1645,8 @@ int toolMain (int argc, char* argv[])
         return tb303Test();
     if (argc == 2 && juce::String (argv[1]) == "tb303unit")
         return tb303Unit();
+    if (argc == 2 && juce::String (argv[1]) == "filtermodels")
+        return filterModelTest();
     if (argc == 2 && juce::String (argv[1]) == "tb303measure")
         return tb303Measure();
     if (argc == 2 && juce::String (argv[1]) == "freesoundtest")

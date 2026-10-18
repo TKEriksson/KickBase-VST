@@ -5,6 +5,7 @@
 #include "SampleData.h"
 #include "Wavetable.h"
 #include "Tb303Filter.h"
+#include "FilterModels.h"
 
 enum class InstrumentFilterType { lowpass24, lowpass12, bandpass, highpass };
 
@@ -53,7 +54,8 @@ struct InstrumentParams
     int subOctave = 0;           // 0 = samma oktav som grundtonen, -1 = en oktav ner
     float noise = 0.0f;          // vitt brus före filtret, 0..1
     InstrumentFilterType filterType = InstrumentFilterType::lowpass24;
-    int filterModel = 0;         // 0 = Kickbase (SVF, filterType gäller), 1 = TB-303 (filterType ignoreras)
+    int filterModel = 0;         // 0 = Kickbase (SVF, filterType gäller), 1 = TB-303 (filterType ignoreras), 2 = Ladder, 3 = Formant, 4 = Comb (FilterModels.h)
+    float filterP1 = 0.0f, filterP2 = 1.0f; // modellens två ratter (0..1), se ModelFilter
     float keyTrack = 0.0f;       // 0..1: hur mycket cutoff följer tonhöjden (1 = helt, från C2)
     float cutoffHz = 300.0f;
     float resonance = 0.3f;      // 0..1
@@ -240,6 +242,7 @@ private:
     // TB-303-modellen: samma mitt/sida-uppdelning som SVF-paret, i samma objekt (fas P multiplicerar rösterna). appliedModel: vilken modell som senast filtrerade;
     // vid byte nollställs filtret som tar över (params ändras bara vid kontrollfönstrens gränser, så bytet sker där).
     Tb303Filter tbMid, tbSide;
+    ModelFilter modelMid, modelSide; // Ladder, Formant och Comb (fas D2)
     int appliedModel = 0;
 
     // Vad filtren senast ställdes in på: SVF:ns set-funktioner räknar om koefficienterna (tan) varje gång, även med samma värde.

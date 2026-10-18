@@ -57,6 +57,7 @@ set(CORE_SOURCES
     Source/Core/Modulation.cpp
     Source/Core/Settings.cpp
     Source/Core/Tb303Filter.cpp
+    Source/Core/FilterModels.cpp
     Source/ThirdParty/open303/rosic_TeeBeeFilter.cpp
     Source/ThirdParty/open303/rosic_OnePoleFilter.cpp
     Source/ThirdParty/open303/rosic_RealFunctions.cpp
@@ -240,6 +241,7 @@ target_sources(KickbaseMcp PRIVATE
     Tools/Freesound.cpp
     Tools/Tb303Tests.cpp
     Tools/Tb303Unit.cpp
+    Tools/FilterModelTests.cpp
     Tools/PatternTests.cpp
 )
 target_compile_definitions(KickbaseMcp PRIVATE JucePlugin_Name="Kickbase" JUCE_MODAL_LOOPS_PERMITTED=1)

@@ -23,6 +23,8 @@ void InstrumentSynth::prepare (double newSampleRate)
     appliedType2 = -1;
     tbMid.prepare (sampleRate); // (den funktionsstatiska halvbandsdesignen skapas här, aldrig på ljudtråden)
     tbSide.prepare (sampleRate);
+    modelMid.prepare (sampleRate); // allokerar kamfiltrets fördröjningslinje: aldrig på ljudtråden
+    modelSide.prepare (sampleRate);
     appliedModel = 0;
 
     reset();
@@ -45,6 +47,8 @@ void InstrumentSynth::reset()
     sideFilter2.reset();
     tbMid.reset();
     tbSide.reset();
+    modelMid.reset();
+    modelSide.reset();
 }
 
 double InstrumentSynth::warpPhase (WarpMode mode, float amount, double phase, float fmInput)
@@ -412,7 +416,22 @@ InstrumentSynth::Output InstrumentSynth::next()
 
     // Filtermodellen: TB-303 (Open303:s TeeBeeFilter på 2x, filterType ignoreras) eller Kickbase (SVF, som alltid). Cutoff och resonans uppdateras här, på samma
     // ställe och i samma takt som SVF:ns cutoff (per sampling när den ändrats av filter-envelopen). Vid ett modellbyte nollställs filtret som tar över.
-    if (params.filterModel == 1)
+    if (params.filterModel >= 2)
+    {
+        // Ladder, Formant och Comb (FilterModels.h): cutoff efter keytrack och envelope, resonans 0..1, modellens två ratter.
+        if (appliedModel != params.filterModel)
+        {
+            modelMid.reset();
+            modelSide.reset();
+            appliedModel = params.filterModel;
+        }
+        const auto model = (ModelFilter::Model) juce::jlimit (2, 4, params.filterModel);
+        modelMid.setParameters (model, (double) clampedCutoff, (double) params.resonance, (double) params.filterP1, (double) params.filterP2, (int) params.filterType);
+        modelSide.setParameters (model, (double) clampedCutoff, (double) params.resonance, (double) params.filterP1, (double) params.filterP2, (int) params.filterType);
+        sample = modelMid.process (sample);
+        side = modelSide.process (side);
+    }
+    else if (params.filterModel == 1)
     {
         if (appliedModel != 1)
         {
