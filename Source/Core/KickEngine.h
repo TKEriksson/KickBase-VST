@@ -74,6 +74,9 @@ public:
 
     // `transposeSemitones`: flyttar hela kicken (svans och svep) så här många halvtoner, för kicknoter med tonhöjd.
     void trigger (float velocity, int transposeSemitones = 0);
+
+    // Tonar ut kicken som klingar nu på `fadeSeconds` (i stället för att låta den klinga ut): när ett steg spelats strax innan en "ton av" som slutar mönstret.
+    void cancelCurrent (double fadeSeconds);
     float nextSample();
 
     // Hur länge den senaste kicken har klingat (sekunder), eller -1 när den är tyst, och hur många kickar som slagits an. För
@@ -111,6 +114,8 @@ private:
         float transpose = 1.0f;  // frekvensfaktor
         float fade = 1.0f;       // < 1 när rösten tonas ut för att ge plats åt en ny
         bool fadingOut = false;
+        float ownFadeStep = 0.0f; // > 0: egen utfasning per sampling (cancelCurrent), annars den vanliga
+        float fadeUpStep = 0.0f;  // > 0: nivån tillbaka mot 1 per sampling (när en kick som tonade ut den avbröts)
         juce::dsp::StateVariableTPTFilter<float> clickFilter, noiseFilter;
         float clickToneSet = -1.0f, noiseToneSet = -1.0f; // vad filtren senast ställdes in på (set-funktionerna räknar om tan varje gång)
     };

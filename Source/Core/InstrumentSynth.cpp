@@ -143,6 +143,7 @@ InstrumentSynth::Stereo InstrumentSynth::Oscillator::next (const OscParams& p, d
 
 void InstrumentSynth::noteOn (int semitones, float newVelocity, int gateSamples)
 {
+    forcedReleaseMs = 0.0; // en ny ton släpps med sin vanliga RELEASE
     const auto frequency = params.rootHz * std::exp2 (semitones / 12.0f);
     targetLogFrequency = std::log2 ((double) frequency);
     logFrequency = targetLogFrequency;
@@ -178,6 +179,15 @@ bool InstrumentSynth::glideTo (int semitones, int samples)
     glideSamplesLeft = std::max (1, samples);
     glideStep = (targetLogFrequency - logFrequency) / (double) glideSamplesLeft;
     return true;
+}
+
+void InstrumentSynth::fadeOutQuickly (double milliseconds)
+{
+    if (stage == Stage::idle)
+        return;
+    forcedReleaseMs = milliseconds;
+    gateRemaining = 0;
+    stage = Stage::release;
 }
 
 void InstrumentSynth::release()
@@ -260,7 +270,7 @@ InstrumentSynth::Output InstrumentSynth::next()
             ampLevel += (params.sustain - ampLevel) * (float) ampDecayMemo.get (params.decayMs, sampleRate);
             break;
         case Stage::release:
-            ampLevel -= ampLevel * (float) ampReleaseMemo.get (params.releaseMs, sampleRate);
+            ampLevel -= ampLevel * (float) ampReleaseMemo.get (forcedReleaseMs > 0.0 ? (float) forcedReleaseMs : params.releaseMs, sampleRate);
             if (ampLevel < 1.0e-4f)
             {
                 stage = Stage::idle;

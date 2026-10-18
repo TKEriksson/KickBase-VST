@@ -55,6 +55,7 @@ InstrumentProcessor::InstrumentProcessor()
                       .withOutput ("Instr 10", juce::AudioChannelSet::stereo(), false),
                   createLayout(), false)
 {
+    lastInstrumentStartPpq.fill (-std::numeric_limits<double>::infinity());
     // Ett nytt instrument börjar som Init: tre lager som låter bra ihop (ett sparat projekt skriver över det).
     for (int layer = 0; layer < numLayers; ++layer)
         layerEqs.emplace_back (apvts, SourceEq::prefixFor (1 + layer));
@@ -220,13 +221,23 @@ void InstrumentProcessor::processChunk (juce::AudioBuffer<float>& buffer, juce::
 
     // Dela upp blocket vid varje MIDI-händelse så att toner börjar och slutar på rätt sample.
     int position = 0;
-    for (const auto metadata : midi)
+    const auto toleranceSamples = (int) (noteOffToleranceSeconds * getSampleRate());
+    for (auto it = midi.begin(); it != midi.end(); ++it)
     {
+        const auto metadata = *it;
         const auto eventPosition = juce::jlimit (0, numSamples, metadata.samplePosition);
         const auto message = metadata.getMessage();
-        // Slutar tonen mönstret (Cut) startas inga steg från strax före "ton av" och framåt (se noteOffToleranceSeconds).
-        const auto stepLimit = noteOffEndsPattern (message) ? eventPosition - (int) (noteOffToleranceSeconds * getSampleRate()) : std::numeric_limits<int>::max();
-        renderSegment (position, eventPosition, stepLimit);
+
+        // Slutar tonen mönstret (Cut) för gott startas inga steg från strax före "ton av" och framåt (se noteOffToleranceSeconds), och ljud som ett steg startade i
+        // en tidigare bit eller ett tidigare block tonas ut. Följer ett "ton på" direkt efter (nästa mönster i samma instans) fortsätter mönstret som vanligt.
+        auto endsForGood = noteOffEndsPattern (message);
+        for (auto later = std::next (it); endsForGood && later != midi.end() && (*later).samplePosition <= metadata.samplePosition + toleranceSamples; ++later)
+            if ((*later).getMessage().isNoteOn())
+                endsForGood = false;
+
+        renderSegment (position, eventPosition, endsForGood ? eventPosition - toleranceSamples : std::numeric_limits<int>::max());
+        if (endsForGood)
+            fadeOutStepsBefore (eventPosition);
         handleMidi (message, eventPosition);
         position = eventPosition;
     }
@@ -420,6 +431,22 @@ void InstrumentProcessor::stopPreview()
     stoppedAtPpq = clock.getPpqAt (0);
     for (auto& bass : basses)
         bass.release();
+}
+
+void InstrumentProcessor::fadeOutStepsBefore (int sampleOffset)
+{
+    // Steg som startade ljud inom noteOffToleranceSeconds före "ton av" (men i en tidigare bit eller ett tidigare block, så att steget inte kunde stoppas i förväg)
+    // tonas ut på 3 ms. Steg i samma bit tas redan bort av stepLimit i renderSegment.
+    const auto noteOffPpq = clock.getPpqAt (sampleOffset);
+    const auto tolerancePpq = clock.getPpqAt ((int) (noteOffToleranceSeconds * getSampleRate())) - clock.getPpqAt (0);
+    auto recent = [noteOffPpq, tolerancePpq] (double startPpq) { const auto distance = noteOffPpq - startPpq; return distance >= -1.0e-9 && distance <= tolerancePpq; };
+    if (recent (lastKickStartPpq))
+        kick.cancelCurrent (0.003);
+    for (int layer = 0; layer < activeLayers; ++layer)
+        if (recent (lastInstrumentStartPpq[(size_t) layer]))
+            basses[(size_t) layer].fadeOutQuickly (3.0);
+    lastKickStartPpq = -std::numeric_limits<double>::infinity();
+    lastInstrumentStartPpq.fill (-std::numeric_limits<double>::infinity());
 }
 
 bool InstrumentProcessor::noteOffEndsPattern (const juce::MidiMessage& message) const
@@ -823,6 +850,7 @@ void InstrumentProcessor::handleEvent (const StepEvent& event)
         {
             const auto& note = pattern.note (Pattern::kickLayer, event.step);
             kick.trigger (note.velocity.load(), note.pitch.load());
+            lastKickStartPpq = clock.getPpqAt (event.offset);
         }
         return;
     }
@@ -843,6 +871,7 @@ void InstrumentProcessor::handleEvent (const StepEvent& event)
     const auto gateSamples = std::max (1, (int) (holdTicks * samplesPerTick));
 
     basses[(size_t) layer].noteOn (note.pitch.load(), note.velocity.load(), gateSamples);
+    lastInstrumentStartPpq[(size_t) layer] = clock.getPpqAt (event.offset);
 }
 
 juce::AudioProcessorEditor* InstrumentProcessor::createEditor()

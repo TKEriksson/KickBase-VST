@@ -102,6 +102,8 @@ public:
     // `semitones` på `samples` samples och blir kvar där tills den slutar. Ger false om ingenting klingar.
     bool glideTo (int semitones, int samples);
     void release();
+    // Tonar ut tonen på `milliseconds` oavsett RELEASE: när ett steg spelats strax innan en "ton av" som slutar mönstret. Nästa ton börjar som vanligt.
+    void fadeOutQuickly (double milliseconds);
 
     // Basen i två delar, så att effekter kan läggas före eller efter gaten:
     // källan (oscillatorer + filter + drive) och amplituden (envelope * velocity * level).
@@ -215,6 +217,7 @@ private:
 
     Stage stage = Stage::idle;
     float ampLevel = 0.0f;
+    double forcedReleaseMs = 0.0; // > 0: release på så här många ms (fadeOutQuickly), annars RELEASE
     int gateRemaining = 0;
     float velocity = 1.0f;
     double noteTime = 0.0;   // sekunder sedan senaste anslag (för filter-envelopen)

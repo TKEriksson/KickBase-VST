@@ -107,6 +107,8 @@ void KickEngine::trigger (float velocity, int transposeSemitones)
     voice.transpose = std::exp2 ((float) transposeSemitones / 12.0f);
     voice.fade = 1.0f;
     voice.fadingOut = false;
+    voice.ownFadeStep = 0.0f;
+    voice.fadeUpStep = 0.0f;
     voice.subPhase = 0.0;
     voice.fmPhase = 0.0;
     voice.pitchScale = 1.0f - params.velPitch * (1.0f - juce::jlimit (0.0f, 1.0f, velocity));
@@ -114,6 +116,24 @@ void KickEngine::trigger (float velocity, int transposeSemitones)
     voice.samplePosition = -(double) params.sampleOffsetMs * 0.001 * sampleRate * std::exp2 ((double) params.sampleTuneSemis / 12.0); // plus = väntar, minus = hoppar in
     voice.clickFilter.reset();
     voice.noiseFilter.reset();
+}
+
+void KickEngine::cancelCurrent (double fadeSeconds)
+{
+    auto& voice = voices[currentVoice];
+    if (! voice.active)
+        return;
+    voice.fadingOut = true;
+    voice.ownFadeStep = (float) (1.0 / (std::max (0.0002, fadeSeconds) * sampleRate));
+
+    // Kicken som den avbrutna tonade ut (förra slagets svans) får sin nivå tillbaka, mjukt, så att den inte tystnas av ett steg som aldrig hördes.
+    auto& previous = voices[1 - currentVoice];
+    if (previous.active && previous.fadingOut)
+    {
+        previous.fadingOut = false;
+        previous.ownFadeStep = 0.0f;
+        previous.fadeUpStep = (float) (1.0 / (std::max (0.0002, fadeSeconds) * sampleRate));
+    }
 }
 
 float KickEngine::nextSample()
@@ -278,7 +298,9 @@ float KickEngine::renderVoice (Voice& voice)
     voice.time += 1.0 / sampleRate;
 
     if (voice.fadingOut)
-        voice.fade = std::max (0.0f, voice.fade - fadeStep);
+        voice.fade = std::max (0.0f, voice.fade - (voice.ownFadeStep > 0.0f ? voice.ownFadeStep : fadeStep));
+    else if (voice.fadeUpStep > 0.0f && voice.fade < 1.0f)
+        voice.fade = std::min (1.0f, voice.fade + voice.fadeUpStep);
 
     const auto sampleOut = layered ? sampled * params.sampleLevel : sampled * params.clickLevel;
     return (body + (hasSample ? sampleOut : click * params.clickLevel) + top) * voice.velocity * voice.fade;

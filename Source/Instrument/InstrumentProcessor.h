@@ -62,6 +62,7 @@ private:
 
     void readBlockParams();
     void refreshEngineParams();
+    void fadeOutStepsBefore (int sampleOffset); // tonar ut ljud som ett steg startade strax före en "ton av" som slutar mönstret (också i en tidigare bit eller ett tidigare block)
     bool noteOffEndsPattern (const juce::MidiMessage& message) const; // en "ton av" som tystar mönstret (NOTE END = Cut)
     void handleMidi (const juce::MidiMessage& message, int sampleOffset);
     void startPattern (int sampleOffset);
@@ -95,6 +96,9 @@ private:
     // Mixerns två stereobussar: det som går genom maximizern, och det som går förbi den.
     juce::AudioBuffer<float> maxBus, bypassBus;
 
+    // När det senaste steget startade ljud (ppq), för kicken och varje instrument: se fadeOutStepsBefore.
+    double lastKickStartPpq = -std::numeric_limits<double>::infinity();
+    std::array<double, ParamID::numInstrumentLayers> lastInstrumentStartPpq;
     std::array<int, 128> heldNotes {}; // hur många gånger varje ton slagits an utan att släppas
     int numHeldNotes = 0;
     int currentNote = -1; // senast anslagna ton; bestämmer tonarten
