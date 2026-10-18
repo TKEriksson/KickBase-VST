@@ -144,8 +144,17 @@ Instrumentet är i dag **monofont**: en röst per instrument ([InstrumentSynth.h
 klipper den förra. Det är rätt för basar och leads, men piano, klockor och plucks med lång utklingning låter fel.
 - Ny parameter `bassNVoices` (1–8, **standard 1** = exakt dagens beteende, bit för bit). Med fler röster blir `InstrumentSynth` en röst
   av flera i ett instrument; röstval: ledig röst, annars den äldsta (stjäl med en kort release mot klick). Glide gäller bara med 1 röst.
-- Pianorullens toner får överlappa (ackord) när röster > 1. Kontrollera hur `Pattern` och pianorullen hanterar överlappande toner i
-  dag (fråga till Sonnet: du byggde pianorullen).
+- **Så ser mönstret ut i dag** (Sonnets genomgång):
+  - `Pattern::notes` är indexerad [rad][tick], med högst en ton per tick och rad.
+  - Toner på olika ticks kan redan överlappa i tid (`Note::length` är fri, och `holdTicks` = längd × LENGTH kortas inte mot nästa ton),
+    men de spelas monofont: den nya tonen ersätter den klingande.
+- **Ackord:** varje `Note` får en liten fast array med upp till 3 extra intervall i halvtoner (atomiska, 0 = inget), med samma tick,
+  längd och velocity. Lagringen [rad][tick] ändras inte.
+  - Läsningen på ljudtråden förblir låsfri.
+  - Befintliga mönster laddas oförändrade (inga extra intervall).
+  - Mönsterträdets version höjs bara om det krävs för att spara fältet. Ett äldre bygge ignorerar det nya attributet.
+- **Glide med flera röster:** bara den senast spelade rösten glider (legato). Ackordets extra toner glider inte.
+- **Händelseordningen:** noteOn för flera röster på samma sample behåller ordningen från `StepEvent::sequence`.
 - Modulationskällorna ENV 2/3, VELOCITY och RANDOM följer den **senaste** tonen, som i dag ("senaste tonens"): inga nya källnummer.
 - CPU: 3 oscillatorer × unison × röster. Visa en varning i gränssnittet när röster × unison blir stort, och mät `perftest` med 8 röster.
 - **Tester:** `rendersig*` identiska med 1 röst; ackord i pianorullen ger överlappande toner med 4 röster; röststöld utan klick; `blocksizetest`.
