@@ -1,5 +1,6 @@
 #include "Settings.h"
 #include <atomic>
+#include <array>
 
 #if JUCE_WINDOWS
  #include <windows.h>
@@ -157,8 +158,15 @@ namespace Settings
 
     namespace
     {
-        std::atomic<int> reduceState { -1 }; // -1 = inte läst än
+        std::atomic<int> reduceState { -1 }; // -1 = inte läst än (filen tolkas inte vid varje fråga)
+        std::atomic<int> analysisStepState { -1 };
+        std::array<std::atomic<int>, numVisuals> fpsStepStates {}, fillStates {}; // 0 = inte läst; steg 1-5; fyllning 1 = av, 2 = på
+        std::atomic<int> visualChanges { 0 };
+
+        int defaultFpsStep (Visual visual) { return visual == Visual::analyzer ? 3 : 4; } // 20 respektive 30 bilder per sekund
     }
+
+    int visualVersion() { return visualChanges.load(); }
 
     bool reduceAnimations()
     {
@@ -175,6 +183,79 @@ namespace Settings
     {
         reduceState = reduce ? 1 : 0;
         set ("reduceAnimations", reduce ? "1" : juce::String());
+        ++visualChanges;
+    }
+
+    const char* visualKey (Visual visual)
+    {
+        constexpr const char* keys[] { "Analyzer", "Sidechain", "Maximizer", "Soundstage", "Effects", "Mixer", "TopBar", "Other" };
+        return keys[(int) visual];
+    }
+
+    int visualFpsStep (Visual visual)
+    {
+        auto& cached = fpsStepStates[(size_t) visual];
+        auto step = cached.load();
+        if (step == 0)
+        {
+            const auto saved = get (juce::String ("fps") + visualKey (visual)).getIntValue();
+            step = saved >= 1 && saved <= 5 ? saved : defaultFpsStep (visual);
+            cached = step;
+        }
+        return step;
+    }
+
+    void setVisualFpsStep (Visual visual, int step)
+    {
+        step = juce::jlimit (1, 5, step);
+        fpsStepStates[(size_t) visual] = step;
+        set (juce::String ("fps") + visualKey (visual), step == defaultFpsStep (visual) ? juce::String() : juce::String (step));
+        ++visualChanges;
+    }
+
+    bool visualFill (Visual visual)
+    {
+        auto& cached = fillStates[(size_t) visual];
+        auto state = cached.load();
+        if (state == 0)
+        {
+            state = get (juce::String ("fill") + visualKey (visual)) == "0" ? 1 : 2;
+            cached = state;
+        }
+        return state == 2;
+    }
+
+    void setVisualFill (Visual visual, bool fill)
+    {
+        fillStates[(size_t) visual] = fill ? 2 : 1;
+        set (juce::String ("fill") + visualKey (visual), fill ? juce::String() : "0");
+        ++visualChanges;
+    }
+
+    int visualHz (Visual visual, int baseHz)
+    {
+        // Vyns egen takt (baseHz, normalt 30) skalas med det valda steget: 30 bilder/s ger vyns vanliga takt.
+        return animationHz (juce::jmax (1, (int) std::lround (baseHz * fpsForStep (visualFpsStep (visual)) / 30.0)));
+    }
+
+    int spectrumAnalysisStep()
+    {
+        auto step = analysisStepState.load();
+        if (step < 0)
+        {
+            const auto saved = get ("spectrumAnalysisStep").getIntValue();
+            step = saved >= 1 && saved <= 5 ? saved : 3;
+            analysisStepState = step;
+        }
+        return step;
+    }
+
+    void setSpectrumAnalysisStep (int step)
+    {
+        step = juce::jlimit (1, 5, step);
+        analysisStepState = step;
+        set ("spectrumAnalysisStep", step == 3 ? juce::String() : juce::String (step));
+        ++visualChanges;
     }
 
     float uiScale()

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "VisualTimer.h"
+
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <functional>
 #include "Theme.h"
@@ -8,7 +10,7 @@
 //
 // Tidsaxeln är en kvadratrotsskala: de första millisekunderna (där kickens svep och klick
 // finns) får mer plats än svansen. Varje handtag styr en parameter i x-led och/eller y-led.
-class EnvelopeView : public juce::Component, private juce::Timer
+class EnvelopeView : public juce::Component, private VisualTimer
 {
 public:
     struct Curve

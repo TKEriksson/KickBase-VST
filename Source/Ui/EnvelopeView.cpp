@@ -9,11 +9,12 @@ namespace
 
 EnvelopeView::EnvelopeView (double displaySecondsIn) : displaySeconds (displaySecondsIn)
 {
-    startTimerHz (Settings::animationHz (30)); // följer med när parametrar ändras via rattar eller automation
+    startVisualTimer (Settings::Visual::other, 30); // följer med när parametrar ändras via rattar eller automation
 }
 
 void EnvelopeView::timerCallback()
 {
+    followVisualRate();
     // Rita bara om när kurvorna ändrats (via rattar, handtag eller automation).
     if (onBeforePaint)
         onBeforePaint();

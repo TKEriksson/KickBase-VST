@@ -8,7 +8,7 @@ WavetableView::WavetableView (PluginBase& p, int layerIn, int oscIn, juce::Colou
     setTooltip ("OSC " + juce::String (osc + 1)
                 + " - The wavetable: all its waveforms stacked from back to front. CLICK it to hear just this oscillator (even if it is off). "
                   "POS chooses which waveform plays (drag an LFO onto POS to sweep through them); WARP bends the waveform you see in front.");
-    startTimerHz (Settings::animationHz (30));
+    startVisualTimer (Settings::Visual::other, 30);
     timerCallback(); // rätt tabell redan i första bilden (annars ritades Basic tills timern gått en gång)
 }
 
@@ -19,6 +19,7 @@ float WavetableView::raw (InstrumentField field) const
 
 void WavetableView::timerCallback()
 {
+    followVisualRate();
     // Rita om när tabellen, positionen (med LFO) eller warpen ändras.
     const auto position = juce::jlimit (0.0f, 1.0f, raw (InstrumentField::aPos) + processor.modulator.currentOffset (positionIndex));
     const auto table = (int) raw (InstrumentField::aTable);

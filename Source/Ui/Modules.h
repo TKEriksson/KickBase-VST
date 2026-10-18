@@ -1,5 +1,7 @@
 #pragma once
 
+#include "VisualTimer.h"
+
 #include "LogoPainter.h"
 
 #include "../Core/PluginBase.h"
@@ -17,7 +19,7 @@
 
 // Rubrikraden: logotyp, presetmeny och uppspelningsstatus (DAW eller egen klocka, tempo,
 // takt, tonart).
-class HeaderBar : public juce::Component, private juce::Timer
+class HeaderBar : public juce::Component, private VisualTimer
 {
 public:
     HeaderBar (PluginBase& processor, const juce::String& subtitle);
@@ -43,7 +45,7 @@ private:
     double lastKickTime = -100.0, lastInstrumentTime = -100.0, instrumentStrength = 0.0;
     int lastKickTriggers = -1;
     float lastInstrumentPeak = 0.0f;
-    bool logoWasActive = true, reducedLast = false;
+    bool logoWasActive = true;
     float glow = 0.0f, glowShown = 0.0f; // neonets styrka: följer ljudets nivå (släckt utan ljud)
     int lastStatusHash = 0; // tempo, takt, tonart och synk: rubriken ritas bara om när något av det ändras
 

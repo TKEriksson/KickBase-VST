@@ -1,5 +1,7 @@
 #pragma once
 
+#include "VisualTimer.h"
+
 #include <map>
 #include <set>
 #include "../Core/PluginBase.h"
@@ -26,7 +28,7 @@
 // - Verktygsraden: SNAP av/på, rutnätet (snap) 1/4 ... 1/64, radhöjd, markera alla och ta bort, GLIDE, samt
 //   PRESET (spara och ladda pianorullar) och MIDI (exportera och importera MIDI-filer).
 // - Remsan längst ner är velocity: dra i en tons stapel.
-class PianoRoll : public juce::Component, public juce::SettableTooltipClient, private juce::Timer, private juce::ScrollBar::Listener
+class PianoRoll : public juce::Component, public juce::SettableTooltipClient, private VisualTimer, private juce::ScrollBar::Listener
 {
 public:
     PianoRoll (PluginBase& processor, std::vector<juce::Colour> layerColours);

@@ -10,7 +10,7 @@ namespace
     }
 }
 
-SettingsPage::SettingsPage (PluginBase& p) : processor (p)
+SettingsPage::SettingsPage (PluginBase& p) : processor (p), optimizations (p, [this] { showOptimizations (false); })
 {
     // ---- FÖNSTER
     styleLabel (scaleLabel, 12.0f, Theme::text, true);
@@ -41,14 +41,11 @@ SettingsPage::SettingsPage (PluginBase& p) : processor (p)
         };
         addAndMakeVisible (sizeButtons[i]);
     }
-    reduceAnimationsToggle.setClickingTogglesState (true);
-    reduceAnimationsToggle.setToggleState (Settings::reduceAnimations(), juce::dontSendNotification);
-    reduceAnimationsToggle.setColour (juce::TextButton::buttonOnColourId, Theme::mix.withAlpha (0.6f));
-    reduceAnimationsToggle.setTooltip ("REDUCE ANIMATIONS - Uses less CPU: the animated views (scopes, meters, playhead, knob rings) update half as often, the logo's glow is off "
-                                       "and the live spectrum runs at the slow speed. The header and the spectrum follow at once; the other views when the window is opened again. "
-                                       "Applies to every Kickbase window and is remembered.");
-    reduceAnimationsToggle.onClick = [this] { Settings::setReduceAnimations (reduceAnimationsToggle.getToggleState()); };
-    addAndMakeVisible (reduceAnimationsToggle);
+    optimizationsButton.setTooltip ("OPTIMIZATIONS - How often each view (spectrum, scopes, meters, playhead ...) is redrawn, whether filled areas are drawn, "
+                                    "and REDUCE ANIMATIONS. Lower rates use less CPU.");
+    optimizationsButton.onClick = [this] { showOptimizations (true); };
+    addAndMakeVisible (optimizationsButton);
+    addChildComponent (optimizations);
     styleLabel (windowHint, 10.5f, Theme::textDim);
     windowHint.setText ("Drag the window corner for any size. Applies to all Kickbase windows.", juce::dontSendNotification);
     windowHint.setJustificationType (juce::Justification::topLeft);
@@ -175,12 +172,44 @@ SettingsPage::SettingsPage (PluginBase& p) : processor (p)
 
     refresh (false); // mapparna och vågformerna läses först när sidan visas (inte varje gång fönstret öppnas)
     startTimerHz (10);
+    if (juce::SystemStats::getEnvironmentVariable ("KB_OPTIMIZATIONS", "0").getIntValue() != 0)
+        showOptimizations (true); // (skärmbilder)
 }
 
 SettingsPage::~SettingsPage()
 {
     pack.onFinished = nullptr;
     pack.cancel();
+}
+
+void SettingsPage::showOptimizations (bool show)
+{
+    if (show == optimizations.isVisible())
+        return;
+    if (show)
+    {
+        // Allt annat på sidan döljs medan panelen visas (och kommer tillbaka som det var).
+        hiddenByOptimizations.clear();
+        for (auto* child : getChildren())
+            if (child != &optimizations && child->isVisible())
+            {
+                hiddenByOptimizations.emplace_back (child);
+                child->setVisible (false);
+            }
+        optimizations.refresh();
+        optimizations.setVisible (true);
+    }
+    else
+    {
+        optimizations.setVisible (false);
+        for (auto& child : hiddenByOptimizations)
+            if (child != nullptr)
+                child->setVisible (true);
+        hiddenByOptimizations.clear();
+        refresh (false);
+        resized();
+    }
+    repaint();
 }
 
 void SettingsPage::setBridge (bool on)
@@ -253,9 +282,9 @@ void SettingsPage::timerCallback()
 {
     // Sidan finns i fönstret även när en annan flik visas: då gör den ingenting (räkningen av vågformer och läsningen av inställningsfilen
     // tog annars en stor del av en processorkärna hela tiden).
-    if (! isShowing())
+    if (! isShowing() || optimizations.isVisible())
     {
-        filesShown = false;
+        filesShown = filesShown && isShowing();
         return;
     }
     refresh (! filesShown || ++tick % 20 == 0);
@@ -266,7 +295,10 @@ void SettingsPage::visibilityChanged()
 {
     if (isShowing())
     {
-        refresh (true);
+        if (optimizations.isVisible())
+            optimizations.refresh(); // (SPEED kan ha ändrats på ANALYZER-fliken)
+        else
+            refresh (true);
         filesShown = true;
     }
 }
@@ -290,6 +322,8 @@ void SettingsPage::paint (juce::Graphics& g)
         g.setFont (Theme::font (9.5f, true).withExtraKerningFactor (0.08f));
         g.drawText (title, area.withHeight (16).withTrimmedLeft (8), juce::Justification::centredLeft);
     };
+    if (optimizations.isVisible())
+        return; // panelen ritar sig själv över hela sidan
     frame (windowBox, "WINDOW SIZE");
     frame (aiBox, "AI LINK");
     frame (folderBox, "FOLDERS");
@@ -299,6 +333,7 @@ void SettingsPage::paint (juce::Graphics& g)
 
 void SettingsPage::resized()
 {
+    optimizations.setBounds (getLocalBounds());
     auto area = getLocalBounds();
     const auto withPack = ! processor.isEffectVersion();
     windowBox = area.removeFromLeft (230);
@@ -310,10 +345,11 @@ void SettingsPage::resized()
     packBox = withPack ? area : juce::Rectangle<int>();
 
     // En hjälptext som bara får plats till en del av en rad visas inte (i ett lågt fönster; verktygstipsen säger detsamma).
-    auto placeHint = [] (juce::Label& hint, juce::Rectangle<int> bounds)
+    auto placeHint = [this] (juce::Label& hint, juce::Rectangle<int> bounds)
     {
         hint.setBounds (bounds);
-        hint.setVisible (bounds.getHeight() >= 13);
+        if (! optimizations.isVisible()) // (panelen döljer allt annat; det återställs när den stängs)
+            hint.setVisible (bounds.getHeight() >= 13);
     };
 
     // WINDOW SIZE
@@ -328,7 +364,7 @@ void SettingsPage::resized()
         for (auto& button : sizeButtons)
             button.setBounds (buttons.removeFromLeft (width).reduced (2, 0));
         box.removeFromTop (8);
-        reduceAnimationsToggle.setBounds (box.removeFromTop (24));
+        optimizationsButton.setBounds (box.removeFromTop (24));
         box.removeFromTop (6);
         placeHint (windowHint, box);
     }

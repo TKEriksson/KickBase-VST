@@ -1,5 +1,7 @@
 #pragma once
 
+#include "VisualTimer.h"
+
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "Theme.h"
 
@@ -17,7 +19,7 @@ PluginBase* findProcessor (const juce::Component& component);
 // - Dubbelklick återställer standardvärdet, högerklick visar menyn (DAW-automation m.m.).
 // - Dra en LFO hit (från LFO-fliken) för att modulera ratten. Varje koppling visas som en ring
 //   i LFO:ns färg; dra i ringen för att ändra mängden. En prick visar var ratten är just nu.
-class KnobComponent : public juce::Component, public juce::DragAndDropTarget, private juce::Timer
+class KnobComponent : public juce::Component, public juce::DragAndDropTarget, private VisualTimer
 {
 public:
     KnobComponent (juce::AudioProcessorValueTreeState& apvts, const juce::String& paramID, const juce::String& name, juce::Colour accent);

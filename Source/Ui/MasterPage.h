@@ -1,5 +1,7 @@
 #pragma once
 
+#include "VisualTimer.h"
+
 #include "../Core/PluginBase.h"
 #include "Components.h"
 #include "MixerPage.h"
@@ -7,7 +9,7 @@
 #include "Scopes.h"
 
 // Lodrät mätare i dB.
-class LevelMeter : public juce::Component, private juce::Timer
+class LevelMeter : public juce::Component, private VisualTimer
 {
 public:
     // `read` hämtar värdet i dB; `fromTop` = förstärkningsminskning (växer nedåt från 0).
@@ -15,7 +17,7 @@ public:
     void paint (juce::Graphics&) override;
 
 private:
-    void timerCallback() override { repaint(); }
+    void timerCallback() override { followVisualRate(); repaint(); }
 
     std::function<float()> read;
     float minDb, maxDb;

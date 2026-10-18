@@ -7,7 +7,7 @@ namespace
 
 DuckCurveView::DuckCurveView (PluginBase& p) : processor (p)
 {
-    startTimerHz (Settings::animationHz (15));
+    startVisualTimer (Settings::Visual::sidechain, 15);
 }
 
 bool DuckCurveView::curveMode() const
@@ -27,6 +27,7 @@ int DuckCurveView::numLayers() const
 
 void DuckCurveView::timerCallback()
 {
+    followVisualRate();
     const auto version = processor.sidechainCurve.version.load();
     const auto mode = curveMode();
     float d = 0.0f;
@@ -336,11 +337,12 @@ DuckRow::DuckRow (PluginBase& p, int layerIn) : processor (p), layer (layerIn)
     attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (p.apvts, ParamID::bass (layer, InstrumentField::duck), slider);
     if (auto* parameter = p.apvts.getParameter (ParamID::bass (layer, InstrumentField::duck)))
         slider.setDoubleClickReturnValue (true, parameter->convertFrom0to1 (parameter->getDefaultValue()));
-    startTimerHz (Settings::animationHz (20));
+    startVisualTimer (Settings::Visual::sidechain, 20);
 }
 
 void DuckRow::timerCallback()
 {
+    followVisualRate();
     const auto now = processor.duckReduction[(size_t) layer].load();
     const auto name = processor.getLayerName (layer);
     if (std::abs (now - reduction) > 0.005f || name != shownName)
@@ -381,6 +383,7 @@ SidechainPage::SidechainPage (PluginBase& p)
       curve (p),
       scope (p, makeTraces (p))
 {
+    scope.setVisual (Settings::Visual::sidechain);
     scope.setTooltip ("SIDECHAIN SCOPE - Live: the kick (orange), the instruments before the sidechain (white outline) and after it (blue). "
                       "The blue is what the kick lets through: watch it being cut away under each kick. "
                       "The coloured curves in from the top and bottom edges show how much each instrument is ducked.");

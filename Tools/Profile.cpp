@@ -7,7 +7,8 @@
 //   tool uiprofile <flik> <init|heavy> [instrument] [sekunder]
 //       gränssnittet: editorn öppnas i ett riktigt fönster på fliken (samma siffror som snapshot, t.ex. 7 = ANALYZER) medan ljudet spelas
 //       i realtid i en annan tråd. Visar hur mycket CPU meddelandetråden och ljudtråden använder och var meddelandetråden lägger tiden.
-//       KB_SPECTRUM=1: live-spektrumet på. KB_HARMONICS=1: övertonerna på.
+//       KB_SPECTRUM=1: live-spektrumet på. KB_HARMONICS=1: övertonerna på. KB_SPECTRUM_FPS=1-5 och KB_SPECTRUM_FILL=0|1: spektrumets bildtakt
+//       och fyllning (SETTINGS > OPTIMIZATIONS), satta i en tillfällig inställningsfil.
 
 #include "../Source/Instrument/InstrumentProcessor.h"
 #include "../Source/Fx/FxProcessor.h"
@@ -336,6 +337,16 @@ int uiProfileCommand (int tab, const juce::String& scenario, int instruments, do
     return 1;
    #else
     juce::ScopedJuceInitialiser_GUI gui;
+    std::unique_ptr<Scenarios::TemporaryUserFolders> folders; // användarens settings.xml rörs aldrig
+    const auto fpsStep = juce::SystemStats::getEnvironmentVariable ("KB_SPECTRUM_FPS", {}), fill = juce::SystemStats::getEnvironmentVariable ("KB_SPECTRUM_FILL", {});
+    if (fpsStep.isNotEmpty() || fill.isNotEmpty())
+    {
+        folders = std::make_unique<Scenarios::TemporaryUserFolders>();
+        if (fpsStep.isNotEmpty())
+            Settings::setVisualFpsStep (Settings::Visual::analyzer, fpsStep.getIntValue());
+        if (fill.isNotEmpty())
+            Settings::setVisualFill (Settings::Visual::analyzer, fill.getIntValue() != 0);
+    }
     auto processor = makeProcessor (scenario, instruments);
     processor->selectedTab = tab % 10;
     processor->selectedSynthTab = tab / 10 % 10;

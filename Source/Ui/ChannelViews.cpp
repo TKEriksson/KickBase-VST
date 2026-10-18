@@ -14,7 +14,7 @@ EqView::EqView (PluginBase& p) : processor (p)
     setTooltip ("EQ - Drag the nodes: left/right = frequency, up/down = boost or cut. HP and LP are high and low pass (drag them sideways). "
                 "Scroll on a bell (II, III) to change its width (Q); double-click a node to reset it. "
                 "The orange area is the sound reaching the EQ, so you can see which frequencies to fix.");
-    startTimerHz (Settings::animationHz (30));
+    startVisualTimer (Settings::Visual::effects, 30);
 }
 
 void EqView::setChannel (int newChannel)
@@ -89,6 +89,7 @@ juce::String EqView::describe (int node, const Effects::EqSettings& s) const
 
 void EqView::timerCallback()
 {
+    followVisualRate();
     if (! isShowing())
         return;
 
@@ -161,8 +162,16 @@ void EqView::paint (juce::Graphics& g)
         }
         return path;
     };
-    g.setGradientFill (juce::ColourGradient (Theme::kick.withAlpha (0.55f), 0.0f, area.getY(), Theme::kick.withAlpha (0.05f), 0.0f, area.getBottom(), false));
-    g.fillPath (spectrumPath (level, true));
+    if (visualFilled())
+    {
+        g.setGradientFill (juce::ColourGradient (Theme::kick.withAlpha (0.55f), 0.0f, area.getY(), Theme::kick.withAlpha (0.05f), 0.0f, area.getBottom(), false));
+        g.fillPath (spectrumPath (level, true));
+    }
+    else
+    {
+        g.setColour (Theme::kick.withAlpha (0.8f));
+        g.strokePath (spectrumPath (level, false), juce::PathStrokeType (1.2f));
+    }
     g.setColour (Theme::kick.withAlpha (0.3f));
     g.strokePath (spectrumPath (hold, false), juce::PathStrokeType (1.0f));
 
@@ -288,6 +297,8 @@ CompView::CompView (PluginBase& p, int channel)
                       "the fill, the compressor is turning it down.");
     gainScope.gainTitle = "GAIN REDUCTION (dB)";
     gainScope.setTooltip ("GAIN REDUCTION - How much the compressor turns the sound down, over time.");
+    scope.setVisual (Settings::Visual::effects);
+    gainScope.setVisual (Settings::Visual::effects);
     addAndMakeVisible (scope);
     addAndMakeVisible (gainScope);
 }

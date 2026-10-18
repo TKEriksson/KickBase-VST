@@ -32,7 +32,7 @@ KickDisplay::KickDisplay (PluginBase& p) : processor (p)
                 "right-click a node to remove it, drag the small diamond on a segment to bend it.");
     lastHash = stateHash();
     renderWaveform();
-    startTimerHz (Settings::animationHz (30));
+    startVisualTimer (Settings::Visual::other, 30);
 }
 
 void KickDisplay::setMode (bool showAmp)
@@ -77,6 +77,7 @@ void KickDisplay::renderWaveform()
 
 void KickDisplay::timerCallback()
 {
+    followVisualRate();
     // Spelmarkören: var kicken är nu, och en blixt när en ny kick slås an (från DAW, mönstret eller ett klick).
     const auto playTime = processor.transportStatus.kickPlayTime.load();
     const auto triggers = processor.transportStatus.kickTriggers.load();

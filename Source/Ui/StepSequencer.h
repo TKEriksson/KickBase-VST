@@ -1,5 +1,7 @@
 #pragma once
 
+#include "VisualTimer.h"
+
 #include "../Core/PluginBase.h"
 #include "Theme.h"
 #include "ListenButton.h"
@@ -12,7 +14,7 @@
 //
 // Raderna är tidsjusterade: kicken har alltid 16 steg per takt, varje baslager sitt eget
 // rutnät (16, 12, 24 ...), men en takt tar lika stor bredd i alla.
-class StepSequencer : public juce::Component, public juce::SettableTooltipClient, private juce::Timer, private juce::ScrollBar::Listener
+class StepSequencer : public juce::Component, public juce::SettableTooltipClient, private VisualTimer, private juce::ScrollBar::Listener
 {
 public:
     enum class Lane { velocity, gate, pitch, slide }; // gate = tonlängd (LENGTH); slide används inte längre

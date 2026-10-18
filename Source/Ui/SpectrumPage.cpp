@@ -224,16 +224,14 @@ SpectrumPage::SpectrumPage (PluginBase& p) : processor (p), analyser (p.getMixAn
     referenceButton.onClick = [this] { chooseReference(); };
     addAndMakeVisible (referenceButton);
 
-    speedBox.addItem ("SPEED: FULL", 1);
-    speedBox.addItem ("SPEED: HALF", 2);
-    speedBox.addItem ("SPEED: SLOW", 3);
-    speedBox.setSelectedId (2, juce::dontSendNotification);
-    speedBox.setTooltip ("SPEED - How often the live spectrum is analysed and drawn: full (30 per second), half (15) or slow (8). A slower speed uses less CPU and is easier to read. "
-                         "Half is the default.");
+    for (int step = 1; step <= 5; ++step) // samma värde som SETTINGS > OPTIMIZATIONS (Settings::spectrumAnalysisStep)
+        speedBox.addItem ("SPEED: " + juce::String (Settings::spectrumAnalysesPerSecond (step)) + "/S", step);
+    speedBox.setSelectedId (Settings::spectrumAnalysisStep(), juce::dontSendNotification);
+    speedBox.setTooltip ("SPEED - How many times per second the live spectrum is analysed: 4, 8, 15, 30 or 40, at most once per drawn frame. A slower speed uses less CPU and is easier to read. "
+                         "15 is the default. The same setting is in SETTINGS > OPTIMIZATIONS, together with how often the spectrum is drawn and whether its curves are filled.");
     speedBox.onChange = [this]
     {
-        fps = speedBox.getSelectedId() == 1 ? 30 : speedBox.getSelectedId() == 3 ? 8 : 15;
-        smoothing = 1.0f - std::pow (0.7f, 30.0f / (float) fps); // kurvorna faller lika fort i sekunden oavsett takt
+        Settings::setSpectrumAnalysisStep (speedBox.getSelectedId());
         updateRunning();
     };
     addAndMakeVisible (speedBox);
@@ -327,8 +325,13 @@ void SpectrumPage::updateRunning()
     }
     if (running)
     {
-        // Bildrutorna går i egen takt (30, eller 15 med REDUCE ANIMATIONS) och analysen var n:te ruta: SPEED styr bara hur ofta analysen körs.
-        displayHz = Settings::reduceAnimations() ? 15 : 30;
+        // Bildrutorna går i egen takt (SETTINGS > OPTIMIZATIONS: 5-40 per sekund, halverat med REDUCE ANIMATIONS) och analysen var n:te ruta:
+        // SPEED styr bara hur ofta analysen körs (som mest en gång per bildruta). Fyllningen läses också här, inte i paint (fråga 2).
+        displayHz = Settings::visualHz (Settings::Visual::analyzer, 30);
+        fillCurves = Settings::visualFill (Settings::Visual::analyzer);
+        fps = Settings::spectrumAnalysesPerSecond (Settings::spectrumAnalysisStep());
+        speedBox.setSelectedId (Settings::spectrumAnalysisStep(), juce::dontSendNotification);
+        smoothing = 1.0f - std::pow (0.7f, 30.0f / (float) fps); // kurvorna faller lika fort i sekunden oavsett takt
         const auto analysesPerSecond = Settings::reduceAnimations() ? std::min (fps, 8) : fps;
         analysisEvery = std::max (1, (int) std::lround ((double) displayHz / (double) analysesPerSecond));
         startTimerHz (displayHz);
@@ -1156,6 +1159,12 @@ void SpectrumPage::findFundamental (Source& source) const
 
 void SpectrumPage::timerCallback()
 {
+    // SETTINGS > OPTIMIZATIONS (eller SPEED) har ändrats: ny takt och fyllning direkt.
+    if (const auto version = Settings::visualVersion(); version != settingsVersion)
+    {
+        settingsVersion = version;
+        updateRunning();
+    }
     updateSources();
 
     // Anteckningar från en AI: de visas i rapporten, och rapportvyn visas inte automatiskt (man kan vara i spektrumet).
@@ -1450,6 +1459,12 @@ void SpectrumPage::paint (juce::Graphics& g)
         {
             g.setColour (colour.withAlpha (0.85f));
             g.strokePath (pathFor (columns[(size_t) i].get(), false), juce::PathStrokeType (1.4f));
+            continue;
+        }
+        if (! fillCurves) // bara kanten: mycket billigare att rita
+        {
+            g.setColour (colour);
+            g.strokePath (pathFor (columns[(size_t) i].get(), false), juce::PathStrokeType (1.3f));
             continue;
         }
         const auto path = pathFor (columns[(size_t) i].get(), true);

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "VisualTimer.h"
+
 #include "../Core/PluginBase.h"
 #include "Components.h"
 
@@ -53,7 +55,7 @@ private:
 };
 
 // Mixern: en remsa per ljudkälla som används (med rullning i sidled när de inte får plats) och mastern.
-class MixerView : public juce::Component, private juce::Timer
+class MixerView : public juce::Component, private VisualTimer
 {
 public:
     explicit MixerView (PluginBase& processor);

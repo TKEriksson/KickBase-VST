@@ -1,12 +1,14 @@
 #pragma once
 
+#include "VisualTimer.h"
+
 #include <juce_dsp/juce_dsp.h>
 #include "../Core/PluginBase.h"
 #include "Theme.h"
 
 // Vågformsvy i realtid: de senaste ~två slagen av en eller flera signaler (kicken, basen före
 // och efter duckningen, mastern in och ut), ritade över varandra så att man ser vad de gör.
-class ScopeView : public juce::Component, public juce::SettableTooltipClient, private juce::Timer
+class ScopeView : public juce::Component, public juce::SettableTooltipClient, private VisualTimer
 {
 public:
     struct Trace
@@ -23,6 +25,9 @@ public:
     enum class Mode { wave, gainReduction };
 
     ScopeView (PluginBase& processor, std::vector<Trace> traces, Mode mode = Mode::wave);
+
+    // Vilken grupp i SETTINGS > OPTIMIZATIONS vyn hör till (takt och fyllning): sätts av ägaren.
+    void setVisual (Settings::Visual group) { startVisualTimer (group, 30); }
 
     // En horisontell hjälplinje (t.ex. masterns tak) som ritas vid ±värdet (vågläge).
     std::function<float()> guideLevel;
@@ -45,7 +50,7 @@ private:
 
 // Spektrum i realtid (logaritmisk frekvensaxel 20 Hz - 20 kHz): kicken, basen och mastern, så
 // att man ser vilka frekvenser som spelas och hur starkt.
-class SpectrumView : public juce::Component, public juce::SettableTooltipClient, private juce::Timer
+class SpectrumView : public juce::Component, public juce::SettableTooltipClient, private VisualTimer
 {
 public:
     explicit SpectrumView (PluginBase& processor);
@@ -80,7 +85,7 @@ private:
 
 // Stereobilden: en vektorskop (mitt uppåt, sidan åt sidorna) och korrelationsmätare. Mono blir
 // en lodrät linje, bred stereo en spridd boll, och motfas syns som vågrätt.
-class StereoView : public juce::Component, public juce::SettableTooltipClient, private juce::Timer
+class StereoView : public juce::Component, public juce::SettableTooltipClient, private VisualTimer
 {
 public:
     explicit StereoView (PluginBase& processor);

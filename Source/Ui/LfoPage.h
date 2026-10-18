@@ -1,5 +1,7 @@
 #pragma once
 
+#include "VisualTimer.h"
+
 #include "../Core/PluginBase.h"
 #include "Components.h"
 #include "PresetButton.h"
@@ -7,7 +9,7 @@
 // Visar en LFO:s form och var den är just nu. Är formen Custom redigerar man den här: dra punkterna, dra rombernas mitt för att böja,
 // dubbelklicka för en ny punkt, högerklicka för att ta bort en punkt (eller välja en mall). Dubbelklick på en vanlig form gör den till en
 // egen kurva att redigera.
-class LfoDisplay : public juce::Component, public juce::SettableTooltipClient, private juce::Timer
+class LfoDisplay : public juce::Component, public juce::SettableTooltipClient, private VisualTimer
 {
 public:
     LfoDisplay (PluginBase& processor, int lfoIndex);

@@ -3,7 +3,7 @@
 LevelMeter::LevelMeter (std::function<float()> readIn, float minIn, float maxIn, bool fromTopIn, juce::Colour colourIn, juce::String labelIn)
     : read (std::move (readIn)), minDb (minIn), maxDb (maxIn), fromTop (fromTopIn), colour (colourIn), label (std::move (labelIn))
 {
-    startTimerHz (Settings::animationHz (30));
+    startVisualTimer (Settings::Visual::maximizer, 30);
 }
 
 void LevelMeter::paint (juce::Graphics& g)
@@ -50,6 +50,8 @@ MasterPage::MasterPage (PluginBase& p)
     scope.setTooltip ("MAXIMIZER SCOPE - Live: the signal going into the limiter (white outline) and what comes out (red). "
                       "Where the white sticks out above the red lines (the ceiling), the limiter is pushing it down.");
     gainScope.setTooltip ("GAIN REDUCTION - How much the limiter turns the signal down, over time.");
+    scope.setVisual (Settings::Visual::maximizer);
+    gainScope.setVisual (Settings::Visual::maximizer);
     scope.guideLevel = [&p]
     {
         const auto* ceiling = p.apvts.getRawParameterValue ("masterCeiling");

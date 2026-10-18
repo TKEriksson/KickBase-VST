@@ -41,6 +41,26 @@ namespace Settings
     void setReduceAnimations (bool reduce);
     inline int animationHz (int normalHz) { return reduceAnimations() ? (normalHz > 8 ? normalHz / 2 : normalHz) : normalHz; }
 
+    // Hur ofta vyerna ritas (SETTINGS > OPTIMIZATIONS): ett steg 1-5 per grupp = 5, 10, 20, 30 eller 40 bilder per sekund (standard 30,
+    // ANALYZER-spektrumet 20), och om vyer med fyllda ytor fylls (det dyraste att rita). REDUCE ANIMATIONS halverar allt.
+    // Vyerna följer en ändring direkt: de jämför visualVersion() i sin timer (se Ui/VisualTimer.h).
+    enum class Visual { analyzer, sidechain, maximizer, soundstage, effects, mixer, topBar, other };
+    constexpr int numVisuals = 8;
+    const char* visualKey (Visual visual);
+    int visualFpsStep (Visual visual);
+    void setVisualFpsStep (Visual visual, int step);
+    inline int fpsForStep (int step) { constexpr int fps[] { 5, 10, 20, 30, 40 }; return fps[juce::jlimit (1, 5, step) - 1]; }
+    bool visualFill (Visual visual);
+    void setVisualFill (Visual visual, bool fill);
+    int visualHz (Visual visual, int baseHz); // vyns takt med valt steg och REDUCE ANIMATIONS
+    int visualVersion();                      // ökar vid varje ändring av något ovan (och REDUCE ANIMATIONS)
+
+    // Hur ofta live-spektrumet analyseras (SPEED på ANALYZER-fliken, samma värde): steg 1-5 = 4, 8, 15, 30 eller 40 gånger per sekund
+    // (standard 3 = 15), som mest en gång per bildruta.
+    int spectrumAnalysisStep();
+    void setSpectrumAnalysisStep (int step);
+    inline int spectrumAnalysesPerSecond (int step) { constexpr int rate[] { 4, 8, 15, 30, 40 }; return rate[juce::jlimit (1, 5, step) - 1]; }
+
     // Bara för tester: använd en annan fil.
     void useFile (const juce::File& file);
 }

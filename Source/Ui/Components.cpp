@@ -80,7 +80,7 @@ KnobComponent::KnobComponent (juce::AudioProcessorValueTreeState& apvts, const j
             description = parameter->getName (64);
     }
     updateTooltip (-1);
-    startTimerHz (Settings::animationHz (30));
+    startVisualTimer (Settings::Visual::other, 30);
 }
 
 KnobComponent::~KnobComponent() = default;
@@ -162,6 +162,7 @@ int KnobComponent::ringAt (juce::Point<float> position) const
 
 void KnobComponent::timerCallback()
 {
+    followVisualRate();
     auto* processor = findProcessor (*this);
     if (processor == nullptr)
         return;

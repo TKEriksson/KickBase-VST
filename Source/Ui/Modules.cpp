@@ -82,7 +82,7 @@ HeaderBar::HeaderBar (PluginBase& p, const juce::String& subtitleIn)
     };
     addAndMakeVisible (aiButton);
     updateAiTooltip();
-    startTimerHz (Settings::animationHz (30));
+    startVisualTimer (Settings::Visual::topBar, 30);
 }
 
 void HeaderBar::updateAiTooltip()
@@ -207,6 +207,7 @@ void HeaderBar::chooseExportTarget (int part, int bars)
 
 void HeaderBar::timerCallback()
 {
+    followVisualRate();
     if (processor.getKeyboardState() != nullptr)
     {
         listenAll.setActive (processor.previewingLayer.load() == PluginBase::previewAllRows);
@@ -248,12 +249,7 @@ void HeaderBar::timerCallback()
 
     // Rita bara om det som rör sig: mätaren (30 gånger i sekunden), loggan så länge glöden går, och resten när tempo, takt, tonart eller
     // synk ändras. Att rita hela rubriken 30 gånger i sekunden kostade onödigt mycket.
-    const auto reduced = Settings::reduceAnimations();
-    if (reduced != reducedLast)
-    {
-        reducedLast = reduced;
-        startTimerHz (Settings::animationHz (30));
-    }
+    const auto reduced = Settings::reduceAnimations(); // (takten följer REDUCE ANIMATIONS och TOP BAR i OPTIMIZATIONS via followVisualRate)
     // Neonet lyser med ljudets nivå (utgångens topp): släckt när inget spelas, så att man ser ljuden.
     {
         const auto level = juce::jmax (peakL, peakR);

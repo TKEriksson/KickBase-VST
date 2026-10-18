@@ -3,10 +3,11 @@
 #include "../Core/PluginBase.h"
 #include "../Core/WavetablePack.h"
 #include "Theme.h"
+#include "OptimizationsPanel.h"
 
 // Fliken SETTINGS: inställningar som gäller alla Kickbase-fönster och projekt (de sparas i Dokument\Kickbase\settings.xml):
 // fönstrets storlek, AI-länken med egen åtkomstnyckel, mapparna för presets, exporter och wavetables, och installationen av
-// vågformspaketet AKWF.
+// vågformspaketet AKWF. OPTIMIZATIONS (hur ofta vyerna ritas) öppnas med en knapp och visas då över hela sidan.
 class SettingsPage : public juce::Component, private juce::Timer
 {
 public:
@@ -30,6 +31,7 @@ private:
     void chooseFolder (FolderRow& row);
     void setBridge (bool on);
     void updatePack();
+    void showOptimizations (bool show);
 
     PluginBase& processor;
     std::unique_ptr<juce::FileChooser> chooser;
@@ -38,7 +40,9 @@ private:
 
     // FÖNSTER
     juce::Label scaleLabel, windowHint;
-    juce::TextButton reduceAnimationsToggle { "REDUCE ANIMATIONS" }; // lyser när den är på
+    juce::TextButton optimizationsButton { "OPTIMIZATIONS..." };
+    OptimizationsPanel optimizations;
+    std::vector<juce::Component::SafePointer<juce::Component>> hiddenByOptimizations; // det som var synligt när panelen öppnades
     juce::Slider scaleSlider;
     std::array<juce::TextButton, 4> sizeButtons;
 

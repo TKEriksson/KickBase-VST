@@ -160,7 +160,9 @@ private:
 
     // Hur ofta analysen körs och ritas (SPEED), och hur snabbt kurvorna faller (anpassat till takten).
     int fps = 15;          // analyser per sekund (SPEED)
-    int displayHz = 30;    // bildrutor per sekund: oberoende av analysen, så att kurvorna faller mjukt mellan analyserna
+    bool fillCurves = true; // SETTINGS > OPTIMIZATIONS (läses när spektrumet startar eller inställningen ändras)
+    int settingsVersion = -1;
+    int displayHz = 20;    // bildrutor per sekund: oberoende av analysen, så att kurvorna faller mjukt mellan analyserna
     int analysisEvery = 2; // analysera var n:te bildruta
     int analysisCount = 0;
     float smoothing = 0.3f;

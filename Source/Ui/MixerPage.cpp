@@ -234,11 +234,12 @@ MixerView::MixerView (PluginBase& p) : processor (p), master (p)
         content.addAndMakeVisible (*strips.back());
     }
     addAndMakeVisible (master);
-    startTimerHz (Settings::animationHz (30));
+    startVisualTimer (Settings::Visual::mixer, 30);
 }
 
 void MixerView::timerCallback()
 {
+    followVisualRate();
     if (! isShowing())
         return;
     const auto fxMask = processor.fxChannelUsageMask();

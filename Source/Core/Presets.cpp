@@ -360,6 +360,14 @@ namespace Presets
         std::vector<std::pair<juce::RangedAudioParameter*, float>> outside;
         for (const auto& [id, value] : preset.values)
         {
+            // "duckAmount" (sidechain-fabriksljuden) fanns när djupet var gemensamt: nu sätts det på varje instruments DUCK.
+            if (juce::String (id) == "duckAmount")
+            {
+                for (int instrument = 0; instrument < ParamID::numInstrumentLayers; ++instrument)
+                    if (const auto found = indexOfId.find (ParamID::bass (instrument, InstrumentField::duck)); found != indexOfId.end())
+                        targets[found->second] = sectionParameters[found->second]->convertTo0to1 (value);
+                continue;
+            }
             const auto target = section == Section::bass ? toInstrumentLayer (id, layer) : juce::String (id);
             if (const auto found = indexOfId.find (target); found != indexOfId.end())
                 targets[found->second] = sectionParameters[found->second]->convertTo0to1 (value);

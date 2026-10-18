@@ -2116,7 +2116,7 @@ bool MixAnalyser::start (PluginBase& source, const MixAnalysis::Options& newOpti
     copy = MixAnalysis::prepareCopy (source);
     progress = 0.0f;
     running = true;
-    startThread (juce::Thread::Priority::low); // lågt: ljudtråden i värden ska inte få konkurrens
+    startThread (juce::Thread::Priority::background); // Windows THREAD_PRIORITY_IDLE: bara CPU som annars står oanvänd (fråga 3), DAW:en går före
     return true;
 }
 

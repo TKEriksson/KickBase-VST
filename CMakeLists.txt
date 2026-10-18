@@ -90,6 +90,7 @@ set(PLUGIN_SOURCES
     Source/Ui/MatrixPage.cpp
     Source/Ui/EnvPage.cpp
     Source/Ui/SettingsPage.cpp
+    Source/Ui/OptimizationsPanel.cpp
     Source/Ui/SpectrumPage.cpp
     Source/Ui/LogoPainter.cpp
     Source/Core/WavetablePack.cpp

@@ -158,3 +158,19 @@ Skärmbilder av alla flikar med 1, 3 och 10 instrument, och av Kickbase FX. Allt
 | **MyOwnFruit → Kickbase** | CMake-projektet och målen (`Kickbase_VST3`, `KickbaseFX_VST3`, `Kickbase_Standalone`, `KickbaseTests`, `KickbaseTool.exe`), `build.bat`, `install.ps1` (städningen av gamla `MyOwnFruit.vst3` i FL:s mapp är kvar), README, DESIGN, kommentarer, `FruitLookAndFeel` → `KickbaseLookAndFeel`. **Plugin-identiteten är orörd:** i JUCE 8.0.15 räknas VST3-klassens id ur `PLUGIN_MANUFACTURER_CODE` och `PLUGIN_CODE` ([juce_VST3ModuleInfo.h:54-62](../../build/RelWithDebInfo/_deps/juce-src/modules/juce_audio_plugin_client/VST3/juce_VST3ModuleInfo.h), `JUCE_VST3_CAN_REPLACE_VST2=0`), inte ur målets namn; `BUNDLE_ID` står kvar som `com.tobiaseriksson.myownfruit(fx)`. Bevis: `moduleinfo.json` (klass-id:na) är identisk före och efter, och `KickbaseHostTest <vst3> state save` med det gamla bygget följt av `state load` med det nya ger samma id och ett tillstånd som sparas byte för byte identiskt (båda pluginsen). | rättad 8f5a670 |
 | Mappen och GitHub-repot | Kan inte bytas inifrån en session. | fråga 8 |
 | Stora filer (`PluginBase.cpp`, `Modules.cpp`, `Tool.cpp`) | Inte uppdelade: det skulle ge en stor diff utan att ändra något, och krocka med annat arbete på `dev`. | föreslagen (vid tillfälle) |
+
+## 6. Efter dina svar (18 okt)
+
+Tillagt efter svaren i [questions-for-tobias.md](questions-for-tobias.md); inget ovan är ändrat.
+
+| Fråga | Vad | Status |
+|---|---|---|
+| 7 | De sex gamla filerna i repots rot är borttagna (de var aldrig incheckade), `createVst.bat` är incheckad. | gjort 97681d1 |
+| 4 | Sidechain-fabriksljudens `duckAmount` sätts nu på alla instruments DUCK ([Presets.cpp](../../Source/Core/Presets.cpp), `applyFactory`). `persisttest`: Classic Pump ger 0,9 på alla tio, Follow Kick standarddjupet. | gjort |
+| 3 | Analysen (ANALYSE och AI:ns `analyse_mix`) körs med `Thread::Priority::background`, som JUCE 8.0.15 översätter till Windows `THREAD_PRIORITY_IDLE` ([juce_ThreadPriorities_native.h:90](../../build/RelWithDebInfo/_deps/juce-src/modules/juce_core/native/juce_ThreadPriorities_native.h)): den får bara CPU som annars står oanvänd (förut `low` = `THREAD_PRIORITY_LOWEST`). Rapporterna är desamma; den tar längre tid om datorn är upptagen. | gjort |
+| 2 | **SETTINGS > OPTIMIZATIONS** (knappen i WINDOW SIZE-rutan, där REDUCE ANIMATIONS satt): GLOBAL (REDUCE ANIMATIONS, halverar allt) och en rad per vy med tydligt namn: ANALYZER (bildtakt, analyser/s, FILLED), SIDECHAIN, MASTER: maximizer, SOUNDSTAGE, EFFECTS (bildtakt, FILLED), MASTER: mixer meters, TOP BAR, EVERYTHING ELSE. Fem steg: 5/10/20/30/40 bilder/s (analyser: 4/8/15/30/40). Standard: 30 bilder/s som förut, ANALYZER 20; analyser 15 som förut. SPEED på ANALYZER-fliken är samma inställning som analyser/s och sparas nu. Ändringar slår igenom direkt i alla öppna fönster (ny [VisualTimer.h](../../Source/Ui/VisualTimer.h)), också REDUCE ANIMATIONS, som förut krävde att fönstret öppnades igen. | gjort |
+
+Mätt med `tool uiprofile 7 heavy 10 8` (10 tunga instrument, ANALYZER-spektrumet på, meddelandetråden, samma tillfälle): 30 bilder/s
+42 % av en kärna, 20 bilder/s (nya standarden) 40 %, 20 utan fyllning 35 %, 5 bilder/s 27 %, 40 bilder/s 47 %; spektrumet av 24 %.
+Spektrumets egen kostnad blir alltså ~16 procentenheter i stället för ~18, ~11 utan fyllning och ~3 vid 5 bilder/s.
+`KB_SPECTRUM_FPS` och `KB_SPECTRUM_FILL` ställer in det för mätningen (i en tillfällig inställningsfil).

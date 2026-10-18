@@ -1,5 +1,7 @@
 #pragma once
 
+#include "VisualTimer.h"
+
 #include "../Core/PluginBase.h"
 #include "Components.h"
 #include "Cursors.h"
@@ -8,7 +10,7 @@
 // PITCH visar tonhöjdens svep (noterna märkta med ton och Hz), AMP volymen. Dra noder, dubbel-
 // klicka för att lägga till, högerklicka för att ta bort och dra i romben mitt på ett segment
 // för att böja det. Den sista noden bestämmer kickens längd.
-class KickDisplay : public juce::Component, public juce::SettableTooltipClient, private juce::Timer
+class KickDisplay : public juce::Component, public juce::SettableTooltipClient, private VisualTimer
 {
 public:
     explicit KickDisplay (PluginBase& processor);

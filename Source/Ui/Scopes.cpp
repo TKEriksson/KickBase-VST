@@ -13,7 +13,7 @@ ScopeView::ScopeView (PluginBase& p, std::vector<Trace> tracesIn, Mode modeIn)
     : processor (p), traces (std::move (tracesIn)), mode (modeIn)
 {
     data.resize (traces.size());
-    startTimerHz (Settings::animationHz (30));
+    startVisualTimer (Settings::Visual::other, 30);
 }
 
 double ScopeView::windowSeconds() const
@@ -26,6 +26,7 @@ double ScopeView::windowSeconds() const
 
 void ScopeView::timerCallback()
 {
+    followVisualRate();
     if (! isShowing())
         return;
 
@@ -86,8 +87,11 @@ void ScopeView::paint (juce::Graphics& g)
             }
             path.lineTo (area.getRight(), area.getY());
             path.closeSubPath();
-            g.setColour (traces[t].colour.withAlpha (0.45f));
-            g.fillPath (path);
+            if (visualFilled())
+            {
+                g.setColour (traces[t].colour.withAlpha (0.45f));
+                g.fillPath (path);
+            }
             g.setColour (traces[t].colour);
             g.strokePath (path, juce::PathStrokeType (1.2f));
         }
@@ -141,9 +145,12 @@ void ScopeView::paint (juce::Graphics& g)
             top.closeSubPath();
             bottom.lineTo (area.getRight(), area.getBottom());
             bottom.closeSubPath();
-            g.setColour (traces[t].colour.withAlpha (0.16f));
-            g.fillPath (top);
-            g.fillPath (bottom);
+            if (visualFilled())
+            {
+                g.setColour (traces[t].colour.withAlpha (0.16f));
+                g.fillPath (top);
+                g.fillPath (bottom);
+            }
             g.setColour (traces[t].colour.withAlpha (0.95f));
             g.strokePath (top, juce::PathStrokeType (1.6f));
             g.strokePath (bottom, juce::PathStrokeType (1.6f));
@@ -173,7 +180,7 @@ void ScopeView::paint (juce::Graphics& g)
             path.lineTo (*it);
         path.closeSubPath();
 
-        if (traces[t].filled)
+        if (traces[t].filled && visualFilled()) // (utan fyllning: bara kanten, med samma starka färg)
         {
             g.setColour (traces[t].colour.withAlpha (0.55f));
             g.fillPath (path);
@@ -213,7 +220,7 @@ SpectrumView::SpectrumView (PluginBase& p) : processor (p)
 
     setTooltip ("SPECTRUM - Which frequencies play and how loud, live: the kick, the instruments and the master output. "
                 "The thin line is the master's peak hold.");
-    startTimerHz (Settings::animationHz (30));
+    startVisualTimer (Settings::Visual::soundstage, 30);
 }
 
 void SpectrumView::analyse (Band& band)
@@ -238,6 +245,7 @@ void SpectrumView::analyse (Band& band)
 
 void SpectrumView::timerCallback()
 {
+    followVisualRate();
     if (! isShowing())
         return;
 
@@ -311,6 +319,12 @@ void SpectrumView::paint (juce::Graphics& g)
 
     for (size_t i = 0; i + 1 < bands.size(); ++i)
     {
+        if (! visualFilled())
+        {
+            g.setColour (bands[i].colour);
+            g.strokePath (pathFor (bands[i].level, false), juce::PathStrokeType (1.2f));
+            continue;
+        }
         const auto path = pathFor (bands[i].level, true);
         g.setColour (bands[i].colour.withAlpha (0.35f));
         g.fillPath (path);
@@ -339,11 +353,12 @@ StereoView::StereoView (PluginBase& p) : processor (p)
 {
     setTooltip ("STEREO - The stereo image of the output. A vertical line is mono, a wide ball is wide stereo, horizontal means "
                 "out of phase (bad in mono). The bar shows correlation: +1 = mono, 0 = wide, -1 = out of phase.");
-    startTimerHz (Settings::animationHz (30));
+    startVisualTimer (Settings::Visual::soundstage, 30);
 }
 
 void StereoView::timerCallback()
 {
+    followVisualRate();
     if (! isShowing())
         return;
 

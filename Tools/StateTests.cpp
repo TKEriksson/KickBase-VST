@@ -187,6 +187,21 @@ int persistTest()
                "ett fabriks-instrumentljud sätter cutoff en gång (" + juce::String ((int) recorder.values.size()) + " ändringar)");
     }
 
+    // 8. Sidechain-fabriksljuden sätter djupet (DUCK) på alla instrument (fråga 4), och "Follow Kick" ger standarddjupet.
+    {
+        auto processor = std::make_unique<InstrumentProcessor>();
+        auto duck = [&processor] (int instrument) { return processor->apvts.getRawParameterValue (ParamID::bass (instrument, InstrumentField::duck))->load(); };
+        processor->loadFactoryPreset (Presets::Section::sidechain, 1); // Classic Pump: 0,9
+        auto all = true;
+        for (int instrument = 0; instrument < ParamID::numInstrumentLayers; ++instrument)
+            all = all && std::abs (duck (instrument) - 0.9f) < 1.0e-4f;
+        check (all, "Classic Pump sätter DUCK 0,9 på alla tio instrument");
+        processor->loadFactoryPreset (Presets::Section::sidechain, 0); // Follow Kick
+        check (std::abs (duck (0) - processor->apvts.getParameter (ParamID::bass (0, InstrumentField::duck))->convertFrom0to1 (
+                   processor->apvts.getParameter (ParamID::bass (0, InstrumentField::duck))->getDefaultValue())) < 1.0e-4f,
+               "Follow Kick ger standarddjupet");
+    }
+
     std::puts (failed ? "FEL: sparandetestet misslyckades" : "Sparandetestet gick igenom");
     return failed ? 1 : 0;
 }

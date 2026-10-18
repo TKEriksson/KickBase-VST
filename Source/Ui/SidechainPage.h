@@ -1,5 +1,7 @@
 #pragma once
 
+#include "VisualTimer.h"
+
 #include "../Core/PluginBase.h"
 #include "Components.h"
 #include "MixerPage.h"
@@ -9,7 +11,7 @@
 // Redigerar duckkurvan. Visar basens volym efter en kick: överst = full volym, nederst = tyst.
 // Dra punkter, dubbelklicka för att lägga till, högerklicka för att ta bort, och dra i
 // segmentets mitt (den lilla romben) för att böja det.
-class DuckCurveView : public juce::Component, private juce::Timer
+class DuckCurveView : public juce::Component, private VisualTimer
 {
 public:
     explicit DuckCurveView (PluginBase& processor);
@@ -45,7 +47,7 @@ private:
 };
 
 // En rad i listan över hur djupt kicken ducker varje instrument: namn, ett reglage och en liten mätare som visar hur mycket som ducks nu.
-class DuckRow : public juce::Component, private juce::Timer
+class DuckRow : public juce::Component, private VisualTimer
 {
 public:
     DuckRow (PluginBase& processor, int layer);

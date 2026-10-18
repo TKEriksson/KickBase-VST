@@ -1,5 +1,7 @@
 #pragma once
 
+#include "VisualTimer.h"
+
 #include <juce_dsp/juce_dsp.h>
 #include "../Core/PluginBase.h"
 #include "Components.h"
@@ -9,7 +11,7 @@
 // ljudet som når EQ:n, så att man ser vilka frekvenser som behöver fixas. Noderna I-IV är band
 // (hylla, klocka, klocka, hylla), HP/LP är högpass och lågpass. Skrolla på en klocka för Q;
 // dubbelklicka på en nod för att nollställa den.
-class EqView : public juce::Component, public juce::SettableTooltipClient, private juce::Timer
+class EqView : public juce::Component, public juce::SettableTooltipClient, private VisualTimer
 {
 public:
     explicit EqView (PluginBase& processor);

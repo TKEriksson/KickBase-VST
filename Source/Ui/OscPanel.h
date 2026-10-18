@@ -1,12 +1,14 @@
 #pragma once
 
+#include "VisualTimer.h"
+
 #include "../Core/PluginBase.h"
 #include "Components.h"
 #include "Cursors.h"
 
 // Bilden av en wavetable, som i Serum: alla vågformer staplade bakåt i en svag 3D-vy, och den
 // som spelas nu (positionen, med LFO och warp) ritad framför i lagrets färg.
-class WavetableView : public juce::Component, public juce::SettableTooltipClient, private juce::Timer
+class WavetableView : public juce::Component, public juce::SettableTooltipClient, private VisualTimer
 {
 public:
     WavetableView (PluginBase& processor, int layer, int osc, juce::Colour accent);

@@ -2,7 +2,7 @@
 
 LfoDisplay::LfoDisplay (PluginBase& p, int lfoIndex) : processor (p), index (lfoIndex)
 {
-    startTimerHz (Settings::animationHz (30));
+    startVisualTimer (Settings::Visual::other, 30);
 }
 
 bool LfoDisplay::isCustom() const
@@ -12,6 +12,7 @@ bool LfoDisplay::isCustom() const
 
 void LfoDisplay::timerCallback()
 {
+    followVisualRate();
     repaint();
 }
 

@@ -115,7 +115,7 @@ StepSequencer::StepSequencer (PluginBase& p, juce::StringArray names, std::vecto
     addChildComponent (previousPageButton);
     addChildComponent (nextPageButton);
 
-    startTimerHz (Settings::animationHz (30));
+    startVisualTimer (Settings::Visual::other, 30);
 }
 
 void StepSequencer::setPage (int newPage)
@@ -326,6 +326,7 @@ void StepSequencer::refreshSwitches()
 
 void StepSequencer::timerCallback()
 {
+    followVisualRate();
     // Rita om bara när något synligt ändrats: markörerna, mönstret, mönsterlängden eller rutnäten.
     auto changed = false;
     auto update = [&changed] (int& last, int now) { if (last != now) { last = now; changed = true; } };
