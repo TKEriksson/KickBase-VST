@@ -1,6 +1,6 @@
 # Fas A: rapport (gren `content-a`, från `content-0`)
 
-Skriven av Sonnet 19 okt 2026 (granskad av Opus steg för steg). Planen: [content-plan.md](content-plan.md), reglerna: [ENGINEERING.md](ENGINEERING.md).
+Skriven av Sonnet 18 okt 2026 (granskad av Opus steg för steg). Planen: [content-plan.md](content-plan.md), reglerna: [ENGINEERING.md](ENGINEERING.md).
 Fas A ger ett bibliotek med fria ljud, kickens två vyer SYNTH | SAMPLE och ett verktyg för att hämta CC0-ljud från Freesound.
 **Inget ljud har ändrats:** `rendersig`, `rendersigreal` och `rendersigwide` är identiska med baslinjerna efter varje steg. Ingen ny parameter har lagts till.
 
@@ -15,7 +15,7 @@ Fas A ger ett bibliotek med fria ljud, kickens två vyer SYNTH | SAMPLE och ett 
 | 4 | e0b73b5 | Kickens SYNTH \| SAMPLE, biblioteksvyn, LIBRARY-raden i SETTINGS, `installAll.bat` |
 | 5 | db251bb | `tool freesound`, AI-verktygen `list_library` och `load_library_kick`, `Item::url`, PERSONAL-raden |
 
-Diff mot `content-0`: 28 filer, +3 514 / −24. Nya filer: `Source/Core/Library{Manifest,Import,Index}.{h,cpp}`, `Source/Ui/KickLibraryPanel.{h,cpp}`,
+Diff mot `content-0`: 29 filer, +3 593 / −24 (med den här rapporten). Nya filer: `Source/Core/Library{Manifest,Import,Index}.{h,cpp}`, `Source/Ui/KickLibraryPanel.{h,cpp}`,
 `Tools/LibraryTests.cpp`, `Tools/Freesound.cpp`, `installAll.bat`.
 
 ## 2. Besluten a–i (Opus OK till Sonnets spec) och hur de uppfyllts
@@ -60,9 +60,9 @@ Diff mot `content-0`: 28 filer, +3 514 / −24. Nya filer: `Source/Core/Library{
 - **En pixel:** (514,177), en nivå mörkare (29,31,45 → 28,30,44) i alla INSTRUMENT-bilder, kanten av SEMI-rattens halo. Deterministisk. Troligen en cachad rattgradients avrundning som beror på vilken ratt som byggs först. Accepterad av Opus.
 - **Två bilder kan skilja mellan körningar:** `inst_n10_tab23` (ENV, en liten röd klippt text vid sidfoten) och AI-fliken (`inst_upper3_tab30/38`, ca 175 px). De skilde redan mellan 54bc067 och före UI-steget. Står i ENGINEERING.
 - **mp3 stöds inte** i bygget (`JUCE_USE_MP3AUDIOFORMAT` är av): sådana filer rapporteras som "not a readable audio file". Står i hjälptexten för `importlibrary`.
-- **OAuth2 är provat på riktigt av Tobias** (19 okt): `tool freesound auth` och `code <kod>` gav en token, och `tool freesound fetch 128623 128622 Kicks` hämtade två CC0-kickar (ASBS, Pure Psytrance Kick 018 och 019) till `Library\Kicks\Freesound CC0` (2 ljud, 0 fel, `librarycheck`: ok, CC0-1.0).
+- **OAuth2 är provat på riktigt av Tobias** (18 okt): `tool freesound auth` och `code <kod>` gav en token, och `tool freesound fetch 128623 128622 Kicks` hämtade två CC0-kickar (ASBS, Pure Psytrance Kick 018 och 019) till `Library\Kicks\Freesound CC0` (2 ljud, 0 fel, `librarycheck`: ok, CC0-1.0).
   Resten av flödet (förnyelse av token, 429) är bara testat mot mock-servern.
-- **Redirect-adressen** i `.env-local` och på Freesound-appen börjar med `http://`. OAuth2 förutsätter TLS för redirect-adressen: byt till `https://` om sajten har det (bara text, ingen kodändring).
+- **Redirect-adressen** är `https://tkdev.se/kickbase/oath2` (sajten svarar 200 med HSTS, och `http://` svarar 308 till `https://`). OAuth2 förutsätter TLS för den. Tobias bytte till https i `.env-local` och i Freesound-appen samtidigt: `redirect_uri` måste vara exakt densamma på båda ställena och i både authorize och tokenbytet. Koden innehåller inte adressen (den läses ur `FREESOUND_OATH_REDIRECT`).
 - **`ARTCRAFT_API`** ligger fortfarande i git-historiken (commit cb45841 på origin) och ska roteras innan repot blir publikt (regel 10).
 - **Biblioteket är tomt** tills Tobias lägger paket i `Dokument\Kickbase\Library` (eller hämtar med `tool freesound fetch`). Inget ljudinnehåll ligger i repot.
 - **Direkt faltning** i antialiasfiltret: en 5 minuters 96 kHz-fil tar några sekunder att importera. Acceptabelt för ett offlineverktyg.
