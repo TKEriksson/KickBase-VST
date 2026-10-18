@@ -198,4 +198,8 @@ private:
     std::unordered_map<std::string_view, int> lookup; // parameter-ID -> plats i entries (nycklarna pekar in i entries; ljudtråden slår upp utan att allokera)
     std::array<std::array<int, (size_t) InstrumentField::count>, ParamID::numInstrumentLayers> instrumentEntries {}; // index i entries, -1 = saknas
     const Modulator* modulator = nullptr;
+
+    // get() slår annars upp ID:t som text (hash + jämförelse) varje gång; det gör ljudtråden var 32:a sample.
+    static constexpr int cacheSize = 1024, cacheProbes = 8;
+    mutable std::array<std::atomic<std::uint64_t>, cacheSize> idCache {};
 };

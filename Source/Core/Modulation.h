@@ -10,12 +10,15 @@
 //
 // Som i Massive och Serum: en källa dras till valfri ratt (eller sätts i matrisen), och en koppling (route) säger hur mycket den
 // rör ratten. Moduleringen läggs på i parameterns normaliserade skala (0..1), så att +20 % betyder 20 % av rattens vandring.
-// Den räknas en gång per ljudblock.
+// Den räknas var 32:a sample (PluginBase::processInControlChunks), oavsett DAW:ens buffertstorlek.
 //
 // Källor (numren används i sparade projekt): 0-2 LFO 1-3, 3-6 makro 1-4 (rattar man vrider själv), sedan fyra per instrument:
 // ENV 2, ENV 3, VELOCITY (senaste tonens) och RANDOM (ett slumptal per ton).
 namespace Modulation
 {
+    // Kontrolltakten: moduleringen (och det som räknas per fönster, t.ex. auto-filtrets svep) uppdateras på ett rutnät av fönster om
+    // 32 samples räknat från prepareToPlay, oavsett hur DAW:en delar blocken (PluginBase::processInControlChunks).
+    constexpr int controlInterval = 32;
     constexpr int numLfos = 3;
     constexpr int numMacros = 4;
     constexpr int instrumentSources = 4;
@@ -83,7 +86,7 @@ class Modulator
 public:
     Modulator (juce::AudioProcessorValueTreeState& apvts, const ModRoutes& routes);
 
-    // Anropas en gång per block med positionen i fjärdedelar (från TransportClock) och tempot (för LFO:er som går i Hz).
+    // Anropas en gång per bit om 32 samples med positionen i fjärdedelar (från TransportClock) och tempot (för LFO:er som går i Hz).
     void update (double ppq, double bpm = 120.0);
 
     // LFO:ernas egna kurvor (formen Custom): x = fas 0..1, y = 0..1 (uppåt = positivt). Ägs av processorn.
@@ -97,6 +100,10 @@ public:
     float applyRaw (const std::atomic<float>* raw, float value) const;
 
     int indexOf (const juce::String& paramID) const;
+
+    // Moduleras något just nu (någon koppling med en påslagen källa, från senaste update)?
+    bool isActive() const { return anyActive; }
+    const std::vector<int>& touchedParameters() const { return touched; } // parametrarna (processorns index) som moduleras nu
 
     // För gränssnittet: varje LFO:s fas och värde, och hur mycket varje parameter moduleras nu
     // (normaliserat, summan av alla kopplingar).

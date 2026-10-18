@@ -1,0 +1,6 @@
+heavy instr 10 @48k/512      8b586ef0d900998a peak 0.9661 rms 0.2664
+heavy instr 3 @44.1k/128     820b689d12e4ed82 peak 0.9661 rms 0.2436
+heavy instr 1 @96k/1024      c57831c160da74e0 peak 0.9661 rms 0.2160
+heavy instr 4 @48k/37        96bdbb939d7fa224 peak 0.9661 rms 0.2413
+heavy fx @48k/512            32f867e32e4553e8 peak 0.9661 rms 0.2114
+heavy fx @44.1k/64           8351baeb46687930 peak 0.9661 rms 0.2111

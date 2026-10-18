@@ -29,6 +29,7 @@ protected:
     std::unique_ptr<PluginBase> createOfflineCopy() const override { return std::make_unique<FxProcessor>(); }
 
 private:
+    void processChunk (juce::AudioBuffer<float>& buffer); // en bit av blocket (se PluginBase::processInControlChunks)
     void renderSamples (int startSample, int endSample);
     void handleEvent (const StepEvent& event);
     void ensureScratchSize (int numSamples);

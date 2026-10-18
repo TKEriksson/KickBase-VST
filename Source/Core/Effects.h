@@ -132,7 +132,7 @@ public:
 
     // Läser parametrarna. Anropas en gång per block, före process. `ppq` är positionen i
     // fjärdedelar vid blockets början (för de tempo-synkade effekterna).
-    void update (double bpm, double ppq);
+    void update (double bpm, double ppq, int controlPhase = 0);
 
     // LFO-modulering av effekternas rattar (kan vara nullptr).
     void setModulator (const Modulator* modulator);
@@ -168,7 +168,7 @@ public:
     void setSources (const SourceSignals& sources);
 
     // Börja ett block: töm kanalernas ingångar och läs parametrarna.
-    void beginBlock (int numSamples, double bpm, double ppq);
+    void beginBlock (int numSamples, double bpm, double ppq, int controlPhase = 0); // controlPhase: buffertens början i sitt 32-fönster
 
     // Har kanalen några påslagna effekter? (Annars skickas inget dit: ljudet går orört vidare.)
     bool isActive (int channel) const;

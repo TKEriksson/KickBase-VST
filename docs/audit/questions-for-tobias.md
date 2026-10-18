@@ -49,7 +49,7 @@ som inte syns (tysta källor hoppar över FFT:n, inga kopior av kurvorna varje b
 
 **Om du inte svarar:** inget ändras. **Status:** fråga.
 
---- Svar: A. Man kanske ska kunna ställa in det till ännnu lägre i inställingar! Det finns ju redan "visa mindre animeringar", det här är ju liknande optimering (så gör en kategori: Optimeringar). Man kanske ska kunna välja 5 olika steg, där 1 är riktigt lågt typ 5 bilder per sekund upp till väldigt snabb typ 40. Så 1: 5, 2: 10, 3: 20, 4: 30, 5: 40 bilder per sek. Med kryssruta för om kurvorna ska ha fyllning (varna att det är mycket dyrare).
+--- Svar: A. Man kanske ska kunna ställa in det till ännnu lägre i inställingar! Det finns ju redan "visa mindre animeringar", det här är ju liknande optimering (så gör en kategori: Optimeringar). Man kanske ska kunna välja 5 olika steg, där 1 är riktigt lågt typ 5 bilder per sekund upp till väldigt snabb typ 40. Så 1: 5, 2: 10, 3: 20, 4: 30, 5: 40 bilder per sek. Med kryssruta för om kurvorna ska ha fyllning (varna att det är mycket dyrare). Man ska också kunna anpassa hur många analyser per sekund som ska göras
 
 ## 3. ANALYSE (rapporten) tar mycket CPU medan den körs
 

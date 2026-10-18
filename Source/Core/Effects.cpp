@@ -467,6 +467,7 @@ namespace
         double sampleRate = 44100.0;
         double bpm = 140.0;
         double ppq = 0.0; // position i fjärdedelar vid buffertens första sample
+        int controlPhase = 0; // hur långt in i sitt kontrollfönster (Modulation::controlInterval) buffertens första sample ligger
         const SourceSignals* sources = nullptr; // kickens och instrumentens ljud (för SIDECHAIN)
 
         double samplesPerQuarter() const { return sampleRate * 60.0 / std::max (1.0, bpm); }
@@ -492,9 +493,11 @@ namespace
 
         void reset() { first.reset(); second.reset(); fresh = true; }
 
-        // cutoffAt (start, end) ger cutoff för en bit av blocket (Auto Filter sveper den).
+        // cutoffAt (start, newWindow) ger cutoff för en bit av blocket (Auto Filter sveper den). Bitarna följer kontrolltaktens
+        // 32-rutnät (controlPhase = buffertens början i sitt fönster), så att en bit som DAW:ens block delat får samma cutoff som ett
+        // helt fönster: newWindow är sant när biten börjar ett nytt fönster.
         template <typename CutoffAt>
-        void run (AudioBuffer<float>& buffer, int numSamples, int type, float reso, bool steep, float wet, double sampleRate, CutoffAt cutoffAt)
+        void run (AudioBuffer<float>& buffer, int numSamples, int type, float reso, bool steep, float wet, double sampleRate, int controlPhase, CutoffAt cutoffAt)
         {
             const auto filterType = (dsp::StateVariableTPTFilterType) jlimit (0, 2, type);
             const auto q = 0.5f * std::pow (20.0f, reso);
@@ -503,10 +506,11 @@ namespace
             first.setResonance (steep ? 0.707f : q);
             second.setResonance (q);
 
-            for (int start = 0; start < numSamples; start += chunk)
+            for (int start = 0; start < numSamples;)
             {
-                const auto end = std::min (numSamples, start + chunk);
-                const auto hz = jlimit (20.0f, (float) sampleRate * 0.45f, cutoffAt (start, end));
+                const auto phase = (controlPhase + start) % chunk;
+                const auto end = std::min (numSamples, start + chunk - phase);
+                const auto hz = jlimit (20.0f, (float) sampleRate * 0.45f, cutoffAt (start, phase == 0));
                 first.setCutoffFrequency (hz);
                 second.setCutoffFrequency (hz);
 
@@ -521,6 +525,7 @@ namespace
                         data[i] += (y - data[i]) * wet;
                     }
                 }
+                start = end;
             }
         }
 
@@ -530,9 +535,18 @@ namespace
                 smoothedCutoff.setCurrentAndTargetValue (k[1]);
             fresh = false;
             smoothedCutoff.setTargetValue (k[1]);
-            run (buffer, numSamples, (int) k[0], k[2], k[3] >= 0.5f, k[4], context.sampleRate,
-                 [this] (int start, int end) { return smoothedCutoff.skip (end - start); });
+            // Utjämningen stegas ett helt fönster i taget när ett fönster börjar; en bit mitt i ett fönster använder fönstrets värde
+            // (förut stegades den med bitens längd: en bit på 5 + en på 27 gav andra värden än en på 32).
+            run (buffer, numSamples, (int) k[0], k[2], k[3] >= 0.5f, k[4], context.sampleRate, context.controlPhase,
+                 [this] (int, bool newWindow)
+                 {
+                     if (newWindow)
+                         windowCutoff = smoothedCutoff.skip (chunk);
+                     return windowCutoff;
+                 });
         }
+
+        float windowCutoff = 1000.0f; // utjämnad cutoff för fönstret som pågår
     };
 
     struct AutoFilterFx
@@ -549,9 +563,13 @@ namespace
             const auto period = Effects::syncInQuarters ((int) k[3]);
             const auto cutoff = k[1], depth = k[4];
 
-            filter.run (buffer, numSamples, (int) k[0], k[2], true, k[5], context.sampleRate, [&] (int start, int end)
+            filter.run (buffer, numSamples, (int) k[0], k[2], true, k[5], context.sampleRate, context.controlPhase, [&] (int start, bool)
             {
-                const auto ppq = context.ppq + (start + end) * 0.5 * quartersPerSample;
+                // Svepet räknas i mitten av kontrollfönstret som biten ligger i (inte bitens egen mitt): en bit som DAW:ens block delat
+                // mitt i ett fönster får samma cutoff som ett helt fönster, så ljudet beror inte på blockstorleken.
+                constexpr int window = Modulation::controlInterval;
+                const auto windowStart = ((start + context.controlPhase) / window) * window - context.controlPhase;
+                const auto ppq = context.ppq + (windowStart + window * 0.5) * quartersPerSample;
                 const auto phase = ppq / period - std::floor (ppq / period);
                 const auto triangle = (float) (phase < 0.5 ? phase * 4.0 - 1.0 : 3.0 - phase * 4.0); // -1..1
                 return cutoff * std::exp2 (0.5f * depth * triangle);
@@ -1088,6 +1106,8 @@ struct EffectChain::Impl
 
         EffectType current = EffectType::off;
         Values values {};
+        std::array<float, knobsPerSlot> lastNormalised {}; // värdena ovan räknades från dessa (NaN = inte räknat än)
+        EffectType valuesType = EffectType::off;
 
         FilterFx filter;
         DistortionFx distortion;
@@ -1211,10 +1231,11 @@ void EffectChain::setSources (const SourceSignals* sources)
     impl->context.sources = sources;
 }
 
-void EffectChain::update (double bpm, double ppq)
+void EffectChain::update (double bpm, double ppq, int controlPhase)
 {
     impl->context.bpm = bpm;
     impl->context.ppq = ppq;
+    impl->context.controlPhase = controlPhase;
 
     for (auto& slot : impl->slots)
     {
@@ -1227,12 +1248,21 @@ void EffectChain::update (double bpm, double ppq)
         }
 
         const auto& list = Effects::knobs (type);
+        if (type != slot.valuesType)
+        {
+            slot.valuesType = type;
+            slot.lastNormalised.fill (std::numeric_limits<float>::quiet_NaN());
+        }
         for (size_t k = 0; k < list.size() && k < (size_t) knobsPerSlot; ++k)
         {
             auto normalised = slot.knobs[k]->load();
             if (impl->modulator != nullptr)
                 normalised = impl->modulator->applyRaw (slot.knobs[k], normalised); // LFO:er dragna till ratten
-            slot.values[k] = list[k].fromNormalised (normalised);
+            if (normalised != slot.lastNormalised[k]) // (samma tal som förut: omräkningen sparas bara när inget ändrats)
+            {
+                slot.lastNormalised[k] = normalised;
+                slot.values[k] = list[k].fromNormalised (normalised);
+            }
         }
     }
 }
@@ -1255,6 +1285,7 @@ void EffectChain::process (AudioBuffer<float>& buffer, int numSamples)
 
         auto context = impl->context;
         context.ppq += start / context.samplesPerQuarter();
+        context.controlPhase = (context.controlPhase + start) % Modulation::controlInterval;
 
         for (auto& slot : impl->slots)
             if (slot.isActive())
@@ -1423,7 +1454,7 @@ void EffectRack::setModulator (const Modulator* modulator)
         chain->setModulator (modulator);
 }
 
-void EffectRack::beginBlock (int numSamples, double bpm, double ppq)
+void EffectRack::beginBlock (int numSamples, double bpm, double ppq, int controlPhase)
 {
     for (int ch = 0; ch < numEffectChannels; ++ch)
     {
@@ -1433,7 +1464,7 @@ void EffectRack::beginBlock (int numSamples, double bpm, double ppq)
         buffer.clear (0, numSamples);
 
         auto& chain = *impl->chains[(size_t) ch];
-        chain.update (bpm, ppq);
+        chain.update (bpm, ppq, controlPhase);
         impl->active[(size_t) ch] = true; // en neutral kanal släpper igenom ljudet orört
         impl->sent[(size_t) ch] = false;
 

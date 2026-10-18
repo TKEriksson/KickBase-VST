@@ -337,14 +337,47 @@ protected:
     // Anropas i prepareToPlay i underklasserna.
     void prepareBase (double sampleRate);
 
-    // Läser DAW:ens position. Får bara anropas från processBlock.
+    // Läser DAW:ens position. Får bara anropas från processBlock (i en bit: positionen vid bitens början).
     juce::Optional<juce::AudioPlayHead::PositionInfo> getHostPosition() const;
+
+    // Kontrolltakten (fråga 1 i granskningen): ett DAW-block delas i bitar som börjar på en multipel av 32 samples, räknat från
+    // prepareToPlay, och hela blockbehandlingen (modulering, parametrar, effekter, master) körs per bit. Då blir ljudet detsamma
+    // vilken buffertstorlek DAW:en än använder (FL Studio byter den dessutom under spelningen), och LFO:er och ENV 2/3 rör sig var
+    // 32:a sample i stället för en gång per block. `process (bit, bitensMidi)` anropas för varje bit; MIDI-händelserna flyttas till bitens tid.
+    static constexpr int controlInterval = Modulation::controlInterval;
+    template <typename Process>
+    void processInControlChunks (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi, Process&& process)
+    {
+        const auto numSamples = buffer.getNumSamples();
+        blockPosition = readHostPosition();
+        for (int start = 0; start < numSamples;)
+        {
+            const auto length = std::min (numSamples - start, controlInterval - (int) (controlCounter % controlInterval));
+            juce::AudioBuffer<float> chunk (buffer.getArrayOfWritePointers(), buffer.getNumChannels(), start, length);
+            chunkMidi.clear();
+            chunkMidi.addEvents (midi, start, length, -start);
+            chunkOffset = start;
+            controlPhase = (int) (controlCounter % controlInterval);
+            process (chunk, chunkMidi);
+            controlCounter += length;
+            start += length;
+        }
+        chunkOffset = 0;
+        controlPhase = 0;
+    }
 
     // Skydd mot NaN och oändliga värden (ljudtråden): ett enda sådant värde fastnar annars för alltid i filtrens och effekternas tillstånd,
     // och pluginet blir tyst eller knastrar tills det laddas om. `allFinite` kollar ett block; hittas något töms blocket och underklassen
     // nollställer sitt DSP-tillstånd. `nonFiniteRecoveries` räknar hur ofta det hänt (för tester och felsökning).
     static bool allFinite (const juce::AudioBuffer<float>& buffer, int numSamples);
     static void replaceNonFinite (juce::AudioBuffer<float>& buffer, int numChannels, int numSamples); // icke-ändliga värden blir 0
+
+    juce::Optional<juce::AudioPlayHead::PositionInfo> readHostPosition() const;
+    juce::Optional<juce::AudioPlayHead::PositionInfo> blockPosition; // vid DAW-blockets början
+    int chunkOffset = 0;               // bitens början i DAW-blocket
+    int controlPhase = 0;              // hur långt in i sitt 32-fönster biten börjar (0 = på rutnätet: moduleringen uppdateras)
+    juce::int64 controlCounter = 0;    // samples sedan prepareToPlay (bitarnas gränser)
+    juce::MidiBuffer chunkMidi;        // bitens MIDI (plats reserveras i prepareBase)
 
     // Klicksamplingen som ljudtråden ska använda just nu (kan vara nullptr).
     const ClickSample* getActiveClickSample() const { return kickSample.active(); }

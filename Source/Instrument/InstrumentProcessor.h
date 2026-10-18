@@ -34,6 +34,15 @@ protected:
     std::unique_ptr<PluginBase> createOfflineCopy() const override { return std::make_unique<InstrumentProcessor>(); }
 
 private:
+    void processChunk (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi); // en bit av blocket (se PluginBase::processInControlChunks)
+    bool paramsReadWhileSoloing = false; // parametrarna lästes i förra biten medan en källa provlyssnades
+    bool blockParamsPending = true;      // ett nytt DAW-block har börjat: läs alla parametrar vid nästa 32-rutnätspunkt
+    juce::uint32 eventSequence = 0;      // löpnummer för schemalagda händelser (StepEvent::sequence)
+    void readLayerFields (int layer, int solo);
+    void readDuckLength();
+    void readModulatedParams(); // bara det som moduleras (bitar efter blockets första)
+    static constexpr int ownerNone = -1, ownerKick = 100;
+    std::vector<int> parameterOwner; // för varje parameter (processorns index): instrumentet 0-9, kicken, eller ingen
     struct Output
     {
         std::array<float*, 2> channels {};

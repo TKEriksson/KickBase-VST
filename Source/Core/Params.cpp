@@ -411,8 +411,35 @@ float ParamRefs::bass (int layer, InstrumentField field) const
 
 float ParamRefs::get (const char* paramID) const
 {
+    // Samma ID-sträng (samma adress) hittas i cachen; annars slås texten upp och läggs in på en tom plats.
+    const auto key = (std::uint64_t) reinterpret_cast<std::uintptr_t> (paramID);
+    const auto home = (int) (((key >> 3) * 0x9E3779B97F4A7C15ull) >> 54) & (cacheSize - 1);
+    auto freeSlot = -1;
+    if (key < (1ull << 48))
+    {
+        for (int probe = 0; probe < cacheProbes; ++probe)
+        {
+            const auto slot = (home + probe) & (cacheSize - 1);
+            const auto packed = idCache[(size_t) slot].load (std::memory_order_acquire);
+            if (packed == 0)
+            {
+                freeSlot = slot;
+                break;
+            }
+            if ((packed >> 16) == key)
+                return valueOf (entries[(size_t) (packed & 0xffff)]);
+        }
+    }
+
     if (const auto found = lookup.find (std::string_view (paramID)); found != lookup.end())
+    {
+        if (freeSlot >= 0 && found->second < 0x10000)
+        {
+            auto expected = std::uint64_t (0);
+            idCache[(size_t) freeSlot].compare_exchange_strong (expected, (key << 16) | (std::uint64_t) found->second, std::memory_order_release);
+        }
         return valueOf (entries[(size_t) found->second]);
+    }
 
     jassertfalse; // okänt parameter-ID
     return 0.0f;

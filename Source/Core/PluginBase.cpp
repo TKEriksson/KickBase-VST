@@ -110,6 +110,8 @@ void PluginBase::prepareBase (double sampleRate)
 {
     currentSampleRate = sampleRate;
     clock.prepare (sampleRate);
+    controlCounter = 0;
+    chunkMidi.ensureSize (8192); // (ljudtråden ska inte behöva allokera för bitarnas MIDI)
     kickSample.prepare (sampleRate);
     for (auto& slot : instrumentSamples)
         slot.prepare (sampleRate);
@@ -449,12 +451,43 @@ void PluginBase::setBridgeEnabled (bool enabled)
         bridge->stop();
 }
 
-juce::Optional<juce::AudioPlayHead::PositionInfo> PluginBase::getHostPosition() const
+juce::Optional<juce::AudioPlayHead::PositionInfo> PluginBase::readHostPosition() const
 {
     if (auto* hostPlayHead = getPlayHead())
         return hostPlayHead->getPosition();
 
     return juce::nullopt;
+}
+
+juce::Optional<juce::AudioPlayHead::PositionInfo> PluginBase::getHostPosition() const
+{
+    // Positionen vid DAW-blockets början, framflyttad till biten som spelas nu (samma tempo hela blocket, som DAW:en anger).
+    auto position = blockPosition;
+    if (! position.hasValue() || chunkOffset == 0)
+        return position;
+
+    const auto rate = currentSampleRate > 0.0 ? currentSampleRate : 44100.0;
+    if (const auto samples = position->getTimeInSamples(); samples.hasValue())
+        position->setTimeInSamples (*samples + chunkOffset);
+    if (const auto seconds = position->getTimeInSeconds(); seconds.hasValue())
+        position->setTimeInSeconds (*seconds + chunkOffset / rate);
+    const auto bpm = position->getBpm();
+    if (const auto ppq = position->getPpqPosition(); ppq.hasValue() && bpm.hasValue() && *bpm > 0.0)
+    {
+        const auto movedPpq = *ppq + chunkOffset * *bpm / 60.0 / rate;
+        position->setPpqPosition (movedPpq);
+        // Passerar biten en taktgräns flyttas taktens början med.
+        const auto sig = position->getTimeSignature();
+        if (const auto barStart = position->getPpqPositionOfLastBarStart(); barStart.hasValue() && sig.hasValue() && sig->numerator > 0 && sig->denominator > 0)
+        {
+            const auto barLength = sig->numerator * 4.0 / sig->denominator;
+            auto start = *barStart;
+            while (movedPpq >= start + barLength - 1.0e-9)
+                start += barLength;
+            position->setPpqPositionOfLastBarStart (start);
+        }
+    }
+    return position;
 }
 
 bool PluginBase::allFinite (const juce::AudioBuffer<float>& buffer, int numSamples)

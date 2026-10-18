@@ -53,6 +53,20 @@ InstrumentProcessor::InstrumentProcessor()
     // Ett nytt instrument börjar som Init: tre lager som låter bra ihop (ett sparat projekt skriver över det).
     for (int layer = 0; layer < numLayers; ++layer)
         layerEqs.emplace_back (apvts, SourceEq::prefixFor (1 + layer));
+
+    // Vem varje parameter hör till (för readModulatedParams): ett instrument (bassN...), kicken (kick...) eller inget av dem.
+    for (auto* parameter : getParameters())
+    {
+        auto owner = ownerNone;
+        if (auto* withId = dynamic_cast<juce::AudioProcessorParameterWithID*> (parameter))
+        {
+            if (const auto layer = Presets::instrumentLayerOf (withId->paramID); layer >= 0)
+                owner = layer;
+            else if (withId->paramID.startsWith ("kick"))
+                owner = ownerKick;
+        }
+        parameterOwner.push_back (owner);
+    }
     loadFactoryPreset (Presets::Section::full, 0, 0);
 }
 
@@ -101,13 +115,20 @@ bool InstrumentProcessor::isBusesLayoutSupported (const BusesLayout& layouts) co
 void InstrumentProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
     juce::ScopedNoDenormals noDenormals;
+    processInControlChunks (buffer, midi, [this] (juce::AudioBuffer<float>& chunk, juce::MidiBuffer& chunkEvents) { processChunk (chunk, chunkEvents); });
+}
+
+void InstrumentProcessor::processChunk (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
+{
     buffer.clear();
 
     const auto numSamples = buffer.getNumSamples();
     ensureScratchSize (numSamples);
     keyboardState.processNextMidiBuffer (midi, 0, numSamples, true);
     clock.beginBlock (getHostPosition(), numSamples);
-    for (int layer = 0; layer < numLayers; ++layer)
+    // Moduleringen uppdateras bara på 32-rutnätet. En bit som börjar mitt i ett fönster (när DAW-blocket slutade där) behåller
+    // fönstrets värden, så att ljudet blir detsamma vid alla blockstorlekar, också udda.
+    for (int layer = 0; controlPhase == 0 && layer < numLayers; ++layer)
     {
         // Instrumentens källor (ENV 2, ENV 3, velocity, slump) som de var vid blockets början.
         if (layer < activeLayers)
@@ -116,7 +137,8 @@ void InstrumentProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
         else
             modulator.setInstrumentSources (layer, 0.0f, 0.0f, 0.0f, 0.0f);
     }
-    modulator.update (clock.getPpqAt (0), clock.getBpm());
+    if (controlPhase == 0)
+        modulator.update (clock.getPpqAt (0), clock.getBpm());
 
     // Räknaren och mönstret börjar om vid 1.1 (egen klocka).
     if (restartRequest.exchange (false) && ! clock.isFollowingHost())
@@ -135,7 +157,20 @@ void InstrumentProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
         soloSource = (audition - 300) % 10;
         soloSamplesLeft = (int) getSampleRate();
     }
-    readBlockParams();
+    // Parametrarna läses bara på 32-rutnätet, så att ljudet inte beror på var DAW:en delar blocken. Ett nytt DAW-block (automation och
+    // rattar kommer mellan blocken) ger en hel läsning vid nästa rutnätspunkt; däremellan läses bara det som moduleras. Medan en enskild
+    // källa provlyssnas (räknas ner per bit) läses allt i varje bit.
+    if (chunkOffset == 0)
+        blockParamsPending = true;
+    const auto soloing = soloSamplesLeft > 0 || kickSoloSamplesLeft > 0;
+    if (soloing || paramsReadWhileSoloing || (controlPhase == 0 && blockParamsPending))
+    {
+        readBlockParams();
+        blockParamsPending = false;
+    }
+    else if (controlPhase == 0 && modulator.isActive())
+        readModulatedParams();
+    paramsReadWhileSoloing = soloing;
 
     if (audition == 0 || audition == 5)
     {
@@ -241,6 +276,7 @@ void InstrumentProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
 
 void InstrumentProcessor::readBlockParams()
 {
+    // (Mönsterlängderna, swing och humanize kan inte moduleras: de läses bara här, en gång per DAW-block.)
     lengths = Params::readPatternLengthsWith ([this] (const char* id) { return params.get (id); });
     swing = params.get (ParamID::patSwing);
     humanize = params.get (ParamID::patHumanize);
@@ -255,27 +291,65 @@ void InstrumentProcessor::readBlockParams()
     scheduler.setNumLayers (activeLayers);
 
     for (int layer = 0; layer < activeLayers; ++layer)
-    {
-        layerOn[(size_t) layer] = params.bass (layer, InstrumentField::on) >= 0.5f && (solo == 0 || (solo & (1 << layer)) != 0);
-        duckAmounts[(size_t) layer] = params.bass (layer, InstrumentField::duck); // med LFO-modulering
-        gateScales[(size_t) layer] = params.bass (layer, InstrumentField::gate);
-        delayMs[(size_t) layer] = params.bass (layer, InstrumentField::delay);
-        swingRow[(size_t) layer] = params.bass (layer, InstrumentField::swing);
-        humanizeRow[(size_t) layer] = params.bass (layer, InstrumentField::humanize);
-        gateOn[(size_t) layer] = params.bass (layer, InstrumentField::gateOn) >= 0.5f;
-        gateGrid[(size_t) layer] = juce::jlimit (0, Pattern::numGrids - 1, (int) params.bass (layer, InstrumentField::gateGrid));
-        gateDepth[(size_t) layer] = params.bass (layer, InstrumentField::gateDepth);
-        const auto smoothMs = std::max (0.5f, params.bass (layer, InstrumentField::gateSmooth));
-        gateCoefficient[(size_t) layer] = (float) (1.0 - std::exp (-1.0 / (0.001 * smoothMs * getSampleRate())));
-    }
+        readLayerFields (layer, solo);
     noteEnd = (NoteEnd) params.getChoice (ParamID::noteEnd);
     kick.setClickSample (getActiveClickSample());
     refreshEngineParams();
 
     sidechainMode = (Sidechain::Mode) params.getChoice ("scMode");
+    readDuckLength();
+}
+
+void InstrumentProcessor::readLayerFields (int layer, int solo)
+{
+    layerOn[(size_t) layer] = params.bass (layer, InstrumentField::on) >= 0.5f && (solo == 0 || (solo & (1 << layer)) != 0);
+    duckAmounts[(size_t) layer] = params.bass (layer, InstrumentField::duck); // med LFO-modulering
+    gateScales[(size_t) layer] = params.bass (layer, InstrumentField::gate);
+    delayMs[(size_t) layer] = params.bass (layer, InstrumentField::delay);
+    swingRow[(size_t) layer] = params.bass (layer, InstrumentField::swing);
+    humanizeRow[(size_t) layer] = params.bass (layer, InstrumentField::humanize);
+    gateOn[(size_t) layer] = params.bass (layer, InstrumentField::gateOn) >= 0.5f;
+    gateGrid[(size_t) layer] = juce::jlimit (0, Pattern::numGrids - 1, (int) params.bass (layer, InstrumentField::gateGrid));
+    gateDepth[(size_t) layer] = params.bass (layer, InstrumentField::gateDepth);
+    const auto smoothMs = std::max (0.5f, params.bass (layer, InstrumentField::gateSmooth));
+    gateCoefficient[(size_t) layer] = (float) (1.0 - std::exp (-1.0 / (0.001 * smoothMs * getSampleRate())));
+}
+
+void InstrumentProcessor::readDuckLength()
+{
     const auto lengthQuarters = Sidechain::lengthInQuarters (params.getChoice ("scLength"));
     duckLengthSamples = lengthQuarters > 0.0 ? lengthQuarters * clock.getSamplesPerQuarter()
                                              : KickEngine::lengthSeconds (readModulatedKick (0)) * getSampleRate();
+}
+
+void InstrumentProcessor::readModulatedParams()
+{
+    // Bara det som har en aktiv modulering just nu läses om (allt annat är oförändrat sedan blockets första bit): de instrument och
+    // den kick som någon koppling går till. Samma värden som en hel läsning, men en bråkdel av arbetet var 32:a sample.
+    std::array<bool, (size_t) numLayers> layerTouched {};
+    auto kickTouched = false;
+    for (const auto index : modulator.touchedParameters())
+    {
+        const auto owner = juce::isPositiveAndBelow (index, (int) parameterOwner.size()) ? parameterOwner[(size_t) index] : ownerNone;
+        if (juce::isPositiveAndBelow (owner, numLayers))
+            layerTouched[(size_t) owner] = true;
+        else if (owner == ownerKick)
+            kickTouched = true;
+    }
+
+    const auto solo = soloMask.load();
+    for (int layer = 0; layer < activeLayers; ++layer)
+    {
+        if (! layerTouched[(size_t) layer])
+            continue;
+        readLayerFields (layer, solo);
+        basses[(size_t) layer].setParams (readModulatedInstrument (layer, instrumentRootNote()));
+    }
+    if (kickTouched)
+    {
+        kick.setParams (readModulatedKick (keyPitchClass()));
+        readDuckLength();
+    }
 }
 
 void InstrumentProcessor::refreshEngineParams()
@@ -464,7 +538,10 @@ void InstrumentProcessor::renderSegment (int startSample, int endSample)
             if (numDue >= (int) due.size())
                 return;
             auto i = numDue++;
-            while (i > 0 && due[(size_t) i - 1].offset > event.offset)
+            // Tidsordning, och vid samma sample schemaläggningens ordning: en fördröjd händelse (swing, DELAY) som väntat från en tidigare
+            // bit ska inte byta plats med en ny bara för att DAW:en delade blocken annorlunda.
+            auto later = [] (const StepEvent& a, const StepEvent& b) { return a.offset > b.offset || (a.offset == b.offset && a.sequence > b.sequence); };
+            while (i > 0 && later (due[(size_t) i - 1], event))
             {
                 due[(size_t) i] = due[(size_t) i - 1];
                 --i;
@@ -491,6 +568,7 @@ void InstrumentProcessor::renderSegment (int startSample, int endSample)
 
         for (auto event : scheduler)
         {
+            event.sequence = ++eventSequence;
             if (event.type == StepEvent::Type::bass)
                 if (const auto delay = delaySamplesFor (event); delay > 0)
                 {
@@ -568,7 +646,7 @@ void InstrumentProcessor::finishBlock (int numSamples)
     maxBus.clear (1, numSamples);
     bypassBus.clear (0, numSamples);
     bypassBus.clear (1, numSamples);
-    effects.beginBlock (numSamples, clock.getBpm(), clock.getPpqAt (0));
+    effects.beginBlock (numSamples, clock.getBpm(), clock.getPpqAt (0), controlPhase);
     tapBuffer.clear (0, numSamples);
     tapBuffer.clear (1, numSamples);
 

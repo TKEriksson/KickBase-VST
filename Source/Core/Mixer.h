@@ -43,6 +43,7 @@ private:
     struct Strip
     {
         juce::SmoothedValue<float> gain, panLeft, panRight;
+        float lastDb = std::numeric_limits<float>::quiet_NaN(), lastGain = 0.0f; // senast omräknade gain-värdet
     };
 
     std::array<std::atomic<float>*, numSources> gainParam {}, panParam {}, duck {}, max {};

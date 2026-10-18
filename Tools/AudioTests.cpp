@@ -190,15 +190,29 @@ int renderSignaturesWide()
     return 0;
 }
 
-// Hur mycket ljudet beror på DAW:ens blockstorlek (moduleringen och flera inställningar läses en gång per block). Nolltest mot block 32.
+// Att ljudet inte beror på DAW:ens blockstorlek: nolltest mot block 32, också med udda storlekar. Sedan fråga 1 räknas moduleringen
+// och blockbehandlingen var 32:a sample (PluginBase::processInControlChunks), så skillnaden ska vara exakt noll; förut var den
+// upp till -1,7 dBFS. Testet fallerar om något skiljer.
 int blockSizeTest()
 {
+    auto failed = false;
     juce::ScopedJuceInitialiser_GUI gui;
-    auto renderWith = [] (bool heavy, int blockSize)
+    // läge 0 = instrumentets Init, 1 = instrumentet i tungt läge, 2 = Kickbase FX i tungt läge (med en sågtand som insignal)
+    auto renderWith = [] (int mode, int blockSize)
     {
-        auto processor = make (false);
+        const auto heavy = mode > 0;
+        auto processor = make (mode == 2);
         if (heavy)
-            Scenarios::makeHeavy (*processor, 3);
+        {
+            Scenarios::makeHeavy (*processor, mode == 2 ? 1 : 3);
+            // Felsökning: KB_BS_RESET=ord1,ord2 återställer de parametrar vars ID innehåller något av orden (ringar in vad som beror på blocken).
+            const auto tokens = juce::StringArray::fromTokens (juce::SystemStats::getEnvironmentVariable ("KB_BS_RESET", {}), ",", {});
+            for (auto* p : processor->getParameters())
+                if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p))
+                    for (const auto& token : tokens)
+                        if (token.isNotEmpty() && ranged->getParameterID().contains (token))
+                            ranged->setValueNotifyingHost (ranged->getDefaultValue());
+        }
         processor->ensureTablesInUse();
         OfflineRender::Settings settings;
         settings.sampleRate = 48000.0;
@@ -207,29 +221,38 @@ int blockSizeTest()
         settings.bars = 2;
         settings.notes = { 52 };
         settings.extraBars = 1;
+        settings.fillInput = [] (juce::AudioBuffer<float>& block, int start) { sawInput (block, start, 48000.0); };
         return OfflineRender::render (*processor, settings);
     };
-    for (const auto heavy : { false, true })
+    const char* names[] { "Init", "tungt läge (LFO, ENV 2/3)", "Kickbase FX, tungt läge" };
+    for (const auto mode : { 0, 1, 2 })
     {
-        const auto reference = renderWith (heavy, 32);
+        const auto reference = renderWith (mode, 32);
         const auto referenceRms = reference.getRMSLevel (0, 0, reference.getNumSamples());
-        for (const auto blockSize : { 64, 256, 512, 1024, 2048 })
+        for (const auto blockSize : { 37, 64, 100, 256, 512, 1024, 2048 })
         {
-            const auto audio = renderWith (heavy, blockSize);
+            const auto audio = renderWith (mode, blockSize);
             auto peak = 0.0f;
             auto sum = 0.0;
+            auto first = -1;
             for (int i = 0; i < std::min (audio.getNumSamples(), reference.getNumSamples()); ++i)
             {
                 const auto d = audio.getSample (0, i) - reference.getSample (0, i);
+                if (d != 0.0f && first < 0)
+                    first = i;
                 peak = std::max (peak, std::abs (d));
                 sum += (double) d * d;
             }
             const auto rms = std::sqrt (sum / std::max (1, audio.getNumSamples()));
-            std::printf ("%s, block %4d mot 32: skillnad topp %.1f dBFS, rms %.1f dB under signalen\n", heavy ? "tungt läge (LFO, ENV 2/3)" : "Init", blockSize,
+            failed |= peak > 0.0f || audio.getNumSamples() != reference.getNumSamples();
+            if (first >= 0)
+                std::printf ("  första skillnaden vid sample %d (%.3f s)\n", first, first / 48000.0);
+            std::printf ("%s, block %4d mot 32: skillnad topp %.1f dBFS, rms %.1f dB under signalen\n", names[mode], blockSize,
                          juce::Decibels::gainToDecibels (peak, -200.0f), juce::Decibels::gainToDecibels (referenceRms, -200.0f) - juce::Decibels::gainToDecibels ((float) rms, -200.0f));
         }
     }
-    return 0;
+    std::puts (failed ? "FEL: ljudet beror på blockstorleken" : "Blockstorlekstestet gick igenom (identiskt ljud)");
+    return failed ? 1 : 0;
 }
 
 int audioThreadTest()

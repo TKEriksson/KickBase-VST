@@ -174,3 +174,22 @@ Mätt med `tool uiprofile 7 heavy 10 8` (10 tunga instrument, ANALYZER-spektrume
 42 % av en kärna, 20 bilder/s (nya standarden) 40 %, 20 utan fyllning 35 %, 5 bilder/s 27 %, 40 bilder/s 47 %; spektrumet av 24 %.
 Spektrumets egen kostnad blir alltså ~16 procentenheter i stället för ~18, ~11 utan fyllning och ~3 vid 5 bilder/s.
 `KB_SPECTRUM_FPS` och `KB_SPECTRUM_FILL` ställer in det för mätningen (i en tillfällig inställningsfil).
+
+### Fråga 1: kontrolltakten (gjord)
+
+Varje DAW-block delas i bitar på ett rutnät av 32 samples räknat från `prepareToPlay` (`PluginBase::processInControlChunks`), och hela
+blockbehandlingen körs per bit. Moduleringen, parameterläsningen och det som räknas per fönster uppdateras bara på rutnätet. Resultat:
+
+- **Ljudet är bit för bit detsamma vid alla blockstorlekar**, också udda (37, 64, 100, 256, 512, 1024, 2048 mot 32) och i båda
+  pluginsen. `blocksizetest` är nu ett test i sviten som fallerar vid minsta skillnad. Före: upp till -1,7 dBFS skillnad.
+- Fel som det skarpa testet hittade och som är rättade: moduleringen och en hel parameterläsning gjordes också i bitar som började mitt i
+  ett fönster; filtereffektens utjämnade cutoff stegades med bitens längd (5 + 27 samples gav andra värden än 32); auto-filtret räknade
+  svepet i bitens mitt i stället för fönstrets.
+- Ljudet mot förut (det riktiga Init, block 512, gammalt mot nytt Release): skillnad topp -22 dBFS, 53 dB under signalen. Snabba LFO:er
+  och ENV 2/3 rör sig nu var 32:a sample i stället för en gång per block.
+- CPU (Release, gammalt och nytt omväxlande): 1 instrument 0,013 -> 0,016 s per sekund ljud, 3 instrument 0,029 -> 0,033, 10 instrument
+  0,095 -> 0,10 (ungefär 0,4 % av en kärna mer). För att komma dit, utan att ändra något tal: parametrar som inte kan moduleras läses en
+  gång per DAW-block; mellan läsningarna läses bara de instrument och den kick som moduleras; `ParamRefs::get` har en trådsäker cache på
+  ID-strängens adress; mixerns dB -> gain och effektrattarnas omräkning görs bara vid ändring.
+- Nya baslinjer: `baseline-kod-kontrolltakt.txt`, `baseline-init-kontrolltakt.txt`, `baseline-wide-kontrolltakt.txt`.
+- Ny guide för framtida arbete: [docs/ENGINEERING.md](../ENGINEERING.md).

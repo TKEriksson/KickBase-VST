@@ -63,14 +63,20 @@ bool FxProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
         && (out == juce::AudioChannelSet::mono() || out == juce::AudioChannelSet::stereo());
 }
 
-void FxProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
+void FxProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
     juce::ScopedNoDenormals noDenormals;
+    processInControlChunks (buffer, midi, [this] (juce::AudioBuffer<float>& chunk, juce::MidiBuffer&) { processChunk (chunk); });
+}
+
+void FxProcessor::processChunk (juce::AudioBuffer<float>& buffer)
+{
 
     const auto numSamples = buffer.getNumSamples();
     ensureScratchSize (numSamples);
     clock.beginBlock (getHostPosition(), numSamples);
-    modulator.update (clock.getPpqAt (0), clock.getBpm());
+    if (controlPhase == 0) // (bara på 32-rutnätet, se InstrumentProcessor::processChunk)
+        modulator.update (clock.getPpqAt (0), clock.getBpm());
 
     for (auto ch = getTotalNumInputChannels(); ch < getTotalNumOutputChannels(); ++ch)
         buffer.clear (ch, 0, numSamples);
@@ -133,7 +139,7 @@ void FxProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuff
     for (int ch = 0; ch < 2; ++ch)
         juce::FloatVectorOperations::multiply (synthBuffer.getWritePointer (ch), gateBuffer.getReadPointer (0), numSamples);
 
-    effects.beginBlock (numSamples, clock.getBpm(), clock.getPpqAt (0));
+    effects.beginBlock (numSamples, clock.getBpm(), clock.getPpqAt (0), controlPhase);
     const auto channel = (int) params.bass (0, InstrumentField::fxChannel) - 1;
     const auto amountToChannel = params.bass (0, InstrumentField::fxAmount);
     const auto routed = channel >= 0 && effects.isActive (channel);

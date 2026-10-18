@@ -12,6 +12,7 @@ struct StepEvent
     Type type;
     int step;       // tonens tick i mönstret (kick och bas)
     int layer = 0;  // baslager (bara för bas)
+    juce::uint32 sequence = 0; // i vilken ordning händelserna schemalades: avgör ordningen när två hamnar på samma sample (oberoende av blockens delning)
 };
 
 // Tar reda på vilka kick- och bassteg som ska spelas i en del av ett block.

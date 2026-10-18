@@ -79,7 +79,12 @@ void Mixer::beginBlock()
     {
         auto& strip = strips[(size_t) s];
         const auto db = gainParam[(size_t) s]->load();
-        const auto gain = db <= minGainDb + 0.05f ? 0.0f : Decibels::decibelsToGain (db);
+        if (db != strip.lastDb)
+        {
+            strip.lastDb = db;
+            strip.lastGain = db <= minGainDb + 0.05f ? 0.0f : Decibels::decibelsToGain (db);
+        }
+        const auto gain = strip.lastGain;
         const auto pan = jlimit (-1.0f, 1.0f, panParam[(size_t) s]->load());
         // Balans: mitten ger oförändrad nivå, åt ena hållet tystnar den andra sidan.
         const auto left = pan > 0.0f ? 1.0f - pan : 1.0f, right = pan < 0.0f ? 1.0f + pan : 1.0f;
