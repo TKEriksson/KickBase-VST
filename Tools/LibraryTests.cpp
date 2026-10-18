@@ -535,6 +535,48 @@ int libraryTest()
         check (&*a == &*b, "SharedResourcePointer ger samma index till alla");
     }
 
+    // 8i. Stängning mitt i en stor skanning: ~2000 paket (manifest utan poster, inga ljud). Skanningen avbryts mellan paketen utan att publicera,
+    // och stopThread når aldrig killThread (shutDown ger true) inom 100 ms.
+    {
+        const auto big = folders.root.getChildFile ("BigLibrary");
+        const juce::String emptyManifest = R"({ "package": "P", "source": "Test", "url": "", "license": "CC0-1.0", "redistributable": true, "date": "2026-10-18", "items": [] })";
+        for (int i = 0; i < 2000; ++i)
+        {
+            const auto folder = big.getChildFile ("Kicks").getChildFile ("P" + juce::String (i));
+            folder.createDirectory();
+            folder.getChildFile (Library::manifestName).replaceWithText (emptyManifest);
+        }
+        {
+            LibraryIndex index;
+            const auto before = index.version();
+            index.rescan (big);
+            const auto limit = juce::Time::getMillisecondCounter() + 3000;
+            while (! index.isScanning() && juce::Time::getMillisecondCounter() < limit)
+                juce::Thread::sleep (1);
+            const auto wasScanning = index.isScanning();
+            const auto start = juce::Time::getMillisecondCounter();
+            const auto clean = index.shutDown (1000);
+            const auto took = (int) (juce::Time::getMillisecondCounter() - start);
+            check (clean && took < 100, "shutDown mitt i en skanning av 2000 paket: " + juce::String (took) + " ms, stoppades utan våld: " + (clean ? "ja" : "NEJ")
+                                           + (wasScanning ? juce::String() : juce::String (" (skanningen hann bli klar före stoppet)")));
+            check (! wasScanning || index.version() == before, "en avbruten skanning publicerar inget");
+        }
+        {
+            LibraryIndex full;
+            const auto start = juce::Time::getMillisecondCounter();
+            const auto entries = full.scanNow (big);
+            const auto scanMs = (int) (juce::Time::getMillisecondCounter() - start);
+            check (entries == 0 && full.problems().isEmpty() && Library::checkFolder (big, false).packages == 2000,
+                   "en hel skanning av 2000 paket ger inga fel (" + juce::String (scanMs) + " ms)");
+        }
+        {
+            LibraryIndex idle;
+            const auto start = juce::Time::getMillisecondCounter();
+            idle.shutDown();
+            check ((int) (juce::Time::getMillisecondCounter() - start) < 100, "ett index utan arbete stängs direkt (stopThread väcker tråden)");
+        }
+    }
+
     // 8. Inget skrivs i Dokument\Kickbase.
     {
         const auto libraryFolder = Settings::libraryFolder();

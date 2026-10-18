@@ -7,8 +7,13 @@ LibraryIndex::LibraryIndex() : juce::Thread ("Kickbase library index"), current 
 
 LibraryIndex::~LibraryIndex()
 {
-    stopThread (5000);
+    shutDown();
     cancelPendingUpdate();
+}
+
+bool LibraryIndex::shutDown (int timeoutMs)
+{
+    return stopThread (timeoutMs); // signalerar threadShouldExit och väcker run() (Thread::notify), som avbryter en pågående skanning
 }
 
 LibraryIndex::Snapshot LibraryIndex::entries() const
@@ -37,7 +42,7 @@ void LibraryIndex::rescan (const juce::File& root)
         requestPending = true;
         requestForced = true;
     }
-    wake.signal();
+    notify();
 }
 
 void LibraryIndex::refreshIfChanged (const juce::File& root)
@@ -47,12 +52,12 @@ void LibraryIndex::refreshIfChanged (const juce::File& root)
         requestedRoot = root;
         requestPending = true; // requestForced lämnas som den var: en tidigare beställd rescan förblir tvingad
     }
-    wake.signal();
+    notify();
 }
 
 int LibraryIndex::scanNow (const juce::File& root)
 {
-    auto result = scan (root);
+    auto result = scan (root, {});
     const auto count = (int) result.entries->size();
     publish (std::move (result), root);
     return count;
@@ -96,8 +101,9 @@ std::vector<int> LibraryIndex::filter (const std::vector<Entry>& list, const juc
     return result;
 }
 
-juce::String LibraryIndex::signatureOf (const juce::File& root)
+juce::String LibraryIndex::signatureOf (const juce::File& root, const AbortCheck& shouldAbort, bool& aborted)
 {
+    aborted = false;
     // Bara mapparnas och manifestens ändringstider (och att de finns): ljudfilerna rörs inte. En ny eller borttagen paketmapp ändrar
     // kategorimappens tid, ett nytt manifest eller en ändrad lista ändrar manifestets.
     juce::String text;
@@ -110,9 +116,19 @@ juce::String LibraryIndex::signatureOf (const juce::File& root)
     add (root);
     for (const auto& category : root.findChildFiles (juce::File::findDirectories, false))
     {
+        if (shouldAbort && shouldAbort())
+        {
+            aborted = true;
+            return {};
+        }
         add (category);
         for (const auto& package : category.findChildFiles (juce::File::findDirectories, false))
         {
+            if (shouldAbort && shouldAbort())
+            {
+                aborted = true;
+                return {};
+            }
             add (package);
             add (package.getChildFile (Library::manifestName));
         }
@@ -120,10 +136,12 @@ juce::String LibraryIndex::signatureOf (const juce::File& root)
     return text;
 }
 
-LibraryIndex::Scan LibraryIndex::scan (const juce::File& root)
+LibraryIndex::Scan LibraryIndex::scan (const juce::File& root, const AbortCheck& shouldAbort)
 {
     Scan result;
-    result.signature = signatureOf (root);
+    result.signature = signatureOf (root, shouldAbort, result.aborted);
+    if (result.aborted)
+        return result;
     auto list = std::make_shared<std::vector<Entry>>();
     if (root.isDirectory())
     {
@@ -131,6 +149,11 @@ LibraryIndex::Scan LibraryIndex::scan (const juce::File& root)
         categoryFolders.sort();
         for (const auto& categoryFolder : categoryFolders)
         {
+            if (shouldAbort && shouldAbort())
+            {
+                result.aborted = true;
+                return result;
+            }
             const auto category = categoryFolder.getFileName();
             if (! Library::categories().contains (category))
                 continue;
@@ -138,6 +161,11 @@ LibraryIndex::Scan LibraryIndex::scan (const juce::File& root)
             packageFolders.sort();
             for (const auto& packageFolder : packageFolders)
             {
+                if (shouldAbort && shouldAbort())
+                {
+                    result.aborted = true;
+                    return result;
+                }
                 if (packageFolder.getFileName().startsWithChar ('.'))
                     continue;
                 const auto parsed = Library::parseFile (packageFolder.getChildFile (Library::manifestName), true); // en post vars fil saknas visas inte
@@ -189,7 +217,7 @@ void LibraryIndex::run()
 {
     while (! threadShouldExit())
     {
-        wake.wait (500); // vaknar vid en beställning; tidsgränsen låter tråden se threadShouldExit
+        wait (500); // Thread::wait: vaknar vid notify() (en beställning, eller stopThread) eller efter 500 ms
         if (threadShouldExit())
             break;
 
@@ -210,9 +238,22 @@ void LibraryIndex::run()
             scanning = true;
         }
 
-        if (forced || root != knownRoot || signatureOf (root) != knownSignature)
+        const AbortCheck shouldAbort = [this] { return threadShouldExit(); };
+        auto aborted = false;
+        const auto changed = forced || root != knownRoot || signatureOf (root, shouldAbort, aborted) != knownSignature;
+        if (aborted)
         {
-            auto result = scan (root);
+            scanning = false;
+            break;
+        }
+        if (changed)
+        {
+            auto result = scan (root, shouldAbort);
+            if (result.aborted)
+            {
+                scanning = false; // avbruten: publicera inget
+                break;
+            }
             publish (std::move (result), root);
         }
         scanning = false;

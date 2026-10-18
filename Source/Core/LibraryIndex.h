@@ -3,6 +3,7 @@
 #include "LibraryManifest.h"
 #include <juce_events/juce_events.h>
 #include <atomic>
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -50,6 +51,9 @@ public:
     int scanNow (const juce::File& root);
     // Väntar tills bakgrundstråden är klar med det den fått beställt (testerna). false om det tog längre än `timeoutMs`.
     bool waitUntilIdle (int timeoutMs = 10000);
+    // Stoppar bakgrundstråden: en pågående skanning avbryts mellan kategorier, paket och manifest (utan att publicera). Ger false om tråden
+    // inte hann stoppas inom `timeoutMs` (då skulle JUCE ha dödat den med våld). Destruktorn anropar den; den kan också anropas före.
+    bool shutDown (int timeoutMs = 5000);
 
     // Filter för listan: kategori (tom = alla) och sökord (alla ord måste finnas i namn, paket, taggar, upphovsperson eller licens). Ger index i `list`.
     static std::vector<int> filter (const std::vector<Entry>& list, const juce::String& category, const juce::String& search);
@@ -60,10 +64,12 @@ private:
         Snapshot entries;
         juce::StringArray problems;
         juce::String signature;
+        bool aborted = false;
     };
+    using AbortCheck = std::function<bool()>; // tomt = fortsätt alltid
 
-    static Scan scan (const juce::File& root);
-    static juce::String signatureOf (const juce::File& root); // ändringstiderna, ingen filinnehållsläsning
+    static Scan scan (const juce::File& root, const AbortCheck& shouldAbort);
+    static juce::String signatureOf (const juce::File& root, const AbortCheck& shouldAbort, bool& aborted); // ändringstiderna, ingen filinnehållsläsning
     void publish (Scan&& result, const juce::File& root);
     void run() override;
     void handleAsyncUpdate() override;
@@ -77,7 +83,6 @@ private:
     juce::File requestedRoot;                 // (under lock)
     bool requestPending = false;              // (under lock)
     bool requestForced = false;               // (under lock)
-    juce::WaitableEvent wake;
     std::atomic<int> publishedVersion { 0 };
     std::atomic<bool> scanning { false };
 
