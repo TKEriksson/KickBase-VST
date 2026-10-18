@@ -345,22 +345,22 @@ void OscPanel::resized()
     area.removeFromTop (16);
 
     // Vänster: tabell, warp och bilden. Höger: rattarna i två rader över hela höjden.
-    auto left = area.removeFromLeft (juce::jmin (300, area.getWidth() / 3));
-    auto choices = left.removeFromTop (74);
-    auto tableArea = choices.removeFromLeft (choices.getWidth() * 2 / 5).withTrimmedRight (3);
+    // WARP-ratten ligger i en egen kolumn till höger om menyerna och formknapparna (de två översta raderna), så att den inte trycker ner vågbilden.
+    constexpr int warpColumn = 64;
+    auto left = area.removeFromLeft (juce::jmin (300, area.getWidth() / 3) + warpColumn);
+    auto top = left.removeFromTop (40 + 4 + 20);
+    warpKnob->setBounds (top.removeFromRight (warpColumn));
+    auto choices = top.removeFromTop (40);
+    auto tableArea = choices.removeFromLeft (choices.getWidth() / 2 + 10).withTrimmedRight (3);
     tableLabel.setBounds (tableArea.removeFromTop (14));
     tableButton.setBounds (tableArea.removeFromTop (24));
-    // WARP: valet (menyn) och, direkt till höger, mängden (ratten).
-    warpKnob->setBounds (choices.removeFromRight (choices.getWidth() * 2 / 5));
-    warp.setBounds (choices.withTrimmedLeft (3).removeFromTop (44));
-    left.removeFromTop (4);
-    auto shapes = left.removeFromTop (20);
-    const auto shapeWidth = shapes.getWidth() / (int) shapeButtons.size();
+    warp.setBounds (choices.withTrimmedLeft (3));
+    top.removeFromTop (4);
+    auto shapes = top;
     wavButton.setBounds (shapes.removeFromRight (shapes.getWidth() / 5).reduced (1, 0));
     morphButton.setBounds (shapes.removeFromRight (shapes.getWidth() / 4 + 4).reduced (1, 0));
     for (auto& button : shapeButtons)
         button.setBounds (shapes.removeFromLeft (shapes.getWidth() / ((int) shapeButtons.size() - (int) (&button - shapeButtons.data()))).reduced (1, 0));
-    juce::ignoreUnused (shapeWidth);
     left.removeFromTop (4);
     view.setBounds (left);
     area.removeFromLeft (4);
