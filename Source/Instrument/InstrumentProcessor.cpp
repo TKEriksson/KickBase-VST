@@ -132,6 +132,8 @@ void InstrumentProcessor::processChunk (juce::AudioBuffer<float>& buffer, juce::
     ensureScratchSize (numSamples);
     keyboardState.processNextMidiBuffer (midi, 0, numSamples, true);
     clock.beginBlock (getHostPosition(), numSamples);
+    for (int layer = 0; layer < numLayers; ++layer)
+        basses[(size_t) layer].setTempo (clock.getBpm()); // ENV 2 och ENV 3 i läget Sync
     // Moduleringen uppdateras bara på 32-rutnätet. En bit som börjar mitt i ett fönster (när DAW-blocket slutade där) behåller
     // fönstrets värden, så att ljudet blir detsamma vid alla blockstorlekar, också udda.
     for (int layer = 0; controlPhase == 0 && layer < numLayers; ++layer)

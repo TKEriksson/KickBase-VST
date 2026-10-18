@@ -131,20 +131,40 @@ void EnvPage::rebuild()
                                                                               "(in the window above), or set it up in the MATRIX tab.", 2.0, source);
         const auto gate = [this, thisLayer] { return noteOffOf (thisLayer, 0.7).seconds; };
         view->setNoteOff ([this, thisLayer] { return noteOffOf (thisLayer, 0.7); });
+        // Tiderna i ms (i läget Sync räknade från tempot), så att diagrammet visar det som låter.
         auto read = [this, env]
         {
             const auto& e = env == 0 ? current.env2 : current.env3;
-            return e;
+            return e.withTempo (processor.transportStatus.bpm.load());
+        };
+        // Handtagets x-led styr ms-ratten, eller i läget Sync notvärdet (attack, decay, release).
+        auto timeParam = [this, env, thisLayer, base] (int which)
+        {
+            return [this, env, thisLayer, base, which]
+            {
+                const auto sync = processor.apvts.getRawParameterValue (ParamID::bass (thisLayer, ParamID::envModeField (env)))->load() >= 0.5f;
+                const auto field = sync ? ParamID::envSyncField (env, which) : (InstrumentField) (base + (which == 0 ? 0 : which == 1 ? 1 : 3));
+                return processor.apvts.getParameter (ParamID::bass (thisLayer, field));
+            };
         };
         view->addCurve ({ [read, gate] (double t) { const auto e = read(); return adsrAt (t, e.attackMs, e.decayMs, e.sustain, e.releaseMs, gate()); }, Theme::sourceColour (source), true, "ENV " + juce::String (env + 2) });
-        view->addHandle ({ [read] { return juce::Point<float> (read().attackMs * 0.001f, 1.0f); }, param (processor, layer, (F) base), nullptr, false, Theme::text });
+        view->addHandle ({ [read] { return juce::Point<float> (read().attackMs * 0.001f, 1.0f); }, param (processor, layer, (F) base), nullptr, false, Theme::text, timeParam (0) });
         view->addHandle ({ [read, gate]
                            {
                                const auto e = read();
                                const auto t = (e.attackMs + e.decayMs * 0.5f) * 0.001;
                                return juce::Point<float> ((float) t, adsrAt (t, e.attackMs, e.decayMs, e.sustain, e.releaseMs, gate())); },
-                           param (processor, layer, (F) (base + 1)), param (processor, layer, (F) (base + 2)), false, Theme::text });
-        view->addHandle ({ [read, gate] { return juce::Point<float> ((float) gate() + read().releaseMs * 0.001f, 0.0f); }, param (processor, layer, (F) (base + 3)), nullptr, false, Theme::text });
+                           param (processor, layer, (F) (base + 1)), param (processor, layer, (F) (base + 2)), false, Theme::text, timeParam (1) });
+        view->addHandle ({ [read, gate] { return juce::Point<float> ((float) gate() + read().releaseMs * 0.001f, 0.0f); }, param (processor, layer, (F) (base + 3)), nullptr, false, Theme::text, timeParam (2) });
+        {
+            auto& tile = tiles.back();
+            tile.modeButton = std::make_unique<juce::TextButton> ("SYNC");
+            tile.modeButton->setClickingTogglesState (true);
+            tile.modeButton->setColour (juce::TextButton::buttonOnColourId, Theme::sourceColour (source).withAlpha (0.6f));
+            tile.modeButton->setTooltip ("ENV " + juce::String (env + 2) + " TIME - On: attack, decay and release are note lengths (1/16, 1/4 ... 4 bars) that follow the tempo; off: milliseconds. The handles step through the note lengths.");
+            tile.modeAttachment = std::make_unique<juce::ButtonParameterAttachment> (*param (processor, layer, ParamID::envModeField (env)), *tile.modeButton);
+            addAndMakeVisible (*tile.modeButton);
+        }
     }
 
     resized();
@@ -184,6 +204,8 @@ void EnvPage::resized()
         auto header = inner.removeFromTop (22);
         if (tile.handle != nullptr)
             tile.handle->setBounds (header.removeFromRight (130));
+        if (tile.modeButton != nullptr)
+            tile.modeButton->setBounds (header.removeFromRight (46).reduced (2, 0));
         inner.removeFromTop (2);
         tile.view->setBounds (inner);
     }

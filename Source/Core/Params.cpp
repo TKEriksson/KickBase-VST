@@ -89,7 +89,8 @@ namespace ParamID
                                      "GateOn", "GateGrid", "GateDepth", "GateSmooth",
                                      "SampleLevel", "SampleRoot", "SampleLoop", "SampleKey", "SampleStart", "SampleOn",
                                      "Env2Attack", "Env2Decay", "Env2Sustain", "Env2Release", "Env3Attack", "Env3Decay", "Env3Sustain", "Env3Release",
-                                     "SubWave", "NoiseTone", "PitchEnvAmount", "PitchEnvDecay", "DriveMode", "Delay", "Swing", "Humanize", "EnvAttack", "FilterModel", "AMorph", "BMorph", "CMorph" };
+                                     "SubWave", "NoiseTone", "PitchEnvAmount", "PitchEnvDecay", "DriveMode", "Delay", "Swing", "Humanize", "EnvAttack", "FilterModel", "AMorph", "BMorph", "CMorph",
+                                     "Env2Mode", "Env2AttackSync", "Env2DecaySync", "Env2ReleaseSync", "Env3Mode", "Env3AttackSync", "Env3DecaySync", "Env3ReleaseSync" };
         static_assert (std::size (names) == (size_t) InstrumentField::count);
         return names[(size_t) field];
     }
@@ -328,6 +329,16 @@ namespace Params
         // Morph på/av för varje oscillator (på = dagens ljud): sist, i fältens ordning.
         for (int osc = 0; osc < ParamID::oscsPerLayer; ++osc)
             layout.add (std::make_unique<AudioParameterBool> (ParameterID { id (ParamID::oscMorphField (osc)), 1 }, title + "Osc " + String (osc + 1) + " Morph", true));
+        // ENV 2 och ENV 3: tid i ms (standard) eller Sync (notvärden följer tempot, som LFO:ernas Rate Mode). Sustain är en nivå och berörs inte.
+        for (int env = 0; env < 2; ++env)
+        {
+            const auto envTitle = title + "Env " + String (env + 2) + " ";
+            layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (ParamID::envModeField (env)), 1 }, envTitle + "Time Mode", StringArray { "ms", "Sync" }, 0));
+            const char* kinds[] { "Attack", "Decay", "Release" };
+            const int defaults[] { 0, 8, 7 }; // 0, 1/8 D, 1/8: ungefär ms-standardvärdena vid 120 BPM
+            for (int which = 0; which < 3; ++which)
+                layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (ParamID::envSyncField (env, which)), 1 }, envTitle + kinds[which] + " Sync", Modulation::syncTimeNames(), defaults[which]));
+        }
     }
 
     void addFxParams (Layout& layout)
@@ -544,6 +555,14 @@ InstrumentParams ParamRefs::readInstrument (int layer, int rootMidiNote) const
     p.driveMode  = (int) get (F::driveMode);
     p.env2 = { get (F::env2Attack), get (F::env2Decay), get (F::env2Sustain), get (F::env2Release) };
     p.env3 = { get (F::env3Attack), get (F::env3Decay), get (F::env3Sustain), get (F::env3Release) };
+    for (int env = 0; env < 2; ++env)
+    {
+        auto& e = env == 0 ? p.env2 : p.env3;
+        e.sync = get (ParamID::envModeField (env)) >= 0.5f;
+        e.attackNote = (int) get (ParamID::envSyncField (env, 0));
+        e.decayNote = (int) get (ParamID::envSyncField (env, 1));
+        e.releaseNote = (int) get (ParamID::envSyncField (env, 2));
+    }
     p.subWave = (int) get (F::subWave);
     p.noiseTone = get (F::noiseTone);
     p.pitchEnvSemis = get (F::pitchEnvAmount);

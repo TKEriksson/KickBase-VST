@@ -205,7 +205,7 @@ void EnvelopeView::paint (juce::Graphics& g)
 juce::String EnvelopeView::describe (const Handle& handle) const
 {
     juce::StringArray parts;
-    for (auto* parameter : { handle.xParam, handle.yParam })
+    for (auto* parameter : { xOf (handle), handle.yParam })
         if (parameter != nullptr)
             parts.add (parameter->getName (32).fromLastOccurrenceOf ("Kick ", false, false)
                                             .fromLastOccurrenceOf ("Instr ", false, false)
@@ -254,10 +254,10 @@ void EnvelopeView::mouseDown (const juce::MouseEvent& event)
 
     const auto& handle = handles[(size_t) draggedHandle];
     dragStart = event.position;
-    startX = handle.xParam != nullptr ? handle.xParam->getValue() : 0.0f;
+    startX = xOf (handle) != nullptr ? xOf (handle)->getValue() : 0.0f;
     startY = handle.yParam != nullptr ? handle.yParam->getValue() : 0.0f;
 
-    for (auto* parameter : { handle.xParam, handle.yParam })
+    for (auto* parameter : { xOf (handle), handle.yParam })
         if (parameter != nullptr)
             parameter->beginChangeGesture();
 }
@@ -272,8 +272,8 @@ void EnvelopeView::mouseDrag (const juce::MouseEvent& event)
     const auto delta = event.position - dragStart;
     const auto fine = event.mods.isShiftDown() ? 0.2f : 1.0f; // shift = finjustering
 
-    if (handle.xParam != nullptr)
-        handle.xParam->setValueNotifyingHost (juce::jlimit (0.0f, 1.0f, startX + delta.x / area.getWidth() * dragSensitivity * fine));
+    if (xOf (handle) != nullptr)
+        xOf (handle)->setValueNotifyingHost (juce::jlimit (0.0f, 1.0f, startX + delta.x / area.getWidth() * dragSensitivity * fine));
 
     if (handle.yParam != nullptr)
     {
@@ -290,7 +290,7 @@ void EnvelopeView::mouseUp (const juce::MouseEvent&)
         return;
 
     const auto& handle = handles[(size_t) draggedHandle];
-    for (auto* parameter : { handle.xParam, handle.yParam })
+    for (auto* parameter : { xOf (handle), handle.yParam })
         if (parameter != nullptr)
             parameter->endChangeGesture();
 
@@ -306,7 +306,7 @@ void EnvelopeView::mouseDoubleClick (const juce::MouseEvent& event)
         return;
 
     const auto& handle = handles[(size_t) index];
-    for (auto* parameter : { handle.xParam, handle.yParam })
+    for (auto* parameter : { xOf (handle), handle.yParam })
     {
         if (parameter != nullptr)
         {

@@ -179,6 +179,18 @@ int persistTest()
                "instrument-preset: 4 steg och Morph av följer med (instrument 4)");
     }
 
+    // 4c. ENV 2/3 i läget Sync: läget och notvärdena följer med projektet, och ett projekt utan fälten får ms (som förut).
+    {
+        auto processor = std::make_unique<InstrumentProcessor>();
+        auto value = [] (PluginBase& p, InstrumentField field) { return p.apvts.getRawParameterValue (ParamID::bass (1, field))->load(); };
+        check (value (*processor, ParamID::envModeField (0)) < 0.5f && value (*processor, ParamID::envModeField (1)) < 0.5f, "ENV 2 och ENV 3 går i ms som standard");
+        Scenarios::setInstrument (*processor, 1, ParamID::envModeField (1), 1.0f);
+        Scenarios::setInstrument (*processor, 1, ParamID::envSyncField (1, 0), 10.0f);
+        auto copy = copyOf (*processor);
+        check (value (*copy, ParamID::envModeField (1)) > 0.5f && (int) value (*copy, ParamID::envSyncField (1, 0)) == 10 && value (*copy, ParamID::envModeField (0)) < 0.5f,
+               "spara och ladda: ENV 3 Sync och 1/4 följer med, ENV 2 är kvar i ms");
+    }
+
     // 5. Preset-laddningen sätter varje parameter en gång: en ratt som ändras passerar inte sitt standardvärde på vägen.
     {
         auto processor = std::make_unique<InstrumentProcessor>();

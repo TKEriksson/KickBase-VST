@@ -28,6 +28,7 @@ public:
         juce::RangedAudioParameter* yParam = nullptr;
         bool invertY = false; // uppåt minskar parametern (t.ex. kurvform)
         juce::Colour colour;
+        std::function<juce::RangedAudioParameter*()> xParamNow; // om satt: den parameter som styr x just nu (t.ex. ms eller Sync), går före xParam
     };
 
     explicit EnvelopeView (double displaySecondsIn);
@@ -60,6 +61,7 @@ private:
     juce::Point<float> handlePoint (const Handle& handle) const;
     int handleAt (juce::Point<float> point) const;
     juce::String describe (const Handle& handle) const;
+    static juce::RangedAudioParameter* xOf (const Handle& handle) { return handle.xParamNow != nullptr ? handle.xParamNow() : handle.xParam; }
 
     double displaySeconds;
     std::vector<Curve> curves;

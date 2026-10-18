@@ -37,6 +37,11 @@ struct OscParams
 struct ModEnvParams
 {
     float attackMs = 5.0f, decayMs = 400.0f, sustain = 0.0f, releaseMs = 250.0f;
+    bool sync = false;                                   // tiderna är notvärden (Modulation::syncTimeInQuarters) som följer tempot, i stället för ms
+    int attackNote = 0, decayNote = 8, releaseNote = 7;  // index i Modulation::syncTimeNames()
+
+    // Samma envelope med tiderna i ms: oförändrad om sync är av, annars räknad från tempot (fjärdedelar x 60000 / bpm, aldrig under ms-rattarnas minimum).
+    ModEnvParams withTempo (double bpm) const;
 };
 
 struct InstrumentParams
@@ -94,7 +99,9 @@ public:
     // Slumpen (brus, slumpfas) är seedad, så att samma preset renderar bit-identiskt varje gång.
     void setSeed (juce::int64 seed) { random.setSeed (seed); }
     void reset();
-    void setParams (const InstrumentParams& newParams) { params = newParams; }
+    void setParams (const InstrumentParams& newParams) { params = newParams; refreshEnvTimes(); }
+    // Tempot (BPM) för ENV 2 och ENV 3 i läget Sync. Anropas varje bit om 32 samples; en tempoändring mitt i ett steg ger en kontinuerlig kurva.
+    void setTempo (double newBpm) { if (newBpm != bpm) { bpm = newBpm; refreshEnvTimes(); } }
 
     // Spelar en ton `semitones` från grundtonen i `gateSamples` samples.
     void noteOn (int semitones, float velocity, int gateSamples);
@@ -211,6 +218,9 @@ private:
         void next (const ModEnvParams& p, double rate);
     };
     ModEnv env2, env3;
+    double bpm = 120.0;
+    ModEnvParams envTimes2, envTimes3; // ENV 2 och ENV 3 med tiderna i ms (ur params och tempot)
+    void refreshEnvTimes();
     float pitchEnv = 0.0f;       // 1 vid anslaget, faller mot 0 (tonhöjdsenvelopen)
     float noiseState = 0.0f;     // brusets lågpass (NOISE TONE)
     float randomValue = 0.0f;    // modulationskällan RANDOM: nytt för varje ton

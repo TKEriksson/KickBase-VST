@@ -23,6 +23,8 @@ private:
         juce::Colour colour;
         std::unique_ptr<EnvelopeView> view;
         std::unique_ptr<LfoDragHandle> handle;
+        std::unique_ptr<juce::TextButton> modeButton;                    // MS | SYNC (ENV 2 och ENV 3)
+        std::unique_ptr<juce::ButtonParameterAttachment> modeAttachment;
         juce::Rectangle<int> bounds;
     };
 

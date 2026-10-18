@@ -3,6 +3,7 @@
 #include "../Source/Core/InstrumentSynth.h"
 #include "../Source/Core/Ducker.h"
 #include "../Source/Core/KickEngine.h"
+#include "../Source/Core/Modulation.h"
 #include "../Source/Core/Params.h"
 #include "../Source/Core/Pattern.h"
 #include "../Source/Core/StepGate.h"
@@ -501,6 +502,78 @@ namespace
 
 namespace
 {
+    // ENV 2 i läget Sync: tiderna är notvärden som följer tempot.
+    void testModEnvSync()
+    {
+        std::puts("ENV 2/3: Sync följer tempot (1/4 vid 120 BPM = 500 ms), och ett tempobyte mitt i attacken ger en kontinuerlig kurva");
+
+        auto makeParams = [] (bool sync, float attackMs, int attackNote)
+        {
+            InstrumentParams p;
+            p.oscA.level = 0.0f;
+            p.oscB.level = 0.0f;
+            p.sub = 0.0f;
+            p.env2.attackMs = attackMs;
+            p.env2.decayMs = 400.0f;
+            p.env2.sustain = 1.0f;
+            p.env2.sync = sync;
+            p.env2.attackNote = attackNote;
+            return p;
+        };
+        // Index 10 = 1/4 i Modulation::syncTimeNames(), index 7 = 1/8.
+        check (Modulation::syncTimeNames()[10] == "1/4" && Modulation::syncTimeInQuarters (10) == 1.0 && Modulation::syncTimeInQuarters (7) == 0.5 && Modulation::syncTimeInQuarters (15) == 16.0,
+               "notvärdeslistan: 1/4 = en fjärdedel, 4 bars = 16");
+
+        // Sampel tills ENV 2 nått toppen (attacken klar).
+        auto attackSamples = [] (const InstrumentParams& p, double bpm)
+        {
+            InstrumentSynth synth;
+            synth.prepare (rate);
+            synth.setTempo (bpm);
+            synth.setParams (p);
+            synth.reset();
+            synth.noteOn (0, 1.0f, (int) (rate * 4.0));
+            for (int i = 1; i < (int) (rate * 3.0); ++i)
+            {
+                synth.nextSample();
+                if (synth.getModulationValue (0) >= 0.9999f)
+                    return i;
+            }
+            return -1;
+        };
+        const auto inMs = attackSamples (makeParams (false, 500.0f, 0), 120.0);
+        const auto synced = attackSamples (makeParams (true, 5.0f, 10), 120.0);
+        check (inMs > 0 && std::abs (synced - inMs) <= 1, "1/4 vid 120 BPM ger samma attack som 500 ms (±1 sampel)", synced - inMs);
+        const auto slower = attackSamples (makeParams (true, 5.0f, 10), 60.0);
+        const auto inMsSlow = attackSamples (makeParams (false, 1000.0f, 0), 120.0);
+        check (std::abs (slower - inMsSlow) <= 1, "1/4 vid 60 BPM ger samma attack som 1000 ms (±1 sampel)", slower - inMsSlow);
+
+        // Ett tempobyte mitt i attacken: kurvan fortsätter utan hopp (steget per sampel ändras, nivån gör det inte).
+        {
+            InstrumentSynth synth;
+            synth.prepare (rate);
+            synth.setTempo (120.0);
+            synth.setParams (makeParams (true, 5.0f, 10));
+            synth.reset();
+            synth.noteOn (0, 1.0f, (int) (rate * 4.0));
+            auto previous = 0.0f, biggestStep = 0.0f;
+            for (int i = 0; i < (int) (rate * 0.4); ++i)
+            {
+                if (i == (int) (rate * 0.2))
+                    synth.setTempo (60.0);
+                synth.nextSample();
+                const auto level = synth.getModulationValue (0);
+                biggestStep = std::max (biggestStep, std::abs (level - previous));
+                previous = level;
+            }
+            check (biggestStep < 1.5f / (float) (rate * 0.5), "tempobyte mitt i attacken: ingen hopp i nivån", biggestStep);
+            check (previous > 0.3f && previous < 0.7f, "och attacken fortsätter med nya tempot (långsammare)", previous);
+        }
+    }
+}
+
+namespace
+{
     void testUserWavetable()
     {
         std::puts ("Wavetable: egen tabell av en WAV, och att den överlever spara/läsa");
@@ -687,6 +760,7 @@ void runEngineTests()
     testDuckerIsSmooth();
     testGate();
     testPatternTemplatesAndSaving();
+    testModEnvSync();
     testUserWavetable();
     testWavetableLibrary();
     testGateAndPianoRollFlag();

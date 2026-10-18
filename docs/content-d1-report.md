@@ -67,4 +67,4 @@ Commits `0ddc04f`, `e955126` och `5b1a62c` kan plockas till `dev` var för sig u
 
 - Marginalen i `boundarytest` är liten (−40,5 mot gränsen −40 dBFS); resten är en låg svans från den avbrutna kickens första millisekunder och hörs inte mot den föregående kickens svans.
 - Tobias har provat bara RelWithDebInfo-bygget i FL. **Release-bygget** (`build.bat Release all`, ren build av alla 171 mål inklusive verktygen och `KickbaseHostTest`) gick igenom utan varningar och utan fel; `KickbaseTests` (hela enhetssviten) kördes av skriptet efteråt: *Alla tester gick igenom*.
-- Fortfarande öppet från tidigare: Tobias måste rotera `ARTCRAFT_API` (ligger i gammal historia, commit cb45841) innan repot blir publikt.
+- `ARTCRAFT_API` (låg i gammal historia, commit cb45841) är roterad av Tobias 18 okt 2026: den gamla är borttagen. Historiken ska ändå skannas innan repot blir publikt.

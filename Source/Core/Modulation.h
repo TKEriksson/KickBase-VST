@@ -40,6 +40,10 @@ namespace Modulation
     juce::StringArray rateNames();
     double rateInQuarters (int index);
 
+    // Tiderna för ENV 2 och ENV 3 i läget Sync: 0, 1/64 ... 4 bars (T = triol, D = punkterad). Längden i fjärdedelar (4 = en takt).
+    juce::StringArray syncTimeNames();
+    double syncTimeInQuarters (int index);
+
     juce::String paramID (int lfo, const char* suffix); // "lfo1Shape" ...
     juce::String sourceName (int source);               // "LFO 1", "MACRO 2", "INSTR 3 ENV 2" ...
 

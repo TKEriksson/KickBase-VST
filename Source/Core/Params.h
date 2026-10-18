@@ -97,6 +97,8 @@ enum class InstrumentField
     envAttack,                                                    // filterenvelopens attack (före envDecay i signalen, men sist här så att gamla projekt är orörda)
     filterModel,                                                  // filtermodell: 0 Kickbase (SVF, standard), 1 TB-303 (Open303:s TeeBeeFilter); ny parameter, filterType rörs inte
     aMorph, bMorph, cMorph,                                       // wavetable-position: på = tonar över mellan vågformerna (standard), av = hoppar mellan dem (oscMorphField)
+    env2Mode, env2AttackSync, env2DecaySync, env2ReleaseSync,     // ENV 2 och ENV 3: ms (standard) eller Sync (notvärden följer tempot); envModeField / envSyncField
+    env3Mode, env3AttackSync, env3DecaySync, env3ReleaseSync,
     count
 };
 
@@ -110,6 +112,9 @@ namespace ParamID
     inline InstrumentField oscField (int osc, InstrumentField aField) { return (InstrumentField) ((int) aField + osc * oscFieldCount); }
     // Morph-fälten ligger sist i listan (så att gamla projekt är orörda) och följer inte oscField: OSC 1 (osc 0) = aMorph, OSC 2 = bMorph, OSC 3 = cMorph.
     inline InstrumentField oscMorphField (int osc) { return (InstrumentField) ((int) InstrumentField::aMorph + osc); }
+    // ENV 2 (env 0) och ENV 3 (env 1): Mode-fältet och tidens Sync-fält (which 0 = attack, 1 = decay, 2 = release).
+    inline InstrumentField envModeField (int env) { return (InstrumentField) ((int) InstrumentField::env2Mode + env * 4); }
+    inline InstrumentField envSyncField (int env, int which) { return (InstrumentField) ((int) envModeField (env) + 1 + which); }
     juce::String bass (int layer, InstrumentField field);   // "bass1Cutoff" ...
     const char* instrumentFieldName (InstrumentField field);      // "Cutoff" ...
 }

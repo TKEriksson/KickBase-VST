@@ -1,4 +1,5 @@
 #include "InstrumentSynth.h"
+#include "Modulation.h" // syncTimeInQuarters (ENV 2 och ENV 3 i läget Sync)
 
 namespace
 {
@@ -200,6 +201,24 @@ void InstrumentSynth::release()
     }
 }
 
+ModEnvParams ModEnvParams::withTempo (double bpm) const
+{
+    if (! sync)
+        return *this;
+    const auto msPerQuarter = 60000.0 / juce::jlimit (20.0, 400.0, bpm);
+    ModEnvParams result = *this;
+    result.attackMs = (float) std::max (0.1, Modulation::syncTimeInQuarters (attackNote) * msPerQuarter);
+    result.decayMs = (float) std::max (5.0, Modulation::syncTimeInQuarters (decayNote) * msPerQuarter);
+    result.releaseMs = (float) std::max (5.0, Modulation::syncTimeInQuarters (releaseNote) * msPerQuarter);
+    return result;
+}
+
+void InstrumentSynth::refreshEnvTimes()
+{
+    envTimes2 = params.env2.withTempo (bpm);
+    envTimes3 = params.env3.withTempo (bpm);
+}
+
 void InstrumentSynth::ModEnv::next (const ModEnvParams& p, double rate)
 {
     switch (envStage)
@@ -283,8 +302,8 @@ InstrumentSynth::Output InstrumentSynth::next()
     }
 
     // Modulationsenvelopes och tonhöjdsenvelopen.
-    env2.next (params.env2, sampleRate);
-    env3.next (params.env3, sampleRate);
+    env2.next (envTimes2, sampleRate);
+    env3.next (envTimes3, sampleRate);
     if (params.pitchEnvSemis != 0.0f)
         pitchEnv -= pitchEnv * (float) pitchEnvMemo.get (params.pitchEnvDecayMs, sampleRate);
 

@@ -13,6 +13,17 @@ namespace Modulation
                  "3/16", "3/8", "3/4", "3 bars", "6 bars", "8 bars", "16 bars" };
     }
 
+    juce::StringArray syncTimeNames()
+    {
+        return { "0", "1/64", "1/32", "1/16 T", "1/16", "1/16 D", "1/8 T", "1/8", "1/8 D", "1/4 T", "1/4", "1/4 D", "1/2", "1 bar", "2 bars", "4 bars" };
+    }
+
+    double syncTimeInQuarters (int index)
+    {
+        constexpr double quarters[] { 0.0, 1.0 / 16.0, 0.125, 1.0 / 6.0, 0.25, 0.375, 1.0 / 3.0, 0.5, 0.75, 2.0 / 3.0, 1.0, 1.5, 2.0, 4.0, 8.0, 16.0 };
+        return quarters[juce::jlimit (0, (int) std::size (quarters) - 1, index)];
+    }
+
     double rateInQuarters (int index)
     {
         constexpr double quarters[] { 0.125, 1.0 / 6.0, 0.25, 1.0 / 3.0, 0.5, 2.0 / 3.0, 1.0, 2.0, 4.0, 8.0, 16.0, 0.75, 1.5, 3.0, 12.0, 24.0, 32.0, 64.0 };

@@ -148,6 +148,19 @@ namespace
             Scenarios::setInstrument (processor, layer, InstrumentField::filterModel, model);
     }
 
+    // ENV 2 och ENV 3 i läget Sync på de `count` första instrumenten (notvärden: attack 1/16, decay 1/4 D, release 1/8).
+    void useEnvSync (PluginBase& processor, int count)
+    {
+        for (int layer = 0; layer < count; ++layer)
+            for (int env = 0; env < 2; ++env)
+            {
+                Scenarios::setInstrument (processor, layer, ParamID::envModeField (env), 1.0f);
+                Scenarios::setInstrument (processor, layer, ParamID::envSyncField (env, 0), 4.0f);
+                Scenarios::setInstrument (processor, layer, ParamID::envSyncField (env, 1), 11.0f);
+                Scenarios::setInstrument (processor, layer, ParamID::envSyncField (env, 2), 7.0f);
+            }
+    }
+
     // FX-versionen: en sågtand i 55 Hz in (som en annan synth).
     void sawInput (juce::AudioBuffer<float>& block, int startSample, double rate)
     {
@@ -242,7 +255,7 @@ int blockSizeTest()
     auto failed = false;
     juce::ScopedJuceInitialiser_GUI gui;
     // läge 0 = instrumentets Init, 1 = instrumentet i tungt läge, 2 = Kickbase FX i tungt läge (med en sågtand som insignal),
-    // 3 = instrumentet i tungt läge med TB-303-modellen (fas D1)
+    // 3 = instrumentet i tungt läge med TB-303-modellen (fas D1), 4 = instrumentet i tungt läge med ENV 2/3 i läget Sync
     auto renderWith = [] (int mode, int blockSize)
     {
         const auto heavy = mode > 0;
@@ -252,6 +265,8 @@ int blockSizeTest()
             Scenarios::makeHeavy (*processor, mode == 2 ? 1 : 3);
             if (mode == 3)
                 useTb303 (*processor, 3);
+            if (mode == 4)
+                useEnvSync (*processor, 3);
             // Felsökning: KB_BS_RESET=ord1,ord2 återställer de parametrar vars ID innehåller något av orden (ringar in vad som beror på blocken).
             const auto tokens = juce::StringArray::fromTokens (juce::SystemStats::getEnvironmentVariable ("KB_BS_RESET", {}), ",", {});
             for (auto* p : processor->getParameters())
@@ -271,8 +286,8 @@ int blockSizeTest()
         settings.fillInput = [] (juce::AudioBuffer<float>& block, int start) { sawInput (block, start, 48000.0); };
         return OfflineRender::render (*processor, settings);
     };
-    const char* names[] { "Init", "tungt läge (LFO, ENV 2/3)", "Kickbase FX, tungt läge", "tungt läge med TB-303" };
-    for (const auto mode : { 0, 1, 2, 3 })
+    const char* names[] { "Init", "tungt läge (LFO, ENV 2/3)", "Kickbase FX, tungt läge", "tungt läge med TB-303", "tungt läge med ENV Sync" };
+    for (const auto mode : { 0, 1, 2, 3, 4 })
     {
         const auto reference = renderWith (mode, 32);
         const auto referenceRms = reference.getRMSLevel (0, 0, reference.getNumSamples());
