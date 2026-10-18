@@ -28,6 +28,11 @@ namespace Library
         for (const auto& part : parts) // addTokens utan citat: tomma delar blir tomma strängar
             if (part.isEmpty() || part == "." || part == ".." || part.endsWithChar ('.') || part.endsWithChar (' '))
                 return false;
+        static const juce::StringArray reserved { "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+                                                  "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9" };
+        for (const auto& part : parts) // Windows reserverade enhetsnamn, också med filändelse ("nul.wav")
+            if (reserved.contains (part.upToFirstOccurrenceOf (".", false, false).trimEnd().toUpperCase()))
+                return false;
         return true;
     }
 
@@ -43,20 +48,20 @@ namespace Library
             && redistributable == other.redistributable && date == other.date && items == other.items;
     }
 
+    bool isValidDate (const juce::String& text) // ÅÅÅÅ-MM-DD
+    {
+        if (text.length() != 10 || text[4] != '-' || text[7] != '-')
+            return false;
+        for (int i = 0; i < 10; ++i)
+            if (i != 4 && i != 7 && ! juce::CharacterFunctions::isDigit (text[i]))
+                return false;
+        const auto month = text.substring (5, 7).getIntValue();
+        const auto day = text.substring (8, 10).getIntValue();
+        return month >= 1 && month <= 12 && day >= 1 && day <= 31;
+    }
+
     namespace
     {
-        bool looksLikeDate (const juce::String& text) // ÅÅÅÅ-MM-DD
-        {
-            if (text.length() != 10 || text[4] != '-' || text[7] != '-')
-                return false;
-            for (int i = 0; i < 10; ++i)
-                if (i != 4 && i != 7 && ! juce::CharacterFunctions::isDigit (text[i]))
-                    return false;
-            const auto month = text.substring (5, 7).getIntValue();
-            const auto day = text.substring (8, 10).getIntValue();
-            return month >= 1 && month <= 12 && day >= 1 && day <= 31;
-        }
-
         bool isNumber (const juce::var& value) { return value.isInt() || value.isInt64() || value.isDouble(); }
 
         // Läser ett obligatoriskt textfält. Fel läggs i `errors` och ger false.
@@ -203,7 +208,7 @@ namespace Library
         requiredString (root, "source", name, manifest.source, errors);
         requiredString (root, "url", name, manifest.url, errors, true); // en egen inspelning har ingen webbadress
         requiredString (root, "date", name, manifest.date, errors);
-        if (manifest.date.isNotEmpty() && ! looksLikeDate (manifest.date))
+        if (manifest.date.isNotEmpty() && ! isValidDate (manifest.date))
             errors.add (name + ": 'date' must look like YYYY-MM-DD");
 
         const auto licenseOk = requiredString (root, "license", name, manifest.license, errors);

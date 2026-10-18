@@ -20,6 +20,8 @@ namespace Library
     // Ett filnamn i ett manifest ska ligga inuti paketmappen: inga "..", inga absoluta sökvägar, ingen enhetsbokstav, ingen UNC, inte tomt.
     bool isSafeRelativePath (const juce::String& file);
 
+    bool isValidDate (const juce::String& text); // ÅÅÅÅ-MM-DD
+
     struct Item
     {
         juce::String file;          // relativt paketmappen

@@ -29,6 +29,7 @@ biblioteket: det bygger ingen VST3.) Installera: `createVst.bat` som administrat
 - `KickbaseTests.exe`;
 - `KickbaseMcp tool` + `eqtest rolltest lengthtest instrumenttest presettest auditiontest settingstest chattest listentest perftest persisttest audiotest blocksizetest librarytest`;
   `tool librarycheck [mapp]` kontrollerar biblioteksmanifesten i `Dokument\Kickbase\Library` (läser bara, ger 1 vid fel);
+  `tool importlibrary <mapp|fil> <kategori> <licens> [url]` gör ljudfiler till bibliotekets format (mono, 44,1 kHz, 24 bit, -1 dBFS) och skriver paketet (skriver i den riktiga biblioteksmappen: kör det inte i tester);
 - `KickbaseMcp --selftest-link`;
 - `KickbaseHostTest <Kickbase.vst3>` och `KickbaseHostTest <Kickbase FX.vst3>`;
 - `tool rendersig`, `tool rendersigreal`, `tool rendersigwide`.
