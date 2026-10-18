@@ -177,7 +177,6 @@ public:
 private:
     PluginBase& processor;
     bool dragHover = false;
-    juce::TextButton listenButton { "LISTEN" }; // spelar lagrets ton
 
     const int layer;
     ParamRefs refs;

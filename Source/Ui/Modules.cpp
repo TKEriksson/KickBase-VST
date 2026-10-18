@@ -668,10 +668,6 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
         sources.addTab ("OSC " + juce::String (osc + 1), layerAccent, *oscs[(size_t) osc]);
         sources.addPower (osc, p.apvts, ParamID::bass (layer, ParamID::oscField (osc, F::aOn)));
     }
-    listenButton.setTooltip ("LISTEN - Plays this layer's sound (one second, the key's root note) so you can hear it without a DAW note. "
-                             "Click an oscillator's picture to hear just that oscillator.");
-    listenButton.onClick = [this] { processor.requestAudition (PluginBase::layerAudition (layer)); };
-    addAndMakeVisible (listenButton);
     sources.addTab ("SAMPLE", layerAccent, *samplePage);
     sources.addPower (ParamID::oscsPerLayer, p.apvts, ParamID::bass (layer, F::sampleOn));
 
@@ -1040,12 +1036,10 @@ void InstrumentModule::resized()
     auto area = getContentBounds();
 
     // Överst källorna i flikar (OSC 1-3 och SAMPLE), under dem kurvorna (filter + volym) och rattarna.
-    sources.setBounds (area.removeFromTop (juce::jlimit (200, 250, area.getHeight() * 11 / 24)));
+    sources.setBounds (area.removeFromTop (juce::jlimit (224, 280, area.getHeight() * 11 / 24 + 28))); // högre: större wavetable-bild (LISTEN-knappen är borta, man klickar på bilden)
     area.removeFromTop (6);
 
     auto leftColumn = area.removeFromLeft (220);
-    listenButton.setBounds (leftColumn.removeFromBottom (24));
-    leftColumn.removeFromBottom (4);
     envelope.setBounds (leftColumn.reduced (0, 2));
     area.removeFromLeft (6);
 
