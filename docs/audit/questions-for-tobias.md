@@ -174,3 +174,8 @@ klockor med lång utklingning låter fel, och ackord går inte.
 klockor blir sämre).
 
 **Om du inte svarar:** A byggs, med 1 som standard (inget ändras förrän du vrider på den). **Status:** fråga.
+
+---
+
+**Svar på 9–11 (Tobias, 18 okt):** "Kör rekommenderat": 9 A (PERSONAL-nivå), 10 A (MODE CLICK / LAYER / REPLACE i SAMPLE-fliken),
+11 A (VOICES 1–8, standard 1, och ackord i pianorullen).

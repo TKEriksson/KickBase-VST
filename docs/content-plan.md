@@ -219,6 +219,8 @@ Byggs ovanpå Sample-typen (B1):
 
 Besvarade och inarbetade ovan: licens (AGPL-3.0), publicering (sist), Freesound (API-nyckel), ordning (fri).
 
+**Svar 18 okt: "Kör rekommenderat" = 9 A, 10 A, 11 A.** Planen gäller alltså som den står.
+
 9. **Personliga ljud:** är det ok att biblioteket har en PERSONAL-nivå för ljud som bara får användas i dina egna låtar (t.ex. Looperman),
    som aldrig följer med när Kickbase delas och aldrig hamnar i repot?
 10. **Kicken:** SAMPLE-fliken får MODE CLICK / LAYER / REPLACE (lager ovanpå synten finns redan i motorn). Ok?
