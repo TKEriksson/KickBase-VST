@@ -312,6 +312,13 @@ Innan nya presets byggs: gå igenom med Tobias hur en preset byggs så att allt 
   - Reservplanen med egen mini-notation i C++ behövs inte.
   - Kvar till LC-fasens start: bunta Strudels transpiler (acorn; behövs för `$:`, `.p()` och slider med källposition) och testa i pluginets riktiga ljudtråd.
 
+### Nya idéer 20 okt (MERIDÉER.md, tips, additiv-bilden): placeras, spec till Opus först
+- **LOW-END (Shaper/Multiplier, 30–400 Hz):** hör ihop med PH + K. Delar: automatisk fascheck (AN), transientformning, sub-harmonics/oktavdelare, SHAPER-läget (PH). Byggs efter PH som en egen fas "LE" om Codex-notisen visar att delarna är enkla DSP.
+- **FM-källa ("FM SQUELCH/LEAD")** som ny flik bredvid OSC 1–3 (källa nr 4 i fas S-stil): 2–4 operatorer, pitch-envelope, index-LFO. En preset ska kunna aktivera sina egna LFO:er (beslutat i M). Fas **S2** efter S och M. Spec efter Codex uppdrag 2.
+- **Additiv/harmonikredigering** (amplitud + fas per överton, "instant phase shift" av grundtonen): redan PH:s övertonsredigerare för wavetables; ta additiv som en egen källa först om PH visar att det behövs.
+- **Psy Multi-FX:** tillägg till FX-fasen: multiband-distorsion, disperser (allpass-spridning, även PH), shimmer-reverb, widener, triggade filter, snabb ping-pong/dotted-delay med EQ efter. Redovisas mot vår effektlista av Codex (uppdrag 2).
+- **Kunskap:** Codex sammanställer transkripten till `docs/research-notes/` (uppdrag 1). KB-fasen bygger `docs/kick-bass-school.md` ur dem i stället för att läsa råa transkript (sparar tokens).
+
 ### AI, C, BZ, IO, VS
 Enligt Tobias specar (layout_optimization §Effects, §RESET, §MASTER; pattern_and_ai §6, §10, §13; BEZIER.md; CODEMUSIC.md). Spec till Opus
 när fasen står på tur. Redan beslutat: nya effekttyper (Flanger, Sidechain, Maximizer i platser) läggs **sist** i typlistan som redovisat
