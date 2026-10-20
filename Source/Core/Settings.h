@@ -31,12 +31,24 @@ namespace Settings
     juce::String protect (const juce::String& plain);
     juce::String unprotect (const juce::String& stored);
 
-    // AI-chatten i synten: användarens egen API-nyckel (Anthropic) och vilken modell som används. Nyckeln sparas krypterad (Windows DPAPI,
-    // bara den här användaren kan läsa den på den här datorn) och skickas bara till api.anthropic.com.
+    // AI-chatten i synten: användarens egen API-nyckel (Anthropic eller Gemini) och vilken modell som används. Nycklarna sparas krypterade
+    // (Windows DPAPI, bara den här användaren kan läsa dem på den här datorn). Anthropic-nyckeln skickas bara till api.anthropic.com,
+    // Gemini-nyckeln bara till generativelanguage.googleapis.com.
     juce::String chatApiKey();
     void setChatApiKey (const juce::String& key);   // tom = ta bort
     juce::String chatModel();                       // standard: claude-sonnet-5-5
     void setChatModel (const juce::String& model);
+    juce::String chatProvider();                    // "anthropic" (standard) eller "gemini"
+    void setChatProvider (const juce::String& provider);
+    juce::String geminiApiKey();
+    void setGeminiApiKey (const juce::String& key); // tom = ta bort
+    juce::String geminiModel();                     // standard: gemini-3.6-flash
+    void setGeminiModel (const juce::String& model);
+    int chatCostMode();                             // 0 Sparsam, 1 Normal (standard), 2 Rik: hur snålt chatten använder tokens (AiChat::limits)
+    void setChatCostMode (int mode);
+    // Provresultat "kan modellen function calling" per modell och nyckel (nyckelns hash, inte nyckeln): 1 ja, 0 nej, -1 inte provad.
+    int geminiToolsCheck (const juce::String& model, const juce::String& key);
+    void setGeminiToolsCheck (const juce::String& model, const juce::String& key, bool works);
 
     // Fönstrets skala (1 = fullstor): 0 = ingen vald, då används standardstorleken.
     float uiScale();

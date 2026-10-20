@@ -26,6 +26,7 @@
 #include "../Source/Core/LiveCode.h"
 #include "../Source/Ui/LiveCodePage.h"
 #include "../Source/Core/AiChat.h"
+#include "../Source/Core/AiProvider.h"
 #include "../Source/Core/Settings.h"
 #include "../Source/Core/WavetablePack.h"
 #include "../Source/Core/LibraryIndex.h"
@@ -1556,6 +1557,291 @@ namespace
             }
         }
 
+        // Kostnadsläget: inställning, gränser, beskärning av gammalt samtal och varningen före dyra verktyg.
+        {
+            check (Settings::chatCostMode() == 1, "kostnadsläget är Normal som standard");
+            Settings::setChatCostMode (0);
+            check (Settings::chatCostMode() == 0, "kostnadsläget Sparsam sparas");
+            Settings::setChatCostMode (2);
+            check (Settings::chatCostMode() == 2, "kostnadsläget Rik sparas");
+            Settings::setChatCostMode (1);
+            check (Settings::chatCostMode() == 1, "kostnadsläget kan sättas tillbaka till Normal");
+
+            const auto sparse = AiChat::limits (0), normal = AiChat::limits (1), rich = AiChat::limits (2);
+            check (sparse.maxSteps < normal.maxSteps && normal.maxSteps < rich.maxSteps, "kostnadsläge: fler steg per läge");
+            check (sparse.maxOutputTokens < normal.maxOutputTokens && normal.maxOutputTokens < rich.maxOutputTokens, "kostnadsläge: längre svar per läge");
+            check (sparse.keepTurns < normal.keepTurns && normal.keepTurns < rich.keepTurns, "kostnadsläge: mer historia per läge");
+            check (sparse.confirmHeavy && normal.confirmHeavy && ! rich.confirmHeavy, "kostnadsläge: Rik frågar inte");
+            check (AiChat::isHeavyTool ("render_preview") && AiChat::isHeavyTool ("analyze_audio") && ! AiChat::isHeavyTool ("set_parameters"), "dyra verktyg: render_preview och analyze_audio");
+
+            // Sex frågor, var och en med ett verktygsresultat som har en bild och en lång text.
+            auto make = [] { return new juce::DynamicObject(); };
+            juce::Array<juce::var> history;
+            const auto longText = juce::String::repeatedString ("x", 3000);
+            for (int turn = 0; turn < 6; ++turn)
+            {
+                auto user = make();
+                user->setProperty ("role", "user");
+                user->setProperty ("content", "question " + juce::String (turn));
+                history.add (juce::var (user));
+
+                auto toolUse = make();
+                toolUse->setProperty ("type", "tool_use");
+                toolUse->setProperty ("id", "t" + juce::String (turn));
+                toolUse->setProperty ("name", "render_preview");
+                auto assistant = make();
+                assistant->setProperty ("role", "assistant");
+                assistant->setProperty ("content", juce::Array<juce::var> { juce::var (toolUse) });
+                history.add (juce::var (assistant));
+
+                auto image = make();
+                image->setProperty ("type", "image");
+                auto text = make();
+                text->setProperty ("type", "text");
+                text->setProperty ("text", longText);
+                auto result = make();
+                result->setProperty ("type", "tool_result");
+                result->setProperty ("tool_use_id", "t" + juce::String (turn));
+                result->setProperty ("content", juce::Array<juce::var> { juce::var (image), juce::var (text) });
+                auto resultMessage = make();
+                resultMessage->setProperty ("role", "user");
+                resultMessage->setProperty ("content", juce::Array<juce::var> { juce::var (result) });
+                history.add (juce::var (resultMessage));
+            }
+            const auto before = juce::JSON::toString (juce::var (history));
+            const auto trimmed = AiChat::trimForRequest (history, sparse); // behåller 2 frågor: index 12 och framåt är nya
+            check (trimmed.size() == history.size(), "beskärning: lika många meddelanden");
+            check (juce::JSON::toString (juce::var (history)) == before, "beskärning: historiken rörs inte");
+            const auto partOf = [&] (int message, int part) { return trimmed.getReference (message)["content"][0]["content"][part]; };
+            check (partOf (2, 0)["type"].toString() == "text" && partOf (2, 0)["text"].toString().contains ("image removed"), "beskärning: gammal bild ersätts med en rad");
+            check (partOf (2, 1)["text"].toString().length() < 400 && partOf (2, 1)["text"].toString().contains ("trimmed"), "beskärning: gammalt långt resultat kortas");
+            check (partOf (14, 0)["type"].toString() == "text" && partOf (14, 1)["text"].toString().length() == 3000, "beskärning: nyare resultat behåller sin text men tappar bilden");
+            check (partOf (17, 0)["type"].toString() == "image" && partOf (17, 1)["text"].toString().length() == 3000, "beskärning: det senaste resultatet är orört");
+            check (trimmed.getReference (12)["content"].toString() == "question 4", "beskärning: frågorna är orörda");
+
+            // Gemini: svarstaket följer läget.
+            Settings::setChatProvider ("gemini");
+            const auto capped = GeminiApi::buildRequest ("system", {}, trimmed, 4096);
+            check ((int) capped["generationConfig"]["maxOutputTokens"] == 4096, "Gemini: maxOutputTokens följer kostnadsläget");
+            Settings::setChatProvider ("anthropic");
+        }
+
+        // Varning före ett dyrt verktyg: låtsasserver som först ber om render_preview. answer: 1 kör, 2 hoppa över, 3 kör och fråga inte mer.
+        {
+            const auto runConfirm = [&] (int costMode, int answer, int port, bool& sawPending, juce::String& secondBody, bool& stillAskedLater)
+            {
+                std::atomic<int> requests { 0 };
+                std::atomic<bool> stopServer { false };
+                juce::StreamingSocket listener;
+                if (! listener.createListener (port, "127.0.0.1"))
+                    return false;
+                std::string captured;
+                std::thread server ([&]
+                {
+                    while (! stopServer)
+                    {
+                        std::unique_ptr<juce::StreamingSocket> client (listener.waitForNextConnection());
+                        if (client == nullptr || stopServer)
+                            continue;
+                        std::string request;
+                        char byte;
+                        auto headerEnd = std::string::npos;
+                        while (headerEnd == std::string::npos && client->read (&byte, 1, true) == 1)
+                        {
+                            request.push_back (byte);
+                            headerEnd = request.find ("\r\n\r\n");
+                        }
+                        auto length = 0;
+                        auto lower = request;
+                        std::transform (lower.begin(), lower.end(), lower.begin(), [] (unsigned char c) { return (char) std::tolower (c); });
+                        if (const auto at = lower.find ("content-length:"); at != std::string::npos)
+                            length = std::atoi (request.c_str() + at + 15);
+                        std::string body;
+                        for (int i = 0; i < length && client->read (&byte, 1, true) == 1; ++i)
+                            body.push_back (byte);
+
+                        const auto number = ++requests;
+                        juce::String reply;
+                        if (number == 1 || number == 2)
+                        {
+                            if (number == 2)
+                                captured = body;
+                            const auto id = juce::String (number);
+                            reply = R"({"type":"message","role":"assistant","stop_reason":"tool_use","usage":{"input_tokens":10,"output_tokens":5},"content":[{"type":"tool_use","id":"toolu_c)" + id
+                                  + R"(","name":"analyze_audio","input":{}}]})";
+                        }
+                        else
+                            reply = R"({"type":"message","role":"assistant","stop_reason":"end_turn","usage":{"input_tokens":10,"output_tokens":5},"content":[{"type":"text","text":"ok"}]})";
+                        const auto text = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " + juce::String (reply.getNumBytesAsUTF8())
+                                        + "\r\nConnection: close\r\n\r\n" + reply;
+                        client->write (text.toRawUTF8(), (int) text.getNumBytesAsUTF8());
+                    }
+                });
+
+                Settings::setChatCostMode (costMode);
+                Settings::set ("chatEndpoint", "http://127.0.0.1:" + juce::String (port) + "/v1/messages");
+                chat.newChat();
+                chat.send ("Check the mix");
+                auto asked = 0;
+                for (int i = 0; i < 1500 && (chat.isBusy() || i < 5); ++i)
+                {
+                    juce::MessageManager::getInstance()->runDispatchLoopUntil (40);
+                    if (chat.getPendingConfirm().isNotEmpty())
+                    {
+                        sawPending = true;
+                        ++asked;
+                        chat.answerConfirm (answer);
+                        juce::Thread::sleep (200); // tråden hinner läsa svaret innan nästa varning kan visas
+                    }
+                }
+                stillAskedLater = asked > 1;
+                stopServer = true;
+                juce::StreamingSocket wake;
+                wake.connect ("127.0.0.1", port, 500);
+                wake.close();
+                server.join();
+                secondBody = captured;
+                Settings::set ("chatEndpoint", {});
+                Settings::setChatCostMode (1);
+                return true;
+            };
+
+            auto sawPending = false, askedAgain = false;
+            juce::String body;
+            if (runConfirm (1, 2, 18767, sawPending, body, askedAgain))
+            {
+                check (sawPending, "Normal: varning före analyze_audio");
+                check (body.contains ("skipped this tool"), "SKIP: verktyget körs inte och AI:n får veta det");
+            }
+            sawPending = false;
+            if (runConfirm (1, 1, 18768, sawPending, body, askedAgain))
+            {
+                check (sawPending && ! body.contains ("skipped this tool"), "RUN: verktyget körs");
+                check (askedAgain, "RUN: den frågar igen vid nästa dyra verktyg");
+            }
+            sawPending = false;
+            if (runConfirm (1, 3, 18769, sawPending, body, askedAgain))
+                check (sawPending && ! askedAgain, "RUN, DON'T ASK AGAIN: frågar bara en gång");
+            sawPending = false;
+            if (runConfirm (2, 2, 18770, sawPending, body, askedAgain))
+                check (! sawPending && ! body.contains ("skipped this tool"), "Rik: ingen varning");
+        }
+
+        // Sessioner: spara, öppna, exportera och autorensa; nycklarna får aldrig hamna i filerna.
+        {
+            const auto folder = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("kickbase_chat_sessions_test");
+            folder.deleteRecursively();
+            folder.createDirectory();
+            Settings::set ("chatsFolder", folder.getFullPathName());
+            const juce::String secret = "sk-ant-TESTSECRET12345678";
+            Settings::setChatApiKey (secret);
+            Settings::setChatCostMode (0);
+
+            juce::StreamingSocket listener;
+            const auto port = 18771;
+            if (listener.createListener (port, "127.0.0.1"))
+            {
+                std::atomic<bool> stopServer { false };
+                std::thread server ([&]
+                {
+                    while (! stopServer)
+                    {
+                        std::unique_ptr<juce::StreamingSocket> client (listener.waitForNextConnection());
+                        if (client == nullptr || stopServer)
+                            continue;
+                        std::string request;
+                        char byte;
+                        auto headerEnd = std::string::npos;
+                        while (headerEnd == std::string::npos && client->read (&byte, 1, true) == 1)
+                        {
+                            request.push_back (byte);
+                            headerEnd = request.find ("\r\n\r\n");
+                        }
+                        auto length = 0;
+                        auto lower = request;
+                        std::transform (lower.begin(), lower.end(), lower.begin(), [] (unsigned char c) { return (char) std::tolower (c); });
+                        if (const auto at = lower.find ("content-length:"); at != std::string::npos)
+                            length = std::atoi (request.c_str() + at + 15);
+                        for (int i = 0; i < length && client->read (&byte, 1, true) == 1; ++i) {}
+
+                        const juce::String reply = R"({"type":"message","role":"assistant","stop_reason":"end_turn","usage":{"input_tokens":10,"output_tokens":5},"content":[{"type":"text","text":"see https://x.test/v1?key=AIzaSyAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA and sk-ant-TESTSECRET12345678 ok"}]})";
+                        const auto text = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " + juce::String (reply.getNumBytesAsUTF8())
+                                        + "\r\nConnection: close\r\n\r\n" + reply;
+                        client->write (text.toRawUTF8(), (int) text.getNumBytesAsUTF8());
+                    }
+                });
+
+                Settings::set ("chatEndpoint", "http://127.0.0.1:" + juce::String (port) + "/v1/messages");
+                auto ask = [&] (const juce::String& text)
+                {
+                    chat.send (text);
+                    for (int i = 0; i < 1500 && (chat.isBusy() || i < 5); ++i)
+                        juce::MessageManager::getInstance()->runDispatchLoopUntil (40);
+                };
+                auto hasFile = [&] (const juce::String& pattern) { return folder.findChildFiles (juce::File::findFiles, false, pattern).size(); };
+                auto leaks = [&] (const juce::File& file)
+                {
+                    const auto text = file.loadFileAsString();
+                    return text.contains (secret) || text.contains ("AIzaSyAAAA") || text.contains ("key=AIza");
+                };
+
+                chat.newChat();
+                ask ("hello session");
+                check (chat.hasConversation(), "session: samtalet finns efter en fråga");
+                juce::File saved, exported;
+                check (chat.saveSession (saved) && saved.existsAsFile(), "session: sparas till en fil");
+                check (chat.exportText (exported) && exported.existsAsFile(), "session: exporteras till en textfil");
+                check (exported.loadFileAsString().contains ("hello session") && exported.loadFileAsString().contains ("[AI]"), "session: exporten innehåller samtalet");
+                check (! leaks (saved) && ! leaks (exported), "session: nyckeln finns inte i sessionsfilen eller exporten");
+                check (exported.loadFileAsString().contains ("[key removed]"), "session: nyckeln i svaret är borttagen");
+                check (AiChat::redact ("error at /v1/models/x:generateContent?key=AIzaSyBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB&alt=sse").contains ("&alt=sse")
+                       && ! AiChat::redact ("?key=AIzaSyBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB").contains ("AIza"), "session: redact tar bort key= men lämnar resten av adressen");
+
+                const auto headers = AiChat::redact ("Authorization: Bearer abcdef123456789\nx-goog-api-key: SECRETVALUE12345\n\"x-api-key\":\"SECRETVALUE67890\"");
+                check (! headers.contains ("abcdef123456789") && ! headers.contains ("SECRETVALUE"), "session: redact tar bort Authorization-, x-goog-api-key- och x-api-key-headers");
+
+                chat.newChat();
+                check (! chat.hasConversation(), "session: NEW CHAT tömmer");
+                check (chat.loadSession (saved) && chat.hasConversation(), "session: öppnas igen");
+                auto entries = chat.getEntries();
+                check (! entries.empty() && entries.front().kind == AiChat::Entry::Kind::user && entries.front().text == "hello session", "session: det öppnade samtalet visar frågan");
+                ask ("and then more");
+                check (chat.getEntries().size() > entries.size(), "session: man kan fortsätta ett öppnat samtal");
+                check (AiChat::listSessions().size() == 1, "session: listan visar den sparade chatten");
+
+                // Autorensning: Sparsam rensar över 40 000 tecken, sparar och exporterar först och tar bort de äldsta frågorna.
+                chat.newChat();
+                const auto txtBefore = hasFile ("*.txt"), jsonBefore = hasFile ("*.json");
+                const auto big = juce::String::repeatedString ("lorem ipsum ", 4000);
+                for (int i = 0; i < 4; ++i)
+                    ask (big + juce::String (i));
+                check (hasFile ("*.txt") > txtBefore && hasFile ("*.json") > jsonBefore, "autorensning: samtalet sparas och exporteras innan något tas bort");
+                auto dropped = false;
+                for (const auto& entry : chat.getEntries())
+                    dropped |= entry.text.contains ("older questions were dropped");
+                check (dropped, "autorensning: en notis berättar att de äldsta frågorna togs bort");
+                auto anyLeak = false;
+                for (const auto& file : folder.findChildFiles (juce::File::findFiles, false, "*"))
+                    anyLeak |= leaks (file);
+                check (! anyLeak, "autorensning: ingen nyckel i någon fil i Chats-mappen");
+
+                stopServer = true;
+                juce::StreamingSocket wake;
+                wake.connect ("127.0.0.1", port, 500);
+                wake.close();
+                server.join();
+            }
+            else
+                check (false, "session: kunde inte starta testservern");
+
+            Settings::set ("chatEndpoint", {});
+            Settings::set ("chatsFolder", {});
+            Settings::setChatCostMode (1);
+            Settings::setChatApiKey ("sk-ant-invalid-test-key");
+            chat.newChat();
+            folder.deleteRecursively();
+        }
+
         // Fönstret (pluginet) stängs mitt i ett anrop som aldrig får svar: det ska gå direkt, inte vänta ut anropet.
         {
             juce::StreamingSocket listener;
@@ -1585,6 +1871,87 @@ namespace
                 server.join();
                 Settings::set ("chatEndpoint", {});
             }
+        }
+
+        // Gemini: sparade svar (ingen nyckel, inget nät).
+        {
+            Settings::setGeminiApiKey ("AIzaFakeKey123");
+            check (Settings::geminiApiKey() == "AIzaFakeKey123", "Gemini-nyckeln läses tillbaka");
+            check (! settingsFile.loadFileAsString().contains ("FakeKey"), "Gemini-nyckeln ligger inte i klartext");
+            Settings::setChatProvider ("gemini");
+            check (Settings::chatProvider() == "gemini", "leverantören sparas");
+            check (Settings::geminiModel() == "gemini-3.6-flash", "standardmodellen för Gemini");
+            Settings::setGeminiModel ("my-model");
+            check (Settings::geminiModel() == "my-model", "egen Gemini-modell kan skrivas in");
+            Settings::setGeminiModel ("gemini-3.6-flash");
+            check (Settings::geminiToolsCheck ("m1", "keyA") == -1, "verktygsprov: inte provad än");
+            Settings::setGeminiToolsCheck ("m1", "keyA", false);
+            check (Settings::geminiToolsCheck ("m1", "keyA") == 0 && Settings::geminiToolsCheck ("m1", "keyB") == -1, "verktygsprov: sparas per nyckel");
+            check (! settingsFile.loadFileAsString().contains ("keyA"), "verktygsprov: nyckeln sparas som hash");
+            {
+                const auto listed = GeminiApi::parseModelList (juce::JSON::parse (
+                    R"({"models":[{"name":"models/gemini-3.6-flash","supportedGenerationMethods":["generateContent","countTokens"]},
+                        {"name":"models/gemini-embedding-001","supportedGenerationMethods":["embedContent"]},
+                        {"name":"models/gemini-3-flash-tts","supportedGenerationMethods":["generateContent"]},
+                        {"name":"models/imagen-4","supportedGenerationMethods":["predict"]},
+                        {"name":"models/gemini-3.5-flash-lite","supportedGenerationMethods":["generateContent"]}]})"));
+                check (listed.size() == 2 && listed[0] == "gemini-3.6-flash" && listed[1] == "gemini-3.5-flash-lite", "models.list: bara textmodeller med generateContent, utan models/-prefix");
+                check (GeminiApi::models() == GeminiApi::fallbackModels(), "modellista: reservlistan före hämtning");
+                GeminiApi::setFetchedModels (listed);
+                check (GeminiApi::models() == listed, "modellista: hämtad lista används");
+                GeminiApi::setFetchedModels ({});
+            }
+            check (GeminiApi::errorMessage (404, {}).contains ("MODEL"), "Gemini: 404 pekar på modellvalet");
+
+            const auto tools = ToolLayer::tools();
+            juce::String error;
+
+            const auto textReply = GeminiApi::parseResponse (juce::JSON::parse (
+                R"({"candidates":[{"content":{"role":"model","parts":[{"thought":true,"text":"hmm"},{"text":"Hello there"}]},"finishReason":"STOP"}],
+                    "usageMetadata":{"promptTokenCount":12,"candidatesTokenCount":3}})"), tools, error);
+            check (error.isEmpty() && textReply["content"].size() == 1 && textReply["content"][0]["text"].toString() == "Hello there", "Gemini: textsvar tolkas (tankedelar hoppas över)");
+            check (textReply["stop_reason"].toString() == "end_turn" && (int) textReply["usage"]["input_tokens"] == 12 && (int) textReply["usage"]["output_tokens"] == 3, "Gemini: stopporsak och tokens");
+
+            const auto toolReply = GeminiApi::parseResponse (juce::JSON::parse (
+                R"({"candidates":[{"content":{"role":"model","parts":[{"functionCall":{"name":"set_parameters","args":{"values":"{\"kickClick\":0.5}"}},"thoughtSignature":"sig123"}]},"finishReason":"STOP"}]})"), tools, error);
+            const auto block = toolReply["content"][0];
+            check (block["type"].toString() == "tool_use" && block["name"].toString() == "set_parameters" && toolReply["stop_reason"].toString() == "tool_use", "Gemini: verktygsanrop tolkas");
+            check (block["input"]["values"].isObject() && (double) block["input"]["values"]["kickClick"] == 0.5, "Gemini: JSON-strängargumentet packas upp till ett objekt");
+
+            // Samtalet tillbaka: tool_use -> functionCall (med signaturen), tool_result -> functionResponse med verktygsnamnet.
+            juce::Array<juce::var> messages;
+            auto userMsg = std::make_unique<juce::DynamicObject>();
+            userMsg->setProperty ("role", "user");
+            userMsg->setProperty ("content", "Tune the kick");
+            messages.add (juce::var (userMsg.release()));
+            auto assistantMsg = std::make_unique<juce::DynamicObject>();
+            assistantMsg->setProperty ("role", "assistant");
+            assistantMsg->setProperty ("content", toolReply["content"]);
+            messages.add (juce::var (assistantMsg.release()));
+            auto resultBlock = std::make_unique<juce::DynamicObject>();
+            resultBlock->setProperty ("type", "tool_result");
+            resultBlock->setProperty ("tool_use_id", block["id"]);
+            resultBlock->setProperty ("content", "{\"ok\":true}");
+            auto resultMsg = std::make_unique<juce::DynamicObject>();
+            resultMsg->setProperty ("role", "user");
+            resultMsg->setProperty ("content", juce::Array<juce::var> { juce::var (resultBlock.release()) });
+            messages.add (juce::var (resultMsg.release()));
+            const auto request = GeminiApi::buildRequest ("system text", tools, messages);
+            const auto requestText = juce::JSON::toString (request, true);
+            check (requestText.contains ("functionCall") && requestText.contains ("sig123"), "Gemini: anropet med thoughtSignature skickas tillbaka");
+            check (request["contents"][2]["parts"][0]["functionResponse"]["name"].toString() == "set_parameters", "Gemini: tool_result blir functionResponse med namnet");
+            check (! requestText.contains ("additionalProperties") && request["tools"].size() > 0, "Gemini: verktygsschemat är rensat");
+
+            check (GeminiApi::parseResponse (juce::JSON::parse (R"({"promptFeedback":{"blockReason":"SAFETY"}})"), tools, error).isVoid() && error.contains ("SAFETY"), "Gemini: blockerat svar ger ett fel");
+            check (GeminiApi::errorMessage (400, R"({"error":{"code":400,"message":"API key not valid. Please pass a valid API key.","status":"INVALID_ARGUMENT"}})").contains ("key"), "Gemini: ogiltig nyckel (400)");
+            check (GeminiApi::errorMessage (403, R"({"error":{"code":403,"message":"denied","status":"PERMISSION_DENIED"}})").isNotEmpty(), "Gemini: 403");
+            check (GeminiApi::errorMessage (429, R"({"error":{"code":429,"message":"Quota exceeded","status":"RESOURCE_EXHAUSTED"}})").containsIgnoreCase ("limit")
+                       || GeminiApi::errorMessage (429, {}).containsIgnoreCase ("limit"), "Gemini: kvot (429) förklaras");
+            check (GeminiApi::errorMessage (0, {}).isNotEmpty(), "Gemini: nätverksfel har ett meddelande");
+
+            Settings::setChatProvider ("anthropic");
+            check (Settings::chatProvider() == "anthropic", "leverantören kan växlas tillbaka");
+            Settings::setGeminiApiKey ({});
         }
 
         Settings::setChatApiKey ({});
