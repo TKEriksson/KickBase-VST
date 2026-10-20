@@ -110,11 +110,11 @@ namespace
         return text.containsOnly ("0123456789") && juce::isPositiveAndBelow (number - 1, numEffectChannels) ? number - 1 : -1;
     }
 
-    // Källan i en koppling: "lfo" 1-3, "macro" 1-4, eller "instrument" 1-10 med "source" ENV 2 / ENV 3 / VELOCITY / RANDOM. -1 = ogiltig.
+    // Källan i en koppling: "lfo" 1-10 (FX 1-3, kollas av anroparen), "macro" 1-4, eller "instrument" 1-10 med "source" ENV 2 / ENV 3 / VELOCITY / RANDOM. -1 = ogiltig.
     int modulationSource (const var& route)
     {
         if (route.hasProperty ("lfo"))
-            return juce::isPositiveAndBelow ((int) route["lfo"] - 1, Modulation::numLfos) ? (int) route["lfo"] - 1 : -1;
+            return juce::isPositiveAndBelow ((int) route["lfo"] - 1, Modulation::maxLfos) ? Modulation::lfoSource ((int) route["lfo"] - 1) : -1;
         if (route.hasProperty ("macro"))
             return juce::isPositiveAndBelow ((int) route["macro"] - 1, Modulation::numMacros) ? Modulation::firstMacro + (int) route["macro"] - 1 : -1;
         if (route.hasProperty ("instrument"))
@@ -206,7 +206,7 @@ std::vector<ToolLayer::ToolInfo> ToolLayer::tools()
           R"({"type":"object","properties":{"mode":{"type":"string"},"length":{"type":"string"},"points":{"type":"array","items":{"type":"array","items":{"type":"number"}}}}})" },
         { "set_instruments", "Sets how many instruments are used (1-10; each has its own pattern, oscillators, filter, envelopes, effect send and sidechain depth; the default is 3). Removing instruments deletes the last ones completely (pattern, sound, sample, wavetables, name, mixer and modulation routes). Adding gives instruments with default settings and an empty pattern.",
           R"({"type":"object","properties":{"count":{"type":"integer","minimum":1,"maximum":10}},"required":["count"]})" },
-        { "set_modulation", "Sets up LFOs and routes (the matrix). lfos: [{\"lfo\":1,\"shape\":\"Sine\",\"rate\":\"1 bar\",\"on\":true}] (shapes: Sine, Triangle, Saw Up, Saw Down, Square, Random, Custom; synced rates 1/32 ... 16 bars; \"hz\":0.02-40 runs the LFO at its own speed instead, \"mode\":\"Sync\"|\"Hz\"; \"points\":[[phase 0..1, value -1..1, tension -1..1],...] draws a custom curve, at least two points, and selects the Custom shape). routes: [{\"lfo\":1,\"param\":\"bass1Cutoff\",\"amount\":0.3}] (amount -1..1 of the knob's travel, only sound parameters: kick*, bass*, fx*). The source is \"lfo\" 1-3, or \"macro\" 1-4 (turn macro1..macro4 with set_parameters), or \"instrument\" 1-10 with \"source\":\"ENV 2\" | \"ENV 3\" | \"VELOCITY\" | \"RANDOM\" (ENV 2/3 are set with bassNEnv2Attack ... bassNEnv3Release). Up to 64 routes. clear_routes removes all routes first.",
+        { "set_modulation", "Sets up LFOs and routes (the matrix). lfos: [{\"lfo\":1,\"shape\":\"Sine\",\"rate\":\"1 bar\",\"on\":true}] (lfo 1-10 in the instrument, 1-3 in the FX plugin; setting an inactive LFO or routing from it adds it, \"remove\":true removes it with its routes; get_state lists active_lfos; shapes: Sine, Triangle, Saw Up, Saw Down, Square, Random, Custom; synced rates 1/32 ... 16 bars; \"hz\":0.02-40 runs the LFO at its own speed instead, \"mode\":\"Sync\"|\"Hz\"; \"points\":[[phase 0..1, value -1..1, tension -1..1],...] draws a custom curve, at least two points, and selects the Custom shape). routes: [{\"lfo\":1,\"param\":\"bass1Cutoff\",\"amount\":0.3}] (amount -1..1 of the knob's travel, only sound parameters: kick*, bass*, fx*). The source is \"lfo\" 1-10, or \"macro\" 1-4 (turn macro1..macro4 with set_parameters), or \"instrument\" 1-10 with \"source\":\"ENV 2\" | \"ENV 3\" | \"VELOCITY\" | \"RANDOM\" (ENV 2/3 are set with bassNEnv2Attack ... bassNEnv3Release). Up to 64 routes. clear_routes removes all routes first.",
           R"({"type":"object","properties":{"lfos":{"type":"array","items":{"type":"object"}},"routes":{"type":"array","items":{"type":"object"}},"clear_routes":{"type":"boolean"}}})" },
         { "list_presets", "Lists factory and user presets. section: Full, Kick, Bass, Pattern, Effects, Sidechain, Master (the maximizer), Soundstage or LFO (default: all).",
           R"({"type":"object","properties":{"section":{"type":"string"}}})" },
@@ -511,11 +511,17 @@ var ToolLayer::getState (const var& args) const
     put (pattern, "layers (instruments 0-9 and 'kick')", layers);
     put (data, "pattern", pattern);
 
-    // Egna LFO-kurvor (LFO 1-3, form Custom): [fas 0..1, värde -1..1, spänning].
+    // Aktiva LFO:er (1-10, FX 1-3) och deras egna kurvor (form Custom): [fas 0..1, värde -1..1, spänning].
     {
-        juce::Array<var> curves;
-        for (int lfo = 0; lfo < 3; ++lfo)
+        juce::Array<var> active, curves;
+        for (int lfo = 0; lfo < processor.availableLfos(); ++lfo)
+            if (processor.isLfoActive (lfo))
+                active.add (lfo + 1);
+        put (data, "active_lfos", active);
+        for (int lfo = 0; lfo < processor.availableLfos(); ++lfo)
         {
+            if (lfo >= Modulation::numLfos && ! processor.isLfoActive (lfo))
+                continue;
             juce::Array<var> points;
             for (const auto& point : processor.lfoCurves[(size_t) lfo].getPoints())
                 points.add (var (juce::Array<var> { round4 (point.x), round4 (1.0f - 2.0f * point.y), round4 (point.tension) }));
@@ -583,7 +589,10 @@ var ToolLayer::getState (const var& args) const
         if (source < 0 || ! juce::isPositiveAndBelow (target, processor.getParameters().size()))
             continue;
         auto entry = object();
-        put (entry, "lfo", source + 1);
+        if (Modulation::isLfoSource (source))
+            put (entry, "lfo", Modulation::lfoIndexOfSource (source) + 1);
+        else
+            put (entry, "source", Modulation::sourceName (source));
         if (auto* withId = dynamic_cast<juce::AudioProcessorParameterWithID*> (processor.getParameters()[target]))
             put (entry, "param", withId->paramID);
         put (entry, "amount", round4 (route.amount.load()));
@@ -914,11 +923,18 @@ var ToolLayer::setModulation (const var& args)
         for (const auto& lfo : *lfos)
         {
             const auto index = (int) lfo["lfo"] - 1;
-            if (! juce::isPositiveAndBelow (index, Modulation::numLfos))
+            if (! juce::isPositiveAndBelow (index, processor.availableLfos()))
             {
-                problems.add ("lfo must be 1-3");
+                problems.add ("lfo must be 1-" + juce::String (processor.availableLfos()));
                 continue;
             }
+            // "remove": true tar bort LFO:n (dess kopplingar försvinner och den återställs). Annars aktiveras en inaktiv LFO.
+            if ((bool) lfo["remove"])
+            {
+                processor.setLfoActive (index, false);
+                continue;
+            }
+            processor.setLfoActive (index, true);
             // Egen kurva: "points" = [[fas 0..1, värde -1..1, böjning -1..1] ...] (minst två punkter). Formen blir Custom.
             if (auto* pointList = lfo["points"].getArray())
             {
@@ -964,12 +980,17 @@ var ToolLayer::setModulation (const var& args)
             const auto id = route["param"].toString();
             const auto index = parameterIndex (id);
             auto* parameter = findParameter (processor, id);
-            if (source < 0 || parameter == nullptr || index < 0)
-                problems.add ("Bad route: a source (lfo 1-3, macro 1-4, or instrument 1-10 with source ENV 2 / ENV 3 / VELOCITY / RANDOM) and a parameter id are needed (" + id + ")");
+            const auto lfo = Modulation::lfoIndexOfSource (source);
+            if (lfo >= processor.availableLfos())
+                problems.add ("lfo must be 1-" + juce::String (processor.availableLfos()));
+            else if (source < 0 || parameter == nullptr || index < 0)
+                problems.add ("Bad route: a source (lfo 1-10, macro 1-4, or instrument 1-10 with source ENV 2 / ENV 3 / VELOCITY / RANDOM) and a parameter id are needed (" + id + ")");
             else if (! Modulation::isModulatable (*parameter))
                 problems.add (id + " can't be modulated (only kick*, bass*, fx* sound parameters)");
             else if (processor.modRoutes.add (source, index, juce::jlimit (-1.0f, 1.0f, (float) (double) route["amount"])) < 0)
                 problems.add ("All " + juce::String (Modulation::maxRoutes) + " routes are in use");
+            else if (lfo >= 0)
+                processor.setLfoActive (lfo, true); // en koppling från en inaktiv LFO aktiverar den
         }
 
     processor.markStateChanged();
