@@ -556,7 +556,7 @@ void PianoRoll::commitPaste()
     for (const auto& n : clip.notes)
     {
         const auto tick = pasteStart + n.dt;
-        if (tick < 0 || tick >= editTicks())
+        if (tick < 0 || tick >= editTicks() || ! processor.pattern.acceptsTick (layer, tick))
         {
             ++skipped;
             continue;
@@ -1345,6 +1345,8 @@ void PianoRoll::mouseDown (const juce::MouseEvent& event)
     // Tom plats: en ny ton på steget under musen, i raden under musen.
     const auto start = snapped (xToTicks (event.position.x));
     const auto pitch = juce::jlimit (Pattern::minPitch, Pattern::maxPitch, yToPitch (event.position.y));
+    if (! processor.pattern.acceptsTick (layer, start))
+        return; // låst rad: klick efter slutet gör ingenting
     const auto glide = glideButton.getToggleState();
     const auto length = ! glide && lastLength > 0 ? lastLength : Pattern::ticksPerStep (grid());
     processor.pattern.addNote (layer, start, length, pitch, Pattern::defaultVelocity (layer), glide);

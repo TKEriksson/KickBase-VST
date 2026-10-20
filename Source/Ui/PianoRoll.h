@@ -68,9 +68,10 @@ private:
     int bars() const;
     int totalTicks() const { return bars() * Pattern::ticksPerBar; }
     // Redigerbart område: raden plus takten efter slutet (ett klick där förlänger raden: längden följer innehållet).
-    int editTicks() const { return std::min (Pattern::maxTicks, (bars() + 1) * Pattern::ticksPerBar); }
+    int editTicks() const { return std::min (Pattern::maxTicks, (bars() + extraViewBar()) * Pattern::ticksPerBar); }
+    int extraViewBar() const { return processor.pattern.isLengthAuto (layer) ? 1 : 0; } // en låst rad slutar där den slutar: ingen tom takt efter
     // Vyn visar en takt till efter radens slut (tills 64 takter): klicka där, eller + BAR, för att förlänga raden.
-    int viewTicks() const { return std::min (Pattern::maxBars, bars() + 1) * Pattern::ticksPerBar; }
+    int viewTicks() const { return std::min (Pattern::maxBars, bars() + extraViewBar()) * Pattern::ticksPerBar; }
     void extendRow();                         // + BAR: raden blir en takt längre (tills innehållet nått dit; se Pattern::setExtraBars)
     InstrumentGrid grid() const;
     int snapTicks() const;

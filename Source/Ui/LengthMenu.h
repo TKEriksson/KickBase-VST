@@ -21,9 +21,12 @@ namespace LengthMenu
                "The pattern is as long as the longest row; a shorter row repeats (shown dimmed) while the longest plays out, or plays once if its loop button is off.";
     }
 
-    // Sätter ett valt antal takter (0 = AUTO). Förkortas raden under innehållet frågar den först (`target` är komponenten dialogen hör till).
-    inline void setLength (PluginBase& processor, int layer, int bars, std::function<void()> afterwards = {})
+    // Sätter ett valt antal takter (0 = AUTO). Förkortas raden under innehållet frågar den först. `target` är komponenten dialogen hör till:
+    // är den borta (editorn stängd) görs inget, så ingen callback rör processorn efter att fönstret försvunnit.
+    inline void setLength (PluginBase& processor, int layer, int bars, juce::Component::SafePointer<juce::Component> target, std::function<void()> afterwards = {})
     {
+        if (target == nullptr)
+            return;
         auto& pattern = processor.pattern;
         bars = juce::jlimit (0, Pattern::maxBars, bars);
         if (bars == 0)
@@ -37,8 +40,10 @@ namespace LengthMenu
 
         auto lost = 0;
         pattern.forEachNote (layer, [&] (int tick, const Pattern::Note&) { lost += tick >= bars * Pattern::ticksPerBar ? 1 : 0; });
-        auto apply = [&processor, layer, bars, afterwards]
+        auto apply = [&processor, layer, bars, afterwards, target]
         {
+            if (target == nullptr)
+                return;
             processor.pattern.trimRow (layer, bars);
             processor.pattern.setManualBars (layer, bars);
             processor.patternChanged();
@@ -54,7 +59,7 @@ namespace LengthMenu
                                           juce::MessageBoxIconType::WarningIcon, "Shorten the row",
                                           "Locking the row to " + juce::String (bars) + (bars == 1 ? " bar" : " bars") + " removes " + juce::String (lost)
                                               + (lost == 1 ? " note" : " notes") + " after the end. This can't be undone.",
-                                          "Shorten", "Cancel"),
+                                          "Shorten", "Cancel", target.getComponent()),
                                       [apply] (int choice)
                                       {
                                           if (choice == 1)
@@ -75,10 +80,12 @@ namespace LengthMenu
         juce::Component::SafePointer<juce::Component> safeTarget (&target);
         menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&target), [&processor, layer, safeTarget, afterwards] (int result)
         {
+            if (safeTarget == nullptr)
+                return;
             if (result == 1)
-                setLength (processor, layer, 0, afterwards);
+                setLength (processor, layer, 0, safeTarget, afterwards);
             else if (result == 2)
-                setLength (processor, layer, processor.pattern.lengthBars (layer), afterwards);
+                setLength (processor, layer, processor.pattern.lengthBars (layer), safeTarget, afterwards);
             else if (result == 3)
             {
                 auto* window = new juce::AlertWindow ("Row length", "Number of bars (1 to " + juce::String (Pattern::maxBars) + "):", juce::MessageBoxIconType::NoIcon);
@@ -87,10 +94,10 @@ namespace LengthMenu
                     editor->setInputRestrictions (4, "0123456789");
                 window->addButton ("Set", 1, juce::KeyPress (juce::KeyPress::returnKey));
                 window->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
-                window->enterModalState (true, juce::ModalCallbackFunction::create ([&processor, layer, window, afterwards] (int choice)
+                window->enterModalState (true, juce::ModalCallbackFunction::create ([&processor, layer, window, safeTarget, afterwards] (int choice)
                 {
-                    if (choice == 1)
-                        setLength (processor, layer, std::max (1, window->getTextEditorContents ("bars").getIntValue()), afterwards);
+                    if (choice == 1 && safeTarget != nullptr)
+                        setLength (processor, layer, std::max (1, window->getTextEditorContents ("bars").getIntValue()), safeTarget, afterwards);
                 }), true);
             }
         });

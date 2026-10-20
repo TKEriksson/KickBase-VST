@@ -147,7 +147,7 @@ void Pattern::trimRow (int layer, int bars)
 {
     layer = clampedLayer (layer);
     const auto limit = std::max (1, bars) * ticksPerBar;
-    for (int bar = std::max (0, limit / ticksPerBar - 1); bar < maxBars; ++bar)
+    for (int bar = 0; bar < maxBars; ++bar) // från takt 0: en lång ton som startar tidigare kortas också vid slutet
     {
         auto* block = noteBlocks[(size_t) layer][(size_t) bar].load (std::memory_order_acquire);
         if (block == nullptr)

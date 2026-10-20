@@ -638,7 +638,7 @@ int StepSequencer::stepAt (int x, int layer, int numSteps, int ownSteps) const
     // Efter slutet på den längsta raden: ett klick lägger steget där och förlänger raden (R9). En kortare rad upprepas: ett klick i en kopia ändrar originalet.
     const auto rowLengths = lengths();
     if (rowLengths.barsOf (rowOf (layer)) >= rowLengths.total)
-        return absolute;
+        return processor.pattern.isLengthAuto (layer) ? absolute : -1; // en låst rad växer inte: klicket efter slutet gör ingenting
     return rowLengths.loops[(size_t) rowOf (layer)] ? absolute % ownSteps : -1;
 }
 
@@ -1222,6 +1222,8 @@ void StepSequencer::mouseDown (const juce::MouseEvent& event)
     if (dragTarget == Target::label)
     {
         dragTarget = Target::none;
+        if (event.mods.isPopupMenu() && (size_t) rowOf (dragLayer) < lengthButtons.size())
+            LengthMenu::show (processor, dragLayer, *lengthButtons[(size_t) rowOf (dragLayer)]); // högerklick på radkortet: AUTO / Lock length / antal takter
         return;
     }
 

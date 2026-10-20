@@ -136,6 +136,7 @@ struct Pattern
     int contentBars (int layer) const { return contentOf[(size_t) clampedLayer (layer)].load(); }
     int manualBars (int layer) const { return manualOf[(size_t) clampedLayer (layer)].load(); }
     bool isLengthAuto (int layer) const { return manualBars (layer) <= 0; }
+    bool acceptsTick (int layer, int tick) const { return isLengthAuto (layer) || tick < lengthBars (layer) * ticksPerBar; } // låst rad: ingen ton efter slutet
     void setManualBars (int layer, int bars);  // 0 = AUTO. Tar inte bort toner: det gör `trimRow` (efter en bekräftelse)
     void setExtraBars (int layer, int bars);   // 0 = ingen
     int extraBars (int layer) const { return extraOf[(size_t) clampedLayer (layer)].load(); }

@@ -287,6 +287,20 @@ namespace
         processor.patternChanged();
         check (pattern.lengthBars (kick) == 1, "tillbaka till AUTO: en takt");
 
+        pattern.clearNotes (kick);
+        pattern.addNote (kick, 0, 3 * Pattern::ticksPerBar, 48, 0); // en ton över tre takter
+        processor.patternChanged();
+        check (pattern.lengthBars (kick) == 3, "AUTO: en lång ton som täcker tre takter ger tre takter");
+        pattern.trimRow (kick, 2);
+        pattern.setManualBars (kick, 2);
+        check (pattern.note (kick, 0).length.load() == 2 * Pattern::ticksPerBar && pattern.lengthBars (kick) == 2, "förkortning: en ton som startar i takt 1 kortas vid slutet");
+        check (pattern.acceptsTick (kick, 2 * Pattern::ticksPerBar - 1) && ! pattern.acceptsTick (kick, 2 * Pattern::ticksPerBar), "låst rad: ingen ton efter slutet");
+        pattern.clearNotes (kick);
+        pattern.addNote (kick, 0, 48, 48, 0);
+        pattern.setManualBars (kick, 0);
+        processor.patternChanged();
+        check (pattern.acceptsTick (kick, 5 * Pattern::ticksPerBar), "AUTO: raden växer, tonen efter slutet tas emot");
+
         pattern.setExtraBars (0, 4);
         processor.patternChanged();
         check (pattern.lengthBars (0) >= 4, "+ BAR: raden är minst fyra takter");

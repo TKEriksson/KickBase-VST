@@ -4,8 +4,8 @@ Plan: [../plan-v2.md](../plan-v2.md). Opus = projektledare, Sonnet = bygger. Ses
 Läs [LESSONS.md](LESSONS.md) innan du bygger eller testar. Lägg till en rad där när ett fel upptäcks.
 
 ## Nu
-- 20 okt: fas R på content-r (Sonnet). R9 steg 2 klart och committat (längd följer innehållet: AUTO/valt/extra, PianoRoll LengthMenu + BAR, TOTAL LENGTH borta ur PatternModule). Tester gröna: rendersig-trion identiska, blocksize/audio/persist/length/preset/instrument, KickbaseTests.
-  Väntar: rapport till Opus (skickad). Nästa: R9 steg 3 (högerklick Lock length på radkortet, rensa kvarvarande gamla längdkod/visning i UI, verifiera bekräftelse vid förkortning i LengthMenu) och steg 4 (MCP get_pattern bars/locked, set_pattern length "auto"|n, repeat_to, AGENT_GUIDE/AnalysisAbout). Sedan fasslut (VST3+HostTest, hel svit, 42 bilder, docs/content-r-report.md, Tobias testlista).
+- 20 okt: fas R på content-r (Sonnet). R9 steg 3 klart (väntar på commit-hash/Opus-godkännande): trimRow från takt 0, DeferredRelease med SpinLock, LengthMenu med SafePointer + dialog kopplad till komponenten, låst rad tar inga toner efter slutet (Pattern::acceptsTick; pianorullen visar ingen extra takt, stegvyn och klistra in ignorerar), högerklick på radetiketten öppnar LengthMenu. lengthtest, persisttest, KickbaseTests gröna. Ingen skärmbild (inget visuellt nytt utom att den låsta rullen slutar vid slutet).
+  Nästa: R9 steg 4 (MCP get_pattern bars/locked, set_pattern length "auto"|n, repeat_to, add_note/set_pattern ger fel "row is locked to N bars" i låst rad, AGENT_GUIDE/AnalysisAbout, preset-checklistrad). Sedan fasslut (VST3+HostTest, hel svit, 42 bilder, docs/content-r-report.md, Tobias testlista). Ej verifierat: LengthMenu-dialogen för förkortning är aldrig klickad på riktigt.
 
 ## Klart
 - Fas 0, A, D1, W, E2, D2/D3 (godkända, pushade; tippen content-d2 c0ef101).
