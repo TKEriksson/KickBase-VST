@@ -1,7 +1,7 @@
 #pragma once
 
 #include <array>
-#include "../Core/InstrumentSynth.h"
+#include "../Core/InstrumentVoices.h"
 #include "../Core/Ducker.h"
 #include "../Core/Effects.h"
 #include "../Core/KickEngine.h"
@@ -81,7 +81,7 @@ private:
 
     StepScheduler scheduler;
     KickEngine kick;
-    std::array<InstrumentSynth, numLayers> basses;
+    std::array<InstrumentVoices, numLayers> basses;
     std::array<Ducker, numLayers> duckers;
     EffectRack effects { apvts };
     DuckCurvePlayer duckCurve;
