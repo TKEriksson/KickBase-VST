@@ -193,10 +193,6 @@ struct Pattern
                         visit (bar * ticksPerBar + i, block->notes[(size_t) i]);
     }
 
-    // Flest toner som klingar samtidigt på raden (ackordets extra toner räknas med): det antal VOICES som behövs. Glide-toner som startar
-    // medan en annan ton klingar återanvänder dess röst och räknas inte. Meddelandetråden (går igenom hela raden).
-    int maxSimultaneous (int layer) const;
-
     // Första tonen som startar i [fromTick, toTick), eller -1.
     int firstNoteIn (int layer, int fromTick, int toTick) const;
 
