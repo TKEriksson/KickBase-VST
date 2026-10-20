@@ -292,7 +292,7 @@ Innan nya presets byggs: gå igenom med Tobias hur en preset byggs så att allt 
 - Två presetnivåer: FX Chain Preset (hela kedjan, finns) och Effect Preset per effektlåda, filtrerad på effekttyp. RESET i båda.
 
 ### LC: Live Code (`content-lc`), Opus research 20 okt (förslag, spec till Opus först)
-- **Språk = Strudel** (JS + mini-notation, codeberg.org/uzu/strudel, AGPL-3.0 = samma licens som Kickbase, alltså tillåtet; behåll
+- **Språk = Strudel, beslutat (Tobias 20 okt: ingen försäljning eller licensbyte; ev. donationer via tkdev.se längre fram, OK med AGPL)** (JS + mini-notation, codeberg.org/uzu/strudel, AGPL-3.0 = samma licens som Kickbase, alltså tillåtet; behåll
   copyright i källan och visa den i UI + THIRD-PARTY.md). AI-modeller kan Strudel bra, och koden kan klistras in på strudel.cc.
 - **Motor:** JUCE 8:s `juce::JavascriptEngine` är QuickJS (choc). Bunta `@strudel/core` + `@strudel/mini` (fast version, egen bundle, inget
   nätverk) som BinaryData. Körs **aldrig** i ljudtråden: bakgrundstråden frågar mönstret (`queryArc`) några cykler framåt och skickar
