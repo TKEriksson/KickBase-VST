@@ -1,3 +1,4 @@
+#include <set>
 #include "PluginBase.h"
 #include <BinaryData.h>
 #include "AiChat.h"
@@ -530,6 +531,7 @@ void PluginBase::getStateInformation (juce::MemoryBlock& destData)
     for (int channel = 0; channel < numEffectChannels; ++channel)
         state.setProperty ("presetFx" + juce::String (channel + 1), fxPresetNames[(size_t) channel], nullptr);
     state.setProperty ("previewNote", previewNote.load(), nullptr);
+    state.setProperty ("fxKnobsV", Effects::knobsVersion, nullptr);
     for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
         state.setProperty ("layerName" + juce::String (layer + 1), layerNames[(size_t) layer], nullptr);
     for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
@@ -645,6 +647,7 @@ void PluginBase::setStateInformation (const void* data, int sizeInBytes)
 
     const auto lfoMask = (std::uint32_t) (int) state.getProperty ("activeLfos", 7); // gamla projekt: LFO 1-3
     state.removeProperty ("activeLfos", nullptr);
+    Effects::migrateLegacyKnobs (state); // gamla projekt: nya effektrattar får sitt neutrala standardvärde
     apvts.replaceState (state);
     applyLoadedLfos (lfoMask); // (efter replaceState: den återställer inte parametrar som saknas i projektet)
     if (legacyLengths)
@@ -1113,6 +1116,7 @@ bool PluginBase::loadPresetXml (const juce::XmlElement& xmlElement, Presets::Sec
     std::vector<juce::RangedAudioParameter*> sectionParameters;
     std::vector<float> targets;
     std::map<juce::String, size_t> indexOfId;
+    std::set<juce::String> fileIds; // parametrar som filen har
     for (auto* p : getParameters())
         if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p); ranged != nullptr && Presets::belongsTo (section, ranged->getParameterID(), layer))
         {
@@ -1133,9 +1137,24 @@ bool PluginBase::loadPresetXml (const juce::XmlElement& xmlElement, Presets::Sec
             else if (section == Presets::Section::effects)
                 id = Presets::effectIdFromCanonical (id, layer);
             if (const auto found = indexOfId.find (id); found != indexOfId.end())
+            {
+                fileIds.insert (id);
                 targets[found->second] = sectionParameters[found->second]->convertTo0to1 ((float) entry->getDoubleAttribute ("value"));
+            }
         }
     }
+
+    // Effektrattar som tillkommit efter att presetet sparades: neutralt standardvärde i stället för 0.5.
+    for (int channel = 0; channel < numEffectChannels; ++channel)
+        for (int slot = 0; slot < slotsPerChannel; ++slot)
+            if (const auto type = indexOfId.find (Effects::slotParamID (channel, slot, "Type")); type != indexOfId.end())
+            {
+                const auto effectType = (EffectType) juce::jlimit (0, numEffectTypes - 1, juce::roundToInt (sectionParameters[type->second]->convertFrom0to1 (targets[type->second])));
+                for (int k = 0; k < knobsPerSlot; ++k)
+                    if (float neutral = 0.0f; ! fileIds.count (Effects::knobParamID (channel, slot, k)) && Effects::newKnobDefault (effectType, k, neutral))
+                        if (const auto knob = indexOfId.find (Effects::knobParamID (channel, slot, k)); knob != indexOfId.end())
+                            targets[knob->second] = neutral;
+            }
 
     // Också parametrar som redan har rätt värde sätts: APVTS råa värde (det ljudtråden läser) avrundas till parameterns steg först när den
     // sätts, och dess startvärde är inte avrundat (t.ex. 59.9999962 i stället för 60).
