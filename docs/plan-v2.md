@@ -30,6 +30,17 @@ och rapportera i klump (commit-hashar + 5–15 rader).
 - **Presetlistan:** varje fas lägger till en rad per nytt tillstånd i [work/preset-checklist.md](work/preset-checklist.md): vad det är,
   var det sparas (preset / projekt / global inställning / egen presettyp), och om InitPreset och MCP-verktygen behöver det. Används i fas E.
 
+**Tvärgående regler (gäller varje fas som rör området; Tobias specar skrevs i olika omgångar, så de här binder ihop dem):**
+- **Varje presetmeny** (OSC, effekt, effektkedja, mönster, huvudpreset) får RESET med bekräftelse. Huvudpresetlistan: Init + NEW EMPTY
+  (ingen kick, ingen synth, allt tomt). Bygg RESET i samma fas som menyn (layout_optimization §RESET).
+- **Tre olika av/på för filter, blanda aldrig ihop dem:** FILTER-flikens av/på (hela instrumentets Filter 1+2), FILTER per källa
+  (OSC 1–3, SAMPLE, NOISE) och FILTER ENVELOPE av/på (bara envelopen). Samma namn i UI, kod och MCP-beskrivningar.
+- **Mönsterlagringen** (R9) är grunden för ackord (P), underrader SAMPLE/SLICER (F2), kopiera/duplicera/mönsterpreset/MIDI-export (L4)
+  och arrangemang (IO). Ändringar där ska passa alla fem.
+- **AI och MCP:** nya parametrar syns i MCP automatiskt; nya specialverktyg i samma fas. Rapportskrivaren, AGENT_GUIDE, MCP-beskrivningarna
+  och skillen gås igenom samlat i E0 (BEZIER.md sista stycket: "allt nytt, och fortfarande ALL info").
+- **API-nycklar** (AI-fasen): krypterat lokalt, aldrig i repo, logg, rapport eller preset.
+
 **Testpolicy (regel 11 gäller vid fasens slut, inte efter varje delsteg):**
 - Delsteg: bygg bara berörda mål (`build-mcp.bat <mål>`, nedan). Kör bara testerna som rör ändringen.
 - Rör ändringen ljudtråden: `rendersig`, `rendersigreal`, `rendersigwide` (+ `rendersigtb303` om filter) mot baslinjerna, och
@@ -69,7 +80,7 @@ Verktyget: `build/RelWithDebInfo/KickbaseMcp_artefacts/RelWithDebInfo/KickbaseMc
 | 3 | **L** layout | `content-l` | INSTR-underflik, ENV-headers, mönsterflikens globala rad, AI-knappar, instrumentmeny | ny yta behövs för allt som följer (S, F2, K) |
 | 4 | **S** källor | `content-s` | FILTER-av/på per källa, brustyper, WARP ENV-källa, OSC-display, OSC-presets | små, fristående, Tobias vill ha dem |
 | 5 | **KB** kunskapsbas | (docs i `content-s`) | KickAndBaseSchool + transkripten → AI-guide och skill | billig för Sonnet; behövs innan Analyzer och fas-verktyg designas |
-| 6 | **K** kickverktyg | `content-k` | 16-delsmarkörer, markörens tid/frekvens/ton, zoom, LISTEN vid PITCH/AMP | psytrance-kärnan (lektionen) |
+| 6 | **K** kickverktyg | `content-k` | 16-delsmarkörer, markörens tid/frekvens/ton, zoom (LISTEN gjord i R) | psytrance-kärnan (lektionen) |
 | 7 | **AN** Analyzer-sida | `content-an` | egen toppflik: PsyScope-lik kick+bas-vy, faskorrelation, kollisionsgradient, rapportskrivaren | bygger på K och KB |
 | 8 | **PH** fasverktyg | `content-ph` | fasrotation av grundtonen per instrument (som PHA-979), övertons-/fasredigerare för wavetables | använder AN för att se resultatet |
 | 9 | **F2** sampler | `content-f` | SAMPLE-lager BLEND/INDEPENDENT/OFF, SPLICER med egen rad, slices, tempo | ersätter gamla B1 och F; kräver P och L |
@@ -127,14 +138,19 @@ Ljudet med standardvärden ska vara bit-identiskt (rendersig*). Ordning:
      takter) bara mot trasiga filer/AI. Man kan alltid scrolla minst 1 takt efter slutet.
    - Förläng: klick i takten efter slutet (steg och pianorulle) eller "+"-knappen lägger till **en** tom takt.
    - Krymp: när man tar bort noter krymps varje rad (steg och pianorulle) automatiskt till sista takten med innehåll.
-   - Avsiktligt tomma takter i slutet (t.ex. 3 takter kick + 1 takt paus): högerklick "Lock length" per rad (standard av) håller längden.
-   - LENGTH-rutan blir en visning (inte ett val); TOTAL LENGTH och radvalet "Total" tas bort. Mönstret = längsta raden, kortare loopar.
+   - **LENGTH per rad: AUTO (standard) eller ett valt antal takter 1–1024** (Tobias 20 okt). AUTO = följer innehållet. Valt antal = låst
+     längd, t.ex. 3 takter kick + 1 takt paus. Högerklick "Lock length" = byt till valt antal med nuvarande längd. Kortare än innehållet:
+     bekräftelse, noterna efter slutet tas bort (minnet frigörs). TOTAL LENGTH och radvalet "Total" tas bort. Mönstret = längsta raden,
+     kortare rader loopar.
    - Längden flyttas från valparametrar till mönsterdata i state (inte automatiserbar). De gamla längdparametrarna ligger kvar oanvända
      så att parameterordningen inte ändras. Gamla presets behöver inte läsas rätt (avsnitt 0).
    - **Minne och CPU:** inget förallokerat för max. Bufferten växer i bitar (t.ex. 4 takter) i meddelandetråden och byts in; när raden
      krymper frigörs överskottet (DeferredRelease). Ljudtråden allokerar aldrig (`audiotest`) och läser bara rader som finns. Rapportera
      minnet före/efter (dagens förallokering för 64 takter × alla instrument mot ett typiskt mönster).
    - MCP: mönsterverktygen och deras beskrivningar följer med; rad i preset-checklist.md.
+   - **Framtida krav på lagringen (specen ska visa att de ryms utan ny omskrivning):** ackord per not (P: `c1`–`c3`), underrader per
+     instrument med egen längd och M/S (F2: `INSTR X - SAMPLE`, `INSTR X - SLICER`, allokeras bara när de används), kopiera/klistra/
+     duplicera spår och mönsterpreset (L4), MIDI-export, flera arrangemang (IO).
 
 Slut: rendersig* identiska, `blocksizetest`, `audiotest`, skärmbilder av mönsterfliken, ENV-fliken, analyzern; rapport.
 
@@ -142,7 +158,7 @@ Slut: rendersig* identiska, `blocksizetest`, `audiotest`, skärmbilder av mönst
 
 Opus godkände Sonnets spec 18 okt med svaren nedan (Sonnets egen spec gick förlorad med sessionen; content-plan.md "Fas P" + detta gäller):
 - Parameter `bassNVoices` 1–8, **standard 1 = bit-identiskt**. Ackord: varje `Note` får upp till 3 extra intervall (atomiska, 0 = inget),
-  samma tick/längd/velocity; lagringen [rad][tick] ändras inte; XML-attribut `c1`–`c3` bara om ≠ 0.
+  samma tick/längd/velocity; lagras i R9:s nya mönsterlagring (inte längre fast [rad][tick]); XML-attribut `c1`–`c3` bara om ≠ 0.
 - (a) VOICES = 1: bara grundtonen spelas; ackordmarkören nedtonad med tooltip "chord needs VOICES 2 or more". Ingen CHORD-meny på kicken.
 - (b) Röstval: 1) ledig röst, 2) äldsta i release, 3) äldsta som hålls. Steal med 3 ms-ramp. Mät klicket (största sampelhopp och energi
   över 5 kHz runt steal) mot en mjuk referens.
@@ -175,6 +191,8 @@ per vy till Opus innan finputs**; Tobias justerar efteråt.
 2. ENV-fliken: alla fyra envelopes får samma header: ON/OFF, SYNC (ms/notvärde), DURATION (visningsomfång, bara vy, sparas i UI-tillståndet,
    inte som parameter). Nya parametrar sist, standard = i dag: `bassNEnv1On`/`bassNFEnvOn`/`bassNEnv2On`/`bassNEnv3On` (på) och Sync för
    volym- och filter-envelopen (som fas E2). FILTER ENVELOPE ON/OFF rör bara envelopen, inte filtret (filtrets av/på = FILTER-fliken).
+   DRAG i headern på **alla fyra** (layout_optimization "Rensning"): ENV 1 VOLUME och FILTER ENVELOPE blir nya modulationskällor
+   (läggs sist i källistan; spec till Opus). VELOCITY och RANDOM får DRAG i ENV-fliken.
 3. Mönsterfliken: NOTE END, SWING, HUMANIZE i toppraden; vänsterpanelen bara för valt spår.
    AI-knappen vid loggan = **AI SERVER (MCP)** med på/av; toppfliken AI = **AI CHAT**.
 4. Instrumentmeny: högerklick på spårets kort och på raden i instrumentväljaren (eller "…"-ikon): Rename, Color, Duplicate, Move up/down,
@@ -182,14 +200,18 @@ per vy till Opus innan finputs**; Tobias justerar efteråt.
 5. "Bredare fönster i pianorullen": utred om editorn kan ändra storlek per flik; annars: lämna.
 
 ### S: källor (`content-s`)
-Standardvärden enligt avsnitt 0 (bästa ljud, inte nödvändigtvis dagens). SAMPLE-lagret: FILTER av som standard.
-1. FILTER av/på per källa: OSC 1–3, SAMPLE, NOISE (bool, standard på). Av = förbi Filter 1 och 2 (inte förbi amp-envelopen).
+Standardvärden enligt avsnitt 0 (bästa ljud, inte nödvändigtvis dagens).
+0. FILTER-flikens av/på: hela instrumentets Filter 1+2 förbi (pattern_and_ai §9 sista stycket).
+1. FILTER av/på per källa: OSC 1–3, SAMPLE, NOISE (bool, standard på enligt specen; SAMPLE: avsnitt 4 fråga 5). Av = förbi Filter 1 och 2
+   (inte förbi amp-envelopen). Matrisen i sample_slicer §5 gäller.
 2. Brustyp: White (standard = dagens brus), Pink, Brown, Vinyl (seedad).
 3. WARP ENV: källa (Filter Env = dagens, standard; Direct med egen decay 2–150 ms; ENV 2; ENV 3) efter R:s utredning. Visning: lila
    ring/indikator på WARP-ratten när den moduleras (återanvänd befintliga modulationsringar), lampa vid AMOUNT.
+   R8-fynd: WARP ENV gör inget när OSC 1:s WARP-läge är Off (standard): varna "WARP ENV needs a WARP mode on OSC 1" (eller välj ett läge).
 4. OSC-displayen: WAVE / SCOPE / SPECTRUM (VisualTimer, bara när synlig), click-to-audition i alla lägen.
 5. OSC-presets: `.oscpreset` i `Presets/Oscillators/<kategori>/`, meny uppe till höger i OSC-fliken med `<` `>`, Save, RESET.
-   Rör aldrig andra oscillatorer, SAMPLE, filter eller effekter. `persisttest`/`presettest`-fall.
+   Rör aldrig andra oscillatorer, SAMPLE, filter eller effekter. `persisttest`/`presettest`-fall. Innehåll enligt layout_optimization
+   §5.1 (våg/tabell + position, warp-läge + amount, pitch/fine/octave, detune, unison, fas, oscillatorns egen envelope/PITCH-data).
 
 ### KB: kunskapsbas för AI (docs, Sonnet ensam, ingen kod)
 Läs `research/TEST026-10-19/KickAndBaseSchool.md` och alla `transcripts/*.txt`. Skriv `docs/kick-bass-school.md` (engelska, för AI:n):
@@ -233,7 +255,9 @@ för wavetables (högerklick på tabellen, som Serum): amplitud och fas per öve
 ### F2: sampler (`content-f`)
 `sample_slicer_independent_layer_spec.md` + `MINDMAP 2.png`. SAMPLE-lagret: LAYER MODE BLEND (= i dag) / INDEPENDENT (egen kromatisk
 pianorulle `INSTR X - SAMPLE`) / OFF; SPLICER på/av (egen rad `INSTR X - SLICER`, slices per Grid/Auto/Manual, kromatiskt från vald ton),
-M/S per underrad, tempo (originaltempo eller omsamplat; ingen time-stretch nu). Kräver underrader i `Pattern`: spec till Opus först.
+M/S per underrad, tempo (originaltempo eller omsamplat; time-stretch: avsnitt 4 fråga 6). Kräver underrader i `Pattern` (byggs på R9):
+spec till Opus först. Ur specen också: SENSITIVITY för Auto-Detect, MAP TO (tonomfång), REVERSE SLICE, pianorullen visar "Slice 1, 2 …"
+i stället för tonnamn, underrader allokeras inte när de är av, filtermatrisen §5. Hjälptexten i mönsterfliken gäller även underraderna.
 
 ### E0: genomgång av presetbygget (först i fas E, Opus + Sonnet, sedan Tobias)
 Innan nya presets byggs: gå igenom med Tobias hur en preset byggs så att allt blir rätt och allt kommer med där det ska.
@@ -243,8 +267,18 @@ Innan nya presets byggs: gå igenom med Tobias hur en preset byggs så att allt 
 3. Opus + Tobias bestämmer: vad hör till preset, projekt, global inställning eller egen presettyp (OSC-, effekt-, mönsterpresets);
    hur InitPreset ska se ut; hur MCP/AI bygger en preset (så att AI:n inte missar delar).
 4. Rättningar, sedan skrivs en kort guide `docs/presets-guide.md` (för Tobias och AI-skillen). Först därefter presetarbetet.
+5. Samma genomgång för **rapportskrivaren, AGENT_GUIDE, MCP-beskrivningarna och skillen**: allt nytt med (BEZIER.md sista stycket).
+   Mål som i Psylab: ett klick återkallar hela resultatet (kick, bas, mönster, sidechain, effekter).
 
-### FX, AI, C, BZ, LC, IO, VS
+### FX: effekter (`content-fx`), ur layout_optimization
+- ECHO som Fruity Delay 2: input (pan, vol), feedback (Normal/Invert/Ping-pong, mängd, CUT-filter), time (sync/ms) + OFS, dry vol.
+- Ny FLANGER (rate, depth, feedback, delay time, mix).
+- De förenklade Sidechain/Maximizer-effekterna ersätts av de riktiga algoritmerna (samma som master/SIDECHAIN-fliken) i platserna 1–5.
+- MASTER-fliken: 5 platser på hela summan, alla effekter inklusive riktiga Sidechain, **utom** Maximizer (finns redan på master).
+  Genvägsknapp "MASTER FX" på FX-sidan där FX 12 skulle sitta, avvikande färg. Ingen CLEAR-knapp (RESET/EMPTY i presetmenyerna).
+- Två presetnivåer: FX Chain Preset (hela kedjan, finns) och Effect Preset per effektlåda, filtrerad på effekttyp. RESET i båda.
+
+### AI, C, BZ, LC, IO, VS
 Enligt Tobias specar (layout_optimization §Effects, §RESET, §MASTER; pattern_and_ai §6, §10, §13; BEZIER.md; CODEMUSIC.md). Spec till Opus
 när fasen står på tur. Redan beslutat: nya effekttyper (Flanger, Sidechain, Maximizer i platser) läggs **sist** i typlistan som redovisat
 engångsundantag från regel 3 (projekt sparar index och laddar rätt; bara DAW-automation av typen kan förskjutas); kontrollera med state load.
@@ -258,3 +292,9 @@ Se [work/PROGRESS.md](work/PROGRESS.md).
 3. Tre klickar och sub-kontroll i kicken (image-27): vill du ha dem, eller räcker dagens klick? *Standard: utreds i fas K.*
 4. Gamla DAW-projekt med automation av Kickbase: finns det några du vill behålla? Om inte kan vi före första publika versionen fritt
    utöka valparametrar (t.ex. nya effekttyper, radlängder som inte är 2-potenser) i stället för att lägga dem sist. *Standard: regeln gäller.*
+5. SAMPLE-lagrets FILTER-knapp: specen säger standard ON; samplingen lät mullrig med filtret på (InitPreset 700 Hz LP). *Opus förslag:
+   OFF för SAMPLE, ON för OSC och NOISE. Standard tills svar: OFF för SAMPLE.*
+6. Time-stretch i SAMPLE/SPLICER (specen: TIME STRETCH-ratt, låst till projektets BPM): eget arbete eller bibliotek (SoundTouch, LGPL).
+   *Standard: F2 utan time-stretch (omsampling till tempot), time-stretch som eget steg efter F2.*
+7. LFO: du föreslog att bara ha Hz + SNAP och ta bort Sync-läget. *Opus: behåll Sync nu (AI och automation kan sätta exakta notvärden);
+   när SNAP fungerar kan Sync döljas om du inte saknar det.*
