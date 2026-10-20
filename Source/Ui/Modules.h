@@ -269,12 +269,30 @@ private:
 //   varianten av samma toner, och ett lager som redigerats där visas som en miniatyr i stället för stegknappar.
 // - GATE: en egen av/på-rytm som hackar lagrets ljud, med eget rutnät (GRID), djup (DEPTH) och mjukhet (SMOOTH). Den ändrar
 //   inte tonerna.
+// Mönstrets globala inställningar (NOTE END, SWING, HUMANIZE) kompakt i PATTERN-flikens flikrad, så att vänsterkolumnen
+// bara visar det valda spåret. Bara i instrumentpluginet.
+class PatternGrooveBar : public juce::Component
+{
+public:
+    explicit PatternGrooveBar (juce::AudioProcessorValueTreeState& apvts);
+    void resized() override;
+    static constexpr int width = 450;
+
+private:
+    juce::Label noteEndLabel, swingLabel, humanizeLabel;
+    ChoiceComponent::Box noteEnd;
+    FxSendControl::AmountSlider swing, humanize;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> noteEndAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> swingAttachment, humanizeAttachment;
+};
+
 class PatternModule : public juce::Component, private juce::Timer
 {
 public:
     PatternModule (PluginBase& processor, bool instrument);
     void resized() override;
     void paint (juce::Graphics&) override;
+    juce::Component* getGrooveBar() { return grooveBar.get(); } // till flikraden (nullptr i kickpluginet)
 
 private:
     void timerCallback() override;
@@ -289,8 +307,7 @@ private:
 
     PluginBase& processor;
     const bool instrument;
-    std::unique_ptr<ChoiceComponent> noteEnd;
-    std::unique_ptr<KnobComponent> swingKnob, humanizeKnob; // groove för hela mönstret (instrumenten)
+    std::unique_ptr<PatternGrooveBar> grooveBar; // NOTE END, SWING, HUMANIZE för hela mönstret (instrumenten)
     std::vector<std::unique_ptr<KnobComponent>> delays, swings, humanizes; // instrumentets egna SWING, HUMAN och DELAY, under GRID
     PresetButton presets;
     // EDIT: vad lanet under det valda lagrets rad visar och ändrar (velocity, tonlängd, tonhöjd), som en rullgardinslista.

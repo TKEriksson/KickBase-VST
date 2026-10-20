@@ -81,6 +81,7 @@ HeaderBar::HeaderBar (PluginBase& p, const juce::String& subtitleIn)
         aiButton.setToggleState (processor.isBridgeEnabled(), juce::dontSendNotification);
         updateAiTooltip();
     };
+    aiButton.setToggleState (processor.isBridgeEnabled(), juce::dontSendNotification);
     addAndMakeVisible (aiButton);
     updateAiTooltip();
     startVisualTimer (Settings::Visual::topBar, 30);
@@ -88,9 +89,10 @@ HeaderBar::HeaderBar (PluginBase& p, const juce::String& subtitleIn)
 
 void HeaderBar::updateAiTooltip()
 {
+    aiButton.setButtonText (processor.isBridgeEnabled() ? "AI SERVER (MCP): ON" : "AI SERVER (MCP): OFF");
     aiButton.setTooltip (processor.isBridgeEnabled()
-        ? "AI LINK is ON (instance " + processor.getBridgeId() + "). An AI assistant using the Kickbase MCP bridge can read and change this plugin and hear/measure it offline. Click to switch off."
-        : "AI LINK - Off. Switch on to let an AI assistant (through the Kickbase MCP bridge, for example in Claude Desktop) read and change this plugin. Local only; nothing is sent over the internet by Kickbase.");
+        ? "AI SERVER (MCP) is ON (instance " + processor.getBridgeId() + "). An AI assistant using the Kickbase MCP bridge can read and change this plugin and hear/measure it offline. Click to switch off."
+        : "AI SERVER (MCP) - Off. Switch on to let an AI assistant (through the Kickbase MCP bridge, for example in Claude Desktop) read and change this plugin. Local only; nothing is sent over the internet by Kickbase.");
 }
 
 void HeaderBar::paintOverChildren (juce::Graphics& g)
@@ -115,8 +117,8 @@ void HeaderBar::resized()
     const auto hasPreviews = processor.getKeyboardState() != nullptr;
     const auto height = getHeight();
     const auto controlsHeight = 34, controlsY = (height - controlsHeight) / 2;
-    aiButton.setBounds (14 + logo.getWidth() + 22, controlsY, 44, controlsHeight); // AI-knappen först, till vänster om presetväljaren
-    presets.setBounds (aiButton.getRight() + 10, controlsY, hasPreviews ? 160 : 200, controlsHeight);
+    aiButton.setBounds (14 + logo.getWidth() + 22, controlsY, 124, controlsHeight); // AI SERVER först, till vänster om presetväljaren
+    presets.setBounds (aiButton.getRight() + 10, controlsY, hasPreviews ? 118 : 200, controlsHeight);
     exportButton.setBounds (presets.getRight() + 10, controlsY, hasPreviews ? 70 : 76, controlsHeight);
 
     // PREVIEWS: en inringad ruta med högtalaren och tonväljaren, så att man ser att de hör ihop.
@@ -230,6 +232,11 @@ void HeaderBar::chooseExportTarget (int part, int bars)
 void HeaderBar::timerCallback()
 {
     followVisualRate();
+    if (aiButton.getToggleState() != processor.isBridgeEnabled()) // ändrad på inställningssidan eller via MCP
+    {
+        aiButton.setToggleState (processor.isBridgeEnabled(), juce::dontSendNotification);
+        updateAiTooltip();
+    }
     if (processor.getKeyboardState() != nullptr)
     {
         listenAll.setActive (processor.previewingLayer.load() == PluginBase::previewAllRows);
@@ -1352,16 +1359,7 @@ PatternModule::PatternModule (PluginBase& p, bool isInstrument)
                         "The other rows are not touched. The whole sound is not part of it: that is the instrument's own preset.");
     addAndMakeVisible (presets);
     if (instrument)
-    {
-        noteEnd = std::make_unique<ChoiceComponent> (p.apvts, ParamID::noteEnd, "NOTE END");
-        addAndMakeVisible (*noteEnd);
-        swingKnob = std::make_unique<KnobComponent> (p.apvts, ParamID::patSwing, "SWING", Theme::pattern);
-        humanizeKnob = std::make_unique<KnobComponent> (p.apvts, ParamID::patHumanize, "HUMANIZE", Theme::pattern);
-        swingKnob->setDescription ("SWING - For the whole pattern: pushes the off-beat sixteenths of ALL instruments later (0 % = straight, 100 % = triplet feel). Each instrument can add its own swing under GRID. The kick stays on the grid.");
-        humanizeKnob->setDescription ("HUMANIZE - For the whole pattern: every note of ALL instruments comes a random 0-20 ms late, so it feels played rather than programmed. Each instrument can add its own under GRID. The kick stays on the grid.");
-        addAndMakeVisible (*swingKnob);
-        addAndMakeVisible (*humanizeKnob);
-    }
+        grooveBar = std::make_unique<PatternGrooveBar> (p.apvts); // visas i flikraden (InstrumentEditor)
 
     // Lanerna för tonerna: velocity, tonlängd och tonhöjd (glide ritas i pianorullen), valda i en rullgardinslista.
     laneOrder = { StepSequencer::Lane::velocity, StepSequencer::Lane::gate };
@@ -1397,10 +1395,10 @@ PatternModule::PatternModule (PluginBase& p, bool isInstrument)
             delays.back()->setDescription ("DELAY - Pushes this instrument's notes later by 0-50 ms, for example to let the kick come first. It can only move notes later, never earlier.");
             addChildComponent (*delays.back());
             swings.push_back (std::make_unique<KnobComponent> (p.apvts, ParamID::bass (layer, InstrumentField::swing), "SWING", colour));
-            swings.back()->setDescription ("SWING - This instrument's own swing: its off-beat sixteenths come later. It is added to the SWING of the whole pattern (top left), up to 100 %.");
+            swings.back()->setDescription ("SWING - This instrument's own swing: its off-beat sixteenths come later. It is added to the SWING of the whole pattern (in the PATTERN tab row), up to 100 %.");
             addChildComponent (*swings.back());
             humanizes.push_back (std::make_unique<KnobComponent> (p.apvts, ParamID::bass (layer, InstrumentField::humanize), "HUMAN", colour));
-            humanizes.back()->setDescription ("HUMANIZE - This instrument's own random timing: every note comes 0-20 ms late at random. It is added to the HUMANIZE of the whole pattern (top left).");
+            humanizes.back()->setDescription ("HUMANIZE - This instrument's own random timing: every note comes 0-20 ms late at random. It is added to the HUMANIZE of the whole pattern (in the PATTERN tab row).");
             addChildComponent (*humanizes.back());
         }
 
@@ -1723,6 +1721,60 @@ void PatternModule::paint (juce::Graphics& g)
     }
 }
 
+PatternGrooveBar::PatternGrooveBar (juce::AudioProcessorValueTreeState& apvts)
+{
+    auto setUpLabel = [this] (juce::Label& label, const juce::String& text)
+    {
+        label.setText (text, juce::dontSendNotification);
+        label.setFont (Theme::font (11.0f, true));
+        label.setColour (juce::Label::textColourId, Theme::textDim);
+        label.setJustificationType (juce::Justification::centredRight);
+        addAndMakeVisible (label);
+    };
+    setUpLabel (noteEndLabel, "NOTE END");
+    setUpLabel (swingLabel, "SWING");
+    setUpLabel (humanizeLabel, "HUMANIZE");
+
+    noteEnd.parameter = apvts.getParameter (ParamID::noteEnd);
+    if (noteEnd.parameter != nullptr)
+        noteEnd.addItemList (noteEnd.parameter->getAllValueStrings(), 1);
+    noteEnd.setTooltip ("NOTE END - " + Help::forParameter (ParamID::noteEnd));
+    addAndMakeVisible (noteEnd);
+    noteEndAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (apvts, ParamID::noteEnd, noteEnd);
+
+    auto setUpSlider = [this, &apvts] (FxSendControl::AmountSlider& slider, const char* paramID, const juce::String& tooltip)
+    {
+        slider.parameter = apvts.getParameter (paramID);
+        slider.setSliderStyle (juce::Slider::LinearHorizontal);
+        slider.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+        slider.setColour (juce::Slider::trackColourId, Theme::pattern);
+        slider.setColour (juce::Slider::thumbColourId, Theme::text);
+        slider.setPopupDisplayEnabled (true, true, nullptr);
+        slider.setTooltip (tooltip);
+        addAndMakeVisible (slider);
+    };
+    setUpSlider (swing, ParamID::patSwing, "SWING - For the whole pattern: pushes the off-beat sixteenths of ALL instruments later (0 % = straight, 100 % = triplet feel). Each instrument can add its own swing under GRID. The kick stays on the grid.");
+    setUpSlider (humanize, ParamID::patHumanize, "HUMANIZE - For the whole pattern: every note of ALL instruments comes a random 0-20 ms late, so it feels played rather than programmed. Each instrument can add its own under GRID. The kick stays on the grid.");
+    swingAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (apvts, ParamID::patSwing, swing);
+    humanizeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (apvts, ParamID::patHumanize, humanize);
+}
+
+void PatternGrooveBar::resized()
+{
+    auto area = getLocalBounds();
+    noteEndLabel.setBounds (area.removeFromLeft (64));
+    area.removeFromLeft (4);
+    noteEnd.setBounds (area.removeFromLeft (100));
+    area.removeFromLeft (10);
+    swingLabel.setBounds (area.removeFromLeft (44));
+    area.removeFromLeft (4);
+    swing.setBounds (area.removeFromLeft (76));
+    area.removeFromLeft (10);
+    humanizeLabel.setBounds (area.removeFromLeft (64));
+    area.removeFromLeft (4);
+    humanize.setBounds (area);
+}
+
 void PatternModule::resized()
 {
     auto area = getLocalBounds();
@@ -1731,20 +1783,6 @@ void PatternModule::resized()
     // läget. Vilket lager som redigeras väljs med knapparna vid namnen i raderna.
     auto column = area.removeFromLeft (134);
     area.removeFromLeft (10);
-
-    if (noteEnd != nullptr)
-    {
-        noteEnd->setBounds (column.removeFromTop (40));
-        column.removeFromTop (6);
-    }
-    column.removeFromTop (2);
-    if (swingKnob != nullptr)
-    {
-        auto groove = column.removeFromTop (52);
-        swingKnob->setBounds (groove.removeFromLeft (groove.getWidth() / 2));
-        humanizeKnob->setBounds (groove);
-        column.removeFromTop (6);
-    }
 
     // Kortet runt det valda instrumentets inställningar: luft mellan ramen och innehållet.
     const auto blockTop = column.getY();

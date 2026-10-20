@@ -266,7 +266,7 @@ void SettingsPage::refresh (bool includeFiles)
     }
 
     aiToggle.setToggleState (processor.isBridgeEnabled(), juce::dontSendNotification);
-    aiToggle.setButtonText (processor.isBridgeEnabled() ? "AI LINK: ON" : "AI LINK: OFF");
+    aiToggle.setButtonText (processor.isBridgeEnabled() ? "AI SERVER (MCP): ON" : "AI SERVER (MCP): OFF");
     aiStatus.setText (processor.isBridgeEnabled() ? "Instance " + processor.getBridgeId() + ", " + juce::String (processor.getBridgeConnections()) + " connected"
                                                       + (Settings::aiKey().isNotEmpty() ? " (key on)" : "")
                                                   : "Off",
