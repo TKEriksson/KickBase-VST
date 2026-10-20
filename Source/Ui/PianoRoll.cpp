@@ -938,12 +938,13 @@ PianoRoll::Relocated PianoRoll::relocate (const NoteMap& source, const KeySet& m
         data.pitch = juce::jlimit (Pattern::minPitch, Pattern::maxPitch, data.pitch + deltaPitch);
         const auto tick = key.tick + deltaTicks;
 
-        // Samma tonhöjd på samma tick är samma ton: den flyttade ersätter den som låg där.
+        // Samma tonhöjd på samma tick är samma ton (pennan vägrar också): flytten avbryts (full), ingen ton skrivs över.
         NoteKey place;
-        for (int i = 0; i < Pattern::maxStack && ! place.valid(); ++i)
+        auto duplicate = false;
+        for (int i = 0; i < Pattern::maxStack; ++i)
             if (const auto other = result.target.find ({ tick, i }); other != result.target.end() && other->second.pitch == data.pitch)
-                place = { tick, i };
-        if (! place.valid())
+                duplicate = true;
+        if (! duplicate)
         {
             // Helst samma stackindex, annars den lägsta lediga platsen. Fullt: hela flytten avbryts (full).
             if (result.target.count ({ tick, key.index }) == 0)
@@ -1098,7 +1099,7 @@ void PianoRoll::moveSelected (int deltaTicks, int deltaPitch)
     const auto moved = relocate (notes, selection, deltaTicks, deltaPitch);
     if (moved.full)
     {
-        flash ("That tick already has the maximum number of notes");
+        flash ("Blocked: that tick is full, or already has a note with that pitch");
         return;
     }
     applyNotes (moved.target);
@@ -1879,7 +1880,7 @@ void PianoRoll::mouseDrag (const juce::MouseEvent& event)
     const auto moved = relocate (dragSnapshot, dragSelection, deltaTicks, deltaPitch);
     if (moved.full)
     {
-        flash ("That tick already has the maximum number of notes");
+        flash ("Blocked: that tick is full, or already has a note with that pitch");
         return;
     }
     applyNotes (moved.target);

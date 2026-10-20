@@ -110,7 +110,7 @@ private:
     void setLiveVelocity (NoteKey key, float velocity);
     void setLiveSlide (NoteKey key, bool slide);
     static void normalise (NoteMap& notes, std::map<NoteKey, NoteKey>* remap = nullptr);  // en stapel utan huvudton: lägsta staplade tonen blir huvudton
-    static Relocated relocate (const NoteMap& source, const KeySet& moving, int deltaTicks, int deltaPitch); // full målstack avbryter hela flytten
+    static Relocated relocate (const NoteMap& source, const KeySet& moving, int deltaTicks, int deltaPitch); // full målstack eller samma tonhöjd på målticken avbryter hela flytten
     void removeKeys (const KeySet& keys);
     int voices() const;                              // lagrets VOICES (ackord hörs bara med 2 eller fler)
     void setChordOnSelection (const Pattern::Chord& chord);
