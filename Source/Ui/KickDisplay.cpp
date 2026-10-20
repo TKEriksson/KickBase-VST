@@ -33,7 +33,7 @@ KickDisplay::KickDisplay (PluginBase& p) : processor (p)
     setMode (false);
 
     setTooltip ("KICK - The waveform of the kick: click an empty spot to hear it, and watch the marker follow it when it plays. Drag the nodes to shape pitch (PITCH) or volume (AMP); double-click to add a node, "
-                "right-click a node to remove it, drag the small diamond on a segment to bend it.");
+                "right-click a node to remove it, drag the small diamond on a segment to bend it. Ctrl + click in PITCH follows a frequency (its time is marked in PITCH and AMP); Ctrl + wheel zooms time, Shift + wheel zooms frequency.");
     lastHash = stateHash();
     renderWaveform();
     startVisualTimer (Settings::Visual::other, 30);
@@ -367,6 +367,13 @@ void KickDisplay::paint (juce::Graphics& g)
     }
 
     paintTools (g);
+
+    // Tips under grafen om det som inte syns: följd frekvens och zoom.
+    g.setFont (Theme::font (9.0f));
+    g.setColour (Theme::textDim.withAlpha (0.7f));
+    g.drawText (amp ? "Ctrl + click: clear the followed frequency (set it in PITCH)   Ctrl + wheel: zoom time"
+                    : "Ctrl + click: follow a frequency (its time is marked in PITCH and AMP)   Ctrl + wheel: zoom time   Shift + wheel: zoom frequency",
+                juce::Rectangle<float> (area.getX(), area.getBottom() + 1.0f, area.getWidth(), 11.0f), juce::Justification::centredLeft);
 
     // Envelopens kurva.
     const auto& points = editing.empty() ? active().getPoints() : editing;
