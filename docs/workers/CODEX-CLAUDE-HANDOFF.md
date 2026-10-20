@@ -37,6 +37,15 @@ Läs först [README.md](README.md) (regler + format) och [SYNTH-CONTEXT.md](SYNT
 **Kontroll:** Alla ämnesfiler är 35–43 rader (under 150); `git diff --check` är ren.
 
 ### 2026-10-20 · Uppdrag 2: ÅTERTAGET 10:10 av projektledaren (Codex/Gemini antas ha nått limit); görs nu av Claude-research-agenten. Ta det INTE om du vaknar, om inte jag skriver här. (Tidigare: återtaget från Gemini.) Webbsökning om du kan, annars ur kunskap och märk `[osäker]`. Skriv `Status: <klockslag>` först.
+
+**Status: 15:24** — user reassigned this after Gemini stopped responding; Codex completed the requested file without touching `Source/`.
+**Resultat:** `docs/research-notes/fx-and-fm-ideas.md` (79 lines): product-verified phase/LFO facts, JUCE implementation, CPU/latency, AGPL-safe reimplementation guidance, P1–P3 priorities, and current-FX gap table.
+**Samordning:** Leave `plugin-tips-to-builds.md` to the raw-transcript FXMAP/73 task; this file is complementary rather than a duplicate.
+**Kontroll:** `git diff --check -- docs/research-notes/fx-and-fm-ideas.md` has no whitespace errors (only the repository's LF→CRLF notice).
+**Tillägg:** Bilden `TEST2026-10-20/plugintips_with_instant_phase_shift.bmp` granskad: föreslår P2 8-partials additive editor + phase macros; full 32-partials editor är P3. Det är timbre-design, inte automatisk fasreparation.
+**Tillägg:** AI/MCP/Strudel-flöde föreslaget: AI genererar begränsade partial-fas-kandidater, renderar och rapporterar A/B; användaren godkänner sedan apply/save. Strudel automatiserar namngivna macros, inte rå DSP.
+**Tillägg:** ANALYZER-krav dokumenterat: fas/partial-problem blir findings per 16-del med mätvärden och `suggested_fixes`; samma strukturerade data ska finnas i UI, MCP/AI-svar och `save_mix_report`-JSON. Förslag är alltid reversibla A/B-kandidater med användargodkännande.
+
 Ur `research/TEST026-10-19/MERIDÉER.md`. Skriv `docs/research-notes/fx-and-fm-ideas.md`:
 1. **Low-End Shaper/Multiplier** (30–400 Hz: automatisk fascheck, transientformning, sub-harmonics): vad gör Psylab Pro, PsyScope, Voxengo PHA-979, Kilohearts Disperser, LFOTool, Sub-bass-multipliers; vilka delar är enkla DSP (allpass-kedja, bandsplit, waveshaper/oktavdelare) och vilka tunga.
 2. **FM squelch/lead:** hur görs psy-squelch (2–4 operatorer, pitch-envelope, LFO på index, filter) + vilka presets/LFO-former som hör till; föreslå en minimal operator-struktur för en ny flik bredvid OSC 1–3 och vilka parametrar som är viktigast.

@@ -1,4 +1,5 @@
 #include "ToolLayer.h"
+#include "LiveCode.h"
 #include "Settings.h"
 #include "AudioAnalysis.h"
 #include "RollFiles.h"
@@ -205,6 +206,8 @@ std::vector<ToolLayer::ToolInfo> ToolLayer::tools()
           R"({"type":"object","properties":{"pitch":{"type":"array","items":{"type":"array","items":{"type":"number"}}},"amp":{"type":"array","items":{"type":"array","items":{"type":"number"}}}}})" },
         { "set_pattern", "Writes notes. layer 0-9 = instrument 1-10 (only the first instrumentCount play, see set_instruments), or 'kick'. For an instrument give 'bars' (one text per bar; the row becomes as many bars as you give, so give every distinct bar you need, and use repeat_to to repeat them further) in the pattern language, with a 'grid' such as '1/16', '1/8 T', '1/32'. Step words separated by spaces: '.' rest, g/m/x/X = velocity ghost/soft/normal/accent, then optional pitch (+7, -5), '~' glide note, ':50' length in percent of the step. A GLIDE note (flag '~' / slide:true) works like an FL Studio slide note: it does not play a new note, it glides the note that is sounding to its pitch during its own length and the pitch stays there until that note ends. Example 1/16 rolling bass: [\". m x x . m x x . m x x . m x x\"]. Or give 'notes': [{\"tick\":0,\"length\":24,\"pitch\":0,\"velocity\":0.8,\"slide\":false}] (96 ticks per quarter note, 384 per bar). CHORDS: add \"chord\":[3,7] to a note (up to 3 extra notes, semitones from the note, -24 to +24); the instrument plays them only when its Voices parameter is 2 or more (at most Voices - 1 extra notes), and get_state shows them as a sixth element of the note array. For 'kick' give 'bars' of 16 characters 'x' or '.', e.g. [\"x...x...x...x...\"]. ROW LENGTH: a row is as long as its notes (length 'auto', the default: the last bar that has a note, at least 1 bar; get_state shows bars, length_mode, content_bars). length:\"auto\" or length:N (1-1024) locks the row to N bars (for example 3 bars of notes and a bar of silence); shortening below the notes needs trim:true, otherwise you get an error saying how many notes would go. repeat_to:N repeats the row's content until it is N bars. In a locked row, writing a note beyond the end returns the error 'row is locked to N bars'. The pattern is as long as the longest row. The old patternBars and rowBars parameters are not used any more.",
           R"({"type":"object","properties":{"layer":{},"bars":{"type":"array","items":{"type":"string"}},"grid":{"type":"string"},"gate":{"type":"number"},"notes":{"type":"array","items":{"type":"object"}},"clear":{"type":"boolean"},"length":{},"trim":{"type":"boolean"},"repeat_to":{"type":"integer"}},"required":["layer"]})" },
+        { "live_code_create", "Runs Strudel code (Strudel mini-notation and patterns, https://strudel.cc) and writes the result into the piano roll rows: 1 Strudel cycle = 1 bar. s('bd') or s('kick') = the kick row (16 steps per bar); s('i1')..s('i10') = instrument 1-10; note(...) or n(...) without s = instrument 1. Pitch: note names (c2 = pitch 0, the lowest bass note) or numbers (semitones from C2). gain = velocity (default 0.8). Only one note per tick for now. Example: note('c2 [e2 g2]*2').s('i1'). Rows not mentioned are left as they are. Runs in a sandbox with a 500 ms limit.",
+          R"({"type":"object","properties":{"code":{"type":"string"},"cycles":{"type":"integer","minimum":1,"maximum":64,"description":"how many bars to write, default 4"}},"required":["code"]})" },
         { "set_gate", "Sets a bass layer's GATE: a separate on/off rhythm that chops the layer's sound, with its own grid, independent of the notes. layer 0-9; on (true/false), grid ('1/16' ...), depth 0..1 (1 = fully closed in the off steps), smooth_ms (edge softness), and the steps as 'bars' (one text per bar, repeated over four bars): 'x' = open, '.' = closed, e.g. [\"x.x.x.x.x.x.x.x.\"] on a 1/16 grid. all:'open' or 'closed' fills every step.",
           R"({"type":"object","properties":{"layer":{"type":"integer"},"on":{"type":"boolean"},"grid":{"type":"string"},"depth":{"type":"number"},"smooth_ms":{"type":"number"},"bars":{"type":"array","items":{"type":"string"}},"all":{"type":"string","enum":["open","closed"]}},"required":["layer"]})" },
         { "set_sidechain_curve", "Sets how the kick ducks the bass. mode 'Kick envelope' follows the kick; mode 'Curve' uses 'points' [[x,y,tension]...] where x is 0..1 across the length (1/16, 1/8, 3/16, 1/4, 1/2, or Kick) and y 0..1 is the ducking (1 = fully ducked). The depth per instrument is bass1Duck, bass2Duck ... bass10Duck.",
@@ -336,7 +339,7 @@ var ToolLayer::call (const juce::String& tool, const var& args)
         return ok (data);
     }
 
-    if (tool == "set_parameters" || tool == "set_effect" || tool == "set_kick_envelopes" || tool == "set_pattern" || tool == "set_sidechain_curve" || tool == "set_gate"
+    if (tool == "set_parameters" || tool == "set_effect" || tool == "set_kick_envelopes" || tool == "set_pattern" || tool == "set_sidechain_curve" || tool == "set_gate" || tool == "live_code_create"
         || tool == "set_modulation" || tool == "load_preset" || tool == "reset" || tool == "load_kick_sample" || tool == "load_library_kick" || tool == "load_bass_sample" || tool == "load_piano_roll" || tool == "import_midi")
         snapshot();
 
@@ -346,6 +349,7 @@ var ToolLayer::call (const juce::String& tool, const var& args)
     if (tool == "set_pattern")         return setPattern (args);
     if (tool == "set_sidechain_curve") return setSidechainCurve (args);
     if (tool == "set_gate")            return setGate (args);
+    if (tool == "live_code_create")    return liveCodeCreate (args);
     if (tool == "set_modulation")      return setModulation (args);
     if (tool == "load_preset")         return loadPreset (args);
     if (tool == "load_kick_sample")    return loadKickSample (args);
@@ -899,6 +903,31 @@ var ToolLayer::setPattern (const var& args)
     put (data, "grid", Pattern::gridNames()[grid]);
     put (data, "bars", pattern.lengthBars (layer));
     put (data, "length_mode", pattern.isLengthAuto (layer) ? juce::var ("auto") : juce::var ("locked"));
+    return ok (data);
+}
+
+var ToolLayer::liveCodeCreate (const var& args)
+{
+    const auto code = args["code"].toString();
+    if (code.trim().isEmpty()) return fail ("code is empty");
+    const int cycles = juce::jlimit (1, 64, args.hasProperty ("cycles") ? (int) args["cycles"] : 4);
+
+    LiveCode live;
+    juce::Result res = juce::Result::ok();
+    auto list = live.create (code, cycles, res);
+    if (res.failed()) return fail ("Strudel: " + res.getErrorMessage());
+
+    var written (juce::Array<var>{});
+    if (auto* a = list.getArray())
+        for (auto& item : *a)
+        {
+            auto r = setPattern (item);
+            if (! (bool) r["ok"]) return r;
+            written.append (item["layer"]);
+        }
+    auto data = object();
+    put (data, "layers", written);
+    put (data, "cycles", cycles);
     return ok (data);
 }
 

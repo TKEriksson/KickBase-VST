@@ -23,6 +23,7 @@
 #include "../Source/Fx/FxProcessor.h"
 #include "../Source/Core/OfflineRender.h"
 #include "../Source/Core/ToolLayer.h"
+#include "../Source/Core/LiveCode.h"
 #include "../Source/Core/AiChat.h"
 #include "../Source/Core/Settings.h"
 #include "../Source/Core/WavetablePack.h"
@@ -252,6 +253,48 @@ namespace
         printStats (audio, bpm, reader->sampleRate);
         std::printf ("Skrev %s\n", outFile.getFullPathName().toRawUTF8());
         return 0;
+    }
+
+    // Live Code (LC): Strudel-kod blir toner i pianorullen via verktyget live_code_create.
+    int liveCodeTest()
+    {
+        juce::ScopedJuceInitialiser_GUI gui;
+        const auto owner = std::make_unique<InstrumentProcessor>();
+        auto& processor = *owner;
+        processor.setPlayConfigDetails (0, 2, renderRate, blockSize);
+        processor.prepareToPlay (renderRate, blockSize);
+        auto failed = false;
+        auto check = [&failed] (bool ok, const juce::String& what) { std::printf ("%s: %s\n", ok ? "ok" : "FEL", what.toRawUTF8()); failed |= ! ok; };
+        auto run = [&] (const juce::String& code, int cycles = 1)
+        {
+            ToolLayer tools (processor);
+            auto* args = new juce::DynamicObject();
+            args->setProperty ("code", code);
+            args->setProperty ("cycles", cycles);
+            return tools.call ("live_code_create", juce::var (args));
+        };
+        auto& pattern = processor.pattern;
+        const auto ticks = Pattern::ticksPerBar;
+
+        auto r = run ("note(\"c2 [e2 g2]*2\").s(\"i1\")");
+        check ((bool) r["ok"], "enkel not-kod går igenom");
+        check (pattern.note (0, 0).on.load() && pattern.note (0, 0).pitch.load() == 0, "c2 är pitch 0 på tick 0");
+        check (pattern.note (0, ticks / 2).on.load() && pattern.note (0, ticks / 2).pitch.load() == 4, "e2 = pitch 4 vid halva takten");
+
+        r = run ("s(\"bd*4\")");
+        check ((bool) r["ok"], "kick-kod går igenom");
+        check (pattern.note (Pattern::kickLayer, 0).on.load() && pattern.note (Pattern::kickLayer, ticks / 4).on.load()
+                   && ! pattern.note (Pattern::kickLayer, ticks / 8).on.load(), "bd*4 ger kick på fjärdedelarna");
+
+        check (! (bool) run ("note(\"c2\".s(")["ok"], "syntaxfel ger ett fel, inte en krasch");
+        const auto t0 = juce::Time::getMillisecondCounterHiRes();
+        check (! (bool) run ("while(true){}")["ok"], "en oändlig slinga avbryts");
+        check (juce::Time::getMillisecondCounterHiRes() - t0 < 5000, "avbrottet sker inom 5 s");
+
+        int pitch = 0;
+        check (LiveCode::pitchFrom ("c#3", pitch) && pitch == 13 && LiveCode::pitchFrom ("eb2", pitch) && pitch == 3
+                   && LiveCode::pitchFrom (7, pitch) && pitch == 7, "tonnamn och tal blir pitch");
+        return failed ? 1 : 0;
     }
 
     // Radens längd (R9): AUTO följer innehållet (växer och krymper), ett valt antal låser den, "+ BAR" (extra) släpps när innehållet nått dit.
@@ -1979,6 +2022,8 @@ int toolMain (int argc, char* argv[])
         return instrumentTest();
     if (argc == 2 && juce::String (argv[1]) == "lengthtest")
         return lengthTest();
+    if (argc == 2 && juce::String (argv[1]) == "livetest")
+        return liveCodeTest();
     if (argc == 3 && juce::String (argv[1]) == "logoimage")
         return logoImage (juce::File::getCurrentWorkingDirectory().getChildFile (argv[2]));
     if (argc == 2 && (juce::String (argv[1]) == "rendersig" || juce::String (argv[1]) == "rendersigreal"))

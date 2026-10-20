@@ -1,0 +1,12 @@
+{
+  "name": "strudel-quickjs-spike",
+  "version": "0.0.1",
+  "private": true,
+  "license": "AGPL-3.0-or-later",
+  "description": "Spike: Strudel i JUCE:s QuickJS",
+  "dependencies": {
+    "@strudel/core": "1.2.6",
+    "@strudel/mini": "1.2.6",
+    "esbuild": "0.28.2"
+  }
+}
