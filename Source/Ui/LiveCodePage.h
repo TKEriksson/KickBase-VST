@@ -26,6 +26,8 @@ private:
     void codeDocumentTextInserted (const juce::String&, int) override;
     void codeDocumentTextDeleted (int, int) override;
     void codeChanged();
+    void layoutSliders();                 // slider(v,min,max) i koden får ett reglage vid radens slut
+    void sliderReleased (int index);      // skriver tillbaka värdet i texten (ett ångra-steg)
     void setPlaying (bool shouldPlay);
     void runNow();
     void create();
@@ -48,13 +50,13 @@ private:
     bool codeOnly = false;
     struct LoadWatch : private juce::Timer // ett projekt kan laddas från vilken tråd som helst: sidan tittar efter på meddelandetråden
     {
-        explicit LoadWatch (std::function<void()> f) : callback (std::move (f)) { startTimerHz (4); }
+        explicit LoadWatch (std::function<void()> f) : callback (std::move (f)) { startTimerHz (10); }
         ~LoadWatch() override { stopTimer(); }
         void timerCallback() override { callback(); }
         std::function<void()> callback;
     };
     int seenLoads = 0;
-    LoadWatch loadWatch { [this] { checkLoaded(); } };
+    LoadWatch loadWatch { [this] { checkLoaded(); layoutSliders(); } };
     int savedSolo = 0, ownSolo = 0; // soloMask före CODE ONLY, och det värde CODE ONLY själv satte
 
     void showTab (bool errors);
@@ -62,6 +64,12 @@ private:
     juce::CodeDocument document;
     juce::CPlusPlusCodeTokeniser tokeniser; // räcker för färg på strängar, siffror, kommentarer
     juce::CodeEditorComponent editor { document, &tokeniser };
+    struct SliderSpec { int ordinal = 0, start = 0, end = 0; double value = 0, lo = 0, hi = 1; bool valid = false; }; // start..end = talet v i texten
+    std::vector<SliderSpec> sliderSpecs;
+    juce::String sliderText;                               // texten specarna är hämtade ur
+    std::vector<std::unique_ptr<juce::Slider>> sliderViews; // ett per giltigt slider()-anrop (index = ordningsnummer)
+    std::map<int, double> sliderValues;                    // dragna värden (ordningsnummer -> värde) tills de skrivits in i texten
+    bool ownEdit = false;                                  // reglaget skriver själv i texten: ingen ny kodändringsloop
     juce::TextEditor errorLog; // fliken FEL: hela meddelandet, senaste överst
     int errorCount = 0;
     juce::TextButton codeTab { "KOD" }, errorTab { "FEL" };

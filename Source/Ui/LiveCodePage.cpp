@@ -144,8 +144,123 @@ void LiveCodePage::codeDocumentTextDeleted (int, int) { codeChanged(); }
 void LiveCodePage::codeChanged()
 {
     processor.setLiveCodeText (document.getAllContent()); // sparas med projektet; LIVE sparas aldrig
+    if (ownEdit)
+        return;
+    sliderValues.clear(); // ordningsnumren kan ha flyttat sig
     if (playing)
         startTimer (debounceMs); // ny ändring startar om väntan
+}
+
+namespace
+{
+    // Ordningsnumret = hur många slider( som står före i texten (samma ordning som glue.js räknar). Bara tal som argument får reglage.
+    bool readNumber (const juce::String& t, int& pos, int& start, int& end, double& value)
+    {
+        while (pos < t.length() && juce::CharacterFunctions::isWhitespace (t[pos])) ++pos;
+        start = pos;
+        while (pos < t.length() && (juce::CharacterFunctions::isDigit (t[pos]) || t[pos] == '.' || t[pos] == '-' || t[pos] == '+' || t[pos] == 'e' || t[pos] == 'E')) ++pos;
+        end = pos;
+        if (end == start) return false;
+        value = t.substring (start, end).getDoubleValue();
+        while (pos < t.length() && juce::CharacterFunctions::isWhitespace (t[pos])) ++pos;
+        return true;
+    }
+
+    juce::String sliderNumberText (double v, double lo, double hi)
+    {
+        const auto decimals = hi - lo <= 10.0 ? 3 : hi - lo <= 1000.0 ? 1 : 0;
+        auto s = juce::String (v, decimals);
+        if (s.contains ("."))
+            s = s.trimCharactersAtEnd ("0").trimCharactersAtEnd (".");
+        return s == "-0" ? juce::String ("0") : s;
+    }
+}
+
+void LiveCodePage::layoutSliders()
+{
+    if (! isShowing())
+        return;
+    const auto text = document.getAllContent();
+    if (text != sliderText)
+    {
+        for (auto& s : sliderViews)
+            if (s != nullptr && s->isMouseButtonDown())
+                return; // aldrig riva ett reglage under drag
+        sliderText = text;
+        sliderSpecs.clear();
+        sliderViews.clear();
+        for (int from = 0;;)
+        {
+            const auto at = text.indexOf (from, "slider(");
+            if (at < 0) break;
+            from = at + 7;
+            SliderSpec spec;
+            spec.ordinal = (int) sliderSpecs.size();
+            if (at > 0 && (juce::CharacterFunctions::isLetterOrDigit (text[at - 1]) || text[at - 1] == '_' || text[at - 1] == '$'))
+            {
+                // t.ex. mySlider( är inget slider-anrop
+                continue;
+            }
+            int pos = from, a = 0, b = 0;
+            double lo = 0, hi = 0;
+            const auto ok = readNumber (text, pos, spec.start, spec.end, spec.value) && pos < text.length() && text[pos++] == ','
+                         && readNumber (text, pos, a, b, lo) && pos < text.length() && text[pos++] == ','
+                         && readNumber (text, pos, a, b, hi) && pos < text.length() && text[pos] == ')';
+            spec.lo = lo; spec.hi = hi;
+            spec.valid = ok && hi > lo;
+            sliderSpecs.push_back (spec);
+        }
+        for (auto& spec : sliderSpecs)
+        {
+            if (! spec.valid) { sliderViews.push_back (nullptr); continue; }
+            auto s = std::make_unique<juce::Slider> (juce::Slider::LinearHorizontal, juce::Slider::NoTextBox);
+            s->setRange (spec.lo, spec.hi);
+            s->setValue (juce::jlimit (spec.lo, spec.hi, spec.value), juce::dontSendNotification);
+            s->setColour (juce::Slider::thumbColourId, Theme::mix);
+            s->setColour (juce::Slider::trackColourId, Theme::mix.darker (0.4f));
+            s->setColour (juce::Slider::backgroundColourId, Theme::panelBorder);
+            const auto index = (int) sliderViews.size();
+            s->onValueChange = [this, index, raw = s.get()]
+            {
+                sliderValues[sliderSpecs[(size_t) index].ordinal] = raw->getValue();
+                if (playing)
+                    startTimer (150);
+            };
+            s->onDragEnd = [this, index] { sliderReleased (index); };
+            editor.addAndMakeVisible (*s);
+            sliderViews.push_back (std::move (s));
+        }
+    }
+    for (size_t i = 0; i < sliderViews.size(); ++i)
+    {
+        auto* s = sliderViews[i].get();
+        if (s == nullptr) continue;
+        const auto line = juce::CodeDocument::Position (document, sliderSpecs[i].start).getLineNumber();
+        const auto end = juce::CodeDocument::Position (document, line, document.getLine (line).trimEnd().length());
+        const auto r = editor.getCharacterBounds (end);
+        const auto width = 110;
+        const auto x = juce::jmin (r.getX() + 10, editor.getWidth() - width - 20);
+        const auto visible = r.getY() >= 0 && r.getBottom() <= editor.getHeight();
+        s->setVisible (visible);
+        if (visible)
+            s->setBounds (x, r.getY() + 1, width, juce::jmax (10, r.getHeight() - 2));
+    }
+}
+
+// Släppt reglage: det dragna värdet blir talet i koden (ett ångra-steg). Texten ändras av oss själva, så ingen ny debounce-loop.
+void LiveCodePage::sliderReleased (int index)
+{
+    if (document.getAllContent() != sliderText || index >= (int) sliderSpecs.size() || sliderViews[(size_t) index] == nullptr)
+        return;
+    const auto& spec = sliderSpecs[(size_t) index];
+    const auto number = sliderNumberText (sliderViews[(size_t) index]->getValue(), spec.lo, spec.hi);
+    ownEdit = true;
+    document.newTransaction();
+    document.replaceSection (spec.start, spec.end, number);
+    ownEdit = false;
+    sliderValues.clear(); // värdet står nu i texten
+    if (playing)
+        startTimer (debounceMs); // avrundningen kan skilja från det dragna värdet
 }
 
 void LiveCodePage::showTab (bool errors)
@@ -265,7 +380,7 @@ void LiveCodePage::runNow()
 
         showError ({});
         apply (list, false);
-    });
+    }, sliderValues);
 }
 
 // Skriver raderna via live_code_apply. Handritade toner som skulle skrivas över ger en fråga (en i taget) i stället för att tyst försvinna.

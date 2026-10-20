@@ -7,14 +7,20 @@
 
 namespace
 {
-    // host.slider(id, v, min, max) / host.get(id): i första versionen svarar reglagen bara med startvärdet.
+    // host.slider(id, v, min, max): id = ordningsnumret på slider()-anropet i koden. Har användaren dragit i reglaget under LIVE svarar
+    // värdekartan (begränsad till min..max), annars startvärdet. host.get(id) är reserverad för reglage utan omkörning.
     struct HostObject : juce::DynamicObject
     {
-        HostObject()
+        explicit HostObject (const std::map<int, double>& values)
         {
-            setMethod ("slider", [] (const juce::var::NativeFunctionArgs& a) -> juce::var
+            setMethod ("slider", [&values] (const juce::var::NativeFunctionArgs& a) -> juce::var
             {
-                return a.numArguments >= 2 ? a.arguments[1] : juce::var (0.0);
+                if (a.numArguments < 2)
+                    return juce::var (0.0);
+                if (a.numArguments >= 4)
+                    if (const auto it = values.find ((int) a.arguments[0]); it != values.end())
+                        return juce::jlimit ((double) a.arguments[2], (double) a.arguments[3], it->second);
+                return a.arguments[1];
             });
             setMethod ("get", [] (const juce::var::NativeFunctionArgs&) -> juce::var { return 0.0; });
         }
@@ -24,8 +30,10 @@ namespace
 LiveCode::LiveCode()
 {
     engine.maximumExecutionTime = juce::RelativeTime::milliseconds (500);
-    engine.registerNativeObject ("host", new HostObject());
+    engine.registerNativeObject ("host", new HostObject (sliderValues));
 }
+
+void LiveCode::setSliderValues (std::map<int, double> values) { sliderValues = std::move (values); }
 
 juce::Result LiveCode::load()
 {

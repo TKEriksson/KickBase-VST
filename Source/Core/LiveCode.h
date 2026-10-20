@@ -2,6 +2,7 @@
 
 #include <juce_core/juce_core.h>
 #include <juce_javascript/juce_javascript.h>
+#include <map>
 
 // Live Code: kör Strudel (@strudel/core + mini, bunten i Resources/strudel) i JUCE:s JavascriptEngine (QuickJS).
 // Strudel: Copyright (C) Strudel contributors, AGPL-3.0-or-later, https://codeberg.org/uzu/strudel
@@ -12,6 +13,9 @@ class LiveCode
 {
 public:
     LiveCode();
+
+    // Värden användaren dragit fram med slider(v,min,max) (nyckel = anropets ordningsnummer i koden). Sätts före setCode/create.
+    void setSliderValues (std::map<int, double> values);
 
     // Läser in och utvärderar koden. Ger fel som text (syntax, oändlig loop efter 500 ms).
     juce::Result setCode (const juce::String& code);
@@ -37,6 +41,7 @@ public:
     static constexpr int ticksPerCycle = 384;
 
 private:
+    std::map<int, double> sliderValues; // före engine: reglagens svar läser den
     juce::JavascriptEngine engine;
     bool loaded = false;
     juce::Result load();

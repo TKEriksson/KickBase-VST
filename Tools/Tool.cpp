@@ -453,6 +453,23 @@ namespace
             check (described, "live_code_create beskriver overwrite, live_code_lock och $:");
         }
 
+        // slider(v,min,max): utan dragning gäller värdet i texten, med dragning värdet från reglaget (begränsat till min..max).
+        {
+            auto noteOf = [] (const std::map<int, double>& values)
+            {
+                LiveCode live;
+                live.setSliderValues (values);
+                juce::Result res = juce::Result::ok();
+                if (live.setCode ("note(slider(3,0,12)).s(\"i1\")").failed()) return -999.0;
+                const auto haps = live.query (0, 1, res);
+                return haps.empty() ? -999.0 : (double) haps[0].value["note"];
+            };
+            check (noteOf ({}) == 3.0, "slider(): startvärdet gäller utan dragning");
+            check (noteOf ({ { 0, 7.0 } }) == 7.0, "slider(): dragna värdet gäller");
+            check (noteOf ({ { 0, 99.0 } }) == 12.0, "slider(): värdet begränsas till max");
+            check (noteOf ({ { 1, 7.0 } }) == 3.0, "slider(): värde för ett annat ordningsnummer rör inte detta reglage");
+        }
+
         int pitch = 0;
         check (LiveCode::pitchFrom ("c#3", pitch) && pitch == 13 && LiveCode::pitchFrom ("eb2", pitch) && pitch == 3
                    && LiveCode::pitchFrom (7, pitch) && pitch == 7, "tonnamn och tal blir pitch");
