@@ -17,6 +17,7 @@ Arbetssätt:
 - Claude skriver all C++ (Tobias vill inte skriva kod här).
 - Opus (projektledare, session `kickbase-vst-c3`) fördelar uppdrag och mergar godkända faser till dev. Andra sessioner är arbetare.
 - Arbeta bara i den worktree/branch du fått. Rör aldrig huvudmappen från en annan worktree. Pusha och mergea aldrig utan att Tobias eller Opus sagt det.
+- Kostnad: välj alltid det som kostar minst tokens men ändå säkrar kvaliteten. Skärmbilder och tester är inte förbjudna, men använd dem bara när ett billigare textbaserat bevis (state-dump, `get_state`, grep) inte räcker. En bild per ändrad layout, ingen för logikfixar. Bygg inte oftare än nödvändigt.
 - Inga nycklar eller tokens i repot.
 - Håll sessioner korta: uppdatera progressfilen före sessionens slut och föreslå ny chatt per uppgift.
 - Nya parametrar läggs sist i layouten och nya modulationskällor sist i källistan (`docs/ENGINEERING.md`), så att sparade projekt och automation förblir kompatibla.
