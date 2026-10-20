@@ -970,7 +970,8 @@ namespace
     int perfTest()
     {
         // lfoMask: aktiva LFO:er (fas M; 7 = LFO 1-3 som förut, 0x3FF = alla 10).
-        auto timeIt = [] (int count, int filterModel = 0, int filter2Model = -1, uint32_t lfoMask = 7u) // filterModel: 0 Kickbase, 1 TB-303, 2 Ladder, 3 Formant, 4 Comb (fas D1 och D2); filter2Model: -1 = Filter 2 av (fas D3)
+        // voices/chords (fas P): VOICES på alla instrument, och ackord (chords extra toner) på varje ton med lång release, så att rösterna överlappar.
+        auto timeIt = [] (int count, int filterModel = 0, int filter2Model = -1, uint32_t lfoMask = 7u, int voices = 1, int chords = 0, bool heavy = false) // filterModel: 0 Kickbase, 1 TB-303, 2 Ladder, 3 Formant, 4 Comb (fas D1 och D2); filter2Model: -1 = Filter 2 av (fas D3)
         {
             const auto owner = std::make_unique<InstrumentProcessor>();
             auto& processor = *owner;
@@ -980,6 +981,21 @@ namespace
             processor.modulator.activeMask = lfoMask;
             for (int layer = 3; layer < count; ++layer)
                 processor.pattern.applyLayerTemplate (layer, PatternTemplate::rolling);
+            if (heavy)
+                Scenarios::makeHeavy (processor, count);
+            if (voices > 1)
+                for (int layer = 0; layer < count; ++layer)
+                {
+                    Scenarios::setInstrument (processor, layer, InstrumentField::voices, (float) voices);
+                    Scenarios::setInstrument (processor, layer, InstrumentField::release, 300.0f);
+                    Scenarios::setInstrument (processor, layer, InstrumentField::gate, 1.0f);
+                    const Pattern::Chord chord { 7, chords > 1 ? 12 : 0, chords > 2 ? 3 : 0 };
+                    std::vector<int> ticks;
+                    processor.pattern.forEachNote (layer, [&ticks] (int tick, const Pattern::Note&) { ticks.push_back (tick); });
+                    if (chords > 0)
+                        for (const auto tick : ticks)
+                            processor.pattern.edit (layer, tick).setChord (chord);
+                }
             if (filterModel > 0) // alla instrument med samma filtermodell
                 for (int layer = 0; layer < count; ++layer)
                     if (auto* model = processor.apvts.getParameter (ParamID::bass (layer, InstrumentField::filterModel)))
@@ -1038,6 +1054,12 @@ namespace
         // Fas M: alla 10 LFO:er aktiva mot 3 (standard), 10 instrument.
         const auto tenLfos = timeIt (10, 0, -1, 0x3FFu);
         std::puts (("10 instrument med 10 LFO:er: " + juce::String (tenLfos, 3) + " s CPU per sekund ljud (" + juce::String (tenLfos / many, 2) + " x 3 LFO:er)").toRawUTF8());
+        // Fas P: flera röster. Typiskt: 3 instrument med VOICES 4 och treklanger (2 extra toner). Värst: 10 tunga instrument (unison 7/4/3)
+        // med VOICES 8 och 3 extra toner på varje ton och lång release.
+        const auto typical = timeIt (3, 0, -1, 7u, 4, 2), heavyMono = timeIt (10, 0, -1, 7u, 1, 0, true), worst = timeIt (10, 0, -1, 7u, 8, 3, true);
+        std::puts (("3 instrument, VOICES 4 + treklanger: " + juce::String (typical, 3) + " s CPU per sekund ljud (" + juce::String (typical / few, 2) + " x en röst)").toRawUTF8());
+        std::puts (("10 tunga instrument, en röst:         " + juce::String (heavyMono, 3) + " s CPU per sekund ljud").toRawUTF8());
+        std::puts (("10 tunga instrument, VOICES 8 + ackord: " + juce::String (worst, 3) + " s CPU per sekund ljud (" + juce::String (worst / heavyMono, 2) + " x en röst)").toRawUTF8());
         return 0;
     }
 
@@ -1652,6 +1674,7 @@ int uiProfileCommand (int tab, const juce::String& scenario, int instruments, do
 int renderSignaturesWide(); // Tools/AudioTests.cpp
 int audioThreadTest();      // Tools/AudioTests.cpp
 int blockSizeTest();        // Tools/AudioTests.cpp
+int polyTest();             // Tools/AudioTests.cpp
 int persistTest();          // Tools/StateTests.cpp
 int helpCheck();            // Tools/StateTests.cpp
 int libraryCheck (const juce::String& folder); // Tools/LibraryTests.cpp
@@ -1682,7 +1705,7 @@ int toolMain (int argc, char* argv[])
     std::unique_ptr<Scenarios::TemporaryUserFolders> isolation;
     if (const juce::String command (argc > 1 ? argv[1] : ""); command == "presettest" || command == "rolltest" || command == "lengthtest"
         || command == "instrumenttest" || command == "eqtest" || command == "listentest" || command == "auditiontest" || command == "audiotest"
-        || command == "analysetest" || command == "perftest" || command == "rendersig" || command == "rendersigwide" || command == "rendersigtb303")
+        || command == "analysetest" || command == "perftest" || command == "polytest" || command == "rendersig" || command == "rendersigwide" || command == "rendersigtb303")
         isolation = std::make_unique<Scenarios::TemporaryUserFolders>();
 
     if (argc == 2 && juce::String (argv[1]) == "presettest")
@@ -1760,6 +1783,8 @@ int toolMain (int argc, char* argv[])
         return renderSignaturesWide();
     if (argc == 2 && juce::String (argv[1]) == "blocksizetest")
         return blockSizeTest();
+    if (argc == 2 && juce::String (argv[1]) == "polytest")
+        return polyTest();
     if (argc == 2 && juce::String (argv[1]) == "audiotest")
         return audioThreadTest();
     // uiprofile <flik> <init|heavy> [instrument] [sekunder]: gränssnittets CPU och var meddelandetråden lägger tiden.

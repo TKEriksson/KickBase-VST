@@ -46,6 +46,9 @@ public:
     // basen duckas under kicken, så att man ser den pumpa).
     void setLiveMeter (std::function<float()> read, juce::Colour colour) { liveMeter = std::move (read); liveColour = colour; }
 
+    // En varning (t.ex. tung CPU): namnet blir orange och texten läggs till i beskrivningen så länge `read` ger en text.
+    void setWarning (std::function<juce::String()> read) { warning = std::move (read); normalLabel = label.findColour (juce::Label::textColourId); }
+
     class ModSlider : public juce::Slider
     {
     public:
@@ -92,6 +95,9 @@ private:
     bool dropHover = false;
     std::function<float()> liveMeter;
     juce::Colour liveColour;
+    std::function<juce::String()> warning;
+    juce::String lastWarning;
+    juce::Colour normalLabel;
     float lastLive = -1.0f;
 
     int dragRing = -1;        // ringen som dras, index i rings()

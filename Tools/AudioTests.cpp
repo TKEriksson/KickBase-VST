@@ -21,6 +21,7 @@
  #endif
  #include <windows.h>
  #include <dbghelp.h>
+ #include <psapi.h>
  #pragma comment (lib, "dbghelp.lib")
 #endif
 
@@ -293,6 +294,268 @@ int renderSignaturesTb303()
                      audio.getRMSLevel (0, 0, audio.getNumSamples()), finite ? "" : "  ICKE-ÄNDLIGA VÄRDEN");
     }
     return 0;
+}
+
+// Fas P: flera röster per instrument. Klick när en röst stjäls (mot samma toner utan stöld), att en röst som legat oanvänd medan
+// rattarna ändrats låter som en ny röst, att VOICES ned tonar ut i stället för att klippa, att seed och ackordens timing är
+// deterministiska, och minnet och prepareToPlay-tiden per instans (10 instrument x 8 röster = 80 röster) vid 48 och 192 kHz.
+int polyTest()
+{
+    juce::ScopedJuceInitialiser_GUI gui;
+    auto failed = false;
+    auto check = [&failed] (bool ok, const juce::String& what) { std::printf ("%s: %s\n", ok ? "ok" : "FEL", what.toRawUTF8()); failed |= ! ok; };
+    const auto keep = make (false); // (laddar de inbyggda tabellerna)
+    keep->ensureTablesInUse();
+
+    constexpr double rate = 48000.0;
+    constexpr int longGate = (int) (rate * 10.0);
+    auto toDb = [] (double value) { return 20.0 * std::log10 (std::max (value, 1.0e-12)); };
+    auto value = [] (const InstrumentVoices::Output& o) { return o.left * o.amplitude; };
+    auto setUp = [] (InstrumentVoices& v, int voices, const InstrumentParams& params, juce::int64 seed = 7)
+    {
+        v.prepare (rate);
+        v.setNumVoices (voices);
+        v.setSeed (seed);
+        v.setTempo (145.0);
+        v.setParams (params);
+        v.reset();
+    };
+    auto run = [&value] (InstrumentVoices& v, std::vector<float>& out, int samples)
+    {
+        for (int i = 0; i < samples; ++i)
+            out.push_back (value (v.next()));
+    };
+    // Största hoppet mellan två sampels och energin över 5 kHz (RMS efter ett högpassfilter) i [from, to).
+    auto maxJump = [] (const std::vector<float>& x, int from, int to)
+    {
+        auto peak = 0.0f;
+        for (int i = std::max (1, from); i < std::min (to, (int) x.size()); ++i)
+            peak = std::max (peak, std::abs (x[(size_t) i] - x[(size_t) i - 1]));
+        return peak;
+    };
+    auto highEnergy = [] (const std::vector<float>& x, int from, int to)
+    {
+        juce::IIRFilter filter;
+        filter.setCoefficients (juce::IIRCoefficients::makeHighPass (rate, 5000.0));
+        auto sum = 0.0;
+        for (int i = 0; i < std::min (to, (int) x.size()); ++i)
+        {
+            const auto y = filter.processSingleSampleRaw (x[(size_t) i]);
+            if (i >= from)
+                sum += (double) y * y;
+        }
+        return std::sqrt (sum / std::max (1, to - from));
+    };
+    auto rmsOf = [] (const std::vector<float>& x, int from, int to)
+    {
+        auto sum = 0.0;
+        for (int i = from; i < std::min (to, (int) x.size()); ++i)
+            sum += (double) x[(size_t) i] * x[(size_t) i];
+        return std::sqrt (sum / std::max (1, to - from));
+    };
+
+    InstrumentParams bright;
+    bright.cutoffHz = 2000.0f;
+    bright.releaseMs = 300.0f;
+    bright.sustain = 0.8f;
+
+    // a. Stöld: tre toner med 100 ms mellanrum, 2 röster (den tredje stjäl den första, som hålls) mot 3 röster (ingen stöld).
+    {
+        auto render = [&] (int voices)
+        {
+            InstrumentVoices v;
+            setUp (v, voices, bright);
+            std::vector<float> out;
+            const int semis[] { 0, 7, 12 };
+            for (const auto s : semis)
+            {
+                v.noteOn (s, 0.8f, longGate);
+                run (v, out, (int) (rate * 0.1));
+            }
+            run (v, out, (int) (rate * 0.05));
+            return out;
+        };
+        const auto stolen = render (2), reference = render (3);
+        const auto at = (int) (rate * 0.2), from = at - (int) (rate * 0.002), to = at + (int) (rate * 0.01);
+        const auto jumpS = maxJump (stolen, from, to), jumpR = maxJump (reference, from, to);
+        const auto hfS = highEnergy (stolen, from, to), hfR = highEnergy (reference, from, to);
+        std::printf ("stöld: största hopp %.4f (utan stöld %.4f), energi över 5 kHz %.1f dB (utan stöld %.1f dB)\n", jumpS, jumpR, toDb (hfS), toDb (hfR));
+        check (jumpS <= jumpR * 1.5f + 0.005f && toDb (hfS) <= toDb (hfR) + 3.0, "en stulen röst klickar inte (hopp och energi över 5 kHz nära samma toner utan stöld)");
+    }
+
+    // b. Krav 1: en röst som legat oanvänd medan cutoff gick 300 -> 5000 Hz låter som en ny röst med 5000 Hz.
+    {
+        InstrumentParams dark = bright, open = bright;
+        dark.cutoffHz = 300.0f;
+        open.cutoffHz = 5000.0f;
+        InstrumentVoices v;
+        setUp (v, 2, dark);
+        std::vector<float> ignore;
+        v.noteOn (0, 0.8f, (int) (rate * 0.05));
+        run (v, ignore, (int) (rate * 0.02));
+        v.noteOn (5, 0.8f, (int) (rate * 0.05));
+        for (int i = 0; i < (int) (rate * 2.0) && v.isActive(); ++i)
+            v.next();
+        check (! v.isActive(), "båda rösterna tystnar");
+        v.setParams (open); // (når bara den senaste rösten; den andra ligger kvar med 300 Hz)
+        std::vector<float> after, fresh;
+        v.noteOn (7, 0.8f, longGate, true);
+        v.noteOn (7, 0.8f, longGate);
+        run (v, after, (int) (rate * 0.02));
+        InstrumentVoices f;
+        setUp (f, 2, open);
+        f.noteOn (7, 0.8f, longGate, true);
+        f.noteOn (7, 0.8f, longGate);
+        run (f, fresh, (int) (rate * 0.02));
+        const auto n = (int) after.size();
+        const auto hfA = toDb (highEnergy (after, 0, n)), hfF = toDb (highEnergy (fresh, 0, n));
+        const auto rmsA = toDb (rmsOf (after, 0, n)), rmsF = toDb (rmsOf (fresh, 0, n));
+        std::printf ("färsk röst, första 20 ms: RMS %.1f dB (ny instans %.1f dB), över 5 kHz %.1f dB (ny instans %.1f dB)\n", rmsA, rmsF, hfA, hfF);
+        check (std::abs (rmsA - rmsF) < 1.0 && std::abs (hfA - hfF) < 1.5, "en röst som legat oanvänd låter som en ny röst (krav 1)");
+    }
+
+    // c. Krav 2: VOICES 4 -> 1 medan fyra toner klingar: tre tonas ut på 3 ms (inget klipp), den senaste klingar vidare.
+    {
+        InstrumentVoices v;
+        InstrumentParams soft = bright;
+        soft.cutoffHz = 600.0f;
+        setUp (v, 4, soft);
+        std::vector<float> out;
+        const int semis[] { 0, 3, 7, 12 };
+        for (const auto s : semis)
+            v.noteOn (s, 0.8f, longGate, s != 12);
+        run (v, out, (int) (rate * 0.1));
+        const auto sounding = v.countSounding();
+        const auto at = (int) out.size();
+        v.setNumVoices (1);
+        run (v, out, (int) (rate * 0.05));
+        const auto steady = maxJump (out, at - (int) (rate * 0.01), at), change = maxJump (out, at, at + (int) (rate * 0.01));
+        std::printf ("VOICES 4 -> 1: klingande %d -> %d, största hopp %.4f (före ändringen %.4f)\n", sounding, v.countSounding(), change, steady);
+        check (sounding == 4 && v.countSounding() == 1 && change <= steady * 1.5f + 0.005f, "VOICES ned tonar ut rösterna över gränsen (krav 2)");
+    }
+
+    // d. Krav 7: seed. Två renderingar ger samma ljud, och två röster med samma ton och slumpad fas låter olika (egna seeds).
+    {
+        InstrumentParams random = bright;
+        random.oscA.randomPhase = 1.0f;
+        random.oscA.unison = 3;
+        auto render = [&] (int voices, int notes)
+        {
+            InstrumentVoices v;
+            setUp (v, voices, random);
+            std::vector<float> out;
+            for (int k = 0; k < notes; ++k)
+                v.noteOn (0, 0.8f, longGate, k < notes - 1);
+            run (v, out, (int) (rate * 0.05));
+            return out;
+        };
+        const auto twoA = render (2, 2), twoB = render (2, 2), one = render (1, 1);
+        auto differs = 0.0f;
+        for (size_t i = 0; i < one.size(); ++i)
+            differs = std::max (differs, std::abs (twoA[i] - 2.0f * one[i]));
+        check (twoA == twoB, "samma seed ger samma ljud med flera röster (krav 7)");
+        check (differs > 1.0e-3f, "rösterna har egna seeds (två röster på samma ton är inte samma ljud x 2)");
+    }
+
+    // Ackordets timing i processorn: med swing och humanize startar ackordtonen på samma sample som grundtonen.
+    {
+        using F = InstrumentField;
+        auto render = [] (bool chord, int voices)
+        {
+            auto processor = make (false);
+            Scenarios::setPlain (*processor, ParamID::kickOn, 0.0f);
+            for (int layer = 1; layer < ParamID::numInstrumentLayers; ++layer)
+                Scenarios::setInstrument (*processor, layer, F::on, 0.0f);
+            Scenarios::setPlain (*processor, ParamID::patSwing, 0.6f);
+            Scenarios::setPlain (*processor, ParamID::patHumanize, 0.8f);
+            Scenarios::setInstrument (*processor, 0, F::voices, (float) voices);
+            Scenarios::setInstrument (*processor, 0, F::noise, 0.0f);
+            for (const auto field : { F::aRandom, F::bRandom, F::cRandom })
+                Scenarios::setInstrument (*processor, 0, field, 0.0f);
+            for (const auto field : { F::aUnison, F::bUnison, F::cUnison })
+                Scenarios::setInstrument (*processor, 0, field, 1.0f);
+            processor->pattern.clearNotes (0);
+            for (int tick = Pattern::ticksPerQuarter / 4; tick < Pattern::ticksPerBar; tick += Pattern::ticksPerQuarter)
+                processor->pattern.addNote (0, tick, Pattern::ticksPerQuarter / 8, 0, 0.8f, false, chord ? Pattern::Chord { 12, 0, 0 } : Pattern::Chord {});
+            processor->ensureTablesInUse();
+            OfflineRender::Settings settings;
+            settings.sampleRate = rate;
+            settings.blockSize = 480;
+            settings.bars = 1;
+            settings.notes = { 52 };
+            return OfflineRender::render (*processor, settings);
+        };
+        auto onsets = [] (const juce::AudioBuffer<float>& audio, const juce::AudioBuffer<float>* minus)
+        {
+            std::vector<int> result;
+            auto silent = 0;
+            for (int i = 0; i < audio.getNumSamples(); ++i)
+            {
+                const auto x = audio.getSample (0, i) - (minus != nullptr ? minus->getSample (0, i) : 0.0f);
+                if (x != 0.0f) // (första sample som inte är exakt noll: attacken börjar mjukt, en tröskel ger fel start)
+                {
+                    if (silent > (int) (rate * 0.05) || (result.empty() && silent == i))
+                        result.push_back (i);
+                    silent = 0;
+                }
+                else
+                    ++silent;
+            }
+            return result;
+        };
+        const auto rootOnly = render (false, 2), withChord = render (true, 2);
+        const auto roots = onsets (rootOnly, nullptr), chords = onsets (withChord, &rootOnly);
+        juce::String list;
+        for (size_t i = 0; i < std::min (roots.size(), chords.size()); ++i)
+            list << roots[i] << "/" << chords[i] << " ";
+        std::printf ("start grundton/ackordton (sample): %s\n", list.toRawUTF8());
+        check (! roots.empty() && roots == chords, "ackordtonerna startar på samma sample som grundtonen, med swing och humanize");
+    }
+
+    // Minne och prepareToPlay-tid per instans: 10 instrument (rösterna finns alltid, 8 per instrument, oavsett VOICES).
+    {
+        auto privateBytes = []() -> double
+        {
+           #if JUCE_WINDOWS
+            PROCESS_MEMORY_COUNTERS_EX counters {};
+            if (K32GetProcessMemoryInfo (GetCurrentProcess(), (PROCESS_MEMORY_COUNTERS*) &counters, sizeof (counters)))
+                return (double) counters.PrivateUsage;
+           #endif
+            return 0.0;
+        };
+        std::printf ("sizeof InstrumentVoices %d kB, InstrumentSynth %d kB\n", (int) (sizeof (InstrumentVoices) / 1024), (int) (sizeof (InstrumentSynth) / 1024));
+        for (const auto sampleRate : { 48000.0, 192000.0 })
+        {
+            // Rösternas egen andel: 10 x 8 förberedda röster (kamfiltrens fördröjningslinjer m.m.).
+            const auto start = privateBytes();
+            auto voices = std::make_unique<std::array<InstrumentVoices, ParamID::numInstrumentLayers>>();
+            for (auto& v : *voices)
+                v.prepare (sampleRate);
+            const auto bytes = privateBytes() - start;
+            std::printf ("%.0f kHz: 80 röster %.1f MB\n", sampleRate / 1000.0, bytes / 1048576.0);
+            check (bytes < 50.0 * 1048576.0, juce::String (sampleRate / 1000.0, 0) + " kHz: rösterna tar under 50 MB per instans");
+        }
+        for (const auto sampleRate : { 48000.0, 192000.0 })
+        {
+            const auto before = privateBytes();
+            auto processor = std::make_unique<InstrumentProcessor>();
+            const auto created = privateBytes();
+            processor->setInstrumentCount (ParamID::numInstrumentLayers);
+            for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
+                Scenarios::setInstrument (*processor, layer, InstrumentField::voices, 8.0f);
+            processor->setPlayConfigDetails (0, 2, sampleRate, 512);
+            const auto start = juce::Time::getMillisecondCounterHiRes();
+            processor->prepareToPlay (sampleRate, 512);
+            const auto ms = juce::Time::getMillisecondCounterHiRes() - start;
+            const auto prepared = privateBytes();
+            std::printf ("%.0f kHz: instans %.1f MB (skapad %.1f + prepareToPlay %.1f), prepareToPlay %.0f ms\n", sampleRate / 1000.0,
+                         (prepared - before) / 1048576.0, (created - before) / 1048576.0, (prepared - created) / 1048576.0, ms);
+            check (ms < 500.0, juce::String (sampleRate / 1000.0, 0) + " kHz: prepareToPlay under 0,5 s"); // (instansens minne utöver rösterna fanns före fas P)
+        }
+    }
+
+    std::puts (failed ? "FEL: polytestet misslyckades" : "Polytestet gick igenom");
+    return failed ? 1 : 0;
 }
 
 // Att ljudet inte beror på DAW:ens blockstorlek: nolltest mot block 32, också med udda storlekar. Sedan fråga 1 räknas moduleringen
