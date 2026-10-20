@@ -19,6 +19,7 @@ LiveCodePage::LiveCodePage (PluginBase& processor) : processor (processor), tool
     document.replaceAllContent ("$: note(\"c2 [e2 g2]*2\").s(\"i1\")\n$: s(\"bd*4\")");
     if (const auto saved = processor.getLiveCodeText(); saved.isNotEmpty()) // kod sparad i projektet (steg D)
         document.replaceAllContent (saved);
+    seenLoads = processor.liveCodeLoads.load();
     document.clearUndoHistory();
     document.setSavePoint();
     addAndMakeVisible (editor);
@@ -185,6 +186,22 @@ void LiveCodePage::syncSavedCode()
     const auto saved = processor.getLiveCodeText();
     if (! playing && saved.isNotEmpty() && saved != document.getAllContent())
         document.replaceAllContent (saved);
+}
+
+void LiveCodePage::checkLoaded()
+{
+    const auto loads = processor.liveCodeLoads.load();
+    if (loads == seenLoads)
+        return;
+    seenLoads = loads;
+    if (playing) // LIVE skulle annars skriva över det nya projektets mönster med gammal kod
+    {
+        playButton.setToggleState (false, juce::dontSendNotification);
+        setPlaying (false); // runner.cancel() kastar en pågående körning
+        setCodeOnly (false);
+    }
+    syncSavedCode();
+    syncLocks();
 }
 
 void LiveCodePage::syncLocks()

@@ -602,6 +602,7 @@ void PluginBase::setStateInformation (const void* data, int sizeInBytes)
         liveCodeFromValueTree (liveCode);
         state.removeChild (liveCode, nullptr); // hör inte hemma i apvts-tillståndet
     }
+    ++liveCodeLoads; // sidan LIVE CODE stoppar LIVE och tar in den nya koden
 
     auto legacyLengths = false; // projekt före mönsterversion 7: längderna låg i parametrarna (patternBars, rowBars)
     if (auto patternTree = state.getChildWithName (Pattern::treeType); patternTree.isValid())
@@ -1289,6 +1290,8 @@ bool PluginBase::loadPresetXml (const juce::XmlElement& xmlElement, Presets::Sec
     if (section == Presets::Section::full) // filer utan <LiveCode> (äldre, Init) lämnar användarens kod och lås som de är
         if (const auto* liveCodeXml = xml->getChildByName ("LiveCode"))
             liveCodeFromValueTree (juce::ValueTree::fromXml (*liveCodeXml));
+    if (section == Presets::Section::full)
+        ++liveCodeLoads;
 
     presetNameSlot (section, layer) = presetName;
     ensureTablesInUse();

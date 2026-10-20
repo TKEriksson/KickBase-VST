@@ -386,6 +386,26 @@ namespace
                     check (! codeOnlyBtn->getToggleState() && processor.soloMask.load() == 0, "CODE ONLY: utan egna rader händer inget (soloMask 0 = hör allt)");
                     processor.liveCodeOwned = ownedBefore;
                 }
+
+                // Projekt/preset laddas medan LIVE spelar: LIVE stoppas, den nya koden tas in, och gammal kod skriver inte över det nya mönstret.
+                {
+                    stop->triggerClick();
+                    runFor (100);
+                    play->triggerClick();
+                    runFor (600);
+                    check (play->getToggleState(), "laddning under LIVE: LIVE spelar före laddningen");
+                    juce::ValueTree loaded ("LiveCode");
+                    loaded.setProperty ("code", "note(\"a2\").s(\"i1\")", nullptr);
+                    loaded.setProperty ("locks", 0, nullptr);
+                    processor.liveCodeFromValueTree (loaded);
+                    ++processor.liveCodeLoads;
+                    runFor (700);
+                    check (! play->getToggleState(), "laddning under LIVE: LIVE stoppas");
+                    check (code->getDocument().getAllContent() == "note(\"a2\").s(\"i1\")", "laddning under LIVE: den nya koden visas");
+                    pattern.clearNotes (0);
+                    runFor (1200);
+                    check (pattern.stackSize (0, 0) == 0, "laddning under LIVE: gammal kod skriver inte över mönstret efteråt");
+                }
             }
         }
 

@@ -35,9 +35,10 @@ private:
     void warnOverwrite (const juce::var& conflicts, std::function<void (bool overwrite)> retry);
     void syncLocks();
     void syncSavedCode();
+    void checkLoaded(); // projekt/preset laddat: stoppa LIVE (en pågående körning kastas) och ta in den nya koden
     void setCodeOnly (bool on); // soloMask = raderna Live Code skrivit; användarens egen SOLO-knapp vinner
     void refreshCodeOnly();     // efter varje körning: följ med nya rader, eller släpp om användaren soloat själv
-    void visibilityChanged() override { syncSavedCode(); syncLocks(); }
+    void visibilityChanged() override { checkLoaded(); syncSavedCode(); syncLocks(); }
 
     PluginBase& processor;
     ToolLayer tools;
@@ -45,6 +46,15 @@ private:
     LiveCodeRunner runner;
     bool playing = false;
     bool codeOnly = false;
+    struct LoadWatch : private juce::Timer // ett projekt kan laddas från vilken tråd som helst: sidan tittar efter på meddelandetråden
+    {
+        explicit LoadWatch (std::function<void()> f) : callback (std::move (f)) { startTimerHz (4); }
+        ~LoadWatch() override { stopTimer(); }
+        void timerCallback() override { callback(); }
+        std::function<void()> callback;
+    };
+    int seenLoads = 0;
+    LoadWatch loadWatch { [this] { checkLoaded(); } };
     int savedSolo = 0, ownSolo = 0; // soloMask före CODE ONLY, och det värde CODE ONLY själv satte
 
     void showTab (bool errors);
