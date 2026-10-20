@@ -24,6 +24,7 @@
 #include "../Source/Core/OfflineRender.h"
 #include "../Source/Core/ToolLayer.h"
 #include "../Source/Core/LiveCode.h"
+#include "../Source/Ui/LiveCodePage.h"
 #include "../Source/Core/AiChat.h"
 #include "../Source/Core/Settings.h"
 #include "../Source/Core/WavetablePack.h"
@@ -297,6 +298,62 @@ namespace
         const auto t0 = juce::Time::getMillisecondCounterHiRes();
         check (! (bool) run ("while(true){}")["ok"], "en oändlig slinga avbryts");
         check (juce::Time::getMillisecondCounterHiRes() - t0 < 5000, "avbrottet sker inom 5 s");
+
+        // LIVE CODE-sidan: PLAY, STOP och CREATE klickas som en användare (knapparna hittas bland sidans barn).
+        {
+            LiveCodePage page (processor);
+            page.setBounds (0, 0, 600, 400);
+            juce::TextEditor* code = nullptr;
+            juce::TextButton *play = nullptr, *stop = nullptr, *create = nullptr;
+            for (auto* c : page.getChildren())
+            {
+                if (auto* e = dynamic_cast<juce::TextEditor*> (c)) code = e;
+                if (auto* b = dynamic_cast<juce::TextButton*> (c))
+                {
+                    if (b->getButtonText() == "PLAY") play = b;
+                    if (b->getButtonText() == "STOP") stop = b;
+                    if (b->getButtonText() == "CREATE") create = b;
+                }
+            }
+            check (code && play && stop && create, "LIVE CODE-sidan har kodruta, PLAY, STOP och CREATE");
+            if (code && play && stop && create)
+            {
+                auto runFor = [] (int milliseconds) { juce::MessageManager::getInstance()->runDispatchLoopUntil (milliseconds); };
+                int changed = 0;
+                juce::String lastError;
+                page.onPatternChanged = [&changed] { ++changed; };
+                page.onError = [&lastError] (const juce::String& e) { lastError = e; };
+
+                pattern.clearNotes (0);
+                code->setText ("note(\"c2,e2\").s(\"i1\")", false);
+                create->triggerClick();
+                runFor (200); // triggerClick körs via meddelandekön
+                check (changed == 1 && pattern.stackSize (0, 0) == 2, "CREATE skriver koden en gång (två staplade toner)");
+
+                pattern.clearNotes (0);
+                play->triggerClick();
+                runFor (1500);
+                check (pattern.stackSize (0, 0) == 2 && changed >= 2 && lastError.isEmpty(), "PLAY räknar koden i bakgrunden och skriver mönstret");
+
+                const auto before = changed;
+                code->setText ("note(\"g2\").s(\"i1\")", true);
+                runFor (1500);
+                check (changed > before && pattern.stackSize (0, 0) == 1 && pattern.note (0, 0).pitch.load() == 7, "PLAY: en ändring i koden uppdaterar mönstret efter debouncen");
+
+                stop->triggerClick();
+                runFor (100);
+                const auto afterStop = changed;
+                code->setText ("note(\"c2\").s(\"i1\")", true);
+                runFor (1200);
+                check (changed == afterStop && pattern.note (0, 0).pitch.load() == 7, "STOP: ändringar i koden skrivs inte längre");
+
+                play->triggerClick();
+                code->setText ("note(\"c2\".s(", true);
+                runFor (1500);
+                check (lastError.isNotEmpty(), "PLAY: ett syntaxfel visas som felmeddelande");
+                stop->triggerClick();
+            }
+        }
 
         int pitch = 0;
         check (LiveCode::pitchFrom ("c#3", pitch) && pitch == 13 && LiveCode::pitchFrom ("eb2", pitch) && pitch == 3
