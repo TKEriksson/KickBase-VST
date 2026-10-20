@@ -18,6 +18,18 @@ Läs [LESSONS.md](LESSONS.md) innan du bygger eller testar. Lägg till en rad d�
 - 20 okt: fas R KLAR på content-r (Sonnet), väntar på Opus-godkännande. Rapport: docs/content-r-report.md (testlista för Tobias där). Ingen push/Release förrän Opus säger.
   Öppet: (1) wide/tb303-baslinjerna omgjorda (bevisat: kvarstår med d2-Modulation). (2) SNAP-mockupens detaljer till fas L. (3) WARP ENV-varning i plan-v2 under S.
 
+- 20 okt (kväll): projektledare = kickbase-vst-27 (Claude). Arbetare 2 = kickbase-vst-bb kör M steg 1 (KickBase-VST-lc). Codex tar transkript→`docs/research-notes/` (uppdrag 1–2 i docs/workers/CODEX-CLAUDE-HANDOFF.md; regler i docs/workers/README.md). Nya idéer (LOW-END, FM-källa S2, additiv, Multi-FX) i plan-v2 "Nya idéer 20 okt". Copilot upptagen, ingen fil än.
+
+- 20 okt: Codex Uppdrag 1 KLART (docs/research-notes/*, INDEX). Gemini svarar inte → Uppdrag 2 (fx-and-fm-ideas) återtaget till Codex. Claude-research-agenten (docs/workers/CLAUDE-RESEARCH-HANDOFF.md) äger psytrance-kick-bass-reference + AGENT_GUIDE-flöde, gör länkkoll + "Saknade mätningar".
+
+- 20 okt 10:15: Codex/Copilot/Gemini = döda, inget delegeras dit. bb kör M steg 3 (LFO-flik). Research-agenten (kickbase-vst-73) tar länkkoll → fx-and-fm-ideas.md → gaps-to-specs.md (saknad mätning → fas → minsta spec). Tobias borta till eftermiddagen; ingen push/merge. Ingen commit på content-r än (docs-ändringar ocommittade).
+
+- 20 okt 10:30: M steg 3 committad 02ac8d6 (content-m, ej push): LFO-flik med kort, ADD LFO, EDIT POINTS, byte-identisk rendersig. Öppet för Tobias: LFO 2–3 har On=av som standard, 4–10 visas som På (befintliga standardvärden) – vill du ha samma? bb kör steg 4.
+
+- 20 okt 10:45: fas M KLAR och godkänd (content-m ba7b18e, ej push). Testlista för Tobias (8 punkter, i DAW) finns i bb:s slutrapport: ADD LFO till 10, fäll/öppna, × med fråga, EDIT POINTS, MATRIX/DRAG aktiva, spara/ladda (gammalt projekt → LFO 1–3), FX har 3 LFO, MCP lfo 5. bb startar fas P (content-p från content-m).
+
+- 20 okt 11:00: research-agenten (73) tyst sedan 10:09 → ÅTERTAGET 10:47, allt gjort av projektledaren: fx-and-fm-ideas.md + guidesonline-check.md klara (docs/research-notes). Tobias besvarade LFO-standard: 4–10 På vid tillägg, 1–3 oförändrat = inget att ändra.
+
 ## Klart
 - Fas 0, A, D1, W, E2, D2/D3 (godkända, pushade; tippen content-d2 c0ef101).
 
@@ -29,6 +41,20 @@ Läs [LESSONS.md](LESSONS.md) innan du bygger eller testar. Lägg till en rad d�
 - 20 okt R1-R3 f9be216: pianorulle (kryss-y, scrollbarens klick, vänsterkant, EDIT IN LANE/hjälptext dolda, Alt=sudd, SELECT ALL, + BAR), ENV-header, håll-provlyssning, LISTEN vid PITCH/AMP. rendersig-trion identiska.
 - 20 okt R4-R7 (utan SNAP): analyzer-lista, export per instrument + without effects, LFO-fas kontinuerlig (Modulation.cpp phaseOffset). Tester: ModulationTests, rendersig-trion, blocksizetest OK; bilder ENV/KICK/ANALYZER tittade på. EFFECTS CLEAR finns inte i koden. SNAP väntar på Opus OK av spec.
 - 20 okt R9+fasslut (content-r): radens längd (LENGTH/AUTO/lås, MCP), (unused)-parametrar, persisttest sektion 9. Hela sviten grön utom rendersigwide/tb303 (se rapport). 42 bilder + pngdiff genomgången.
+
+- 20 okt 11:20: docs committade på content-r (04818df, ej push). gaps-to-specs.md klar (A1–A10 mätningar, B1–B13 verktyg, ordning AN→PH→FX→K/LE/S2). Väntar på bb:s P-rapport efter steg 2.
+
+- 20 okt 11:30: P steg 1+2 godkända (content-p 724f7cb, 17360be; baslinjer identiska, VOICES i LAYER OUT, blocksizetest läge 7 OK). bb kör steg 3 (ackord). Rapport efter steg 4.
+
+- 20 okt 11:45: P steg 3+4 godkända (content-p, ackord i pianorullen + XML c1–c3, baslinjer 0/0/0/0, persisttest ackord 3/3). bb kör steg 5 (tester, minne/prepare-tid, rapport).
+
+- 20 okt 12:00: fas P KLAR och godkänd (content-p 6a215c3, ej push). Rapport docs/content-p-report.md i KickBase-VST-lc (testlista för Tobias där). 80 röster: 6,0 MB@48k / 24,7 MB@192k, prepareToPlay 7/27 ms; värsta fall (10 instr, VOICES 8+ackord) 3,17 CPU-s/s → UI-varning vid VOICES×unison>24. bb startar fas L (content-l).
+
+- 20 okt 12:30: L2 godkänd (content-l a3a8299, ej push; ENV-header ON/SYNC/LISTEN/DURATION/DRAG). Spec för nya mod-källor AMP ENV/FILT ENV (block från 54, inget flyttas) godkänd med tillägg: persisttest gammalt/nytt, 0 CPU utan route, MCP-namn + AGENT_GUIDE. bb kör L3.
+
+- 20 okt 13:00: L3 godkänd (content-l 3470790, ej push): NOTE END/SWING/HUMANIZE i PATTERN-flikraden, AI SERVER (MCP) ON/OFF, AI CHAT. Baslinjer 0 rader. Nästa: L2b (DRAG), L4, L5.
+
+- 20 okt 13:15: Tobias vill testa: bb gör Release-build (VST3) av content-l (R+M+P+L) efter L2b, testlista docs/content-test-report.md, sedan L4/L5. Ingen push/merge.
 - 20 okt M steg 1 (arbetare 2, content-m): LFO 4-10 = källa 47-53, parametrar sist (bara instrument; FX 3), activeMask (standard 7, läses en gång per block, inaktiv = 0 CPU). Tester: ModulationTests (nya testExtraLfos + bitidentitet LFO 1-3), rendersig/real/wide/tb303 = baslinjerna, blocksizetest, audiotest OK; perftest 10 LFO:er 1.05 x; params: 49 rader sist, FX oförändrad (docs/audit/params-*.txt är från före R). Väntar på projektledarens OK för steg 2.
 
 - 20 okt M steg 2 (content-m): activeLfos i state och preset (standard 7; LFO:er med kopplingar räknas som aktiva vid laddning; inaktiva återställs efter replaceState), LfoCurve4-10, setLfoActive/clearLfo/applyLoadedLfos/lfoRouteCount/availableLfos (FX 3), fabrikspreset = 1-3 + presetets LFO:er. persisttest block 10. Tester: enhetstester, rendersig/real/wide/tb303 = steg 1, blocksizetest, audiotest, persisttest OK. Väntar på OK för steg 3.
