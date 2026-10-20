@@ -250,8 +250,22 @@ void Modulator::update (double ppq, double bpm)
     {
         const auto& lfo = lfos[(size_t) i];
         // Tempo-synkad (en period i fjärdedelar) eller fri hastighet i Hz (sekunder räknade ur positionen och tempot).
-        const auto position = lfo.mode->load() >= 0.5f ? ppq * 60.0 / std::max (20.0, bpm) * (double) lfo.hz->load()
-                                                       : ppq / rateInQuarters ((int) lfo.rate->load());
+        // Perioder per fjärdedel: tempo-synkat (rate) eller fri hastighet (Hz). Byter hastigheten (rattar, automation, Sync <-> Hz) ska fasen
+        // fortsätta där den är i stället för att hoppa till ppq * nya hastigheten: `phaseOffset` bär skillnaden så att positionen är kontinuerlig
+        // (p * gamla + offset = p * nya + ny offset). Ändras inget är offseten 0 och positionen exakt som förr (x + 0.0 är x).
+        const auto cyclesPerQuarter = lfo.mode->load() >= 0.5f ? 60.0 / std::max (20.0, bpm) * (double) lfo.hz->load()
+                                                               : 1.0 / rateInQuarters ((int) lfo.rate->load());
+        auto& offset = phaseOffset[(size_t) i];
+        auto& lastCycles = lastCyclesPerQuarter[(size_t) i];
+        auto& lastPosition = lastPpq[(size_t) i];
+        if (ppq < lastPosition - 1.0e-6)
+            offset = 0.0; // transporten startade om eller loopade: LFO:n följer takten igen
+        else if (lastCycles > 0.0 && cyclesPerQuarter != lastCycles)
+            offset += ppq * (lastCycles - cyclesPerQuarter);
+        lastCycles = cyclesPerQuarter;
+        lastPosition = ppq;
+        const auto position = lfo.mode->load() >= 0.5f ? ppq * 60.0 / std::max (20.0, bpm) * (double) lfo.hz->load() + offset
+                                                       : ppq / rateInQuarters ((int) lfo.rate->load()) + offset;
         const auto cycle = (juce::int64) std::floor (position);
         const auto lfoPhase = position - std::floor (position);
         const auto shapeIndex = (int) lfo.shape->load();

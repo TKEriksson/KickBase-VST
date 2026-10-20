@@ -1479,13 +1479,38 @@ void SpectrumPage::paint (juce::Graphics& g)
     {
         constexpr float lane = 12.0f;
         auto row = 0;
-        g.setFont (Theme::font (9.0f, true));
+        auto listed = 0;
+        for (int i = 0; i < numSources; ++i)
+            if (i != masterSource && ! columns[(size_t) i].empty() && sources[(size_t) i].fundamental > 0.0f)
+                ++listed;
+
+        // Namn, Hz och ton i en fast lista uppe till vänster (står still, hoppar inte med frekvensen). I själva spektrumet ritas bara
+        // grundtonens och övertonernas streck i källans färg, i rader under listan.
+        const auto listHeight = (float) listed * lane + 4.0f;
+        if (listed > 0)
+        {
+            g.setColour (Theme::knobBodyDark.withAlpha (0.8f));
+            g.fillRoundedRectangle (juce::Rectangle<float> (area.getX() + 4.0f, area.getY() + 2.0f, 200.0f, listHeight), 4.0f);
+            g.setFont (Theme::font (10.0f, true));
+            auto listRow = 0;
+            for (int i = 0; i < numSources; ++i)
+            {
+                const auto& source = sources[(size_t) i];
+                if (i == masterSource || columns[(size_t) i].empty() || source.fundamental <= 0.0f)
+                    continue;
+                g.setColour (source.colour);
+                g.drawText (source.name + "  " + describe (source.fundamental),
+                            juce::Rectangle<float> (area.getX() + 10.0f, area.getY() + 4.0f + (float) listRow * lane, 190.0f, lane), juce::Justification::centredLeft);
+                ++listRow;
+            }
+        }
+
         for (int i = 0; i < numSources; ++i)
         {
             const auto& source = sources[(size_t) i];
             if (i == masterSource || columns[(size_t) i].empty() || source.fundamental <= 0.0f)
                 continue;
-            const auto y = area.getY() + 2.0f + (float) row * lane;
+            const auto y = area.getY() + 6.0f + listHeight + (float) row * lane;
             for (int n = 1; n <= 24; ++n)
             {
                 const auto hz = source.fundamental * (float) n;
@@ -1499,15 +1524,7 @@ void SpectrumPage::paint (juce::Graphics& g)
                     g.setColour (source.colour.withAlpha (0.12f));
                     g.drawVerticalLine ((int) x, y + lane, area.getBottom());
                 }
-                if (n == 2 || n == 3 || n == 4 || n == 6 || n == 8)
-                {
-                    g.setColour (source.colour.withAlpha (0.8f));
-                    g.drawText (juce::String (n), juce::Rectangle<float> (x + 2.0f, y, 12.0f, 9.0f), juce::Justification::centredLeft);
-                }
             }
-            g.setColour (source.colour);
-            g.drawText (source.name + "  " + describe (source.fundamental), juce::Rectangle<float> (xFor (source.fundamental) + 6.0f, y, 170.0f, 10.0f),
-                        juce::Justification::centredLeft);
             ++row;
         }
     }

@@ -134,6 +134,8 @@ private:
         std::atomic<float>* hz;
     };
     const std::array<NodeEnvelope, Modulation::numLfos>* lfoCurves = nullptr;
+    // Fas-kontinuitet vid ändrad hastighet (se update): offset i perioder, senaste perioder per fjärdedel och senaste positionen.
+    std::array<double, Modulation::numLfos> phaseOffset {}, lastCyclesPerQuarter {}, lastPpq {};
 
     const ModRoutes& routes;
     std::array<Lfo, Modulation::numLfos> lfos;

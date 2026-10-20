@@ -1128,7 +1128,7 @@ juce::AudioBuffer<float> PluginBase::renderOffline (const OfflineRender::Setting
     return OfflineRender::render (*copy, settings);
 }
 
-bool PluginBase::exportWav (const juce::File& file, ExportPart part, int bars)
+bool PluginBase::exportWav (const juce::File& file, ExportPart part, int bars, int instrument, bool withoutEffects)
 {
     auto copy = createOfflineCopy();
     juce::MemoryBlock state;
@@ -1143,8 +1143,18 @@ bool PluginBase::exportWav (const juce::File& file, ExportPart part, int bars)
     if (part == ExportPart::kick)
         for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
             turnOff (ParamID::bass (layer, InstrumentField::on).toRawUTF8());
-    if (part == ExportPart::bass)
+    if (part == ExportPart::bass || part == ExportPart::instrument)
         turnOff (ParamID::kickOn);
+    if (part == ExportPart::instrument)
+        for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
+            if (layer != instrument)
+                turnOff (ParamID::bass (layer, InstrumentField::on).toRawUTF8());
+    if (withoutEffects)
+    {
+        turnOff (ParamID::kickFxAmount);
+        for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
+            turnOff (ParamID::bass (layer, InstrumentField::fxAmount).toRawUTF8());
+    }
 
     copy->ensureTablesInUse();
 

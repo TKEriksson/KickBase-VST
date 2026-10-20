@@ -169,8 +169,25 @@ namespace
         processor.set ("lfo1Hz", 1.0f);
         modulator.update (0.5, 120.0); // 0.25 s * 1 Hz = 0.25 period: värdet 1 - 2 * 0.25 = 0.5
         check (std::abs (modulator.apply (cutoff, 500.0f) - 600.0f) < 1.0f, "fri hastighet i Hz följer tempot", modulator.apply (cutoff, 500.0f));
-        modulator.update (0.5, 60.0);  // dubbelt så lång tid per fjärdedel: 0.5 s * 1 Hz = 0.5 period: värdet 0
-        check (std::abs (modulator.apply (cutoff, 500.0f) - 500.0f) < 1.0f, "ett långsammare tempo ger en annan fas", modulator.apply (cutoff, 500.0f));
+        modulator.update (0.5, 60.0);  // tempoändring mitt i en period: fasen fortsätter där den är (värdet 0.5 -> +600), den hoppar inte
+        check (std::abs (modulator.apply (cutoff, 500.0f) - 600.0f) < 1.0f, "ett nytt tempo behåller fasen", modulator.apply (cutoff, 500.0f));
+        modulator.update (1.0, 60.0);  // 0.5 fjärdedel till vid 60 BPM och 1 Hz = 0.5 period till: fasen 0.75, värdet 1 - 1.5 = -0.5
+        check (std::abs (modulator.apply (cutoff, 500.0f) - 400.0f) < 1.0f, "och går vidare i det nya tempot", modulator.apply (cutoff, 500.0f));
+
+        // Byte av hastighet (Hz, Sync) mitt i en cykel nollställer inte fasen: samma värde direkt före och efter, vid samma position.
+        processor.set ("lfo1Mode", 0.0f);
+        processor.set ("lfo1Rate", 6.0f);                // 1/4
+        modulator.update (2.0);                          // ny cykel: (utan offset hade fasen varit 0 här)
+        const auto before = modulator.apply (cutoff, 500.0f);
+        processor.set ("lfo1Rate", 8.0f);                // annan hastighet vid samma position
+        modulator.update (2.0);
+        check (std::abs (modulator.apply (cutoff, 500.0f) - before) < 1.0e-3f, "ändrad Sync-hastighet behåller fasen", modulator.apply (cutoff, 500.0f));
+        processor.set ("lfo1Mode", 1.0f);                // Sync -> Hz
+        processor.set ("lfo1Hz", 3.3f);
+        modulator.update (2.0, 133.0);
+        check (std::abs (modulator.apply (cutoff, 500.0f) - before) < 1.0e-3f, "Sync -> Hz behåller fasen", modulator.apply (cutoff, 500.0f));
+        modulator.update (0.0, 133.0);                   // transporten börjar om: LFO:n följer takten igen (fasen 0 = +1 med rampen -> +700)
+        check (std::abs (modulator.apply (cutoff, 500.0f) - 700.0f) < 1.0f, "ett omstartat transport nollställer fasen", modulator.apply (cutoff, 500.0f));
 
         check (Modulation::rateNames().size() == 18 && Modulation::rateInQuarters (17) == 64.0 && Modulation::rateInQuarters (11) == 0.75, "fler synkade hastigheter (3/16 ... 16 takter)");
         check (Modulation::shapeNames().size() == 7 && Modulation::shapeNames()[6] == "Custom", "formen Custom finns");

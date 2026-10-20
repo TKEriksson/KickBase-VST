@@ -129,8 +129,10 @@ public:
 
     // Renderar ljudet offline till en WAV-fil som loopar: bars takter i DAW:ens senaste tempo och
     // med den senaste tonen. Kick eller bas ensam stänger av den andra. Anropas från gränssnittet.
-    enum class ExportPart { full, kick, bass };
-    bool exportWav (const juce::File& file, ExportPart part, int bars);
+    // `instrument` (0-9, bara med ExportPart::instrument): ett enda instrument ensamt, utan kicken. `withoutEffects`: kickens och instrumentens
+    // sändningar till FX-kanalerna nollas, så att bara det torra ljudet (med master) skrivs.
+    enum class ExportPart { full, kick, bass, instrument };
+    bool exportWav (const juce::File& file, ExportPart part, int bars, int instrument = -1, bool withoutEffects = false);
 
     // Renderar en kopia av det nuvarande tillståndet offline (den levande ljudtråden rörs inte). Kick eller bas
     // ensam stänger av den andra. Används av MCP-bryggans render_preview.

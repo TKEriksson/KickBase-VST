@@ -142,28 +142,48 @@ void HeaderBar::resized()
 void HeaderBar::showExportMenu()
 {
     juce::PopupMenu menu;
-    const char* names[] { "Full mix", "Kick", "Instruments", "Kick + instruments + full mix (3 files)" };
-    for (int part = 0; part < 4; ++part)
+    // Delar: 0 hela mixen, 1 kicken, 2 alla instrument ihop, 3 tre filer, 4 + n instrument n ensamt (de som används).
+    auto addPart = [this, &menu] (juce::PopupMenu& into, int part, const juce::String& text)
     {
         juce::PopupMenu lengths;
         for (const auto bars : { 4, 8, 16 })
             lengths.addItem (1 + part * 100 + bars, juce::String (bars) + " bars");
-        menu.addSubMenu (names[part], lengths);
-    }
+        into.addSubMenu (text, lengths);
+    };
+    addPart (menu, 0, "Full mix");
+    addPart (menu, 1, "Kick");
+    addPart (menu, 2, "All instruments (together)");
+    juce::PopupMenu single;
+    for (int layer = 0; layer < processor.activeInstruments(); ++layer)
+        addPart (single, 4 + layer, "Instrument " + juce::String (layer + 1) + "  " + processor.getLayerName (layer));
+    menu.addSubMenu ("One instrument", single);
+    addPart (menu, 3, "Kick + instruments + full mix (3 files)");
+    menu.addSeparator();
+    menu.addItem (99999, "Without effects (dry: FX channel sends off)", true, exportWithoutEffects);
 
     juce::Component::SafePointer<HeaderBar> safeThis (this);
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&exportButton), [safeThis] (int result)
     {
-        if (safeThis != nullptr && result > 0)
-            safeThis->chooseExportTarget ((result - 1) / 100, (result - 1) % 100);
+        if (safeThis == nullptr || result <= 0)
+            return;
+        if (result == 99999)
+        {
+            safeThis->exportWithoutEffects = ! safeThis->exportWithoutEffects;
+            juce::MessageManager::callAsync ([safeThis] { if (safeThis != nullptr) safeThis->showExportMenu(); }); // menyn öppnas igen med rutan ikryssad
+            return;
+        }
+        safeThis->chooseExportTarget ((result - 1) / 100, (result - 1) % 100);
     });
 }
 
 void HeaderBar::chooseExportTarget (int part, int bars)
 {
-    const juce::String partNames[] { "Full", "Kick", "Instruments" };
+    const auto singleLayer = part >= 4 ? part - 4 : -1;
+    const juce::String partNames[] { "Full", "Kick", "Instruments", "", singleLayer >= 0 ? juce::File::createLegalFileName ("Instr " + juce::String (singleLayer + 1) + " " + processor.getLayerName (singleLayer)) : juce::String() };
+    const auto namePart = singleLayer >= 0 ? partNames[4] : partNames[std::min (part, 2)];
+    const auto dry = exportWithoutEffects;
     const auto baseName = "Kickbase " + juce::String (bars) + " bars "
-                        + juce::String (juce::roundToInt (processor.transportStatus.bpm.load())) + " BPM";
+                        + juce::String (juce::roundToInt (processor.transportStatus.bpm.load())) + " BPM" + (dry ? " dry" : "");
     auto folder = Settings::exportsFolder();
     folder.createDirectory();
 
@@ -178,7 +198,7 @@ void HeaderBar::chooseExportTarget (int part, int bars)
     {
         chooser = std::make_unique<juce::FileChooser> ("Choose a folder for the three WAV files", folder);
         chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
-                              [safeThis, bars, baseName, partNames, report] (const juce::FileChooser& fc)
+                              [safeThis, bars, baseName, partNames, report, dry] (const juce::FileChooser& fc)
         {
             const auto directory = fc.getResult();
             if (safeThis == nullptr || directory == juce::File())
@@ -186,23 +206,24 @@ void HeaderBar::chooseExportTarget (int part, int bars)
             for (int i = 0; i < 3; ++i)
             {
                 const auto file = directory.getChildFile (baseName + " " + partNames[i] + ".wav");
-                report (safeThis->processor.exportWav (file, (PluginBase::ExportPart) i, bars), file.getFullPathName());
+                report (safeThis->processor.exportWav (file, (PluginBase::ExportPart) i, bars, -1, dry), file.getFullPathName());
             }
         });
         return;
     }
 
-    chooser = std::make_unique<juce::FileChooser> ("Export " + partNames[part] + " as WAV",
-                                                   folder.getChildFile (baseName + " " + partNames[part] + ".wav"), "*.wav");
+    chooser = std::make_unique<juce::FileChooser> ("Export " + namePart + " as WAV",
+                                                   folder.getChildFile (baseName + " " + namePart + ".wav"), "*.wav");
     chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles
                               | juce::FileBrowserComponent::warnAboutOverwriting,
-                          [safeThis, part, bars, report] (const juce::FileChooser& fc)
+                          [safeThis, part, bars, report, dry, singleLayer] (const juce::FileChooser& fc)
     {
         const auto file = fc.getResult();
         if (safeThis == nullptr || file == juce::File())
             return;
         const auto wav = file.withFileExtension ("wav");
-        report (safeThis->processor.exportWav (wav, (PluginBase::ExportPart) part, bars), wav.getFullPathName());
+        const auto kind = singleLayer >= 0 ? PluginBase::ExportPart::instrument : (PluginBase::ExportPart) part;
+        report (safeThis->processor.exportWav (wav, kind, bars, singleLayer, dry), wav.getFullPathName());
     });
 }
 

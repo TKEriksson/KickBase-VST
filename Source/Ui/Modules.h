@@ -40,7 +40,8 @@ private:
     }
     juce::Rectangle<int> meterBounds() const { return { toolsEnd() + 16, (getHeight() - 28) / 2, meterWidth, 28 }; }
     void updateAiTooltip();
-    void chooseExportTarget (int part, int bars); // part: 0-2 = PluginBase::ExportPart, 3 = alla tre
+    void chooseExportTarget (int part, int bars); // part: 0-2 = full, kick, alla instrument; 3 = tre filer; 4 + n = instrument n
+    bool exportWithoutEffects = false;            // rutan "Without effects" i EXPORT-menyn (gränssnittets val, sparas inte)
 
     // Loggans glöd: en våg från vänster till höger för varje kick och en från höger till vänster för varje bastoner, i färger som sakta
     // glider mellan varandra. Tiderna är sekunder (väggklocka).
