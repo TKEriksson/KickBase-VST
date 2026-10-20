@@ -1,0 +1,20 @@
+# Lärdomar och testregler (läs innan du bygger eller testar)
+
+Lägg till en rad direkt när ett fel upptäcks (av dig, Opus eller Tobias): vad som gick fel, och regeln som hindrar det. Kort, en rad.
+
+## Testregler (testa inte i onödan, varje körning kostar)
+- Under arbetet: bygg bara det mål du behöver, kör bara det test som rör det du ändrade.
+- Kör inte om ett test som redan gått grönt om ingen kod det täcker har ändrats sedan dess.
+- Vid rött test: läs utdata, rätta, kör om bara det testet. Inte hela sviten.
+- rendersig-trion + blocksizetest + audiotest: en gång per delsteg före commit, och bara om ljudtrådskod ändrats (Synth, Modulation, Pattern-läsning, Fx, processBlock).
+- persisttest / KickbaseHostTest: bara om tillstånd/sparning ändrats.
+- UI-ändring utan ljudkod: bygg + titta på en skärmbild av just den vyn. Inga ljudtester.
+- Hela sviten, 42-bildssviten och pngdiff: bara vid fasens slut, en gång.
+- Ingen Release-build om inte Opus ber om det.
+
+## Lärdomar
+- R7: atomic lästes två gånger i samma uppdatering, vilket gav fashopp. Läs varje atomic en gång till en lokal variabel.
+- R1–R3 (HoldAudition): `callAfterDelay` höll en referens till processorn, som kunde ha hunnit försvinna. Använd en Timer-medlem eller SafePointer.
+- R1: längden byggdes som 1, 2, 4 … 64 fast spec sa fri längd utan tak. Läs Tobias spec-filer och planens avsnitt helt innan du bygger, och fråga Opus om de säger emot varandra.
+- Shell-patchar: `\n` i heredoc eller `python -c` blir riktiga radbrytningar. Använd Edit/Write.
+- Hemligheter: `.env-local` och API-nycklar får aldrig checkas in (repot är publikt). Kör en hemlighetskoll före push.
