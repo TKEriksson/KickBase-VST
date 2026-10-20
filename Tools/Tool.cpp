@@ -2156,6 +2156,23 @@ namespace
             check (requestText.contains ("functionCall") && requestText.contains ("sig123"), "Gemini: anropet med thoughtSignature skickas tillbaka");
             check (request["contents"][2]["parts"][0]["functionResponse"]["name"].toString() == "set_parameters", "Gemini: tool_result blir functionResponse med namnet");
             check (! requestText.contains ("additionalProperties") && request["tools"].size() > 0, "Gemini: verktygsschemat är rensat");
+            check (! request["contents"][1]["parts"][0]["functionCall"].hasProperty ("id") || request["contents"][1]["parts"][0]["functionCall"]["id"].toString() == block["id"].toString(), "Gemini: anrop utan eget id får inget påhittat id");
+            {
+                juce::String idError;
+                const auto idReply = GeminiApi::parseResponse (juce::JSON::parse (R"({"candidates":[{"content":{"role":"model","parts":[{"functionCall":{"name":"set_parameters","args":{},"id":"call_42"}}]},"finishReason":"STOP"}]})"), tools, idError);
+                check (idReply["content"][0]["id"].toString() == "call_42", "Gemini: anropets id behålls");
+                juce::Array<juce::var> idMessages { messages[0], juce::var (new juce::DynamicObject()), juce::var (new juce::DynamicObject()) };
+                idMessages.getReference (1).getDynamicObject()->setProperty ("role", "assistant");
+                idMessages.getReference (1).getDynamicObject()->setProperty ("content", idReply["content"]);
+                auto idResult = std::make_unique<juce::DynamicObject>();
+                idResult->setProperty ("type", "tool_result");
+                idResult->setProperty ("tool_use_id", "call_42");
+                idResult->setProperty ("content", "{}");
+                idMessages.getReference (2).getDynamicObject()->setProperty ("role", "user");
+                idMessages.getReference (2).getDynamicObject()->setProperty ("content", juce::Array<juce::var> { juce::var (idResult.release()) });
+                const auto idRequest = GeminiApi::buildRequest ("s", tools, idMessages);
+                check (idRequest["contents"][1]["parts"][0]["functionCall"]["id"].toString() == "call_42" && idRequest["contents"][2]["parts"][0]["functionResponse"]["id"].toString() == "call_42", "Gemini: id skickas tillbaka i functionCall och functionResponse");
+            }
 
             check (GeminiApi::parseResponse (juce::JSON::parse (R"({"promptFeedback":{"blockReason":"SAFETY"}})"), tools, error).isVoid() && error.contains ("SAFETY"), "Gemini: blockerat svar ger ett fel");
             check (GeminiApi::errorMessage (400, R"({"error":{"code":400,"message":"API key not valid. Please pass a valid API key.","status":"INVALID_ARGUMENT"}})").contains ("key"), "Gemini: ogiltig nyckel (400)");
