@@ -13,3 +13,6 @@ fits/
 .env*
 
 __pycache__/
+
+# Interna dokument och arbetsanteckningar (bara lokalt)
+docs/
