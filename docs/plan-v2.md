@@ -97,7 +97,7 @@ Ljudet med standardvärden ska vara bit-identiskt (rendersig*). Ordning:
      raden har pianorulle; raderna packas tätare.
    - Alt = sudd, Ctrl+A och en SELECT ALL-knapp; tooltips listar tangenterna.
    - Förläng raden: klick i takten efter slutet förlänger (pianorulle och steg), plus en "+"-knapp. Krymp bara takter som lagts till
-     automatiskt och fortfarande är tomma. Max 64 takter står kvar (förallokerat, ingen allokering i ljudtråden).
+     automatiskt och fortfarande är tomma. (Längdgränsen och 2-potenserna ersätts i steg 9.)
 2. **ENV-fliken:** SYNC krockar med DRAG TO A KNOB: en header-rad ovanför grafen. Knappen heter **DRAG**, pekaren blir en hand.
    (ON/OFF och SYNC för alla fyra envelopes kommer i fas L.)
 3. **Provlyssning:** klick-och-håll på grafer (wavetable, SAMPLE-vågformen) spelar så länge knappen hålls, loopar om ljudet tar slut.
@@ -121,6 +121,16 @@ Ljudet med standardvärden ska vara bit-identiskt (rendersig*). Ordning:
      rendering med och utan. Förslaget (källväljare Direct/Filter Env/ENV 2/ENV 3 + egen decay 2–150 ms) byggs i fas S.
    - ~~**SAMPLE "mullrig/dålig kvalitet":**~~ Struken (Tobias 20 okt: troligen filtret som var på). Kolla bara att filtret är av som standard.
    - **TOTAL LENGTH** (mönsterfliken): vad gör den i dag? Om den är verkningslös med radlängder: förslag att dölja den (parametern blir kvar).
+
+9. **Radlängd utan gräns, TOTAL LENGTH bort (Tobias 20 okt).** Spec till Opus först (lagring, allokering, parametrar, MCP).
+   - Radlängd = valfritt antal hela takter (1, 2, 3, 5 …), ingen gräns i UI. Intern spärr (t.ex. 1024 takter) bara mot trasiga filer/AI.
+   - TOTAL LENGTH tas bort ur UI: mönstrets längd = längsta raden, kortare rader loopar. "Total" som radval försvinner.
+   - "+ BAR" lägger till **en** takt; klick i skuggad takt efter slutet förlänger dit; tillagda takter som fortfarande är tomma krymps.
+     LENGTH-rutan blir ett tal (krympning som tar bort noter: bekräftelse som i dag).
+   - Längden flyttas från valparametrar till mönsterdata i state (inte automatiserbar). De gamla längdparametrarna ligger kvar oanvända
+     så att parameterordningen inte ändras. Gamla presets behöver inte läsas rätt (avsnitt 0).
+   - Ljudtråden allokerar aldrig: större buffert byggs i meddelandetråden och byts in (som samplingar, DeferredRelease). `audiotest`.
+   - MCP: mönsterverktygen och deras beskrivningar följer med; rad i preset-checklist.md.
 
 Slut: rendersig* identiska, `blocksizetest`, `audiotest`, skärmbilder av mönsterfliken, ENV-fliken, analyzern; rapport.
 
@@ -161,7 +171,7 @@ per vy till Opus innan finputs**; Tobias justerar efteråt.
 2. ENV-fliken: alla fyra envelopes får samma header: ON/OFF, SYNC (ms/notvärde), DURATION (visningsomfång, bara vy, sparas i UI-tillståndet,
    inte som parameter). Nya parametrar sist, standard = i dag: `bassNEnv1On`/`bassNFEnvOn`/`bassNEnv2On`/`bassNEnv3On` (på) och Sync för
    volym- och filter-envelopen (som fas E2). FILTER ENVELOPE ON/OFF rör bara envelopen, inte filtret (filtrets av/på = FILTER-fliken).
-3. Mönsterfliken: TOTAL LENGTH (om den finns kvar), NOTE END, SWING, HUMANIZE i toppraden; vänsterpanelen bara för valt spår.
+3. Mönsterfliken: NOTE END, SWING, HUMANIZE i toppraden; vänsterpanelen bara för valt spår.
    AI-knappen vid loggan = **AI SERVER (MCP)** med på/av; toppfliken AI = **AI CHAT**.
 4. Instrumentmeny: högerklick på spårets kort och på raden i instrumentväljaren (eller "…"-ikon): Rename, Color, Duplicate, Move up/down,
    Delete, Copy/Paste track, Export MIDI, Save pattern preset. Namn och färg sparas i projektet (inte parametrar).
@@ -240,7 +250,7 @@ Se [work/PROGRESS.md](work/PROGRESS.md).
 
 ## 4. Frågor till Tobias (standardvalet gäller tills han svarar)
 1. Grenkedjan content-0 → a → d1 → w → e2 → d2 är godkänd men inte sammanslagen. Får vi slå ihop den i `dev` (fast-forward)? *Standard: nej, vi kedjar vidare.*
-2. Radlängd: max 64 takter står kvar (förallokerat). Behövs längre? *Standard: 64.*
+2. ~~Radlängd max 64?~~ Besvarad 20 okt: ingen gräns, TOTAL LENGTH bort (R steg 9).
 3. Tre klickar och sub-kontroll i kicken (image-27): vill du ha dem, eller räcker dagens klick? *Standard: utreds i fas K.*
 4. Gamla DAW-projekt med automation av Kickbase: finns det några du vill behålla? Om inte kan vi före första publika versionen fritt
    utöka valparametrar (t.ex. nya effekttyper, radlängder som inte är 2-potenser) i stället för att lägga dem sist. *Standard: regeln gäller.*
