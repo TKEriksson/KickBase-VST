@@ -76,6 +76,7 @@ Verktyget: `build/RelWithDebInfo/KickbaseMcp_artefacts/RelWithDebInfo/KickbaseMc
 | # | Fas | Gren | Innehåll (kort) | Varför här |
 |---|---|---|---|---|
 | 1 | **R** buggar + småfix | `content-r` | pianorulle, ENV-flik, provlyssning, analyzer-text, export per instrument, LFO-fas | Tobias hittade dem i riktig användning; billiga; inget ljud ändras med standard |
+| 1b | **M** 10 LFO | `content-m` | upp till 10 LFO (3 som standard), lägg till/ta bort, fällbara kort med scroll | Tobias 20 okt; liten, Modulation färsk efter SNAP; S och LC bygger på det |
 | 2 | **P** polyfoni + ackord | `content-p` | godkänd spec (avsnitt 3) | redan godkänd; krävs för ackord, piano, sampler-lager |
 | 3 | **L** layout | `content-l` | INSTR-underflik, ENV-headers, mönsterflikens globala rad, AI-knappar, instrumentmeny | ny yta behövs för allt som följer (S, F2, K) |
 | 4 | **S** källor | `content-s` | FILTER-av/på per källa, brustyper, WARP ENV-källa, OSC-display, OSC-presets | små, fristående, Tobias vill ha dem |
@@ -154,6 +155,18 @@ Ljudet med standardvärden ska vara bit-identiskt (rendersig*). Ordning:
 
 Slut: rendersig* identiska, `blocksizetest`, `audiotest`, skärmbilder av mönsterfliken, ENV-fliken, analyzern; rapport.
 
+### M: 10 LFO (`content-m` från `content-r`), spec till Opus först
+- `Modulation::numLfos` 3 → 10. LFO 4–10 får samma parametrar som 1–3 (inkl. Snap/SnapRange); ID:n hashas (VST3), ordningen påverkar inte
+  automation. Modulationskällorna LFO 4–10 läggs **sist** i källistan; ModRoutes sparas via ID.
+- **Lägg till / ta bort:** aktiva LFO sparas i state (inte automatiserbart). Standard: LFO 1–3 aktiva (= i dag, rendersig identiskt).
+  "+ ADD LFO" (upp till 10); ta bort med × eller högerklick, bekräftelse om LFO:n har kopplingar; kopplingarna tas bort, värdena återställs.
+  En inaktiv LFO kostar 0 CPU (hoppas över i `Modulator::update`) och syns inte i MATRIX, DRAG-listor eller MCP-listor.
+- **LFO-fliken:** lodrät scroll med ett kort per LFO; varje kort fälls ihop till en rad (namn, minikurva, rate, DRAG, pil). Fällt läge
+  sparas i UI-tillståndet. Snabbval "visa bara den valda".
+- MCP: `set_lfo`/kurvverktygen tar 1–10; att sätta en inaktiv LFO aktiverar den. AGENT_GUIDE och preset-checklist.md uppdateras.
+- Kolla Kickbase FX: har den egna LFO:er? Ska vara opåverkad (params-fx.txt och FX-rendering identiska) om inget annat bestäms.
+- Test: rendersig* identiska, `blocksizetest`, `audiotest`, perftest med 10 aktiva LFO, `persisttest` (lägg till/ta bort/spara/ladda).
+
 ### P: polyfoni och ackord (`content-p` från `content-r`)
 
 Opus godkände Sonnets spec 18 okt med svaren nedan (Sonnets egen spec gick förlorad med sessionen; content-plan.md "Fas P" + detta gäller):
@@ -202,7 +215,7 @@ per vy till Opus innan finputs**; Tobias justerar efteråt.
 ### S: källor (`content-s`)
 Standardvärden enligt avsnitt 0 (bästa ljud, inte nödvändigtvis dagens).
 0. FILTER-flikens av/på: hela instrumentets Filter 1+2 förbi (pattern_and_ai §9 sista stycket).
-1. FILTER av/på per källa: OSC 1–3, SAMPLE, NOISE (bool, standard på enligt specen; SAMPLE: avsnitt 4 fråga 5). Av = förbi Filter 1 och 2
+1. FILTER av/på per källa: OSC 1–3, SAMPLE, NOISE (bool; standard på, men **av för SAMPLE** (Tobias 20 okt)). Av = förbi Filter 1 och 2
    (inte förbi amp-envelopen). Matrisen i sample_slicer §5 gäller.
 2. Brustyp: White (standard = dagens brus), Pink, Brown, Vinyl (seedad).
 3. WARP ENV: källa (Filter Env = dagens, standard; Direct med egen decay 2–150 ms; ENV 2; ENV 3) efter R:s utredning. Visning: lila
@@ -255,7 +268,7 @@ för wavetables (högerklick på tabellen, som Serum): amplitud och fas per öve
 ### F2: sampler (`content-f`)
 `sample_slicer_independent_layer_spec.md` + `MINDMAP 2.png`. SAMPLE-lagret: LAYER MODE BLEND (= i dag) / INDEPENDENT (egen kromatisk
 pianorulle `INSTR X - SAMPLE`) / OFF; SPLICER på/av (egen rad `INSTR X - SLICER`, slices per Grid/Auto/Manual, kromatiskt från vald ton),
-M/S per underrad, tempo (originaltempo eller omsamplat; time-stretch: avsnitt 4 fråga 6). Kräver underrader i `Pattern` (byggs på R9):
+M/S per underrad, tempo (originaltempo eller omsamplat; time-stretch som eget steg efter F2, Tobias 20 okt). Kräver underrader i `Pattern` (byggs på R9):
 spec till Opus först. Ur specen också: SENSITIVITY för Auto-Detect, MAP TO (tonomfång), REVERSE SLICE, pianorullen visar "Slice 1, 2 …"
 i stället för tonnamn, underrader allokeras inte när de är av, filtermatrisen §5. Hjälptexten i mönsterfliken gäller även underraderna.
 
@@ -307,9 +320,6 @@ Se [work/PROGRESS.md](work/PROGRESS.md).
 3. Tre klickar och sub-kontroll i kicken (image-27): vill du ha dem, eller räcker dagens klick? *Standard: utreds i fas K.*
 4. Gamla DAW-projekt med automation av Kickbase: finns det några du vill behålla? Om inte kan vi före första publika versionen fritt
    utöka valparametrar (t.ex. nya effekttyper, radlängder som inte är 2-potenser) i stället för att lägga dem sist. *Standard: regeln gäller.*
-5. SAMPLE-lagrets FILTER-knapp: specen säger standard ON; samplingen lät mullrig med filtret på (InitPreset 700 Hz LP). *Opus förslag:
-   OFF för SAMPLE, ON för OSC och NOISE. Standard tills svar: OFF för SAMPLE.*
-6. Time-stretch i SAMPLE/SPLICER (specen: TIME STRETCH-ratt, låst till projektets BPM): eget arbete eller bibliotek (SoundTouch, LGPL).
-   *Standard: F2 utan time-stretch (omsampling till tempot), time-stretch som eget steg efter F2.*
-7. LFO: du föreslog att bara ha Hz + SNAP och ta bort Sync-läget. *Opus: behåll Sync nu (AI och automation kan sätta exakta notvärden);
-   när SNAP fungerar kan Sync döljas om du inte saknar det.*
+5. ~~SAMPLE-lagrets FILTER-knapp~~ Besvarad 20 okt: OFF för SAMPLE, ON för OSC och NOISE.
+6. ~~Time-stretch~~ Besvarad 20 okt: F2 utan time-stretch (omsampling till tempot); time-stretch som eget steg efter F2.
+7. ~~LFO Sync-läget~~ Besvarad 20 okt: Sync behålls.
