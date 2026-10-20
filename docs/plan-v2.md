@@ -278,7 +278,22 @@ Innan nya presets byggs: gå igenom med Tobias hur en preset byggs så att allt 
   Genvägsknapp "MASTER FX" på FX-sidan där FX 12 skulle sitta, avvikande färg. Ingen CLEAR-knapp (RESET/EMPTY i presetmenyerna).
 - Två presetnivåer: FX Chain Preset (hela kedjan, finns) och Effect Preset per effektlåda, filtrerad på effekttyp. RESET i båda.
 
-### AI, C, BZ, LC, IO, VS
+### LC: Live Code (`content-lc`), Opus research 20 okt (förslag, spec till Opus först)
+- **Språk = Strudel** (JS + mini-notation, codeberg.org/uzu/strudel, AGPL-3.0 = samma licens som Kickbase, alltså tillåtet; behåll
+  copyright i källan och visa den i UI + THIRD-PARTY.md). AI-modeller kan Strudel bra, och koden kan klistras in på strudel.cc.
+- **Motor:** JUCE 8:s `juce::JavascriptEngine` är QuickJS (choc). Bunta `@strudel/core` + `@strudel/mini` (fast version, egen bundle, inget
+  nätverk) som BinaryData. Körs **aldrig** i ljudtråden: bakgrundstråden frågar mönstret (`queryArc`) några cykler framåt och skickar
+  händelser/automation via en låsfri kö; ny kod byts in vid nästa cykel. Sandlåda: ingen fil/nätverk, minnesgräns, tidsgräns (avbrott).
+- **Mappning:** `s`/`note`/`n` → kick och instrument (t.ex. `.inst(2)`), Strudel-kontroller (`cutoff`, `resonance`, `gain` …) + egna
+  (`warp`, `snap` …) → våra parametrar; `slider(v,min,max)` → riktiga reglage i LIVE CODE-fliken, tvåvägs (ändrar texten).
+  Två lägen: **Live** (spelar via schemaläggaren) och **Create** (skriver in i mönstret/pianorullen (R9-lagringen), LFO, effekter).
+- **Chatt:** egen AI CHAT ritar kodblock med Play/Stop/Create. **Claude Desktop:** MCP-verktyg `live_code_run/stop/create` + en
+  **MCP App** (`ui://kickbase/live-code`, officiellt MCP-tillägg sedan jan 2026, fungerar med lokala stdio-servrar som vår) som visar
+  kodblocket med Play/Stop/Create och reglage direkt i chatten och anropar verktygen. Utan MCP Apps-stöd: vanligt kodblock + verktyget.
+- **Först ett spike-test:** kör Strudels mönstermotor i QuickJS utan webbläsare (beroenden, t.ex. `@kabelsalat/web`), mät tid per fråga.
+  Faller det: egen mini-notation i C++ (samma syntax, delmängd).
+
+### AI, C, BZ, IO, VS
 Enligt Tobias specar (layout_optimization §Effects, §RESET, §MASTER; pattern_and_ai §6, §10, §13; BEZIER.md; CODEMUSIC.md). Spec till Opus
 när fasen står på tur. Redan beslutat: nya effekttyper (Flanger, Sidechain, Maximizer i platser) läggs **sist** i typlistan som redovisat
 engångsundantag från regel 3 (projekt sparar index och laddar rätt; bara DAW-automation av typen kan förskjutas); kontrollera med state load.
