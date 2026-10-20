@@ -159,9 +159,18 @@ void Pattern::trimRow (int layer, int bars)
             if (! n.on.load())
                 continue;
             if (tick >= limit)
+            {
                 n.on = false;
-            else if (tick + n.length.load() > limit)
-                n.length = limit - tick; // en ton som går över slutet kortas
+                n.clearExtras();
+            }
+            else
+            {
+                if (tick + n.length.load() > limit)
+                    n.length = limit - tick; // en ton som går över slutet kortas
+                for (auto& e : n.extra)
+                    if (e.on.load() && tick + e.length.load() > limit)
+                        e.length = limit - tick;
+            }
         }
     }
     refreshLengths();
@@ -227,9 +236,110 @@ Pattern::Note& Pattern::addNote (int layer, int tick, int length, int pitch, flo
     n.pitch = juce::jlimit (minPitch, maxPitch, pitch);
     n.velocity = juce::jlimit (0.0f, 1.0f, velocity);
     n.slide = slide;
+    n.clearExtras(); // ... och inga gamla staplar
     n.setChord (chord); // en ny ton ärver inte ett gammalt ackord (sätts före on, så att ljudtråden aldrig ser tonen utan sitt ackord)
     n.on = true;
     return n;
+}
+
+int Pattern::stackSize (int layer, int tick) const
+{
+    const auto& n = note (layer, tick);
+    if (! n.on.load())
+        return 0;
+    auto count = 1;
+    for (const auto& e : n.extra)
+        count += e.on.load() ? 1 : 0;
+    return count;
+}
+
+bool Pattern::getStack (int layer, int tick, int index, StackNote& out) const
+{
+    const auto& n = note (layer, tick);
+    if (! n.on.load() || index < 0 || index >= maxStack)
+        return false;
+    if (index == 0)
+    {
+        out = { n.length.load(), n.pitch.load(), n.velocity.load(), n.slide.load() };
+        return true;
+    }
+    const auto& e = n.extra[(size_t) index - 1];
+    if (! e.on.load())
+        return false;
+    out = { e.length.load(), e.pitch.load(), e.velocity.load(), e.slide.load() };
+    return true;
+}
+
+int Pattern::addExtra (int layer, int tick, const StackNote& s)
+{
+    auto* n = existing (layer, tick);
+    if (n == nullptr || ! n->on.load())
+        return -1;
+    for (size_t i = 0; i < n->extra.size(); ++i)
+    {
+        auto& e = n->extra[i];
+        if (e.on.load())
+            continue;
+        e.length = juce::jlimit (1, maxTicks, s.length);
+        e.pitch = juce::jlimit (minPitch, maxPitch, s.pitch);
+        e.velocity = juce::jlimit (0.0f, 1.0f, s.velocity);
+        e.slide = s.slide;
+        e.on = true; // sist: ljudtråden ser aldrig en halvfärdig ton
+        return (int) i + 1;
+    }
+    return -1;
+}
+
+void Pattern::setStack (int layer, int tick, int index, const StackNote& s)
+{
+    auto* n = existing (layer, tick);
+    if (n == nullptr || ! n->on.load() || index < 0 || index >= maxStack)
+        return;
+    if (index == 0)
+    {
+        n->length = juce::jlimit (1, maxTicks, s.length);
+        n->pitch = juce::jlimit (minPitch, maxPitch, s.pitch);
+        n->velocity = juce::jlimit (0.0f, 1.0f, s.velocity);
+        n->slide = s.slide;
+        return;
+    }
+    auto& e = n->extra[(size_t) index - 1];
+    if (! e.on.load())
+        return;
+    e.length = juce::jlimit (1, maxTicks, s.length);
+    e.pitch = juce::jlimit (minPitch, maxPitch, s.pitch);
+    e.velocity = juce::jlimit (0.0f, 1.0f, s.velocity);
+    e.slide = s.slide;
+}
+
+void Pattern::removeStack (int layer, int tick, int index)
+{
+    if (index <= 0)
+        removeNote (layer, tick);
+    else if (index < maxStack)
+        if (auto* n = existing (layer, tick))
+            n->extra[(size_t) index - 1].on = false;
+}
+
+int Pattern::maxSimultaneous (int layer) const
+{
+    std::vector<int> active;
+    auto most = 0;
+    forEachNote (layer, [&] (int tick, const Note& n)
+    {
+        active.erase (std::remove_if (active.begin(), active.end(), [tick] (int end) { return end <= tick; }), active.end());
+        if (n.slide.load() && ! active.empty())
+            return; // en glide-ton återanvänder den klingande rösten (extras av en glide-ton också)
+        active.push_back (tick + std::max (1, n.length.load()));
+        for (const auto& c : n.chord)
+            if (c.load() != 0)
+                active.push_back (tick + std::max (1, n.length.load()));
+        for (const auto& e : n.extra)
+            if (e.on.load())
+                active.push_back (tick + std::max (1, e.length.load()));
+        most = std::max (most, (int) active.size());
+    });
+    return most;
 }
 
 void Pattern::setGateSteps (int layer, const juce::String& steps)
@@ -388,9 +498,19 @@ juce::ValueTree Pattern::toValueTree() const
                 continue;
             auto entry = juce::String (tick) + "/" + juce::String (n.length.load()) + "/" + juce::String (n.pitch.load()) + "/"
                          + (n.slide.load() ? "1" : "0") + "/" + juce::String (n.velocity.load(), 3);
-            for (const auto interval : n.getChord()) // fas P: /c1/c2/c3 bara om tonen har ett ackord (äldre versioner läser bara de fem första)
-                if (interval != 0)
+            auto hasExtras = false;
+            for (const auto& e : n.extra)
+                hasExtras = hasExtras || e.on.load();
+            if (hasExtras) // polyfoni: ackordet paddas till tre fält så att /e börjar på en fast plats
+                for (const auto interval : n.getChord())
                     entry << "/" << interval;
+            else
+                for (const auto interval : n.getChord()) // fas P: /c1/c2/c3 bara om tonen har ett ackord (äldre versioner läser bara de fem första)
+                    if (interval != 0)
+                        entry << "/" << interval;
+            for (const auto& e : n.extra) // polyfoni: /e/pitch/length/velocity/slide per staplad ton
+                if (e.on.load())
+                    entry << "/e/" << e.pitch.load() << "/" << e.length.load() << "/" << juce::String (e.velocity.load(), 3) << "/" << (e.slide.load() ? 1 : 0);
             entries.add (entry);
         }
 
@@ -516,8 +636,22 @@ void Pattern::fromValueTree (const juce::ValueTree& tree, bool clearUnmentionedL
                 if (parts.size() < 5 || ! juce::isPositiveAndBelow (tick, maxTicks))
                     continue;
                 auto& n = addNote (layer, tick, parts[1].getIntValue(), parts[2].getIntValue(), parts[4].getFloatValue(), parts[3].getIntValue() != 0);
-                if (parts.size() > 5)
-                    n.setChord ({ parts[5].getIntValue(), parts[6].getIntValue(), parts[7].getIntValue() }); // (saknade fält blir 0)
+                // Fält 5-7 är ackordet (saknade blir 0) tills ett "e" börjar staplarna; ett trasigt eller avkapat /e hoppas över utan fel.
+                auto firstExtra = parts.size();
+                for (int i = 5; i < parts.size(); ++i)
+                    if (parts[i] == "e") { firstExtra = i; break; }
+                if (firstExtra > 5)
+                    n.setChord ({ parts[5].getIntValue(), firstExtra > 6 ? parts[6].getIntValue() : 0, firstExtra > 7 ? parts[7].getIntValue() : 0 });
+                for (int i = firstExtra, slot = 0; i + 4 < parts.size() && parts[i] == "e" && slot < maxExtraNotes; i += 5)
+                {
+                    StackNote s;
+                    s.pitch = parts[i + 1].getIntValue();
+                    s.length = parts[i + 2].getIntValue();
+                    s.velocity = parts[i + 3].getFloatValue();
+                    s.slide = parts[i + 4].getIntValue() != 0;
+                    if (addExtra (layer, tick, s) >= 0)
+                        ++slot;
+                }
             }
         }
         else if (child.hasType ("Bass") && layer < numLayers)

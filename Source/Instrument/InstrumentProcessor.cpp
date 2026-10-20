@@ -920,6 +920,17 @@ void InstrumentProcessor::handleEvent (const StepEvent& event)
     for (int i = 0; i < chordNotes; ++i)
         if (const auto interval = note.chord[(size_t) i].load(); interval != 0)
             voices.noteOn (juce::jlimit (Pattern::minPitch, Pattern::maxPitch, note.pitch.load() + interval), note.velocity.load(), gateSamples, true);
+    // Polyfoni: staplade toner på samma tick, före grundtonen. En glide-stapel glider den klingande rösten (ingen ny röst).
+    for (const auto& e : note.extra)
+    {
+        if (! e.on.load())
+            continue;
+        const auto length = e.length.load();
+        if (e.slide.load() && voices.glideTo (e.pitch.load(), std::max (1, (int) (length * samplesPerTick))))
+            continue;
+        const auto samples = std::max (1, (int) (std::max (1.0, length * (double) gateScales[(size_t) layer]) * samplesPerTick));
+        voices.noteOn (e.pitch.load(), e.velocity.load(), samples, true);
+    }
     voices.noteOn (note.pitch.load(), note.velocity.load(), gateSamples);
     lastInstrumentStartPpq[(size_t) layer] = clock.getPpqAt (event.offset);
 }

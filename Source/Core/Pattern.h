@@ -97,6 +97,19 @@ struct Pattern
     static juce::StringArray gridNames()     { return { "1/4", "1/8", "1/8 T", "1/16", "1/16 T", "1/32", "1/32 T", "1/64" }; }
     static juce::StringArray templateNames() { return { "Rolling", "Galloping", "Triplet", "Offbeat", "Clear" }; }
 
+    // Polyfoni steg 1: en stapel = huvudtonen (index 0) + upp till maxExtraNotes staplade toner (index 1..) på samma tick.
+    static constexpr int maxExtraNotes = 3;
+    static constexpr int maxStack = 1 + maxExtraNotes;
+    struct StackNote { int length = 24; int pitch = 0; float velocity = 0.8f; bool slide = false; }; // värdetyp för API:t
+    struct ExtraNote
+    {
+        std::atomic<bool> on { false };
+        std::atomic<int> length { 24 };
+        std::atomic<int> pitch { 0 };
+        std::atomic<bool> slide { false };
+        std::atomic<float> velocity { 0.8f };
+    };
+
     // En ton i basens mönster. Den ligger på sin starttick; ett lager har högst en ton per tick.
     struct Note
     {
@@ -107,6 +120,10 @@ struct Pattern
         std::atomic<float> velocity { 0.8f };
         // Fas P: ackordets extra toner i halvtoner från tonen, de som inte är 0 först (0 = ingen). Spelas bara med VOICES 2 eller fler.
         std::array<std::atomic<int>, maxChordNotes> chord {};
+
+        // Polyfoni: staplade toner på samma starttick (index 1..maxExtraNotes i API:t, 0 = huvudtonen). Gäller bara när huvudtonen är på.
+        std::array<ExtraNote, maxExtraNotes> extra {};
+        void clearExtras() { for (auto& e : extra) e.on = false; }
 
         Chord getChord() const { return { chord[0].load(), chord[1].load(), chord[2].load() }; }
         bool hasChord() const { return chord[0].load() != 0; }
@@ -206,8 +223,20 @@ struct Pattern
     void removeNote (int layer, int tick)
     {
         if (auto* n = existing (layer, tick))
+        {
             n->on = false;
+            n->clearExtras();
+        }
     }
+
+    // POLYFONI: staplar (se maxStack). Skriv bara från meddelandetråden; läs (const) går bra i ljudtråden.
+    int stackSize (int layer, int tick) const;                              // 0 = ingen ton, 1 = bara huvudtonen, upp till maxStack
+    bool getStack (int layer, int tick, int index, StackNote& out) const;   // false om index inte är på
+    int addExtra (int layer, int tick, const StackNote& n);                 // ledig slot 1..maxExtraNotes, -1 om huvudtonen saknas eller det är fullt
+    void setStack (int layer, int tick, int index, const StackNote& n);     // index 0 = huvudtonen (ackordet rörs inte); en extra måste redan vara på
+    void removeStack (int layer, int tick, int index);                      // 0 tar bort tonen med alla staplar; 1.. bara den staplade
+    // Högsta antalet röster som behövs samtidigt (huvudtoner, ackordstoner och staplar; en glide-ton återanvänder den klingande rösten).
+    int maxSimultaneous (int layer) const;
     void clearNotes (int layer);
 
     // Fyller hela mönstret enligt en mall: kicken och första baslagret, övriga lager töms.
