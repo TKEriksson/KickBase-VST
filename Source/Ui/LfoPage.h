@@ -95,7 +95,14 @@ private:
     juce::Label hzLabel;
     juce::Slider hzSlider;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> hzAttachment;
-    int lastMode = -1;
+    int lastMode = -1, lastSnapNote = -2;
+    bool lastSnapLocked = false;
+    // SNAP i Hz-läget: knapp, zon (± %) och en text med närmaste notvärde och om hastigheten är låst mot det.
+    juce::TextButton snapButton { "SNAP" };
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> snapAttachment;
+    juce::Slider snapRangeSlider;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> snapRangeAttachment;
+    juce::Label snapInfo;
     LfoDisplay display;
     LfoDragHandle handle;
     LfoTargets targets;

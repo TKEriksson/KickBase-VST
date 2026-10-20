@@ -442,7 +442,24 @@ LfoPanel::LfoPanel (PluginBase& p, int lfoIndex)
     hzAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (p.apvts, Modulation::paramID (lfoIndex, "Hz"), hzSlider);
     hzSlider.setDoubleClickReturnValue (true, 1.0);
     mode.box.setTooltip ("RATE MODE - Sync: the LFO runs in note values of the tempo (RATE). Hz: it runs at its own speed in cycles per second.");
-    for (auto* c : std::initializer_list<juce::Component*> { &shape, &mode, &rate, &hzLabel, &hzSlider, &display, &handle, &targets })
+    snapButton.setClickingTogglesState (true);
+    snapButton.setColour (juce::TextButton::buttonOnColourId, Theme::lfoColour (lfoIndex).withAlpha (0.6f));
+    snapButton.setTooltip ("SNAP - When the free rate comes within RANGE of a note value (1/8, 1/4 T ...) at the current tempo it locks exactly to it, "
+                           "so the LFO sits on the beat; outside the zone it runs free. The phase never restarts when it locks or lets go.");
+    snapAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, Modulation::paramID (lfoIndex, "Snap"), snapButton);
+    snapRangeSlider.setSliderStyle (juce::Slider::LinearHorizontal);
+    snapRangeSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 56, 18);
+    snapRangeSlider.setColour (juce::Slider::trackColourId, Theme::lfoColour (lfoIndex));
+    snapRangeSlider.setColour (juce::Slider::thumbColourId, Theme::text);
+    snapRangeSlider.setColour (juce::Slider::textBoxTextColourId, Theme::text);
+    snapRangeSlider.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+    snapRangeSlider.setTooltip ("SNAP RANGE - How close to a note value (in percent of its speed) the free rate must be to lock to it. Double-click for 5 %.");
+    snapRangeSlider.setDoubleClickReturnValue (true, 5.0);
+    snapRangeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (p.apvts, Modulation::paramID (lfoIndex, "SnapRange"), snapRangeSlider);
+    snapInfo.setFont (Theme::font (11.0f, true));
+    snapInfo.setColour (juce::Label::textColourId, Theme::textDim);
+    snapInfo.setJustificationType (juce::Justification::centredRight);
+    for (auto* c : std::initializer_list<juce::Component*> { &shape, &mode, &rate, &hzLabel, &hzSlider, &snapButton, &snapRangeSlider, &snapInfo, &display, &handle, &targets })
         addAndMakeVisible (c);
     startTimerHz (6);
     timerCallback();
@@ -451,12 +468,30 @@ LfoPanel::LfoPanel (PluginBase& p, int lfoIndex)
 void LfoPanel::timerCallback()
 {
     const auto current = (int) processor.apvts.getRawParameterValue (Modulation::paramID (index, "Mode"))->load();
-    if (current == lastMode)
+    if (current != lastMode)
+    {
+        lastMode = current;
+        rate.setVisible (current == 0);
+        hzLabel.setVisible (current == 1);
+        hzSlider.setVisible (current == 1);
+        snapButton.setVisible (current == 1);
+        snapRangeSlider.setVisible (current == 1);
+        snapInfo.setVisible (current == 1);
+        resized(); // SNAP-raden tar plats under diagrammet bara i Hz-läget
+    }
+    if (current != 1)
         return;
-    lastMode = current;
-    rate.setVisible (current == 0);
-    hzLabel.setVisible (current == 1);
-    hzSlider.setVisible (current == 1);
+
+    // Närmaste notvärde vid nuvarande hastighet och tempo (från ljudtråden), och om SNAP har låst mot det.
+    const auto note = processor.modulator.snapNote[(size_t) index].load();
+    const auto locked = processor.modulator.snapLocked[(size_t) index].load();
+    if (note == lastSnapNote && locked == lastSnapLocked)
+        return;
+    lastSnapNote = note;
+    lastSnapLocked = locked;
+    const auto names = Modulation::rateNames();
+    snapInfo.setText (note < 0 ? juce::String() : juce::String::fromUTF8 ("\xE2\x89\x88 ") + names[note] + (locked ? "  LOCKED" : ""), juce::dontSendNotification);
+    snapInfo.setColour (juce::Label::textColourId, locked ? Theme::lfoColour (index) : Theme::textDim);
 }
 
 void LfoPanel::paint (juce::Graphics& g)
@@ -490,6 +525,15 @@ void LfoPanel::resized()
     hzLabel.setBounds (hzArea.removeFromTop (15));
     hzSlider.setBounds (hzArea.removeFromTop (40));
     area.removeFromLeft (6);
+    if (snapButton.isVisible())
+    {
+        auto snapRow = area.removeFromBottom (22);
+        area.removeFromBottom (3);
+        snapButton.setBounds (snapRow.removeFromLeft (56));
+        snapRow.removeFromLeft (6);
+        snapInfo.setBounds (snapRow.removeFromRight (110));
+        snapRangeSlider.setBounds (snapRow);
+    }
     display.setBounds (area);
 }
 

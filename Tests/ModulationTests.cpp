@@ -167,6 +167,7 @@ namespace
         // Fri hastighet: 2 Hz vid 120 BPM är en period per halv sekund = per fjärdedel; ppq 0.125 = 1/16 period... 0.25 av en period.
         processor.set ("lfo1Mode", 1.0f);
         processor.set ("lfo1Hz", 1.0f);
+        modulator.update (0.0, 120.0); // transporten börjar om (nollställer fasoffseten som Sync -> Hz-bytet gav)
         modulator.update (0.5, 120.0); // 0.25 s * 1 Hz = 0.25 period: värdet 1 - 2 * 0.25 = 0.5
         check (std::abs (modulator.apply (cutoff, 500.0f) - 600.0f) < 1.0f, "fri hastighet i Hz följer tempot", modulator.apply (cutoff, 500.0f));
         modulator.update (0.5, 60.0);  // tempoändring mitt i en period: fasen fortsätter där den är (värdet 0.5 -> +600), den hoppar inte
@@ -188,6 +189,27 @@ namespace
         check (std::abs (modulator.apply (cutoff, 500.0f) - before) < 1.0e-3f, "Sync -> Hz behåller fasen", modulator.apply (cutoff, 500.0f));
         modulator.update (0.0, 133.0);                   // transporten börjar om: LFO:n följer takten igen (fasen 0 = +1 med rampen -> +700)
         check (std::abs (modulator.apply (cutoff, 500.0f) - 700.0f) < 1.0f, "ett omstartat transport nollställer fasen", modulator.apply (cutoff, 500.0f));
+
+        // SNAP: 120 BPM, 1/8 = rate 4 = 0.5 fjärdedel per period = 2 perioder per fjärdedel = 4 Hz.
+        processor.set ("lfo1Hz", 4.7f);                  // utanför ±5 % (nära 1/8 T-området? nej: bara visning)
+        processor.set ("lfo1Snap", 1.0f);
+        processor.set ("lfo1SnapRange", 5.0f);
+        modulator.update (1.0, 120.0);
+        check (! modulator.snapLocked[0].load() && modulator.snapNote[0].load() == 4, "SNAP: långt från notvärdet är fri, närmaste är 1/8", modulator.snapNote[0].load());
+        const auto freeValue = modulator.apply (cutoff, 500.0f);
+        processor.set ("lfo1Hz", 4.1f);                  // inom 5 % av 4 Hz
+        modulator.update (1.0, 120.0);
+        check (modulator.snapLocked[0].load() && modulator.snapNote[0].load() == 4, "SNAP: inom zonen låser mot 1/8");
+        check (std::abs (modulator.apply (cutoff, 500.0f) - freeValue) < 1.0e-3f, "SNAP: fasen hoppar inte när den låser", modulator.apply (cutoff, 500.0f));
+        modulator.update (1.25, 120.0);                  // 0.25 fjärdedel = exakt en halv period vid låst 2 perioder/fjärdedel: fasen går 0.5 vidare
+        const auto lockedLater = modulator.apply (cutoff, 500.0f);
+        processor.set ("lfo1Snap", 0.0f);                // av: samma Hz (4.1) är fri, snapNote visas fortfarande
+        modulator.update (1.25, 120.0);
+        check (! modulator.snapLocked[0].load() && modulator.snapNote[0].load() == 4, "SNAP av: ingen låsning");
+        check (std::abs (modulator.apply (cutoff, 500.0f) - lockedLater) < 1.0e-3f, "SNAP av: fasen hoppar inte heller när den släpper", modulator.apply (cutoff, 500.0f));
+        processor.set ("lfo1Mode", 0.0f);
+        modulator.update (1.25, 120.0);
+        check (modulator.snapNote[0].load() == -1, "Sync-läget har ingen SNAP");
 
         check (Modulation::rateNames().size() == 18 && Modulation::rateInQuarters (17) == 64.0 && Modulation::rateInQuarters (11) == 0.75, "fler synkade hastigheter (3/16 ... 16 takter)");
         check (Modulation::shapeNames().size() == 7 && Modulation::shapeNames()[6] == "Custom", "formen Custom finns");

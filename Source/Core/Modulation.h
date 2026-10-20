@@ -112,6 +112,9 @@ public:
     // För gränssnittet: varje LFO:s fas och värde, och hur mycket varje parameter moduleras nu
     // (normaliserat, summan av alla kopplingar).
     std::array<std::atomic<float>, Modulation::numLfos> phase {}, value {};
+    // SNAP (bara Hz-läget): närmaste notvärde (index i rateNames, -1 = Sync-läge) och om hastigheten är låst mot det. Skrivs av ljudtråden.
+    std::array<std::atomic<int>, Modulation::numLfos> snapNote {};
+    std::array<std::atomic<bool>, Modulation::numLfos> snapLocked {};
     float currentOffset (int index) const;
 
     // Instrumentens källor, skrivs av ljudtråden före update(): ENV 2, ENV 3, velocity och slump.
@@ -132,6 +135,8 @@ private:
         std::atomic<float>* rate;
         std::atomic<float>* mode;  // 0 = tempo-synkad (rate), 1 = fri hastighet (hz)
         std::atomic<float>* hz;
+        std::atomic<float>* snap;      // SNAP i Hz-läget: på/av
+        std::atomic<float>* snapRange; // ± procent av notvärdets hastighet
     };
     const std::array<NodeEnvelope, Modulation::numLfos>* lfoCurves = nullptr;
     // Fas-kontinuitet vid ändrad hastighet (se update): offset i perioder, senaste perioder per fjärdedel och senaste positionen.

@@ -56,6 +56,11 @@ namespace Help
             return "RATE MODE - Sync: the LFO follows the song tempo (RATE). Hz: it runs at its own speed (FREE RATE), independent of the tempo.";
         if (rawID.startsWith ("lfo") && rawID.endsWith ("Hz"))
             return "FREE RATE - the LFO's own speed in Hz (cycles per second), used when RATE MODE is Hz.";
+        if (rawID.startsWith ("lfo") && rawID.endsWith ("SnapRange"))
+            return "SNAP RANGE - How close to a note value (in percent of its speed) the free rate must be for SNAP to lock to it.";
+        if (rawID.startsWith ("lfo") && rawID.endsWith ("Snap"))
+            return "SNAP - In Hz mode: when the free rate comes within SNAP RANGE of a note value (1/8, 1/4 T ...) at the current tempo, it locks exactly to it, "
+                   "so the LFO sits on the beat. Outside the range it runs free. The phase never restarts when it locks or lets go. The display shows the nearest note value.";
 
         // Mixern: samma förklaring för alla källor.
         if (rawID.startsWith ("mix"))

@@ -83,6 +83,16 @@ namespace Modulation
                                                                AudioParameterFloatAttributes().withStringFromValueFunction ([] (float v, int) { return String (v, 2) + " Hz"; })));
         }
 
+        // SNAP i Hz-läget (R): nya parametrar sist bland LFO-parametrarna (före makrona är ordningen som förut för allt före dem). Standard av.
+        for (int i = 0; i < numLfos; ++i)
+        {
+            const auto title = sourceName (i);
+            layout.add (std::make_unique<AudioParameterBool> (ParameterID { paramID (i, "Snap"), 1 }, title + " Snap", false));
+            layout.add (std::make_unique<AudioParameterFloat> (ParameterID { paramID (i, "SnapRange"), 1 }, title + " Snap Range",
+                                                               NormalisableRange<float> (1.0f, 25.0f, 0.1f), 5.0f,
+                                                               AudioParameterFloatAttributes().withStringFromValueFunction ([] (float v, int) { return juce::String::fromUTF8 ("\xC2\xB1") + String (v, 1) + " %"; })));
+        }
+
         // Makron: fyra rattar att vrida för hand, som i Serum, och att dra till andra rattar eller sätta i matrisen.
         for (int m = 0; m < numMacros; ++m)
             layout.add (std::make_unique<AudioParameterFloat> (ParameterID { macroID (m), 1 }, "Macro " + String (m + 1),
@@ -209,6 +219,10 @@ Modulator::Modulator (juce::AudioProcessorValueTreeState& apvts, const ModRoutes
         lfo.rate = apvts.getRawParameterValue (paramID (i, "Rate"));
         lfo.mode = apvts.getRawParameterValue (paramID (i, "Mode"));
         lfo.hz = apvts.getRawParameterValue (paramID (i, "Hz"));
+        lfo.snap = apvts.getRawParameterValue (paramID (i, "Snap"));
+        lfo.snapRange = apvts.getRawParameterValue (paramID (i, "SnapRange"));
+        snapNote[(size_t) i] = -1;
+        snapLocked[(size_t) i] = false;
     }
     for (int m = 0; m < numMacros; ++m)
         macros[(size_t) m] = apvts.getRawParameterValue (macroID (m));
@@ -253,8 +267,44 @@ void Modulator::update (double ppq, double bpm)
         // Perioder per fjärdedel: tempo-synkat (rate) eller fri hastighet (Hz). Byter hastigheten (rattar, automation, Sync <-> Hz) ska fasen
         // fortsätta där den är i stället för att hoppa till ppq * nya hastigheten: `phaseOffset` bär skillnaden så att positionen är kontinuerlig
         // (p * gamla + offset = p * nya + ny offset). Ändras inget är offseten 0 och positionen exakt som förr (x + 0.0 är x).
-        const auto cyclesPerQuarter = lfo.mode->load() >= 0.5f ? 60.0 / std::max (20.0, bpm) * (double) lfo.hz->load()
-                                                               : 1.0 / rateInQuarters ((int) lfo.rate->load());
+        // Mode, Hz, Rate och SNAP läses en gång här och används i båda uttrycken (en ratt som vrids mellan två läsningar ger annars en offset
+        // som inte stämmer med positionen, och fasen hoppar).
+        const auto freeRate = lfo.mode->load() >= 0.5f;
+        const auto hz = (double) lfo.hz->load();
+        const auto rateQuarters = rateInQuarters ((int) lfo.rate->load());
+        const auto tempoFactor = 60.0 / std::max (20.0, bpm);
+
+        // SNAP (bara i Hz-läget): det slutliga Hz-värdet jämförs med alla notvärden. Närmaste visas ("≈ 1/8 T"), och ligger det inom ± SNAP RANGE
+        // (procent av notvärdets hastighet) och SNAP är på låses hastigheten exakt mot notvärdet, så att den ligger på takten.
+        auto snappedCycles = 0.0; // > 0: låst hastighet (perioder per fjärdedel)
+        if (freeRate)
+        {
+            const auto wanted = tempoFactor * hz;
+            auto nearest = -1;
+            auto nearestRelative = 1.0e9;
+            for (int k = 0; k < 18; ++k) // de 18 notvärdena (rateNames().size(); rateNames() allokerar och får inte anropas här)
+            {
+                const auto noteCycles = 1.0 / rateInQuarters (k);
+                const auto relative = std::abs (wanted - noteCycles) / noteCycles;
+                if (relative < nearestRelative)
+                {
+                    nearestRelative = relative;
+                    nearest = k;
+                }
+            }
+            const auto locked = lfo.snap->load() >= 0.5f && nearestRelative <= (double) lfo.snapRange->load() * 0.01;
+            if (locked)
+                snappedCycles = 1.0 / rateInQuarters (nearest);
+            snapNote[(size_t) i] = nearest;
+            snapLocked[(size_t) i] = locked;
+        }
+        else
+        {
+            snapNote[(size_t) i] = -1;
+            snapLocked[(size_t) i] = false;
+        }
+
+        const auto cyclesPerQuarter = snappedCycles > 0.0 ? snappedCycles : freeRate ? tempoFactor * hz : 1.0 / rateQuarters;
         auto& offset = phaseOffset[(size_t) i];
         auto& lastCycles = lastCyclesPerQuarter[(size_t) i];
         auto& lastPosition = lastPpq[(size_t) i];
@@ -264,8 +314,9 @@ void Modulator::update (double ppq, double bpm)
             offset += ppq * (lastCycles - cyclesPerQuarter);
         lastCycles = cyclesPerQuarter;
         lastPosition = ppq;
-        const auto position = lfo.mode->load() >= 0.5f ? ppq * 60.0 / std::max (20.0, bpm) * (double) lfo.hz->load() + offset
-                                                       : ppq / rateInQuarters ((int) lfo.rate->load()) + offset;
+        const auto position = snappedCycles > 0.0 ? ppq * snappedCycles + offset
+                            : freeRate            ? ppq * 60.0 / std::max (20.0, bpm) * hz + offset // (samma uttrycksform som förr: bit-identiskt)
+                                                  : ppq / rateQuarters + offset;
         const auto cycle = (juce::int64) std::floor (position);
         const auto lfoPhase = position - std::floor (position);
         const auto shapeIndex = (int) lfo.shape->load();
