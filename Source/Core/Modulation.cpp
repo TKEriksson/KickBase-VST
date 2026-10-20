@@ -42,8 +42,8 @@ namespace Modulation
 
     juce::String kindName (int kind)
     {
-        static const char* names[] { "ENV 2", "ENV 3", "VELOCITY", "RANDOM" };
-        return names[juce::jlimit (0, instrumentSources - 1, kind)];
+        static const char* names[] { "ENV 2", "ENV 3", "VELOCITY", "RANDOM", "AMP ENV", "FILT ENV" };
+        return names[juce::jlimit (0, instrumentKinds - 1, kind)];
     }
 
     juce::String sourceName (int source)
@@ -369,7 +369,7 @@ void Modulator::update (double ppq, double bpm)
     for (int m = 0; m < numMacros; ++m)
         sourceValues[(size_t) (firstMacro + m)] = macros[(size_t) m] != nullptr ? macros[(size_t) m]->load() : 0.0f;
     for (int layer = 0; layer < maxInstruments; ++layer)
-        for (int kind = 0; kind < instrumentSources; ++kind)
+        for (int kind = 0; kind < instrumentKinds; ++kind)
             sourceValues[(size_t) instrumentSource (layer, kind)] = layerSources[(size_t) layer][(size_t) kind];
     for (int s = 0; s < numSources; ++s)
         sourceDisplay[(size_t) s] = sourceValues[(size_t) s];

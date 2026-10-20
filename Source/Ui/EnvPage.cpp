@@ -101,7 +101,7 @@ void EnvPage::rebuild()
         Tile tile;
         tile.title = title;
         tile.hint = hint;
-        tile.colour = handleSource >= 0 ? Theme::sourceColour (handleSource) : accent;
+        tile.colour = handleSource >= 0 && ! Modulation::isEnvSource (handleSource) ? Theme::sourceColour (handleSource) : accent;
         juce::ignoreUnused (seconds); // startvärdet står i durations
         const auto index = (int) tiles.size();
         tile.view = std::make_unique<EnvelopeView> (durations[(size_t) index]);
@@ -169,7 +169,8 @@ void EnvPage::rebuild()
 
     // ENV 1: volym-envelopen (det som formar ljudet).
     {
-        auto* view = addTile ("ENV 1  VOLUME", "Shapes the loudness of every note: attack, decay, sustain level and release.", 1.0, -1);
+        auto* view = addTile ("ENV 1  VOLUME", "Shapes the loudness of every note: attack, decay, sustain level and release. DRAG the handle onto a knob to let the same shape "
+                                               "move it (source AMP ENV; 0 when ENV 1 is off).", 1.0, Modulation::instrumentSource (layer, Modulation::instrumentSources));
         const auto gate = [this, thisLayer] { return noteOffOf (thisLayer, 0.4).seconds; };
         view->setNoteOff ([this, thisLayer] { return noteOffOf (thisLayer, 0.4); });
         view->addCurve ({ [this, gate] (double t) { return adsrAt (t, current.attackMs, current.decayMs, current.sustain, current.releaseMs, gate()); }, accent, true, "VOLUME" });
@@ -185,7 +186,9 @@ void EnvPage::rebuild()
 
     // Filter-envelopen: hur mycket och hur länge filtret öppnas i början av varje ton.
     {
-        auto* view = addTile ("FILTER ENVELOPE", "Opens the filter at the start of every note and lets it close again: AMOUNT (how far, in octaves), ATTACK (how fast it opens) and DECAY (how fast it closes).", 0.5, -1);
+        auto* view = addTile ("FILTER ENVELOPE", "Opens the filter at the start of every note and lets it close again: AMOUNT (how far, in octaves), ATTACK (how fast it opens) and DECAY (how fast it closes). DRAG the handle onto a knob "
+                                                  "to let the same shape move it (source FILT ENV, 0..1 without AMOUNT; 0 when the filter envelope is off).", 0.5,
+                              Modulation::instrumentSource (layer, Modulation::instrumentSources + 1));
         view->addCurve ({ [this] (double t) { return InstrumentSynth::filterEnvelopeAt (current, t) * current.envAmount / 8.0f; }, accent, true, "FILTER" });
         view->addHandle ({ [this] { return juce::Point<float> (std::max (0.0015f, current.envAttackMs * 0.001f), current.envAmount / 8.0f); }, param (processor, layer, F::envAttack), param (processor, layer, F::envAmount), false, accent,
                            pick (1, F::envAttack, F::filterEnvAttackSync) });

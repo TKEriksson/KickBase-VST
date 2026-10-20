@@ -428,6 +428,44 @@ int persistTest()
         check (fx->availableLfos() == 3 && fx->setLfoActive (3, true) == 0 && fx->modulator.activeMask.load() == 7u, "FX: bara LFO 1-3");
     }
 
+    // Fas L: AMP ENV / FILT ENV är källa 54-73. Ett äldre projekt (källor 0-53) läses oförändrat, och de nya sparas och laddas.
+    {
+        auto processor = std::make_unique<InstrumentProcessor>();
+        const auto parameters = processor->getParameters();
+        juce::ValueTree old (ModRoutes::treeType);
+        for (int source : { 0, 6, 7, 46, 47, 53 })
+        {
+            juce::ValueTree child ("Route");
+            child.setProperty ("source", source, nullptr);
+            child.setProperty ("target", ParamID::bass (0, InstrumentField::cutoff), nullptr);
+            child.setProperty ("amount", 0.25, nullptr);
+            old.appendChild (child, nullptr);
+        }
+        processor->modRoutes.fromValueTree (old, parameters);
+        auto oldOk = true;
+        for (int r = 0, i = 0; r < Modulation::maxRoutes; ++r)
+            if (const auto s = processor->modRoutes.routes[(size_t) r].source.load(); s >= 0)
+                oldOk = oldOk && s == old.getChild (i++)["source"].operator int();
+        check (oldOk && processor->modRoutes.toValueTree (parameters).isEquivalentTo (old), "ett äldre projekt med källor 0-53 läses och skrivs oförändrat");
+
+        const auto amp = Modulation::instrumentSource (1, Modulation::instrumentSources), filt = Modulation::instrumentSource (9, Modulation::instrumentSources + 1);
+        check (amp == 56 && filt == 73 && Modulation::sourceName (amp) == "INSTR 2 AMP ENV" && Modulation::sourceName (filt) == "INSTR 10 FILT ENV",
+               "AMP ENV/FILT ENV har nummer 54 + instrument x 2 (+1) och namn med instrumentet");
+        int cutoffIndex = 0;
+        for (int i = 0; i < parameters.size(); ++i)
+            if (auto* withId = dynamic_cast<juce::AudioProcessorParameterWithID*> (parameters[i]); withId != nullptr && withId->paramID == ParamID::bass (0, InstrumentField::cutoff))
+                cutoffIndex = i;
+        processor->modRoutes.clear();
+        processor->modRoutes.add (amp, cutoffIndex, 0.5f);
+        processor->modRoutes.add (filt, cutoffIndex, -0.3f);
+        auto copy = copyOf (*processor);
+        std::vector<int> sources;
+        for (const auto& route : copy->modRoutes.routes)
+            if (route.source.load() >= 0)
+                sources.push_back (route.source.load());
+        check (sources == std::vector<int> { amp, filt }, "kopplingar från AMP ENV/FILT ENV sparas och laddas");
+    }
+
     // Fas P: ackord följer med projektet; en ton utan ackord skrivs som förut (fem fält) och en ton som läggs till på nytt ärver inget ackord.
     {
         auto processor = std::make_unique<InstrumentProcessor>();

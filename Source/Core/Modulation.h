@@ -13,7 +13,8 @@
 // Den räknas var 32:a sample (PluginBase::processInControlChunks), oavsett DAW:ens buffertstorlek.
 //
 // Källor (numren används i sparade projekt): 0-2 LFO 1-3, 3-6 makro 1-4 (rattar man vrider själv), sedan fyra per instrument:
-// ENV 2, ENV 3, VELOCITY (senaste tonens) och RANDOM (ett slumptal per ton). Sist 47-53: LFO 4-10.
+// ENV 2, ENV 3, VELOCITY (senaste tonens) och RANDOM (ett slumptal per ton). Sedan 47-53: LFO 4-10. Sist 54-73: två per instrument,
+// AMP ENV (ENV 1, volymen) och FILT ENV (filter-envelopens form), i ett eget block så att inget äldre nummer flyttas.
 namespace Modulation
 {
     // Kontrolltakten: moduleringen (och det som räknas per fönster, t.ex. auto-filtrets svep) uppdateras på ett rutnät av fönster om
@@ -27,20 +28,27 @@ namespace Modulation
     // LFO 4-10 (maxLfos) ligger sist bland källorna (47-53), så att sparade projekt med makron och instrumentkällor på sina gamla nummer läses som förut.
     constexpr int maxLfos = 10;
     constexpr int firstExtraLfoSource = firstInstrumentSource + maxInstruments * instrumentSources;
-    constexpr int numSources = firstExtraLfoSource + (maxLfos - numLfos);
+    constexpr int firstEnvSource = firstExtraLfoSource + (maxLfos - numLfos);
+    constexpr int envSources = 2;                                    // AMP ENV, FILT ENV
+    constexpr int instrumentKinds = instrumentSources + envSources;  // kind 0-3 i första blocket, 4-5 i blocket från 54
+    constexpr int numSources = firstEnvSource + maxInstruments * envSources;
     constexpr int maxRoutes = 64;
 
     inline int lfoSource (int lfo)             { return lfo < numLfos ? lfo : firstExtraLfoSource + (lfo - numLfos); }
-    inline int lfoIndexOfSource (int source)   { return source >= 0 && source < numLfos ? source : source >= firstExtraLfoSource && source < numSources ? numLfos + (source - firstExtraLfoSource) : -1; }
+    inline int lfoIndexOfSource (int source)   { return source >= 0 && source < numLfos ? source : source >= firstExtraLfoSource && source < firstEnvSource ? numLfos + (source - firstExtraLfoSource) : -1; }
     inline bool isLfoSource (int source)       { return lfoIndexOfSource (source) >= 0; }
     inline bool isLfo (int source)             { return source >= 0 && source < numLfos; } // bara de tre första (källa 0-2); använd isLfoSource för alla
     inline bool isMacro (int source)           { return source >= firstMacro && source < firstInstrumentSource; }
-    inline bool isInstrumentSource (int source) { return source >= firstInstrumentSource && source < firstExtraLfoSource; }
-    inline int instrumentSource (int layer, int kind) { return firstInstrumentSource + layer * instrumentSources + kind; }
-    inline int layerOfSource (int source)      { return (source - firstInstrumentSource) / instrumentSources; }
-    inline int kindOfSource (int source)       { return (source - firstInstrumentSource) % instrumentSources; }
+    inline bool isEnvSource (int source)       { return source >= firstEnvSource && source < numSources; } // AMP ENV / FILT ENV
+    inline bool isInstrumentSource (int source) { return (source >= firstInstrumentSource && source < firstExtraLfoSource) || isEnvSource (source); }
+    inline int instrumentSource (int layer, int kind)
+    {
+        return kind < instrumentSources ? firstInstrumentSource + layer * instrumentSources + kind : firstEnvSource + layer * envSources + (kind - instrumentSources);
+    }
+    inline int layerOfSource (int source)      { return isEnvSource (source) ? (source - firstEnvSource) / envSources : (source - firstInstrumentSource) / instrumentSources; }
+    inline int kindOfSource (int source)       { return isEnvSource (source) ? instrumentSources + (source - firstEnvSource) % envSources : (source - firstInstrumentSource) % instrumentSources; }
     juce::String macroID (int macro);          // "macro1" ...
-    juce::String kindName (int kind);          // "ENV 2", "ENV 3", "VELOCITY", "RANDOM"
+    juce::String kindName (int kind);          // "ENV 2", "ENV 3", "VELOCITY", "RANDOM", "AMP ENV", "FILT ENV"
 
     juce::StringArray shapeNames();
     juce::StringArray rateNames();
@@ -130,11 +138,12 @@ public:
     // Inaktiva räknas inte alls (0 CPU). Gränssnittstrådarna får bara sätta/nollställa bitar atomärt, aldrig röra ljudtrådens fält.
     std::atomic<uint32_t> activeMask { 7u };
 
-    // Instrumentens källor, skrivs av ljudtråden före update(): ENV 2, ENV 3, velocity och slump.
-    void setInstrumentSources (int layer, float env2, float env3, float velocity, float random)
+    // Instrumentens källor, skrivs av ljudtråden före update(): ENV 2, ENV 3, velocity och slump, och AMP ENV / FILT ENV
+    // (0 när ingen koppling använder dem, se usesEnvSources).
+    void setInstrumentSources (int layer, float env2, float env3, float velocity, float random, float ampEnv = 0.0f, float filterEnv = 0.0f)
     {
         auto& s = layerSources[(size_t) layer];
-        s = { env2, env3, velocity, random };
+        s = { env2, env3, velocity, random, ampEnv, filterEnv };
     }
 
     // Källans värde just nu (för gränssnittets visning): LFO -1..1, övriga 0..1.
@@ -158,7 +167,7 @@ private:
     const ModRoutes& routes;
     std::array<Lfo, Modulation::maxLfos> lfos {};
     std::array<std::atomic<float>*, Modulation::numMacros> macros {};
-    std::array<std::array<float, Modulation::instrumentSources>, maxInstruments> layerSources {};
+    std::array<std::array<float, Modulation::instrumentKinds>, maxInstruments> layerSources {};
     std::array<std::atomic<float>, Modulation::numSources> sourceDisplay {};
     std::vector<juce::RangedAudioParameter*> parameters;
     std::vector<const std::atomic<float>*> raws;

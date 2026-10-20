@@ -110,7 +110,8 @@ namespace
         return text.containsOnly ("0123456789") && juce::isPositiveAndBelow (number - 1, numEffectChannels) ? number - 1 : -1;
     }
 
-    // Källan i en koppling: "lfo" 1-10 (FX 1-3, kollas av anroparen), "macro" 1-4, eller "instrument" 1-10 med "source" ENV 2 / ENV 3 / VELOCITY / RANDOM. -1 = ogiltig.
+    // Källan i en koppling: "lfo" 1-10 (FX 1-3, kollas av anroparen), "macro" 1-4, eller "instrument" 1-10 med "source" ENV 2 / ENV 3 / VELOCITY / RANDOM /
+    // AMP ENV (även "ENV 1") / FILT ENV (även "FILTER ENV"). -1 = ogiltig.
     int modulationSource (const var& route)
     {
         if (route.hasProperty ("lfo"))
@@ -123,7 +124,9 @@ namespace
             if (! juce::isPositiveAndBelow (layer, maxInstruments))
                 return -1;
             const auto kind = route["source"].toString().toUpperCase().removeCharacters (" ");
-            return Modulation::instrumentSource (layer, kind.contains ("ENV3") ? 1 : kind.startsWith ("VEL") ? 2 : kind.startsWith ("RAND") ? 3 : 0);
+            const auto ampEnv = kind.startsWith ("AMP") || kind == "ENV1", filterEnv = kind.startsWith ("FILT");
+            return Modulation::instrumentSource (layer, filterEnv ? Modulation::instrumentSources + 1 : ampEnv ? Modulation::instrumentSources
+                                                      : kind.contains ("ENV3") ? 1 : kind.startsWith ("VEL") ? 2 : kind.startsWith ("RAND") ? 3 : 0);
         }
         return -1;
     }
@@ -206,7 +209,7 @@ std::vector<ToolLayer::ToolInfo> ToolLayer::tools()
           R"({"type":"object","properties":{"mode":{"type":"string"},"length":{"type":"string"},"points":{"type":"array","items":{"type":"array","items":{"type":"number"}}}}})" },
         { "set_instruments", "Sets how many instruments are used (1-10; each has its own pattern, oscillators, filter, envelopes, effect send and sidechain depth; the default is 3). Removing instruments deletes the last ones completely (pattern, sound, sample, wavetables, name, mixer and modulation routes). Adding gives instruments with default settings and an empty pattern.",
           R"({"type":"object","properties":{"count":{"type":"integer","minimum":1,"maximum":10}},"required":["count"]})" },
-        { "set_modulation", "Sets up LFOs and routes (the matrix). lfos: [{\"lfo\":1,\"shape\":\"Sine\",\"rate\":\"1 bar\",\"on\":true}] (lfo 1-10 in the instrument, 1-3 in the FX plugin; setting an inactive LFO or routing from it adds it, \"remove\":true removes it with its routes; get_state lists active_lfos; shapes: Sine, Triangle, Saw Up, Saw Down, Square, Random, Custom; synced rates 1/32 ... 16 bars; \"hz\":0.02-40 runs the LFO at its own speed instead, \"mode\":\"Sync\"|\"Hz\"; \"points\":[[phase 0..1, value -1..1, tension -1..1],...] draws a custom curve, at least two points, and selects the Custom shape). routes: [{\"lfo\":1,\"param\":\"bass1Cutoff\",\"amount\":0.3}] (amount -1..1 of the knob's travel, only sound parameters: kick*, bass*, fx*). The source is \"lfo\" 1-10, or \"macro\" 1-4 (turn macro1..macro4 with set_parameters), or \"instrument\" 1-10 with \"source\":\"ENV 2\" | \"ENV 3\" | \"VELOCITY\" | \"RANDOM\" (ENV 2/3 are set with bassNEnv2Attack ... bassNEnv3Release). Up to 64 routes. clear_routes removes all routes first.",
+        { "set_modulation", "Sets up LFOs and routes (the matrix). lfos: [{\"lfo\":1,\"shape\":\"Sine\",\"rate\":\"1 bar\",\"on\":true}] (lfo 1-10 in the instrument, 1-3 in the FX plugin; setting an inactive LFO or routing from it adds it, \"remove\":true removes it with its routes; get_state lists active_lfos; shapes: Sine, Triangle, Saw Up, Saw Down, Square, Random, Custom; synced rates 1/32 ... 16 bars; \"hz\":0.02-40 runs the LFO at its own speed instead, \"mode\":\"Sync\"|\"Hz\"; \"points\":[[phase 0..1, value -1..1, tension -1..1],...] draws a custom curve, at least two points, and selects the Custom shape). routes: [{\"lfo\":1,\"param\":\"bass1Cutoff\",\"amount\":0.3}] (amount -1..1 of the knob's travel, only sound parameters: kick*, bass*, fx*). The source is \"lfo\" 1-10, or \"macro\" 1-4 (turn macro1..macro4 with set_parameters), or \"instrument\" 1-10 with \"source\":\"ENV 2\" | \"ENV 3\" | \"VELOCITY\" | \"RANDOM\" | \"AMP ENV\" | \"FILT ENV\" (ENV 2/3 are set with bassNEnv2Attack ... bassNEnv3Release; AMP ENV is the volume envelope ENV 1, FILT ENV the filter envelope's shape 0..1 without its amount, both 0 when switched off). Up to 64 routes. clear_routes removes all routes first.",
           R"({"type":"object","properties":{"lfos":{"type":"array","items":{"type":"object"}},"routes":{"type":"array","items":{"type":"object"}},"clear_routes":{"type":"boolean"}}})" },
         { "list_presets", "Lists factory and user presets. section: Full, Kick, Bass, Pattern, Effects, Sidechain, Master (the maximizer), Soundstage or LFO (default: all).",
           R"({"type":"object","properties":{"section":{"type":"string"}}})" },
@@ -1000,7 +1003,7 @@ var ToolLayer::setModulation (const var& args)
             if (lfo >= processor.availableLfos())
                 problems.add ("lfo must be 1-" + juce::String (processor.availableLfos()));
             else if (source < 0 || parameter == nullptr || index < 0)
-                problems.add ("Bad route: a source (lfo 1-10, macro 1-4, or instrument 1-10 with source ENV 2 / ENV 3 / VELOCITY / RANDOM) and a parameter id are needed (" + id + ")");
+                problems.add ("Bad route: a source (lfo 1-10, macro 1-4, or instrument 1-10 with source ENV 2 / ENV 3 / VELOCITY / RANDOM / AMP ENV / FILT ENV) and a parameter id are needed (" + id + ")");
             else if (! Modulation::isModulatable (*parameter))
                 problems.add (id + " can't be modulated (only kick*, bass*, fx* sound parameters)");
             else if (processor.modRoutes.add (source, index, juce::jlimit (-1.0f, 1.0f, (float) (double) route["amount"])) < 0)

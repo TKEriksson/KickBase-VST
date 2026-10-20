@@ -346,6 +346,7 @@ InstrumentSynth::Output InstrumentSynth::next()
     }
     const auto frequency = cachedFrequency;
     const auto envelope = filterEnvelopeAt (params, noteTime);
+    filterEnvLevel = envelope;
 
     // OSC B först: den kan frekvensmodulera OSC A (warp FM). Warp env lägger till warp på A
     // i början av varje ton.

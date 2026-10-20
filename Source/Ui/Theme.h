@@ -58,8 +58,10 @@ namespace Theme
             const juce::Colour macros[] { juce::Colour (0xfff2a65a), juce::Colour (0xffe9d35c), juce::Colour (0xfff08a6a), juce::Colour (0xffe08cff) };
             return macros[juce::jlimit (0, 3, source - 3)];
         }
-        const auto layer = (source - 7) / 4, kind = (source - 7) % 4;
+        const auto layer = Modulation::layerOfSource (source), kind = Modulation::kindOfSource (source);
         const auto base = layerColour (layer);
+        if (kind >= Modulation::instrumentSources) // AMP ENV ljus (som ENV 1:s handtag), FILT ENV mellan lagrets färg och ljus
+            return kind == Modulation::instrumentSources ? text : base.interpolatedWith (text, 0.5f);
         return kind == 0 ? base : kind == 1 ? base.brighter (0.35f) : kind == 2 ? base.withMultipliedSaturation (0.45f) : base.darker (0.35f);
     }
 

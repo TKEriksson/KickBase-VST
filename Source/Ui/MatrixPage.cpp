@@ -29,7 +29,7 @@ namespace
             {
                 juce::PopupMenu sub;
                 auto containsCurrent = false;
-                for (int kind = 0; kind < Modulation::instrumentSources; ++kind)
+                for (int kind = 0; kind < Modulation::instrumentKinds; ++kind)
                 {
                     const auto source = Modulation::instrumentSource (layer, kind);
                     sub.addItem (1 + source, Modulation::kindName (kind), true, current == source);

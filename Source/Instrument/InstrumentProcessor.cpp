@@ -137,12 +137,18 @@ void InstrumentProcessor::processChunk (juce::AudioBuffer<float>& buffer, juce::
         basses[(size_t) layer].setTempo (clock.getBpm()); // ENV 2 och ENV 3 i läget Sync
     // Moduleringen uppdateras bara på 32-rutnätet. En bit som börjar mitt i ett fönster (när DAW-blocket slutade där) behåller
     // fönstrets värden, så att ljudet blir detsamma vid alla blockstorlekar, också udda.
+    // AMP ENV / FILT ENV läses bara när någon koppling använder dem (annars 0, som inaktiva LFO:er).
+    auto envSourcesUsed = false;
+    for (int r = 0; controlPhase == 0 && r < Modulation::maxRoutes && ! envSourcesUsed; ++r)
+        envSourcesUsed = Modulation::isEnvSource (modRoutes.routes[(size_t) r].source.load());
     for (int layer = 0; controlPhase == 0 && layer < numLayers; ++layer)
     {
-        // Instrumentens källor (ENV 2, ENV 3, velocity, slump) som de var vid blockets början.
+        // Instrumentens källor (ENV 2, ENV 3, velocity, slump, AMP ENV, FILT ENV) som de var vid blockets början.
         if (layer < activeLayers)
             modulator.setInstrumentSources (layer, basses[(size_t) layer].getModulationValue (0), basses[(size_t) layer].getModulationValue (1),
-                                            basses[(size_t) layer].getModulationValue (2), basses[(size_t) layer].getModulationValue (3));
+                                            basses[(size_t) layer].getModulationValue (2), basses[(size_t) layer].getModulationValue (3),
+                                            envSourcesUsed ? basses[(size_t) layer].getModulationValue (4) : 0.0f,
+                                            envSourcesUsed ? basses[(size_t) layer].getModulationValue (5) : 0.0f);
         else
             modulator.setInstrumentSources (layer, 0.0f, 0.0f, 0.0f, 0.0f);
     }

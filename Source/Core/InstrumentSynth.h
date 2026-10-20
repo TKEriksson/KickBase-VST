@@ -143,7 +143,8 @@ public:
     bool isActive() const { return stage != Stage::idle; }
     bool isReleasing() const { return stage == Stage::release; }
 
-    // Modulationskällorna: 0 = ENV 2, 1 = ENV 3, 2 = senaste tonens velocity, 3 = ett slumptal per ton (alla 0..1).
+    // Modulationskällorna: 0 = ENV 2, 1 = ENV 3, 2 = senaste tonens velocity, 3 = ett slumptal per ton, 4 = AMP ENV (ENV 1),
+    // 5 = FILT ENV (filter-envelopens form, utan AMOUNT) (alla 0..1). AMP ENV och FILT ENV ger 0 när rutan är av.
     float getModulationValue (int source) const
     {
         switch (source)
@@ -151,6 +152,8 @@ public:
             case 0:  return params.env2.on ? env2.level : 0.0f;
             case 1:  return params.env3.on ? env3.level : 0.0f;
             case 2:  return stage == Stage::idle ? 0.0f : velocity;
+            case 4:  return params.env1On && stage != Stage::idle ? ampLevel : 0.0f;
+            case 5:  return params.filterEnvOn && stage != Stage::idle ? filterEnvLevel : 0.0f;
             default: return randomValue;
         }
     }
@@ -247,6 +250,7 @@ private:
 
     Stage stage = Stage::idle;
     float ampLevel = 0.0f;
+    float filterEnvLevel = 0.0f; // senaste samplets filter-envelope (0..1), källan FILT ENV
     double forcedReleaseMs = 0.0; // > 0: release på så här många ms (fadeOutQuickly), annars RELEASE
     int gateRemaining = 0;
     float velocity = 1.0f;
