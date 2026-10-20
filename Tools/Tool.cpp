@@ -286,6 +286,13 @@ namespace
         check (pattern.note (Pattern::kickLayer, 0).on.load() && pattern.note (Pattern::kickLayer, ticks / 4).on.load()
                    && ! pattern.note (Pattern::kickLayer, ticks / 8).on.load(), "bd*4 ger kick på fjärdedelarna");
 
+        r = run ("note(\"c2,e2,g2,e2\").s(\"i1\")");
+        check ((bool) r["ok"] && pattern.stackSize (0, 0) == 3, "c2,e2,g2 ger tre toner på tick 0 (dubbletten e2 hoppas över)");
+        Pattern::StackNote top;
+        check (pattern.getStack (0, 0, 0, top) && top.pitch == 0 && pattern.getStack (0, 0, 2, top) && top.pitch == 7, "huvudton c2, andra stapeln g2");
+        r = run ("note(\"c2,e2,g2,b2,d3\").s(\"i1\")");
+        check ((bool) r["ok"] && pattern.stackSize (0, 0) == Pattern::maxStack, "fler än maxStack toner kapas");
+
         check (! (bool) run ("note(\"c2\".s(")["ok"], "syntaxfel ger ett fel, inte en krasch");
         const auto t0 = juce::Time::getMillisecondCounterHiRes();
         check (! (bool) run ("while(true){}")["ok"], "en oändlig slinga avbryts");
@@ -2005,7 +2012,7 @@ int toolMain (int argc, char* argv[])
     std::unique_ptr<Scenarios::TemporaryUserFolders> isolation;
     if (const juce::String command (argc > 1 ? argv[1] : ""); command == "presettest" || command == "rolltest" || command == "lengthtest"
         || command == "instrumenttest" || command == "eqtest" || command == "listentest" || command == "auditiontest" || command == "audiotest"
-        || command == "analysetest" || command == "perftest" || command == "polytest" || command == "rendersig" || command == "rendersigwide" || command == "rendersigtb303")
+        || command == "analysetest" || command == "perftest" || command == "polytest" || command == "livetest" || command == "rendersig" || command == "rendersigwide" || command == "rendersigtb303")
         isolation = std::make_unique<Scenarios::TemporaryUserFolders>();
 
     if (argc == 2 && juce::String (argv[1]) == "presettest")

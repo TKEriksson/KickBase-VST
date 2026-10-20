@@ -19,6 +19,7 @@ FxEditor::FxEditor (FxProcessor& p)
     synths.addTab ("KICK", Theme::kick, kick, kick.embedInTab());
     synths.addTab ("GATE", Theme::gate, gate, gate.embedInTab());
     synths.addTab ("AI CHAT", Theme::mix, aiPage);
+    synths.addTab ("LIVE CODE", Theme::mix, livePage);
 
     synths.addPower (1, processor.apvts, ParamID::kickOn);
     synths.addPower (2, processor.apvts, ParamID::bass (0, InstrumentField::on));

@@ -112,6 +112,7 @@ set(PLUGIN_SOURCES
     Source/Core/WavetablePack.cpp
     Source/Core/AiChat.cpp
     Source/Ui/AiChatPage.cpp
+    Source/Ui/LiveCodePage.cpp
     Source/Ui/Components.cpp
     Source/Ui/Help.cpp
     Source/Ui/FilterPanel.cpp
