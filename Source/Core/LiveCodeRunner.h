@@ -9,24 +9,26 @@
 class LiveCodeRunner
 {
 public:
-    // list = set_pattern-argument (ett per lager), error tomt om det gick bra.
-    using Done = std::function<void (const juce::var& list, const juce::String& error)>;
+    // list = set_pattern-argument (ett per lager), writes = lista med {id, value} från .set på parametrar, error tomt om det gick bra.
+    using Done = std::function<void (const juce::var& list, const juce::String& error, const juce::var& writes)>;
 
     ~LiveCodeRunner() { generation.fetch_add (1); pool.removeAllJobs (true, 2000); }
 
-    void run (const juce::String& code, int cycles, Done done, std::map<int, double> sliders = {})
+    void run (const juce::String& code, int cycles, Done done, std::map<int, double> sliders = {}, std::map<juce::String, double> params = {})
     {
         const auto gen = generation.fetch_add (1) + 1;
         pool.removeAllJobs (false, 0);
-        pool.addJob ([this, code, cycles, gen, sliders = std::move (sliders), done = std::move (done)]
+        pool.addJob ([this, code, cycles, gen, sliders = std::move (sliders), params = std::move (params), done = std::move (done)]
         {
             LiveCode live;
             live.setSliderValues (sliders);
+            live.setParams (params);
             juce::Result res = juce::Result::ok();
             auto list = live.create (code, cycles, res);
-            juce::MessageManager::callAsync ([this, gen, list, res, done]
+            auto writes = live.takeParamWrites();
+            juce::MessageManager::callAsync ([this, gen, list, res, writes, done]
             {
-                if (gen == generation.load()) done (list, res.failed() ? res.getErrorMessage() : juce::String());
+                if (gen == generation.load()) done (list, res.failed() ? res.getErrorMessage() : juce::String(), writes);
             });
         });
     }

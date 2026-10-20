@@ -33,6 +33,7 @@ private:
     void create();
     void finishCreate (const juce::var& result);
     void showError (const juce::String& text);
+    void applyParamWrites (const juce::var& writes);      // F1: .set på parametrar
     bool apply (const juce::var& items, bool overwrite); // skriver raderna; frågar först om handritade toner skulle skrivas över
     void warnOverwrite (const juce::var& conflicts, std::function<void (bool overwrite)> retry);
     void syncLocks();
@@ -68,6 +69,7 @@ private:
     std::vector<SliderSpec> sliderSpecs;
     juce::String sliderText;                               // texten specarna är hämtade ur
     std::vector<std::unique_ptr<juce::Slider>> sliderViews; // ett per giltigt slider()-anrop (index = ordningsnummer)
+    std::map<juce::String, juce::String> lastParamWrites;  // F1: senast skrivna värdetext per parameter (bara ändringar skrivs)
     std::map<int, double> sliderValues;                    // dragna värden (ordningsnummer -> värde) tills de skrivits in i texten
     bool ownEdit = false;                                  // reglaget skriver själv i texten: ingen ny kodändringsloop
     juce::TextEditor errorLog; // fliken FEL: hela meddelandet, senaste överst

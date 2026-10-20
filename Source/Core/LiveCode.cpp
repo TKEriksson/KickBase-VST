@@ -11,8 +11,33 @@ namespace
     // värdekartan (begränsad till min..max), annars startvärdet. host.get(id) är reserverad för reglage utan omkörning.
     struct HostObject : juce::DynamicObject
     {
-        explicit HostObject (const std::map<int, double>& values)
+        HostObject (const std::map<int, double>& values, const std::map<juce::String, double>& params, juce::Array<juce::var>& writes)
         {
+            // paramSet(id, v): bara noteras här; själva skrivningen görs på message thread efter körningen. paramGet(id): värdet från före körningen.
+            setMethod ("paramSet", [&writes] (const juce::var::NativeFunctionArgs& a) -> juce::var
+            {
+                if (a.numArguments < 2)
+                    return {};
+                const auto id = a.arguments[0].toString();
+                for (auto& w : writes)
+                    if (w["id"].toString() == id)
+                    {
+                        w.getDynamicObject()->setProperty ("value", a.arguments[1]);
+                        return a.arguments[1];
+                    }
+                auto* w = new juce::DynamicObject();
+                w->setProperty ("id", id);
+                w->setProperty ("value", a.arguments[1]);
+                writes.add (juce::var (w));
+                return a.arguments[1];
+            });
+            setMethod ("paramGet", [&params] (const juce::var::NativeFunctionArgs& a) -> juce::var
+            {
+                if (a.numArguments < 1)
+                    return 0.0;
+                const auto it = params.find (a.arguments[0].toString());
+                return it != params.end() ? it->second : 0.0;
+            });
             setMethod ("slider", [&values] (const juce::var::NativeFunctionArgs& a) -> juce::var
             {
                 if (a.numArguments < 2)
@@ -30,10 +55,18 @@ namespace
 LiveCode::LiveCode()
 {
     engine.maximumExecutionTime = juce::RelativeTime::milliseconds (500);
-    engine.registerNativeObject ("host", new HostObject (sliderValues));
+    engine.registerNativeObject ("host", new HostObject (sliderValues, paramValues, paramWrites));
 }
 
 void LiveCode::setSliderValues (std::map<int, double> values) { sliderValues = std::move (values); }
+void LiveCode::setParams (std::map<juce::String, double> values) { paramValues = std::move (values); }
+
+juce::var LiveCode::takeParamWrites()
+{
+    juce::var out (paramWrites);
+    paramWrites.clear();
+    return out;
+}
 
 juce::Result LiveCode::load()
 {
@@ -48,6 +81,15 @@ juce::Result LiveCode::load()
 juce::Result LiveCode::setCode (const juce::String& code)
 {
     if (auto r = load(); r.failed()) return r;
+    if (! paramValues.empty())
+    {
+        juce::Array<juce::var> ids;
+        for (auto& kv : paramValues)
+            ids.add (kv.first);
+        juce::Result built = juce::Result::ok();
+        engine.evaluate ("buildParams(" + juce::JSON::toString (juce::var (ids), true) + ")", &built);
+        if (built.failed()) return built;
+    }
     juce::Result res = juce::Result::ok();
     const auto message = engine.evaluate ("setPattern(" + juce::JSON::toString (code) + ")", &res); // glue.js svarar med felmeddelandet, "" = ok
     if (res.failed()) return res;

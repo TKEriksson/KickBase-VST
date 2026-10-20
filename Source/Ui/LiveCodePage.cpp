@@ -278,6 +278,7 @@ void LiveCodePage::setPlaying (bool shouldPlay)
     playing = shouldPlay;
     if (playing)
     {
+        lastParamWrites.clear(); // första körningen efter LIVE skriver alltid
         stopTimer();
         runNow();
     }
@@ -373,14 +374,46 @@ void LiveCodePage::refreshCodeOnly()
 
 void LiveCodePage::runNow()
 {
-    runner.run (document.getAllContent(), cycles, [this] (const juce::var& list, const juce::String& error)
+    runner.run (document.getAllContent(), cycles, [this] (const juce::var& list, const juce::String& error, const juce::var& writes)
     {
         if (error.isNotEmpty())
             return showError (error);
 
         showError ({});
+        applyParamWrites (writes);
         apply (list, false);
-    }, sliderValues);
+    }, sliderValues, tools.liveCodeParameters());
+}
+
+// .set på parametrar: skriver bara det som ändrats i koden sedan förra körningen (så handvridning inte slås ut var gång) och
+// hoppar över parametrar på låsta rader. Går via set_parameters på message thread.
+void LiveCodePage::applyParamWrites (const juce::var& writes)
+{
+    auto* list = writes.getArray();
+    if (list == nullptr)
+        return;
+    const auto locks = processor.liveCodeLocks.load();
+    auto values = juce::var (new juce::DynamicObject());
+    for (auto& w : *list)
+    {
+        const auto id = w["id"].toString();
+        const auto text = w["value"].toString();
+        if (const auto layer = ToolLayer::liveCodeLayerOf (id); layer >= 0 && (locks & ToolLayer::liveCodeBit (layer)) != 0)
+            continue;
+        if (const auto it = lastParamWrites.find (id); it != lastParamWrites.end() && it->second == text)
+            continue;
+        lastParamWrites[id] = text;
+        values.getDynamicObject()->setProperty (juce::Identifier (id), w["value"]);
+    }
+    if (values.getDynamicObject()->getProperties().size() == 0)
+        return;
+    auto args = juce::var (new juce::DynamicObject());
+    args.getDynamicObject()->setProperty ("values", values);
+    const auto result = tools.call ("set_parameters", args);
+    if (! (bool) result["ok"])
+        showError (result["error"].toString());
+    else if (auto* problems = result["problems"].getArray(); problems != nullptr && ! problems->isEmpty())
+        showError ((*problems)[0].toString());
 }
 
 // Skriver raderna via live_code_apply. Handritade toner som skulle skrivas över ger en fråga (en i taget) i stället för att tyst försvinna.
