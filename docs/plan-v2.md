@@ -303,8 +303,14 @@ Innan nya presets byggs: gå igenom med Tobias hur en preset byggs så att allt 
 - **Chatt:** egen AI CHAT ritar kodblock med Play/Stop/Create. **Claude Desktop:** MCP-verktyg `live_code_run/stop/create` + en
   **MCP App** (`ui://kickbase/live-code`, officiellt MCP-tillägg sedan jan 2026, fungerar med lokala stdio-servrar som vår) som visar
   kodblocket med Play/Stop/Create och reglage direkt i chatten och anropar verktygen. Utan MCP Apps-stöd: vanligt kodblock + verktyget.
-- **Först ett spike-test:** kör Strudels mönstermotor i QuickJS utan webbläsare (beroenden, t.ex. `@kabelsalat/web`), mät tid per fråga.
-  Faller det: egen mini-notation i C++ (samma syntax, delmängd).
+- **Spike-test klart 20 okt (grenen spike-lc, 37bd47c, docs/work/lc-spike-report.md): FUNGERAR.**
+  - Strudel core+mini 1.2.6, buntad med esbuild, är 315 kB. Bara console, performance.now och setTimeout behöver stubbas.
+  - Laddning tar 81–210 ms och kostar +5 MB. Eval tar 1–4 ms.
+  - En cykel tar 1,5–5 ms i median och upp till 37 ms som mest. Fråga därför minst 2 cykler framåt.
+  - `maximumExecutionTime` och `stop()` avbryter oändliga loopar, och motorn går att använda efteråt.
+  - `slider` fungerar via `registerNativeObject`.
+  - Reservplanen med egen mini-notation i C++ behövs inte.
+  - Kvar till LC-fasens start: bunta Strudels transpiler (acorn; behövs för `$:`, `.p()` och slider med källposition) och testa i pluginets riktiga ljudtråd.
 
 ### AI, C, BZ, IO, VS
 Enligt Tobias specar (layout_optimization §Effects, §RESET, §MASTER; pattern_and_ai §6, §10, §13; BEZIER.md; CODEMUSIC.md). Spec till Opus
