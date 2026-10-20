@@ -171,17 +171,33 @@ servera den som MCP-resurs, och gör en Claude Code-skill i `.claude/skills/kick
 Ur lektionen: markörer för 1/16 och 1/8 i kickens AMP/PITCH-grafer räknade ur BPM; markörens tid, frekvens och tonnamn uppe till höger;
 tonnamn vid pitch-punkterna; zoom i tid (LENGTH) och frekvens (PITCH). Tre klickar (pitch, längd, start, LP/HP) och sub-kontroll som i
 image-27: utred mot vad KickEngine redan har, förslag till Opus innan bygge.
+Ur KickAndBaseSchool.md (lektion 1, tempo/pitch/amp), också i K:
+- **Längd mot tempo:** markera i AMP-grafen var kickens svans bör vara slut (2:a 16-delen vid aktuell BPM, t.ex. ~206 ms vid 145 BPM), och
+  en diskret varning när svansen går längre.
+- **Svansens slutfrekvens:** visa den (Hz + ton) och markera 35–43 Hz-zonen i PITCH-grafen.
+- **"Amp-envelopen som omvänd EQ":** klicka en frekvens i PITCH-grafen (t.ex. 200 Hz) → samma tidpunkt markeras i AMP-grafen
+  (tid ↔ frekvens-koppling), så att man ser hur starkt just det frekvensområdet spelas.
+- Kickens kompression och "render" (image-27): utred tillsammans med de tre klickarna.
 
 ### AN: Analyzer-sida (`content-an`)
 Ny toppflik ANALYZER (helsida, flera underflikar). Nedre ANALYZER-fliken och rapportskrivaren flyttar hit. Innehåll: kick + bas i lager
 och summa (PsyScope-likt) med FREEZE, faskorrelation per 16-del, spektrum; kollisionsfliken med allvarlighetsgrad (grön/gul/röd, hänsyn
 till nivåskillnad > 12 dB, oktav/kvint, ducking) och textlogg ("INSTR 1: sub-bass clash with KICK"), gradienten avstängbar i OPTIMIZATIONS.
 Rapportskrivaren uppdateras med allt nytt (P, filter, ackord ...). Inspiration: bilderna `psylab*`, PsyScope (fx23.net/free-vsts).
+Ur lektionerna (KickAndBaseSchool.md), också i AN (som mätningar i vyn, i rapporten och som AI-verktyg):
+- Var i takten energin är störst: "kicken ska vinna där kick och bas möts" (basens topp får inte vara högre än kickens tap); varna.
+- Kickens svans som fångar basen (post-ringing in i nästa kick) och bas som tar energi ur kicken.
+- Fasvarning: slumpfas (RAND) på ett basinstrument ger olika start varje ton: varna (lektion 2: "big no-go").
+- Spektrumkontroll av t.ex. för mycket 200 Hz i kick+bas.
 
 ### PH: fasverktyg (`content-ph`)
 Fasrotation av instrumentets grundton (som Voxengo PHA-979, efter filter och effekter, länkad L/R), styrbar för AI. Övertons-/fasredigerare
-för wavetables (högerklick på tabellen, som Serum): amplitud och fas per överton. LFOTool-behovet (klippa basens post-ringing före nästa
-kick) täcks av SIDECHAIN:s ritbara kurva: kontrollera och dokumentera, bygg nytt bara om något saknas.
+för wavetables (högerklick på tabellen, som Serum): amplitud och fas per överton (t.ex. sänka grundtonen).
+- **AI-verktyg:** hitta kickens transient och var kick och bas överlappar, läs och sätt grundtonens fas, föreslå lägre velocity på toner
+  där summan blir för stark, och (avancerat) ta bort basens grundton just där den överlappar kicken.
+- **LFOTool-verktyg** (Tobias vill ha ett): först en kontroll av vad SIDECHAIN:s ritbara kurva redan klarar (volymform per instrument,
+  synkad, klippa basens post-ringing före nästa kick). Saknas något (t.ex. flera kurvor, en kurva per instrument oberoende av kicken,
+  andra mål än volym): bygg det som ett eget "SHAPER"-läge, spec till Opus först.
 
 ### F2: sampler (`content-f`)
 `sample_slicer_independent_layer_spec.md` + `MINDMAP 2.png`. SAMPLE-lagret: LAYER MODE BLEND (= i dag) / INDEPENDENT (egen kromatisk
