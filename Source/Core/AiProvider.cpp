@@ -155,9 +155,54 @@ namespace GeminiApi
         return "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent";
     }
 
+    namespace
+    {
+        juce::CriticalSection fetchedLock;
+        juce::StringArray fetchedModels; // listan från models.list (tom = inte hämtad ännu)
+    }
+
+    juce::StringArray fallbackModels()
+    {
+        return { "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.8-flash", "gemini-3.1-pro-preview" };
+    }
+
     juce::StringArray models()
     {
-        return { "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro", "gemini-3-flash-preview" };
+        const juce::ScopedLock sl (fetchedLock);
+        return fetchedModels.isEmpty() ? fallbackModels() : fetchedModels;
+    }
+
+    void setFetchedModels (const juce::StringArray& list)
+    {
+        const juce::ScopedLock sl (fetchedLock);
+        fetchedModels = list;
+    }
+
+    // models.list: models[].name ("models/gemini-..."), supportedGenerationMethods[]. Bara textmodeller som kan generateContent.
+    juce::StringArray parseModelList (const var& response)
+    {
+        juce::StringArray result;
+        if (auto* list = response["models"].getArray())
+            for (const auto& model : *list)
+            {
+                auto name = model["name"].toString();
+                if (name.startsWith ("models/"))
+                    name = name.substring (7);
+                if (! name.startsWith ("gemini-"))
+                    continue;
+                bool canGenerate = false;
+                if (auto* methods = model["supportedGenerationMethods"].getArray())
+                    for (const auto& method : *methods)
+                        canGenerate = canGenerate || method.toString() == "generateContent";
+                if (! canGenerate)
+                    continue;
+                bool special = false;
+                for (const char* word : { "tts", "image", "live", "audio", "embedding", "computer-use", "robotics", "native" })
+                    special = special || name.contains (word);
+                if (! special)
+                    result.addIfNotAlreadyThere (name);
+            }
+        return result;
     }
 
     var sanitizeSchema (const var& schema)
@@ -358,6 +403,11 @@ namespace GeminiApi
         return result;
     }
 
+    juce::String withKey (const juce::String& url, const juce::String& key)
+    {
+        return url + (url.contains ("?") ? "&key=" : "?key=") + juce::URL::addEscapeChars (key.trim(), true);
+    }
+
     juce::String errorMessage (int httpStatus, const juce::String& body)
     {
         const auto parsed = juce::JSON::parse (body);
@@ -367,15 +417,88 @@ namespace GeminiApi
         if (httpStatus == 401 || (httpStatus == 400 && (message.containsIgnoreCase ("API key") || body.contains ("API_KEY_INVALID"))))
             return "The Gemini API key was not accepted. Check that you copied all of it (it starts with AIza), or create a new one with the KEY button.";
         if (httpStatus == 403)
-            return "Google refused this key (403). It may be restricted, deleted, or not allowed in your country: " + detail;
+            return "Google refused the request (403). The model may not be available for your key (pick another in the MODEL box), "
+                   "or the key is restricted, deleted, or not allowed in your country: " + detail;
         if (httpStatus == 404)
-            return "Google does not know this model (404). Pick another model in the list.";
+            return "This model does not exist for your key (404). Pick another model in the MODEL box (you can also type a name).";
         if (httpStatus == 429)
             return "The free quota is used up for now (429). The free tier has limits per minute and per day: wait a while and try again, "
                    "or check your limits in Google AI Studio. " + detail;
         if (httpStatus >= 500)
             return "Google's service is busy or down (" + juce::String (httpStatus) + "). Try again in a moment.";
         return "Gemini answered with an error" + (httpStatus > 0 ? " (" + juce::String (httpStatus) + ")" : juce::String()) + ": " + detail;
+    }
+
+    juce::StringArray fetchModels (const juce::String& key)
+    {
+        // Googles referens visar nyckeln som ?key= (headern är obekräftad för just models.list); pageSize 1000 = max, och nextPageToken följs.
+        const juce::String base = Settings::get ("geminiModelsEndpoint", "https://generativelanguage.googleapis.com/v1beta/models"); // (bara för tester)
+        juce::StringArray list;
+        juce::String pageToken;
+        for (int page = 0; page < 10; ++page)
+        {
+            auto url = juce::URL (base).withParameter ("pageSize", "1000").withParameter ("key", key.trim());
+            if (pageToken.isNotEmpty())
+                url = url.withParameter ("pageToken", pageToken);
+            juce::WebInputStream stream (url, false);
+            stream.withConnectionTimeout (15000).withNumRedirectsToFollow (2);
+            if (! stream.connect (nullptr) || stream.isError() || stream.getStatusCode() >= 400)
+                break;
+            const auto response = juce::JSON::parse (stream.readEntireStreamAsString());
+            list.addArray (parseModelList (response));
+            pageToken = response["nextPageToken"].toString();
+            if (pageToken.isEmpty())
+                break;
+        }
+        list.removeDuplicates (false);
+        if (! list.isEmpty())
+            setFetchedModels (list);
+        return list;
+    }
+
+    // Kan modellen function calling? Ett minimalt anrop med en dummy-funktionsdeklaration och ett uppdrag att anropa den.
+    // Resultat: 1 = ja, 0 = nej (modellen svarar men anropar inte, eller avvisar verktyg), -1 = vet ej (nät/kvot: prova senare).
+    int probeTools (const juce::String& key, const juce::String& model)
+    {
+        auto part = object();
+        put (part, "text", "Call the function ping with value 1.");
+        auto entry = object();
+        put (entry, "role", "user");
+        put (entry, "parts", juce::Array<var> { part });
+        auto property = object();
+        put (property, "type", "integer");
+        auto properties = object();
+        put (properties, "value", property);
+        auto schema = object();
+        put (schema, "type", "object");
+        put (schema, "properties", properties);
+        auto declaration = object();
+        put (declaration, "name", "ping");
+        put (declaration, "description", "Test function.");
+        put (declaration, "parameters", schema);
+        auto tool = object();
+        put (tool, "functionDeclarations", juce::Array<var> { declaration });
+        auto config = object();
+        put (config, "maxOutputTokens", 256);
+        auto body = object();
+        put (body, "contents", juce::Array<var> { entry });
+        put (body, "tools", juce::Array<var> { tool });
+        put (body, "generationConfig", config);
+
+        juce::URL url (withKey (Settings::get ("geminiEndpoint", endpoint (model)), key)); // (geminiEndpoint: bara för tester)
+        url = url.withPOSTData (juce::JSON::toString (body, true));
+        juce::WebInputStream stream (url, true);
+        stream.withExtraHeaders ("content-type: application/json\r\n")
+              .withConnectionTimeout (20000).withNumRedirectsToFollow (2).withCustomRequestCommand ("POST");
+        if (! stream.connect (nullptr) || stream.isError())
+            return -1;
+        const auto status = stream.getStatusCode();
+        const auto text = stream.readEntireStreamAsString();
+        if (status == 429 || status >= 500 || status == 401)
+            return -1;
+        if (status >= 400)
+            return 0;
+        return text.contains ("\"functionCall\"") ? 1 : 0;
     }
 
     KeyTest testKey (const juce::String& key)
@@ -398,10 +521,10 @@ namespace GeminiApi
         put (body, "contents", juce::Array<var> { entry });
         put (body, "generationConfig", config);
 
-        juce::URL url (Settings::get ("geminiEndpoint", endpoint (Settings::geminiModel()))); // (geminiEndpoint: bara för tester)
+        juce::URL url (withKey (Settings::get ("geminiEndpoint", endpoint (Settings::geminiModel())), key)); // (geminiEndpoint: bara för tester)
         url = url.withPOSTData (juce::JSON::toString (body, true));
         juce::WebInputStream stream (url, true);
-        stream.withExtraHeaders ("content-type: application/json\r\nx-goog-api-key: " + key.trim() + "\r\n")
+        stream.withExtraHeaders ("content-type: application/json\r\n")
               .withConnectionTimeout (20000).withNumRedirectsToFollow (2).withCustomRequestCommand ("POST");
 
         const auto connected = stream.connect (nullptr);

@@ -42,6 +42,8 @@ private:
     bool gemini() const { return Settings::chatProvider() == "gemini"; }
     void setProvider (bool useGemini);
     void populateModels();
+    void checkModel (bool fetchList); // Gemini: hämtar modelllistan (valfritt) och provar att vald modell kan verktyg (bakgrundstråd)
+    void updateModelNote();
     void updateSetupTexts();
     void showTestResult (const juce::String& message, bool ok);
 
@@ -51,6 +53,8 @@ private:
     bool setupOpen = false, lastBusy = false, lastHadKey = false;
 
     bool testing = false; // Gemini-nyckeln provas just nu (bakgrundstråd)
+    bool checking = false; // modellen provas just nu (bakgrundstråd)
+    juce::String modelNote; // visas i statusraden: vald Gemini-modell saknar verktyg / kan inte nås
 
     juce::Label title, status, setupTitle, setupText, testResult;
     juce::ComboBox modelBox;

@@ -1278,7 +1278,28 @@ namespace
             check (! settingsFile.loadFileAsString().contains ("FakeKey"), "Gemini-nyckeln ligger inte i klartext");
             Settings::setChatProvider ("gemini");
             check (Settings::chatProvider() == "gemini", "leverantören sparas");
-            check (Settings::geminiModel() == "gemini-2.5-flash", "standardmodellen för Gemini");
+            check (Settings::geminiModel() == "gemini-3.6-flash", "standardmodellen för Gemini");
+            Settings::setGeminiModel ("my-model");
+            check (Settings::geminiModel() == "my-model", "egen Gemini-modell kan skrivas in");
+            Settings::setGeminiModel ("gemini-3.6-flash");
+            check (Settings::geminiToolsCheck ("m1", "keyA") == -1, "verktygsprov: inte provad än");
+            Settings::setGeminiToolsCheck ("m1", "keyA", false);
+            check (Settings::geminiToolsCheck ("m1", "keyA") == 0 && Settings::geminiToolsCheck ("m1", "keyB") == -1, "verktygsprov: sparas per nyckel");
+            check (! settingsFile.loadFileAsString().contains ("keyA"), "verktygsprov: nyckeln sparas som hash");
+            {
+                const auto listed = GeminiApi::parseModelList (juce::JSON::parse (
+                    R"({"models":[{"name":"models/gemini-3.6-flash","supportedGenerationMethods":["generateContent","countTokens"]},
+                        {"name":"models/gemini-embedding-001","supportedGenerationMethods":["embedContent"]},
+                        {"name":"models/gemini-3-flash-tts","supportedGenerationMethods":["generateContent"]},
+                        {"name":"models/imagen-4","supportedGenerationMethods":["predict"]},
+                        {"name":"models/gemini-3.5-flash-lite","supportedGenerationMethods":["generateContent"]}]})"));
+                check (listed.size() == 2 && listed[0] == "gemini-3.6-flash" && listed[1] == "gemini-3.5-flash-lite", "models.list: bara textmodeller med generateContent, utan models/-prefix");
+                check (GeminiApi::models() == GeminiApi::fallbackModels(), "modellista: reservlistan före hämtning");
+                GeminiApi::setFetchedModels (listed);
+                check (GeminiApi::models() == listed, "modellista: hämtad lista används");
+                GeminiApi::setFetchedModels ({});
+            }
+            check (GeminiApi::errorMessage (404, {}).contains ("MODEL"), "Gemini: 404 pekar på modellvalet");
 
             const auto tools = ToolLayer::tools();
             juce::String error;

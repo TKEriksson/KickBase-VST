@@ -195,10 +195,10 @@ var AiChat::post (const juce::String& key, const var& body, int& httpStatus, juc
 {
     httpStatus = 0;
     const auto gemini = Settings::chatProvider() == "gemini";
-    juce::URL url (gemini ? Settings::get ("geminiEndpoint", GeminiApi::endpoint (Settings::geminiModel())) // (geminiEndpoint/chatEndpoint: bara för tester)
+    juce::URL url (gemini ? GeminiApi::withKey (Settings::get ("geminiEndpoint", GeminiApi::endpoint (Settings::geminiModel())), key) // (geminiEndpoint/chatEndpoint: bara för tester)
                           : Settings::get ("chatEndpoint", "https://api.anthropic.com/v1/messages"));
     url = url.withPOSTData (juce::JSON::toString (body, true));
-    const juce::String headers = gemini ? "content-type: application/json\r\nx-goog-api-key: " + key + "\r\n"
+    const juce::String headers = gemini ? "content-type: application/json\r\n"
                                         : "content-type: application/json\r\nx-api-key: " + key + "\r\nanthropic-version: 2023-06-01\r\n";
 
     // Samma som URL::createInputStream (POST-data i kroppen), men med strömmen åtkomlig så att den kan avbrytas (cancelRequest).

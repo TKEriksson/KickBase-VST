@@ -10,7 +10,19 @@
 namespace GeminiApi
 {
     juce::String endpoint (const juce::String& model);   // https://generativelanguage.googleapis.com/v1beta/models/<model>:generateContent
-    juce::StringArray models();
+    juce::String withKey (const juce::String& url, const juce::String& key); // lägger nyckeln som ?key= (bekräftat på ai.google.dev/api); aldrig i loggar/export
+    juce::StringArray models();         // listan från models.list när den är hämtad (fetchModels), annars fallbackModels()
+    juce::StringArray fallbackModels();
+    void setFetchedModels (const juce::StringArray& list);
+
+    // models.list: bara textmodeller (gemini-*) som stöder generateContent. Ren funktion (provas mot sparade svar).
+    juce::StringArray parseModelList (const juce::var& response);
+
+    // Provar om modellen kan function calling (blockerar). 1 ja, 0 nej, -1 vet ej (nät, kvot 429, ogiltig nyckel).
+    int probeTools (const juce::String& key, const juce::String& model);
+
+    // Hämtar listan med nyckeln (blockerar: bakgrundstråd) och sparar den för models(). Tom vid fel; reservlistan gäller då.
+    juce::StringArray fetchModels (const juce::String& key);
 
     // Verktygsschemat som Gemini accepterar (en delmängd av OpenAPI): tar bort additionalProperties/default/pattern, typlistor blir
     // anyOf, och objekt utan fasta fält (fria nyckel/värde-kartor) blir en sträng med JSON (se restoreArguments).

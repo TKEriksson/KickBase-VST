@@ -140,15 +140,23 @@ AiChatPage::AiChatPage (PluginBase& p) : processor (p), chat (p.getAiChat())
     status.setJustificationType (juce::Justification::centredRight);
     addAndMakeVisible (status);
 
+    modelBox.setEditableText (true); // egen modell kan skrivas in (listan hämtas från Google och kan sakna nya namn)
     modelBox.onChange = [this]
     {
+        const auto model = modelBox.getText().trim();
+        if (model.isEmpty())
+            return;
         if (gemini())
-            Settings::setGeminiModel (modelBox.getText());
+        {
+            Settings::setGeminiModel (model);
+            checkModel (false);
+        }
         else
-            Settings::setChatModel (modelBox.getText());
+            Settings::setChatModel (model);
     };
     addAndMakeVisible (modelBox);
     populateModels();
+    checkModel (true);
 
     keyButton.onClick = [this] { showSetup (! setupOpen); };
     addAndMakeVisible (keyButton);
@@ -259,10 +267,15 @@ void AiChatPage::populateModels()
     const auto models = AiChat::models();
     for (const auto& model : models)
         modelBox.addItem (model, modelBox.getNumItems() + 1);
-    modelBox.setSelectedId (std::max (0, models.indexOf (gemini() ? Settings::geminiModel() : Settings::chatModel())) + 1, juce::dontSendNotification);
+    const auto current = gemini() ? Settings::geminiModel() : Settings::chatModel();
+    if (models.contains (current))
+        modelBox.setSelectedId (models.indexOf (current) + 1, juce::dontSendNotification);
+    else
+        modelBox.setText (current, juce::dontSendNotification);
 
     if (gemini())
     {
+        updateModelNote();
         modelBox.setTooltip ("MODEL - Which Gemini model answers. Flash is the everyday choice and works on the free tier, Flash-Lite is the fastest, Pro the most capable "
                              "(its free limits are smaller). The limits for your key are shown in Google AI Studio.");
         keyButton.setTooltip ("KEY - Your own Gemini API key (free from Google AI Studio). It is stored encrypted on this computer and only sent to generativelanguage.googleapis.com.");
@@ -302,6 +315,44 @@ void AiChatPage::updateSetupTexts()
                            juce::dontSendNotification);
 }
 
+void AiChatPage::updateModelNote()
+{
+    modelNote = {};
+    if (gemini() && ! needsKey())
+        if (Settings::geminiToolsCheck (Settings::geminiModel(), Settings::geminiApiKey()) == 0)
+            modelNote = "WARNING: " + Settings::geminiModel() + " did not use tools in a test; pick another model.";
+}
+
+void AiChatPage::checkModel (bool fetchList)
+{
+    updateModelNote();
+    if (! gemini() || needsKey() || checking)
+        return;
+    const auto key = Settings::geminiApiKey();
+    const auto model = Settings::geminiModel();
+    const auto needsProbe = Settings::geminiToolsCheck (model, key) < 0;
+    if (! fetchList && ! needsProbe)
+        return;
+
+    checking = true;
+    juce::Thread::launch ([safe = juce::Component::SafePointer<AiChatPage> (this), key, model, fetchList, needsProbe]
+    {
+        const auto list = fetchList ? GeminiApi::fetchModels (key) : juce::StringArray();
+        const auto probe = needsProbe ? GeminiApi::probeTools (key, model) : -1;
+        juce::MessageManager::callAsync ([safe, key, model, list, probe]
+        {
+            if (safe == nullptr)
+                return;
+            safe->checking = false;
+            if (probe >= 0)
+                Settings::setGeminiToolsCheck (model, key, probe == 1);
+            if (! list.isEmpty() && safe->gemini())
+                safe->populateModels();
+            safe->updateModelNote();
+        });
+    });
+}
+
 void AiChatPage::setProvider (bool useGemini)
 {
     if (chat.isBusy() || useGemini == gemini())
@@ -309,6 +360,7 @@ void AiChatPage::setProvider (bool useGemini)
     Settings::setChatProvider (useGemini ? "gemini" : "anthropic");
     chat.newChat(); // samtalet hör till leverantören: det börjar om
     populateModels();
+    checkModel (true);
     lastHadKey = ! needsKey();
     showSetup (true);
 }
@@ -368,6 +420,7 @@ void AiChatPage::saveKey()
             {
                 Settings::setGeminiApiKey (key);
                 safe->showSetup (false);
+                safe->checkModel (true); // nytt nyckeltest: modelllistan hämtas och modellen provas om (cachen gäller per nyckel)
             }
             else
                 safe->showTestResult (result.message, false);
@@ -418,7 +471,8 @@ void AiChatPage::refresh()
 
     const auto statusText = chat.getStatus();
     const auto usage = chat.getUsage();
-    status.setText (statusText.isNotEmpty() ? statusText + (usage.isNotEmpty() ? "   " + usage : juce::String()) : usage, juce::dontSendNotification);
+    status.setText (modelNote.isNotEmpty() ? modelNote
+                    : statusText.isNotEmpty() ? statusText + (usage.isNotEmpty() ? "   " + usage : juce::String()) : usage, juce::dontSendNotification);
 }
 
 void AiChatPage::paint (juce::Graphics& g)

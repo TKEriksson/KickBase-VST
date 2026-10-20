@@ -182,12 +182,24 @@ namespace Settings
     juce::String geminiModel()
     {
         const auto model = get ("geminiModel").trim();
-        return model.isEmpty() ? juce::String ("gemini-2.5-flash") : model;
+        return model.isEmpty() ? juce::String ("gemini-3.6-flash") : model;
     }
 
     void setGeminiModel (const juce::String& model)
     {
-        set ("geminiModel", model == "gemini-2.5-flash" ? juce::String() : model);
+        set ("geminiModel", model.trim() == "gemini-3.6-flash" ? juce::String() : model.trim());
+    }
+
+    int geminiToolsCheck (const juce::String& model, const juce::String& key)
+    {
+        const auto value = get ("geminiTools:" + model.trim());
+        const auto hash = juce::String::toHexString (key.trim().hashCode64());
+        return value.startsWith (hash + ":") ? value.getTrailingIntValue() : -1;
+    }
+
+    void setGeminiToolsCheck (const juce::String& model, const juce::String& key, bool works)
+    {
+        set ("geminiTools:" + model.trim(), juce::String::toHexString (key.trim().hashCode64()) + ":" + (works ? "1" : "0"));
     }
 
     namespace

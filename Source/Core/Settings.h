@@ -42,8 +42,11 @@ namespace Settings
     void setChatProvider (const juce::String& provider);
     juce::String geminiApiKey();
     void setGeminiApiKey (const juce::String& key); // tom = ta bort
-    juce::String geminiModel();                     // standard: gemini-2.5-flash
+    juce::String geminiModel();                     // standard: gemini-3.6-flash
     void setGeminiModel (const juce::String& model);
+    // Provresultat "kan modellen function calling" per modell och nyckel (nyckelns hash, inte nyckeln): 1 ja, 0 nej, -1 inte provad.
+    int geminiToolsCheck (const juce::String& model, const juce::String& key);
+    void setGeminiToolsCheck (const juce::String& model, const juce::String& key, bool works);
 
     // Fönstrets skala (1 = fullstor): 0 = ingen vald, då används standardstorleken.
     float uiScale();
