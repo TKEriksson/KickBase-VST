@@ -48,8 +48,8 @@ namespace Modulation
 
     juce::String sourceName (int source)
     {
-        if (isLfo (source))
-            return "LFO " + juce::String (source + 1);
+        if (isLfoSource (source))
+            return "LFO " + juce::String (lfoIndexOfSource (source) + 1);
         if (isMacro (source))
             return "MACRO " + juce::String (source - firstMacro + 1);
         if (isInstrumentSource (source))
@@ -67,12 +67,12 @@ namespace Modulation
         return id.startsWith ("kick") || id.startsWith ("bass") || id.startsWith ("fx") || id.startsWith ("gate");
     }
 
-    void addParameters (juce::AudioProcessorValueTreeState::ParameterLayout& layout)
+    // LFO:ns grundparametrar (On, Shape, Rate, Mode, Hz) och SNAP-paret. LFO 1-3 har SNAP i ett eget block (se addParameters).
+    static void addLfoBaseParameters (juce::AudioProcessorValueTreeState::ParameterLayout& layout, int i)
     {
         using namespace juce;
-        for (int i = 0; i < numLfos; ++i)
         {
-            const auto title = sourceName (i);
+            const auto title = sourceName (lfoSource (i));
             layout.add (std::make_unique<AudioParameterBool> (ParameterID { paramID (i, "On"), 1 }, title + " On", true));
             layout.add (std::make_unique<AudioParameterChoice> (ParameterID { paramID (i, "Shape"), 1 }, title + " Shape", shapeNames(), 0));
             layout.add (std::make_unique<AudioParameterChoice> (ParameterID { paramID (i, "Rate"), 1 }, title + " Rate", rateNames(), 8));
@@ -82,22 +82,44 @@ namespace Modulation
             layout.add (std::make_unique<AudioParameterFloat> (ParameterID { paramID (i, "Hz"), 1 }, title + " Free Rate", hzRange, 1.0f,
                                                                AudioParameterFloatAttributes().withStringFromValueFunction ([] (float v, int) { return String (v, 2) + " Hz"; })));
         }
+    }
 
-        // SNAP i Hz-läget (R): nya parametrar sist bland LFO-parametrarna (före makrona är ordningen som förut för allt före dem). Standard av.
-        for (int i = 0; i < numLfos; ++i)
+    static void addLfoSnapParameters (juce::AudioProcessorValueTreeState::ParameterLayout& layout, int i)
+    {
+        using namespace juce;
         {
-            const auto title = sourceName (i);
+            const auto title = sourceName (lfoSource (i));
             layout.add (std::make_unique<AudioParameterBool> (ParameterID { paramID (i, "Snap"), 1 }, title + " Snap", false));
             layout.add (std::make_unique<AudioParameterFloat> (ParameterID { paramID (i, "SnapRange"), 1 }, title + " Snap Range",
                                                                NormalisableRange<float> (1.0f, 25.0f, 0.1f), 5.0f,
                                                                AudioParameterFloatAttributes().withStringFromValueFunction ([] (float v, int) { return juce::String::fromUTF8 ("\xC2\xB1") + String (v, 1) + " %"; })));
         }
+    }
+
+    void addParameters (juce::AudioProcessorValueTreeState::ParameterLayout& layout)
+    {
+        using namespace juce;
+        for (int i = 0; i < numLfos; ++i)
+            addLfoBaseParameters (layout, i);
+
+        // SNAP i Hz-läget (R): nya parametrar sist bland LFO-parametrarna (före makrona är ordningen som förut för allt före dem). Standard av.
+        for (int i = 0; i < numLfos; ++i)
+            addLfoSnapParameters (layout, i);
 
         // Makron: fyra rattar att vrida för hand, som i Serum, och att dra till andra rattar eller sätta i matrisen.
         for (int m = 0; m < numMacros; ++m)
             layout.add (std::make_unique<AudioParameterFloat> (ParameterID { macroID (m), 1 }, "Macro " + String (m + 1),
                                                                NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.0f,
                                                                AudioParameterFloatAttributes().withStringFromValueFunction ([] (float v, int) { return String (roundToInt (v * 100.0f)) + " %"; })));
+    }
+
+    void addExtraLfoParameters (juce::AudioProcessorValueTreeState::ParameterLayout& layout)
+    {
+        for (int i = numLfos; i < maxLfos; ++i)
+        {
+            addLfoBaseParameters (layout, i);
+            addLfoSnapParameters (layout, i);
+        }
     }
 
     float shapeValue (int shape, double phase, juce::int64 cycle)
@@ -211,7 +233,7 @@ void ModRoutes::fromValueTree (const juce::ValueTree& tree, const juce::Array<ju
 Modulator::Modulator (juce::AudioProcessorValueTreeState& apvts, const ModRoutes& routesIn) : routes (routesIn)
 {
     using namespace Modulation;
-    for (int i = 0; i < numLfos; ++i)
+    for (int i = 0; i < maxLfos; ++i) // FX har bara LFO 1-3: där blir pekarna för 4-10 nullptr och LFO:n räknas aldrig (se update)
     {
         auto& lfo = lfos[(size_t) i];
         lfo.on = apvts.getRawParameterValue (paramID (i, "On"));
@@ -260,9 +282,26 @@ void Modulator::update (double ppq, double bpm)
     sourceOn.fill (true);
     auto& lfoValues = sourceValues;
     auto& lfoOn = sourceOn;
-    for (int i = 0; i < numLfos; ++i)
+    const auto mask = activeMask.load (std::memory_order_relaxed); // en gång per block (LESSONS R7)
+    for (int i = 0; i < maxLfos; ++i)
     {
         const auto& lfo = lfos[(size_t) i];
+        const auto source = (size_t) lfoSource (i);
+        if ((mask & (1u << i)) == 0 || lfo.on == nullptr)
+        {
+            // Inaktiv (borttagen) LFO: ingen beräkning alls. Fältens nollställning här gör att fasen startar rent när den läggs till igen
+            // (bara ljudtråden skriver dem).
+            lfoOn[source] = false;
+            lfoValues[source] = 0.0f;
+            phase[(size_t) i] = 0.0f;
+            value[(size_t) i] = 0.0f;
+            snapNote[(size_t) i] = -1;
+            snapLocked[(size_t) i] = false;
+            phaseOffset[(size_t) i] = 0.0;
+            lastCyclesPerQuarter[(size_t) i] = 0.0;
+            lastPpq[(size_t) i] = 0.0;
+            continue;
+        }
         // Tempo-synkad (en period i fjärdedelar) eller fri hastighet i Hz (sekunder räknade ur positionen och tempot).
         // Perioder per fjärdedel: tempo-synkat (rate) eller fri hastighet (Hz). Byter hastigheten (rattar, automation, Sync <-> Hz) ska fasen
         // fortsätta där den är i stället för att hoppa till ppq * nya hastigheten: `phaseOffset` bär skillnaden så att positionen är kontinuerlig
@@ -320,12 +359,12 @@ void Modulator::update (double ppq, double bpm)
         const auto cycle = (juce::int64) std::floor (position);
         const auto lfoPhase = position - std::floor (position);
         const auto shapeIndex = (int) lfo.shape->load();
-        lfoValues[(size_t) i] = shapeIndex == 6 ? (lfoCurves != nullptr ? 1.0f - 2.0f * (*lfoCurves)[(size_t) i].lookup (lfoPhase) : 0.0f)
+        lfoValues[source] = shapeIndex == 6 ? (lfoCurves != nullptr ? 1.0f - 2.0f * (*lfoCurves)[(size_t) i].lookup (lfoPhase) : 0.0f)
                                                 : shapeValue (shapeIndex, lfoPhase, cycle);
-        lfoOn[(size_t) i] = lfo.on->load() >= 0.5f;
+        lfoOn[source] = lfo.on->load() >= 0.5f;
 
         phase[(size_t) i] = (float) lfoPhase;
-        value[(size_t) i] = lfoValues[(size_t) i];
+        value[(size_t) i] = lfoValues[source];
     }
     for (int m = 0; m < numMacros; ++m)
         sourceValues[(size_t) (firstMacro + m)] = macros[(size_t) m] != nullptr ? macros[(size_t) m]->load() : 0.0f;

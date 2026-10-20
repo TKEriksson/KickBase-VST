@@ -243,8 +243,12 @@ public:
             points.push_back ({ (float) i / 8.0f, 0.5f - 0.5f * std::sin (juce::MathConstants<float>::twoPi * (float) i / 8.0f), 0.0f });
         return points;
     }
-    std::array<NodeEnvelope, Modulation::numLfos> lfoCurves { NodeEnvelope (1.0f, 1.0f, sineCurve()), NodeEnvelope (1.0f, 1.0f, sineCurve()),
-                                                              NodeEnvelope (1.0f, 1.0f, sineCurve()) };
+    std::array<NodeEnvelope, Modulation::maxLfos> lfoCurves { NodeEnvelope (1.0f, 1.0f, sineCurve()), NodeEnvelope (1.0f, 1.0f, sineCurve()),
+                                                              NodeEnvelope (1.0f, 1.0f, sineCurve()), NodeEnvelope (1.0f, 1.0f, sineCurve()),
+                                                              NodeEnvelope (1.0f, 1.0f, sineCurve()), NodeEnvelope (1.0f, 1.0f, sineCurve()),
+                                                              NodeEnvelope (1.0f, 1.0f, sineCurve()), NodeEnvelope (1.0f, 1.0f, sineCurve()),
+                                                              NodeEnvelope (1.0f, 1.0f, sineCurve()), NodeEnvelope (1.0f, 1.0f, sineCurve()) };
+    static_assert (Modulation::maxLfos == 10, "lfoCurves ovan har en sinus per LFO");
 
     // Kickens inställningar som de är just nu, utan LFO (för gränssnittets bilder).
     KickParams kickForDisplay (int keyPitchClass) const;

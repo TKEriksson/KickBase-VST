@@ -956,13 +956,15 @@ namespace
     // Hur tungt det är: tid per sekund ljud med 3 och med 10 instrument som alla spelar (under 1,0 = snabbare än realtid på en kärna).
     int perfTest()
     {
-        auto timeIt = [] (int count, int filterModel = 0, int filter2Model = -1) // filterModel: 0 Kickbase, 1 TB-303, 2 Ladder, 3 Formant, 4 Comb (fas D1 och D2); filter2Model: -1 = Filter 2 av (fas D3)
+        // lfoMask: aktiva LFO:er (fas M; 7 = LFO 1-3 som förut, 0x3FF = alla 10).
+        auto timeIt = [] (int count, int filterModel = 0, int filter2Model = -1, uint32_t lfoMask = 7u) // filterModel: 0 Kickbase, 1 TB-303, 2 Ladder, 3 Formant, 4 Comb (fas D1 och D2); filter2Model: -1 = Filter 2 av (fas D3)
         {
             const auto owner = std::make_unique<InstrumentProcessor>();
             auto& processor = *owner;
             processor.setPlayConfigDetails (0, 2, renderRate, blockSize);
             processor.prepareToPlay (renderRate, blockSize);
             processor.setInstrumentCount (count);
+            processor.modulator.activeMask = lfoMask;
             for (int layer = 3; layer < count; ++layer)
                 processor.pattern.applyLayerTemplate (layer, PatternTemplate::rolling);
             if (filterModel > 0) // alla instrument med samma filtermodell
@@ -1020,6 +1022,9 @@ namespace
         std::puts (("10 instrument med Filter 2 (Kickbase + Kickbase): " + juce::String (both, 3) + " s CPU per sekund ljud (" + juce::String (both / many, 2) + " x standard)").toRawUTF8());
         std::puts (("10 instrument med Filter 2 (Ladder + Ladder):     " + juce::String (ladders, 3) + " s CPU per sekund ljud (" + juce::String (ladders / many, 2) + " x standard)").toRawUTF8());
         std::puts (("10 instrument med Filter 2 (Comb + Comb):         " + juce::String (combs, 3) + " s CPU per sekund ljud (" + juce::String (combs / many, 2) + " x standard)").toRawUTF8());
+        // Fas M: alla 10 LFO:er aktiva mot 3 (standard), 10 instrument.
+        const auto tenLfos = timeIt (10, 0, -1, 0x3FFu);
+        std::puts (("10 instrument med 10 LFO:er: " + juce::String (tenLfos, 3) + " s CPU per sekund ljud (" + juce::String (tenLfos / many, 2) + " x 3 LFO:er)").toRawUTF8());
         return 0;
     }
 

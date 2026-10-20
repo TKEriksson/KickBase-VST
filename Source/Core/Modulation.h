@@ -13,7 +13,7 @@
 // Den räknas var 32:a sample (PluginBase::processInControlChunks), oavsett DAW:ens buffertstorlek.
 //
 // Källor (numren används i sparade projekt): 0-2 LFO 1-3, 3-6 makro 1-4 (rattar man vrider själv), sedan fyra per instrument:
-// ENV 2, ENV 3, VELOCITY (senaste tonens) och RANDOM (ett slumptal per ton).
+// ENV 2, ENV 3, VELOCITY (senaste tonens) och RANDOM (ett slumptal per ton). Sist 47-53: LFO 4-10.
 namespace Modulation
 {
     // Kontrolltakten: moduleringen (och det som räknas per fönster, t.ex. auto-filtrets svep) uppdateras på ett rutnät av fönster om
@@ -24,12 +24,18 @@ namespace Modulation
     constexpr int instrumentSources = 4;
     constexpr int firstMacro = numLfos;
     constexpr int firstInstrumentSource = numLfos + numMacros;
-    constexpr int numSources = firstInstrumentSource + maxInstruments * instrumentSources;
+    // LFO 4-10 (maxLfos) ligger sist bland källorna (47-53), så att sparade projekt med makron och instrumentkällor på sina gamla nummer läses som förut.
+    constexpr int maxLfos = 10;
+    constexpr int firstExtraLfoSource = firstInstrumentSource + maxInstruments * instrumentSources;
+    constexpr int numSources = firstExtraLfoSource + (maxLfos - numLfos);
     constexpr int maxRoutes = 64;
 
-    inline bool isLfo (int source)             { return source >= 0 && source < numLfos; }
+    inline int lfoSource (int lfo)             { return lfo < numLfos ? lfo : firstExtraLfoSource + (lfo - numLfos); }
+    inline int lfoIndexOfSource (int source)   { return source >= 0 && source < numLfos ? source : source >= firstExtraLfoSource && source < numSources ? numLfos + (source - firstExtraLfoSource) : -1; }
+    inline bool isLfoSource (int source)       { return lfoIndexOfSource (source) >= 0; }
+    inline bool isLfo (int source)             { return source >= 0 && source < numLfos; } // bara de tre första (källa 0-2); använd isLfoSource för alla
     inline bool isMacro (int source)           { return source >= firstMacro && source < firstInstrumentSource; }
-    inline bool isInstrumentSource (int source) { return source >= firstInstrumentSource && source < numSources; }
+    inline bool isInstrumentSource (int source) { return source >= firstInstrumentSource && source < firstExtraLfoSource; }
     inline int instrumentSource (int layer, int kind) { return firstInstrumentSource + layer * instrumentSources + kind; }
     inline int layerOfSource (int source)      { return (source - firstInstrumentSource) / instrumentSources; }
     inline int kindOfSource (int source)       { return (source - firstInstrumentSource) % instrumentSources; }
@@ -44,13 +50,16 @@ namespace Modulation
     juce::StringArray syncTimeNames();
     double syncTimeInQuarters (int index);
 
-    juce::String paramID (int lfo, const char* suffix); // "lfo1Shape" ...
-    juce::String sourceName (int source);               // "LFO 1", "MACRO 2", "INSTR 3 ENV 2" ...
+    juce::String paramID (int lfo, const char* suffix); // "lfo1Shape" ... (lfo = index 0..9)
+    juce::String sourceName (int source);               // "LFO 1", "MACRO 2", "INSTR 3 ENV 2", "LFO 4" (källa 47) ...
 
     // Kan en LFO dras till den här parametern? (Rattar för ljudet: kick, bas, effekter, ducking.)
     bool isModulatable (const juce::RangedAudioParameter& parameter);
 
     void addParameters (juce::AudioProcessorValueTreeState::ParameterLayout& layout);
+
+    // LFO 4-10 (lfo4On ... lfo10SnapRange). Anropas sist i instrumentets layout (nya parametrar sist); effekterna har bara LFO 1-3.
+    void addExtraLfoParameters (juce::AudioProcessorValueTreeState::ParameterLayout& layout);
 
     // LFO:ns värde -1..1 för en form och fas (0..1). `cycle` används för random.
     float shapeValue (int shape, double phase, juce::int64 cycle);
@@ -94,7 +103,7 @@ public:
     void update (double ppq, double bpm = 120.0);
 
     // LFO:ernas egna kurvor (formen Custom): x = fas 0..1, y = 0..1 (uppåt = positivt). Ägs av processorn.
-    void setLfoCurves (const std::array<NodeEnvelope, Modulation::numLfos>* curves) { lfoCurves = curves; }
+    void setLfoCurves (const std::array<NodeEnvelope, Modulation::maxLfos>* curves) { lfoCurves = curves; }
 
     // Parameterns värde med modulering, i parameterns egen enhet. `index` är parameterns
     // plats i processorns parameterlista; `value` det omodulerade värdet.
@@ -111,11 +120,15 @@ public:
 
     // För gränssnittet: varje LFO:s fas och värde, och hur mycket varje parameter moduleras nu
     // (normaliserat, summan av alla kopplingar).
-    std::array<std::atomic<float>, Modulation::numLfos> phase {}, value {};
+    std::array<std::atomic<float>, Modulation::maxLfos> phase {}, value {};
     // SNAP (bara Hz-läget): närmaste notvärde (index i rateNames, -1 = Sync-läge) och om hastigheten är låst mot det. Skrivs av ljudtråden.
-    std::array<std::atomic<int>, Modulation::numLfos> snapNote {};
-    std::array<std::atomic<bool>, Modulation::numLfos> snapLocked {};
+    std::array<std::atomic<int>, Modulation::maxLfos> snapNote {};
+    std::array<std::atomic<bool>, Modulation::maxLfos> snapLocked {};
     float currentOffset (int index) const;
+
+    // Vilka LFO:er som räknas (bit i = LFO i+1). LFO 1-3 alltid i början; LFO 4-10 läggs till och tas bort av PluginBase::setLfoActive.
+    // Inaktiva räknas inte alls (0 CPU). Gränssnittstrådarna får bara sätta/nollställa bitar atomärt, aldrig röra ljudtrådens fält.
+    std::atomic<uint32_t> activeMask { 7u };
 
     // Instrumentens källor, skrivs av ljudtråden före update(): ENV 2, ENV 3, velocity och slump.
     void setInstrumentSources (int layer, float env2, float env3, float velocity, float random)
@@ -138,12 +151,12 @@ private:
         std::atomic<float>* snap;      // SNAP i Hz-läget: på/av
         std::atomic<float>* snapRange; // ± procent av notvärdets hastighet
     };
-    const std::array<NodeEnvelope, Modulation::numLfos>* lfoCurves = nullptr;
+    const std::array<NodeEnvelope, Modulation::maxLfos>* lfoCurves = nullptr;
     // Fas-kontinuitet vid ändrad hastighet (se update): offset i perioder, senaste perioder per fjärdedel och senaste positionen.
-    std::array<double, Modulation::numLfos> phaseOffset {}, lastCyclesPerQuarter {}, lastPpq {};
+    std::array<double, Modulation::maxLfos> phaseOffset {}, lastCyclesPerQuarter {}, lastPpq {};
 
     const ModRoutes& routes;
-    std::array<Lfo, Modulation::numLfos> lfos;
+    std::array<Lfo, Modulation::maxLfos> lfos {};
     std::array<std::atomic<float>*, Modulation::numMacros> macros {};
     std::array<std::array<float, Modulation::instrumentSources>, maxInstruments> layerSources {};
     std::array<std::atomic<float>, Modulation::numSources> sourceDisplay {};

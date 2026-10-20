@@ -30,6 +30,7 @@ namespace
         MasterSection::addParameters (layout);
         Mixer::addParameters (layout);
         Params::addMasterParams (layout);
+        Modulation::addExtraLfoParameters (layout); // LFO 4-10 (fas M): nya parametrar sist
         return layout;
     }
 
