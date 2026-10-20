@@ -380,6 +380,32 @@ std::map<juce::String, double> ToolLayer::liveCodeParameters() const
     return out;
 }
 
+var ToolLayer::liveCodeEffects() const
+{
+    auto out = object();
+    juce::Array<var> types, slots;
+    auto knobs = object();
+    for (int t = 1; t < numEffectTypes; ++t) // 0 = Off, hanteras som "off" i koden
+    {
+        types.add (Effects::typeNames()[t]);
+        juce::Array<var> names;
+        for (const auto& knob : Effects::knobs ((EffectType) t))
+            names.add (knob.name);
+        put (knobs, Effects::typeNames()[t], names);
+    }
+    for (int c = 0; c < numEffectChannels; ++c)
+    {
+        juce::Array<var> row;
+        for (int s = 0; s < slotsPerChannel; ++s)
+            row.add (Effects::typeNames()[(int) Effects::slotType (processor.apvts, c, s)]);
+        slots.add (row);
+    }
+    put (out, "types", types);
+    put (out, "knobs", knobs);
+    put (out, "slots", slots);
+    return out;
+}
+
 int ToolLayer::liveCodeLayerOf (const juce::String& id)
 {
     if (id.startsWith ("kick"))
@@ -721,7 +747,8 @@ var ToolLayer::setEffect (const var& args)
         return fail ("Unknown effect type. Options: " + Effects::typeNames().joinIntoString (" | "));
 
     const auto type = (EffectType) typeIndex;
-    Effects::setSlotType (processor.apvts, channel, slot, type); // sätter också rattarnas standardvärden
+    if (! ((bool) args["keep"] && Effects::slotType (processor.apvts, channel, slot) == type)) // keep: samma typ behåller rattarna (Live Code .set på en ratt)
+        Effects::setSlotType (processor.apvts, channel, slot, type); // sätter också rattarnas standardvärden
 
     juce::Array<var> problems;
     if (auto* knobs = args["knobs"].getDynamicObject())

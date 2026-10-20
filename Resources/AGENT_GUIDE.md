@@ -24,6 +24,8 @@ Instances: `list_instances` shows `headless` (private, no DAW, always available)
 
 Use a modulatable sound parameter id from `list_parameters`; unsupported ids and non-modulatable controls are skipped and listed in `data.problems`, while the note rows are still written. CODE 1-8 are internal sources: they are not saved in projects or presets, and hand-drawn modulation menus do not offer them.
 
+In the LIVE CODE tab the code can also set parameters and effect slots (not in `live_code_create`): `bass1.cutoff.set(0.4)`, `fx1.slot2.setEffect("reverb")` (type name lowercase, letters and digits only) and `fx1.slot2.mix.set(0.3)` (knob name lowercase, in real units). A knob can only be set when the slot holds an effect that has it; the error line names the slot. Only changed values are written, so a hand change stays until the code changes.
+
 ## 2. What the synth is
 
 One plugin: **kick** + **1-10 instruments** (default 3; `set_instruments`) + sidechain + **11 FX channels (FX1–FX11)** + mixer + master.

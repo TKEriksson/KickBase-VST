@@ -35,6 +35,7 @@ private:
     void showError (const juce::String& text);
     bool apply (const juce::var& items, bool overwrite, const juce::var& mods); // skriver raderna; frågar först om handritade toner skulle skrivas över
     void applyParamWrites (const juce::var& writes);      // F1: .set på parametrar
+    void applyEffectWrite (const juce::var& write);       // F3: effektplats (typ eller ratt)
     void warnOverwrite (const juce::var& conflicts, std::function<void (bool overwrite)> retry);
     void syncLocks();
     void syncSavedCode();

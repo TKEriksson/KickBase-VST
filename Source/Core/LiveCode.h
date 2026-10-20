@@ -20,6 +20,8 @@ public:
     // Parametrar som koden kan läsa/skriva: id -> värde i egna enheter (ögonblicksbild från före körningen). Sätts före setCode/create.
     // Ger objektträdet instr1.Cutoff.set(v) / .get() (glue.js buildParams). Skrivningarna hämtas med takeParamWrites().
     void setParams (std::map<juce::String, double> values);
+    // F3: effektkatalogen (ToolLayer::liveCodeEffects) ger fx1.slot2.setEffect("reverb") och fx1.slot2.mix.set(v). Noteras som {fx, slot, type|knob, value}.
+    void setEffects (juce::var catalog) { effectCatalog = std::move (catalog); }
     juce::var takeParamWrites(); // lista med {id, value}, i den ordning koden skrev dem (senaste värdet per id vinner)
 
     // Läser in och utvärderar koden. Ger fel som text (syntax, oändlig loop efter 500 ms).
@@ -52,6 +54,7 @@ public:
 private:
     std::map<juce::String, double> paramValues;
     juce::Array<juce::var> paramWrites;
+    juce::var effectCatalog;
     std::map<int, double> sliderValues; // före engine: reglagens svar läser den
     juce::JavascriptEngine engine;
     bool loaded = false;

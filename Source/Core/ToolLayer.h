@@ -33,6 +33,8 @@ public:
     static int liveCodeBit (int layer) { return 1 << (layer == Pattern::kickLayer ? 10 : layer); }
     // Live Code F1: parametrar som koden kan läsa (id -> värde i egna enheter, utan effektplatsernas) och skriva.
     std::map<juce::String, double> liveCodeParameters() const;
+    // Live Code F3: effektkatalogen koden ser: {types:[namn], knobs:{typ:[rattnamn]}, slots:[[typ x5] x11]} (ögonblicksbild från före körningen).
+    juce::var liveCodeEffects() const;
     // Rad (0-9 instrument, 10 kick via liveCodeBit) som parametern hör till, -1 om ingen (master, lfo, fx ...).
     static int liveCodeLayerOf (const juce::String& parameterId);
 

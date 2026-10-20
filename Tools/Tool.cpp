@@ -529,6 +529,36 @@ namespace
             check (other.setCode ("fx1.lock();\n\nnote(\"c2\").s(\"i1\")").failed(), ".lock() på grupp utan låsbit (fx1) ger felrad");
         }
 
+        // F3: fx1.slot2.setEffect("reverb") och fx1.slot2.mix.set(v) noteras som effektposter; samma typ ger ingen post; fel ger felrad.
+        {
+            ToolLayer tools (processor);
+            const auto catalog = tools.liveCodeEffects();
+            auto record = [&catalog] (const juce::String& code, juce::StringArray& seen)
+            {
+                LiveCode live;
+                live.setEffects (catalog);
+                const auto res = live.setCode (code);
+                const auto writes = live.takeParamWrites();
+                if (auto* list = writes.getArray())
+                    for (auto& w : *list)
+                        seen.add (w["fx"].toString() + "." + w["slot"].toString() + ":" + w["type"].toString() + ":" + w["knob"].toString() + ":" + w["value"].toString());
+                return res;
+            };
+            juce::StringArray seen;
+            const auto res = record ("fx1.slot2.setEffect(\"reverb\");\nfx1.slot2.mix.set(0.3);\n\nnote(\"c2\").s(\"i1\")", seen);
+            check (res.wasOk() && seen.size() == 2 && seen[0] == "fx1.2:Reverb::0.0" && seen[1] == "fx1.2:Reverb:MIX:0.3",
+                   "setEffect + ratt ger två effektposter i ordning: " + seen.joinIntoString (" ; ") + " " + res.getErrorMessage());
+
+            juce::StringArray same;
+            const auto current = catalog["slots"][1][0].toString().toLowerCase().removeCharacters (" ");
+            record ("fx2.slot1.setEffect(\"" + current + "\");\n\nnote(\"c2\").s(\"i1\")", same);
+            check (same.isEmpty(), "setEffect med nuvarande typ ger ingen post");
+
+            juce::StringArray none;
+            check (record ("fx1.slot1.setEffect(\"finnsinte\");\n\nnote(\"c2\").s(\"i1\")", none).failed(), "okänd effekt ger felrad");
+            check (record ("fx1.slot1.setEffect(\"off\");\nfx1.slot1.mix.set(1);\n\nnote(\"c2\").s(\"i1\")", none).failed(), "ratt på tom plats ger felrad");
+        }
+
         // F2: lås från koden blockerar skrivning som handlås, men sparas aldrig och släpps utan att röra handlåset.
         {
             ToolLayer tools (processor);

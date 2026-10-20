@@ -396,7 +396,36 @@ void LiveCodePage::runNow()
         apply (list, false, mods);
         processor.liveCodeCodeLocks = lockAll;
         processor.liveCodeCodeNoteLocks = lockNotes;
-    }, sliderValues, tools.liveCodeParameters());
+    }, sliderValues, tools.liveCodeParameters(), tools.liveCodeEffects());
+}
+
+// F3: {fx, slot, type, knob, value}. Ett typbyte (knob tomt) nollställer rattarna som set_effect gör; en ratt behåller de andra (keep).
+// Som .set på parametrar skrivs bara det som ändrats i koden sedan förra körningen.
+void LiveCodePage::applyEffectWrite (const juce::var& w)
+{
+    const auto knob = w["knob"].toString();
+    const auto key = w["fx"].toString() + "." + w["slot"].toString() + (knob.isEmpty() ? ".type" : ".knob." + knob);
+    const auto text = w["type"].toString() + "|" + w["value"].toString();
+    if (const auto it = lastParamWrites.find (key); it != lastParamWrites.end() && it->second == text)
+        return;
+    lastParamWrites[key] = text;
+    auto args = juce::var (new juce::DynamicObject());
+    auto* o = args.getDynamicObject();
+    o->setProperty ("channel", w["fx"]);
+    o->setProperty ("slot", w["slot"]);
+    o->setProperty ("type", w["type"]);
+    if (knob.isNotEmpty())
+    {
+        auto knobs = juce::var (new juce::DynamicObject());
+        knobs.getDynamicObject()->setProperty (juce::Identifier (knob), w["value"]);
+        o->setProperty ("knobs", knobs);
+        o->setProperty ("keep", true);
+    }
+    const auto result = tools.call ("set_effect", args);
+    if (! (bool) result["ok"])
+        showError (result["error"].toString());
+    else if (auto* problems = result["data"]["problems"].getArray(); problems != nullptr && ! problems->isEmpty())
+        showError ((*problems)[0].toString());
 }
 
 // .set på parametrar: skriver bara det som ändrats i koden sedan förra körningen (så handvridning inte slås ut var gång) och
@@ -412,6 +441,11 @@ void LiveCodePage::applyParamWrites (const juce::var& writes)
     {
         if (w.hasProperty ("lock"))
             continue; // lås-poster hanteras i runNow
+        if (w.hasProperty ("fx"))
+        {
+            applyEffectWrite (w); // F3: typbyte eller ratt på en effektplats, i kodens ordning
+            continue;
+        }
         const auto id = w["id"].toString();
         const auto text = w["value"].toString();
         if (const auto layer = ToolLayer::liveCodeLayerOf (id); layer >= 0 && (locks & ToolLayer::liveCodeBit (layer)) != 0)
