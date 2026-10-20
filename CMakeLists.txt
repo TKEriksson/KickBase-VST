@@ -222,9 +222,10 @@ target_sources(KickbaseTests PRIVATE
     Source/Core/Master.cpp
     Source/Core/SourceEq.cpp
     Source/Core/Effects.cpp
+    Source/Core/RollFiles.cpp
     Tests/TestMain.cpp
 )
-target_link_libraries(KickbaseTests PRIVATE juce::juce_audio_processors juce::juce_dsp)
+target_link_libraries(KickbaseTests PRIVATE juce::juce_audio_processors juce::juce_audio_formats juce::juce_dsp)
 target_precompile_headers(KickbaseTests PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CMAKE_CURRENT_SOURCE_DIR}/Source/PchCore.h>")
 kickbase_configure(KickbaseTests)
 

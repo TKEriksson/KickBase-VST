@@ -60,7 +60,18 @@ private:
         bool slide = false;
         Pattern::Chord chord {};
     };
-    using NoteMap = std::map<int, NoteData>; // starttick -> ton
+    // En ton i en stapel (polyfoni): starttick + index (0 = huvudtonen med ackordet, 1..3 = staplade toner; index kan ha hål).
+    struct NoteKey
+    {
+        int tick = -1, index = 0;
+        bool valid() const { return tick >= 0; }
+        friend bool operator< (const NoteKey& a, const NoteKey& b) { return a.tick != b.tick ? a.tick < b.tick : a.index < b.index; }
+        friend bool operator== (const NoteKey& a, const NoteKey& b) { return a.tick == b.tick && a.index == b.index; }
+        friend bool operator!= (const NoteKey& a, const NoteKey& b) { return ! (a == b); }
+    };
+    using NoteMap = std::map<NoteKey, NoteData>;
+    using KeySet = std::set<NoteKey>;
+    struct Relocated { NoteMap target; std::map<NoteKey, NoteKey> where; bool full = false; }; // var varje flyttad ton hamnade
 
     void timerCallback() override;
     void scrollBarMoved (juce::ScrollBar* bar, double newRangeStart) override;
@@ -89,16 +100,24 @@ private:
     void clampView();
     void fitToWidth();
 
-    juce::Rectangle<float> noteBounds (int tick) const;
-    int noteAtPoint (juce::Point<float> p, bool& onRightEdge) const;
-    int noteForVelocity (float x) const;
-    juce::String describe (int tick) const;
+    juce::Rectangle<float> noteBounds (NoteKey key) const;
+    NoteKey noteAtPoint (juce::Point<float> p, bool& onRightEdge) const;
+    NoteKey noteForVelocity (float x) const;
+    float velocityX (NoteKey key) const;
+    juce::String describe (NoteKey key) const;
+    bool liveNote (NoteKey key, NoteData& out) const;           // läser tonen i mönstret nu, false om den inte är på
+    template <typename F> void forEachLive (int firstTick, int lastTick, F&& visit) const; // visit (NoteKey, const NoteData&), huvudtonen före de staplade
+    void setLiveVelocity (NoteKey key, float velocity);
+    void setLiveSlide (NoteKey key, bool slide);
+    static void normalise (NoteMap& notes, std::map<NoteKey, NoteKey>* remap = nullptr);  // en stapel utan huvudton: lägsta staplade tonen blir huvudton
+    static Relocated relocate (const NoteMap& source, const KeySet& moving, int deltaTicks, int deltaPitch); // full målstack avbryter hela flytten
+    void removeKeys (const KeySet& keys);
     int voices() const;                              // lagrets VOICES (ackord hörs bara med 2 eller fler)
     void setChordOnSelection (const Pattern::Chord& chord);
     void changeVoices (int delta);                   // VOICES -/+ i verktygsraden (varnar om det blir färre än mönstret behöver)
     void setVoices (int count);
     void checkVoicesNeeded();                        // efter en redigering: behöver mönstret fler VOICES än lagret har? Fråga om att öka
-    void setHover (int tick);
+    void setHover (NoteKey key);
 
     NoteMap readNotes() const;
     void applyNotes (const NoteMap& target); // skriver bara det som ändrats, så att ljudtråden aldrig ser ett tomt mönster
@@ -174,21 +193,22 @@ private:
     float pixelsPerTick = 1.0f;
     float scrollTicks = 0.0f;   // tiden längst till vänster
     float topPitch = 12.0f;     // översta synliga raden (halvtoner från tonarten)
-    int justCreatedTick = -1;   // tonen som det första klicket i ett dubbelklick skapade
+    NoteKey justCreated;        // tonen som det första klicket i ett dubbelklick skapade
     int lastLength = 0;         // längden på den senast ritade tonen: nästa ton får samma
 
-    std::set<int> selection;    // starttick för de markerade tonerna
+    KeySet selection;           // de markerade tonerna (starttick + stackindex)
 
     Drag drag = Drag::none;
-    int dragTick = -1;          // tonen som greps (dess nuvarande starttick)
-    int dragStartTick = 0, dragStartPitch = 0;
+    NoteKey dragKey;            // tonen som greps (dess nuvarande nyckel)
+    NoteKey dragStartKey;       // och när draget började
+    int dragStartPitch = 0;
     float grabOffsetTicks = 0.0f;
     NoteMap dragSnapshot;       // alla toner när draget började
-    std::set<int> dragSelection; // de markerade när draget började (starttick)
+    KeySet dragSelection;       // de markerade när draget började
     juce::Point<float> boxStart, boxEnd;
-    std::set<int> boxBase;      // markeringen innan rutan (skift lägger till)
+    KeySet boxBase;             // markeringen innan rutan (skift lägger till)
     bool edited = false;
-    int hoverTick = -1;
+    NoteKey hoverKey;
     juce::Point<float> hoverPoint; // var musen är (för pennans hårkors och förhandsvisningen av tonen som skulle läggas)
     bool hoverPointValid = false;
     bool hoverEdge = false;

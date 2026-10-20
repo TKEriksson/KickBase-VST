@@ -512,9 +512,12 @@ var ToolLayer::getState (const var& args) const
     for (int layer = 0; layer < Pattern::numNoteLayers; ++layer)
     {
         const auto isKick = layer == Pattern::kickLayer;
-        juce::Array<var> notes;
+        juce::Array<var> notes, stacked;
         processor.pattern.forEachNote (layer, [&] (int tick, const Pattern::Note& n)
         {
+            for (int index = 1; index < Pattern::maxStack; ++index) // polyfoni: staplade toner på samma tick
+                if (Pattern::StackNote s; processor.pattern.getStack (layer, tick, index, s))
+                    stacked.add (var (juce::Array<var> { tick, s.length, s.pitch, round4 (s.velocity), s.slide }));
             juce::Array<var> entry { tick, n.length.load(), n.pitch.load(), round4 (n.velocity.load()), n.slide.load() };
             if (n.hasChord()) // fas P: ett sjätte fält med ackordets intervall, bara när tonen har ett ackord
             {
@@ -533,6 +536,8 @@ var ToolLayer::getState (const var& args) const
         put (entry, "grid", Pattern::gridNames()[isKick ? (int) processor.apvts.getRawParameterValue (ParamID::rowGridKick)->load()
                                                          : (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, InstrumentField::grid))->load()]);
         put (entry, "notes [tick, length, pitch, velocity, glide]", notes);
+        if (! stacked.isEmpty())
+            put (entry, "stacked_notes [tick, length, pitch, velocity, glide] (extra notes on the same tick as a note above)", stacked);
         put (entry, "piano_roll_layer", processor.pattern.isCustom (layer));
         put (entry, "bars", processor.pattern.lengthBars (layer));
         put (entry, "length_mode", processor.pattern.isLengthAuto (layer) ? juce::var ("auto") : juce::var ("locked")); // auto: följer tonerna, locked: ett valt antal takter
@@ -876,15 +881,29 @@ var ToolLayer::setPattern (const var& args)
     {
         pattern.refreshLengths();
         const auto sourceBars = std::max (1, pattern.contentBars (layer));
-        struct Copy { int tick, length, pitch; float velocity; bool slide; Pattern::Chord chord; };
+        struct Copy { int tick, length, pitch; float velocity; bool slide; Pattern::Chord chord; std::vector<Pattern::StackNote> stack; };
         std::vector<Copy> copies;
-        pattern.forEachNote (layer, [&] (int tick, const Pattern::Note& n) { copies.push_back ({ tick, n.length.load(), n.pitch.load(), n.velocity.load(), n.slide.load(), n.getChord() }); });
+        pattern.forEachNote (layer, [&] (int tick, const Pattern::Note& n)
+        {
+            Copy c { tick, n.length.load(), n.pitch.load(), n.velocity.load(), n.slide.load(), n.getChord(), {} };
+            for (int index = 1; index < Pattern::maxStack; ++index)
+                if (Pattern::StackNote s; pattern.getStack (layer, tick, index, s))
+                    c.stack.push_back (s);
+            copies.push_back (std::move (c));
+        });
         for (int bar = sourceBars; bar < repeatTo; bar += sourceBars)
             for (const auto& c : copies)
             {
                 const auto tick = c.tick + bar * Pattern::ticksPerBar;
                 if (tick < repeatTo * Pattern::ticksPerBar)
+                {
                     pattern.addNote (layer, tick, std::min (c.length, repeatTo * Pattern::ticksPerBar - tick), c.pitch, c.velocity, c.slide).setChord (c.chord);
+                    for (auto s : c.stack)
+                    {
+                        s.length = std::min (s.length, repeatTo * Pattern::ticksPerBar - tick);
+                        pattern.addExtra (layer, tick, s);
+                    }
+                }
             }
         pattern.setCustom (layer, true);
     }
@@ -1559,10 +1578,12 @@ var ToolLayer::pianoRollFiles (const juce::String& tool, const var& args)
     if (tool == "import_midi")
     {
         const juce::File file (args["file"].toString());
-        if (! file.existsAsFile() || ! RollFiles::importMidi (pattern, layer, file, root))
+        auto skipped = 0;
+        if (! file.existsAsFile() || ! RollFiles::importMidi (pattern, layer, file, root, &skipped))
             return fail ("Could not read notes from that MIDI file.");
         applyLoaded ((InstrumentGrid) gridIndex);
-        return ok ("Imported into layer " + juce::String (layer) + "; the row length follows the notes (" + juce::String (pattern.lengthBars (layer)) + " bar(s)).");
+        return ok ("Imported into layer " + juce::String (layer) + "; the row length follows the notes (" + juce::String (pattern.lengthBars (layer)) + " bar(s))."
+                   + (skipped > 0 ? " Skipped " + juce::String (skipped) + " note(s): more than 4 simultaneous notes, or outside the row." : juce::String()));
     }
 
     // export_midi
