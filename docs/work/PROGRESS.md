@@ -12,6 +12,7 @@ Läs [LESSONS.md](LESSONS.md) innan du bygger eller testar. Lägg till en rad d�
 
 ## Öppet / väntar
 - Frågor till Tobias: plan-v2 avsnitt 4.
+- Arbetare 2 (kickbase-vst-a0): LC-spike i ../KickBase-VST-lc, gren spike-lc, egen PROGRESS-lc.md
 
 ## Logg (nyast sist, en rad per delsteg: datum, steg, commit, test)
 - 20 okt R1-R3 f9be216: pianorulle (kryss-y, scrollbarens klick, vänsterkant, EDIT IN LANE/hjälptext dolda, Alt=sudd, SELECT ALL, + BAR), ENV-header, håll-provlyssning, LISTEN vid PITCH/AMP. rendersig-trion identiska.
