@@ -2,7 +2,7 @@
 
 Testgren `content-test` = `content-l` (innehåller faserna R, M, P och L2/L3/L2b). Ingen push och ingen merge.
 
-**VST3:** byggs först när du har godkänt Release-bygget. Sökvägen skrivs här och i `docs/work/PROGRESS.md`.
+**VST3 (Release, commit 3f4c9f3):** mappen `C:\Users\hunga\Documents\Kickbase-content-test\` har `Kickbase.vst3`, `Kickbase FX.vst3` och appen `Kickbase.exe`. Kopiera VST3-mapparna till `C:\Program Files\Common Files\VST3\` eller lägg till mappen som sökväg i din DAW.
 
 Detaljerna finns i `docs/content-r-report.md`, `docs/content-p-report.md` och i `docs/work/PROGRESS.md` (M, L).
 
