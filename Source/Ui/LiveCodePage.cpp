@@ -286,6 +286,8 @@ void LiveCodePage::setPlaying (bool shouldPlay)
     {
         stopTimer();
         runner.cancel();
+        processor.liveCodeCodeLocks = 0; // F2: lås från koden släpps vid stopp (handlås ligger kvar)
+        processor.liveCodeCodeNoteLocks = 0;
         processor.clearCodeMods (false); // LFO/ENV från koden tonar ut och kopplingarna städas av loadWatch
     }
     repaint();
@@ -381,8 +383,19 @@ void LiveCodePage::runNow()
             return showError (error);
 
         showError ({});
+        // F2: en .lock() som tagits bort ur koden släpper direkt; en ny låser först efter att körningen skrivit (första gången skrivs, sedan låses).
+        int lockAll = 0, lockNotes = 0;
+        if (auto* entries = writes.getArray())
+            for (auto& w : *entries)
+                if (w.hasProperty ("lock"))
+                    if (const auto layer = ToolLayer::liveCodeLayerOf (w["lock"].toString()); layer >= 0)
+                        (w["kind"].toString() == "notes" ? lockNotes : lockAll) |= ToolLayer::liveCodeBit (layer);
+        processor.liveCodeCodeLocks &= lockAll;
+        processor.liveCodeCodeNoteLocks &= lockNotes;
         applyParamWrites (writes);
         apply (list, false, mods);
+        processor.liveCodeCodeLocks = lockAll;
+        processor.liveCodeCodeNoteLocks = lockNotes;
     }, sliderValues, tools.liveCodeParameters());
 }
 
@@ -393,10 +406,12 @@ void LiveCodePage::applyParamWrites (const juce::var& writes)
     auto* list = writes.getArray();
     if (list == nullptr)
         return;
-    const auto locks = processor.liveCodeLocks.load();
+    const auto locks = processor.liveCodeParamLocks();
     auto values = juce::var (new juce::DynamicObject());
     for (auto& w : *list)
     {
+        if (w.hasProperty ("lock"))
+            continue; // lås-poster hanteras i runNow
         const auto id = w["id"].toString();
         const auto text = w["value"].toString();
         if (const auto layer = ToolLayer::liveCodeLayerOf (id); layer >= 0 && (locks & ToolLayer::liveCodeBit (layer)) != 0)

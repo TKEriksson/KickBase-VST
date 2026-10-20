@@ -511,6 +511,60 @@ namespace
             check (noteOf ({ { 1, 7.0 } }) == 3.0, "slider(): värde för ett annat ordningsnummer rör inte detta reglage");
         }
 
+        // F2: .lock() / .pianoroll.lock() noteras som lås-poster (inte som parameterskrivningar); okänd grupp ger felrad.
+        {
+            LiveCode live;
+            live.setParams ({ { "bass1Cutoff", 0.5 }, { "kickTune", 0.5 }, { "fx1Mix", 0.5 } });
+            const auto res = live.setCode ("bass1.lock();\ninstr2.pianoroll.lock();\nkick.lock();\nnote(\"c2\").s(\"i1\")");
+            auto writes = live.takeParamWrites();
+            juce::StringArray seen;
+            if (auto* list = writes.getArray())
+                for (auto& w : *list)
+                    seen.add (w["lock"].toString() + ":" + w["kind"].toString() + ":" + w["id"].toString());
+            check (res.wasOk() && seen.size() == 3 && seen.contains ("bass1:all:") && seen.contains ("bass2:notes:") && seen.contains ("kick:all:"),
+                   ".lock() och .pianoroll.lock() ger lås-poster utan id");
+
+            LiveCode other;
+            other.setParams ({ { "bass1Cutoff", 0.5 }, { "fx1Mix", 0.5 } });
+            check (other.setCode ("fx1.lock();\nnote(\"c2\").s(\"i1\")").failed(), ".lock() på grupp utan låsbit (fx1) ger felrad");
+        }
+
+        // F2: lås från koden blockerar skrivning som handlås, men sparas aldrig och släpps utan att röra handlåset.
+        {
+            ToolLayer tools (processor);
+            auto make = [] (std::initializer_list<std::pair<const char*, juce::var>> props)
+            {
+                auto* o = new juce::DynamicObject();
+                for (auto& p : props)
+                    o->setProperty (p.first, p.second);
+                return juce::var (o);
+            };
+            auto create = [&] (const juce::String& code)
+            {
+                return tools.call ("live_code_create", make ({ { "code", code }, { "cycles", 1 }, { "overwrite", true } }));
+            };
+            tools.call ("live_code_lock", make ({ { "layer", 0 }, { "locked", false } }));
+            processor.liveCodeOwned = 0;
+            pattern.clearNotes (0);
+            create ("note(\"c2\").s(\"i1\")");
+            const auto before = pattern.note (0, 0).pitch.load();
+            processor.liveCodeCodeLocks = ToolLayer::liveCodeBit (0);
+            create ("note(\"g2\").s(\"i1\")");
+            check (pattern.note (0, 0).pitch.load() == before, "kodlås: raden hoppas över");
+            processor.liveCodeCodeLocks = 0;
+            processor.liveCodeCodeNoteLocks = ToolLayer::liveCodeBit (0);
+            create ("note(\"g2\").s(\"i1\")");
+            check (pattern.note (0, 0).pitch.load() == before, "kodlås (pianoroll): noter hoppas över");
+            processor.liveCodeCodeNoteLocks = 0;
+            tools.call ("live_code_lock", make ({ { "layer", 0 } }));
+            processor.liveCodeCodeLocks = ToolLayer::liveCodeBit (0);
+            processor.liveCodeCodeLocks = 0; // stopp släpper bara kodlåset
+            check (processor.liveCodeLocks.load() == ToolLayer::liveCodeBit (0) && processor.liveCodeNoteLocks() == ToolLayer::liveCodeBit (0), "handlås ligger kvar när kodlåset släpps");
+            tools.call ("live_code_lock", make ({ { "layer", 0 }, { "locked", false } }));
+            create ("note(\"g2\").s(\"i1\")");
+            check (pattern.note (0, 0).pitch.load() != before, "ingen lås kvar: raden skrivs igen");
+        }
+
         int pitch = 0;
         check (LiveCode::pitchFrom ("c#3", pitch) && pitch == 13 && LiveCode::pitchFrom ("eb2", pitch) && pitch == 3
                    && LiveCode::pitchFrom (7, pitch) && pitch == 7, "tonnamn och tal blir pitch");

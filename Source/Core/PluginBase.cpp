@@ -575,6 +575,8 @@ void PluginBase::liveCodeFromValueTree (const juce::ValueTree& tree)
     setLiveCodeText (tree.getProperty ("code").toString());
     liveCodeLocks = (int) tree.getProperty ("locks", 0) & 0x7ff; // bit 0-9 instrument, 10 kicken
     liveCodeOwned = 0;
+    liveCodeCodeLocks = 0; // lås från koden sparas aldrig
+    liveCodeCodeNoteLocks = 0;
 }
 
 void PluginBase::clearCodeMods (bool dropRoutes)

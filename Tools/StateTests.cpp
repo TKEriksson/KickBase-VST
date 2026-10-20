@@ -211,6 +211,8 @@ int persistTest()
         ToolLayer tools (*processor);
         const auto modResult = tools.call ("live_code_create", juce::var (modArgs));
         check ((bool) modResult["ok"] && ! processor->codeMods.empty(), "testläge: CODE-modulering är aktiv före sparning");
+        processor->liveCodeCodeLocks = 1 << 3; // F2: lås från koden sparas aldrig
+        processor->liveCodeCodeNoteLocks = 1 << 4;
         juce::MemoryBlock saved;
         processor->getStateInformation (saved);
         auto xml = juce::AudioProcessor::getXmlFromBinary (saved.getData(), (int) saved.getSize());
@@ -226,6 +228,7 @@ int persistTest()
         check (copy->getLiveCodeText() == processor->getLiveCodeText(), "spara och ladda: koden följer med");
         check (copy->liveCodeLocks.load() == ((1 << 2) | (1 << 10)), "spara och ladda: låsen följer med (bit utanför 11 bitar tas bort)");
         check (copy->liveCodeOwned.load() == 0, "inget ägs efter laddning (LIVE startar aldrig av sig själv)");
+        check (copy->liveCodeCodeLocks.load() == 0 && copy->liveCodeCodeNoteLocks.load() == 0 && copy->liveCodeLocks.load() == ((1 << 2) | (1 << 10)), "kodlås sparas aldrig; handlåsen följer med");
         auto restoredCodeRoute = false;
         for (const auto& route : copy->modRoutes.routes)
             restoredCodeRoute = restoredCodeRoute || Modulation::isCodeSource (route.source.load());

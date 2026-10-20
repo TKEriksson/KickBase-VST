@@ -119,5 +119,13 @@ globalThis.buildParams = function (ids) {
       if (made[g]) made[g][m[2]] = leaf(id); else skipped.push(id);
     });
   });
+  Object.keys(made).forEach(function (g) {
+    if (!made[g]) return;
+    var inst = /^instr(\d+)$/.exec(g);
+    var target = inst ? 'bass' + inst[1] : (g === 'kick' ? 'kick' : null);
+    if (!target) return;
+    made[g].lock = function () { return host.lock(target, 'all'); };
+    made[g].pianoroll = { lock: function () { return host.lock(target, 'notes'); } };
+  });
   return JSON.stringify(skipped);
 };

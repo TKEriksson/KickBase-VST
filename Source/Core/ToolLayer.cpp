@@ -1060,7 +1060,7 @@ var ToolLayer::applyLiveCode (const var& items, bool overwrite, const var& mods)
 {
     auto layerOf = [] (const var& item) { return item["layer"].toString().equalsIgnoreCase ("kick") ? (int) Pattern::kickLayer : (int) item["layer"]; };
     auto layerName = [] (int layer) { return layer == Pattern::kickLayer ? juce::String ("kick") : "instrument " + juce::String (layer + 1); };
-    const auto locks = processor.liveCodeLocks.load();
+    const auto locks = processor.liveCodeNoteLocks();
     const auto owned = processor.liveCodeOwned.load();
 
     var written (juce::Array<var>{}), skipped (juce::Array<var>{}), conflicts (juce::Array<var>{});

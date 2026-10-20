@@ -31,6 +31,17 @@ namespace
                 writes.add (juce::var (w));
                 return a.arguments[1];
             });
+            // lock(mål, art): F2. Noteras som {lock, kind} i samma lista; LiveCodePage delar upp dem från parameterskrivningarna.
+            setMethod ("lock", [&writes] (const juce::var::NativeFunctionArgs& a) -> juce::var
+            {
+                if (a.numArguments < 2)
+                    return {};
+                auto* w = new juce::DynamicObject();
+                w->setProperty ("lock", a.arguments[0].toString());
+                w->setProperty ("kind", a.arguments[1].toString());
+                writes.add (juce::var (w));
+                return {};
+            });
             setMethod ("paramGet", [&params] (const juce::var::NativeFunctionArgs& a) -> juce::var
             {
                 if (a.numArguments < 1)

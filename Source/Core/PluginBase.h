@@ -354,6 +354,11 @@ public:
     std::atomic<int> liveCodeLocks { 0 };  // Live Code: en bit per rad (0-9 = instrument, 10 = kicken) som koden inte får skriva över
     std::atomic<int> liveCodeLoads { 0 };  // ökar när ett projekt eller en Full-preset laddats; LIVE CODE-sidan stoppar då LIVE
     std::atomic<int> liveCodeOwned { 0 };  // rader som Live Code skrev senast; andra rader med toner räknas som handritade
+    std::atomic<int> liveCodeCodeLocks { 0 };     // F2: lås som koden satt med .lock() (rad + parametrar); sparas ALDRIG, rensas vid stopp och laddning
+    std::atomic<int> liveCodeCodeNoteLocks { 0 }; // F2: som ovan men bara noter (.pianoroll.lock())
+    // Effektiva lås = handsatta OR kodens: noter respektive parametrar på raden.
+    int liveCodeNoteLocks() const { return liveCodeLocks.load() | liveCodeCodeLocks.load() | liveCodeCodeNoteLocks.load(); }
+    int liveCodeParamLocks() const { return liveCodeLocks.load() | liveCodeCodeLocks.load(); }
     // Live Code, steg D: kodtexten och låsen sparas i projektet och i Full-presets (element <LiveCode>, sist, bara när något är satt).
     // LIVE, CODE ONLY och liveCodeOwned sparas aldrig: inget startar av sig självt vid laddning, och rader med toner är handritade tills koden körs.
     juce::String getLiveCodeText() const { const juce::ScopedLock lock (liveCodeTextLock); return liveCodeText; }
