@@ -122,14 +122,18 @@ Ljudet med standardvärden ska vara bit-identiskt (rendersig*). Ordning:
    - ~~**SAMPLE "mullrig/dålig kvalitet":**~~ Struken (Tobias 20 okt: troligen filtret som var på). Kolla bara att filtret är av som standard.
    - **TOTAL LENGTH** (mönsterfliken): vad gör den i dag? Om den är verkningslös med radlängder: förslag att dölja den (parametern blir kvar).
 
-9. **Radlängd utan gräns, TOTAL LENGTH bort (Tobias 20 okt).** Spec till Opus först (lagring, allokering, parametrar, MCP).
-   - Radlängd = valfritt antal hela takter (1, 2, 3, 5 …), ingen gräns i UI. Intern spärr (t.ex. 1024 takter) bara mot trasiga filer/AI.
-   - TOTAL LENGTH tas bort ur UI: mönstrets längd = längsta raden, kortare rader loopar. "Total" som radval försvinner.
-   - "+ BAR" lägger till **en** takt; klick i skuggad takt efter slutet förlänger dit; tillagda takter som fortfarande är tomma krymps.
-     LENGTH-rutan blir ett tal (krympning som tar bort noter: bekräftelse som i dag).
+9. **Radlängd automatisk och utan gräns, TOTAL LENGTH bort (Tobias 20 okt, pattern_and_ai-specen rad 284–295).** Spec till Opus först.
+   - Radens längd **följer innehållet**: sista takten med en not/ett steg, i hela takter. Ingen gräns i UI; intern spärr (t.ex. 1024
+     takter) bara mot trasiga filer/AI. Man kan alltid scrolla minst 1 takt efter slutet.
+   - Förläng: klick i takten efter slutet (steg och pianorulle) eller "+"-knappen lägger till **en** tom takt.
+   - Krymp: när man tar bort noter krymps varje rad (steg och pianorulle) automatiskt till sista takten med innehåll.
+   - Avsiktligt tomma takter i slutet (t.ex. 3 takter kick + 1 takt paus): högerklick "Lock length" per rad (standard av) håller längden.
+   - LENGTH-rutan blir en visning (inte ett val); TOTAL LENGTH och radvalet "Total" tas bort. Mönstret = längsta raden, kortare loopar.
    - Längden flyttas från valparametrar till mönsterdata i state (inte automatiserbar). De gamla längdparametrarna ligger kvar oanvända
      så att parameterordningen inte ändras. Gamla presets behöver inte läsas rätt (avsnitt 0).
-   - Ljudtråden allokerar aldrig: större buffert byggs i meddelandetråden och byts in (som samplingar, DeferredRelease). `audiotest`.
+   - **Minne och CPU:** inget förallokerat för max. Bufferten växer i bitar (t.ex. 4 takter) i meddelandetråden och byts in; när raden
+     krymper frigörs överskottet (DeferredRelease). Ljudtråden allokerar aldrig (`audiotest`) och läser bara rader som finns. Rapportera
+     minnet före/efter (dagens förallokering för 64 takter × alla instrument mot ett typiskt mönster).
    - MCP: mönsterverktygen och deras beskrivningar följer med; rad i preset-checklist.md.
 
 Slut: rendersig* identiska, `blocksizetest`, `audiotest`, skärmbilder av mönsterfliken, ENV-fliken, analyzern; rapport.
