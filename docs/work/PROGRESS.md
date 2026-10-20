@@ -32,3 +32,15 @@ Läs [LESSONS.md](LESSONS.md) innan du bygger eller testar. Lägg till en rad d�
 - 20 okt R9+fasslut (content-r): radens längd (LENGTH/AUTO/lås, MCP), (unused)-parametrar, persisttest sektion 9. Hela sviten grön utom rendersigwide/tb303 (se rapport). 42 bilder + pngdiff genomgången.
 
 - 20 okt 11:20: docs committade på content-r (04818df, ej push). gaps-to-specs.md klar (A1–A10 mätningar, B1–B13 verktyg, ordning AN→PH→FX→K/LE/S2). Väntar på bb:s P-rapport efter steg 2.
+
+- 20 okt 11:30: P steg 1+2 godkända (content-p 724f7cb, 17360be; baslinjer identiska, VOICES i LAYER OUT, blocksizetest läge 7 OK). bb kör steg 3 (ackord). Rapport efter steg 4.
+
+- 20 okt 11:45: P steg 3+4 godkända (content-p, ackord i pianorullen + XML c1–c3, baslinjer 0/0/0/0, persisttest ackord 3/3). bb kör steg 5 (tester, minne/prepare-tid, rapport).
+
+- 20 okt 12:00: fas P KLAR och godkänd (content-p 6a215c3, ej push). Rapport docs/content-p-report.md i KickBase-VST-lc (testlista för Tobias där). 80 röster: 6,0 MB@48k / 24,7 MB@192k, prepareToPlay 7/27 ms; värsta fall (10 instr, VOICES 8+ackord) 3,17 CPU-s/s → UI-varning vid VOICES×unison>24. bb startar fas L (content-l).
+
+- 20 okt 12:30: L2 godkänd (content-l a3a8299, ej push; ENV-header ON/SYNC/LISTEN/DURATION/DRAG). Spec för nya mod-källor AMP ENV/FILT ENV (block från 54, inget flyttas) godkänd med tillägg: persisttest gammalt/nytt, 0 CPU utan route, MCP-namn + AGENT_GUIDE. bb kör L3.
+
+- 20 okt 13:00: L3 godkänd (content-l 3470790, ej push): NOTE END/SWING/HUMANIZE i PATTERN-flikraden, AI SERVER (MCP) ON/OFF, AI CHAT. Baslinjer 0 rader. Nästa: L2b (DRAG), L4, L5.
+
+- 20 okt 13:15: Tobias vill testa: bb gör Release-build (VST3) av content-l (R+M+P+L) efter L2b, testlista docs/content-test-report.md, sedan L4/L5. Ingen push/merge.
