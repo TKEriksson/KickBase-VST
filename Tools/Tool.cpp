@@ -1240,6 +1240,176 @@ namespace
             }
         }
 
+        // Kostnadsläget: inställning, gränser, beskärning av gammalt samtal och varningen före dyra verktyg.
+        {
+            check (Settings::chatCostMode() == 1, "kostnadsläget är Normal som standard");
+            Settings::setChatCostMode (0);
+            check (Settings::chatCostMode() == 0, "kostnadsläget Sparsam sparas");
+            Settings::setChatCostMode (2);
+            check (Settings::chatCostMode() == 2, "kostnadsläget Rik sparas");
+            Settings::setChatCostMode (1);
+            check (Settings::chatCostMode() == 1, "kostnadsläget kan sättas tillbaka till Normal");
+
+            const auto sparse = AiChat::limits (0), normal = AiChat::limits (1), rich = AiChat::limits (2);
+            check (sparse.maxSteps < normal.maxSteps && normal.maxSteps < rich.maxSteps, "kostnadsläge: fler steg per läge");
+            check (sparse.maxOutputTokens < normal.maxOutputTokens && normal.maxOutputTokens < rich.maxOutputTokens, "kostnadsläge: längre svar per läge");
+            check (sparse.keepTurns < normal.keepTurns && normal.keepTurns < rich.keepTurns, "kostnadsläge: mer historia per läge");
+            check (sparse.confirmHeavy && normal.confirmHeavy && ! rich.confirmHeavy, "kostnadsläge: Rik frågar inte");
+            check (AiChat::isHeavyTool ("render_preview") && AiChat::isHeavyTool ("analyze_audio") && ! AiChat::isHeavyTool ("set_parameters"), "dyra verktyg: render_preview och analyze_audio");
+
+            // Sex frågor, var och en med ett verktygsresultat som har en bild och en lång text.
+            auto make = [] { return new juce::DynamicObject(); };
+            juce::Array<juce::var> history;
+            const auto longText = juce::String::repeatedString ("x", 3000);
+            for (int turn = 0; turn < 6; ++turn)
+            {
+                auto user = make();
+                user->setProperty ("role", "user");
+                user->setProperty ("content", "question " + juce::String (turn));
+                history.add (juce::var (user));
+
+                auto toolUse = make();
+                toolUse->setProperty ("type", "tool_use");
+                toolUse->setProperty ("id", "t" + juce::String (turn));
+                toolUse->setProperty ("name", "render_preview");
+                auto assistant = make();
+                assistant->setProperty ("role", "assistant");
+                assistant->setProperty ("content", juce::Array<juce::var> { juce::var (toolUse) });
+                history.add (juce::var (assistant));
+
+                auto image = make();
+                image->setProperty ("type", "image");
+                auto text = make();
+                text->setProperty ("type", "text");
+                text->setProperty ("text", longText);
+                auto result = make();
+                result->setProperty ("type", "tool_result");
+                result->setProperty ("tool_use_id", "t" + juce::String (turn));
+                result->setProperty ("content", juce::Array<juce::var> { juce::var (image), juce::var (text) });
+                auto resultMessage = make();
+                resultMessage->setProperty ("role", "user");
+                resultMessage->setProperty ("content", juce::Array<juce::var> { juce::var (result) });
+                history.add (juce::var (resultMessage));
+            }
+            const auto before = juce::JSON::toString (juce::var (history));
+            const auto trimmed = AiChat::trimForRequest (history, sparse); // behåller 2 frågor: index 12 och framåt är nya
+            check (trimmed.size() == history.size(), "beskärning: lika många meddelanden");
+            check (juce::JSON::toString (juce::var (history)) == before, "beskärning: historiken rörs inte");
+            const auto partOf = [&] (int message, int part) { return trimmed.getReference (message)["content"][0]["content"][part]; };
+            check (partOf (2, 0)["type"].toString() == "text" && partOf (2, 0)["text"].toString().contains ("image removed"), "beskärning: gammal bild ersätts med en rad");
+            check (partOf (2, 1)["text"].toString().length() < 400 && partOf (2, 1)["text"].toString().contains ("trimmed"), "beskärning: gammalt långt resultat kortas");
+            check (partOf (14, 0)["type"].toString() == "text" && partOf (14, 1)["text"].toString().length() == 3000, "beskärning: nyare resultat behåller sin text men tappar bilden");
+            check (partOf (17, 0)["type"].toString() == "image" && partOf (17, 1)["text"].toString().length() == 3000, "beskärning: det senaste resultatet är orört");
+            check (trimmed.getReference (12)["content"].toString() == "question 4", "beskärning: frågorna är orörda");
+
+            // Gemini: svarstaket följer läget.
+            Settings::setChatProvider ("gemini");
+            const auto capped = GeminiApi::buildRequest ("system", {}, trimmed, 4096);
+            check ((int) capped["generationConfig"]["maxOutputTokens"] == 4096, "Gemini: maxOutputTokens följer kostnadsläget");
+            Settings::setChatProvider ("anthropic");
+        }
+
+        // Varning före ett dyrt verktyg: låtsasserver som först ber om render_preview. answer: 1 kör, 2 hoppa över, 3 kör och fråga inte mer.
+        {
+            const auto runConfirm = [&] (int costMode, int answer, int port, bool& sawPending, juce::String& secondBody, bool& stillAskedLater)
+            {
+                std::atomic<int> requests { 0 };
+                std::atomic<bool> stopServer { false };
+                juce::StreamingSocket listener;
+                if (! listener.createListener (port, "127.0.0.1"))
+                    return false;
+                std::string captured;
+                std::thread server ([&]
+                {
+                    while (! stopServer)
+                    {
+                        std::unique_ptr<juce::StreamingSocket> client (listener.waitForNextConnection());
+                        if (client == nullptr || stopServer)
+                            continue;
+                        std::string request;
+                        char byte;
+                        auto headerEnd = std::string::npos;
+                        while (headerEnd == std::string::npos && client->read (&byte, 1, true) == 1)
+                        {
+                            request.push_back (byte);
+                            headerEnd = request.find ("\r\n\r\n");
+                        }
+                        auto length = 0;
+                        auto lower = request;
+                        std::transform (lower.begin(), lower.end(), lower.begin(), [] (unsigned char c) { return (char) std::tolower (c); });
+                        if (const auto at = lower.find ("content-length:"); at != std::string::npos)
+                            length = std::atoi (request.c_str() + at + 15);
+                        std::string body;
+                        for (int i = 0; i < length && client->read (&byte, 1, true) == 1; ++i)
+                            body.push_back (byte);
+
+                        const auto number = ++requests;
+                        juce::String reply;
+                        if (number == 1 || number == 2)
+                        {
+                            if (number == 2)
+                                captured = body;
+                            const auto id = juce::String (number);
+                            reply = R"({"type":"message","role":"assistant","stop_reason":"tool_use","usage":{"input_tokens":10,"output_tokens":5},"content":[{"type":"tool_use","id":"toolu_c)" + id
+                                  + R"(","name":"analyze_audio","input":{}}]})";
+                        }
+                        else
+                            reply = R"({"type":"message","role":"assistant","stop_reason":"end_turn","usage":{"input_tokens":10,"output_tokens":5},"content":[{"type":"text","text":"ok"}]})";
+                        const auto text = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " + juce::String (reply.getNumBytesAsUTF8())
+                                        + "\r\nConnection: close\r\n\r\n" + reply;
+                        client->write (text.toRawUTF8(), (int) text.getNumBytesAsUTF8());
+                    }
+                });
+
+                Settings::setChatCostMode (costMode);
+                Settings::set ("chatEndpoint", "http://127.0.0.1:" + juce::String (port) + "/v1/messages");
+                chat.newChat();
+                chat.send ("Check the mix");
+                auto asked = 0;
+                for (int i = 0; i < 1500 && (chat.isBusy() || i < 5); ++i)
+                {
+                    juce::MessageManager::getInstance()->runDispatchLoopUntil (40);
+                    if (chat.getPendingConfirm().isNotEmpty())
+                    {
+                        sawPending = true;
+                        ++asked;
+                        chat.answerConfirm (answer);
+                        juce::Thread::sleep (200); // tråden hinner läsa svaret innan nästa varning kan visas
+                    }
+                }
+                stillAskedLater = asked > 1;
+                stopServer = true;
+                juce::StreamingSocket wake;
+                wake.connect ("127.0.0.1", port, 500);
+                wake.close();
+                server.join();
+                secondBody = captured;
+                Settings::set ("chatEndpoint", {});
+                Settings::setChatCostMode (1);
+                return true;
+            };
+
+            auto sawPending = false, askedAgain = false;
+            juce::String body;
+            if (runConfirm (1, 2, 18767, sawPending, body, askedAgain))
+            {
+                check (sawPending, "Normal: varning före analyze_audio");
+                check (body.contains ("skipped this tool"), "SKIP: verktyget körs inte och AI:n får veta det");
+            }
+            sawPending = false;
+            if (runConfirm (1, 1, 18768, sawPending, body, askedAgain))
+            {
+                check (sawPending && ! body.contains ("skipped this tool"), "RUN: verktyget körs");
+                check (askedAgain, "RUN: den frågar igen vid nästa dyra verktyg");
+            }
+            sawPending = false;
+            if (runConfirm (1, 3, 18769, sawPending, body, askedAgain))
+                check (sawPending && ! askedAgain, "RUN, DON'T ASK AGAIN: frågar bara en gång");
+            sawPending = false;
+            if (runConfirm (2, 2, 18770, sawPending, body, askedAgain))
+                check (! sawPending && ! body.contains ("skipped this tool"), "Rik: ingen varning");
+        }
+
         // Fönstret (pluginet) stängs mitt i ett anrop som aldrig får svar: det ska gå direkt, inte vänta ut anropet.
         {
             juce::StreamingSocket listener;

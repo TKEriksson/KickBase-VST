@@ -158,6 +158,26 @@ AiChatPage::AiChatPage (PluginBase& p) : processor (p), chat (p.getAiChat())
     populateModels();
     checkModel (true);
 
+    costBox.addItem ("Frugal", 1);
+    costBox.addItem ("Normal", 2);
+    costBox.addItem ("Rich", 3);
+    costBox.setSelectedId (Settings::chatCostMode() + 1, juce::dontSendNotification);
+    costBox.setTooltip ("COST - How many tokens the chat may use (a free key runs out fast). Frugal: short answers, few steps, old turns trimmed hard, asks before images. "
+                        "Normal: the everyday balance, asks before images. Rich: long answers, many steps, most of the history kept, never asks.");
+    costBox.onChange = [this] { Settings::setChatCostMode (costBox.getSelectedId() - 1); };
+    addAndMakeVisible (costBox);
+
+    confirmLabel.setFont (Theme::font (12.0f));
+    confirmLabel.setColour (juce::Label::textColourId, Theme::text);
+    confirmLabel.setMinimumHorizontalScale (0.8f);
+    addChildComponent (confirmLabel);
+    runButton.onClick = [this] { chat.answerConfirm (1); refresh(); };
+    skipButton.onClick = [this] { chat.answerConfirm (2); refresh(); };
+    runAlwaysButton.onClick = [this] { chat.answerConfirm (3); refresh(); };
+    runButton.setColour (juce::TextButton::buttonColourId, Theme::bass.withAlpha (0.5f));
+    for (auto* button : { &runButton, &skipButton, &runAlwaysButton })
+        addChildComponent (button);
+
     keyButton.onClick = [this] { showSetup (! setupOpen); };
     addAndMakeVisible (keyButton);
     newChatButton.setTooltip ("NEW CHAT - Starts a new conversation (the sound stays as it is).");
@@ -469,6 +489,17 @@ void AiChatPage::refresh()
             suggestion.setVisible (entries.empty() && hasKey && ! setupOpen);
     }
 
+    const auto pending = chat.getPendingConfirm();
+    if (pending.isNotEmpty() != confirmOpen)
+    {
+        confirmOpen = pending.isNotEmpty();
+        for (auto* component : std::initializer_list<juce::Component*> { &confirmLabel, &runButton, &skipButton, &runAlwaysButton })
+            component->setVisible (confirmOpen && ! setupOpen);
+        resized();
+    }
+    if (confirmOpen)
+        confirmLabel.setText (pending, juce::dontSendNotification);
+
     const auto statusText = chat.getStatus();
     const auto usage = chat.getUsage();
     status.setText (modelNote.isNotEmpty() ? modelNote
@@ -501,6 +532,8 @@ void AiChatPage::resized()
     newChatButton.setBounds (header.removeFromRight (86).reduced (0, 2));
     header.removeFromRight (8);
     modelBox.setBounds (header.removeFromLeft (170).reduced (0, 2));
+    header.removeFromLeft (4);
+    costBox.setBounds (header.removeFromLeft (80).reduced (0, 2));
     header.removeFromLeft (10);
     status.setBounds (header);
     area.removeFromTop (6);
@@ -511,6 +544,18 @@ void AiChatPage::resized()
     stopButton.setBounds (sendButton.getBounds());
     bottom.removeFromRight (6);
     input.setBounds (bottom);
+
+    if (confirmOpen)
+    {
+        auto strip = area.removeFromBottom (44);
+        area.removeFromBottom (4);
+        runAlwaysButton.setBounds (strip.removeFromRight (170).reduced (0, 6));
+        strip.removeFromRight (4);
+        skipButton.setBounds (strip.removeFromRight (70).reduced (0, 6));
+        strip.removeFromRight (4);
+        runButton.setBounds (strip.removeFromRight (70).reduced (0, 6));
+        confirmLabel.setBounds (strip);
+    }
 
     viewport.setBounds (area);
     transcript->setSize (viewport.getMaximumVisibleWidth(), transcript->getHeight());

@@ -295,7 +295,7 @@ namespace GeminiApi
         return out;
     }
 
-    var buildRequest (const juce::String& system, const std::vector<ToolLayer::ToolInfo>& tools, const juce::Array<var>& messages)
+    var buildRequest (const juce::String& system, const std::vector<ToolLayer::ToolInfo>& tools, const juce::Array<var>& messages, int maxOutputTokens)
     {
         auto body = object();
 
@@ -326,7 +326,7 @@ namespace GeminiApi
         }
 
         auto config = object();
-        put (config, "maxOutputTokens", 16384); // tänkandet räknas in i taket
+        put (config, "maxOutputTokens", maxOutputTokens); // tänkandet räknas in i taket
         put (body, "generationConfig", config);
         return body;
     }

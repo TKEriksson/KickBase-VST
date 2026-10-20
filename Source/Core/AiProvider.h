@@ -29,7 +29,8 @@ namespace GeminiApi
     juce::var sanitizeSchema (const juce::var& schema);
 
     // Hela anropet. messages är chattens samtal (Anthropics format).
-    juce::var buildRequest (const juce::String& system, const std::vector<ToolLayer::ToolInfo>& tools, const juce::Array<juce::var>& messages);
+    // maxOutputTokens: taket per svar (tänkandet räknas in); kostnadsläget sänker det.
+    juce::var buildRequest (const juce::String& system, const std::vector<ToolLayer::ToolInfo>& tools, const juce::Array<juce::var>& messages, int maxOutputTokens = 16384);
 
     // Geminis svar som {content:[text|tool_use], stop_reason, usage:{input_tokens, output_tokens}}. Void vid fel (error fylls i:
     // blockerat svar, tomt svar, ...). Argument som schemat kräver som JSON-sträng packas upp igen.

@@ -56,8 +56,11 @@ private:
     bool checking = false; // modellen provas just nu (bakgrundstråd)
     juce::String modelNote; // visas i statusraden: vald Gemini-modell saknar verktyg / kan inte nås
 
-    juce::Label title, status, setupTitle, setupText, testResult;
-    juce::ComboBox modelBox;
+    bool confirmOpen = false; // en varning före ett dyrt verktyg väntar på svar (AiChat::getPendingConfirm)
+
+    juce::Label title, status, setupTitle, setupText, testResult, confirmLabel;
+    juce::ComboBox modelBox, costBox;
+    juce::TextButton runButton { "RUN" }, skipButton { "SKIP" }, runAlwaysButton { "RUN, DON'T ASK AGAIN" };
     juce::TextButton keyButton { "KEY" }, newChatButton { "NEW CHAT" }, undoButton { "UNDO" }, sendButton { "SEND" }, stopButton { "STOP" };
     juce::TextButton saveKeyButton { "SAVE KEY" }, cancelKeyButton { "CANCEL" }, removeKeyButton { "REMOVE KEY" };
     juce::TextButton anthropicButton { "ANTHROPIC (paid key)" }, geminiButton { "GEMINI (free option)" }, guideButton { "GET A FREE KEY (GUIDE)" };

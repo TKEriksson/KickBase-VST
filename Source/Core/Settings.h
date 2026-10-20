@@ -44,6 +44,8 @@ namespace Settings
     void setGeminiApiKey (const juce::String& key); // tom = ta bort
     juce::String geminiModel();                     // standard: gemini-3.6-flash
     void setGeminiModel (const juce::String& model);
+    int chatCostMode();                             // 0 Sparsam, 1 Normal (standard), 2 Rik: hur snålt chatten använder tokens (AiChat::limits)
+    void setChatCostMode (int mode);
     // Provresultat "kan modellen function calling" per modell och nyckel (nyckelns hash, inte nyckeln): 1 ja, 0 nej, -1 inte provad.
     int geminiToolsCheck (const juce::String& model, const juce::String& key);
     void setGeminiToolsCheck (const juce::String& model, const juce::String& key, bool works);

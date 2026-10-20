@@ -190,6 +190,17 @@ namespace Settings
         set ("geminiModel", model.trim() == "gemini-3.6-flash" ? juce::String() : model.trim());
     }
 
+    int chatCostMode()
+    {
+        const auto mode = get ("chatCostMode");
+        return mode.isEmpty() ? 1 : juce::jlimit (0, 2, mode.getIntValue());
+    }
+
+    void setChatCostMode (int mode)
+    {
+        set ("chatCostMode", mode == 1 ? juce::String() : juce::String (juce::jlimit (0, 2, mode)));
+    }
+
     int geminiToolsCheck (const juce::String& model, const juce::String& key)
     {
         const auto value = get ("geminiTools:" + model.trim());

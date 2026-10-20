@@ -21,6 +21,128 @@ namespace
     }
 }
 
+AiChat::Limits AiChat::limits (int costMode)
+{
+    switch (costMode)
+    {
+        case 0:  return { 8, 4096, 2, 300, 8000, true };      // Sparsam
+        case 2:  return { 24, 16384, 10, 2000, 30000, false }; // Rik
+        default: return { 16, 8192, 4, 800, 20000, true };    // Normal
+    }
+}
+
+bool AiChat::isHeavyTool (const juce::String& name)
+{
+    return name == "render_preview" || name == "analyze_audio";
+}
+
+juce::String AiChat::heavyToolWarning (const juce::String& name)
+{
+    return "The AI wants to run " + name + ": it returns a spectrogram image and measurements, roughly 2-5k tokens, and they are sent again with every later step.";
+}
+
+// En kopia av samtalet för anropet. Frågor äldre än keepTurns får kortade verktygsresultat och inga bilder; i de nyare behålls bara
+// bilderna i det senaste resultatet (ett spektrogram kostar tokens varje gång det skickas om).
+juce::Array<juce::var> AiChat::trimForRequest (const juce::Array<juce::var>& source, const Limits& limit)
+{
+    juce::Array<int> turnStarts;
+    int lastResult = -1;
+    for (int i = 0; i < source.size(); ++i)
+    {
+        const auto& message = source.getReference (i);
+        if (message["role"].toString() != "user")
+            continue;
+        if (message["content"].isString())
+            turnStarts.add (i);
+        else
+            lastResult = i;
+    }
+    const auto cutoff = turnStarts.size() > limit.keepTurns ? turnStarts[turnStarts.size() - limit.keepTurns] : 0;
+
+    juce::Array<var> out;
+    for (int i = 0; i < source.size(); ++i)
+    {
+        const auto& message = source.getReference (i);
+        const auto old = i < cutoff;
+        const auto* blocks = message["content"].getArray();
+        if (message["role"].toString() != "user" || blocks == nullptr || (! old && i == lastResult))
+        {
+            out.add (message);
+            continue;
+        }
+
+        auto copy = message.clone();
+        juce::Array<var> newBlocks;
+        for (const auto& block : *blocks)
+        {
+            auto blockCopy = block.clone();
+            if (const auto* parts = block["content"].getArray())
+            {
+                juce::Array<var> newParts;
+                for (const auto& part : *parts)
+                {
+                    const auto type = part["type"].toString();
+                    if (type == "image")
+                    {
+                        auto note = object();
+                        put (note, "type", "text");
+                        put (note, "text", "[image removed to save tokens]");
+                        newParts.add (note);
+                    }
+                    else if (type == "text" && old && part["text"].toString().length() > limit.oldResultChars)
+                    {
+                        auto shortPart = object();
+                        put (shortPart, "type", "text");
+                        put (shortPart, "text", shorten (part["text"].toString(), limit.oldResultChars) + " [old result trimmed to save tokens]");
+                        newParts.add (shortPart);
+                    }
+                    else
+                        newParts.add (part);
+                }
+                blockCopy.getDynamicObject()->setProperty ("content", newParts);
+            }
+            newBlocks.add (blockCopy);
+        }
+        copy.getDynamicObject()->setProperty ("content", newBlocks);
+        out.add (copy);
+    }
+    return out;
+}
+
+juce::String AiChat::getPendingConfirm() const
+{
+    const juce::ScopedLock sl (lock);
+    return confirmText;
+}
+
+void AiChat::answerConfirm (int answer)
+{
+    confirmAnswer = answer;
+}
+
+bool AiChat::confirmTool (const juce::String& name)
+{
+    if (confirmAll)
+        return true;
+    confirmAnswer = 0;
+    {
+        const juce::ScopedLock sl (lock);
+        confirmText = heavyToolWarning (name);
+    }
+    ++version;
+    while (confirmAnswer == 0 && ! threadShouldExit())
+        juce::Thread::sleep (50);
+    const auto answer = confirmAnswer.load();
+    {
+        const juce::ScopedLock sl (lock);
+        confirmText = {};
+    }
+    ++version;
+    if (answer == 3)
+        confirmAll = true;
+    return answer == 1 || answer == 3;
+}
+
 AiChat::AiChat (PluginBase& p) : juce::Thread ("Kickbase AI chat"), processor (p), tools (p) {}
 
 AiChat::~AiChat()
@@ -91,6 +213,7 @@ void AiChat::newChat()
         status = {};
     }
     messages.clear();
+    confirmAll = false;
     tokensIn = 0;
     tokensOut = 0;
     ++version;
@@ -150,14 +273,15 @@ juce::String AiChat::activeKey()
     return Settings::chatProvider() == "gemini" ? Settings::geminiApiKey() : Settings::chatApiKey();
 }
 
-var AiChat::buildRequest() const
+var AiChat::buildRequest (const Limits& limit) const
 {
+    const auto trimmed = trimForRequest (messages, limit);
     if (Settings::chatProvider() == "gemini")
-        return GeminiApi::buildRequest (juce::String (systemPrompt) + ToolLayer::guide ("agent"), ToolLayer::tools(), messages);
+        return GeminiApi::buildRequest (juce::String (systemPrompt) + ToolLayer::guide ("agent"), ToolLayer::tools(), trimmed, limit.maxOutputTokens);
 
     auto body = object();
     put (body, "model", Settings::chatModel());
-    put (body, "max_tokens", 8192);
+    put (body, "max_tokens", juce::jmin (limit.maxOutputTokens, 8192));
 
     // Systemprompten med guiden. Den cachas (cache_control), så att varje anrop i samtalet kostar mindre.
     auto system = object();
@@ -187,7 +311,7 @@ var AiChat::buildRequest() const
     if (! toolList.isEmpty())
         put (toolList.getReference (toolList.size() - 1), "cache_control", cache);
     put (body, "tools", toolList);
-    put (body, "messages", messages);
+    put (body, "messages", trimmed);
     return body;
 }
 
@@ -292,6 +416,8 @@ void AiChat::run()
     const auto key = activeKey();
     const auto sizeAtStart = messages.size();
     auto failed = false;
+    const auto limit = limits (Settings::chatCostMode());
+    const auto maxSteps = limit.maxSteps;
 
     for (int step = 0; step < maxSteps && ! threadShouldExit(); ++step)
     {
@@ -299,7 +425,7 @@ void AiChat::run()
         int httpStatus = 0;
         juce::String error;
         var response;
-        const auto request = buildRequest();
+        const auto request = buildRequest (limit);
 
         // Övergående fel (ingen anslutning, för många anrop, överbelastad tjänst) provas om efter en stund; felaktig nyckel eller dåligt anrop inte.
         for (int attempt = 0; attempt < 4; ++attempt)
@@ -365,9 +491,22 @@ void AiChat::run()
             else if (type == "tool_use")
             {
                 const auto name = block["name"].toString();
-                setStatus ("Running " + name + " ...");
-
-                const auto result = callTool (name, block["input"]);
+                var result;
+                if (limit.confirmHeavy && isHeavyTool (name))
+                {
+                    setStatus ("Waiting for your OK ...");
+                    if (! confirmTool (name))
+                    {
+                        result = object();
+                        put (result, "ok", false);
+                        put (result, "error", threadShouldExit() ? "Cancelled." : "The user skipped this tool to save tokens. Continue without it, or ask the user.");
+                    }
+                }
+                if (result.isVoid())
+                {
+                    setStatus ("Running " + name + " ...");
+                    result = callTool (name, block["input"]);
+                }
                 const auto ok = (bool) result["ok"];
 
                 Entry entry;
@@ -379,7 +518,7 @@ void AiChat::run()
                 auto textPart = object();
                 put (textPart, "type", "text");
                 const auto& data = result["data"];
-                put (textPart, "text", ok ? shorten (data.isString() ? data.toString() : juce::JSON::toString (data, false, 4), 30000) : result["error"].toString());
+                put (textPart, "text", ok ? shorten (data.isString() ? data.toString() : juce::JSON::toString (data, false, 4), limit.resultChars) : result["error"].toString());
                 parts.add (textPart);
                 if (ok)
                     if (auto* images = result["images"].getArray())
