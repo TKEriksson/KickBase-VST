@@ -209,6 +209,8 @@ std::vector<ToolLayer::ToolInfo> ToolLayer::tools()
           R"({"type":"object","properties":{"mode":{"type":"string"},"length":{"type":"string"},"points":{"type":"array","items":{"type":"array","items":{"type":"number"}}}}})" },
         { "set_instruments", "Sets how many instruments are used (1-10; each has its own pattern, oscillators, filter, envelopes, effect send and sidechain depth; the default is 3). Removing instruments deletes the last ones completely (pattern, sound, sample, wavetables, name, mixer and modulation routes). Adding gives instruments with default settings and an empty pattern.",
           R"({"type":"object","properties":{"count":{"type":"integer","minimum":1,"maximum":10}},"required":["count"]})" },
+        { "edit_instrument", "The instrument menu of the UI. action: 'rename' (give 'name'; empty = default name), 'colour' (give 'colour' as '#rrggbb', or empty for the default colour), 'duplicate' (a copy right after, the later instruments move down; needs a free instrument), 'move_up' / 'move_down' (swaps places with the neighbour), 'delete' (the later instruments move up; at least one stays). layer 0-9 = instrument 1-10. Name and colour are saved in the project (not parameters). The whole instrument moves with it: sound, pattern, mixer, FX send and modulation routes.",
+          R"({"type":"object","properties":{"action":{"type":"string","enum":["rename","colour","duplicate","move_up","move_down","delete"]},"layer":{"type":"integer","minimum":0,"maximum":9},"name":{"type":"string"},"colour":{"type":"string"}},"required":["action","layer"]})" },
         { "set_modulation", "Sets up LFOs and routes (the matrix). lfos: [{\"lfo\":1,\"shape\":\"Sine\",\"rate\":\"1 bar\",\"on\":true}] (lfo 1-10 in the instrument, 1-3 in the FX plugin; setting an inactive LFO or routing from it adds it, \"remove\":true removes it with its routes; get_state lists active_lfos; shapes: Sine, Triangle, Saw Up, Saw Down, Square, Random, Custom; synced rates 1/32 ... 16 bars; \"hz\":0.02-40 runs the LFO at its own speed instead, \"mode\":\"Sync\"|\"Hz\"; \"points\":[[phase 0..1, value -1..1, tension -1..1],...] draws a custom curve, at least two points, and selects the Custom shape). routes: [{\"lfo\":1,\"param\":\"bass1Cutoff\",\"amount\":0.3}] (amount -1..1 of the knob's travel, only sound parameters: kick*, bass*, fx*). The source is \"lfo\" 1-10, or \"macro\" 1-4 (turn macro1..macro4 with set_parameters), or \"instrument\" 1-10 with \"source\":\"ENV 2\" | \"ENV 3\" | \"VELOCITY\" | \"RANDOM\" | \"AMP ENV\" | \"FILT ENV\" (ENV 2/3 are set with bassNEnv2Attack ... bassNEnv3Release; AMP ENV is the volume envelope ENV 1, FILT ENV the filter envelope's shape 0..1 without its amount, both 0 when switched off). Up to 64 routes. clear_routes removes all routes first.",
           R"({"type":"object","properties":{"lfos":{"type":"array","items":{"type":"object"}},"routes":{"type":"array","items":{"type":"object"}},"clear_routes":{"type":"boolean"}}})" },
         { "list_presets", "Lists factory and user presets. section: Full, Kick, Bass, Pattern, Effects, Sidechain, Master (the maximizer), Soundstage or LFO (default: all).",
@@ -299,6 +301,36 @@ var ToolLayer::call (const juce::String& tool, const var& args)
         auto data = object();
         put (data, "instruments", processor.activeInstruments());
         put (data, "removed", std::max (0, before - processor.activeInstruments()));
+        return ok (data);
+    }
+
+    if (tool == "edit_instrument")
+    {
+        const auto action = args["action"].toString();
+        const int layer = (int) args["layer"];
+        const auto count = processor.activeInstruments();
+        if (! juce::isPositiveAndBelow (layer, count))
+            return fail ("layer must be 0-" + juce::String (count - 1) + " (only the first instrumentCount instruments exist).");
+        snapshot();
+        bool done = true;
+        if (action == "rename")         processor.setLayerName (layer, args["name"].toString().trim());
+        else if (action == "colour")
+        {
+            const auto text = args["colour"].toString().trim().trimCharactersAtStart ("#");
+            if (text.isNotEmpty() && (text.length() != 6 || ! text.containsOnly ("0123456789abcdefABCDEF")))
+                return fail ("colour must be '#rrggbb' or empty.");
+            processor.setLayerColour (layer, text.isEmpty() ? 0 : (juce::uint32) (0xff000000 | (juce::uint32) text.getHexValue32()));
+        }
+        else if (action == "duplicate") done = processor.duplicateTrack (layer);
+        else if (action == "move_up")   done = processor.moveTrack (layer, -1);
+        else if (action == "move_down") done = processor.moveTrack (layer, 1);
+        else if (action == "delete")    done = processor.deleteTrack (layer);
+        else return fail ("action must be rename, colour, duplicate, move_up, move_down or delete.");
+        if (! done)
+            return fail ("Not possible here (duplicate needs a free instrument, move needs a neighbour, delete keeps at least one).");
+        processor.markStateChanged();
+        auto data = object();
+        put (data, "instruments", processor.activeInstruments());
         return ok (data);
     }
 

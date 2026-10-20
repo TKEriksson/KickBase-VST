@@ -19,7 +19,7 @@ Instances: `list_instances` shows `headless` (private, no DAW, always available)
 
 One plugin: **kick** + **1-10 instruments** (default 3; `set_instruments`) + sidechain + **11 FX channels (FX1–FX11)** + mixer + master.
 
-- **Instruments** (bass layers, `bass1…bass10`): each has its own pattern, three wavetable oscillators + a sample, filter, envelopes, FX send and sidechain depth. `instrumentCount` (set it with `set_instruments`, not `set_parameters`) is how many are used. Removing instruments deletes the last ones completely. Layers are numbered 0-9 in `set_pattern`, `set_gate`, `load_preset` etc. (instrument 1 = layer 0).
+- **Instruments** (bass layers, `bass1…bass10`): each has its own pattern, three wavetable oscillators + a sample, filter, envelopes, FX send and sidechain depth. `instrumentCount` (set it with `set_instruments`, not `set_parameters`) is how many are used. Removing instruments deletes the last ones completely. `edit_instrument` is the instrument menu (rename, colour `#rrggbb`, duplicate, move_up/move_down, delete): the whole instrument moves, and name and colour are saved in the project, not as parameters. Layers are numbered 0-9 in `set_pattern`, `set_gate`, `load_preset` etc. (instrument 1 = layer 0).
 
 - **Key**: the incoming MIDI note sets the key and *also the bass octave*. MIDI note 52 (E4) gives bass root E1 = 41 Hz and kick tail near E1; note 60 (C5 in FL) gives C2 = 65 Hz. Psytrance bass roots are 41–49 Hz (E1–G1), so the usual keys are MIDI 52–55. `render_preview` takes `note` (default 52).
 - **Kick tail**: `kickKeyFollow` = Follow puts the tail on the key note within A#0..A1 (29–55 Hz), `kickTune` ±12 semitones moves it. Fixed = C1 + tune.

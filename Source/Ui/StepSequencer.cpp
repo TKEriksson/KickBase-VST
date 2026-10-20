@@ -1,5 +1,6 @@
 #include "StepSequencer.h"
 #include "LengthMenu.h"
+#include "InstrumentMenu.h"
 
 namespace
 {
@@ -1223,7 +1224,9 @@ void StepSequencer::mouseDown (const juce::MouseEvent& event)
     if (dragTarget == Target::label)
     {
         dragTarget = Target::none;
-        if (event.mods.isPopupMenu() && (size_t) rowOf (dragLayer) < lengthButtons.size())
+        if (event.mods.isPopupMenu() && dragLayer != Pattern::kickLayer)
+            InstrumentMenu::show (processor, dragLayer, *this, juce::Rectangle<int> (event.getPosition(), event.getPosition()).expanded (1)); // högerklick på radkortet: instrumentmenyn (L4)
+        else if (event.mods.isPopupMenu() && (size_t) rowOf (dragLayer) < lengthButtons.size())
             LengthMenu::show (processor, dragLayer, *lengthButtons[(size_t) rowOf (dragLayer)]); // högerklick på radkortet: AUTO / Lock length / antal takter
         return;
     }

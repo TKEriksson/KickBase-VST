@@ -1,3 +1,4 @@
+#include "InstrumentMenu.h"
 #include "Modules.h"
 #include "Help.h"
 
@@ -1067,14 +1068,38 @@ InstrumentHost::InstrumentHost (PluginBase& p) : processor (p)
     for (auto* component : std::initializer_list<juce::Component*> { &header.selector, &header.addButton, &header.removeButton })
         header.addAndMakeVisible (component);
 
+    header.selector.addMouseListener (this, false); // högerklick: instrumentmenyn (InstrumentMenu.h)
+    processor.beforeTrackChange = [this] { resetPanels(); };
+    lastStructureVersion = processor.layerStructureVersion.load();
     current = juce::jlimit (0, p.activeInstruments() - 1, p.selectedInstrument);
     select (current);
     refresh();
     startTimerHz (4);
 }
 
+void InstrumentHost::resetPanels()
+{
+    header.extras = nullptr;
+    for (size_t i = 0; i < extras.size(); ++i)
+        if (extras[i] != nullptr)
+        {
+            header.removeChildComponent (extras[i]);
+            extras[i] = nullptr;
+        }
+    for (auto& module : modules)
+        module.reset();
+}
+
+void InstrumentHost::mouseDown (const juce::MouseEvent& event)
+{
+    if (event.mods.isPopupMenu() && event.eventComponent == &header.selector)
+        InstrumentMenu::show (processor, current, header.selector);
+}
+
 InstrumentHost::~InstrumentHost()
 {
+    processor.beforeTrackChange = nullptr;
+    header.selector.removeMouseListener (this);
     for (auto* e : extras)
         if (e != nullptr)
             header.removeChildComponent (e);
@@ -1139,6 +1164,16 @@ void InstrumentHost::refresh()
 
 void InstrumentHost::timerCallback()
 {
+    // En färg ändrades eller ett instrument klistrades in: temat uppdateras och panelerna byggs om med de nya färgerna.
+    if (processor.layerStructureVersion.load() != lastStructureVersion)
+    {
+        lastStructureVersion = processor.layerStructureVersion.load();
+        InstrumentMenu::applyColours (processor);
+        resetPanels();
+        select (juce::jlimit (0, processor.activeInstruments() - 1, processor.selectedInstrument));
+        return;
+    }
+
     // ENV-fliken (och andra) kan byta instrument: följ med.
     if (processor.selectedInstrument != current && juce::isPositiveAndBelow (processor.selectedInstrument, processor.activeInstruments()))
         select (processor.selectedInstrument);

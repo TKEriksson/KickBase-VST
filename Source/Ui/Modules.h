@@ -220,6 +220,7 @@ public:
     juce::Component* getHeader() { return &header; }
     void resized() override;
     void select (int layer);
+    void mouseDown (const juce::MouseEvent& event) override;
 
 private:
     struct Header : public juce::Component
@@ -235,13 +236,14 @@ private:
     void addInstrument();
     void removeInstrument();
     void refresh();
+    void resetPanels(); // river alla paneler (färg/klistra in/ta bort): de byggs om när instrumentet visas
     InstrumentModule& moduleFor (int layer);
 
     PluginBase& processor;
     Header header;
     std::array<std::unique_ptr<InstrumentModule>, ParamID::numInstrumentLayers> modules;
     std::array<juce::Component*, ParamID::numInstrumentLayers> extras {};
-    int current = 0, lastCount = -1, lastNamesVersion = -1;
+    int current = 0, lastCount = -1, lastNamesVersion = -1, lastStructureVersion = 0;
     bool confirmOpen = false;
     juce::Component::SafePointer<juce::AlertWindow> renameDialog;
 };

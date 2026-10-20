@@ -32,8 +32,17 @@ namespace Theme
     inline const juce::Colour lfo     { 0xff5ef2d6 };
 
     // Instrumenten (upp till 10): kalla färger, skilda från kickens orange, så att raderna i mönstret skiljs åt.
+    // Egna färger per instrument (0 = standard). Fylls av editorn från projektets state (PluginBase::getLayerColour).
+    inline std::array<juce::uint32, 10>& layerColourOverrides()
+    {
+        static std::array<juce::uint32, 10> overrides {};
+        return overrides;
+    }
+
     inline juce::Colour layerColour (int index)
     {
+        if (const auto custom = layerColourOverrides()[(size_t) juce::jlimit (0, 9, index)]; custom != 0)
+            return juce::Colour (custom);
         const juce::Colour colours[] { bass, juce::Colour (0xff8f9bff), juce::Colour (0xff5fffb0), juce::Colour (0xffff7ac8), juce::Colour (0xffc3ff6b),
                                        juce::Colour (0xff6bb8ff), juce::Colour (0xffd49bff), juce::Colour (0xff5ff0e0), juce::Colour (0xffffd66b),
                                        juce::Colour (0xffff8a8a) };

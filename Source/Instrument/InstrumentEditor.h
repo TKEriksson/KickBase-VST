@@ -3,6 +3,7 @@
 #include <juce_audio_utils/juce_audio_utils.h>
 #include "InstrumentProcessor.h"
 #include "../Ui/EditorRoot.h"
+#include "../Ui/InstrumentMenu.h"
 #include "../Ui/KickbaseLookAndFeel.h"
 #include "../Ui/AiChatPage.h"
 #include "../Ui/EffectsPage.h"
@@ -32,6 +33,11 @@ private:
     juce::SharedResourcePointer<Theme::TextureCache> textures; // håller texturerna vid liv så länge editorn finns
     KickbaseLookAndFeel lookAndFeel; // först: måste leva längre än komponenterna som ritas med den
     InstrumentProcessor& processor;
+    // Projektets egna instrumentfärger gäller i resten av gränssnittet: måste sättas före sidorna byggs.
+    struct ColourSetup
+    {
+        explicit ColourSetup (PluginBase& p) { InstrumentMenu::applyColours (p); }
+    } colourSetup { processor };
     EditorRoot root; // allt ligger i roten, som skalas efter fönstrets storlek
     bool sized = false; // true när startstorleken är satt (före det sparas ingen skala)
 

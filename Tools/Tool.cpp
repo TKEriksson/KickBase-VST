@@ -16,6 +16,7 @@
 
 #include "../Source/Core/MixAnalysis.h"
 #include "../Source/Ui/LogoPainter.h"
+#include "../Source/Ui/InstrumentMenu.h"
 #include "../Source/Ui/ListenButton.h"
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_audio_utils/juce_audio_utils.h>
@@ -866,6 +867,7 @@ namespace
         processor.pattern.addNote (4, 0, 48, 3);
         processor.pattern.setCustom (4, true);
         processor.setLayerName (4, "Lead");
+        processor.setLayerColour (4, 0xff112233);
         setValue (ParamID::bass (4, InstrumentField::cutoff), 777.0f);
         const auto& parameters = processor.getParameters();
         for (int i = 0; i < parameters.size(); ++i)
@@ -885,6 +887,30 @@ namespace
             check (other->activeInstruments() == 6 && other->getLayerName (4) == "Lead" && other->pattern.note (4, 0).on.load() && other->pattern.note (4, 0).pitch.load() == 3
                        && std::abs (other->apvts.getRawParameterValue (ParamID::bass (4, InstrumentField::cutoff))->load() - 777.0f) < 1.0f,
                    "sex instrument sparas och läses tillbaka med namn, toner och inställningar");
+        }
+
+        {
+            // L4: färgen följer med projektet; ett projekt utan färg (äldre) ger standardfärg.
+            const auto other = std::make_unique<InstrumentProcessor>();
+            other->setStateInformation (state.getData(), (int) state.getSize());
+            check (other->getLayerColour (4) == 0xff112233 && other->getLayerColour (3) == 0, "L4: färgen sparas och läses, orörda instrument har standardfärg");
+            auto xml = juce::AudioProcessor::getXmlFromBinary (state.getData(), (int) state.getSize());
+            check (xml != nullptr && xml->hasAttribute ("layerColour5"), "L4: färgen ligger i projektets state");
+            xml->removeAttribute ("layerColour5");
+            juce::MemoryBlock old;
+            juce::AudioProcessor::copyXmlToBinary (*xml, old);
+            const auto legacy = std::make_unique<InstrumentProcessor>();
+            legacy->setStateInformation (old.getData(), (int) old.getSize());
+            check (legacy->getLayerColour (4) == 0 && legacy->getLayerName (4) == "Lead", "L4: ett projekt utan färg laddas med standardfärg");
+
+            // Copy/paste/duplicate/move/delete flyttar innehållet mellan platserna.
+            check (other->duplicateTrack (4) && other->activeInstruments() == 7 && other->getLayerName (5) == "Lead" && other->getLayerColour (5) == 0xff112233
+                       && other->pattern.note (5, 0).on.load() && other->pattern.note (4, 0).on.load(), "L4: Duplicate ger en kopia på nästa plats");
+            check (other->moveTrack (5, -1) && other->getLayerName (4) == "Lead" && other->moveTrack (4, 1), "L4: Move byter plats");
+            check (other->deleteTrack (4) && other->activeInstruments() == 6 && other->getLayerName (4) == "Lead" && other->getLayerName (5) == "INSTR 6", "L4: Delete flyttar upp resten");
+            const auto clip = other->copyTrack (4);
+            check (clip != nullptr && other->pasteTrack (1, *clip) && other->getLayerName (1) == "Lead" && other->getLayerColour (1) == 0xff112233
+                       && std::abs (other->apvts.getRawParameterValue (ParamID::bass (1, InstrumentField::cutoff))->load() - 777.0f) < 1.0f, "L4: Copy/Paste flyttar ljud, namn och färg");
         }
 
         // Ta bort: instrument 4-6 rensas helt.
@@ -914,6 +940,14 @@ namespace
                    "matriskopplingar med instrument- och makrokällor sätts via verktyget");
             tools.call ("set_instruments", juce::JSON::parse (R"({"count":2})"));
             check (processor.activeInstruments() == 2, "set_instruments tar bort de sista");
+            tools.call ("edit_instrument", juce::JSON::parse (R"({"action":"colour","layer":0,"colour":"#336699"})"));
+            tools.call ("edit_instrument", juce::JSON::parse (R"({"action":"rename","layer":0,"name":"Verktyg"})"));
+            check (processor.getLayerColour (0) == 0xff336699 && processor.getLayerName (0) == "Verktyg", "edit_instrument sätter färg och namn");
+            tools.call ("edit_instrument", juce::JSON::parse (R"({"action":"move_down","layer":0})"));
+            check (processor.getLayerName (1) == "Verktyg" && processor.getLayerColour (1) == 0xff336699, "edit_instrument flyttar namn och färg med instrumentet");
+            tools.call ("edit_instrument", juce::JSON::parse (R"({"action":"move_up","layer":1})"));
+            tools.call ("edit_instrument", juce::JSON::parse (R"({"action":"colour","layer":0,"colour":""})"));
+            tools.call ("edit_instrument", juce::JSON::parse (R"({"action":"rename","layer":0,"name":""})"));
             processor.setInstrumentCount (3);
         }
 
@@ -1651,7 +1685,18 @@ namespace
         }
 
         std::unique_ptr<juce::AudioProcessorEditor> editor (processor->createEditorAndMakeActive());
-        const auto image = editor->createComponentSnapshot (editor->getLocalBounds(), true, 1.0f);
+        auto image = editor->createComponentSnapshot (editor->getLocalBounds(), true, 1.0f);
+
+        // KB_MENU=<instrument 0-9>: ritar instrumentmenyn (L4) ovanpå bilden. Popup-fönstret är ett eget fönster, så det hämtas från Desktop.
+        if (const auto menuLayer = juce::SystemStats::getEnvironmentVariable ("KB_MENU", {}); menuLayer.isNotEmpty())
+        {
+            InstrumentMenu::show (*processor, menuLayer.getIntValue(), *editor, juce::Rectangle<int> (60, 120, 2, 2));
+            juce::MessageManager::getInstance()->runDispatchLoopUntil (400);
+            juce::Graphics g (image);
+            for (int i = 0; i < juce::Desktop::getInstance().getNumComponents(); ++i)
+                if (auto* top = juce::Desktop::getInstance().getComponent (i); top != nullptr && top != editor.get() && top->isShowing())
+                    g.drawImageAt (top->createComponentSnapshot (top->getLocalBounds(), true, 1.0f), top->getScreenX() - editor->getScreenX(), top->getScreenY() - editor->getScreenY());
+        }
 
         outFile.deleteFile();
         juce::FileOutputStream stream (outFile);
