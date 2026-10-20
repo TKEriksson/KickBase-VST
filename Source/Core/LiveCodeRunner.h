@@ -9,8 +9,8 @@
 class LiveCodeRunner
 {
 public:
-    // list = set_pattern-argument (ett per lager), error tomt om det gick bra.
-    using Done = std::function<void (const juce::var& list, const juce::String& error)>;
+    // list = set_pattern-argument (ett per lager), error tomt om det gick bra, mods = .lfo/.env-orden (LiveCode::getMods).
+    using Done = std::function<void (const juce::var& list, const juce::String& error, const juce::var& mods)>;
 
     ~LiveCodeRunner() { generation.fetch_add (1); pool.removeAllJobs (true, 2000); }
 
@@ -24,9 +24,10 @@ public:
             live.setSliderValues (sliders);
             juce::Result res = juce::Result::ok();
             auto list = live.create (code, cycles, res);
-            juce::MessageManager::callAsync ([this, gen, list, res, done]
+            const auto mods = live.getMods();
+            juce::MessageManager::callAsync ([this, gen, list, res, mods, done]
             {
-                if (gen == generation.load()) done (list, res.failed() ? res.getErrorMessage() : juce::String());
+                if (gen == generation.load()) done (list, res.failed() ? res.getErrorMessage() : juce::String(), mods);
             });
         });
     }

@@ -4,6 +4,7 @@
 #include "../Source/Instrument/InstrumentProcessor.h"
 #include "Scenarios.h"
 #include "../Source/Fx/FxProcessor.h"
+#include "../Source/Core/ToolLayer.h"
 #include "../Source/Ui/Help.h"
 
 namespace
@@ -203,15 +204,32 @@ int persistTest()
 
         processor->setLiveCodeText ("$: s(\"bd*4\")\n// åäö");
         processor->liveCodeLocks = (1 << 2) | (1 << 10) | (1 << 12); // bit 12 ligger utanför de 11 giltiga
+        auto* modArgs = new juce::DynamicObject();
+        modArgs->setProperty ("code", "note(\"c2\").lfo(\"bass1Cutoff\",2,0.5).s(\"i1\")");
+        modArgs->setProperty ("cycles", 1);
+        modArgs->setProperty ("overwrite", true);
+        ToolLayer tools (*processor);
+        const auto modResult = tools.call ("live_code_create", juce::var (modArgs));
+        check ((bool) modResult["ok"] && ! processor->codeMods.empty(), "testläge: CODE-modulering är aktiv före sparning");
         juce::MemoryBlock saved;
         processor->getStateInformation (saved);
         auto xml = juce::AudioProcessor::getXmlFromBinary (saved.getData(), (int) saved.getSize());
         check (xml != nullptr && xml->getNumChildElements() > 0 && xml->getChildElement (xml->getNumChildElements() - 1)->hasTagName ("LiveCode"), "<LiveCode> sparas sist");
+        auto savedCodeRoute = false;
+        if (xml != nullptr)
+            if (auto* routes = xml->getChildByName (ModRoutes::treeType.toString()))
+                for (auto* route = routes->getFirstChildElement(); route != nullptr; route = route->getNextElement())
+                    savedCodeRoute = savedCodeRoute || Modulation::isCodeSource (route->getIntAttribute ("source"));
+        check (! savedCodeRoute, "CODE-modulationsrutter sparas aldrig");
 
         auto copy = copyOf (*processor);
         check (copy->getLiveCodeText() == processor->getLiveCodeText(), "spara och ladda: koden följer med");
         check (copy->liveCodeLocks.load() == ((1 << 2) | (1 << 10)), "spara och ladda: låsen följer med (bit utanför 11 bitar tas bort)");
         check (copy->liveCodeOwned.load() == 0, "inget ägs efter laddning (LIVE startar aldrig av sig själv)");
+        auto restoredCodeRoute = false;
+        for (const auto& route : copy->modRoutes.routes)
+            restoredCodeRoute = restoredCodeRoute || Modulation::isCodeSource (route.source.load());
+        check (copy->codeMods.empty() && restoredCodeRoute == false, "laddning återställer inga CODE-modulationer");
 
         // Ett gammalt tillstånd utan elementet lämnar användarens kod och lås orörda.
         copy->setLiveCodeText ("$: s(\"hh*8\")");

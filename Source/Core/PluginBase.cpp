@@ -12,8 +12,9 @@ static_assert (Pattern::numLayers == 10 && Pattern::kickLayer == 10, "mönstrets
 static_assert (numEffectChannels == 11 && slotsPerChannel == 5, "FX-kanalernas id:n är fxA-fxK med fem platser");
 static_assert (Modulation::numLfos == 3 && Modulation::numMacros == 4 && Modulation::firstInstrumentSource == 7
                    && Modulation::instrumentSources == 4 && Modulation::maxLfos == 10 && Modulation::firstExtraLfoSource == 47
-                   && Modulation::firstEnvSource == 54 && Modulation::envSources == 2 && Modulation::numSources == 74,
-               "modulationskällorna sparas som tal i modRoutes (LFO 4-10 = källa 47-53, AMP ENV/FILT ENV = 54-73)");
+                   && Modulation::firstEnvSource == 54 && Modulation::envSources == 2 && Modulation::firstCodeSource == 74
+                   && Modulation::numCodeSources == 8 && Modulation::numSources == 82,
+               "modulationskällorna sparas som tal i modRoutes (CODE 1-8 är sist, källa 74-81)");
 static_assert (ParamID::oscsPerLayer == 3, "projektens egna wavetables sparas med lager och oscillator (OSC 1-3)");
 
 namespace
@@ -576,11 +577,36 @@ void PluginBase::liveCodeFromValueTree (const juce::ValueTree& tree)
     liveCodeOwned = 0;
 }
 
+void PluginBase::clearCodeMods (bool dropRoutes)
+{
+    for (auto& slot : modulator.codeSlots)
+        slot.kind = 0;
+    if (dropRoutes)
+        for (int i = 0; i < (int) modRoutes.routes.size(); ++i)
+            if (Modulation::isCodeSource (modRoutes.routes[(size_t) i].source.load()))
+                modRoutes.remove (i);
+    codeMods.clear();
+}
+
+void PluginBase::sweepCodeRoutes()
+{
+    for (int i = 0; i < (int) modRoutes.routes.size(); ++i)
+    {
+        const auto source = modRoutes.routes[(size_t) i].source.load();
+        if (! Modulation::isCodeSource (source))
+            continue;
+        const auto& slot = modulator.codeSlots[(size_t) (source - Modulation::firstCodeSource)];
+        if (slot.kind.load() == 0 && slot.idle.load())
+            modRoutes.remove (i);
+    }
+}
+
 void PluginBase::setStateInformation (const void* data, int sizeInBytes)
 {
     auto xml = getXmlFromBinary (data, sizeInBytes);
     if (xml == nullptr || ! xml->hasTagName (apvts.state.getType()))
         return;
+    clearCodeMods(); // kopplingarna ersätts nedan; poster och platser får inte peka på dem
 
     auto state = juce::ValueTree::fromXml (*xml);
     for (int i = 0; i < Presets::numSections; ++i)
@@ -773,6 +799,7 @@ void PluginBase::loadFactoryPreset (Presets::Section section, int index, int lay
 
     if (section == Presets::Section::full || section == Presets::Section::lfo)
     {
+        clearCodeMods();
         modRoutes.clear();
         for (auto& curve : lfoCurves)
             curve.reset();
@@ -1265,6 +1292,7 @@ bool PluginBase::loadPresetXml (const juce::XmlElement& xmlElement, Presets::Sec
 
     if (section == Presets::Section::full || section == Presets::Section::lfo)
     {
+        clearCodeMods();
         if (const auto* routesXml = xml->getChildByName (ModRoutes::treeType))
             modRoutes.fromValueTree (juce::ValueTree::fromXml (*routesXml), getParameters());
         else

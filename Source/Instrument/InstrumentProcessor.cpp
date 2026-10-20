@@ -80,6 +80,7 @@ InstrumentProcessor::InstrumentProcessor()
 void InstrumentProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     prepareBase (sampleRate);
+    modulator.setSampleRate (sampleRate);
     kick.prepare (sampleRate);
     kick.setSeed (1000);
     for (size_t layer = 0; layer < basses.size(); ++layer)
@@ -151,6 +152,7 @@ void InstrumentProcessor::processChunk (juce::AudioBuffer<float>& buffer, juce::
                                             envSourcesUsed ? basses[(size_t) layer].getModulationValue (5) : 0.0f);
         else
             modulator.setInstrumentSources (layer, 0.0f, 0.0f, 0.0f, 0.0f);
+        modulator.setInstrumentNoteCount (layer, basses[(size_t) layer].getNoteCount());
     }
     if (controlPhase == 0)
         modulator.update (clock.getPpqAt (0), clock.getBpm());

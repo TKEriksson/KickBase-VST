@@ -18,6 +18,7 @@
 #include "../Source/Ui/LogoPainter.h"
 #include "../Source/Ui/InstrumentMenu.h"
 #include "../Source/Ui/ListenButton.h"
+#include "../Source/Ui/Theme.h"
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_audio_utils/juce_audio_utils.h>
 #include "../Source/Fx/FxProcessor.h"
@@ -449,8 +450,47 @@ namespace
             auto described = false;
             for (auto& t : ToolLayer::tools())
                 if (t.name == "live_code_create")
-                    described = t.description.contains ("overwrite") && t.description.contains ("live_code_lock") && t.description.contains ("$:");
-            check (described, "live_code_create beskriver overwrite, live_code_lock och $:");
+                    described = t.description.contains ("overwrite") && t.description.contains ("live_code_lock") && t.description.contains ("$: ")
+                                && t.description.contains (".lfo(") && t.description.contains (".env(") && t.description.contains ("data.problems");
+            check (described, "live_code_create beskriver skydd, block, sliders och .lfo/.env-problem");
+        }
+
+        // .lfo/.env skapar CODE-rutter; felaktiga modulationsmål rapporteras utan att stoppa notraderna.
+        {
+            auto lfo = run ("note(\"c2\").lfo(\"bass1Cutoff\",2,0.5,\"tri\").s(\"i1\")");
+            const auto lfoSlot = processor.codeMods.empty() ? -1 : processor.codeMods.front().slot;
+            const auto lfoSource = Modulation::firstCodeSource + lfoSlot;
+            const auto lfoRoute = lfoSlot >= 0 ? processor.modRoutes.find (lfoSource, processor.modulator.indexOf ("bass1Cutoff")) : -1;
+            check ((bool) lfo["ok"] && lfo["data"]["problems"].isVoid() && lfoSlot >= 0
+                       && processor.modulator.codeSlots[(size_t) juce::jmax (0, lfoSlot)].kind.load() == 1 && lfoRoute >= 0
+                       && Modulation::sourceName (lfoSource) == "CODE 1" && Theme::sourceColour (lfoSource).getAlpha() == 255,
+                   ".lfo skapar en namngiven, färgsatt CODE-källa och route");
+
+            auto env = run ("note(\"c2\").env(\"bass1Cutoff\",10,200,0.5).s(\"i1\")");
+            const auto envFound = std::find_if (processor.codeMods.begin(), processor.codeMods.end(), [] (const PluginBase::CodeMod& mod) { return mod.key.endsWith ("|env"); });
+            const auto envSlot = envFound == processor.codeMods.end() ? -1 : envFound->slot;
+            const auto envRoute = envSlot >= 0 ? processor.modRoutes.find (Modulation::firstCodeSource + envSlot, processor.modulator.indexOf ("bass1Cutoff")) : -1;
+            check ((bool) env["ok"] && env["data"]["problems"].isVoid() && envSlot >= 0
+                       && processor.modulator.codeSlots[(size_t) juce::jmax (0, envSlot)].kind.load() == 2 && envRoute >= 0,
+                   ".env skapar en AD-källa för instrumentraden");
+
+            auto unknown = run ("note(\"c2\").lfo(\"notAParameter\",2,0.5).s(\"i1\")");
+            auto hasProblem = [] (const juce::var& result, const juce::String& text)
+            {
+                if (auto* problems = result["data"]["problems"].getArray())
+                    for (const auto& problem : *problems)
+                        if (problem.toString().contains (text))
+                            return true;
+                return false;
+            };
+            check ((bool) unknown["ok"] && hasProblem (unknown, "unknown parameter id"),
+                   ".lfo med okänt parameter-id returnerar problems");
+            auto nonModulatable = run ("note(\"c2\").lfo(\"instrumentCount\",2,0.5).s(\"i1\")");
+            check ((bool) nonModulatable["ok"] && hasProblem (nonModulatable, "can't be modulated"),
+                   ".lfo på icke-modulerbar parameter returnerar problems");
+            auto kickEnv = run ("s(\"bd\").env(\"kickTune\",10,200,0.5)");
+            check ((bool) kickEnv["ok"] && hasProblem (kickEnv, "not supported"),
+                   ".env på kick returnerar problems i stället för route");
         }
 
         // slider(v,min,max): utan dragning gäller värdet i texten, med dragning värdet från reglaget (begränsat till min..max).

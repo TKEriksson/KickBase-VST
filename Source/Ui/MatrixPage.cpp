@@ -12,7 +12,7 @@ namespace
         return Modulation::sourceName (source);
     }
 
-    // Källmenyn: LFO:erna, makrona och för varje instrument dess ENV 2, ENV 3, velocity och slump. Menyvalets id är källans nummer + 1.
+    // Handritade källor: LFO:er, makron och instrumentkällor. CODE-källor visas på sina rutter men väljs bara från Live Code.
     juce::PopupMenu sourceMenu (const PluginBase& p, int current)
     {
         juce::PopupMenu menu;

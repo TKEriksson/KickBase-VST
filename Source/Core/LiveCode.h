@@ -35,6 +35,10 @@ public:
     // Hela vägen: kod -> lista med set_pattern-argument. result bär felet.
     juce::var create (const juce::String& code, int cycles, juce::Result& result);
 
+    // Modulationsorden .lfo/.env från senaste create(): lista med {layer, param, kind ("lfo"/"env"), rate, shape, attack, decay, depth},
+    // en post per (lager, param, kind). layer är -1 för kicken. Tom lista = inga modulationsord i koden.
+    const juce::var& getMods() const { return mods; }
+
     // Tonnamn ("c2", "eb3", "f#1") eller tal -> pitch i halvtoner från C2 (MIDI 36). false om det inte går.
     static bool pitchFrom (const juce::var& note, int& pitch);
 
@@ -44,5 +48,7 @@ private:
     std::map<int, double> sliderValues; // före engine: reglagens svar läser den
     juce::JavascriptEngine engine;
     bool loaded = false;
+    juce::var mods;
+    static juce::var collectMods (const std::vector<Hap>& haps);
     juce::Result load();
 };

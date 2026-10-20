@@ -360,7 +360,13 @@ public:
     void setLiveCodeText (const juce::String& text) { const juce::ScopedLock lock (liveCodeTextLock); liveCodeText = text; }
     juce::ValueTree liveCodeToValueTree() const; // ogiltigt träd = inget att spara
     void liveCodeFromValueTree (const juce::ValueTree& tree);
-    int selectedTab = 0;                   // gränssnittets valda flikar (nedre och övre panelen), så att de
+    // Live Code, steg E (.lfo/.env): meddelandetråden håller en post per (rad, parameter, sort) med sin CODE-plats. Kopplingarna från
+    // CODE-källor sparas aldrig (Modulation::isCodeSource) och rensas vid laddning, stopp och ny körning utan .lfo/.env.
+    struct CodeMod { juce::String key; int slot = 0; };
+    std::vector<CodeMod> codeMods;
+    void clearCodeMods (bool dropRoutes = true); // stänger alla platser och tar bort alla kopplingar från CODE-källor direkt
+    void sweepCodeRoutes(); // tar bort kopplingar vars plats hunnit tona ut (anropas av meddelandetråden då och då)
+    int selectedTab = 0;                  // gränssnittets valda flikar (nedre och övre panelen), så att de
     int selectedSynthTab = 0;              // finns kvar när fönstret öppnas igen
     int selectedPatternMode = 0;           // PATTERN-flikens läge: 0 PATTERN (toner), 1 GATE
     std::array<int, ParamID::numInstrumentLayers> selectedInstrumentSource {}; // instrumentets valda flik: INSTR, OSC 1-3, SAMPLE eller FILTER

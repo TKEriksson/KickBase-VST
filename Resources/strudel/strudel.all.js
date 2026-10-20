@@ -9297,3 +9297,29 @@ globalThis.sliderLive = function (id, min, max) { // läser C++-värdet vid varj
 };
 var origSet = globalThis.setPattern;
 globalThis.setPattern = function (code) { sliderCounter = 0; return origSet(code); };
+
+// Modulation från koden: .lfo(param, hz, djup, form?) och .env(param, attackMs, decayMs, djup) lägger en _mod-lista på varje hap.
+// C++ (LiveCode::collectMods) plockar ut den; lagret kommer från s("iN"). Parametern är ett id från list_parameters, djupet -1..1.
+var modProto = Object.getPrototypeOf(S.pure(0));
+var modShapes = ['sine', 'tri', 'saw', 'isaw', 'square', 'rand'];
+function modNum(name, v) {
+  if (typeof v !== 'number' || !isFinite(v)) throw new Error(name + ' måste vara ett tal');
+  return v;
+}
+function addMod(pat, spec) {
+  return pat.withValue(function (v) {
+    var o = (v !== null && typeof v === 'object') ? Object.assign({}, v) : { note: v };
+    o._mod = (o._mod || []).concat([spec]);
+    return o;
+  });
+}
+modProto.lfo = function (param, hz, depth, shape) {
+  if (typeof param !== 'string') throw new Error('lfo: första argumentet är parameterns id, t.ex. "bass1Cutoff"');
+  var sh = shape === undefined ? 0 : modShapes.indexOf(shape);
+  if (sh < 0) throw new Error('lfo: formen är en av ' + modShapes.join(', '));
+  return addMod(this, { param: param, kind: 'lfo', rate: modNum('hz', hz), depth: modNum('djup', depth === undefined ? 1 : depth), shape: sh });
+};
+modProto.env = function (param, attackMs, decayMs, depth) {
+  if (typeof param !== 'string') throw new Error('env: första argumentet är parameterns id, t.ex. "bass1Cutoff"');
+  return addMod(this, { param: param, kind: 'env', attack: modNum('attack', attackMs), decay: modNum('decay', decayMs), depth: modNum('djup', depth === undefined ? 1 : depth) });
+};

@@ -285,6 +285,7 @@ void LiveCodePage::setPlaying (bool shouldPlay)
     {
         stopTimer();
         runner.cancel();
+        processor.clearCodeMods (false); // LFO/ENV från koden tonar ut och kopplingarna städas av loadWatch
     }
     repaint();
 }
@@ -373,32 +374,40 @@ void LiveCodePage::refreshCodeOnly()
 
 void LiveCodePage::runNow()
 {
-    runner.run (document.getAllContent(), cycles, [this] (const juce::var& list, const juce::String& error)
+    runner.run (document.getAllContent(), cycles, [this] (const juce::var& list, const juce::String& error, const juce::var& mods)
     {
         if (error.isNotEmpty())
             return showError (error);
 
         showError ({});
-        apply (list, false);
+        apply (list, false, mods);
     }, sliderValues);
 }
 
 // Skriver raderna via live_code_apply. Handritade toner som skulle skrivas över ger en fråga (en i taget) i stället för att tyst försvinna.
-bool LiveCodePage::apply (const juce::var& items, bool overwrite)
+bool LiveCodePage::apply (const juce::var& items, bool overwrite, const juce::var& mods)
 {
     if (warningOpen)
         return false;
     auto args = juce::var (new juce::DynamicObject());
     args.getDynamicObject()->setProperty ("items", items);
     args.getDynamicObject()->setProperty ("overwrite", overwrite);
+    args.getDynamicObject()->setProperty ("mods", mods);
     const auto result = tools.call ("live_code_apply", args);
     if (! (bool) result["ok"])
     {
         if (auto* conflicts = result["conflicts"].getArray(); conflicts != nullptr && ! conflicts->isEmpty())
-            warnOverwrite (result["conflicts"], [this, items] (bool ow) { apply (items, ow); });
+            warnOverwrite (result["conflicts"], [this, items, mods] (bool ow) { apply (items, ow, mods); });
         else
             showError (result["error"].toString());
         return false;
+    }
+    if (auto* problems = result["data"]["problems"].getArray(); problems != nullptr && ! problems->isEmpty())
+    {
+        juce::StringArray lines;
+        for (auto& p : *problems)
+            lines.add (p.toString());
+        showError (lines.joinIntoString ("\n"));
     }
     syncLocks();
     refreshCodeOnly();

@@ -33,7 +33,7 @@ private:
     void create();
     void finishCreate (const juce::var& result);
     void showError (const juce::String& text);
-    bool apply (const juce::var& items, bool overwrite); // skriver raderna; frågar först om handritade toner skulle skrivas över
+    bool apply (const juce::var& items, bool overwrite, const juce::var& mods); // skriver raderna; frågar först om handritade toner skulle skrivas över
     void warnOverwrite (const juce::var& conflicts, std::function<void (bool overwrite)> retry);
     void syncLocks();
     void syncSavedCode();
@@ -56,7 +56,7 @@ private:
         std::function<void()> callback;
     };
     int seenLoads = 0;
-    LoadWatch loadWatch { [this] { checkLoaded(); layoutSliders(); } };
+    LoadWatch loadWatch { [this] { checkLoaded(); layoutSliders(); processor.sweepCodeRoutes(); } };
     int savedSolo = 0, ownSolo = 0; // soloMask före CODE ONLY, och det värde CODE ONLY själv satte
 
     void showTab (bool errors);

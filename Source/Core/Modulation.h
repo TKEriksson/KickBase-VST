@@ -31,7 +31,10 @@ namespace Modulation
     constexpr int firstEnvSource = firstExtraLfoSource + (maxLfos - numLfos);
     constexpr int envSources = 2;                                    // AMP ENV, FILT ENV
     constexpr int instrumentKinds = instrumentSources + envSources;  // kind 0-3 i första blocket, 4-5 i blocket från 54
-    constexpr int numSources = firstEnvSource + maxInstruments * envSources;
+    // CODE 1-8 (74-81): LFO/ENV som Live Code lägger på (.lfo/.env). Sparas aldrig; kopplingarna från dem rensas vid save, load och stopp.
+    constexpr int firstCodeSource = firstEnvSource + maxInstruments * envSources;
+    constexpr int numCodeSources = 8;
+    constexpr int numSources = firstCodeSource + numCodeSources;
     constexpr int maxRoutes = 64;
 
     inline int lfoSource (int lfo)             { return lfo < numLfos ? lfo : firstExtraLfoSource + (lfo - numLfos); }
@@ -39,7 +42,8 @@ namespace Modulation
     inline bool isLfoSource (int source)       { return lfoIndexOfSource (source) >= 0; }
     inline bool isLfo (int source)             { return source >= 0 && source < numLfos; } // bara de tre första (källa 0-2); använd isLfoSource för alla
     inline bool isMacro (int source)           { return source >= firstMacro && source < firstInstrumentSource; }
-    inline bool isEnvSource (int source)       { return source >= firstEnvSource && source < numSources; } // AMP ENV / FILT ENV
+    inline bool isEnvSource (int source)       { return source >= firstEnvSource && source < firstCodeSource; } // AMP ENV / FILT ENV
+    inline bool isCodeSource (int source)      { return source >= firstCodeSource && source < numSources; }
     inline bool isInstrumentSource (int source) { return (source >= firstInstrumentSource && source < firstExtraLfoSource) || isEnvSource (source); }
     inline int instrumentSource (int layer, int kind)
     {
@@ -146,6 +150,24 @@ public:
         s = { env2, env3, velocity, random, ampEnv, filterEnv };
     }
 
+    // Live Code-källor (CODE 1-8). Meddelandetråden skriver inställningarna, ljudtråden räknar. kind: 0 av, 1 LFO, 2 ENV.
+    // LFO: rate (Hz) och shape (0-5 som shapeValue). ENV: attack/decay i ms, startar när instrumentet `layer` får en ny ton (AD, ingen sustain).
+    // När en plats stängs tonas den ut på ~20 ms; `idle` blir sant när den är helt tyst och platsen kan återanvändas.
+    struct CodeSlot
+    {
+        std::atomic<int> kind { 0 };
+        std::atomic<float> rate { 1.0f };
+        std::atomic<int> shape { 0 };
+        std::atomic<float> attackMs { 10.0f }, decayMs { 200.0f };
+        std::atomic<int> layer { 0 };
+        std::atomic<bool> idle { true };
+    };
+    std::array<CodeSlot, Modulation::numCodeSources> codeSlots;
+
+    // Antal toner instrumentet startat (för ENV-startsignalen). Skrivs av ljudtråden före update().
+    void setInstrumentNoteCount (int layer, juce::uint64 count) { noteCounts[(size_t) layer] = count; }
+    void setSampleRate (double sampleRate) { codeDt = (double) Modulation::controlInterval / std::max (1.0, sampleRate); }
+
     // Källans värde just nu (för gränssnittets visning): LFO -1..1, övriga 0..1.
     float sourceValue (int source) const { return juce::isPositiveAndBelow (source, Modulation::numSources) ? sourceDisplay[(size_t) source].load() : 0.0f; }
 
@@ -163,6 +185,18 @@ private:
     const std::array<NodeEnvelope, Modulation::maxLfos>* lfoCurves = nullptr;
     // Fas-kontinuitet vid ändrad hastighet (se update): offset i perioder, senaste perioder per fjärdedel och senaste positionen.
     std::array<double, Modulation::maxLfos> phaseOffset {}, lastCyclesPerQuarter {}, lastPpq {};
+
+    struct CodeRuntime
+    {
+        bool wasOn = false, envActive = false;
+        double phase = 0.0, envMs = 0.0;
+        juce::int64 cycle = 0;
+        juce::uint64 lastCount = 0;
+        float fade = 0.0f, lastRaw = 0.0f;
+    };
+    std::array<CodeRuntime, Modulation::numCodeSources> codeRuntime {};
+    std::array<juce::uint64, maxInstruments> noteCounts {};
+    double codeDt = (double) Modulation::controlInterval / 44100.0;
 
     const ModRoutes& routes;
     std::array<Lfo, Modulation::maxLfos> lfos {};
