@@ -30,3 +30,5 @@ Lägg till en rad direkt när ett fel upptäcks (av dig, Opus eller Tobias): vad
 - Bygge: cmake finns inte i bash. Använd build-mcp.bat via PowerShell (`cmd /c`), filtrera på `error|TARGET-BUILD-DONE`.
 - Bildjämförelse: fönsterstorleken ändras mellan sessioner. Bygg tippen (basgrenen) i samma miljö och ta nya bilder som "före"; jämför aldrig mot gamla bildmappar.
 - rendersigwide/tb303 skiljer sig efter R9 för att makeHeavy-mönstret ändrats (innehållet loopar nu per takt), inte för att ljudmotorn ändrats (bevisat: kvarstår med d2-Modulation). Skilj mönsterändring från motorändring innan baslinjen görs om.
+- docs/audit/params-*.txt är föråldrade (från före fas R). Jämför parameterlistan mot senaste bygget (t.ex. basgrenens), inte mot de filerna.
+- MCP-verktygets tester: lägg aldrig en InstrumentProcessor på stacken (stackoverflow, exit 0xC00000FD). Använd std::make_unique som de andra testerna.

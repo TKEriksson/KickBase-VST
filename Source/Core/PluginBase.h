@@ -80,6 +80,8 @@ public:
 
     // Som patternChanged, för annat som sparas utan att vara en parameter (t.ex. effektordningen).
     void markStateChanged();
+    int clearLfo (int index);                  // tar bort kopplingarna, återställer parametrar och kurva, sist biten i masken
+    void applyLoadedLfos (std::uint32_t mask); // efter laddning: LFO:er med kopplingar räknas som aktiva, övriga återställs
 
     // Presets per del (se Presets.h). Bara i plugin:ets egen meny, inte som VST3-"programs":
     // en värd kan sätta program-parametern när ett projekt laddas och skulle då skriva över
@@ -250,6 +252,14 @@ public:
                                                               NodeEnvelope (1.0f, 1.0f, sineCurve()), NodeEnvelope (1.0f, 1.0f, sineCurve()) };
     static_assert (Modulation::maxLfos == 10, "lfoCurves ovan har en sinus per LFO");
 
+    // Aktiva LFO:er (fas M). Instrumentet har 10, FX 3 (saknar parametrarna för LFO 4-10). LFO 1-3 är aktiva som standard.
+    int availableLfos() const;
+    bool isLfoActive (int index) const;
+    int lfoRouteCount (int index) const;
+    // Lägger till eller tar bort en LFO (UI- och MCP-tråden). Borttagen: kopplingarna försvinner och parametrar och kurva återställs.
+    // Ger antalet borttagna kopplingar.
+    int setLfoActive (int index, bool active);
+
     // Kickens inställningar som de är just nu, utan LFO (för gränssnittets bilder).
     KickParams kickForDisplay (int keyPitchClass) const;
     TransportStatus transportStatus;
@@ -319,6 +329,7 @@ public:
     std::atomic<int> auditionRequest { -1 };
 
     std::atomic<bool> followPlayhead { true }; // pianorullen och stegvyn bläddrar med uppspelningen
+    std::atomic<int> lfoActiveVersion { 0 }; // ökas när en LFO läggs till eller tas bort (fas M), så att gränssnittet ritar om
     std::atomic<int> patternVersion { 0 }; // ökas när mönstret ändras, så att gränssnittet ritar om
     int selectedTab = 0;                   // gränssnittets valda flikar (nedre och övre panelen), så att de
     int selectedSynthTab = 0;              // finns kvar när fönstret öppnas igen

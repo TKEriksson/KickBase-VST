@@ -342,6 +342,92 @@ int persistTest()
         }
     }
 
+    // 10. Aktiva LFO:er (fas M): lägga till och ta bort, spara och ladda (projekt och preset), gamla projekt och fabrikspresets ger LFO 1-3.
+    {
+        using Modulation::paramID;
+        auto set = [] (PluginBase& p, const juce::String& id, float v) { auto* q = p.apvts.getParameter (id); q->setValueNotifyingHost (q->convertTo0to1 (v)); };
+        auto get = [] (PluginBase& p, const juce::String& id) { return p.apvts.getRawParameterValue (id)->load(); };
+        auto isDefault = [] (PluginBase& p, int lfo)
+        {
+            for (const auto* suffix : { "On", "Shape", "Rate", "Mode", "Hz", "Snap", "SnapRange" })
+                if (auto* q = p.apvts.getParameter (paramID (lfo, suffix)); std::abs (q->getValue() - q->getDefaultValue()) > 1.0e-6f)
+                    return false;
+            return true;
+        };
+        const auto fresh = std::make_unique<InstrumentProcessor>(); // (på heapen: processorn är för stor för stacken)
+        auto sameCurve = [&fresh] (PluginBase& p, int lfo) { return p.lfoCurves[(size_t) lfo].toValueTree ("c").isEquivalentTo (fresh->lfoCurves[(size_t) lfo].toValueTree ("c")); };
+        auto target = [] (PluginBase& p, int nth) // index för den n:te modulerbara parametern
+        {
+            const auto& parameters = p.getParameters();
+            for (int i = 0; i < parameters.size(); ++i)
+                if (auto* r = dynamic_cast<juce::RangedAudioParameter*> (parameters[i]); r != nullptr && Modulation::isModulatable (*r) && nth-- == 0)
+                    return i;
+            return -1;
+        };
+        const std::vector<NodeEnvelope::Point> ramp { { 0.0f, 0.0f, 0.0f }, { 1.0f, 1.0f, 0.0f } };
+
+        auto processor = std::make_unique<InstrumentProcessor>();
+        check (processor->modulator.activeMask.load() == 7u && processor->availableLfos() == 10, "LFO 1-3 aktiva från början, 10 möjliga");
+        check (processor->setLfoActive (4, true) == 0 && processor->setLfoActive (8, true) == 0 && processor->isLfoActive (4) && processor->isLfoActive (8), "lägg till LFO 5 och 9");
+        set (*processor, paramID (4, "Rate"), 3.0f);
+        set (*processor, paramID (8, "Shape"), 4.0f);
+        processor->lfoCurves[4].setPoints (ramp);
+        processor->modRoutes.add (Modulation::lfoSource (4), target (*processor, 0), 0.5f);
+        processor->modRoutes.add (Modulation::lfoSource (8), target (*processor, 1), -0.25f);
+        processor->modRoutes.add (Modulation::lfoSource (8), target (*processor, 2), 0.75f);
+        {
+            auto copy = copyOf (*processor);
+            check (copy->modulator.activeMask.load() == (7u | 1u << 4 | 1u << 8), "spara och ladda: LFO 5 och 9 är aktiva");
+            check ((int) get (*copy, paramID (4, "Rate")) == 3 && (int) get (*copy, paramID (8, "Shape")) == 4 && copy->lfoRouteCount (4) == 1 && copy->lfoRouteCount (8) == 2,
+                   "LFO 5 och 9: parametrar och kopplingar följer med");
+            check (! sameCurve (*copy, 4) && sameCurve (*copy, 8), "LFO 5:s egna kurva följer med");
+        }
+
+        check (processor->setLfoActive (4, false) == 1, "ta bort LFO 5 tar bort dess koppling");
+        check (! processor->isLfoActive (4) && processor->lfoRouteCount (4) == 0 && isDefault (*processor, 4) && sameCurve (*processor, 4), "borttagen LFO 5: standardvärden och sinus");
+        check (processor->lfoRouteCount (8) == 2 && (int) get (*processor, paramID (8, "Shape")) == 4, "LFO 9 rörs inte");
+        check (processor->setLfoActive (1, false) == 0 && ! processor->isLfoActive (1), "ta bort LFO 2 (utan kopplingar)");
+        check (processor->setLfoActive (4, false) == 0 && processor->setLfoActive (10, true) == 0 && ! processor->isLfoActive (10), "ogiltiga anrop gör inget");
+        {
+            auto copy = copyOf (*processor);
+            check (copy->modulator.activeMask.load() == (1u | 4u | 1u << 8) && isDefault (*copy, 4), "spara och ladda efter borttagning: LFO 1, 3 och 9");
+        }
+
+        // Preset (Full och LFO) bär masken.
+        check (processor->saveUserPreset (Presets::Section::lfo, "__persist_lfos__"), "LFO-preset sparas");
+        auto other = std::make_unique<InstrumentProcessor>();
+        other->setLfoActive (6, true);
+        set (*other, paramID (6, "Rate"), 2.0f);
+        other->loadUserPreset (Presets::Section::lfo, processor->findUserPreset (Presets::Section::lfo, "__persist_lfos__"));
+        check (other->modulator.activeMask.load() == (1u | 4u | 1u << 8) && isDefault (*other, 6) && other->lfoRouteCount (8) == 2, "LFO-presetet ger LFO 1, 3 och 9 och återställer LFO 7");
+        other->loadFactoryPreset (Presets::Section::full, 1);
+        check ((other->modulator.activeMask.load() & 7u) == 7u && other->lfoRouteCount (8) == 0 && ! other->isLfoActive (8), "fabrikspreset: LFO 1-3 aktiva igen");
+
+        // Gammalt projekt: ingen activeLfos och inga LFO 4-10-parametrar.
+        juce::MemoryBlock state;
+        processor->modRoutes.clear();
+        processor->getStateInformation (state);
+        if (auto xml = juce::AudioProcessor::getXmlFromBinary (state.getData(), (int) state.getSize()))
+        {
+            auto tree = juce::ValueTree::fromXml (*xml);
+            tree.removeProperty ("activeLfos", nullptr);
+            for (int i = tree.getNumChildren(); --i >= 0;)
+                for (int lfo = Modulation::numLfos; lfo < Modulation::maxLfos; ++lfo)
+                    if (tree.getChild (i).getProperty ("id").toString().startsWith (paramID (lfo, "")))
+                        tree.removeChild (i, nullptr);
+            juce::MemoryBlock legacy;
+            juce::AudioProcessor::copyXmlToBinary (*tree.createXml(), legacy);
+            auto loaded = std::make_unique<InstrumentProcessor>();
+            loaded->setLfoActive (5, true);
+            set (*loaded, paramID (5, "Hz"), 7.0f);
+            loaded->setStateInformation (legacy.getData(), (int) legacy.getSize());
+            check (loaded->modulator.activeMask.load() == 7u && isDefault (*loaded, 5), "gammalt projekt utan mask: LFO 1-3, LFO 6 återställd");
+        }
+
+        auto fx = std::make_unique<FxProcessor>();
+        check (fx->availableLfos() == 3 && fx->setLfoActive (3, true) == 0 && fx->modulator.activeMask.load() == 7u, "FX: bara LFO 1-3");
+    }
+
     std::puts (failed ? "FEL: sparandetestet misslyckades" : "Sparandetestet gick igenom");
     return failed ? 1 : 0;
 }
