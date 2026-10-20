@@ -100,6 +100,7 @@ Ordningen R→M→P→L→S→KB→K ändras inte. Från AN och framåt:
 - **AN** får nya mätare: fasdiagram per FX-plats (bredvid A8 latens), limiter-delta + låg-band (<100 Hz) före/efter, kick+snare-koincidens (≈3 dB hopp), frekvenszonsvy.
 - **FX** delas: **FX1** (efter PH): B6 multiband-distortion (LR4, 3 band) + kompressorns detektor-HPF + MIX-knapp (kolla `list_effects` först). **FX2** (efter AN): B8 widener/split-pan, B9 dynamic EQ + flanger, B10 transient shaper + oktav ner/upp, per-band-ducking (på B6-splitten).
 - **S2** (FM, B11) efter A6; B13 additiv editor, Reese/unison, shimmer, andra maximizer-läge = SENARE.
+- Ur `fx-and-fm-ideas.md`: AN-rapporten får strukturerade `phase_findings` + `suggested_fixes` (samma data i UI, MCP och `save_mix_report`; förslag är alltid A/B-kandidater som användaren godkänner). Additiv editor börjar som 8 partialer + fasmakron (P2), 32 partialer = P3. FM-källa: 2 operatorer först (ratio, index, index-env/LFO), fyra presets.
 - SKIPPA: HPF-stack som fasskiftare, linjärfas-HP/LP och -multiband, ny soft-clip/tape.
 - Kolla i koden innan bygge: reverb pre-delay, echo punkterad/triol-sync, distortion-kurvor.
 

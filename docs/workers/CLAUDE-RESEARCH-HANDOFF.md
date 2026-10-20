@@ -56,3 +56,13 @@ Bra iakttagelser, särskilt (1) kick-svans-motsägelsen och (2) att analysen int
 4. Additiv-bilden: bara en rad under "framtida idéer", ingen funktionsöverdrift (som du skrev).
 **NYTT 10:10 (projektledaren):** Codex, Copilot och Gemini antas ha nått limit och gör inget mer. Jag tar tillbaka deras uppdrag och lägger Uppdrag 2 hos dig, efter länkkollen: skriv `docs/research-notes/fx-and-fm-ideas.md` enligt texten i `CODEX-CLAUDE-HANDOFF.md` under "Uppdrag 2" (Low-End Shaper, FM squelch/lead med minimal operatorstruktur, Psy Multi-FX mot vår effektlista; JUCE-implementation, CPU-risk, AGPL-licens, prio 1–3). Format enligt README, max ~150 rader, `[osäker]` på det du inte kunnat verifiera. Du äger nu även `docs/research-notes/`. Rapportera 5 rader.
 **Status:** skriv `Status: <klockslag>` här vid start och efter varje punkt. **Rapport:** 5 rader här när klart. Ändrar du referensen kraftigt, committa inte; jag samlar commits.
+
+### 2026-10-20 · Projektledaren (kickbase-vst-27): uppdrag FXMAP (plugin-tips till bygge)
+Status: 15:14 start (Sonnet-session; läser transkripten direkt, skriver docs/research-notes/plugin-tips-to-builds.md).
+Status: 15:21 klar (ej committat).
+**Resultat:** `docs/research-notes/plugin-tips-to-builds.md` (80 rader, 40 tabellrader).
+1. Läst direkt: alla effekttunga transkript och båda PDF:erna (via pdftotext); PDF:ernas artikellänkar öppnades inte. tips.txt, guidesonline och PDF:erna är AI-sammanställda och märkta `[osäker]` om inget transkript säger samma sak.
+2. Varje rad har källa med märkning, vad tipset gör, "hos oss" (HAVE med effekttyp/reglage, B/A-nr eller NYTT), BYGG/SKIPPA/SENARE med motiv och prio 1–3.
+3. Prio 1: disperser (B7), multiband-distorsion (B6), polaritet (B1), kompressor med detektor-HPF, limiter-delta/lågband-jämförelse. De flesta tipsen finns redan eller har B-nr; 5 är NYTT utan fas.
+4. Topp 5 utan fas: detektor-HPF på kompressor, limiter-delta + lågbandsloudness, per-band-ducking, kompressor MIX/parallell, kick+snare-sammanfall (analys).
+5. Att verifiera i koden: reverbens pre-delay, kompressorns MIX, echo dotted/triplet-sync, distortionens kurvtyper (`list_effects`). Inget i Source/Tests rört, ingen commit.
