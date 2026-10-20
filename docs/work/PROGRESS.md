@@ -5,7 +5,7 @@ Läs [LESSONS.md](LESSONS.md) innan du bygger eller testar. Lägg till en rad d�
 
 ## Nu
 - 20 okt: fas R KLAR på content-r (Sonnet), väntar på Opus-godkännande. Rapport: docs/content-r-report.md (testlista för Tobias där). Ingen push/Release förrän Opus säger.
-  Öppet: (1) rendersigwide/tb303 skiljer (mönsterändring i makeHeavy, inte motor) - ska baslinjerna göras om? (2) SNAP-mockupens detaljer till fas L. (3) WARP ENV-varning i plan-v2 under S.
+  Öppet: (1) wide/tb303-baslinjerna omgjorda (bevisat: kvarstår med d2-Modulation). (2) SNAP-mockupens detaljer till fas L. (3) WARP ENV-varning i plan-v2 under S.
 
 ## Klart
 - Fas 0, A, D1, W, E2, D2/D3 (godkända, pushade; tippen content-d2 c0ef101).

@@ -29,4 +29,4 @@ Lägg till en rad direkt när ett fel upptäcks (av dig, Opus eller Tobias): vad
 - R9: när maxBars höjdes till 1024 fyllde loopar `bar < Pattern::maxBars` (Presets, kick-FILL, gate via MCP) 1024 takter och AUTO-längden blev 1024. Sök alla `maxBars`/`maxTicks`-loopar när en gräns ändras; fyll bara de takter innehållet har.
 - Bygge: cmake finns inte i bash. Använd build-mcp.bat via PowerShell (`cmd /c`), filtrera på `error|TARGET-BUILD-DONE`.
 - Bildjämförelse: fönsterstorleken ändras mellan sessioner. Bygg tippen (basgrenen) i samma miljö och ta nya bilder som "före"; jämför aldrig mot gamla bildmappar.
-- rendersigwide/tb303 skiljer sig efter R9 för att makeHeavy-mönstret ändrats (innehållet loopar nu per takt), inte för att ljudmotorn ändrats. Skilj mönsterändring från motorändring innan baslinjen görs om.
+- rendersigwide/tb303 skiljer sig efter R9 för att makeHeavy-mönstret ändrats (innehållet loopar nu per takt), inte för att ljudmotorn ändrats (bevisat: kvarstår med d2-Modulation). Skilj mönsterändring från motorändring innan baslinjen görs om.

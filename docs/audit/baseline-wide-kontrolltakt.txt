@@ -1,6 +1,6 @@
-heavy instr 10 @48k/512      8b586ef0d900998a peak 0.9661 rms 0.2664
-heavy instr 3 @44.1k/128     820b689d12e4ed82 peak 0.9661 rms 0.2436
-heavy instr 1 @96k/1024      c57831c160da74e0 peak 0.9661 rms 0.2160
-heavy instr 4 @48k/37        96bdbb939d7fa224 peak 0.9661 rms 0.2413
+heavy instr 10 @48k/512      179a0866e03fd968 peak 0.9661 rms 0.2654
+heavy instr 3 @44.1k/128     276677e5ec5422fe peak 0.9661 rms 0.2427
+heavy instr 1 @96k/1024      d978f4a64412e5f9 peak 0.9661 rms 0.2144
+heavy instr 4 @48k/37        7ff1b54c63902d5e peak 0.9661 rms 0.2414
 heavy fx @48k/512            32f867e32e4553e8 peak 0.9661 rms 0.2114
 heavy fx @44.1k/64           8351baeb46687930 peak 0.9661 rms 0.2111
