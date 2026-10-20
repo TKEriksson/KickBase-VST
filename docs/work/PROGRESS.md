@@ -44,3 +44,5 @@ Läs [LESSONS.md](LESSONS.md) innan du bygger eller testar. Lägg till en rad d�
 - 20 okt 13:00: L3 godkänd (content-l 3470790, ej push): NOTE END/SWING/HUMANIZE i PATTERN-flikraden, AI SERVER (MCP) ON/OFF, AI CHAT. Baslinjer 0 rader. Nästa: L2b (DRAG), L4, L5.
 
 - 20 okt 13:15: Tobias vill testa: bb gör Release-build (VST3) av content-l (R+M+P+L) efter L2b, testlista docs/content-test-report.md, sedan L4/L5. Ingen push/merge.
+
+- 20 okt 13:40: Tobias tillät push/merge. R+M+P mergade till main (196f221) och pushade, plus content-r/m/p. L mergas efter L-slutet. Release-bygge väntar på Tobias i bb:s session.
