@@ -395,6 +395,13 @@ void LiveCodePage::applyParamWrites (const juce::var& writes)
         return;
     const auto locks = processor.liveCodeLocks.load();
     auto values = juce::var (new juce::DynamicObject());
+    const auto now = juce::Time::getMillisecondCounterHiRes();
+    if (now - paramWindowStart >= 1000.0)
+    {
+        paramWindowStart = now;
+        paramWindowCount = 0;
+    }
+    auto capped = false;
     for (auto& w : *list)
     {
         const auto id = w["id"].toString();
@@ -403,9 +410,17 @@ void LiveCodePage::applyParamWrites (const juce::var& writes)
             continue;
         if (const auto it = lastParamWrites.find (id); it != lastParamWrites.end() && it->second == text)
             continue;
+        if (paramWindowCount >= maxParamWritesPerSecond)
+        {
+            capped = true; // lastParamWrites rörs inte, så värdet skrivs vid nästa körning
+            continue;
+        }
+        ++paramWindowCount;
         lastParamWrites[id] = text;
         values.getDynamicObject()->setProperty (juce::Identifier (id), w["value"]);
     }
+    if (capped)
+        showError ("Too many .set() writes per second (max " + juce::String (maxParamWritesPerSecond) + "); the rest are written on the next run.");
     if (values.getDynamicObject()->getProperties().size() == 0)
         return;
     auto args = juce::var (new juce::DynamicObject());
@@ -413,7 +428,7 @@ void LiveCodePage::applyParamWrites (const juce::var& writes)
     const auto result = tools.call ("set_parameters", args);
     if (! (bool) result["ok"])
         showError (result["error"].toString());
-    else if (auto* problems = result["problems"].getArray(); problems != nullptr && ! problems->isEmpty())
+    else if (auto* problems = result["data"]["problems"].getArray(); problems != nullptr && ! problems->isEmpty())
         showError ((*problems)[0].toString());
 }
 
@@ -509,7 +524,7 @@ void LiveCodePage::create()
                 auto a = juce::var (new juce::DynamicObject());
                 a.getDynamicObject()->setProperty ("code", document.getAllContent());
                 a.getDynamicObject()->setProperty ("cycles", cycles);
-                a.getDynamicObject()->setProperty ("overwrite", true);
+                a.getDynamicObject()->setProperty ("overwrite", ow);
                 const auto r = tools.call ("live_code_create", a);
                 if (! (bool) r["ok"])
                     return showError (r["error"].toString());
@@ -544,12 +559,21 @@ void LiveCodePage::finishCreate (const juce::var& result)
     const auto data = result["data"];
     const auto written = rowNames (data["layers"]);
     const auto skipped = rowNames (data["skipped_locked"]);
+    juce::StringArray problems;
+    if (auto* list = data["problems"].getArray())
+        for (const auto& problem : *list)
+            problems.add (problem.toString());
     auto message = juce::String ("The code ran.\n\n");
     message << (written.isEmpty() ? juce::String ("No rows were written.") : "Written: " + written.joinIntoString (", ") + ".");
     if (! skipped.isEmpty())
         message << "\n\nCould not run (locked, skipped): " + skipped.joinIntoString (", ") + ".";
+    if (! problems.isEmpty())
+    {
+        message << "\n\nSome actions were skipped:\n" << problems.joinIntoString ("\n");
+        showError (problems.joinIntoString ("\n"));
+    }
     juce::AlertWindow::showAsync (juce::MessageBoxOptions()
-                                      .withIconType (skipped.isEmpty() ? juce::MessageBoxIconType::InfoIcon : juce::MessageBoxIconType::WarningIcon)
+                                      .withIconType (skipped.isEmpty() && problems.isEmpty() ? juce::MessageBoxIconType::InfoIcon : juce::MessageBoxIconType::WarningIcon)
                                       .withTitle ("Live Code")
                                       .withMessage (message)
                                       .withButton ("OK"),

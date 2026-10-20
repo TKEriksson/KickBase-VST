@@ -14,6 +14,7 @@
 //   KickbaseTool fitbeat  <ljudfil> <start> <slut> [rolling|galloping|triplet|offbeat]
 //   KickbaseTool comparebeat <ljudfil> <start> <slut> <mönster> <rendering.wav>
 
+#include <set>
 #include "../Source/Core/MixAnalysis.h"
 #include "../Source/Ui/LogoPainter.h"
 #include "../Source/Ui/InstrumentMenu.h"
@@ -284,6 +285,51 @@ namespace
         check ((bool) r["ok"], "enkel not-kod går igenom");
         check (pattern.note (0, 0).on.load() && pattern.note (0, 0).pitch.load() == 0, "c2 är pitch 0 på tick 0");
         check (pattern.note (0, ticks / 2).on.load() && pattern.note (0, ticks / 2).pitch.load() == 4, "e2 = pitch 4 vid halva takten");
+
+        auto* cutoff = dynamic_cast<juce::RangedAudioParameter*> (processor.apvts.getParameter ("bass1Cutoff"));
+        const auto oldCutoff = cutoff != nullptr ? cutoff->convertFrom0to1 (cutoff->getValue()) : 0.0f;
+        r = run ("instr1.Cutoff.set(1300);\n\nnote(\"c2\").s(\"i1\")");
+        check ((bool) r["ok"] && cutoff != nullptr && std::abs (cutoff->convertFrom0to1 (cutoff->getValue()) - 1300.0f) < 1.0f,
+               "CREATE applicerar instr1.Cutoff.set() på den riktiga bass1Cutoff-parametern");
+        auto cutoffNow = [&] { return cutoff != nullptr ? cutoff->convertFrom0to1 (cutoff->getValue()) : 0.0f; };
+        r = run ("instr1.Cutoff.set(900);\n\nconst x = instr1.Cutoff.get();\n\nnote(\"c2\").s(\"i1\")");
+        check (! (bool) r["ok"] && r["error"].toString().contains ("efter skrivning"), ".get() efter .set i samma körning ger fel");
+        r = run ("instr1.Cutoff.set(1300);\n\nnote(\"c2\").s(\"i1\")");
+        r = run ("instr1.cutoff.set(500);\n\nnote(\"c2\").s(\"i1\")");
+        check (! (bool) r["ok"] || std::abs (cutoffNow() - 1300.0f) < 1.0f, "okänt (fel skiftläge) namn ändrar ingen parameter");
+        {
+            auto bad = juce::var (new juce::DynamicObject());
+            bad.getDynamicObject()->setProperty ("bass1cutoff", 500);
+            auto args = juce::var (new juce::DynamicObject());
+            args.getDynamicObject()->setProperty ("values", bad);
+            ToolLayer tools (processor);
+            const auto problems = tools.call ("set_parameters", args)["data"]["problems"];
+            check (problems.size() == 1 && problems[0].toString().contains ("Did you mean bass1Cutoff"), "set_parameters föreslår rätt skiftläge");
+        }
+        processor.liveCodeLocks = ToolLayer::liveCodeBit (0);
+        r = run ("instr1.Cutoff.set(400);\n\nnote(\"c2\").s(\"i2\")");
+        check (std::abs (cutoffNow() - 1300.0f) < 1.0f, "låst instrument: .set hoppas över");
+        check (r["data"]["problems"].size() >= 1, "låst instrument: hoppet rapporteras i problems");
+        processor.liveCodeLocks = 0;
+        {
+            std::set<juce::String> seen;
+            auto unique = true;
+            for (auto& [id, value] : ToolLayer (processor).liveCodeParameters())
+            {
+                juce::ignoreUnused (value);
+                const auto cut = id.indexOfAnyOf ("ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+                if (cut < 1 || ! juce::CharacterFunctions::isLowerCase (id[0]))
+                    continue;
+                auto group = id.substring (0, cut);
+                if (group.startsWith ("bass") && group.substring (4).containsOnly ("0123456789") && group.length() > 4)
+                    group = "instr" + group.substring (4);
+                if (! seen.insert (group + "." + id.substring (cut)).second || group.isEmpty())
+                    unique = false;
+            }
+            check (unique && ! seen.empty(), "parameter-id:n ger unika träd-namn");
+        }
+        if (cutoff != nullptr)
+            Presets::setParameter (*cutoff, cutoff->convertTo0to1 (oldCutoff));
 
         r = run ("s(\"bd*4\")");
         check ((bool) r["ok"], "kick-kod går igenom");

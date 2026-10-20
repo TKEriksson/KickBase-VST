@@ -69,6 +69,9 @@ private:
     std::vector<SliderSpec> sliderSpecs;
     juce::String sliderText;                               // texten specarna är hämtade ur
     std::vector<std::unique_ptr<juce::Slider>> sliderViews; // ett per giltigt slider()-anrop (index = ordningsnummer)
+    double paramWindowStart = 0.0; // tak på .set: högst maxParamWritesPerSecond skrivningar per sekund (en slider som dras kör koden hela tiden)
+    int paramWindowCount = 0;
+    static constexpr int maxParamWritesPerSecond = 30;
     std::map<juce::String, juce::String> lastParamWrites;  // F1: senast skrivna värdetext per parameter (bara ändringar skrivs)
     std::map<int, double> sliderValues;                    // dragna värden (ordningsnummer -> värde) tills de skrivits in i texten
     bool ownEdit = false;                                  // reglaget skriver själv i texten: ingen ny kodändringsloop
