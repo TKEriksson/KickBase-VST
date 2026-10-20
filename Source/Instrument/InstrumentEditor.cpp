@@ -19,6 +19,7 @@ InstrumentEditor::InstrumentEditor (InstrumentProcessor& p)
     synths.addTab ("PATTERN", Theme::pattern, pattern, pattern.getGrooveBar(), PatternGrooveBar::width);
     synths.addTab ("KICK", Theme::kick, kick, kick.embedInTab(), kick.headerExtrasWidth());
     synths.addTab ("INSTRUMENT", Theme::bass, instruments, instruments.getHeader(), InstrumentHost::headerWidth);
+    synths.addTab ("ANALYZER", Theme::lfo, analyzer);
     synths.addTab ("AI CHAT", Theme::gate, aiPage);
 
     // På/av direkt på kickens flik (instrumenten har sin på/av i flikraden, bredvid väljaren).
@@ -31,7 +32,6 @@ InstrumentEditor::InstrumentEditor (InstrumentProcessor& p)
     tools.addTab ("MATRIX", Theme::lfo, matrix);
     tools.addTab ("MASTER", Theme::master, masterPage);
     tools.addTab ("SOUNDSTAGE", Theme::mix, soundstage);
-    tools.addTab ("ANALYZER", Theme::lfo, spectrum);
     tools.addTab ("SETTINGS", Theme::textDim, settings);
 
     keyboard.setOctaveForMiddleC (5); // samma tonnamn som FL Studio (mittens C = C5)

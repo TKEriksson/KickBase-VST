@@ -14,7 +14,7 @@
 #include "../Ui/SettingsPage.h"
 #include "../Ui/SidechainPage.h"
 #include "../Ui/SoundstagePage.h"
-#include "../Ui/SpectrumPage.h"
+#include "../Ui/AnalyzerPage.h"
 #include "../Ui/Modules.h"
 #include "../Ui/TabbedPanel.h"
 
@@ -56,7 +56,7 @@ private:
     SettingsPage settings { processor };
     MasterPage masterPage { processor };
     SoundstagePage soundstage { processor };
-    SpectrumPage spectrum { processor };
+    AnalyzerPage analyzer { processor };
     InfoBar info;
     // Tangentbordet: en tonetikett som inte får plats på tangenten utelämnas (C10 klipptes annars till "C1").
     class Keyboard : public juce::MidiKeyboardComponent

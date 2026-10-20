@@ -368,6 +368,20 @@ void SpectrumPage::updateSources()
     resized();
 }
 
+void SpectrumPage::setEmbedded()
+{
+    embedded = true;
+    viewSpectrumButton.setVisible (false);
+    viewReportButton.setVisible (false);
+    resized();
+}
+
+void SpectrumPage::setCollisions (bool on)
+{
+    collisionsButton.setToggleState (on, juce::dontSendNotification);
+    repaint();
+}
+
 void SpectrumPage::setView (bool report)
 {
     reportView = report;
@@ -392,10 +406,13 @@ void SpectrumPage::resized()
 {
     auto area = getLocalBounds().reduced (8, 6);
     auto top = area.removeFromTop (stripHeight);
-    viewSpectrumButton.setBounds (top.removeFromLeft (92));
-    top.removeFromLeft (3);
-    viewReportButton.setBounds (top.removeFromLeft (150));
-    top.removeFromLeft (14);
+    if (! embedded)
+    {
+        viewSpectrumButton.setBounds (top.removeFromLeft (92));
+        top.removeFromLeft (3);
+        viewReportButton.setBounds (top.removeFromLeft (150));
+        top.removeFromLeft (14);
+    }
 
     if (reportView)
     {
