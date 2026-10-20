@@ -255,7 +255,9 @@ namespace
 {
     const std::vector<Preset>& fullPresets()
     {
-        static const std::vector<Preset> presets { initPreset(), basicMorphPreset() };
+        // Empty ligger sist: rendersig-index och hashar för de andra är oförändrade.
+        static const std::vector<Preset> presets { initPreset(), basicMorphPreset(),
+                                                   { "Empty", { { ParamID::instrumentCount, 1 }, { "patternBars", 1 } }, PatternTemplate::clear } };
         return presets;
     }
 
