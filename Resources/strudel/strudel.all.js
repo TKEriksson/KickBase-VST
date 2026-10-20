@@ -9240,9 +9240,38 @@ var S = globalThis.Strudel;
 S.setStringParser(S.mini);
 Object.assign(globalThis, S); // s, note, stack, ... som globala namn, som på strudel.cc
 var current = null;
+// Koden får vara flera satser: `const x = ...`, och mönster som `$: uttryck` (eller `namn: uttryck`).
+// Ett block börjar på en rad med etikett och slutar vid tom rad eller nästa etikett; alla block läggs i en stack.
+// Utan etiketter är sista blocket (efter sista tomma raden) mönstret. Svarar "" när det gick bra, annars felmeddelandet.
+var labelRe = /^(\$|[A-Za-z_]\w*)\s*:(?!:)\s*/;
+function splitCode(code) {
+  var lines = code.split('\n'), pre = [], blocks = [], cur = null;
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i], m = labelRe.exec(line);
+    if (m) { cur = [line.slice(m[0].length)]; blocks.push(cur); }
+    else if (/^\s*$/.test(line)) { cur = null; pre.push(line); }
+    else if (cur) cur.push(line);
+    else pre.push(line);
+  }
+  return { pre: pre.join('\n'), blocks: blocks.map(function (b) { return b.join('\n').replace(/[;\s]+$/, ''); }) };
+}
 globalThis.setPattern = function (code) {
-  current = (new Function('return (' + code + ')'))();
-  return true;
+  try {
+    var sp = splitCode(code), body;
+    if (sp.blocks.length) {
+      body = sp.pre + '\nreturn stack(' + sp.blocks.map(function (b) { return '(' + b + ')'; }).join(',') + ');';
+    } else {
+      var parts = code.replace(/\s+$/, '').split(/\n\s*\n/);
+      var last = parts.pop().replace(/;\s*$/, '');
+      body = parts.join('\n\n') + '\nreturn (' + last + ');';
+    }
+    current = (new Function(body))();
+    if (!current || typeof current.queryArc !== 'function') return 'Koden ger inget mönster (skriv t.ex. $: s("bd*4"))';
+    return '';
+  } catch (e) {
+    current = null;
+    return String(e && e.message ? e.message : e);
+  }
 };
 globalThis.queryJson = function (from, to) {
   var out = [];

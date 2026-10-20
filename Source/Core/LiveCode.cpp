@@ -41,7 +41,9 @@ juce::Result LiveCode::setCode (const juce::String& code)
 {
     if (auto r = load(); r.failed()) return r;
     juce::Result res = juce::Result::ok();
-    engine.evaluate ("setPattern(" + juce::JSON::toString (code) + ")", &res);
+    const auto message = engine.evaluate ("setPattern(" + juce::JSON::toString (code) + ")", &res); // glue.js svarar med felmeddelandet, "" = ok
+    if (res.failed()) return res;
+    if (message.toString().isNotEmpty()) return juce::Result::fail (message.toString());
     return res;
 }
 

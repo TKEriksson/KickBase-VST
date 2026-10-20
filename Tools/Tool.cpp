@@ -303,14 +303,14 @@ namespace
         {
             LiveCodePage page (processor);
             page.setBounds (0, 0, 600, 400);
-            juce::TextEditor* code = nullptr;
+            juce::CodeEditorComponent* code = nullptr;
             juce::TextButton *play = nullptr, *stop = nullptr, *create = nullptr;
             for (auto* c : page.getChildren())
             {
-                if (auto* e = dynamic_cast<juce::TextEditor*> (c)) code = e;
+                if (auto* e = dynamic_cast<juce::CodeEditorComponent*> (c)) code = e;
                 if (auto* b = dynamic_cast<juce::TextButton*> (c))
                 {
-                    if (b->getButtonText() == "PLAY") play = b;
+                    if (b->getButtonText() == "LIVE") play = b;
                     if (b->getButtonText() == "STOP") stop = b;
                     if (b->getButtonText() == "CREATE") create = b;
                 }
@@ -325,7 +325,7 @@ namespace
                 page.onError = [&lastError] (const juce::String& e) { lastError = e; };
 
                 pattern.clearNotes (0);
-                code->setText ("note(\"c2,e2\").s(\"i1\")", false);
+                code->getDocument().replaceAllContent ("note(\"c2,e2\").s(\"i1\")");
                 create->triggerClick();
                 runFor (200); // triggerClick körs via meddelandekön
                 check (changed == 1 && pattern.stackSize (0, 0) == 2, "CREATE skriver koden en gång (två staplade toner)");
@@ -336,22 +336,29 @@ namespace
                 check (pattern.stackSize (0, 0) == 2 && changed >= 2 && lastError.isEmpty(), "PLAY räknar koden i bakgrunden och skriver mönstret");
 
                 const auto before = changed;
-                code->setText ("note(\"g2\").s(\"i1\")", true);
+                code->getDocument().replaceAllContent ("note(\"g2\").s(\"i1\")");
                 runFor (1500);
                 check (changed > before && pattern.stackSize (0, 0) == 1 && pattern.note (0, 0).pitch.load() == 7, "PLAY: en ändring i koden uppdaterar mönstret efter debouncen");
 
                 stop->triggerClick();
                 runFor (100);
                 const auto afterStop = changed;
-                code->setText ("note(\"c2\").s(\"i1\")", true);
+                code->getDocument().replaceAllContent ("note(\"c2\").s(\"i1\")");
                 runFor (1200);
                 check (changed == afterStop && pattern.note (0, 0).pitch.load() == 7, "STOP: ändringar i koden skrivs inte längre");
 
                 play->triggerClick();
-                code->setText ("note(\"c2\".s(", true);
+                code->getDocument().replaceAllContent ("note(\"c2\".s(");
                 runFor (1500);
-                check (lastError.isNotEmpty(), "PLAY: ett syntaxfel visas som felmeddelande");
+                check (lastError.isNotEmpty() && ! lastError.contains ("    at "), "PLAY: ett syntaxfel visas som felmeddelande");
                 stop->triggerClick();
+
+                // flera satser: const, $:-block och blockslut vid tom rad
+                pattern.clearNotes (0);
+                code->getDocument().replaceAllContent ("const n = \"c2,e2\"\n$: note(n).s(\"i1\")\n\n$: s(\"bd*4\")");
+                create->triggerClick();
+                runFor (200);
+                check (pattern.stackSize (0, 0) == 2, "CREATE: const och flera $:-block fungerar");
             }
         }
 
