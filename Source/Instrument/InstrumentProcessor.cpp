@@ -334,7 +334,10 @@ void InstrumentProcessor::readBlockParams()
     scheduler.setNumLayers (activeLayers);
 
     for (int layer = 0; layer < activeLayers; ++layer)
+    {
         readLayerFields (layer, solo);
+        basses[(size_t) layer].setNumVoices ((int) params.bass (layer, InstrumentField::voices));
+    }
     noteEnd = (NoteEnd) params.getChoice (ParamID::noteEnd);
     kick.setClickSample (getActiveClickSample());
     refreshEngineParams();

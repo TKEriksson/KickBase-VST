@@ -92,7 +92,8 @@ namespace ParamID
                                      "SubWave", "NoiseTone", "PitchEnvAmount", "PitchEnvDecay", "DriveMode", "Delay", "Swing", "Humanize", "EnvAttack", "FilterModel", "AMorph", "BMorph", "CMorph",
                                      "Env2Mode", "Env2AttackSync", "Env2DecaySync", "Env2ReleaseSync", "Env3Mode", "Env3AttackSync", "Env3DecaySync", "Env3ReleaseSync",
                                      "FilterP1", "FilterP2",
-                                     "Filter2On", "Filter2Model", "Filter2Type", "Filter2Cutoff", "Filter2Reso", "Filter2P1", "Filter2P2", "FilterRouting", "FilterMix" };
+                                     "Filter2On", "Filter2Model", "Filter2Type", "Filter2Cutoff", "Filter2Reso", "Filter2P1", "Filter2P2", "FilterRouting", "FilterMix",
+                                     "Voices" };
         static_assert (std::size (names) == (size_t) InstrumentField::count);
         return names[(size_t) field];
     }
@@ -357,6 +358,8 @@ namespace Params
             for (int which = 0; which < 3; ++which)
                 layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (ParamID::envSyncField (env, which)), 1 }, envTitle + kinds[which] + " Sync", Modulation::syncTimeNames(), defaults[which]));
         }
+        // Röster (fas P): 1 = monofoniskt (legato, som förut). Ett heltal, så det kan inte moduleras (isModulatable).
+        layout.add (std::make_unique<AudioParameterInt> (ParameterID { id (F::voices), 1 }, title + "Voices", 1, 8, 1)); // 8 = InstrumentVoices::maxVoices
     }
 
     void addFxParams (Layout& layout)

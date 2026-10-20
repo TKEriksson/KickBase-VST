@@ -719,7 +719,8 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
                                             knob (id (F::sustain), "SUSTAIN"), knob (id (F::release), "RELEASE") } },
                      { "WARP ENV", { knob (id (F::warpEnv), "AMOUNT") } },
                      { "DRIVE", { knob (id (F::drive), "AMOUNT"), choice (id (F::driveMode), "MODE") } },
-                     { "LAYER OUT", { knob (id (F::level), "LEVEL"), knob (id (F::duck), "DUCK"), knob (id (F::gate), "LENGTH") } } }); // (notlängden: GATE är hackrytmen)
+                     { "LAYER OUT", { knob (id (F::level), "LEVEL"), knob (id (F::duck), "DUCK"), knob (id (F::gate), "LENGTH"),
+                                      knob (id (F::voices), "VOICES") } } }); // (notlängden: GATE är hackrytmen; VOICES flyttas med gruppen i fas L)
 
     // MODULATION: ENV 2 och ENV 3 (egna envelopes att modulera med), och velocity och slump som källor. Varje källa har ett handtag
     // som dras till en ratt (eller sätts i MATRIX-fliken).

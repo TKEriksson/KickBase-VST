@@ -160,6 +160,18 @@ namespace
     }
 
     // Filter 2 (fas D3) på de `count` första instrumenten: instrument 1 Serial Kickbase High, 2 Parallel Ladder med MIX 0,5, 3 Serial Comb med MIX 0,7 (sedan om från 1).
+    // Fas P: flera röster per instrument (2, 4 och 8) med lång release och full notlängd, så att tonerna överlappar och röster stjäls.
+    void usePolyphony (PluginBase& processor, int count)
+    {
+        using F = InstrumentField;
+        for (int layer = 0; layer < count; ++layer)
+        {
+            Scenarios::setInstrument (processor, layer, F::voices, layer % 3 == 0 ? 2.0f : layer % 3 == 1 ? 4.0f : 8.0f);
+            Scenarios::setInstrument (processor, layer, F::release, 300.0f);
+            Scenarios::setInstrument (processor, layer, F::gate, 1.0f);
+        }
+    }
+
     void useFilter2 (PluginBase& processor, int count)
     {
         using F = InstrumentField;
@@ -299,6 +311,8 @@ int blockSizeTest()
                 useEnvSync (*processor, 3);
             if (mode == 5)
                 useFilterModels (*processor, 3);
+            if (mode == 7)
+                usePolyphony (*processor, 3);
             if (mode == 6)
             {
                 useFilterModels (*processor, 3, 3); // (Filter 1 med en annan modell än Filter 2, så att kombinationerna är olika)
@@ -323,10 +337,19 @@ int blockSizeTest()
         settings.fillInput = [] (juce::AudioBuffer<float>& block, int start) { sawInput (block, start, 48000.0); };
         return OfflineRender::render (*processor, settings);
     };
-    const char* names[] { "Init", "tungt läge (LFO, ENV 2/3)", "Kickbase FX, tungt läge", "tungt läge med TB-303", "tungt läge med ENV Sync", "tungt läge: Ladder/Formant/Comb", "tungt läge med Filter 2" };
-    for (const auto mode : { 0, 1, 2, 3, 4, 5, 6 })
+    const char* names[] { "Init", "tungt läge (LFO, ENV 2/3)", "Kickbase FX, tungt läge", "tungt läge med TB-303", "tungt läge med ENV Sync", "tungt läge: Ladder/Formant/Comb", "tungt läge med Filter 2",
+                          "tungt läge med 2/4/8 röster (stealing)" };
+    juce::AudioBuffer<float> monoReference;
+    for (const auto mode : { 0, 1, 2, 3, 4, 5, 6, 7 })
     {
         const auto reference = renderWith (mode, 32);
+        if (mode == 1)
+            monoReference = reference;
+        if (mode == 7 && hashOf (reference) == hashOf (monoReference))
+        {
+            std::puts ("FEL: flera röster låter som en röst");
+            failed = true;
+        }
         const auto referenceRms = reference.getRMSLevel (0, 0, reference.getNumSamples());
         for (const auto blockSize : { 37, 64, 100, 256, 512, 1024, 2048 })
         {
