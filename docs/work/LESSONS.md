@@ -12,6 +12,13 @@ Lägg till en rad direkt när ett fel upptäcks (av dig, Opus eller Tobias): vad
 - Hela sviten, 42-bildssviten och pngdiff: bara vid fasens slut, en gång.
 - Ingen Release-build om inte Opus ber om det.
 
+## Kostnadsregler (20 okt: 68 % av förbrukningen skedde vid >150k kontext)
+- Filtrera utdata från bygge och test: visa bara fel och PASS/FAIL-rader (`| tail -20` eller `| grep -E "error|FAIL|PASS"`), aldrig hela loggen.
+- Läs filer i delar (offset/limit eller grep). Läs inte om en fil som redan finns i kontexten.
+- Rapporter till Opus: korta, med hash, testresultat och de frågor som behöver svar. Inga diffar i meddelandet, Opus läser själv.
+- En fas eller ett stort delsteg per chatt. Uppdatera PROGRESS.md och avsluta med "compact-redo" i stället för att fortsätta på lång kontext.
+- En arbetare åt gången när förbrukningen är hög. Två bara när Opus säger det.
+
 ## Lärdomar
 - R7: atomic lästes två gånger i samma uppdatering, vilket gav fashopp. Läs varje atomic en gång till en lokal variabel.
 - R1–R3 (HoldAudition): `callAfterDelay` höll en referens till processorn, som kunde ha hunnit försvinna. Använd en Timer-medlem eller SafePointer. Gäller alla asynkrona callbacks (callAfterDelay, showAsync, showMenuAsync, enterModalState): fånga en SafePointer till en komponent och avbryt om den är null, fånga aldrig bara `&processor`. (Upprepades i R9 LengthMenu.)
