@@ -19,12 +19,14 @@ public:
     void mouseUp (const juce::MouseEvent&) override;
     void mouseDoubleClick (const juce::MouseEvent&) override;
     void mouseMove (const juce::MouseEvent&) override;
+    bool isCustom() const;
+    void editPoints(); // en vanlig form blir en egen kurva (samma form) att redigera med punkter
 
 private:
     void timerCallback() override;
-    bool isCustom() const;
     NodeEnvelope& curve() const { return processor.lfoCurves[(size_t) index]; }
     juce::Rectangle<float> plotArea() const;
+    bool isMini() const { return getHeight() < 40; } // minikurvan på ett fällt kort
     juce::Point<float> toScreen (float x, float y) const;
     juce::Point<float> fromScreen (juce::Point<float> point) const;
     juce::Point<float> tensionHandle (const std::vector<NodeEnvelope::Point>& points, size_t segment) const;
@@ -76,19 +78,40 @@ private:
     juce::String text;
 };
 
-// En LFO: på/av, form, hastighet (tempo-synkad eller i Hz), handtaget och vad den styr.
+// En LFO som ett kort på fliken LFO: på/av, form, hastighet (tempo-synkad eller i Hz), handtaget och vad den styr. Fällt är kortet en rad
+// (namn, minikurva, hastighet, handtaget). Pilen fäller, × eller högerklick tar bort LFO:n (frågar först om den styr någon ratt).
 class LfoPanel : public juce::Component, private juce::Timer
 {
 public:
     LfoPanel (PluginBase& processor, int lfoIndex);
     void paint (juce::Graphics&) override;
     void resized() override;
+    void mouseDown (const juce::MouseEvent&) override;
+    void mouseDoubleClick (const juce::MouseEvent&) override;
+
+    static constexpr int expandedHeight = 186, foldedHeight = 32;
+    int getIndex() const { return index; }
+    bool isFolded() const { return processor.lfoFolded >= 0 && ((processor.lfoFolded >> index) & 1) != 0; }
+    std::function<void()> onLayoutChange; // fällt, utfällt eller borttaget: sidan lägger ut korten igen
+    std::function<void()> onSelect;
 
 private:
     void timerCallback() override;
+    void updateVisibility();
+    void toggleFold();
+    void askToRemove(); // frågar om LFO:n styr någon ratt, annars tas den bort direkt
+    void remove();
+    juce::String rateText() const;
 
     PluginBase& processor;
     const int index;
+    const juce::String name;
+    juce::Rectangle<int> foldArea, removeArea, rateArea;
+    juce::String lastRateText;
+    juce::Label confirmText;
+    juce::TextButton confirmRemove { "REMOVE" }, confirmCancel { "CANCEL" };
+    juce::TextButton editButton { "EDIT POINTS" };
+    bool lastCustom = false;
     juce::ToggleButton power;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> powerAttachment;
     ChoiceComponent shape, mode, rate;
@@ -108,14 +131,25 @@ private:
     LfoTargets targets;
 };
 
-// Fliken LFO.
-class LfoPage : public juce::Component
+// Fliken LFO: ett kort per aktiv LFO under varandra (rullbart), "+ ADD LFO" under det sista (fas M).
+class LfoPage : public juce::Component, private juce::Timer
 {
 public:
     explicit LfoPage (PluginBase& processor);
     void resized() override;
 
 private:
+    void timerCallback() override;
+    void layoutCards();
+    void addLfo();
+    void select (int index);
+
+    PluginBase& processor;
     PresetButton presets;
-    std::vector<std::unique_ptr<LfoPanel>> panels;
+    juce::TextButton onlySelected { "SHOW ONLY SELECTED" };
+    juce::Viewport viewport;
+    juce::Component list;
+    std::vector<std::unique_ptr<LfoPanel>> panels; // en per möjlig LFO (dolda när de inte är aktiva)
+    juce::TextButton addButton { "+ ADD LFO" };
+    int lastVersion = -1;
 };

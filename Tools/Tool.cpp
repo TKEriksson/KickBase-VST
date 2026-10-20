@@ -1523,6 +1523,14 @@ namespace
             set ("lfo3Mode", 1.0f);
             processor->lfoCurves[1].setPoints ({ { 0.0f, 1.0f, 0.0f }, { 0.2f, 0.0f, -0.6f }, { 0.35f, 0.7f, 0.0f }, { 0.6f, 0.2f, 0.0f }, { 1.0f, 1.0f, 0.0f } });
         }
+        // KB_LFOS=<mask>: aktiva LFO:er (fas M, 1023 = alla 10). KB_LFOFOLD=<mask>: fällda kort. KB_LFOCONFIRM=<n>: LFO n (1-10) frågar om
+        // borttagning (med `mod` styr LFO 1-3 rattar).
+        if (const auto lfos = juce::SystemStats::getEnvironmentVariable ("KB_LFOS", {}); lfos.isNotEmpty())
+            for (int i = 0; i < Modulation::maxLfos; ++i)
+                processor->setLfoActive (i, ((lfos.getIntValue() >> i) & 1) != 0);
+        if (const auto folded = juce::SystemStats::getEnvironmentVariable ("KB_LFOFOLD", {}); folded.isNotEmpty())
+            processor->lfoFolded = folded.getIntValue();
+        processor->lfoRemoveAsk = juce::SystemStats::getEnvironmentVariable ("KB_LFOCONFIRM", "0").getIntValue() - 1;
         processor->modEnvelopesOpen = juce::SystemStats::getEnvironmentVariable ("KB_MODOPEN", "0").getIntValue() != 0; // MODULATION-dragspelet öppet
         processor->selectedInstrument = juce::SystemStats::getEnvironmentVariable ("KB_INSTRUMENT", "0").getIntValue(); // valt instrument (0-9)
         processor->selectedInstrumentSource[(size_t) juce::jlimit (0, 9, processor->selectedInstrument)] =

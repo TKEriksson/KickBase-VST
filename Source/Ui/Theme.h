@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../Core/Settings.h"
+#include "../Core/Modulation.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <unordered_map>
@@ -42,15 +43,16 @@ namespace Theme
     // Varje LFO har en egen färg, så att man ser vilken LFO som rör en ratt.
     inline juce::Colour lfoColour (int index)
     {
-        const juce::Colour colours[] { lfo, juce::Colour (0xffc6ff5e), juce::Colour (0xffff7ad9) };
-        return colours[juce::jlimit (0, 2, index)];
+        const juce::Colour colours[] { lfo, juce::Colour (0xffc6ff5e), juce::Colour (0xffff7ad9), juce::Colour (0xff5eb8ff), juce::Colour (0xffffb05e),
+                                       juce::Colour (0xffa98cff), juce::Colour (0xff5effa0), juce::Colour (0xffff6464), juce::Colour (0xfffff05e), juce::Colour (0xff5ee0ff) };
+        return colours[juce::jlimit (0, 9, index)];
     }
 
     // Färgen för vilken modulationskälla som helst (LFO, makro, instrumentets envelopes): ringarna på rattarna och handtagen.
     inline juce::Colour sourceColour (int source)
     {
-        if (source < 3)
-            return lfoColour (source);
+        if (Modulation::isLfoSource (source)) // LFO 1-3 (källa 0-2) och LFO 4-10 (källa 47-53)
+            return lfoColour (Modulation::lfoIndexOfSource (source));
         if (source < 7)
         {
             const juce::Colour macros[] { juce::Colour (0xfff2a65a), juce::Colour (0xffe9d35c), juce::Colour (0xfff08a6a), juce::Colour (0xffe08cff) };

@@ -16,8 +16,9 @@ namespace
     juce::PopupMenu sourceMenu (const PluginBase& p, int current)
     {
         juce::PopupMenu menu;
-        for (int lfo = 0; lfo < Modulation::numLfos; ++lfo)
-            menu.addItem (1 + lfo, Modulation::sourceName (lfo), true, current == lfo);
+        for (int lfo = 0; lfo < Modulation::maxLfos; ++lfo) // bara aktiva LFO:er (fas M)
+            if (const auto source = Modulation::lfoSource (lfo); p.isLfoActive (lfo) || current == source)
+                menu.addItem (1 + source, Modulation::sourceName (source), true, current == source);
         menu.addSeparator();
         for (int macro = 0; macro < Modulation::numMacros; ++macro)
             menu.addItem (1 + Modulation::firstMacro + macro, Modulation::sourceName (Modulation::firstMacro + macro), true, current == Modulation::firstMacro + macro);
@@ -339,7 +340,18 @@ void MatrixPage::addRoute()
     {
         if (safe == nullptr || result <= 0)
             return;
-        if (safe->processor.modRoutes.add (0, result - 1, 0.25f) < 0)
+        // Källan: den första aktiva LFO:n (ingen aktiv: LFO 1 läggs till).
+        auto& p = safe->processor;
+        auto source = -1;
+        for (int lfo = 0; lfo < p.availableLfos() && source < 0; ++lfo)
+            if (p.isLfoActive (lfo))
+                source = Modulation::lfoSource (lfo);
+        if (source < 0)
+        {
+            p.setLfoActive (0, true);
+            source = 0;
+        }
+        if (safe->processor.modRoutes.add (source, result - 1, 0.25f) < 0)
             juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Matrix", "All routes are used (" + juce::String (Modulation::maxRoutes) + ").");
         safe->processor.markStateChanged();
     });

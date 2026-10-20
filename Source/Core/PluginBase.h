@@ -339,6 +339,9 @@ public:
     int selectedPatternLayer = 0;          // PATTERN-flikens valda lager: 0-9 instrument, 10 kick
     int selectedInstrument = 0;            // INSTRUMENT-flikens valda instrument (0-9)
     bool modEnvelopesOpen = false;         // INSTRUMENT-sidans dragspel MODULATION (ENV 2, ENV 3 ...) är öppet
+    int lfoFolded = -1;                    // LFO-flikens fällda kort (en bit per LFO); -1 = inte bestämt ännu (se LfoPage)
+    int selectedLfo = 0;                   // LFO-flikens valda kort (SHOW ONLY SELECTED)
+    int lfoRemoveAsk = -1;                 // LFO-kortet som frågar om borttagning (-1 = inget)
     int sequencerRowHeight = 0;            // radhöjden i mönstret (zoom): 0 = automatisk
     // Fönstrets skala (1 = fullstor). Gäller alla fönster och sparas i inställningarna (Settings), inte i projektet. Editorn sätter
     // `applyEditorScale` så att inställningssidan kan ändra storleken på det öppna fönstret.
