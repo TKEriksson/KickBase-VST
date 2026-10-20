@@ -6,7 +6,7 @@ WavetableView::WavetableView (PluginBase& p, int layerIn, int oscIn, juce::Colou
     setMouseCursor (speakerCursor);
     positionIndex = processor.modulator.indexOf (ParamID::bass (layer, ParamID::oscField (osc, InstrumentField::aPos)));
     setTooltip ("OSC " + juce::String (osc + 1)
-                + " - The wavetable: all its waveforms stacked from back to front. CLICK it to hear just this oscillator (even if it is off). "
+                + " - The wavetable: all its waveforms stacked from back to front. CLICK AND HOLD it to hear just this oscillator for as long as you hold (even if it is off; it loops if the sound ends). "
                   "POS chooses which waveform plays (drag an LFO onto POS to sweep through them); WARP bends the waveform you see in front.");
     startVisualTimer (Settings::Visual::other, 30);
     timerCallback(); // rätt tabell redan i första bilden (annars ritades Basic tills timern gått en gång)
@@ -118,7 +118,7 @@ void WavetableView::paint (juce::Graphics& g)
 
 void WavetableView::mouseDown (const juce::MouseEvent&)
 {
-    processor.requestAudition (PluginBase::soloAudition (layer, osc)); // bara den här oscillatorn
+    hold.start (PluginBase::heldSoloAudition (layer, osc)); // bara den här oscillatorn, så länge musen hålls (loopar om ljudet tar slut)
 }
 
 //==============================================================================

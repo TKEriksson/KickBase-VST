@@ -470,9 +470,6 @@ KickModule::KickModule (PluginBase& p)
     clearButton.onClick = [this] { processor.clearClickSample(); updateSampleLabel(); };
     addAndMakeVisible (clearButton);
 
-    listenButton.setTooltip ("LISTEN - Plays the kick (you can also click an empty spot in the kick's picture).");
-    listenButton.onClick = [this] { processor.requestAudition (0); };
-    addAndMakeVisible (listenButton);
     listenSampleButton.setTooltip ("HEAR SAMPLE - Plays just the loaded sample, whatever the MODE is (so you can check what you loaded).");
     listenSampleButton.onClick = [this] { processor.requestAudition (5); };
     addAndMakeVisible (listenSampleButton);
@@ -582,8 +579,6 @@ void KickModule::resized()
     loadButton.setBounds (sampleRow.removeFromRight (50));
     sampleRow.removeFromRight (10);
     listenSampleButton.setBounds (sampleRow.removeFromRight (96));
-    sampleRow.removeFromRight (6);
-    listenButton.setBounds (sampleRow.removeFromRight (70));
     sampleRow.removeFromRight (10);
     sampleLabel.setBounds (sampleRow);
     area.removeFromBottom (4);
@@ -768,7 +763,7 @@ void InstrumentModule::paintOverChildren (juce::Graphics& g)
 SampleView::SampleView (PluginBase& p, int layerIn, juce::Colour accentIn) : processor (p), layer (layerIn), accent (accentIn)
 {
     setMouseCursor (speakerCursor);
-    setTooltip ("SAMPLE - The waveform of this layer's sample. Click it to hear just the sample. The white line marks where each note starts (START); "
+    setTooltip ("SAMPLE - The waveform of this layer's sample. Click and hold it to hear just the sample for as long as you hold (it loops if the sample ends). The white line marks where each note starts (START); "
                 "the moving marker shows where the sample is playing.");
     startTimerHz (30);
 }
@@ -866,7 +861,7 @@ void SampleView::paint (juce::Graphics& g)
 void SampleView::mouseDown (const juce::MouseEvent&)
 {
     if (processor.getActiveInstrumentSample (layer) != nullptr)
-        processor.requestAudition (PluginBase::soloAudition (layer, 3)); // bara samplingen
+        hold.start (PluginBase::heldSoloAudition (layer, 3)); // bara samplingen, så länge musen hålls (loopar om den tar slut)
 }
 
 SamplePage::SamplePage (PluginBase& p, int layerIn, juce::Colour accent)
@@ -1693,7 +1688,8 @@ void PatternModule::timerCallback()
 
     // (Kickens toner spelar hela sitt ljud, så deras längd gör inget.)
     const auto custom = processor.pattern.isCustom (shownLayer);
-    laneBox.setEnabled (! custom);
+    if (custom == lastLaneEditable)
+        updateVisibility();
     laneBox.setItemEnabled (2, shownLayer != Pattern::kickLayer);
     if (shownLayer == Pattern::kickLayer && sequencer.getLane() == StepSequencer::Lane::gate)
         selectLane (StepSequencer::Lane::velocity);
@@ -1740,8 +1736,11 @@ void PatternModule::updateVisibility()
     pianoButton.setVisible (instrument && ! gating);
     fillButton.setVisible (! gating);
     gateFillButton.setVisible (gating);
-    laneLabel.setVisible (! gating && ! rollOpen);
-    laneBox.setVisible (! gating && ! rollOpen);
+    // EDIT IN LANE syns inte alls när raden har pianorulle (där sätts velocity, längd och tonhöjd i pianorullen).
+    const auto laneEditable = ! processor.pattern.isCustom (shownLayer);
+    laneLabel.setVisible (! gating && ! rollOpen && laneEditable);
+    laneBox.setVisible (! gating && ! rollOpen && laneEditable);
+    lastLaneEditable = laneEditable;
 
     for (size_t i = 0; i < grids.size(); ++i)
     {
@@ -1964,9 +1963,12 @@ void PatternModule::resized()
         }
         notesColumn.removeFromTop (2);
     }
-    laneLabel.setBounds (notesColumn.removeFromTop (14));
-    laneBox.setBounds (notesColumn.removeFromTop (24));
-    notesColumn.removeFromTop (6);
+    if (lastLaneEditable)
+    {
+        laneLabel.setBounds (notesColumn.removeFromTop (14));
+        laneBox.setBounds (notesColumn.removeFromTop (24));
+        notesColumn.removeFromTop (6);
+    }
     // ALL LENGTHS-ratten tar plats bara när den syns (annars hamnar FILL långt ner).
     const auto knobShown = shownLayer >= 0 && shownLayer < (int) lengths.size() && lengths[(size_t) shownLayer]->isVisible();
     auto knobRow = notesColumn.removeFromTop (knobShown ? 66 : 0);

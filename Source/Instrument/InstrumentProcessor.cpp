@@ -159,11 +159,25 @@ void InstrumentProcessor::processChunk (juce::AudioBuffer<float>& buffer, juce::
         currentNote = previewNote.load(); // all provlyssning (kick, oscillatorer, sampling) spelas på den valda tonen
     if (audition == 5)
         kickSoloSamplesLeft = (int) (getSampleRate() * 2.0);
-    if (audition >= 300)
+    // Provlyssning som hålls (håll ner musen på en graf): tonen klingar tills musen släpps och startar om om ljudet tar slut.
+    const auto heldSolo = audition >= 500, heldWhole = audition >= 400 && audition < 500;
+    constexpr auto heldSamples = std::numeric_limits<int>::max() / 2;
+    if ((audition >= 300 && audition < 400) || heldSolo)
     {
-        soloLayer = juce::jlimit (0, numLayers - 1, (audition - 300) / 10);
-        soloSource = (audition - 300) % 10;
-        soloSamplesLeft = (int) getSampleRate();
+        const auto base = heldSolo ? 500 : 300;
+        soloLayer = juce::jlimit (0, numLayers - 1, (audition - base) / 10);
+        soloSource = (audition - base) % 10;
+        soloSamplesLeft = heldSolo ? heldSamples : (int) getSampleRate();
+    }
+    if (heldWhole)
+        heldLayer = juce::jlimit (0, numLayers - 1, audition - 400);
+    else if (heldSolo)
+        heldLayer = soloLayer;
+    else if (audition == PluginBase::auditionHoldStop && heldLayer >= 0)
+    {
+        basses[(size_t) heldLayer].release();
+        heldLayer = -1;
+        soloSamplesLeft = soloSamplesLeft > (int) getSampleRate() ? (int) getSampleRate() : soloSamplesLeft; // utklingningen hörs fortfarande bara som den källan
     }
     // Parametrarna läses bara på 32-rutnätet, så att ljudet inte beror på var DAW:en delar blocken. Ett nytt DAW-block (automation och
     // rattar kommer mellan blocken) ger en hel läsning vid nästa rutnätspunkt; däremellan läses bara det som moduleras. Medan en enskild
@@ -189,6 +203,10 @@ void InstrumentProcessor::processChunk (juce::AudioBuffer<float>& buffer, juce::
     {
         stopPreview();
     }
+    else if (heldSolo || heldWhole)
+    {
+        basses[(size_t) heldLayer].noteOn (0, 1.0f, heldSamples);
+    }
     else if (audition >= 300)
     {
         basses[(size_t) soloLayer].noteOn (0, 1.0f, (int) getSampleRate());
@@ -202,6 +220,9 @@ void InstrumentProcessor::processChunk (juce::AudioBuffer<float>& buffer, juce::
     {
         handlePreviewRequest (audition - 100);
     }
+    // Hålls provlyssningen och ljudet har tagit slut (kort envelope, sampling utan LOOP): börja om, så att det loopar.
+    if (heldLayer >= 0 && ! basses[(size_t) heldLayer].isActive())
+        basses[(size_t) heldLayer].noteOn (0, 1.0f, heldSamples);
 
     // Var kick och bas ska skrivas. Huvudutgången får alltid hela mixen; kick- och
     // basutgångarna får dessutom sin del var om DAW:en aktiverat dem.

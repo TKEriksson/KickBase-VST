@@ -111,6 +111,7 @@ private:
     // Läses en gång per block.
     PatternLengths lengths;
     int soloLayer = 0, soloSource = 0, soloSamplesLeft = 0, kickSoloSamplesLeft = 0;
+    int heldLayer = -1;    // instrument vars provlyssning hålls (musen nere på en graf), -1 = ingen
     int previewLayer = -1; // rad som förhandsspelas utan DAW-ton, -1 = ingen
     void handlePreviewRequest (int row);
     void stopPreview(); // provlyssning av en enda källa (se PluginBase::requestAudition)

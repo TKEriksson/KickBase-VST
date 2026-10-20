@@ -29,6 +29,8 @@ PianoRoll::PianoRoll (PluginBase& p, std::vector<juce::Colour> colours) : proces
     setTooltip ("PIANO ROLL - PENCIL: click in an empty spot to add a note (drag to move it), drag a note's right edge to change its length. "
                 "SELECT: drag a box in an empty spot, like on the desktop (Shift + drag does this with any tool). ERASER: click or drag over notes to remove them. "
                 "Selected notes move, stretch and delete together; Ctrl + C copies them and Ctrl + V pastes (choose where, then Enter). "
+                "Keys: hold Alt = eraser, hold Shift = select box, Ctrl + A = select all, Ctrl + C / X / V = copy / cut / paste, Delete = delete selected, "
+                "arrow keys move the selected notes (Shift = octave), Esc = clear the selection. "
                 "Right-click a note to delete it. With GLIDE on, the notes you draw are glide notes (pink): they glide the sounding note to their pitch "
                 "during their own length, then the pitch stays. Double-click a note to turn glide on/off for it. "
                 "Scroll = pitch, Ctrl + scroll = zoom, Shift + scroll = move in time. The strip at the bottom is velocity.");
@@ -53,7 +55,7 @@ PianoRoll::PianoRoll (PluginBase& p, std::vector<juce::Colour> colours) : proces
     drawButton.setTooltip ("PENCIL - Click in an empty spot to draw a note, drag a note to move it, drag its right edge to change its length.");
     selectButton.setTooltip ("SELECT - Drag a box in an empty spot to select the notes it touches, like selecting icons on the desktop. "
                              "(Holding Shift does the same with any tool.) Then move, copy or delete them together.");
-    eraseButton.setTooltip ("ERASER - Click a note, or drag across several, to remove them.");
+    eraseButton.setTooltip ("ERASER - Click a note, or drag across several, to remove them. Holding Alt turns any tool into the eraser while it is held.");
     drawButton.onClick = [this] { setTool (Tool::draw); };
     selectButton.onClick = [this] { setTool (Tool::select); };
     eraseButton.onClick = [this] { setTool (Tool::erase); };
@@ -120,12 +122,28 @@ PianoRoll::PianoRoll (PluginBase& p, std::vector<juce::Colour> colours) : proces
     lengthBox.setTooltip ("LENGTH - How many bars this piano roll lasts. Total = as long as the whole pattern. If you make it shorter, the notes after "
                           "the new end are removed.");
     addAndMakeVisible (lengthBox);
+    extendButton.setTooltip ("+ BAR - Makes this row twice as long (lengths are 1, 2, 4, 8 ... 64 bars). The new bars continue what already plays, as when you change LENGTH. "
+                             "You can also click in the shaded bar after the end of the row. Shorten the row again with LENGTH.");
+    extendButton.onClick = [this] { extendRow(); grabKeyboardFocus(); };
+    addAndMakeVisible (extendButton);
 
     attachGridBox();
     attachLengthBox();
     updateToolButtons();
     updateToolbarVisibility();
     startVisualTimer (Settings::Visual::other, 30);
+}
+
+bool PianoRoll::extendRow()
+{
+    const auto current = bars();
+    if (current >= Pattern::maxBars)
+        return false;
+    // Samma väg som PRESET och MIDI-import: totalen följer med, och PatternModule fyller de nya takterna (checkLengthChanges).
+    RollFiles::applyLength (processor.apvts, layer, current * 2);
+    updateScrollBars();
+    repaint();
+    return true;
 }
 
 void PianoRoll::attachLengthBox()
@@ -205,7 +223,9 @@ int PianoRoll::rootPitchClass() const { return rootNote() % 12; }
 float PianoRoll::ticksToX (float tick) const { return gridArea.getX() + (tick - scrollTicks) * pixelsPerTick; }
 float PianoRoll::xToTicks (float x) const { return scrollTicks + (x - gridArea.getX()) / pixelsPerTick; }
 float PianoRoll::pitchToY (int pitch) const { return gridArea.getY() + (topPitch - (float) pitch) * rowHeight(); }
-int PianoRoll::yToPitch (float y) const { return (int) std::floor (topPitch - (y - gridArea.getY()) / rowHeight()); }
+// Raden för tonhöjden p har sin överkant vid topPitch - p (se pitchToY), alltså ligger y i raden p när topPitch - p <= d < topPitch - p + 1: p = ceil (topPitch - d).
+// (floor gav raden under pekaren: krysset låg en rad ovanför tonen man siktade på.)
+int PianoRoll::yToPitch (float y) const { return (int) std::ceil (topPitch - (y - gridArea.getY()) / rowHeight()); }
 
 void PianoRoll::fitToWidth()
 {
@@ -216,10 +236,10 @@ void PianoRoll::fitToWidth()
 
 void PianoRoll::clampView()
 {
-    const auto fit = gridArea.getWidth() / (float) std::max (1, totalTicks());
+    const auto fit = gridArea.getWidth() / (float) std::max (1, viewTicks());
     pixelsPerTick = juce::jlimit (fit, std::max (fit, maxPixelsPerTick), pixelsPerTick);
     const auto visibleTicks = gridArea.getWidth() / pixelsPerTick;
-    scrollTicks = juce::jlimit (0.0f, std::max (0.0f, (float) totalTicks() - visibleTicks), scrollTicks);
+    scrollTicks = juce::jlimit (0.0f, std::max (0.0f, (float) viewTicks() - visibleTicks), scrollTicks);
 
     // Raderna: hela tonhöjdsområdet ska gå att nå, men inte mer.
     const auto rows = (float) visibleRows();
@@ -232,7 +252,7 @@ void PianoRoll::clampView()
 
 void PianoRoll::updateScrollBars()
 {
-    hBar.setRangeLimits (0.0, (double) std::max (1, totalTicks()), juce::dontSendNotification);
+    hBar.setRangeLimits (0.0, (double) std::max (1, viewTicks()), juce::dontSendNotification);
     hBar.setCurrentRange (scrollTicks, (double) (gridArea.getWidth() / std::max (0.01f, pixelsPerTick)), juce::dontSendNotification);
 
     vBar.setRangeLimits (0.0, (double) (Pattern::maxPitch - Pattern::minPitch + 1), juce::dontSendNotification);
@@ -375,6 +395,8 @@ void PianoRoll::showMidiMenu()
 
 PianoRoll::Tool PianoRoll::effectiveTool() const
 {
+    if (altHeld && drag != Drag::box)
+        return Tool::erase; // Alt hålls: sudd, vilket verktyg som än är valt
     return (shiftHeld || drag == Drag::box) ? Tool::select : tool;
 }
 
@@ -625,7 +647,7 @@ void PianoRoll::resized()
     top.removeFromLeft (2);
     eraseButton.setBounds (top.removeFromLeft (62));
     top.removeFromLeft (10);
-    allButton.setBounds (top.removeFromLeft (38));
+    allButton.setBounds (top.removeFromLeft (78));
     top.removeFromLeft (2);
     deleteButton.setBounds (top.removeFromLeft (38));
     top.removeFromLeft (10);
@@ -658,6 +680,8 @@ void PianoRoll::resized()
     bottom.removeFromLeft (12);
     lengthCaption = bottom.removeFromLeft (46).toFloat();
     lengthBox.setBounds (bottom.removeFromLeft (84));
+    bottom.removeFromLeft (4);
+    extendButton.setBounds (bottom.removeFromLeft (52));
 
     const auto first = pixelsPerTick == 1.0f && scrollTicks == 0.0f;
     if (first)
@@ -689,9 +713,11 @@ void PianoRoll::timerCallback()
 
     // Skift hålls ner: MARKERA-knappen trycks in och muspekaren blir ett kryss. Knapparna följer läget och urklippet.
     const auto shiftNow = juce::ModifierKeys::getCurrentModifiersRealtime().isShiftDown();
-    if (shiftNow != shiftHeld)
+    const auto altNow = juce::ModifierKeys::getCurrentModifiersRealtime().isAltDown();
+    if (shiftNow != shiftHeld || altNow != altHeld)
     {
         shiftHeld = shiftNow;
+        altHeld = altNow;
         updateCursor (getMouseXYRelative().toFloat(), hoverEdge);
     }
     updateToolButtons();
@@ -720,8 +746,8 @@ void PianoRoll::timerCallback()
     }
     if (bars() != lastBars)
     {
-        // Ny mönsterlängd: visa hela mönstret igen.
-        if (lastBars != 0)
+        // Kortare: visa hela mönstret igen. Längre (+ BAR, klick efter slutet): vyn står kvar.
+        if (lastBars != 0 && bars() < lastBars)
             fitToWidth();
         lastBars = bars();
         changed = true;
@@ -929,7 +955,7 @@ void PianoRoll::paint (juce::Graphics& g)
         // Tidslinjer: rutnät, slag och takter (rutnätet visas även när SNAP är av).
         const auto step = Pattern::ticksPerStep (grid());
         const auto firstTick = std::max (0, (int) xToTicks (gridArea.getX()) / step * step);
-        for (int tick = firstTick; tick <= totalTicks() && ticksToX ((float) tick) <= gridArea.getRight(); tick += step)
+        for (int tick = firstTick; tick <= viewTicks() && ticksToX ((float) tick) <= gridArea.getRight(); tick += step)
         {
             const auto x = ticksToX ((float) tick);
             const auto isBar = tick % Pattern::ticksPerBar == 0, isBeat = tick % Pattern::ticksPerQuarter == 0;
@@ -937,6 +963,21 @@ void PianoRoll::paint (juce::Graphics& g)
                 continue;
             g.setColour (isBar ? Theme::textDim.withAlpha (0.55f) : isBeat ? Theme::textDim.withAlpha (0.28f) : Theme::grid.withAlpha (snapEnabled ? 0.6f : 0.3f));
             g.drawVerticalLine ((int) x, gridArea.getY(), gridArea.getBottom());
+        }
+
+        // Takten efter radens slut: skuggad, ett klick där (penna) förlänger raden.
+        if (totalTicks() < Pattern::maxTicks)
+        {
+            const auto x = std::max (gridArea.getX(), ticksToX ((float) totalTicks()));
+            if (x < gridArea.getRight())
+            {
+                const auto ghost = juce::Rectangle<float>::leftTopRightBottom (x, gridArea.getY(), gridArea.getRight(), gridArea.getBottom());
+                g.setColour (juce::Colours::black.withAlpha (0.45f));
+                g.fillRect (ghost);
+                g.setColour (Theme::textDim);
+                g.setFont (Theme::font (10.5f, true));
+                g.drawText ("+ CLICK TO EXTEND THE ROW", ghost.withHeight (20.0f).reduced (8.0f, 0.0f), juce::Justification::centredLeft);
+            }
         }
 
         // Tonerna.
@@ -1152,6 +1193,7 @@ void PianoRoll::mouseMove (const juce::MouseEvent& event)
     const auto tick = gridArea.contains (event.position) && ! pasting ? noteAtPoint (event.position, edge) : -1;
     hoverEdge = edge;
     shiftHeld = event.mods.isShiftDown();
+    altHeld = event.mods.isAltDown();
     setHover (tick);
     updateCursor (event.position, edge);
 }
@@ -1253,7 +1295,8 @@ void PianoRoll::mouseDown (const juce::MouseEvent& event)
         return;
     }
 
-    const auto currentTool = event.mods.isShiftDown() ? Tool::select : effectiveTool();
+    altHeld = event.mods.isAltDown();
+    const auto currentTool = event.mods.isAltDown() ? Tool::erase : event.mods.isShiftDown() ? Tool::select : effectiveTool();
 
     // Sudd: ta bort tonen under musen, och alla man drar över.
     if (currentTool == Tool::erase)
@@ -1304,6 +1347,11 @@ void PianoRoll::mouseDown (const juce::MouseEvent& event)
         selection = boxBase;
         repaint();
         return;
+    }
+
+    // Ett klick i takten efter radens slut förlänger raden först (som + BAR) och lägger sedan tonen.
+    for (int doublings = 0; doublings < 6 && xToTicks (event.position.x) >= (float) totalTicks() && extendRow(); ++doublings)
+    {
     }
 
     // Tom plats: en ny ton på steget under musen, i raden under musen.

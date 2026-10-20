@@ -5,6 +5,7 @@
 #include "../Core/PluginBase.h"
 #include "Components.h"
 #include "Cursors.h"
+#include "HoldAudition.h"
 
 // Bilden av en wavetable, som i Serum: alla vågformer staplade bakåt i en svag 3D-vy, och den
 // som spelas nu (positionen, med LFO och warp) ritad framför i lagrets färg.
@@ -14,6 +15,7 @@ public:
     WavetableView (PluginBase& processor, int layer, int osc, juce::Colour accent);
     void paint (juce::Graphics&) override;
     void mouseDown (const juce::MouseEvent&) override;
+    void mouseUp (const juce::MouseEvent&) override { hold.stop(); }
     void mouseEnter (const juce::MouseEvent&) override { hover = true; repaint(); }
     void mouseExit (const juce::MouseEvent&) override  { hover = false; repaint(); }
 
@@ -25,6 +27,7 @@ private:
     juce::MouseCursor speakerCursor = Cursors::speaker();
 
     PluginBase& processor;
+    HoldAudition hold { processor }; // klick och håll: oscillatorn klingar så länge musen är nere
     const int layer, osc;
     juce::Colour accent;
     int positionIndex = -1;

@@ -47,7 +47,7 @@ private:
 class LfoDragHandle : public juce::Component, public juce::SettableTooltipClient
 {
 public:
-    explicit LfoDragHandle (int source, const juce::String& label = "DRAG TO A KNOB");
+    explicit LfoDragHandle (int source, const juce::String& label = "DRAG");
     void paint (juce::Graphics&) override;
     void mouseDrag (const juce::MouseEvent&) override;
     void mouseEnter (const juce::MouseEvent&) override { repaint(); }

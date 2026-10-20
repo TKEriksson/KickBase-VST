@@ -67,6 +67,9 @@ private:
 
     int bars() const;
     int totalTicks() const { return bars() * Pattern::ticksPerBar; }
+    // Vyn visar en takt till efter radens slut (tills 64 takter): klicka där, eller + BAR, för att förlänga raden.
+    int viewTicks() const { return std::min (Pattern::maxBars, bars() + 1) * Pattern::ticksPerBar; }
+    bool extendRow();                         // raden blir dubbelt så lång (1, 2, 4 ... 64 takter); false vid 64
     InstrumentGrid grid() const;
     int snapTicks() const;
     int snapped (float tick) const;           // närmaste steg (nedåt) i ticks
@@ -129,13 +132,13 @@ private:
     juce::Rectangle<float> toolbarArea, keyArea, rulerArea, gridArea, velocityArea;
 
     // Verktygsraden.
-    juce::TextButton snapButton { "SNAP" }, smallerButton { "-" }, biggerButton { "+" }, allButton { "ALL" }, deleteButton { "DEL" },
+    juce::TextButton snapButton { "SNAP" }, smallerButton { "-" }, biggerButton { "+" }, allButton { "SELECT ALL" }, deleteButton { "DEL" },
                      glideButton { "GLIDE" }, followButton { "FOLLOW" }, presetButton { "PRESET" }, midiButton { "MIDI" },
                      drawButton { "PENCIL" }, selectButton { "SELECT" }, eraseButton { "ERASER" }, copyButton { "COPY" },
                      pasteButton { "PASTE" }, pasteOkButton { "OK" }, pasteCancelButton { "CANCEL" };
     ListenButton listenButton; // högtalare: håll för att höra pianorullen (loopar), släpp för att sluta
     Tool tool = Tool::draw;
-    bool shiftHeld = false;
+    bool shiftHeld = false, altHeld = false;
     juce::MouseCursor pencilCursor = Cursors::pencil(), eraserCursor = Cursors::eraser();
 
     // Inklistring: de kopierade tonerna visas som ett spöke som man flyttar innan man bekräftar.
@@ -149,6 +152,7 @@ private:
     juce::Component::SafePointer<juce::AlertWindow> saveDialog;
     juce::Rectangle<float> infoArea, lengthCaption;
     juce::ComboBox gridBox, lengthBox;                      // rutnät och radens längd
+    juce::TextButton extendButton { "+ BAR" };              // förläng raden
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> lengthAttachment;
     void attachLengthBox();
     juce::ScrollBar hBar { false }, vBar { true }; // tid och tonhöjd

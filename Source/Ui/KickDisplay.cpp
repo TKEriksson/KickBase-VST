@@ -26,6 +26,10 @@ KickDisplay::KickDisplay (PluginBase& p) : processor (p)
     ampButton.onClick = [this] { setMode (true); };
     addAndMakeVisible (pitchButton);
     addAndMakeVisible (ampButton);
+    listenButton.setAccent (Theme::kick);
+    listenButton.setTooltip ("LISTEN - Plays the kick (you can also click an empty spot in the kick's picture). Use it while you shape PITCH and AMP.");
+    listenButton.onStart = [this] { processor.requestAudition (0); };
+    addAndMakeVisible (listenButton);
     setMode (false);
 
     setTooltip ("KICK - The waveform of the kick: click an empty spot to hear it, and watch the marker follow it when it plays. Drag the nodes to shape pitch (PITCH) or volume (AMP); double-click to add a node, "
@@ -51,6 +55,8 @@ void KickDisplay::resized()
     pitchButton.setBounds (top.removeFromLeft (64));
     top.removeFromLeft (4);
     ampButton.setBounds (top.removeFromLeft (64));
+    top.removeFromLeft (8);
+    listenButton.setBounds (top.removeFromLeft (36));
 }
 
 juce::int64 KickDisplay::stateHash() const

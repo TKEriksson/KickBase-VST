@@ -255,6 +255,12 @@ public:
     static int layerAudition (int layer) { return 200 + layer; }
     static int soloAudition (int layer, int source) { return 300 + layer * 10 + source; }
 
+    // Provlyssning som hålls: tonen klingar så länge musen hålls ner och startar om när ljudet tar slut (loop); `auditionHoldStop` släpper den.
+    // 400 + lager = instrumentets hela ton, 500 + lager * 10 + källa = bara en källa (som soloAudition).
+    static constexpr int auditionHoldStop = 98;
+    static int heldLayerAudition (int layer) { return 400 + layer; }
+    static int heldSoloAudition (int layer, int source) { return 500 + layer * 10 + source; }
+
     // Förhandsspelning av en enskild rad (en pianorulle): spelar raden en gång med den egna klockan, utan DAW-ton (100 + notlager,
     // där 0-9 = instrument och 10 = kicken; samma anrop igen avbryter). `previewingLayer` visar vilken rad som spelas, -1 = ingen.
     // Raden efter kicken är hela synthen (alla rader). Förhandsspelningen loopar tills `previewStop` skickas, och ett nytt anrop börjar om från början.

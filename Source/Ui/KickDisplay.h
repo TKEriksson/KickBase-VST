@@ -5,6 +5,7 @@
 #include "../Core/PluginBase.h"
 #include "Components.h"
 #include "Cursors.h"
+#include "ListenButton.h"
 
 // Kickens vågform (renderad av själva kickmotorn) med envelopernas noder ovanpå, som i Kick 3.
 // PITCH visar tonhöjdens svep (noterna märkta med ton och Hz), AMP volymen. Dra noder, dubbel-
@@ -53,6 +54,7 @@ private:
     double triggerWallTime = 0.0;                   // när senaste kicken märktes (ms), för blixten
     float markerSeconds = -1.0f;                    // var kicken är just nu (sekunder), -1 = tyst
     juce::TextButton pitchButton { "PITCH" }, ampButton { "AMP" };
+    ListenButton listenButton; // högtalaren bredvid PITCH och AMP: spelar kicken
 
     // Vågformen som ritas (min/max per bildpunkt), omräknad när något ändrats.
     juce::AudioBuffer<float> waveform;

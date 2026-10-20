@@ -86,9 +86,16 @@ void EnvPage::rebuild()
         tile.view = std::make_unique<EnvelopeView> (seconds);
         tile.view->onBeforePaint = [this, thisLayer] { current = refs.readInstrument (thisLayer, 36); };
         addAndMakeVisible (*tile.view);
+        tile.listen = std::make_unique<ListenButton>();
+        tile.listen->setAccent (tile.colour);
+        tile.listen->setTooltip ("LISTEN - Hold to hear this instrument on the preview note (the PREVIEWS note at the top) for as long as you hold; "
+                                 "it starts over if the sound ends. Double-click to keep it playing until you click again. Use it while you drag the handles.");
+        tile.listen->onStart = [this, thisLayer] { hold.start (PluginBase::heldLayerAudition (thisLayer)); };
+        tile.listen->onStop = [this] { hold.stop(); };
+        addAndMakeVisible (*tile.listen);
         if (handleSource >= 0)
         {
-            tile.handle = std::make_unique<LfoDragHandle> (handleSource, "DRAG TO A KNOB");
+            tile.handle = std::make_unique<LfoDragHandle> (handleSource, "DRAG");
             addAndMakeVisible (*tile.handle);
         }
         tiles.push_back (std::move (tile));
@@ -201,11 +208,16 @@ void EnvPage::resized()
         tile.bounds = area.removeFromLeft (width);
         area.removeFromLeft (gap);
         auto inner = tile.bounds.reduced (6, 4);
-        auto header = inner.removeFromTop (22);
+        // Två rader över grafen: titeln, och under den knapparna (SYNC till vänster, DRAG till höger). Alla fyra får samma rader
+        // så att graferna ligger i höjd, och knapparna kan aldrig hamna över grafens tidslinje (SYNC och DRAG krockade förut).
+        inner.removeFromTop (22); // titeln (ritas i paint)
+        auto controls = inner.removeFromTop (22);
         if (tile.handle != nullptr)
-            tile.handle->setBounds (header.removeFromRight (130));
+            tile.handle->setBounds (controls.removeFromRight (72));
         if (tile.modeButton != nullptr)
-            tile.modeButton->setBounds (header.removeFromRight (46).reduced (2, 0));
+            tile.modeButton->setBounds (controls.removeFromLeft (56).reduced (2, 0));
+        if (tile.listen != nullptr)
+            tile.listen->setBounds (controls.removeFromLeft (34).reduced (2, 0));
         inner.removeFromTop (2);
         tile.view->setBounds (inner);
     }

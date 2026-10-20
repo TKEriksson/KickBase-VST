@@ -82,6 +82,9 @@ private:
 
     int laneStepAt (int x) const { const auto l = lengths(); return stepAt (x, selectedLayer, instrumentSteps (selectedLayer), instrumentOwnSteps (l, selectedLayer)); }
     bool isCustom (int layer) const { return processor.pattern.isCustom (layer); }
+    // Lanet (velocity/längd/tonhöjd) under den valda raden visas bara i PATTERN-läget och inte när raden har pianorulle
+    // (där sätts allt i pianorullen, så ytan och hjälptexten dolde bara andra rader).
+    bool laneShown() const { return mode == Mode::notes && ! isCustom (selectedLayer); }
 
     Target targetAt (juce::Point<int> point, int& layer) const;
     // Stegets plats i radens eget mönster (loopade kopior räknas om till originalet), eller -1 i en tyst del av en rad

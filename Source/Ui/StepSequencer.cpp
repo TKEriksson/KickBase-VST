@@ -409,6 +409,8 @@ void StepSequencer::timerCallback()
         auto bits = 0;
         for (int layer = 0; layer < Pattern::numNoteLayers; ++layer)
             bits |= processor.pattern.isCustom (layer) ? 1 << layer : 0;
+        if (bits != lastCustomBits && lastCustomBits != -1)
+            resized(); // lanet tas bort eller läggs till när lagret får eller förlorar sin pianorulle
         update (lastCustomBits, bits);
     }
 
@@ -484,7 +486,7 @@ void StepSequencer::resized()
     const auto rows = 1 + numLayers();
     constexpr int gap = 5, laneHeight = 76, normalMinHeight = 50;
     const auto manual = processor.sequencerRowHeight > 0;
-    const auto freeHeight = area.getHeight() - headerHeight - 2 - (mode == Mode::notes ? laneHeight + 3 : 0);
+    const auto freeHeight = area.getHeight() - headerHeight - 5 - (laneShown() ? laneHeight + 3 : 0);
     int rowHeight;
     if (manual)
         rowHeight = processor.sequencerRowHeight;
@@ -509,7 +511,7 @@ void StepSequencer::resized()
 
     // Rubrikremsan överst: VOL, FX över kolumnerna till vänster, och sidväljaren (bara för mönster längre än fyra takter) över stegen.
     auto header = area.removeFromTop (headerHeight);
-    area.removeFromTop (2);
+    area.removeFromTop (5); // marginal under översikten
     labelColumn = area.removeFromLeft (labelWidthNow);
     headerLabels = header.removeFromLeft (labelWidthNow);
     const auto paged = bars() > barsPerPage;
@@ -557,13 +559,13 @@ void StepSequencer::resized()
         if (row == selectedRow)
         {
             auto frameBottom = rowRects[(size_t) row].getBottom();
-            if (mode == Mode::notes)
+            if (laneShown())
             {
                 area.removeFromTop (3);
                 laneArea = area.removeFromTop (laneHeight);
                 frameBottom = laneArea.getBottom();
             }
-            selectionFrame = juce::Rectangle<int>::leftTopRightBottom (labelColumn.getX() - 3, rowRects[(size_t) row].getY() - 3,
+            selectionFrame = juce::Rectangle<int>::leftTopRightBottom (std::max (1, labelColumn.getX() - 3), rowRects[(size_t) row].getY() - 3,
                                                                        stepsColumn.getRight() + 3, frameBottom + 3);
         }
         area.removeFromTop (gap);
@@ -656,6 +658,10 @@ StepSequencer::Target StepSequencer::targetAt (juce::Point<int> point, int& laye
 {
     layer = selectedLayer;
     const auto inLabels = point.x < stepsColumn.getX();
+
+    // Rubrikremsan (översikten/sidväljaren) ovanför raderna: ett klick där ska aldrig träffa raden under (kickens).
+    if (point.y < rowsTop)
+        return Target::none;
 
     if (! laneArea.isEmpty() && point.y >= laneArea.getY() - 2 && point.y < laneArea.getBottom() + 2)
         return inLabels ? Target::none : Target::lane;
@@ -775,16 +781,6 @@ void StepSequencer::paintLane (juce::Graphics& g) const
     g.fillRoundedRectangle (area, 4.0f);
     g.setColour (colourOn.withAlpha (0.35f));
     g.drawRoundedRectangle (area.reduced (0.5f), 4.0f, 1.0f);
-
-    if (isCustom (selectedLayer))
-    {
-        g.setColour (Theme::textDim);
-        g.setFont (Theme::font (11.0f));
-        g.drawFittedText ("This layer is edited in the piano roll (note velocity, length, pitch and glide are set there). "
-                          "Click its row to open the piano roll, or right-click it to delete the piano roll and use steps again.",
-                          laneArea.reduced (14, 8), juce::Justification::centred, 3);
-        return;
-    }
 
     if (lane == Lane::pitch)
     {
@@ -1000,7 +996,7 @@ void StepSequencer::paint (juce::Graphics& g)
         for (int layer = 0; layer < numLayers(); ++layer)
             dimRow (layer);
     }
-    if (mode == Mode::notes)
+    if (laneShown())
         paintLane (g);
 
     // Etiketter till vänster; det valda lagret markeras.

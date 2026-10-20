@@ -7,6 +7,7 @@
 #include "../Core/PluginBase.h"
 #include "Components.h"
 #include "ListenButton.h"
+#include "HoldAudition.h"
 #include "Cursors.h"
 #include "KickDisplay.h"
 #include "KickLibraryPanel.h"
@@ -104,7 +105,7 @@ private:
     std::unique_ptr<FxSendControl> fxSend;
 
     juce::Label sampleLabel;
-    juce::TextButton loadButton { "LOAD" }, clearButton { "X" }, listenButton { "LISTEN" }, listenSampleButton { "HEAR SAMPLE" };
+    juce::TextButton loadButton { "LOAD" }, clearButton { "X" }, listenSampleButton { "HEAR SAMPLE" };
     std::unique_ptr<juce::FileChooser> chooser;
     bool dragHover = false;
 };
@@ -116,6 +117,7 @@ public:
     SampleView (PluginBase& processor, int layer, juce::Colour accent);
     void paint (juce::Graphics&) override;
     void mouseDown (const juce::MouseEvent&) override;
+    void mouseUp (const juce::MouseEvent&) override { hold.stop(); }
     void mouseEnter (const juce::MouseEvent&) override { hover = true; repaint(); }
     void mouseExit (const juce::MouseEvent&) override  { hover = false; repaint(); }
 
@@ -123,6 +125,7 @@ private:
     void timerCallback() override;
 
     PluginBase& processor;
+    HoldAudition hold { processor }; // klick och håll: samplingen spelas så länge musen är nere
     const int layer;
     juce::Colour accent;
     const ClickSample* shown = nullptr;
@@ -294,6 +297,7 @@ private:
     // EDIT: vad lanet under det valda lagrets rad visar och ändrar (velocity, tonlängd, tonhöjd), som en rullgardinslista.
     juce::Label laneLabel;
     juce::ComboBox laneBox;
+    bool lastLaneEditable = true; // det valda lagret har inte pianorulle: EDIT IN LANE syns och tar plats
     std::vector<StepSequencer::Lane> laneOrder;
     void updateLengthKnobs();
     StepSequencer sequencer;
