@@ -28,6 +28,9 @@ private:
         std::unique_ptr<ListenButton> listen;                            // LISTEN: håll för att höra instrumentet
         std::unique_ptr<juce::TextButton> modeButton;                    // MS | SYNC (ENV 2 och ENV 3)
         std::unique_ptr<juce::ButtonParameterAttachment> modeAttachment;
+        std::unique_ptr<juce::TextButton> onButton;                      // ON/OFF (fas L)
+        std::unique_ptr<juce::ButtonParameterAttachment> onAttachment;
+        std::unique_ptr<juce::TextButton> durationButton;                // DURATION: hur många sekunder grafen visar (bara vyn)
         juce::Rectangle<int> bounds;
     };
 
@@ -44,4 +47,5 @@ private:
     juce::Label instrumentLabel, moreLabel;
     std::unique_ptr<LfoDragHandle> velocityHandle, randomHandle; // fas L: flyttade hit från INSTRUMENT-sidans modulationsrad
     std::vector<Tile> tiles;
+    std::array<double, 4> durations { 1.0, 0.5, 2.0, 2.0 }; // DURATION per ruta: bara körtid, behålls när instrumentet byts
 };

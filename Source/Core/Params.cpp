@@ -93,7 +93,10 @@ namespace ParamID
                                      "Env2Mode", "Env2AttackSync", "Env2DecaySync", "Env2ReleaseSync", "Env3Mode", "Env3AttackSync", "Env3DecaySync", "Env3ReleaseSync",
                                      "FilterP1", "FilterP2",
                                      "Filter2On", "Filter2Model", "Filter2Type", "Filter2Cutoff", "Filter2Reso", "Filter2P1", "Filter2P2", "FilterRouting", "FilterMix",
-                                     "Voices" };
+                                     "Voices",
+                                     "Env1On", "FilterEnvOn", "Env2On", "Env3On",
+                                     "Env1Mode", "Env1AttackSync", "Env1DecaySync", "Env1ReleaseSync",
+                                     "FilterEnvMode", "FilterEnvAttackSync", "FilterEnvDecaySync" };
         static_assert (std::size (names) == (size_t) InstrumentField::count);
         return names[(size_t) field];
     }
@@ -360,6 +363,23 @@ namespace Params
         }
         // Röster (fas P): 1 = monofoniskt (legato, som förut). Ett heltal, så det kan inte moduleras (isModulatable).
         layout.add (std::make_unique<AudioParameterInt> (ParameterID { id (F::voices), 1 }, title + "Voices", 1, 8, 1)); // 8 = InstrumentVoices::maxVoices
+        // fas L: ENV-flikens ON/OFF (på = som förut) och ms/Sync för volym- och filter-envelopen (ms = som förut).
+        layout.add (std::make_unique<AudioParameterBool> (ParameterID { id (F::env1On), 1 }, title + "Env 1 On", true));
+        layout.add (std::make_unique<AudioParameterBool> (ParameterID { id (F::filterEnvOn), 1 }, title + "Filter Env On", true));
+        layout.add (std::make_unique<AudioParameterBool> (ParameterID { id (F::env2On), 1 }, title + "Env 2 On", true));
+        layout.add (std::make_unique<AudioParameterBool> (ParameterID { id (F::env3On), 1 }, title + "Env 3 On", true));
+        auto syncChoice = [&] (F field, const String& name, int defaultIndex)
+        {
+            layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (field), 1 }, title + name, Modulation::syncTimeNames(), defaultIndex));
+        };
+        // Standardvärdena ungefär som ms-standardvärdena vid 120 BPM: 1/16 D = 188 ms, 1/64 = 31 ms, 1/16 = 125 ms.
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::env1Mode), 1 }, title + "Env 1 Time Mode", StringArray { "ms", "Sync" }, 0));
+        syncChoice (F::env1AttackSync, "Env 1 Attack Sync", 0);
+        syncChoice (F::env1DecaySync, "Env 1 Decay Sync", 5);
+        syncChoice (F::env1ReleaseSync, "Env 1 Release Sync", 1);
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::filterEnvMode), 1 }, title + "Filter Env Time Mode", StringArray { "ms", "Sync" }, 0));
+        syncChoice (F::filterEnvAttackSync, "Filter Env Attack Sync", 0);
+        syncChoice (F::filterEnvDecaySync, "Filter Env Decay Sync", 4);
     }
 
     void addFxParams (Layout& layout)
@@ -595,6 +615,17 @@ InstrumentParams ParamRefs::readInstrument (int layer, int rootMidiNote) const
         e.decayNote = (int) get (ParamID::envSyncField (env, 1));
         e.releaseNote = (int) get (ParamID::envSyncField (env, 2));
     }
+    p.env1On = get (F::env1On) >= 0.5f;
+    p.filterEnvOn = get (F::filterEnvOn) >= 0.5f;
+    p.env2.on = get (F::env2On) >= 0.5f;
+    p.env3.on = get (F::env3On) >= 0.5f;
+    p.env1Sync = get (F::env1Mode) >= 0.5f;
+    p.env1AttackNote = (int) get (F::env1AttackSync);
+    p.env1DecayNote = (int) get (F::env1DecaySync);
+    p.env1ReleaseNote = (int) get (F::env1ReleaseSync);
+    p.filterEnvSync = get (F::filterEnvMode) >= 0.5f;
+    p.filterAttackNote = (int) get (F::filterEnvAttackSync);
+    p.filterDecayNote = (int) get (F::filterEnvDecaySync);
     p.subWave = (int) get (F::subWave);
     p.noiseTone = get (F::noiseTone);
     p.pitchEnvSemis = get (F::pitchEnvAmount);

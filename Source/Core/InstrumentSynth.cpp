@@ -204,10 +204,41 @@ ModEnvParams ModEnvParams::withTempo (double bpm) const
     return result;
 }
 
+InstrumentParams InstrumentParams::withTempo (double bpm, bool applyOnOff) const
+{
+    InstrumentParams result = *this;
+    result.env2 = env2.withTempo (bpm);
+    result.env3 = env3.withTempo (bpm);
+    const auto msPerQuarter = 60000.0 / juce::jlimit (20.0, 400.0, bpm);
+    const auto noteMs = [msPerQuarter] (int note, double minimum) { return (float) std::max (minimum, Modulation::syncTimeInQuarters (note) * msPerQuarter); };
+    // Samma minimum som ms-rattarna.
+    if (env1Sync)
+    {
+        result.attackMs = noteMs (env1AttackNote, 0.0);
+        result.decayMs = noteMs (env1DecayNote, 5.0);
+        result.releaseMs = noteMs (env1ReleaseNote, 1.0);
+    }
+    if (filterEnvSync)
+    {
+        result.envAttackMs = noteMs (filterAttackNote, 0.0);
+        result.envDecayMs = noteMs (filterDecayNote, 5.0);
+    }
+    if (applyOnOff && ! env1On)
+    {
+        result.attackMs = 1.0f;
+        result.sustain = 1.0f;
+        result.releaseMs = 5.0f;
+    }
+    if (applyOnOff && ! filterEnvOn)
+        result.envAmount = 0.0f;
+    return result;
+}
+
 void InstrumentSynth::refreshEnvTimes()
 {
-    envTimes2 = params.env2.withTempo (bpm);
-    envTimes3 = params.env3.withTempo (bpm);
+    params = rawParams.withTempo (bpm);
+    envTimes2 = params.env2;
+    envTimes3 = params.env3;
 }
 
 void InstrumentSynth::ModEnv::next (const ModEnvParams& p, double rate)

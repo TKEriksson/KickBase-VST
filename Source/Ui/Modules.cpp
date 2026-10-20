@@ -645,7 +645,7 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
     fxSend = std::make_unique<FxSendControl> (p.apvts, id (F::fxChannel), id (F::fxAmount), "FX SEND", layerAccent);
     addAndMakeVisible (*fxSend);
     setHeaderFxSend (fxSend.get());
-    envelope.onBeforePaint = [this] { current = refs.readInstrument (layer, 36); };
+    envelope.onBeforePaint = [this] { current = refs.readInstrument (layer, 36).withTempo (processor.transportStatus.bpm.load(), false); };
 
     envelope.addCurve ({ [this] (double t) { return InstrumentSynth::filterEnvelopeAt (current, t) * current.envAmount / 8.0f; },
                          layerAccent, true, "FILTER" });

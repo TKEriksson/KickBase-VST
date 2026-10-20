@@ -39,6 +39,7 @@ struct ModEnvParams
     float attackMs = 5.0f, decayMs = 400.0f, sustain = 0.0f, releaseMs = 250.0f;
     bool sync = false;                                   // tiderna är notvärden (Modulation::syncTimeInQuarters) som följer tempot, i stället för ms
     int attackNote = 0, decayNote = 8, releaseNote = 7;  // index i Modulation::syncTimeNames()
+    bool on = true;                                      // fas L: av = källan ger 0 (ON/OFF i ENV-fliken)
 
     // Samma envelope med tiderna i ms: oförändrad om sync är av, annars räknad från tempot (fjärdedelar x 60000 / bpm, aldrig under ms-rattarnas minimum).
     ModEnvParams withTempo (double bpm) const;
@@ -78,6 +79,10 @@ struct InstrumentParams
     float level = 0.7f;
 
     ModEnvParams env2, env3;     // modulationsenveloper
+    // fas L: ON/OFF och Sync för volym- och filter-envelopen (ENV-fliken). Sync-tiderna är index i Modulation::syncTimeNames().
+    bool env1On = true, filterEnvOn = true;
+    bool env1Sync = false, filterEnvSync = false;
+    int env1AttackNote = 0, env1DecayNote = 5, env1ReleaseNote = 1, filterAttackNote = 0, filterDecayNote = 4;
     int subWave = 0;             // 0 sinus, 1 triangel, 2 fyrkant, 3 såg
     float noiseTone = 1.0f;      // 0 mörkt brus ... 1 vitt brus
     float pitchEnvSemis = 0.0f;  // tonhöjdsenvelope: så många halvtoner över (eller under) tonen i början av varje ton
@@ -93,6 +98,11 @@ struct InstrumentParams
     float sampleStart = 0.0f;    // 0..1: var i samplingen varje ton börjar
 
     InstrumentParams() { oscB.level = 0.0f; oscC.level = 0.0f; oscC.on = false; }
+
+    // Samma inställningar med alla envelope-tider i ms (Sync räknat från tempot) och, om applyOnOff, ENV 1/FILTER ENV av inbakade:
+    // ENV 1 av = full nivå medan tonen hålls (1 ms attack, 5 ms release mot klick), FILTER ENV av = envAmount 0 (WARP ENV följer formen som förut).
+    // Räknas alltid från notvärdena och ON-flaggorna, så den kan anropas flera gånger. Diagrammen anropar den utan applyOnOff (rutan tonas i stället).
+    InstrumentParams withTempo (double bpm, bool applyOnOff = true) const;
 };
 
 // Monofonisk bassynt som spelas steg för steg av sequencern.
@@ -106,7 +116,7 @@ public:
     // Slumpen (brus, slumpfas) är seedad, så att samma preset renderar bit-identiskt varje gång.
     void setSeed (juce::int64 seed) { random.setSeed (seed); }
     void reset();
-    void setParams (const InstrumentParams& newParams) { params = newParams; refreshEnvTimes(); }
+    void setParams (const InstrumentParams& newParams) { rawParams = newParams; refreshEnvTimes(); }
     // Tempot (BPM) för ENV 2 och ENV 3 i läget Sync. Anropas varje bit om 32 samples; en tempoändring mitt i ett steg ger en kontinuerlig kurva.
     void setTempo (double newBpm) { if (newBpm != bpm) { bpm = newBpm; refreshEnvTimes(); } }
 
@@ -138,8 +148,8 @@ public:
     {
         switch (source)
         {
-            case 0:  return env2.level;
-            case 1:  return env3.level;
+            case 0:  return params.env2.on ? env2.level : 0.0f;
+            case 1:  return params.env3.on ? env3.level : 0.0f;
             case 2:  return stage == Stage::idle ? 0.0f : velocity;
             default: return randomValue;
         }
@@ -204,7 +214,8 @@ private:
         }
     };
 
-    InstrumentParams params;
+    InstrumentParams params;     // rawParams.withTempo (bpm): det som spelas
+    InstrumentParams rawParams;  // som de kom från setParams
     double sampleRate = 44100.0;
 
     Oscillator oscA, oscB, oscC;
