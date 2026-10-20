@@ -111,7 +111,7 @@ Ljudet med standardvärden ska vara bit-identiskt (rendersig*). Ordning:
 8. **Undersök och rapportera (bygg inget än):**
    - **WARP ENV:** Tobias hör ingen skillnad. Är den låst till filter-envelopen? Vad gör den exakt (kod, fil:rad)? Mät med `rendersig`-lik
      rendering med och utan. Förslaget (källväljare Direct/Filter Env/ENV 2/ENV 3 + egen decay 2–150 ms) byggs i fas S.
-   - **SAMPLE "mullrig/dålig kvalitet":** går samplingen genom filtret och sub/drive? Hur väljs ROOT? Interpolationen? Svar med fil:rad.
+   - ~~**SAMPLE "mullrig/dålig kvalitet":**~~ Struken (Tobias 20 okt: troligen filtret som var på). Kolla bara att filtret är av som standard.
    - **TOTAL LENGTH** (mönsterfliken): vad gör den i dag? Om den är verkningslös med radlängder: förslag att dölja den (parametern blir kvar).
 
 Slut: rendersig* identiska, `blocksizetest`, `audiotest`, skärmbilder av mönsterfliken, ENV-fliken, analyzern; rapport.
