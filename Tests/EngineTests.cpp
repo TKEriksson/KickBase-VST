@@ -725,6 +725,59 @@ namespace
         check (loaded.note (1, 5000).on && loaded.note (1, 5000).pitch == -90, "tonhöjd ±90 sparas");
     }
 
+    void testPolyphonyStacks()
+    {
+        std::puts ("Mönster: staplade toner (polyfoni steg 1)");
+        Pattern pattern;
+        pattern.clearNotes (0); // standardmallen ligger på lager 0
+        pattern.addNote (0, 96, 48, 3, 0.7f, false, { 7, 0, 0 });
+        check (pattern.stackSize (0, 96) == 1 && pattern.stackSize (0, 100) == 0, "stackSize: bara huvudtonen / ingen ton");
+        check (pattern.addExtra (0, 100, {}) == -1, "ingen stapel utan huvudton");
+        check (pattern.addExtra (0, 96, { 24, 10, 0.5f, false }) == 1 && pattern.addExtra (0, 96, { 12, -5, 0.4f, true }) == 2
+                  && pattern.addExtra (0, 96, { 6, 1, 1.0f, false }) == 3 && pattern.addExtra (0, 96, {}) == -1, "tre staplar, sedan fullt");
+        check (pattern.stackSize (0, 96) == 4, "stackSize 4");
+        pattern.removeStack (0, 96, 2);
+        Pattern::StackNote s;
+        check (pattern.stackSize (0, 96) == 3 && ! pattern.getStack (0, 96, 2, s) && pattern.getStack (0, 96, 3, s) && s.pitch == 1, "removeStack tar bara den staplade");
+        pattern.setStack (0, 96, 1, { 30, 12, 0.25f, true });
+        pattern.setStack (0, 96, 2, { 30, 12, 0.25f, true }); // släckt slot: ignoreras
+        check (pattern.getStack (0, 96, 1, s) && s.length == 30 && s.pitch == 12 && s.slide && ! pattern.getStack (0, 96, 2, s), "setStack");
+
+        Pattern loaded;
+        loaded.fromValueTree (pattern.toValueTree());
+        check (loaded.stackSize (0, 96) == 3 && loaded.note (0, 96).chord[0] == 7 && loaded.note (0, 96).pitch == 3, "spara/ladda: staplar och ackord");
+        check (loaded.getStack (0, 96, 1, s) && s.length == 30 && s.pitch == 12 && s.slide && loaded.getStack (0, 96, 2, s) && s.pitch == 1, "spara/ladda: stapelns fält");
+
+        // Trasig eller tom /e får inte krascha (läses som saknade staplar).
+        for (const auto* text : { "96/48/3/0/0.700/7/0/0/e", "96/48/3/0/0.700/e", "96/48/3/0/0.700/e/1/2", "96/48/3/0/0.700/e/x/y/z/w", "96/48/3/0/0.700/7/e/1/24/0.5/0/e/2" })
+        {
+            auto tree = pattern.toValueTree();
+            for (auto child : tree)
+                if (child.hasType ("Notes") && (int) child["layer"] == 0)
+                    child.setProperty ("notes", text, nullptr);
+            Pattern corrupt;
+            corrupt.fromValueTree (tree);
+            check (corrupt.note (0, 96).on.load() && corrupt.stackSize (0, 96) >= 1 && corrupt.stackSize (0, 96) <= Pattern::maxStack, "trasig /e: tonen finns, inget kraschar");
+        }
+
+        // Glidande huvudton: extras räknas inte; vanliga räknas med ackord.
+        Pattern voices;
+        voices.clearNotes (0);
+        voices.addNote (0, 0, 96, 0, 0.8f, false, { 4, 7, 0 });
+        voices.addExtra (0, 0, { 96, 12, 0.8f, false });
+        check (voices.maxSimultaneous (0) == 4, "maxSimultaneous räknar huvudton, ackord och stapel", voices.maxSimultaneous (0));
+        voices.addNote (0, 48, 24, 0, 0.8f, true);
+        check (voices.maxSimultaneous (0) == 4, "en glide-ton lägger inga röster");
+
+        voices.addNote (0, 0, 96, 0); // en ny ton ärver inga staplar
+        check (voices.stackSize (0, 0) == 1, "addNote nollställer staplar");
+        voices.addExtra (0, 0, {});
+        voices.trimRow (0, 1); // oförändrad
+        voices.removeNote (0, 0);
+        voices.addNote (0, 0, 24);
+        check (voices.stackSize (0, 0) == 1, "removeNote tar med staplarna");
+    }
+
     void testGateAndPianoRollFlag()
     {
         std::puts ("Mönster: gate-steg och pianorullsmarkering sparas per lager");
@@ -765,4 +818,5 @@ void runEngineTests()
     testWavetableLibrary();
     testGateAndPianoRollFlag();
     testRowLengths();
+    testPolyphonyStacks();
 }
