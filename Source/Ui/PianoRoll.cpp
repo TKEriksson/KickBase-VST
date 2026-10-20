@@ -24,6 +24,17 @@ namespace
     }
 }
 
+namespace
+{
+    // Fas P: ackorden i högerklicksmenyn (halvtoner från tonen).
+    struct ChordChoice { const char* name; Pattern::Chord chord; };
+    const std::array<ChordChoice, 11> chordChoices { {
+        { "None", { 0, 0, 0 } },          { "Octave up (+12)", { 12, 0, 0 } },  { "Fifth (+7)", { 7, 0, 0 } },
+        { "Power (+7 +12)", { 7, 12, 0 } }, { "Major (+4 +7)", { 4, 7, 0 } },  { "Minor (+3 +7)", { 3, 7, 0 } },
+        { "Sus4 (+5 +7)", { 5, 7, 0 } },  { "Major 7 (+4 +7 +11)", { 4, 7, 11 } }, { "Minor 7 (+3 +7 +10)", { 3, 7, 10 } },
+        { "Octave down (-12)", { -12, 0, 0 } }, { "Minor + low octave (-12 +3 +7)", { -12, 3, 7 } } } };
+}
+
 PianoRoll::PianoRoll (PluginBase& p, std::vector<juce::Colour> colours) : processor (p), layerColours (std::move (colours))
 {
     setWantsKeyboardFocus (true);
@@ -32,7 +43,8 @@ PianoRoll::PianoRoll (PluginBase& p, std::vector<juce::Colour> colours) : proces
                 "Selected notes move, stretch and delete together; Ctrl + C copies them and Ctrl + V pastes (choose where, then Enter). "
                 "Keys: hold Alt = eraser, hold Shift = select box, Ctrl + A = select all, Ctrl + C / X / V = copy / cut / paste, Delete = delete selected, "
                 "arrow keys move the selected notes (Shift = octave), Esc = clear the selection. "
-                "Right-click a note to delete it. With GLIDE on, the notes you draw are glide notes (pink): they glide the sounding note to their pitch "
+                "Right-click a note to delete it. CHORD: select notes, then right-click an empty spot and pick a chord; the chord notes are shown "
+                "as outlines above or below the note (they play only with VOICES 2 or more, dimmed otherwise). With GLIDE on, the notes you draw are glide notes (pink): they glide the sounding note to their pitch "
                 "during their own length, then the pitch stays. Double-click a note to turn glide on/off for it. "
                 "Scroll = pitch, Ctrl + scroll = zoom, Shift + scroll = move in time. The strip at the bottom is velocity.");
 
@@ -478,7 +490,7 @@ void PianoRoll::copySelection (bool cut)
     clip.notes.clear();
     for (const auto tick : selection)
         if (const auto found = notes.find (tick); found != notes.end())
-            clip.notes.push_back ({ tick - first, found->second.length, found->second.pitch, found->second.velocity, found->second.slide });
+            clip.notes.push_back ({ tick - first, found->second.length, found->second.pitch, found->second.velocity, found->second.slide, found->second.chord });
 
     // Nästa inklistring börjar där de kopierade slutar (avrundat uppåt till ett steg i rutnätet).
     const auto step = std::max (1, snapTicks());
@@ -562,7 +574,7 @@ void PianoRoll::commitPaste()
             continue;
         }
         processor.pattern.addNote (layer, tick, std::min (n.length, Pattern::maxTicks - tick),
-                                   juce::jlimit (Pattern::minPitch, Pattern::maxPitch, n.pitch + pasteShift), n.velocity, n.slide);
+                                   juce::jlimit (Pattern::minPitch, Pattern::maxPitch, n.pitch + pasteShift), n.velocity, n.slide, n.chord);
         placed.insert (tick);
     }
 
@@ -757,7 +769,7 @@ PianoRoll::NoteMap PianoRoll::readNotes() const
     NoteMap notes;
     processor.pattern.forEachNote (layer, [&notes] (int tick, const Pattern::Note& n)
     {
-        notes[tick] = { n.length.load(), n.pitch.load(), n.velocity.load(), n.slide.load() };
+        notes[tick] = { n.length.load(), n.pitch.load(), n.velocity.load(), n.slide.load(), n.getChord() };
     });
     return notes;
 }
@@ -781,6 +793,7 @@ void PianoRoll::applyNotes (const NoteMap& target)
         if (n.pitch.load() != d.pitch) n.pitch = d.pitch;
         if (n.velocity.load() != d.velocity) n.velocity = d.velocity;
         if (n.slide.load() != d.slide) n.slide = d.slide;
+        if (n.getChord() != d.chord) n.setChord (d.chord);
         if (! n.on.load())
             n.on = true;
     }
@@ -910,7 +923,36 @@ juce::String PianoRoll::describe (int tick) const
                       + "vel " + juce::String (juce::roundToInt (n.velocity.load() * 100.0f)) + " %";
     if (n.slide.load())
         text << "  GLIDE";
+    if (n.hasChord())
+    {
+        text << "  CHORD";
+        for (const auto interval : n.getChord())
+            if (interval != 0)
+                text << " " << (interval > 0 ? "+" : "") << interval;
+        if (voices() < 2)
+            text << " (chord needs VOICES 2 or more)";
+    }
     return text;
+}
+
+int PianoRoll::voices() const
+{
+    if (layer == Pattern::kickLayer)
+        return 1;
+    return (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, InstrumentField::voices))->load();
+}
+
+void PianoRoll::setChordOnSelection (const Pattern::Chord& chord)
+{
+    if (selection.empty() || layer == Pattern::kickLayer)
+        return;
+    auto target = readNotes();
+    for (const auto tick : selection)
+        if (const auto found = target.find (tick); found != target.end())
+            found->second.chord = chord;
+    applyNotes (target);
+    commit();
+    repaint();
 }
 
 void PianoRoll::paint (juce::Graphics& g)
@@ -973,6 +1015,7 @@ void PianoRoll::paint (juce::Graphics& g)
         }
 
         // Tonerna.
+        const auto chordAlpha = voices() >= 2 ? 1.0f : 0.35f;
         const auto first = std::max (0, (int) xToTicks (gridArea.getX()) - Pattern::ticksPerBar * 2);
         const auto last = std::min (editTicks() - 1, (int) xToTicks (gridArea.getRight()) + 1);
         for (int tick = first; tick <= last; ++tick)
@@ -996,6 +1039,16 @@ void PianoRoll::paint (juce::Graphics& g)
             }
             if (selected)
                 c = c.brighter (0.45f).interpolatedWith (juce::Colours::white, 0.25f);
+            if (n.hasChord())
+                for (const auto interval : n.getChord())
+                    if (const auto p = n.pitch.load() + interval; interval != 0 && p >= Pattern::minPitch && p <= Pattern::maxPitch)
+                    {
+                        const auto cb = b.withY (pitchToY (p) + 0.5f);
+                        g.setColour (c.withAlpha (0.22f * chordAlpha));
+                        g.fillRoundedRectangle (cb, 2.5f);
+                        g.setColour (c.brighter (0.5f).withAlpha (0.8f * chordAlpha));
+                        g.drawRoundedRectangle (cb, 2.5f, 1.0f);
+                    }
             g.setGradientFill (juce::ColourGradient (c.brighter (0.35f), b.getX(), b.getY(), c.darker (0.2f), b.getX(), b.getBottom(), false));
             g.fillRoundedRectangle (b, 2.5f);
             g.setColour (selected ? juce::Colour (0xffffe27a) : active ? juce::Colours::white : c.brighter (0.5f));
@@ -1253,6 +1306,22 @@ void PianoRoll::mouseDown (const juce::MouseEvent& event)
             menu.addItem (1, "Select all", true);
             menu.addItem (2, "Clear selection", ! selection.empty());
             menu.addItem (3, "Delete selected", ! selection.empty());
+            if (layer != Pattern::kickLayer)
+            {
+                // Samma ackord på alla markerade bockas för.
+                std::optional<Pattern::Chord> common;
+                bool same = true;
+                for (const auto tick : selection)
+                {
+                    const auto chord = processor.pattern.note (layer, tick).getChord();
+                    if (common && *common != chord) same = false;
+                    common = chord;
+                }
+                juce::PopupMenu chords;
+                for (int i = 0; i < (int) chordChoices.size(); ++i)
+                    chords.addItem (10 + i, chordChoices[(size_t) i].name, true, same && common && *common == chordChoices[(size_t) i].chord);
+                menu.addSubMenu (voices() >= 2 ? "Chord (selected notes)" : "Chord (selected notes, needs VOICES 2 or more)", chords, ! selection.empty());
+            }
             menu.addSeparator();
             menu.addItem (4, "Delete the piano roll (back to the step pattern)");
             juce::Component::SafePointer<PianoRoll> safeThis (this);
@@ -1263,6 +1332,7 @@ void PianoRoll::mouseDown (const juce::MouseEvent& event)
                 if (result == 1) safeThis->selectAll();
                 else if (result == 2) { safeThis->selection.clear(); safeThis->repaint(); }
                 else if (result == 3) safeThis->deleteSelected();
+                else if (result >= 10 && result < 10 + (int) chordChoices.size()) safeThis->setChordOnSelection (chordChoices[(size_t) (result - 10)].chord);
                 else if (result == 4)
                 {
                     // Bekräfta först: det tar bort lagrets alla toner.

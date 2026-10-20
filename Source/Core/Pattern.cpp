@@ -220,14 +220,14 @@ double Pattern::holdTicks (int layer, int tick, int patternTicks, float gateScal
     return std::max (1.0, (double) note (layer, tick).length.load() * (double) gateScale);
 }
 
-Pattern::Note& Pattern::addNote (int layer, int tick, int length, int pitch, float velocity, bool slide)
+Pattern::Note& Pattern::addNote (int layer, int tick, int length, int pitch, float velocity, bool slide, const Chord& chord)
 {
     auto& n = edit (layer, tick);
     n.length = juce::jlimit (1, maxTicks, length);
     n.pitch = juce::jlimit (minPitch, maxPitch, pitch);
     n.velocity = juce::jlimit (0.0f, 1.0f, velocity);
     n.slide = slide;
-    n.setChord ({}); // en ny ton ärver inte ett gammalt ackord; den som vill ha ett sätter det efteråt
+    n.setChord (chord); // en ny ton ärver inte ett gammalt ackord (sätts före on, så att ljudtråden aldrig ser tonen utan sitt ackord)
     n.on = true;
     return n;
 }

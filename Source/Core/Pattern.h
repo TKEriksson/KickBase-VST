@@ -199,7 +199,7 @@ struct Pattern
     void setCustom (int layer, bool value) { custom[(size_t) juce::jlimit (0, numNoteLayers - 1, layer)] = value; }
 
     // Lägger en ny ton (eller ändrar den som redan ligger där). Returnerar den.
-    Note& addNote (int layer, int tick, int length, int pitch = 0, float velocity = 0.8f, bool slide = false);
+    Note& addNote (int layer, int tick, int length, int pitch = 0, float velocity = 0.8f, bool slide = false, const Chord& chord = {});
 
     // Kicken som en rad ettor och punkter, `ticksPerStep` mellan stegen (för verktyg och tester).
     void setKickSteps (const juce::String& steps, int ticksPerStep);
