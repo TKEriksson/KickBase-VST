@@ -18,7 +18,7 @@ Lägg till en rad direkt när ett fel upptäcks (av dig, Opus eller Tobias): vad
 - Rapporter till Opus: korta, med hash, testresultat och de frågor som behöver svar. Inga diffar i meddelandet, Opus läser själv.
 - En fas eller ett stort delsteg per chatt. Uppdatera PROGRESS.md och avsluta med "compact-redo" i stället för att fortsätta på lång kontext.
 - En arbetare åt gången när förbrukningen är hög. Två bara när Opus säger det.
-- Bilder: öppna aldrig en bild som pngdiff säger är oförändrad. Vid fasslut: 42-bildssviten + pngdiff, titta bara på bilder som skiljer, högst 3. Under arbetet ingen bild om inte layouten ändrats, och aldrig bara för att bekräfta logik.
+- Bilder: målet är minst tokens med säkrad kvalitet, inget bildförbud. Räcker en textkontroll (get_state, state-dump, grep, pngdiff-resultat) tas ingen bild; kan bara en bild visa att layouten stämmer tas en. Öppna aldrig en bild som pngdiff säger är oförändrad. Vid fasslut: 42-bildssviten + pngdiff, titta bara på bilder som skiljer, högst 3.
 
 ## Lärdomar
 - R7: atomic lästes två gånger i samma uppdatering, vilket gav fashopp. Läs varje atomic en gång till en lokal variabel.
