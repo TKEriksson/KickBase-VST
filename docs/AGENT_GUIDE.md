@@ -26,7 +26,7 @@ Use a modulatable sound parameter id from `list_parameters`; unsupported ids and
 
 ## Live Code parameters (`.set` / `.get`)
 
-- Put `.set` statements in their own paragraph (blank line) before the pattern, or in a `$:` block; without a blank line the whole paragraph is read as one pattern expression and fails with "expecting ')'".
+- `instrN.Param.set(...)` lines directly before the pattern are run as statements (no blank line needed). Other statements (`const x = ...`) still need their own paragraph (blank line) or a `$:` block, because the last paragraph is read as one pattern expression.
 - `instr1.Cutoff.set(1300)` writes the parameter `bass1Cutoff`; `.get()` reads it (not after a `.set` of the same parameter in the same run: that is an error). Names are case-sensitive (`bass2Cutoff`, capital C); an unknown name returns "Did you mean ...?" in `data.problems`. Parameters on locked rows are skipped and listed in `data.problems`.
 - `live_code_create` applies `.set` once, together with the notes. In the LIVE tab it is re-applied when the code changes (at most 30 writes per second).
 - `.gain()` is note velocity, not the mixer gain. Use `.set` on the mixer parameter for that.

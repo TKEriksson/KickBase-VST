@@ -291,6 +291,9 @@ namespace
         r = run ("instr1.Cutoff.set(1300);\n\nnote(\"c2\").s(\"i1\")");
         check ((bool) r["ok"] && cutoff != nullptr && std::abs (cutoff->convertFrom0to1 (cutoff->getValue()) - 1300.0f) < 1.0f,
                "CREATE applicerar instr1.Cutoff.set() på den riktiga bass1Cutoff-parametern");
+        r = run ("instr1.Cutoff.set(1500);" + juce::String ("\n") + "note(\"c2\").s(\"i1\")");
+        check ((bool) r["ok"] && cutoff != nullptr && std::abs (cutoff->convertFrom0to1 (cutoff->getValue()) - 1500.0f) < 1.0f,
+               ".set() direkt före mönstret utan blankrad fungerar");
         auto cutoffNow = [&] { return cutoff != nullptr ? cutoff->convertFrom0to1 (cutoff->getValue()) : 0.0f; };
         r = run ("instr1.Cutoff.set(900);\n\nconst x = instr1.Cutoff.get();\n\nnote(\"c2\").s(\"i1\")");
         check (! (bool) r["ok"] && r["error"].toString().contains ("efter skrivning"), ".get() efter .set i samma körning ger fel");
