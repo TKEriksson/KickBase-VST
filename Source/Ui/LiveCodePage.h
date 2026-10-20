@@ -34,6 +34,8 @@ private:
     bool apply (const juce::var& items, bool overwrite); // skriver raderna; frågar först om handritade toner skulle skrivas över
     void warnOverwrite (const juce::var& conflicts, std::function<void (bool overwrite)> retry);
     void syncLocks();
+    void setCodeOnly (bool on); // soloMask = raderna Live Code skrivit; användarens egen SOLO-knapp vinner
+    void refreshCodeOnly();     // efter varje körning: följ med nya rader, eller släpp om användaren soloat själv
     void visibilityChanged() override { syncLocks(); }
 
     PluginBase& processor;
@@ -41,6 +43,8 @@ private:
     bool warningOpen = false; // en varning i taget; LIVE väntar tills den är besvarad
     LiveCodeRunner runner;
     bool playing = false;
+    bool codeOnly = false;
+    int savedSolo = 0, ownSolo = 0; // soloMask före CODE ONLY, och det värde CODE ONLY själv satte
 
     void showTab (bool errors);
 
@@ -50,7 +54,7 @@ private:
     juce::TextEditor errorLog; // fliken FEL: hela meddelandet, senaste överst
     int errorCount = 0;
     juce::TextButton codeTab { "KOD" }, errorTab { "FEL" };
-    juce::TextButton playButton { "LIVE" }, stopButton { "STOP" }, createButton { "CREATE" }; // LIVE är av/på
+    juce::TextButton playButton { "LIVE" }, stopButton { "STOP" }, createButton { "CREATE" }, codeOnlyButton { "CODE ONLY" }; // LIVE är av/på
     juce::Label lockLabel; // LÅS: 1-10 = instrument, K = kicken; en låst rad rör Live Code aldrig
     std::array<juce::TextButton, 11> lockButtons;
     juce::Label errorLabel, licenseLabel;

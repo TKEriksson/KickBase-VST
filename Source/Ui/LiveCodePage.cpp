@@ -41,9 +41,13 @@ LiveCodePage::LiveCodePage (PluginBase& processor) : processor (processor), tool
     playButton.setClickingTogglesState (true);
 
     playButton.onClick = [this] { setPlaying (playButton.getToggleState()); }; // LIVE av/på
-    stopButton.onClick = [this] { playButton.setToggleState (false, juce::dontSendNotification); setPlaying (false); };
+    stopButton.onClick = [this] { playButton.setToggleState (false, juce::dontSendNotification); setPlaying (false); setCodeOnly (false); };
     createButton.onClick = [this] { create(); };
-    for (auto* b : { &playButton, &stopButton, &createButton })
+    codeOnlyButton.setClickingTogglesState (true);
+    codeOnlyButton.setColour (juce::TextButton::buttonOnColourId, Theme::mix.darker (0.2f));
+    codeOnlyButton.setTooltip ("Hear only the rows Live Code has written (solo). Your own SOLO click wins.");
+    codeOnlyButton.onClick = [this] { setCodeOnly (codeOnlyButton.getToggleState()); };
+    for (auto* b : { &playButton, &stopButton, &createButton, &codeOnlyButton })
         addAndMakeVisible (b);
 
     lockLabel.setText ("LOCK:", juce::dontSendNotification);
@@ -83,6 +87,7 @@ LiveCodePage::LiveCodePage (PluginBase& processor) : processor (processor), tool
 
 LiveCodePage::~LiveCodePage()
 {
+    setCodeOnly (false);
     document.removeListener (this);
     stopTimer();
     runner.cancel();
@@ -104,6 +109,8 @@ void LiveCodePage::resized()
     stopButton.setBounds (top.removeFromLeft (80));
     top.removeFromLeft (6);
     createButton.setBounds (top.removeFromLeft (90));
+    top.removeFromLeft (6);
+    codeOnlyButton.setBounds (top.removeFromLeft (100));
     area.removeFromTop (6);
     auto locks = area.removeFromTop (22);
     lockLabel.setBounds (locks.removeFromLeft (50));
@@ -171,9 +178,54 @@ void LiveCodePage::timerCallback()
 
 void LiveCodePage::syncLocks()
 {
+    refreshCodeOnly();
     const auto locks = processor.liveCodeLocks.load();
     for (size_t i = 0; i < lockButtons.size(); ++i)
         lockButtons[i].setToggleState ((locks & ToolLayer::liveCodeBit (i == 10 ? (int) Pattern::kickLayer : (int) i)) != 0, juce::dontSendNotification);
+}
+
+void LiveCodePage::setCodeOnly (bool on)
+{
+    if (on && ! codeOnly)
+    {
+        const auto owned = processor.liveCodeOwned.load();
+        if (owned == 0) // soloMask 0 betyder "hör allt": utan egna rader finns inget att solo
+        {
+            codeOnlyButton.setToggleState (false, juce::dontSendNotification);
+            return;
+        }
+        savedSolo = processor.soloMask.load();
+        ownSolo = owned;
+        processor.soloMask = ownSolo;
+        codeOnly = true;
+    }
+    else if (! on && codeOnly)
+    {
+        if (processor.soloMask.load() == ownSolo) // rör inte användarens egna val
+            processor.soloMask = savedSolo;
+        codeOnly = false;
+    }
+    codeOnlyButton.setToggleState (codeOnly, juce::dontSendNotification);
+}
+
+// Kantfall: soloar användaren exakt de rader Live Code äger (soloMask == ownSolo) går det inte att skilja från CODE ONLY själv.
+// Det är acceptabelt: ljudet blir detsamma och knappen förblir tänd.
+void LiveCodePage::refreshCodeOnly()
+{
+    if (codeOnly)
+    {
+        if (processor.soloMask.load() != ownSolo) // användaren soloade själv: CODE ONLY ger vika
+        {
+            codeOnly = false;
+            codeOnlyButton.setToggleState (false, juce::dontSendNotification);
+        }
+        else
+        {
+            ownSolo = processor.liveCodeOwned.load();
+            processor.soloMask = ownSolo;
+        }
+    }
+    codeOnlyButton.setEnabled (codeOnly || processor.liveCodeOwned.load() != 0);
 }
 
 void LiveCodePage::runNow()
@@ -206,6 +258,7 @@ bool LiveCodePage::apply (const juce::var& items, bool overwrite)
         return false;
     }
     syncLocks();
+    refreshCodeOnly();
     if (onPatternChanged)
         onPatternChanged();
     return true;
@@ -288,6 +341,7 @@ void LiveCodePage::create()
 void LiveCodePage::finishCreate (const juce::var& result)
 {
     syncLocks();
+    refreshCodeOnly();
     showError ({});
     if (onPatternChanged)
         onPatternChanged();

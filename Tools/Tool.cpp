@@ -306,7 +306,7 @@ namespace
             page.setBounds (0, 0, 600, 400);
             page.confirmCreate = false; // en modal ruta skulle blockera testet
             juce::CodeEditorComponent* code = nullptr;
-            juce::TextButton *play = nullptr, *stop = nullptr, *create = nullptr;
+            juce::TextButton *play = nullptr, *stop = nullptr, *create = nullptr, *codeOnlyBtn = nullptr;
             for (auto* c : page.getChildren())
             {
                 if (auto* e = dynamic_cast<juce::CodeEditorComponent*> (c)) code = e;
@@ -315,6 +315,7 @@ namespace
                     if (b->getButtonText() == "LIVE") play = b;
                     if (b->getButtonText() == "STOP") stop = b;
                     if (b->getButtonText() == "CREATE") create = b;
+                    if (b->getButtonText() == "CODE ONLY") codeOnlyBtn = b;
                 }
             }
             check (code && play && stop && create, "LIVE CODE-sidan har kodruta, PLAY, STOP och CREATE");
@@ -362,6 +363,29 @@ namespace
                 create->triggerClick();
                 runFor (200);
                 check (pattern.stackSize (0, 0) == 2, "CREATE: const och flera $:-block fungerar");
+
+                // CODE ONLY: soloMask följer raderna Live Code skrivit; användarens SOLO vinner; STOP återställer.
+                if (codeOnlyBtn)
+                {
+                    const auto owned = processor.liveCodeOwned.load();
+                    processor.soloMask = 0;
+                    check (owned != 0 && codeOnlyBtn->isEnabled(), "CODE ONLY: aktiv när Live Code har skrivit rader");
+                    codeOnlyBtn->triggerClick(); runFor (100);
+                    check (processor.soloMask.load() == owned, "CODE ONLY: soloMask = raderna Live Code äger");
+                    stop->triggerClick(); runFor (100);
+                    check (processor.soloMask.load() == 0 && ! codeOnlyBtn->getToggleState(), "CODE ONLY: STOP återställer soloMask");
+                    codeOnlyBtn->triggerClick(); runFor (100);
+                    processor.soloMask = 2; // användaren soloar instrument 2 (annat värde än raderna Live Code äger)
+                    create->triggerClick();
+                    runFor (200);
+                    check (processor.soloMask.load() == 2 && ! codeOnlyBtn->getToggleState(), "CODE ONLY: användarens SOLO vinner");
+                    processor.soloMask = 0;
+                    const auto ownedBefore = processor.liveCodeOwned.load();
+                    processor.liveCodeOwned = 0;
+                    codeOnlyBtn->triggerClick(); runFor (100);
+                    check (! codeOnlyBtn->getToggleState() && processor.soloMask.load() == 0, "CODE ONLY: utan egna rader händer inget (soloMask 0 = hör allt)");
+                    processor.liveCodeOwned = ownedBefore;
+                }
             }
         }
 
