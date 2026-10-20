@@ -1,18 +1,19 @@
 #pragma once
 
+#include "CollisionsView.h"
 #include "KickBassView.h"
 #include "SpectrumPage.h"
 
 // Toppfliken ANALYZER: underflikar [KICK+BASS] [COLLISIONS] [SPECTRUM] [REPORT]. SPECTRUM och REPORT är SpectrumPage:ns två vyer
-// (oförändrade), COLLISIONS är samma spektrum med krockmarkeringen på. KICK+BASS är KickBassView (vågform, fas, korrelation, 20-300 Hz).
+// (oförändrade), COLLISIONS är CollisionsView (fynden som lista, band och takter markerade). KICK+BASS är KickBassView (vågform, fas, korrelation, 20-300 Hz).
 class AnalyzerPage : public juce::Component
 {
 public:
-    explicit AnalyzerPage (PluginBase& processor) : kickBass (processor), spectrum (processor)
+    explicit AnalyzerPage (PluginBase& processor) : kickBass (processor), collisions (processor), spectrum (processor)
     {
         const char* names[] = { "KICK+BASS", "COLLISIONS", "SPECTRUM", "REPORT" };
         const char* tips[] = { "KICK+BASS - How the kick and the bass add up: waveform, phase and correlation per 16th.",
-                               "COLLISIONS - The spectrum with red marks where two or more sources play the same frequency.",
+                               "COLLISIONS - A list of where the sounds collide or cancel each other (including phase problems between kick and bass), with the band and bars marked.",
                                "SPECTRUM - The live spectrum of the kick, the instruments and the master, with harmonics and the EQ.",
                                "REPORT - Analyse the whole pattern and read the report: what to look at, and what an AI suggests or has fixed." };
         for (int i = 0; i < numViews; ++i)
@@ -26,6 +27,7 @@ public:
             addAndMakeVisible (b);
         }
         addChildComponent (kickBass);
+        addChildComponent (collisions);
         spectrum.setEmbedded();
         addChildComponent (spectrum);
         setCurrentView (2);
@@ -37,12 +39,10 @@ public:
         for (int i = 0; i < numViews; ++i)
             buttons[(size_t) i].setToggleState (i == view, juce::dontSendNotification);
         kickBass.setVisible (view == 0);
-        spectrum.setVisible (view != 0);
-        if (view != 0)
-        {
-            spectrum.setCollisions (view == 1);
+        collisions.setVisible (view == 1);
+        spectrum.setVisible (view >= 2);
+        if (view >= 2)
             spectrum.setView (view == 3);
-        }
         resized();
     }
 
@@ -57,6 +57,7 @@ public:
         }
         area.removeFromTop (2);
         kickBass.setBounds (area);
+        collisions.setBounds (area);
         spectrum.setBounds (area);
     }
 
@@ -64,6 +65,7 @@ private:
     static constexpr int numViews = 4;
     std::array<juce::TextButton, numViews> buttons;
     KickBassView kickBass;
+    CollisionsView collisions;
     SpectrumPage spectrum;
     int view = 2;
 };
