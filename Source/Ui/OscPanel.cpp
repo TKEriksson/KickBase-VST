@@ -265,7 +265,7 @@ OscPanel::OscPanel (PluginBase& p, int layerIn, int oscIn, juce::Colour accentIn
     warpKnob->setLabelAbove (true); // som WARP-menyns rubrik: namnet ovanför
     // Fas S: på OSC 1 visar en lila ring hur långt WARP ENV driver mängden (grundmängden + WARP ENV AMOUNT); syns bara när WARP ENV är över noll.
     if (osc == 0)
-        warpKnob->setLiveMeter ([&p, layer]
+        warpKnob->setLiveMeter ([&p, layer = layerIn]
         {
             auto value = [&p, layer] (F field) { return p.apvts.getRawParameterValue (ParamID::bass (layer, field))->load(); };
             const auto env = value (F::warpEnv);
