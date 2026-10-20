@@ -514,8 +514,8 @@ namespace
         // F2: .lock() / .pianoroll.lock() noteras som lås-poster (inte som parameterskrivningar); okänd grupp ger felrad.
         {
             LiveCode live;
-            live.setParams ({ { "bass1Cutoff", 0.5 }, { "kickTune", 0.5 }, { "fx1Mix", 0.5 } });
-            const auto res = live.setCode ("bass1.lock();\ninstr2.pianoroll.lock();\nkick.lock();\nnote(\"c2\").s(\"i1\")");
+            live.setParams ({ { "bass1Cutoff", 0.5 }, { "bass2Cutoff", 0.5 }, { "kickTune", 0.5 }, { "fx1Mix", 0.5 } });
+            const auto res = live.setCode ("instr1.lock();\ninstr2.pianoroll.lock();\nkick.lock();\n\nnote(\"c2\").s(\"i1\")");
             auto writes = live.takeParamWrites();
             juce::StringArray seen;
             if (auto* list = writes.getArray())
@@ -526,7 +526,7 @@ namespace
 
             LiveCode other;
             other.setParams ({ { "bass1Cutoff", 0.5 }, { "fx1Mix", 0.5 } });
-            check (other.setCode ("fx1.lock();\nnote(\"c2\").s(\"i1\")").failed(), ".lock() på grupp utan låsbit (fx1) ger felrad");
+            check (other.setCode ("fx1.lock();\n\nnote(\"c2\").s(\"i1\")").failed(), ".lock() på grupp utan låsbit (fx1) ger felrad");
         }
 
         // F2: lås från koden blockerar skrivning som handlås, men sparas aldrig och släpps utan att röra handlåset.
