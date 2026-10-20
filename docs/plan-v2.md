@@ -167,7 +167,7 @@ Slut: rendersig* identiska, `blocksizetest`, `audiotest`, skärmbilder av mönst
 - Kolla Kickbase FX: har den egna LFO:er? Ska vara opåverkad (params-fx.txt och FX-rendering identiska) om inget annat bestäms.
 - Test: rendersig* identiska, `blocksizetest`, `audiotest`, perftest med 10 aktiva LFO, `persisttest` (lägg till/ta bort/spara/ladda).
 
-### P: polyfoni och ackord (`content-p` från `content-r`)
+### P: polyfoni och ackord (`content-p` från `content-m`)
 
 Opus godkände Sonnets spec 18 okt med svaren nedan (Sonnets egen spec gick förlorad med sessionen; content-plan.md "Fas P" + detta gäller):
 - Parameter `bassNVoices` 1–8, **standard 1 = bit-identiskt**. Ackord: varje `Note` får upp till 3 extra intervall (atomiska, 0 = inget),
