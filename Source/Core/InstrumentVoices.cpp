@@ -118,10 +118,12 @@ void InstrumentVoices::startNote (int voice, int semitones, float velocity, int 
     slots[(size_t) voice].order = ++noteCounter;
 }
 
-void InstrumentVoices::noteOn (int semitones, float velocity, int gateSamples)
+void InstrumentVoices::noteOn (int semitones, float velocity, int gateSamples, bool chordNote)
 {
     if (numVoices == 1)
     {
+        if (chordNote)
+            return;
         // Monofoniskt som förut: samma röst, attacken börjar från nuvarande nivå.
         voices[(size_t) lastVoice].noteOn (semitones, velocity, gateSamples);
         slots[(size_t) lastVoice].order = ++noteCounter;
@@ -129,8 +131,11 @@ void InstrumentVoices::noteOn (int semitones, float velocity, int gateSamples)
         return;
     }
 
-    randomValue = modRandom.nextFloat();
-    lastNotePoly = true;
+    if (! chordNote)
+    {
+        randomValue = modRandom.nextFloat();
+        lastNotePoly = true;
+    }
     auto victim = -1;
     if (countSounding() >= numVoices)
         if ((victim = chooseVictim()) >= 0)
@@ -141,7 +146,8 @@ void InstrumentVoices::noteOn (int semitones, float velocity, int gateSamples)
         if (! voices[(size_t) k].isActive() && ! slots[(size_t) k].fading && ! slots[(size_t) k].pending)
         {
             startNote (k, semitones, velocity, gateSamples);
-            lastVoice = k;
+            if (! chordNote)
+                lastVoice = k;
             return;
         }
     }
@@ -164,7 +170,8 @@ void InstrumentVoices::noteOn (int semitones, float velocity, int gateSamples)
     slot.pendingSemitones = semitones;
     slot.pendingVelocity = velocity;
     slot.pendingGate = gateSamples;
-    lastVoice = target;
+    if (! chordNote)
+        lastVoice = target;
 }
 
 bool InstrumentVoices::glideTo (int semitones, int samples)

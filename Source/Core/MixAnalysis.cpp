@@ -998,6 +998,8 @@ namespace MixAnalysis
                         n->setProperty ("velocity", note[3]);
                         if ((bool) note[4])
                             n->setProperty ("glide", true);
+                        if (note.size() > 5)
+                            n->setProperty ("chord_semitones", note[5]); // fas P: ackordets intervall från tonen
                         list.add (juce::var (n));
                     }
                     if (! list.isEmpty())

@@ -198,7 +198,7 @@ std::vector<ToolLayer::ToolInfo> ToolLayer::tools()
           R"({"type":"object","properties":{"channel":{"type":"string"},"slot":{"type":"integer"},"type":{"type":"string"},"knobs":{"type":"object","additionalProperties":true}},"required":["channel","slot","type"]})" },
         { "set_kick_envelopes", "Sets the kick's free envelopes as arrays of [time_seconds, value, tension] nodes. pitch: semitones above the tail pitch (0..72, max 0.5 s). amp: volume 0..1 (max 2 s; the kick ends at the last node, which should be 0). Tension -1..1: negative falls/rises fast first, positive holds then moves late. Omit one to leave it unchanged.",
           R"({"type":"object","properties":{"pitch":{"type":"array","items":{"type":"array","items":{"type":"number"}}},"amp":{"type":"array","items":{"type":"array","items":{"type":"number"}}}}})" },
-        { "set_pattern", "Writes notes. layer 0-9 = instrument 1-10 (only the first instrumentCount play, see set_instruments), or 'kick'. For an instrument give 'bars' (one text per bar; the row becomes as many bars as you give, so give every distinct bar you need, and use repeat_to to repeat them further) in the pattern language, with a 'grid' such as '1/16', '1/8 T', '1/32'. Step words separated by spaces: '.' rest, g/m/x/X = velocity ghost/soft/normal/accent, then optional pitch (+7, -5), '~' glide note, ':50' length in percent of the step. A GLIDE note (flag '~' / slide:true) works like an FL Studio slide note: it does not play a new note, it glides the note that is sounding to its pitch during its own length and the pitch stays there until that note ends. Example 1/16 rolling bass: [\". m x x . m x x . m x x . m x x\"]. Or give 'notes': [{\"tick\":0,\"length\":24,\"pitch\":0,\"velocity\":0.8,\"slide\":false}] (96 ticks per quarter note, 384 per bar). For 'kick' give 'bars' of 16 characters 'x' or '.', e.g. [\"x...x...x...x...\"]. ROW LENGTH: a row is as long as its notes (length 'auto', the default: the last bar that has a note, at least 1 bar; get_state shows bars, length_mode, content_bars). length:\"auto\" or length:N (1-1024) locks the row to N bars (for example 3 bars of notes and a bar of silence); shortening below the notes needs trim:true, otherwise you get an error saying how many notes would go. repeat_to:N repeats the row's content until it is N bars. In a locked row, writing a note beyond the end returns the error 'row is locked to N bars'. The pattern is as long as the longest row. The old patternBars and rowBars parameters are not used any more.",
+        { "set_pattern", "Writes notes. layer 0-9 = instrument 1-10 (only the first instrumentCount play, see set_instruments), or 'kick'. For an instrument give 'bars' (one text per bar; the row becomes as many bars as you give, so give every distinct bar you need, and use repeat_to to repeat them further) in the pattern language, with a 'grid' such as '1/16', '1/8 T', '1/32'. Step words separated by spaces: '.' rest, g/m/x/X = velocity ghost/soft/normal/accent, then optional pitch (+7, -5), '~' glide note, ':50' length in percent of the step. A GLIDE note (flag '~' / slide:true) works like an FL Studio slide note: it does not play a new note, it glides the note that is sounding to its pitch during its own length and the pitch stays there until that note ends. Example 1/16 rolling bass: [\". m x x . m x x . m x x . m x x\"]. Or give 'notes': [{\"tick\":0,\"length\":24,\"pitch\":0,\"velocity\":0.8,\"slide\":false}] (96 ticks per quarter note, 384 per bar). CHORDS: add \"chord\":[3,7] to a note (up to 3 extra notes, semitones from the note, -24 to +24); the instrument plays them only when its Voices parameter is 2 or more (at most Voices - 1 extra notes), and get_state shows them as a sixth element of the note array. For 'kick' give 'bars' of 16 characters 'x' or '.', e.g. [\"x...x...x...x...\"]. ROW LENGTH: a row is as long as its notes (length 'auto', the default: the last bar that has a note, at least 1 bar; get_state shows bars, length_mode, content_bars). length:\"auto\" or length:N (1-1024) locks the row to N bars (for example 3 bars of notes and a bar of silence); shortening below the notes needs trim:true, otherwise you get an error saying how many notes would go. repeat_to:N repeats the row's content until it is N bars. In a locked row, writing a note beyond the end returns the error 'row is locked to N bars'. The pattern is as long as the longest row. The old patternBars and rowBars parameters are not used any more.",
           R"({"type":"object","properties":{"layer":{},"bars":{"type":"array","items":{"type":"string"}},"grid":{"type":"string"},"gate":{"type":"number"},"notes":{"type":"array","items":{"type":"object"}},"clear":{"type":"boolean"},"length":{},"trim":{"type":"boolean"},"repeat_to":{"type":"integer"}},"required":["layer"]})" },
         { "set_gate", "Sets a bass layer's GATE: a separate on/off rhythm that chops the layer's sound, with its own grid, independent of the notes. layer 0-9; on (true/false), grid ('1/16' ...), depth 0..1 (1 = fully closed in the off steps), smooth_ms (edge softness), and the steps as 'bars' (one text per bar, repeated over four bars): 'x' = open, '.' = closed, e.g. [\"x.x.x.x.x.x.x.x.\"] on a 1/16 grid. all:'open' or 'closed' fills every step.",
           R"({"type":"object","properties":{"layer":{"type":"integer"},"on":{"type":"boolean"},"grid":{"type":"string"},"depth":{"type":"number"},"smooth_ms":{"type":"number"},"bars":{"type":"array","items":{"type":"string"}},"all":{"type":"string","enum":["open","closed"]}},"required":["layer"]})" },
@@ -474,7 +474,16 @@ var ToolLayer::getState (const var& args) const
         juce::Array<var> notes;
         processor.pattern.forEachNote (layer, [&] (int tick, const Pattern::Note& n)
         {
-            notes.add (var (juce::Array<var> { tick, n.length.load(), n.pitch.load(), round4 (n.velocity.load()), n.slide.load() }));
+            juce::Array<var> entry { tick, n.length.load(), n.pitch.load(), round4 (n.velocity.load()), n.slide.load() };
+            if (n.hasChord()) // fas P: ett sjätte fält med ackordets intervall, bara när tonen har ett ackord
+            {
+                juce::Array<var> chord;
+                for (const auto interval : n.getChord())
+                    if (interval != 0)
+                        chord.add (interval);
+                entry.add (var (chord));
+            }
+            notes.add (var (entry));
         });
         auto entry = object();
         put (entry, "layer", isKick ? juce::var ("kick") : juce::var (layer));
@@ -778,8 +787,15 @@ var ToolLayer::setPattern (const var& args)
             const auto tick = (int) note["tick"];
             if (! juce::isPositiveAndBelow (tick, Pattern::maxTicks))
                 continue;
-            pattern.addNote (layer, tick, note.hasProperty ("length") ? (int) note["length"] : Pattern::ticksPerStep ((InstrumentGrid) grid),
-                             (int) note["pitch"], note.hasProperty ("velocity") ? (float) (double) note["velocity"] : Pattern::defaultVelocity (layer), (bool) note["slide"]);
+            auto& added = pattern.addNote (layer, tick, note.hasProperty ("length") ? (int) note["length"] : Pattern::ticksPerStep ((InstrumentGrid) grid),
+                                           (int) note["pitch"], note.hasProperty ("velocity") ? (float) (double) note["velocity"] : Pattern::defaultVelocity (layer), (bool) note["slide"]);
+            if (const auto* chord = note["chord"].getArray(); chord != nullptr && ! isKick)
+            {
+                Pattern::Chord intervals {};
+                for (int i = 0; i < std::min (chord->size(), Pattern::maxChordNotes); ++i)
+                    intervals[(size_t) i] = (int) (*chord)[i];
+                added.setChord (intervals);
+            }
         }
         pattern.setCustom (layer, true);
     }
@@ -813,15 +829,15 @@ var ToolLayer::setPattern (const var& args)
     {
         pattern.refreshLengths();
         const auto sourceBars = std::max (1, pattern.contentBars (layer));
-        struct Copy { int tick, length, pitch; float velocity; bool slide; };
+        struct Copy { int tick, length, pitch; float velocity; bool slide; Pattern::Chord chord; };
         std::vector<Copy> copies;
-        pattern.forEachNote (layer, [&] (int tick, const Pattern::Note& n) { copies.push_back ({ tick, n.length.load(), n.pitch.load(), n.velocity.load(), n.slide.load() }); });
+        pattern.forEachNote (layer, [&] (int tick, const Pattern::Note& n) { copies.push_back ({ tick, n.length.load(), n.pitch.load(), n.velocity.load(), n.slide.load(), n.getChord() }); });
         for (int bar = sourceBars; bar < repeatTo; bar += sourceBars)
             for (const auto& c : copies)
             {
                 const auto tick = c.tick + bar * Pattern::ticksPerBar;
                 if (tick < repeatTo * Pattern::ticksPerBar)
-                    pattern.addNote (layer, tick, std::min (c.length, repeatTo * Pattern::ticksPerBar - tick), c.pitch, c.velocity, c.slide);
+                    pattern.addNote (layer, tick, std::min (c.length, repeatTo * Pattern::ticksPerBar - tick), c.pitch, c.velocity, c.slide).setChord (c.chord);
             }
         pattern.setCustom (layer, true);
     }

@@ -28,7 +28,9 @@ public:
     void setNumVoices (int count);
     int getNumVoices() const { return numVoices; }
 
-    void noteOn (int semitones, float velocity, int gateSamples);
+    // chordNote: en extra ackordton (fas P). Den blir inte den senast spelade rösten och drar inget nytt slumpvärde, så grundtonen
+    // (som spelas sist) styr glide och modulering. Med en röst spelas den inte.
+    void noteOn (int semitones, float velocity, int gateSamples, bool chordNote = false);
     // Bara den senast spelade rösten glider. false om den inte klingar (då spelas en ny ton).
     bool glideTo (int semitones, int samples);
     void release();

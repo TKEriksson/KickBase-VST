@@ -33,6 +33,10 @@ namespace RollFiles
             note->setAttribute ("pitch", n.pitch.load());
             note->setAttribute ("velocity", (double) n.velocity.load());
             note->setAttribute ("glide", n.slide.load());
+            const auto chord = n.getChord();
+            for (size_t i = 0; i < chord.size(); ++i)
+                if (chord[i] != 0)
+                    note->setAttribute ("c" + juce::String ((int) i + 1), chord[i]); // fas P: bara toner med ackord får c1-c3
         });
 
         file.getParentDirectory().createDirectory();
@@ -51,7 +55,8 @@ namespace RollFiles
             const auto tick = note->getIntAttribute ("tick", -1);
             if (note->hasTagName ("Note") && juce::isPositiveAndBelow (tick, Pattern::maxTicks))
                 pattern.addNote (layer, tick, note->getIntAttribute ("length", 24), note->getIntAttribute ("pitch"),
-                                 (float) note->getDoubleAttribute ("velocity", 0.8), note->getBoolAttribute ("glide"));
+                                 (float) note->getDoubleAttribute ("velocity", 0.8), note->getBoolAttribute ("glide"))
+                    .setChord ({ note->getIntAttribute ("c1"), note->getIntAttribute ("c2"), note->getIntAttribute ("c3") });
         }
         pattern.setCustom (layer, true);
 
@@ -84,8 +89,17 @@ namespace RollFiles
         {
             const auto midiNote = juce::jlimit (0, 127, rootMidiNote + n.pitch.load());
             const auto velocity = (juce::uint8) juce::jlimit (1, 127, juce::roundToInt (n.velocity.load() * 127.0f));
+            const auto end = (double) (tick + std::max (1, n.length.load()));
             track.addEvent (juce::MidiMessage::noteOn (1, midiNote, velocity), (double) tick);
-            track.addEvent (juce::MidiMessage::noteOff (1, midiNote), (double) (tick + std::max (1, n.length.load())));
+            track.addEvent (juce::MidiMessage::noteOff (1, midiNote), end);
+            for (const auto interval : n.getChord()) // fas P: ackordets toner blir egna MIDI-toner
+            {
+                const auto chordNote = juce::jlimit (0, 127, midiNote + interval);
+                if (interval == 0 || chordNote == midiNote)
+                    continue;
+                track.addEvent (juce::MidiMessage::noteOn (1, chordNote, velocity), (double) tick);
+                track.addEvent (juce::MidiMessage::noteOff (1, chordNote), end);
+            }
         });
 
         auto end = juce::MidiMessage::endOfTrack();
@@ -147,12 +161,24 @@ namespace RollFiles
         while (highest + shift - rootMidiNote > Pattern::maxPitch)
             shift -= 12;
 
+        // Den lägsta tonen på en tick blir tonen, de andra (högst tre inom ±24 halvtoner) dess ackord (fas P).
+        std::stable_sort (found.begin(), found.end(), [] (const Found& a, const Found& b) { return a.tick != b.tick ? a.tick < b.tick : a.note < b.note; });
         pattern.clearNotes (layer);
         auto lastEnd = 0;
         for (const auto& f : found)
         {
-            if (pattern.note (layer, f.tick).on.load())
+            if (auto& existing = pattern.edit (layer, f.tick); existing.on.load())
+            {
+                auto chord = existing.getChord();
+                const auto interval = f.note + shift - rootMidiNote - existing.pitch.load();
+                if (interval != 0 && std::abs (interval) <= Pattern::maxChordInterval && std::find (chord.begin(), chord.end(), interval) == chord.end())
+                    if (const auto free = std::find (chord.begin(), chord.end(), 0); free != chord.end())
+                    {
+                        *free = interval;
+                        existing.setChord (chord);
+                    }
                 continue; // högst en ton per tick
+            }
             pattern.addNote (layer, f.tick, std::min (f.length, Pattern::maxTicks - f.tick),
                              juce::jlimit (Pattern::minPitch, Pattern::maxPitch, f.note + shift - rootMidiNote), f.velocity);
             lastEnd = std::max (lastEnd, f.tick + f.length);

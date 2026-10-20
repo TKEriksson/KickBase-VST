@@ -428,6 +428,20 @@ int persistTest()
         check (fx->availableLfos() == 3 && fx->setLfoActive (3, true) == 0 && fx->modulator.activeMask.load() == 7u, "FX: bara LFO 1-3");
     }
 
+    // Fas P: ackord följer med projektet; en ton utan ackord skrivs som förut (fem fält) och en ton som läggs till på nytt ärver inget ackord.
+    {
+        auto processor = std::make_unique<InstrumentProcessor>();
+        processor->pattern.clearNotes (1);
+        processor->pattern.addNote (1, 0, 48, 2).setChord ({ 0, 7, 3 });
+        processor->pattern.addNote (1, 96, 24, 0);
+        auto copy = copyOf (*processor);
+        check (copy->pattern.note (1, 0).getChord() == Pattern::Chord { 7, 3, 0 } && ! copy->pattern.note (1, 96).hasChord(), "ackord sparas och laddas");
+        const auto notes = processor->pattern.toValueTree().getChildWithProperty ("layer", 1)["notes"].toString();
+        check (notes.contains ("0/48/2/0/0.800/7/3;") && notes.endsWith ("96/24/0/0/0.800"), "ackordet skrivs bara på tonen som har ett: " + notes);
+        copy->pattern.addNote (1, 0, 48, 2);
+        check (! copy->pattern.note (1, 0).hasChord(), "en ny ton ärver inte ett gammalt ackord");
+    }
+
     std::puts (failed ? "FEL: sparandetestet misslyckades" : "Sparandetestet gick igenom");
     return failed ? 1 : 0;
 }

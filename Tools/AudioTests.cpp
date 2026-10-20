@@ -169,6 +169,12 @@ namespace
             Scenarios::setInstrument (processor, layer, F::voices, layer % 3 == 0 ? 2.0f : layer % 3 == 1 ? 4.0f : 8.0f);
             Scenarios::setInstrument (processor, layer, F::release, 300.0f);
             Scenarios::setInstrument (processor, layer, F::gate, 1.0f);
+            // Ackord på varannan ton (1-3 extra toner), så att ackordtonerna också stjäls.
+            std::vector<int> ticks;
+            processor.pattern.forEachNote (layer, [&ticks] (int tick, const Pattern::Note&) { ticks.push_back (tick); });
+            const Pattern::Chord chords[] { { 7, 0, 0 }, { 3, 7, 0 }, { -12, 4, 7 } };
+            for (size_t i = 0; i < ticks.size(); i += 2)
+                processor.pattern.edit (layer, ticks[i]).setChord (chords[(i / 2) % 3]);
         }
     }
 
