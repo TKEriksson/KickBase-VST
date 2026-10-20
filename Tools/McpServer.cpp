@@ -294,7 +294,8 @@ namespace
         {
             juce::Array<var> list;
             for (const auto& [uri, title] : { std::pair<const char*, const char*> { "kickbase://guide/agent", "Kickbase agent guide" },
-                                              { "kickbase://guide/psytrance", "Psytrance kick and bass reference" } })
+                                              { "kickbase://guide/psytrance", "Psytrance kick and bass reference" },
+                                              { "kickbase://guide/school", "Kick and bass school" } })
             {
                 auto entry = object();
                 put (entry, "uri", uri);
@@ -312,7 +313,7 @@ namespace
             auto entry = object();
             put (entry, "uri", uri);
             put (entry, "mimeType", "text/markdown");
-            put (entry, "text", ToolLayer::guide (uri.endsWith ("psytrance") ? "psytrance" : "agent"));
+            put (entry, "text", ToolLayer::guide (uri.endsWith ("psytrance") ? "psytrance" : uri.endsWith ("school") ? "school" : "agent"));
             auto result = object();
             put (result, "contents", juce::Array<var> { entry });
             return result;

@@ -180,6 +180,8 @@ ToolLayer::ToolLayer (PluginBase& p) : processor (p) {}
 //==============================================================================
 juce::String ToolLayer::guide (const juce::String& topic)
 {
+    if (topic.equalsIgnoreCase ("school"))
+        return juce::String::fromUTF8 (BinaryData::kickbassschool_md, BinaryData::kickbassschool_mdSize);
     if (topic.equalsIgnoreCase ("psytrance"))
         return juce::String::fromUTF8 (BinaryData::psytrancekickbassreference_md, BinaryData::psytrancekickbassreference_mdSize);
     return juce::String::fromUTF8 (BinaryData::AGENT_GUIDE_md, BinaryData::AGENT_GUIDE_mdSize);
@@ -188,8 +190,8 @@ juce::String ToolLayer::guide (const juce::String& topic)
 std::vector<ToolLayer::ToolInfo> ToolLayer::tools()
 {
     return {
-        { "get_guide", "READ THIS FIRST. Returns the guide for working with Kickbase: how the synth is built, units, the pattern language, workflow and pitfalls. topic 'agent' (default) is the manual; topic 'psytrance' is the sound design reference for psytrance kick and bass.",
-          R"({"type":"object","properties":{"topic":{"type":"string","enum":["agent","psytrance"]}}})" },
+        { "get_guide", "READ THIS FIRST. Returns the guide for working with Kickbase: how the synth is built, units, the pattern language, workflow and pitfalls. topic 'agent' (default) is the manual; topic 'psytrance' is the sound design reference for psytrance kick and bass; topic 'school' is the kick and bass school (how to build and judge the sound).",
+          R"({"type":"object","properties":{"topic":{"type":"string","enum":["agent","psytrance","school"]}}})" },
         { "list_parameters", "Lists the synth's parameters with id, name, type (float/choice/bool), min, max, default, current value, a display text and help (what the knob does, the same text as its tooltip in the plugin). Filter with prefix (e.g. 'kick', 'bass1', 'fxA', 'sc', 'lfo1', 'master', 'mix') or contains. Effect slot knobs are not listed here, see list_effects and set_effect.",
           R"({"type":"object","properties":{"prefix":{"type":"string"},"contains":{"type":"string"},"limit":{"type":"integer"}}})" },
         { "list_effects", "Lists the 13 effect types and their knobs (name, range, default, unit, choices) for use with set_effect.", R"({"type":"object","properties":{}})" },

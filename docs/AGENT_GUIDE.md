@@ -1,10 +1,10 @@
 # Kickbase – guide for the AI agent
 
-You control **Kickbase**, a psytrance kick + bass synth, through MCP tools. This is the manual. The companion `get_guide topic=psytrance` explains what a good psytrance kick and bass is (read it before designing sounds). Facts here describe how *this* synth works; where the two documents disagree, this one wins.
+You control **Kickbase**, a psytrance kick + bass synth, through MCP tools. This is the manual. The companion `get_guide topic=psytrance` explains what a good psytrance kick and bass is (read it before designing sounds). Facts here describe how *this* synth works; where the two documents disagree, this one wins. For building and judging a sound step by step (what to listen for, mixing the kick with the bass), read `get_guide topic=school` once per session.
 
 ## 1. The loop
 
-1. `get_guide` (this), `get_guide topic=psytrance` once per session.
+1. `get_guide` (this), `get_guide topic=psytrance` and `get_guide topic=school` once per session.
 2. `list_presets` / `load_preset` for a starting point, or `reset` for the Init sound.
 3. Change things: `set_parameters`, `set_effect`, `set_kick_envelopes`, `set_pattern`, `set_sidechain_curve`, `set_modulation`.
 4. `render_preview` (full, then `part=kick` and `part=bass` separately). Read the **metrics**, the **checks** and look at the **spectrogram image**. You cannot hear: the numbers and the picture are your ears.

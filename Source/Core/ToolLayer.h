@@ -24,7 +24,7 @@ public:
 
     static std::vector<ToolInfo> tools();
 
-    // Texten i en guide ("agent" eller "psytrance").
+    // Texten i en guide ("agent", "psytrance" eller "school").
     static juce::String guide (const juce::String& topic);
 
     juce::var call (const juce::String& tool, const juce::var& args);
