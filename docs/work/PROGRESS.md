@@ -31,6 +31,10 @@ Läs [LESSONS.md](LESSONS.md) innan du bygger eller testar. Lägg till en rad d�
 
 - 20 okt 11:00: research-agenten (73) tyst sedan 10:09 → ÅTERTAGET 10:47, allt gjort av projektledaren: fx-and-fm-ideas.md + guidesonline-check.md klara (docs/research-notes). Tobias besvarade LFO-standard: 4–10 På vid tillägg, 1–3 oförändrat = inget att ändra.
 
+- 20 okt 15:03: Claude-research-agenten är tillgänglig igen för projektledaren. Tidigare uppdrag är återtagna/slutförda; inväntar eventuell ny avgränsad instruktion. Handoff: `docs/workers/CLAUDE-RESEARCH-HANDOFF.md`.
+
+- 20 okt 15:06: KB-uppdraget är mottaget av research-agenten (73): utkastet `docs/work/kb-draft-kick-bass-school.md`, docs only, ingen commit. bb informerad: fortsätt med L4 och rör inte KB-utkastet eller `docs/workers/`; MCP-resurs/skill tas efter granskningen.
+
 ## Klart
 - Fas 0, A, D1, W, E2, D2/D3 (godkända, pushade; tippen content-d2 c0ef101).
 
@@ -69,3 +73,6 @@ Läs [LESSONS.md](LESSONS.md) innan du bygger eller testar. Lägg till en rad d�
 - 20 okt L4 (content-l): instrumentmenyn (Source/Ui/InstrumentMenu.h) på högerklick på instrumentväljaren och på radetiketten i PATTERN (Length ligger kvar på sin knapp och på kick-raden): Rename, Color (10 färger + standard), Duplicate, Move up/down, Delete (med fråga om innehåll), Copy/Paste track (delas mellan editorer), Export MIDI, Save pattern preset. Namn och färg sparas i projektets state (layerColour1-10 skrivs bara om ≠ 0, gamla projekt laddas med standardfärg), inte som parametrar. Duplicate/Move/Delete kopierar innehållet mellan de fasta platserna (PluginBase copyTrack/pasteTrack, beforeTrackChange river panelerna först). MCP: edit_instrument (rename, colour, duplicate, move_up/down, delete), AGENT_GUIDE. Ingen ljudkod ändrad, så ingen rendersig. Tester: instrumenttest (L4-kontroller + edit_instrument) och persisttest OK. Bild: snapshot med KB_MENU=<instrument> ritar menyn. Känt: färgbyte syns direkt i InstrumentHost, övriga vyer (steg, mixer) tar den när editorn öppnas igen.
 - 20 okt L5 (undersökning, inget ändrat): editorn går redan att dra i storlek (InstrumentEditor.cpp:43-46, 60-160 % av 1180x1010, fast bildförhållande, allt skalas via EditorRoot::fitTo). Per-flik-storlek med bredare pianorulle kräver att man släpper fast bildförhållande och gör om layouten från skala till verklig bredd i alla sidor, och DAW:ar sparar/kommer ihåg fönsterstorlek dåligt när den ändras av pluginet. Rekommendation: lönar sig inte nu; 160 % ger 1888 px bredd. Om pianorullen behöver mer plats: lägg en "full width"-knapp som döljer instrumentpanelen i stället.
 - 20 okt S0–S5 (content-s från content-l): färgfix 5bd63cb; S0–S4 (se git log 23cbcdb..3a4d814); S5 OSC-presets 77e40fd: Source/Core/OscPresets.h/.cpp (.oscpreset i Presets/Oscillators/<kategori>/), meny + `<` `>` SAVE RESET överst till höger på OSC-fliken (OscPanel.cpp). Rör aldrig andra OSC, SAMPLE, filter, effekter eller av/på. Test: presettest "OSC-preset" (spara/ladda/orört/delvis/reset). Baselines 0 rader.
+
+- 20 okt 13:40: Tobias tillät push/merge. R+M+P mergade till main (196f221) och pushade, plus content-r/m/p. L mergas efter L-slutet. Release-bygge väntar på Tobias i bb:s session.
+- 20 okt 15:20: KB-texten granskad och flyttad till docs/kick-bass-school.md. Kvar för bb (kod, efter S): MCP-resurs + AGENT_GUIDE-länk + .claude/skills/kickbase-sound-design/SKILL.md.
