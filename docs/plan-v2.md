@@ -22,6 +22,14 @@ och rapportera i klump (commit-hashar + 5–15 rader).
 - 42-bildssviten bara vid fasens slut och bara om fasen ändrat layout. Release-bygget bara när Tobias ska installera.
 - Hellre ett riktat enhetstest/verktygstest än hela sviten. Hela sviten en gång per fas.
 
+**Standardvärden och gamla presets (Tobias 20 okt: gamla presets är oviktiga, han gör nya i fas E):**
+- Nya parametrar behöver **inte** ge dagens ljud: välj det standardvärde som låter och fungerar bäst, och skriv det i specen.
+- rendersig är kvar som larm för **oavsiktliga** ljudändringar (refaktorering, buggar). Avsiktlig ändring: uppdatera baslinjen i samma
+  commit och skriv varför i commit-texten. Ändrar en commit ljudet utan att säga det är det ett fel.
+- Parameterordningen (lägg till sist, utöka inte valparametrar) gäller fortfarande tills Tobias säger annat (avsnitt 4 fråga 4).
+- **Presetlistan:** varje fas lägger till en rad per nytt tillstånd i [work/preset-checklist.md](work/preset-checklist.md): vad det är,
+  var det sparas (preset / projekt / global inställning / egen presettyp), och om InitPreset och MCP-verktygen behöver det. Används i fas E.
+
 **Testpolicy (regel 11 gäller vid fasens slut, inte efter varje delsteg):**
 - Delsteg: bygg bara berörda mål (`build-mcp.bat <mål>`, nedan). Kör bara testerna som rör ändringen.
 - Rör ändringen ljudtråden: `rendersig`, `rendersigreal`, `rendersigwide` (+ `rendersigtb303` om filter) mot baslinjerna, och
@@ -69,7 +77,7 @@ Verktyget: `build/RelWithDebInfo/KickbaseMcp_artefacts/RelWithDebInfo/KickbaseMc
 | 11 | **AI** chatt | `content-ai` | flera leverantörer (Anthropic, Gemini, OpenAI, Ollama/LM Studio), modellista | fristående |
 | 12 | **C** multisampling | `content-c` | som content-plan, men som läge i SAMPLE-lagret | efter F2 |
 | 13 | **BZ** Bézier-kick | `content-bz` | eget kurvläge för kickens pitch/amp med kubiska handtag | stort; efter K |
-| 14 | **E** innehåll | `content-e` | presets som använder allt nytt | efter alla funktioner (Tobias) |
+| 14 | **E** innehåll | `content-e` | **först** genomgång av presetbygget (E0), sedan presets som använder allt nytt | efter alla funktioner (Tobias) |
 | 15 | **LC** Live Code | `content-lc` | kodflik + kodblock i chatten | vision; bygger på MCP-verktygslagret |
 | 16 | **IO** import/export/projekt | `content-io` | IMPORT/EXPORT-center, ZIP, projektfil, autospara, arrangemang | Tobias: sist, efter presets |
 | 17 | **VS** separata VST:er | — | Kick-VST, Instrument-VST, effekter som egna VST3 | Tobias: sist |
@@ -160,7 +168,7 @@ per vy till Opus innan finputs**; Tobias justerar efteråt.
 5. "Bredare fönster i pianorullen": utred om editorn kan ändra storlek per flik; annars: lämna.
 
 ### S: källor (`content-s`)
-Allt med standardvärden som ger dagens ljud.
+Standardvärden enligt avsnitt 0 (bästa ljud, inte nödvändigtvis dagens). SAMPLE-lagret: FILTER av som standard.
 1. FILTER av/på per källa: OSC 1–3, SAMPLE, NOISE (bool, standard på). Av = förbi Filter 1 och 2 (inte förbi amp-envelopen).
 2. Brustyp: White (standard = dagens brus), Pink, Brown, Vinyl (seedad).
 3. WARP ENV: källa (Filter Env = dagens, standard; Direct med egen decay 2–150 ms; ENV 2; ENV 3) efter R:s utredning. Visning: lila
@@ -213,7 +221,16 @@ för wavetables (högerklick på tabellen, som Serum): amplitud och fas per öve
 pianorulle `INSTR X - SAMPLE`) / OFF; SPLICER på/av (egen rad `INSTR X - SLICER`, slices per Grid/Auto/Manual, kromatiskt från vald ton),
 M/S per underrad, tempo (originaltempo eller omsamplat; ingen time-stretch nu). Kräver underrader i `Pattern`: spec till Opus först.
 
-### FX, AI, C, BZ, E, LC, IO, VS
+### E0: genomgång av presetbygget (först i fas E, Opus + Sonnet, sedan Tobias)
+Innan nya presets byggs: gå igenom med Tobias hur en preset byggs så att allt blir rätt och allt kommer med där det ska.
+1. Sonnet: utgå från [work/preset-checklist.md](work/preset-checklist.md) och koden; lista allt tillstånd (parametrar, LFO-kurvor,
+   mod-routes, mönster/pianorulle, samplingar, wavetables, effektkedjor, namn/färger, ackord, SNAP osv.) och var det sparas i dag.
+2. Test: spara och ladda en preset med **allt** påslaget (verktyget + `KickbaseHostTest`); allt som inte kommer tillbaka är ett fel.
+3. Opus + Tobias bestämmer: vad hör till preset, projekt, global inställning eller egen presettyp (OSC-, effekt-, mönsterpresets);
+   hur InitPreset ska se ut; hur MCP/AI bygger en preset (så att AI:n inte missar delar).
+4. Rättningar, sedan skrivs en kort guide `docs/presets-guide.md` (för Tobias och AI-skillen). Först därefter presetarbetet.
+
+### FX, AI, C, BZ, LC, IO, VS
 Enligt Tobias specar (layout_optimization §Effects, §RESET, §MASTER; pattern_and_ai §6, §10, §13; BEZIER.md; CODEMUSIC.md). Spec till Opus
 när fasen står på tur. Redan beslutat: nya effekttyper (Flanger, Sidechain, Maximizer i platser) läggs **sist** i typlistan som redovisat
 engångsundantag från regel 3 (projekt sparar index och laddar rätt; bara DAW-automation av typen kan förskjutas); kontrollera med state load.
@@ -225,3 +242,5 @@ Se [work/PROGRESS.md](work/PROGRESS.md).
 1. Grenkedjan content-0 → a → d1 → w → e2 → d2 är godkänd men inte sammanslagen. Får vi slå ihop den i `dev` (fast-forward)? *Standard: nej, vi kedjar vidare.*
 2. Radlängd: max 64 takter står kvar (förallokerat). Behövs längre? *Standard: 64.*
 3. Tre klickar och sub-kontroll i kicken (image-27): vill du ha dem, eller räcker dagens klick? *Standard: utreds i fas K.*
+4. Gamla DAW-projekt med automation av Kickbase: finns det några du vill behålla? Om inte kan vi före första publika versionen fritt
+   utöka valparametrar (t.ex. nya effekttyper, radlängder som inte är 2-potenser) i stället för att lägga dem sist. *Standard: regeln gäller.*
