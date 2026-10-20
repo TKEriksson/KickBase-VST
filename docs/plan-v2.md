@@ -94,6 +94,15 @@ Verktyget: `build/RelWithDebInfo/KickbaseMcp_artefacts/RelWithDebInfo/KickbaseMc
 | 16 | **IO** import/export/projekt | `content-io` | IMPORT/EXPORT-center, ZIP, projektfil, autospara, arrangemang | Tobias: sist, efter presets |
 | 17 | **VS** separata VST:er | — | Kick-VST, Instrument-VST, effekter som egna VST3 | Tobias: sist |
 
+### Justering efter FXMAP (20 okt, `docs/research-notes/plugin-tips-to-builds.md`)
+Ordningen R→M→P→L→S→KB→K ändras inte. Från AN och framåt:
+- **PH** flyttas före **AN** (fasverktyg först, AN visar sedan resultatet). PH innehåller (prio 1): B1 polaritetsflip + nudge i 0,05 ms-steg, B7 disperser/all-pass-kedja (B2). Äkta fasrotation (Hilbert, latens) senare.
+- **AN** får nya mätare: fasdiagram per FX-plats (bredvid A8 latens), limiter-delta + låg-band (<100 Hz) före/efter, kick+snare-koincidens (≈3 dB hopp), frekvenszonsvy.
+- **FX** delas: **FX1** (efter PH): B6 multiband-distortion (LR4, 3 band) + kompressorns detektor-HPF + MIX-knapp (kolla `list_effects` först). **FX2** (efter AN): B8 widener/split-pan, B9 dynamic EQ + flanger, B10 transient shaper + oktav ner/upp, per-band-ducking (på B6-splitten).
+- **S2** (FM, B11) efter A6; B13 additiv editor, Reese/unison, shimmer, andra maximizer-läge = SENARE.
+- SKIPPA: HPF-stack som fasskiftare, linjärfas-HP/LP och -multiband, ny soft-clip/tape.
+- Kolla i koden innan bygge: reverb pre-delay, echo punkterad/triol-sync, distortion-kurvor.
+
 Gamla **B1** (typ per oscillatorplats) utgår: SAMPLE-lagret med INDEPENDENT/SPLICER (F2) täcker behovet. Tas upp igen om något saknas.
 
 ## 2. Faserna i detalj
