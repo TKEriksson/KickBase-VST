@@ -67,6 +67,8 @@ namespace Theme
             const juce::Colour macros[] { juce::Colour (0xfff2a65a), juce::Colour (0xffe9d35c), juce::Colour (0xfff08a6a), juce::Colour (0xffe08cff) };
             return macros[juce::jlimit (0, 3, source - 3)];
         }
+        if (Modulation::isCodeSource (source))
+            return lfoColour (source - Modulation::firstCodeSource).withMultipliedSaturation (0.75f);
         const auto layer = Modulation::layerOfSource (source), kind = Modulation::kindOfSource (source);
         const auto base = layerColour (layer);
         if (kind >= Modulation::instrumentSources) // AMP ENV ljus (som ENV 1:s handtag), FILT ENV mellan lagrets färg och ljus
@@ -224,4 +226,3 @@ namespace Theme
         g.drawRect (area, 1);
     }
 }
-

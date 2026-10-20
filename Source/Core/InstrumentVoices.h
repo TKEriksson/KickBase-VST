@@ -41,6 +41,7 @@ public:
     Output next();
     bool isActive() const;
     float getModulationValue (int source) const;
+    juce::uint64 getNoteCount() const { return noteCounter; } // antal startade toner (Live Code ENV startar på ändringen)
     float getSampleFraction() const { return voices[(size_t) lastVoice].getSampleFraction(); }
     // Röster som klingar eller väntar på en ton (för test och gränssnitt).
     int countSounding() const;

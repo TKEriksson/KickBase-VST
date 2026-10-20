@@ -29,7 +29,13 @@ public:
 
     juce::var call (const juce::String& tool, const juce::var& args);
 
+    // Live Code: bit för en rad i liveCodeLocks / liveCodeOwned (0-9 instrument, 10 kicken).
+    static int liveCodeBit (int layer) { return 1 << (layer == Pattern::kickLayer ? 10 : layer); }
+
 private:
+    juce::var applyLiveCode (const juce::var& items, bool overwrite, const juce::var& mods);
+    juce::StringArray applyCodeMods (const juce::var& mods);
+    juce::var liveCodeLock (const juce::var& args);
     juce::var listParameters (const juce::var& args) const;
     juce::var listEffects() const;
     juce::var getState (const juce::var& args) const;

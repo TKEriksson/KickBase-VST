@@ -18,6 +18,7 @@
 #include "../Source/Ui/LogoPainter.h"
 #include "../Source/Ui/InstrumentMenu.h"
 #include "../Source/Ui/ListenButton.h"
+#include "../Source/Ui/Theme.h"
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_audio_utils/juce_audio_utils.h>
 #include "../Source/Fx/FxProcessor.h"
@@ -273,6 +274,7 @@ namespace
             auto* args = new juce::DynamicObject();
             args->setProperty ("code", code);
             args->setProperty ("cycles", cycles);
+            args->setProperty ("overwrite", true); // standardmönstret har egna toner; skyddet testas separat i blocket "Skydd"
             return tools.call ("live_code_create", juce::var (args));
         };
         auto& pattern = processor.pattern;
@@ -304,16 +306,18 @@ namespace
         {
             LiveCodePage page (processor);
             page.setBounds (0, 0, 600, 400);
-            juce::TextEditor* code = nullptr;
-            juce::TextButton *play = nullptr, *stop = nullptr, *create = nullptr;
+            page.confirmCreate = false; // en modal ruta skulle blockera testet
+            juce::CodeEditorComponent* code = nullptr;
+            juce::TextButton *play = nullptr, *stop = nullptr, *create = nullptr, *codeOnlyBtn = nullptr;
             for (auto* c : page.getChildren())
             {
-                if (auto* e = dynamic_cast<juce::TextEditor*> (c)) code = e;
+                if (auto* e = dynamic_cast<juce::CodeEditorComponent*> (c)) code = e;
                 if (auto* b = dynamic_cast<juce::TextButton*> (c))
                 {
-                    if (b->getButtonText() == "PLAY") play = b;
+                    if (b->getButtonText() == "LIVE") play = b;
                     if (b->getButtonText() == "STOP") stop = b;
                     if (b->getButtonText() == "CREATE") create = b;
+                    if (b->getButtonText() == "CODE ONLY") codeOnlyBtn = b;
                 }
             }
             check (code && play && stop && create, "LIVE CODE-sidan har kodruta, PLAY, STOP och CREATE");
@@ -326,7 +330,7 @@ namespace
                 page.onError = [&lastError] (const juce::String& e) { lastError = e; };
 
                 pattern.clearNotes (0);
-                code->setText ("note(\"c2,e2\").s(\"i1\")", false);
+                code->getDocument().replaceAllContent ("note(\"c2,e2\").s(\"i1\")");
                 create->triggerClick();
                 runFor (200); // triggerClick körs via meddelandekön
                 check (changed == 1 && pattern.stackSize (0, 0) == 2, "CREATE skriver koden en gång (två staplade toner)");
@@ -337,23 +341,174 @@ namespace
                 check (pattern.stackSize (0, 0) == 2 && changed >= 2 && lastError.isEmpty(), "PLAY räknar koden i bakgrunden och skriver mönstret");
 
                 const auto before = changed;
-                code->setText ("note(\"g2\").s(\"i1\")", true);
+                code->getDocument().replaceAllContent ("note(\"g2\").s(\"i1\")");
                 runFor (1500);
                 check (changed > before && pattern.stackSize (0, 0) == 1 && pattern.note (0, 0).pitch.load() == 7, "PLAY: en ändring i koden uppdaterar mönstret efter debouncen");
 
                 stop->triggerClick();
                 runFor (100);
                 const auto afterStop = changed;
-                code->setText ("note(\"c2\").s(\"i1\")", true);
+                code->getDocument().replaceAllContent ("note(\"c2\").s(\"i1\")");
                 runFor (1200);
                 check (changed == afterStop && pattern.note (0, 0).pitch.load() == 7, "STOP: ändringar i koden skrivs inte längre");
 
                 play->triggerClick();
-                code->setText ("note(\"c2\".s(", true);
+                code->getDocument().replaceAllContent ("note(\"c2\".s(");
                 runFor (1500);
-                check (lastError.isNotEmpty(), "PLAY: ett syntaxfel visas som felmeddelande");
+                check (lastError.isNotEmpty() && ! lastError.contains ("    at "), "PLAY: ett syntaxfel visas som felmeddelande");
                 stop->triggerClick();
+
+                // flera satser: const, $:-block och blockslut vid tom rad
+                pattern.clearNotes (0);
+                pattern.clearNotes (Pattern::kickLayer); // sidans CREATE har ingen overwrite: tomma rader ger ingen fråga
+                code->getDocument().replaceAllContent ("const n = \"c2,e2\"\n$: note(n).s(\"i1\")\n\n$: s(\"bd*4\")");
+                create->triggerClick();
+                runFor (200);
+                check (pattern.stackSize (0, 0) == 2, "CREATE: const och flera $:-block fungerar");
+
+                // CODE ONLY: soloMask följer raderna Live Code skrivit; användarens SOLO vinner; STOP återställer.
+                if (codeOnlyBtn)
+                {
+                    const auto owned = processor.liveCodeOwned.load();
+                    processor.soloMask = 0;
+                    check (owned != 0 && codeOnlyBtn->isEnabled(), "CODE ONLY: aktiv när Live Code har skrivit rader");
+                    codeOnlyBtn->triggerClick(); runFor (100);
+                    check (processor.soloMask.load() == owned, "CODE ONLY: soloMask = raderna Live Code äger");
+                    stop->triggerClick(); runFor (100);
+                    check (processor.soloMask.load() == 0 && ! codeOnlyBtn->getToggleState(), "CODE ONLY: STOP återställer soloMask");
+                    codeOnlyBtn->triggerClick(); runFor (100);
+                    processor.soloMask = 2; // användaren soloar instrument 2 (annat värde än raderna Live Code äger)
+                    create->triggerClick();
+                    runFor (200);
+                    check (processor.soloMask.load() == 2 && ! codeOnlyBtn->getToggleState(), "CODE ONLY: användarens SOLO vinner");
+                    processor.soloMask = 0;
+                    const auto ownedBefore = processor.liveCodeOwned.load();
+                    processor.liveCodeOwned = 0;
+                    codeOnlyBtn->triggerClick(); runFor (100);
+                    check (! codeOnlyBtn->getToggleState() && processor.soloMask.load() == 0, "CODE ONLY: utan egna rader händer inget (soloMask 0 = hör allt)");
+                    processor.liveCodeOwned = ownedBefore;
+                }
+
+                // Projekt/preset laddas medan LIVE spelar: LIVE stoppas, den nya koden tas in, och gammal kod skriver inte över det nya mönstret.
+                {
+                    stop->triggerClick();
+                    runFor (100);
+                    play->triggerClick();
+                    runFor (600);
+                    check (play->getToggleState(), "laddning under LIVE: LIVE spelar före laddningen");
+                    juce::ValueTree loaded ("LiveCode");
+                    loaded.setProperty ("code", "note(\"a2\").s(\"i1\")", nullptr);
+                    loaded.setProperty ("locks", 0, nullptr);
+                    processor.liveCodeFromValueTree (loaded);
+                    ++processor.liveCodeLoads;
+                    runFor (700);
+                    check (! play->getToggleState(), "laddning under LIVE: LIVE stoppas");
+                    check (code->getDocument().getAllContent() == "note(\"a2\").s(\"i1\")", "laddning under LIVE: den nya koden visas");
+                    pattern.clearNotes (0);
+                    runFor (1200);
+                    check (pattern.stackSize (0, 0) == 0, "laddning under LIVE: gammal kod skriver inte över mönstret efteråt");
+                }
             }
+        }
+
+        // Skydd: lås, handritade rader och overwrite (samma regler för UI och AI).
+        {
+            ToolLayer tools (processor);
+            auto make = [] (std::initializer_list<std::pair<const char*, juce::var>> props)
+            {
+                auto* o = new juce::DynamicObject();
+                for (auto& p : props)
+                    o->setProperty (p.first, p.second);
+                return juce::var (o);
+            };
+            auto create = [&] (const juce::String& code, bool overwrite)
+            {
+                return tools.call ("live_code_create", make ({ { "code", code }, { "cycles", 1 }, { "overwrite", overwrite } }));
+            };
+            tools.call ("live_code_lock", make ({ { "layer", 0 }, { "locked", false } }));
+            tools.call ("live_code_lock", make ({ { "layer", "kick" }, { "locked", false } }));
+            processor.liveCodeOwned = 0;
+            pattern.clearNotes (0);
+
+            auto& handNote = pattern.edit (0, 0); // en handritad ton
+            handNote.on = true;
+            handNote.pitch = 5;
+            r = create ("note(\"c2\").s(\"i1\")", false);
+            check (! (bool) r["ok"] && r["conflicts"].getArray() != nullptr && r["conflicts"].getArray()->size() == 1, "handritad rad: fel med conflicts-lista utan overwrite");
+            check (pattern.note (0, 0).pitch.load() == 5, "handritad rad: ingenting ändrades vid konflikt");
+            r = create ("note(\"c2\").s(\"i1\")", true);
+            check ((bool) r["ok"] && pattern.note (0, 0).pitch.load() == 0, "overwrite:true skriver över");
+            r = create ("note(\"e2\").s(\"i1\")", false);
+            check ((bool) r["ok"] && pattern.note (0, 0).pitch.load() == 4, "rad som Live Code skrev själv skrivs över utan fråga");
+
+            tools.call ("live_code_lock", make ({ { "layer", 0 } }));
+            r = create ("note(\"g2\").s(\"i1\")", false);
+            check ((bool) r["ok"] && pattern.note (0, 0).pitch.load() == 4, "låst rad hoppas över");
+            check (processor.liveCodeLocks.load() == ToolLayer::liveCodeBit (0), "låsbiten är satt");
+            tools.call ("live_code_lock", make ({ { "layer", 0 }, { "locked", false } }));
+            check (! (bool) tools.call ("live_code_lock", make ({ { "layer", 11 } }))["ok"], "ogiltig rad i live_code_lock ger fel");
+
+            auto described = false;
+            for (auto& t : ToolLayer::tools())
+                if (t.name == "live_code_create")
+                    described = t.description.contains ("overwrite") && t.description.contains ("live_code_lock") && t.description.contains ("$: ")
+                                && t.description.contains (".lfo(") && t.description.contains (".env(") && t.description.contains ("data.problems");
+            check (described, "live_code_create beskriver skydd, block, sliders och .lfo/.env-problem");
+        }
+
+        // .lfo/.env skapar CODE-rutter; felaktiga modulationsmål rapporteras utan att stoppa notraderna.
+        {
+            auto lfo = run ("note(\"c2\").lfo(\"bass1Cutoff\",2,0.5,\"tri\").s(\"i1\")");
+            const auto lfoSlot = processor.codeMods.empty() ? -1 : processor.codeMods.front().slot;
+            const auto lfoSource = Modulation::firstCodeSource + lfoSlot;
+            const auto lfoRoute = lfoSlot >= 0 ? processor.modRoutes.find (lfoSource, processor.modulator.indexOf ("bass1Cutoff")) : -1;
+            check ((bool) lfo["ok"] && lfo["data"]["problems"].isVoid() && lfoSlot >= 0
+                       && processor.modulator.codeSlots[(size_t) juce::jmax (0, lfoSlot)].kind.load() == 1 && lfoRoute >= 0
+                       && Modulation::sourceName (lfoSource) == "CODE 1" && Theme::sourceColour (lfoSource).getAlpha() == 255,
+                   ".lfo skapar en namngiven, färgsatt CODE-källa och route");
+
+            auto env = run ("note(\"c2\").env(\"bass1Cutoff\",10,200,0.5).s(\"i1\")");
+            const auto envFound = std::find_if (processor.codeMods.begin(), processor.codeMods.end(), [] (const PluginBase::CodeMod& mod) { return mod.key.endsWith ("|env"); });
+            const auto envSlot = envFound == processor.codeMods.end() ? -1 : envFound->slot;
+            const auto envRoute = envSlot >= 0 ? processor.modRoutes.find (Modulation::firstCodeSource + envSlot, processor.modulator.indexOf ("bass1Cutoff")) : -1;
+            check ((bool) env["ok"] && env["data"]["problems"].isVoid() && envSlot >= 0
+                       && processor.modulator.codeSlots[(size_t) juce::jmax (0, envSlot)].kind.load() == 2 && envRoute >= 0,
+                   ".env skapar en AD-källa för instrumentraden");
+
+            auto unknown = run ("note(\"c2\").lfo(\"notAParameter\",2,0.5).s(\"i1\")");
+            auto hasProblem = [] (const juce::var& result, const juce::String& text)
+            {
+                if (auto* problems = result["data"]["problems"].getArray())
+                    for (const auto& problem : *problems)
+                        if (problem.toString().contains (text))
+                            return true;
+                return false;
+            };
+            check ((bool) unknown["ok"] && hasProblem (unknown, "unknown parameter id"),
+                   ".lfo med okänt parameter-id returnerar problems");
+            auto nonModulatable = run ("note(\"c2\").lfo(\"instrumentCount\",2,0.5).s(\"i1\")");
+            check ((bool) nonModulatable["ok"] && hasProblem (nonModulatable, "can't be modulated"),
+                   ".lfo på icke-modulerbar parameter returnerar problems");
+            auto kickEnv = run ("s(\"bd\").env(\"kickTune\",10,200,0.5)");
+            check ((bool) kickEnv["ok"] && hasProblem (kickEnv, "not supported"),
+                   ".env på kick returnerar problems i stället för route");
+        }
+
+        // slider(v,min,max): utan dragning gäller värdet i texten, med dragning värdet från reglaget (begränsat till min..max).
+        {
+            auto noteOf = [] (const std::map<int, double>& values)
+            {
+                LiveCode live;
+                live.setSliderValues (values);
+                juce::Result res = juce::Result::ok();
+                if (live.setCode ("note(slider(3,0,12)).s(\"i1\")").failed()) return -999.0;
+                const auto haps = live.query (0, 1, res);
+                return haps.empty() ? -999.0 : (double) haps[0].value["note"];
+            };
+            check (noteOf ({}) == 3.0, "slider(): startvärdet gäller utan dragning");
+            check (noteOf ({ { 0, 7.0 } }) == 7.0, "slider(): dragna värdet gäller");
+            check (noteOf ({ { 0, 99.0 } }) == 12.0, "slider(): värdet begränsas till max");
+            check (noteOf ({ { 1, 7.0 } }) == 3.0, "slider(): värde för ett annat ordningsnummer rör inte detta reglage");
         }
 
         int pitch = 0;

@@ -54,6 +54,8 @@ namespace Modulation
             return "MACRO " + juce::String (source - firstMacro + 1);
         if (isInstrumentSource (source))
             return "INSTR " + juce::String (layerOfSource (source) + 1) + " " + kindName (kindOfSource (source));
+        if (isCodeSource (source))
+            return "CODE " + juce::String (source - firstCodeSource + 1);
         return "?";
     }
 
@@ -196,8 +198,8 @@ juce::ValueTree ModRoutes::toValueTree (const juce::Array<juce::AudioProcessorPa
     for (const auto& route : routes)
     {
         const auto source = route.source.load(), target = route.target.load();
-        if (source < 0 || ! juce::isPositiveAndBelow (target, parameters.size()))
-            continue;
+        if (source < 0 || Modulation::isCodeSource (source) || ! juce::isPositiveAndBelow (target, parameters.size()))
+            continue; // CODE-källor sparas aldrig
         if (auto* withId = dynamic_cast<juce::AudioProcessorParameterWithID*> (parameters[target]))
         {
             juce::ValueTree child ("Route");
@@ -220,8 +222,9 @@ void ModRoutes::fromValueTree (const juce::ValueTree& tree, const juce::Array<ju
         {
             if (auto* withId = dynamic_cast<juce::AudioProcessorParameterWithID*> (parameters[i]); withId != nullptr && withId->paramID == id)
             {
-                add (juce::jlimit (0, Modulation::numSources - 1, (int) child.getProperty ("source")), i,
-                     (float) (double) child.getProperty ("amount"));
+                const auto source = juce::jlimit (0, Modulation::numSources - 1, (int) child.getProperty ("source"));
+                if (! Modulation::isCodeSource (source))
+                    add (source, i, (float) (double) child.getProperty ("amount"));
                 break;
             }
         }
@@ -371,6 +374,59 @@ void Modulator::update (double ppq, double bpm)
     for (int layer = 0; layer < maxInstruments; ++layer)
         for (int kind = 0; kind < instrumentKinds; ++kind)
             sourceValues[(size_t) instrumentSource (layer, kind)] = layerSources[(size_t) layer][(size_t) kind];
+    // Live Code-källor: LFO (Hz) och ENV (AD, startar på instrumentets nya ton). Av/ledig plats kostar bara kind-läsningen.
+    for (int i = 0; i < numCodeSources; ++i)
+    {
+        auto& slot = codeSlots[(size_t) i];
+        auto& rt = codeRuntime[(size_t) i];
+        const auto kind = slot.kind.load();
+        const auto layer = juce::jlimit (0, maxInstruments - 1, slot.layer.load());
+        if (kind == 0 && rt.fade <= 0.0f)
+        {
+            rt = {};
+            slot.idle = true;
+            continue;
+        }
+        slot.idle = false;
+        rt.fade = juce::jlimit (0.0f, 1.0f, rt.fade + (kind != 0 ? 1.0f : -1.0f) * (float) (codeDt / 0.02));
+        if (kind == 0)
+            sourceValues[(size_t) (firstCodeSource + i)] = rt.lastRaw * rt.fade; // utfasning: sista värdet ner mot 0
+        else if (kind == 1)
+        {
+            rt.phase += (double) slot.rate.load() * codeDt;
+            const auto whole = std::floor (rt.phase);
+            rt.cycle += (juce::int64) whole;
+            rt.phase -= whole;
+            rt.lastRaw = shapeValue (slot.shape.load(), rt.phase, rt.cycle);
+            sourceValues[(size_t) (firstCodeSource + i)] = rt.lastRaw * rt.fade;
+        }
+        else if (kind == 2)
+        {
+            if (! rt.wasOn)
+                rt.lastCount = noteCounts[(size_t) layer]; // toner som redan klingat startar inte ENV:n
+            if (noteCounts[(size_t) layer] != rt.lastCount)
+            {
+                rt.lastCount = noteCounts[(size_t) layer];
+                rt.envActive = true;
+                rt.envMs = 0.0;
+            }
+            auto level = 0.0f;
+            if (rt.envActive)
+            {
+                const auto attack = (double) std::max (0.1f, slot.attackMs.load()), decay = (double) std::max (0.1f, slot.decayMs.load());
+                rt.envMs += codeDt * 1000.0;
+                if (rt.envMs < attack)
+                    level = (float) (rt.envMs / attack);
+                else if (rt.envMs < attack + decay)
+                    level = (float) (1.0 - (rt.envMs - attack) / decay);
+                else
+                    rt.envActive = false;
+            }
+            rt.lastRaw = level;
+            sourceValues[(size_t) (firstCodeSource + i)] = level * rt.fade;
+        }
+        rt.wasOn = kind != 0;
+    }
     for (int s = 0; s < numSources; ++s)
         sourceDisplay[(size_t) s] = sourceValues[(size_t) s];
 

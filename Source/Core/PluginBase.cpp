@@ -12,8 +12,9 @@ static_assert (Pattern::numLayers == 10 && Pattern::kickLayer == 10, "mönstrets
 static_assert (numEffectChannels == 11 && slotsPerChannel == 5, "FX-kanalernas id:n är fxA-fxK med fem platser");
 static_assert (Modulation::numLfos == 3 && Modulation::numMacros == 4 && Modulation::firstInstrumentSource == 7
                    && Modulation::instrumentSources == 4 && Modulation::maxLfos == 10 && Modulation::firstExtraLfoSource == 47
-                   && Modulation::firstEnvSource == 54 && Modulation::envSources == 2 && Modulation::numSources == 74,
-               "modulationskällorna sparas som tal i modRoutes (LFO 4-10 = källa 47-53, AMP ENV/FILT ENV = 54-73)");
+                   && Modulation::firstEnvSource == 54 && Modulation::envSources == 2 && Modulation::firstCodeSource == 74
+                   && Modulation::numCodeSources == 8 && Modulation::numSources == 82,
+               "modulationskällorna sparas som tal i modRoutes (CODE 1-8 är sist, källa 74-81)");
 static_assert (ParamID::oscsPerLayer == 3, "projektens egna wavetables sparas med lager och oscillator (OSC 1-3)");
 
 namespace
@@ -550,8 +551,54 @@ void PluginBase::getStateInformation (juce::MemoryBlock& destData)
     state.appendChild (kickPitchEnv.toValueTree (kickPitchType), nullptr);
     state.appendChild (kickAmpEnv.toValueTree (kickAmpType), nullptr);
 
+    if (const auto liveCode = liveCodeToValueTree(); liveCode.isValid())
+        state.appendChild (liveCode, nullptr);
+
     if (auto xml = state.createXml())
         copyXmlToBinary (*xml, destData);
+}
+
+juce::ValueTree PluginBase::liveCodeToValueTree() const
+{
+    const auto text = getLiveCodeText();
+    const auto locks = liveCodeLocks.load();
+    if (text.isEmpty() && locks == 0)
+        return {};
+    juce::ValueTree tree ("LiveCode");
+    tree.setProperty ("code", text, nullptr);
+    tree.setProperty ("locks", locks, nullptr);
+    return tree;
+}
+
+void PluginBase::liveCodeFromValueTree (const juce::ValueTree& tree)
+{
+    setLiveCodeText (tree.getProperty ("code").toString());
+    liveCodeLocks = (int) tree.getProperty ("locks", 0) & 0x7ff; // bit 0-9 instrument, 10 kicken
+    liveCodeOwned = 0;
+}
+
+void PluginBase::clearCodeMods (bool dropRoutes)
+{
+    for (auto& slot : modulator.codeSlots)
+        slot.kind = 0;
+    if (dropRoutes)
+        for (int i = 0; i < (int) modRoutes.routes.size(); ++i)
+            if (Modulation::isCodeSource (modRoutes.routes[(size_t) i].source.load()))
+                modRoutes.remove (i);
+    codeMods.clear();
+}
+
+void PluginBase::sweepCodeRoutes()
+{
+    for (int i = 0; i < (int) modRoutes.routes.size(); ++i)
+    {
+        const auto source = modRoutes.routes[(size_t) i].source.load();
+        if (! Modulation::isCodeSource (source))
+            continue;
+        const auto& slot = modulator.codeSlots[(size_t) (source - Modulation::firstCodeSource)];
+        if (slot.kind.load() == 0 && slot.idle.load())
+            modRoutes.remove (i);
+    }
 }
 
 void PluginBase::setStateInformation (const void* data, int sizeInBytes)
@@ -559,6 +606,7 @@ void PluginBase::setStateInformation (const void* data, int sizeInBytes)
     auto xml = getXmlFromBinary (data, sizeInBytes);
     if (xml == nullptr || ! xml->hasTagName (apvts.state.getType()))
         return;
+    clearCodeMods(); // kopplingarna ersätts nedan; poster och platser får inte peka på dem
 
     auto state = juce::ValueTree::fromXml (*xml);
     for (int i = 0; i < Presets::numSections; ++i)
@@ -575,6 +623,12 @@ void PluginBase::setStateInformation (const void* data, int sizeInBytes)
     for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
         layerColours[(size_t) layer] = (juce::uint32) (juce::int64) state.getProperty ("layerColour" + juce::String (layer + 1), 0);
     ++layerNamesVersion;
+    if (auto liveCode = state.getChildWithName ("LiveCode"); liveCode.isValid()) // äldre projekt har inget: koden och låsen lämnas som de är
+    {
+        liveCodeFromValueTree (liveCode);
+        state.removeChild (liveCode, nullptr); // hör inte hemma i apvts-tillståndet
+    }
+    ++liveCodeLoads; // sidan LIVE CODE stoppar LIVE och tar in den nya koden
 
     auto legacyLengths = false; // projekt före mönsterversion 7: längderna låg i parametrarna (patternBars, rowBars)
     if (auto patternTree = state.getChildWithName (Pattern::treeType); patternTree.isValid())
@@ -745,6 +799,7 @@ void PluginBase::loadFactoryPreset (Presets::Section section, int index, int lay
 
     if (section == Presets::Section::full || section == Presets::Section::lfo)
     {
+        clearCodeMods();
         modRoutes.clear();
         for (auto& curve : lfoCurves)
             curve.reset();
@@ -906,6 +961,10 @@ std::unique_ptr<juce::XmlElement> PluginBase::buildPresetXml (Presets::Section s
             if (i < Modulation::numLfos || isLfoActive (i))
                 root.addChildElement (lfoCurves[(size_t) i].toValueTree ("LfoCurve" + juce::String (i + 1)).createXml().release());
     }
+
+    if (section == Presets::Section::full)
+        if (const auto liveCode = liveCodeToValueTree(); liveCode.isValid())
+            root.addChildElement (liveCode.createXml().release());
 
     return rootPtr;
 }
@@ -1233,6 +1292,7 @@ bool PluginBase::loadPresetXml (const juce::XmlElement& xmlElement, Presets::Sec
 
     if (section == Presets::Section::full || section == Presets::Section::lfo)
     {
+        clearCodeMods();
         if (const auto* routesXml = xml->getChildByName (ModRoutes::treeType))
             modRoutes.fromValueTree (juce::ValueTree::fromXml (*routesXml), getParameters());
         else
@@ -1254,6 +1314,12 @@ bool PluginBase::loadPresetXml (const juce::XmlElement& xmlElement, Presets::Sec
         rowPresetNames.fill ({});
         fxPresetNames.fill ({});
     }
+
+    if (section == Presets::Section::full) // filer utan <LiveCode> (äldre, Init) lämnar användarens kod och lås som de är
+        if (const auto* liveCodeXml = xml->getChildByName ("LiveCode"))
+            liveCodeFromValueTree (juce::ValueTree::fromXml (*liveCodeXml));
+    if (section == Presets::Section::full)
+        ++liveCodeLoads;
 
     presetNameSlot (section, layer) = presetName;
     ensureTablesInUse();

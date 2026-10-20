@@ -351,7 +351,22 @@ public:
     std::atomic<bool> followPlayhead { true }; // pianorullen och stegvyn bläddrar med uppspelningen
     std::atomic<int> lfoActiveVersion { 0 }; // ökas när en LFO läggs till eller tas bort (fas M), så att gränssnittet ritar om
     std::atomic<int> patternVersion { 0 }; // ökas när mönstret ändras, så att gränssnittet ritar om
-    int selectedTab = 0;                   // gränssnittets valda flikar (nedre och övre panelen), så att de
+    std::atomic<int> liveCodeLocks { 0 };  // Live Code: en bit per rad (0-9 = instrument, 10 = kicken) som koden inte får skriva över
+    std::atomic<int> liveCodeLoads { 0 };  // ökar när ett projekt eller en Full-preset laddats; LIVE CODE-sidan stoppar då LIVE
+    std::atomic<int> liveCodeOwned { 0 };  // rader som Live Code skrev senast; andra rader med toner räknas som handritade
+    // Live Code, steg D: kodtexten och låsen sparas i projektet och i Full-presets (element <LiveCode>, sist, bara när något är satt).
+    // LIVE, CODE ONLY och liveCodeOwned sparas aldrig: inget startar av sig självt vid laddning, och rader med toner är handritade tills koden körs.
+    juce::String getLiveCodeText() const { const juce::ScopedLock lock (liveCodeTextLock); return liveCodeText; }
+    void setLiveCodeText (const juce::String& text) { const juce::ScopedLock lock (liveCodeTextLock); liveCodeText = text; }
+    juce::ValueTree liveCodeToValueTree() const; // ogiltigt träd = inget att spara
+    void liveCodeFromValueTree (const juce::ValueTree& tree);
+    // Live Code, steg E (.lfo/.env): meddelandetråden håller en post per (rad, parameter, sort) med sin CODE-plats. Kopplingarna från
+    // CODE-källor sparas aldrig (Modulation::isCodeSource) och rensas vid laddning, stopp och ny körning utan .lfo/.env.
+    struct CodeMod { juce::String key; int slot = 0; };
+    std::vector<CodeMod> codeMods;
+    void clearCodeMods (bool dropRoutes = true); // stänger alla platser och tar bort alla kopplingar från CODE-källor direkt
+    void sweepCodeRoutes(); // tar bort kopplingar vars plats hunnit tona ut (anropas av meddelandetråden då och då)
+    int selectedTab = 0;                  // gränssnittets valda flikar (nedre och övre panelen), så att de
     int selectedSynthTab = 0;              // finns kvar när fönstret öppnas igen
     int selectedPatternMode = 0;           // PATTERN-flikens läge: 0 PATTERN (toner), 1 GATE
     std::array<int, ParamID::numInstrumentLayers> selectedInstrumentSource {}; // instrumentets valda flik: INSTR, OSC 1-3, SAMPLE eller FILTER
@@ -475,6 +490,8 @@ private:
     std::array<juce::String, Pattern::numNoteLayers> rowPresetNames; // mönster-presets: ett namn per rad (instrument 0-9, kicken sist)
     std::array<juce::String, ParamID::numInstrumentLayers> layerNames;
     std::array<juce::uint32, ParamID::numInstrumentLayers> layerColours {};
+    juce::String liveCodeText;
+    mutable juce::CriticalSection liveCodeTextLock;
 
     double currentSampleRate = 44100.0;
 

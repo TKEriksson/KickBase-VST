@@ -2,6 +2,7 @@
 
 #include <juce_core/juce_core.h>
 #include <juce_javascript/juce_javascript.h>
+#include <map>
 
 // Live Code: kör Strudel (@strudel/core + mini, bunten i Resources/strudel) i JUCE:s JavascriptEngine (QuickJS).
 // Strudel: Copyright (C) Strudel contributors, AGPL-3.0-or-later, https://codeberg.org/uzu/strudel
@@ -12,6 +13,9 @@ class LiveCode
 {
 public:
     LiveCode();
+
+    // Värden användaren dragit fram med slider(v,min,max) (nyckel = anropets ordningsnummer i koden). Sätts före setCode/create.
+    void setSliderValues (std::map<int, double> values);
 
     // Läser in och utvärderar koden. Ger fel som text (syntax, oändlig loop efter 500 ms).
     juce::Result setCode (const juce::String& code);
@@ -31,13 +35,20 @@ public:
     // Hela vägen: kod -> lista med set_pattern-argument. result bär felet.
     juce::var create (const juce::String& code, int cycles, juce::Result& result);
 
+    // Modulationsorden .lfo/.env från senaste create(): lista med {layer, param, kind ("lfo"/"env"), rate, shape, attack, decay, depth},
+    // en post per (lager, param, kind). layer är -1 för kicken. Tom lista = inga modulationsord i koden.
+    const juce::var& getMods() const { return mods; }
+
     // Tonnamn ("c2", "eb3", "f#1") eller tal -> pitch i halvtoner från C2 (MIDI 36). false om det inte går.
     static bool pitchFrom (const juce::var& note, int& pitch);
 
     static constexpr int ticksPerCycle = 384;
 
 private:
+    std::map<int, double> sliderValues; // före engine: reglagens svar läser den
     juce::JavascriptEngine engine;
     bool loaded = false;
+    juce::var mods;
+    static juce::var collectMods (const std::vector<Hap>& haps);
     juce::Result load();
 };

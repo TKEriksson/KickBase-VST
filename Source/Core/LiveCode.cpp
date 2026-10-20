@@ -7,14 +7,20 @@
 
 namespace
 {
-    // host.slider(id, v, min, max) / host.get(id): i första versionen svarar reglagen bara med startvärdet.
+    // host.slider(id, v, min, max): id = ordningsnumret på slider()-anropet i koden. Har användaren dragit i reglaget under LIVE svarar
+    // värdekartan (begränsad till min..max), annars startvärdet. host.get(id) är reserverad för reglage utan omkörning.
     struct HostObject : juce::DynamicObject
     {
-        HostObject()
+        explicit HostObject (const std::map<int, double>& values)
         {
-            setMethod ("slider", [] (const juce::var::NativeFunctionArgs& a) -> juce::var
+            setMethod ("slider", [&values] (const juce::var::NativeFunctionArgs& a) -> juce::var
             {
-                return a.numArguments >= 2 ? a.arguments[1] : juce::var (0.0);
+                if (a.numArguments < 2)
+                    return juce::var (0.0);
+                if (a.numArguments >= 4)
+                    if (const auto it = values.find ((int) a.arguments[0]); it != values.end())
+                        return juce::jlimit ((double) a.arguments[2], (double) a.arguments[3], it->second);
+                return a.arguments[1];
             });
             setMethod ("get", [] (const juce::var::NativeFunctionArgs&) -> juce::var { return 0.0; });
         }
@@ -24,8 +30,10 @@ namespace
 LiveCode::LiveCode()
 {
     engine.maximumExecutionTime = juce::RelativeTime::milliseconds (500);
-    engine.registerNativeObject ("host", new HostObject());
+    engine.registerNativeObject ("host", new HostObject (sliderValues));
 }
+
+void LiveCode::setSliderValues (std::map<int, double> values) { sliderValues = std::move (values); }
 
 juce::Result LiveCode::load()
 {
@@ -41,7 +49,9 @@ juce::Result LiveCode::setCode (const juce::String& code)
 {
     if (auto r = load(); r.failed()) return r;
     juce::Result res = juce::Result::ok();
-    engine.evaluate ("setPattern(" + juce::JSON::toString (code) + ")", &res);
+    const auto message = engine.evaluate ("setPattern(" + juce::JSON::toString (code) + ")", &res); // glue.js svarar med felmeddelandet, "" = ok
+    if (res.failed()) return res;
+    if (message.toString().isNotEmpty()) return juce::Result::fail (message.toString());
     return res;
 }
 
@@ -161,11 +171,42 @@ juce::var LiveCode::toPatternArgs (const std::vector<Hap>& haps, int cycles) con
     return result;
 }
 
+juce::var LiveCode::collectMods (const std::vector<Hap>& haps)
+{
+    juce::Array<juce::var> out;
+    juce::StringArray seen; // nyckel lager|param|sort: första posten gäller
+    for (auto& h : haps)
+    {
+        const auto list = h.value["_mod"];
+        if (list.getArray() == nullptr) continue;
+        const auto s = h.value["s"].toString().toLowerCase();
+        int layer = 0; // som toPatternArgs: bd/kick = kicken, iN = instrument N, annars instrument 1
+        if (s == "bd" || s == "kick") layer = -1;
+        else if (s.length() > 1 && s.startsWithChar ('i') && s.substring (1).containsOnly ("0123456789"))
+            layer = juce::jlimit (1, 10, s.substring (1).getIntValue()) - 1;
+
+        for (auto& m : *list.getArray())
+        {
+            const auto key = juce::String (layer) + "|" + m["param"].toString() + "|" + m["kind"].toString();
+            if (seen.contains (key)) continue;
+            seen.add (key);
+            auto* o = new juce::DynamicObject();
+            o->setProperty ("layer", layer);
+            for (const auto* name : { "param", "kind", "rate", "shape", "attack", "decay", "depth" })
+                if (m.hasProperty (name)) o->setProperty (name, m[name]);
+            out.add (juce::var (o));
+        }
+    }
+    return out;
+}
+
 juce::var LiveCode::create (const juce::String& code, int cycles, juce::Result& result)
 {
+    mods = juce::var (juce::Array<juce::var>{});
     result = setCode (code);
     if (result.failed()) return {};
     auto haps = query (0, cycles, result);
     if (result.failed()) return {};
+    mods = collectMods (haps);
     return toPatternArgs (haps, cycles);
 }
