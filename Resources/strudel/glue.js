@@ -86,3 +86,38 @@ modProto.env = function (param, attackMs, decayMs, depth) {
   if (typeof param !== 'string') throw new Error('env: första argumentet är parameterns id, t.ex. "bass1Cutoff"');
   return addMod(this, { param: param, kind: 'env', attack: modNum('attack', attackMs), decay: modNum('decay', decayMs), depth: modNum('djup', depth === undefined ? 1 : depth) });
 };
+
+// Parameterträd (F1): instr1.Cutoff.set(v) / .get(). Namnen kommer ur parameter-id (bass1Cutoff -> bass1 + Cutoff, bass1 även som instr1).
+// .set noteras bara (host.paramSet) och skrivs av C++ efter körningen; .get() ger värdet från före körningen. Grupper som krockar med
+// Strudels egna namn (s, n, note ...) hoppas över. Ger tillbaka listan över hoppade id:n.
+var paramWritten = {};
+globalThis.buildParams = function (ids) {
+  var skipped = [], made = {};
+  function leaf(id) {
+    return {
+      set: function (v) {
+        if (typeof v !== 'number' && typeof v !== 'string' && typeof v !== 'boolean') throw new Error(id + '.set: ge ett tal, en text eller true/false');
+        paramWritten[id] = true;
+        return host.paramSet(id, v);
+      },
+      get: function () {
+        if (paramWritten[id]) throw new Error(id + '.get: läsning efter skrivning i samma körning');
+        return host.paramGet(id);
+      }
+    };
+  }
+  ids.forEach(function (id) {
+    var m = /^([a-z][a-z0-9]*)([A-Z].*)$/.exec(id);
+    if (!m) { skipped.push(id); return; }
+    var names = [m[1]];
+    var inst = /^bass(\d+)$/.exec(m[1]);
+    if (inst) names.push('instr' + inst[1]);
+    names.forEach(function (g) {
+      if (!made[g]) {
+        if (g in globalThis) { made[g] = null; } else { made[g] = {}; globalThis[g] = made[g]; }
+      }
+      if (made[g]) made[g][m[2]] = leaf(id); else skipped.push(id);
+    });
+  });
+  return JSON.stringify(skipped);
+};

@@ -371,6 +371,24 @@ var ToolLayer::call (const juce::String& tool, const var& args)
 }
 
 //==============================================================================
+std::map<juce::String, double> ToolLayer::liveCodeParameters() const
+{
+    std::map<juce::String, double> out;
+    for (auto* p : processor.getParameters())
+        if (auto* parameter = dynamic_cast<juce::RangedAudioParameter*> (p); parameter != nullptr && ! isEffectSlotParameter (parameter->getParameterID()))
+            out[parameter->getParameterID()] = (double) parameter->convertFrom0to1 (parameter->getValue());
+    return out;
+}
+
+int ToolLayer::liveCodeLayerOf (const juce::String& id)
+{
+    if (id.startsWith ("kick"))
+        return Pattern::kickLayer;
+    if (id.startsWith ("bass") && juce::CharacterFunctions::isDigit (id[4]))
+        return id.substring (4).getIntValue() - 1; // bass1.. = instrument 1..
+    return -1;
+}
+
 var ToolLayer::listParameters (const var& args) const
 {
     const auto prefix = args["prefix"].toString(), contains = args["contains"].toString();

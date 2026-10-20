@@ -31,6 +31,10 @@ public:
 
     // Live Code: bit för en rad i liveCodeLocks / liveCodeOwned (0-9 instrument, 10 kicken).
     static int liveCodeBit (int layer) { return 1 << (layer == Pattern::kickLayer ? 10 : layer); }
+    // Live Code F1: parametrar som koden kan läsa (id -> värde i egna enheter, utan effektplatsernas) och skriva.
+    std::map<juce::String, double> liveCodeParameters() const;
+    // Rad (0-9 instrument, 10 kick via liveCodeBit) som parametern hör till, -1 om ingen (master, lfo, fx ...).
+    static int liveCodeLayerOf (const juce::String& parameterId);
 
 private:
     juce::var applyLiveCode (const juce::var& items, bool overwrite, const juce::var& mods);
