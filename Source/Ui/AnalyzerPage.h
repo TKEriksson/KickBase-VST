@@ -30,7 +30,7 @@ public:
         addChildComponent (collisions);
         spectrum.setEmbedded();
         addChildComponent (spectrum);
-        setCurrentView (2);
+        setCurrentView (juce::SystemStats::getEnvironmentVariable ("KB_ANALYZER", "2").getIntValue()); // snapshot-verktyget väljer underflik
     }
 
     void setCurrentView (int index)
