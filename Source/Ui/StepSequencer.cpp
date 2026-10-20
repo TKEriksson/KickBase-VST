@@ -324,9 +324,35 @@ void StepSequencer::refreshSwitches()
     lastSwitchBits = bits;
 }
 
+void StepSequencer::refreshColours()
+{
+    if ((int) layerColours.size() < ParamID::numInstrumentLayers)
+        return; // GATE-versionen (effekten) har en egen färg
+    for (int i = 0; i < ParamID::numInstrumentLayers; ++i)
+        layerColours[(size_t) i] = Theme::layerColour (i);
+    for (size_t row = 1; row < rowKnobs.size(); ++row)
+    {
+        const auto colour = layerColours[row - 1];
+        for (auto* slider : { &rowKnobs[row]->level, &rowKnobs[row]->fx })
+        {
+            slider->setColour (juce::Slider::rotarySliderFillColourId, colour);
+            slider->repaint();
+        }
+        listenButtons[row]->setAccent (colour);
+        loopToggles[row]->setAccent (colour);
+    }
+}
+
 void StepSequencer::timerCallback()
 {
     followVisualRate();
+    if (const auto colourVersion = processor.layerStructureVersion.load(); colourVersion != lastColourVersion)
+    {
+        lastColourVersion = colourVersion;
+        InstrumentMenu::applyColours (processor);
+        refreshColours();
+        repaint();
+    }
     // Rita om bara när något synligt ändrats: markörerna, mönstret, mönsterlängden eller rutnäten.
     auto changed = false;
     auto update = [&changed] (int& last, int now) { if (last != now) { last = now; changed = true; } };

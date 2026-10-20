@@ -701,6 +701,13 @@ void PianoRoll::resized()
 void PianoRoll::timerCallback()
 {
     followVisualRate();
+    if (const auto colourVersion = processor.layerStructureVersion.load(); colourVersion != lastColourVersion)
+    {
+        lastColourVersion = colourVersion;
+        for (size_t i = 0; i + 1 < layerColours.size(); ++i) // sist kommer kicken
+            layerColours[i] = Theme::layerColour ((int) i);
+        repaint();
+    }
     if (! isShowing())
         return;
 
