@@ -78,10 +78,12 @@ I `Modulator::update` läses masken **en gång** till en lokal (LESSONS R7). Loo
 Obs: skilj från befintliga `lfoNOn` (automatiserbar på/av) – oförändrad och orelaterad.
 
 ### 3.3 Aktivera
-`setLfoActive(i,true)`: nollställ phaseOffset/lastCycles/lastPpq (så fasen startar rent), sätt bit. Parametrarna har redan default.
+`setLfoActive(i,true)`: bara `activeMask.fetch_or(1u<<i)`. Den får **inte** skriva `phaseOffset`/`lastCyclesPerQuarter`/`lastPpq` från message-/MCP-tråden: de är vanliga `double` som ägs av ljudtråden (datarace). Inaktiva-grenen i `update()` nollställer dem redan varje block, så fasen startar rent ändå. Parametrarna har redan default.
 
 ### 3.4 Ta bort (inaktivera)
-`setLfoActive(i,false)`: (1) UI: om LFO:n har rutter → bekräftelsedialog ("LFO 5 styr N rattar. Ta bort ändå?"), MCP: tar bort utan dialog men rapporterar antal borttagna rutter; (2) ta bort alla rutter med den källan ur `modRoutes`; (3) återställ lfoN-parametrarna till default via `Presets::setParameter` (message-tråd); (4) återställ `lfoCurves[i]` till sinus; (5) rensa bit.
+`setLfoActive(i,false)`, i denna ordning: (1) UI: om LFO:n har rutter → bekräftelsedialog ("LFO 5 styr N rattar. Ta bort ändå?"), MCP: tar bort utan dialog men rapporterar antal borttagna rutter; (2) ta bort alla rutter med den källan med `ModRoutes::remove` (Modulation.cpp:155-163); (3) återställ lfoN-parametrarna till default via `Presets::setParameter` (message-tråd); (4) återställ `lfoCurves[i]` till sinus; (5) **sist** `activeMask.fetch_and(~(1u<<i))`. Ingen tråd skriver ljudtrådens `double`-fält (se 3.3).
+
+Mekanismen mot ljudtråden för rutter är densamma som idag: `ModRoutes::routes` är en fast array av atomer utan lås; `remove` sätter `source=-1` först (så kopplingen slutar verka direkt), sedan target/amount, och `add` sätter `source` sist (Modulation.cpp:140-163). `update()` läser `source` atomiskt per rutt (Modulation.cpp:346-356) och hoppar över `<0`. Ingen swap/kopia av arrayen behövs.
 
 ### 3.5 Laddning
 `apvts.replaceState` återställer inte frånvarande parametrar. Därför: vid state-/presetladdning, efter `replaceState`, för varje LFO som är inaktiv i det inladdade: återställ dess parametrar+kurva till default. För fabrikspreset (Section::full/lfo, Presets.cpp:292): bitmasken sätts till `7 | (LFO:er som presetet rör)`; LFO 4–10 som presetet inte rör avaktiveras (fullständig sektion återställer även dem – `startsWith("lfo")` täcker lfo4–10 automatiskt).
@@ -114,6 +116,7 @@ State: `LfoCurve1..3` skrivs som idag; `LfoCurve4..10` skrivs endast för aktiva
 
 - Källnummer 0–46 oförändrade ⇒ befintliga rutter/Scenarios (`firstMacro`) identiska.
 - `Modulator::update`: ingen omskrivning av fas-/formuttrycken för i<3; endast `continue` för inaktiva och indexmappning till `sourceValues`. Behåll float/double-former exakt; ändra inte beräkningsordning. `sourceValues` är större (54) men iterationsordningen över rutter oförändrad.
+- Källloopar i ljudtråden: verifiera i steg 1 att ingen loop över `numSources` gör något källberoende som ändrar ordning eller summering. Granskat hittills i `Modulation.cpp`: :335 kopierar bara `sourceValues`→`sourceDisplay` (ordningsoberoende), :346 summerar per rutt i ruttordning (inte källordning). `MixAnalysis`/`Mixer` har egna, orelaterade `numSources` (mixerkanaler). Resten kontrolleras med grep före första ändringen.
 - Parameter-ID-hashar: LFO 1–3-ID:n oförändrade. Nya ID:n sist ⇒ params-*.txt får bara tillägg i slutet (rendersig läser parametrar via ID, inte via ordning – verifiera).
 - `rendersigwide` sätter `lfo1–3`-former; måste ge samma hash.
 - Default activeMask=7 ⇒ varje gammal rendering har exakt samma aktiva LFO:er.
@@ -135,6 +138,7 @@ Nya (Tests/ModulationTests.cpp + Tools):
 9. `perftest` med 10 aktiva LFO:er (jämför mot 3; budget i LESSONS) och 3 aktiva + 7 inaktiva (ska ≈ som idag).
 10. `blocksizetest` med LFO 4–10 aktiva (chunkgränser/ppq-kontinuitet för de nya).
 11. Parameterlista: params-instrument.txt får endast tillägg sist; params-fx.txt oförändrad (om FX klarar sig med 3).
+13. Aktivera/inaktivera LFO 4–10 medan rendering pågår (blocksizetest-variant, växla t.ex. varje block): inga krascher, och LFO 1–3 bit-identiska oavsett vad som händer med LFO 4–10.
 12. Mänsklig UI-test (Tobias): add/remove/fold/scroll/show-only-selected, DRAG från hopfälld rad.
 
 Testregler enligt LESSONS: rendersig-trion + blocksizetest + audiotest en gång per delsteg som rör Modulation; persisttest när state ändras; hela sviten bara vid fasens slut.
