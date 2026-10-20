@@ -90,7 +90,7 @@ Verktyget: `build/RelWithDebInfo/KickbaseMcp_artefacts/RelWithDebInfo/KickbaseMc
 | 12 | **C** multisampling | `content-c` | som content-plan, men som läge i SAMPLE-lagret | efter F2 |
 | 13 | **BZ** Bézier-kick | `content-bz` | eget kurvläge för kickens pitch/amp med kubiska handtag | stort; efter K |
 | 14 | **E** innehåll | `content-e` | **först** genomgång av presetbygget (E0), sedan presets som använder allt nytt | efter alla funktioner (Tobias) |
-| 15 | **LC** Live Code | `content-lc` | kodflik + kodblock i chatten | vision; bygger på MCP-verktygslagret |
+| 15 | **LC** Live Code | `content-lc` | kodflik + kodblock i chatten | **FLYTTAD FRAM (Tobias 20 okt kväll): byggs härnäst, parallellt med polyfoni/FX1, från main (R+M+P finns).** Spiken klar (lc-spike-report), bygger på MCP-verktygslagret |
 | 16 | **IO** import/export/projekt | `content-io` | IMPORT/EXPORT-center, ZIP, projektfil, autospara, arrangemang | Tobias: sist, efter presets |
 | 17 | **VS** separata VST:er | — | Kick-VST, Instrument-VST, effekter som egna VST3 | Tobias: sist |
 
