@@ -717,6 +717,7 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
         return controls.back().get();
     };
 
+    auto* warpEnvKnob = dynamic_cast<KnobComponent*> (knob (id (F::warpEnv), "AMOUNT"));
     // Under källorna, i signalens ordning: tonhöjd, sub/brus, filtrets envelope (själva filtren: FILTER-fliken) -> volym och utgång.
     groups.addRow ({ { "PITCH", { knob (id (F::octave), "OCTAVE"), knob (id (F::tune), "TUNE"),
                                   knob (id (F::pitchEnvAmount), "ENV AMT"), knob (id (F::pitchEnvDecay), "ENV DEC") } },
@@ -726,7 +727,7 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
                                             knob (id (F::velToEnv), "VEL") } } });
     groups.addRow ({ { "VOLUME ENVELOPE", { knob (id (F::attack), "ATTACK"), knob (id (F::decay), "DECAY"),
                                             knob (id (F::sustain), "SUSTAIN"), knob (id (F::release), "RELEASE") } },
-                     { "WARP ENV", { knob (id (F::warpEnv), "AMOUNT") } },
+                     { "WARP ENV", { warpEnvKnob, choice (id (F::warpEnvSource), "SOURCE"), knob (id (F::warpEnvDecay), "DIRECT DEC") } },
                      { "DRIVE", { knob (id (F::drive), "AMOUNT"), choice (id (F::driveMode), "MODE") } },
                      { "LAYER OUT", { knob (id (F::level), "LEVEL"), knob (id (F::duck), "DUCK"), knob (id (F::gate), "LENGTH"),
                                       knob (id (F::voices), "VOICES") } } }); // (notlängden: GATE är hackrytmen; GLIDE har ingen ratt: parametern används inte)
@@ -743,6 +744,14 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
             return juce::String (voices) + " voices x " + juce::String (stacks) + " unison voices = " + juce::String (voices * stacks)
                  + " oscillator voices: heavy on the CPU. Lower VOICES or UNISON if the DAW stutters.";
         });
+    // Fas S: WARP ENV gör inget när OSC 1:s WARP-läge är Off.
+    warpEnvKnob->setWarning ([this]() -> juce::String
+    {
+        auto value = [this] (F field) { return processor.apvts.getRawParameterValue (ParamID::bass (layer, field))->load(); };
+        if (value (F::warpEnv) <= 0.0f || value (F::aWarp) >= 0.5f)
+            return {};
+        return "WARP ENV needs a WARP mode on OSC 1 (it is Off now), otherwise it does nothing.";
+    });
     // ENV 2, ENV 3, VELOCITY och RANDOM (modulationskällorna) finns i ENV-fliken längst ner (fas L: raden här var en dubblett).
 }
 

@@ -192,6 +192,8 @@ namespace Help
             { "bassAStereo", "How far the UNISON voices are spread across the stereo picture: 0 % = all in the middle (mono), 100 % = the outer voices go hard left and right. Does nothing with UNISON = 1. Keep the low end narrow." },
             { "bassARandom", "Randomises the start phase per note: looser and more analog, less punchy." },
             { "bassWarpEnv", "Extra warp on OSC 1 at the start of each note, following the filter envelope: a bright, digital 'knock' that fades." },
+            { "bassWarpEnvSource", "WARP ENV SOURCE - what drives the warp: Filter Env (the filter envelope), Direct (its own fast decay, set by DIRECT DEC), ENV 2 or ENV 3." },
+            { "bassWarpEnvDecay", "DIRECT DEC - how fast the WARP ENV fades when SOURCE is Direct (2-150 ms)." },
             { "bassSub", "Level of a pure sine sub under the instrument, for weight in the low end." },
             { "bassSubOctave", "Sub in the same octave as the instrument, or one octave lower (careful: very low notes get inaudible)." },
             { "bassNoise", "Adds white noise before the filter, for air and grit in the attack." },

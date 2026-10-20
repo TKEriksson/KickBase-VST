@@ -252,6 +252,11 @@ int persistTest()
                "spara och ladda: FILTER av/på och per källa följer med");
         Scenarios::setInstrument (*processor, 3, F::noiseType, 3.0f);
         check (value (*copyOf (*processor), F::noiseType) > 2.5f && value (*copyOf (*processor), F::noiseType) < 3.5f, "spara och ladda: NOISE TYPE följer med");
+        Scenarios::setInstrument (*processor, 3, F::warpEnvSource, 1.0f);
+        Scenarios::setInstrument (*processor, 3, F::warpEnvDecay, 12.0f);
+        auto warpCopy = copyOf (*processor);
+        check (value (*warpCopy, F::warpEnvSource) > 0.5f && value (*warpCopy, F::warpEnvSource) < 1.5f && std::abs (value (*warpCopy, F::warpEnvDecay) - 12.0f) < 0.1f,
+               "spara och ladda: WARP ENV-källa och Direct-decay följer med");
     }
 
     // 5. Preset-laddningen sätter varje parameter en gång: en ratt som ändras passerar inte sitt standardvärde på vägen.

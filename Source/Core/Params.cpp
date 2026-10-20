@@ -97,7 +97,7 @@ namespace ParamID
                                      "Env1On", "FilterEnvOn", "Env2On", "Env3On",
                                      "Env1Mode", "Env1AttackSync", "Env1DecaySync", "Env1ReleaseSync",
                                      "FilterEnvMode", "FilterEnvAttackSync", "FilterEnvDecaySync",
-                                     "FilterOn", "FilterOsc1", "FilterOsc2", "FilterOsc3", "FilterSample", "FilterNoise", "NoiseType" };
+                                     "FilterOn", "FilterOsc1", "FilterOsc2", "FilterOsc3", "FilterSample", "FilterNoise", "NoiseType", "WarpEnvSource", "WarpEnvDecay" };
         static_assert (std::size (names) == (size_t) InstrumentField::count);
         return names[(size_t) field];
     }
@@ -388,6 +388,8 @@ namespace Params
         for (auto& s : filterSwitches)
             layout.add (std::make_unique<AudioParameterBool> (ParameterID { id (s.field), 1 }, title + s.name, s.on));
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::noiseType), 1 }, title + "Noise Type", StringArray { "White", "Pink", "Brown", "Vinyl" }, 0));
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::warpEnvSource), 1 }, title + "Warp Env Source", StringArray { "Filter Env", "Direct", "ENV 2", "ENV 3" }, 0));
+        layout.add (ms (2.0f, 150.0f, 30.0f, 30.0f, id (F::warpEnvDecay), title + "Warp Env Decay"));
     }
 
     void addFxParams (Layout& layout)
@@ -641,6 +643,8 @@ InstrumentParams ParamRefs::readInstrument (int layer, int rootMidiNote) const
     p.filterSrc[3] = get (F::filterSample) >= 0.5f;
     p.filterSrc[4] = get (F::filterNoise) >= 0.5f;
     p.noiseType = (int) get (F::noiseType);
+    p.warpEnvSource = (int) get (F::warpEnvSource);
+    p.warpEnvDecayMs = get (F::warpEnvDecay);
     p.subWave = (int) get (F::subWave);
     p.noiseTone = get (F::noiseTone);
     p.pitchEnvSemis = get (F::pitchEnvAmount);

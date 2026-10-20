@@ -89,6 +89,8 @@ struct InstrumentParams
     int subWave = 0;             // 0 sinus, 1 triangel, 2 fyrkant, 3 såg
     float noiseTone = 1.0f;      // 0 mörkt brus ... 1 vitt brus
     int noiseType = 0;           // fas S: 0 White (förut), 1 Pink, 2 Brown, 3 Vinyl (frö-styrt)
+    int warpEnvSource = 0;       // fas S: 0 Filter Env (förut), 1 Direct (egen decay), 2 ENV 2, 3 ENV 3
+    float warpEnvDecayMs = 30.0f;
     float pitchEnvSemis = 0.0f;  // tonhöjdsenvelope: så många halvtoner över (eller under) tonen i början av varje ton
     float pitchEnvDecayMs = 60.0f;
 
@@ -248,6 +250,7 @@ private:
     ModEnvParams envTimes2, envTimes3; // ENV 2 och ENV 3 med tiderna i ms (ur params och tempot)
     void refreshEnvTimes();
     float pitchEnv = 0.0f;       // 1 vid anslaget, faller mot 0 (tonhöjdsenvelopen)
+    float warpDirect = 0.0f;     // fas S: WARP ENV Direct: 1 vid anslaget, faller mot 0
     float noiseState = 0.0f;     // brusets lågpass (NOISE TONE)
     float pinkB0 = 0.0f, pinkB1 = 0.0f, pinkB2 = 0.0f, brownState = 0.0f, vinylHiss = 0.0f; // fas S: brustyper
     float randomValue = 0.0f;    // modulationskällan RANDOM: nytt för varje ton
@@ -267,7 +270,7 @@ private:
     bool filter2WasOn = false;           // av -> på nollställer Filter 2 (gammalt tillstånd ska inte höras)
     float lastKeyFrequency = -1.0f, lastKeyTrack = -1.0f, cachedKeyFollow = 1.0f;
     double lastLogFrequency = 1.0e30, lastPitchOffset = 1.0e30, cachedFrequency = 0.0;
-    CoefficientMemo ampDecayMemo, ampReleaseMemo, pitchEnvMemo;
+    CoefficientMemo ampDecayMemo, ampReleaseMemo, pitchEnvMemo, warpDirectMemo;
 
     // Drive: 0 mjuk (tanh), 1 hård (klippning), 2 vikning (wavefolder), 3 asymmetrisk (jämna övertoner), 4 krossad (bitar).
     // Kurvans konstanter (tanh av förstärkningen m.m.) räknas bara om när DRIVE eller läget ändras; själva uträkningen är densamma som förut.

@@ -184,6 +184,14 @@ OscPanel::OscPanel (PluginBase& p, int layerIn, int oscIn, juce::Colour accentIn
     }
     warpKnob = std::make_unique<KnobComponent> (p.apvts, ParamID::bass (layer, ParamID::oscField (osc, F::aWarpAmount)), "AMOUNT", accent);
     warpKnob->setLabelAbove (true); // som WARP-menyns rubrik: namnet ovanför
+    // Fas S: på OSC 1 visar en lila ring hur långt WARP ENV driver mängden (grundmängden + WARP ENV AMOUNT); syns bara när WARP ENV är över noll.
+    if (osc == 0)
+        warpKnob->setLiveMeter ([&p, layer]
+        {
+            auto value = [&p, layer] (F field) { return p.apvts.getRawParameterValue (ParamID::bass (layer, field))->load(); };
+            const auto env = value (F::warpEnv);
+            return env > 0.0f ? juce::jlimit (0.0f, 1.0f, value (F::aWarpAmount) + env) : 0.0f;
+        }, Theme::gate);
     addAndMakeVisible (*warpKnob);
 }
 

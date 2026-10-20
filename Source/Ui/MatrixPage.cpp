@@ -57,7 +57,7 @@ namespace
         if (f == F::keyTrack || f == F::cutoff || f == F::resonance || f == F::filterType) return "FILTER";
         if (f == F::envAmount || f == F::envAttack || f == F::envDecay || f == F::velToEnv)                    return "FILTER ENV";
         if (f == F::attack || f == F::decay || f == F::sustain || f == F::release)        return "VOLUME ENV";
-        if (f == F::warpEnv)                                                              return "WARP ENV";
+        if (f == F::warpEnv || f == F::warpEnvDecay || f == F::warpEnvSource)                                                             return "WARP ENV";
         if (f == F::drive || f == F::driveMode)                                           return "DRIVE";
         return "OUT";
     }

@@ -108,6 +108,7 @@ enum class InstrumentField
     filterEnvMode, filterEnvAttackSync, filterEnvDecaySync,       // fas L: filter-envelopen i ms (standard) eller Sync
     filterOn, filterOsc1, filterOsc2, filterOsc3, filterSample, filterNoise, // fas S: FILTER-flikens av/på (hela Filter 1+2) och av/på per källa (av = källan går förbi båda filtren)
     noiseType,                                                    // fas S: brustyp: White (standard = som förut), Pink, Brown, Vinyl
+    warpEnvSource, warpEnvDecay,                                  // fas S: WARP ENV-källa (Filter Env = som förut, Direct, ENV 2, ENV 3) och Directs egen decay i ms
     count
 };
 

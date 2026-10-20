@@ -31,6 +31,7 @@ void InstrumentSynth::reset()
     env2.reset();
     env3.reset();
     pitchEnv = 0.0f;
+    warpDirect = 0.0f;
     noiseState = 0.0f;
     pinkB0 = pinkB1 = pinkB2 = brownState = vinylHiss = 0.0f;
     filterMid.reset();
@@ -156,6 +157,7 @@ void InstrumentSynth::noteOn (int semitones, float newVelocity, int gateSamples)
     env2.trigger();
     env3.trigger();
     pitchEnv = 1.0f;
+    warpDirect = 1.0f;
     randomValue = modRandom.nextFloat();
     samplePosition = params.sampleData != nullptr ? (double) params.sampleStart * (double) params.sampleData->audio.getNumSamples() : 0.0;
     velocity = newVelocity;
@@ -356,7 +358,17 @@ InstrumentSynth::Output InstrumentSynth::next()
     const auto levelC = params.oscC.on ? params.oscC.level : 0.0f;
     const auto bNeeded = params.oscB.on && (params.oscB.level > 0.0f || params.oscA.warp == WarpMode::fm);
     const auto b = bNeeded ? oscB.next (params.oscB, frequency, sampleRate, params.oscB.warpAmount, 0.0f) : Stereo {};
-    const auto warpA = params.oscA.warpAmount + params.warpEnv * envelope;
+    float warpSource = envelope;
+    if (params.warpEnvSource == 1)
+    {
+        warpSource = warpDirect;
+        warpDirect -= warpDirect * (float) warpDirectMemo.get (params.warpEnvDecayMs, sampleRate);
+    }
+    else if (params.warpEnvSource == 2)
+        warpSource = env2.level;
+    else if (params.warpEnvSource == 3)
+        warpSource = env3.level;
+    const auto warpA = params.oscA.warpAmount + params.warpEnv * warpSource;
     const auto a = levelA > 0.0f ? oscA.next (params.oscA, frequency, sampleRate, warpA, b.mid()) : Stereo {};
     const auto c = levelC > 0.0f ? oscC.next (params.oscC, frequency, sampleRate, params.oscC.warpAmount, 0.0f) : Stereo {};
 
