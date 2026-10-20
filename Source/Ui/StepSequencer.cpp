@@ -23,6 +23,7 @@ StepSequencer::StepSequencer (PluginBase& p, juce::StringArray names, std::vecto
     {
         auto lengthButton = std::make_unique<juce::TextButton>();
         const auto rowLayer = row == 0 ? Pattern::kickLayer : row - 1;
+        lengthButton->setButtonText (LengthMenu::buttonText (processor.pattern, rowLayer)); // direkt, inte först vid första timern
         lengthButton->setTooltip (LengthMenu::tooltip (row == 0 ? juce::String ("KICK") : layerNames[row - 1]));
         lengthButton->onClick = [this, rowLayer, button = lengthButton.get()] { LengthMenu::show (processor, rowLayer, *button); };
         addAndMakeVisible (*lengthButton);

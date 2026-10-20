@@ -18,6 +18,7 @@ Lägg till en rad direkt när ett fel upptäcks (av dig, Opus eller Tobias): vad
 - Rapporter till Opus: korta, med hash, testresultat och de frågor som behöver svar. Inga diffar i meddelandet, Opus läser själv.
 - En fas eller ett stort delsteg per chatt. Uppdatera PROGRESS.md och avsluta med "compact-redo" i stället för att fortsätta på lång kontext.
 - En arbetare åt gången när förbrukningen är hög. Två bara när Opus säger det.
+- Bilder: öppna aldrig en bild som pngdiff säger är oförändrad. Vid fasslut: 42-bildssviten + pngdiff, titta bara på bilder som skiljer, högst 3. Under arbetet ingen bild om inte layouten ändrats, och aldrig bara för att bekräfta logik.
 
 ## Lärdomar
 - R7: atomic lästes två gånger i samma uppdatering, vilket gav fashopp. Läs varje atomic en gång till en lokal variabel.
@@ -26,3 +27,6 @@ Lägg till en rad direkt när ett fel upptäcks (av dig, Opus eller Tobias): vad
 - Shell-patchar: `\n` i heredoc eller `python -c` blir riktiga radbrytningar. Använd Edit/Write.
 - Hemligheter: `.env-local` och API-nycklar får aldrig checkas in (repot är publikt). Kör en hemlighetskoll före push.
 - R9: när maxBars höjdes till 1024 fyllde loopar `bar < Pattern::maxBars` (Presets, kick-FILL, gate via MCP) 1024 takter och AUTO-längden blev 1024. Sök alla `maxBars`/`maxTicks`-loopar när en gräns ändras; fyll bara de takter innehållet har.
+- Bygge: cmake finns inte i bash. Använd build-mcp.bat via PowerShell (`cmd /c`), filtrera på `error|TARGET-BUILD-DONE`.
+- Bildjämförelse: fönsterstorleken ändras mellan sessioner. Bygg tippen (basgrenen) i samma miljö och ta nya bilder som "före"; jämför aldrig mot gamla bildmappar.
+- rendersigwide/tb303 skiljer sig efter R9 för att makeHeavy-mönstret ändrats (innehållet loopar nu per takt), inte för att ljudmotorn ändrats. Skilj mönsterändring från motorändring innan baslinjen görs om.
