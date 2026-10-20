@@ -216,6 +216,8 @@ namespace Help
             { "bassRelease", "Fade-out after the note ends." },
             { "bassGlide", "Not used any more: a glide note glides during its own length (draw it in the piano roll). Kept so that old projects load." },
             { "bassLevel", "Volume of the instrument." },
+            { "bassVoices", "How many notes the instrument can play at once (1-8). 1 = one note at a time, as before: a new note takes over the sounding one. "
+                            "More voices let notes ring over each other and play chords. When all voices are busy, the oldest note fades out in 3 ms." },
 
             // Gate (FX-versionen)
             { "fxKey", "The key of your song: the kick is tuned to it." },

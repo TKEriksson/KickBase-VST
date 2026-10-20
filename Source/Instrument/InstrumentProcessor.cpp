@@ -30,6 +30,7 @@ namespace
         MasterSection::addParameters (layout);
         Mixer::addParameters (layout);
         Params::addMasterParams (layout);
+        Modulation::addExtraLfoParameters (layout); // LFO 4-10 (fas M): nya parametrar sist
         return layout;
     }
 
@@ -333,7 +334,10 @@ void InstrumentProcessor::readBlockParams()
     scheduler.setNumLayers (activeLayers);
 
     for (int layer = 0; layer < activeLayers; ++layer)
+    {
         readLayerFields (layer, solo);
+        basses[(size_t) layer].setNumVoices ((int) params.bass (layer, InstrumentField::voices));
+    }
     noteEnd = (NoteEnd) params.getChoice (ParamID::noteEnd);
     kick.setClickSample (getActiveClickSample());
     refreshEngineParams();
@@ -900,7 +904,14 @@ void InstrumentProcessor::handleEvent (const StepEvent& event)
     const auto holdTicks = pattern.holdTicks (layer, event.step, lengths.total * Pattern::ticksPerBar, gateScales[(size_t) layer]);
     const auto gateSamples = std::max (1, (int) (holdTicks * samplesPerTick));
 
-    basses[(size_t) layer].noteOn (note.pitch.load(), note.velocity.load(), gateSamples);
+    // Fas P: ackordets extra toner (högst VOICES - 1) slås an först och grundtonen sist, så att grundtonen blir den senast spelade
+    // rösten (glide, modulering) och den som stjäls sist. Med VOICES = 1, och för en glide-ton som glider, spelas bara grundtonen.
+    auto& voices = basses[(size_t) layer];
+    const auto chordNotes = std::min (voices.getNumVoices() - 1, Pattern::maxChordNotes);
+    for (int i = 0; i < chordNotes; ++i)
+        if (const auto interval = note.chord[(size_t) i].load(); interval != 0)
+            voices.noteOn (juce::jlimit (Pattern::minPitch, Pattern::maxPitch, note.pitch.load() + interval), note.velocity.load(), gateSamples, true);
+    voices.noteOn (note.pitch.load(), note.velocity.load(), gateSamples);
     lastInstrumentStartPpq[(size_t) layer] = clock.getPpqAt (event.offset);
 }
 

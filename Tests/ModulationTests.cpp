@@ -9,12 +9,14 @@ namespace
     // Minsta möjliga processor med LFO-parametrarna och ett mål (bassCutoff).
     struct DummyProcessor : juce::AudioProcessor
     {
-        DummyProcessor() : apvts (*this, nullptr, "Parameters", createLayout()) {}
+        explicit DummyProcessor (bool extraLfos = false) : apvts (*this, nullptr, "Parameters", createLayout (extraLfos)) {}
 
-        static juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
+        static juce::AudioProcessorValueTreeState::ParameterLayout createLayout (bool extraLfos)
         {
             juce::AudioProcessorValueTreeState::ParameterLayout layout;
             Modulation::addParameters (layout);
+            if (extraLfos)
+                Modulation::addExtraLfoParameters (layout); // LFO 4-10 som i instrumentet (FX saknar dem)
             layout.add (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "bassCutoff", 1 }, "Cutoff",
                                                                      juce::NormalisableRange<float> (0.0f, 1000.0f), 500.0f));
             return layout;
@@ -151,9 +153,8 @@ namespace
         const auto cutoff = modulator.indexOf ("bassCutoff");
 
         // En rak ramp: y går från 0 till 1, så värdet (1 - 2 y) går från +1 till -1.
-        const std::array<NodeEnvelope, Modulation::numLfos> curves { NodeEnvelope (1.0f, 1.0f, { { 0.0f, 0.0f, 0.0f }, { 1.0f, 1.0f, 0.0f } }),
-                                                                     NodeEnvelope (1.0f, 1.0f, { { 0.0f, 0.0f, 0.0f }, { 1.0f, 1.0f, 0.0f } }),
-                                                                     NodeEnvelope (1.0f, 1.0f, { { 0.0f, 0.0f, 0.0f }, { 1.0f, 1.0f, 0.0f } }) };
+        const auto ramp = [] { return NodeEnvelope (1.0f, 1.0f, { { 0.0f, 0.0f, 0.0f }, { 1.0f, 1.0f, 0.0f } }); }; // NodeEnvelope går inte att kopiera
+        const std::array<NodeEnvelope, Modulation::maxLfos> curves { ramp(), ramp(), ramp(), ramp(), ramp(), ramp(), ramp(), ramp(), ramp(), ramp() };
         modulator.setLfoCurves (&curves);
         routes.add (0, cutoff, 0.2f);
         processor.set ("lfo1Shape", 6.0f); // Custom
@@ -216,10 +217,119 @@ namespace
     }
 }
 
+namespace
+{
+    // Fas M steg 1: LFO 4-10 (källa 47-53), aktiv-masken och att LFO 1-3 är orörda.
+    void testExtraLfos()
+    {
+        using namespace Modulation;
+        std::puts ("LFO 4-10: källor, mask och parametrar");
+
+        bool bijective = true;
+        for (int i = 0; i < maxLfos; ++i)
+            bijective = bijective && lfoIndexOfSource (lfoSource (i)) == i && isLfoSource (lfoSource (i));
+        for (int s = 0; s < numSources; ++s)
+            if (lfoIndexOfSource (s) >= 0)
+                bijective = bijective && lfoSource (lfoIndexOfSource (s)) == s;
+        check (bijective, "lfoSource och lfoIndexOfSource är varandras inverser");
+        check (lfoSource (3) == 47 && lfoSource (9) == 53 && numSources == 54, "LFO 4-10 är källa 47-53");
+        check (sourceName (47) == "LFO 4" && sourceName (53) == "LFO 10" && sourceName (2) == "LFO 3", "namnen LFO 4 och LFO 10");
+        check (! isLfoSource (3) && sourceName (3) == "MACRO 1", "källa 3 är fortfarande makro 1");
+
+        DummyProcessor plain;
+        ModRoutes plainRoutes;
+        Modulator plainModulator (plain.apvts, plainRoutes);
+        check (plainModulator.activeMask.load() == 7u, "masken är 7 (LFO 1-3) från början");
+        check (plain.apvts.getParameter ("lfo4On") == nullptr, "utan addExtraLfoParameters finns ingen LFO 4 (FX)");
+        plainModulator.activeMask = 0x3FFu;                     // FX: nullptr-pekarna räknas aldrig
+        plainRoutes.add (lfoSource (3), plainModulator.indexOf ("bassCutoff"), 0.5f);
+        plainModulator.update (0.25);
+        check (std::abs (plainModulator.apply (plainModulator.indexOf ("bassCutoff"), 500.0f) - 500.0f) < 1.0e-3f, "LFO 4 utan parametrar ger inget");
+
+        DummyProcessor processor (true);
+        ModRoutes routes;
+        Modulator modulator (processor.apvts, routes);
+        const auto cutoff = modulator.indexOf ("bassCutoff");
+        check (processor.apvts.getParameter ("lfo10SnapRange") != nullptr, "LFO 10 har alla parametrar");
+
+        routes.add (lfoSource (3), cutoff, 0.2f);
+        processor.set ("lfo4Rate", 6.0f);                       // 1/4: sinus 1 vid en sextondel
+        modulator.update (0.25);
+        check (std::abs (modulator.apply (cutoff, 500.0f) - 500.0f) < 1.0e-3f, "inaktiv LFO 4 ger inget");
+        modulator.activeMask = 7u | (1u << 3);
+        modulator.update (0.25);
+        check (std::abs (modulator.apply (cutoff, 500.0f) - 700.0f) < 1.0f, "aktiv LFO 4 modulerar", modulator.apply (cutoff, 500.0f));
+        processor.set ("lfo4On", 0.0f);
+        modulator.update (0.25);
+        check (std::abs (modulator.apply (cutoff, 500.0f) - 500.0f) < 1.0e-3f, "LFO 4 avstängd med On");
+        processor.set ("lfo4On", 1.0f);
+
+        // Form, egen kurva, Hz och SNAP på LFO 10.
+        routes.clear();
+        routes.add (lfoSource (9), cutoff, 0.2f);
+        modulator.activeMask = 0x3FFu;
+        const auto ramp = [] { return NodeEnvelope (1.0f, 1.0f, { { 0.0f, 0.0f, 0.0f }, { 1.0f, 1.0f, 0.0f } }); }; // NodeEnvelope går inte att kopiera
+        const std::array<NodeEnvelope, maxLfos> curves { ramp(), ramp(), ramp(), ramp(), ramp(), ramp(), ramp(), ramp(), ramp(), ramp() };
+        modulator.setLfoCurves (&curves);
+        processor.set ("lfo10Shape", 6.0f);
+        processor.set ("lfo10Rate", 6.0f);
+        modulator.update (0.0);
+        check (std::abs (modulator.apply (cutoff, 500.0f) - 700.0f) < 1.0f, "LFO 10: egen kurva börjar på +1", modulator.apply (cutoff, 500.0f));
+        processor.set ("lfo10Shape", 4.0f);                     // fyrkant: -1 i andra halvan
+        modulator.update (0.75);
+        check (std::abs (modulator.apply (cutoff, 500.0f) - 300.0f) < 1.0f, "LFO 10: fyrkant", modulator.apply (cutoff, 500.0f));
+        processor.set ("lfo10Mode", 1.0f);
+        processor.set ("lfo10Hz", 4.1f);
+        processor.set ("lfo10Snap", 1.0f);
+        processor.set ("lfo10SnapRange", 5.0f);
+        modulator.update (1.0, 120.0);
+        check (modulator.snapLocked[9].load() && modulator.snapNote[9].load() == 4, "LFO 10: SNAP låser mot 1/8");
+        modulator.activeMask = 7u;                              // borttagen: fälten nollställs
+        modulator.update (1.0, 120.0);
+        check (! modulator.snapLocked[9].load() && modulator.snapNote[9].load() == -1, "borttagen LFO 10 nollställs");
+    }
+
+    // LFO 1-3 ska vara bitidentiska oavsett vad som händer med LFO 4-10.
+    void testExtraLfosLeaveFirstThree()
+    {
+        std::puts ("LFO 4-10: LFO 1-3 orörda när 4-10 slås av och på");
+        DummyProcessor a (true), b (true);
+        ModRoutes routesA, routesB;
+        Modulator modA (a.apvts, routesA), modB (b.apvts, routesB);
+        const auto cutoffA = modA.indexOf ("bassCutoff");
+        const auto cutoffB = modB.indexOf ("bassCutoff");
+        for (auto* p : { &a, &b })
+        {
+            p->set ("lfo1Rate", 5.0f);
+            p->set ("lfo2Shape", 2.0f);
+            p->set ("lfo3Mode", 1.0f);
+            p->set ("lfo3Hz", 2.3f);
+        }
+        for (int s = 0; s < Modulation::numLfos; ++s)
+        {
+            routesA.add (s, cutoffA, 0.1f * (float) (s + 1));
+            routesB.add (s, cutoffB, 0.1f * (float) (s + 1));
+        }
+        bool same = true;
+        for (int step = 0; step < 400; ++step)
+        {
+            if (step % 7 == 0)
+                modB.activeMask = 7u | ((uint32_t) (step * 2654435761u) & 0x3F8u); // slumpvis LFO 4-10 av och på
+            const auto ppq = step * 0.013;
+            modA.update (ppq, 128.0);
+            modB.update (ppq, 128.0);
+            same = same && modA.apply (cutoffA, 500.0f) == modB.apply (cutoffB, 500.0f);
+        }
+        check (same, "LFO 1-3 ger exakt samma värden");
+    }
+}
+
 void runModulationTests()
 {
     testShapes();
     testModulator();
     testSources();
     testCustomShapeAndFreeRate();
+    testExtraLfos();
+    testExtraLfosLeaveFirstThree();
 }

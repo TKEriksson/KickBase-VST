@@ -10,7 +10,8 @@
 static_assert (Pattern::numLayers == 10 && Pattern::kickLayer == 10, "mönstrets lager sparas med index; kicken är lager 10 sedan version 6");
 static_assert (numEffectChannels == 11 && slotsPerChannel == 5, "FX-kanalernas id:n är fxA-fxK med fem platser");
 static_assert (Modulation::numLfos == 3 && Modulation::numMacros == 4 && Modulation::firstInstrumentSource == 7
-                   && Modulation::instrumentSources == 4, "modulationskällorna sparas som tal i modRoutes");
+                   && Modulation::instrumentSources == 4 && Modulation::maxLfos == 10 && Modulation::firstExtraLfoSource == 47
+                   && Modulation::numSources == 54, "modulationskällorna sparas som tal i modRoutes (LFO 4-10 = källa 47-53)");
 static_assert (ParamID::oscsPerLayer == 3, "projektens egna wavetables sparas med lager och oscillator (OSC 1-3)");
 
 namespace
@@ -535,8 +536,10 @@ void PluginBase::getStateInformation (juce::MemoryBlock& destData)
     state.appendChild (userTablesToValueTree(), nullptr);
     state.appendChild (sidechainCurve.toValueTree(), nullptr);
     state.appendChild (modRoutes.toValueTree (getParameters()), nullptr);
-    for (int i = 0; i < Modulation::numLfos; ++i)
-        state.appendChild (lfoCurves[(size_t) i].toValueTree ("LfoCurve" + juce::String (i + 1)), nullptr);
+    state.setProperty ("activeLfos", (int) modulator.activeMask.load(), nullptr);
+    for (int i = 0; i < Modulation::maxLfos; ++i)
+        if (i < Modulation::numLfos || isLfoActive (i)) // LFO 1-3 alltid (som förut)
+            state.appendChild (lfoCurves[(size_t) i].toValueTree ("LfoCurve" + juce::String (i + 1)), nullptr);
     state.appendChild (kickPitchEnv.toValueTree (kickPitchType), nullptr);
     state.appendChild (kickAmpEnv.toValueTree (kickAmpType), nullptr);
 
@@ -617,7 +620,7 @@ void PluginBase::setStateInformation (const void* data, int sizeInBytes)
             envelope->reset();
     }
 
-    for (int i = 0; i < Modulation::numLfos; ++i)
+    for (int i = 0; i < Modulation::maxLfos; ++i)
     {
         const juce::Identifier type ("LfoCurve" + juce::String (i + 1));
         if (auto tree = state.getChildWithName (type); tree.isValid())
@@ -633,7 +636,10 @@ void PluginBase::setStateInformation (const void* data, int sizeInBytes)
     if (auto routesTree = state.getChildWithName (ModRoutes::treeType); routesTree.isValid())
         state.removeChild (routesTree, nullptr);
 
+    const auto lfoMask = (std::uint32_t) (int) state.getProperty ("activeLfos", 7); // gamla projekt: LFO 1-3
+    state.removeProperty ("activeLfos", nullptr);
     apvts.replaceState (state);
+    applyLoadedLfos (lfoMask); // (efter replaceState: den återställer inte parametrar som saknas i projektet)
     if (legacyLengths)
     {
         Params::applyLegacyLengthParams (apvts, pattern); // (efter parametrarna: de bär de gamla längderna)
@@ -652,6 +658,71 @@ void PluginBase::patternChanged()
 void PluginBase::markStateChanged()
 {
     updateHostDisplay (ChangeDetails().withNonParameterStateChanged (true));
+}
+
+int PluginBase::availableLfos() const
+{
+    return apvts.getParameter (Modulation::paramID (Modulation::numLfos, "On")) != nullptr ? Modulation::maxLfos : Modulation::numLfos;
+}
+
+bool PluginBase::isLfoActive (int index) const
+{
+    return juce::isPositiveAndBelow (index, Modulation::maxLfos) && (modulator.activeMask.load() & (1u << index)) != 0;
+}
+
+int PluginBase::lfoRouteCount (int index) const
+{
+    const auto source = Modulation::lfoSource (index);
+    auto count = 0;
+    for (const auto& route : modRoutes.routes)
+        count += route.source.load() == source ? 1 : 0;
+    return count;
+}
+
+int PluginBase::setLfoActive (int index, bool active)
+{
+    if (! juce::isPositiveAndBelow (index, availableLfos()) || isLfoActive (index) == active)
+        return 0;
+    auto removed = 0;
+    if (active)
+        modulator.activeMask.fetch_or (1u << index);
+    else
+        removed = clearLfo (index);
+    ++lfoActiveVersion;
+    markStateChanged();
+    return removed;
+}
+
+int PluginBase::clearLfo (int index)
+{
+    // Ordningen: kopplingarna först (slutar verka direkt), sist biten i masken. Ljudtråden nollställer sina egna fält (Modulator::update).
+    const auto source = Modulation::lfoSource (index);
+    auto removed = 0;
+    for (int i = 0; i < (int) modRoutes.routes.size(); ++i)
+        if (modRoutes.routes[(size_t) i].source.load() == source)
+        {
+            modRoutes.remove (i);
+            ++removed;
+        }
+    for (const auto* suffix : { "On", "Shape", "Rate", "Mode", "Hz", "Snap", "SnapRange" }) // (exakta id:n: "lfo1" är början på "lfo10")
+        if (auto* parameter = apvts.getParameter (Modulation::paramID (index, suffix)))
+            Presets::setParameter (*parameter, parameter->getDefaultValue());
+    lfoCurves[(size_t) index].reset();
+    modulator.activeMask.fetch_and (~(1u << index));
+    return removed;
+}
+
+void PluginBase::applyLoadedLfos (std::uint32_t mask)
+{
+    for (int i = 0; i < Modulation::maxLfos; ++i)
+        if (lfoRouteCount (i) > 0)
+            mask |= 1u << i; // en koppling från en borttagen LFO ska inte tyst sluta verka
+    mask &= (1u << availableLfos()) - 1u;
+    for (int i = 0; i < Modulation::maxLfos; ++i)
+        if ((mask & (1u << i)) == 0)
+            clearLfo (i);
+    modulator.activeMask = mask;
+    ++lfoActiveVersion;
 }
 
 void PluginBase::loadFactoryPreset (Presets::Section section, int index, int layer)
@@ -696,6 +767,9 @@ void PluginBase::loadFactoryPreset (Presets::Section section, int index, int lay
                     }
         }
     }
+
+    if (section == Presets::Section::full || section == Presets::Section::lfo)
+        applyLoadedLfos (7u); // LFO 1-3 och de LFO:er presetets kopplingar använder
 
     if (section == Presets::Section::bass)
     {
@@ -821,8 +895,10 @@ bool PluginBase::saveUserPreset (Presets::Section section, const juce::String& n
     if (section == Presets::Section::full || section == Presets::Section::lfo)
     {
         root.addChildElement (modRoutes.toValueTree (getParameters()).createXml().release());
-        for (int i = 0; i < Modulation::numLfos; ++i)
-            root.addChildElement (lfoCurves[(size_t) i].toValueTree ("LfoCurve" + juce::String (i + 1)).createXml().release());
+        root.setAttribute ("activeLfos", (int) modulator.activeMask.load());
+        for (int i = 0; i < Modulation::maxLfos; ++i)
+            if (i < Modulation::numLfos || isLfoActive (i))
+                root.addChildElement (lfoCurves[(size_t) i].toValueTree ("LfoCurve" + juce::String (i + 1)).createXml().release());
     }
 
     if (! root.writeTo (directory.getChildFile (fileName + presetFileExtension)))
@@ -971,13 +1047,14 @@ bool PluginBase::loadPresetXml (const juce::XmlElement& xmlElement, Presets::Sec
             modRoutes.fromValueTree (juce::ValueTree::fromXml (*routesXml), getParameters());
         else
             modRoutes.clear();
-        for (int i = 0; i < Modulation::numLfos; ++i)
+        for (int i = 0; i < Modulation::maxLfos; ++i)
         {
             if (const auto* curveXml = xml->getChildByName ("LfoCurve" + juce::String (i + 1)))
                 lfoCurves[(size_t) i].fromValueTree (juce::ValueTree::fromXml (*curveXml));
             else
                 lfoCurves[(size_t) i].reset();
         }
+        applyLoadedLfos ((std::uint32_t) xml->getIntAttribute ("activeLfos", 7)); // (efter parametrarna ovan; gamla presets: LFO 1-3)
     }
 
     if (section == Presets::Section::full)

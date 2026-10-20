@@ -52,7 +52,7 @@ namespace Presets
                        juce::AudioProcessorValueTreeState& apvts, Pattern& pattern, SidechainCurve& curve, int layer = 0);
 
     // Det ett fabrikspreset har utöver parametrar och mönster: kickens fria envelopes (pitch och volym,
-    // tomma = standardkurvorna) och LFO-kopplingar (LFO 0-2 till en parameter, mängd -1..1).
+    // tomma = standardkurvorna) och LFO-kopplingar (källa: LFO 1-10, se Modulation::lfoSource, till en parameter, mängd -1..1).
     struct Extras
     {
         struct Route

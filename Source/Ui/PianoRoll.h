@@ -58,6 +58,7 @@ private:
         int length = 17, pitch = 0;
         float velocity = 0.8f;
         bool slide = false;
+        Pattern::Chord chord {};
     };
     using NoteMap = std::map<int, NoteData>; // starttick -> ton
 
@@ -92,6 +93,8 @@ private:
     int noteAtPoint (juce::Point<float> p, bool& onRightEdge) const;
     int noteForVelocity (float x) const;
     juce::String describe (int tick) const;
+    int voices() const;                              // lagrets VOICES (ackord hörs bara med 2 eller fler)
+    void setChordOnSelection (const Pattern::Chord& chord);
     void setHover (int tick);
 
     NoteMap readNotes() const;

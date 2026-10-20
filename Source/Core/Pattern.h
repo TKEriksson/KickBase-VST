@@ -72,6 +72,9 @@ struct Pattern
     static constexpr int numGrids = 8;
     static constexpr int minPitch = -96; // halvtoner från tonarten (basens grundton med lagrets oktav)
     static constexpr int maxPitch = 96;
+    static constexpr int maxChordNotes = 3;     // fas P: extra toner utöver tonen själv
+    static constexpr int maxChordInterval = 24; // halvtoner från tonen, åt båda hållen
+    using Chord = std::array<int, maxChordNotes>;
     static constexpr int numLayers = maxInstruments; // instrument med var sitt mönster (FX-versionen använder bara det första)
 
     // Kicken är ett extra "notlager" efter instrumenten (lager 10): fritt placerade toner, på samma sätt som baslagren. Tonhöjden flyttar
@@ -102,6 +105,21 @@ struct Pattern
         std::atomic<int> pitch { 0 };         // halvtoner från tonarten
         std::atomic<bool> slide { false };    // glide-ton (som i FL Studio): glider den klingande tonen hit under sin längd
         std::atomic<float> velocity { 0.8f };
+        // Fas P: ackordets extra toner i halvtoner från tonen, de som inte är 0 först (0 = ingen). Spelas bara med VOICES 2 eller fler.
+        std::array<std::atomic<int>, maxChordNotes> chord {};
+
+        Chord getChord() const { return { chord[0].load(), chord[1].load(), chord[2].load() }; }
+        bool hasChord() const { return chord[0].load() != 0; }
+        // Begränsar till ±maxChordInterval och flyttar nollorna sist.
+        void setChord (const Chord& intervals)
+        {
+            size_t count = 0;
+            for (const auto interval : intervals)
+                if (const auto limited = juce::jlimit (-maxChordInterval, maxChordInterval, interval); limited != 0)
+                    chord[count++] = limited;
+            while (count < chord.size())
+                chord[count++] = 0;
+        }
     };
 
     Pattern()
@@ -181,7 +199,7 @@ struct Pattern
     void setCustom (int layer, bool value) { custom[(size_t) juce::jlimit (0, numNoteLayers - 1, layer)] = value; }
 
     // Lägger en ny ton (eller ändrar den som redan ligger där). Returnerar den.
-    Note& addNote (int layer, int tick, int length, int pitch = 0, float velocity = 0.8f, bool slide = false);
+    Note& addNote (int layer, int tick, int length, int pitch = 0, float velocity = 0.8f, bool slide = false, const Chord& chord = {});
 
     // Kicken som en rad ettor och punkter, `ticksPerStep` mellan stegen (för verktyg och tester).
     void setKickSteps (const juce::String& steps, int ticksPerStep);

@@ -719,7 +719,21 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
                                             knob (id (F::sustain), "SUSTAIN"), knob (id (F::release), "RELEASE") } },
                      { "WARP ENV", { knob (id (F::warpEnv), "AMOUNT") } },
                      { "DRIVE", { knob (id (F::drive), "AMOUNT"), choice (id (F::driveMode), "MODE") } },
-                     { "LAYER OUT", { knob (id (F::level), "LEVEL"), knob (id (F::duck), "DUCK"), knob (id (F::gate), "LENGTH") } } }); // (notlängden: GATE är hackrytmen)
+                     { "LAYER OUT", { knob (id (F::level), "LEVEL"), knob (id (F::duck), "DUCK"), knob (id (F::gate), "LENGTH"),
+                                      knob (id (F::voices), "VOICES") } } }); // (notlängden: GATE är hackrytmen; VOICES flyttas med gruppen i fas L)
+    // Fas P: varning när VOICES x unison (summan av de påslagna oscillatorernas stämmor) blir stort, eftersom varje röst kostar lika mycket CPU.
+    if (auto* voicesKnob = dynamic_cast<KnobComponent*> (controls.back().get()))
+        voicesKnob->setWarning ([this]() -> juce::String
+        {
+            auto value = [this] (F field) { return (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, field))->load(); };
+            const auto stacks = (value (F::aOn) != 0 ? value (F::aUnison) : 0) + (value (F::bOn) != 0 ? value (F::bUnison) : 0)
+                              + (value (F::cOn) != 0 ? value (F::cUnison) : 0);
+            const auto voices = value (F::voices);
+            if (voices < 2 || voices * stacks <= 24)
+                return {};
+            return juce::String (voices) + " voices x " + juce::String (stacks) + " unison voices = " + juce::String (voices * stacks)
+                 + " oscillator voices: heavy on the CPU. Lower VOICES or UNISON if the DAW stutters.";
+        });
 
     // MODULATION: ENV 2 och ENV 3 (egna envelopes att modulera med), och velocity och slump som källor. Varje källa har ett handtag
     // som dras till en ratt (eller sätts i MATRIX-fliken).

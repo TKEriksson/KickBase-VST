@@ -220,13 +220,14 @@ double Pattern::holdTicks (int layer, int tick, int patternTicks, float gateScal
     return std::max (1.0, (double) note (layer, tick).length.load() * (double) gateScale);
 }
 
-Pattern::Note& Pattern::addNote (int layer, int tick, int length, int pitch, float velocity, bool slide)
+Pattern::Note& Pattern::addNote (int layer, int tick, int length, int pitch, float velocity, bool slide, const Chord& chord)
 {
     auto& n = edit (layer, tick);
     n.length = juce::jlimit (1, maxTicks, length);
     n.pitch = juce::jlimit (minPitch, maxPitch, pitch);
     n.velocity = juce::jlimit (0.0f, 1.0f, velocity);
     n.slide = slide;
+    n.setChord (chord); // en ny ton ärver inte ett gammalt ackord (sätts före on, så att ljudtråden aldrig ser tonen utan sitt ackord)
     n.on = true;
     return n;
 }
@@ -383,9 +384,14 @@ juce::ValueTree Pattern::toValueTree() const
                 continue;
             }
             const auto& n = note (layer, tick);
-            if (n.on.load())
-                entries.add (juce::String (tick) + "/" + juce::String (n.length.load()) + "/" + juce::String (n.pitch.load()) + "/"
-                             + (n.slide.load() ? "1" : "0") + "/" + juce::String (n.velocity.load(), 3));
+            if (! n.on.load())
+                continue;
+            auto entry = juce::String (tick) + "/" + juce::String (n.length.load()) + "/" + juce::String (n.pitch.load()) + "/"
+                         + (n.slide.load() ? "1" : "0") + "/" + juce::String (n.velocity.load(), 3);
+            for (const auto interval : n.getChord()) // fas P: /c1/c2/c3 bara om tonen har ett ackord (äldre versioner läser bara de fem första)
+                if (interval != 0)
+                    entry << "/" << interval;
+            entries.add (entry);
         }
 
         juce::ValueTree child ("Notes");
@@ -507,8 +513,11 @@ void Pattern::fromValueTree (const juce::ValueTree& tree, bool clearUnmentionedL
             {
                 const auto parts = juce::StringArray::fromTokens (entry, "/", {});
                 const auto tick = parts[0].getIntValue();
-                if (parts.size() >= 5 && juce::isPositiveAndBelow (tick, maxTicks))
-                    addNote (layer, tick, parts[1].getIntValue(), parts[2].getIntValue(), parts[4].getFloatValue(), parts[3].getIntValue() != 0);
+                if (parts.size() < 5 || ! juce::isPositiveAndBelow (tick, maxTicks))
+                    continue;
+                auto& n = addNote (layer, tick, parts[1].getIntValue(), parts[2].getIntValue(), parts[4].getFloatValue(), parts[3].getIntValue() != 0);
+                if (parts.size() > 5)
+                    n.setChord ({ parts[5].getIntValue(), parts[6].getIntValue(), parts[7].getIntValue() }); // (saknade fält blir 0)
             }
         }
         else if (child.hasType ("Bass") && layer < numLayers)

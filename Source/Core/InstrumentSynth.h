@@ -131,6 +131,7 @@ public:
     Output next();
     float nextSample() { const auto o = next(); return 0.5f * (o.left + o.right) * o.amplitude; }
     bool isActive() const { return stage != Stage::idle; }
+    bool isReleasing() const { return stage == Stage::release; }
 
     // Modulationskällorna: 0 = ENV 2, 1 = ENV 3, 2 = senaste tonens velocity, 3 = ett slumptal per ton (alla 0..1).
     float getModulationValue (int source) const

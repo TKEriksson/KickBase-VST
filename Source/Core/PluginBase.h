@@ -80,6 +80,8 @@ public:
 
     // Som patternChanged, för annat som sparas utan att vara en parameter (t.ex. effektordningen).
     void markStateChanged();
+    int clearLfo (int index);                  // tar bort kopplingarna, återställer parametrar och kurva, sist biten i masken
+    void applyLoadedLfos (std::uint32_t mask); // efter laddning: LFO:er med kopplingar räknas som aktiva, övriga återställs
 
     // Presets per del (se Presets.h). Bara i plugin:ets egen meny, inte som VST3-"programs":
     // en värd kan sätta program-parametern när ett projekt laddas och skulle då skriva över
@@ -243,8 +245,20 @@ public:
             points.push_back ({ (float) i / 8.0f, 0.5f - 0.5f * std::sin (juce::MathConstants<float>::twoPi * (float) i / 8.0f), 0.0f });
         return points;
     }
-    std::array<NodeEnvelope, Modulation::numLfos> lfoCurves { NodeEnvelope (1.0f, 1.0f, sineCurve()), NodeEnvelope (1.0f, 1.0f, sineCurve()),
-                                                              NodeEnvelope (1.0f, 1.0f, sineCurve()) };
+    std::array<NodeEnvelope, Modulation::maxLfos> lfoCurves { NodeEnvelope (1.0f, 1.0f, sineCurve()), NodeEnvelope (1.0f, 1.0f, sineCurve()),
+                                                              NodeEnvelope (1.0f, 1.0f, sineCurve()), NodeEnvelope (1.0f, 1.0f, sineCurve()),
+                                                              NodeEnvelope (1.0f, 1.0f, sineCurve()), NodeEnvelope (1.0f, 1.0f, sineCurve()),
+                                                              NodeEnvelope (1.0f, 1.0f, sineCurve()), NodeEnvelope (1.0f, 1.0f, sineCurve()),
+                                                              NodeEnvelope (1.0f, 1.0f, sineCurve()), NodeEnvelope (1.0f, 1.0f, sineCurve()) };
+    static_assert (Modulation::maxLfos == 10, "lfoCurves ovan har en sinus per LFO");
+
+    // Aktiva LFO:er (fas M). Instrumentet har 10, FX 3 (saknar parametrarna för LFO 4-10). LFO 1-3 är aktiva som standard.
+    int availableLfos() const;
+    bool isLfoActive (int index) const;
+    int lfoRouteCount (int index) const;
+    // Lägger till eller tar bort en LFO (UI- och MCP-tråden). Borttagen: kopplingarna försvinner och parametrar och kurva återställs.
+    // Ger antalet borttagna kopplingar.
+    int setLfoActive (int index, bool active);
 
     // Kickens inställningar som de är just nu, utan LFO (för gränssnittets bilder).
     KickParams kickForDisplay (int keyPitchClass) const;
@@ -279,7 +293,7 @@ public:
     // (där de kopierade slutar, och efter en inklistring där den slutar).
     struct NoteClipboard
     {
-        struct Note { int dt = 0, length = 24, pitch = 0; float velocity = 0.8f; bool slide = false; };
+        struct Note { int dt = 0, length = 24, pitch = 0; float velocity = 0.8f; bool slide = false; Pattern::Chord chord {}; };
         std::vector<Note> notes;
         int span = 0;          // hela de kopierade tonernas längd i ticks
         int nextStart = -1;    // var nästa inklistring börjar, -1 = vid vyns början
@@ -315,6 +329,7 @@ public:
     std::atomic<int> auditionRequest { -1 };
 
     std::atomic<bool> followPlayhead { true }; // pianorullen och stegvyn bläddrar med uppspelningen
+    std::atomic<int> lfoActiveVersion { 0 }; // ökas när en LFO läggs till eller tas bort (fas M), så att gränssnittet ritar om
     std::atomic<int> patternVersion { 0 }; // ökas när mönstret ändras, så att gränssnittet ritar om
     int selectedTab = 0;                   // gränssnittets valda flikar (nedre och övre panelen), så att de
     int selectedSynthTab = 0;              // finns kvar när fönstret öppnas igen
@@ -324,6 +339,9 @@ public:
     int selectedPatternLayer = 0;          // PATTERN-flikens valda lager: 0-9 instrument, 10 kick
     int selectedInstrument = 0;            // INSTRUMENT-flikens valda instrument (0-9)
     bool modEnvelopesOpen = false;         // INSTRUMENT-sidans dragspel MODULATION (ENV 2, ENV 3 ...) är öppet
+    int lfoFolded = -1;                    // LFO-flikens fällda kort (en bit per LFO); -1 = inte bestämt ännu (se LfoPage)
+    int selectedLfo = 0;                   // LFO-flikens valda kort (SHOW ONLY SELECTED)
+    int lfoRemoveAsk = -1;                 // LFO-kortet som frågar om borttagning (-1 = inget)
     int sequencerRowHeight = 0;            // radhöjden i mönstret (zoom): 0 = automatisk
     // Fönstrets skala (1 = fullstor). Gäller alla fönster och sparas i inställningarna (Settings), inte i projektet. Editorn sätter
     // `applyEditorScale` så att inställningssidan kan ändra storleken på det öppna fönstret.

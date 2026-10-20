@@ -18,7 +18,7 @@ void LfoDisplay::timerCallback()
 
 juce::Rectangle<float> LfoDisplay::plotArea() const
 {
-    return getLocalBounds().toFloat().reduced (8.0f, 10.0f);
+    return getLocalBounds().toFloat().reduced (isMini() ? 4.0f : 8.0f, isMini() ? 3.0f : 10.0f);
 }
 
 // y = 0 är överst (värdet +1), y = 1 underst (-1).
@@ -170,6 +170,8 @@ void LfoDisplay::paint (juce::Graphics& g)
     g.setColour (juce::Colours::white);
     g.fillEllipse (juce::Rectangle<float> (7.0f, 7.0f).withCentre (dot));
 
+    if (isMini()) // det fällda kortets minikurva: ingen text och inga punkter
+        return;
     g.setFont (Theme::font (9.5f));
     g.setColour (Theme::textDim);
     if (! custom)
@@ -276,13 +278,20 @@ void LfoDisplay::mouseUp (const juce::MouseEvent&)
     draggedPoint = draggedTension = -1;
 }
 
+void LfoDisplay::editPoints()
+{
+    if (isCustom())
+        return;
+    // En vanlig form blir en egen kurva att redigera (samma form som den hade).
+    const auto shape = (int) processor.apvts.getRawParameterValue (Modulation::paramID (index, "Shape"))->load();
+    makeCustom (shape == 5 ? 6 : shape);
+}
+
 void LfoDisplay::mouseDoubleClick (const juce::MouseEvent& event)
 {
     if (! isCustom())
     {
-        // En vanlig form blir en egen kurva att redigera (samma form som den hade).
-        const auto shape = (int) processor.apvts.getRawParameterValue (Modulation::paramID (index, "Shape"))->load();
-        makeCustom (shape == 5 ? 6 : shape);
+        editPoints();
         return;
     }
     if (pointAt (event.position) >= 0)
@@ -362,7 +371,7 @@ juce::String LfoTargets::describe() const
     for (const auto& route : processor.modRoutes.routes)
     {
         const auto target = route.target.load();
-        if (route.source.load() != index || ! juce::isPositiveAndBelow (target, parameters.size()))
+        if (route.source.load() != Modulation::lfoSource (index) || ! juce::isPositiveAndBelow (target, parameters.size()))
             continue;
         const auto amount = route.amount.load();
         parts.add (parameters[target]->getName (40) + " " + (amount > 0.0f ? "+" : "")
@@ -378,7 +387,7 @@ void LfoTargets::timerCallback()
     {
         text = newText;
         setTooltip (text.isEmpty() ? juce::String()
-                                   : Modulation::sourceName (index) + " MOVES - " + text + ". Right-click to remove one.");
+                                   : Modulation::sourceName (Modulation::lfoSource (index)) + " MOVES - " + text + ". Right-click to remove one.");
         repaint();
     }
 }
@@ -399,7 +408,7 @@ void LfoTargets::mouseDown (const juce::MouseEvent&)
     {
         const auto& route = processor.modRoutes.routes[(size_t) r];
         const auto target = route.target.load();
-        if (route.source.load() != index || ! juce::isPositiveAndBelow (target, parameters.size()))
+        if (route.source.load() != Modulation::lfoSource (index) || ! juce::isPositiveAndBelow (target, parameters.size()))
             continue;
         menu.addItem ("Remove " + parameters[target]->getName (40), [this, r]
         {
@@ -415,15 +424,16 @@ void LfoTargets::mouseDown (const juce::MouseEvent&)
 LfoPanel::LfoPanel (PluginBase& p, int lfoIndex)
     : processor (p),
       index (lfoIndex),
+      name (Modulation::sourceName (Modulation::lfoSource (lfoIndex))),
       shape (p.apvts, Modulation::paramID (lfoIndex, "Shape").toRawUTF8(), "SHAPE"),
       mode (p.apvts, Modulation::paramID (lfoIndex, "Mode").toRawUTF8(), "RATE MODE"),
       rate (p.apvts, Modulation::paramID (lfoIndex, "Rate").toRawUTF8(), "RATE"),
       display (p, lfoIndex),
-      handle (lfoIndex),
+      handle (Modulation::lfoSource (lfoIndex)),
       targets (p, lfoIndex)
 {
     power.setColour (juce::ToggleButton::tickColourId, Theme::lfoColour (lfoIndex));
-    power.setTooltip (Modulation::sourceName (lfoIndex) + " - turns the LFO on or off (its connections stay)");
+    power.setTooltip (name + " - turns the LFO on or off (its connections stay)");
     addAndMakeVisible (power);
     powerAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
         p.apvts, Modulation::paramID (lfoIndex, "On"), power);
@@ -461,23 +471,132 @@ LfoPanel::LfoPanel (PluginBase& p, int lfoIndex)
     snapInfo.setJustificationType (juce::Justification::centredRight);
     for (auto* c : std::initializer_list<juce::Component*> { &shape, &mode, &rate, &hzLabel, &hzSlider, &snapButton, &snapRangeSlider, &snapInfo, &display, &handle, &targets })
         addAndMakeVisible (c);
+
+    confirmText.setFont (Theme::font (12.0f, true));
+    confirmText.setColour (juce::Label::textColourId, Theme::text);
+    confirmRemove.setColour (juce::TextButton::buttonColourId, juce::Colour (0xffb83a3a));
+    confirmRemove.onClick = [this] { remove(); };
+    confirmCancel.onClick = [this]
+    {
+        processor.lfoRemoveAsk = -1;
+        updateVisibility();
+    };
+    for (auto* c : std::initializer_list<juce::Component*> { &confirmText, &confirmRemove, &confirmCancel })
+        addChildComponent (c);
+    editButton.setTooltip ("EDIT POINTS - Turns the shape into a custom curve, starting from the current shape, so you can drag, add and remove points.");
+    editButton.onClick = [this] { display.editPoints(); };
+    addChildComponent (editButton);
     startTimerHz (6);
     timerCallback();
+}
+
+void LfoPanel::updateVisibility()
+{
+    const auto folded = isFolded();
+    const auto asking = processor.lfoRemoveAsk == index;
+    const auto hz = lastMode == 1;
+    shape.setVisible (! folded);
+    mode.setVisible (! folded);
+    rate.setVisible (! folded && ! hz);
+    for (auto* c : std::initializer_list<juce::Component*> { &hzLabel, &hzSlider, &snapButton, &snapRangeSlider, &snapInfo })
+        c->setVisible (! folded && hz);
+    targets.setVisible (! folded);
+    handle.setVisible (! asking);
+    display.setVisible (! (folded && asking));
+    display.setInterceptsMouseClicks (! folded, false); // fällt: bara en minikurva
+    if (asking)
+    {
+        const auto count = processor.lfoRouteCount (index);
+        confirmText.setText (name + " moves " + juce::String (count) + (count == 1 ? " knob" : " knobs") + ". Remove it?", juce::dontSendNotification);
+    }
+    for (auto* c : std::initializer_list<juce::Component*> { &confirmText, &confirmRemove, &confirmCancel })
+        c->setVisible (asking);
+    editButton.setVisible (! folded && ! asking && ! lastCustom);
+    lastRateText = rateText();
+    resized();
+    repaint();
+}
+
+void LfoPanel::toggleFold()
+{
+    processor.lfoFolded ^= 1 << index;
+    updateVisibility();
+    if (onLayoutChange)
+        onLayoutChange();
+}
+
+void LfoPanel::askToRemove()
+{
+    if (processor.lfoRouteCount (index) == 0)
+    {
+        remove();
+        return;
+    }
+    processor.lfoRemoveAsk = index;
+    updateVisibility();
+}
+
+void LfoPanel::remove()
+{
+    processor.lfoRemoveAsk = -1;
+    processor.setLfoActive (index, false);
+    updateVisibility();
+    if (onLayoutChange)
+        onLayoutChange();
+}
+
+juce::String LfoPanel::rateText() const
+{
+    if (lastMode == 1)
+        return juce::String (processor.apvts.getRawParameterValue (Modulation::paramID (index, "Hz"))->load(), 2) + " Hz";
+    return Modulation::rateNames()[(int) processor.apvts.getRawParameterValue (Modulation::paramID (index, "Rate"))->load()];
+}
+
+void LfoPanel::mouseDown (const juce::MouseEvent& e)
+{
+    if (onSelect)
+        onSelect();
+    if (e.mods.isPopupMenu())
+    {
+        juce::PopupMenu menu;
+        menu.addItem ("Remove " + name, [safe = juce::Component::SafePointer<LfoPanel> (this)] { if (safe != nullptr) safe->askToRemove(); });
+        menu.addItem (isFolded() ? "Expand" : "Fold", [safe = juce::Component::SafePointer<LfoPanel> (this)] { if (safe != nullptr) safe->toggleFold(); });
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this));
+    }
+    else if (foldArea.contains (e.getPosition()))
+        toggleFold();
+    else if (removeArea.contains (e.getPosition()))
+        askToRemove();
+}
+
+void LfoPanel::mouseDoubleClick (const juce::MouseEvent& e)
+{
+    // Dubbelklick på det fällda kortets minikurva: fäll ut och redigera punkterna.
+    if (isFolded() && display.getBounds().contains (e.getPosition()))
+    {
+        toggleFold();
+        display.editPoints();
+    }
 }
 
 void LfoPanel::timerCallback()
 {
     const auto current = (int) processor.apvts.getRawParameterValue (Modulation::paramID (index, "Mode"))->load();
-    if (current != lastMode)
+    const auto custom = display.isCustom();
+    if (current != lastMode || custom != lastCustom)
     {
         lastMode = current;
-        rate.setVisible (current == 0);
-        hzLabel.setVisible (current == 1);
-        hzSlider.setVisible (current == 1);
-        snapButton.setVisible (current == 1);
-        snapRangeSlider.setVisible (current == 1);
-        snapInfo.setVisible (current == 1);
-        resized(); // SNAP-raden tar plats under diagrammet bara i Hz-läget
+        lastCustom = custom;
+        updateVisibility(); // SNAP-raden tar plats under diagrammet bara i Hz-läget, EDIT POINTS syns bara för en vanlig form
+    }
+    if (isFolded())
+    {
+        if (const auto newRate = rateText(); newRate != lastRateText)
+        {
+            lastRateText = newRate;
+            repaint();
+        }
+        return;
     }
     if (current != 1)
         return;
@@ -496,19 +615,67 @@ void LfoPanel::timerCallback()
 
 void LfoPanel::paint (juce::Graphics& g)
 {
-    g.setColour (Theme::knobBodyDark.withAlpha (0.35f));
-    g.fillRoundedRectangle (getLocalBounds().toFloat(), 6.0f);
-    g.setColour (Theme::lfoColour (index));
+    const auto bounds = getLocalBounds().toFloat();
+    const auto colour = Theme::lfoColour (index);
+    g.setColour (processor.lfoRemoveAsk == index ? juce::Colour (0x40b83a3a) : Theme::knobBodyDark.withAlpha (0.35f));
+    g.fillRoundedRectangle (bounds, 6.0f);
+    if (processor.selectedLfo == index)
+    {
+        g.setColour (colour.withAlpha (0.6f));
+        g.drawRoundedRectangle (bounds.reduced (0.5f), 6.0f, 1.0f);
+    }
+    g.setColour (colour);
     g.setFont (Theme::font (13.0f, true));
-    g.drawText (Modulation::sourceName (index), getLocalBounds().withHeight (26).withTrimmedLeft (32), juce::Justification::centredLeft);
+    g.drawText (name, getLocalBounds().withHeight (32).withTrimmedLeft (32), juce::Justification::centredLeft);
+    if (isFolded() && processor.lfoRemoveAsk != index)
+    {
+        g.setColour (Theme::text);
+        g.setFont (Theme::font (11.5f, true));
+        g.drawText (lastRateText, rateArea, juce::Justification::centredLeft);
+    }
+
+    // × och pilen (fäll / fäll ut).
+    g.setColour (Theme::textDim);
+    const auto cross = removeArea.toFloat().reduced (6.0f);
+    g.drawLine (cross.getX(), cross.getY(), cross.getRight(), cross.getBottom(), 1.5f);
+    g.drawLine (cross.getRight(), cross.getY(), cross.getX(), cross.getBottom(), 1.5f);
+    const auto a = foldArea.toFloat().reduced (5.5f);
+    juce::Path arrow;
+    if (isFolded())
+        arrow.addTriangle (a.getX() + 1.5f, a.getY(), a.getRight() - 1.5f, a.getCentreY(), a.getX() + 1.5f, a.getBottom());
+    else
+        arrow.addTriangle (a.getX(), a.getY() + 1.5f, a.getRight(), a.getY() + 1.5f, a.getCentreX(), a.getBottom() - 1.5f);
+    g.fillPath (arrow);
 }
 
 void LfoPanel::resized()
 {
+    const auto folded = isFolded();
     auto area = getLocalBounds().reduced (6);
     auto header = area.removeFromTop (20);
     power.setBounds (header.removeFromLeft (24));
+    foldArea = header.removeFromRight (20);
+    removeArea = header.removeFromRight (20);
+    header.removeFromRight (6);
+    header.removeFromLeft (52); // namnet (ritas i paint)
+    if (processor.lfoRemoveAsk == index)
+    {
+        confirmCancel.setBounds (header.removeFromRight (64));
+        header.removeFromRight (4);
+        confirmRemove.setBounds (header.removeFromRight (70));
+        header.removeFromRight (6);
+        confirmText.setBounds (header);
+    }
     handle.setBounds (header.removeFromRight (124));
+    if (folded)
+    {
+        display.setBounds (header.removeFromLeft (juce::jmin (140, header.getWidth())));
+        header.removeFromLeft (10);
+        rateArea = header.removeFromLeft (70);
+        return;
+    }
+    header.removeFromRight (6);
+    editButton.setBounds (header.removeFromRight (90));
     area.removeFromTop (4);
 
     targets.setBounds (area.removeFromBottom (28));
@@ -538,27 +705,106 @@ void LfoPanel::resized()
 }
 
 //==============================================================================
-LfoPage::LfoPage (PluginBase& p) : presets (p, Presets::Section::lfo, Theme::lfo)
+LfoPage::LfoPage (PluginBase& p) : processor (p), presets (p, Presets::Section::lfo, Theme::lfo)
 {
     addAndMakeVisible (presets);
-    for (int i = 0; i < Modulation::numLfos; ++i)
+    onlySelected.setClickingTogglesState (true);
+    onlySelected.setColour (juce::TextButton::buttonOnColourId, Theme::lfo.withAlpha (0.6f));
+    onlySelected.setTooltip ("SHOW ONLY SELECTED - Shows just the selected LFO (click a card to select it). Click again to show them all.");
+    onlySelected.onClick = [this] { layoutCards(); };
+    addAndMakeVisible (onlySelected);
+    viewport.setViewedComponent (&list, false);
+    viewport.setScrollBarsShown (true, false);
+    addAndMakeVisible (viewport);
+
+    if (processor.lfoFolded < 0) // första gången: alla utfällda, eller bara den första om fler än 3 är aktiva
     {
-        panels.push_back (std::make_unique<LfoPanel> (p, i));
-        addAndMakeVisible (*panels.back());
+        auto active = 0, first = -1;
+        for (int i = 0; i < p.availableLfos(); ++i)
+            if (p.isLfoActive (i))
+            {
+                first = first < 0 ? i : first;
+                ++active;
+            }
+        processor.lfoFolded = active > Modulation::numLfos ? 0x3FF & ~(1 << first) : 0;
     }
+    for (int i = 0; i < p.availableLfos(); ++i)
+    {
+        auto panel = std::make_unique<LfoPanel> (p, i);
+        panel->onLayoutChange = [this] { layoutCards(); };
+        panel->onSelect = [this, i] { select (i); };
+        list.addChildComponent (*panel);
+        panels.push_back (std::move (panel));
+    }
+    addButton.setTooltip ("+ ADD LFO - Adds the next free LFO (up to " + juce::String (p.availableLfos()) + "). Drag its DRAG handle to a knob to connect it.");
+    addButton.onClick = [this] { addLfo(); };
+    list.addAndMakeVisible (addButton);
+    startTimerHz (5);
 }
 
 void LfoPage::resized()
 {
     auto area = getLocalBounds();
-    presets.setBounds (area.removeFromTop (22).removeFromRight (160));
+    auto top = area.removeFromTop (22);
+    presets.setBounds (top.removeFromRight (160));
+    onlySelected.setBounds (top.removeFromLeft (150));
     area.removeFromTop (4);
+    viewport.setBounds (area);
+    layoutCards();
+}
 
-    const auto gap = 8;
-    const auto width = (area.getWidth() - gap * (Modulation::numLfos - 1)) / Modulation::numLfos;
+void LfoPage::timerCallback()
+{
+    if (processor.lfoActiveVersion.load() != lastVersion)
+        layoutCards();
+}
+
+void LfoPage::layoutCards()
+{
+    lastVersion = processor.lfoActiveVersion.load();
+    if (! processor.isLfoActive (processor.selectedLfo)) // den valda togs bort: välj den första aktiva
+        for (int i = 0; i < processor.availableLfos(); ++i)
+            if (processor.isLfoActive (i))
+            {
+                processor.selectedLfo = i;
+                break;
+            }
+
+    const auto width = viewport.getWidth() - viewport.getScrollBarThickness() - 2;
+    auto y = 0, active = 0;
     for (auto& panel : panels)
     {
-        panel->setBounds (area.removeFromLeft (width));
-        area.removeFromLeft (gap);
+        const auto i = panel->getIndex();
+        active += processor.isLfoActive (i) ? 1 : 0;
+        const auto show = processor.isLfoActive (i) && (! onlySelected.getToggleState() || i == processor.selectedLfo);
+        panel->setVisible (show);
+        if (! show)
+            continue;
+        const auto height = panel->isFolded() ? LfoPanel::foldedHeight : LfoPanel::expandedHeight;
+        panel->setBounds (0, y, width, height);
+        panel->repaint(); // markeringen av den valda
+        y += height + 6;
     }
+    addButton.setEnabled (active < processor.availableLfos());
+    addButton.setBounds (0, y, 140, 26);
+    list.setSize (width, y + 26);
+}
+
+void LfoPage::addLfo()
+{
+    for (int i = 0; i < processor.availableLfos(); ++i)
+        if (! processor.isLfoActive (i))
+        {
+            processor.lfoFolded &= ~(1 << i); // ett nytt kort är utfällt
+            processor.setLfoActive (i, true);
+            select (i);
+            viewport.setViewPosition (0, panels[(size_t) i]->getY());
+            return;
+        }
+}
+
+void LfoPage::select (int index)
+{
+    processor.selectedLfo = index;
+    layoutCards();
 }

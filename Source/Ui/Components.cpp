@@ -179,6 +179,13 @@ void KnobComponent::timerCallback()
             repaint();
         }
     }
+    if (warning)
+        if (auto text = warning(); text != lastWarning)
+        {
+            lastWarning = text;
+            label.setColour (juce::Label::textColourId, text.isEmpty() ? normalLabel : juce::Colours::orange);
+            updateTooltip (-1);
+        }
     if (version != lastRoutesVersion || offset != lastOffset)
     {
         if (version != lastRoutesVersion)
@@ -269,6 +276,8 @@ void KnobComponent::updateTooltip (int hoveredRing)
         }
         else if (modulatable)
             text << "  " << Help::modulationHint();
+        if (lastWarning.isNotEmpty())
+            text << "  WARNING: " << lastWarning;
     }
 
     if (slider.getTooltip() != text)
