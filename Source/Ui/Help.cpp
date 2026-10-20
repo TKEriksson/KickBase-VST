@@ -50,6 +50,16 @@ namespace Help
                 return "The effect in this slot of the channel (Off = empty). The slots run in order 1 to 5.";
             return "A knob of the effect in this slot: what it does depends on the effect type (see the knob's name on the EFFECTS tab). An AI sets it with set_effect.";
         }
+        if (rawID.startsWith ("lfo")) // lfo4-lfo10 (lfo1-3 har egna rader längre ner)
+        {
+            const auto n = rawID.substring (3).getIntValue();
+            if (n >= 4 && n <= 10)
+            {
+                if (rawID.endsWith ("On")) return "Turns LFO " + juce::String (n) + " on or off.";
+                if (rawID.endsWith ("Shape")) return "The LFO's waveform.";
+                if (rawID == "lfo" + juce::String (n) + "Rate") return "How fast the LFO moves, synced to the song tempo.";
+            }
+        }
         if (rawID.startsWith ("lfo") && rawID.endsWith ("Mode"))
             return "RATE MODE - Sync: the LFO follows the song tempo (RATE). Hz: it runs at its own speed (FREE RATE), independent of the tempo.";
         if (rawID.startsWith ("lfo") && rawID.endsWith ("Hz"))
