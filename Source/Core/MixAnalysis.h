@@ -148,6 +148,13 @@ namespace MixAnalysis
         float peakSpreadDb = 0.0f;           // störst minus minst topp bland slagen
         int clickHits = 0;                   // slag som slutar över -60 dB (klick när nästa börjar)
         std::vector<std::array<float, stereoBands>> stereoCorrelation, midSideDb; // per takt: L/R-korrelation och M/S (dB) i fyra band
+
+        // Underlag till KICK+BASS-vyn: det första slag som hörs, kick och bas som mono (nedsamplade med scopeStep), och deras spektrum 20-300 Hz (dB).
+        int scopeStep = 8;
+        double scopeRate = 6000.0;
+        std::vector<float> scopeKick, scopeBass;
+        float spectrumHz0 = 0.0f, spectrumStepHz = 0.0f;
+        std::vector<float> spectrumKick, spectrumBass, spectrumSum;
     };
 
     // Insignalen till measurePhase. Alla vektorer har samma längd; sample `start` är loopens början.

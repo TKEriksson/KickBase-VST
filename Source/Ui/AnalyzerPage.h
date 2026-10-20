@@ -1,13 +1,14 @@
 #pragma once
 
+#include "KickBassView.h"
 #include "SpectrumPage.h"
 
 // Toppfliken ANALYZER: underflikar [KICK+BASS] [COLLISIONS] [SPECTRUM] [REPORT]. SPECTRUM och REPORT är SpectrumPage:ns två vyer
-// (oförändrade), COLLISIONS är samma spektrum med krockmarkeringen på. KICK+BASS fylls i steg 3 (docs/work/an-spec.md).
+// (oförändrade), COLLISIONS är samma spektrum med krockmarkeringen på. KICK+BASS är KickBassView (vågform, fas, korrelation, 20-300 Hz).
 class AnalyzerPage : public juce::Component
 {
 public:
-    explicit AnalyzerPage (PluginBase& processor) : spectrum (processor)
+    explicit AnalyzerPage (PluginBase& processor) : kickBass (processor), spectrum (processor)
     {
         const char* names[] = { "KICK+BASS", "COLLISIONS", "SPECTRUM", "REPORT" };
         const char* tips[] = { "KICK+BASS - How the kick and the bass add up: waveform, phase and correlation per 16th.",
@@ -24,10 +25,7 @@ public:
             b.onClick = [this, i] { setCurrentView (i); };
             addAndMakeVisible (b);
         }
-        placeholder.setText ("KICK+BASS view: coming in AN step 3.", juce::dontSendNotification);
-        placeholder.setJustificationType (juce::Justification::centred);
-        placeholder.setColour (juce::Label::textColourId, Theme::textDim);
-        addChildComponent (placeholder);
+        addChildComponent (kickBass);
         spectrum.setEmbedded();
         addChildComponent (spectrum);
         setCurrentView (2);
@@ -38,7 +36,7 @@ public:
         view = juce::jlimit (0, numViews - 1, index);
         for (int i = 0; i < numViews; ++i)
             buttons[(size_t) i].setToggleState (i == view, juce::dontSendNotification);
-        placeholder.setVisible (view == 0);
+        kickBass.setVisible (view == 0);
         spectrum.setVisible (view != 0);
         if (view != 0)
         {
@@ -58,14 +56,14 @@ public:
             strip.removeFromLeft (4);
         }
         area.removeFromTop (2);
-        placeholder.setBounds (area);
+        kickBass.setBounds (area);
         spectrum.setBounds (area);
     }
 
 private:
     static constexpr int numViews = 4;
     std::array<juce::TextButton, numViews> buttons;
-    juce::Label placeholder;
+    KickBassView kickBass;
     SpectrumPage spectrum;
     int view = 2;
 };

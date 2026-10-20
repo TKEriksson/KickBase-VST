@@ -2028,6 +2028,57 @@ namespace MixAnalysis
             m.peakSpreadDb = highest >= lowest ? highest - lowest : 0.0f;
         }
 
+        // Vyns underlag: första slaget som hörs (högst en takts kvart, 0,5 s), vågform och spektrum.
+        for (size_t i = 0; i < m.hits.size() && i < in.onsets.size(); ++i)
+        {
+            if (m.hits[i].peakDb <= -60.0f)
+                continue;
+            const auto from = in.onsets[i];
+            auto to = std::min (n, from + std::min ((int) (in.samplesPerBar / 4.0), (int) (0.5 * in.rate)));
+            if (i + 1 < in.onsets.size())
+                to = std::min (to, in.onsets[i + 1]);
+            const auto len = to - from;
+            if (len < 256)
+                break;
+            m.scopeStep = 8;
+            m.scopeRate = in.rate / m.scopeStep;
+            for (int s = from; s + m.scopeStep <= to; s += m.scopeStep)
+            {
+                float k = 0.0f, b = 0.0f;
+                for (int j = 0; j < m.scopeStep; ++j)
+                {
+                    k += kick[(size_t) (s + j)];
+                    b += bass[(size_t) (s + j)];
+                }
+                m.scopeKick.push_back (k / (float) m.scopeStep);
+                m.scopeBass.push_back (b / (float) m.scopeStep);
+            }
+
+            constexpr int order = 14, fftSize = 1 << order;
+            juce::dsp::FFT fft (order);
+            juce::dsp::WindowingFunction<float> window ((size_t) std::min (len, fftSize), juce::dsp::WindowingFunction<float>::hann);
+            const auto used = std::min (len, fftSize);
+            const auto binHz = (float) (in.rate / fftSize);
+            const auto firstBin = (int) std::ceil (20.0f / binHz), lastBin = (int) std::floor (300.0f / binHz);
+            m.spectrumHz0 = (float) firstBin * binHz;
+            m.spectrumStepHz = binHz;
+            std::vector<float> data ((size_t) fftSize * 2);
+            auto spectrum = [&] (auto sample, std::vector<float>& out)
+            {
+                std::fill (data.begin(), data.end(), 0.0f);
+                for (int s = 0; s < used; ++s)
+                    data[(size_t) s] = sample (from + s);
+                window.multiplyWithWindowingTable (data.data(), (size_t) used);
+                fft.performFrequencyOnlyForwardTransform (data.data(), true);
+                for (int bin = firstBin; bin <= lastBin; ++bin)
+                    out.push_back (toDb ((double) data[(size_t) bin] * 4.0 / used));
+            };
+            spectrum ([&] (int s) { return kick[(size_t) s]; }, m.spectrumKick);
+            spectrum ([&] (int s) { return bass[(size_t) s]; }, m.spectrumBass);
+            spectrum ([&] (int s) { return kick[(size_t) s] + bass[(size_t) s]; }, m.spectrumSum);
+            break;
+        }
+
         // Stereo per takt i fyra band: L/R-korrelation och M/S.
         {
             const double edges[PhaseMetrics::stereoBands + 1] = { 0.0, 120.0, 500.0, 4000.0, 0.0 };
