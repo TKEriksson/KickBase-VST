@@ -193,6 +193,45 @@ int persistTest()
                "spara och ladda: ENV 3 Sync och 1/4 följer med, ENV 2 är kvar i ms");
     }
 
+    // 4e. Live Code (steg D): koden och låsen följer med projektet och Full-presets; saknas elementet rörs inget; <LiveCode> sparas sist och bara när det behövs.
+    {
+        auto processor = std::make_unique<InstrumentProcessor>();
+        juce::MemoryBlock plain;
+        processor->getStateInformation (plain);
+        auto plainXml = juce::AudioProcessor::getXmlFromBinary (plain.getData(), (int) plain.getSize());
+        check (plainXml != nullptr && plainXml->getChildByName ("LiveCode") == nullptr, "standardtillstånd: inget <LiveCode> sparas");
+
+        processor->setLiveCodeText ("$: s(\"bd*4\")\n// åäö");
+        processor->liveCodeLocks = (1 << 2) | (1 << 10) | (1 << 12); // bit 12 ligger utanför de 11 giltiga
+        juce::MemoryBlock saved;
+        processor->getStateInformation (saved);
+        auto xml = juce::AudioProcessor::getXmlFromBinary (saved.getData(), (int) saved.getSize());
+        check (xml != nullptr && xml->getNumChildElements() > 0 && xml->getChildElement (xml->getNumChildElements() - 1)->hasTagName ("LiveCode"), "<LiveCode> sparas sist");
+
+        auto copy = copyOf (*processor);
+        check (copy->getLiveCodeText() == processor->getLiveCodeText(), "spara och ladda: koden följer med");
+        check (copy->liveCodeLocks.load() == ((1 << 2) | (1 << 10)), "spara och ladda: låsen följer med (bit utanför 11 bitar tas bort)");
+        check (copy->liveCodeOwned.load() == 0, "inget ägs efter laddning (LIVE startar aldrig av sig själv)");
+
+        // Ett gammalt tillstånd utan elementet lämnar användarens kod och lås orörda.
+        copy->setLiveCodeText ("$: s(\"hh*8\")");
+        copy->setStateInformation (plain.getData(), (int) plain.getSize());
+        check (copy->getLiveCodeText() == "$: s(\"hh*8\")" && copy->liveCodeLocks.load() == ((1 << 2) | (1 << 10)), "tillstånd utan <LiveCode> lämnar koden och låsen som de var");
+
+        // Full-preset har med koden; instrument-preset inte.
+        check (processor->saveUserPreset (Presets::Section::full, "__persist_lc__"), "Full-preset med Live Code sparas");
+        check (processor->saveUserPreset (Presets::Section::bass, "__persist_lc_i__", 0), "instrument-preset sparas");
+        auto other = std::make_unique<InstrumentProcessor>();
+        other->loadUserPreset (Presets::Section::bass, processor->findUserPreset (Presets::Section::bass, "__persist_lc_i__"), 0);
+        check (other->getLiveCodeText().isEmpty() && other->liveCodeLocks.load() == 0, "instrument-preset rör inte Live Code");
+        other->loadUserPreset (Presets::Section::full, processor->findUserPreset (Presets::Section::full, "__persist_lc__"));
+        check (other->getLiveCodeText() == processor->getLiveCodeText() && other->liveCodeLocks.load() == ((1 << 2) | (1 << 10)), "Full-preset ger koden och låsen");
+
+        // Init rör inte användarens kod och kraschar inte.
+        other->loadFactoryPreset (Presets::Section::full, 0);
+        check (other->getLiveCodeText() == processor->getLiveCodeText(), "Init lämnar Live Code-koden orörd");
+    }
+
     // 4d. Filtermodellerna (fas D2): modell och P1/P2 följer med projektet; standard är Kickbase med P1 0 och P2 1 (gamla projekt utan fälten).
     {
         auto processor = std::make_unique<InstrumentProcessor>();

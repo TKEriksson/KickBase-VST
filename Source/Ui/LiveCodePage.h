@@ -34,9 +34,10 @@ private:
     bool apply (const juce::var& items, bool overwrite); // skriver raderna; frågar först om handritade toner skulle skrivas över
     void warnOverwrite (const juce::var& conflicts, std::function<void (bool overwrite)> retry);
     void syncLocks();
+    void syncSavedCode();
     void setCodeOnly (bool on); // soloMask = raderna Live Code skrivit; användarens egen SOLO-knapp vinner
     void refreshCodeOnly();     // efter varje körning: följ med nya rader, eller släpp om användaren soloat själv
-    void visibilityChanged() override { syncLocks(); }
+    void visibilityChanged() override { syncSavedCode(); syncLocks(); }
 
     PluginBase& processor;
     ToolLayer tools;

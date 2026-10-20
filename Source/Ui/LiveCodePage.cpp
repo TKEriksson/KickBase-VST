@@ -17,6 +17,8 @@ LiveCodePage::LiveCodePage (PluginBase& processor) : processor (processor), tool
     editor.setColour (juce::CodeEditorComponent::lineNumberTextId, Theme::textDim);
     editor.setColour (juce::CodeEditorComponent::highlightColourId, Theme::mix.withAlpha (0.25f));
     document.replaceAllContent ("$: note(\"c2 [e2 g2]*2\").s(\"i1\")\n$: s(\"bd*4\")");
+    if (const auto saved = processor.getLiveCodeText(); saved.isNotEmpty()) // kod sparad i projektet (steg D)
+        document.replaceAllContent (saved);
     document.clearUndoHistory();
     document.setSavePoint();
     addAndMakeVisible (editor);
@@ -140,6 +142,7 @@ void LiveCodePage::codeDocumentTextDeleted (int, int) { codeChanged(); }
 
 void LiveCodePage::codeChanged()
 {
+    processor.setLiveCodeText (document.getAllContent()); // sparas med projektet; LIVE sparas aldrig
     if (playing)
         startTimer (debounceMs); // ny ändring startar om väntan
 }
@@ -174,6 +177,14 @@ void LiveCodePage::timerCallback()
 {
     stopTimer();
     runNow();
+}
+
+// Ett projekt eller preset kan ha laddats medan sidan fanns: ta in den sparade koden (aldrig under LIVE, och aldrig tom kod).
+void LiveCodePage::syncSavedCode()
+{
+    const auto saved = processor.getLiveCodeText();
+    if (! playing && saved.isNotEmpty() && saved != document.getAllContent())
+        document.replaceAllContent (saved);
 }
 
 void LiveCodePage::syncLocks()

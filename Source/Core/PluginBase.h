@@ -353,6 +353,12 @@ public:
     std::atomic<int> patternVersion { 0 }; // ökas när mönstret ändras, så att gränssnittet ritar om
     std::atomic<int> liveCodeLocks { 0 };  // Live Code: en bit per rad (0-9 = instrument, 10 = kicken) som koden inte får skriva över
     std::atomic<int> liveCodeOwned { 0 };  // rader som Live Code skrev senast; andra rader med toner räknas som handritade
+    // Live Code, steg D: kodtexten och låsen sparas i projektet och i Full-presets (element <LiveCode>, sist, bara när något är satt).
+    // LIVE, CODE ONLY och liveCodeOwned sparas aldrig: inget startar av sig självt vid laddning, och rader med toner är handritade tills koden körs.
+    juce::String getLiveCodeText() const { const juce::ScopedLock lock (liveCodeTextLock); return liveCodeText; }
+    void setLiveCodeText (const juce::String& text) { const juce::ScopedLock lock (liveCodeTextLock); liveCodeText = text; }
+    juce::ValueTree liveCodeToValueTree() const; // ogiltigt träd = inget att spara
+    void liveCodeFromValueTree (const juce::ValueTree& tree);
     int selectedTab = 0;                   // gränssnittets valda flikar (nedre och övre panelen), så att de
     int selectedSynthTab = 0;              // finns kvar när fönstret öppnas igen
     int selectedPatternMode = 0;           // PATTERN-flikens läge: 0 PATTERN (toner), 1 GATE
@@ -477,6 +483,8 @@ private:
     std::array<juce::String, Pattern::numNoteLayers> rowPresetNames; // mönster-presets: ett namn per rad (instrument 0-9, kicken sist)
     std::array<juce::String, ParamID::numInstrumentLayers> layerNames;
     std::array<juce::uint32, ParamID::numInstrumentLayers> layerColours {};
+    juce::String liveCodeText;
+    mutable juce::CriticalSection liveCodeTextLock;
 
     double currentSampleRate = 44100.0;
 

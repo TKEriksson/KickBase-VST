@@ -550,8 +550,30 @@ void PluginBase::getStateInformation (juce::MemoryBlock& destData)
     state.appendChild (kickPitchEnv.toValueTree (kickPitchType), nullptr);
     state.appendChild (kickAmpEnv.toValueTree (kickAmpType), nullptr);
 
+    if (const auto liveCode = liveCodeToValueTree(); liveCode.isValid())
+        state.appendChild (liveCode, nullptr);
+
     if (auto xml = state.createXml())
         copyXmlToBinary (*xml, destData);
+}
+
+juce::ValueTree PluginBase::liveCodeToValueTree() const
+{
+    const auto text = getLiveCodeText();
+    const auto locks = liveCodeLocks.load();
+    if (text.isEmpty() && locks == 0)
+        return {};
+    juce::ValueTree tree ("LiveCode");
+    tree.setProperty ("code", text, nullptr);
+    tree.setProperty ("locks", locks, nullptr);
+    return tree;
+}
+
+void PluginBase::liveCodeFromValueTree (const juce::ValueTree& tree)
+{
+    setLiveCodeText (tree.getProperty ("code").toString());
+    liveCodeLocks = (int) tree.getProperty ("locks", 0) & 0x7ff; // bit 0-9 instrument, 10 kicken
+    liveCodeOwned = 0;
 }
 
 void PluginBase::setStateInformation (const void* data, int sizeInBytes)
@@ -575,6 +597,11 @@ void PluginBase::setStateInformation (const void* data, int sizeInBytes)
     for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
         layerColours[(size_t) layer] = (juce::uint32) (juce::int64) state.getProperty ("layerColour" + juce::String (layer + 1), 0);
     ++layerNamesVersion;
+    if (auto liveCode = state.getChildWithName ("LiveCode"); liveCode.isValid()) // äldre projekt har inget: koden och låsen lämnas som de är
+    {
+        liveCodeFromValueTree (liveCode);
+        state.removeChild (liveCode, nullptr); // hör inte hemma i apvts-tillståndet
+    }
 
     auto legacyLengths = false; // projekt före mönsterversion 7: längderna låg i parametrarna (patternBars, rowBars)
     if (auto patternTree = state.getChildWithName (Pattern::treeType); patternTree.isValid())
@@ -906,6 +933,10 @@ std::unique_ptr<juce::XmlElement> PluginBase::buildPresetXml (Presets::Section s
             if (i < Modulation::numLfos || isLfoActive (i))
                 root.addChildElement (lfoCurves[(size_t) i].toValueTree ("LfoCurve" + juce::String (i + 1)).createXml().release());
     }
+
+    if (section == Presets::Section::full)
+        if (const auto liveCode = liveCodeToValueTree(); liveCode.isValid())
+            root.addChildElement (liveCode.createXml().release());
 
     return rootPtr;
 }
@@ -1254,6 +1285,10 @@ bool PluginBase::loadPresetXml (const juce::XmlElement& xmlElement, Presets::Sec
         rowPresetNames.fill ({});
         fxPresetNames.fill ({});
     }
+
+    if (section == Presets::Section::full) // filer utan <LiveCode> (äldre, Init) lämnar användarens kod och lås som de är
+        if (const auto* liveCodeXml = xml->getChildByName ("LiveCode"))
+            liveCodeFromValueTree (juce::ValueTree::fromXml (*liveCodeXml));
 
     presetNameSlot (section, layer) = presetName;
     ensureTablesInUse();
