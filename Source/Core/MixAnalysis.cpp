@@ -595,6 +595,77 @@ namespace MixAnalysis
             r.findings.push_back (std::move (f));
         }
 
+        // --- Fas och stereo (AN steg 2).
+        if (const auto& ph = c.phase; ph.valid)
+        {
+            auto activeCount = 0;
+            auto sum = 0.0;
+            std::vector<int> badBars;
+            for (size_t i = 0; i < ph.lowCorrelation.size(); ++i)
+                if (ph.lowActive[i] != 0)
+                {
+                    ++activeCount;
+                    sum += ph.lowCorrelation[i];
+                    if (ph.lowCorrelation[i] < -0.3f)
+                        badBars.push_back ((int) i / 16 + 1);
+                }
+            const auto mean = activeCount > 0 ? (float) (sum / activeCount) : 0.0f;
+            if (activeCount >= 4 && (mean < -0.3f || ph.sumVsMaxDb < -3.0f))
+            {
+                Finding f;
+                f.severity = mean < -0.6f || ph.sumVsMaxDb < -6.0f ? Severity::problem : Severity::warning;
+                f.category = "phase";
+                f.sources = { "Kick", "Instruments" };
+                f.lowHz = 30.0f;
+                f.highHz = 150.0f;
+                f.bars = badBars;
+                f.share = (float) activeCount / (float) std::max<size_t> (1, ph.lowCorrelation.size());
+                f.title = "Kick and bass partly cancel each other at 30-150 Hz (correlation " + juce::String (mean, 2) + ")";
+                f.detail = "The sum of kick and bass peaks " + juce::String (ph.sumVsMaxDb, 1) + " dB against the loudest one alone. Their waves run in opposite directions, so the low end gets thinner. "
+                           "Try another phase or RAND off on the bass, shift the bass note a little in time, or change the kick's start phase.";
+                r.findings.push_back (std::move (f));
+            }
+            if (ph.clickHits > 0)
+            {
+                Finding f;
+                f.severity = Severity::warning;
+                f.category = "phase";
+                f.sources = { "Kick" };
+                f.share = (float) ph.clickHits / (float) std::max<size_t> (1, ph.hits.size());
+                f.title = "The kick may click when it is cut off (" + juce::String (ph.clickHits) + " of " + juce::String ((int) ph.hits.size()) + " hits)";
+                f.detail = "The kick is not close to zero when the next hit or its end arrives (above -60 dB), which clicks. Shorten the decay or lengthen the release in AMP ENV.";
+                r.findings.push_back (std::move (f));
+            }
+            if (ph.peakSpreadDb > 1.0f && ph.hits.size() >= 2)
+            {
+                Finding f;
+                f.severity = Severity::info;
+                f.category = "phase";
+                f.sources = { "Kick" };
+                f.title = "The kick's peak level varies " + juce::String (ph.peakSpreadDb, 1) + " dB between hits";
+                f.detail = "Often a random phase or an LFO that hits the kick differently each time. Fixed phase gives equally hard hits.";
+                r.findings.push_back (std::move (f));
+            }
+            std::vector<int> wideBars;
+            for (size_t bar = 0; bar < ph.stereoCorrelation.size(); ++bar)
+                if (ph.stereoCorrelation[bar][0] < 0.3f)
+                    wideBars.push_back ((int) bar + 1);
+            if (! wideBars.empty())
+            {
+                Finding f;
+                f.severity = Severity::warning;
+                f.category = "stereo";
+                f.sources = { c.names[(size_t) masterSource] };
+                f.lowHz = 20.0f;
+                f.highHz = 120.0f;
+                f.bars = wideBars;
+                f.share = (float) wideBars.size() / (float) std::max (1, bars);
+                f.title = "The low end below 120 Hz is wide or out of phase between left and right";
+                f.detail = "Left/right correlation is below 0.3 in bars " + barsText (wideBars) + ". Wide bass disappears in mono (clubs, phones). Keep bass and kick centred, for example with a lower STEREO/UNISON width.";
+                r.findings.push_back (std::move (f));
+            }
+        }
+
         // --- Mot en referenslåt: balansen mellan band, med nivån anpassad över 120 Hz - 5 kHz.
         if (reference != nullptr && c.present[(size_t) masterSource])
         {
@@ -693,6 +764,55 @@ namespace MixAnalysis
     }
 
     //==========================================================================================
+    namespace
+    {
+        // lowband.* : kick/bas-korrelationen per 16-del, summan mot största toppen, slagens topp/klick och stereomåtten per takt.
+        juce::var phaseVar (const PhaseMetrics& p)
+        {
+            auto round2 = [] (float v) { return std::round (v * 100.0) / 100.0; };
+            auto* o = new juce::DynamicObject();
+            juce::Array<juce::var> correlation, sumDiff, hits, stereo;
+            for (size_t i = 0; i < p.lowCorrelation.size(); ++i)
+            {
+                correlation.add (p.lowActive[i] != 0 ? juce::var (round2 (p.lowCorrelation[i])) : juce::var()); // null = kick eller bas är tyst
+                sumDiff.add (p.lowActive[i] != 0 ? juce::var (round2 (p.lowSumDiffDb[i])) : juce::var());
+            }
+            o->setProperty ("correlation", correlation);
+            o->setProperty ("sum_diff_db", sumDiff);
+            o->setProperty ("sum_vs_max_db", round2 (p.sumVsMaxDb));
+            for (const auto& h : p.hits)
+            {
+                auto* e = new juce::DynamicObject();
+                e->setProperty ("peak_db", round2 (h.peakDb));
+                e->setProperty ("polarity", h.polarity);
+                e->setProperty ("end_db", round2 (h.endDb));
+                e->setProperty ("click", h.endDb > -60.0f);
+                hits.add (juce::var (e));
+            }
+            o->setProperty ("kick_hits", hits);
+            o->setProperty ("kick_peak_spread_db", round2 (p.peakSpreadDb));
+            o->setProperty ("click_hits", p.clickHits);
+            for (size_t bar = 0; bar < p.stereoCorrelation.size(); ++bar)
+            {
+                auto* e = new juce::DynamicObject();
+                juce::Array<juce::var> corr, ms;
+                for (int b = 0; b < PhaseMetrics::stereoBands; ++b)
+                {
+                    corr.add (round2 (p.stereoCorrelation[bar][(size_t) b]));
+                    ms.add (round2 (p.midSideDb[bar][(size_t) b]));
+                }
+                e->setProperty ("bar", (int) bar + 1);
+                e->setProperty ("lr_correlation", corr);
+                e->setProperty ("mid_side_db", ms);
+                stereo.add (juce::var (e));
+            }
+            o->setProperty ("stereo_bands_hz", juce::StringArray ({ "<120", "120-500", "500-4000", ">4000" }).joinIntoString (","));
+            o->setProperty ("stereo_per_bar", stereo);
+            o->setProperty ("band_hz", "30-150");
+            return juce::var (o);
+        }
+    }
+
     juce::var Report::toVar() const
     {
         auto* root = new juce::DynamicObject();
@@ -709,6 +829,8 @@ namespace MixAnalysis
         root->setProperty ("limiter_max_reduction_db", limiterMaxDb);
         if (referenceName.isNotEmpty())
             root->setProperty ("reference", referenceName);
+        if (capture != nullptr && capture->phase.valid)
+            root->setProperty ("lowband", phaseVar (capture->phase));
 
         juce::Array<juce::var> sourceList;
         for (const auto& source : sources)
@@ -1550,6 +1672,8 @@ namespace MixAnalysis
                 list.add (juce::var (hit));
             }
             root->setProperty ("kick_hits", list);
+            if (c.phase.valid)
+                root->setProperty ("lowband", phaseVar (c.phase));
         }
 
         // --- Presets, alla inställningar och mönstret i loopens tid
@@ -1796,6 +1920,152 @@ namespace MixAnalysis
     }
 
     //==========================================================================================
+    namespace
+    {
+        // Bandpass (högpass lowHz, lågpass highHz; 0 = av), två biquads per gräns.
+        std::vector<float> bandPass (const std::vector<float>& x, int n, double rate, double lowHz, double highHz)
+        {
+            using Filter = juce::dsp::IIR::Filter<float>;
+            using Coeffs = juce::dsp::IIR::Coefficients<float>;
+            std::vector<Filter> chain;
+            for (int i = 0; i < 2 && lowHz > 0.0; ++i)
+                chain.emplace_back (Coeffs::makeHighPass (rate, (float) lowHz));
+            for (int i = 0; i < 2 && highHz > 0.0; ++i)
+                chain.emplace_back (Coeffs::makeLowPass (rate, (float) highHz));
+            std::vector<float> y ((size_t) n);
+            for (int i = 0; i < n; ++i)
+            {
+                auto v = x[(size_t) i];
+                for (auto& f : chain)
+                    v = f.processSample (v);
+                y[(size_t) i] = v;
+            }
+            return y;
+        }
+
+        float toDb (double ratio, double floorValue = 1.0e-6) { return (float) (20.0 * std::log10 (std::max (ratio, floorValue))); }
+    }
+
+    PhaseMetrics measurePhase (const PhaseInput& in)
+    {
+        PhaseMetrics m;
+        const auto n = (int) std::min ({ in.kickL.size(), in.kickR.size(), in.bassL.size(), in.bassR.size(), in.masterL.size(), in.masterR.size() });
+        if (n <= 0 || in.samplesPerBar <= 0.0 || in.bars <= 0 || in.start >= n)
+            return m;
+        m.valid = true;
+
+        std::vector<float> kick ((size_t) n), bass ((size_t) n);
+        for (int i = 0; i < n; ++i)
+        {
+            kick[(size_t) i] = 0.5f * (in.kickL[(size_t) i] + in.kickR[(size_t) i]);
+            bass[(size_t) i] = 0.5f * (in.bassL[(size_t) i] + in.bassR[(size_t) i]);
+        }
+        const auto kickLow = bandPass (kick, n, in.rate, 30.0, 150.0), bassLow = bandPass (bass, n, in.rate, 30.0, 150.0);
+
+        // Per 16-del: korrelation och summa/differens-energi.
+        const auto per16 = in.samplesPerBar / 16.0;
+        for (int i = 0; i < in.bars * 16; ++i)
+        {
+            const auto from = std::min (n, in.start + (int) std::round (i * per16)), to = std::min (n, in.start + (int) std::round ((i + 1) * per16));
+            double kk = 0.0, bb = 0.0, kb = 0.0;
+            for (int s = from; s < to; ++s)
+            {
+                const double k = kickLow[(size_t) s], b = bassLow[(size_t) s];
+                kk += k * k;
+                bb += b * b;
+                kb += k * b;
+            }
+            const auto len = (double) std::max (1, to - from);
+            const auto active = kk / len > 1.0e-6 && bb / len > 1.0e-6; // över ungefär -60 dB RMS
+            m.lowActive.push_back (active ? 1 : 0);
+            m.lowCorrelation.push_back (active ? (float) juce::jlimit (-1.0, 1.0, kb / std::sqrt (kk * bb)) : 0.0f);
+            m.lowSumDiffDb.push_back (active ? (float) (10.0 * std::log10 ((kk + bb + 2.0 * kb + 1.0e-12) / (kk + bb - 2.0 * kb + 1.0e-12))) : 0.0f);
+        }
+
+        // Summans topp mot den största enskilda toppen.
+        {
+            double peakSum = 0.0, peakKick = 0.0, peakBass = 0.0;
+            for (int s = in.start; s < n; ++s)
+            {
+                const double k = kickLow[(size_t) s], b = bassLow[(size_t) s];
+                peakSum = std::max (peakSum, std::abs (k + b));
+                peakKick = std::max (peakKick, std::abs (k));
+                peakBass = std::max (peakBass, std::abs (b));
+            }
+            const auto largest = std::max (peakKick, peakBass);
+            m.sumVsMaxDb = largest > 1.0e-4 ? toDb (peakSum / largest) : 0.0f;
+        }
+
+        // Per slag: topp, första utslagets tecken och värdet där slaget slutar (klick om det inte är nära noll).
+        {
+            auto lowest = 1000.0f, highest = -1000.0f;
+            for (size_t i = 0; i < in.onsets.size(); ++i)
+            {
+                const auto from = in.onsets[i];
+                auto to = std::min (n, from + (int) (0.5 * in.rate));
+                if (i + 1 < in.onsets.size())
+                    to = std::min (to, in.onsets[i + 1]);
+                if (from < 0 || to - from < 64)
+                    continue;
+                PhaseMetrics::Hit hit;
+                float peak = 0.0f;
+                for (int s = from; s < to; ++s)
+                    peak = std::max (peak, std::abs (kick[(size_t) s]));
+                hit.peakDb = toDb (peak, 1.0e-6);
+                for (int s = from; s < to && hit.polarity == 0; ++s)
+                    if (std::abs (kick[(size_t) s]) > 0.1f * peak)
+                        hit.polarity = kick[(size_t) s] > 0.0f ? 1 : -1;
+                hit.endDb = toDb (std::abs (kick[(size_t) to - 1]), 1.0e-6);
+                if (hit.endDb > -60.0f)
+                    ++m.clickHits;
+                if (hit.peakDb > -60.0f)
+                {
+                    lowest = std::min (lowest, hit.peakDb);
+                    highest = std::max (highest, hit.peakDb);
+                }
+                m.hits.push_back (hit);
+            }
+            m.peakSpreadDb = highest >= lowest ? highest - lowest : 0.0f;
+        }
+
+        // Stereo per takt i fyra band: L/R-korrelation och M/S.
+        {
+            const double edges[PhaseMetrics::stereoBands + 1] = { 0.0, 120.0, 500.0, 4000.0, 0.0 };
+            std::vector<float> bandL[PhaseMetrics::stereoBands], bandR[PhaseMetrics::stereoBands];
+            for (int b = 0; b < PhaseMetrics::stereoBands; ++b)
+            {
+                const auto lowHz = b == 0 ? 0.0 : edges[b], highHz = b == PhaseMetrics::stereoBands - 1 ? 0.0 : edges[b + 1];
+                bandL[b] = bandPass (in.masterL, n, in.rate, lowHz, highHz);
+                bandR[b] = bandPass (in.masterR, n, in.rate, lowHz, highHz);
+            }
+            for (int bar = 0; bar < in.bars; ++bar)
+            {
+                const auto from = std::min (n, in.start + (int) std::round (bar * in.samplesPerBar)), to = std::min (n, in.start + (int) std::round ((bar + 1) * in.samplesPerBar));
+                std::array<float, PhaseMetrics::stereoBands> corr {}, ms {};
+                for (int b = 0; b < PhaseMetrics::stereoBands; ++b)
+                {
+                    double ll = 0.0, rr = 0.0, lr = 0.0;
+                    for (int s = from; s < to; ++s)
+                    {
+                        const double l = bandL[b][(size_t) s], r = bandR[b][(size_t) s];
+                        ll += l * l;
+                        rr += r * r;
+                        lr += l * r;
+                    }
+                    const auto len = (double) std::max (1, to - from);
+                    const auto silent = ll / len < 1.0e-9 || rr / len < 1.0e-9;
+                    corr[(size_t) b] = silent ? 1.0f : (float) juce::jlimit (-1.0, 1.0, lr / std::sqrt (ll * rr));
+                    const auto mid = 0.25 * (ll + rr + 2.0 * lr), side = 0.25 * (ll + rr - 2.0 * lr);
+                    ms[(size_t) b] = (float) (10.0 * std::log10 ((mid + 1.0e-12) / (side + 1.0e-12)));
+                }
+                m.stereoCorrelation.push_back (corr);
+                m.midSideDb.push_back (ms);
+            }
+        }
+        return m;
+    }
+
+    //==========================================================================================
     std::unique_ptr<PluginBase> prepareCopy (PluginBase& source)
     {
         auto copy = source.cloneForOffline();
@@ -1869,7 +2139,8 @@ namespace MixAnalysis
         juce::dsp::FFT fft (fftOrder);
         juce::dsp::WindowingFunction<float> window ((size_t) fftSize, juce::dsp::WindowingFunction<float>::hann);
         std::array<float, fftSize * 2> data {};
-        std::vector<float> left, right;
+        std::vector<float> left, right, tapL, tapR;
+        PhaseInput phaseInput;
         std::vector<std::array<float, numInstruments>> duckMin;
         std::vector<int> onsets; // sample
         std::vector<float> kickSignal; // hela kickens signal (mono), för svansmätningen
@@ -1900,6 +2171,28 @@ namespace MixAnalysis
                 peak = std::max (peak, std::abs (v));
             for (size_t k = 0; k < left.size(); ++k)
                 kickSignal.push_back (0.5f * (left[k] + right[k]));
+            phaseInput.kickL.insert (phaseInput.kickL.end(), left.begin(), left.end());
+            phaseInput.kickR.insert (phaseInput.kickR.end(), right.begin(), right.end());
+            {
+                // Basen = summan av instrumentens signaler, mastern = utgången (för fas- och stereomåtten).
+                std::vector<float> sumL (left.size(), 0.0f), sumR (left.size(), 0.0f);
+                for (int i = 0; i < std::min (active, numInstruments); ++i)
+                {
+                    copy.instrumentTaps[(size_t) i].copyLatest (n, tapL, tapR);
+                    for (size_t k = 0; k < sumL.size() && k < tapL.size(); ++k)
+                    {
+                        sumL[k] += tapL[k];
+                        sumR[k] += tapR[k];
+                    }
+                }
+                phaseInput.bassL.insert (phaseInput.bassL.end(), sumL.begin(), sumL.end());
+                phaseInput.bassR.insert (phaseInput.bassR.end(), sumR.begin(), sumR.end());
+                copy.getMasterSection().outputTap.copyLatest (n, tapL, tapR);
+                tapL.resize (sumL.size(), 0.0f);
+                tapR.resize (sumL.size(), 0.0f);
+                phaseInput.masterL.insert (phaseInput.masterL.end(), tapL.begin(), tapL.end());
+                phaseInput.masterR.insert (phaseInput.masterR.end(), tapR.begin(), tapR.end());
+            }
             const auto blockIndex = done / blockSize;
             if (peak > 0.15f && peak > previousKickPeak * 1.8f + 0.05f && blockIndex - lastOnsetBlock > 3)
             {
@@ -2088,6 +2381,16 @@ namespace MixAnalysis
                 depth[(size_t) i] = -20.0f * std::log10 (std::max (lowest, 1.0e-3f));
             }
             capture.duckDepthDb.push_back (depth);
+        }
+
+        if (! (cancelled && cancelled()))
+        {
+            phaseInput.onsets = onsets;
+            phaseInput.start = preRollSamples;
+            phaseInput.bars = analyseBars;
+            phaseInput.samplesPerBar = samplesPerBar;
+            phaseInput.rate = rate;
+            capture.phase = measurePhase (phaseInput);
         }
 
         auto report = evaluate (capture, options, reference);

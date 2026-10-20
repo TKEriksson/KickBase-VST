@@ -133,9 +133,37 @@ namespace MixAnalysis
 
     std::shared_ptr<const Reference> loadReference (const juce::File& file, juce::String& error);
 
+    // Fas- och stereomått (AN steg 2), uträknade ur tidssignalerna efter körningen.
+    struct PhaseMetrics
+    {
+        static constexpr int stereoBands = 4; // <120 Hz, 120-500 Hz, 0,5-4 kHz, >4 kHz
+        struct Hit { float peakDb = -120.0f, endDb = -120.0f; int polarity = 0; }; // polarity: första utslagets tecken (+1/-1)
+
+        bool valid = false;
+        std::vector<float> lowCorrelation;   // per 16-del: Pearson mellan kick och bas, 30-150 Hz (0 när en av dem är tyst)
+        std::vector<float> lowSumDiffDb;     // per 16-del: energi i kick+bas mot kick-bas (dB); negativt = de släcker ut varandra
+        std::vector<char> lowActive;         // per 16-del: både kick och bas hörs, så korrelationen betyder något
+        float sumVsMaxDb = 0.0f;             // toppen i summan (30-150 Hz) mot den största enskilda toppen (dB)
+        std::vector<Hit> hits;               // per kickslag
+        float peakSpreadDb = 0.0f;           // störst minus minst topp bland slagen
+        int clickHits = 0;                   // slag som slutar över -60 dB (klick när nästa börjar)
+        std::vector<std::array<float, stereoBands>> stereoCorrelation, midSideDb; // per takt: L/R-korrelation och M/S (dB) i fyra band
+    };
+
+    // Insignalen till measurePhase. Alla vektorer har samma längd; sample `start` är loopens början.
+    struct PhaseInput
+    {
+        std::vector<float> kickL, kickR, bassL, bassR, masterL, masterR;
+        std::vector<int> onsets;             // kickslag (sample)
+        int start = 0, bars = 0;
+        double samplesPerBar = 0.0, rate = 48000.0;
+    };
+    PhaseMetrics measurePhase (const PhaseInput& input);
+
     // Rådata från en körning. Öppen så att utvärderingen kan testas på påhittade data.
     struct Capture
     {
+        PhaseMetrics phase;
         int frames = 0, bars = 0;
         double rate = 48000.0, bpm = 140.0;
         std::array<bool, numSources> present {};

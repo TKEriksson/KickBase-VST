@@ -626,6 +626,41 @@ namespace
             check (! stillThere, "en tydligt svagare källa ger ingen krock");
         }
 
+        // Fasmåtten på påhittade signaler: kick och bas i motfas, i fas, och en kick som inte klingar ut (klick).
+        {
+            constexpr int length = 96000; // en takt vid 120 bpm och 48 kHz
+            auto makeInput = [length] (float bassSign, bool decays)
+            {
+                MixAnalysis::PhaseInput in;
+                in.rate = 48000.0;
+                in.samplesPerBar = length;
+                in.bars = 1;
+                in.onsets = { 0, 24000, 48000, 72000 };
+                std::vector<float> kickSignal ((size_t) length);
+                for (int s = 0; s < length; ++s)
+                {
+                    const auto t = (double) (s % 24000) / 48000.0;
+                    kickSignal[(size_t) s] = 0.5f * (float) (std::sin (juce::MathConstants<double>::twoPi * 50.0 * t) * (decays ? std::exp (-t / 0.03) : 1.0));
+                }
+                in.kickL = in.kickR = kickSignal;
+                in.bassL = in.bassR = kickSignal;
+                for (auto& v : in.bassL)
+                    v *= bassSign;
+                in.bassR = in.bassL;
+                in.masterL = in.masterR = kickSignal;
+                return in;
+            };
+            const auto anti = MixAnalysis::measurePhase (makeInput (-1.0f, true));
+            const auto same = MixAnalysis::measurePhase (makeInput (1.0f, true));
+            const auto clicking = MixAnalysis::measurePhase (makeInput (1.0f, false));
+            check (anti.valid && anti.lowCorrelation.size() == 16 && anti.lowCorrelation[0] < -0.95f, "kick och bas i motfas ger korrelation -1");
+            check (same.valid && same.lowCorrelation[0] > 0.95f, "kick och bas i fas ger korrelation +1");
+            check (anti.sumVsMaxDb < -20.0f, "motfas ger en summa långt under den största toppen (" + juce::String (anti.sumVsMaxDb, 1) + " dB)");
+            check (same.sumVsMaxDb > 5.0f && same.sumVsMaxDb < 7.0f, "samma signal i fas ger +6 dB (" + juce::String (same.sumVsMaxDb, 1) + " dB)");
+            check (same.hits.size() == 4 && same.clickHits == 0, "en kick som klingar ut ger inget klick");
+            check (clicking.clickHits >= 3, "en kick som klipps av ger klick (" + juce::String (clicking.clickHits) + " slag)");
+        }
+
         std::puts (failed ? "FEL: eqtest" : "EQ- och analystestet gick igenom");
         return failed ? 1 : 0;
     }
