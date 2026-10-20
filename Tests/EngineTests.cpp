@@ -6,6 +6,7 @@
 #include "../Source/Core/Modulation.h"
 #include "../Source/Core/Params.h"
 #include "../Source/Core/Pattern.h"
+#include "../Source/Core/RollFiles.h"
 #include "../Source/Core/StepGate.h"
 #include "TestUtils.h"
 #include <cmath>
@@ -778,6 +779,105 @@ namespace
         check (voices.stackSize (0, 0) == 1, "removeNote tar med staplarna");
     }
 
+    void testPianoRollStackFiles()
+    {
+        std::puts ("Pianorulle: staplade toner i preset och MIDI");
+        const auto folder = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                                .getChildFile ("Kickbase-roll-" + juce::Uuid().toString());
+        check (folder.createDirectory(), "skapa temporär testmapp");
+        const auto rollFile = folder.getChildFile ("stack.roll");
+        const auto midiFile = folder.getChildFile ("stack.mid");
+
+        Pattern source;
+        source.clearNotes (0);
+        source.addNote (0, 48, 24, 0, 0.8f);
+        source.addExtra (0, 48, { 36, 7, 0.45f, false });
+        check (RollFiles::save (source, 0, InstrumentGrid::sixteenth, rollFile), "spara staplade toner i pianorullepreset");
+
+        Pattern loaded;
+        auto grid = InstrumentGrid::sixteenth;
+        check (RollFiles::load (loaded, 0, rollFile, grid), "ladda staplade toner från pianorullepreset");
+        Pattern::StackNote stacked;
+        check (loaded.stackSize (0, 48) == 2 && loaded.getStack (0, 48, 1, stacked)
+                   && loaded.note (0, 48).pitch == 0 && stacked.pitch == 7 && stacked.length == 36,
+               "pianorullepreset behåller båda tonerna och deras data");
+
+        check (RollFiles::exportMidi (source, 0, 1, 130.0, 60, midiFile), "exportera staplade toner till MIDI");
+        Pattern imported;
+        auto skipped = 0;
+        check (RollFiles::importMidi (imported, 0, midiFile, 60, &skipped) && skipped == 0, "importera MIDI med staplade toner");
+        check (imported.stackSize (0, 48) == 2 && imported.note (0, 48).pitch == 0
+                   && imported.getStack (0, 48, 1, stacked) && stacked.pitch == 7 && stacked.length == 36,
+               "MIDI-roundtrip behåller separata samtidiga toner");
+
+        // Ackord + stapel: exporten ger tre olika toner, importen staplar dem (inga ackord byggs).
+        const auto mixedPtr = std::make_unique<Pattern>(); auto& mixed = *mixedPtr;
+        mixed.clearNotes (0);
+        mixed.addNote (0, 0, 24, 0, 0.8f).setChord ({ 4, 0, 0 });
+        mixed.addExtra (0, 0, { 24, 7, 0.5f, false });
+        check (RollFiles::exportMidi (mixed, 0, 1, 130.0, 60, midiFile), "exportera ackord + stapel");
+        const auto mixedBackPtr = std::make_unique<Pattern>(); auto& mixedBack = *mixedBackPtr;
+        skipped = 0;
+        check (RollFiles::importMidi (mixedBack, 0, midiFile, 60, &skipped) && skipped == 0 && mixedBack.stackSize (0, 0) == 3
+                   && mixedBack.note (0, 0).pitch == 0 && mixedBack.getStack (0, 0, 1, stacked) && stacked.pitch == 4
+                   && mixedBack.getStack (0, 0, 2, stacked) && stacked.pitch == 7,
+               "ackord + stapel blir tre staplade toner efter roundtrip");
+
+        // Samma tonhöjd i ackord och stapel exporteras bara en gång.
+        const auto samePtr = std::make_unique<Pattern>(); auto& same = *samePtr;
+        same.clearNotes (0);
+        same.addNote (0, 0, 24, 0, 0.8f).setChord ({ 7, 0, 0 });
+        same.addExtra (0, 0, { 24, 7, 0.5f, false });
+        check (RollFiles::exportMidi (same, 0, 1, 130.0, 60, midiFile), "exportera dubblettpitch");
+        const auto sameBackPtr = std::make_unique<Pattern>(); auto& sameBack = *sameBackPtr;
+        skipped = 0;
+        check (RollFiles::importMidi (sameBack, 0, midiFile, 60, &skipped) && skipped == 0 && sameBack.stackSize (0, 0) == 2,
+               "dubblettpitch exporteras en gång");
+
+        // Fem samtidiga toner: huvudton + tre staplade, en tappas och räknas.
+        const auto fivePtr = std::make_unique<Pattern>(); auto& five = *fivePtr;
+        five.clearNotes (0);
+        five.addNote (0, 0, 24, 0, 0.8f).setChord ({ 4, 0, 0 });
+        five.addExtra (0, 0, { 24, 7, 0.5f, false });
+        five.addExtra (0, 0, { 24, 10, 0.5f, false });
+        five.addExtra (0, 0, { 24, 12, 0.5f, false });
+        check (RollFiles::exportMidi (five, 0, 1, 130.0, 60, midiFile), "exportera fem samtidiga toner");
+        const auto fiveBackPtr = std::make_unique<Pattern>(); auto& fiveBack = *fiveBackPtr;
+        skipped = 0;
+        check (RollFiles::importMidi (fiveBack, 0, midiFile, 60, &skipped) && skipped == 1 && fiveBack.stackSize (0, 0) == 4,
+               "fem samtidiga toner: fyra behålls, en räknas som hoppad");
+
+        // Äldre pianorullsfiler (version 1 och 2, utan index) laddas och staplar toner på samma tick.
+        const auto legacy = folder.getChildFile ("legacy.roll");
+        for (const auto version : { 1, 2 })
+        {
+            legacy.replaceWithText ("<KickbaseRoll version=\"" + juce::String (version) + "\" bars=\"1\" grid=\"1/16\">"
+                                    "<Note tick=\"0\" length=\"24\" pitch=\"0\" velocity=\"0.8\" glide=\"0\"/>"
+                                    "<Note tick=\"96\" length=\"12\" pitch=\"5\" velocity=\"0.7\" glide=\"0\"/>"
+                                    "</KickbaseRoll>");
+            const auto oldPtr = std::make_unique<Pattern>(); auto& old = *oldPtr;
+            auto oldGrid = InstrumentGrid::sixteenth;
+            check (RollFiles::load (old, 0, legacy, oldGrid) && old.stackSize (0, 0) == 1 && old.stackSize (0, 96) == 1
+                       && old.note (0, 96).pitch == 5,
+                   version == 1 ? "äldre pianorullsfil laddas (version 1)" : "äldre pianorullsfil laddas (version 2)");
+        }
+
+        // Hål i index (0, 2, 3) och fler än fyra toner: komprimeras i ordning, överskott tappas utan krasch.
+        legacy.replaceWithText ("<KickbaseRoll version=\"3\" bars=\"1\" length=\"auto\" grid=\"1/16\">"
+                                "<Note tick=\"0\" index=\"0\" length=\"24\" pitch=\"0\" velocity=\"0.8\" glide=\"0\"/>"
+                                "<Note tick=\"0\" index=\"2\" length=\"24\" pitch=\"4\" velocity=\"0.8\" glide=\"0\"/>"
+                                "<Note tick=\"0\" index=\"3\" length=\"24\" pitch=\"7\" velocity=\"0.8\" glide=\"0\"/>"
+                                "<Note tick=\"0\" index=\"3\" length=\"24\" pitch=\"9\" velocity=\"0.8\" glide=\"0\"/>"
+                                "<Note tick=\"0\" index=\"3\" length=\"24\" pitch=\"11\" velocity=\"0.8\" glide=\"0\"/>"
+                                "</KickbaseRoll>");
+        const auto holesPtr = std::make_unique<Pattern>(); auto& holes = *holesPtr;
+        auto holeGrid = InstrumentGrid::sixteenth;
+        check (RollFiles::load (holes, 0, legacy, holeGrid) && holes.stackSize (0, 0) == 4 && holes.getStack (0, 0, 1, stacked)
+                   && stacked.pitch == 4 && holes.getStack (0, 0, 3, stacked) && stacked.pitch == 9,
+               "hål i stackindex och för många toner tas om hand");
+        folder.deleteRecursively();
+    }
+
     void testGateAndPianoRollFlag()
     {
         std::puts ("Mönster: gate-steg och pianorullsmarkering sparas per lager");
@@ -819,4 +919,5 @@ void runEngineTests()
     testGateAndPianoRollFlag();
     testRowLengths();
     testPolyphonyStacks();
+    testPianoRollStackFiles();
 }

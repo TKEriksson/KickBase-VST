@@ -23,5 +23,5 @@ namespace RollFiles
 
     // Ersätter lagrets toner med en MIDI-fil: toner som ligger utanför ±96 halvtoner från `rootMidiNote` flyttas
     // oktavvis in. Radens längd blir AUTO (följer det som lästes in).
-    bool importMidi (Pattern& pattern, int layer, const juce::File& file, int rootMidiNote);
+    bool importMidi (Pattern& pattern, int layer, const juce::File& file, int rootMidiNote, int* skippedNotes = nullptr);
 }
