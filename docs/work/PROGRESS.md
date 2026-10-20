@@ -61,3 +61,8 @@ Läs [LESSONS.md](LESSONS.md) innan du bygger eller testar. Lägg till en rad d�
 
 - 20 okt 13:40: Tobias tillät push/merge. R+M+P mergade till main (196f221) och pushade, plus content-r/m/p. L mergas efter L-slutet. Release-bygge väntar på Tobias i bb:s session.
 - 20 okt 15:20: KB-texten granskad och flyttad till docs/kick-bass-school.md. Kvar för bb (kod, efter S): MCP-resurs + AGENT_GUIDE-länk + .claude/skills/kickbase-sound-design/SKILL.md.
+
+- 20 okt kväll (projektledare kickbase-vst-49): main har R, M, P + KB-doc. L, S, K (content-l/s/k) är INTE mergade/pushade; väntar på Tobias test av minst L och S. PH klar (content-ph ea93423). UNISON (S3) finns redan i koden. FX1 byggd på content-fx1 (14613e5). Fasordning: ... K -> PH -> S3 -> FX1 -> AN -> FX2 -> F2 -> ... Init-regel: kör Init-check (ladda Init, spela, byt instrument, spara/ladda) före varje testbygge.
+- Sessioner: a4 = byggare (KickBase-VST-lc, content-fx1), 9a = docs + nu polyfoni delsteg 1 (egen worktree, gren content-poly1). Ingen arpeggiator (Tobias: nej).
+- BESLUT polyfoni: Tobias vill ha FULL polyfoni (flera vanliga toner på samma tick, spec docs/work/polyphony-spec.md). Delsteg 1 (lagring, /e-sparfält, StepScheduler, tester) = 9a; delsteg 2 (PianoRoll NoteKey) = a4 efter 9a:s API. Före det: a4 bugfixar + VOICES-kontroll bredvid "+ BAR" med dialoger + testbygge. Ackord ska vara som idag. Kvar utan orsak: Move down byter bara mönster, inte LFO/AUTO/mixer (repro skickad till a4).
+- Tobias testfeedback: pennan (längd, små toner, resize), AI SERVER-knapp på två rader, topprad överlappar, FILTER-knappar, LFO hopfälld visar rate. Allt byggt av a4 utom Move down + ackordläge.
