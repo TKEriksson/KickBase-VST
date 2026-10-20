@@ -257,6 +257,13 @@ int persistTest()
         auto warpCopy = copyOf (*processor);
         check (value (*warpCopy, F::warpEnvSource) > 0.5f && value (*warpCopy, F::warpEnvSource) < 1.5f && std::abs (value (*warpCopy, F::warpEnvDecay) - 12.0f) < 0.1f,
                "spara och ladda: WARP ENV-källa och Direct-decay följer med");
+        Scenarios::setInstrument (*processor, 3, F::polarity, 1.0f);
+        Scenarios::setInstrument (*processor, 3, F::phaseDeg, 123.4f);
+        Scenarios::setInstrument (*processor, 3, F::nudgeMs, -0.75f);
+        auto phaseCopy = copyOf (*processor);
+        check (value (*phaseCopy, F::polarity) > 0.5f && std::abs (value (*phaseCopy, F::phaseDeg) - 123.4f) < 0.11f && std::abs (value (*phaseCopy, F::nudgeMs) + 0.75f) < 0.03f,
+               "spara och ladda: POLARITY, START PHASE och NUDGE följer med");
+        check (value (*copyOf (*std::make_unique<InstrumentProcessor>()), F::polarity) < 0.5f, "PH: nya parametrar har standardvärden som ger dagens ljud");
     }
 
     // 5. Preset-laddningen sätter varje parameter en gång: en ratt som ändras passerar inte sitt standardvärde på vägen.

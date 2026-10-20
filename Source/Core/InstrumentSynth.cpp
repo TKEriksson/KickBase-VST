@@ -77,10 +77,10 @@ double InstrumentSynth::warpPhase (WarpMode mode, float amount, double phase, fl
     return phase;
 }
 
-void InstrumentSynth::Oscillator::retrigger (const OscParams& p, juce::Random& rng)
+void InstrumentSynth::Oscillator::retrigger (const OscParams& p, juce::Random& rng, double extraPhase)
 {
     for (auto& ph : phases)
-        ph = wrap (p.phase + p.randomPhase * rng.nextDouble());
+        ph = wrap (p.phase + extraPhase + p.randomPhase * rng.nextDouble());
 }
 
 InstrumentSynth::Stereo InstrumentSynth::Oscillator::next (const OscParams& p, double frequency, double rate, float warpAmount, float fmInput)
@@ -145,12 +145,13 @@ void InstrumentSynth::noteOn (int semitones, float newVelocity, int gateSamples)
 
     // Samma startfas varje slag ger ett jämnt, tight anslag. Men om förra tonen fortfarande
     // hörs skulle ett fashopp knäppa, så då fortsätter fasen där den är.
+    const auto extraPhase = (double) params.phaseDeg / 360.0; // PH: gemensam startfas för OSC 1-3 och sub (0 = som förut)
     if (ampLevel < 0.05f)
     {
-        oscA.retrigger (params.oscA, random);
-        oscB.retrigger (params.oscB, random);
-        oscC.retrigger (params.oscC, random);
-        subPhase = 0.0;
+        oscA.retrigger (params.oscA, random, extraPhase);
+        oscB.retrigger (params.oscB, random, extraPhase);
+        oscC.retrigger (params.oscC, random, extraPhase);
+        subPhase = wrap (extraPhase);
     }
 
     noteTime = 0.0;
@@ -504,5 +505,5 @@ InstrumentSynth::Output InstrumentSynth::next()
 
     // Drive verkar på källan (före gaten), så att distorsionen låter likadant oavsett envelope.
     driveShape.update (params.drive, params.driveMode);
-    return { driveShape.apply (sample + side), driveShape.apply (sample - side), ampLevel * velocity * params.level };
+    return { driveShape.apply (sample + side), driveShape.apply (sample - side), ampLevel * velocity * params.level * (params.invertPolarity ? -1.0f : 1.0f) };
 }

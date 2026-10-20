@@ -63,7 +63,7 @@ namespace Effects
     StringArray typeNames()
     {
         return { "Off", "Filter", "Distortion", "EQ", "Chorus", "Phaser", "Echo", "Reverb",
-                 "Compressor", "Trance Gate", "Comb", "Ring Mod", "Bitcrusher", "Auto Filter", "Maximizer", "Sidechain" };
+                 "Compressor", "Trance Gate", "Comb", "Ring Mod", "Bitcrusher", "Auto Filter", "Maximizer", "Sidechain", "Disperser" };
     }
 
     String name (EffectType type)
@@ -74,7 +74,7 @@ namespace Effects
     String shortName (EffectType type)
     {
         const char* names[] { "-", "FILT", "DIST", "EQ", "CHOR", "PHAS", "ECHO", "VERB",
-                              "COMP", "GATE", "COMB", "RING", "CRSH", "AUTO", "MAX", "SIDE" };
+                              "COMP", "GATE", "COMB", "RING", "CRSH", "AUTO", "MAX", "SIDE", "DISP" };
         return names[jlimit (0, numEffectTypes - 1, (int) type)];
     }
 
@@ -232,6 +232,12 @@ namespace Effects
                 value ("DEPTH", 0.0f, 1.0f, 0.0f, 0.8f, Unit::percent),
                 value ("ATTACK", 0.5f, 50.0f, 5.0f, 3.0f, Unit::ms),
                 value ("RELEASE", 20.0f, 800.0f, 150.0f, 200.0f, Unit::ms),
+                mixKnob (1.0f) };
+            table[(size_t) EffectType::disperser] = {
+                choice ("STAGES", { "4", "6", "8", "10", "12", "14", "16" }, 2),
+                value ("FREQ", 50.0f, 8000.0f, 400.0f, 300.0f, Unit::hz),
+                value ("SPREAD", 0.0f, 1.0f, 0.0f, 0.0f, Unit::percent),
+                value ("Q", 0.3f, 4.0f, 0.7f, 0.7f, Unit::plain),
                 mixKnob (1.0f) };
             return table;
         }();
@@ -1094,6 +1100,47 @@ namespace
             }
         }
     };
+
+    // DISPERSER: en kedja av all-pass-filter (2:a ordningen, STAGES st) som bara vrider fasen och sprider gruppfördröjningen runt FREQ,
+    // så att en kick får "chirp" och sin transient utsmetad utan att tonen ändras. SPREAD sprider filtrens frekvenser (0 = alla på FREQ,
+    // 100 % = +-2 oktaver); MIX 100 % är ren fasvridning. Koefficienterna räknas om en gång per block.
+    struct DisperserFx
+    {
+        static constexpr int maxStages = 16;
+        std::array<std::array<Biquad, maxStages>, 2> filters;
+
+        void prepare (const dsp::ProcessSpec&) { reset(); }
+        void reset() { for (auto& channel : filters) for (auto& f : channel) f.reset(); }
+
+        void process (AudioBuffer<float>& buffer, int numSamples, const Values& k, const Context& context)
+        {
+            using Array = dsp::IIR::ArrayCoefficients<float>;
+            const auto stages = 4 + 2 * jlimit (0, 6, (int) k[0]);
+            const auto freq = k[1], spread = k[2], q = k[3], wet = k[4];
+            const auto top = (float) context.sampleRate * 0.45f;
+            for (int s = 0; s < stages; ++s)
+            {
+                const auto position = stages > 1 ? (float) s / (float) (stages - 1) * 2.0f - 1.0f : 0.0f; // -1 ... +1
+                const auto hz = jlimit (20.0f, top, freq * std::pow (2.0f, 2.0f * spread * position));
+                const auto coefficients = Array::makeAllPass ((float) context.sampleRate, hz, q);
+                for (auto& channel : filters)
+                    channel[(size_t) s].setCoefficients (coefficients);
+            }
+            for (int ch = 0; ch < std::min (2, buffer.getNumChannels()); ++ch)
+            {
+                auto* data = buffer.getWritePointer (ch);
+                auto& chain = filters[(size_t) ch];
+                for (int i = 0; i < numSamples; ++i)
+                {
+                    const auto dry = data[i];
+                    auto x = dry;
+                    for (int s = 0; s < stages; ++s)
+                        x = chain[(size_t) s].process (x);
+                    data[i] = dry + (x - dry) * wet;
+                }
+            }
+        }
+    };
 }
 
 //==============================================================================
@@ -1124,13 +1171,14 @@ struct EffectChain::Impl
         AutoFilterFx autoFilter;
         MaximizerFx maximizer;
         DuckerFx ducker;
+        DisperserFx disperser;
 
         template <typename Function>
         void forEachEffect (Function&& function)
         {
             function (filter); function (distortion); function (eq); function (chorus); function (phaser);
             function (echo); function (reverb); function (compressor); function (gate); function (comb);
-            function (ringMod); function (bitcrusher); function (autoFilter); function (maximizer); function (ducker);
+            function (ringMod); function (bitcrusher); function (autoFilter); function (maximizer); function (ducker); function (disperser);
         }
 
         void resetCurrent()
@@ -1152,6 +1200,7 @@ struct EffectChain::Impl
                 case EffectType::autoFilter: autoFilter.reset(); break;
                 case EffectType::maximizer:  maximizer.reset(); break;
                 case EffectType::ducker:     ducker.reset(); break;
+                case EffectType::disperser:  disperser.reset(); break;
                 case EffectType::off:
                 case EffectType::count:      break;
             }
@@ -1176,6 +1225,7 @@ struct EffectChain::Impl
                 case EffectType::autoFilter: autoFilter.process (buffer, numSamples, values, context); break;
                 case EffectType::maximizer:  maximizer.process (buffer, numSamples, values, context); break;
                 case EffectType::ducker:     ducker.process (buffer, numSamples, values, context); break;
+                case EffectType::disperser:  disperser.process (buffer, numSamples, values, context); break;
                 case EffectType::off:
                 case EffectType::count:      break;
             }

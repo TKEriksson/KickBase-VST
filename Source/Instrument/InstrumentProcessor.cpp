@@ -358,6 +358,7 @@ void InstrumentProcessor::readLayerFields (int layer, int solo)
     duckAmounts[(size_t) layer] = params.bass (layer, InstrumentField::duck); // med LFO-modulering
     gateScales[(size_t) layer] = params.bass (layer, InstrumentField::gate);
     delayMs[(size_t) layer] = params.bass (layer, InstrumentField::delay);
+    nudgeMs[(size_t) layer] = params.bass (layer, InstrumentField::nudgeMs);
     swingRow[(size_t) layer] = params.bass (layer, InstrumentField::swing);
     humanizeRow[(size_t) layer] = params.bass (layer, InstrumentField::humanize);
     gateOn[(size_t) layer] = params.bass (layer, InstrumentField::gateOn) >= 0.5f;
@@ -600,7 +601,9 @@ int InstrumentProcessor::delaySamplesFor (const StepEvent& event)
         humanizeState ^= humanizeState << 5;
         ms += (double) humanizeNow * 20.0 * ((double) (humanizeState >> 8) / (double) (1u << 24)); // 0-20 ms senare, slumpat
     }
+    ms += (double) nudgeMs[(size_t) event.layer]; // fas PH: NUDGE +-2 ms; negativt äter av DELAY/swing/humanize (aldrig före notens egen tid: ingen latens)
     delay += ms * 0.001 * getSampleRate();
+    delay = std::max (0.0, delay);
     return (int) delay;
 }
 

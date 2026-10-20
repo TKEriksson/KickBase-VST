@@ -58,6 +58,7 @@ namespace
         if (f == F::envAmount || f == F::envAttack || f == F::envDecay || f == F::velToEnv)                    return "FILTER ENV";
         if (f == F::attack || f == F::decay || f == F::sustain || f == F::release)        return "VOLUME ENV";
         if (f == F::warpEnv || f == F::warpEnvDecay || f == F::warpEnvSource)                                                             return "WARP ENV";
+        if (f == F::polarity || f == F::phaseDeg || f == F::nudgeMs)                      return "PHASE";
         if (f == F::drive || f == F::driveMode)                                           return "DRIVE";
         return "OUT";
     }

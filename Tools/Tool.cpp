@@ -997,6 +997,72 @@ namespace
             check (! fresh->note (5, 96).on.load(), "ett gammalt projekt: instrument som det inte nämner töms");
         }
 
+        {
+            // Fas PH: polaritet och startfas. Standardvärdena ger dagens ljud; POLARITY Inverted är exakt det omvända ljudet.
+            auto renderAudition = [] (float polarity, float phaseDeg)
+            {
+                const auto fresh = std::make_unique<InstrumentProcessor>();
+                fresh->setPlayConfigDetails (0, 2, renderRate, blockSize);
+                fresh->prepareToPlay (renderRate, blockSize);
+                for (auto [field, value] : { std::pair { InstrumentField::polarity, polarity }, std::pair { InstrumentField::phaseDeg, phaseDeg } })
+                {
+                    auto* parameter = fresh->apvts.getParameter (ParamID::bass (0, field));
+                    parameter->setValueNotifyingHost (parameter->convertTo0to1 (value));
+                }
+                fresh->requestAudition (PluginBase::layerAudition (0));
+                std::vector<float> samples;
+                juce::AudioBuffer<float> buffer (2, blockSize);
+                juce::MidiBuffer midi;
+                for (int block = 0; block < 12; ++block)
+                {
+                    buffer.clear();
+                    fresh->processBlock (buffer, midi);
+                    samples.insert (samples.end(), buffer.getReadPointer (0), buffer.getReadPointer (0) + blockSize);
+                }
+                return samples;
+            };
+            const auto normal = renderAudition (0.0f, 0.0f), inverted = renderAudition (1.0f, 0.0f), shifted = renderAudition (0.0f, 90.0f);
+            auto peak = 0.0f, sumError = 0.0f, phaseDiff = 0.0f;
+            for (size_t i = 0; i < normal.size(); ++i)
+            {
+                peak = std::max (peak, std::abs (normal[i]));
+                sumError = std::max (sumError, std::abs (normal[i] + inverted[i]));
+                phaseDiff = std::max (phaseDiff, std::abs (normal[i] - shifted[i]));
+            }
+            check (peak > 0.01f, "PH: instrument 1 ger ljud i testet");
+            check (sumError < 1.0e-6f, "PH: POLARITY Inverted ger exakt det inverterade ljudet");
+            check (phaseDiff > 0.01f, "PH: START PHASE 90 grader ändrar vågformen");
+        }
+
+        {
+            // Fas PH: DISPERSER är en ren fasvridning (all-pass): energin består men vågformen ändras.
+            const auto fresh = std::make_unique<InstrumentProcessor>();
+            Effects::setSlotType (fresh->apvts, 0, 0, EffectType::disperser);
+            EffectChain chain (fresh->apvts, 0);
+            chain.prepare (renderRate, blockSize);
+            juce::AudioBuffer<float> buffer (2, blockSize), original;
+            juce::Random random (7);
+            auto inEnergy = 0.0, outEnergy = 0.0, difference = 0.0;
+            for (int block = 0; block < 40; ++block)
+            {
+                for (int ch = 0; ch < 2; ++ch)
+                    for (int i = 0; i < blockSize; ++i)
+                        buffer.setSample (ch, i, random.nextFloat() - 0.5f);
+                original.makeCopyOf (buffer);
+                chain.update (140.0, 0.0);
+                chain.process (buffer, blockSize);
+                if (block < 4)
+                    continue; // låt filtren komma igång
+                for (int i = 0; i < blockSize; ++i)
+                {
+                    inEnergy += original.getSample (0, i) * original.getSample (0, i);
+                    outEnergy += buffer.getSample (0, i) * buffer.getSample (0, i);
+                    difference += std::abs (original.getSample (0, i) - buffer.getSample (0, i));
+                }
+            }
+            check (std::abs (outEnergy / inEnergy - 1.0) < 0.05 && difference / (36.0 * blockSize) > 0.05, "PH: DISPERSER bevarar energin men ändrar fasen");
+        }
+
         std::puts (failed ? "FEL: instrumenttestet misslyckades" : "Instrumenttestet gick igenom");
         return failed ? 1 : 0;
     }

@@ -731,6 +731,8 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
                      { "DRIVE", { knob (id (F::drive), "AMOUNT"), choice (id (F::driveMode), "MODE") } },
                      { "LAYER OUT", { knob (id (F::level), "LEVEL"), knob (id (F::duck), "DUCK"), knob (id (F::gate), "LENGTH"),
                                       knob (id (F::voices), "VOICES") } } }); // (notlängden: GATE är hackrytmen; GLIDE har ingen ratt: parametern används inte)
+    // Fas PH: polaritet, startfas och nudge (tidsförskjutning ±2 ms) för att få kick och bas att summera rätt.
+    groups.addRow ({ { "PHASE", { choice (id (F::polarity), "POLARITY"), knob (id (F::phaseDeg), "START"), knob (id (F::nudgeMs), "NUDGE") } } });
     // Fas P: varning när VOICES x unison (summan av de påslagna oscillatorernas stämmor) blir stort, eftersom varje röst kostar lika mycket CPU.
     if (auto* voicesKnob = dynamic_cast<KnobComponent*> (controls.back().get()))
         voicesKnob->setWarning ([this]() -> juce::String

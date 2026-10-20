@@ -91,6 +91,8 @@ struct InstrumentParams
     int noiseType = 0;           // fas S: 0 White (förut), 1 Pink, 2 Brown, 3 Vinyl (frö-styrt)
     int warpEnvSource = 0;       // fas S: 0 Filter Env (förut), 1 Direct (egen decay), 2 ENV 2, 3 ENV 3
     float warpEnvDecayMs = 30.0f;
+    bool invertPolarity = false;  // fas PH: vänder signalen (-1)
+    float phaseDeg = 0.0f;        // fas PH: startfas i grader för OSC 1-3 och sub vid varje ny ton (läggs till OSC:ns egen PHASE)
     float pitchEnvSemis = 0.0f;  // tonhöjdsenvelope: så många halvtoner över (eller under) tonen i början av varje ton
     float pitchEnvDecayMs = 60.0f;
 
@@ -197,7 +199,7 @@ public:
         float lastSemis = 1.0e30f, lastFine = 1.0e30f, pitchRatio = 1.0f, lastDetune = 1.0e30f;
         int lastVoices = -1;
         std::array<double, maxUnison> detuneRatios {};
-        void retrigger (const OscParams& p, juce::Random& random);
+        void retrigger (const OscParams& p, juce::Random& random, double extraPhase = 0.0);
         Stereo next (const OscParams& p, double frequency, double sampleRate, float warpAmount, float fmInput);
     };
 

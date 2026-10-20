@@ -97,7 +97,8 @@ namespace ParamID
                                      "Env1On", "FilterEnvOn", "Env2On", "Env3On",
                                      "Env1Mode", "Env1AttackSync", "Env1DecaySync", "Env1ReleaseSync",
                                      "FilterEnvMode", "FilterEnvAttackSync", "FilterEnvDecaySync",
-                                     "FilterOn", "FilterOsc1", "FilterOsc2", "FilterOsc3", "FilterSample", "FilterNoise", "NoiseType", "WarpEnvSource", "WarpEnvDecay" };
+                                     "FilterOn", "FilterOsc1", "FilterOsc2", "FilterOsc3", "FilterSample", "FilterNoise", "NoiseType", "WarpEnvSource", "WarpEnvDecay",
+                                     "Polarity", "PhaseDeg", "NudgeMs" };
         static_assert (std::size (names) == (size_t) InstrumentField::count);
         return names[(size_t) field];
     }
@@ -390,6 +391,10 @@ namespace Params
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::noiseType), 1 }, title + "Noise Type", StringArray { "White", "Pink", "Brown", "Vinyl" }, 0));
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::warpEnvSource), 1 }, title + "Warp Env Source", StringArray { "Filter Env", "Direct", "ENV 2", "ENV 3" }, 0));
         layout.add (ms (2.0f, 150.0f, 30.0f, 30.0f, id (F::warpEnvDecay), title + "Warp Env Decay"));
+        // fas PH: fasverktyg (alla ger dagens ljud som standard)
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::polarity), 1 }, title + "Polarity Invert", StringArray { "Normal", "Inverted" }, 0));
+        layout.add (floatParam (id (F::phaseDeg), title + "Start Phase", NormalisableRange<float> (0.0f, 360.0f, 0.1f), 0.0f, [] (float v) { return String (v, 1) + juce::String (juce::CharPointer_UTF8 ("°")); }));
+        layout.add (floatParam (id (F::nudgeMs), title + "Nudge", NormalisableRange<float> (-2.0f, 2.0f, 0.05f), 0.0f, [] (float v) { return String (v, 2) + " ms"; }));
     }
 
     void addFxParams (Layout& layout)
@@ -645,6 +650,8 @@ InstrumentParams ParamRefs::readInstrument (int layer, int rootMidiNote) const
     p.noiseType = (int) get (F::noiseType);
     p.warpEnvSource = (int) get (F::warpEnvSource);
     p.warpEnvDecayMs = get (F::warpEnvDecay);
+    p.invertPolarity = get (F::polarity) >= 0.5f;
+    p.phaseDeg = get (F::phaseDeg);
     p.subWave = (int) get (F::subWave);
     p.noiseTone = get (F::noiseTone);
     p.pitchEnvSemis = get (F::pitchEnvAmount);

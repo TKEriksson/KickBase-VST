@@ -193,6 +193,9 @@ namespace Help
             { "bassARandom", "Randomises the start phase per note: looser and more analog, less punchy." },
             { "bassWarpEnv", "Extra warp on OSC 1 at the start of each note, following the filter envelope: a bright, digital 'knock' that fades." },
             { "bassWarpEnvSource", "WARP ENV SOURCE - what drives the warp: Filter Env (the filter envelope), Direct (its own fast decay, set by DIRECT DEC), ENV 2 or ENV 3." },
+            { "bassPolarity", "POLARITY - Inverted flips this instrument's sound upside down (180 degrees). Use it when the bass and the kick cancel each other's low end." },
+            { "bassPhaseDeg", "START - where in its cycle each oscillator and the sub start on every note (0-360 degrees). Sets how the first wave lines up with the kick." },
+            { "bassNudgeMs", "NUDGE - moves this instrument's notes in time, -2 to +2 ms in 0.05 ms steps. Negative values only work against its DELAY/swing/humanize (it cannot play before the note itself)." },
             { "bassWarpEnvDecay", "DIRECT DEC - how fast the WARP ENV fades when SOURCE is Direct (2-150 ms)." },
             { "bassSub", "Level of a pure sine sub under the instrument, for weight in the low end." },
             { "bassSubOctave", "Sub in the same octave as the instrument, or one octave lower (careful: very low notes get inaudible)." },
@@ -285,6 +288,13 @@ namespace Help
             };
             if (const auto found = sidechain.find (name); found != sidechain.end())
                 return found->second;
+        }
+        if (typeName == "Disperser")
+        {
+            if (name == "STAGES") return "How many all-pass filters are chained. More stages = a longer, more obvious chirp / smear of the transient.";
+            if (name == "FREQ")   return "The frequency where the phase is turned the most (the centre of the smear).";
+            if (name == "SPREAD") return "Spreads the filters over a range of frequencies (0 % = all at FREQ, 100 % = +-2 octaves). Wider = smoother, longer sweep.";
+            if (name == "Q")      return "Sharpness of each all-pass: higher = a more concentrated delay around the frequency.";
         }
         if (typeName == "Maximizer" && name == "RELEASE")
             return "Maximizer: how fast the limiter lets go after a peak. Short = louder but can pump.";

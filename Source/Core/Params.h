@@ -109,6 +109,7 @@ enum class InstrumentField
     filterOn, filterOsc1, filterOsc2, filterOsc3, filterSample, filterNoise, // fas S: FILTER-flikens av/på (hela Filter 1+2) och av/på per källa (av = källan går förbi båda filtren)
     noiseType,                                                    // fas S: brustyp: White (standard = som förut), Pink, Brown, Vinyl
     warpEnvSource, warpEnvDecay,                                  // fas S: WARP ENV-källa (Filter Env = som förut, Direct, ENV 2, ENV 3) och Directs egen decay i ms
+    polarity, phaseDeg, nudgeMs,                                  // fas PH: polaritet (vänd), startfas 0..360 grader för OSC 1-3 och sub, nudge -2..+2 ms (tillägg till DELAY; negativt tar bort av DELAY)
     count
 };
 
