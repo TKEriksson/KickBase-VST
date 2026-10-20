@@ -1,4 +1,5 @@
 #include "AiChat.h"
+#include "AiProvider.h"
 
 namespace
 {
@@ -39,6 +40,8 @@ void AiChat::cancelRequest()
 
 juce::StringArray AiChat::models()
 {
+    if (Settings::chatProvider() == "gemini")
+        return GeminiApi::models();
     return { "claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5", "claude-fable-5-1" };
 }
 
@@ -119,7 +122,7 @@ void AiChat::send (const juce::String& text)
     if (busy || text.trim().isEmpty())
         return;
 
-    if (Settings::chatApiKey().isEmpty())
+    if (activeKey().isEmpty())
     {
         Entry entry;
         entry.kind = Entry::Kind::error;
@@ -142,8 +145,16 @@ void AiChat::send (const juce::String& text)
     startThread (juce::Thread::Priority::normal);
 }
 
+juce::String AiChat::activeKey()
+{
+    return Settings::chatProvider() == "gemini" ? Settings::geminiApiKey() : Settings::chatApiKey();
+}
+
 var AiChat::buildRequest() const
 {
+    if (Settings::chatProvider() == "gemini")
+        return GeminiApi::buildRequest (juce::String (systemPrompt) + ToolLayer::guide ("agent"), ToolLayer::tools(), messages);
+
     auto body = object();
     put (body, "model", Settings::chatModel());
     put (body, "max_tokens", 8192);
@@ -183,9 +194,12 @@ var AiChat::buildRequest() const
 var AiChat::post (const juce::String& key, const var& body, int& httpStatus, juce::String& error)
 {
     httpStatus = 0;
-    juce::URL url (Settings::get ("chatEndpoint", "https://api.anthropic.com/v1/messages")); // (chatEndpoint: bara för tester)
+    const auto gemini = Settings::chatProvider() == "gemini";
+    juce::URL url (gemini ? Settings::get ("geminiEndpoint", GeminiApi::endpoint (Settings::geminiModel())) // (geminiEndpoint/chatEndpoint: bara för tester)
+                          : Settings::get ("chatEndpoint", "https://api.anthropic.com/v1/messages"));
     url = url.withPOSTData (juce::JSON::toString (body, true));
-    const juce::String headers = "content-type: application/json\r\nx-api-key: " + key + "\r\nanthropic-version: 2023-06-01\r\n";
+    const juce::String headers = gemini ? "content-type: application/json\r\nx-goog-api-key: " + key + "\r\n"
+                                        : "content-type: application/json\r\nx-api-key: " + key + "\r\nanthropic-version: 2023-06-01\r\n";
 
     // Samma som URL::createInputStream (POST-data i kroppen), men med strömmen åtkomlig så att den kan avbrytas (cancelRequest).
     juce::WebInputStream stream (url, true);
@@ -206,12 +220,26 @@ var AiChat::post (const juce::String& key, const var& body, int& httpStatus, juc
     httpStatus = stream.getStatusCode();
     if (! connected || stream.isError())
     {
-        error = threadShouldExit() ? juce::String ("Cancelled.") : juce::String ("Could not reach api.anthropic.com (no internet, a firewall, or a proxy?).");
+        error = threadShouldExit() ? juce::String ("Cancelled.") : "Could not reach " + juce::String (gemini ? "generativelanguage.googleapis.com" : "api.anthropic.com") + " (no internet, a firewall, or a proxy?).";
         return {};
     }
 
     const auto text = stream.readEntireStreamAsString();
     const auto parsed = juce::JSON::parse (text);
+    if (gemini)
+    {
+        if (httpStatus >= 400)
+        {
+            error = GeminiApi::errorMessage (httpStatus, text);
+            return {};
+        }
+        if (! parsed.isObject())
+        {
+            error = "Unexpected answer from the AI service: " + shorten (text, 300);
+            return {};
+        }
+        return GeminiApi::parseResponse (parsed, ToolLayer::tools(), error); // (tomt/blockerat svar: void + error)
+    }
     if (httpStatus >= 400 || parsed["type"].toString() == "error")
     {
         const auto message = parsed["error"]["message"].toString();
@@ -261,7 +289,7 @@ var AiChat::callTool (const juce::String& name, const var& input)
 
 void AiChat::run()
 {
-    const auto key = Settings::chatApiKey();
+    const auto key = activeKey();
     const auto sizeAtStart = messages.size();
     auto failed = false;
 

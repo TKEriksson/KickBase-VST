@@ -1,4 +1,5 @@
 #include "AiChatPage.h"
+#include "../Core/AiProvider.h"
 
 //==============================================================================
 // Samtalet: ett block per inlägg (användaren till höger, AI:n till vänster, verktygsanrop som små rader), med bilder under.
@@ -139,16 +140,16 @@ AiChatPage::AiChatPage (PluginBase& p) : processor (p), chat (p.getAiChat())
     status.setJustificationType (juce::Justification::centredRight);
     addAndMakeVisible (status);
 
-    for (const auto& model : AiChat::models())
-        modelBox.addItem (model, modelBox.getNumItems() + 1);
-    const auto models = AiChat::models();
-    modelBox.setSelectedId (std::max (0, models.indexOf (Settings::chatModel())) + 1, juce::dontSendNotification);
-    modelBox.setTooltip ("MODEL - Which Claude model answers. Sonnet is a good everyday choice, Opus the most capable (and the most expensive), Haiku the fastest and cheapest. "
-                         "Usage is billed to your own Anthropic account.");
-    modelBox.onChange = [this] { Settings::setChatModel (modelBox.getText()); };
+    modelBox.onChange = [this]
+    {
+        if (gemini())
+            Settings::setGeminiModel (modelBox.getText());
+        else
+            Settings::setChatModel (modelBox.getText());
+    };
     addAndMakeVisible (modelBox);
+    populateModels();
 
-    keyButton.setTooltip ("KEY - Your own Anthropic API key (from console.anthropic.com). It is stored encrypted on this computer and only sent to api.anthropic.com.");
     keyButton.onClick = [this] { showSetup (! setupOpen); };
     addAndMakeVisible (keyButton);
     newChatButton.setTooltip ("NEW CHAT - Starts a new conversation (the sound stays as it is).");
@@ -194,16 +195,30 @@ AiChatPage::AiChatPage (PluginBase& p) : processor (p), chat (p.getAiChat())
     setupTitle.setColour (juce::Label::textColourId, Theme::bass);
     setupTitle.setJustificationType (juce::Justification::centred);
     addChildComponent (setupTitle);
-    setupText.setText ("Chat with an AI that designs the sound for you, right here in the synth. It needs your own Anthropic API key (create one at console.anthropic.com).\n\n"
-                       "The key is stored encrypted on this computer and is only ever sent to api.anthropic.com. Usage is billed to your Anthropic account, "
-                       "and a conversation uses some thousand tokens per step (the NEW CHAT button starts over).",
-                       juce::dontSendNotification);
     setupText.setFont (Theme::font (12.0f));
     setupText.setColour (juce::Label::textColourId, Theme::text);
     setupText.setJustificationType (juce::Justification::centred);
     addChildComponent (setupText);
+
+    // Leverantören: två knappar, den valda lyser.
+    anthropicButton.setClickingTogglesState (false);
+    anthropicButton.onClick = [this] { setProvider (false); };
+    addChildComponent (anthropicButton);
+    geminiButton.onClick = [this] { setProvider (true); };
+    addChildComponent (geminiButton);
+    guideButton.setTooltip ("Opens Google AI Studio in your browser, where you create a Gemini API key. Paste it here afterwards.");
+    guideButton.onClick = [this]
+    {
+        juce::URL ("https://aistudio.google.com/apikey").launchInDefaultBrowser();
+        showTestResult ("Google AI Studio opened in your browser. Follow steps 1-3, then paste the key above.", true);
+        keyEditor.grabKeyboardFocus();
+    };
+    addChildComponent (guideButton);
+    testResult.setFont (Theme::font (12.0f, true));
+    testResult.setJustificationType (juce::Justification::centred);
+    addChildComponent (testResult);
+
     keyEditor.setPasswordCharacter ((juce::juce_wchar) 0x2022);
-    keyEditor.setTextToShowWhenEmpty ("sk-ant-...", Theme::textDim);
     keyEditor.setColour (juce::TextEditor::backgroundColourId, Theme::knobBodyDark);
     keyEditor.setColour (juce::TextEditor::textColourId, Theme::text);
     keyEditor.setColour (juce::TextEditor::outlineColourId, Theme::panelBorder);
@@ -214,7 +229,16 @@ AiChatPage::AiChatPage (PluginBase& p) : processor (p), chat (p.getAiChat())
     cancelKeyButton.onClick = [this] { showSetup (false); };
     addChildComponent (cancelKeyButton);
     removeKeyButton.setTooltip ("Removes the saved key from this computer.");
-    removeKeyButton.onClick = [this] { Settings::setChatApiKey ({}); keyEditor.setText ({}, false); lastHadKey = false; showSetup (true); };
+    removeKeyButton.onClick = [this]
+    {
+        if (gemini())
+            Settings::setGeminiApiKey ({});
+        else
+            Settings::setChatApiKey ({});
+        keyEditor.setText ({}, false);
+        lastHadKey = false;
+        showSetup (true);
+    };
     addChildComponent (removeKeyButton);
 
     showSetup (needsKey());
@@ -226,17 +250,87 @@ AiChatPage::~AiChatPage() = default;
 
 bool AiChatPage::needsKey() const
 {
-    return Settings::chatApiKey().isEmpty();
+    return (gemini() ? Settings::geminiApiKey() : Settings::chatApiKey()).isEmpty();
+}
+
+void AiChatPage::populateModels()
+{
+    modelBox.clear (juce::dontSendNotification);
+    const auto models = AiChat::models();
+    for (const auto& model : models)
+        modelBox.addItem (model, modelBox.getNumItems() + 1);
+    modelBox.setSelectedId (std::max (0, models.indexOf (gemini() ? Settings::geminiModel() : Settings::chatModel())) + 1, juce::dontSendNotification);
+
+    if (gemini())
+    {
+        modelBox.setTooltip ("MODEL - Which Gemini model answers. Flash is the everyday choice and works on the free tier, Flash-Lite is the fastest, Pro the most capable "
+                             "(its free limits are smaller). The limits for your key are shown in Google AI Studio.");
+        keyButton.setTooltip ("KEY - Your own Gemini API key (free from Google AI Studio). It is stored encrypted on this computer and only sent to generativelanguage.googleapis.com.");
+    }
+    else
+    {
+        modelBox.setTooltip ("MODEL - Which Claude model answers. Sonnet is a good everyday choice, Opus the most capable (and the most expensive), Haiku the fastest and cheapest. "
+                             "Usage is billed to your own Anthropic account.");
+        keyButton.setTooltip ("KEY - Your own Anthropic API key (from console.anthropic.com). It is stored encrypted on this computer and only sent to api.anthropic.com.");
+    }
+}
+
+// Texter och knappar på nyckelsidan för vald leverantör.
+void AiChatPage::updateSetupTexts()
+{
+    const auto useGemini = gemini();
+    anthropicButton.setColour (juce::TextButton::buttonColourId, useGemini ? Theme::knobBodyDark : Theme::bass.withAlpha (0.55f));
+    geminiButton.setColour (juce::TextButton::buttonColourId, useGemini ? Theme::bass.withAlpha (0.55f) : Theme::knobBodyDark);
+    keyEditor.setTextToShowWhenEmpty (useGemini ? "AIza..." : "sk-ant-...", Theme::textDim);
+    saveKeyButton.setButtonText (useGemini ? "TEST & SAVE" : "SAVE KEY");
+    guideButton.setVisible (setupOpen && useGemini);
+
+    if (useGemini)
+        setupText.setText ("Chat with an AI that designs the sound for you, right here in the synth. Google's Gemini has a free tier, so you do not need a paid account.\n\n"
+                           "1. Click GET A FREE KEY: Google AI Studio opens in your browser. Sign in with a Google account.\n"
+                           "2. Click \"Create API key\" and copy the key (it starts with AIza).\n"
+                           "3. Paste it below and click TEST & SAVE.\n\n"
+                           "Free within the limits shown in Google AI Studio; when they are used up the chat tells you and you can try again later. "
+                           "On the free tier Google may use what you send to improve its products and people may read it, so keep private things out. You must be 18 or older. "
+                           "In the EEA, Switzerland and the UK Google's terms can require a paid plan: see ai.google.dev/gemini-api/terms. "
+                           "The key is stored encrypted on this computer and only sent to generativelanguage.googleapis.com.",
+                           juce::dontSendNotification);
+    else
+        setupText.setText ("Chat with an AI that designs the sound for you, right here in the synth. It needs your own Anthropic API key (create one at console.anthropic.com).\n\n"
+                           "The key is stored encrypted on this computer and is only ever sent to api.anthropic.com. Usage is billed to your Anthropic account, "
+                           "and a conversation uses some thousand tokens per step (the NEW CHAT button starts over).",
+                           juce::dontSendNotification);
+}
+
+void AiChatPage::setProvider (bool useGemini)
+{
+    if (chat.isBusy() || useGemini == gemini())
+        return;
+    Settings::setChatProvider (useGemini ? "gemini" : "anthropic");
+    chat.newChat(); // samtalet hör till leverantören: det börjar om
+    populateModels();
+    lastHadKey = ! needsKey();
+    showSetup (true);
+}
+
+void AiChatPage::showTestResult (const juce::String& message, bool ok)
+{
+    testResult.setText (message, juce::dontSendNotification);
+    testResult.setColour (juce::Label::textColourId, ok ? juce::Colour (0xff7be495) : juce::Colour (0xffff9a9a));
+    testResult.setVisible (setupOpen && message.isNotEmpty());
 }
 
 void AiChatPage::showSetup (bool show)
 {
     setupOpen = show;
     keyEditor.setText ({}, false);
-    for (auto* component : std::initializer_list<juce::Component*> { &setupTitle, &setupText, &keyEditor, &saveKeyButton, &cancelKeyButton, &removeKeyButton })
+    testResult.setText ({}, juce::dontSendNotification);
+    for (auto* component : std::initializer_list<juce::Component*> { &setupTitle, &setupText, &keyEditor, &saveKeyButton, &cancelKeyButton, &removeKeyButton, &anthropicButton, &geminiButton })
         component->setVisible (show);
+    testResult.setVisible (false);
     cancelKeyButton.setVisible (show && ! needsKey());
     removeKeyButton.setVisible (show && ! needsKey());
+    updateSetupTexts();
     viewport.setVisible (! show);
     input.setVisible (! show);
     sendButton.setVisible (! show);
@@ -247,10 +341,38 @@ void AiChatPage::showSetup (bool show)
 void AiChatPage::saveKey()
 {
     const auto key = keyEditor.getText().trim();
-    if (key.isEmpty())
+    if (key.isEmpty() || testing)
         return;
-    Settings::setChatApiKey (key);
-    showSetup (false);
+
+    if (! gemini())
+    {
+        Settings::setChatApiKey (key);
+        showSetup (false);
+        return;
+    }
+
+    // Gemini: nyckeln provas med ett litet anrop på en bakgrundstråd (det kan ta några sekunder), och sparas bara om den fungerar.
+    testing = true;
+    saveKeyButton.setEnabled (false);
+    showTestResult ("Testing the key ...", true);
+    juce::Thread::launch ([safe = juce::Component::SafePointer<AiChatPage> (this), key]
+    {
+        const auto result = GeminiApi::testKey (key);
+        juce::MessageManager::callAsync ([safe, key, result]
+        {
+            if (safe == nullptr)
+                return;
+            safe->testing = false;
+            safe->saveKeyButton.setEnabled (true);
+            if (result.ok && safe->gemini())
+            {
+                Settings::setGeminiApiKey (key);
+                safe->showSetup (false);
+            }
+            else
+                safe->showTestResult (result.message, false);
+        });
+    });
 }
 
 void AiChatPage::send (const juce::String& text)
@@ -349,15 +471,24 @@ void AiChatPage::resized()
     }
 
     // Nyckelsidan, mitt i ytan.
-    auto setup = getLocalBounds().withTrimmedTop (34).withSizeKeepingCentre (620, 240);
+    auto setup = getLocalBounds().withTrimmedTop (34).withSizeKeepingCentre (640, gemini() ? 400 : 270);
     setupTitle.setBounds (setup.removeFromTop (28));
-    setupText.setBounds (setup.removeFromTop (110));
+    auto providers = setup.removeFromTop (28);
+    anthropicButton.setBounds (providers.removeFromLeft (200));
+    providers.removeFromLeft (6);
+    geminiButton.setBounds (providers.removeFromLeft (200));
+    setup.removeFromTop (6);
+    setupText.setBounds (setup.removeFromTop (gemini() ? 220 : 110));
     setup.removeFromTop (8);
     keyEditor.setBounds (setup.removeFromTop (28));
     setup.removeFromTop (8);
     auto buttons = setup.removeFromTop (28);
     saveKeyButton.setBounds (buttons.removeFromLeft (110));
     buttons.removeFromLeft (6);
+    guideButton.setBounds (buttons.removeFromLeft (190));
+    buttons.removeFromLeft (6);
     cancelKeyButton.setBounds (buttons.removeFromLeft (90));
     removeKeyButton.setBounds (buttons.removeFromRight (120));
+    setup.removeFromTop (6);
+    testResult.setBounds (setup.removeFromTop (36));
 }

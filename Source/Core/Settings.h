@@ -31,12 +31,19 @@ namespace Settings
     juce::String protect (const juce::String& plain);
     juce::String unprotect (const juce::String& stored);
 
-    // AI-chatten i synten: användarens egen API-nyckel (Anthropic) och vilken modell som används. Nyckeln sparas krypterad (Windows DPAPI,
-    // bara den här användaren kan läsa den på den här datorn) och skickas bara till api.anthropic.com.
+    // AI-chatten i synten: användarens egen API-nyckel (Anthropic eller Gemini) och vilken modell som används. Nycklarna sparas krypterade
+    // (Windows DPAPI, bara den här användaren kan läsa dem på den här datorn). Anthropic-nyckeln skickas bara till api.anthropic.com,
+    // Gemini-nyckeln bara till generativelanguage.googleapis.com.
     juce::String chatApiKey();
     void setChatApiKey (const juce::String& key);   // tom = ta bort
     juce::String chatModel();                       // standard: claude-sonnet-5-5
     void setChatModel (const juce::String& model);
+    juce::String chatProvider();                    // "anthropic" (standard) eller "gemini"
+    void setChatProvider (const juce::String& provider);
+    juce::String geminiApiKey();
+    void setGeminiApiKey (const juce::String& key); // tom = ta bort
+    juce::String geminiModel();                     // standard: gemini-2.5-flash
+    void setGeminiModel (const juce::String& model);
 
     // Fönstrets skala (1 = fullstor): 0 = ingen vald, då används standardstorleken.
     float uiScale();

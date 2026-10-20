@@ -38,6 +38,7 @@ public:
 private:
     void run() override;
     void setStatus (const juce::String& text);
+    static juce::String activeKey();         // nyckeln för vald leverantör (Settings::chatProvider); Gemini-delen finns i AiProvider.h
     juce::var buildRequest() const;
     juce::var post (const juce::String& key, const juce::var& body, int& httpStatus, juce::String& error);
     juce::var callTool (const juce::String& name, const juce::var& input);

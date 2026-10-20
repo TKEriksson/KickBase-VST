@@ -109,6 +109,7 @@ set(PLUGIN_SOURCES
     Source/Ui/LogoPainter.cpp
     Source/Core/WavetablePack.cpp
     Source/Core/AiChat.cpp
+    Source/Core/AiProvider.cpp
     Source/Ui/AiChatPage.cpp
     Source/Ui/Components.cpp
     Source/Ui/Help.cpp

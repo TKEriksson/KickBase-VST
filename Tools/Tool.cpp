@@ -23,6 +23,7 @@
 #include "../Source/Core/OfflineRender.h"
 #include "../Source/Core/ToolLayer.h"
 #include "../Source/Core/AiChat.h"
+#include "../Source/Core/AiProvider.h"
 #include "../Source/Core/Settings.h"
 #include "../Source/Core/WavetablePack.h"
 #include "../Source/Core/LibraryIndex.h"
@@ -1268,6 +1269,66 @@ namespace
                 server.join();
                 Settings::set ("chatEndpoint", {});
             }
+        }
+
+        // Gemini: sparade svar (ingen nyckel, inget nät).
+        {
+            Settings::setGeminiApiKey ("AIzaFakeKey123");
+            check (Settings::geminiApiKey() == "AIzaFakeKey123", "Gemini-nyckeln läses tillbaka");
+            check (! settingsFile.loadFileAsString().contains ("FakeKey"), "Gemini-nyckeln ligger inte i klartext");
+            Settings::setChatProvider ("gemini");
+            check (Settings::chatProvider() == "gemini", "leverantören sparas");
+            check (Settings::geminiModel() == "gemini-2.5-flash", "standardmodellen för Gemini");
+
+            const auto tools = ToolLayer::tools();
+            juce::String error;
+
+            const auto textReply = GeminiApi::parseResponse (juce::JSON::parse (
+                R"({"candidates":[{"content":{"role":"model","parts":[{"thought":true,"text":"hmm"},{"text":"Hello there"}]},"finishReason":"STOP"}],
+                    "usageMetadata":{"promptTokenCount":12,"candidatesTokenCount":3}})"), tools, error);
+            check (error.isEmpty() && textReply["content"].size() == 1 && textReply["content"][0]["text"].toString() == "Hello there", "Gemini: textsvar tolkas (tankedelar hoppas över)");
+            check (textReply["stop_reason"].toString() == "end_turn" && (int) textReply["usage"]["input_tokens"] == 12 && (int) textReply["usage"]["output_tokens"] == 3, "Gemini: stopporsak och tokens");
+
+            const auto toolReply = GeminiApi::parseResponse (juce::JSON::parse (
+                R"({"candidates":[{"content":{"role":"model","parts":[{"functionCall":{"name":"set_parameters","args":{"values":"{\"kickClick\":0.5}"}},"thoughtSignature":"sig123"}]},"finishReason":"STOP"}]})"), tools, error);
+            const auto block = toolReply["content"][0];
+            check (block["type"].toString() == "tool_use" && block["name"].toString() == "set_parameters" && toolReply["stop_reason"].toString() == "tool_use", "Gemini: verktygsanrop tolkas");
+            check (block["input"]["values"].isObject() && (double) block["input"]["values"]["kickClick"] == 0.5, "Gemini: JSON-strängargumentet packas upp till ett objekt");
+
+            // Samtalet tillbaka: tool_use -> functionCall (med signaturen), tool_result -> functionResponse med verktygsnamnet.
+            juce::Array<juce::var> messages;
+            auto userMsg = std::make_unique<juce::DynamicObject>();
+            userMsg->setProperty ("role", "user");
+            userMsg->setProperty ("content", "Tune the kick");
+            messages.add (juce::var (userMsg.release()));
+            auto assistantMsg = std::make_unique<juce::DynamicObject>();
+            assistantMsg->setProperty ("role", "assistant");
+            assistantMsg->setProperty ("content", toolReply["content"]);
+            messages.add (juce::var (assistantMsg.release()));
+            auto resultBlock = std::make_unique<juce::DynamicObject>();
+            resultBlock->setProperty ("type", "tool_result");
+            resultBlock->setProperty ("tool_use_id", block["id"]);
+            resultBlock->setProperty ("content", "{\"ok\":true}");
+            auto resultMsg = std::make_unique<juce::DynamicObject>();
+            resultMsg->setProperty ("role", "user");
+            resultMsg->setProperty ("content", juce::Array<juce::var> { juce::var (resultBlock.release()) });
+            messages.add (juce::var (resultMsg.release()));
+            const auto request = GeminiApi::buildRequest ("system text", tools, messages);
+            const auto requestText = juce::JSON::toString (request, true);
+            check (requestText.contains ("functionCall") && requestText.contains ("sig123"), "Gemini: anropet med thoughtSignature skickas tillbaka");
+            check (request["contents"][2]["parts"][0]["functionResponse"]["name"].toString() == "set_parameters", "Gemini: tool_result blir functionResponse med namnet");
+            check (! requestText.contains ("additionalProperties") && request["tools"].size() > 0, "Gemini: verktygsschemat är rensat");
+
+            check (GeminiApi::parseResponse (juce::JSON::parse (R"({"promptFeedback":{"blockReason":"SAFETY"}})"), tools, error).isVoid() && error.contains ("SAFETY"), "Gemini: blockerat svar ger ett fel");
+            check (GeminiApi::errorMessage (400, R"({"error":{"code":400,"message":"API key not valid. Please pass a valid API key.","status":"INVALID_ARGUMENT"}})").contains ("key"), "Gemini: ogiltig nyckel (400)");
+            check (GeminiApi::errorMessage (403, R"({"error":{"code":403,"message":"denied","status":"PERMISSION_DENIED"}})").isNotEmpty(), "Gemini: 403");
+            check (GeminiApi::errorMessage (429, R"({"error":{"code":429,"message":"Quota exceeded","status":"RESOURCE_EXHAUSTED"}})").containsIgnoreCase ("limit")
+                       || GeminiApi::errorMessage (429, {}).containsIgnoreCase ("limit"), "Gemini: kvot (429) förklaras");
+            check (GeminiApi::errorMessage (0, {}).isNotEmpty(), "Gemini: nätverksfel har ett meddelande");
+
+            Settings::setChatProvider ("anthropic");
+            check (Settings::chatProvider() == "anthropic", "leverantören kan växlas tillbaka");
+            Settings::setGeminiApiKey ({});
         }
 
         Settings::setChatApiKey ({});

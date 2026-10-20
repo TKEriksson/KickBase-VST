@@ -158,6 +158,38 @@ namespace Settings
         set ("chatModel", model == "claude-sonnet-5-5" ? juce::String() : model);
     }
 
+    juce::String chatProvider()
+    {
+        return get ("chatProvider") == "gemini" ? "gemini" : "anthropic";
+    }
+
+    void setChatProvider (const juce::String& provider)
+    {
+        set ("chatProvider", provider == "gemini" ? juce::String ("gemini") : juce::String());
+    }
+
+    juce::String geminiApiKey()
+    {
+        const auto stored = get ("geminiApiKey");
+        return stored.isEmpty() ? juce::String() : unprotect (stored).trim();
+    }
+
+    void setGeminiApiKey (const juce::String& key)
+    {
+        set ("geminiApiKey", key.trim().isEmpty() ? juce::String() : protect (key.trim()));
+    }
+
+    juce::String geminiModel()
+    {
+        const auto model = get ("geminiModel").trim();
+        return model.isEmpty() ? juce::String ("gemini-2.5-flash") : model;
+    }
+
+    void setGeminiModel (const juce::String& model)
+    {
+        set ("geminiModel", model == "gemini-2.5-flash" ? juce::String() : model);
+    }
+
     namespace
     {
         std::atomic<int> reduceState { -1 }; // -1 = inte läst än (filen tolkas inte vid varje fråga)
