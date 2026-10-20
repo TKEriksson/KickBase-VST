@@ -20,6 +20,8 @@ float WavetableView::raw (InstrumentField field) const
 void WavetableView::timerCallback()
 {
     followVisualRate();
+    if (! isShowing())
+        return; // dold flik: ingen uträkning
     // Rita om när tabellen, positionen (med LFO) eller warpen ändras.
     const auto position = juce::jlimit (0.0f, 1.0f, raw (InstrumentField::aPos) + processor.modulator.currentOffset (positionIndex));
     const auto table = (int) raw (InstrumentField::aTable);
@@ -48,6 +50,24 @@ void WavetableView::paint (juce::Graphics& g)
     const Wavetable* userTable = lastTable == Wavetables::userIndex() ? processor.userTable (layer, osc) : nullptr;
     const auto& table = userTable != nullptr ? *userTable : Wavetables::get (lastTable < 0 || lastTable == Wavetables::userIndex() ? 0 : lastTable);
     const auto area = bounds.reduced (8.0f, 10.0f);
+
+    if (display != Display::wave)
+    {
+        drawCurrent (g, table, bounds.reduced (8.0f, 18.0f));
+        g.setFont (Theme::font (9.5f, true));
+        g.setColour (Theme::textDim);
+        g.drawText (table.getName().toUpperCase(), bounds.reduced (6.0f, 4.0f), juce::Justification::topLeft);
+        g.setColour (accent.withAlpha (0.25f));
+        g.fillRoundedRectangle (modeRect(), 3.0f);
+        g.setColour (Theme::text);
+        g.drawText (display == Display::scope ? "SCOPE" : "SPECTRUM", modeRect(), juce::Justification::centred);
+        if (hover)
+        {
+            g.setColour (accent.withAlpha (0.75f));
+            g.drawRoundedRectangle (bounds.reduced (1.5f), 6.0f, 1.5f);
+        }
+        return;
+    }
 
     // Varje frame förskjuts uppåt-höger: de bakre är mindre och mörkare.
     constexpr float depthX = 0.28f, depthY = 0.42f;
@@ -106,6 +126,9 @@ void WavetableView::paint (juce::Graphics& g)
     g.setColour (Theme::textDim);
     g.drawText (table.getName().toUpperCase(), bounds.reduced (6.0f, 4.0f), juce::Justification::topLeft);
 
+    g.setColour (Theme::textDim.withAlpha (0.7f));
+    g.drawText ("WAVE", modeRect(), juce::Justification::centred);
+
     // Glöd när musen är över bilden (klicka för att lyssna).
     if (hover)
     {
@@ -116,8 +139,64 @@ void WavetableView::paint (juce::Graphics& g)
     }
 }
 
-void WavetableView::mouseDown (const juce::MouseEvent&)
+void WavetableView::drawCurrent (juce::Graphics& g, const Wavetable& table, juce::Rectangle<float> area)
 {
+    const auto position = std::max (0.0f, lastPosition);
+    const auto mode = (WarpMode) std::max (0, lastWarpMode);
+    const auto warpAmount = std::max (0.0f, lastWarp);
+    auto current = [&] (double phase)
+    {
+        const auto warped = InstrumentSynth::warpPhase (mode == WarpMode::fm ? WarpMode::off : mode, warpAmount, phase, 0.0f);
+        return table.sample (position, warped, 512.0, lastMorph);
+    };
+
+    juce::Path path;
+    if (display == Display::scope)
+    {
+        constexpr int points = 256;
+        for (int i = 0; i <= points; ++i) // två perioder, som en oscilloskopbild
+        {
+            const auto x = area.getX() + area.getWidth() * (float) i / points;
+            const auto y = area.getCentreY() - current (std::fmod (2.0 * i / points, 1.0)) * area.getHeight() * 0.45f;
+            if (i == 0)
+                path.startNewSubPath (x, y);
+            else
+                path.lineTo (x, y);
+        }
+        g.setColour (Theme::textDim.withAlpha (0.3f));
+        g.drawHorizontalLine ((int) area.getCentreY(), area.getX(), area.getRight());
+    }
+    else
+    {
+        std::array<float, 1024> data {}; // FFT-ens in- och utdata (2 * storleken)
+        for (int i = 0; i < 512; ++i)
+            data[(size_t) i] = (float) current ((double) i / 512.0);
+        fft.performFrequencyOnlyForwardTransform (data.data(), true);
+        constexpr int bars = 48; // övertoner 1 ... 48
+        const auto barWidth = area.getWidth() / bars;
+        for (int h = 1; h <= bars; ++h)
+        {
+            const auto db = juce::Decibels::gainToDecibels (data[(size_t) h] * 2.0f / 512.0f, -90.0f);
+            const auto height = area.getHeight() * juce::jlimit (0.0f, 1.0f, (db + 60.0f) / 60.0f);
+            g.setColour (accent.withAlpha (0.8f));
+            g.fillRect (area.getX() + (float) (h - 1) * barWidth + 0.5f, area.getBottom() - height, std::max (1.0f, barWidth - 1.0f), height);
+        }
+        return;
+    }
+    g.setColour (accent.withAlpha (0.3f));
+    g.strokePath (path, juce::PathStrokeType (5.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    g.setColour (accent.brighter (0.3f));
+    g.strokePath (path, juce::PathStrokeType (1.8f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+}
+
+void WavetableView::mouseDown (const juce::MouseEvent& e)
+{
+    if (modeRect().contains (e.position)) // MODE-etiketten växlar WAVE / SCOPE / SPECTRUM; resten av vyn lyssnar i alla lägen
+    {
+        display = display == Display::wave ? Display::scope : display == Display::scope ? Display::spectrum : Display::wave;
+        repaint();
+        return;
+    }
     hold.start (PluginBase::heldSoloAudition (layer, osc)); // bara den här oscillatorn, så länge musen hålls (loopar om ljudet tar slut)
 }
 

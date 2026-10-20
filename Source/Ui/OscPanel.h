@@ -1,6 +1,7 @@
 #pragma once
 
 #include "VisualTimer.h"
+#include <juce_dsp/juce_dsp.h>
 
 #include "../Core/PluginBase.h"
 #include "Components.h"
@@ -23,6 +24,11 @@ private:
     void timerCallback() override;
     float raw (InstrumentField field) const;
 
+    enum class Display { wave, scope, spectrum };
+    juce::Rectangle<float> modeRect() const { return { (float) getWidth() - 62.0f, 3.0f, 58.0f, 14.0f }; }
+    void drawCurrent (juce::Graphics&, const Wavetable&, juce::Rectangle<float> area);
+    Display display = Display::wave;
+    juce::dsp::FFT fft { 9 };
     bool hover = false;
     juce::MouseCursor speakerCursor = Cursors::speaker();
 
