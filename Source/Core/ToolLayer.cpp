@@ -828,6 +828,12 @@ var ToolLayer::setPattern (const var& args)
             const auto tick = (int) note["tick"];
             if (! juce::isPositiveAndBelow (tick, Pattern::maxTicks))
                 continue;
+            if ((bool) note["stack"] && pattern.stackSize (layer, tick) > 0) // staplad ton på tickens huvudton (polyfoni)
+            {
+                pattern.addExtra (layer, tick, { note.hasProperty ("length") ? (int) note["length"] : Pattern::ticksPerStep ((InstrumentGrid) grid), (int) note["pitch"],
+                                                 note.hasProperty ("velocity") ? (float) (double) note["velocity"] : Pattern::defaultVelocity (layer), (bool) note["slide"] });
+                continue;
+            }
             auto& added = pattern.addNote (layer, tick, note.hasProperty ("length") ? (int) note["length"] : Pattern::ticksPerStep ((InstrumentGrid) grid),
                                            (int) note["pitch"], note.hasProperty ("velocity") ? (float) (double) note["velocity"] : Pattern::defaultVelocity (layer), (bool) note["slide"]);
             if (const auto* chord = note["chord"].getArray(); chord != nullptr && ! isKick)

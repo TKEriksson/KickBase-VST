@@ -1,6 +1,8 @@
 #include "LiveCode.h"
 
 #include <BinaryData.h>
+#include "Pattern.h"
+#include <algorithm>
 #include <map>
 
 namespace
@@ -92,7 +94,7 @@ bool LiveCode::pitchFrom (const juce::var& note, int& pitch)
 juce::var LiveCode::toPatternArgs (const std::vector<Hap>& haps, int cycles) const
 {
     // Lager per hap: s("bd"/"kick") = kicken, s("i1".."i10") = instrument 1-10, annars instrument 1.
-    struct Layer { juce::Array<juce::var> notes; std::map<int, bool> ticks; };
+    struct Layer { juce::Array<juce::var> notes; std::map<int, std::vector<int>> ticks; }; // ticks: tonhöjder redan på tickens stapel
     std::map<int, Layer> layers;
     std::vector<int> kickHits;
 
@@ -117,14 +119,18 @@ juce::var LiveCode::toPatternArgs (const std::vector<Hap>& haps, int cycles) con
         if (! noteVal.isVoid() && ! pitchFrom (noteVal, pitch)) continue;
 
         auto& l = layers[layer];
-        if (l.ticks[tick]) continue; // en not per tick tills polyfonin finns
-        l.ticks[tick] = true;
+        auto& stacked = l.ticks[tick];
+        if (std::find (stacked.begin(), stacked.end(), pitch) != stacked.end()) continue; // samma tonhöjd på samma tick hoppas över
+        if ((int) stacked.size() >= Pattern::maxStack) continue; // full stapel
+        const bool isExtra = ! stacked.empty(); // första tonen = huvudton, nästa = staplad ton (set_pattern: "stack")
+        stacked.push_back (pitch);
         const double gain = h.value.hasProperty ("gain") ? (double) h.value["gain"] : 0.8;
         auto* n = new juce::DynamicObject();
         n->setProperty ("tick", tick);
         n->setProperty ("length", std::max (1, juce::roundToInt ((h.end - h.begin) * ticksPerCycle)));
         n->setProperty ("pitch", juce::jlimit (-48, 48, pitch));
         n->setProperty ("velocity", juce::jlimit (0.05, 1.0, gain));
+        if (isExtra) n->setProperty ("stack", true);
         l.notes.add (juce::var (n));
     }
 
