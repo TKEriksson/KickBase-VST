@@ -11,3 +11,4 @@
 
 - `fx-and-fm-ideas.md` — low-end shaper, FM squelch/lead (S2), Psy Multi-FX vs our 15 effect types (projektledaren).
 - `guidesonline-check.md` — link check of the AI-generated guidesonline list (7 dead, 7 verified).
+- [gaps-to-specs.md](research-notes/gaps-to-specs.md) — saknad mätning/verktyg → fas → minsta spec → prio (AN/PH/K/LE/FX/S2)

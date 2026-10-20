@@ -30,3 +30,5 @@ Läs [LESSONS.md](LESSONS.md) innan du bygger eller testar. Lägg till en rad d�
 - 20 okt R1-R3 f9be216: pianorulle (kryss-y, scrollbarens klick, vänsterkant, EDIT IN LANE/hjälptext dolda, Alt=sudd, SELECT ALL, + BAR), ENV-header, håll-provlyssning, LISTEN vid PITCH/AMP. rendersig-trion identiska.
 - 20 okt R4-R7 (utan SNAP): analyzer-lista, export per instrument + without effects, LFO-fas kontinuerlig (Modulation.cpp phaseOffset). Tester: ModulationTests, rendersig-trion, blocksizetest OK; bilder ENV/KICK/ANALYZER tittade på. EFFECTS CLEAR finns inte i koden. SNAP väntar på Opus OK av spec.
 - 20 okt R9+fasslut (content-r): radens längd (LENGTH/AUTO/lås, MCP), (unused)-parametrar, persisttest sektion 9. Hela sviten grön utom rendersigwide/tb303 (se rapport). 42 bilder + pngdiff genomgången.
+
+- 20 okt 11:20: docs committade på content-r (04818df, ej push). gaps-to-specs.md klar (A1–A10 mätningar, B1–B13 verktyg, ordning AN→PH→FX→K/LE/S2). Väntar på bb:s P-rapport efter steg 2.
