@@ -19,6 +19,10 @@ Läs [LESSONS.md](LESSONS.md) innan du bygger eller testar. Lägg till en rad d�
 
 - 20 okt 11:00: research-agenten (73) tyst sedan 10:09 → ÅTERTAGET 10:47, allt gjort av projektledaren: fx-and-fm-ideas.md + guidesonline-check.md klara (docs/research-notes). Tobias besvarade LFO-standard: 4–10 På vid tillägg, 1–3 oförändrat = inget att ändra.
 
+- 20 okt 15:03: Claude-research-agenten är tillgänglig igen för projektledaren. Tidigare uppdrag är återtagna/slutförda; inväntar eventuell ny avgränsad instruktion. Handoff: `docs/workers/CLAUDE-RESEARCH-HANDOFF.md`.
+
+- 20 okt 15:06: KB-uppdraget är mottaget av research-agenten (73): utkastet `docs/work/kb-draft-kick-bass-school.md`, docs only, ingen commit. bb informerad: fortsätt med L4 och rör inte KB-utkastet eller `docs/workers/`; MCP-resurs/skill tas efter granskningen.
+
 ## Klart
 - Fas 0, A, D1, W, E2, D2/D3 (godkända, pushade; tippen content-d2 c0ef101).
 
@@ -56,3 +60,4 @@ Läs [LESSONS.md](LESSONS.md) innan du bygger eller testar. Lägg till en rad d�
 - 20 okt P steg 5: polytest (stöld utan extra klick, oanvänd röst = ny instans, VOICES 4→1 tonar ut, seed per röst, ackordstart med swing/humanize), perftest med röster (värsta fall 10 tunga x VOICES 8 + ackord 3,17 s/s, ej realtid), VOICES-varning (orange etikett + tooltip när VOICES x unison > 24), minne 80 röster 6,0/24,7 MB vid 48/192 kHz, prepareToPlay 7/27 ms. Rapport: docs/content-p-report.md. rendersig x4 0 rader, blocksize/instrument/persisttest OK.
 
 - 20 okt 13:40: Tobias tillät push/merge. R+M+P mergade till main (196f221) och pushade, plus content-r/m/p. L mergas efter L-slutet. Release-bygge väntar på Tobias i bb:s session.
+- 20 okt 15:20: KB-texten granskad och flyttad till docs/kick-bass-school.md. Kvar för bb (kod, efter S): MCP-resurs + AGENT_GUIDE-länk + .claude/skills/kickbase-sound-design/SKILL.md.
