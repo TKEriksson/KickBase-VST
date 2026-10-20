@@ -1372,13 +1372,11 @@ namespace
 
 PatternModule::PatternModule (PluginBase& p, bool isInstrument)
     : processor (p), instrument (isInstrument),
-      length (p.apvts, ParamID::patternBars, "TOTAL LENGTH"),
       presets (p, Presets::Section::pattern, Theme::pattern),
       sequencer (p, isInstrument ? instrumentNames() : juce::StringArray { "GATE" },
                  isInstrument ? instrumentColours() : std::vector<juce::Colour> { Theme::gate }),
       pianoRoll (p, instrumentColours (true))
 {
-    addAndMakeVisible (length);
     presets.setEmptyLabel ("Pattern preset");
     presets.setTooltip ("PATTERN PRESET - Saves or loads the selected row (kick or instrument): its notes and piano roll, GATE, grid, note length, swing, humanize, delay, length and loop. "
                         "The other rows are not touched. The whole sound is not part of it: that is the instrument's own preset.");
@@ -1525,182 +1523,8 @@ juce::String PatternModule::rowName (int row) const
     return layer == Pattern::kickLayer ? juce::String ("KICK") : instrument ? processor.getLayerName (layer) : juce::String ("GATE");
 }
 
-void PatternModule::extendRow (int row, int beforeBars, int nowBars, bool repeat)
-{
-    auto& pattern = processor.pattern;
-    const auto layer = row == 0 ? Pattern::kickLayer : row - 1;
-    const auto oldTicks = beforeBars * Pattern::ticksPerBar, newTicks = nowBars * Pattern::ticksPerBar;
-    for (int tick = oldTicks; tick < newTicks && tick < Pattern::maxTicks; ++tick)
-    {
-        auto& note = pattern.edit (layer, tick);
-        const auto& source = pattern.note (layer, tick % oldTicks);
-        if (repeat && source.on.load())
-        {
-            note.length = source.length.load();
-            note.pitch = source.pitch.load();
-            note.velocity = source.velocity.load();
-            note.slide = source.slide.load();
-            note.on = true;
-        }
-        else
-            note.on = false;
-    }
-    if (layer != Pattern::kickLayer)
-    {
-        const auto stepsPerBar = Pattern::instrumentStepsPerBar ((InstrumentGrid) juce::jlimit (0, Pattern::numGrids - 1,
-            (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, InstrumentField::gateGrid))->load()));
-        const auto oldSteps = beforeBars * stepsPerBar, newSteps = nowBars * stepsPerBar;
-        for (int step = oldSteps; step < newSteps && step < Pattern::maxGateSteps; ++step)
-            pattern.setGateStep (layer, step, repeat ? pattern.isGateStepOn (layer, step % oldSteps) : true);
-    }
-    processor.patternChanged();
-}
-
-void PatternModule::trimRow (int row, int bars)
-{
-    const auto layer = row == 0 ? Pattern::kickLayer : row - 1;
-    const auto limit = bars * Pattern::ticksPerBar;
-    for (int tick = 0; tick < Pattern::maxTicks; ++tick)
-    {
-        auto* found = processor.pattern.existing (layer, tick);
-        if (found == nullptr || ! found->on.load())
-            continue;
-        if (tick >= limit)
-            found->on = false;
-        else if (tick + found->length.load() > limit)
-            found->length = limit - tick; // en ton som går över slutet kortas
-    }
-    processor.patternChanged();
-}
-
-void PatternModule::restoreChoices (const std::array<int, numPatternRows + 1>& choices)
-{
-    for (size_t i = 0; i < choices.size(); ++i)
-        if (choices[i] >= 0)
-            if (auto* parameter = processor.apvts.getParameter (i == 0 ? ParamID::patternBars : ParamID::rowBars ((int) i - 1)))
-                Presets::setParameter (*parameter, parameter->convertTo0to1 ((float) choices[i]));
-    const auto restored = Params::readPatternLengths (processor.apvts);
-    for (int row = 0; row < numPatternRows; ++row)
-        lastRowBars[(size_t) row] = restored.barsOf (row);
-    lastPatternVersion = processor.patternVersion.load();
-}
-
-// Längdändringar. Förkortas en rad (själv, eller för att totalen blev kortare) tas det som inte får plats bort, med en bekräftelse först
-// om något går förlorat (toner som bara är en upprepning av det som blir kvar tas bort utan fråga). Förlängs en rad får man frågan om
-// upprepningen ska kopieras in i de nya takterna. Avbryter man går längderna tillbaka. Görs inget när ett helt projekt eller preset laddas.
-void PatternModule::checkLengthChanges()
-{
-    if (confirmOpen)
-        return;
-
-    auto& apvts = processor.apvts;
-    auto choiceOf = [&apvts] (const char* id) { return (int) std::round (apvts.getRawParameterValue (id)->load()); };
-    std::array<int, numPatternRows + 1> choices {};
-    choices[0] = choiceOf (ParamID::patternBars);
-    for (int row = 0; row < numPatternRows; ++row)
-        choices[(size_t) row + 1] = choiceOf (ParamID::rowBars (row));
-    const auto lengthsNow = Params::readPatternLengths (apvts);
-    auto& pattern = processor.pattern;
-    const auto layerOf = [] (int row) { return row == 0 ? Pattern::kickLayer : row - 1; };
-
-    const auto fresh = lastRowBars[0] < 0 || processor.patternVersion.load() != lastPatternVersion;
-    std::vector<int> shrunk, grown;
-    if (! fresh)
-        for (int row = 0; row < numPatternRows; ++row)
-        {
-            if (lengthsNow.barsOf (row) > lastRowBars[(size_t) row])
-                grown.push_back (row);
-            else if (lengthsNow.barsOf (row) < lastRowBars[(size_t) row])
-                shrunk.push_back (row);
-        }
-
-    const auto previousChoices = lastChoices;
-    const auto previousBars = lastRowBars;
-    std::array<int, numPatternRows> nowBars {};
-    for (int row = 0; row < numPatternRows; ++row)
-        nowBars[(size_t) row] = lengthsNow.barsOf (row);
-
-    juce::Component::SafePointer<PatternModule> safeThis (this);
-
-    // Förlängs en rad (själv, eller för att totalen blev längre) fortsätter den som förut: en rad som loopar får upprepningen kopierad in i de
-    // nya takterna (det är redan det som spelades), annars töms de. Ingen fråga, och ingen längd som kan avbrytas och hoppa tillbaka.
-    for (const auto row : grown)
-        extendRow (row, previousBars[(size_t) row], nowBars[(size_t) row], lengthsNow.loops[(size_t) row]);
-
-    if (! shrunk.empty())
-    {
-        // Vad går förlorat? Toner efter det nya slutet som inte bara är en upprepning av det som finns kvar.
-        struct Loss { int row; int bars; int notes; };
-        std::vector<Loss> losses;
-        for (const auto row : shrunk)
-        {
-            const auto layer = layerOf (row);
-            const auto limit = nowBars[(size_t) row] * Pattern::ticksPerBar, oldTicks = previousBars[(size_t) row] * Pattern::ticksPerBar;
-            auto count = 0;
-            auto differs = false;
-            for (int tick = limit; tick < oldTicks && tick < Pattern::maxTicks; ++tick)
-            {
-                const auto& note = pattern.note (layer, tick);
-                const auto& again = pattern.note (layer, tick % limit);
-                if (note.on.load())
-                    ++count;
-                if (note.on.load() != again.on.load()
-                    || (note.on.load() && (note.length.load() != again.length.load() || note.pitch.load() != again.pitch.load()
-                                           || note.slide.load() != again.slide.load() || std::abs (note.velocity.load() - again.velocity.load()) > 0.001f)))
-                    differs = true;
-            }
-            if (count > 0 && differs)
-                losses.push_back ({ row, nowBars[(size_t) row], count });
-        }
-
-        if (losses.empty())
-        {
-            for (const auto row : shrunk)
-                trimRow (row, nowBars[(size_t) row]); // bara upprepningar: inget går förlorat
-        }
-        else if (! confirmOpen)
-        {
-            juce::String message = "Shortening removes notes that do not fit any more:\n\n";
-            for (const auto& loss : losses)
-                message << "  " << rowName (loss.row) << ": " << loss.notes << (loss.notes == 1 ? " note" : " notes") << " after bar " << loss.bars << "\n";
-            message << "\nThis can't be undone. Shorten anyway?";
-
-            confirmOpen = true;
-            juce::AlertWindow::showAsync (juce::MessageBoxOptions::makeOptionsOkCancel (juce::MessageBoxIconType::WarningIcon, "Shorten the pattern",
-                                                                                         message, "Shorten", "Cancel"),
-                                          [safeThis, shrunk, nowBars, previousChoices] (int choice)
-            {
-                if (safeThis == nullptr)
-                    return;
-                if (choice == 1)
-                {
-                    for (const auto row : shrunk)
-                        safeThis->trimRow (row, nowBars[(size_t) row]);
-                    for (int row = 0; row < numPatternRows; ++row)
-                        safeThis->lastRowBars[(size_t) row] = nowBars[(size_t) row];
-                    safeThis->lastPatternVersion = safeThis->processor.patternVersion.load();
-                }
-                else
-                {
-                    safeThis->restoreChoices (previousChoices); // Avbryt: tillbaka till de längder som gällde innan
-                }
-                safeThis->confirmOpen = false;
-            });
-        }
-    }
-
-    if (! confirmOpen)
-    {
-        lastRowBars = nowBars;
-        lastChoices = choices;
-    }
-    lastPatternVersion = processor.patternVersion.load();
-}
-
 void PatternModule::timerCallback()
 {
-    checkLengthChanges();
-
     // Instrument som lagts till eller tagits bort: raderna följer, och ett borttaget instrument kan inte vara valt.
     if (instrument && processor.activeInstruments() != lastActive)
     {
@@ -1842,8 +1666,7 @@ void PatternModule::showKickFillMenu()
             return;
         auto& p = safeThis->processor;
         juce::String steps;
-        for (int bar = 0; bar < Pattern::maxBars; ++bar)
-            steps << bars[result - 1];
+        steps << bars[result - 1]; // en takt: kickraden är AUTO och följer innehållet
         p.pattern.setKickSteps (steps, Pattern::ticksPerStep (InstrumentGrid::sixteenth));
         if (auto* gridParam = p.apvts.getParameter (ParamID::rowGridKick))
             Presets::setParameter (*gridParam, gridParam->convertTo0to1 ((float) InstrumentGrid::sixteenth));
@@ -1939,8 +1762,6 @@ void PatternModule::resized()
     auto column = area.removeFromLeft (134);
     area.removeFromLeft (10);
 
-    length.setBounds (column.removeFromTop (40));
-    column.removeFromTop (4);
     if (noteEnd != nullptr)
     {
         noteEnd->setBounds (column.removeFromTop (40));

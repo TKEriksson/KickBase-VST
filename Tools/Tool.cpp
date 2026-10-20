@@ -252,8 +252,8 @@ namespace
         return 0;
     }
 
-    // Längdändringar i gränssnittet: förkortas en rad vars innehåll bara är en upprepning tas det bort utan fråga, och längderna
-    // följer varandra (totalen är minst den längsta raden). Dialogerna (som frågar när något går förlorat) testas inte här.
+    // Radens längd (R9): AUTO följer innehållet (växer och krymper), ett valt antal låser den, "+ BAR" (extra) släpps när innehållet nått dit.
+    // Dialogen som frågar före förkortning (LengthMenu) testas inte här.
     int lengthTest()
     {
         juce::ScopedJuceInitialiser_GUI gui;
@@ -264,38 +264,45 @@ namespace
         std::unique_ptr<juce::AudioProcessorEditor> editor (processor.createEditorAndMakeActive());
 
         auto runFor = [] (int milliseconds) { juce::MessageManager::getInstance()->runDispatchLoopUntil (milliseconds); };
-        auto setChoice = [&processor] (const char* id, int index)
-        {
-            auto* parameter = processor.apvts.getParameter (id);
-            parameter->setValueNotifyingHost (parameter->convertTo0to1 ((float) index));
-        };
-
-        runFor (300); // grundnivån
         auto failed = false;
-        auto check = [&failed] (bool ok, const char* what) { std::printf ("%s: %s\n", ok ? "ok" : "FEL", what); failed |= ! ok; };
+        auto check = [&failed] (bool ok, const juce::String& what) { std::printf ("%s: %s\n", ok ? "ok" : "FEL", what.toRawUTF8()); failed |= ! ok; };
+        auto& pattern = processor.pattern;
+        const auto kick = Pattern::kickLayer;
+        runFor (300);
 
-        // Init: totalt 2 takter, kicken på fjärdedelar i alla takter. Kicken kortas till 1 takt: bara en upprepning försvinner.
-        const auto& kickAt = [&processor] (int tick) { return processor.pattern.note (Pattern::kickLayer, tick).on.load(); };
-        check (kickAt (0) && kickAt (Pattern::ticksPerBar), "kicken har toner i takt 2 från början");
-        setChoice (ParamID::rowBars (0), 1); // 1 bar
-        runFor (400);
-        check (kickAt (0) && ! kickAt (Pattern::ticksPerBar) && ! kickAt (Pattern::ticksPerBar + Pattern::ticksPerQuarter), "kortare kick: upprepningen i takt 2 togs bort utan fråga");
+        check (pattern.isLengthAuto (kick) && pattern.lengthBars (kick) == 1, "kicken är AUTO och en takt från början");
 
-        // En rad längre än totalen höjer totalen.
-        setChoice (ParamID::rowBars (2), 4); // 8 bars (index 4 = 8 takter)
-        runFor (400);
-        const auto totalIndex = (int) std::round (processor.apvts.getRawParameterValue (ParamID::patternBars)->load());
-        check (totalIndex >= 3, "totalen höjdes till minst den längsta raden (8 takter)");
+        pattern.addNote (kick, 4 * Pattern::ticksPerBar, 48, 0); // en kick i takt 5
+        processor.patternChanged();
+        check (pattern.lengthBars (kick) == 5, "AUTO: en ton i takt 5 gör raden fem takter");
+        pattern.clearNotes (kick);
+        pattern.addNote (kick, 0, 48, 0);
+        processor.patternChanged();
+        check (pattern.lengthBars (kick) == 1, "AUTO: när tonen tas bort krymper raden igen");
 
-        // Förlängningen gör att en fråga (kopiera upprepningen?) har öppnats: stäng den innan editorn tas bort.
-        juce::ModalComponentManager::getInstance()->cancelAllModalComponents();
-        runFor (200);
+        pattern.setManualBars (kick, 3);
+        processor.patternChanged();
+        check (! pattern.isLengthAuto (kick) && pattern.lengthBars (kick) == 3, "valt antal: tre takter fast innehållet är en takt");
+        pattern.setManualBars (kick, 0);
+        processor.patternChanged();
+        check (pattern.lengthBars (kick) == 1, "tillbaka till AUTO: en takt");
+
+        pattern.setExtraBars (0, 4);
+        processor.patternChanged();
+        check (pattern.lengthBars (0) >= 4, "+ BAR: raden är minst fyra takter");
+        pattern.addNote (0, 3 * Pattern::ticksPerBar, 48, 0);
+        processor.patternChanged();
+        check (pattern.lengthBars (0) == 4 && pattern.extraBars (0) == 0, "innehållet nådde fram: extra släpptes, längden följer innehållet (längd " + juce::String (pattern.lengthBars (0)) + ", extra " + juce::String (pattern.extraBars (0)) + ", innehåll " + juce::String (pattern.contentBars (0)) + ")");
+        pattern.clearNotes (0);
+        processor.patternChanged();
+        check (pattern.lengthBars (0) == 1, "AUTO: raden krymper när tonerna tas bort");
+
         editor.reset();
         std::puts (failed ? "FEL: längdtestet misslyckades" : "Längdtestet gick igenom");
         return failed ? 1 : 0;
     }
 
-    // En pianorulle längre än totalen: totalen följer med, och rullen spelar hela sin längd.
+    // En pianorulle på fyra takter: raden är fyra takter (AUTO) och rullen spelar hela sin längd.
     int rollLengthTest (bool withEditor)
     {
         juce::ScopedJuceInitialiser_GUI gui;
@@ -316,29 +323,17 @@ namespace
         auto failed = false;
         auto check = [&failed] (bool ok, const juce::String& what) { std::printf ("%s: %s\n", ok ? "ok" : "FEL", what.toRawUTF8()); failed |= ! ok; };
 
-        // Bara instrument 1 ska höras: pianorulle med en ton i takt 1 och en i takt 2 (totalen är 2 takter).
+        // Bara instrument 1 ska höras: pianorulle med en ton i varje takt 1-4.
         setChoice (ParamID::kickOn, 0);
         for (int layer = 1; layer < 3; ++layer)
             setChoice (ParamID::bass (layer, InstrumentField::on), 0);
         processor.pattern.clearNotes (0);
-        processor.pattern.addNote (0, 0, 96, 0);
-        processor.pattern.addNote (0, Pattern::ticksPerBar, 96, 0);
+        for (int bar = 0; bar < 4; ++bar)
+            processor.pattern.addNote (0, bar * Pattern::ticksPerBar, 96, 0);
         processor.pattern.setCustom (0, true);
-        setChoice (ParamID::patternBars, 1); // totalt 2 takter
-        runFor (300);
-        setChoice (ParamID::rowBars (1), 3); // rullen: 4 takter
+        processor.patternChanged();
         runFor (600);
-        const auto lengths = Params::readPatternLengths (processor.apvts);
-        check (lengths.total >= 4 && lengths.barsOf (1) == 4, "totalen (" + juce::String (lengths.total) + ") är minst rullens längd (4 takter)");
-        const auto totalIndex = (int) std::round (processor.apvts.getRawParameterValue (ParamID::patternBars)->load());
-        check (totalIndex >= 2, "TOTAL LENGTH visar minst 4 takter (index " + juce::String (totalIndex) + ")");
-        // Frågan om att kopiera upprepningen in i de nya takterna: svara "Copy" (1), som en användare skulle.
-        if (auto* modal = juce::ModalComponentManager::getInstance()->getModalComponent (0))
-        {
-            std::puts ("en fråga öppnades (Longer pattern): svarar Copy");
-            modal->exitModalState (1);
-            runFor (300);
-        }
+        check (processor.pattern.isLengthAuto (0) && processor.pattern.lengthBars (0) == 4, "AUTO: rullen är fyra takter (" + juce::String (processor.pattern.lengthBars (0)) + ")");
 
         OfflineRender::Settings settings;
         settings.sampleRate = renderRate;

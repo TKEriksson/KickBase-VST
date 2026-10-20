@@ -85,7 +85,7 @@ void FxProcessor::processChunk (juce::AudioBuffer<float>& buffer)
         replaceNonFinite (buffer, getTotalNumInputChannels(), numSamples);
 
     const auto key = params.getChoice (ParamID::fxKey);
-    lengths = Params::readPatternLengthsWith ([this] (const char* id) { return params.get (id); });
+    lengths = Params::readPatternLengthsWith ([this] (const char* id) { return params.get (id); }, pattern, 1);
     const auto audition = auditionRequest.exchange (-1);
     if (audition == 5)
         kickSoloSamplesLeft = (int) (getSampleRate() * 2.0);

@@ -17,52 +17,29 @@ namespace RollFiles
         return files;
     }
 
-    // Närmaste längd i listan (1, 2, 4 ... 64 takter) som rymmer `bars`.
-    int barsToChoice (int bars)
-    {
-        auto choice = 0;
-        while ((1 << choice) < bars && choice < 6)
-            ++choice;
-        return choice;
-    }
-
-    void applyLength (juce::AudioProcessorValueTreeState& apvts, int layer, int bars)
-    {
-        const auto total = std::max (Params::readPatternLengths (apvts).total, bars);
-        auto set = [&apvts] (const char* id, int choice)
-        {
-            if (auto* parameter = apvts.getParameter (id))
-                Presets::setParameter (*parameter, parameter->convertTo0to1 ((float) choice));
-        };
-        set (ParamID::patternBars, barsToChoice (total));
-        set (ParamID::rowBars (layer == Pattern::kickLayer ? 0 : 1 + layer), bars >= total ? 0 : barsToChoice (bars) + 1);
-    }
-
-    bool save (const Pattern& pattern, int layer, int bars, InstrumentGrid grid, const juce::File& file)
+    bool save (const Pattern& pattern, int layer, InstrumentGrid grid, const juce::File& file)
     {
         juce::XmlElement root ("KickbaseRoll");
-        root.setAttribute ("version", 1);
-        root.setAttribute ("bars", bars);
+        root.setAttribute ("version", 2); // 2: length = auto eller valt antal takter (version 1 hade bara bars)
+        root.setAttribute ("bars", pattern.lengthBars (layer));
+        root.setAttribute ("length", pattern.isLengthAuto (layer) ? juce::String ("auto") : juce::String (pattern.manualBars (layer)));
         root.setAttribute ("grid", Pattern::gridNames()[(int) grid]);
 
-        for (int tick = 0; tick < Pattern::maxTicks; ++tick)
+        pattern.forEachNote (layer, [&root] (int tick, const Pattern::Note& n)
         {
-            const auto& n = pattern.note (layer, tick);
-            if (! n.on.load())
-                continue;
             auto* note = root.createNewChildElement ("Note");
             note->setAttribute ("tick", tick);
             note->setAttribute ("length", n.length.load());
             note->setAttribute ("pitch", n.pitch.load());
             note->setAttribute ("velocity", (double) n.velocity.load());
             note->setAttribute ("glide", n.slide.load());
-        }
+        });
 
         file.getParentDirectory().createDirectory();
         return root.writeTo (file);
     }
 
-    bool load (Pattern& pattern, int layer, const juce::File& file, int& bars, InstrumentGrid& grid)
+    bool load (Pattern& pattern, int layer, const juce::File& file, InstrumentGrid& grid)
     {
         const auto xml = juce::XmlDocument::parse (file);
         if (xml == nullptr || ! xml->hasTagName ("KickbaseRoll"))
@@ -78,7 +55,16 @@ namespace RollFiles
         }
         pattern.setCustom (layer, true);
 
-        bars = 1 << barsToChoice (juce::jlimit (1, Pattern::maxBars, xml->getIntAttribute ("bars", 1)));
+        // Längden: version 2 sparar auto eller ett antal; en äldre fil sparade bara antalet (en längre rulle än tonerna: valt antal).
+        pattern.refreshLengths();
+        const auto lengthText = xml->getStringAttribute ("length");
+        const auto savedBars = juce::jlimit (1, Pattern::maxBars, xml->getIntAttribute ("bars", 1));
+        if (lengthText.isNotEmpty() && lengthText.containsOnly ("0123456789"))
+            pattern.setManualBars (layer, lengthText.getIntValue());
+        else if (lengthText.isEmpty() && savedBars > pattern.contentBars (layer))
+            pattern.setManualBars (layer, savedBars);
+        else
+            pattern.setManualBars (layer, 0);
         const auto gridIndex = Pattern::gridNames().indexOf (xml->getStringAttribute ("grid"), true);
         grid = gridIndex >= 0 ? (InstrumentGrid) gridIndex : InstrumentGrid::sixteenth;
         return true;
@@ -94,17 +80,13 @@ namespace RollFiles
         signature.setTimeStamp (0.0);
         track.addEvent (signature);
 
-        for (int tick = 0; tick < Pattern::maxTicks; ++tick)
+        pattern.forEachNote (layer, [&] (int tick, const Pattern::Note& n)
         {
-            const auto& n = pattern.note (layer, tick);
-            if (! n.on.load())
-                continue;
-
             const auto midiNote = juce::jlimit (0, 127, rootMidiNote + n.pitch.load());
             const auto velocity = (juce::uint8) juce::jlimit (1, 127, juce::roundToInt (n.velocity.load() * 127.0f));
             track.addEvent (juce::MidiMessage::noteOn (1, midiNote, velocity), (double) tick);
             track.addEvent (juce::MidiMessage::noteOff (1, midiNote), (double) (tick + std::max (1, n.length.load())));
-        }
+        });
 
         auto end = juce::MidiMessage::endOfTrack();
         end.setTimeStamp ((double) (bars * Pattern::ticksPerBar));
@@ -121,7 +103,7 @@ namespace RollFiles
         return stream.openedOk() && midi.writeTo (stream);
     }
 
-    bool importMidi (Pattern& pattern, int layer, const juce::File& file, int rootMidiNote, int& bars)
+    bool importMidi (Pattern& pattern, int layer, const juce::File& file, int rootMidiNote)
     {
         juce::FileInputStream stream (file);
         juce::MidiFile midi;
@@ -176,9 +158,8 @@ namespace RollFiles
             lastEnd = std::max (lastEnd, f.tick + f.length);
         }
         pattern.setCustom (layer, true);
-
-        const auto needed = (lastEnd + Pattern::ticksPerBar - 1) / Pattern::ticksPerBar;
-        bars = 1 << barsToChoice (needed);
+        pattern.setManualBars (layer, 0); // längden följer det som lästes in
+        juce::ignoreUnused (lastEnd);
         return true;
     }
 }

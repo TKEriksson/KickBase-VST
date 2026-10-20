@@ -137,7 +137,7 @@ namespace Params
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::patternBars, 1 }, "Total Length",
                                                             StringArray { "1 bar", "2 bars", "4 bars", "8 bars", "16 bars", "32 bars", "64 bars" }, 0));
         juce::StringArray rowLengths { "Total" };
-        for (int bars = 1; bars <= Pattern::maxBars; bars *= 2)
+        for (int bars = 1; bars <= Pattern::legacyMaxBars; bars *= 2)
             rowLengths.add (juce::String (bars) + (bars == 1 ? " bar" : " bars"));
         for (int row = 0; row < numPatternRows; ++row)
             layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::rowBars (row), 1 },

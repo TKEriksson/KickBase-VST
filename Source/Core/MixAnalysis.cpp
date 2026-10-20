@@ -1823,7 +1823,7 @@ namespace MixAnalysis
         capture.present[(size_t) masterSource] = true;
         capture.names[(size_t) masterSource] = "Master";
 
-        const auto lengths = Params::readPatternLengths (copy.apvts);
+        const auto lengths = Params::readPatternLengths (copy.apvts, copy.pattern, copy.activeInstruments());
         const auto total = std::max (1, lengths.total);
         const auto analyseBars = std::max (1, std::min (total, options.maxBars));
         auto preRoll = total;

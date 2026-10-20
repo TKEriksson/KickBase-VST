@@ -148,27 +148,38 @@ namespace Params
     int barsFromChoice (int choiceIndex); // 0 ... 6 -> 1, 2, 4, 8, 16, 32, 64 takter
     int rowBarsFromChoice (int choiceIndex); // 0 = hela mönstret (0), 1 ... 7 -> 1, 2 ... 64 takter
 
-    // Mönsterlängderna ur parametrarna. `get` ger ett parameters värde från dess ID (ParamRefs eller apvts).
+    // Mönsterlängderna (R9): varje rads längd kommer ur mönstret (AUTO = innehållet, eller ett valt antal takter), loop på/av ur parametrarna
+    // (rowLoop). Mönstret är lika långt som den längsta raden (kicken och de `activeInstruments` första instrumenten): det börjar inte om förrän
+    // den är klar, och kortare rader loopar. Parametrarna patternBars och rowBars används inte längre (de ligger kvar så att ordningen är oförändrad).
+    // `get` ger ett parameters värde från dess ID (ParamRefs eller apvts).
     template <typename Getter>
-    PatternLengths readPatternLengthsWith (Getter&& get)
+    PatternLengths readPatternLengthsWith (Getter&& get, const Pattern& pattern, int activeInstruments)
     {
         PatternLengths lengths;
-        lengths.total = barsFromChoice ((int) get (ParamID::patternBars));
+        lengths.total = 1;
         for (int row = 0; row < numPatternRows; ++row)
         {
-            lengths.rows[(size_t) row] = rowBarsFromChoice ((int) get (ParamID::rowBars (row)));
+            const auto layer = row == 0 ? Pattern::kickLayer : row - 1;
+            lengths.rows[(size_t) row] = pattern.lengthBars (layer);
             lengths.loops[(size_t) row] = get (ParamID::rowLoop (row)) >= 0.5f;
+            if (row <= activeInstruments)
+                lengths.total = std::max (lengths.total, lengths.rows[(size_t) row]);
         }
-
-        // Totalen är minst så lång som den längsta raden: mönstret börjar inte om förrän den är klar.
-        for (const auto rowBars : lengths.rows)
-            lengths.total = std::max (lengths.total, rowBars);
         return lengths;
     }
 
-    inline PatternLengths readPatternLengths (const juce::AudioProcessorValueTreeState& apvts)
+    inline PatternLengths readPatternLengths (const juce::AudioProcessorValueTreeState& apvts, const Pattern& pattern, int activeInstruments)
     {
-        return readPatternLengthsWith ([&apvts] (const char* id) { return apvts.getRawParameterValue (id)->load(); });
+        return readPatternLengthsWith ([&apvts] (const char* id) { return apvts.getRawParameterValue (id)->load(); }, pattern, activeInstruments);
+    }
+
+    // Gamla projekt och verktyg som sätter de gamla längdparametrarna: översätt dem till radernas längd (se Pattern::applyLegacyLengths).
+    inline void applyLegacyLengthParams (const juce::AudioProcessorValueTreeState& apvts, Pattern& pattern, int onlyLayer = -1)
+    {
+        std::array<int, numPatternRows> rows {};
+        for (int row = 0; row < numPatternRows; ++row)
+            rows[(size_t) row] = rowBarsFromChoice ((int) std::lround (apvts.getRawParameterValue (ParamID::rowBars (row))->load()));
+        pattern.applyLegacyLengths (barsFromChoice ((int) std::lround (apvts.getRawParameterValue (ParamID::patternBars)->load())), rows, onlyLayer);
     }
 }
 

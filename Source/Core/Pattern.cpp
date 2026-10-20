@@ -94,6 +94,98 @@ void Pattern::setGateStep (int layer, int index, bool open)
     block->steps[(size_t) (index % gateBlockSteps)] = open;
 }
 
+void Pattern::refreshLengths()
+{
+    for (int layer = 0; layer < numNoteLayers; ++layer)
+    {
+        auto content = 0;
+        for (int bar = 0; bar < maxBars; ++bar)
+        {
+            auto& slot = noteBlocks[(size_t) layer][(size_t) bar];
+            const auto* block = slot.load (std::memory_order_acquire);
+            if (block == nullptr)
+                continue;
+
+            auto any = false;
+            for (int i = 0; i < ticksPerBar; ++i)
+            {
+                const auto& n = block->notes[(size_t) i];
+                if (! n.on.load())
+                    continue;
+                any = true;
+                const auto lastTick = bar * ticksPerBar + i + std::max (1, n.length.load()) - 1; // tonens sista tick: en lång ton täcker takter
+                content = std::max (content, lastTick / ticksPerBar + 1);
+            }
+            if (! any) // ett block utan toner behövs inte: frigörs (ljudtråden kan läsa det just nu, därför DeferredRelease)
+                if (auto* empty = slot.exchange (nullptr, std::memory_order_acq_rel))
+                    retiredNoteBlocks.retire (std::unique_ptr<NoteBlock> (empty));
+        }
+        content = juce::jlimit (1, maxBars, content);
+
+        if (extraOf[(size_t) layer].load() > 0 && content >= extraOf[(size_t) layer].load())
+            extraOf[(size_t) layer] = 0; // innehållet har nått takten som "+" lade till: raden följer innehållet igen
+
+        contentOf[(size_t) layer] = content;
+        const auto manual = manualOf[(size_t) layer].load();
+        lengthOf[(size_t) layer] = manual > 0 ? manual : std::max (content, extraOf[(size_t) layer].load());
+    }
+}
+
+void Pattern::setManualBars (int layer, int bars)
+{
+    manualOf[(size_t) clampedLayer (layer)] = juce::jlimit (0, maxBars, bars);
+    refreshLengths();
+}
+
+void Pattern::setExtraBars (int layer, int bars)
+{
+    extraOf[(size_t) clampedLayer (layer)] = juce::jlimit (0, maxBars, bars);
+    refreshLengths();
+}
+
+void Pattern::trimRow (int layer, int bars)
+{
+    layer = clampedLayer (layer);
+    const auto limit = std::max (1, bars) * ticksPerBar;
+    for (int bar = std::max (0, limit / ticksPerBar - 1); bar < maxBars; ++bar)
+    {
+        auto* block = noteBlocks[(size_t) layer][(size_t) bar].load (std::memory_order_acquire);
+        if (block == nullptr)
+            continue;
+        for (int i = 0; i < ticksPerBar; ++i)
+        {
+            auto& n = block->notes[(size_t) i];
+            const auto tick = bar * ticksPerBar + i;
+            if (! n.on.load())
+                continue;
+            if (tick >= limit)
+                n.on = false;
+            else if (tick + n.length.load() > limit)
+                n.length = limit - tick; // en ton som går över slutet kortas
+        }
+    }
+    refreshLengths();
+}
+
+void Pattern::applyLegacyLengths (int total, const std::array<int, numPatternRows>& rows, int onlyLayer)
+{
+    // Gamla regeln: totalen är minst så lång som den längsta raden, en rad med 0 följer totalen, och rader kortare än totalen loopar.
+    auto longest = std::max (1, total);
+    for (const auto rowBars : rows)
+        longest = std::max (longest, rowBars);
+    for (int row = 0; row < numPatternRows; ++row)
+    {
+        const auto layer = row == 0 ? kickLayer : row - 1;
+        if (onlyLayer >= 0 && layer != onlyLayer)
+            continue;
+        const auto bars = rows[(size_t) row] > 0 ? std::min (rows[(size_t) row], longest) : longest;
+        trimRow (layer, bars);
+        manualOf[(size_t) layer] = contentBars (layer) < bars ? bars : 0; // innehållet fyller längden: AUTO räcker
+        extraOf[(size_t) layer] = 0;
+    }
+    refreshLengths();
+}
+
 int Pattern::firstNoteIn (int layer, int fromTick, int toTick) const
 {
     toTick = std::min (maxTicks, toTick);
@@ -209,12 +301,14 @@ void Pattern::clearNotes (int layer)
     releaseNoteBlocks (layer, 0); // en rad utan toner har inga block
 }
 
-InstrumentGrid Pattern::applyTemplate (PatternTemplate t, bool keepOtherInstruments)
+InstrumentGrid Pattern::applyTemplate (PatternTemplate t, bool keepOtherInstruments, int fillBars)
 {
+    fillBars = juce::jlimit (1, maxBars, fillBars);
+
     // Kick på varje fjärdedel i alla mallar utom Clear.
     clearNotes (kickLayer);
     if (t != PatternTemplate::clear)
-        for (int tick = 0; tick < maxTicks; tick += ticksPerQuarter)
+        for (int tick = 0; tick < fillBars * ticksPerBar; tick += ticksPerQuarter)
             addNote (kickLayer, tick, ticksPerQuarter / 4, 0, defaultKickVelocity);
 
     if (! keepOtherInstruments)
@@ -222,11 +316,16 @@ InstrumentGrid Pattern::applyTemplate (PatternTemplate t, bool keepOtherInstrume
             clearNotes (layer);
     for (int layer = 0; layer < (keepOtherInstruments ? 1 : numLayers); ++layer)
         setGate (layer, true);
-    return applyLayerTemplate (0, t);
+    const auto grid = applyLayerTemplate (0, t, fillBars);
+    for (int layer = 0; layer < (keepOtherInstruments ? 1 : numNoteLayers); ++layer)
+        manualOf[(size_t) layer] = extraOf[(size_t) layer] = 0; // längden följer innehållet igen
+    refreshLengths();
+    return grid;
 }
 
-InstrumentGrid Pattern::applyLayerTemplate (int layer, PatternTemplate t)
+InstrumentGrid Pattern::applyLayerTemplate (int layer, PatternTemplate t, int fillBars)
 {
+    fillBars = juce::jlimit (1, maxBars, fillBars);
     auto grid = InstrumentGrid::sixteenth;
     if (t == PatternTemplate::triplet)
         grid = InstrumentGrid::eighthTriplet;
@@ -236,7 +335,7 @@ InstrumentGrid Pattern::applyLayerTemplate (int layer, PatternTemplate t)
     const auto perQuarter = (int) instrumentStepsPerQuarter (grid);
     const auto stepTicks = ticksPerStep (grid);
 
-    for (int i = 0; i < maxBars * instrumentStepsPerBar (grid); ++i)
+    for (int i = 0; i < fillBars * instrumentStepsPerBar (grid); ++i)
     {
         const auto inBeat = i % perQuarter;
         auto on = false;
@@ -255,6 +354,7 @@ InstrumentGrid Pattern::applyLayerTemplate (int layer, PatternTemplate t)
             addNote (layer, i * stepTicks, juce::roundToInt (noteLength * (float) stepTicks));
     }
 
+    refreshLengths();
     return grid;
 }
 
@@ -292,14 +392,27 @@ juce::ValueTree Pattern::toValueTree() const
         child.setProperty ("layer", layer, nullptr);
         child.setProperty ("notes", entries.joinIntoString (";"), nullptr);
         child.setProperty ("custom", isCustom (layer), nullptr);
+        child.setProperty ("length", manualBars (layer) > 0 ? juce::String (manualBars (layer)) : juce::String ("auto"), nullptr); // AUTO eller valt antal takter
+        if (extraBars (layer) > 0)
+            child.setProperty ("extra", extraBars (layer), nullptr);
         tree.appendChild (child, nullptr);
 
         if (layer >= numLayers)
             continue; // kicken har ingen gate
 
         // GATE-stegen: en siffra per steg (1 = öppet).
+        // (bara fram till sista stängda steget: det som inte nämns är öppet)
+        auto lastClosed = -1;
+        for (int chunk = maxGateSteps / gateBlockSteps - 1; chunk >= 0 && lastClosed < 0; --chunk)
+            if (gateBlocks[(size_t) layer][(size_t) chunk].load() != nullptr)
+                for (int i = gateBlockSteps - 1; i >= 0; --i)
+                    if (! isGateStepOn (layer, chunk * gateBlockSteps + i))
+                    {
+                        lastClosed = chunk * gateBlockSteps + i;
+                        break;
+                    }
         juce::String steps;
-        for (int i = 0; i < maxGateSteps; ++i)
+        for (int i = 0; i <= lastClosed; ++i)
             steps << (isGateStepOn (layer, i) ? '1' : '0');
         juce::ValueTree gateChild ("Gate");
         gateChild.setProperty ("layer", layer, nullptr);
@@ -387,6 +500,9 @@ void Pattern::fromValueTree (const juce::ValueTree& tree, bool clearUnmentionedL
         {
             clearOnce (layer);
             setCustom (layer, (bool) child["custom"]);
+            const auto lengthText = child["length"].toString(); // saknas i projekt före version 7 (då AUTO; gamla längder: applyLegacyLengths)
+            manualOf[(size_t) layer] = juce::jlimit (0, maxBars, lengthText.containsOnly ("0123456789") ? lengthText.getIntValue() : 0);
+            extraOf[(size_t) layer] = juce::jlimit (0, maxBars, (int) child["extra"]);
             for (const auto& entry : split (child["notes"], ";"))
             {
                 const auto parts = juce::StringArray::fromTokens (entry, "/", {});
@@ -426,7 +542,10 @@ void Pattern::fromValueTree (const juce::ValueTree& tree, bool clearUnmentionedL
         if (! cleared[(size_t) layer] && ! (layer == kickLayer && tree.hasProperty ("kick")))
         {
             clearNotes (layer);
+            manualOf[(size_t) layer] = extraOf[(size_t) layer] = 0;
             if (layer < numLayers)
                 setGate (layer, true);
         }
+
+    refreshLengths();
 }

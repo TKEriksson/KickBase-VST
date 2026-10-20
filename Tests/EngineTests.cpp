@@ -423,7 +423,7 @@ namespace
         check (pattern.applyTemplate (PatternTemplate::rolling) == InstrumentGrid::sixteenth, "Rolling är i sextondelar");
         const auto quarter = Pattern::ticksPerQuarter;
         auto kickOn = [&pattern] (int tick) { return pattern.note (Pattern::kickLayer, tick).on.load(); };
-        check (kickOn (0) && ! kickOn (24) && kickOn (quarter) && kickOn (4 * quarter), "kick på fjärdedelar");
+        check (kickOn (0) && ! kickOn (24) && kickOn (quarter) && kickOn (3 * quarter) && ! kickOn (4 * quarter), "kick på fjärdedelar");
         const auto sixteenth = Pattern::ticksPerStep (InstrumentGrid::sixteenth);
         check (! pattern.note (0, 0).on && pattern.note (0, sixteenth).on
                    && pattern.note (0, 3 * sixteenth).on && ! pattern.note (0, 4 * sixteenth).on,

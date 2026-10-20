@@ -55,12 +55,14 @@ private:
     int totalLayers() const { return layerNames.size(); }   // alla instrument som finns i gränssnittet
     int numLayers() const { return processor.isEffectVersion() ? 1 : std::min (totalLayers(), processor.activeInstruments()); } // de som används
     int bars() const;
-    PatternLengths lengths() const { return Params::readPatternLengths (processor.apvts); }
+    PatternLengths lengths() const { return Params::readPatternLengths (processor.apvts, processor.pattern, numLayers()); }
 
     // Ett mönster på mer än fyra takter visas en sida (fyra takter) i taget; sidknapparna byter sida.
     static constexpr int barsPerPage = 4;
-    int viewBars() const { return std::min (bars(), barsPerPage); }
-    int numPages() const { return std::max (1, bars() / barsPerPage); }
+    // Mönstret visas med en takt till efter slutet (skuggad): ett klick där lägger ett steg och förlänger raden (R9: längden följer innehållet).
+    int shownBars() const { return std::min (Pattern::maxBars, bars() + 1); }
+    int viewBars() const { return std::min (shownBars(), barsPerPage); }
+    int numPages() const { return std::max (1, (shownBars() + barsPerPage - 1) / barsPerPage); }
     int pageOffset (int visibleSteps) const { return page * visibleSteps; } // första synliga stegets plats i mönstret
     void setPage (int newPage);
 
@@ -136,7 +138,7 @@ private:
     int selectedLayer = 0;
     int page = 0;
     juce::TextButton previousPageButton { "<" }, nextPageButton { ">" }, followButton { "FOLLOW" };
-    std::vector<std::unique_ptr<juce::ComboBox>> lengthBoxes; // radens längd: [0] kick, sedan baslagren
+    std::vector<std::unique_ptr<juce::TextButton>> lengthButtons; // radens längd (AUTO n / valt antal), klick öppnar menyn: [0] kick, sedan baslagren
     std::vector<std::unique_ptr<ListenButton>> listenButtons; // högtalare: spelar raden
     std::vector<std::unique_ptr<LoopToggle>> loopToggles;     // loopar raden?
     // M (mute: samma som instrumentets på/av) och S (solo: bara de soloade spelar), för kicken och varje instrument. Samma index som listenButtons.
@@ -151,7 +153,6 @@ private:
     juce::Rectangle<int> overviewArea;                        // remsan som visar radernas längder och var man är
     bool overviewDragging = false;
     void setPageFromOverview (int x);
-    std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment>> lengthAttachments;
     juce::Rectangle<int> pageArea, headerLabels;
 
     juce::Rectangle<int> labelColumn, stepsColumn, laneArea;

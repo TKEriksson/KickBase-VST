@@ -53,12 +53,13 @@ double PluginBase::typicalNoteSeconds (int layer)
     if (noteSecondsStamp[(size_t) layer] != 0 && now - noteSecondsStamp[(size_t) layer] < 250)
         return noteSecondsCache[(size_t) layer];
 
-    const auto lengths = Params::readPatternLengths (apvts);
-    const auto ticks = juce::jlimit (1, Pattern::maxTicks, std::max (1, lengths.total) * Pattern::ticksPerBar);
+    const auto ticks = pattern.lengthBars (layer) * Pattern::ticksPerBar;
     std::vector<int> noteLengths;
-    for (int tick = 0; tick < ticks; ++tick)
-        if (const auto& note = pattern.note (layer, tick); note.on.load())
+    pattern.forEachNote (layer, [&] (int tick, const Pattern::Note& note)
+    {
+        if (tick < ticks)
             noteLengths.push_back (note.length.load());
+    });
 
     auto seconds = 0.0;
     if (! noteLengths.empty())
@@ -229,9 +230,7 @@ bool PluginBase::instrumentHasContent (int layer, juce::String* what) const
     juce::StringArray parts;
 
     auto notes = 0;
-    for (int tick = 0; tick < Pattern::maxTicks; ++tick)
-        if (pattern.note (layer, tick).on.load())
-            ++notes;
+    pattern.forEachNote (layer, [&notes] (int, const Pattern::Note&) { ++notes; });
     if (notes > 0)
         parts.add ((pattern.isCustom (layer) ? "a piano roll with " : "") + juce::String (notes) + (notes == 1 ? " note" : " notes"));
 
@@ -565,8 +564,10 @@ void PluginBase::setStateInformation (const void* data, int sizeInBytes)
         layerNames[(size_t) layer] = state.getProperty ("layerName" + juce::String (layer + 1), juce::String()).toString();
     ++layerNamesVersion;
 
+    auto legacyLengths = false; // projekt före mönsterversion 7: längderna låg i parametrarna (patternBars, rowBars)
     if (auto patternTree = state.getChildWithName (Pattern::treeType); patternTree.isValid())
     {
+        legacyLengths = (int) patternTree.getProperty ("version", 1) < 7;
         pattern.fromValueTree (patternTree);
         state.removeChild (patternTree, nullptr);
         ++patternVersion;
@@ -633,11 +634,17 @@ void PluginBase::setStateInformation (const void* data, int sizeInBytes)
         state.removeChild (routesTree, nullptr);
 
     apvts.replaceState (state);
+    if (legacyLengths)
+    {
+        Params::applyLegacyLengthParams (apvts, pattern); // (efter parametrarna: de bär de gamla längderna)
+        ++patternVersion;
+    }
     ensureTablesInUse();
 }
 
 void PluginBase::patternChanged()
 {
+    pattern.refreshLengths(); // radernas längd följer innehållet (AUTO); tomma block frigörs
     ++patternVersion;
     markStateChanged();
 }
@@ -890,10 +897,18 @@ bool PluginBase::loadPresetXml (const juce::XmlElement& xmlElement, Presets::Sec
 
     if (section == Presets::Section::full)
         if (const auto* patternXml = xml->getChildByName (Pattern::treeType))
+        {
             pattern.fromValueTree (juce::ValueTree::fromXml (*patternXml));
+            if (patternXml->getIntAttribute ("version", 1) < 7)
+                Params::applyLegacyLengthParams (apvts, pattern);
+        }
     if (section == Presets::Section::pattern)
         if (const auto* patternXml = xml->getChildByName (Pattern::treeType))
+        {
             pattern.rowFromValueTree (layer, juce::ValueTree::fromXml (*patternXml));
+            if (patternXml->getIntAttribute ("version", 1) < 7)
+                Params::applyLegacyLengthParams (apvts, pattern, layer);
+        }
 
     if (section == Presets::Section::full || section == Presets::Section::kick)
     {

@@ -67,9 +67,11 @@ private:
 
     int bars() const;
     int totalTicks() const { return bars() * Pattern::ticksPerBar; }
+    // Redigerbart område: raden plus takten efter slutet (ett klick där förlänger raden: längden följer innehållet).
+    int editTicks() const { return std::min (Pattern::maxTicks, (bars() + 1) * Pattern::ticksPerBar); }
     // Vyn visar en takt till efter radens slut (tills 64 takter): klicka där, eller + BAR, för att förlänga raden.
     int viewTicks() const { return std::min (Pattern::maxBars, bars() + 1) * Pattern::ticksPerBar; }
-    bool extendRow();                         // raden blir dubbelt så lång (1, 2, 4 ... 64 takter); false vid 64
+    void extendRow();                         // + BAR: raden blir en takt längre (tills innehållet nått dit; se Pattern::setExtraBars)
     InstrumentGrid grid() const;
     int snapTicks() const;
     int snapped (float tick) const;           // närmaste steg (nedåt) i ticks
@@ -116,7 +118,7 @@ private:
     void showPresetMenu();
     void showMidiMenu();
     void askForNameAndSave();
-    void afterLoad (int bars, InstrumentGrid newGrid); // sätter mönsterlängd och rutnät efter att en pianorulle laddats
+    void afterLoad (InstrumentGrid newGrid); // sätter rutnätet efter att en pianorulle laddats
     int soundingRoot() const;
     juce::String gridParameterId() const; // lagrets rutnät (kickens eget för kicken)
     int playTickNow() const;              // uppspelningsmarkören i radens ticks, eller -1
@@ -150,11 +152,9 @@ private:
     double flashUntil = 0.0;
     std::unique_ptr<juce::FileChooser> chooser;
     juce::Component::SafePointer<juce::AlertWindow> saveDialog;
-    juce::Rectangle<float> infoArea, lengthCaption;
-    juce::ComboBox gridBox, lengthBox;                      // rutnät och radens längd
-    juce::TextButton extendButton { "+ BAR" };              // förläng raden
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> lengthAttachment;
-    void attachLengthBox();
+    juce::Rectangle<float> infoArea;
+    juce::ComboBox gridBox;                                 // rutnät
+    juce::TextButton lengthButton, extendButton { "+ BAR" };  // radens längd (AUTO n / valt antal: klick öppnar menyn) och förläng med en takt
     juce::ScrollBar hBar { false }, vBar { true }; // tid och tonhöjd
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> gridAttachment;
     bool snapEnabled = true;

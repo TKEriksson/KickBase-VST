@@ -208,8 +208,7 @@ void PresetButton::loadPatternFile (const juce::File& file)
     }
 
     auto hasNotes = false;
-    for (int tick = 0; tick < Pattern::maxTicks && ! hasNotes; ++tick)
-        hasNotes = processor.pattern.note (layer, tick).on.load();
+    processor.pattern.forEachNote (layer, [&hasNotes] (int, const Pattern::Note&) { hasNotes = true; });
     const auto missing = link.valid(); // länkat instrument finns inte längre
     if (! hasNotes && ! missing)
     {

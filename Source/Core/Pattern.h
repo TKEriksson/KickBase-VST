@@ -67,7 +67,8 @@ enum class PatternTemplate { rolling, galloping, triplet, offbeat, clear };
 // ingen av dem behöver låsa eller vänta på den andra.
 struct Pattern
 {
-    static constexpr int maxBars = 64; // längsta mönstret: hela partier ryms i ett mönster
+    static constexpr int maxBars = 1024;       // intern spärr mot trasiga filer/AI: raden växer med innehållet och har ingen annan gräns
+    static constexpr int legacyMaxBars = 64;   // de gamla längdparametrarna (patternBars, rowBars) gick till 64 takter
     static constexpr int numGrids = 8;
     static constexpr int minPitch = -96; // halvtoner från tonarten (basens grundton med lagrets oktav)
     static constexpr int maxPitch = 96;
@@ -103,7 +104,12 @@ struct Pattern
         std::atomic<float> velocity { 0.8f };
     };
 
-    Pattern() { applyTemplate (PatternTemplate::rolling); }
+    Pattern()
+    {
+        for (int layer = 0; layer < numNoteLayers; ++layer)
+            lengthOf[(size_t) layer] = contentOf[(size_t) layer] = 1;
+        applyTemplate (PatternTemplate::rolling);
+    }
     ~Pattern();
     Pattern (const Pattern&) = delete;
     Pattern& operator= (const Pattern&) = delete;
@@ -120,6 +126,36 @@ struct Pattern
     Note* existing (int layer, int tick);
     // Hur många takter (från början) som har block för raden: ett snabbt sätt att slippa gå igenom tomma delar.
     bool hasBar (int layer, int bar) const;
+
+    // RADENS LÄNGD (R9): per rad (lager 0-9 = instrument, kickLayer = kicken) AUTO eller ett valt antal takter 1..maxBars.
+    //  - AUTO: längden följer innehållet = sista takten som en ton startar i eller täcks av (tick + längd), minst 1 takt.
+    //  - Valt antal (`manualBars` > 0): längden är det talet, oavsett innehåll (t.ex. 3 takter kick + 1 takt paus).
+    //  - `extraBars` (knappen "+", klick efter slutet): raden är minst så här lång tills innehållet nått dit (då släpps det av sig självt).
+    // Längderna räknas om av `refreshLengths` (meddelandetråden, efter varje redigering) och läses av ljudtråden som atomer. Tomma block frigörs då.
+    int lengthBars (int layer) const { return lengthOf[(size_t) clampedLayer (layer)].load(); }
+    int contentBars (int layer) const { return contentOf[(size_t) clampedLayer (layer)].load(); }
+    int manualBars (int layer) const { return manualOf[(size_t) clampedLayer (layer)].load(); }
+    bool isLengthAuto (int layer) const { return manualBars (layer) <= 0; }
+    void setManualBars (int layer, int bars);  // 0 = AUTO. Tar inte bort toner: det gör `trimRow` (efter en bekräftelse)
+    void setExtraBars (int layer, int bars);   // 0 = ingen
+    int extraBars (int layer) const { return extraOf[(size_t) clampedLayer (layer)].load(); }
+    void refreshLengths();
+    // Tar bort toner som startar efter `bars` takter och kortar de som går över slutet.
+    void trimRow (int layer, int bars);
+    // Gamla projekt: längderna fanns som parametrar (patternBars, rowBars). `total` och `rows` är takter (rows[0] = kicken, 0 = hela mönstret).
+    // Raden trimmas till längden och får det som valt antal om innehållet är kortare.
+    void applyLegacyLengths (int total, const std::array<int, numPatternRows>& rows, int onlyLayer = -1); // onlyLayer: bara den raden (ett radpreset)
+
+    // Går igenom radens toner (bara de som är på, i tidsordning) utan att röra tomma takter.
+    template <typename Visitor>
+    void forEachNote (int layer, Visitor&& visit) const
+    {
+        for (int bar = 0; bar < maxBars; ++bar)
+            if (const auto* block = blockOf (layer, bar))
+                for (int i = 0; i < ticksPerBar; ++i)
+                    if (block->notes[(size_t) i].on.load())
+                        visit (bar * ticksPerBar + i, block->notes[(size_t) i]);
+    }
 
     // Första tonen som startar i [fromTick, toTick), eller -1.
     int firstNoteIn (int layer, int fromTick, int toTick) const;
@@ -158,10 +194,10 @@ struct Pattern
     // Fyller hela mönstret enligt en mall: kicken och första baslagret, övriga lager töms.
     // Returnerar det rutnät mallen är skriven för.
     // `keepOtherInstruments`: bara kicken och instrument 1 skrivs om; de övriga instrumentens toner och gate rörs inte.
-    InstrumentGrid applyTemplate (PatternTemplate t, bool keepOtherInstruments = false);
+    InstrumentGrid applyTemplate (PatternTemplate t, bool keepOtherInstruments = false, int fillBars = 1); // fillBars: hur många takter mallen skrivs i
 
     // Fyller bara ett baslager enligt en mall (kicken och andra lager orörda).
-    InstrumentGrid applyLayerTemplate (int layer, PatternTemplate t);
+    InstrumentGrid applyLayerTemplate (int layer, PatternTemplate t, int fillBars = 1);
 
     juce::ValueTree toValueTree() const;
 
@@ -172,7 +208,7 @@ struct Pattern
     void fromValueTree (const juce::ValueTree& tree, bool clearUnmentionedLayers = true); // false: lager som trädet inte nämner lämnas orörda (en enskild rad)
 
     static inline const juce::Identifier treeType { "Pattern" };
-    static constexpr int currentVersion = 6; // 6: upp till 10 instrument, kicken är lager 10 (före det lager 3); 5: kicken som notlager; 4: fria toner (ticks); 3: baslager med steg per rutnät
+    static constexpr int currentVersion = 7; // 7: radens längd (length/extra på Notes) följer innehållet, mönstret har inga längdparametrar; 6: upp till 10 instrument, kicken är lager 10 (före det lager 3); 5: kicken som notlager; 4: fria toner (ticks); 3: baslager med steg per rutnät
 
     static constexpr int gateBlockSteps = 64; // GATE-stegen i block om 64 (högst ett rutnät 1/64 per takt)
 
@@ -197,5 +233,6 @@ private:
     std::array<std::array<std::atomic<GateBlock*>, maxGateSteps / gateBlockSteps>, numLayers> gateBlocks {};
     DeferredRelease<NoteBlock> retiredNoteBlocks;
     DeferredRelease<GateBlock> retiredGateBlocks;
+    std::array<std::atomic<int>, numNoteLayers> lengthOf {}, contentOf {}, manualOf {}, extraOf {}; // längd och innehåll i takter (min 1), valt antal (0 = AUTO), "+"
     std::array<std::atomic<bool>, numNoteLayers> custom {};
 };

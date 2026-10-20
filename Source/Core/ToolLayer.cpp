@@ -471,9 +471,10 @@ var ToolLayer::getState (const var& args) const
     {
         const auto isKick = layer == Pattern::kickLayer;
         juce::Array<var> notes;
-        for (int tick = 0; tick < Pattern::maxTicks; ++tick)
-            if (const auto& n = processor.pattern.note (layer, tick); n.on.load())
-                notes.add (var (juce::Array<var> { tick, n.length.load(), n.pitch.load(), round4 (n.velocity.load()), n.slide.load() }));
+        processor.pattern.forEachNote (layer, [&] (int tick, const Pattern::Note& n)
+        {
+            notes.add (var (juce::Array<var> { tick, n.length.load(), n.pitch.load(), round4 (n.velocity.load()), n.slide.load() }));
+        });
         auto entry = object();
         put (entry, "layer", isKick ? juce::var ("kick") : juce::var (layer));
         if (! isKick)
@@ -761,8 +762,7 @@ var ToolLayer::setPattern (const var& args)
     processor.patternChanged();
 
     auto count = 0;
-    for (int tick = 0; tick < Pattern::maxTicks; ++tick)
-        count += pattern.note (layer, tick).on.load() ? 1 : 0;
+    pattern.forEachNote (layer, [&count] (int, const Pattern::Note&) { ++count; });
     auto data = object();
     put (data, "layer", isKick ? juce::var ("kick") : juce::var (layer));
     put (data, "notes", count);
@@ -791,9 +791,9 @@ var ToolLayer::setGate (const var& args)
 
     if (auto* bars = args["bars"].getArray(); bars != nullptr && ! bars->isEmpty())
     {
-        for (int bar = 0; bar < Pattern::maxBars; ++bar)
+        for (int bar = 0; bar < bars->size(); ++bar)
         {
-            const auto text = (*bars)[bar % bars->size()].toString().retainCharacters ("xX.");
+            const auto text = (*bars)[bar].toString().retainCharacters ("xX.");
             for (int step = 0; step < stepsPerBar; ++step)
                 processor.pattern.setGateStep (layer, bar * stepsPerBar + step, step < text.length() ? text[step] != '.' : true);
         }
@@ -1336,18 +1336,17 @@ var ToolLayer::pianoRollFiles (const juce::String& tool, const var& args)
         return fail ("layer must be 0-9 or 'kick'.");
 
     auto& pattern = processor.pattern;
-    const auto bars = Params::readPatternLengths (processor.apvts).barsOf (isKick ? 0 : 1 + layer);
+    const auto bars = pattern.lengthBars (layer);
     const auto gridParameterID = isKick ? juce::String (ParamID::rowGridKick) : ParamID::bass (layer, InstrumentField::grid);
     const auto gridIndex = juce::jlimit (0, Pattern::numGrids - 1, (int) processor.apvts.getRawParameterValue (gridParameterID)->load());
     const auto note = args.hasProperty ("note") ? juce::jlimit (0, 127, (int) args["note"]) : 52;
     const auto root = isKick ? (int) (processor.apvts.getRawParameterValue (ParamID::kickKeyFollow)->load() >= 0.5f ? Params::kickTailMidiNote (note % 12) : 24)
                              : Params::instrumentRootMidiNote (note) + 12 * (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, InstrumentField::octave))->load();
 
-    auto applyLoaded = [this, layer, gridParameterID] (int newBars, InstrumentGrid grid)
+    auto applyLoaded = [this, layer, gridParameterID] (InstrumentGrid grid)
     {
         if (auto* gridParameter = findParameter (processor, gridParameterID))
             Presets::setParameter (*gridParameter, gridParameter->convertTo0to1 ((float) grid));
-        RollFiles::applyLength (processor.apvts, layer, newBars);
         processor.patternChanged();
     };
 
@@ -1357,7 +1356,7 @@ var ToolLayer::pianoRollFiles (const juce::String& tool, const var& args)
         if (name.isEmpty())
             return fail ("Give a name.");
         const auto file = RollFiles::folder().getChildFile (name + ".roll");
-        if (! RollFiles::save (pattern, layer, bars, (InstrumentGrid) gridIndex, file))
+        if (! RollFiles::save (pattern, layer, (InstrumentGrid) gridIndex, file))
             return fail ("Could not write " + file.getFullPathName());
         auto data = object();
         put (data, "saved", file.getFullPathName());
@@ -1371,22 +1370,20 @@ var ToolLayer::pianoRollFiles (const juce::String& tool, const var& args)
             for (const auto& candidate : RollFiles::list())
                 if (candidate.getFileNameWithoutExtension().equalsIgnoreCase (args["name"].toString().trim()))
                     file = candidate;
-        int newBars = 1;
         auto grid = InstrumentGrid::sixteenth;
-        if (! file.existsAsFile() || ! RollFiles::load (pattern, layer, file, newBars, grid))
+        if (! file.existsAsFile() || ! RollFiles::load (pattern, layer, file, grid))
             return fail ("No such piano roll preset. The plugin's PRESET menu lists the saved ones; save one first with save_piano_roll.");
-        applyLoaded (newBars, grid);
+        applyLoaded (grid);
         return ok ("Loaded " + file.getFileNameWithoutExtension() + " into layer " + juce::String (layer) + ".");
     }
 
     if (tool == "import_midi")
     {
-        int newBars = 1;
         const juce::File file (args["file"].toString());
-        if (! file.existsAsFile() || ! RollFiles::importMidi (pattern, layer, file, root, newBars))
+        if (! file.existsAsFile() || ! RollFiles::importMidi (pattern, layer, file, root))
             return fail ("Could not read notes from that MIDI file.");
-        applyLoaded (newBars, (InstrumentGrid) gridIndex);
-        return ok ("Imported into layer " + juce::String (layer) + "; pattern length set to " + juce::String (newBars) + " bar(s).");
+        applyLoaded ((InstrumentGrid) gridIndex);
+        return ok ("Imported into layer " + juce::String (layer) + "; the row length follows the notes (" + juce::String (pattern.lengthBars (layer)) + " bar(s)).");
     }
 
     // export_midi

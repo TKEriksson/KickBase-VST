@@ -1,4 +1,5 @@
 #include "StepSequencer.h"
+#include "LengthMenu.h"
 
 namespace
 {
@@ -20,15 +21,12 @@ StepSequencer::StepSequencer (PluginBase& p, juce::StringArray names, std::vecto
     // Radens egen längd (kick och varje lager): Pattern = lika lång som hela mönstret.
     for (int row = 0; row <= totalLayers(); ++row)
     {
-        auto box = std::make_unique<juce::ComboBox>();
-        if (auto* choice = dynamic_cast<juce::AudioParameterChoice*> (processor.apvts.getParameter (ParamID::rowBars (row))))
-            box->addItemList (choice->choices, 1);
-        box->setTooltip ((row == 0 ? juce::String ("KICK") : layerNames[row - 1]) + " LENGTH - How many bars this row lasts. Total = as long as the whole pattern "
-                         "(which is at least as long as the longest row). A shorter row repeats (shown dimmed) while the longest row plays out, "
-                         "or plays once if its loop button is off.");
-        addAndMakeVisible (*box);
-        lengthAttachments.push_back (std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (processor.apvts, ParamID::rowBars (row), *box));
-        lengthBoxes.push_back (std::move (box));
+        auto lengthButton = std::make_unique<juce::TextButton>();
+        const auto rowLayer = row == 0 ? Pattern::kickLayer : row - 1;
+        lengthButton->setTooltip (LengthMenu::tooltip (row == 0 ? juce::String ("KICK") : layerNames[row - 1]));
+        lengthButton->onClick = [this, rowLayer, button = lengthButton.get()] { LengthMenu::show (processor, rowLayer, *button); };
+        addAndMakeVisible (*lengthButton);
+        lengthButtons.push_back (std::move (lengthButton));
 
         const auto layerOfRow = row == 0 ? Pattern::kickLayer : row - 1;
         const auto accent = row == 0 ? Theme::kick : layerColours[(size_t) (row - 1)];
@@ -234,7 +232,7 @@ void StepSequencer::selectLayer (int layer)
 
 int StepSequencer::bars() const
 {
-    return Params::barsFromChoice ((int) processor.apvts.getRawParameterValue (ParamID::patternBars)->load());
+    return lengths().total; // mönstret är lika långt som den längsta raden
 }
 
 InstrumentGrid StepSequencer::grid (int layer) const
@@ -349,29 +347,15 @@ void StepSequencer::timerCallback()
     }
     update (lastVersion, processor.patternVersion.load());
 
-    // Totalen är minst så lång som den längsta raden: visa det i TOTAL LENGTH.
-    {
-        const auto effective = lengths().total;
-        auto choiceIndex = 0;
-        while ((1 << choiceIndex) < effective && choiceIndex < 6)
-            ++choiceIndex;
-        if (auto* totalParameter = processor.apvts.getParameter (ParamID::patternBars);
-            totalParameter != nullptr && (int) std::round (totalParameter->convertFrom0to1 (totalParameter->getValue())) != choiceIndex)
-            Presets::setParameter (*totalParameter, totalParameter->convertTo0to1 ((float) choiceIndex));
-    }
-
-    // En rad som är en pianorulle styr sin längd i pianorullen: rutan här är då avstängd.
-    for (size_t row = 0; row < lengthBoxes.size(); ++row)
+    // Radens längd (AUTO n / valt antal) på knappen under rattarna.
+    for (size_t row = 0; row < lengthButtons.size(); ++row)
     {
         const auto layerOfRow = row == 0 ? Pattern::kickLayer : (int) row - 1;
-        const auto inRoll = processor.pattern.isCustom (layerOfRow);
-        if (lengthBoxes[row]->isEnabled() == inRoll)
+        const auto text = LengthMenu::buttonText (processor.pattern, layerOfRow);
+        if (lengthButtons[row]->getButtonText() != text)
         {
-            lengthBoxes[row]->setEnabled (! inRoll);
-            lengthBoxes[row]->setTooltip (inRoll ? juce::String ("This row is a piano roll: set its length in the piano roll (LENGTH in its toolbar).")
-                                                 : (row == 0 ? juce::String ("KICK") : layerNames[(int) row - 1]) + " LENGTH - How many bars this row lasts. Total = as long as the whole pattern "
-                                                   "(which is at least as long as the longest row). A shorter row repeats (shown dimmed) while the longest row plays out, "
-                                                   "or plays once if its loop button is off.");
+            lengthButtons[row]->setButtonText (text);
+            changed = true;
         }
     }
 
@@ -514,7 +498,7 @@ void StepSequencer::resized()
     area.removeFromTop (5); // marginal under översikten
     labelColumn = area.removeFromLeft (labelWidthNow);
     headerLabels = header.removeFromLeft (labelWidthNow);
-    const auto paged = bars() > barsPerPage;
+    const auto paged = numPages() > 1;
     pageArea = header;
     previousPageButton.setVisible (paged);
     nextPageButton.setVisible (paged);
@@ -579,8 +563,8 @@ void StepSequencer::resized()
         const auto shown = (int) i < rows && ! rowRects[i].isEmpty();
         rowKnobs[i]->level.setVisible (shown);
         rowKnobs[i]->fx.setVisible (shown);
-        if (i < lengthBoxes.size())
-            lengthBoxes[i]->setVisible (shown && ! compactRows);
+        if (i < lengthButtons.size())
+            lengthButtons[i]->setVisible (shown && ! compactRows);
         if (i < listenButtons.size())
         {
             listenButtons[i]->setVisible (shown && ! processor.isEffectVersion());
@@ -597,8 +581,8 @@ void StepSequencer::resized()
         const auto row = rowRects[i];
         rowKnobs[i]->level.setBounds (knobBounds (row, 0));
         rowKnobs[i]->fx.setBounds (knobBounds (row, 1));
-        if (i < lengthBoxes.size())
-            lengthBoxes[i]->setBounds (labelColumn.getX() + 1, row.getY() + 1 + knobPx + 1, 60, 18);
+        if (i < lengthButtons.size())
+            lengthButtons[i]->setBounds (labelColumn.getX() + 1, row.getY() + 1 + knobPx + 1, 60, 18);
         if (i < listenButtons.size())
         {
             const auto buttonHeight = compactRows ? std::min (24, rowHeight - 4) : 24;
@@ -651,7 +635,11 @@ int StepSequencer::stepAt (int x, int layer, int numSteps, int ownSteps) const
     const auto absolute = pageOffset (numSteps) + juce::jlimit (0, numSteps - 1, (int) std::floor (fraction * (float) numSteps));
     if (absolute < ownSteps)
         return absolute;
-    return lengths().loops[(size_t) rowOf (layer)] ? absolute % ownSteps : -1;
+    // Efter slutet på den längsta raden: ett klick lägger steget där och förlänger raden (R9). En kortare rad upprepas: ett klick i en kopia ändrar originalet.
+    const auto rowLengths = lengths();
+    if (rowLengths.barsOf (rowOf (layer)) >= rowLengths.total)
+        return absolute;
+    return rowLengths.loops[(size_t) rowOf (layer)] ? absolute % ownSteps : -1;
 }
 
 StepSequencer::Target StepSequencer::targetAt (juce::Point<int> point, int& layer) const
@@ -1054,12 +1042,12 @@ void StepSequencer::paint (juce::Graphics& g)
         for (int i = 0; i < lineCount; ++i)
         {
             const auto layer = i == 0 ? Pattern::kickLayer : i - 1;
-            const auto fraction = (float) rowsNow.barsOf (rowOf (layer)) / (float) std::max (1, rowsNow.total);
+            const auto fraction = (float) rowsNow.barsOf (rowOf (layer)) / (float) std::max (1, shownBars());
             g.setColour (colourOf (layer).withAlpha (0.85f));
             g.fillRect (juce::Rectangle<float> (overview.getX() + 1.0f, overview.getY() + 1.0f + (float) i * lineHeight,
                                                 (overview.getWidth() - 2.0f) * fraction, std::max (1.0f, lineHeight - 1.0f)));
         }
-        const auto viewFraction = (float) viewBars() / (float) std::max (1, bars());
+        const auto viewFraction = (float) viewBars() / (float) std::max (1, shownBars());
         const auto window = juce::Rectangle<float> (overview.getX() + 1.0f + (overview.getWidth() - 2.0f) * viewFraction * (float) page, overview.getY(),
                                                     (overview.getWidth() - 2.0f) * viewFraction, overview.getHeight());
         g.setColour (juce::Colours::white.withAlpha (0.12f));
@@ -1212,13 +1200,13 @@ void StepSequencer::editAt (juce::Point<int> point, bool firstEvent)
 void StepSequencer::setPageFromOverview (int x)
 {
     const auto fraction = juce::jlimit (0.0f, 0.999f, (float) (x - overviewArea.getX()) / (float) std::max (1, overviewArea.getWidth()));
-    setPage ((int) (fraction * (float) bars() / (float) barsPerPage));
+    setPage ((int) (fraction * (float) shownBars() / (float) barsPerPage));
 }
 
 void StepSequencer::mouseDown (const juce::MouseEvent& event)
 {
     // Översikten: klicka eller dra för att byta sida.
-    if (overviewArea.contains (event.getPosition()) && bars() > barsPerPage)
+    if (overviewArea.contains (event.getPosition()) && numPages() > 1)
     {
         overviewDragging = true;
         setPageFromOverview (event.x);

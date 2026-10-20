@@ -150,9 +150,9 @@ namespace Presets
         const auto stepTicks = Pattern::ticksPerStep (line.grid);
         const auto stepsPerBar = Pattern::instrumentStepsPerBar (line.grid);
 
-        for (int bar = 0; bar < Pattern::maxBars; ++bar)
+        for (int bar = 0; bar < (int) line.bars.size(); ++bar) // raden blir lika lång som sina takter (AUTO)
         {
-            const auto steps = juce::StringArray::fromTokens (juce::String (line.bars[(size_t) bar % line.bars.size()]), " |", "");
+            const auto steps = juce::StringArray::fromTokens (juce::String (line.bars[(size_t) bar]), " |", "");
             for (int step = 0; step < steps.size() && step < stepsPerBar; ++step)
             {
                 const auto token = steps[step];
@@ -393,10 +393,11 @@ namespace Presets
         // Ett mönster-preset (inte Full) rör bara kicken och instrument 1, inte de andra instrumentens toner (utom Clear, som tömmer allt).
         const auto grid = pattern.applyTemplate (preset.pattern, section == Section::pattern && preset.pattern != PatternTemplate::clear);
 
+        pattern.refreshLengths();
         for (const auto& tweak : preset.tweaks)
         {
             const auto stepTicks = Pattern::ticksPerStep (grid);
-            for (int bar = 0; bar < Pattern::maxBars; ++bar)
+            for (int bar = 0; bar < pattern.lengthBars (0); ++bar)
             {
                 const auto tick = bar * Pattern::ticksPerBar + tweak.step * stepTicks;
                 const auto gate = tweak.gate >= 0.0f ? tweak.gate : Pattern::defaultGate;

@@ -292,7 +292,6 @@ private:
 
     PluginBase& processor;
     const bool instrument;
-    ChoiceComponent length;
     std::unique_ptr<ChoiceComponent> noteEnd;
     std::unique_ptr<KnobComponent> swingKnob, humanizeKnob; // groove för hela mönstret (instrumenten)
     std::vector<std::unique_ptr<KnobComponent>> delays, swings, humanizes; // instrumentets egna SWING, HUMAN och DELAY, under GRID
@@ -310,18 +309,9 @@ private:
     void updatePianoButton();
     std::unique_ptr<ChoiceComponent> kickGrid;                   // kickens rutnät
     int lastNamesVersion = -1;
-    // Längdändringar: förkortas en rad tas det som inte får plats bort (efter en bekräftelse om något går förlorat), förlängs den
-    // upprepas det den spelade. Se checkLengthChanges.
-    std::array<int, numPatternRows> lastRowBars = filledArray<int, numPatternRows> (-1);        // radernas längd förra gången (kick, instrument 1-10)
-    std::array<int, numPatternRows + 1> lastChoices = filledArray<int, numPatternRows + 1> (-1); // valen för TOTAL LENGTH och radernas längd förra gången
     int lastActive = -1;
-    int lastPatternVersion = -1;
     bool confirmOpen = false;
-    void checkLengthChanges();
-    void extendRow (int row, int beforeBars, int nowBars, bool repeat); // förlängd rad: upprepa det den spelade, eller töm det nya
-    void trimRow (int row, int bars);                                   // förkortad rad: ta bort det som inte får plats
     juce::String rowName (int row) const;
-    void restoreChoices (const std::array<int, numPatternRows + 1>& choices);
 
     // Per lager (bara det valda syns): notrutnätet och tonlängden (PATTERN), och GATE: på/av, rutnät, djup och mjukhet.
     std::vector<std::unique_ptr<ChoiceComponent>> grids, gateGrids;

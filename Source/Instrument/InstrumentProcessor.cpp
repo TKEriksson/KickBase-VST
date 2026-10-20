@@ -319,7 +319,7 @@ void InstrumentProcessor::processChunk (juce::AudioBuffer<float>& buffer, juce::
 void InstrumentProcessor::readBlockParams()
 {
     // (Mönsterlängderna, swing och humanize kan inte moduleras: de läses bara här, en gång per DAW-block.)
-    lengths = Params::readPatternLengthsWith ([this] (const char* id) { return params.get (id); });
+    lengths = Params::readPatternLengthsWith ([this] (const char* id) { return params.get (id); }, pattern, params.instruments());
     swing = params.get (ParamID::patSwing);
     humanize = params.get (ParamID::patHumanize);
     const auto solo = soloMask.load();
