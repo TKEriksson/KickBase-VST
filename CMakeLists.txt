@@ -83,6 +83,7 @@ set(PLUGIN_SOURCES
     Source/Core/RollFiles.cpp
     Source/Core/SampleSlot.cpp
     Source/Core/ToolLayer.cpp
+    Source/Core/LiveCode.cpp
     Source/Core/BridgeLink.cpp
     Source/Core/Params.cpp
     Source/Core/Presets.cpp
@@ -134,7 +135,7 @@ set(FX_SOURCES
 # Versionen som ABOUT visar: projektets VERSION (bara den här filen kompileras om när den ändras).
 set_source_files_properties(Source/Ui/AboutPanel.cpp PROPERTIES COMPILE_DEFINITIONS "KICKBASE_VERSION=\"${PROJECT_VERSION}\"")
 
-juce_add_binary_data(KickbaseGuides SOURCES docs/AGENT_GUIDE.md docs/psytrance-kick-bass-reference.md Resources/InitPreset.mofp LICENSE THIRD-PARTY.md)
+juce_add_binary_data(KickbaseGuides SOURCES docs/AGENT_GUIDE.md docs/psytrance-kick-bass-reference.md Resources/InitPreset.mofp Resources/strudel/strudel.all.js LICENSE THIRD-PARTY.md)
 
 # Gemensamt för alla mål: samma definitioner och flaggor.
 function(kickbase_configure target)
@@ -178,7 +179,7 @@ target_sources(Kickbase PRIVATE
     ${INSTRUMENT_SOURCES}
     Source/Instrument/InstrumentEntry.cpp
 )
-target_link_libraries(Kickbase PRIVATE juce::juce_audio_utils juce::juce_dsp KickbaseGuides)
+target_link_libraries(Kickbase PRIVATE juce::juce_audio_utils juce::juce_dsp juce::juce_javascript KickbaseGuides)
 target_precompile_headers(Kickbase PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CMAKE_CURRENT_SOURCE_DIR}/Source/PchPlugin.h>")
 kickbase_configure_plugin(Kickbase)
 
@@ -203,7 +204,7 @@ target_sources(KickbaseFX PRIVATE
     ${FX_SOURCES}
     Source/Fx/FxEntry.cpp
 )
-target_link_libraries(KickbaseFX PRIVATE juce::juce_audio_utils juce::juce_dsp KickbaseGuides)
+target_link_libraries(KickbaseFX PRIVATE juce::juce_audio_utils juce::juce_dsp juce::juce_javascript KickbaseGuides)
 target_precompile_headers(KickbaseFX PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CMAKE_CURRENT_SOURCE_DIR}/Source/PchPlugin.h>")
 kickbase_configure_plugin(KickbaseFX)
 
@@ -248,7 +249,7 @@ target_sources(KickbaseMcp PRIVATE
     Tools/PatternTests.cpp
 )
 target_compile_definitions(KickbaseMcp PRIVATE JucePlugin_Name="Kickbase" JUCE_MODAL_LOOPS_PERMITTED=1)
-target_link_libraries(KickbaseMcp PRIVATE juce::juce_audio_utils juce::juce_dsp KickbaseGuides)
+target_link_libraries(KickbaseMcp PRIVATE juce::juce_audio_utils juce::juce_dsp juce::juce_javascript KickbaseGuides)
 target_precompile_headers(KickbaseMcp PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CMAKE_CURRENT_SOURCE_DIR}/Source/PchPlugin.h>")
 kickbase_configure(KickbaseMcp)
 add_custom_command(TARGET KickbaseMcp POST_BUILD
