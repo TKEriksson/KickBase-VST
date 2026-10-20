@@ -497,6 +497,17 @@ namespace
             tools.call ("live_code_lock", make ({ { "layer", 0 }, { "locked", false } }));
             check (! (bool) tools.call ("live_code_lock", make ({ { "layer", 11 } }))["ok"], "ogiltig rad i live_code_lock ger fel");
 
+            // live_code_run lägger koden i LIVE-editorn; live_code_stop tömmer bara rader Live Code skrev och som inte är låsta
+            r = tools.call ("live_code_run", make ({ { "code", "note(\"g2\").s(\"i1\")" }, { "cycles", 1 } }));
+            check ((bool) r["ok"] && processor.getLiveCodeText().contains ("g2") && pattern.note (0, 0).pitch.load() == 7, "live_code_run skriver noter och sätter LIVE-texten");
+            tools.call ("live_code_lock", make ({ { "layer", 0 } }));
+            r = tools.call ("live_code_stop", make ({}));
+            check ((bool) r["ok"] && pattern.note (0, 0).pitch.load() == 7, "live_code_stop låter låst rad vara");
+            tools.call ("live_code_lock", make ({ { "layer", 0 }, { "locked", false } }));
+            r = tools.call ("live_code_stop", make ({}));
+            int stopCount = 0; pattern.forEachNote (0, [&stopCount] (int, const Pattern::Note&) { ++stopCount; });
+            check ((bool) r["ok"] && stopCount == 0 && (processor.liveCodeOwned.load() & ToolLayer::liveCodeBit (0)) == 0, "live_code_stop tömmer Live Codes rad och släpper ägandet");
+
             auto described = false;
             for (auto& t : ToolLayer::tools())
                 if (t.name == "live_code_create")
