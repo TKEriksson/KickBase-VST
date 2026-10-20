@@ -40,6 +40,11 @@ EnvPage::EnvPage (PluginBase& p) : processor (p), refs (p.apvts)
         rebuild();
     };
     addAndMakeVisible (instrumentBox);
+    moreLabel.setText ("MORE SOURCES", juce::dontSendNotification);
+    moreLabel.setFont (Theme::font (11.0f, true));
+    moreLabel.setColour (juce::Label::textColourId, Theme::textDim);
+    moreLabel.setJustificationType (juce::Justification::centredRight);
+    addAndMakeVisible (moreLabel);
 
     rebuild();
     startTimerHz (4);
@@ -74,6 +79,11 @@ void EnvPage::rebuild()
     instrumentBox.setSelectedId (layer + 1, juce::dontSendNotification);
 
     tiles.clear();
+    // Notens velocity och ett slumpvärde per ton som källor: dra handtaget till en ratt.
+    velocityHandle = std::make_unique<LfoDragHandle> (Modulation::instrumentSource (layer, 2), "VELOCITY");
+    randomHandle = std::make_unique<LfoDragHandle> (Modulation::instrumentSource (layer, 3), "RANDOM");
+    addAndMakeVisible (*velocityHandle);
+    addAndMakeVisible (*randomHandle);
     const auto accent = Theme::layerColour (layer);
     const auto thisLayer = layer;
 
@@ -196,6 +206,14 @@ void EnvPage::resized()
     auto top = area.removeFromTop (24);
     instrumentLabel.setBounds (top.removeFromLeft (90));
     instrumentBox.setBounds (top.removeFromLeft (170));
+    if (randomHandle != nullptr)
+    {
+        randomHandle->setBounds (top.removeFromRight (84));
+        top.removeFromRight (6);
+        velocityHandle->setBounds (top.removeFromRight (84));
+        top.removeFromRight (6);
+        moreLabel.setBounds (top.removeFromRight (110));
+    }
     area.removeFromTop (6);
 
     const auto count = (int) tiles.size();

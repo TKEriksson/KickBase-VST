@@ -1566,10 +1566,9 @@ namespace
         if (const auto folded = juce::SystemStats::getEnvironmentVariable ("KB_LFOFOLD", {}); folded.isNotEmpty())
             processor->lfoFolded = folded.getIntValue();
         processor->lfoRemoveAsk = juce::SystemStats::getEnvironmentVariable ("KB_LFOCONFIRM", "0").getIntValue() - 1;
-        processor->modEnvelopesOpen = juce::SystemStats::getEnvironmentVariable ("KB_MODOPEN", "0").getIntValue() != 0; // MODULATION-dragspelet öppet
         processor->selectedInstrument = juce::SystemStats::getEnvironmentVariable ("KB_INSTRUMENT", "0").getIntValue(); // valt instrument (0-9)
         processor->selectedInstrumentSource[(size_t) juce::jlimit (0, 9, processor->selectedInstrument)] =
-            juce::SystemStats::getEnvironmentVariable ("KB_SOURCETAB", "0").getIntValue(); // vald källflik i instrumentet (0-2 = OSC, 3 = SAMPLE, 4 = FILTER)
+            juce::SystemStats::getEnvironmentVariable ("KB_SOURCETAB", "0").getIntValue(); // vald flik i instrumentet (0 = INSTR, 1-3 = OSC, 4 = SAMPLE, 5 = FILTER)
         if (juce::SystemStats::getEnvironmentVariable ("KB_FILTER2", "0").getIntValue() != 0) // FILTER-fliken med Filter 2 på (Formant) och ett Ladder-lågpass i Filter 1
         {
             auto set = [&processor] (const char* id, float value)

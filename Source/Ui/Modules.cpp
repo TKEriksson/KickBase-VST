@@ -672,15 +672,16 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
     envelope.setNoteOff ([this] { return noteOffNow(); });
     envelope.addHandle ({ [this] { return juce::Point<float> ((float) noteOffNow().seconds + current.releaseMs * 0.001f, 0.0f); },
                           param (p, id (F::release)), nullptr, false, Theme::text });
-    addAndMakeVisible (envelope);
+    instrPage.addAndMakeVisible (envelope);
     envelopeListen.setAccent (layerAccent);
     envelopeListen.setTooltip ("LISTEN - Hold to hear this instrument on the preview note (the PREVIEWS note at the top) for as long as you hold; it starts over if the sound "
                                "ends. Double-click to keep it playing until you click again. Use it while you drag the handles.");
     envelopeListen.onStart = [this] { hold.start (PluginBase::heldLayerAudition (layer)); };
     envelopeListen.onStop = [this] { hold.stop(); };
-    addAndMakeVisible (envelopeListen);
+    instrPage.addAndMakeVisible (envelopeListen);
 
-    // Källorna i flikar: OSC 1, OSC 2, OSC 3 och SAMPLE, var och en med en på/av-knapp på fliken.
+    // Flikarna: INSTR (envelopen och rattarna), OSC 1-3 och SAMPLE med en på/av-knapp på fliken, och FILTER.
+    sources.addTab ("INSTR", layerAccent, instrPage);
     for (int osc = 0; osc < ParamID::oscsPerLayer; ++osc)
         oscs[(size_t) osc] = std::make_unique<OscPanel> (p, layer, osc, layerAccent);
     samplePage = std::make_unique<SamplePage> (p, layer, layerAccent);
@@ -688,23 +689,23 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
     for (int osc = 0; osc < ParamID::oscsPerLayer; ++osc)
     {
         sources.addTab ("OSC " + juce::String (osc + 1), layerAccent, *oscs[(size_t) osc]);
-        sources.addPower (osc, p.apvts, ParamID::bass (layer, ParamID::oscField (osc, F::aOn)));
+        sources.addPower (1 + osc, p.apvts, ParamID::bass (layer, ParamID::oscField (osc, F::aOn)));
     }
     sources.addTab ("SAMPLE", layerAccent, *samplePage);
-    sources.addPower (ParamID::oscsPerLayer, p.apvts, ParamID::bass (layer, F::sampleOn));
+    sources.addPower (1 + ParamID::oscsPerLayer, p.apvts, ParamID::bass (layer, F::sampleOn));
     filterPage = std::make_unique<FilterPage> (p, layer, layerAccent);
     sources.addTab ("FILTER", layerAccent, *filterPage);
 
     auto knob = [&] (const juce::String& paramID, const char* name) -> juce::Component*
     {
         controls.push_back (std::make_unique<KnobComponent> (p.apvts, paramID, name, layerAccent));
-        addAndMakeVisible (*controls.back());
+        instrPage.addAndMakeVisible (*controls.back());
         return controls.back().get();
     };
     auto choice = [&] (const juce::String& paramID, const char* name) -> juce::Component*
     {
         controls.push_back (std::make_unique<ChoiceComponent> (p.apvts, paramID, name));
-        addAndMakeVisible (*controls.back());
+        instrPage.addAndMakeVisible (*controls.back());
         return controls.back().get();
     };
 
@@ -720,7 +721,7 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
                      { "WARP ENV", { knob (id (F::warpEnv), "AMOUNT") } },
                      { "DRIVE", { knob (id (F::drive), "AMOUNT"), choice (id (F::driveMode), "MODE") } },
                      { "LAYER OUT", { knob (id (F::level), "LEVEL"), knob (id (F::duck), "DUCK"), knob (id (F::gate), "LENGTH"),
-                                      knob (id (F::voices), "VOICES") } } }); // (notlängden: GATE är hackrytmen; VOICES flyttas med gruppen i fas L)
+                                      knob (id (F::voices), "VOICES") } } }); // (notlängden: GATE är hackrytmen; GLIDE har ingen ratt: parametern används inte)
     // Fas P: varning när VOICES x unison (summan av de påslagna oscillatorernas stämmor) blir stort, eftersom varje röst kostar lika mycket CPU.
     if (auto* voicesKnob = dynamic_cast<KnobComponent*> (controls.back().get()))
         voicesKnob->setWarning ([this]() -> juce::String
@@ -734,46 +735,7 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
             return juce::String (voices) + " voices x " + juce::String (stacks) + " unison voices = " + juce::String (voices * stacks)
                  + " oscillator voices: heavy on the CPU. Lower VOICES or UNISON if the DAW stutters.";
         });
-
-    // MODULATION: ENV 2 och ENV 3 (egna envelopes att modulera med), och velocity och slump som källor. Varje källa har ett handtag
-    // som dras till en ratt (eller sätts i MATRIX-fliken).
-    auto handle = [&] (int kind, const char* label) -> juce::Component*
-    {
-        controls.push_back (std::make_unique<LfoDragHandle> (Modulation::instrumentSource (layer, kind), label));
-        addAndMakeVisible (*controls.back());
-        return controls.back().get();
-    };
-    const auto modStart = controls.size();
-    const auto env2 = (int) F::env2Attack, env3 = (int) F::env3Attack;
-    modGroups.addRow ({ { "ENV 2", { knob (id ((F) env2), "ATTACK"), knob (id ((F) (env2 + 1)), "DECAY"), knob (id ((F) (env2 + 2)), "SUSTAIN"),
-                                     knob (id ((F) (env2 + 3)), "RELEASE"), handle (0, "DRAG") } },
-                        { "ENV 3", { knob (id ((F) env3), "ATTACK"), knob (id ((F) (env3 + 1)), "DECAY"), knob (id ((F) (env3 + 2)), "SUSTAIN"),
-                                     knob (id ((F) (env3 + 3)), "RELEASE"), handle (1, "DRAG") } },
-                        { "MORE SOURCES", { handle (2, "VELOCITY"), handle (3, "RANDOM") } } });
-    for (auto i = modStart; i < controls.size(); ++i)
-        modControls.push_back (controls[i].get());
-
-    modOpen = p.modEnvelopesOpen;
-    modToggle.onClick = [this]
-    {
-        modOpen = ! modOpen;
-        processor.modEnvelopesOpen = modOpen;
-        updateModToggle();
-        resized();
-        repaint();
-    };
-    modToggle.setTooltip ("MODULATION - Open or close ENV 2 and ENV 3: two extra envelopes (attack, decay, sustain, release) that do not play the sound but move other "
-                          "knobs, plus the note's VELOCITY and a RANDOM value per note as sources. Drag a source's handle onto any knob, or use the MATRIX tab.");
-    addAndMakeVisible (modToggle);
-    updateModToggle();
-}
-
-void InstrumentModule::updateModToggle()
-{
-    modToggle.setButtonText (juce::String (modOpen ? juce::String::fromUTF8 ("\xe2\x96\xbe") : juce::String::fromUTF8 ("\xe2\x96\xb8"))
-                             + "  MODULATION   ENV 2, ENV 3, VELOCITY, RANDOM");
-    for (auto* control : modControls)
-        control->setVisible (modOpen);
+    // ENV 2, ENV 3, VELOCITY och RANDOM (modulationskällorna) finns i ENV-fliken längst ner (fas L: raden här var en dubblett).
 }
 
 bool InstrumentModule::isInterestedInFileDrag (const juce::StringArray& files)
@@ -785,7 +747,7 @@ void InstrumentModule::filesDropped (const juce::StringArray& files, int, int)
 {
     dragHover = false;
     samplePage->loadSample (juce::File (files[0]));
-    sources.setCurrentTab (ParamID::oscsPerLayer); // visa SAMPLE-fliken
+    sources.setCurrentTab (1 + ParamID::oscsPerLayer); // visa SAMPLE-fliken
     repaint();
 }
 
@@ -1055,26 +1017,20 @@ void InstrumentModule::resized()
         presets.setBounds (presetBounds (*this));
     auto area = getContentBounds();
 
-    // Överst källorna i flikar (OSC 1-3 och SAMPLE), under dem kurvorna (filter + volym) och rattarna.
-    sources.setBounds (area.removeFromTop (juce::jlimit (224, 280, area.getHeight() * 11 / 24 + 28))); // högre: större wavetable-bild (LISTEN-knappen är borta, man klickar på bilden)
-    area.removeFromTop (6);
+    // Flikarna fyller panelen: INSTR, OSC 1-3, SAMPLE, FILTER.
+    sources.setBounds (area);
+}
 
-    auto leftColumn = area.removeFromLeft (220);
+void InstrumentModule::layoutInstrPage()
+{
+    // Envelopegrafen till vänster, rattraderna till höger (två rader, högst 100 px rattar; resten är frigjord yta).
+    auto area = instrPage.getLocalBounds().reduced (0, 4);
+    auto leftColumn = area.removeFromLeft (juce::jlimit (220, 340, area.getWidth() / 4));
     envelope.setBounds (leftColumn.reduced (0, 2));
     envelopeListen.setBounds (envelope.getRight() - 40, envelope.getY() + 4, 36, 24); // högtalaren i grafens övre högra hörn
     area.removeFromLeft (6);
-
-    // Raderna, sedan dragspelet MODULATION (en rad till när det är öppet).
-    constexpr int toggleHeight = 20;
-    const auto rows = groups.numRows() + (modOpen ? 1 : 0);
-    const auto rowHeight = juce::jlimit (40, 84, (area.getHeight() - toggleHeight - 4) / rows - ControlGroups::titleHeight - 3);
+    const auto rowHeight = juce::jlimit (40, 100, area.getHeight() / groups.numRows() - ControlGroups::titleHeight - 3);
     groups.layout (area, rowHeight);
-    const auto used = groups.numRows() * (ControlGroups::titleHeight + rowHeight + 3);
-    auto rest = area.withTrimmedTop (used);
-    modToggle.setBounds (rest.removeFromTop (toggleHeight));
-    rest.removeFromTop (4);
-    if (modOpen)
-        modGroups.layout (rest, rowHeight);
 }
 
 //==============================================================================

@@ -165,13 +165,6 @@ class InstrumentModule : public ModulePanel, public juce::FileDragAndDropTarget
 public:
     InstrumentModule (PluginBase& processor, int layer);
     void resized() override;
-    void paint (juce::Graphics& g) override
-    {
-        ModulePanel::paint (g);
-        groups.paint (g, getAccent());
-        if (modOpen)
-            modGroups.paint (g, getAccent());
-    }
     void paintOverChildren (juce::Graphics&) override;
 
     bool isInterestedInFileDrag (const juce::StringArray& files) override;
@@ -190,6 +183,17 @@ private:
     float pitchValueAt (double seconds) const;
     EnvelopeView::NoteOff noteOffNow() const;
 
+    // INSTR-fliken (fas L): envelopegrafen och rattarna under den, i signalens ordning. Rattarna ligger på sidan och ritas av den.
+    struct InstrPage : public juce::Component
+    {
+        explicit InstrPage (InstrumentModule& o) : owner (o) {}
+        void paint (juce::Graphics& g) override { owner.groups.paint (g, owner.getAccent()); }
+        void resized() override { owner.layoutInstrPage(); }
+        InstrumentModule& owner;
+    };
+    InstrPage instrPage { *this };
+    void layoutInstrPage();
+
     EnvelopeView envelope { 0.5 };
     HoldAudition hold { processor };      // klick och håll på LISTEN: instrumentet spelas på förhandsvisningstonen
     ListenButton envelopeListen;          // högtalaren i hörnet av envelope-grafen
@@ -198,14 +202,7 @@ private:
     std::unique_ptr<SamplePage> samplePage;
     std::vector<std::unique_ptr<juce::Component>> controls;
     std::unique_ptr<FilterPage> filterPage;                               // FILTER-fliken: kurvan, Filter 1 och Filter 2
-    ControlGroups groups; // PITCH, SUB, NOISE, FILTER, FILTER ENV, VOLUME ENV, WARP ENV, DRIVE, OUT
-
-    // MODULATION (dragspel, stängt som standard): ENV 2, ENV 3 och instrumentets övriga källor, med handtag att dra till rattar.
-    juce::TextButton modToggle;
-    std::vector<juce::Component*> modControls;
-    ControlGroups modGroups;
-    bool modOpen = false;
-    void updateModToggle();
+    ControlGroups groups; // PITCH, SUB, NOISE, FILTER ENV, VOLUME ENV, WARP ENV, DRIVE, OUT (ENV 2/3, VELOCITY, RANDOM: ENV-fliken)
     PresetButton presets;
     std::unique_ptr<FxSendControl> fxSend;
 };

@@ -4,6 +4,14 @@ Plan: [../plan-v2.md](../plan-v2.md). Opus = projektledare, Sonnet = bygger. Ses
 Läs [LESSONS.md](LESSONS.md) innan du bygger eller testar. Lägg till en rad där när ett fel upptäcks.
 
 ## Nu
+- 20 okt: **fas L** på content-l (från content-p 6a215c3). Stegplan, baslinje efter varje steg (bygg + rendersig x4 mot -p5, blocksizetest, instrumenttest, persisttest, helpcheck):
+  - L1 INSTRUMENT-flikar `[INSTR] [OSC 1-3] [SAMPLE] [FILTER]`: INSTR = envelopegrafen + PITCH/SUB/NOISE/FILTER ENV/VOLUME ENV/WARP ENV/DRIVE/LAYER OUT (VOICES/GLIDE). OSC-flikarna bara oscillatorn (plats kvar för OSC-preset, fas S). MODULATION-raden bort; VELOCITY/RANDOM-handtagen till ENV-fliken i samma steg (ingen funktion försvinner). Val: INSTR är standardflik för nya projekt; gammalt sparat flikindex flyttas +1.
+  - L2 ENV-header (alla fyra): ON/OFF, SYNC (ms/notvärde), DURATION (UI-läge, ingen parameter), DRAG. Nya parametrar sist: bassNEnv1On, FEnvOn, Env2On, Env3On (på) + Sync för volym- och filterenvelopen (av). Val: ENV 1 av = full nivå medan tonen hålls (fast 5 ms släpp mot klick); FILTER ENV av = bara kurvan bort, filtret kvar. DRAG på ENV 1/FILTER ENV kräver nya mod-källor: spec till Opus först (BLOCKERAD tills OK, resten byggs). Rapport efter L2.
+  - L3 Mönsterfliken: NOTE END, SWING, HUMANIZE i toppraden, vänsterpanelen bara valt spår. AI-knappen vid loggan -> AI SERVER (MCP) med på/av; toppfliken AI -> AI CHAT. Val: TOTAL LENGTH står kvar (plan-v2 nämner den inte).
+  - L4 Instrumentmeny (högerklick på spårkortet och instrumentväljaren): Rename, Color, Duplicate, Move up/down, Delete, Copy/Paste track, Export MIDI, Save pattern preset. Namn och färg sparas i projektet (inte parametrar).
+  - L5 Utred fönsterstorlek per flik (rapport, bygg bara om det är litet), skärmbild per vy till Opus, rapport + slutrapport.
+  - **L1 klar**: INSTR-fliken (envelopen till vänster, rattraderna upp till 100 px), OSC/SAMPLE/FILTER oförändrade, MODULATION-raden borttagen (ENV 2/3 fanns redan i ENV-fliken), VELOCITY/RANDOM-handtagen i ENV-flikens toppfält. Val: ingen GLIDE-ratt (parametern är "Glide (unused)"). Flikindex är bara körtid, ingen migrering behövs. KB_MODOPEN borttagen, KB_SOURCETAB: 0 = INSTR, 1-3 OSC, 4 SAMPLE, 5 FILTER. Baslinje: rendersig x4 identisk, övriga 0 fel.
+  - SNAP (öppet punkt 2) berör inte L: den är LFO Hz-läget (plan-v2 R7) och väntar på Opus OK. gaps-to-specs berör inte L.
 - 20 okt: fas R KLAR på content-r (Sonnet), väntar på Opus-godkännande. Rapport: docs/content-r-report.md (testlista för Tobias där). Ingen push/Release förrän Opus säger.
   Öppet: (1) wide/tb303-baslinjerna omgjorda (bevisat: kvarstår med d2-Modulation). (2) SNAP-mockupens detaljer till fas L. (3) WARP ENV-varning i plan-v2 under S.
 
