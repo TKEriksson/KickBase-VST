@@ -311,6 +311,25 @@ namespace
         processor.patternChanged();
         check (pattern.lengthBars (0) == 1, "AUTO: raden krymper när tonerna tas bort");
 
+        // MCP: set_pattern length/trim/repeat_to och felet för låst rad; get_state visar bars och läge.
+        {
+            ToolLayer tools (processor);
+            auto call = [&tools] (const char* json) { return tools.call ("set_pattern", juce::JSON::parse (json)); };
+            call (R"({"layer":"kick","clear":true})");
+            check ((bool) call (R"({"layer":"kick","notes":[{"tick":0,"length":24,"pitch":0}]})")["ok"], "MCP: en ton skrivs");
+            check ((bool) call (R"({"layer":"kick","repeat_to":4})")["ok"] && pattern.lengthBars (kick) == 4, "MCP: repeat_to 4 ger fyra takter (" + juce::String (pattern.lengthBars (kick)) + ")");
+            const auto lockedWithNotes = call (R"({"layer":"kick","length":2})");
+            check (! (bool) lockedWithNotes["ok"] && pattern.lengthBars (kick) == 4, "MCP: kortare längd än tonerna ger fel och ändrar inget: " + lockedWithNotes["error"].toString());
+            check ((bool) call (R"({"layer":"kick","length":2,"trim":true})")["ok"] && pattern.lengthBars (kick) == 2 && ! pattern.isLengthAuto (kick), "MCP: trim:true kortar och låser");
+            const auto beyond = call (R"({"layer":"kick","notes":[{"tick":900,"length":24,"pitch":0}]})");
+            check (! (bool) beyond["ok"] && beyond["error"].toString().contains ("row is locked to 2 bars"), "MCP: ton efter slutet i låst rad: " + beyond["error"].toString());
+            check ((bool) call (R"({"layer":"kick","length":"auto"})")["ok"] && pattern.isLengthAuto (kick), "MCP: length auto");
+            check (! (bool) call (R"({"layer":"kick","length":"x"})")["ok"], "MCP: ogiltig längd ger fel");
+            const auto state = tools.call ("get_state", {});
+            const auto* layers = state["data"]["pattern"]["layers (instruments 0-9 and 'kick')"].getArray();
+            check (layers != nullptr && (int) (*layers)[0]["bars"] >= 1 && (*layers)[0]["length_mode"].toString() == "auto" && (int) state["data"]["pattern"]["bars"] < 1024, "MCP: get_state visar bars och length_mode");
+        }
+
         editor.reset();
         std::puts (failed ? "FEL: längdtestet misslyckades" : "Längdtestet gick igenom");
         return failed ? 1 : 0;

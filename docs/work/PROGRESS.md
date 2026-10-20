@@ -4,8 +4,8 @@ Plan: [../plan-v2.md](../plan-v2.md). Opus = projektledare, Sonnet = bygger. Ses
 Läs [LESSONS.md](LESSONS.md) innan du bygger eller testar. Lägg till en rad där när ett fel upptäcks.
 
 ## Nu
-- 20 okt: fas R på content-r (Sonnet). R9 steg 3 klart (väntar på commit-hash/Opus-godkännande): trimRow från takt 0, DeferredRelease med SpinLock, LengthMenu med SafePointer + dialog kopplad till komponenten, låst rad tar inga toner efter slutet (Pattern::acceptsTick; pianorullen visar ingen extra takt, stegvyn och klistra in ignorerar), högerklick på radetiketten öppnar LengthMenu. lengthtest, persisttest, KickbaseTests gröna. Ingen skärmbild (inget visuellt nytt utom att den låsta rullen slutar vid slutet).
-  Nästa: R9 steg 4 (MCP get_pattern bars/locked, set_pattern length "auto"|n, repeat_to, add_note/set_pattern ger fel "row is locked to N bars" i låst rad, AGENT_GUIDE/AnalysisAbout, preset-checklistrad). Sedan fasslut (VST3+HostTest, hel svit, 42 bilder, docs/content-r-report.md, Tobias testlista). Ej verifierat: LengthMenu-dialogen för förkortning är aldrig klickad på riktigt.
+- 20 okt: fas R på content-r (Sonnet). R9 steg 4 klart (MCP: get_state per rad bars/length_mode/content_bars/extra_bars, pattern.bars = längsta raden; set_pattern length auto|N, trim, repeat_to, fel "row is locked to N bars"; MixAnalysis pattern_timeline läser radens bars; AGENT_GUIDE, AnalysisAbout, preset-checklist). lengthtest (med MCP-fall) och analysetest gröna. Det finns inget add_note-verktyg i MCP, bara set_pattern.
+  Nästa: FASSLUT: bygg VST3 + KickbaseHostTest en gång, HostTest state spara (gammal build)/ladda (ny), hel svit en gång, 42 bilder + pngdiff, docs/content-r-report.md, Tobias testlista (≤10 punkter, inkl. klick på bekräftelsedialogen vid förkortning och högerklick på radetiketten), hash/resultat till Opus. Ingen push/Release förrän Opus säger. Öppet: SNAP väntar på Opus-OK, Help.cpp har kvar hjälptexter för patternBars/rowBars (parametrarna visas inte längre).
 
 ## Klart
 - Fas 0, A, D1, W, E2, D2/D3 (godkända, pushade; tippen content-d2 c0ef101).

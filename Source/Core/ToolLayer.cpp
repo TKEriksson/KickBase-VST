@@ -198,8 +198,8 @@ std::vector<ToolLayer::ToolInfo> ToolLayer::tools()
           R"({"type":"object","properties":{"channel":{"type":"string"},"slot":{"type":"integer"},"type":{"type":"string"},"knobs":{"type":"object","additionalProperties":true}},"required":["channel","slot","type"]})" },
         { "set_kick_envelopes", "Sets the kick's free envelopes as arrays of [time_seconds, value, tension] nodes. pitch: semitones above the tail pitch (0..72, max 0.5 s). amp: volume 0..1 (max 2 s; the kick ends at the last node, which should be 0). Tension -1..1: negative falls/rises fast first, positive holds then moves late. Omit one to leave it unchanged.",
           R"({"type":"object","properties":{"pitch":{"type":"array","items":{"type":"array","items":{"type":"number"}}},"amp":{"type":"array","items":{"type":"array","items":{"type":"number"}}}}})" },
-        { "set_pattern", "Writes notes. layer 0-9 = instrument 1-10 (only the first instrumentCount play, see set_instruments), or 'kick'. For an instrument give 'bars' (one text per bar; the list is repeated to fill the pattern, so give as many distinct bars as you need, up to 64) in the pattern language, with a 'grid' such as '1/16', '1/8 T', '1/32'. Step words separated by spaces: '.' rest, g/m/x/X = velocity ghost/soft/normal/accent, then optional pitch (+7, -5), '~' glide note, ':50' length in percent of the step. A GLIDE note (flag '~' / slide:true) works like an FL Studio slide note: it does not play a new note, it glides the note that is sounding to its pitch during its own length and the pitch stays there until that note ends. Example 1/16 rolling bass: [\". m x x . m x x . m x x . m x x\"]. Or give 'notes': [{\"tick\":0,\"length\":24,\"pitch\":0,\"velocity\":0.8,\"slide\":false}] (96 ticks per quarter note, 384 per bar). For 'kick' give 'bars' of 16 characters 'x' or '.', e.g. [\"x...x...x...x...\"]. Set the pattern length with set_parameters patternBars (1, 2, 4, 8, 16, 32 or 64 bars), and build a whole section by giving that many distinct bars.",
-          R"({"type":"object","properties":{"layer":{},"bars":{"type":"array","items":{"type":"string"}},"grid":{"type":"string"},"gate":{"type":"number"},"notes":{"type":"array","items":{"type":"object"}},"clear":{"type":"boolean"}},"required":["layer"]})" },
+        { "set_pattern", "Writes notes. layer 0-9 = instrument 1-10 (only the first instrumentCount play, see set_instruments), or 'kick'. For an instrument give 'bars' (one text per bar; the row becomes as many bars as you give, so give every distinct bar you need, and use repeat_to to repeat them further) in the pattern language, with a 'grid' such as '1/16', '1/8 T', '1/32'. Step words separated by spaces: '.' rest, g/m/x/X = velocity ghost/soft/normal/accent, then optional pitch (+7, -5), '~' glide note, ':50' length in percent of the step. A GLIDE note (flag '~' / slide:true) works like an FL Studio slide note: it does not play a new note, it glides the note that is sounding to its pitch during its own length and the pitch stays there until that note ends. Example 1/16 rolling bass: [\". m x x . m x x . m x x . m x x\"]. Or give 'notes': [{\"tick\":0,\"length\":24,\"pitch\":0,\"velocity\":0.8,\"slide\":false}] (96 ticks per quarter note, 384 per bar). For 'kick' give 'bars' of 16 characters 'x' or '.', e.g. [\"x...x...x...x...\"]. ROW LENGTH: a row is as long as its notes (length 'auto', the default: the last bar that has a note, at least 1 bar; get_state shows bars, length_mode, content_bars). length:\"auto\" or length:N (1-1024) locks the row to N bars (for example 3 bars of notes and a bar of silence); shortening below the notes needs trim:true, otherwise you get an error saying how many notes would go. repeat_to:N repeats the row's content until it is N bars. In a locked row, writing a note beyond the end returns the error 'row is locked to N bars'. The pattern is as long as the longest row. The old patternBars and rowBars parameters are not used any more.",
+          R"({"type":"object","properties":{"layer":{},"bars":{"type":"array","items":{"type":"string"}},"grid":{"type":"string"},"gate":{"type":"number"},"notes":{"type":"array","items":{"type":"object"}},"clear":{"type":"boolean"},"length":{},"trim":{"type":"boolean"},"repeat_to":{"type":"integer"}},"required":["layer"]})" },
         { "set_gate", "Sets a bass layer's GATE: a separate on/off rhythm that chops the layer's sound, with its own grid, independent of the notes. layer 0-9; on (true/false), grid ('1/16' ...), depth 0..1 (1 = fully closed in the off steps), smooth_ms (edge softness), and the steps as 'bars' (one text per bar, repeated over four bars): 'x' = open, '.' = closed, e.g. [\"x.x.x.x.x.x.x.x.\"] on a 1/16 grid. all:'open' or 'closed' fills every step.",
           R"({"type":"object","properties":{"layer":{"type":"integer"},"on":{"type":"boolean"},"grid":{"type":"string"},"depth":{"type":"number"},"smooth_ms":{"type":"number"},"bars":{"type":"array","items":{"type":"string"}},"all":{"type":"string","enum":["open","closed"]}},"required":["layer"]})" },
         { "set_sidechain_curve", "Sets how the kick ducks the bass. mode 'Kick envelope' follows the kick; mode 'Curve' uses 'points' [[x,y,tension]...] where x is 0..1 across the length (1/16, 1/8, 3/16, 1/4, 1/2, or Kick) and y 0..1 is the ducking (1 = fully ducked). The depth per instrument is bass1Duck, bass2Duck ... bass10Duck.",
@@ -465,7 +465,8 @@ var ToolLayer::getState (const var& args) const
     // Mönstret.
     auto pattern = object();
     put (pattern, "ticks_per_bar", Pattern::ticksPerBar);
-    put (pattern, "bars", Params::barsFromChoice ((int) processor.apvts.getRawParameterValue (ParamID::patternBars)->load()));
+    const auto lengths = Params::readPatternLengths (processor.apvts, processor.pattern, processor.activeInstruments());
+    put (pattern, "bars", lengths.total); // mönstret är lika långt som den längsta raden
     juce::Array<var> layers;
     for (int layer = 0; layer < Pattern::numNoteLayers; ++layer)
     {
@@ -483,6 +484,10 @@ var ToolLayer::getState (const var& args) const
                                                          : (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, InstrumentField::grid))->load()]);
         put (entry, "notes [tick, length, pitch, velocity, glide]", notes);
         put (entry, "piano_roll_layer", processor.pattern.isCustom (layer));
+        put (entry, "bars", processor.pattern.lengthBars (layer));
+        put (entry, "length_mode", processor.pattern.isLengthAuto (layer) ? juce::var ("auto") : juce::var ("locked")); // auto: följer tonerna, locked: ett valt antal takter
+        put (entry, "content_bars", processor.pattern.contentBars (layer));
+        put (entry, "extra_bars", processor.pattern.extraBars (layer)); // takter som "+ BAR" lagt till efter innehållet
         if (isKick)
         {
             layers.add (entry);
@@ -495,7 +500,7 @@ var ToolLayer::getState (const var& args) const
         put (gateInfo, "grid", Pattern::gridNames()[gateGrid]);
         put (gateInfo, "depth", round4 (processor.apvts.getRawParameterValue (ParamID::bass (layer, InstrumentField::gateDepth))->load()));
         juce::String steps;
-        const auto barCount = Params::barsFromChoice ((int) processor.apvts.getRawParameterValue (ParamID::patternBars)->load());
+        const auto barCount = lengths.total;
         for (int i = 0; i < barCount * Pattern::instrumentStepsPerBar ((InstrumentGrid) gateGrid); ++i)
             steps << (processor.pattern.isGateStepOn (layer, i) ? 'x' : '.');
         put (gateInfo, "steps (x open, . closed)", steps);
@@ -718,6 +723,44 @@ var ToolLayer::setPattern (const var& args)
             return fail ("Unknown grid. Options: " + Pattern::gridNames().joinIntoString (" | "));
     }
 
+    // Radens längd: "length" = "auto" eller 1-1024 takter, "trim" tillåter att toner efter slutet tas bort, "repeat_to" upprepar innehållet till så många takter.
+    auto wantedLength = -1; // -1 = oförändrad, 0 = AUTO
+    if (args.hasProperty ("length"))
+    {
+        const auto text = args["length"].toString().trim();
+        if (text.equalsIgnoreCase ("auto"))
+            wantedLength = 0;
+        else if (text.containsOnly ("0123456789") && text.getIntValue() >= 1 && text.getIntValue() <= Pattern::maxBars)
+            wantedLength = text.getIntValue();
+        else
+            return fail ("length must be \"auto\" or a number of bars from 1 to " + juce::String (Pattern::maxBars) + ".");
+    }
+    const auto repeatTo = args.hasProperty ("repeat_to") ? (int) args["repeat_to"] : 0;
+    if (args.hasProperty ("repeat_to") && (repeatTo < 1 || repeatTo > Pattern::maxBars))
+        return fail ("repeat_to must be a number of bars from 1 to " + juce::String (Pattern::maxBars) + ".");
+
+    // Gränsen skrivningen måste hålla sig inom: den nya längden, annars en låst rads längd, annars ingen (AUTO växer).
+    const auto limitBars = wantedLength > 0 ? wantedLength : (wantedLength < 0 && ! pattern.isLengthAuto (layer) ? pattern.manualBars (layer) : 0);
+    auto lockedError = [&] { return fail ("row is locked to " + juce::String (limitBars) + (limitBars == 1 ? " bar" : " bars") + ". Use length:\"auto\" or a larger number first."); };
+    if (limitBars > 0)
+    {
+        if (repeatTo > limitBars)
+            return lockedError();
+        if (auto* notes = args["notes"].getArray())
+            for (const auto& note : *notes)
+                if ((int) note["tick"] >= limitBars * Pattern::ticksPerBar && (int) note["tick"] < Pattern::maxTicks)
+                    return lockedError();
+        if (auto* bars = args["bars"].getArray(); bars != nullptr && (int) bars->size() > limitBars)
+            return lockedError();
+        if (! args.hasProperty ("notes") && ! args.hasProperty ("bars") && ! (bool) args["clear"] && wantedLength > 0)
+        {
+            auto lost = 0;
+            pattern.forEachNote (layer, [&] (int tick, const Pattern::Note&) { lost += tick >= limitBars * Pattern::ticksPerBar ? 1 : 0; });
+            if (lost > 0 && ! (bool) args["trim"])
+                return fail ("length " + juce::String (limitBars) + " would remove " + juce::String (lost) + (lost == 1 ? " note" : " notes") + " after the end. Nothing was changed. Give trim:true to remove them.");
+        }
+    }
+
     if (auto* notes = args["notes"].getArray())
     {
         pattern.clearNotes (layer);
@@ -754,8 +797,33 @@ var ToolLayer::setPattern (const var& args)
     }
     else if ((bool) args["clear"])
         pattern.clearNotes (layer);
-    else
-        return fail ("Give 'bars' (pattern language), 'notes', or clear:true.");
+    else if (wantedLength < 0 && repeatTo == 0)
+        return fail ("Give 'bars' (pattern language), 'notes', clear:true, length or repeat_to.");
+
+    if (repeatTo > 0)
+    {
+        pattern.refreshLengths();
+        const auto sourceBars = std::max (1, pattern.contentBars (layer));
+        struct Copy { int tick, length, pitch; float velocity; bool slide; };
+        std::vector<Copy> copies;
+        pattern.forEachNote (layer, [&] (int tick, const Pattern::Note& n) { copies.push_back ({ tick, n.length.load(), n.pitch.load(), n.velocity.load(), n.slide.load() }); });
+        for (int bar = sourceBars; bar < repeatTo; bar += sourceBars)
+            for (const auto& c : copies)
+            {
+                const auto tick = c.tick + bar * Pattern::ticksPerBar;
+                if (tick < repeatTo * Pattern::ticksPerBar)
+                    pattern.addNote (layer, tick, std::min (c.length, repeatTo * Pattern::ticksPerBar - tick), c.pitch, c.velocity, c.slide);
+            }
+        pattern.setCustom (layer, true);
+    }
+
+    if (wantedLength == 0)
+        pattern.setManualBars (layer, 0);
+    else if (wantedLength > 0)
+    {
+        pattern.trimRow (layer, wantedLength);
+        pattern.setManualBars (layer, wantedLength);
+    }
 
     if (auto* gridParameter = findParameter (processor, gridParameterID))
         Presets::setParameter (*gridParameter, gridParameter->convertTo0to1 ((float) grid));
@@ -767,6 +835,8 @@ var ToolLayer::setPattern (const var& args)
     put (data, "layer", isKick ? juce::var ("kick") : juce::var (layer));
     put (data, "notes", count);
     put (data, "grid", Pattern::gridNames()[grid]);
+    put (data, "bars", pattern.lengthBars (layer));
+    put (data, "length_mode", pattern.isLengthAuto (layer) ? juce::var ("auto") : juce::var ("locked"));
     return ok (data);
 }
 

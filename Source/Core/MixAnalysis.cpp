@@ -964,7 +964,8 @@ namespace MixAnalysis
                     continue;
                 const auto suffix = isKick ? juce::String ("Kick") : "Bass" + juce::String ((int) layer["layer"] + 1);
                 const auto lengthText = parameters[juce::Identifier ("rowBars" + suffix)].toString();
-                row.rowBars = lengthText.containsAnyOf ("0123456789") ? std::max (1, lengthText.getIntValue()) : loopBars;
+                row.rowBars = layer.hasProperty ("bars") ? std::max (1, (int) layer["bars"]) // radens egen längd (R9)
+                                                            : (lengthText.containsAnyOf ("0123456789") ? std::max (1, lengthText.getIntValue()) : loopBars);
                 if (parameters.hasProperty (juce::Identifier ("rowLoop" + suffix)))
                     row.loops = (bool) parameters[juce::Identifier ("rowLoop" + suffix)];
                 if (matchesFilter (row.name, filter.sources))
