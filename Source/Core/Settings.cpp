@@ -188,6 +188,14 @@ namespace Settings
         ++visualChanges;
     }
 
+    bool collisionGradient() { return get ("collisionGradient") != "0"; }
+
+    void setCollisionGradient (bool on)
+    {
+        set ("collisionGradient", on ? juce::String() : "0");
+        ++visualChanges;
+    }
+
     const char* visualKey (Visual visual)
     {
         constexpr const char* keys[] { "Analyzer", "Sidechain", "Maximizer", "Soundstage", "Effects", "Mixer", "TopBar", "Other" };

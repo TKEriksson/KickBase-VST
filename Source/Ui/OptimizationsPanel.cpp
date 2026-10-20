@@ -39,6 +39,13 @@ OptimizationsPanel::OptimizationsPanel (PluginBase& processor, std::function<voi
                                        "Applies to every Kickbase window at once and is remembered.");
     reduceAnimationsToggle.onClick = [this] { Settings::setReduceAnimations (reduceAnimationsToggle.getToggleState()); };
     addAndMakeVisible (reduceAnimationsToggle);
+    collisionGradientToggle.setClickingTogglesState (true);
+    collisionGradientToggle.setColour (juce::TextButton::buttonOnColourId, Theme::mix.withAlpha (0.6f));
+    collisionGradientToggle.setTooltip ("COLLISION GRADIENT - The colour field over frequency and bar on ANALYZER > COLLISIONS. Off shows only the list and the markings, "
+                                        "which draws faster. Remembered.");
+    collisionGradientToggle.onClick = [this] { Settings::setCollisionGradient (collisionGradientToggle.getToggleState()); };
+    collisionGradientToggle.setVisible (! processor.isEffectVersion()); // Kickbase FX har ingen ANALYZER-flik
+    addChildComponent (collisionGradientToggle);
     styleLabel (globalHint, 10.5f, Theme::textDim);
     globalHint.setText ("Halves every rate below. Filled areas are the most expensive part of drawing: FILLED off saves the most.", juce::dontSendNotification);
     addAndMakeVisible (globalHint);
@@ -126,6 +133,7 @@ void OptimizationsPanel::setTexts (bool shortTexts)
 void OptimizationsPanel::refresh()
 {
     reduceAnimationsToggle.setToggleState (Settings::reduceAnimations(), juce::dontSendNotification);
+    collisionGradientToggle.setToggleState (Settings::collisionGradient(), juce::dontSendNotification);
     for (auto& row : rows)
     {
         row->fps.setSelectedId (Settings::visualFpsStep (row->visual), juce::dontSendNotification);
@@ -158,8 +166,13 @@ void OptimizationsPanel::resized()
     backButton.setBounds (top.removeFromRight (70));
     top.removeFromRight (gap);
     globalLabel.setBounds (top.removeFromLeft (60));
-    reduceAnimationsToggle.setBounds (top.removeFromLeft (180));
-    top.removeFromLeft (10);
+    reduceAnimationsToggle.setBounds (top.removeFromLeft (150));
+    top.removeFromLeft (gap);
+    if (collisionGradientToggle.isVisible())
+    {
+        collisionGradientToggle.setBounds (top.removeFromLeft (150));
+        top.removeFromLeft (gap);
+    }
     globalHint.setBounds (top);
     area.removeFromTop (8);
 

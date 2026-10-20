@@ -46,6 +46,9 @@ namespace Settings
     // så ett fönster som redan är öppet följer med först när det öppnas igen (rubriken och spektrumet följer med direkt).
     bool reduceAnimations();
     void setReduceAnimations (bool reduce);
+    // ANALYZER > COLLISIONS: färgfältet över frekvens och takt (standard på). Av sparar ritning och data.
+    bool collisionGradient();
+    void setCollisionGradient (bool on);
     inline int animationHz (int normalHz) { return reduceAnimations() ? (normalHz > 8 ? normalHz / 2 : normalHz) : normalHz; }
 
     // Hur ofta vyerna ritas (SETTINGS > OPTIMIZATIONS): ett steg 1-5 per grupp = 5, 10, 20, 30 eller 40 bilder per sekund (standard 30,
