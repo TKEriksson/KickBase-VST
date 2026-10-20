@@ -13,6 +13,15 @@ Sessionernas namn byts per chatt: kolla `ListAgents`. Tobias kollar då och då;
 (2) designval som syns eller hörs, (3) när fasen är klar. **Inte** för rena buggfixar inom en godkänd fas: bygg, testa, commit, fortsätt,
 och rapportera i klump (commit-hashar + 5–15 rader).
 
+**Bygg och testa så lite som möjligt (Tobias 20 okt: "bara när det behövs och så lite som möjligt", minimalt med skärmbilder):**
+- Samla flera rättningar innan du kompilerar; kompilera inte efter varje liten ändring. Ingen kompilering för docs-ändringar.
+- Under arbetet: bara målet `KickbaseMcp` (verktyget + snapshot). VST3-målen och `KickbaseHostTest` bara vid fasens slut.
+- rendersig-trion bara när ljudtrådskod ändrats, en gång per klump, inte per ändring.
+- Skärmbilder bara när en layout ändras och någon måste se den: en bild per ändrad vy (1 instrument om layouten inte beror på antalet).
+  Ingen bild för en ren logikrättning (scroll, hotkeys, tooltips).
+- 42-bildssviten bara vid fasens slut och bara om fasen ändrat layout. Release-bygget bara när Tobias ska installera.
+- Hellre ett riktat enhetstest/verktygstest än hela sviten. Hela sviten en gång per fas.
+
 **Testpolicy (regel 11 gäller vid fasens slut, inte efter varje delsteg):**
 - Delsteg: bygg bara berörda mål (`build-mcp.bat <mål>`, nedan). Kör bara testerna som rör ändringen.
 - Rör ändringen ljudtråden: `rendersig`, `rendersigreal`, `rendersigwide` (+ `rendersigtb303` om filter) mot baslinjerna, och
