@@ -95,6 +95,9 @@ private:
     juce::String describe (int tick) const;
     int voices() const;                              // lagrets VOICES (ackord hörs bara med 2 eller fler)
     void setChordOnSelection (const Pattern::Chord& chord);
+    void changeVoices (int delta);                   // VOICES -/+ i verktygsraden (varnar om det blir färre än mönstret behöver)
+    void setVoices (int count);
+    void checkVoicesNeeded();                        // efter en redigering: behöver mönstret fler VOICES än lagret har? Fråga om att öka
     void setHover (int tick);
 
     NoteMap readNotes() const;
@@ -160,6 +163,9 @@ private:
     juce::Rectangle<float> infoArea;
     juce::ComboBox gridBox;                                 // rutnät
     juce::TextButton lengthButton, extendButton { "+ BAR" };  // radens längd (AUTO n / valt antal: klick öppnar menyn) och förläng med en takt
+    juce::TextButton voicesDownButton { "-" }, voicesUpButton { "+" };
+    juce::Label voicesLabel;                                // "VOICES n"
+    int askedVoicesNeed = 0;                                // största behov vi redan frågat om (så att samma nej inte upprepas)
     juce::ScrollBar hBar { false }, vBar { true }; // tid och tonhöjd
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> gridAttachment;
     bool snapEnabled = true;

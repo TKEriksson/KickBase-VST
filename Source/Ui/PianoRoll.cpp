@@ -136,6 +136,16 @@ PianoRoll::PianoRoll (PluginBase& p, std::vector<juce::Colour> colours) : proces
                              "You can also click in the shaded bar after the end of the row: the row grows with the notes and shrinks again when you delete them (LENGTH: AUTO).");
     extendButton.onClick = [this] { extendRow(); grabKeyboardFocus(); };
     addAndMakeVisible (extendButton);
+    voicesLabel.setJustificationType (juce::Justification::centred);
+    voicesLabel.setFont (Theme::font (12.0f));
+    voicesLabel.setColour (juce::Label::textColourId, Theme::textDim);
+    voicesLabel.setTooltip ("VOICES - how many notes this instrument can play at once (chords and overlapping notes). Same setting as VOICES on the INSTR page.");
+    voicesDownButton.setTooltip ("Fewer VOICES");
+    voicesUpButton.setTooltip ("More VOICES");
+    voicesDownButton.onClick = [this] { changeVoices (-1); grabKeyboardFocus(); };
+    voicesUpButton.onClick = [this] { changeVoices (1); grabKeyboardFocus(); };
+    for (auto* c : std::initializer_list<juce::Component*> { &voicesLabel, &voicesDownButton, &voicesUpButton })
+        addAndMakeVisible (c);
 
     attachGridBox();
     updateToolButtons();
@@ -167,6 +177,7 @@ void PianoRoll::setLayer (int newLayer)
     if (newLayer != layer)
     {
         layer = newLayer;
+        askedVoicesNeed = 0;
         selection.clear();
         attachGridBox();
     }
@@ -602,6 +613,7 @@ void PianoRoll::commit()
 {
     processor.pattern.setCustom (layer, true); // lagret visas nu som pianorulle i stället för stegknappar
     processor.patternChanged();
+    checkVoicesNeeded();
 }
 
 int PianoRoll::pitchBefore (int tick) const
@@ -678,6 +690,14 @@ void PianoRoll::resized()
     lengthButton.setBounds (bottom.removeFromLeft (110));
     bottom.removeFromLeft (4);
     extendButton.setBounds (bottom.removeFromLeft (52));
+    bottom.removeFromLeft (12);
+    const auto showVoices = layer != Pattern::kickLayer;
+    voicesDownButton.setVisible (showVoices);
+    voicesUpButton.setVisible (showVoices);
+    voicesLabel.setVisible (showVoices);
+    voicesDownButton.setBounds (bottom.removeFromLeft (24));
+    voicesLabel.setBounds (bottom.removeFromLeft (76));
+    voicesUpButton.setBounds (bottom.removeFromLeft (24));
 
     const auto first = pixelsPerTick == 1.0f && scrollTicks == 0.0f;
     if (first)
@@ -701,6 +721,12 @@ void PianoRoll::resized()
 void PianoRoll::timerCallback()
 {
     followVisualRate();
+    if (layer != Pattern::kickLayer)
+    {
+        const auto text = "VOICES " + juce::String (voices());
+        if (voicesLabel.getText() != text)
+            voicesLabel.setText (text, juce::dontSendNotification);
+    }
     if (const auto colourVersion = processor.layerStructureVersion.load(); colourVersion != lastColourVersion)
     {
         lastColourVersion = colourVersion;
@@ -890,10 +916,11 @@ int PianoRoll::noteAtPoint (juce::Point<float> p, bool& onRightEdge) const
     {
         if (! processor.pattern.note (layer, tick).on.load())
             continue;
-        const auto bounds = noteBounds (tick);
+        auto bounds = noteBounds (tick);
+        bounds.setWidth (std::max (bounds.getWidth(), edgeGrab * 1.5f)); // en kort ton får ett grepp som räcker utanför dess högerkant
         if (bounds.contains (p))
         {
-            onRightEdge = p.x > bounds.getRight() - edgeGrab && bounds.getWidth() > edgeGrab * 1.5f;
+            onRightEdge = p.x > bounds.getRight() - edgeGrab;
             return tick;
         }
     }
@@ -947,6 +974,70 @@ int PianoRoll::voices() const
     if (layer == Pattern::kickLayer)
         return 1;
     return (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, InstrumentField::voices))->load();
+}
+
+void PianoRoll::setVoices (int count)
+{
+    if (auto* param = processor.apvts.getParameter (ParamID::bass (layer, InstrumentField::voices)))
+    {
+        param->beginChangeGesture();
+        param->setValueNotifyingHost (param->convertTo0to1 ((float) count));
+        param->endChangeGesture();
+    }
+    voicesLabel.setText ("VOICES " + juce::String (voices()), juce::dontSendNotification);
+}
+
+void PianoRoll::changeVoices (int delta)
+{
+    if (layer == Pattern::kickLayer)
+        return;
+    const auto target = juce::jlimit (1, 8, voices() + delta); // 8 = InstrumentVoices::maxVoices
+    if (target == voices())
+        return;
+    const auto needed = processor.pattern.maxSimultaneous (layer);
+    if (target >= needed)
+    {
+        askedVoicesNeed = 0;
+        setVoices (target);
+        return;
+    }
+    // Färre röster än mönstret behöver: den högsta tonen stjäls hela tiden (3 ms utton), så fråga först.
+    juce::Component::SafePointer<PianoRoll> safeThis (this);
+    juce::AlertWindow::showAsync (juce::MessageBoxOptions::makeOptionsOkCancel (
+                                      juce::MessageBoxIconType::WarningIcon, "Lower VOICES",
+                                      "This pattern plays up to " + juce::String (needed) + " notes at once, but VOICES " + juce::String (target)
+                                          + " only gives " + juce::String (target) + ". The top note is then stolen all the time (a 3 ms fade), so notes will cut off.",
+                                      "Continue", "Cancel"),
+                                  [safeThis, target] (int choice)
+    {
+        if (safeThis != nullptr && choice == 1)
+            safeThis->setVoices (target);
+    });
+}
+
+void PianoRoll::checkVoicesNeeded()
+{
+    if (layer == Pattern::kickLayer)
+        return;
+    const auto needed = processor.pattern.maxSimultaneous (layer);
+    if (needed <= voices())
+    {
+        askedVoicesNeed = 0;
+        return;
+    }
+    if (needed <= askedVoicesNeed || needed > 8) // redan frågat (och fått nej); 8 = InstrumentVoices::maxVoices
+        return;
+    askedVoicesNeed = needed;
+    juce::Component::SafePointer<PianoRoll> safeThis (this);
+    juce::AlertWindow::showAsync (juce::MessageBoxOptions::makeOptionsYesNo (
+                                      juce::MessageBoxIconType::QuestionIcon, "More VOICES?",
+                                      "Increase VOICES to " + juce::String (needed) + "? The pattern plays up to " + juce::String (needed)
+                                          + " notes at once. With No the notes stay, but the top note is stolen while VOICES is too low."),
+                                  [safeThis, needed] (int choice)
+    {
+        if (safeThis != nullptr && choice == 1)
+            safeThis->setVoices (needed);
+    });
 }
 
 void PianoRoll::setChordOnSelection (const Pattern::Chord& chord)
@@ -1425,11 +1516,11 @@ void PianoRoll::mouseDown (const juce::MouseEvent& event)
     if (! processor.pattern.acceptsTick (layer, start))
         return; // låst rad: klick efter slutet gör ingenting
     const auto glide = glideButton.getToggleState();
-    const auto length = ! glide && lastLength > 0 ? lastLength : Pattern::ticksPerStep (grid());
+    const auto length = ! glide && lastLength > 0 ? std::max (lastLength, snapTicks()) : Pattern::ticksPerStep (grid());
     processor.pattern.addNote (layer, start, length, pitch, Pattern::defaultVelocity (layer), glide);
     selection = { start };
     justCreatedTick = start;
-    drag = Drag::move;
+    drag = Drag::resize; // klick = en kort ton; dras musen åt höger medan knappen hålls följer längden draget
     dragTick = start;
     dragStartTick = start;
     dragStartPitch = pitch;
@@ -1537,7 +1628,6 @@ void PianoRoll::mouseDrag (const juce::MouseEvent& event)
     }
     applyNotes (target);
     dragTick = dragStartTick + deltaTicks;
-    lastLength = target[dragTick].length;
     hoverTick = dragTick;
     edited = true;
     repaint();

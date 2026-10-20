@@ -912,6 +912,80 @@ namespace
             const auto clip = other->copyTrack (4);
             check (clip != nullptr && other->pasteTrack (1, *clip) && other->getLayerName (1) == "Lead" && other->getLayerColour (1) == 0xff112233
                        && std::abs (other->apvts.getRawParameterValue (ParamID::bass (1, InstrumentField::cutoff))->load() - 777.0f) < 1.0f, "L4: Copy/Paste flyttar ljud, namn och färg");
+
+            // Move down/up: ALLT per rad följer med (namn, färg, rattar, FX-kanal, noter), inte bara mönstret.
+            {
+                const auto p = std::make_unique<InstrumentProcessor>();
+                p->setStateInformation (state.getData(), (int) state.getSize());
+                auto set = [&p] (const juce::String& id, float real)
+                {
+                    auto* parameter = p->apvts.getParameter (id);
+                    parameter->setValueNotifyingHost (parameter->convertTo0to1 (real));
+                };
+                auto get = [&p] (const juce::String& id) { return p->apvts.getRawParameterValue (id)->load(); };
+                p->pattern.addNote (3, 0, 55, 2);
+                p->pattern.setCustom (3, true);
+                p->setLayerName (3, "Bas");
+                p->setLayerColour (3, 0xff445566);
+                set (ParamID::bass (3, InstrumentField::cutoff), 333.0f);
+                set (ParamID::bass (3, InstrumentField::fxChannel), 2.0f);
+                set (ParamID::bass (4, InstrumentField::fxChannel), 3.0f);
+                const auto pitch3 = p->pattern.note (3, 0).pitch.load(), pitch4 = p->pattern.note (4, 0).pitch.load();
+                const auto version = p->layerStructureVersion.load();
+                check (p->moveTrack (3, 1), "Move down: går att göra");
+                check (p->getLayerName (4) == "Bas" && p->getLayerName (3) == "Lead" && p->getLayerColour (4) == 0xff445566 && p->getLayerColour (3) == 0xff112233,
+                       "Move down: namn och färg följer med");
+                check (std::abs (get (ParamID::bass (4, InstrumentField::cutoff)) - 333.0f) < 1.0f && std::abs (get (ParamID::bass (3, InstrumentField::cutoff)) - 777.0f) < 1.0f,
+                       "Move down: rattarna följer med");
+                check (std::abs (get (ParamID::bass (4, InstrumentField::fxChannel)) - 2.0f) < 0.1f && std::abs (get (ParamID::bass (3, InstrumentField::fxChannel)) - 3.0f) < 0.1f,
+                       "Move down: FX-kanalen följer med");
+                check (p->pattern.note (4, 0).pitch.load() == pitch3 && p->pattern.note (3, 0).pitch.load() == pitch4, "Move down: noterna följer med");
+                check (p->layerStructureVersion.load() != version && p->selectedInstrument == 4, "Move down: vyn byggs om och markeringen följer med");
+            }
+            // Move down mellan de två första raderna, med rutnätslängd och mixer.
+            {
+                const auto p = std::make_unique<InstrumentProcessor>();
+                p->setInstrumentCount (3);
+                auto set = [&p] (const juce::String& id, float real)
+                {
+                    auto* parameter = p->apvts.getParameter (id);
+                    parameter->setValueNotifyingHost (parameter->convertTo0to1 (real));
+                };
+                auto get = [&p] (const juce::String& id) { return p->apvts.getRawParameterValue (id)->load(); };
+                p->setLayerName (0, "Ett");
+                p->setLayerName (1, "Tva");
+                set (ParamID::bass (0, InstrumentField::cutoff), 333.0f);
+                set (ParamID::bass (1, InstrumentField::cutoff), 777.0f);
+                set (ParamID::rowBars (1), 2.0f);
+                set (ParamID::rowBars (2), 4.0f);
+                set (Mixer::paramID (Mixer::firstBassSource + 0, "Gain"), -6.0f);
+                p->pattern.clearNotes (0);
+                p->pattern.clearNotes (1);
+                p->pattern.addNote (1, 0, 55, 2);
+                check (p->moveTrack (0, 1), "Move down 1->2: går att göra");
+                check (p->getLayerName (1) == "Ett" && p->getLayerName (0) == "Tva", "Move down 1->2: namnen byter plats");
+                check (std::abs (get (ParamID::bass (1, InstrumentField::cutoff)) - 333.0f) < 1.0f && std::abs (get (ParamID::bass (0, InstrumentField::cutoff)) - 777.0f) < 1.0f,
+                       "Move down 1->2: rattarna byter plats");
+                check (std::abs (get (ParamID::rowBars (2)) - 2.0f) < 0.1f && std::abs (get (ParamID::rowBars (1)) - 4.0f) < 0.1f, "Move down 1->2: rutnätslängden byter plats");
+                check (std::abs (get (Mixer::paramID (Mixer::firstBassSource + 1, "Gain")) + 6.0f) < 0.1f, "Move down 1->2: mixerkanalen byter plats");
+                check (p->pattern.note (0, 0).on.load() && ! p->pattern.note (1, 0).on.load(), "Move down 1->2: noterna byter plats");
+            }
+            // VOICES-räkningen: överlappande toner, ackordets extra toner, glide återanvänder rösten, tomma rader.
+            {
+                const auto p = std::make_unique<InstrumentProcessor>();
+                auto& pat = p->pattern;
+                pat.clearNotes (2);
+                check (pat.maxSimultaneous (2) == 0, "Voices: tom rad = 0");
+                pat.addNote (2, 0, 48, 0);
+                pat.addNote (2, 48, 48, 3);
+                check (pat.maxSimultaneous (2) == 1, "Voices: toner efter varandra = 1");
+                pat.addNote (2, 96, 96, 0, 0.8f, false, { 4, 7, 0 });
+                check (pat.maxSimultaneous (2) == 3, "Voices: ton + ackord med två extra = 3");
+                pat.addNote (2, 120, 24, 5);
+                check (pat.maxSimultaneous (2) == 4, "Voices: ackord + överlappande ton = 4");
+                pat.addNote (2, 130, 10, 9, 0.8f, true);
+                check (pat.maxSimultaneous (2) == 4, "Voices: glide-ton under en klingande ton räknas inte");
+            }
         }
 
         // Ta bort: instrument 4-6 rensas helt.

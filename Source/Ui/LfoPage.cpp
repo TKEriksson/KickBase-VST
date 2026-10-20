@@ -497,8 +497,12 @@ void LfoPanel::updateVisibility()
     const auto hz = lastMode == 1;
     shape.setVisible (! folded);
     mode.setVisible (! folded);
-    rate.setVisible (! folded && ! hz);
-    for (auto* c : std::initializer_list<juce::Component*> { &hzLabel, &hzSlider, &snapButton, &snapRangeSlider, &snapInfo })
+    // Fällt kort visar hastigheten också, som reglage: synk = taktväljaren, Hz = reglage + SNAP + närmaste notvärde.
+    const auto showRate = ! (folded && asking);
+    rate.setVisible (showRate && ! hz);
+    for (auto* c : std::initializer_list<juce::Component*> { &hzSlider, &snapButton, &snapInfo })
+        c->setVisible (showRate && hz);
+    for (auto* c : std::initializer_list<juce::Component*> { &hzLabel, &snapRangeSlider })
         c->setVisible (! folded && hz);
     targets.setVisible (! folded);
     handle.setVisible (! asking);
@@ -589,15 +593,6 @@ void LfoPanel::timerCallback()
         lastCustom = custom;
         updateVisibility(); // SNAP-raden tar plats under diagrammet bara i Hz-läget, EDIT POINTS syns bara för en vanlig form
     }
-    if (isFolded())
-    {
-        if (const auto newRate = rateText(); newRate != lastRateText)
-        {
-            lastRateText = newRate;
-            repaint();
-        }
-        return;
-    }
     if (current != 1)
         return;
 
@@ -627,12 +622,6 @@ void LfoPanel::paint (juce::Graphics& g)
     g.setColour (colour);
     g.setFont (Theme::font (13.0f, true));
     g.drawText (name, getLocalBounds().withHeight (32).withTrimmedLeft (32), juce::Justification::centredLeft);
-    if (isFolded() && processor.lfoRemoveAsk != index)
-    {
-        g.setColour (Theme::text);
-        g.setFont (Theme::font (11.5f, true));
-        g.drawText (lastRateText, rateArea, juce::Justification::centredLeft);
-    }
 
     // × och pilen (fäll / fäll ut).
     g.setColour (Theme::textDim);
@@ -671,9 +660,26 @@ void LfoPanel::resized()
     {
         display.setBounds (header.removeFromLeft (juce::jmin (140, header.getWidth())));
         header.removeFromLeft (10);
-        rateArea = header.removeFromLeft (70);
+        auto strip = header;
+        if (lastMode == 1)
+        {
+            hzSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 62, 18);
+            hzSlider.setBounds (strip.removeFromLeft (juce::jmin (190, strip.getWidth())));
+            strip.removeFromLeft (6);
+            snapButton.setBounds (strip.removeFromLeft (juce::jmin (50, strip.getWidth())));
+            strip.removeFromLeft (6);
+            snapInfo.setBounds (strip.removeFromLeft (juce::jmin (110, strip.getWidth())).withTrimmedLeft (0));
+            snapInfo.setJustificationType (juce::Justification::centredLeft);
+        }
+        else
+        {
+            // ChoiceComponent har etiketten överst (14 px); den hamnar utanför kortet och klipps bort.
+            rate.setBounds (strip.removeFromLeft (juce::jmin (110, strip.getWidth())).withY (-11).withHeight (38));
+        }
         return;
     }
+    hzSlider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 80, 16);
+    snapInfo.setJustificationType (juce::Justification::centredRight);
     header.removeFromRight (6);
     editButton.setBounds (header.removeFromRight (90));
     area.removeFromTop (4);

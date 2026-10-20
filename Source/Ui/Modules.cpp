@@ -90,7 +90,7 @@ HeaderBar::HeaderBar (PluginBase& p, const juce::String& subtitleIn)
 
 void HeaderBar::updateAiTooltip()
 {
-    aiButton.setButtonText (processor.isBridgeEnabled() ? "AI SERVER (MCP): ON" : "AI SERVER (MCP): OFF");
+    aiButton.setButtonText (processor.isBridgeEnabled() ? "AI SERVER\n(MCP: ON)" : "AI SERVER\n(MCP: OFF)");
     aiButton.setTooltip (processor.isBridgeEnabled()
         ? "AI SERVER (MCP) is ON (instance " + processor.getBridgeId() + "). An AI assistant using the Kickbase MCP bridge can read and change this plugin and hear/measure it offline. Click to switch off."
         : "AI SERVER (MCP) - Off. Switch on to let an AI assistant (through the Kickbase MCP bridge, for example in Claude Desktop) read and change this plugin. Local only; nothing is sent over the internet by Kickbase.");
@@ -118,8 +118,18 @@ void HeaderBar::resized()
     const auto hasPreviews = processor.getKeyboardState() != nullptr;
     const auto height = getHeight();
     const auto controlsHeight = 34, controlsY = (height - controlsHeight) / 2;
-    aiButton.setBounds (14 + logo.getWidth() + 22, controlsY, 124, controlsHeight); // AI SERVER först, till vänster om presetväljaren
-    presets.setBounds (aiButton.getRight() + 10, controlsY, hasPreviews ? 118 : 200, controlsHeight);
+    // Till höger (tonart, tempo): sätts först, så att vänstra delen kan krympa så att inget överlappar vid smal bredd.
+    auto right = getLocalBounds().reduced (14, 0);
+    keyBlock = right.removeFromRight (84).withSizeKeepingCentre (84, 40);
+    right.removeFromRight (8);
+    bpmPill = right.removeFromRight (214).reduced (0, (height - 34) / 2);
+    restartButton.setBounds (bpmPill.getRight() - 32, bpmPill.getY() + 4, 26, bpmPill.getHeight() - 8);
+
+    aiButton.setBounds (14 + logo.getWidth() + 22, controlsY, 84, controlsHeight); // AI SERVER först, till vänster om presetväljaren (två rader)
+    auto presetWidth = hasPreviews ? 118 : 200;
+    const auto leftEnd = aiButton.getRight() + 10 + presetWidth + 10 + (hasPreviews ? 70 : 76) + 10 + (hasPreviews ? 112 : 0) + 16 + meterWidth;
+    presetWidth = std::max (70, presetWidth - std::max (0, leftEnd - (bpmPill.getX() - 8)));
+    presets.setBounds (aiButton.getRight() + 10, controlsY, presetWidth, controlsHeight);
     exportButton.setBounds (presets.getRight() + 10, controlsY, hasPreviews ? 70 : 76, controlsHeight);
 
     // PREVIEWS: en inringad ruta med högtalaren och tonväljaren, så att man ser att de hör ihop.
@@ -132,14 +142,6 @@ void HeaderBar::resized()
         listenAll.setBounds (previewGroup.getX() + 7, previewGroup.getY() + 14, 30, previewGroup.getHeight() - 20);
         noteBox.setBounds (listenAll.getRight() + 5, previewGroup.getY() + 14, 62, previewGroup.getHeight() - 20);
     }
-
-
-    // Till höger: tonart med lampan under, och en pill med tempo, takt och en knapp som börjar om vid 1.1.
-    auto right = getLocalBounds().reduced (14, 0);
-    keyBlock = right.removeFromRight (84).withSizeKeepingCentre (84, 40);
-    right.removeFromRight (8);
-    bpmPill = right.removeFromRight (214).reduced (0, (height - 34) / 2);
-    restartButton.setBounds (bpmPill.getRight() - 32, bpmPill.getY() + 4, 26, bpmPill.getHeight() - 8);
 }
 
 void HeaderBar::showExportMenu()

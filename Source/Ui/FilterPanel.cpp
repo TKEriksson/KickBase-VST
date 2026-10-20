@@ -236,7 +236,7 @@ FilterPage::FilterPage (PluginBase& p, int layerIn, juce::Colour accentIn)
     routingNote.setInterceptsMouseClicks (false, false);
     addAndMakeVisible (routingNote);
 
-    static const char* const switchNames[] { "FILTER", "OSC 1", "OSC 2", "OSC 3", "SAMPLE", "NOISE" };
+    static const char* const switchNames[] { "FILTER ON", "OSC 1", "OSC 2", "OSC 3", "SAMPLE", "NOISE" };
     static const char* const switchTips[] {
         "FILTER ON / OFF - Off: the whole instrument bypasses Filter 1 and Filter 2 (the amp envelope still works).",
         "OSC 1 THROUGH FILTER - Off: OSC 1 bypasses both filters.", "OSC 2 THROUGH FILTER - Off: OSC 2 bypasses both filters.",
@@ -338,6 +338,9 @@ void FilterPage::layoutBlock (Block& block, juce::Rectangle<int> area)
 
 void FilterPage::paint (juce::Graphics& g)
 {
+    g.setColour (Theme::textDim);
+    g.setFont (Theme::font (10.0f));
+    g.drawText ("SENT THROUGH FILTER:", switchCaption, juce::Justification::centredLeft);
     paintGroupFrame (g, first.frame, first.title, accent, 0);
     paintGroupFrame (g, second.frame, second.title, filter2Colour, 20);
 }
@@ -350,6 +353,7 @@ void FilterPage::resized()
     area.removeFromRight (6);
     auto switchRow = area.removeFromTop (22);
     area.removeFromTop (2);
+    switchCaption = switchRow.removeFromLeft (130);
     for (auto& s : switches)
         s.button.setBounds (switchRow.removeFromLeft (84));
 

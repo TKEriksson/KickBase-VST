@@ -78,5 +78,6 @@ private:
         juce::ToggleButton button;
         std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> attachment;
     };
+    juce::Rectangle<int> switchCaption; // text till vänster om brytarna: vad raden gör
     std::array<SourceSwitch, 6> switches; // FILTER, OSC 1, OSC 2, OSC 3, SAMPLE, NOISE (i ordning med InstrumentField::filterOn ...)
 };

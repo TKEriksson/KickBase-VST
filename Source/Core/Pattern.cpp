@@ -1,4 +1,5 @@
 #include "Pattern.h"
+#include <algorithm>
 
 int Pattern::instrumentStepsPerBar (InstrumentGrid grid)
 {
@@ -184,6 +185,25 @@ void Pattern::applyLegacyLengths (int total, const std::array<int, numPatternRow
         extraOf[(size_t) layer] = 0;
     }
     refreshLengths();
+}
+
+int Pattern::maxSimultaneous (int layer) const
+{
+    // forEachNote ger tonerna i tidsordning: `active` håller slutticken för de toner som fortfarande klingar (en per röst).
+    std::vector<int> active;
+    int most = 0;
+    forEachNote (layer, [&] (int tick, const Note& n)
+    {
+        active.erase (std::remove_if (active.begin(), active.end(), [tick] (int end) { return end <= tick; }), active.end());
+        if (n.slide.load() && ! active.empty())
+            return; // glide: återanvänder rösten som klingar
+        const auto end = tick + std::max (1, n.length.load());
+        const auto count = 1 + (int) std::count_if (n.chord.begin(), n.chord.end(), [] (const auto& c) { return c.load() != 0; });
+        for (int i = 0; i < count; ++i)
+            active.push_back (end);
+        most = std::max (most, (int) active.size());
+    });
+    return most;
 }
 
 int Pattern::firstNoteIn (int layer, int fromTick, int toTick) const
