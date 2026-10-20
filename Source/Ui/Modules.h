@@ -165,13 +165,6 @@ class InstrumentModule : public ModulePanel, public juce::FileDragAndDropTarget
 public:
     InstrumentModule (PluginBase& processor, int layer);
     void resized() override;
-    void paint (juce::Graphics& g) override
-    {
-        ModulePanel::paint (g);
-        groups.paint (g, getAccent());
-        if (modOpen)
-            modGroups.paint (g, getAccent());
-    }
     void paintOverChildren (juce::Graphics&) override;
 
     bool isInterestedInFileDrag (const juce::StringArray& files) override;
@@ -190,6 +183,17 @@ private:
     float pitchValueAt (double seconds) const;
     EnvelopeView::NoteOff noteOffNow() const;
 
+    // INSTR-fliken (fas L): envelopegrafen och rattarna under den, i signalens ordning. Rattarna ligger på sidan och ritas av den.
+    struct InstrPage : public juce::Component
+    {
+        explicit InstrPage (InstrumentModule& o) : owner (o) {}
+        void paint (juce::Graphics& g) override { owner.groups.paint (g, owner.getAccent()); }
+        void resized() override { owner.layoutInstrPage(); }
+        InstrumentModule& owner;
+    };
+    InstrPage instrPage { *this };
+    void layoutInstrPage();
+
     EnvelopeView envelope { 0.5 };
     HoldAudition hold { processor };      // klick och håll på LISTEN: instrumentet spelas på förhandsvisningstonen
     ListenButton envelopeListen;          // högtalaren i hörnet av envelope-grafen
@@ -198,14 +202,7 @@ private:
     std::unique_ptr<SamplePage> samplePage;
     std::vector<std::unique_ptr<juce::Component>> controls;
     std::unique_ptr<FilterPage> filterPage;                               // FILTER-fliken: kurvan, Filter 1 och Filter 2
-    ControlGroups groups; // PITCH, SUB, NOISE, FILTER, FILTER ENV, VOLUME ENV, WARP ENV, DRIVE, OUT
-
-    // MODULATION (dragspel, stängt som standard): ENV 2, ENV 3 och instrumentets övriga källor, med handtag att dra till rattar.
-    juce::TextButton modToggle;
-    std::vector<juce::Component*> modControls;
-    ControlGroups modGroups;
-    bool modOpen = false;
-    void updateModToggle();
+    ControlGroups groups; // PITCH, SUB, NOISE, FILTER ENV, VOLUME ENV, WARP ENV, DRIVE, OUT (ENV 2/3, VELOCITY, RANDOM: ENV-fliken)
     PresetButton presets;
     std::unique_ptr<FxSendControl> fxSend;
 };
@@ -223,6 +220,7 @@ public:
     juce::Component* getHeader() { return &header; }
     void resized() override;
     void select (int layer);
+    void mouseDown (const juce::MouseEvent& event) override;
 
 private:
     struct Header : public juce::Component
@@ -238,13 +236,14 @@ private:
     void addInstrument();
     void removeInstrument();
     void refresh();
+    void resetPanels(); // river alla paneler (färg/klistra in/ta bort): de byggs om när instrumentet visas
     InstrumentModule& moduleFor (int layer);
 
     PluginBase& processor;
     Header header;
     std::array<std::unique_ptr<InstrumentModule>, ParamID::numInstrumentLayers> modules;
     std::array<juce::Component*, ParamID::numInstrumentLayers> extras {};
-    int current = 0, lastCount = -1, lastNamesVersion = -1;
+    int current = 0, lastCount = -1, lastNamesVersion = -1, lastStructureVersion = 0;
     bool confirmOpen = false;
     juce::Component::SafePointer<juce::AlertWindow> renameDialog;
 };
@@ -272,12 +271,30 @@ private:
 //   varianten av samma toner, och ett lager som redigerats där visas som en miniatyr i stället för stegknappar.
 // - GATE: en egen av/på-rytm som hackar lagrets ljud, med eget rutnät (GRID), djup (DEPTH) och mjukhet (SMOOTH). Den ändrar
 //   inte tonerna.
+// Mönstrets globala inställningar (NOTE END, SWING, HUMANIZE) kompakt i PATTERN-flikens flikrad, så att vänsterkolumnen
+// bara visar det valda spåret. Bara i instrumentpluginet.
+class PatternGrooveBar : public juce::Component
+{
+public:
+    explicit PatternGrooveBar (juce::AudioProcessorValueTreeState& apvts);
+    void resized() override;
+    static constexpr int width = 450;
+
+private:
+    juce::Label noteEndLabel, swingLabel, humanizeLabel;
+    ChoiceComponent::Box noteEnd;
+    FxSendControl::AmountSlider swing, humanize;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> noteEndAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> swingAttachment, humanizeAttachment;
+};
+
 class PatternModule : public juce::Component, private juce::Timer
 {
 public:
     PatternModule (PluginBase& processor, bool instrument);
     void resized() override;
     void paint (juce::Graphics&) override;
+    juce::Component* getGrooveBar() { return grooveBar.get(); } // till flikraden (nullptr i kickpluginet)
 
 private:
     void timerCallback() override;
@@ -292,8 +309,7 @@ private:
 
     PluginBase& processor;
     const bool instrument;
-    std::unique_ptr<ChoiceComponent> noteEnd;
-    std::unique_ptr<KnobComponent> swingKnob, humanizeKnob; // groove för hela mönstret (instrumenten)
+    std::unique_ptr<PatternGrooveBar> grooveBar; // NOTE END, SWING, HUMANIZE för hela mönstret (instrumenten)
     std::vector<std::unique_ptr<KnobComponent>> delays, swings, humanizes; // instrumentets egna SWING, HUMAN och DELAY, under GRID
     PresetButton presets;
     // EDIT: vad lanet under det valda lagrets rad visar och ändrar (velocity, tonlängd, tonhöjd), som en rullgardinslista.

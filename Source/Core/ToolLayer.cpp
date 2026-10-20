@@ -111,7 +111,8 @@ namespace
         return text.containsOnly ("0123456789") && juce::isPositiveAndBelow (number - 1, numEffectChannels) ? number - 1 : -1;
     }
 
-    // Källan i en koppling: "lfo" 1-10 (FX 1-3, kollas av anroparen), "macro" 1-4, eller "instrument" 1-10 med "source" ENV 2 / ENV 3 / VELOCITY / RANDOM. -1 = ogiltig.
+    // Källan i en koppling: "lfo" 1-10 (FX 1-3, kollas av anroparen), "macro" 1-4, eller "instrument" 1-10 med "source" ENV 2 / ENV 3 / VELOCITY / RANDOM /
+    // AMP ENV (även "ENV 1") / FILT ENV (även "FILTER ENV"). -1 = ogiltig.
     int modulationSource (const var& route)
     {
         if (route.hasProperty ("lfo"))
@@ -124,7 +125,9 @@ namespace
             if (! juce::isPositiveAndBelow (layer, maxInstruments))
                 return -1;
             const auto kind = route["source"].toString().toUpperCase().removeCharacters (" ");
-            return Modulation::instrumentSource (layer, kind.contains ("ENV3") ? 1 : kind.startsWith ("VEL") ? 2 : kind.startsWith ("RAND") ? 3 : 0);
+            const auto ampEnv = kind.startsWith ("AMP") || kind == "ENV1", filterEnv = kind.startsWith ("FILT");
+            return Modulation::instrumentSource (layer, filterEnv ? Modulation::instrumentSources + 1 : ampEnv ? Modulation::instrumentSources
+                                                      : kind.contains ("ENV3") ? 1 : kind.startsWith ("VEL") ? 2 : kind.startsWith ("RAND") ? 3 : 0);
         }
         return -1;
     }
@@ -178,6 +181,8 @@ ToolLayer::ToolLayer (PluginBase& p) : processor (p) {}
 //==============================================================================
 juce::String ToolLayer::guide (const juce::String& topic)
 {
+    if (topic.equalsIgnoreCase ("school"))
+        return juce::String::fromUTF8 (BinaryData::kickbassschool_md, BinaryData::kickbassschool_mdSize);
     if (topic.equalsIgnoreCase ("psytrance"))
         return juce::String::fromUTF8 (BinaryData::psytrancekickbassreference_md, BinaryData::psytrancekickbassreference_mdSize);
     return juce::String::fromUTF8 (BinaryData::AGENT_GUIDE_md, BinaryData::AGENT_GUIDE_mdSize);
@@ -186,8 +191,8 @@ juce::String ToolLayer::guide (const juce::String& topic)
 std::vector<ToolLayer::ToolInfo> ToolLayer::tools()
 {
     return {
-        { "get_guide", "READ THIS FIRST. Returns the guide for working with Kickbase: how the synth is built, units, the pattern language, workflow and pitfalls. topic 'agent' (default) is the manual; topic 'psytrance' is the sound design reference for psytrance kick and bass.",
-          R"({"type":"object","properties":{"topic":{"type":"string","enum":["agent","psytrance"]}}})" },
+        { "get_guide", "READ THIS FIRST. Returns the guide for working with Kickbase: how the synth is built, units, the pattern language, workflow and pitfalls. topic 'agent' (default) is the manual; topic 'psytrance' is the sound design reference for psytrance kick and bass; topic 'school' is the kick and bass school (how to build and judge the sound).",
+          R"({"type":"object","properties":{"topic":{"type":"string","enum":["agent","psytrance","school"]}}})" },
         { "list_parameters", "Lists the synth's parameters with id, name, type (float/choice/bool), min, max, default, current value, a display text and help (what the knob does, the same text as its tooltip in the plugin). Filter with prefix (e.g. 'kick', 'bass1', 'fxA', 'sc', 'lfo1', 'master', 'mix') or contains. Effect slot knobs are not listed here, see list_effects and set_effect.",
           R"({"type":"object","properties":{"prefix":{"type":"string"},"contains":{"type":"string"},"limit":{"type":"integer"}}})" },
         { "list_effects", "Lists the 13 effect types and their knobs (name, range, default, unit, choices) for use with set_effect.", R"({"type":"object","properties":{}})" },
@@ -209,7 +214,9 @@ std::vector<ToolLayer::ToolInfo> ToolLayer::tools()
           R"({"type":"object","properties":{"mode":{"type":"string"},"length":{"type":"string"},"points":{"type":"array","items":{"type":"array","items":{"type":"number"}}}}})" },
         { "set_instruments", "Sets how many instruments are used (1-10; each has its own pattern, oscillators, filter, envelopes, effect send and sidechain depth; the default is 3). Removing instruments deletes the last ones completely (pattern, sound, sample, wavetables, name, mixer and modulation routes). Adding gives instruments with default settings and an empty pattern.",
           R"({"type":"object","properties":{"count":{"type":"integer","minimum":1,"maximum":10}},"required":["count"]})" },
-        { "set_modulation", "Sets up LFOs and routes (the matrix). lfos: [{\"lfo\":1,\"shape\":\"Sine\",\"rate\":\"1 bar\",\"on\":true}] (lfo 1-10 in the instrument, 1-3 in the FX plugin; setting an inactive LFO or routing from it adds it, \"remove\":true removes it with its routes; get_state lists active_lfos; shapes: Sine, Triangle, Saw Up, Saw Down, Square, Random, Custom; synced rates 1/32 ... 16 bars; \"hz\":0.02-40 runs the LFO at its own speed instead, \"mode\":\"Sync\"|\"Hz\"; \"points\":[[phase 0..1, value -1..1, tension -1..1],...] draws a custom curve, at least two points, and selects the Custom shape). routes: [{\"lfo\":1,\"param\":\"bass1Cutoff\",\"amount\":0.3}] (amount -1..1 of the knob's travel, only sound parameters: kick*, bass*, fx*). The source is \"lfo\" 1-10, or \"macro\" 1-4 (turn macro1..macro4 with set_parameters), or \"instrument\" 1-10 with \"source\":\"ENV 2\" | \"ENV 3\" | \"VELOCITY\" | \"RANDOM\" (ENV 2/3 are set with bassNEnv2Attack ... bassNEnv3Release). Up to 64 routes. clear_routes removes all routes first.",
+        { "edit_instrument", "The instrument menu of the UI. action: 'rename' (give 'name'; empty = default name), 'colour' (give 'colour' as '#rrggbb', or empty for the default colour), 'duplicate' (a copy right after, the later instruments move down; needs a free instrument), 'move_up' / 'move_down' (swaps places with the neighbour), 'delete' (the later instruments move up; at least one stays). layer 0-9 = instrument 1-10. Name and colour are saved in the project (not parameters). The whole instrument moves with it: sound, pattern, mixer, FX send and modulation routes.",
+          R"({"type":"object","properties":{"action":{"type":"string","enum":["rename","colour","duplicate","move_up","move_down","delete"]},"layer":{"type":"integer","minimum":0,"maximum":9},"name":{"type":"string"},"colour":{"type":"string"}},"required":["action","layer"]})" },
+        { "set_modulation", "Sets up LFOs and routes (the matrix). lfos: [{\"lfo\":1,\"shape\":\"Sine\",\"rate\":\"1 bar\",\"on\":true}] (lfo 1-10 in the instrument, 1-3 in the FX plugin; setting an inactive LFO or routing from it adds it, \"remove\":true removes it with its routes; get_state lists active_lfos; shapes: Sine, Triangle, Saw Up, Saw Down, Square, Random, Custom; synced rates 1/32 ... 16 bars; \"hz\":0.02-40 runs the LFO at its own speed instead, \"mode\":\"Sync\"|\"Hz\"; \"points\":[[phase 0..1, value -1..1, tension -1..1],...] draws a custom curve, at least two points, and selects the Custom shape). routes: [{\"lfo\":1,\"param\":\"bass1Cutoff\",\"amount\":0.3}] (amount -1..1 of the knob's travel, only sound parameters: kick*, bass*, fx*). The source is \"lfo\" 1-10, or \"macro\" 1-4 (turn macro1..macro4 with set_parameters), or \"instrument\" 1-10 with \"source\":\"ENV 2\" | \"ENV 3\" | \"VELOCITY\" | \"RANDOM\" | \"AMP ENV\" | \"FILT ENV\" (ENV 2/3 are set with bassNEnv2Attack ... bassNEnv3Release; AMP ENV is the volume envelope ENV 1, FILT ENV the filter envelope's shape 0..1 without its amount, both 0 when switched off). Up to 64 routes. clear_routes removes all routes first.",
           R"({"type":"object","properties":{"lfos":{"type":"array","items":{"type":"object"}},"routes":{"type":"array","items":{"type":"object"}},"clear_routes":{"type":"boolean"}}})" },
         { "list_presets", "Lists factory and user presets. section: Full, Kick, Bass, Pattern, Effects, Sidechain, Master (the maximizer), Soundstage or LFO (default: all).",
           R"({"type":"object","properties":{"section":{"type":"string"}}})" },
@@ -299,6 +306,39 @@ var ToolLayer::call (const juce::String& tool, const var& args)
         auto data = object();
         put (data, "instruments", processor.activeInstruments());
         put (data, "removed", std::max (0, before - processor.activeInstruments()));
+        return ok (data);
+    }
+
+<<<<<<< HEAD
+    if (tool == "set_parameters" || tool == "set_effect" || tool == "set_kick_envelopes" || tool == "set_pattern" || tool == "set_sidechain_curve" || tool == "set_gate" || tool == "live_code_create"
+=======
+    if (tool == "edit_instrument")
+    {
+        const auto action = args["action"].toString();
+        const int layer = (int) args["layer"];
+        const auto count = processor.activeInstruments();
+        if (! juce::isPositiveAndBelow (layer, count))
+            return fail ("layer must be 0-" + juce::String (count - 1) + " (only the first instrumentCount instruments exist).");
+        snapshot();
+        bool done = true;
+        if (action == "rename")         processor.setLayerName (layer, args["name"].toString().trim());
+        else if (action == "colour")
+        {
+            const auto text = args["colour"].toString().trim().trimCharactersAtStart ("#");
+            if (text.isNotEmpty() && (text.length() != 6 || ! text.containsOnly ("0123456789abcdefABCDEF")))
+                return fail ("colour must be '#rrggbb' or empty.");
+            processor.setLayerColour (layer, text.isEmpty() ? 0 : (juce::uint32) (0xff000000 | (juce::uint32) text.getHexValue32()));
+        }
+        else if (action == "duplicate") done = processor.duplicateTrack (layer);
+        else if (action == "move_up")   done = processor.moveTrack (layer, -1);
+        else if (action == "move_down") done = processor.moveTrack (layer, 1);
+        else if (action == "delete")    done = processor.deleteTrack (layer);
+        else return fail ("action must be rename, colour, duplicate, move_up, move_down or delete.");
+        if (! done)
+            return fail ("Not possible here (duplicate needs a free instrument, move needs a neighbour, delete keeps at least one).");
+        processor.markStateChanged();
+        auto data = object();
+        put (data, "instruments", processor.activeInstruments());
         return ok (data);
     }
 
@@ -1029,7 +1069,7 @@ var ToolLayer::setModulation (const var& args)
             if (lfo >= processor.availableLfos())
                 problems.add ("lfo must be 1-" + juce::String (processor.availableLfos()));
             else if (source < 0 || parameter == nullptr || index < 0)
-                problems.add ("Bad route: a source (lfo 1-10, macro 1-4, or instrument 1-10 with source ENV 2 / ENV 3 / VELOCITY / RANDOM) and a parameter id are needed (" + id + ")");
+                problems.add ("Bad route: a source (lfo 1-10, macro 1-4, or instrument 1-10 with source ENV 2 / ENV 3 / VELOCITY / RANDOM / AMP ENV / FILT ENV) and a parameter id are needed (" + id + ")");
             else if (! Modulation::isModulatable (*parameter))
                 problems.add (id + " can't be modulated (only kick*, bass*, fx* sound parameters)");
             else if (processor.modRoutes.add (source, index, juce::jlimit (-1.0f, 1.0f, (float) (double) route["amount"])) < 0)

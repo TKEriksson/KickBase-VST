@@ -37,6 +37,8 @@ public:
     std::function<void()> onBeforePaint;
 
     void addCurve (Curve curve)    { curves.push_back (std::move (curve)); }
+    // Hur många sekunder grafen visar (DURATION i ENV-fliken): bara vyn, inte ljudet.
+    void setDisplaySeconds (double seconds) { displaySeconds = seconds; lastSignature = -1.0f; repaint(); }
     void addHandle (Handle handle) { handles.push_back (std::move (handle)); }
 
     // Markerar när tonen släpps (note off): en streckad linje med texten NOTE OFF. `real` = från mönstret, annars ett exempel (inget mönster att läsa).

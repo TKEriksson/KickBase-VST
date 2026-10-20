@@ -133,6 +133,7 @@ private:
 
     PluginBase& processor;
     std::vector<juce::Colour> layerColours;
+    int lastColourVersion = 0; // processor.layerStructureVersion
     int layer = 0;
 
     juce::Rectangle<float> toolbarArea, keyArea, rulerArea, gridArea, velocityArea;

@@ -31,7 +31,9 @@ void InstrumentSynth::reset()
     env2.reset();
     env3.reset();
     pitchEnv = 0.0f;
+    warpDirect = 0.0f;
     noiseState = 0.0f;
+    pinkB0 = pinkB1 = pinkB2 = brownState = vinylHiss = 0.0f;
     filterMid.reset();
     filterSide.reset();
     filter2Mid.reset();
@@ -75,10 +77,10 @@ double InstrumentSynth::warpPhase (WarpMode mode, float amount, double phase, fl
     return phase;
 }
 
-void InstrumentSynth::Oscillator::retrigger (const OscParams& p, juce::Random& rng)
+void InstrumentSynth::Oscillator::retrigger (const OscParams& p, juce::Random& rng, double extraPhase)
 {
     for (auto& ph : phases)
-        ph = wrap (p.phase + p.randomPhase * rng.nextDouble());
+        ph = wrap (p.phase + extraPhase + p.randomPhase * rng.nextDouble());
 }
 
 InstrumentSynth::Stereo InstrumentSynth::Oscillator::next (const OscParams& p, double frequency, double rate, float warpAmount, float fmInput)
@@ -143,18 +145,20 @@ void InstrumentSynth::noteOn (int semitones, float newVelocity, int gateSamples)
 
     // Samma startfas varje slag ger ett jämnt, tight anslag. Men om förra tonen fortfarande
     // hörs skulle ett fashopp knäppa, så då fortsätter fasen där den är.
+    const auto extraPhase = (double) params.phaseDeg / 360.0; // PH: gemensam startfas för OSC 1-3 och sub (0 = som förut)
     if (ampLevel < 0.05f)
     {
-        oscA.retrigger (params.oscA, random);
-        oscB.retrigger (params.oscB, random);
-        oscC.retrigger (params.oscC, random);
-        subPhase = 0.0;
+        oscA.retrigger (params.oscA, random, extraPhase);
+        oscB.retrigger (params.oscB, random, extraPhase);
+        oscC.retrigger (params.oscC, random, extraPhase);
+        subPhase = wrap (extraPhase);
     }
 
     noteTime = 0.0;
     env2.trigger();
     env3.trigger();
     pitchEnv = 1.0f;
+    warpDirect = 1.0f;
     randomValue = modRandom.nextFloat();
     samplePosition = params.sampleData != nullptr ? (double) params.sampleStart * (double) params.sampleData->audio.getNumSamples() : 0.0;
     velocity = newVelocity;
@@ -204,10 +208,41 @@ ModEnvParams ModEnvParams::withTempo (double bpm) const
     return result;
 }
 
+InstrumentParams InstrumentParams::withTempo (double bpm, bool applyOnOff) const
+{
+    InstrumentParams result = *this;
+    result.env2 = env2.withTempo (bpm);
+    result.env3 = env3.withTempo (bpm);
+    const auto msPerQuarter = 60000.0 / juce::jlimit (20.0, 400.0, bpm);
+    const auto noteMs = [msPerQuarter] (int note, double minimum) { return (float) std::max (minimum, Modulation::syncTimeInQuarters (note) * msPerQuarter); };
+    // Samma minimum som ms-rattarna.
+    if (env1Sync)
+    {
+        result.attackMs = noteMs (env1AttackNote, 0.0);
+        result.decayMs = noteMs (env1DecayNote, 5.0);
+        result.releaseMs = noteMs (env1ReleaseNote, 1.0);
+    }
+    if (filterEnvSync)
+    {
+        result.envAttackMs = noteMs (filterAttackNote, 0.0);
+        result.envDecayMs = noteMs (filterDecayNote, 5.0);
+    }
+    if (applyOnOff && ! env1On)
+    {
+        result.attackMs = 1.0f;
+        result.sustain = 1.0f;
+        result.releaseMs = 5.0f;
+    }
+    if (applyOnOff && ! filterEnvOn)
+        result.envAmount = 0.0f;
+    return result;
+}
+
 void InstrumentSynth::refreshEnvTimes()
 {
-    envTimes2 = params.env2.withTempo (bpm);
-    envTimes3 = params.env3.withTempo (bpm);
+    params = rawParams.withTempo (bpm);
+    envTimes2 = params.env2;
+    envTimes3 = params.env3;
 }
 
 void InstrumentSynth::ModEnv::next (const ModEnvParams& p, double rate)
@@ -315,6 +350,7 @@ InstrumentSynth::Output InstrumentSynth::next()
     }
     const auto frequency = cachedFrequency;
     const auto envelope = filterEnvelopeAt (params, noteTime);
+    filterEnvLevel = envelope;
 
     // OSC B först: den kan frekvensmodulera OSC A (warp FM). Warp env lägger till warp på A
     // i början av varje ton.
@@ -323,14 +359,30 @@ InstrumentSynth::Output InstrumentSynth::next()
     const auto levelC = params.oscC.on ? params.oscC.level : 0.0f;
     const auto bNeeded = params.oscB.on && (params.oscB.level > 0.0f || params.oscA.warp == WarpMode::fm);
     const auto b = bNeeded ? oscB.next (params.oscB, frequency, sampleRate, params.oscB.warpAmount, 0.0f) : Stereo {};
-    const auto warpA = params.oscA.warpAmount + params.warpEnv * envelope;
+    float warpSource = envelope;
+    if (params.warpEnvSource == 1)
+    {
+        warpSource = warpDirect;
+        warpDirect -= warpDirect * (float) warpDirectMemo.get (params.warpEnvDecayMs, sampleRate);
+    }
+    else if (params.warpEnvSource == 2)
+        warpSource = env2.level;
+    else if (params.warpEnvSource == 3)
+        warpSource = env3.level;
+    const auto warpA = params.oscA.warpAmount + params.warpEnv * warpSource;
     const auto a = levelA > 0.0f ? oscA.next (params.oscA, frequency, sampleRate, warpA, b.mid()) : Stereo {};
     const auto c = levelC > 0.0f ? oscC.next (params.oscC, frequency, sampleRate, params.oscC.warpAmount, 0.0f) : Stereo {};
 
     // Sub och brus ligger i mitten. Mitten och sidan filtreras var för sig (samma filter), och
     // blir sedan vänster och höger igen.
-    auto left = a.left * levelA + b.left * levelB + c.left * levelC;
-    auto right = a.right * levelA + b.right * levelB + c.right * levelC;
+    // fas S: en källa med FILTER av (eller hela FILTER av) går förbi Filter 1+2 och läggs till efter dem. Inget förbigånget = som förut (tillägg av 0 ändrar inget).
+    const auto fOn = params.filterOn;
+    const auto levelAF = fOn && params.filterSrc[0] ? levelA : 0.0f, levelBF = fOn && params.filterSrc[1] ? levelB : 0.0f, levelCF = fOn && params.filterSrc[2] ? levelC : 0.0f;
+    auto left = a.left * levelAF + b.left * levelBF + c.left * levelCF;
+    auto right = a.right * levelAF + b.right * levelBF + c.right * levelCF;
+    const auto dryLeft = a.left * (levelA - levelAF) + b.left * (levelB - levelBF) + c.left * (levelC - levelCF);
+    const auto dryRight = a.right * (levelA - levelAF) + b.right * (levelB - levelBF) + c.right * (levelC - levelCF);
+    float dryCentre = 0.0f;
     float subShape;
     switch (params.subWave)
     {
@@ -339,10 +391,32 @@ InstrumentSynth::Output InstrumentSynth::next()
         case 3:  subShape = 2.0f * (float) subPhase - 1.0f; break;                                                   // såg
         default: subShape = (float) std::sin (juce::MathConstants<double>::twoPi * subPhase); break;
     }
-    auto centre = params.sub * subShape;
+    auto centre = 0.0f;
+    (fOn ? centre : dryCentre) += params.sub * subShape;
     if (params.noise > 0.0f)
     {
         auto white = random.nextFloat() * 2.0f - 1.0f;
+        switch (params.noiseType)
+        {
+            case 1: // Pink: tre-poligt närmevärde (Paul Kellet), nivåjusterat mot vitt
+                pinkB0 = 0.99765f * pinkB0 + white * 0.0990460f;
+                pinkB1 = 0.96300f * pinkB1 + white * 0.2965164f;
+                pinkB2 = 0.57000f * pinkB2 + white * 1.0526913f;
+                white = 0.35f * (pinkB0 + pinkB1 + pinkB2 + white * 0.1848f);
+                break;
+            case 2: // Brown: läckande integrator av vitt brus
+                brownState = 0.995f * brownState + 0.06f * white;
+                white = juce::jlimit (-1.0f, 1.0f, brownState * 3.0f);
+                break;
+            case 3: // Vinyl: tyst fräs plus enstaka knaster (sällsynta, slumpade, med olika styrka)
+            {
+                vinylHiss += 0.2f * (white - vinylHiss);
+                const auto crackle = random.nextFloat() < 0.0004f ? (random.nextFloat() * 2.0f - 1.0f) : 0.0f;
+                white = 0.25f * vinylHiss + 2.0f * crackle;
+                break;
+            }
+            default: break;
+        }
         if (params.noiseTone < 0.999f)
         {
             // NOISE TONE: ett lågpass som gör bruset mörkare (100 Hz ... 20 kHz); nivån hålls uppe så att det inte försvinner.
@@ -351,7 +425,7 @@ InstrumentSynth::Output InstrumentSynth::next()
             noiseState += coefficient * (white - noiseState);
             white = noiseState * (1.0f + 2.5f * (1.0f - params.noiseTone));
         }
-        centre += params.noise * white;
+        (fOn && params.filterSrc[4] ? centre : dryCentre) += params.noise * white;
     }
 
     // Samplingen: linjär interpolation. Med KEY följer hastigheten noten (samplingens egen tonhöjd = sampleRootHz).
@@ -369,13 +443,14 @@ InstrumentSynth::Output InstrumentSynth::next()
                 const auto index = (int) samplePosition;
                 const auto fraction = (float) (samplePosition - (double) index);
                 const auto following = index + 1 < length ? data[index + 1] : (params.sampleLoop ? data[0] : 0.0f);
-                centre += params.sampleLevel * (data[index] + fraction * (following - data[index]));
+                (fOn && params.filterSrc[3] ? centre : dryCentre) += params.sampleLevel * (data[index] + fraction * (following - data[index]));
                 samplePosition += params.sampleKeyTrack ? frequency / (double) std::max (1.0f, params.sampleRootHz) : 1.0;
             }
         }
     }
     auto sample = 0.5f * (left + right) + centre;
     auto side = 0.5f * (left - right);
+    const auto dryMid = 0.5f * (dryLeft + dryRight) + dryCentre, drySide = 0.5f * (dryLeft - dryRight);
 
     subPhase = wrap (subPhase + (params.subOctave == 0 ? frequency : frequency * 0.5) / sampleRate);
 
@@ -424,9 +499,11 @@ InstrumentSynth::Output InstrumentSynth::next()
     }
     else
         filter2WasOn = false;
+    sample += dryMid; // fas S: förbigångna källor (FILTER av) läggs till efter båda filtren
+    side += drySide;
     noteTime += 1.0 / sampleRate;
 
     // Drive verkar på källan (före gaten), så att distorsionen låter likadant oavsett envelope.
     driveShape.update (params.drive, params.driveMode);
-    return { driveShape.apply (sample + side), driveShape.apply (sample - side), ampLevel * velocity * params.level };
+    return { driveShape.apply (sample + side), driveShape.apply (sample - side), ampLevel * velocity * params.level * (params.invertPolarity ? -1.0f : 1.0f) };
 }

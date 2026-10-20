@@ -29,7 +29,7 @@ namespace
             {
                 juce::PopupMenu sub;
                 auto containsCurrent = false;
-                for (int kind = 0; kind < Modulation::instrumentSources; ++kind)
+                for (int kind = 0; kind < Modulation::instrumentKinds; ++kind)
                 {
                     const auto source = Modulation::instrumentSource (layer, kind);
                     sub.addItem (1 + source, Modulation::kindName (kind), true, current == source);
@@ -53,11 +53,12 @@ namespace
         if (n >= (int) F::env3Attack && n <= (int) F::env3Release)                        return "ENV 3";
         if (f == F::octave || f == F::tune || f == F::pitchEnvAmount || f == F::pitchEnvDecay) return "PITCH";
         if (f == F::sub || f == F::subWave || f == F::subOctave)                          return "SUB";
-        if (f == F::noise || f == F::noiseTone)                                           return "NOISE";
+        if (f == F::noise || f == F::noiseTone || f == F::noiseType)                                         return "NOISE";
         if (f == F::keyTrack || f == F::cutoff || f == F::resonance || f == F::filterType) return "FILTER";
         if (f == F::envAmount || f == F::envAttack || f == F::envDecay || f == F::velToEnv)                    return "FILTER ENV";
         if (f == F::attack || f == F::decay || f == F::sustain || f == F::release)        return "VOLUME ENV";
-        if (f == F::warpEnv)                                                              return "WARP ENV";
+        if (f == F::warpEnv || f == F::warpEnvDecay || f == F::warpEnvSource)                                                             return "WARP ENV";
+        if (f == F::polarity || f == F::phaseDeg || f == F::nudgeMs)                      return "PHASE";
         if (f == F::drive || f == F::driveMode)                                           return "DRIVE";
         return "OUT";
     }

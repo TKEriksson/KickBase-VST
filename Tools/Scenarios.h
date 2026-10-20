@@ -157,7 +157,7 @@ namespace Scenarios
         {
             for (int slot = 0; slot < 2; ++slot)
             {
-                const auto type = 1 + (channel * 2 + slot) % (numEffectTypes - 1);
+                const auto type = 1 + (channel * 2 + slot) % (numEffectTypes - 2);
                 Effects::setSlotType (processor.apvts, channel, slot, (EffectType) type);
             }
             setPlain (processor, Effects::channelParamID (channel, "EqHp"), 60.0f);

@@ -133,7 +133,8 @@ namespace
 
         // Många kopplingar ryms, och de sparas med källans nummer.
         routes.clear();
-        for (int source = 0; source < Modulation::numSources; ++source)
+        // Fler källor (74) än platser (64) sedan ENV-källorna kom: fyll listan.
+        for (int source = 0; source < juce::jmin (Modulation::numSources, Modulation::maxRoutes); ++source)
             check (routes.add (source, cutoff, 0.01f) >= 0, "alla källor ryms");
         const auto tree = routes.toValueTree (processor.getParameters());
         routes.clear();
@@ -232,7 +233,7 @@ namespace
             if (lfoIndexOfSource (s) >= 0)
                 bijective = bijective && lfoSource (lfoIndexOfSource (s)) == s;
         check (bijective, "lfoSource och lfoIndexOfSource är varandras inverser");
-        check (lfoSource (3) == 47 && lfoSource (9) == 53 && numSources == 54, "LFO 4-10 är källa 47-53");
+        check (lfoSource (3) == 47 && lfoSource (9) == 53 && firstEnvSource == 54 && numSources == 74, "LFO 4-10 är källa 47-53");
         check (sourceName (47) == "LFO 4" && sourceName (53) == "LFO 10" && sourceName (2) == "LFO 3", "namnen LFO 4 och LFO 10");
         check (! isLfoSource (3) && sourceName (3) == "MACRO 1", "källa 3 är fortfarande makro 1");
 

@@ -1,5 +1,6 @@
 #include "MixerPage.h"
 #include "Help.h"
+#include "InstrumentMenu.h"
 
 namespace
 {
@@ -237,11 +238,28 @@ MixerView::MixerView (PluginBase& p) : processor (p), master (p)
     startVisualTimer (Settings::Visual::mixer, 30);
 }
 
+void MixerStrip::refreshColour()
+{
+    colour = mixerSourceColour (source);
+    pan.setColour (juce::Slider::rotarySliderFillColourId, colour);
+    fader.setColour (juce::Slider::trackColourId, colour);
+    for (auto* button : { &duckButton, &maxButton })
+        button->setColour (juce::TextButton::buttonOnColourId, colour.withAlpha (0.65f));
+    repaint();
+}
+
 void MixerView::timerCallback()
 {
     followVisualRate();
     if (! isShowing())
         return;
+    if (const auto colourVersion = processor.layerStructureVersion.load(); colourVersion != lastColourVersion)
+    {
+        lastColourVersion = colourVersion;
+        InstrumentMenu::applyColours (processor);
+        for (auto& strip : strips)
+            strip->refreshColour();
+    }
     const auto fxMask = processor.fxChannelUsageMask();
     if (processor.activeInstruments() != lastActive || fxMask != lastFxMask)
     {

@@ -16,6 +16,7 @@
 
 #include "../Source/Core/MixAnalysis.h"
 #include "../Source/Ui/LogoPainter.h"
+#include "../Source/Ui/InstrumentMenu.h"
 #include "../Source/Ui/ListenButton.h"
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_audio_utils/juce_audio_utils.h>
@@ -28,6 +29,7 @@
 #include "../Source/Core/WavetablePack.h"
 #include "../Source/Core/LibraryIndex.h"
 #include "../Source/Core/RollFiles.h"
+#include "../Source/Core/OscPresets.h"
 #include "../Source/Instrument/InstrumentProcessor.h"
 #include "Analyzer.h"
 #include "../Source/Core/AudioAnalysis.h"
@@ -909,6 +911,7 @@ namespace
         processor.pattern.addNote (4, 0, 48, 3);
         processor.pattern.setCustom (4, true);
         processor.setLayerName (4, "Lead");
+        processor.setLayerColour (4, 0xff112233);
         setValue (ParamID::bass (4, InstrumentField::cutoff), 777.0f);
         const auto& parameters = processor.getParameters();
         for (int i = 0; i < parameters.size(); ++i)
@@ -928,6 +931,30 @@ namespace
             check (other->activeInstruments() == 6 && other->getLayerName (4) == "Lead" && other->pattern.note (4, 0).on.load() && other->pattern.note (4, 0).pitch.load() == 3
                        && std::abs (other->apvts.getRawParameterValue (ParamID::bass (4, InstrumentField::cutoff))->load() - 777.0f) < 1.0f,
                    "sex instrument sparas och läses tillbaka med namn, toner och inställningar");
+        }
+
+        {
+            // L4: färgen följer med projektet; ett projekt utan färg (äldre) ger standardfärg.
+            const auto other = std::make_unique<InstrumentProcessor>();
+            other->setStateInformation (state.getData(), (int) state.getSize());
+            check (other->getLayerColour (4) == 0xff112233 && other->getLayerColour (3) == 0, "L4: färgen sparas och läses, orörda instrument har standardfärg");
+            auto xml = juce::AudioProcessor::getXmlFromBinary (state.getData(), (int) state.getSize());
+            check (xml != nullptr && xml->hasAttribute ("layerColour5"), "L4: färgen ligger i projektets state");
+            xml->removeAttribute ("layerColour5");
+            juce::MemoryBlock old;
+            juce::AudioProcessor::copyXmlToBinary (*xml, old);
+            const auto legacy = std::make_unique<InstrumentProcessor>();
+            legacy->setStateInformation (old.getData(), (int) old.getSize());
+            check (legacy->getLayerColour (4) == 0 && legacy->getLayerName (4) == "Lead", "L4: ett projekt utan färg laddas med standardfärg");
+
+            // Copy/paste/duplicate/move/delete flyttar innehållet mellan platserna.
+            check (other->duplicateTrack (4) && other->activeInstruments() == 7 && other->getLayerName (5) == "Lead" && other->getLayerColour (5) == 0xff112233
+                       && other->pattern.note (5, 0).on.load() && other->pattern.note (4, 0).on.load(), "L4: Duplicate ger en kopia på nästa plats");
+            check (other->moveTrack (5, -1) && other->getLayerName (4) == "Lead" && other->moveTrack (4, 1), "L4: Move byter plats");
+            check (other->deleteTrack (4) && other->activeInstruments() == 6 && other->getLayerName (4) == "Lead" && other->getLayerName (5) == "INSTR 6", "L4: Delete flyttar upp resten");
+            const auto clip = other->copyTrack (4);
+            check (clip != nullptr && other->pasteTrack (1, *clip) && other->getLayerName (1) == "Lead" && other->getLayerColour (1) == 0xff112233
+                       && std::abs (other->apvts.getRawParameterValue (ParamID::bass (1, InstrumentField::cutoff))->load() - 777.0f) < 1.0f, "L4: Copy/Paste flyttar ljud, namn och färg");
         }
 
         // Ta bort: instrument 4-6 rensas helt.
@@ -957,6 +984,14 @@ namespace
                    "matriskopplingar med instrument- och makrokällor sätts via verktyget");
             tools.call ("set_instruments", juce::JSON::parse (R"({"count":2})"));
             check (processor.activeInstruments() == 2, "set_instruments tar bort de sista");
+            tools.call ("edit_instrument", juce::JSON::parse (R"({"action":"colour","layer":0,"colour":"#336699"})"));
+            tools.call ("edit_instrument", juce::JSON::parse (R"({"action":"rename","layer":0,"name":"Verktyg"})"));
+            check (processor.getLayerColour (0) == 0xff336699 && processor.getLayerName (0) == "Verktyg", "edit_instrument sätter färg och namn");
+            tools.call ("edit_instrument", juce::JSON::parse (R"({"action":"move_down","layer":0})"));
+            check (processor.getLayerName (1) == "Verktyg" && processor.getLayerColour (1) == 0xff336699, "edit_instrument flyttar namn och färg med instrumentet");
+            tools.call ("edit_instrument", juce::JSON::parse (R"({"action":"move_up","layer":1})"));
+            tools.call ("edit_instrument", juce::JSON::parse (R"({"action":"colour","layer":0,"colour":""})"));
+            tools.call ("edit_instrument", juce::JSON::parse (R"({"action":"rename","layer":0,"name":""})"));
             processor.setInstrumentCount (3);
         }
 
@@ -1003,6 +1038,72 @@ namespace
             fresh->fromValueTree (tree);
             check (fresh->note (Pattern::kickLayer, 0).on.load() && ! fresh->note (3, 0).on.load(), "ett gammalt projekt: kicken hamnar i kicklagret, inte i instrument 4");
             check (! fresh->note (5, 96).on.load(), "ett gammalt projekt: instrument som det inte nämner töms");
+        }
+
+        {
+            // Fas PH: polaritet och startfas. Standardvärdena ger dagens ljud; POLARITY Inverted är exakt det omvända ljudet.
+            auto renderAudition = [] (float polarity, float phaseDeg)
+            {
+                const auto fresh = std::make_unique<InstrumentProcessor>();
+                fresh->setPlayConfigDetails (0, 2, renderRate, blockSize);
+                fresh->prepareToPlay (renderRate, blockSize);
+                for (auto [field, value] : { std::pair { InstrumentField::polarity, polarity }, std::pair { InstrumentField::phaseDeg, phaseDeg } })
+                {
+                    auto* parameter = fresh->apvts.getParameter (ParamID::bass (0, field));
+                    parameter->setValueNotifyingHost (parameter->convertTo0to1 (value));
+                }
+                fresh->requestAudition (PluginBase::layerAudition (0));
+                std::vector<float> samples;
+                juce::AudioBuffer<float> buffer (2, blockSize);
+                juce::MidiBuffer midi;
+                for (int block = 0; block < 12; ++block)
+                {
+                    buffer.clear();
+                    fresh->processBlock (buffer, midi);
+                    samples.insert (samples.end(), buffer.getReadPointer (0), buffer.getReadPointer (0) + blockSize);
+                }
+                return samples;
+            };
+            const auto normal = renderAudition (0.0f, 0.0f), inverted = renderAudition (1.0f, 0.0f), shifted = renderAudition (0.0f, 90.0f);
+            auto peak = 0.0f, sumError = 0.0f, phaseDiff = 0.0f;
+            for (size_t i = 0; i < normal.size(); ++i)
+            {
+                peak = std::max (peak, std::abs (normal[i]));
+                sumError = std::max (sumError, std::abs (normal[i] + inverted[i]));
+                phaseDiff = std::max (phaseDiff, std::abs (normal[i] - shifted[i]));
+            }
+            check (peak > 0.01f, "PH: instrument 1 ger ljud i testet");
+            check (sumError < 1.0e-6f, "PH: POLARITY Inverted ger exakt det inverterade ljudet");
+            check (phaseDiff > 0.01f, "PH: START PHASE 90 grader ändrar vågformen");
+        }
+
+        {
+            // Fas PH: DISPERSER är en ren fasvridning (all-pass): energin består men vågformen ändras.
+            const auto fresh = std::make_unique<InstrumentProcessor>();
+            Effects::setSlotType (fresh->apvts, 0, 0, EffectType::disperser);
+            EffectChain chain (fresh->apvts, 0);
+            chain.prepare (renderRate, blockSize);
+            juce::AudioBuffer<float> buffer (2, blockSize), original;
+            juce::Random random (7);
+            auto inEnergy = 0.0, outEnergy = 0.0, difference = 0.0;
+            for (int block = 0; block < 40; ++block)
+            {
+                for (int ch = 0; ch < 2; ++ch)
+                    for (int i = 0; i < blockSize; ++i)
+                        buffer.setSample (ch, i, random.nextFloat() - 0.5f);
+                original.makeCopyOf (buffer);
+                chain.update (140.0, 0.0);
+                chain.process (buffer, blockSize);
+                if (block < 4)
+                    continue; // låt filtren komma igång
+                for (int i = 0; i < blockSize; ++i)
+                {
+                    inEnergy += original.getSample (0, i) * original.getSample (0, i);
+                    outEnergy += buffer.getSample (0, i) * buffer.getSample (0, i);
+                    difference += std::abs (original.getSample (0, i) - buffer.getSample (0, i));
+                }
+            }
+            check (std::abs (outEnergy / inEnergy - 1.0) < 0.05 && difference / (36.0 * blockSize) > 0.05, "PH: DISPERSER bevarar energin men ändrar fasen");
         }
 
         std::puts (failed ? "FEL: instrumenttestet misslyckades" : "Instrumenttestet gick igenom");
@@ -1546,6 +1647,43 @@ namespace
                 std::printf ("  saved %d link %d free1 %d auto %d full %d pat %d keep %d replace %d noEffect %d/%d noInst %d/%d" "\n", savedLinked, linkOk, free1, autoOk, fullOk,
                              savedPattern, keepOk, replaceOk, noEffect.ok, noEffect.effectMissing, noInstrument.ok, noInstrument.instrumentMissing);
             ok = ok && linkedOk;
+
+        // OSC-preset (fas S5): OSC 2 i lager 0 sparas och laddas; OSC 1, filtret och OSC 2:s av/på rörs inte; RESET ger standardvärdena.
+        {
+            using F = InstrumentField;
+            auto get = [&] (F field) { auto* q = processor.apvts.getParameter (ParamID::bass (0, field)); return q->convertFrom0to1 (q->getValue()); };
+            Scenarios::setInstrument (processor, 0, F::bPos, 0.6f);
+            Scenarios::setInstrument (processor, 0, F::bSemi, 7.0f);
+            Scenarios::setInstrument (processor, 0, F::bUnison, 5.0f);
+            Scenarios::setInstrument (processor, 0, F::bTable, 3.0f);
+            Scenarios::setInstrument (processor, 0, F::bOn, 1.0f);
+            Scenarios::setInstrument (processor, 0, F::aPos, 0.25f);
+            const auto oscFile = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("__osctest__/Test/osc.oscpreset");
+            auto saved = OscPresets::save (processor.apvts, 0, 1, oscFile);
+            Scenarios::setInstrument (processor, 0, F::bPos, 0.1f);
+            Scenarios::setInstrument (processor, 0, F::bSemi, -5.0f);
+            Scenarios::setInstrument (processor, 0, F::bTable, 1.0f);
+            Scenarios::setInstrument (processor, 0, F::bOn, 0.0f);
+            Scenarios::setInstrument (processor, 0, F::aPos, 0.9f);
+            const auto cutoffBefore = get (F::cutoff);
+            const auto loadedOsc = OscPresets::load (processor.apvts, 0, 1, oscFile);
+            const auto restored = std::abs (get (F::bPos) - 0.6f) < 0.01f && std::abs (get (F::bSemi) - 7.0f) < 0.01f
+                                  && std::abs (get (F::bUnison) - 5.0f) < 0.01f && (int) get (F::bTable) == 3;
+            const auto untouched = std::abs (get (F::aPos) - 0.9f) < 0.01f && get (F::bOn) < 0.5f && std::abs (get (F::cutoff) - cutoffBefore) < 0.01f;
+            // Ett fält som filen saknar lämnas orört, och en okänd tabell ändrar inte tabellen.
+            Scenarios::setInstrument (processor, 0, F::bSemi, 2.0f);
+            oscFile.replaceWithText ("<KickbaseOsc version=\"1\" Table=\"__finns_inte__\" Pos=\"0.3\"/>");
+            const auto partial = OscPresets::load (processor.apvts, 0, 1, oscFile)
+                                 && std::abs (get (F::bPos) - 0.3f) < 0.01f && std::abs (get (F::bSemi) - 2.0f) < 0.01f && (int) get (F::bTable) == 3;
+            const auto listed = OscPresets::list().contains (oscFile) == (OscPresets::folder() == oscFile.getParentDirectory().getParentDirectory().getParentDirectory());
+            OscPresets::reset (processor.apvts, 0, 1);
+            const auto resetOk = std::abs (get (F::bSemi)) < 0.01f && (int) get (F::bUnison) == 1 && get (F::bOn) < 0.5f && std::abs (get (F::aPos) - 0.9f) < 0.01f;
+            oscFile.getParentDirectory().getParentDirectory().deleteRecursively();
+            std::printf ("OSC-preset: sparad %d, laddad %d, återställd %d, orört %d, delvis %d, reset %d\n",
+                         saved ? 1 : 0, loadedOsc ? 1 : 0, restored ? 1 : 0, untouched ? 1 : 0, partial ? 1 : 0, resetOk ? 1 : 0);
+            (void) listed;
+            ok = ok && saved && loadedOsc && restored && untouched && partial && resetOk;
+        }
         }
 
         std::puts (ok ? "Presettest OK" : "FEL: presettest");
@@ -1609,10 +1747,9 @@ namespace
         if (const auto folded = juce::SystemStats::getEnvironmentVariable ("KB_LFOFOLD", {}); folded.isNotEmpty())
             processor->lfoFolded = folded.getIntValue();
         processor->lfoRemoveAsk = juce::SystemStats::getEnvironmentVariable ("KB_LFOCONFIRM", "0").getIntValue() - 1;
-        processor->modEnvelopesOpen = juce::SystemStats::getEnvironmentVariable ("KB_MODOPEN", "0").getIntValue() != 0; // MODULATION-dragspelet öppet
         processor->selectedInstrument = juce::SystemStats::getEnvironmentVariable ("KB_INSTRUMENT", "0").getIntValue(); // valt instrument (0-9)
         processor->selectedInstrumentSource[(size_t) juce::jlimit (0, 9, processor->selectedInstrument)] =
-            juce::SystemStats::getEnvironmentVariable ("KB_SOURCETAB", "0").getIntValue(); // vald källflik i instrumentet (0-2 = OSC, 3 = SAMPLE, 4 = FILTER)
+            juce::SystemStats::getEnvironmentVariable ("KB_SOURCETAB", "0").getIntValue(); // vald flik i instrumentet (0 = INSTR, 1-3 = OSC, 4 = SAMPLE, 5 = FILTER)
         if (juce::SystemStats::getEnvironmentVariable ("KB_FILTER2", "0").getIntValue() != 0) // FILTER-fliken med Filter 2 på (Formant) och ett Ladder-lågpass i Filter 1
         {
             auto set = [&processor] (const char* id, float value)
@@ -1695,7 +1832,18 @@ namespace
         }
 
         std::unique_ptr<juce::AudioProcessorEditor> editor (processor->createEditorAndMakeActive());
-        const auto image = editor->createComponentSnapshot (editor->getLocalBounds(), true, 1.0f);
+        auto image = editor->createComponentSnapshot (editor->getLocalBounds(), true, 1.0f);
+
+        // KB_MENU=<instrument 0-9>: ritar instrumentmenyn (L4) ovanpå bilden. Popup-fönstret är ett eget fönster, så det hämtas från Desktop.
+        if (const auto menuLayer = juce::SystemStats::getEnvironmentVariable ("KB_MENU", {}); menuLayer.isNotEmpty())
+        {
+            InstrumentMenu::show (*processor, menuLayer.getIntValue(), *editor, juce::Rectangle<int> (60, 120, 2, 2));
+            juce::MessageManager::getInstance()->runDispatchLoopUntil (400);
+            juce::Graphics g (image);
+            for (int i = 0; i < juce::Desktop::getInstance().getNumComponents(); ++i)
+                if (auto* top = juce::Desktop::getInstance().getComponent (i); top != nullptr && top != editor.get() && top->isShowing())
+                    g.drawImageAt (top->createComponentSnapshot (top->getLocalBounds(), true, 1.0f), top->getScreenX() - editor->getScreenX(), top->getScreenY() - editor->getScreenY());
+        }
 
         outFile.deleteFile();
         juce::FileOutputStream stream (outFile);

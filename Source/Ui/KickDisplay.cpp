@@ -33,7 +33,7 @@ KickDisplay::KickDisplay (PluginBase& p) : processor (p)
     setMode (false);
 
     setTooltip ("KICK - The waveform of the kick: click an empty spot to hear it, and watch the marker follow it when it plays. Drag the nodes to shape pitch (PITCH) or volume (AMP); double-click to add a node, "
-                "right-click a node to remove it, drag the small diamond on a segment to bend it.");
+                "right-click a node to remove it, drag the small diamond on a segment to bend it. Ctrl + click in PITCH follows a frequency (its time is marked in PITCH and AMP); Ctrl + wheel zooms time, Shift + wheel zooms frequency.");
     lastHash = stateHash();
     renderWaveform();
     startVisualTimer (Settings::Visual::other, 30);
@@ -118,7 +118,7 @@ float KickDisplay::viewSeconds() const
     if (fixedView > 0.0f)
         return fixedView;
     const auto length = processor.kickAmpEnv.endSeconds() * lengthScale();
-    return juce::jlimit (0.06f, 3.0f, length * 1.12f);
+    return juce::jlimit (0.06f, 3.0f, length * 1.12f) / timeZoom;
 }
 
 juce::Rectangle<float> KickDisplay::plotArea() const
@@ -166,6 +166,121 @@ int KickDisplay::tensionHandleAt (juce::Point<float> p) const
         if (tensionHandle (i).getDistanceFrom (p) < grabDistance)
             return (int) i;
     return -1;
+}
+
+float KickDisplay::hzAtValue (float value) const
+{
+    const auto params = processor.kickForDisplay (0);
+    return params.tailHz * std::exp2 (value * params.pitchAmount / 12.0f);
+}
+
+float KickDisplay::valueAtHz (float hz) const
+{
+    const auto params = processor.kickForDisplay (0);
+    return params.pitchAmount > 0.0f ? 12.0f * std::log2 (hz / params.tailHz) / params.pitchAmount : 0.0f;
+}
+
+float KickDisplay::secondsAtHz (float hz) const
+{
+    const auto& env = processor.kickPitchEnv;
+    const auto end = env.endSeconds();
+    constexpr int steps = 2000;
+    for (int i = 0; i <= steps; ++i)
+    {
+        const auto t = end * (float) i / steps;
+        if (hzAtValue (env.evaluate (t)) <= hz)
+            return t * lengthScale();
+    }
+    return -1.0f;
+}
+
+float KickDisplay::kickSeconds() const
+{
+    return processor.kickAmpEnv.endSeconds() * lengthScale();
+}
+
+float KickDisplay::xOfSeconds (float seconds) const
+{
+    const auto area = plotArea();
+    return area.getX() + seconds / viewSeconds() * area.getWidth();
+}
+
+// Verktyg ovanpå grafen: 1/16- och 1/8-markörer ur BPM, svansens slutfrekvens, 35-43 Hz-zonen och den följda frekvensen.
+void KickDisplay::paintTools (juce::Graphics& g)
+{
+    const auto area = plotArea();
+    const auto bpm = processor.transportStatus.bpm.load();
+    const auto amber = juce::Colour (0xffffb43c);
+    g.setFont (Theme::font (9.0f, true));
+
+    const auto verticalLine = [&] (float seconds, juce::Colour c, const juce::String& label, bool dashed)
+    {
+        const auto x = xOfSeconds (seconds);
+        if (x < area.getX() || x > area.getRight())
+            return;
+        g.setColour (c);
+        if (dashed)
+        {
+            const float dash[] { 4.0f, 3.0f };
+            g.drawDashedLine (juce::Line<float> (x, area.getY(), x, area.getBottom()), dash, 2, 1.0f);
+        }
+        else
+            g.drawVerticalLine ((int) x, area.getY(), area.getBottom());
+        g.drawText (label, juce::Rectangle<float> (x + 2.0f, area.getY(), 90.0f, 11.0f), juce::Justification::left);
+    };
+
+    if (bpm > 20.0)
+    {
+        const auto sixteenth = (float) (60.0 / bpm / 4.0);
+        verticalLine (sixteenth, Theme::textDim.withAlpha (0.8f), "1/16", true);
+        const auto tooLong = amp && kickSeconds() > sixteenth * 2.0f * 1.02f;
+        verticalLine (sixteenth * 2.0f, tooLong ? amber : Theme::textDim.withAlpha (0.8f),
+                      amp ? "1/8 = end of 2nd 16th  " + juce::String (juce::roundToInt (sixteenth * 2000.0f)) + " ms" : juce::String ("1/8"), true);
+        if (tooLong)
+        {
+            g.setColour (amber.withAlpha (0.9f));
+            g.drawText ("tail runs " + juce::String (juce::roundToInt ((kickSeconds() - sixteenth * 2.0f) * 1000.0f)) + " ms past the 2nd 16th",
+                        area.withTrimmedTop (area.getHeight() - 26.0f).removeFromTop (12.0f), juce::Justification::centredRight);
+        }
+    }
+
+    if (! amp)
+    {
+        // Svansens slutfrekvens (grön i 35-43 Hz-zonen, annars gul) och zonen själv.
+        const auto tailHz = hzAtValue (0.0f);
+        const auto zoneTop = toScreen (0.0f, valueAtHz (43.0f)).y, zoneBottom = toScreen (0.0f, valueAtHz (35.0f)).y;
+        if (zoneBottom - zoneTop >= 1.0f)
+        {
+            g.setColour (juce::Colours::limegreen.withAlpha (0.12f));
+            g.fillRect (juce::Rectangle<float> (area.getX(), zoneTop, area.getWidth(), zoneBottom - zoneTop));
+            g.setColour (juce::Colours::limegreen.withAlpha (0.7f));
+            g.drawText ("35-43 Hz", juce::Rectangle<float> (area.getX() + 2.0f, zoneTop - 11.0f, 60.0f, 11.0f), juce::Justification::left);
+        }
+        g.setColour ((tailHz >= 35.0f && tailHz <= 43.0f ? juce::Colours::limegreen : amber).withAlpha (0.9f));
+        g.drawText ("tail ends at " + noteAndHz (tailHz), juce::Rectangle<float> (area.getRight() - 170.0f, toScreen (0.0f, 0.0f).y - 13.0f, 168.0f, 11.0f),
+                    juce::Justification::right);
+    }
+
+    // Följd frekvens: Ctrl + klick i PITCH; samma tidpunkt markeras i båda graferna (amp-kurvan som "omvänd EQ").
+    if (markedHz > 0.0f)
+    {
+        const auto t = secondsAtHz (markedHz);
+        const auto label = noteAndHz (markedHz) + (t >= 0.0f ? "  @ " + juce::String (t * 1000.0f, t < 0.1f ? 1 : 0) + " ms" : juce::String ("  never reached"));
+        const auto c = juce::Colour (0xff5ad2ff);
+        if (! amp)
+        {
+            const auto y = toScreen (0.0f, valueAtHz (markedHz)).y;
+            g.setColour (c.withAlpha (0.7f));
+            g.drawHorizontalLine ((int) y, area.getX(), area.getRight());
+        }
+        if (t >= 0.0f)
+            verticalLine (t, c.withAlpha (0.9f), label, false);
+        else
+        {
+            g.setColour (c);
+            g.drawText (label, area.withHeight (11.0f), juce::Justification::centred);
+        }
+    }
 }
 
 juce::String KickDisplay::describe (const NodeEnvelope::Point& point) const
@@ -251,6 +366,15 @@ void KickDisplay::paint (juce::Graphics& g)
         }
     }
 
+    paintTools (g);
+
+    // Tips under grafen om det som inte syns: följd frekvens och zoom.
+    g.setFont (Theme::font (9.0f));
+    g.setColour (Theme::textDim.withAlpha (0.7f));
+    g.drawText (amp ? "Ctrl + click: clear the followed frequency (set it in PITCH)   Ctrl + wheel: zoom time"
+                    : "Ctrl + click: follow a frequency (its time is marked in PITCH and AMP)   Ctrl + wheel: zoom time   Shift + wheel: zoom frequency",
+                juce::Rectangle<float> (area.getX(), area.getBottom() + 1.0f, area.getWidth(), 11.0f), juce::Justification::centredLeft);
+
     // Envelopens kurva.
     const auto& points = editing.empty() ? active().getPoints() : editing;
     NodeEnvelope preview (active().getMaxSeconds(), active().getMaxValue(), points);
@@ -289,7 +413,7 @@ void KickDisplay::paint (juce::Graphics& g)
         g.drawEllipse (juce::Rectangle<float> (active ? 13.0f : 11.0f, active ? 13.0f : 11.0f).withCentre (screen), 2.0f);
 
         // I PITCH-läget märks varje nod med ton och Hz, som i Kick 3.
-        if (! amp && (active || points.size() <= 6))
+        if (! amp && (active || points.size() <= 12))
         {
             g.setFont (Theme::font (9.5f, true));
             g.setColour (Theme::text.withAlpha (active ? 1.0f : 0.75f));
@@ -336,6 +460,17 @@ void KickDisplay::paint (juce::Graphics& g)
         g.drawText (describe (points[(size_t) shown]), getLocalBounds().reduced (10, 6).removeFromTop (22).withTrimmedLeft (140),
                     juce::Justification::centredLeft);
     }
+
+    // Läsning av musens plats: tid och envelopens värde (nivå eller ton och Hz), uppe till höger.
+    if (cursorSeconds >= 0.0f)
+    {
+        const auto ms = cursorSeconds * 1000.0f;
+        const auto value = amp ? juce::String (juce::roundToInt (cursorValue * 100.0f)) + " %" : noteAndHz (hzAtValue (cursorValue));
+        g.setFont (Theme::font (11.0f));
+        g.setColour (Theme::textDim);
+        g.drawText (juce::String (ms, ms < 100.0f ? 1 : 0) + " ms   " + value, getLocalBounds().reduced (10, 6).removeFromTop (22).removeFromRight (230),
+                    juce::Justification::centredRight);
+    }
 }
 
 void KickDisplay::commit (std::vector<NodeEnvelope::Point> points)
@@ -347,6 +482,18 @@ void KickDisplay::commit (std::vector<NodeEnvelope::Point> points)
 
 void KickDisplay::mouseMove (const juce::MouseEvent& event)
 {
+    if (plotArea().contains (event.position))
+    {
+        const auto at = fromScreen (event.position);
+        cursorSeconds = at.x * lengthScale();
+        cursorValue = active().evaluate (at.x);
+        repaint();
+    }
+    else if (cursorSeconds >= 0.0f)
+    {
+        cursorSeconds = -1.0f;
+        repaint();
+    }
     const auto index = pointAt (event.position);
     if (index != hovered)
     {
@@ -366,6 +513,7 @@ void KickDisplay::mouseEnter (const juce::MouseEvent&)
 
 void KickDisplay::mouseExit (const juce::MouseEvent&)
 {
+    cursorSeconds = -1.0f;
     hovered = -1;
     hoverDisplay = false;
     repaint();
@@ -384,6 +532,14 @@ void KickDisplay::mouseDown (const juce::MouseEvent& event)
             points.erase (points.begin() + point);
             commit (std::move (points));
         }
+        return;
+    }
+
+    // Ctrl + klick: i PITCH följs den frekvensen (samma tidpunkt markeras i PITCH och AMP), i AMP tas markeringen bort.
+    if (event.mods.isCtrlDown() && point < 0 && plotArea().contains (event.position))
+    {
+        markedHz = amp ? 0.0f : hzAtValue (std::max (0.0f, fromScreen (event.position).y));
+        repaint();
         return;
     }
 
@@ -460,4 +616,20 @@ void KickDisplay::mouseDoubleClick (const juce::MouseEvent& event)
         return;
     points.push_back ({ value.x, juce::jlimit (0.0f, active().getMaxValue(), value.y), 0.0f });
     commit (std::move (points));
+}
+
+void KickDisplay::mouseWheelMove (const juce::MouseEvent& event, const juce::MouseWheelDetails& wheel)
+{
+    // Ctrl + hjul: zooma i tid. Skift + hjul: zooma i frekvens (PITCH). Annars som vanligt.
+    const auto step = wheel.deltaY > 0.0f ? 1.25f : 0.8f;
+    if (wheel.deltaY != 0.0f && event.mods.isCtrlDown())
+        timeZoom = juce::jlimit (1.0f, 16.0f, timeZoom * step);
+    else if (wheel.deltaY != 0.0f && event.mods.isShiftDown() && ! amp)
+        freqZoom = juce::jlimit (1.0f, 8.0f, freqZoom * step);
+    else
+    {
+        Component::mouseWheelMove (event, wheel);
+        return;
+    }
+    repaint();
 }

@@ -110,6 +110,8 @@ public:
         setClickingTogglesState (true);
     }
 
+    void setAccent (juce::Colour colour) { accent = colour; repaint(); }
+
     void paintButton (juce::Graphics& g, bool highlighted, bool) override
     {
         const auto bounds = getLocalBounds().toFloat().reduced (1.0f);

@@ -931,7 +931,7 @@ int audioThreadTest()
             Scenarios::setPlain (p, "masterDrive", 6.0f * t);
             Scenarios::setPlain (p, ParamID::bass (3, InstrumentField::aUnison), (float) (1 + block % 7));
             if (block % 40 == 20)
-                Scenarios::setPlain (p, Effects::slotParamID (4, 2, "Type"), (float) (1 + (block / 40) % (numEffectTypes - 1)));
+                Scenarios::setPlain (p, Effects::slotParamID (4, 2, "Type"), (float) (1 + (block / 40) % (numEffectTypes - 2)));
         };
         report ("rattar, EQ och effekttyper som ändras", run (p, 48000.0, 256, 400, between, false));
     }

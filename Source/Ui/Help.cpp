@@ -92,6 +92,23 @@ namespace Help
             { "bassEnv3Decay", "ENV 3: how fast it falls towards the sustain level." },
             { "bassEnv3Sustain", "ENV 3: the level it stays at while the note is held (0 % = it falls all the way back)." },
             { "bassEnv3Release", "ENV 3: how fast it falls when the note ends." },
+            { "bassEnv1On", "ENV 1 on/off (the ON button on the ENV tab). Off = every note plays at full level while it is held, with a short fade at the end." },
+            { "bassFilterOn", "FILTER on/off (FILTER tab). Off = the whole instrument bypasses Filter 1 and Filter 2." },
+            { "bassFilterOsc1", "OSC 1 through the filters. Off = OSC 1 bypasses Filter 1 and Filter 2." },
+            { "bassFilterOsc2", "OSC 2 through the filters. Off = OSC 2 bypasses Filter 1 and Filter 2." },
+            { "bassFilterOsc3", "OSC 3 through the filters. Off = OSC 3 bypasses Filter 1 and Filter 2." },
+            { "bassFilterSample", "SAMPLE through the filters. Off (default) = the sample bypasses Filter 1 and Filter 2." },
+            { "bassFilterNoise", "NOISE through the filters. Off = the noise bypasses Filter 1 and Filter 2." },
+            { "bassFilterEnvOn", "Filter envelope on/off (the ON button on the ENV tab). Off = the filter stays at CUTOFF; WARP ENV still follows the envelope's shape." },
+            { "bassEnv2On", "ENV 2 on/off (the ON button on the ENV tab). Off = ENV 2 gives 0, so the knobs it is dragged to stay where they are." },
+            { "bassEnv3On", "ENV 3 on/off (the ON button on the ENV tab). Off = ENV 3 gives 0, so the knobs it is dragged to stay where they are." },
+            { "bassEnv1Mode", "ENV 1 time mode: ms = the times are in milliseconds; Sync = attack, decay and release are note lengths that follow the tempo (the SYNC button on the ENV tab)." },
+            { "bassEnv1AttackSync", "ENV 1 attack as a note length (0, 1/64 ... 1/4, 1/2, 1 bar, 2 bars, 4 bars; T = triplet, D = dotted). Used when the time mode is Sync; follows the tempo of the song." },
+            { "bassEnv1DecaySync", "ENV 1 decay as a note length (0, 1/64 ... 1/4, 1/2, 1 bar, 2 bars, 4 bars; T = triplet, D = dotted). Used when the time mode is Sync; follows the tempo of the song." },
+            { "bassEnv1ReleaseSync", "ENV 1 release as a note length (0, 1/64 ... 1/4, 1/2, 1 bar, 2 bars, 4 bars; T = triplet, D = dotted). Used when the time mode is Sync; follows the tempo of the song." },
+            { "bassFilterEnvMode", "Filter envelope time mode: ms = the times are in milliseconds; Sync = attack and decay are note lengths that follow the tempo (the SYNC button on the ENV tab)." },
+            { "bassFilterEnvAttackSync", "Filter envelope attack as a note length (0, 1/64 ... 1/4, 1/2, 1 bar, 2 bars, 4 bars; T = triplet, D = dotted). Used when the time mode is Sync; follows the tempo of the song." },
+            { "bassFilterEnvDecaySync", "Filter envelope decay as a note length (0, 1/64 ... 1/4, 1/2, 1 bar, 2 bars, 4 bars; T = triplet, D = dotted). Used when the time mode is Sync; follows the tempo of the song." },
             { "bassEnv2Mode", "ENV 2 time mode: ms = the times are in milliseconds (the knobs above); Sync = attack, decay and release are note lengths that follow the tempo (the SYNC button on the ENV tab)." },
             { "bassEnv2AttackSync", "ENV 2 attack as a note length (0, 1/64 ... 1/4, 1/2, 1 bar, 2 bars, 4 bars; T = triplet, D = dotted). Used when the time mode is Sync; follows the tempo of the song." },
             { "bassEnv2DecaySync", "ENV 2 decay as a note length (0, 1/64 ... 1/4, 1/2, 1 bar, 2 bars, 4 bars; T = triplet, D = dotted). Used when the time mode is Sync; follows the tempo of the song." },
@@ -102,6 +119,7 @@ namespace Help
             { "bassEnv3ReleaseSync", "ENV 3 release as a note length (0, 1/64 ... 1/4, 1/2, 1 bar, 2 bars, 4 bars; T = triplet, D = dotted). Used when the time mode is Sync; follows the tempo of the song." },
             { "bassSubWave", "The sub oscillator's waveform: sine (pure), triangle, square (hollow, punchy) or saw (bright)." },
             { "bassNoiseTone", "NOISE TONE - how dark the noise is: 100 % = white noise (bright), lower = darker, like a rumble or breath." },
+            { "bassNoiseType", "NOISE TYPE - White (flat, bright), Pink (softer, natural), Brown (deep rumble) or Vinyl (hiss and crackle)." },
             { "bassPitchEnvAmount", "PITCH ENV AMOUNT - how many semitones the pitch starts above (or, negative, below) the note and then glides to it: a thump or a laser. 0 = off." },
             { "bassPitchEnvDecay", "PITCH ENV DECAY - how fast the pitch glides to the note." },
             { "bassDriveMode", "How the drive distorts: Soft (warm), Hard (clipped), Fold (wavefolder, metallic), Asym (even overtones, gritty) or Crush (stepped, digital)." },
@@ -174,6 +192,11 @@ namespace Help
             { "bassAStereo", "How far the UNISON voices are spread across the stereo picture: 0 % = all in the middle (mono), 100 % = the outer voices go hard left and right. Does nothing with UNISON = 1. Keep the low end narrow." },
             { "bassARandom", "Randomises the start phase per note: looser and more analog, less punchy." },
             { "bassWarpEnv", "Extra warp on OSC 1 at the start of each note, following the filter envelope: a bright, digital 'knock' that fades." },
+            { "bassWarpEnvSource", "WARP ENV SOURCE - what drives the warp: Filter Env (the filter envelope), Direct (its own fast decay, set by DIRECT DEC), ENV 2 or ENV 3." },
+            { "bassPolarity", "POLARITY - Inverted flips this instrument's sound upside down (180 degrees). Use it when the bass and the kick cancel each other's low end." },
+            { "bassPhaseDeg", "START - where in its cycle each oscillator and the sub start on every note (0-360 degrees). Sets how the first wave lines up with the kick." },
+            { "bassNudgeMs", "NUDGE - moves this instrument's notes in time, -2 to +2 ms in 0.05 ms steps. Negative values only work against its DELAY/swing/humanize (it cannot play before the note itself)." },
+            { "bassWarpEnvDecay", "DIRECT DEC - how fast the WARP ENV fades when SOURCE is Direct (2-150 ms)." },
             { "bassSub", "Level of a pure sine sub under the instrument, for weight in the low end." },
             { "bassSubOctave", "Sub in the same octave as the instrument, or one octave lower (careful: very low notes get inaudible)." },
             { "bassNoise", "Adds white noise before the filter, for air and grit in the attack." },
@@ -266,6 +289,13 @@ namespace Help
             if (const auto found = sidechain.find (name); found != sidechain.end())
                 return found->second;
         }
+        if (typeName == "Disperser")
+        {
+            if (name == "STAGES") return "How many all-pass filters are chained. More stages = a longer, more obvious chirp / smear of the transient.";
+            if (name == "FREQ")   return "The frequency where the phase is turned the most (the centre of the smear).";
+            if (name == "SPREAD") return "Spreads the filters over a range of frequencies (0 % = all at FREQ, 100 % = +-2 octaves). Wider = smoother, longer sweep.";
+            if (name == "Q")      return "Sharpness of each all-pass: higher = a more concentrated delay around the frequency.";
+        }
         if (typeName == "Maximizer" && name == "RELEASE")
             return "Maximizer: how fast the limiter lets go after a peak. Short = louder but can pump.";
         if (typeName == "Auto Filter" && name == "DEPTH")
@@ -296,6 +326,15 @@ namespace Help
             { "CUT", "Darkens every repeat: lowers the highs the echo is allowed to keep, so the echoes fade into the background." },
             { "DRY VOL", "Volume of the untouched sound (the echoes are set by IN VOL)." },
             { "LOW CUT", "Removes low end from the effect so the low end stays tight." },
+            { "CURVE", "Distortion curve. Mode uses the MODE setting; Tape is a smooth saturation, Soft clip is gentle and clean, Tube is asymmetric (adds even harmonics)." },
+            { "BANDS", "3-band splits the sound at the two crossover frequencies and distorts each band separately (DRIVE is the mid band), so the low end stays clean and tight." },
+            { "XOVER LO", "Crossover between the low and mid band in 3-band distortion." },
+            { "XOVER HI", "Crossover between the mid and high band in 3-band distortion." },
+            { "LOW DRIVE", "Drive for the low band in 3-band distortion. Keep it low for a tight bass." },
+            { "HIGH DRIVE", "Drive for the high band in 3-band distortion." },
+            { "SYNC", "Echo timing: Straight, Dotted (1.5 times longer) or Triplet (2/3 as long)." },
+            { "PRE-DELAY", "Reverb: delay before the reverb starts, so the sound stays clear in front of the tail. 0 = off." },
+            { "DET HPF", "Compressor: the detector ignores everything below this frequency, so the bass does not pump the compressor. 20 Hz = off." },
             { "HIGH CUT", "Removes highs from the effect for a darker sound." },
             { "SIZE", "Size of the room." },
             { "DAMPING", "How fast the highs die out." },

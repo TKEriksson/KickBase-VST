@@ -137,12 +137,18 @@ void InstrumentProcessor::processChunk (juce::AudioBuffer<float>& buffer, juce::
         basses[(size_t) layer].setTempo (clock.getBpm()); // ENV 2 och ENV 3 i läget Sync
     // Moduleringen uppdateras bara på 32-rutnätet. En bit som börjar mitt i ett fönster (när DAW-blocket slutade där) behåller
     // fönstrets värden, så att ljudet blir detsamma vid alla blockstorlekar, också udda.
+    // AMP ENV / FILT ENV läses bara när någon koppling använder dem (annars 0, som inaktiva LFO:er).
+    auto envSourcesUsed = false;
+    for (int r = 0; controlPhase == 0 && r < Modulation::maxRoutes && ! envSourcesUsed; ++r)
+        envSourcesUsed = Modulation::isEnvSource (modRoutes.routes[(size_t) r].source.load());
     for (int layer = 0; controlPhase == 0 && layer < numLayers; ++layer)
     {
-        // Instrumentens källor (ENV 2, ENV 3, velocity, slump) som de var vid blockets början.
+        // Instrumentens källor (ENV 2, ENV 3, velocity, slump, AMP ENV, FILT ENV) som de var vid blockets början.
         if (layer < activeLayers)
             modulator.setInstrumentSources (layer, basses[(size_t) layer].getModulationValue (0), basses[(size_t) layer].getModulationValue (1),
-                                            basses[(size_t) layer].getModulationValue (2), basses[(size_t) layer].getModulationValue (3));
+                                            basses[(size_t) layer].getModulationValue (2), basses[(size_t) layer].getModulationValue (3),
+                                            envSourcesUsed ? basses[(size_t) layer].getModulationValue (4) : 0.0f,
+                                            envSourcesUsed ? basses[(size_t) layer].getModulationValue (5) : 0.0f);
         else
             modulator.setInstrumentSources (layer, 0.0f, 0.0f, 0.0f, 0.0f);
     }
@@ -352,6 +358,7 @@ void InstrumentProcessor::readLayerFields (int layer, int solo)
     duckAmounts[(size_t) layer] = params.bass (layer, InstrumentField::duck); // med LFO-modulering
     gateScales[(size_t) layer] = params.bass (layer, InstrumentField::gate);
     delayMs[(size_t) layer] = params.bass (layer, InstrumentField::delay);
+    nudgeMs[(size_t) layer] = params.bass (layer, InstrumentField::nudgeMs);
     swingRow[(size_t) layer] = params.bass (layer, InstrumentField::swing);
     humanizeRow[(size_t) layer] = params.bass (layer, InstrumentField::humanize);
     gateOn[(size_t) layer] = params.bass (layer, InstrumentField::gateOn) >= 0.5f;
@@ -594,7 +601,9 @@ int InstrumentProcessor::delaySamplesFor (const StepEvent& event)
         humanizeState ^= humanizeState << 5;
         ms += (double) humanizeNow * 20.0 * ((double) (humanizeState >> 8) / (double) (1u << 24)); // 0-20 ms senare, slumpat
     }
+    ms += (double) nudgeMs[(size_t) event.layer]; // fas PH: NUDGE +-2 ms; negativt äter av DELAY/swing/humanize (aldrig före notens egen tid: ingen latens)
     delay += ms * 0.001 * getSampleRate();
+    delay = std::max (0.0, delay);
     return (int) delay;
 }
 
@@ -911,6 +920,17 @@ void InstrumentProcessor::handleEvent (const StepEvent& event)
     for (int i = 0; i < chordNotes; ++i)
         if (const auto interval = note.chord[(size_t) i].load(); interval != 0)
             voices.noteOn (juce::jlimit (Pattern::minPitch, Pattern::maxPitch, note.pitch.load() + interval), note.velocity.load(), gateSamples, true);
+    // Polyfoni: staplade toner på samma tick, före grundtonen. En glide-stapel glider den klingande rösten (ingen ny röst).
+    for (const auto& e : note.extra)
+    {
+        if (! e.on.load())
+            continue;
+        const auto length = e.length.load();
+        if (e.slide.load() && voices.glideTo (e.pitch.load(), std::max (1, (int) (length * samplesPerTick))))
+            continue;
+        const auto samples = std::max (1, (int) (std::max (1.0, length * (double) gateScales[(size_t) layer]) * samplesPerTick));
+        voices.noteOn (e.pitch.load(), e.velocity.load(), samples, true);
+    }
     voices.noteOn (note.pitch.load(), note.velocity.load(), gateSamples);
     lastInstrumentStartPpq[(size_t) layer] = clock.getPpqAt (event.offset);
 }

@@ -120,6 +120,7 @@ private:
     // Swing, humanize och instrumentens fördröjning: en ton kan skjutas framåt i tiden (aldrig bakåt: det skulle kräva latens). Toner som hamnar efter
     // slutet av segmentet väntar i `pending` och spelas i ett senare segment. Läses en gång per block.
     float swing = 0.0f, humanize = 0.0f;
+    std::array<float, numLayers> nudgeMs = filledArray<float, numLayers> (0.0f);
     std::array<float, numLayers> delayMs = filledArray<float, numLayers> (0.0f), swingRow = filledArray<float, numLayers> (0.0f), humanizeRow = filledArray<float, numLayers> (0.0f);
     struct PendingEvent { StepEvent event; int remaining = 0; };
     std::array<PendingEvent, 256> pending {};

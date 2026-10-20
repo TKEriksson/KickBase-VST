@@ -126,6 +126,7 @@ private:
         juce::Slider level, fx;
         std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> levelAttachment, fxAttachment;
     };
+    void refreshColours(); // instrumentens färger ändrade (InstrumentMenu): ratt, LISTEN och LOOP får de nya
     void addRowKnobs (const juce::String& name, const juce::String& levelID, const juce::String& fxID, juce::Colour colour);
     juce::Rectangle<int> knobBounds (juce::Rectangle<int> row, int index) const;
 
@@ -190,7 +191,7 @@ private:
     int hoverStep = -1;
 
     int lastSwitchBits = -1;
-    int lastBars = 0, lastVersion = -1, lastCustomBits = -1, lastNamesVersion = -1, lastActive = -1;
+    int lastBars = 0, lastVersion = -1, lastCustomBits = -1, lastNamesVersion = -1, lastActive = -1, lastColourVersion = 0;
     juce::Component::SafePointer<juce::AlertWindow> renameDialog;
     std::array<int, Pattern::numNoteLayers> lastMarkers = filledArray<int, Pattern::numNoteLayers> (-2); // markerStep per lager (kicken sist)
     std::array<int, Pattern::numLayers> lastGrids = filledArray<int, Pattern::numLayers> (-1), lastGateGrids = filledArray<int, Pattern::numLayers> (-1);

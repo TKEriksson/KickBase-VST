@@ -39,6 +39,7 @@ struct ModEnvParams
     float attackMs = 5.0f, decayMs = 400.0f, sustain = 0.0f, releaseMs = 250.0f;
     bool sync = false;                                   // tiderna är notvärden (Modulation::syncTimeInQuarters) som följer tempot, i stället för ms
     int attackNote = 0, decayNote = 8, releaseNote = 7;  // index i Modulation::syncTimeNames()
+    bool on = true;                                      // fas L: av = källan ger 0 (ON/OFF i ENV-fliken)
 
     // Samma envelope med tiderna i ms: oförändrad om sync är av, annars räknad från tempot (fjärdedelar x 60000 / bpm, aldrig under ms-rattarnas minimum).
     ModEnvParams withTempo (double bpm) const;
@@ -78,8 +79,20 @@ struct InstrumentParams
     float level = 0.7f;
 
     ModEnvParams env2, env3;     // modulationsenveloper
+    // fas L: ON/OFF och Sync för volym- och filter-envelopen (ENV-fliken). Sync-tiderna är index i Modulation::syncTimeNames().
+    bool env1On = true, filterEnvOn = true;
+    bool env1Sync = false, filterEnvSync = false;
+    // fas S: FILTER av/på (hela Filter 1+2) och per källa (OSC 1, 2, 3, SAMPLE, NOISE); av = går förbi båda filtren. SAMPLE av som standard.
+    bool filterOn = true;
+    bool filterSrc[5] { true, true, true, false, true };
+    int env1AttackNote = 0, env1DecayNote = 5, env1ReleaseNote = 1, filterAttackNote = 0, filterDecayNote = 4;
     int subWave = 0;             // 0 sinus, 1 triangel, 2 fyrkant, 3 såg
     float noiseTone = 1.0f;      // 0 mörkt brus ... 1 vitt brus
+    int noiseType = 0;           // fas S: 0 White (förut), 1 Pink, 2 Brown, 3 Vinyl (frö-styrt)
+    int warpEnvSource = 0;       // fas S: 0 Filter Env (förut), 1 Direct (egen decay), 2 ENV 2, 3 ENV 3
+    float warpEnvDecayMs = 30.0f;
+    bool invertPolarity = false;  // fas PH: vänder signalen (-1)
+    float phaseDeg = 0.0f;        // fas PH: startfas i grader för OSC 1-3 och sub vid varje ny ton (läggs till OSC:ns egen PHASE)
     float pitchEnvSemis = 0.0f;  // tonhöjdsenvelope: så många halvtoner över (eller under) tonen i början av varje ton
     float pitchEnvDecayMs = 60.0f;
 
@@ -93,6 +106,11 @@ struct InstrumentParams
     float sampleStart = 0.0f;    // 0..1: var i samplingen varje ton börjar
 
     InstrumentParams() { oscB.level = 0.0f; oscC.level = 0.0f; oscC.on = false; }
+
+    // Samma inställningar med alla envelope-tider i ms (Sync räknat från tempot) och, om applyOnOff, ENV 1/FILTER ENV av inbakade:
+    // ENV 1 av = full nivå medan tonen hålls (1 ms attack, 5 ms release mot klick), FILTER ENV av = envAmount 0 (WARP ENV följer formen som förut).
+    // Räknas alltid från notvärdena och ON-flaggorna, så den kan anropas flera gånger. Diagrammen anropar den utan applyOnOff (rutan tonas i stället).
+    InstrumentParams withTempo (double bpm, bool applyOnOff = true) const;
 };
 
 // Monofonisk bassynt som spelas steg för steg av sequencern.
@@ -106,7 +124,7 @@ public:
     // Slumpen (brus, slumpfas) är seedad, så att samma preset renderar bit-identiskt varje gång.
     void setSeed (juce::int64 seed) { random.setSeed (seed); }
     void reset();
-    void setParams (const InstrumentParams& newParams) { params = newParams; refreshEnvTimes(); }
+    void setParams (const InstrumentParams& newParams) { rawParams = newParams; refreshEnvTimes(); }
     // Tempot (BPM) för ENV 2 och ENV 3 i läget Sync. Anropas varje bit om 32 samples; en tempoändring mitt i ett steg ger en kontinuerlig kurva.
     void setTempo (double newBpm) { if (newBpm != bpm) { bpm = newBpm; refreshEnvTimes(); } }
 
@@ -133,14 +151,17 @@ public:
     bool isActive() const { return stage != Stage::idle; }
     bool isReleasing() const { return stage == Stage::release; }
 
-    // Modulationskällorna: 0 = ENV 2, 1 = ENV 3, 2 = senaste tonens velocity, 3 = ett slumptal per ton (alla 0..1).
+    // Modulationskällorna: 0 = ENV 2, 1 = ENV 3, 2 = senaste tonens velocity, 3 = ett slumptal per ton, 4 = AMP ENV (ENV 1),
+    // 5 = FILT ENV (filter-envelopens form, utan AMOUNT) (alla 0..1). AMP ENV och FILT ENV ger 0 när rutan är av.
     float getModulationValue (int source) const
     {
         switch (source)
         {
-            case 0:  return env2.level;
-            case 1:  return env3.level;
+            case 0:  return params.env2.on ? env2.level : 0.0f;
+            case 1:  return params.env3.on ? env3.level : 0.0f;
             case 2:  return stage == Stage::idle ? 0.0f : velocity;
+            case 4:  return params.env1On && stage != Stage::idle ? ampLevel : 0.0f;
+            case 5:  return params.filterEnvOn && stage != Stage::idle ? filterEnvLevel : 0.0f;
             default: return randomValue;
         }
     }
@@ -178,7 +199,7 @@ public:
         float lastSemis = 1.0e30f, lastFine = 1.0e30f, pitchRatio = 1.0f, lastDetune = 1.0e30f;
         int lastVoices = -1;
         std::array<double, maxUnison> detuneRatios {};
-        void retrigger (const OscParams& p, juce::Random& random);
+        void retrigger (const OscParams& p, juce::Random& random, double extraPhase = 0.0);
         Stereo next (const OscParams& p, double frequency, double sampleRate, float warpAmount, float fmInput);
     };
 
@@ -204,7 +225,8 @@ private:
         }
     };
 
-    InstrumentParams params;
+    InstrumentParams params;     // rawParams.withTempo (bpm): det som spelas
+    InstrumentParams rawParams;  // som de kom från setParams
     double sampleRate = 44100.0;
 
     Oscillator oscA, oscB, oscC;
@@ -230,12 +252,15 @@ private:
     ModEnvParams envTimes2, envTimes3; // ENV 2 och ENV 3 med tiderna i ms (ur params och tempot)
     void refreshEnvTimes();
     float pitchEnv = 0.0f;       // 1 vid anslaget, faller mot 0 (tonhöjdsenvelopen)
+    float warpDirect = 0.0f;     // fas S: WARP ENV Direct: 1 vid anslaget, faller mot 0
     float noiseState = 0.0f;     // brusets lågpass (NOISE TONE)
+    float pinkB0 = 0.0f, pinkB1 = 0.0f, pinkB2 = 0.0f, brownState = 0.0f, vinylHiss = 0.0f; // fas S: brustyper
     float randomValue = 0.0f;    // modulationskällan RANDOM: nytt för varje ton
     juce::Random modRandom { 99 };
 
     Stage stage = Stage::idle;
     float ampLevel = 0.0f;
+    float filterEnvLevel = 0.0f; // senaste samplets filter-envelope (0..1), källan FILT ENV
     double forcedReleaseMs = 0.0; // > 0: release på så här många ms (fadeOutQuickly), annars RELEASE
     int gateRemaining = 0;
     float velocity = 1.0f;
@@ -247,7 +272,7 @@ private:
     bool filter2WasOn = false;           // av -> på nollställer Filter 2 (gammalt tillstånd ska inte höras)
     float lastKeyFrequency = -1.0f, lastKeyTrack = -1.0f, cachedKeyFollow = 1.0f;
     double lastLogFrequency = 1.0e30, lastPitchOffset = 1.0e30, cachedFrequency = 0.0;
-    CoefficientMemo ampDecayMemo, ampReleaseMemo, pitchEnvMemo;
+    CoefficientMemo ampDecayMemo, ampReleaseMemo, pitchEnvMemo, warpDirectMemo;
 
     // Drive: 0 mjuk (tanh), 1 hård (klippning), 2 vikning (wavefolder), 3 asymmetrisk (jämna övertoner), 4 krossad (bitar).
     // Kurvans konstanter (tanh av förstärkningen m.m.) räknas bara om när DRIVE eller läget ändras; själva uträkningen är densamma som förut.

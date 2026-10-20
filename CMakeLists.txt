@@ -80,6 +80,7 @@ set(PLUGIN_SOURCES
     Source/Core/Mixer.cpp
     Source/Core/OfflineRender.cpp
     Source/Core/AudioAnalysis.cpp
+    Source/Core/OscPresets.cpp
     Source/Core/RollFiles.cpp
     Source/Core/SampleSlot.cpp
     Source/Core/ToolLayer.cpp
@@ -135,7 +136,7 @@ set(FX_SOURCES
 # Versionen som ABOUT visar: projektets VERSION (bara den här filen kompileras om när den ändras).
 set_source_files_properties(Source/Ui/AboutPanel.cpp PROPERTIES COMPILE_DEFINITIONS "KICKBASE_VERSION=\"${PROJECT_VERSION}\"")
 
-juce_add_binary_data(KickbaseGuides SOURCES docs/AGENT_GUIDE.md docs/psytrance-kick-bass-reference.md Resources/InitPreset.mofp Resources/strudel/strudel.all.js LICENSE THIRD-PARTY.md)
+juce_add_binary_data(KickbaseGuides SOURCES docs/AGENT_GUIDE.md docs/psytrance-kick-bass-reference.md docs/kick-bass-school.md Resources/InitPreset.mofp Resources/strudel/strudel.all.js LICENSE THIRD-PARTY.md)
 
 # Gemensamt för alla mål: samma definitioner och flaggor.
 function(kickbase_configure target)

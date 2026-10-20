@@ -1,10 +1,10 @@
 # Kickbase – guide for the AI agent
 
-You control **Kickbase**, a psytrance kick + bass synth, through MCP tools. This is the manual. The companion `get_guide topic=psytrance` explains what a good psytrance kick and bass is (read it before designing sounds). Facts here describe how *this* synth works; where the two documents disagree, this one wins.
+You control **Kickbase**, a psytrance kick + bass synth, through MCP tools. This is the manual. The companion `get_guide topic=psytrance` explains what a good psytrance kick and bass is (read it before designing sounds). Facts here describe how *this* synth works; where the two documents disagree, this one wins. For building and judging a sound step by step (what to listen for, mixing the kick with the bass), read `get_guide topic=school` once per session.
 
 ## 1. The loop
 
-1. `get_guide` (this), `get_guide topic=psytrance` once per session.
+1. `get_guide` (this), `get_guide topic=psytrance` and `get_guide topic=school` once per session.
 2. `list_presets` / `load_preset` for a starting point, or `reset` for the Init sound.
 3. Change things: `set_parameters`, `set_effect`, `set_kick_envelopes`, `set_pattern`, `set_sidechain_curve`, `set_modulation`.
 4. `render_preview` (full, then `part=kick` and `part=bass` separately). Read the **metrics**, the **checks** and look at the **spectrogram image**. You cannot hear: the numbers and the picture are your ears.
@@ -19,7 +19,7 @@ Instances: `list_instances` shows `headless` (private, no DAW, always available)
 
 One plugin: **kick** + **1-10 instruments** (default 3; `set_instruments`) + sidechain + **11 FX channels (FX1–FX11)** + mixer + master.
 
-- **Instruments** (bass layers, `bass1…bass10`): each has its own pattern, three wavetable oscillators + a sample, filter, envelopes, FX send and sidechain depth. `instrumentCount` (set it with `set_instruments`, not `set_parameters`) is how many are used. Removing instruments deletes the last ones completely. Layers are numbered 0-9 in `set_pattern`, `set_gate`, `load_preset` etc. (instrument 1 = layer 0).
+- **Instruments** (bass layers, `bass1…bass10`): each has its own pattern, three wavetable oscillators + a sample, filter, envelopes, FX send and sidechain depth. `instrumentCount` (set it with `set_instruments`, not `set_parameters`) is how many are used. Removing instruments deletes the last ones completely. `edit_instrument` is the instrument menu (rename, colour `#rrggbb`, duplicate, move_up/move_down, delete): the whole instrument moves, and name and colour are saved in the project, not as parameters. Layers are numbered 0-9 in `set_pattern`, `set_gate`, `load_preset` etc. (instrument 1 = layer 0).
 
 - **Key**: the incoming MIDI note sets the key and *also the bass octave*. MIDI note 52 (E4) gives bass root E1 = 41 Hz and kick tail near E1; note 60 (C5 in FL) gives C2 = 65 Hz. Psytrance bass roots are 41–49 Hz (E1–G1), so the usual keys are MIDI 52–55. `render_preview` takes `note` (default 52).
 - **Kick tail**: `kickKeyFollow` = Follow puts the tail on the key note within A#0..A1 (29–55 Hz), `kickTune` ±12 semitones moves it. Fixed = C1 + tune.
@@ -55,7 +55,7 @@ Values are in the parameter's own unit: Hz, ms, dB, semitones, octaves; percenta
 - **master**: `masterOn`, `masterDrive` (dB), `masterClip`, `masterCeiling` (dB), `masterWidth`, `masterEnhance`, `masterMonoBelow` (Hz), `masterRelease`, and `gain` (output).
 - **LFOs**: the instrument has up to 10 (`lfo1…lfo10`; the FX plugin has `lfo1…lfo3`). LFO 1-3 always exist; 4-10 are added when needed: `set_modulation` on an inactive LFO, or a route from it, adds it, and `{"lfo":7,"remove":true}` removes it with its routes. `get_state` lists `active_lfos`. Each has `On`, `Shape` (Sine, Triangle, Saw Up, Saw Down, Square, Random, **Custom**), `Rate` (tempo synced, 1/32 … 16 bars), `Mode` (Sync | Hz) and `Hz` (0.02–40, its own speed), plus `Snap` (on/off, default off) and `SnapRange` (1–25 %, default 5): in Hz mode, when the free rate is within the range of a note value (1/8, 1/4 T ...) at the current tempo, it locks exactly to it. Changing the rate (Hz, Sync or Mode) or the tempo never restarts the LFO phase; it continues from where it is. A Custom LFO is a curve of points: write it with `set_modulation` `lfos:[{"lfo":1,"points":[[0,0,0],[0.25,1,0],[0.5,-0.5,-0.4],[1,0,0]]}]` (phase 0..1, value -1..1, tension -1..1 bends the segment to the next point); routes with `set_modulation`. The instrument's envelopes (volume, filter, ENV 2, ENV 3) are drawn and edited as diagrams on the plugin's ENV tab.
 - **Macros**: `macro1…macro4` (0..1): knobs you turn yourself (or automate) that can move other knobs through routes (source "macro" 1-4).
-- **Matrix** (`set_modulation`): up to 64 routes. A route is a source (`lfo` 1-10, FX 1-3, `macro` 1-4, or `instrument` 1-10 with `source` "ENV 2" | "ENV 3" | "VELOCITY" | "RANDOM"), a `param` (any kick*, bass*, fx* knob) and an `amount` (-1..1 of the knob's travel).
+- **Matrix** (`set_modulation`): up to 64 routes. A route is a source (`lfo` 1-10, FX 1-3, `macro` 1-4, or `instrument` 1-10 with `source` "ENV 2" | "ENV 3" | "VELOCITY" | "RANDOM" | "AMP ENV" | "FILT ENV"; AMP ENV is the volume envelope ENV 1 and FILT ENV the filter envelope's shape 0..1 without its amount, both 0 when that envelope is switched off; `get_state` shows them as e.g. "INSTR 2 AMP ENV"), a `param` (any kick*, bass*, fx* knob) and an `amount` (-1..1 of the knob's travel).
 
 ## 4. Kick envelopes
 

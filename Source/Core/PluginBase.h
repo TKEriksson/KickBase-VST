@@ -119,6 +119,17 @@ public:
     LinkedLoad loadPatternPreset (int layer, const juce::File& file, bool withInstrument, int fxChannel = -2);
 
     bool saveUserPreset (Presets::Section section, const juce::String& name, int layer = 0, const PresetLink* link = nullptr);
+    std::unique_ptr<juce::XmlElement> buildPresetXml (Presets::Section section, int layer, const PresetLink* link = nullptr); // samma innehåll som filen
+
+    // Spår = ett instrument och dess rad i mönstret. Instrumenten ligger på fasta platser (0-9), så ett spår flyttas, dupliceras och raderas genom
+    // att innehållet kopieras mellan platserna. copyTrack ger en klipp (ljud, mönster, på/av, duck, FX-skick, mixer, LFO-kopplingar, namn, färg)
+    // som pasteTrack skriver över ett annat instrument med. Bara meddelandetråden.
+    std::unique_ptr<juce::XmlElement> copyTrack (int layer);
+    bool pasteTrack (int layer, const juce::XmlElement& clip);
+    std::function<void()> beforeTrackChange; // sätts av InstrumentHost: river panelerna innan ett instrument skrivs över
+    bool duplicateTrack (int layer);        // en kopia på platsen efter, resten flyttas ner (kräver ett ledigt instrument)
+    bool moveTrack (int layer, int delta);  // byter plats med grannen (delta -1 eller +1)
+    bool deleteTrack (int layer);           // resten flyttas upp och sista instrumentet töms (minst ett instrument kvar)
     bool loadUserPreset (Presets::Section section, const juce::File& file, int layer = 0);
     bool loadPresetXml (const juce::XmlElement& xml, Presets::Section section, int layer, const juce::String& presetName); // själva laddningen (fil eller inbyggt)
     bool loadEmbeddedInit(); // instrumentets fabrikspreset Init: ett Full-preset inbakat i programmet
@@ -317,7 +328,16 @@ public:
         layerNames[(size_t) juce::jlimit (0, ParamID::numInstrumentLayers - 1, layer)] = name.trim().substring (0, 10);
         ++layerNamesVersion;
     }
+    // Eget färgval per instrument (0 = standardfärgen), sparas i projektet. Ökar `layerNamesVersion`.
+    juce::uint32 getLayerColour (int layer) const { return layerColours[(size_t) juce::jlimit (0, ParamID::numInstrumentLayers - 1, layer)]; }
+    void setLayerColour (int layer, juce::uint32 argb)
+    {
+        layerColours[(size_t) juce::jlimit (0, ParamID::numInstrumentLayers - 1, layer)] = argb;
+        ++layerNamesVersion;
+        ++layerStructureVersion;
+    }
     std::atomic<int> layerNamesVersion { 0 };
+    std::atomic<int> layerStructureVersion { 0 }; // ökas när en färg ändras eller ett instrument klistras in: panelerna byggs om (InstrumentHost)
 
     // Hur många instrument som används (1-10; FX-versionen: 1). Läses av gränssnittet.
     int activeInstruments() const
@@ -334,11 +354,10 @@ public:
     int selectedTab = 0;                   // gränssnittets valda flikar (nedre och övre panelen), så att de
     int selectedSynthTab = 0;              // finns kvar när fönstret öppnas igen
     int selectedPatternMode = 0;           // PATTERN-flikens läge: 0 PATTERN (toner), 1 GATE
-    std::array<int, ParamID::numInstrumentLayers> selectedInstrumentSource {}; // baslagrets valda källflik: OSC 1-3 eller SAMPLE
+    std::array<int, ParamID::numInstrumentLayers> selectedInstrumentSource {}; // instrumentets valda flik: INSTR, OSC 1-3, SAMPLE eller FILTER
     std::atomic<int> kickTab { 0 };                // kickens vyflik: 0 SYNTH, 1 SAMPLE (bara gränssnittet, sparas inte och ändrar inget ljud)
     int selectedPatternLayer = 0;          // PATTERN-flikens valda lager: 0-9 instrument, 10 kick
     int selectedInstrument = 0;            // INSTRUMENT-flikens valda instrument (0-9)
-    bool modEnvelopesOpen = false;         // INSTRUMENT-sidans dragspel MODULATION (ENV 2, ENV 3 ...) är öppet
     int lfoFolded = -1;                    // LFO-flikens fällda kort (en bit per LFO); -1 = inte bestämt ännu (se LfoPage)
     int selectedLfo = 0;                   // LFO-flikens valda kort (SHOW ONLY SELECTED)
     int lfoRemoveAsk = -1;                 // LFO-kortet som frågar om borttagning (-1 = inget)
@@ -455,6 +474,7 @@ private:
     std::array<juce::String, numEffectChannels> fxPresetNames;       // FX-presets: ett namn per effektkanal
     std::array<juce::String, Pattern::numNoteLayers> rowPresetNames; // mönster-presets: ett namn per rad (instrument 0-9, kicken sist)
     std::array<juce::String, ParamID::numInstrumentLayers> layerNames;
+    std::array<juce::uint32, ParamID::numInstrumentLayers> layerColours {};
 
     double currentSampleRate = 44100.0;
 
