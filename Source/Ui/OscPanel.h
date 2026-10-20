@@ -1,12 +1,14 @@
 #pragma once
 
 #include "VisualTimer.h"
+#include <map>
 #include <juce_dsp/juce_dsp.h>
 
 #include "../Core/PluginBase.h"
 #include "Components.h"
 #include "Cursors.h"
 #include "HoldAudition.h"
+#include "../Core/OscPresets.h"
 
 // Bilden av en wavetable, som i Serum: alla vågformer staplade bakåt i en svag 3D-vy, och den
 // som spelas nu (positionen, med LFO och warp) ritad framför i lagrets färg.
@@ -59,6 +61,14 @@ private:
     void chooseWavFile();
     juce::String currentTableName() const;
     std::vector<juce::File> menuFiles; // biblioteksval i menyn (id 1000 +)
+    // Fas S5: OSC-presets (.oscpreset) för just den här oscillatorn.
+    void showPresetMenu();
+    void stepPreset (int direction);
+    void loadPreset (const juce::File& file);
+    void askForNameAndSave();
+    juce::TextButton prevPresetButton { "<" }, nextPresetButton { ">" }, presetButton { "PRESET" }, savePresetButton { "SAVE" }, resetOscButton { "RESET" };
+    juce::File currentPreset;
+    juce::Component::SafePointer<juce::AlertWindow> saveDialog;
 
     PluginBase& processor;
     const int layer, osc;

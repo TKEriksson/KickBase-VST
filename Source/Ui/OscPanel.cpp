@@ -210,6 +210,25 @@ OscPanel::OscPanel (PluginBase& p, int layerIn, int oscIn, juce::Colour accentIn
     tableLabel.setFont (Theme::font (11.0f, true));
     tableLabel.setColour (juce::Label::textColourId, Theme::textDim);
     addAndMakeVisible (tableLabel);
+
+    prevPresetButton.setTooltip ("Previous oscillator preset in the list (Presets/Oscillators). Only this oscillator changes.");
+    nextPresetButton.setTooltip ("Next oscillator preset in the list (Presets/Oscillators). Only this oscillator changes.");
+    presetButton.setTooltip ("OSC PRESET - Load a saved oscillator: wavetable and position, warp, pitch, unison, phase and the other knobs of THIS oscillator. "
+                             "It never touches the other oscillators, the sample, the filters or the effects.");
+    savePresetButton.setTooltip ("Save this oscillator as a preset (choose a name and a category folder).");
+    resetOscButton.setTooltip ("RESET - Put this oscillator back to its starting values (its on/off stays as it is).");
+    prevPresetButton.onClick = [this] { stepPreset (-1); };
+    nextPresetButton.onClick = [this] { stepPreset (1); };
+    presetButton.onClick = [this] { showPresetMenu(); };
+    savePresetButton.onClick = [this] { askForNameAndSave(); };
+    resetOscButton.onClick = [this]
+    {
+        OscPresets::reset (processor.apvts, layer, osc);
+        currentPreset = juce::File();
+        presetButton.setButtonText ("PRESET");
+    };
+    for (auto* b : { &prevPresetButton, &nextPresetButton, &presetButton, &savePresetButton, &resetOscButton })
+        addAndMakeVisible (*b);
     tableButton.setTooltip ("TABLE - The wavetable this oscillator plays: every waveform in it is one step along POS. Click to choose from categories "
                             "(Analog, Filter, FM, Digital, Vocal, Psy ...), your own library (Documents/Kickbase/Wavetables, e.g. the 4000+ AKWF waveforms) "
                             "or a WAV file/folder.");
@@ -426,10 +445,108 @@ void OscPanel::paint (juce::Graphics& g)
     g.drawText ("OSC " + juce::String (osc + 1), getLocalBounds().reduced (8, 4).withHeight (16), juce::Justification::centredLeft);
 }
 
+//==============================================================================
+// OSC-presets
+void OscPanel::loadPreset (const juce::File& file)
+{
+    if (OscPresets::load (processor.apvts, layer, osc, file))
+    {
+        currentPreset = file;
+        presetButton.setButtonText (file.getFileNameWithoutExtension().toUpperCase());
+    }
+    else
+        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Oscillator preset", "Could not read that oscillator preset.");
+}
+
+void OscPanel::stepPreset (int direction)
+{
+    const auto files = OscPresets::list();
+    if (files.isEmpty())
+        return;
+    const auto at = files.indexOf (currentPreset);
+    const auto next = at < 0 ? (direction > 0 ? 0 : files.size() - 1) : (at + direction + files.size()) % files.size();
+    loadPreset (files[next]);
+}
+
+void OscPanel::showPresetMenu()
+{
+    const auto files = OscPresets::list();
+    const auto root = OscPresets::folder();
+    juce::PopupMenu menu;
+    std::map<juce::String, juce::PopupMenu> categories;
+    for (int i = 0; i < files.size(); ++i)
+    {
+        const auto parent = files[i].getParentDirectory();
+        const auto category = parent == root ? juce::String() : parent.getFileName();
+        if (category.isEmpty())
+            menu.addItem (100 + i, files[i].getFileNameWithoutExtension(), true, files[i] == currentPreset);
+        else
+            categories[category].addItem (100 + i, files[i].getFileNameWithoutExtension(), true, files[i] == currentPreset);
+    }
+    for (auto& [name, sub] : categories)
+        menu.addSubMenu (name, sub);
+    if (files.isEmpty())
+        menu.addItem (-1, "(no oscillator presets yet - use SAVE)", false);
+    menu.addSeparator();
+    menu.addItem (1, "Open the preset folder");
+
+    juce::Component::SafePointer<OscPanel> safeThis (this);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&presetButton), [safeThis, files] (int result)
+    {
+        if (safeThis == nullptr || result <= 0)
+            return;
+        if (result == 1)
+        {
+            OscPresets::folder().createDirectory();
+            OscPresets::folder().startAsProcess();
+        }
+        else if (juce::isPositiveAndBelow (result - 100, files.size()))
+            safeThis->loadPreset (files[result - 100]);
+    });
+}
+
+void OscPanel::askForNameAndSave()
+{
+    auto* window = new juce::AlertWindow ("Save oscillator preset", "Name and category (a folder):", juce::MessageBoxIconType::NoIcon);
+    window->setLookAndFeel (&getLookAndFeel());
+    saveDialog = window;
+    window->addTextEditor ("name", "My oscillator", "Name:");
+    window->addTextEditor ("category", "User", "Category:");
+    window->addButton ("Save", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    window->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+
+    juce::Component::SafePointer<OscPanel> safeThis (this);
+    window->enterModalState (true, juce::ModalCallbackFunction::create ([safeThis, window] (int result)
+    {
+        if (result != 1 || safeThis == nullptr)
+            return;
+        const auto name = juce::File::createLegalFileName (window->getTextEditorContents ("name").trim());
+        const auto category = juce::File::createLegalFileName (window->getTextEditorContents ("category").trim());
+        auto file = OscPresets::folder();
+        if (category.isNotEmpty())
+            file = file.getChildFile (category);
+        file = file.getChildFile (name + ".oscpreset");
+        if (name.isEmpty() || ! OscPresets::save (safeThis->processor.apvts, safeThis->layer, safeThis->osc, file))
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Could not save", "Check that the name is valid.");
+        else
+        {
+            safeThis->currentPreset = file;
+            safeThis->presetButton.setButtonText (name.toUpperCase());
+        }
+    }), true);
+}
+
 void OscPanel::resized()
 {
     auto area = getLocalBounds().reduced (6);
-    area.removeFromTop (16);
+    {
+        auto strip = area.removeFromTop (16).withTrimmedLeft (area.getWidth() / 3);
+        resetOscButton.setBounds (strip.removeFromRight (46).reduced (1, 0));
+        savePresetButton.setBounds (strip.removeFromRight (42).reduced (1, 0));
+        nextPresetButton.setBounds (strip.removeFromRight (22).reduced (1, 0));
+        prevPresetButton.setBounds (strip.removeFromRight (22).reduced (1, 0));
+        presetButton.setBounds (strip.removeFromRight (juce::jmin (160, strip.getWidth())).reduced (1, 0));
+    }
 
     // Vänster: tabell, warp och bilden. Höger: rattarna i två rader över hela höjden.
     // WARP-ratten ligger i en egen kolumn till höger om menyerna och formknapparna (de två översta raderna), så att den inte trycker ner vågbilden.

@@ -80,6 +80,7 @@ set(PLUGIN_SOURCES
     Source/Core/Mixer.cpp
     Source/Core/OfflineRender.cpp
     Source/Core/AudioAnalysis.cpp
+    Source/Core/OscPresets.cpp
     Source/Core/RollFiles.cpp
     Source/Core/SampleSlot.cpp
     Source/Core/ToolLayer.cpp

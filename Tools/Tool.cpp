@@ -28,6 +28,7 @@
 #include "../Source/Core/WavetablePack.h"
 #include "../Source/Core/LibraryIndex.h"
 #include "../Source/Core/RollFiles.h"
+#include "../Source/Core/OscPresets.h"
 #include "../Source/Instrument/InstrumentProcessor.h"
 #include "Analyzer.h"
 #include "../Source/Core/AudioAnalysis.h"
@@ -1537,6 +1538,43 @@ namespace
                 std::printf ("  saved %d link %d free1 %d auto %d full %d pat %d keep %d replace %d noEffect %d/%d noInst %d/%d" "\n", savedLinked, linkOk, free1, autoOk, fullOk,
                              savedPattern, keepOk, replaceOk, noEffect.ok, noEffect.effectMissing, noInstrument.ok, noInstrument.instrumentMissing);
             ok = ok && linkedOk;
+
+        // OSC-preset (fas S5): OSC 2 i lager 0 sparas och laddas; OSC 1, filtret och OSC 2:s av/på rörs inte; RESET ger standardvärdena.
+        {
+            using F = InstrumentField;
+            auto get = [&] (F field) { auto* q = processor.apvts.getParameter (ParamID::bass (0, field)); return q->convertFrom0to1 (q->getValue()); };
+            Scenarios::setInstrument (processor, 0, F::bPos, 0.6f);
+            Scenarios::setInstrument (processor, 0, F::bSemi, 7.0f);
+            Scenarios::setInstrument (processor, 0, F::bUnison, 5.0f);
+            Scenarios::setInstrument (processor, 0, F::bTable, 3.0f);
+            Scenarios::setInstrument (processor, 0, F::bOn, 1.0f);
+            Scenarios::setInstrument (processor, 0, F::aPos, 0.25f);
+            const auto oscFile = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("__osctest__/Test/osc.oscpreset");
+            auto saved = OscPresets::save (processor.apvts, 0, 1, oscFile);
+            Scenarios::setInstrument (processor, 0, F::bPos, 0.1f);
+            Scenarios::setInstrument (processor, 0, F::bSemi, -5.0f);
+            Scenarios::setInstrument (processor, 0, F::bTable, 1.0f);
+            Scenarios::setInstrument (processor, 0, F::bOn, 0.0f);
+            Scenarios::setInstrument (processor, 0, F::aPos, 0.9f);
+            const auto cutoffBefore = get (F::cutoff);
+            const auto loadedOsc = OscPresets::load (processor.apvts, 0, 1, oscFile);
+            const auto restored = std::abs (get (F::bPos) - 0.6f) < 0.01f && std::abs (get (F::bSemi) - 7.0f) < 0.01f
+                                  && std::abs (get (F::bUnison) - 5.0f) < 0.01f && (int) get (F::bTable) == 3;
+            const auto untouched = std::abs (get (F::aPos) - 0.9f) < 0.01f && get (F::bOn) < 0.5f && std::abs (get (F::cutoff) - cutoffBefore) < 0.01f;
+            // Ett fält som filen saknar lämnas orört, och en okänd tabell ändrar inte tabellen.
+            Scenarios::setInstrument (processor, 0, F::bSemi, 2.0f);
+            oscFile.replaceWithText ("<KickbaseOsc version=\"1\" Table=\"__finns_inte__\" Pos=\"0.3\"/>");
+            const auto partial = OscPresets::load (processor.apvts, 0, 1, oscFile)
+                                 && std::abs (get (F::bPos) - 0.3f) < 0.01f && std::abs (get (F::bSemi) - 2.0f) < 0.01f && (int) get (F::bTable) == 3;
+            const auto listed = OscPresets::list().contains (oscFile) == (OscPresets::folder() == oscFile.getParentDirectory().getParentDirectory().getParentDirectory());
+            OscPresets::reset (processor.apvts, 0, 1);
+            const auto resetOk = std::abs (get (F::bSemi)) < 0.01f && (int) get (F::bUnison) == 1 && get (F::bOn) < 0.5f && std::abs (get (F::aPos) - 0.9f) < 0.01f;
+            oscFile.getParentDirectory().getParentDirectory().deleteRecursively();
+            std::printf ("OSC-preset: sparad %d, laddad %d, återställd %d, orört %d, delvis %d, reset %d\n",
+                         saved ? 1 : 0, loadedOsc ? 1 : 0, restored ? 1 : 0, untouched ? 1 : 0, partial ? 1 : 0, resetOk ? 1 : 0);
+            (void) listed;
+            ok = ok && saved && loadedOsc && restored && untouched && partial && resetOk;
+        }
         }
 
         std::puts (ok ? "Presettest OK" : "FEL: presettest");
