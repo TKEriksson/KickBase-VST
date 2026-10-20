@@ -119,6 +119,7 @@ namespace Help
             { "bassEnv3ReleaseSync", "ENV 3 release as a note length (0, 1/64 ... 1/4, 1/2, 1 bar, 2 bars, 4 bars; T = triplet, D = dotted). Used when the time mode is Sync; follows the tempo of the song." },
             { "bassSubWave", "The sub oscillator's waveform: sine (pure), triangle, square (hollow, punchy) or saw (bright)." },
             { "bassNoiseTone", "NOISE TONE - how dark the noise is: 100 % = white noise (bright), lower = darker, like a rumble or breath." },
+            { "bassNoiseType", "NOISE TYPE - White (flat, bright), Pink (softer, natural), Brown (deep rumble) or Vinyl (hiss and crackle)." },
             { "bassPitchEnvAmount", "PITCH ENV AMOUNT - how many semitones the pitch starts above (or, negative, below) the note and then glides to it: a thump or a laser. 0 = off." },
             { "bassPitchEnvDecay", "PITCH ENV DECAY - how fast the pitch glides to the note." },
             { "bassDriveMode", "How the drive distorts: Soft (warm), Hard (clipped), Fold (wavefolder, metallic), Asym (even overtones, gritty) or Crush (stepped, digital)." },

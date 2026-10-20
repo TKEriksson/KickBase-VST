@@ -107,6 +107,7 @@ enum class InstrumentField
     env1Mode, env1AttackSync, env1DecaySync, env1ReleaseSync,     // fas L: volym-envelopen i ms (standard) eller Sync, som ENV 2/3
     filterEnvMode, filterEnvAttackSync, filterEnvDecaySync,       // fas L: filter-envelopen i ms (standard) eller Sync
     filterOn, filterOsc1, filterOsc2, filterOsc3, filterSample, filterNoise, // fas S: FILTER-flikens av/på (hela Filter 1+2) och av/på per källa (av = källan går förbi båda filtren)
+    noiseType,                                                    // fas S: brustyp: White (standard = som förut), Pink, Brown, Vinyl
     count
 };
 

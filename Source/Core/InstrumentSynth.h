@@ -88,6 +88,7 @@ struct InstrumentParams
     int env1AttackNote = 0, env1DecayNote = 5, env1ReleaseNote = 1, filterAttackNote = 0, filterDecayNote = 4;
     int subWave = 0;             // 0 sinus, 1 triangel, 2 fyrkant, 3 såg
     float noiseTone = 1.0f;      // 0 mörkt brus ... 1 vitt brus
+    int noiseType = 0;           // fas S: 0 White (förut), 1 Pink, 2 Brown, 3 Vinyl (frö-styrt)
     float pitchEnvSemis = 0.0f;  // tonhöjdsenvelope: så många halvtoner över (eller under) tonen i början av varje ton
     float pitchEnvDecayMs = 60.0f;
 
@@ -248,6 +249,7 @@ private:
     void refreshEnvTimes();
     float pitchEnv = 0.0f;       // 1 vid anslaget, faller mot 0 (tonhöjdsenvelopen)
     float noiseState = 0.0f;     // brusets lågpass (NOISE TONE)
+    float pinkB0 = 0.0f, pinkB1 = 0.0f, pinkB2 = 0.0f, brownState = 0.0f, vinylHiss = 0.0f; // fas S: brustyper
     float randomValue = 0.0f;    // modulationskällan RANDOM: nytt för varje ton
     juce::Random modRandom { 99 };
 

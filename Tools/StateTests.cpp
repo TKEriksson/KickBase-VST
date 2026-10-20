@@ -250,6 +250,8 @@ int persistTest()
         check (value (*copy, F::filterOn) < 0.5f && value (*copy, F::filterOsc1) > 0.5f && value (*copy, F::filterOsc2) < 0.5f
                    && value (*copy, F::filterSample) > 0.5f && value (*copy, F::filterNoise) > 0.5f,
                "spara och ladda: FILTER av/på och per källa följer med");
+        Scenarios::setInstrument (*processor, 3, F::noiseType, 3.0f);
+        check (value (*copyOf (*processor), F::noiseType) > 2.5f && value (*copyOf (*processor), F::noiseType) < 3.5f, "spara och ladda: NOISE TYPE följer med");
     }
 
     // 5. Preset-laddningen sätter varje parameter en gång: en ratt som ändras passerar inte sitt standardvärde på vägen.

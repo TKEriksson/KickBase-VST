@@ -32,6 +32,7 @@ void InstrumentSynth::reset()
     env3.reset();
     pitchEnv = 0.0f;
     noiseState = 0.0f;
+    pinkB0 = pinkB1 = pinkB2 = brownState = vinylHiss = 0.0f;
     filterMid.reset();
     filterSide.reset();
     filter2Mid.reset();
@@ -382,6 +383,27 @@ InstrumentSynth::Output InstrumentSynth::next()
     if (params.noise > 0.0f)
     {
         auto white = random.nextFloat() * 2.0f - 1.0f;
+        switch (params.noiseType)
+        {
+            case 1: // Pink: tre-poligt närmevärde (Paul Kellet), nivåjusterat mot vitt
+                pinkB0 = 0.99765f * pinkB0 + white * 0.0990460f;
+                pinkB1 = 0.96300f * pinkB1 + white * 0.2965164f;
+                pinkB2 = 0.57000f * pinkB2 + white * 1.0526913f;
+                white = 0.35f * (pinkB0 + pinkB1 + pinkB2 + white * 0.1848f);
+                break;
+            case 2: // Brown: läckande integrator av vitt brus
+                brownState = 0.995f * brownState + 0.06f * white;
+                white = juce::jlimit (-1.0f, 1.0f, brownState * 3.0f);
+                break;
+            case 3: // Vinyl: tyst fräs plus enstaka knaster (sällsynta, slumpade, med olika styrka)
+            {
+                vinylHiss += 0.2f * (white - vinylHiss);
+                const auto crackle = random.nextFloat() < 0.0004f ? (random.nextFloat() * 2.0f - 1.0f) : 0.0f;
+                white = 0.25f * vinylHiss + 2.0f * crackle;
+                break;
+            }
+            default: break;
+        }
         if (params.noiseTone < 0.999f)
         {
             // NOISE TONE: ett lågpass som gör bruset mörkare (100 Hz ... 20 kHz); nivån hålls uppe så att det inte försvinner.

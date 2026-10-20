@@ -97,7 +97,7 @@ namespace ParamID
                                      "Env1On", "FilterEnvOn", "Env2On", "Env3On",
                                      "Env1Mode", "Env1AttackSync", "Env1DecaySync", "Env1ReleaseSync",
                                      "FilterEnvMode", "FilterEnvAttackSync", "FilterEnvDecaySync",
-                                     "FilterOn", "FilterOsc1", "FilterOsc2", "FilterOsc3", "FilterSample", "FilterNoise" };
+                                     "FilterOn", "FilterOsc1", "FilterOsc2", "FilterOsc3", "FilterSample", "FilterNoise", "NoiseType" };
         static_assert (std::size (names) == (size_t) InstrumentField::count);
         return names[(size_t) field];
     }
@@ -387,6 +387,7 @@ namespace Params
             { F::filterOsc3, "Filter OSC 3", true }, { F::filterSample, "Filter Sample", false }, { F::filterNoise, "Filter Noise", true } };
         for (auto& s : filterSwitches)
             layout.add (std::make_unique<AudioParameterBool> (ParameterID { id (s.field), 1 }, title + s.name, s.on));
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::noiseType), 1 }, title + "Noise Type", StringArray { "White", "Pink", "Brown", "Vinyl" }, 0));
     }
 
     void addFxParams (Layout& layout)
@@ -639,6 +640,7 @@ InstrumentParams ParamRefs::readInstrument (int layer, int rootMidiNote) const
     p.filterSrc[2] = get (F::filterOsc3) >= 0.5f;
     p.filterSrc[3] = get (F::filterSample) >= 0.5f;
     p.filterSrc[4] = get (F::filterNoise) >= 0.5f;
+    p.noiseType = (int) get (F::noiseType);
     p.subWave = (int) get (F::subWave);
     p.noiseTone = get (F::noiseTone);
     p.pitchEnvSemis = get (F::pitchEnvAmount);
