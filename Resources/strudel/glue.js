@@ -53,7 +53,7 @@ var sliderCounter = 0;
 globalThis.slider = function (v, min, max) {
   var id = sliderCounter++;
   var val = host.slider(id, v, min, max); // C++ svarar med aktuellt värde (användaren kan ha dragit i reglaget)
-  return S.signal(function () { return val; }); // konstant signal; ett nytt värde kräver ny setPattern (eller en signal som läser host.get)
+  return S.pure(val); // konstant värde med onset (en kontinuerlig signal ger inga händelser i note()); ett nytt värde kräver ny setPattern (eller en signal som läser host.get)
 };
 globalThis.sliderLive = function (id, min, max) { // läser C++-värdet vid varje fråga: reglage utan omkompilering
   return S.signal(function () { return host.get(id); }).range(min, max);
