@@ -1,0 +1,14 @@
+full 0 Init                        661a32eb87ab01f5 peak 0.9661 rms 0.3283
+kick 0 Full-On Punch               b0b83cb631c7e012 peak 0.9661 rms 0.3848
+kick 1 Dark Forest Boom            2396c475ee411c0d peak 0.9661 rms 0.4924
+kick 2 Progressive Round           4bd7fbd0aaad62ae peak 0.9661 rms 0.3878
+kick 3 Hi-Tech Click               ccccdda5f55074ab peak 0.9661 rms 0.3688
+kick 4 Zenonesque Punch            ed19a9abf35e9cb1 peak 0.9661 rms 0.4070
+kick 5 Hard Psy                    7ddeec7bd134a0d6 peak 0.9661 rms 0.4036
+instr 0 Rolling Classic            ed522975f41556fe peak 0.9661 rms 0.3156
+instr 1 Full-On Pluck              28c0d3fd92a620a3 peak 0.9661 rms 0.3169
+instr 2 Dark Forest                d34435fd3c97985f peak 0.9661 rms 0.3058
+instr 3 Hi-Tech Zap                9c61c33fe0518ccd peak 0.9661 rms 0.2889
+instr 4 Acid Squelch               ed8c71191a6e09a4 peak 0.9661 rms 0.3212
+instr 5 Wide Reese                 24d11f7a85127b4b peak 0.9661 rms 0.3158
+instr 6 Sub Sine                   20fb2a3686457c7f peak 0.9661 rms 0.3095
