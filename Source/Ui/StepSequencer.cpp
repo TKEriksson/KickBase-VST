@@ -294,7 +294,7 @@ int StepSequencer::noteTickAt (int layer, int step) const
 Pattern::Note* StepSequencer::noteAt (int layer, int step) const
 {
     const auto tick = noteTickAt (layer, step);
-    return tick >= 0 ? &processor.pattern.note (layer, tick) : nullptr;
+    return tick >= 0 ? processor.pattern.existing (layer, tick) : nullptr;
 }
 
 bool StepSequencer::rowSilent (int layer) const
@@ -1140,10 +1140,9 @@ void StepSequencer::editAt (juce::Point<int> point, bool firstEvent)
                 const auto gateIndex = stepAt (point.x, dragLayer, gateSteps (dragLayer), gateOwnSteps (lengths(), dragLayer));
                 if (gateIndex < 0)
                     return;
-                auto& gateStep = processor.pattern.gateStep (dragLayer, gateIndex);
                 if (firstEvent)
-                    paintOn = ! gateStep.load();
-                gateStep = paintOn;
+                    paintOn = ! processor.pattern.isGateStepOn (dragLayer, gateIndex);
+                processor.pattern.setGateStep (dragLayer, gateIndex, paintOn);
                 break;
             }
             if (isCustom (dragLayer))

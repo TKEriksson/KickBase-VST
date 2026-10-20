@@ -1305,7 +1305,7 @@ namespace
             pattern.addNote (1, 96, 24, 7, 0.5f);
             pattern.addNote (1, 192, 48, -5, 0.9f, true);
             pattern.setCustom (1, true);
-            pattern.gateStep (1, 3) = false;
+            pattern.setGateStep (1, 3, false);
             pattern.addNote (2, 0, 24, 1, 0.8f);
             pattern.addNote (Pattern::kickLayer, 0, 24, 0, 1.0f);
             auto* gridParameter = processor.apvts.getParameter (ParamID::bass (1, InstrumentField::grid));

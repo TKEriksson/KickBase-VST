@@ -4,6 +4,8 @@
 #include <array>
 #include <vector>
 #include <atomic>
+#include <memory>
+#include "DeferredRelease.h"
 
 // Basens rutnät: upplösningen i stegsekvenseraren och förvalda "snap" i pianorullen.
 // Själva tonerna ligger fritt i tid (se Pattern::Note), så ett lager kan ha 16-delar, 8-delar
@@ -102,10 +104,22 @@ struct Pattern
     };
 
     Pattern() { applyTemplate (PatternTemplate::rolling); }
+    ~Pattern();
+    Pattern (const Pattern&) = delete;
+    Pattern& operator= (const Pattern&) = delete;
 
-    // Index utanför mönstret hamnar vid närmaste kant i stället för utanför minnet.
-    Note& note (int layer, int tick)             { return notes[noteIndex (layer, tick)]; }
-    const Note& note (int layer, int tick) const { return notes[noteIndex (layer, tick)]; }
+    // LAGRING (R9): tonerna ligger i block om en takt (ticksPerBar toner) per rad. En takt utan block har inga toner. Blocken allokeras av
+    // meddelandetråden när något skrivs dit (`edit`) och frigörs (DeferredRelease) när raden tömmer dem; ljudtråden läser bara (`note`, och
+    // allt annat const) och allokerar aldrig: en saknad takt läses som en tom ton. Pekartabellen per rad är fast (maxBars pekare).
+    //
+    // `note` läser (const, ljudtråden får använda den); `edit` ger en ton man kan skriva till och allokerar blocket vid behov (bara
+    // meddelandetråden). Index utanför mönstret hamnar vid närmaste kant i stället för utanför minnet.
+    const Note& note (int layer, int tick) const;
+    Note& edit (int layer, int tick);
+    // Tonen om dess takt har ett block, annars nullptr (skriv utan att allokera, t.ex. för att ta bort).
+    Note* existing (int layer, int tick);
+    // Hur många takter (från början) som har block för raden: ett snabbt sätt att slippa gå igenom tomma delar.
+    bool hasBar (int layer, int bar) const;
 
     // Första tonen som startar i [fromTick, toTick), eller -1.
     int firstNoteIn (int layer, int fromTick, int toTick) const;
@@ -117,15 +131,11 @@ struct Pattern
     double holdTicks (int layer, int tick, int patternTicks, float gateScale) const;
 
     // GATE: en egen av/på-rytm per lager (eget rutnät, bassNGateGrid) som hackar lagrets ljud. Öppet = true.
-    std::atomic<bool>& gateStep (int layer, int index)
-    {
-        return gate[(size_t) juce::jlimit (0, numLayers - 1, layer)][(size_t) juce::jlimit (0, maxGateSteps - 1, index)];
-    }
-    bool isGateStepOn (int layer, int index) const
-    {
-        return gate[(size_t) juce::jlimit (0, numLayers - 1, layer)][(size_t) juce::jlimit (0, maxGateSteps - 1, index)].load();
-    }
-    void setGate (int layer, bool open);
+    // Stegen ligger i block om gateBlockSteps steg; ett steg i ett block som saknas är öppet. Skriva (meddelandetråden): setGateStep.
+    bool isGateStepOn (int layer, int index) const;
+    void setGateStep (int layer, int index, bool open);
+    void setGateSteps (int layer, const juce::String& steps); // från en sträng med '1' = öppet, '0' = stängt (en siffra per steg), block för block
+    void setGate (int layer, bool open); // hela raden öppen (true: alla block frigörs) eller stängd
 
     // Ett lager med "pianorulle": tonerna redigeras i pianorullen (frihand i tid, höjd och glide) och visas som en
     // miniatyr i stället för stegknappar, som i FL Studio. Sätts när man redigerar i pianorullen, och nollställs
@@ -138,7 +148,11 @@ struct Pattern
 
     // Kicken som en rad ettor och punkter, `ticksPerStep` mellan stegen (för verktyg och tester).
     void setKickSteps (const juce::String& steps, int ticksPerStep);
-    void removeNote (int layer, int tick) { note (layer, tick).on = false; }
+    void removeNote (int layer, int tick)
+    {
+        if (auto* n = existing (layer, tick))
+            n->on = false;
+    }
     void clearNotes (int layer);
 
     // Fyller hela mönstret enligt en mall: kicken och första baslagret, övriga lager töms.
@@ -160,13 +174,28 @@ struct Pattern
     static inline const juce::Identifier treeType { "Pattern" };
     static constexpr int currentVersion = 6; // 6: upp till 10 instrument, kicken är lager 10 (före det lager 3); 5: kicken som notlager; 4: fria toner (ticks); 3: baslager med steg per rutnät
 
-private:
-    static size_t noteIndex (int layer, int tick)
-    {
-        return (size_t) juce::jlimit (0, numNoteLayers - 1, layer) * (size_t) maxTicks + (size_t) juce::jlimit (0, maxTicks - 1, tick);
-    }
+    static constexpr int gateBlockSteps = 64; // GATE-stegen i block om 64 (högst ett rutnät 1/64 per takt)
 
-    std::vector<Note> notes = std::vector<Note> ((size_t) numNoteLayers * (size_t) maxTicks); // på heapen: många MB på stacken räcker inte
-    std::array<std::array<std::atomic<bool>, maxGateSteps>, numLayers> gate {};
+private:
+    struct NoteBlock
+    {
+        std::array<Note, ticksPerBar> notes;
+    };
+    struct GateBlock
+    {
+        std::array<std::atomic<bool>, gateBlockSteps> steps;
+        GateBlock() { for (auto& step : steps) step = true; }
+    };
+
+    static int clampedLayer (int layer) { return juce::jlimit (0, numNoteLayers - 1, layer); }
+    static int clampedTick (int tick) { return juce::jlimit (0, maxTicks - 1, tick); }
+    const NoteBlock* blockOf (int layer, int bar) const { return noteBlocks[(size_t) clampedLayer (layer)][(size_t) juce::jlimit (0, maxBars - 1, bar)].load (std::memory_order_acquire); }
+    void releaseNoteBlocks (int layer, int fromBar); // blocken från och med takten frigörs (DeferredRelease)
+
+    static inline const Note emptyNote {};
+    std::array<std::array<std::atomic<NoteBlock*>, maxBars>, numNoteLayers> noteBlocks {};
+    std::array<std::array<std::atomic<GateBlock*>, maxGateSteps / gateBlockSteps>, numLayers> gateBlocks {};
+    DeferredRelease<NoteBlock> retiredNoteBlocks;
+    DeferredRelease<GateBlock> retiredGateBlocks;
     std::array<std::atomic<bool>, numNoteLayers> custom {};
 };

@@ -400,7 +400,7 @@ namespace Presets
             {
                 const auto tick = bar * Pattern::ticksPerBar + tweak.step * stepTicks;
                 const auto gate = tweak.gate >= 0.0f ? tweak.gate : Pattern::defaultGate;
-                auto& note = pattern.note (0, tick);
+                auto& note = pattern.edit (0, tick);
                 if (! note.on.load())
                     pattern.addNote (0, tick, juce::roundToInt (gate * (float) stepTicks));
                 note.pitch = tweak.pitch;

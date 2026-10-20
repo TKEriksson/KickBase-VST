@@ -778,15 +778,15 @@ void PianoRoll::applyNotes (const NoteMap& target)
     auto& pattern = processor.pattern;
     for (int tick = 0; tick < Pattern::maxTicks; ++tick)
     {
-        auto& n = pattern.note (layer, tick);
         const auto found = target.find (tick);
         if (found == target.end())
         {
-            if (n.on.load())
-                n.on = false;
+            if (auto* gone = pattern.existing (layer, tick); gone != nullptr && gone->on.load())
+                gone->on = false;
             continue;
         }
 
+        auto& n = pattern.edit (layer, tick);
         const auto& d = found->second;
         if (n.length.load() != d.length) n.length = d.length;
         if (n.pitch.load() != d.pitch) n.pitch = d.pitch;
@@ -1411,7 +1411,7 @@ void PianoRoll::mouseDrag (const juce::MouseEvent& event)
 
     if (drag == Drag::velocity)
     {
-        pattern.note (layer, dragTick).velocity = juce::jlimit (0.02f, 1.0f, 1.0f - (event.position.y - velocityArea.getY() - 3.0f) / (velocityArea.getHeight() - 6.0f));
+        pattern.edit (layer, dragTick).velocity = juce::jlimit (0.02f, 1.0f, 1.0f - (event.position.y - velocityArea.getY() - 3.0f) / (velocityArea.getHeight() - 6.0f));
         edited = true;
         repaint();
         return;
@@ -1505,7 +1505,7 @@ void PianoRoll::mouseDoubleClick (const juce::MouseEvent& event)
     auto targets = selection.count (tick) > 0 ? selection : std::set<int> { tick };
     const auto turnOn = ! processor.pattern.note (layer, tick).slide.load();
     for (const auto t : targets)
-        processor.pattern.note (layer, t).slide = turnOn;
+        processor.pattern.edit (layer, t).slide = turnOn;
     commit();
     repaint();
 }

@@ -732,7 +732,7 @@ namespace
         pattern.applyTemplate (PatternTemplate::rolling);
         check (pattern.isGateStepOn (0, 5) && ! pattern.isCustom (0), "gaten är öppen och lagret är ett stegmönster som standard");
 
-        pattern.gateStep (1, 7) = false;
+        pattern.setGateStep (1, 7, false);
         pattern.addNote (2, 0, 24, 5);
         pattern.setCustom (2, true);
 

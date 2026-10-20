@@ -673,6 +673,12 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
     envelope.addHandle ({ [this] { return juce::Point<float> ((float) noteOffNow().seconds + current.releaseMs * 0.001f, 0.0f); },
                           param (p, id (F::release)), nullptr, false, Theme::text });
     addAndMakeVisible (envelope);
+    envelopeListen.setAccent (layerAccent);
+    envelopeListen.setTooltip ("LISTEN - Hold to hear this instrument on the preview note (the PREVIEWS note at the top) for as long as you hold; it starts over if the sound "
+                               "ends. Double-click to keep it playing until you click again. Use it while you drag the handles.");
+    envelopeListen.onStart = [this] { hold.start (PluginBase::heldLayerAudition (layer)); };
+    envelopeListen.onStop = [this] { hold.stop(); };
+    addAndMakeVisible (envelopeListen);
 
     // Källorna i flikar: OSC 1, OSC 2, OSC 3 och SAMPLE, var och en med en på/av-knapp på fliken.
     for (int osc = 0; osc < ParamID::oscsPerLayer; ++osc)
@@ -1041,6 +1047,7 @@ void InstrumentModule::resized()
 
     auto leftColumn = area.removeFromLeft (220);
     envelope.setBounds (leftColumn.reduced (0, 2));
+    envelopeListen.setBounds (envelope.getRight() - 40, envelope.getY() + 4, 36, 24); // högtalaren i grafens övre högra hörn
     area.removeFromLeft (6);
 
     // Raderna, sedan dragspelet MODULATION (en rad till när det är öppet).
@@ -1525,7 +1532,7 @@ void PatternModule::extendRow (int row, int beforeBars, int nowBars, bool repeat
     const auto oldTicks = beforeBars * Pattern::ticksPerBar, newTicks = nowBars * Pattern::ticksPerBar;
     for (int tick = oldTicks; tick < newTicks && tick < Pattern::maxTicks; ++tick)
     {
-        auto& note = pattern.note (layer, tick);
+        auto& note = pattern.edit (layer, tick);
         const auto& source = pattern.note (layer, tick % oldTicks);
         if (repeat && source.on.load())
         {
@@ -1544,7 +1551,7 @@ void PatternModule::extendRow (int row, int beforeBars, int nowBars, bool repeat
             (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, InstrumentField::gateGrid))->load()));
         const auto oldSteps = beforeBars * stepsPerBar, newSteps = nowBars * stepsPerBar;
         for (int step = oldSteps; step < newSteps && step < Pattern::maxGateSteps; ++step)
-            pattern.gateStep (layer, step) = repeat ? pattern.isGateStepOn (layer, step % oldSteps) : true;
+            pattern.setGateStep (layer, step, repeat ? pattern.isGateStepOn (layer, step % oldSteps) : true);
     }
     processor.patternChanged();
 }
@@ -1555,13 +1562,13 @@ void PatternModule::trimRow (int row, int bars)
     const auto limit = bars * Pattern::ticksPerBar;
     for (int tick = 0; tick < Pattern::maxTicks; ++tick)
     {
-        auto& note = processor.pattern.note (layer, tick);
-        if (! note.on.load())
+        auto* found = processor.pattern.existing (layer, tick);
+        if (found == nullptr || ! found->on.load())
             continue;
         if (tick >= limit)
-            note.on = false;
-        else if (tick + note.length.load() > limit)
-            note.length = limit - tick; // en ton som går över slutet kortas
+            found->on = false;
+        else if (tick + found->length.load() > limit)
+            found->length = limit - tick; // en ton som går över slutet kortas
     }
     processor.patternChanged();
 }
@@ -1894,7 +1901,7 @@ void PatternModule::showGateFillMenu()
         {
             const auto step = i % stepsPerBar;
             const auto open = result == 1 || (result == 2 && step % 2 == 0) || (result == 3 && step % 2 == 1) || (result == 4 && step % 4 != 3);
-            p.pattern.gateStep (layer, i) = open;
+            p.pattern.setGateStep (layer, i, open);
         }
         if (auto* on = p.apvts.getParameter (ParamID::bass (layer, InstrumentField::gateOn)))
             Presets::setParameter (*on, 1.0f); // en fylld gate är till för att höras

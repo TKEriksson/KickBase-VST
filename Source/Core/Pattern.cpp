@@ -21,11 +21,95 @@ double Pattern::instrumentStepsPerQuarter (InstrumentGrid grid)
     return instrumentStepsPerBar (grid) / 4.0;
 }
 
+Pattern::~Pattern()
+{
+    for (auto& row : noteBlocks)
+        for (auto& block : row)
+            delete block.load();
+    for (auto& row : gateBlocks)
+        for (auto& block : row)
+            delete block.load();
+}
+
+const Pattern::Note& Pattern::note (int layer, int tick) const
+{
+    tick = clampedTick (tick);
+    const auto* block = blockOf (layer, tick / ticksPerBar);
+    return block != nullptr ? block->notes[(size_t) (tick % ticksPerBar)] : emptyNote;
+}
+
+Pattern::Note& Pattern::edit (int layer, int tick)
+{
+    layer = clampedLayer (layer);
+    tick = clampedTick (tick);
+    auto& slot = noteBlocks[(size_t) layer][(size_t) (tick / ticksPerBar)];
+    auto* block = slot.load (std::memory_order_acquire);
+    if (block == nullptr)
+    {
+        block = new NoteBlock();
+        slot.store (block, std::memory_order_release); // bara meddelandetråden skriver pekaren
+    }
+    return block->notes[(size_t) (tick % ticksPerBar)];
+}
+
+Pattern::Note* Pattern::existing (int layer, int tick)
+{
+    tick = clampedTick (tick);
+    auto* block = noteBlocks[(size_t) clampedLayer (layer)][(size_t) (tick / ticksPerBar)].load (std::memory_order_acquire);
+    return block != nullptr ? &block->notes[(size_t) (tick % ticksPerBar)] : nullptr;
+}
+
+bool Pattern::hasBar (int layer, int bar) const
+{
+    return juce::isPositiveAndBelow (bar, maxBars) && blockOf (layer, bar) != nullptr;
+}
+
+void Pattern::releaseNoteBlocks (int layer, int fromBar)
+{
+    for (int bar = std::max (0, fromBar); bar < maxBars; ++bar)
+        if (auto* block = noteBlocks[(size_t) clampedLayer (layer)][(size_t) bar].exchange (nullptr, std::memory_order_acq_rel))
+            retiredNoteBlocks.retire (std::unique_ptr<NoteBlock> (block)); // ljudtråden kan läsa blocket just nu: det frigörs först senare
+}
+
+bool Pattern::isGateStepOn (int layer, int index) const
+{
+    index = juce::jlimit (0, maxGateSteps - 1, index);
+    const auto* block = gateBlocks[(size_t) juce::jlimit (0, numLayers - 1, layer)][(size_t) (index / gateBlockSteps)].load (std::memory_order_acquire);
+    return block == nullptr || block->steps[(size_t) (index % gateBlockSteps)].load();
+}
+
+void Pattern::setGateStep (int layer, int index, bool open)
+{
+    layer = juce::jlimit (0, numLayers - 1, layer);
+    index = juce::jlimit (0, maxGateSteps - 1, index);
+    auto& slot = gateBlocks[(size_t) layer][(size_t) (index / gateBlockSteps)];
+    auto* block = slot.load (std::memory_order_acquire);
+    if (block == nullptr)
+    {
+        if (open)
+            return; // ett block som saknas är redan öppet
+        block = new GateBlock();
+        slot.store (block, std::memory_order_release);
+    }
+    block->steps[(size_t) (index % gateBlockSteps)] = open;
+}
+
 int Pattern::firstNoteIn (int layer, int fromTick, int toTick) const
 {
-    for (int tick = std::max (0, fromTick); tick < std::min (maxTicks, toTick); ++tick)
-        if (note (layer, tick).on.load())
-            return tick;
+    toTick = std::min (maxTicks, toTick);
+    for (int tick = std::max (0, fromTick); tick < toTick;)
+    {
+        const auto* block = blockOf (layer, tick / ticksPerBar);
+        const auto barEnd = (tick / ticksPerBar + 1) * ticksPerBar;
+        if (block == nullptr)
+        {
+            tick = barEnd; // en takt utan block har inga toner
+            continue;
+        }
+        for (; tick < barEnd && tick < toTick; ++tick)
+            if (block->notes[(size_t) (tick % ticksPerBar)].on.load())
+                return tick;
+    }
     return -1;
 }
 
@@ -46,7 +130,7 @@ double Pattern::holdTicks (int layer, int tick, int patternTicks, float gateScal
 
 Pattern::Note& Pattern::addNote (int layer, int tick, int length, int pitch, float velocity, bool slide)
 {
-    auto& n = note (layer, tick);
+    auto& n = edit (layer, tick);
     n.length = juce::jlimit (1, maxTicks, length);
     n.pitch = juce::jlimit (minPitch, maxPitch, pitch);
     n.velocity = juce::jlimit (0.0f, 1.0f, velocity);
@@ -55,10 +139,59 @@ Pattern::Note& Pattern::addNote (int layer, int tick, int length, int pitch, flo
     return n;
 }
 
+void Pattern::setGateSteps (int layer, const juce::String& steps)
+{
+    // Block för block, på plats: ljudtråden ser aldrig en halvfärdig rad (och inget "alla öppna" mellan två laddningar). Steg som strängen inte
+    // nämner är öppna.
+    layer = juce::jlimit (0, numLayers - 1, layer);
+    const auto text = steps.toStdString(); // bara '0' och '1': ett byte per steg
+    for (int chunk = 0; chunk < maxGateSteps / gateBlockSteps; ++chunk)
+    {
+        std::array<bool, gateBlockSteps> wanted;
+        auto allOpen = true;
+        for (int i = 0; i < gateBlockSteps; ++i)
+        {
+            const auto index = (size_t) (chunk * gateBlockSteps + i);
+            wanted[(size_t) i] = index >= text.size() || text[index] != '0';
+            allOpen = allOpen && wanted[(size_t) i];
+        }
+
+        auto& slot = gateBlocks[(size_t) layer][(size_t) chunk];
+        if (allOpen)
+        {
+            if (auto* block = slot.exchange (nullptr, std::memory_order_acq_rel))
+                retiredGateBlocks.retire (std::unique_ptr<GateBlock> (block));
+            continue;
+        }
+        auto* block = slot.load (std::memory_order_acquire);
+        if (block == nullptr)
+        {
+            block = new GateBlock();
+            slot.store (block, std::memory_order_release);
+        }
+        for (int i = 0; i < gateBlockSteps; ++i)
+            block->steps[(size_t) i] = wanted[(size_t) i];
+    }
+}
+
 void Pattern::setGate (int layer, bool open)
 {
-    for (auto& step : gate[(size_t) juce::jlimit (0, numLayers - 1, layer)])
-        step = open;
+    layer = juce::jlimit (0, numLayers - 1, layer);
+    for (auto& slot : gateBlocks[(size_t) layer])
+    {
+        if (open)
+        {
+            // Öppen = inga block (ett block som saknas är öppet). Ljudtråden kan läsa dem just nu: DeferredRelease.
+            if (auto* block = slot.exchange (nullptr, std::memory_order_acq_rel))
+                retiredGateBlocks.retire (std::unique_ptr<GateBlock> (block));
+        }
+        else if (slot.load() == nullptr)
+            slot.store (new GateBlock(), std::memory_order_release);
+
+        if (! open)
+            for (auto& step : slot.load()->steps)
+                step = false;
+    }
 }
 
 void Pattern::setKickSteps (const juce::String& steps, int stepTicks)
@@ -73,15 +206,7 @@ void Pattern::clearNotes (int layer)
 {
     layer = juce::jlimit (0, numNoteLayers - 1, layer);
     custom[(size_t) layer] = false;
-    for (int tick = 0; tick < maxTicks; ++tick)
-    {
-        auto& n = note (layer, tick);
-        n.on = false;
-        n.length = 24;
-        n.pitch = 0;
-        n.slide = false;
-        n.velocity = 0.8f;
-    }
+    releaseNoteBlocks (layer, 0); // en rad utan toner har inga block
 }
 
 InstrumentGrid Pattern::applyTemplate (PatternTemplate t, bool keepOtherInstruments)
@@ -152,6 +277,11 @@ juce::ValueTree Pattern::toValueTree() const
         juce::StringArray entries;
         for (int tick = 0; tick < maxTicks; ++tick)
         {
+            if (! hasBar (layer, tick / ticksPerBar))
+            {
+                tick = (tick / ticksPerBar + 1) * ticksPerBar - 1; // en takt utan block har inga toner
+                continue;
+            }
             const auto& n = note (layer, tick);
             if (n.on.load())
                 entries.add (juce::String (tick) + "/" + juce::String (n.length.load()) + "/" + juce::String (n.pitch.load()) + "/"
@@ -251,10 +381,7 @@ void Pattern::fromValueTree (const juce::ValueTree& tree, bool clearUnmentionedL
         {
             // Tecken för tecken med en pekare: String::operator[] och length() går igenom UTF-8-texten från början varje gång, vilket gjorde
             // det här kvadratiskt (4096 steg per lager) och tog nära en sekund varje gång ett tillstånd laddades.
-            const auto steps = child["steps"].toString();
-            auto character = steps.getCharPointer();
-            for (int i = 0; i < maxGateSteps && ! character.isEmpty(); ++i)
-                gateStep (layer, i) = character.getAndAdvance() != '0';
+            setGateSteps (layer, child["steps"].toString());
         }
         else if (child.hasType ("Notes"))
         {

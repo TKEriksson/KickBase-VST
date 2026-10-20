@@ -795,7 +795,7 @@ var ToolLayer::setGate (const var& args)
         {
             const auto text = (*bars)[bar % bars->size()].toString().retainCharacters ("xX.");
             for (int step = 0; step < stepsPerBar; ++step)
-                processor.pattern.gateStep (layer, bar * stepsPerBar + step) = step < text.length() ? text[step] != '.' : true;
+                processor.pattern.setGateStep (layer, bar * stepsPerBar + step, step < text.length() ? text[step] != '.' : true);
         }
     }
     else if (args.hasProperty ("all"))
