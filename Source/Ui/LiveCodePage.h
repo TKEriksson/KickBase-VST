@@ -17,6 +17,7 @@ public:
     void resized() override;
 
     // Anslutningspunkter: sätts av den som vill veta (t.ex. för att uppdatera pianorullen).
+    bool confirmCreate = true; // CREATE visar en bekräftelseruta; testerna stänger av den
     std::function<void()> onPatternChanged;
     std::function<void (const juce::String& error)> onError;
 
@@ -28,9 +29,16 @@ private:
     void setPlaying (bool shouldPlay);
     void runNow();
     void create();
+    void finishCreate (const juce::var& result);
     void showError (const juce::String& text);
+    bool apply (const juce::var& items, bool overwrite); // skriver raderna; frågar först om handritade toner skulle skrivas över
+    void warnOverwrite (const juce::var& conflicts, std::function<void (bool overwrite)> retry);
+    void syncLocks();
+    void visibilityChanged() override { syncLocks(); }
 
+    PluginBase& processor;
     ToolLayer tools;
+    bool warningOpen = false; // en varning i taget; LIVE väntar tills den är besvarad
     LiveCodeRunner runner;
     bool playing = false;
 
@@ -43,6 +51,8 @@ private:
     int errorCount = 0;
     juce::TextButton codeTab { "KOD" }, errorTab { "FEL" };
     juce::TextButton playButton { "LIVE" }, stopButton { "STOP" }, createButton { "CREATE" }; // LIVE är av/på
+    juce::Label lockLabel; // LÅS: 1-10 = instrument, K = kicken; en låst rad rör Live Code aldrig
+    std::array<juce::TextButton, 11> lockButtons;
     juce::Label errorLabel, licenseLabel;
     juce::HyperlinkButton strudelLink { "strudel.cc", juce::URL ("https://strudel.cc") };
 };

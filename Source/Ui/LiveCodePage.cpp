@@ -6,7 +6,7 @@ namespace
     constexpr int debounceMs = 400;
 }
 
-LiveCodePage::LiveCodePage (PluginBase& processor) : tools (processor)
+LiveCodePage::LiveCodePage (PluginBase& processor) : processor (processor), tools (processor)
 {
     editor.setFont (juce::Font (juce::FontOptions (juce::Font::getDefaultMonospacedFontName(), 15.0f, juce::Font::plain)));
     editor.setTabSize (2, true);
@@ -46,6 +46,29 @@ LiveCodePage::LiveCodePage (PluginBase& processor) : tools (processor)
     for (auto* b : { &playButton, &stopButton, &createButton })
         addAndMakeVisible (b);
 
+    lockLabel.setText ("LOCK:", juce::dontSendNotification);
+    lockLabel.setColour (juce::Label::textColourId, Theme::textDim);
+    lockLabel.setFont (Theme::font (11.0f, true));
+    addAndMakeVisible (lockLabel);
+    for (size_t i = 0; i < lockButtons.size(); ++i)
+    {
+        auto& b = lockButtons[i];
+        const auto layer = i == 10 ? (int) Pattern::kickLayer : (int) i;
+        b.setButtonText (i == 10 ? "K" : juce::String (i + 1));
+        b.setClickingTogglesState (true);
+        b.setColour (juce::TextButton::buttonOnColourId, Theme::mix.darker (0.2f));
+        b.setTooltip ("Lock this row: Live Code never writes it");
+        b.onClick = [this, layer, &b]
+        {
+            auto args = juce::var (new juce::DynamicObject());
+            args.getDynamicObject()->setProperty ("layer", layer == Pattern::kickLayer ? juce::var ("kick") : juce::var (layer));
+            args.getDynamicObject()->setProperty ("locked", b.getToggleState());
+            tools.call ("live_code_lock", args);
+        };
+        addAndMakeVisible (b);
+    }
+    syncLocks();
+
     errorLabel.setColour (juce::Label::textColourId, juce::Colour (0xffff9a9a));
     errorLabel.setFont (Theme::font (12.0f));
     addAndMakeVisible (errorLabel);
@@ -81,7 +104,15 @@ void LiveCodePage::resized()
     stopButton.setBounds (top.removeFromLeft (80));
     top.removeFromLeft (6);
     createButton.setBounds (top.removeFromLeft (90));
-    area.removeFromTop (8);
+    area.removeFromTop (6);
+    auto locks = area.removeFromTop (22);
+    lockLabel.setBounds (locks.removeFromLeft (50));
+    for (auto& b : lockButtons)
+    {
+        b.setBounds (locks.removeFromLeft (26));
+        locks.removeFromLeft (2);
+    }
+    area.removeFromTop (6);
     auto tabs = area.removeFromTop (24);
     codeTab.setBounds (tabs.removeFromLeft (70));
     tabs.removeFromLeft (4);
@@ -138,6 +169,13 @@ void LiveCodePage::timerCallback()
     runNow();
 }
 
+void LiveCodePage::syncLocks()
+{
+    const auto locks = processor.liveCodeLocks.load();
+    for (size_t i = 0; i < lockButtons.size(); ++i)
+        lockButtons[i].setToggleState ((locks & ToolLayer::liveCodeBit (i == 10 ? (int) Pattern::kickLayer : (int) i)) != 0, juce::dontSendNotification);
+}
+
 void LiveCodePage::runNow()
 {
     runner.run (document.getAllContent(), cycles, [this] (const juce::var& list, const juce::String& error)
@@ -146,30 +184,137 @@ void LiveCodePage::runNow()
             return showError (error);
 
         showError ({});
-        // set_pattern tar själv en ångra-punkt före varje ändring.
-        if (auto* items = list.getArray())
-            for (const auto& item : *items)
-            {
-                const auto result = tools.call ("set_pattern", item);
-                if (! (bool) result["ok"])
-                    return showError (result["error"].toString());
-            }
-        if (onPatternChanged)
-            onPatternChanged();
+        apply (list, false);
+    });
+}
+
+// Skriver raderna via live_code_apply. Handritade toner som skulle skrivas över ger en fråga (en i taget) i stället för att tyst försvinna.
+bool LiveCodePage::apply (const juce::var& items, bool overwrite)
+{
+    if (warningOpen)
+        return false;
+    auto args = juce::var (new juce::DynamicObject());
+    args.getDynamicObject()->setProperty ("items", items);
+    args.getDynamicObject()->setProperty ("overwrite", overwrite);
+    const auto result = tools.call ("live_code_apply", args);
+    if (! (bool) result["ok"])
+    {
+        if (auto* conflicts = result["conflicts"].getArray(); conflicts != nullptr && ! conflicts->isEmpty())
+            warnOverwrite (result["conflicts"], [this, items] (bool ow) { apply (items, ow); });
+        else
+            showError (result["error"].toString());
+        return false;
+    }
+    syncLocks();
+    if (onPatternChanged)
+        onPatternChanged();
+    return true;
+}
+
+void LiveCodePage::warnOverwrite (const juce::var& conflicts, std::function<void (bool overwrite)> retry)
+{
+    juce::StringArray names;
+    if (auto* a = conflicts.getArray())
+        for (auto& c : *a)
+            names.add (c.toString().equalsIgnoreCase ("kick") ? juce::String ("kick") : "instrument " + juce::String ((int) c + 1));
+
+    warningOpen = true;
+    const auto options = juce::MessageBoxOptions()
+        .withIconType (juce::MessageBoxIconType::WarningIcon)
+        .withTitle ("Live Code")
+        .withMessage ("The code wants to write " + names.joinIntoString (", ") + ", which already has notes you drew.\n\n"
+                      "Overwrite replaces them (undo works). Lock keeps them safe and Live Code skips those rows.")
+        .withButton ("Overwrite")
+        .withButton ("Lock these")
+        .withButton ("Cancel");
+    juce::Component::SafePointer<LiveCodePage> safe (this);
+    juce::AlertWindow::showAsync (options, [safe, conflicts, retry] (int button)
+    {
+        if (safe == nullptr)
+            return;
+        safe->warningOpen = false;
+        if (button == 1) // första knappen = 1, andra = 2, sista = 0
+            retry (true);
+        else if (button == 2)
+        {
+            if (auto* a = conflicts.getArray())
+                for (auto& c : *a)
+                {
+                    auto args = juce::var (new juce::DynamicObject());
+                    args.getDynamicObject()->setProperty ("layer", c);
+                    safe->tools.call ("live_code_lock", args);
+                }
+            safe->syncLocks();
+            retry (false);
+        }
+        else if (safe->playing) // Avbryt: sluta lyssna så att frågan inte kommer tillbaka vid nästa ändring
+        {
+            safe->playButton.setToggleState (false, juce::dontSendNotification);
+            safe->setPlaying (false);
+        }
     });
 }
 
 void LiveCodePage::create()
 {
+    runner.cancel();
     auto args = juce::var (new juce::DynamicObject());
     args.getDynamicObject()->setProperty ("code", document.getAllContent());
     args.getDynamicObject()->setProperty ("cycles", cycles);
     const auto result = tools.call ("live_code_create", args);
     if (! (bool) result["ok"])
+    {
+        if (auto* conflicts = result["conflicts"].getArray(); conflicts != nullptr && ! conflicts->isEmpty() && ! warningOpen)
+        {
+            warnOverwrite (result["conflicts"], [this] (bool ow)
+            {
+                auto a = juce::var (new juce::DynamicObject());
+                a.getDynamicObject()->setProperty ("code", document.getAllContent());
+                a.getDynamicObject()->setProperty ("cycles", cycles);
+                a.getDynamicObject()->setProperty ("overwrite", true);
+                const auto r = tools.call ("live_code_create", a);
+                if (! (bool) r["ok"])
+                    return showError (r["error"].toString());
+                finishCreate (r);
+            });
+            return;
+        }
         return showError (result["error"].toString());
+    }
+    finishCreate (result);
+}
+
+// Efter lyckad CREATE: uppdatera sidan och berätta vad som skrevs, vilka rader som hoppades över (låsta) och vilka som inte kunde köras.
+void LiveCodePage::finishCreate (const juce::var& result)
+{
+    syncLocks();
     showError ({});
     if (onPatternChanged)
         onPatternChanged();
+    if (! confirmCreate)
+        return;
+
+    auto rowNames = [] (const juce::var& list)
+    {
+        juce::StringArray names;
+        if (auto* a = list.getArray())
+            for (auto& c : *a)
+                names.add (c.toString().equalsIgnoreCase ("kick") || (c.isInt() && (int) c == (int) Pattern::kickLayer) ? juce::String ("kick") : "instrument " + juce::String ((int) c + 1));
+        return names;
+    };
+    const auto data = result["data"];
+    const auto written = rowNames (data["layers"]);
+    const auto skipped = rowNames (data["skipped_locked"]);
+    auto message = juce::String ("The code ran.\n\n");
+    message << (written.isEmpty() ? juce::String ("No rows were written.") : "Written: " + written.joinIntoString (", ") + ".");
+    if (! skipped.isEmpty())
+        message << "\n\nCould not run (locked, skipped): " + skipped.joinIntoString (", ") + ".";
+    juce::AlertWindow::showAsync (juce::MessageBoxOptions()
+                                      .withIconType (skipped.isEmpty() ? juce::MessageBoxIconType::InfoIcon : juce::MessageBoxIconType::WarningIcon)
+                                      .withTitle ("Live Code")
+                                      .withMessage (message)
+                                      .withButton ("OK"),
+                                  nullptr);
 }
 
 void LiveCodePage::showError (const juce::String& text)

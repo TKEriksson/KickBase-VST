@@ -272,6 +272,7 @@ namespace
             auto* args = new juce::DynamicObject();
             args->setProperty ("code", code);
             args->setProperty ("cycles", cycles);
+            args->setProperty ("overwrite", true); // standardmönstret har egna toner; skyddet testas separat i blocket "Skydd"
             return tools.call ("live_code_create", juce::var (args));
         };
         auto& pattern = processor.pattern;
@@ -303,6 +304,7 @@ namespace
         {
             LiveCodePage page (processor);
             page.setBounds (0, 0, 600, 400);
+            page.confirmCreate = false; // en modal ruta skulle blockera testet
             juce::CodeEditorComponent* code = nullptr;
             juce::TextButton *play = nullptr, *stop = nullptr, *create = nullptr;
             for (auto* c : page.getChildren())
@@ -355,11 +357,56 @@ namespace
 
                 // flera satser: const, $:-block och blockslut vid tom rad
                 pattern.clearNotes (0);
+                pattern.clearNotes (Pattern::kickLayer); // sidans CREATE har ingen overwrite: tomma rader ger ingen fråga
                 code->getDocument().replaceAllContent ("const n = \"c2,e2\"\n$: note(n).s(\"i1\")\n\n$: s(\"bd*4\")");
                 create->triggerClick();
                 runFor (200);
                 check (pattern.stackSize (0, 0) == 2, "CREATE: const och flera $:-block fungerar");
             }
+        }
+
+        // Skydd: lås, handritade rader och overwrite (samma regler för UI och AI).
+        {
+            ToolLayer tools (processor);
+            auto make = [] (std::initializer_list<std::pair<const char*, juce::var>> props)
+            {
+                auto* o = new juce::DynamicObject();
+                for (auto& p : props)
+                    o->setProperty (p.first, p.second);
+                return juce::var (o);
+            };
+            auto create = [&] (const juce::String& code, bool overwrite)
+            {
+                return tools.call ("live_code_create", make ({ { "code", code }, { "cycles", 1 }, { "overwrite", overwrite } }));
+            };
+            tools.call ("live_code_lock", make ({ { "layer", 0 }, { "locked", false } }));
+            tools.call ("live_code_lock", make ({ { "layer", "kick" }, { "locked", false } }));
+            processor.liveCodeOwned = 0;
+            pattern.clearNotes (0);
+
+            auto& handNote = pattern.edit (0, 0); // en handritad ton
+            handNote.on = true;
+            handNote.pitch = 5;
+            r = create ("note(\"c2\").s(\"i1\")", false);
+            check (! (bool) r["ok"] && r["conflicts"].getArray() != nullptr && r["conflicts"].getArray()->size() == 1, "handritad rad: fel med conflicts-lista utan overwrite");
+            check (pattern.note (0, 0).pitch.load() == 5, "handritad rad: ingenting ändrades vid konflikt");
+            r = create ("note(\"c2\").s(\"i1\")", true);
+            check ((bool) r["ok"] && pattern.note (0, 0).pitch.load() == 0, "overwrite:true skriver över");
+            r = create ("note(\"e2\").s(\"i1\")", false);
+            check ((bool) r["ok"] && pattern.note (0, 0).pitch.load() == 4, "rad som Live Code skrev själv skrivs över utan fråga");
+
+            tools.call ("live_code_lock", make ({ { "layer", 0 } }));
+            r = create ("note(\"g2\").s(\"i1\")", false);
+            check ((bool) r["ok"] && pattern.note (0, 0).pitch.load() == 4, "låst rad hoppas över");
+            check (processor.liveCodeLocks.load() == ToolLayer::liveCodeBit (0), "låsbiten är satt");
+            tools.call ("live_code_lock", make ({ { "layer", 0 }, { "locked", false } }));
+            check (! (bool) tools.call ("live_code_lock", make ({ { "layer", 11 } }))["ok"], "ogiltig rad i live_code_lock ger fel");
+
+            auto described = false;
+            for (auto& t : ToolLayer::tools())
+                if (t.name == "live_code_create")
+                    described = t.description.contains ("overwrite") && t.description.contains ("live_code_lock") && t.description.contains ("$:");
+            check (described, "live_code_create beskriver overwrite, live_code_lock och $:");
         }
 
         int pitch = 0;
