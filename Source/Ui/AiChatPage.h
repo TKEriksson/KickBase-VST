@@ -35,6 +35,7 @@ private:
 
     void timerCallback() override;
     void refresh();
+    void showChatsMenu();
     void send (const juce::String& text);
     void showSetup (bool show);
     void saveKey();
@@ -61,7 +62,7 @@ private:
     juce::Label title, status, setupTitle, setupText, testResult, confirmLabel;
     juce::ComboBox modelBox, costBox;
     juce::TextButton runButton { "RUN" }, skipButton { "SKIP" }, runAlwaysButton { "RUN, DON'T ASK AGAIN" };
-    juce::TextButton keyButton { "KEY" }, newChatButton { "NEW CHAT" }, undoButton { "UNDO" }, sendButton { "SEND" }, stopButton { "STOP" };
+    juce::TextButton keyButton { "KEY" }, newChatButton { "NEW CHAT" }, chatsButton { "CHATS" },undoButton { "UNDO" }, sendButton { "SEND" }, stopButton { "STOP" };
     juce::TextButton saveKeyButton { "SAVE KEY" }, cancelKeyButton { "CANCEL" }, removeKeyButton { "REMOVE KEY" };
     juce::TextButton anthropicButton { "ANTHROPIC (paid key)" }, geminiButton { "GEMINI (free option)" }, guideButton { "GET A FREE KEY (GUIDE)" };
     std::array<juce::TextButton, 3> suggestions;

@@ -32,6 +32,7 @@ public:
         int oldResultChars;    // längd på ett gammalt verktygsresultat
         int resultChars;       // längd på ett nytt verktygsresultat
         bool confirmHeavy;     // fråga innan render_preview/analyze_audio
+        int autoCleanChars;    // över så här stor historik (utan bilder) sparas och exporteras samtalet, och de äldsta frågorna tas bort
     };
     static Limits limits (int costMode);
     static juce::Array<juce::var> trimForRequest (const juce::Array<juce::var>& messages, const Limits& limits); // en kopia; historiken rörs inte
@@ -55,8 +56,27 @@ public:
     juce::String getPendingConfirm() const;
     void answerConfirm (int answer);
 
+    // Sessioner: hela samtalet sparas som en JSON-fil (utan bilder) i Chats-mappen och kan öppnas igen; exportText skriver det läsbara samtalet
+    // till en textfil. Nycklarna lämnar aldrig datorn i filerna: redact tar bort dem (och alla "key=..." i adresser) ur all text som skrivs.
+    // Rörs inte medan chatten arbetar (returnerar false).
+    struct SessionInfo
+    {
+        juce::File file;
+        juce::String title;
+        juce::Time saved;
+    };
+    static juce::File sessionsFolder();                 // Settings "chatsFolder", annars Kickbase/Chats
+    static std::vector<SessionInfo> listSessions();     // nyaste först
+    static juce::String redact (juce::String text);
+    bool hasConversation() const { return ! messages.isEmpty(); }
+    bool saveSession (juce::File& savedTo);
+    bool loadSession (const juce::File& file);
+    bool exportText (juce::File& exportedTo);
+
 private:
     void run() override;
+    void autoClean (const Limits& limits);             // före en ny fråga: sparar + exporterar och tar bort de äldsta frågorna när historiken är för stor
+    juce::String conversationTitle() const;
     void setStatus (const juce::String& text);
     static juce::String activeKey();         // nyckeln för vald leverantör (Settings::chatProvider); Gemini-delen finns i AiProvider.h
     juce::var buildRequest (const Limits& limits) const;

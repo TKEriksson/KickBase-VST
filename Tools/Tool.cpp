@@ -1410,6 +1410,121 @@ namespace
                 check (! sawPending && ! body.contains ("skipped this tool"), "Rik: ingen varning");
         }
 
+        // Sessioner: spara, öppna, exportera och autorensa; nycklarna får aldrig hamna i filerna.
+        {
+            const auto folder = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("kickbase_chat_sessions_test");
+            folder.deleteRecursively();
+            folder.createDirectory();
+            Settings::set ("chatsFolder", folder.getFullPathName());
+            const juce::String secret = "sk-ant-TESTSECRET12345678";
+            Settings::setChatApiKey (secret);
+            Settings::setChatCostMode (0);
+
+            juce::StreamingSocket listener;
+            const auto port = 18771;
+            if (listener.createListener (port, "127.0.0.1"))
+            {
+                std::atomic<bool> stopServer { false };
+                std::thread server ([&]
+                {
+                    while (! stopServer)
+                    {
+                        std::unique_ptr<juce::StreamingSocket> client (listener.waitForNextConnection());
+                        if (client == nullptr || stopServer)
+                            continue;
+                        std::string request;
+                        char byte;
+                        auto headerEnd = std::string::npos;
+                        while (headerEnd == std::string::npos && client->read (&byte, 1, true) == 1)
+                        {
+                            request.push_back (byte);
+                            headerEnd = request.find ("\r\n\r\n");
+                        }
+                        auto length = 0;
+                        auto lower = request;
+                        std::transform (lower.begin(), lower.end(), lower.begin(), [] (unsigned char c) { return (char) std::tolower (c); });
+                        if (const auto at = lower.find ("content-length:"); at != std::string::npos)
+                            length = std::atoi (request.c_str() + at + 15);
+                        for (int i = 0; i < length && client->read (&byte, 1, true) == 1; ++i) {}
+
+                        const juce::String reply = R"({"type":"message","role":"assistant","stop_reason":"end_turn","usage":{"input_tokens":10,"output_tokens":5},"content":[{"type":"text","text":"see https://x.test/v1?key=AIzaSyAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA and sk-ant-TESTSECRET12345678 ok"}]})";
+                        const auto text = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " + juce::String (reply.getNumBytesAsUTF8())
+                                        + "\r\nConnection: close\r\n\r\n" + reply;
+                        client->write (text.toRawUTF8(), (int) text.getNumBytesAsUTF8());
+                    }
+                });
+
+                Settings::set ("chatEndpoint", "http://127.0.0.1:" + juce::String (port) + "/v1/messages");
+                auto ask = [&] (const juce::String& text)
+                {
+                    chat.send (text);
+                    for (int i = 0; i < 1500 && (chat.isBusy() || i < 5); ++i)
+                        juce::MessageManager::getInstance()->runDispatchLoopUntil (40);
+                };
+                auto hasFile = [&] (const juce::String& pattern) { return folder.findChildFiles (juce::File::findFiles, false, pattern).size(); };
+                auto leaks = [&] (const juce::File& file)
+                {
+                    const auto text = file.loadFileAsString();
+                    return text.contains (secret) || text.contains ("AIzaSyAAAA") || text.contains ("key=AIza");
+                };
+
+                chat.newChat();
+                ask ("hello session");
+                check (chat.hasConversation(), "session: samtalet finns efter en fråga");
+                juce::File saved, exported;
+                check (chat.saveSession (saved) && saved.existsAsFile(), "session: sparas till en fil");
+                check (chat.exportText (exported) && exported.existsAsFile(), "session: exporteras till en textfil");
+                check (exported.loadFileAsString().contains ("hello session") && exported.loadFileAsString().contains ("[AI]"), "session: exporten innehåller samtalet");
+                check (! leaks (saved) && ! leaks (exported), "session: nyckeln finns inte i sessionsfilen eller exporten");
+                check (exported.loadFileAsString().contains ("[key removed]"), "session: nyckeln i svaret är borttagen");
+                check (AiChat::redact ("error at /v1/models/x:generateContent?key=AIzaSyBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB&alt=sse").contains ("&alt=sse")
+                       && ! AiChat::redact ("?key=AIzaSyBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB").contains ("AIza"), "session: redact tar bort key= men lämnar resten av adressen");
+
+                const auto headers = AiChat::redact ("Authorization: Bearer abcdef123456789\nx-goog-api-key: SECRETVALUE12345\n\"x-api-key\":\"SECRETVALUE67890\"");
+                check (! headers.contains ("abcdef123456789") && ! headers.contains ("SECRETVALUE"), "session: redact tar bort Authorization-, x-goog-api-key- och x-api-key-headers");
+
+                chat.newChat();
+                check (! chat.hasConversation(), "session: NEW CHAT tömmer");
+                check (chat.loadSession (saved) && chat.hasConversation(), "session: öppnas igen");
+                auto entries = chat.getEntries();
+                check (! entries.empty() && entries.front().kind == AiChat::Entry::Kind::user && entries.front().text == "hello session", "session: det öppnade samtalet visar frågan");
+                ask ("and then more");
+                check (chat.getEntries().size() > entries.size(), "session: man kan fortsätta ett öppnat samtal");
+                check (AiChat::listSessions().size() == 1, "session: listan visar den sparade chatten");
+
+                // Autorensning: Sparsam rensar över 40 000 tecken, sparar och exporterar först och tar bort de äldsta frågorna.
+                chat.newChat();
+                const auto txtBefore = hasFile ("*.txt"), jsonBefore = hasFile ("*.json");
+                const auto big = juce::String::repeatedString ("lorem ipsum ", 4000);
+                for (int i = 0; i < 4; ++i)
+                    ask (big + juce::String (i));
+                check (hasFile ("*.txt") > txtBefore && hasFile ("*.json") > jsonBefore, "autorensning: samtalet sparas och exporteras innan något tas bort");
+                auto dropped = false;
+                for (const auto& entry : chat.getEntries())
+                    dropped |= entry.text.contains ("older questions were dropped");
+                check (dropped, "autorensning: en notis berättar att de äldsta frågorna togs bort");
+                auto anyLeak = false;
+                for (const auto& file : folder.findChildFiles (juce::File::findFiles, false, "*"))
+                    anyLeak |= leaks (file);
+                check (! anyLeak, "autorensning: ingen nyckel i någon fil i Chats-mappen");
+
+                stopServer = true;
+                juce::StreamingSocket wake;
+                wake.connect ("127.0.0.1", port, 500);
+                wake.close();
+                server.join();
+            }
+            else
+                check (false, "session: kunde inte starta testservern");
+
+            Settings::set ("chatEndpoint", {});
+            Settings::set ("chatsFolder", {});
+            Settings::setChatCostMode (1);
+            Settings::setChatApiKey ("sk-ant-invalid-test-key");
+            chat.newChat();
+            folder.deleteRecursively();
+        }
+
         // Fönstret (pluginet) stängs mitt i ett anrop som aldrig får svar: det ska gå direkt, inte vänta ut anropet.
         {
             juce::StreamingSocket listener;

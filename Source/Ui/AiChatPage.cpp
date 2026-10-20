@@ -183,6 +183,9 @@ AiChatPage::AiChatPage (PluginBase& p) : processor (p), chat (p.getAiChat())
     newChatButton.setTooltip ("NEW CHAT - Starts a new conversation (the sound stays as it is).");
     newChatButton.onClick = [this] { chat.newChat(); refresh(); };
     addAndMakeVisible (newChatButton);
+    chatsButton.setTooltip ("CHATS - Save this chat as a session, open a saved one, or export it to a text file. Long chats are saved and exported automatically before the oldest questions are dropped. API keys are never written to these files.");
+    chatsButton.onClick = [this] { showChatsMenu(); };
+    addAndMakeVisible (chatsButton);
     undoButton.setTooltip ("UNDO - Undoes the AI's last change to the sound.");
     undoButton.onClick = [this] { chat.undo(); refresh(); };
     addAndMakeVisible (undoButton);
@@ -463,6 +466,58 @@ void AiChatPage::timerCallback()
     refresh();
 }
 
+void AiChatPage::showChatsMenu()
+{
+    auto note = [this] (juce::String text, bool error = false)
+    {
+        AiChat::Entry entry;
+        entry.kind = error ? AiChat::Entry::Kind::error : AiChat::Entry::Kind::note;
+        entry.text = std::move (text);
+        chat.addEntry (std::move (entry));
+    };
+
+    const auto sessions = AiChat::listSessions();
+    juce::PopupMenu open;
+    for (int i = 0; i < (int) sessions.size() && i < 20; ++i)
+        open.addItem (100 + i, sessions[(size_t) i].saved.formatted ("%Y-%m-%d %H:%M") + "  " + sessions[(size_t) i].title);
+    if (sessions.empty())
+        open.addItem (1, "(no saved chats)", false);
+
+    juce::PopupMenu menu;
+    menu.addItem (2, "Save this chat", chat.hasConversation());
+    menu.addItem (3, "Export this chat to a text file", chat.hasConversation());
+    menu.addSubMenu ("Open a saved chat", open, ! sessions.empty());
+    menu.addSeparator();
+    menu.addItem (4, "Show the chats folder");
+
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&chatsButton), [this, sessions, note] (int result)
+    {
+        juce::File file;
+        if (result == 2)
+        {
+            if (chat.saveSession (file))
+                note ("Saved the chat to " + file.getFullPathName());
+            else
+                note ("Could not save the chat.", true);
+        }
+        else if (result == 3)
+        {
+            if (chat.exportText (file))
+                note ("Exported the chat to " + file.getFullPathName());
+            else
+                note ("Could not export the chat.", true);
+        }
+        else if (result == 4)
+            AiChat::sessionsFolder().revealToUser();
+        else if (result >= 100 && result - 100 < (int) sessions.size())
+        {
+            if (! chat.loadSession (sessions[(size_t) (result - 100)].file))
+                note ("Could not open that chat.", true);
+        }
+        refresh();
+    });
+}
+
 void AiChatPage::refresh()
 {
     const auto busy = chat.isBusy();
@@ -483,6 +538,7 @@ void AiChatPage::refresh()
         stopButton.setVisible (busy && ! setupOpen);
         sendButton.setVisible (! busy && ! setupOpen);
         newChatButton.setEnabled (! busy);
+        chatsButton.setEnabled (! busy);
         undoButton.setEnabled (! busy);
         input.setEnabled (true);
         for (auto& suggestion : suggestions)
@@ -530,6 +586,8 @@ void AiChatPage::resized()
     undoButton.setBounds (header.removeFromRight (62).reduced (0, 2));
     header.removeFromRight (4);
     newChatButton.setBounds (header.removeFromRight (86).reduced (0, 2));
+    header.removeFromRight (4);
+    chatsButton.setBounds (header.removeFromRight (62).reduced (0, 2));
     header.removeFromRight (8);
     modelBox.setBounds (header.removeFromLeft (170).reduced (0, 2));
     header.removeFromLeft (4);
