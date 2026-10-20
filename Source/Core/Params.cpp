@@ -134,14 +134,14 @@ namespace Params
 {
     void addPatternParams (Layout& layout, bool includeNoteEnd)
     {
-        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::patternBars, 1 }, "Total Length",
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::patternBars, 1 }, "Total Length (unused)",
                                                             StringArray { "1 bar", "2 bars", "4 bars", "8 bars", "16 bars", "32 bars", "64 bars" }, 0));
         juce::StringArray rowLengths { "Total" };
         for (int bars = 1; bars <= Pattern::legacyMaxBars; bars *= 2)
             rowLengths.add (juce::String (bars) + (bars == 1 ? " bar" : " bars"));
         for (int row = 0; row < numPatternRows; ++row)
             layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::rowBars (row), 1 },
-                                                                row == 0 ? juce::String ("Kick Row Length") : "Instr " + juce::String (row) + " Row Length", rowLengths, 0));
+                                                                row == 0 ? juce::String ("Kick Row Length (unused)") : "Instr " + juce::String (row) + " Row Length (unused)", rowLengths, 0));
         for (int row = 0; row < numPatternRows; ++row)
             layout.add (std::make_unique<AudioParameterBool> (ParameterID { ParamID::rowLoop (row), 1 },
                                                               row == 0 ? juce::String ("Kick Loop") : "Instr " + juce::String (row) + " Loop", true));

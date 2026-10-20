@@ -42,6 +42,8 @@ int helpCheck()
             if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p))
             {
                 const auto id = ranged->getParameterID();
+                if (id == ParamID::patternBars || id.startsWith ("rowBars")) // oanvända sedan R9 (kvar för gamla projekt)
+                    continue;
                 if ((Presets::instrumentLayerOf (id) > 0) || (Effects::isEffectParameter (id) && id[2] != 'A') || id.startsWith ("mixBass") && ! id.startsWith ("mixBass1")
                     || (id.startsWith ("mixFx") && ! id.startsWith ("mixFxA")))
                     continue;
@@ -292,6 +294,52 @@ int persistTest()
         check (std::abs (duck (0) - processor->apvts.getParameter (ParamID::bass (0, InstrumentField::duck))->convertFrom0to1 (
                    processor->apvts.getParameter (ParamID::bass (0, InstrumentField::duck))->getDefaultValue())) < 1.0e-4f,
                "Follow Kick ger standarddjupet");
+    }
+
+    // 9. Radens längd överlever sparande: låst rad, AUTO-rad med + BAR, och ett gammalt (version 6) projekt med radlängd i parametern rowBars.
+    {
+        auto processor = std::make_unique<InstrumentProcessor>();
+        auto& p = processor->pattern;
+        p.addNote (Pattern::kickLayer, 0, 96, 0);
+        p.setManualBars (Pattern::kickLayer, 3); // 1 takt toner låst till 3 takter
+        p.addNote (0, 0, 96, 0);
+        p.setExtraBars (0, 4); // AUTO med + BAR
+        auto copy = copyOf (*processor);
+        auto& q = copy->pattern;
+        check (q.manualBars (Pattern::kickLayer) == 3 && q.lengthBars (Pattern::kickLayer) == 3 && ! q.isLengthAuto (Pattern::kickLayer), "låst rad (3 takter) sparas och laddas");
+        check (q.isLengthAuto (0) && q.extraBars (0) == 4 && q.lengthBars (0) == 4, "AUTO-rad med + BAR (4 takter) sparas och laddas");
+
+        // Gammalt projekt: version 6, ingen length/extra, rowBarsKick = 2 takter, toner i 4 takter.
+        auto old = std::make_unique<InstrumentProcessor>();
+        for (int bar = 0; bar < 4; ++bar)
+            old->pattern.addNote (Pattern::kickLayer, bar * Pattern::ticksPerBar, 96, 0);
+        old->apvts.getParameter (ParamID::rowBars (0))->setValueNotifyingHost (old->apvts.getParameter (ParamID::rowBars (0))->convertTo0to1 (2.0f)); // val 2 = "2 bars"
+        juce::MemoryBlock state;
+        old->getStateInformation (state);
+        auto xml = juce::AudioProcessor::getXmlFromBinary (state.getData(), (int) state.getSize());
+        check (xml != nullptr, "tillståndet går att läsa som XML");
+        if (xml != nullptr)
+        {
+            auto tree = juce::ValueTree::fromXml (*xml);
+            auto patternTree = tree.getChildWithName (Pattern::treeType);
+            patternTree.setProperty ("version", 6, nullptr);
+            for (auto child : patternTree)
+            {
+                child.removeProperty ("length", nullptr);
+                child.removeProperty ("extra", nullptr);
+            }
+            juce::MemoryBlock legacy;
+            if (auto text = tree.createXml())
+                juce::AudioProcessor::copyXmlToBinary (*text, legacy);
+            auto loaded = std::make_unique<InstrumentProcessor>();
+            loaded->setStateInformation (legacy.getData(), (int) legacy.getSize());
+            check (loaded->pattern.lengthBars (Pattern::kickLayer) == 2,
+                   "gammalt projekt laddas (kickraden är " + juce::String (loaded->pattern.lengthBars (Pattern::kickLayer)) + " takter)");
+            // Gamla regeln: totalen är minst den längsta raden, och en rad på 2 takter trimmas till 2 takter.
+            auto lateNotes = 0;
+            loaded->pattern.forEachNote (Pattern::kickLayer, [&] (int tick, const Pattern::Note&) { lateNotes += tick >= 2 * Pattern::ticksPerBar ? 1 : 0; });
+            check (lateNotes == 0, "gamla radlängden (2 takter) tog bort tonerna efter slutet (" + juce::String (lateNotes) + " kvar)");
+        }
     }
 
     std::puts (failed ? "FEL: sparandetestet misslyckades" : "Sparandetestet gick igenom");
