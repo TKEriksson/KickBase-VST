@@ -309,9 +309,6 @@ var ToolLayer::call (const juce::String& tool, const var& args)
         return ok (data);
     }
 
-<<<<<<< HEAD
-    if (tool == "set_parameters" || tool == "set_effect" || tool == "set_kick_envelopes" || tool == "set_pattern" || tool == "set_sidechain_curve" || tool == "set_gate" || tool == "live_code_create"
-=======
     if (tool == "edit_instrument")
     {
         const auto action = args["action"].toString();

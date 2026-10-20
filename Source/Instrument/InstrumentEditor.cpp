@@ -20,6 +20,7 @@ InstrumentEditor::InstrumentEditor (InstrumentProcessor& p)
     synths.addTab ("KICK", Theme::kick, kick, kick.embedInTab(), kick.headerExtrasWidth());
     synths.addTab ("INSTRUMENT", Theme::bass, instruments, instruments.getHeader(), InstrumentHost::headerWidth);
     synths.addTab ("AI CHAT", Theme::gate, aiPage);
+    synths.addTab ("LIVE CODE", Theme::gate, livePage);
 
     // På/av direkt på kickens flik (instrumenten har sin på/av i flikraden, bredvid väljaren).
     synths.addPower (1, processor.apvts, ParamID::kickOn);
