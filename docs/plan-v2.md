@@ -315,7 +315,7 @@ engångsundantag från regel 3 (projekt sparar index och laddar rätt; bara DAW-
 Se [work/PROGRESS.md](work/PROGRESS.md).
 
 ## 4. Frågor till Tobias (standardvalet gäller tills han svarar)
-1. Grenkedjan content-0 → a → d1 → w → e2 → d2 är godkänd men inte sammanslagen. Får vi slå ihop den i `dev` (fast-forward)? *Standard: nej, vi kedjar vidare.*
+1. ~~Slå ihop i `dev`?~~ Besvarad 20 okt: ja, Opus slår ihop godkända faser i `dev` (fast-forward) och pushar. `main` först när allt är klart och testat av Tobias.
 2. ~~Radlängd max 64?~~ Besvarad 20 okt: ingen gräns, TOTAL LENGTH bort (R steg 9).
 3. Tre klickar och sub-kontroll i kicken (image-27): vill du ha dem, eller räcker dagens klick? *Standard: utreds i fas K.*
 4. Gamla DAW-projekt med automation av Kickbase: finns det några du vill behålla? Om inte kan vi före första publika versionen fritt
