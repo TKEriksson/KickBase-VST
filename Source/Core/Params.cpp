@@ -96,7 +96,8 @@ namespace ParamID
                                      "Voices",
                                      "Env1On", "FilterEnvOn", "Env2On", "Env3On",
                                      "Env1Mode", "Env1AttackSync", "Env1DecaySync", "Env1ReleaseSync",
-                                     "FilterEnvMode", "FilterEnvAttackSync", "FilterEnvDecaySync" };
+                                     "FilterEnvMode", "FilterEnvAttackSync", "FilterEnvDecaySync",
+                                     "FilterOn", "FilterOsc1", "FilterOsc2", "FilterOsc3", "FilterSample", "FilterNoise" };
         static_assert (std::size (names) == (size_t) InstrumentField::count);
         return names[(size_t) field];
     }
@@ -380,6 +381,12 @@ namespace Params
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::filterEnvMode), 1 }, title + "Filter Env Time Mode", StringArray { "ms", "Sync" }, 0));
         syncChoice (F::filterEnvAttackSync, "Filter Env Attack Sync", 0);
         syncChoice (F::filterEnvDecaySync, "Filter Env Decay Sync", 4);
+        // fas S: FILTER av/på (hela Filter 1+2) och per källa. SAMPLE är av som standard (Tobias 20 okt), övriga på = som förut.
+        const struct { F field; const char* name; bool on; } filterSwitches[] {
+            { F::filterOn, "Filter On", true }, { F::filterOsc1, "Filter OSC 1", true }, { F::filterOsc2, "Filter OSC 2", true },
+            { F::filterOsc3, "Filter OSC 3", true }, { F::filterSample, "Filter Sample", false }, { F::filterNoise, "Filter Noise", true } };
+        for (auto& s : filterSwitches)
+            layout.add (std::make_unique<AudioParameterBool> (ParameterID { id (s.field), 1 }, title + s.name, s.on));
     }
 
     void addFxParams (Layout& layout)
@@ -626,6 +633,12 @@ InstrumentParams ParamRefs::readInstrument (int layer, int rootMidiNote) const
     p.filterEnvSync = get (F::filterEnvMode) >= 0.5f;
     p.filterAttackNote = (int) get (F::filterEnvAttackSync);
     p.filterDecayNote = (int) get (F::filterEnvDecaySync);
+    p.filterOn = get (F::filterOn) >= 0.5f;
+    p.filterSrc[0] = get (F::filterOsc1) >= 0.5f;
+    p.filterSrc[1] = get (F::filterOsc2) >= 0.5f;
+    p.filterSrc[2] = get (F::filterOsc3) >= 0.5f;
+    p.filterSrc[3] = get (F::filterSample) >= 0.5f;
+    p.filterSrc[4] = get (F::filterNoise) >= 0.5f;
     p.subWave = (int) get (F::subWave);
     p.noiseTone = get (F::noiseTone);
     p.pitchEnvSemis = get (F::pitchEnvAmount);

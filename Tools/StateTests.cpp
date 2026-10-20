@@ -235,6 +235,23 @@ int persistTest()
                "spara och ladda: Filter 2 (på, Comb, LP 12, 777 Hz, Parallel, MIX 45 %) följer med");
     }
 
+    // fas S: FILTER av/på och per källa: standard (på, SAMPLE av) och spara/ladda.
+    {
+        auto processor = std::make_unique<InstrumentProcessor>();
+        using F = InstrumentField;
+        auto value = [] (PluginBase& p, F field) { return p.apvts.getRawParameterValue (ParamID::bass (3, field))->load(); };
+        check (value (*processor, F::filterOn) > 0.5f && value (*processor, F::filterOsc1) > 0.5f && value (*processor, F::filterOsc2) > 0.5f
+                   && value (*processor, F::filterOsc3) > 0.5f && value (*processor, F::filterSample) < 0.5f && value (*processor, F::filterNoise) > 0.5f,
+               "FILTER på för alla källor utom SAMPLE som standard");
+        Scenarios::setInstrument (*processor, 3, F::filterOn, 0.0f);
+        Scenarios::setInstrument (*processor, 3, F::filterOsc2, 0.0f);
+        Scenarios::setInstrument (*processor, 3, F::filterSample, 1.0f);
+        auto copy = copyOf (*processor);
+        check (value (*copy, F::filterOn) < 0.5f && value (*copy, F::filterOsc1) > 0.5f && value (*copy, F::filterOsc2) < 0.5f
+                   && value (*copy, F::filterSample) > 0.5f && value (*copy, F::filterNoise) > 0.5f,
+               "spara och ladda: FILTER av/på och per källa följer med");
+    }
+
     // 5. Preset-laddningen sätter varje parameter en gång: en ratt som ändras passerar inte sitt standardvärde på vägen.
     {
         auto processor = std::make_unique<InstrumentProcessor>();

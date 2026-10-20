@@ -361,8 +361,14 @@ InstrumentSynth::Output InstrumentSynth::next()
 
     // Sub och brus ligger i mitten. Mitten och sidan filtreras var för sig (samma filter), och
     // blir sedan vänster och höger igen.
-    auto left = a.left * levelA + b.left * levelB + c.left * levelC;
-    auto right = a.right * levelA + b.right * levelB + c.right * levelC;
+    // fas S: en källa med FILTER av (eller hela FILTER av) går förbi Filter 1+2 och läggs till efter dem. Inget förbigånget = som förut (tillägg av 0 ändrar inget).
+    const auto fOn = params.filterOn;
+    const auto levelAF = fOn && params.filterSrc[0] ? levelA : 0.0f, levelBF = fOn && params.filterSrc[1] ? levelB : 0.0f, levelCF = fOn && params.filterSrc[2] ? levelC : 0.0f;
+    auto left = a.left * levelAF + b.left * levelBF + c.left * levelCF;
+    auto right = a.right * levelAF + b.right * levelBF + c.right * levelCF;
+    const auto dryLeft = a.left * (levelA - levelAF) + b.left * (levelB - levelBF) + c.left * (levelC - levelCF);
+    const auto dryRight = a.right * (levelA - levelAF) + b.right * (levelB - levelBF) + c.right * (levelC - levelCF);
+    float dryCentre = 0.0f;
     float subShape;
     switch (params.subWave)
     {
@@ -371,7 +377,8 @@ InstrumentSynth::Output InstrumentSynth::next()
         case 3:  subShape = 2.0f * (float) subPhase - 1.0f; break;                                                   // såg
         default: subShape = (float) std::sin (juce::MathConstants<double>::twoPi * subPhase); break;
     }
-    auto centre = params.sub * subShape;
+    auto centre = 0.0f;
+    (fOn ? centre : dryCentre) += params.sub * subShape;
     if (params.noise > 0.0f)
     {
         auto white = random.nextFloat() * 2.0f - 1.0f;
@@ -383,7 +390,7 @@ InstrumentSynth::Output InstrumentSynth::next()
             noiseState += coefficient * (white - noiseState);
             white = noiseState * (1.0f + 2.5f * (1.0f - params.noiseTone));
         }
-        centre += params.noise * white;
+        (fOn && params.filterSrc[4] ? centre : dryCentre) += params.noise * white;
     }
 
     // Samplingen: linjär interpolation. Med KEY följer hastigheten noten (samplingens egen tonhöjd = sampleRootHz).
@@ -401,13 +408,14 @@ InstrumentSynth::Output InstrumentSynth::next()
                 const auto index = (int) samplePosition;
                 const auto fraction = (float) (samplePosition - (double) index);
                 const auto following = index + 1 < length ? data[index + 1] : (params.sampleLoop ? data[0] : 0.0f);
-                centre += params.sampleLevel * (data[index] + fraction * (following - data[index]));
+                (fOn && params.filterSrc[3] ? centre : dryCentre) += params.sampleLevel * (data[index] + fraction * (following - data[index]));
                 samplePosition += params.sampleKeyTrack ? frequency / (double) std::max (1.0f, params.sampleRootHz) : 1.0;
             }
         }
     }
     auto sample = 0.5f * (left + right) + centre;
     auto side = 0.5f * (left - right);
+    const auto dryMid = 0.5f * (dryLeft + dryRight) + dryCentre, drySide = 0.5f * (dryLeft - dryRight);
 
     subPhase = wrap (subPhase + (params.subOctave == 0 ? frequency : frequency * 0.5) / sampleRate);
 
@@ -456,6 +464,8 @@ InstrumentSynth::Output InstrumentSynth::next()
     }
     else
         filter2WasOn = false;
+    sample += dryMid; // fas S: förbigångna källor (FILTER av) läggs till efter båda filtren
+    side += drySide;
     noteTime += 1.0 / sampleRate;
 
     // Drive verkar på källan (före gaten), så att distorsionen låter likadant oavsett envelope.

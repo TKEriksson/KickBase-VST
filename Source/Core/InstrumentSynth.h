@@ -82,6 +82,9 @@ struct InstrumentParams
     // fas L: ON/OFF och Sync för volym- och filter-envelopen (ENV-fliken). Sync-tiderna är index i Modulation::syncTimeNames().
     bool env1On = true, filterEnvOn = true;
     bool env1Sync = false, filterEnvSync = false;
+    // fas S: FILTER av/på (hela Filter 1+2) och per källa (OSC 1, 2, 3, SAMPLE, NOISE); av = går förbi båda filtren. SAMPLE av som standard.
+    bool filterOn = true;
+    bool filterSrc[5] { true, true, true, false, true };
     int env1AttackNote = 0, env1DecayNote = 5, env1ReleaseNote = 1, filterAttackNote = 0, filterDecayNote = 4;
     int subWave = 0;             // 0 sinus, 1 triangel, 2 fyrkant, 3 såg
     float noiseTone = 1.0f;      // 0 mörkt brus ... 1 vitt brus

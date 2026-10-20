@@ -235,6 +235,23 @@ FilterPage::FilterPage (PluginBase& p, int layerIn, juce::Colour accentIn)
     routingNote.setColour (juce::Label::textColourId, Theme::textDim);
     routingNote.setInterceptsMouseClicks (false, false);
     addAndMakeVisible (routingNote);
+
+    static const char* const switchNames[] { "FILTER", "OSC 1", "OSC 2", "OSC 3", "SAMPLE", "NOISE" };
+    static const char* const switchTips[] {
+        "FILTER ON / OFF - Off: the whole instrument bypasses Filter 1 and Filter 2 (the amp envelope still works).",
+        "OSC 1 THROUGH FILTER - Off: OSC 1 bypasses both filters.", "OSC 2 THROUGH FILTER - Off: OSC 2 bypasses both filters.",
+        "OSC 3 THROUGH FILTER - Off: OSC 3 bypasses both filters.", "SAMPLE THROUGH FILTER - Off (default): the sample bypasses both filters.",
+        "NOISE THROUGH FILTER - Off: the noise bypasses both filters." };
+    for (size_t i = 0; i < switches.size(); ++i)
+    {
+        auto& s = switches[i];
+        s.button.setButtonText (switchNames[i]);
+        s.button.setTooltip (switchTips[i]);
+        s.button.setColour (juce::ToggleButton::tickColourId, accent);
+        s.button.setColour (juce::ToggleButton::textColourId, Theme::textDim);
+        addAndMakeVisible (s.button);
+        s.attachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, ParamID::bass (layer, (F) ((int) F::filterOn + (int) i)), s.button);
+    }
 }
 
 void FilterPage::makeBlock (Block& block, bool isSecond)
@@ -331,6 +348,10 @@ void FilterPage::resized()
     constexpr int blockWidth = 400;
     auto right = area.removeFromRight (blockWidth);
     area.removeFromRight (6);
+    auto switchRow = area.removeFromTop (22);
+    area.removeFromTop (2);
+    for (auto& s : switches)
+        s.button.setBounds (switchRow.removeFromLeft (84));
 
     auto bottom = area.removeFromBottom (40);
     area.removeFromBottom (4);

@@ -72,4 +72,11 @@ private:
     Block first, second;
     std::unique_ptr<ChoiceComponent> routing;
     juce::Label routingNote;
+    // fas S: FILTER av/på för hela instrumentet och per källa (ett sätt att låta t.ex. SAMPLE eller NOISE gå förbi båda filtren)
+    struct SourceSwitch
+    {
+        juce::ToggleButton button;
+        std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> attachment;
+    };
+    std::array<SourceSwitch, 6> switches; // FILTER, OSC 1, OSC 2, OSC 3, SAMPLE, NOISE (i ordning med InstrumentField::filterOn ...)
 };
