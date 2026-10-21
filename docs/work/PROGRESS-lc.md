@@ -182,3 +182,9 @@ Kör: antest, inittest, rendersig, tooltest. Rendersig ska vara oförändrad (ba
 - Vem: Arbetare 1, content-g. Hash: se `git log` (R9b steg 1). Kör: `rowkeytest`, plus bygget.
 - Nästa: steg 2 Pattern-arrayer till 64 rader (rendersig 0 diff).
 - Från PL (21 okt): kbproj D1 = XML, D3 = UI vid AI-server-knappen (föreslå Project/Verktyg-meny vs knappar i kbproj-spec.md, bygg inte UI), D2 embed, D4 nej. AN: "kick vinner där kick+bas möts" och "svans tar bas" ska med som varnings-/tipsfynd; utred vad Capture saknar (nivå per takt/band separat för kick-svans och bas), utöka additivt, tester. Efter R9b-steget.
+
+## Arbetare 1: R9b steg 2 (Pattern till 64 radplatser)
+- Vad: `Pattern::numRowSlots = 64` (= RowRegistry::maxRows) för noteBlocks, lengthOf/contentOf/manualOf/extraOf och custom; `clampedLayer`, `isCustom/setCustom`, `clearNotes`, konstruktorn och `refreshLengths` går över alla platser; `Pattern::rows` (RowRegistry) som medlem; static_assert att index stämmer. `numNoteLayers` (11) är kvar som "grundrader" så alla gamla loopar, sparning och UI beter sig som förut. Underrader har ingen gate (gateBlocks är kvar på 10 rader, redan klampad) – beslut att ta i F2.
+- Minnet: noteBlocks växer från 88 KB till ca 512 KB i Pattern (en per plugininstans, heap).
+- Förväntat: rendersig oförändrad (inga underrader finns), alla gamla tester. Ej byggt av mig.
+- Nästa: steg 3 (Params/radparametrar), 4 (spara/ladda `row`-attribut), 5 (ToolLayer/MCP/Live Code 64 bit), 6 (MIDI-export), 7 (UI).

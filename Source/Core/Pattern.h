@@ -6,6 +6,7 @@
 #include <atomic>
 #include <memory>
 #include "DeferredRelease.h"
+#include "RowRegistry.h"
 
 // Basens rutnät: upplösningen i stegsekvenseraren och förvalda "snap" i pianorullen.
 // Själva tonerna ligger fritt i tid (se Pattern::Note), så ett lager kan ha 16-delar, 8-delar
@@ -80,7 +81,10 @@ struct Pattern
     // Kicken är ett extra "notlager" efter instrumenten (lager 10): fritt placerade toner, på samma sätt som baslagren. Tonhöjden flyttar
     // kickens svans (halvtoner från tonarten), velocity styr volymen. Kicken har ingen gate.
     static constexpr int kickLayer = numLayers;
-    static constexpr int numNoteLayers = numLayers + 1;
+    static constexpr int numNoteLayers = numLayers + 1; // grundraderna: instrumentens NOTE-rader och kicken
+    // R9b: lagringen rymmer maxRows rader. Id numNoteLayers och uppåt är underrader (SAMPLE, SLICER) enligt `rows`; grundraderna har sina gamla index.
+    static constexpr int numRowSlots = RowRegistry::maxRows;
+    static_assert (numNoteLayers == RowRegistry::numBaseRows && kickLayer == RowRegistry::kickRow, "RowRegistry och Pattern måste dela radindex");
     static constexpr float defaultKickVelocity = 1.0f;
     static float defaultVelocity (int layer) { return layer == kickLayer ? defaultKickVelocity : 0.8f; }
 
@@ -139,9 +143,11 @@ struct Pattern
         }
     };
 
+    RowRegistry rows; // R9b: vilka underrader som finns (bara meddelandetråden ändrar, ljudtråden läser)
+
     Pattern()
     {
-        for (int layer = 0; layer < numNoteLayers; ++layer)
+        for (int layer = 0; layer < numRowSlots; ++layer)
             lengthOf[(size_t) layer] = contentOf[(size_t) layer] = 1;
         applyTemplate (PatternTemplate::rolling);
     }
@@ -212,8 +218,8 @@ struct Pattern
     // Ett lager med "pianorulle": tonerna redigeras i pianorullen (frihand i tid, höjd och glide) och visas som en
     // miniatyr i stället för stegknappar, som i FL Studio. Sätts när man redigerar i pianorullen, och nollställs
     // när lagrets toner rensas eller fylls om.
-    bool isCustom (int layer) const { return custom[(size_t) juce::jlimit (0, numNoteLayers - 1, layer)].load(); }
-    void setCustom (int layer, bool value) { custom[(size_t) juce::jlimit (0, numNoteLayers - 1, layer)] = value; }
+    bool isCustom (int layer) const { return custom[(size_t) juce::jlimit (0, numRowSlots - 1, layer)].load(); }
+    void setCustom (int layer, bool value) { custom[(size_t) juce::jlimit (0, numRowSlots - 1, layer)] = value; }
 
     // Lägger en ny ton (eller ändrar den som redan ligger där). Returnerar den.
     Note& addNote (int layer, int tick, int length, int pitch = 0, float velocity = 0.8f, bool slide = false, const Chord& chord = {});
@@ -271,16 +277,16 @@ private:
         GateBlock() { for (auto& step : steps) step = true; }
     };
 
-    static int clampedLayer (int layer) { return juce::jlimit (0, numNoteLayers - 1, layer); }
+    static int clampedLayer (int layer) { return juce::jlimit (0, numRowSlots - 1, layer); }
     static int clampedTick (int tick) { return juce::jlimit (0, maxTicks - 1, tick); }
     const NoteBlock* blockOf (int layer, int bar) const { return noteBlocks[(size_t) clampedLayer (layer)][(size_t) juce::jlimit (0, maxBars - 1, bar)].load (std::memory_order_acquire); }
     void releaseNoteBlocks (int layer, int fromBar); // blocken från och med takten frigörs (DeferredRelease)
 
     static inline const Note emptyNote {};
-    std::array<std::array<std::atomic<NoteBlock*>, maxBars>, numNoteLayers> noteBlocks {};
+    std::array<std::array<std::atomic<NoteBlock*>, maxBars>, numRowSlots> noteBlocks {};
     std::array<std::array<std::atomic<GateBlock*>, maxGateSteps / gateBlockSteps>, numLayers> gateBlocks {};
     DeferredRelease<NoteBlock> retiredNoteBlocks;
     DeferredRelease<GateBlock> retiredGateBlocks;
-    std::array<std::atomic<int>, numNoteLayers> lengthOf {}, contentOf {}, manualOf {}, extraOf {}; // längd och innehåll i takter (min 1), valt antal (0 = AUTO), "+"
-    std::array<std::atomic<bool>, numNoteLayers> custom {};
+    std::array<std::atomic<int>, numRowSlots> lengthOf {}, contentOf {}, manualOf {}, extraOf {}; // längd och innehåll i takter (min 1), valt antal (0 = AUTO), "+"
+    std::array<std::atomic<bool>, numRowSlots> custom {};
 };

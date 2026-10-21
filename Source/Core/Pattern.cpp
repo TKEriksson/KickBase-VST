@@ -97,7 +97,7 @@ void Pattern::setGateStep (int layer, int index, bool open)
 
 void Pattern::refreshLengths()
 {
-    for (int layer = 0; layer < numNoteLayers; ++layer)
+    for (int layer = 0; layer < numRowSlots; ++layer)
     {
         auto content = 0;
         for (int bar = 0; bar < maxBars; ++bar)
@@ -408,7 +408,7 @@ void Pattern::setKickSteps (const juce::String& steps, int stepTicks)
 
 void Pattern::clearNotes (int layer)
 {
-    layer = juce::jlimit (0, numNoteLayers - 1, layer);
+    layer = juce::jlimit (0, numRowSlots - 1, layer);
     custom[(size_t) layer] = false;
     releaseNoteBlocks (layer, 0); // en rad utan toner har inga block
 }
