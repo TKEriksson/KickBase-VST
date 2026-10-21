@@ -1199,14 +1199,14 @@ namespace
 
             // INSERT (standard): allt går genom kanalen, så FX1-faderna i botten tystar instrumentet. SEND: torrt orört, bara effektdelen tystnar.
             Effects::setSlotType (processor.apvts, 0, 0, EffectType::ducker);
-            setValue (Mixer::paramID (Mixer::firstFxSource, "Gain"), 0.0f);
+            setValue (Mixer::paramID (Mixer::firstFxSource, "Gain"), Mixer::minGainDb);
             const auto insertMuted = rmsOf (PluginBase::ExportPart::bass);
             setValue (ParamID::bass (1, InstrumentField::fxSend), 1.0f);
             const auto sendMuted = rmsOf (PluginBase::ExportPart::bass);
             check (insertMuted < 0.1f * routed && sendMuted > 0.5f * routed,
                    "FX SEND-läget lämnar torrt orört när FX-faderna är nere (INSERT " + juce::String (insertMuted, 3) + ", SEND " + juce::String (sendMuted, 3) + ", före " + juce::String (routed, 3) + ")");
             setValue (ParamID::bass (1, InstrumentField::fxSend), 0.0f);
-            setValue (Mixer::paramID (Mixer::firstFxSource, "Gain"), 1.0f);
+            setValue (Mixer::paramID (Mixer::firstFxSource, "Gain"), 0.0f);
             Effects::setSlotType (processor.apvts, 0, 0, EffectType::off);
 
             setValue (ParamID::bass (1, InstrumentField::fxChannel), 0.0f);
