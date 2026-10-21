@@ -235,3 +235,8 @@ Kör: antest, inittest, rendersig, tooltest. Rendersig ska vara oförändrad (ba
 - Ingen UI (layoutval A/B/C obesvarat), ingen parameter, ingen ljudväg; rendersig oförändrad. Inte inkopplad någonstans än. `CMakeLists.txt` CORE_SOURCES fick `ProjectFile.cpp`.
 - Test: nytt block sist i `persistTest` (Tools/StateTests.cpp): spara, öppna i ny instans, state-blobben lika byte för byte, ton och tabell följer med, fem avvisade fall (ej XML, fel rot, version 99, ingen version, saknad fil) lämnar tillståndet orört.
 - Av: Arbetare 1, content-g. Ej byggt av mig. Kör: bygget (alla mål, ny fil i CORE_SOURCES), `persisttest`, `fulltest`, rendersig (oförändrad).
+
+## Arbetare 1: LC steg E, design/granskning (ingen kod)
+- `docs/work/lc-e-design.md`. Huvudfynd: E finns redan som kod på `content-lcui` (4f40a85, ej granskad, ej i main): `.lfo()/.env()` i glue.js, CODE 1-8 = källa 74-81 sist, `numSources` 74 -> 82, inga host-parametrar, CODE-rutter sparas aldrig. Jag har därför inte skrivit något parallellt, bara granskning: syntax (gemener + sträng-id vs F1:s objektträd), delade 64 rutter, städning utan UI, `strudel.all.js` dubblerad glue.js, och en testplan (ljudtester för LFO/ENV, renderjämförelse, gränser, platsåteranvändning, rendersig 0 diff) som saknas idag.
+- F: `lc-f-design.md` (ligger oincheckad i lcui-worktreet) lästes, ingen separat F-design skriven. Det F behöver av E: att `.lfo/.env` kan ta samma objektnamn som F1 (tillbakakompatibelt) och att ordspärren mot Strudels namn gäller även `lfo`/`env`.
+- Beslut hos projektledaren/Tobias: se avsnitt 4 i lc-e-design.md. Inget byggt eller kört av mig.
