@@ -23,3 +23,4 @@ void runEngineTests();
 void runMasterTests();
 void runModulationTests();
 void runFmPresetTests();
+void runPersistFmTests();

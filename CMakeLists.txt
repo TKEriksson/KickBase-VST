@@ -224,6 +224,7 @@ target_sources(KickbaseTests PRIVATE
     Tests/MasterTests.cpp
     Tests/ModulationTests.cpp
     Tests/FmPresetTests.cpp
+    Tests/PersistFmTests.cpp
     Source/Ui/FmPresets.cpp
     Source/Core/Params.cpp
     Source/Core/Master.cpp
