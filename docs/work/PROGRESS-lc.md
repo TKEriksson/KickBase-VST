@@ -188,3 +188,7 @@ Kör: antest, inittest, rendersig, tooltest. Rendersig ska vara oförändrad (ba
 - Minnet: noteBlocks växer från 88 KB till ca 512 KB i Pattern (en per plugininstans, heap).
 - Förväntat: rendersig oförändrad (inga underrader finns), alla gamla tester. Ej byggt av mig.
 - Nästa: steg 3 (Params/radparametrar), 4 (spara/ladda `row`-attribut), 5 (ToolLayer/MCP/Live Code 64 bit), 6 (MIDI-export), 7 (UI).
+
+## kbproj-spec uppdaterad med Tobias beslut (Arbetare 1, 21 okt)
+- Vad: `docs/work/kbproj-spec.md`: D1 XML, D2 bädda in, D4 inte v1, D3 UI vid AI-knappen; layoutförslag A (meny "PROJECT" med Save/Open/AI-läge, statusprick) / B (två knappar) / C (menyrad), rek. A. Bara docs, inget UI byggt.
+- Av: Arbetare 1. Resultat: se hash i rapport till projektledaren.
