@@ -289,8 +289,8 @@ std::vector<ToolLayer::ToolInfo> ToolLayer::tools()
           R"({"type":"object","properties":{"layer":{"type":"integer"},"file":{"type":"string"},"note":{"type":"integer"}},"required":["layer","file"]})" },
         { "analyze_audio", "Measures an audio file (WAV, AIFF, FLAC or MP3) the same way render_preview measures the synth, so you can compare a reference (a kick sample, a snippet of a track) with your sound: metrics, spectrogram image and, for kind 'kick', the kick length and tail frequency. start/seconds select a part (default: the first 20 s). Use bpm for the beat lines.",
           R"({"type":"object","properties":{"file":{"type":"string"},"kind":{"type":"string","enum":["kick","music"]},"start":{"type":"number"},"seconds":{"type":"number"},"bpm":{"type":"number"}},"required":["file"]})" },
-        { "load_bass_sample", "Loads a WAV/AIFF/FLAC file (max 12 s, mono-summed) as an instrument's sample source: it plays alongside the oscillators (through the filter and envelope), scaled by bassNSampleLevel (set here with 'level', default 1); it switches bassNSampleOn on. layer 0-9. key_track true makes it follow the notes (root_note = the MIDI note the sample was recorded at, C5 = 60), loop repeats it while the note is held, start 0..1. Empty or missing file clears the sample. Turn the oscillators off (bassNAOn, bassNBOn, bassNCOn = false) and bassNSub/bassNNoise down to hear the sample alone.",
-          R"({"type":"object","properties":{"layer":{"type":"integer"},"file":{"type":"string"},"level":{"type":"number"},"key_track":{"type":"boolean"},"root_note":{"type":"integer"},"loop":{"type":"boolean"},"start":{"type":"number"}},"required":["layer"]})" },
+        { "load_bass_sample", "Loads a WAV/AIFF/FLAC file (max 12 s, mono-summed) as an instrument's sample source: it plays alongside the oscillators (through the filter and envelope), scaled by bassNSampleLevel (set here with 'level', default 1); it switches bassNSampleOn on. layer 0-9. key_track true makes it follow the notes (root_note = the MIDI note the sample was recorded at, C5 = 60), loop repeats it while the note is held, start 0..1. Slicer (optional): slicer true plays one slice per note at original speed instead of the whole sample (note semitones - map_to = slice index, first slice = map_to, outside the slices is silent); slice_mode grid|auto|manual, grid = number of equal slices (default 8), sensitivity 0..1 (auto), markers = array of 0..1 positions (manual), reverse true plays slices backwards. Empty or missing file clears the sample. Turn the oscillators off (bassNAOn, bassNBOn, bassNCOn = false) and bassNSub/bassNNoise down to hear the sample alone.",
+          R"({"type":"object","properties":{"layer":{"type":"integer"},"file":{"type":"string"},"level":{"type":"number"},"key_track":{"type":"boolean"},"root_note":{"type":"integer"},"loop":{"type":"boolean"},"start":{"type":"number"},"slicer":{"type":"boolean"},"slice_mode":{"type":"string"},"grid":{"type":"integer"},"sensitivity":{"type":"number"},"markers":{"type":"array","items":{"type":"number"}},"map_to":{"type":"integer"},"reverse":{"type":"boolean"}},"required":["layer"]})" },
         { "load_kick_sample", "Loads a WAV/AIFF/FLAC file (max 2 s, mono-summed) as the kick's sample. kickSampleMode (Click | Layer | Replace) decides how it is used: Click = the first moments of every kick on top of the synthesized body, scaled by kickClick; Layer = the whole sample on top of the synthesized kick (kickSampleLevel); Replace = the sample is the kick (the synthesized body is silent). kickSampleTune plays it faster or slower. Empty or missing file clears it.",
           R"({"type":"object","properties":{"file":{"type":"string"}}})" },
         { "list_library", "Lists the sounds in the user's library (Documents\\Kickbase\\Library: kicks, bass sounds, synth sounds, pads and loops from free packs and the user's own recordings). Each item has id, name, category, package, tags, license, author and, if known, bpm and root_note. PERSONAL items are the user's own sounds (personal: true): they may be used but are never included in anything that is shared. Filter with category (Kicks, Bass, Synth, Pads, BassLoops, SynthLoops, Multi) and search (all words must match name, package, tags, author or license). Packages with a broken manifest are not listed; their problems are returned.",
@@ -2180,6 +2180,26 @@ var ToolLayer::loadInstrumentSample (const var& args)
     if (args.hasProperty ("root_note"))  set (InstrumentField::sampleRoot, (float) (int) args["root_note"]);
     if (args.hasProperty ("loop"))       set (InstrumentField::sampleLoop, (bool) args["loop"] ? 1.0f : 0.0f);
     if (args.hasProperty ("start"))      set (InstrumentField::sampleStart, (float) (double) args["start"]);
+    if (args.hasProperty ("slicer"))     set (InstrumentField::slicerOn, (bool) args["slicer"] ? 1.0f : 0.0f);
+    if (args.hasProperty ("map_to"))     set (InstrumentField::slicerMapTo, (float) (int) args["map_to"]);
+    if (args.hasProperty ("reverse"))    set (InstrumentField::slicerReverse, (bool) args["reverse"] ? 1.0f : 0.0f);
+    if (args.hasProperty ("slice_mode") || args.hasProperty ("grid") || args.hasProperty ("sensitivity") || args.hasProperty ("markers"))
+    {
+        const auto wanted = args["slice_mode"].toString().toLowerCase();
+        auto& slot = processor.instrumentSampleSlot (layer);
+        const auto mode = wanted == "auto" ? SampleSlicing::automatic : wanted == "manual" ? SampleSlicing::manual
+                        : wanted == "grid" ? SampleSlicing::grid : slot.sliceMode();
+        if (auto* list = args["markers"].getArray())
+        {
+            std::vector<float> markers;
+            for (const auto& marker : *list)
+                markers.push_back ((float) (double) marker);
+            processor.setInstrumentSliceMarkers (layer, std::move (markers));
+        }
+        processor.setInstrumentSlicing (layer, mode,
+                                        args.hasProperty ("sensitivity") ? (float) (double) args["sensitivity"] : slot.sliceSensitivity(),
+                                        args.hasProperty ("grid") ? (int) args["grid"] : slot.sliceGridCount());
+    }
     processor.patternChanged();
     return ok ("Loaded " + processor.getInstrumentSampleName (layer) + " into layer " + juce::String (layer) + ".");
 }
