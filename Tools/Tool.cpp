@@ -378,9 +378,8 @@ namespace
                 page.onPatternChanged = [&changed] { ++changed; };
                 page.onError = [&lastError] (const juce::String& e) { lastError = e; };
 
-                check (play->getToggleState(), "AUTO: på som standard");
-                play->triggerClick(); // de första fallen testar CREATE och LIVE som förut: AUTO av
-                runFor (100);
+                check (! play->getToggleState(), "AUTO: av när sidan skapas (Tobias 21 okt)");
+                check (code->getDocument().getAllContent().isEmpty(), "LIVE CODE: tom kodruta när sidan skapas");
 
                 pattern.clearNotes (0);
                 code->getDocument().replaceAllContent ("note(\"c2,e2\").s(\"i1\")");
