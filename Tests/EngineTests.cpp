@@ -6,7 +6,9 @@
 #include "../Source/Core/Modulation.h"
 #include "../Source/Core/Params.h"
 #include "../Source/Core/Pattern.h"
+#include "../Source/Core/RollFiles.h"
 #include "../Source/Core/StepGate.h"
+#include "../Source/Core/WavetableEdit.h"
 #include "TestUtils.h"
 #include <cmath>
 #include <vector>
@@ -632,6 +634,33 @@ namespace
                 basicOk = basicOk && std::abs (basic.sample ((float) step / 3.0f, 0.2, 512.0, false) - basic.sample ((float) step / 3.0f, 0.2, 512.0, true)) < 1.0e-6f;
             check (basicOk && std::abs (basic.sample (0.5f, 0.2, 512.0, false) - basic.sample (2.0f / 3.0f, 0.2, 512.0, false)) < 1.0e-6f, "Basic: Morph av hoppar mellan sinus, triangel, såg och fyrkant");
         }
+        // PH2: övertonsredigering. Utan ändringar är FFT-vägen identitet; grundtonen nollas; fasskift flyttar bara fasen.
+        {
+            auto edited = frames;
+            WavetableEdit::apply (edited, -1, { { 1, 1.0f, 0.0f } }, false);
+            auto worst = 0.0f;
+            for (size_t i = 0; i < edited.size(); ++i)
+                worst = std::max (worst, std::abs (edited[i] - frames[i]));
+            check (worst < 1.0e-4f, "WavetableEdit: ingen ändring ger samma frames (FFT fram och tillbaka)", worst);
+
+            std::vector<float> amp, phase, amp2, phase2;
+            WavetableEdit::analyse (frames.data(), 8, amp, phase);
+            WavetableEdit::apply (edited, 0, { { 1, 0.0f, 0.0f }, { 2, 1.0f, 0.5f } }, false);
+            WavetableEdit::analyse (edited.data(), 8, amp2, phase2);
+            check (amp[0] > 0.05f && amp2[0] < 1.0e-4f, "WavetableEdit: grundtonen kan nollas", amp2[0]);
+            check (std::abs (amp2[1] - amp[1]) < 1.0e-4f && std::abs (std::remainder (phase2[1] - phase[1] - 0.5f, juce::MathConstants<float>::twoPi)) < 1.0e-3f,
+                   "WavetableEdit: fasskift ändrar fasen men inte amplituden");
+            check (std::abs (edited[(size_t) Wavetable::frameSize * 3 + 100] - frames[(size_t) Wavetable::frameSize * 3 + 100]) < 1.0e-4f, "WavetableEdit: bara vald frame ändras");
+
+            WavetableEdit::apply (edited, -1, { { 1, 0.5f, 0.0f } }, true);
+            auto peakBefore = 0.0f, peakAfter = 0.0f;
+            for (int i = 0; i < Wavetable::frameSize; ++i)
+            {
+                peakBefore = std::max (peakBefore, std::abs (frames[(size_t) Wavetable::frameSize * 5 + (size_t) i]));
+                peakAfter = std::max (peakAfter, std::abs (edited[(size_t) Wavetable::frameSize * 5 + (size_t) i]));
+            }
+            check (peakAfter > 0.0f && std::abs (peakAfter - peakBefore) < 1.0e-3f || peakBefore < 1.0e-3f, "WavetableEdit: normalisering behåller toppvärdet", peakAfter);
+        }
         auto fourSteps = Wavetables::fromFrames ("test", frames, 4);
         check (fourSteps != nullptr && fourSteps->getSteps() == 4 && restored->getSteps() == Wavetable::numFrames, "fromFrames: antalet steg följer med, saknas det blir det 16");
 
@@ -725,6 +754,181 @@ namespace
         check (loaded.note (1, 5000).on && loaded.note (1, 5000).pitch == -90, "tonhöjd ±90 sparas");
     }
 
+    void testPolyphonyStacks()
+    {
+        std::puts ("Mönster: staplade toner (polyfoni steg 1)");
+        Pattern pattern;
+        pattern.clearNotes (0); // standardmallen ligger på lager 0
+        pattern.addNote (0, 96, 48, 3, 0.7f, false, { 7, 0, 0 });
+        check (pattern.stackSize (0, 96) == 1 && pattern.stackSize (0, 100) == 0, "stackSize: bara huvudtonen / ingen ton");
+        check (pattern.addExtra (0, 100, {}) == -1, "ingen stapel utan huvudton");
+        check (pattern.addExtra (0, 96, { 24, 10, 0.5f, false }) == 1 && pattern.addExtra (0, 96, { 12, -5, 0.4f, true }) == 2
+                  && pattern.addExtra (0, 96, { 6, 1, 1.0f, false }) == 3 && pattern.addExtra (0, 96, {}) == -1, "tre staplar, sedan fullt");
+        check (pattern.stackSize (0, 96) == 4, "stackSize 4");
+        pattern.removeStack (0, 96, 2);
+        Pattern::StackNote s;
+        check (pattern.stackSize (0, 96) == 3 && ! pattern.getStack (0, 96, 2, s) && pattern.getStack (0, 96, 3, s) && s.pitch == 1, "removeStack tar bara den staplade");
+        pattern.setStack (0, 96, 1, { 30, 12, 0.25f, true });
+        pattern.setStack (0, 96, 2, { 30, 12, 0.25f, true }); // släckt slot: ignoreras
+        check (pattern.getStack (0, 96, 1, s) && s.length == 30 && s.pitch == 12 && s.slide && ! pattern.getStack (0, 96, 2, s), "setStack");
+
+        Pattern loaded;
+        loaded.fromValueTree (pattern.toValueTree());
+        check (loaded.stackSize (0, 96) == 3 && loaded.note (0, 96).chord[0] == 7 && loaded.note (0, 96).pitch == 3, "spara/ladda: staplar och ackord");
+        check (loaded.getStack (0, 96, 1, s) && s.length == 30 && s.pitch == 12 && s.slide && loaded.getStack (0, 96, 2, s) && s.pitch == 1, "spara/ladda: stapelns fält");
+
+        // Trasig eller tom /e får inte krascha (läses som saknade staplar).
+        for (const auto* text : { "96/48/3/0/0.700/7/0/0/e", "96/48/3/0/0.700/e", "96/48/3/0/0.700/e/1/2", "96/48/3/0/0.700/e/x/y/z/w", "96/48/3/0/0.700/7/e/1/24/0.5/0/e/2" })
+        {
+            auto tree = pattern.toValueTree();
+            for (auto child : tree)
+                if (child.hasType ("Notes") && (int) child["layer"] == 0)
+                    child.setProperty ("notes", text, nullptr);
+            Pattern corrupt;
+            corrupt.fromValueTree (tree);
+            check (corrupt.note (0, 96).on.load() && corrupt.stackSize (0, 96) >= 1 && corrupt.stackSize (0, 96) <= Pattern::maxStack, "trasig /e: tonen finns, inget kraschar");
+        }
+
+        // Glidande huvudton: extras räknas inte; vanliga räknas med ackord.
+        Pattern voices;
+        voices.clearNotes (0);
+        voices.addNote (0, 0, 96, 0, 0.8f, false, { 4, 7, 0 });
+        voices.addExtra (0, 0, { 96, 12, 0.8f, false });
+        check (voices.maxSimultaneous (0) == 4, "maxSimultaneous räknar huvudton, ackord och stapel", voices.maxSimultaneous (0));
+        voices.addNote (0, 48, 24, 0, 0.8f, true);
+        check (voices.maxSimultaneous (0) == 4, "en glide-ton lägger inga röster");
+
+        voices.addNote (0, 0, 96, 0); // en ny ton ärver inga staplar
+        check (voices.stackSize (0, 0) == 1, "addNote nollställer staplar");
+        voices.addExtra (0, 0, {});
+        voices.trimRow (0, 1); // oförändrad
+        voices.removeNote (0, 0);
+        voices.addNote (0, 0, 24);
+        check (voices.stackSize (0, 0) == 1, "removeNote tar med staplarna");
+    }
+
+    void testPianoRollStackFiles()
+    {
+        std::puts ("Pianorulle: staplade toner i preset och MIDI");
+        const auto folder = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                                .getChildFile ("Kickbase-roll-" + juce::Uuid().toString());
+        check (folder.createDirectory(), "skapa temporär testmapp");
+        const auto rollFile = folder.getChildFile ("stack.roll");
+        const auto midiFile = folder.getChildFile ("stack.mid");
+
+        Pattern source;
+        source.clearNotes (0);
+        source.addNote (0, 48, 24, 0, 0.8f);
+        source.addExtra (0, 48, { 36, 7, 0.45f, false });
+        check (RollFiles::save (source, 0, InstrumentGrid::sixteenth, rollFile), "spara staplade toner i pianorullepreset");
+
+        Pattern loaded;
+        auto grid = InstrumentGrid::sixteenth;
+        check (RollFiles::load (loaded, 0, rollFile, grid), "ladda staplade toner från pianorullepreset");
+        Pattern::StackNote stacked;
+        check (loaded.stackSize (0, 48) == 2 && loaded.getStack (0, 48, 1, stacked)
+                   && loaded.note (0, 48).pitch == 0 && stacked.pitch == 7 && stacked.length == 36,
+               "pianorullepreset behåller båda tonerna och deras data");
+
+        check (RollFiles::exportMidi (source, 0, 1, 130.0, 60, midiFile), "exportera staplade toner till MIDI");
+        Pattern imported;
+        auto skipped = 0;
+        check (RollFiles::importMidi (imported, 0, midiFile, 60, &skipped) && skipped == 0, "importera MIDI med staplade toner");
+        check (imported.stackSize (0, 48) == 2 && imported.note (0, 48).pitch == 0
+                   && imported.getStack (0, 48, 1, stacked) && stacked.pitch == 7 && stacked.length == 36,
+               "MIDI-roundtrip behåller separata samtidiga toner");
+
+        // Ackord + stapel: exporten ger tre olika toner, importen staplar dem (inga ackord byggs).
+        const auto mixedPtr = std::make_unique<Pattern>(); auto& mixed = *mixedPtr;
+        mixed.clearNotes (0);
+        mixed.addNote (0, 0, 24, 0, 0.8f).setChord ({ 4, 0, 0 });
+        mixed.addExtra (0, 0, { 24, 7, 0.5f, false });
+        check (RollFiles::exportMidi (mixed, 0, 1, 130.0, 60, midiFile), "exportera ackord + stapel");
+        const auto mixedBackPtr = std::make_unique<Pattern>(); auto& mixedBack = *mixedBackPtr;
+        skipped = 0;
+        check (RollFiles::importMidi (mixedBack, 0, midiFile, 60, &skipped) && skipped == 0 && mixedBack.stackSize (0, 0) == 3
+                   && mixedBack.note (0, 0).pitch == 0 && mixedBack.getStack (0, 0, 1, stacked) && stacked.pitch == 4
+                   && mixedBack.getStack (0, 0, 2, stacked) && stacked.pitch == 7,
+               "ackord + stapel blir tre staplade toner efter roundtrip");
+
+        // Samma tonhöjd i ackord och stapel exporteras bara en gång.
+        const auto samePtr = std::make_unique<Pattern>(); auto& same = *samePtr;
+        same.clearNotes (0);
+        same.addNote (0, 0, 24, 0, 0.8f).setChord ({ 7, 0, 0 });
+        same.addExtra (0, 0, { 24, 7, 0.5f, false });
+        check (RollFiles::exportMidi (same, 0, 1, 130.0, 60, midiFile), "exportera dubblettpitch");
+        const auto sameBackPtr = std::make_unique<Pattern>(); auto& sameBack = *sameBackPtr;
+        skipped = 0;
+        check (RollFiles::importMidi (sameBack, 0, midiFile, 60, &skipped) && skipped == 0 && sameBack.stackSize (0, 0) == 2,
+               "dubblettpitch exporteras en gång");
+
+        // R9b steg 6: en aktiv underrad med toner blir ett eget namngivet spår; en tyst underrad och andra instruments underrader exporteras inte.
+        const auto subPtr = std::make_unique<Pattern>(); auto& sub = *subPtr;
+        sub.clearNotes (0);
+        sub.addNote (0, 0, 24, 0, 0.8f);
+        const auto sampleRow = sub.rows.add (0, RowRegistry::Kind::sample);
+        const auto slicerRow = sub.rows.add (0, RowRegistry::Kind::slicer);
+        const auto otherRow = sub.rows.add (1, RowRegistry::Kind::sample);
+        sub.addNote (sampleRow, 0, 24, 5, 0.7f);
+        sub.addNote (otherRow, 0, 24, 3, 0.7f);
+        (void) slicerRow;
+        check (RollFiles::exportMidi (sub, 0, 1, 130.0, 60, midiFile), "exportera underrader till MIDI");
+        {
+            juce::FileInputStream in (midiFile);
+            juce::MidiFile back;
+            check (in.openedOk() && back.readFrom (in) && back.getNumTracks() == 2, "MIDI: huvudspår + ett spår för den aktiva underraden (tyst underrad och annat instrument hoppas över)");
+            auto named = false;
+            if (back.getNumTracks() == 2)
+                for (int i = 0; i < back.getTrack (1)->getNumEvents(); ++i)
+                    if (const auto& m = back.getTrack (1)->getEventPointer (i)->message; m.isTrackNameEvent() && m.getTextFromTextMetaEvent() == "Bass 1 - SAMPLE")
+                        named = true;
+            check (named, "MIDI: underradens spår heter 'Bass 1 - SAMPLE'");
+        }
+
+        // Fem samtidiga toner: huvudton + tre staplade, en tappas och räknas.
+        const auto fivePtr = std::make_unique<Pattern>(); auto& five = *fivePtr;
+        five.clearNotes (0);
+        five.addNote (0, 0, 24, 0, 0.8f).setChord ({ 4, 0, 0 });
+        five.addExtra (0, 0, { 24, 7, 0.5f, false });
+        five.addExtra (0, 0, { 24, 10, 0.5f, false });
+        five.addExtra (0, 0, { 24, 12, 0.5f, false });
+        check (RollFiles::exportMidi (five, 0, 1, 130.0, 60, midiFile), "exportera fem samtidiga toner");
+        const auto fiveBackPtr = std::make_unique<Pattern>(); auto& fiveBack = *fiveBackPtr;
+        skipped = 0;
+        check (RollFiles::importMidi (fiveBack, 0, midiFile, 60, &skipped) && skipped == 1 && fiveBack.stackSize (0, 0) == 4,
+               "fem samtidiga toner: fyra behålls, en räknas som hoppad");
+
+        // Äldre pianorullsfiler (version 1 och 2, utan index) laddas och staplar toner på samma tick.
+        const auto legacy = folder.getChildFile ("legacy.roll");
+        for (const auto version : { 1, 2 })
+        {
+            legacy.replaceWithText ("<KickbaseRoll version=\"" + juce::String (version) + "\" bars=\"1\" grid=\"1/16\">"
+                                    "<Note tick=\"0\" length=\"24\" pitch=\"0\" velocity=\"0.8\" glide=\"0\"/>"
+                                    "<Note tick=\"96\" length=\"12\" pitch=\"5\" velocity=\"0.7\" glide=\"0\"/>"
+                                    "</KickbaseRoll>");
+            const auto oldPtr = std::make_unique<Pattern>(); auto& old = *oldPtr;
+            auto oldGrid = InstrumentGrid::sixteenth;
+            check (RollFiles::load (old, 0, legacy, oldGrid) && old.stackSize (0, 0) == 1 && old.stackSize (0, 96) == 1
+                       && old.note (0, 96).pitch == 5,
+                   version == 1 ? "äldre pianorullsfil laddas (version 1)" : "äldre pianorullsfil laddas (version 2)");
+        }
+
+        // Hål i index (0, 2, 3) och fler än fyra toner: komprimeras i ordning, överskott tappas utan krasch.
+        legacy.replaceWithText ("<KickbaseRoll version=\"3\" bars=\"1\" length=\"auto\" grid=\"1/16\">"
+                                "<Note tick=\"0\" index=\"0\" length=\"24\" pitch=\"0\" velocity=\"0.8\" glide=\"0\"/>"
+                                "<Note tick=\"0\" index=\"2\" length=\"24\" pitch=\"4\" velocity=\"0.8\" glide=\"0\"/>"
+                                "<Note tick=\"0\" index=\"3\" length=\"24\" pitch=\"7\" velocity=\"0.8\" glide=\"0\"/>"
+                                "<Note tick=\"0\" index=\"3\" length=\"24\" pitch=\"9\" velocity=\"0.8\" glide=\"0\"/>"
+                                "<Note tick=\"0\" index=\"3\" length=\"24\" pitch=\"11\" velocity=\"0.8\" glide=\"0\"/>"
+                                "</KickbaseRoll>");
+        const auto holesPtr = std::make_unique<Pattern>(); auto& holes = *holesPtr;
+        auto holeGrid = InstrumentGrid::sixteenth;
+        check (RollFiles::load (holes, 0, legacy, holeGrid) && holes.stackSize (0, 0) == 4 && holes.getStack (0, 0, 1, stacked)
+                   && stacked.pitch == 4 && holes.getStack (0, 0, 3, stacked) && stacked.pitch == 9,
+               "hål i stackindex och för många toner tas om hand");
+        folder.deleteRecursively();
+    }
+
     void testGateAndPianoRollFlag()
     {
         std::puts ("Mönster: gate-steg och pianorullsmarkering sparas per lager");
@@ -765,4 +969,6 @@ void runEngineTests()
     testWavetableLibrary();
     testGateAndPianoRollFlag();
     testRowLengths();
+    testPolyphonyStacks();
+    testPianoRollStackFiles();
 }

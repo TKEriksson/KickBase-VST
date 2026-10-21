@@ -5,6 +5,7 @@
 #include "../Ui/EditorRoot.h"
 #include "../Ui/KickbaseLookAndFeel.h"
 #include "../Ui/AiChatPage.h"
+#include "../Ui/LiveCodePage.h"
 #include "../Ui/EffectsPage.h"
 #include "../Ui/LfoPage.h"
 #include "../Ui/MasterPage.h"
@@ -37,6 +38,7 @@ private:
     KickModule kick { processor };
     GateModule gate { processor };
     AiChatPage aiPage { processor };
+    LiveCodePage livePage { processor };
     TabbedPanel tools { &processor.selectedTab };
     EffectsPage effects { processor };
     SidechainPage sidechain { processor };

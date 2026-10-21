@@ -17,11 +17,12 @@
 // Rattarna är parametrar 0..1 (så att parameteruppsättningen är fast, som VST3 kräver);
 // Effects::knobs(typ) säger vad de betyder och hur de räknas om till riktiga enheter.
 enum class EffectType { off, filter, distortion, eq, chorus, phaser, echo, reverb,
-                        compressor, gate, comb, ringMod, bitcrusher, autoFilter, maximizer, ducker, count };
+                        compressor, gate, comb, ringMod, bitcrusher, autoFilter, maximizer, ducker, disperser,
+                        widener, flanger, transient, dynamicEq, octaver, bandDucker, count }; // FX2 (sist i listan: projekt sparar typens index)
 constexpr int numEffectTypes = (int) EffectType::count; // inklusive Off
 constexpr int numEffectChannels = 11; // FX1 ... FX11
 constexpr int slotsPerChannel = 5;
-constexpr int knobsPerSlot = 8;
+constexpr int knobsPerSlot = 10; // P1-P8 är de ursprungliga; P9-P10 tillkom i FX1 (gamla projekt får dem satta till neutralt av migrateLegacyKnobs)
 
 // Ljudet från kicken och instrumenten som effekten SIDECHAIN lyssnar på (sida för sida, per block): 0 = kicken, 1-10 = instrumenten.
 // Pekarna gäller bara under det pågående blocket. Instrumentet fyller i dem; tomma pekare betyder att källan inte spelar.
@@ -43,6 +44,11 @@ namespace Effects
     // kanalens "fxALevel", "fxADuck". Kanalerna 1-11 heter A-K i ID:n (sparade projekt pekar på de gamla A-E).
     juce::String slotParamID (int channel, int slot, const juce::String& suffix);
     juce::String knobParamID (int channel, int slot, int knob);
+    // Gamla projekt (utan egenskapen fxKnobsV) saknar rattar som tillkommit sedan dess: sätter dem till sitt standardvärde (neutralt) i state-trädet.
+    void migrateLegacyKnobs (juce::ValueTree& state);
+    constexpr int knobsVersion = 2;
+    // Rattar som tillkommit sedan FX1: sant och standardvärdet (0..1) om ratt k i typen är en sådan (saknas den i en fil ska den få detta, inte 0.5).
+    bool newKnobDefault (EffectType type, int k, float& normalised);
     juce::String channelParamID (int channel, const juce::String& suffix);
     bool isEffectParameter (const juce::String& paramID);
 

@@ -146,7 +146,8 @@ void FxProcessor::processChunk (juce::AudioBuffer<float>& buffer)
     if (routed)
     {
         effects.send (channel, synthBuffer.getReadPointer (0), synthBuffer.getReadPointer (1), numSamples, amountToChannel);
-        synthBuffer.applyGain (1.0f - amountToChannel);
+        if (params.bass (0, InstrumentField::fxSend) < 0.5f)
+            synthBuffer.applyGain (1.0f - amountToChannel);
     }
 
     // För gränssnittets vågformer: synthen före duckningen (mono-summa).

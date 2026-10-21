@@ -1,9 +1,11 @@
+#include <set>
 #include "PluginBase.h"
 #include <BinaryData.h>
 #include "AiChat.h"
 #include "MixAnalysis.h"
 #include "OfflineRender.h"
 #include "Mixer.h"
+#include "WavetableEdit.h"
 #include <map>
 
 // Tal som sparade projekt och presets bygger på: ändras de läses gamla filer fel (eller måste migreras).
@@ -11,7 +13,9 @@ static_assert (Pattern::numLayers == 10 && Pattern::kickLayer == 10, "mönstrets
 static_assert (numEffectChannels == 11 && slotsPerChannel == 5, "FX-kanalernas id:n är fxA-fxK med fem platser");
 static_assert (Modulation::numLfos == 3 && Modulation::numMacros == 4 && Modulation::firstInstrumentSource == 7
                    && Modulation::instrumentSources == 4 && Modulation::maxLfos == 10 && Modulation::firstExtraLfoSource == 47
-                   && Modulation::numSources == 54, "modulationskällorna sparas som tal i modRoutes (LFO 4-10 = källa 47-53)");
+                   && Modulation::firstEnvSource == 54 && Modulation::envSources == 2 && Modulation::firstCodeSource == 74
+                   && Modulation::numCodeSources == 8 && Modulation::numSources == 82,
+               "modulationskällorna sparas som tal i modRoutes (CODE 1-8 är sist, källa 74-81)");
 static_assert (ParamID::oscsPerLayer == 3, "projektens egna wavetables sparas med lager och oscillator (OSC 1-3)");
 
 namespace
@@ -226,6 +230,69 @@ bool PluginBase::loadUserTable (int layer, int osc, const juce::File& file)
     return true;
 }
 
+bool PluginBase::wavetableSource (int layer, int osc, std::vector<float>& frames, int& steps, juce::String& name) const
+{
+    if (! juce::isPositiveAndBelow (layer, ParamID::numInstrumentLayers) || ! juce::isPositiveAndBelow (osc, ParamID::oscsPerLayer))
+        return false;
+    auto* parameter = apvts.getParameter (ParamID::bass (layer, ParamID::oscField (osc, InstrumentField::aTable)));
+    if (parameter == nullptr)
+        return false;
+
+    // Oscillatorns egen User-tabell om den är vald, annars den inbyggda som är vald (installWavetable gör den till en redigerad kopia i User).
+    const auto slot = layer * ParamID::oscsPerLayer + osc;
+    const auto choice = (int) std::lround (parameter->convertFrom0to1 (parameter->getValue()));
+    if (choice == Wavetables::userIndex())
+    {
+        if (userTable (layer, osc) == nullptr || userFrames[(size_t) slot].size() != (size_t) Wavetable::numFrames * Wavetable::frameSize)
+            return false;
+        frames = userFrames[(size_t) slot];
+        steps = userTable (layer, osc)->getSteps();
+        name = userNames[(size_t) slot];
+        return true;
+    }
+
+    Wavetables::ensure (choice);
+    const auto& source = Wavetables::get (choice);
+    frames = WavetableEdit::framesOf (source);
+    steps = source.getSteps();
+    name = Wavetables::names()[choice] + " (edited)";
+    return true;
+}
+
+bool PluginBase::installWavetable (int layer, int osc, std::vector<float> frames, int steps, const juce::String& name)
+{
+    auto* parameter = juce::isPositiveAndBelow (layer, ParamID::numInstrumentLayers) && juce::isPositiveAndBelow (osc, ParamID::oscsPerLayer)
+                          ? apvts.getParameter (ParamID::bass (layer, ParamID::oscField (osc, InstrumentField::aTable)))
+                          : nullptr;
+    if (parameter == nullptr)
+        return false;
+    auto table = Wavetables::fromFrames (name, frames, steps);
+    if (table == nullptr)
+        return false;
+
+    setUserTable (layer * ParamID::oscsPerLayer + osc, std::move (table), std::move (frames), name);
+    if ((int) std::lround (parameter->convertFrom0to1 (parameter->getValue())) != Wavetables::userIndex())
+    {
+        parameter->beginChangeGesture();
+        parameter->setValueNotifyingHost (parameter->convertTo0to1 ((float) Wavetables::userIndex()));
+        parameter->endChangeGesture();
+    }
+    markStateChanged();
+    return true;
+}
+
+bool PluginBase::editWavetable (int layer, int osc, int frame, const std::vector<WavetableEdit::Edit>& edits, bool normalise)
+{
+    std::vector<float> frames;
+    auto steps = Wavetable::numFrames;
+    juce::String name;
+    if (edits.empty() || ! wavetableSource (layer, osc, frames, steps, name))
+        return false;
+
+    WavetableEdit::apply (frames, frame, edits, normalise);
+    return installWavetable (layer, osc, std::move (frames), steps, name);
+}
+
 bool PluginBase::instrumentHasContent (int layer, juce::String* what) const
 {
     juce::StringArray parts;
@@ -299,6 +366,7 @@ void PluginBase::wipeInstrument (int layer)
     for (int osc = 0; osc < ParamID::oscsPerLayer; ++osc)
         clearUserTable (layer * ParamID::oscsPerLayer + osc);
     layerNames[(size_t) layer] = {};
+    layerColours[(size_t) layer] = 0;
     instrumentPresetNames[(size_t) layer] = "Default";
     ++layerNamesVersion;
     selectedInstrumentSource[(size_t) layer] = 0;
@@ -528,8 +596,12 @@ void PluginBase::getStateInformation (juce::MemoryBlock& destData)
     for (int channel = 0; channel < numEffectChannels; ++channel)
         state.setProperty ("presetFx" + juce::String (channel + 1), fxPresetNames[(size_t) channel], nullptr);
     state.setProperty ("previewNote", previewNote.load(), nullptr);
+    state.setProperty ("fxKnobsV", Effects::knobsVersion, nullptr);
     for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
         state.setProperty ("layerName" + juce::String (layer + 1), layerNames[(size_t) layer], nullptr);
+    for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
+        if (layerColours[(size_t) layer] != 0) // bara de som ändrats: gamla projekt och standardfärger får ingen ny egenskap
+            state.setProperty ("layerColour" + juce::String (layer + 1), (juce::int64) layerColours[(size_t) layer], nullptr);
     state.appendChild (pattern.toValueTree(), nullptr);
     state.appendChild (kickSample.toValueTree (clickTreeType), nullptr);
     state.appendChild (instrumentSamplesToValueTree(), nullptr);
@@ -543,8 +615,77 @@ void PluginBase::getStateInformation (juce::MemoryBlock& destData)
     state.appendChild (kickPitchEnv.toValueTree (kickPitchType), nullptr);
     state.appendChild (kickAmpEnv.toValueTree (kickAmpType), nullptr);
 
+    if (const auto liveCode = liveCodeToValueTree(); liveCode.isValid())
+        state.appendChild (liveCode, nullptr);
+
     if (auto xml = state.createXml())
         copyXmlToBinary (*xml, destData);
+}
+
+juce::ValueTree PluginBase::liveCodeToValueTree() const
+{
+    const auto text = getLiveCodeText();
+    const auto locks = liveCodeLocks.load();
+    if (text.isEmpty() && (locks & 0x7ff) == 0)
+        return {};
+    juce::ValueTree tree ("LiveCode");
+    tree.setProperty ("code", text, nullptr);
+    tree.setProperty ("locks", (int) (locks & 0x7ff), nullptr); // filformatet är oförändrat: bit 0-10 (underraders lås sparas inte)
+    return tree;
+}
+
+void PluginBase::liveCodeFromValueTree (const juce::ValueTree& tree)
+{
+    setLiveCodeText (tree.getProperty ("code").toString());
+    liveCodeLocks = (juce::uint64) ((int) tree.getProperty ("locks", 0) & 0x7ff); // bit 0-9 instrument, 10 kicken
+    liveCodeOwned = 0;
+    liveCodeCodeLocks = 0; // lås från koden sparas aldrig
+    liveCodeCodeNoteLocks = 0;
+}
+
+void PluginBase::clearCodeMods (bool dropRoutes)
+{
+    for (auto& slot : modulator.codeSlots)
+        slot.kind = 0;
+    if (dropRoutes)
+        for (int i = 0; i < (int) modRoutes.routes.size(); ++i)
+            if (Modulation::isCodeSource (modRoutes.routes[(size_t) i].source.load()))
+                modRoutes.remove (i);
+    codeMods.clear();
+    if (! dropRoutes)
+        startCodeSweep();
+}
+
+void PluginBase::startCodeSweep()
+{
+    // Utan meddelandehanterare (verktygstester) finns ingen timer; sweepCodeRoutes anropas då av applyCodeMods och direkt.
+    if (juce::MessageManager::getInstanceWithoutCreating() != nullptr && ! codeSweeper.isTimerRunning())
+        codeSweeper.startTimer (100);
+}
+
+void PluginBase::CodeSweeper::timerCallback()
+{
+    owner.sweepCodeRoutes();
+    for (const auto& route : owner.modRoutes.routes)
+    {
+        const auto source = route.source.load();
+        if (Modulation::isCodeSource (source) && owner.modulator.codeSlots[(size_t) (source - Modulation::firstCodeSource)].kind.load() == 0)
+            return; // en stängd plats tonar fortfarande ut: titta igen om 100 ms
+    }
+    stopTimer();
+}
+
+void PluginBase::sweepCodeRoutes()
+{
+    for (int i = 0; i < (int) modRoutes.routes.size(); ++i)
+    {
+        const auto source = modRoutes.routes[(size_t) i].source.load();
+        if (! Modulation::isCodeSource (source))
+            continue;
+        const auto& slot = modulator.codeSlots[(size_t) (source - Modulation::firstCodeSource)];
+        if (slot.kind.load() == 0 && slot.idle.load())
+            modRoutes.remove (i);
+    }
 }
 
 void PluginBase::setStateInformation (const void* data, int sizeInBytes)
@@ -552,6 +693,7 @@ void PluginBase::setStateInformation (const void* data, int sizeInBytes)
     auto xml = getXmlFromBinary (data, sizeInBytes);
     if (xml == nullptr || ! xml->hasTagName (apvts.state.getType()))
         return;
+    clearCodeMods(); // kopplingarna ersätts nedan; poster och platser får inte peka på dem
 
     auto state = juce::ValueTree::fromXml (*xml);
     for (int i = 0; i < Presets::numSections; ++i)
@@ -565,7 +707,15 @@ void PluginBase::setStateInformation (const void* data, int sizeInBytes)
     previewNote = juce::jlimit (0, 127, (int) state.getProperty ("previewNote", 60));
     for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
         layerNames[(size_t) layer] = state.getProperty ("layerName" + juce::String (layer + 1), juce::String()).toString();
+    for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
+        layerColours[(size_t) layer] = (juce::uint32) (juce::int64) state.getProperty ("layerColour" + juce::String (layer + 1), 0);
     ++layerNamesVersion;
+    if (auto liveCode = state.getChildWithName ("LiveCode"); liveCode.isValid()) // äldre projekt har inget: koden och låsen lämnas som de är
+    {
+        liveCodeFromValueTree (liveCode);
+        state.removeChild (liveCode, nullptr); // hör inte hemma i apvts-tillståndet
+    }
+    ++liveCodeLoads; // sidan LIVE CODE stoppar LIVE och tar in den nya koden
 
     auto legacyLengths = false; // projekt före mönsterversion 7: längderna låg i parametrarna (patternBars, rowBars)
     if (auto patternTree = state.getChildWithName (Pattern::treeType); patternTree.isValid())
@@ -638,6 +788,7 @@ void PluginBase::setStateInformation (const void* data, int sizeInBytes)
 
     const auto lfoMask = (std::uint32_t) (int) state.getProperty ("activeLfos", 7); // gamla projekt: LFO 1-3
     state.removeProperty ("activeLfos", nullptr);
+    Effects::migrateLegacyKnobs (state); // gamla projekt: nya effektrattar får sitt neutrala standardvärde
     apvts.replaceState (state);
     applyLoadedLfos (lfoMask); // (efter replaceState: den återställer inte parametrar som saknas i projektet)
     if (legacyLengths)
@@ -735,6 +886,7 @@ void PluginBase::loadFactoryPreset (Presets::Section section, int index, int lay
 
     if (section == Presets::Section::full || section == Presets::Section::lfo)
     {
+        clearCodeMods();
         modRoutes.clear();
         for (auto& curve : lfoCurves)
             curve.reset();
@@ -742,6 +894,8 @@ void PluginBase::loadFactoryPreset (Presets::Section section, int index, int lay
 
     if (section == Presets::Section::full || section == Presets::Section::kick)
     {
+        kickPitchEnv.setMode (NodeEnvelope::Mode::tension); // reset() rör inte läget
+        kickAmpEnv.setMode (NodeEnvelope::Mode::tension);
         kickPitchEnv.reset();
         kickAmpEnv.reset();
     }
@@ -785,6 +939,9 @@ void PluginBase::loadFactoryPreset (Presets::Section section, int index, int lay
             clearInstrumentSample (l);
         for (int slot = 0; slot < numUserSlots; ++slot)
             clearUserTable (slot);
+        layerNames.fill ({}); // som den inbakade Init-filen: standardnamn och -färger
+        layerColours.fill (0);
+        ++layerNamesVersion;
         presetNames.fill ({}); // delarna kommer inte längre från sina egna presets
         instrumentPresetNames.fill ({});
         rowPresetNames.fill ({});
@@ -821,17 +978,13 @@ juce::Array<juce::File> PluginBase::getUserPresets (Presets::Section section, in
     return rows;
 }
 
-bool PluginBase::saveUserPreset (Presets::Section section, const juce::String& name, int layer, const PresetLink* link)
+std::unique_ptr<juce::XmlElement> PluginBase::buildPresetXml (Presets::Section section, int layer, const PresetLink* link)
 {
-    const auto fileName = juce::File::createLegalFileName (name.trim());
-    const auto directory = Presets::folder (section, effectVersion);
-    if (fileName.isEmpty() || directory.createDirectory().failed())
-        return false;
-
-    juce::XmlElement root ("KickbasePreset");
+    auto rootPtr = std::make_unique<juce::XmlElement> ("KickbasePreset");
+    auto& root = *rootPtr;
     root.setAttribute ("section", Presets::sectionName (section));
     root.setAttribute ("plugin", effectVersion ? "fx" : "instrument");
-    root.setAttribute ("version", 1);
+    root.setAttribute ("version", 2); // 2: Full har <LayerNames>; äldre filer (saknas eller 1) ger standardnamn och -färger
     if (section == Presets::Section::effects)
         root.setAttribute ("scope", "channel"); // en effektkanal
     if (section == Presets::Section::pattern)
@@ -864,6 +1017,17 @@ bool PluginBase::saveUserPreset (Presets::Section section, const juce::String& n
                                    : section == Presets::Section::effects ? Presets::effectIdToCanonical (ranged->getParameterID(), layer)
                                                                           : ranged->getParameterID());
         entry->setAttribute ("value", (double) ranged->convertFrom0to1 (ranged->getValue()));
+    }
+
+    if (section == Presets::Section::full)
+    {
+        auto* namesXml = root.createNewChildElement ("LayerNames");
+        for (int i = 0; i < ParamID::numInstrumentLayers; ++i)
+        {
+            namesXml->setAttribute ("name" + juce::String (i + 1), layerNames[(size_t) i]);
+            if (layerColours[(size_t) i] != 0) // som i projekttillståndet: bara ändrade färger
+                namesXml->setAttribute ("colour" + juce::String (i + 1), juce::String ((juce::int64) layerColours[(size_t) i])); // String: setAttribute(int64) är tvetydig (C2668); läses med getLargeIntValue (:1312)
+        }
     }
 
     if (section == Presets::Section::full)
@@ -901,11 +1065,184 @@ bool PluginBase::saveUserPreset (Presets::Section section, const juce::String& n
                 root.addChildElement (lfoCurves[(size_t) i].toValueTree ("LfoCurve" + juce::String (i + 1)).createXml().release());
     }
 
-    if (! root.writeTo (directory.getChildFile (fileName + presetFileExtension)))
+    if (section == Presets::Section::full)
+        if (const auto liveCode = liveCodeToValueTree(); liveCode.isValid())
+            root.addChildElement (liveCode.createXml().release());
+
+    return rootPtr;
+}
+
+bool PluginBase::saveUserPreset (Presets::Section section, const juce::String& name, int layer, const PresetLink* link)
+{
+    const auto fileName = juce::File::createLegalFileName (name.trim());
+    const auto directory = Presets::folder (section, effectVersion);
+    if (fileName.isEmpty() || directory.createDirectory().failed())
+        return false;
+
+    const auto root = buildPresetXml (section, layer, link);
+    if (! root->writeTo (directory.getChildFile (fileName + presetFileExtension)))
         return false;
 
     presetNameSlot (section, layer) = fileName;
     updateHostDisplay (ChangeDetails().withNonParameterStateChanged (true));
+    return true;
+}
+
+namespace
+{
+    // Det i ett spår som varken ligger i instrument- eller mönsterdelen av ett preset: på/av, duck, FX-skick och mixern.
+    std::vector<std::pair<juce::String, juce::String>> trackExtraParameters (int layer)
+    {
+        const auto mixer = [layer] (const char* field) { return Mixer::paramID (Mixer::firstBassSource + layer, field); };
+        return { { "on", ParamID::bass (layer, InstrumentField::on) },
+                 { "duck", ParamID::bass (layer, InstrumentField::duck) },
+                 { "fxChannel", ParamID::bass (layer, InstrumentField::fxChannel) },
+                 { "fxAmount", ParamID::bass (layer, InstrumentField::fxAmount) },
+                 { "fxSend", ParamID::bass (layer, InstrumentField::fxSend) },
+                 { "mixGain", mixer ("Gain") }, { "mixPan", mixer ("Pan") }, { "mixDuck", mixer ("Duck") }, { "mixMax", mixer ("Max") } };
+    }
+
+    // Instrumentets egna modulationskällor följer med spåret till ett annat instrument; LFO:er, makron och andras källor lämnas.
+    int sourceInLayer (int source, int layer)
+    {
+        return Modulation::isInstrumentSource (source) ? Modulation::instrumentSource (layer, Modulation::kindOfSource (source)) : source;
+    }
+}
+
+std::unique_ptr<juce::XmlElement> PluginBase::copyTrack (int layer)
+{
+    if (effectVersion || ! juce::isPositiveAndBelow (layer, ParamID::numInstrumentLayers))
+        return nullptr;
+
+    auto clip = std::make_unique<juce::XmlElement> ("KickbaseTrack");
+    clip->setAttribute ("name", layerNames[(size_t) layer]);
+    clip->setAttribute ("colour", (int) layerColours[(size_t) layer]);
+    clip->addChildElement (buildPresetXml (Presets::Section::bass, layer).release());
+    clip->addChildElement (buildPresetXml (Presets::Section::pattern, layer).release());
+
+    auto* extras = clip->createNewChildElement ("Extras");
+    for (const auto& [key, id] : trackExtraParameters (layer))
+        if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (apvts.getParameter (id)))
+        {
+            auto* entry = extras->createNewChildElement ("Param");
+            entry->setAttribute ("key", key);
+            entry->setAttribute ("value", (double) ranged->convertFrom0to1 (ranged->getValue()));
+        }
+
+    // LFO-kopplingar till instrumentets rattar, sparade med parameterns ID som för lager 1 (som i presets) och källor som för lager 1.
+    auto* routes = clip->createNewChildElement ("Routes");
+    const auto& parameters = getParameters();
+    for (const auto& route : modRoutes.routes)
+    {
+        const auto source = route.source.load(), target = route.target.load();
+        if (source < 0 || ! juce::isPositiveAndBelow (target, parameters.size()))
+            continue;
+        if (auto* withId = dynamic_cast<juce::AudioProcessorParameterWithID*> (parameters[target]); withId != nullptr && Presets::instrumentLayerOf (withId->paramID) == layer)
+        {
+            auto* entry = routes->createNewChildElement ("Route");
+            entry->setAttribute ("source", sourceInLayer (source, 0));
+            entry->setAttribute ("target", Presets::toInstrumentLayer (withId->paramID, 0));
+            entry->setAttribute ("amount", (double) route.amount.load());
+        }
+    }
+    return clip;
+}
+
+bool PluginBase::pasteTrack (int layer, const juce::XmlElement& clip)
+{
+    if (beforeTrackChange)
+        beforeTrackChange();
+    if (effectVersion || ! clip.hasTagName ("KickbaseTrack") || ! juce::isPositiveAndBelow (layer, ParamID::numInstrumentLayers))
+        return false;
+
+    const juce::XmlElement* bassXml = nullptr;
+    const juce::XmlElement* patternXml = nullptr;
+    for (const auto* child : clip.getChildWithTagNameIterator ("KickbasePreset"))
+        (child->getStringAttribute ("section") == Presets::sectionName (Presets::Section::pattern) ? patternXml : bassXml) = child;
+    if (bassXml == nullptr || patternXml == nullptr)
+        return false;
+
+    // Det gamla innehållet (och dess kopplingar) rensas först, så att inget blir kvar av det som skrivs över.
+    wipeInstrument (layer);
+    loadPresetXml (*bassXml, Presets::Section::bass, layer, {});
+    loadPresetXml (*patternXml, Presets::Section::pattern, layer, {});
+
+    if (const auto* extras = clip.getChildByName ("Extras"))
+        for (const auto& [key, id] : trackExtraParameters (layer))
+            for (const auto* entry : extras->getChildIterator())
+                if (entry->getStringAttribute ("key") == key)
+                    if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (apvts.getParameter (id)))
+                        Presets::setParameter (*ranged, ranged->convertTo0to1 ((float) entry->getDoubleAttribute ("value")));
+
+    if (const auto* routes = clip.getChildByName ("Routes"))
+    {
+        const auto& parameters = getParameters();
+        for (const auto* entry : routes->getChildIterator())
+        {
+            const auto targetId = Presets::toInstrumentLayer (entry->getStringAttribute ("target"), layer);
+            for (int i = 0; i < parameters.size(); ++i)
+                if (auto* withId = dynamic_cast<juce::AudioProcessorParameterWithID*> (parameters[i]); withId != nullptr && withId->paramID == targetId)
+                {
+                    modRoutes.add (sourceInLayer (entry->getIntAttribute ("source"), layer), i, (float) entry->getDoubleAttribute ("amount"));
+                    break;
+                }
+        }
+    }
+
+    layerNames[(size_t) layer] = clip.getStringAttribute ("name");
+    layerColours[(size_t) layer] = (juce::uint32) clip.getIntAttribute ("colour");
+    ++layerNamesVersion;
+    ++layerStructureVersion;
+    patternChanged();
+    markStateChanged();
+    return true;
+}
+
+bool PluginBase::duplicateTrack (int layer)
+{
+    const auto count = activeInstruments();
+    if (effectVersion || ! juce::isPositiveAndBelow (layer, count) || count >= ParamID::numInstrumentLayers)
+        return false;
+
+    std::vector<std::unique_ptr<juce::XmlElement>> clips;
+    for (int i = layer; i < count; ++i)
+        clips.push_back (copyTrack (i));
+
+    setInstrumentCount (count + 1);
+    for (int i = count - 1; i > layer; --i)
+        pasteTrack (i + 1, *clips[(size_t) (i - layer)]);
+    pasteTrack (layer + 1, *clips[0]);
+    selectedInstrument = layer + 1;
+    return true;
+}
+
+bool PluginBase::moveTrack (int layer, int delta)
+{
+    const auto other = layer + delta;
+    const auto count = activeInstruments();
+    if (effectVersion || std::abs (delta) != 1 || ! juce::isPositiveAndBelow (layer, count) || ! juce::isPositiveAndBelow (other, count))
+        return false;
+
+    const auto a = copyTrack (layer), b = copyTrack (other);
+    pasteTrack (layer, *b);
+    pasteTrack (other, *a);
+    selectedInstrument = other;
+    return true;
+}
+
+bool PluginBase::deleteTrack (int layer)
+{
+    if (beforeTrackChange)
+        beforeTrackChange();
+    const auto count = activeInstruments();
+    if (effectVersion || count <= 1 || ! juce::isPositiveAndBelow (layer, count))
+        return false;
+
+    for (int i = layer; i < count - 1; ++i)
+        if (const auto next = copyTrack (i + 1))
+            pasteTrack (i, *next);
+    setInstrumentCount (count - 1); // tömmer det sista instrumentet
+    selectedInstrument = juce::jmin (selectedInstrument, count - 2);
     return true;
 }
 
@@ -942,6 +1279,7 @@ bool PluginBase::loadPresetXml (const juce::XmlElement& xmlElement, Presets::Sec
     std::vector<juce::RangedAudioParameter*> sectionParameters;
     std::vector<float> targets;
     std::map<juce::String, size_t> indexOfId;
+    std::set<juce::String> fileIds; // parametrar som filen har
     for (auto* p : getParameters())
         if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p); ranged != nullptr && Presets::belongsTo (section, ranged->getParameterID(), layer))
         {
@@ -962,14 +1300,41 @@ bool PluginBase::loadPresetXml (const juce::XmlElement& xmlElement, Presets::Sec
             else if (section == Presets::Section::effects)
                 id = Presets::effectIdFromCanonical (id, layer);
             if (const auto found = indexOfId.find (id); found != indexOfId.end())
+            {
+                fileIds.insert (id);
                 targets[found->second] = sectionParameters[found->second]->convertTo0to1 ((float) entry->getDoubleAttribute ("value"));
+            }
         }
     }
+
+    // Effektrattar som tillkommit efter att presetet sparades: neutralt standardvärde i stället för 0.5.
+    for (int channel = 0; channel < numEffectChannels; ++channel)
+        for (int slot = 0; slot < slotsPerChannel; ++slot)
+            if (const auto type = indexOfId.find (Effects::slotParamID (channel, slot, "Type")); type != indexOfId.end())
+            {
+                const auto effectType = (EffectType) juce::jlimit (0, numEffectTypes - 1, juce::roundToInt (sectionParameters[type->second]->convertFrom0to1 (targets[type->second])));
+                for (int k = 0; k < knobsPerSlot; ++k)
+                    if (float neutral = 0.0f; ! fileIds.count (Effects::knobParamID (channel, slot, k)) && Effects::newKnobDefault (effectType, k, neutral))
+                        if (const auto knob = indexOfId.find (Effects::knobParamID (channel, slot, k)); knob != indexOfId.end())
+                            targets[knob->second] = neutral;
+            }
 
     // Också parametrar som redan har rätt värde sätts: APVTS råa värde (det ljudtråden läser) avrundas till parameterns steg först när den
     // sätts, och dess startvärde är inte avrundat (t.ex. 59.9999962 i stället för 60).
     for (size_t i = 0; i < sectionParameters.size(); ++i)
         Presets::setParameter (*sectionParameters[i], targets[i]);
+
+    if (section == Presets::Section::full)
+    {
+        // Ett Full-preset ersätter alla namn och färger; filer utan <LayerNames> (version 1) ger standard.
+        const auto* namesXml = xml->getChildByName ("LayerNames");
+        for (int i = 0; i < ParamID::numInstrumentLayers; ++i)
+        {
+            layerNames[(size_t) i] = namesXml != nullptr ? namesXml->getStringAttribute ("name" + juce::String (i + 1)) : juce::String();
+            layerColours[(size_t) i] = namesXml != nullptr ? (juce::uint32) namesXml->getStringAttribute ("colour" + juce::String (i + 1), "0").getLargeIntValue() : 0;
+        }
+        ++layerNamesVersion;
+    }
 
     if (section == Presets::Section::full)
         if (const auto* patternXml = xml->getChildByName (Pattern::treeType))
@@ -1043,6 +1408,7 @@ bool PluginBase::loadPresetXml (const juce::XmlElement& xmlElement, Presets::Sec
 
     if (section == Presets::Section::full || section == Presets::Section::lfo)
     {
+        clearCodeMods();
         if (const auto* routesXml = xml->getChildByName (ModRoutes::treeType))
             modRoutes.fromValueTree (juce::ValueTree::fromXml (*routesXml), getParameters());
         else
@@ -1064,6 +1430,12 @@ bool PluginBase::loadPresetXml (const juce::XmlElement& xmlElement, Presets::Sec
         rowPresetNames.fill ({});
         fxPresetNames.fill ({});
     }
+
+    if (section == Presets::Section::full) // filer utan <LiveCode> (äldre, Init) lämnar användarens kod och lås som de är
+        if (const auto* liveCodeXml = xml->getChildByName ("LiveCode"))
+            liveCodeFromValueTree (juce::ValueTree::fromXml (*liveCodeXml));
+    if (section == Presets::Section::full)
+        ++liveCodeLoads;
 
     presetNameSlot (section, layer) = presetName;
     ensureTablesInUse();
@@ -1327,4 +1699,16 @@ void PluginBase::instrumentSamplesFromValueTree (const juce::ValueTree& tree)
     for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
         if (! found[(size_t) layer])
             instrumentSamples[(size_t) layer].clear();
+}
+
+int PluginBase::rowRootNote (int noteLayer) const
+{
+    const auto key = transportStatus.keyNote.load();
+    if (noteLayer == Pattern::kickLayer)
+    {
+        // Kickens tonhöjd 0 är dess svans: på tonarten (Follow) eller en fast ton (Fixed).
+        const auto follow = (int) apvts.getRawParameterValue (ParamID::kickKeyFollow)->load() == 1;
+        return follow ? Params::kickTailMidiNote ((key >= 0 ? key : 60) % 12) : 24;
+    }
+    return Params::instrumentRootMidiNote (key >= 0 ? key : 60);
 }

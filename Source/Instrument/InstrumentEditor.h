@@ -3,8 +3,10 @@
 #include <juce_audio_utils/juce_audio_utils.h>
 #include "InstrumentProcessor.h"
 #include "../Ui/EditorRoot.h"
+#include "../Ui/InstrumentMenu.h"
 #include "../Ui/KickbaseLookAndFeel.h"
 #include "../Ui/AiChatPage.h"
+#include "../Ui/LiveCodePage.h"
 #include "../Ui/EffectsPage.h"
 #include "../Ui/LfoPage.h"
 #include "../Ui/MasterPage.h"
@@ -13,7 +15,7 @@
 #include "../Ui/SettingsPage.h"
 #include "../Ui/SidechainPage.h"
 #include "../Ui/SoundstagePage.h"
-#include "../Ui/SpectrumPage.h"
+#include "../Ui/AnalyzerPage.h"
 #include "../Ui/Modules.h"
 #include "../Ui/TabbedPanel.h"
 
@@ -32,6 +34,11 @@ private:
     juce::SharedResourcePointer<Theme::TextureCache> textures; // håller texturerna vid liv så länge editorn finns
     KickbaseLookAndFeel lookAndFeel; // först: måste leva längre än komponenterna som ritas med den
     InstrumentProcessor& processor;
+    // Projektets egna instrumentfärger gäller i resten av gränssnittet: måste sättas före sidorna byggs.
+    struct ColourSetup
+    {
+        explicit ColourSetup (PluginBase& p) { InstrumentMenu::applyColours (p); }
+    } colourSetup { processor };
     EditorRoot root; // allt ligger i roten, som skalas efter fönstrets storlek
     bool sized = false; // true när startstorleken är satt (före det sparas ingen skala)
 
@@ -40,6 +47,7 @@ private:
     PatternModule pattern { processor, true };
     KickModule kick { processor };
     AiChatPage aiPage { processor };
+    LiveCodePage livePage { processor };
     InstrumentHost instruments { processor };
     TabbedPanel tools { &processor.selectedTab };
     EffectsPage effects { processor };
@@ -50,7 +58,7 @@ private:
     SettingsPage settings { processor };
     MasterPage masterPage { processor };
     SoundstagePage soundstage { processor };
-    SpectrumPage spectrum { processor };
+    AnalyzerPage analyzer { processor };
     InfoBar info;
     // Tangentbordet: en tonetikett som inte får plats på tangenten utelämnas (C10 klipptes annars till "C1").
     class Keyboard : public juce::MidiKeyboardComponent

@@ -93,7 +93,15 @@ namespace ParamID
                                      "Env2Mode", "Env2AttackSync", "Env2DecaySync", "Env2ReleaseSync", "Env3Mode", "Env3AttackSync", "Env3DecaySync", "Env3ReleaseSync",
                                      "FilterP1", "FilterP2",
                                      "Filter2On", "Filter2Model", "Filter2Type", "Filter2Cutoff", "Filter2Reso", "Filter2P1", "Filter2P2", "FilterRouting", "FilterMix",
-                                     "Voices" };
+                                     "Voices",
+                                     "Env1On", "FilterEnvOn", "Env2On", "Env3On",
+                                     "Env1Mode", "Env1AttackSync", "Env1DecaySync", "Env1ReleaseSync",
+                                     "FilterEnvMode", "FilterEnvAttackSync", "FilterEnvDecaySync",
+                                     "FilterOn", "FilterOsc1", "FilterOsc2", "FilterOsc3", "FilterSample", "FilterNoise", "NoiseType", "WarpEnvSource", "WarpEnvDecay",
+                                     "Polarity", "PhaseDeg", "NudgeMs",
+                                     "FmOn", "FmLevel", "FmRatio", "FmIndex", "FmEnvAmount", "FmEnvTime", "FmSemis", "FmPreset", "FmFilter",
+                                     "SlicerOn", "SlicerMapTo", "SlicerReverse",
+                                     "FxSend", "SampleMode" };
         static_assert (std::size (names) == (size_t) InstrumentField::count);
         return names[(size_t) field];
     }
@@ -205,6 +213,8 @@ namespace Params
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::kickFxChannel, 1 }, "Kick FX Channel",
                                                             fxChannelChoices(), 0));
         layout.add (percent (ParamID::kickFxAmount, "Kick FX Amount", 1.0f));
+        layout.add (percent (ParamID::kickComp, "Kick Comp", 0.0f)); // (kickComp var sist i gruppen: DAW-ordningen och gamla presets rörs inte)
+        layout.add (std::make_unique<AudioParameterBool> (ParameterID { ParamID::kickFxSend, 1 }, "Kick FX Send", false));
     }
 
     void addInstrumentCommonParams (Layout& layout, int layer, float defaultLevel)
@@ -360,6 +370,54 @@ namespace Params
         }
         // Röster (fas P): 1 = monofoniskt (legato, som förut). Ett heltal, så det kan inte moduleras (isModulatable).
         layout.add (std::make_unique<AudioParameterInt> (ParameterID { id (F::voices), 1 }, title + "Voices", 1, 8, 1)); // 8 = InstrumentVoices::maxVoices
+        // fas L: ENV-flikens ON/OFF (på = som förut) och ms/Sync för volym- och filter-envelopen (ms = som förut).
+        layout.add (std::make_unique<AudioParameterBool> (ParameterID { id (F::env1On), 1 }, title + "Env 1 On", true));
+        layout.add (std::make_unique<AudioParameterBool> (ParameterID { id (F::filterEnvOn), 1 }, title + "Filter Env On", true));
+        layout.add (std::make_unique<AudioParameterBool> (ParameterID { id (F::env2On), 1 }, title + "Env 2 On", true));
+        layout.add (std::make_unique<AudioParameterBool> (ParameterID { id (F::env3On), 1 }, title + "Env 3 On", true));
+        auto syncChoice = [&] (F field, const String& name, int defaultIndex)
+        {
+            layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (field), 1 }, title + name, Modulation::syncTimeNames(), defaultIndex));
+        };
+        // Standardvärdena ungefär som ms-standardvärdena vid 120 BPM: 1/16 D = 188 ms, 1/64 = 31 ms, 1/16 = 125 ms.
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::env1Mode), 1 }, title + "Env 1 Time Mode", StringArray { "ms", "Sync" }, 0));
+        syncChoice (F::env1AttackSync, "Env 1 Attack Sync", 0);
+        syncChoice (F::env1DecaySync, "Env 1 Decay Sync", 5);
+        syncChoice (F::env1ReleaseSync, "Env 1 Release Sync", 1);
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::filterEnvMode), 1 }, title + "Filter Env Time Mode", StringArray { "ms", "Sync" }, 0));
+        syncChoice (F::filterEnvAttackSync, "Filter Env Attack Sync", 0);
+        syncChoice (F::filterEnvDecaySync, "Filter Env Decay Sync", 4);
+        // fas S: FILTER av/på (hela Filter 1+2) och per källa. SAMPLE är av som standard (Tobias 20 okt), övriga på = som förut.
+        const struct { F field; const char* name; bool on; } filterSwitches[] {
+            { F::filterOn, "Filter On", true }, { F::filterOsc1, "Filter OSC 1", true }, { F::filterOsc2, "Filter OSC 2", true },
+            { F::filterOsc3, "Filter OSC 3", true }, { F::filterSample, "Filter Sample", false }, { F::filterNoise, "Filter Noise", true } };
+        for (auto& s : filterSwitches)
+            layout.add (std::make_unique<AudioParameterBool> (ParameterID { id (s.field), 1 }, title + s.name, s.on));
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::noiseType), 1 }, title + "Noise Type", StringArray { "White", "Pink", "Brown", "Vinyl" }, 0));
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::warpEnvSource), 1 }, title + "Warp Env Source", StringArray { "Filter Env", "Direct", "ENV 2", "ENV 3" }, 0));
+        layout.add (ms (2.0f, 150.0f, 30.0f, 30.0f, id (F::warpEnvDecay), title + "Warp Env Decay"));
+        // fas PH: fasverktyg (alla ger dagens ljud som standard)
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::polarity), 1 }, title + "Polarity Invert", StringArray { "Normal", "Inverted" }, 0));
+        layout.add (floatParam (id (F::phaseDeg), title + "Start Phase", NormalisableRange<float> (0.0f, 360.0f, 0.1f), 0.0f, [] (float v) { return String (v, 1) + juce::String (juce::CharPointer_UTF8 ("°")); }));
+        layout.add (floatParam (id (F::nudgeMs), title + "Nudge", NormalisableRange<float> (-2.0f, 2.0f, 0.05f), 0.0f, [] (float v) { return String (v, 2) + " ms"; }));
+        // fas S2: FM-källa (av som standard = ljudet oförändrat)
+        const auto fmPercent = [] (float v) { return String (juce::roundToInt (v * 100.0f)) + " %"; };
+        layout.add (std::make_unique<AudioParameterBool> (ParameterID { id (F::fmOn), 1 }, title + "FM On", false));
+        layout.add (floatParam (id (F::fmLevel), title + "FM Level", NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.0f, fmPercent));
+        layout.add (floatParam (id (F::fmRatio), title + "FM Ratio", NormalisableRange<float> (0.25f, 8.0f, 0.25f), 1.0f, [] (float v) { return String (v, 2) + "x"; }));
+        layout.add (floatParam (id (F::fmIndex), title + "FM Index", NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.3f, fmPercent));
+        layout.add (floatParam (id (F::fmEnvAmount), title + "FM Env Amount", NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.0f, fmPercent));
+        layout.add (ms (1.0f, 400.0f, 60.0f, 60.0f, id (F::fmEnvTime), title + "FM Env Time"));
+        layout.add (floatParam (id (F::fmSemis), title + "FM Semis", NormalisableRange<float> (-24.0f, 24.0f, 1.0f), 0.0f, [] (float v) { return String (juce::roundToInt (v)) + " st"; }));
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::fmPreset), 1 }, title + "FM Preset", StringArray { "Custom", "Zap", "Acid Squelch", "Metallic Lead", "FM Pluck" }, 0));
+        layout.add (std::make_unique<AudioParameterBool> (ParameterID { id (F::fmFilter), 1 }, title + "FM Filter", true));
+        // fas F2: slicer (av som standard = ljudet oförändrat); skivmarkörerna sparas i samplingen (SampleSlot)
+        layout.add (std::make_unique<AudioParameterBool> (ParameterID { id (F::slicerOn), 1 }, title + "Slicer On", false));
+        layout.add (std::make_unique<AudioParameterInt> (ParameterID { id (F::slicerMapTo), 1 }, title + "Slicer Map To", -96, 96, 0));
+        layout.add (std::make_unique<AudioParameterBool> (ParameterID { id (F::slicerReverse), 1 }, title + "Slicer Reverse", false));
+        layout.add (std::make_unique<AudioParameterBool> (ParameterID { id (F::fxSend), 1 }, title + "FX Send", false)); // sist: SEND-läge för FX-kanalen (av = som förut)
+        // fas R9b: SAMPLE-radens läge (BLEND = som förut, standard)
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::sampleMode), 1 }, title + "Sample Mode", StringArray { "Blend", "Independent", "Off" }, 0));
     }
 
     void addFxParams (Layout& layout)
@@ -519,6 +577,7 @@ KickParams ParamRefs::readKick (int keyPitchClass) const
     p.drive         = get (ParamID::kickDrive);
     p.highCutHz     = get (ParamID::kickHighCut);
     p.level         = get (ParamID::kickLevel);
+    p.comp          = get (ParamID::kickComp);
     return p;
 }
 
@@ -595,6 +654,28 @@ InstrumentParams ParamRefs::readInstrument (int layer, int rootMidiNote) const
         e.decayNote = (int) get (ParamID::envSyncField (env, 1));
         e.releaseNote = (int) get (ParamID::envSyncField (env, 2));
     }
+    p.env1On = get (F::env1On) >= 0.5f;
+    p.filterEnvOn = get (F::filterEnvOn) >= 0.5f;
+    p.env2.on = get (F::env2On) >= 0.5f;
+    p.env3.on = get (F::env3On) >= 0.5f;
+    p.env1Sync = get (F::env1Mode) >= 0.5f;
+    p.env1AttackNote = (int) get (F::env1AttackSync);
+    p.env1DecayNote = (int) get (F::env1DecaySync);
+    p.env1ReleaseNote = (int) get (F::env1ReleaseSync);
+    p.filterEnvSync = get (F::filterEnvMode) >= 0.5f;
+    p.filterAttackNote = (int) get (F::filterEnvAttackSync);
+    p.filterDecayNote = (int) get (F::filterEnvDecaySync);
+    p.filterOn = get (F::filterOn) >= 0.5f;
+    p.filterSrc[0] = get (F::filterOsc1) >= 0.5f;
+    p.filterSrc[1] = get (F::filterOsc2) >= 0.5f;
+    p.filterSrc[2] = get (F::filterOsc3) >= 0.5f;
+    p.filterSrc[3] = get (F::filterSample) >= 0.5f;
+    p.filterSrc[4] = get (F::filterNoise) >= 0.5f;
+    p.noiseType = (int) get (F::noiseType);
+    p.warpEnvSource = (int) get (F::warpEnvSource);
+    p.warpEnvDecayMs = get (F::warpEnvDecay);
+    p.invertPolarity = get (F::polarity) >= 0.5f;
+    p.phaseDeg = get (F::phaseDeg);
     p.subWave = (int) get (F::subWave);
     p.noiseTone = get (F::noiseTone);
     p.pitchEnvSemis = get (F::pitchEnvAmount);
@@ -606,5 +687,16 @@ InstrumentParams ParamRefs::readInstrument (int layer, int rootMidiNote) const
     p.sampleKeyTrack = (int) get (F::sampleKey) == 1;
     p.sampleStart    = get (F::sampleStart);
     p.sampleOn       = get (F::sampleOn) >= 0.5f;
+    p.fmOn = get (F::fmOn) >= 0.5f;
+    p.fmLevel = get (F::fmLevel);
+    p.fmRatio = get (F::fmRatio);
+    p.fmIndex = get (F::fmIndex);
+    p.fmEnvAmount = get (F::fmEnvAmount);
+    p.fmEnvMs = get (F::fmEnvTime);
+    p.fmSemis = get (F::fmSemis);
+    p.fmFilter = get (F::fmFilter) >= 0.5f;
+    p.slicerOn = get (F::slicerOn) >= 0.5f;
+    p.slicerMapTo = juce::roundToInt (get (F::slicerMapTo));
+    p.slicerReverse = get (F::slicerReverse) >= 0.5f;
     return p;
 }

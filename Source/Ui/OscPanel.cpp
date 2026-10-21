@@ -1,4 +1,5 @@
 #include "OscPanel.h"
+#include "HarmonicEditor.h"
 
 WavetableView::WavetableView (PluginBase& p, int layerIn, int oscIn, juce::Colour accentIn)
     : processor (p), layer (layerIn), osc (oscIn), accent (accentIn)
@@ -20,6 +21,8 @@ float WavetableView::raw (InstrumentField field) const
 void WavetableView::timerCallback()
 {
     followVisualRate();
+    if (! isShowing())
+        return; // dold flik: ingen uträkning
     // Rita om när tabellen, positionen (med LFO) eller warpen ändras.
     const auto position = juce::jlimit (0.0f, 1.0f, raw (InstrumentField::aPos) + processor.modulator.currentOffset (positionIndex));
     const auto table = (int) raw (InstrumentField::aTable);
@@ -48,6 +51,24 @@ void WavetableView::paint (juce::Graphics& g)
     const Wavetable* userTable = lastTable == Wavetables::userIndex() ? processor.userTable (layer, osc) : nullptr;
     const auto& table = userTable != nullptr ? *userTable : Wavetables::get (lastTable < 0 || lastTable == Wavetables::userIndex() ? 0 : lastTable);
     const auto area = bounds.reduced (8.0f, 10.0f);
+
+    if (display != Display::wave)
+    {
+        drawCurrent (g, table, bounds.reduced (8.0f, 18.0f));
+        g.setFont (Theme::font (9.5f, true));
+        g.setColour (Theme::textDim);
+        g.drawText (table.getName().toUpperCase(), bounds.reduced (6.0f, 4.0f), juce::Justification::topLeft);
+        g.setColour (accent.withAlpha (0.25f));
+        g.fillRoundedRectangle (modeRect(), 3.0f);
+        g.setColour (Theme::text);
+        g.drawText (display == Display::scope ? "SCOPE" : "SPECTRUM", modeRect(), juce::Justification::centred);
+        if (hover)
+        {
+            g.setColour (accent.withAlpha (0.75f));
+            g.drawRoundedRectangle (bounds.reduced (1.5f), 6.0f, 1.5f);
+        }
+        return;
+    }
 
     // Varje frame förskjuts uppåt-höger: de bakre är mindre och mörkare.
     constexpr float depthX = 0.28f, depthY = 0.42f;
@@ -106,6 +127,9 @@ void WavetableView::paint (juce::Graphics& g)
     g.setColour (Theme::textDim);
     g.drawText (table.getName().toUpperCase(), bounds.reduced (6.0f, 4.0f), juce::Justification::topLeft);
 
+    g.setColour (Theme::textDim.withAlpha (0.7f));
+    g.drawText ("WAVE", modeRect(), juce::Justification::centred);
+
     // Glöd när musen är över bilden (klicka för att lyssna).
     if (hover)
     {
@@ -116,8 +140,75 @@ void WavetableView::paint (juce::Graphics& g)
     }
 }
 
-void WavetableView::mouseDown (const juce::MouseEvent&)
+void WavetableView::drawCurrent (juce::Graphics& g, const Wavetable& table, juce::Rectangle<float> area)
 {
+    const auto position = std::max (0.0f, lastPosition);
+    const auto mode = (WarpMode) std::max (0, lastWarpMode);
+    const auto warpAmount = std::max (0.0f, lastWarp);
+    auto current = [&] (double phase)
+    {
+        const auto warped = InstrumentSynth::warpPhase (mode == WarpMode::fm ? WarpMode::off : mode, warpAmount, phase, 0.0f);
+        return table.sample (position, warped, 512.0, lastMorph);
+    };
+
+    juce::Path path;
+    if (display == Display::scope)
+    {
+        constexpr int points = 256;
+        for (int i = 0; i <= points; ++i) // två perioder, som en oscilloskopbild
+        {
+            const auto x = area.getX() + area.getWidth() * (float) i / points;
+            const auto y = area.getCentreY() - current (std::fmod (2.0 * i / points, 1.0)) * area.getHeight() * 0.45f;
+            if (i == 0)
+                path.startNewSubPath (x, y);
+            else
+                path.lineTo (x, y);
+        }
+        g.setColour (Theme::textDim.withAlpha (0.3f));
+        g.drawHorizontalLine ((int) area.getCentreY(), area.getX(), area.getRight());
+    }
+    else
+    {
+        std::array<float, 1024> data {}; // FFT-ens in- och utdata (2 * storleken)
+        for (int i = 0; i < 512; ++i)
+            data[(size_t) i] = (float) current ((double) i / 512.0);
+        fft.performFrequencyOnlyForwardTransform (data.data(), true);
+        constexpr int bars = 48; // övertoner 1 ... 48
+        const auto barWidth = area.getWidth() / bars;
+        for (int h = 1; h <= bars; ++h)
+        {
+            const auto db = juce::Decibels::gainToDecibels (data[(size_t) h] * 2.0f / 512.0f, -90.0f);
+            const auto height = area.getHeight() * juce::jlimit (0.0f, 1.0f, (db + 60.0f) / 60.0f);
+            g.setColour (accent.withAlpha (0.8f));
+            g.fillRect (area.getX() + (float) (h - 1) * barWidth + 0.5f, area.getBottom() - height, std::max (1.0f, barWidth - 1.0f), height);
+        }
+        return;
+    }
+    g.setColour (accent.withAlpha (0.3f));
+    g.strokePath (path, juce::PathStrokeType (5.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    g.setColour (accent.brighter (0.3f));
+    g.strokePath (path, juce::PathStrokeType (1.8f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+}
+
+void WavetableView::mouseDown (const juce::MouseEvent& e)
+{
+    if (modeRect().contains (e.position)) // MODE-etiketten växlar WAVE / SCOPE / SPECTRUM; resten av vyn lyssnar i alla lägen
+    {
+        display = display == Display::wave ? Display::scope : display == Display::scope ? Display::spectrum : Display::wave;
+        repaint();
+        return;
+    }
+    if (e.mods.isPopupMenu()) // PH2: högerklick öppnar övertonsredigeraren
+    {
+        juce::PopupMenu menu;
+        menu.addItem (1, "Edit harmonics...");
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this), [this] (int result)
+        {
+            if (result == 1)
+                juce::CallOutBox::launchAsynchronously (std::make_unique<HarmonicEditor> (processor, layer, osc, accent), getScreenBounds(), nullptr);
+        });
+        return;
+    }
     hold.start (PluginBase::heldSoloAudition (layer, osc)); // bara den här oscillatorn, så länge musen hålls (loopar om ljudet tar slut)
 }
 
@@ -131,6 +222,25 @@ OscPanel::OscPanel (PluginBase& p, int layerIn, int oscIn, juce::Colour accentIn
     tableLabel.setFont (Theme::font (11.0f, true));
     tableLabel.setColour (juce::Label::textColourId, Theme::textDim);
     addAndMakeVisible (tableLabel);
+
+    prevPresetButton.setTooltip ("Previous oscillator preset in the list (Presets/Oscillators). Only this oscillator changes.");
+    nextPresetButton.setTooltip ("Next oscillator preset in the list (Presets/Oscillators). Only this oscillator changes.");
+    presetButton.setTooltip ("OSC PRESET - Load a saved oscillator: wavetable and position, warp, pitch, unison, phase and the other knobs of THIS oscillator. "
+                             "It never touches the other oscillators, the sample, the filters or the effects.");
+    savePresetButton.setTooltip ("Save this oscillator as a preset (choose a name and a category folder).");
+    resetOscButton.setTooltip ("RESET - Put this oscillator back to its starting values (its on/off stays as it is).");
+    prevPresetButton.onClick = [this] { stepPreset (-1); };
+    nextPresetButton.onClick = [this] { stepPreset (1); };
+    presetButton.onClick = [this] { showPresetMenu(); };
+    savePresetButton.onClick = [this] { askForNameAndSave(); };
+    resetOscButton.onClick = [this]
+    {
+        OscPresets::reset (processor.apvts, layer, osc);
+        currentPreset = juce::File();
+        presetButton.setButtonText ("PRESET");
+    };
+    for (auto* b : { &prevPresetButton, &nextPresetButton, &presetButton, &savePresetButton, &resetOscButton })
+        addAndMakeVisible (*b);
     tableButton.setTooltip ("TABLE - The wavetable this oscillator plays: every waveform in it is one step along POS. Click to choose from categories "
                             "(Analog, Filter, FM, Digital, Vocal, Psy ...), your own library (Documents/Kickbase/Wavetables, e.g. the 4000+ AKWF waveforms) "
                             "or a WAV file/folder.");
@@ -138,6 +248,16 @@ OscPanel::OscPanel (PluginBase& p, int layerIn, int oscIn, juce::Colour accentIn
     addAndMakeVisible (tableButton);
     addAndMakeVisible (warp);
     addAndMakeVisible (view);
+
+    filterSendButton.setTooltip ("SEND THROUGH FILTER - On: this oscillator goes through Filter 1 and Filter 2 (set on the FILTER tab). "
+                                 "Off: it bypasses both filters and goes straight to the amp.");
+    filterSendButton.setButtonText ("FILTER");
+    filterSendButton.getProperties().set ("labelled", true);
+    filterSendButton.setColour (juce::ToggleButton::tickColourId, accent);
+    filterSendButton.setColour (juce::ToggleButton::textColourId, Theme::textDim);
+    addAndMakeVisible (filterSendButton);
+    filterSendAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
+        p.apvts, ParamID::bass (layer, (InstrumentField) ((int) InstrumentField::filterOsc1 + osc)), filterSendButton);
 
     // Klassiska vågformer med ett klick (som i FL:s 3x Osc), utan att behöva förstå wavetables.
     const char* shapeNames[] { "SIN", "TRI", "SAW", "SQR" };
@@ -184,6 +304,14 @@ OscPanel::OscPanel (PluginBase& p, int layerIn, int oscIn, juce::Colour accentIn
     }
     warpKnob = std::make_unique<KnobComponent> (p.apvts, ParamID::bass (layer, ParamID::oscField (osc, F::aWarpAmount)), "AMOUNT", accent);
     warpKnob->setLabelAbove (true); // som WARP-menyns rubrik: namnet ovanför
+    // Fas S: på OSC 1 visar en lila ring hur långt WARP ENV driver mängden (grundmängden + WARP ENV AMOUNT); syns bara när WARP ENV är över noll.
+    if (osc == 0)
+        warpKnob->setLiveMeter ([&p, layer = layerIn]
+        {
+            auto value = [&p, layer] (F field) { return p.apvts.getRawParameterValue (ParamID::bass (layer, field))->load(); };
+            const auto env = value (F::warpEnv);
+            return env > 0.0f ? juce::jlimit (0.0f, 1.0f, value (F::aWarpAmount) + env) : 0.0f;
+        }, Theme::gate);
     addAndMakeVisible (*warpKnob);
 }
 
@@ -339,10 +467,111 @@ void OscPanel::paint (juce::Graphics& g)
     g.drawText ("OSC " + juce::String (osc + 1), getLocalBounds().reduced (8, 4).withHeight (16), juce::Justification::centredLeft);
 }
 
+//==============================================================================
+// OSC-presets
+void OscPanel::loadPreset (const juce::File& file)
+{
+    if (OscPresets::load (processor.apvts, layer, osc, file))
+    {
+        currentPreset = file;
+        presetButton.setButtonText (file.getFileNameWithoutExtension().toUpperCase());
+    }
+    else
+        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Oscillator preset", "Could not read that oscillator preset.");
+}
+
+void OscPanel::stepPreset (int direction)
+{
+    const auto files = OscPresets::list();
+    if (files.isEmpty())
+        return;
+    const auto at = files.indexOf (currentPreset);
+    const auto next = at < 0 ? (direction > 0 ? 0 : files.size() - 1) : (at + direction + files.size()) % files.size();
+    loadPreset (files[next]);
+}
+
+void OscPanel::showPresetMenu()
+{
+    const auto files = OscPresets::list();
+    const auto root = OscPresets::folder();
+    juce::PopupMenu menu;
+    std::map<juce::String, juce::PopupMenu> categories;
+    for (int i = 0; i < files.size(); ++i)
+    {
+        const auto parent = files[i].getParentDirectory();
+        const auto category = parent == root ? juce::String() : parent.getFileName();
+        if (category.isEmpty())
+            menu.addItem (100 + i, files[i].getFileNameWithoutExtension(), true, files[i] == currentPreset);
+        else
+            categories[category].addItem (100 + i, files[i].getFileNameWithoutExtension(), true, files[i] == currentPreset);
+    }
+    for (auto& [name, sub] : categories)
+        menu.addSubMenu (name, sub);
+    if (files.isEmpty())
+        menu.addItem (-1, "(no oscillator presets yet - use SAVE)", false);
+    menu.addSeparator();
+    menu.addItem (1, "Open the preset folder");
+
+    juce::Component::SafePointer<OscPanel> safeThis (this);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&presetButton), [safeThis, files] (int result)
+    {
+        if (safeThis == nullptr || result <= 0)
+            return;
+        if (result == 1)
+        {
+            OscPresets::folder().createDirectory();
+            OscPresets::folder().startAsProcess();
+        }
+        else if (juce::isPositiveAndBelow (result - 100, files.size()))
+            safeThis->loadPreset (files[result - 100]);
+    });
+}
+
+void OscPanel::askForNameAndSave()
+{
+    auto* window = new juce::AlertWindow ("Save oscillator preset", "Name and category (a folder):", juce::MessageBoxIconType::NoIcon);
+    window->setLookAndFeel (&getLookAndFeel());
+    saveDialog = window;
+    window->addTextEditor ("name", "My oscillator", "Name:");
+    window->addTextEditor ("category", "User", "Category:");
+    window->addButton ("Save", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    window->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+
+    juce::Component::SafePointer<OscPanel> safeThis (this);
+    window->enterModalState (true, juce::ModalCallbackFunction::create ([safeThis, window] (int result)
+    {
+        if (result != 1 || safeThis == nullptr)
+            return;
+        const auto name = juce::File::createLegalFileName (window->getTextEditorContents ("name").trim());
+        const auto category = juce::File::createLegalFileName (window->getTextEditorContents ("category").trim());
+        auto file = OscPresets::folder();
+        if (category.isNotEmpty())
+            file = file.getChildFile (category);
+        file = file.getChildFile (name + ".oscpreset");
+        if (name.isEmpty() || ! OscPresets::save (safeThis->processor.apvts, safeThis->layer, safeThis->osc, file))
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Could not save", "Check that the name is valid.");
+        else
+        {
+            safeThis->currentPreset = file;
+            safeThis->presetButton.setButtonText (name.toUpperCase());
+        }
+    }), true);
+}
+
 void OscPanel::resized()
 {
     auto area = getLocalBounds().reduced (6);
-    area.removeFromTop (16);
+    {
+        const auto titleRow = area.removeFromTop (16);
+        auto strip = titleRow.withTrimmedLeft (area.getWidth() / 3);
+        filterSendButton.setBounds (strip.removeFromRight (60));
+        strip.removeFromRight (4);
+        resetOscButton.setBounds (strip.removeFromRight (46).reduced (1, 0));
+        savePresetButton.setBounds (strip.removeFromRight (42).reduced (1, 0));
+        nextPresetButton.setBounds (strip.removeFromRight (22).reduced (1, 0));
+        prevPresetButton.setBounds (strip.removeFromRight (22).reduced (1, 0));
+        presetButton.setBounds (strip.removeFromRight (juce::jmin (160, strip.getWidth())).reduced (1, 0));
+    }
 
     // Vänster: tabell, warp och bilden. Höger: rattarna i två rader över hela höjden.
     // WARP-ratten ligger i en egen kolumn till höger om menyerna och formknapparna (de två översta raderna), så att den inte trycker ner vågbilden.

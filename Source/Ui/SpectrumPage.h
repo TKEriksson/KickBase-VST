@@ -11,6 +11,7 @@ class ReportContent : public juce::Component
 {
 public:
     std::function<void (int)> onSelect;
+    std::function<void (int)> onOpen; // dubbelklick: visa fyndet i spektrumet
     int selected = -1;
 
     void setReport (const MixAnalysis::Report& newReport);
@@ -18,6 +19,7 @@ public:
     void setWidth (int width);
     void paint (juce::Graphics&) override;
     void mouseDown (const juce::MouseEvent&) override;
+    void mouseDoubleClick (const juce::MouseEvent&) override;
     const MixAnalysis::Report& getReport() const { return report; }
 
 private:
@@ -65,6 +67,11 @@ public:
     void mouseDoubleClick (const juce::MouseEvent&) override;
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 
+    // Används av AnalyzerPage: vyvalet (SPECTRUM / ANALYSIS + REPORT) görs av underflikarna där, så sidans egna knappar döljs.
+    void setEmbedded();
+    void setView (bool report);
+    void setCollisions (bool on);
+
 private:
     static constexpr int order = 13;
     static constexpr int size = 1 << order; // 8192 punkter: ~5 Hz per steg vid 44,1 kHz, så att de låga övertonerna skiljs åt
@@ -98,13 +105,12 @@ private:
 
     void startAnalysis();
     void takeReport();
-    void selectFinding (int index);
+    void selectFinding (int index, bool showSpectrum = false);
     void chooseReference();
     void loadReferenceFile (const juce::File& file);
     void copyReport();
     void showExportMenu();
     void saveExportFile();
-    void setView (bool report);
     juce::Rectangle<int> overlayBounds() const;
     void showSourceMenu();
     void updateShowText();
@@ -138,7 +144,7 @@ private:
     juce::Rectangle<int> plotBody; // diagrammets yta (rapporten ligger till höger om den)
     juce::Viewport viewport;
     ReportContent content;
-    bool reportShown = false, analysing = false, reportView = false;
+    bool reportShown = false, analysing = false, reportView = false, embedded = false;
     int notesVersionShown = -1;
     MixAnalysis::ExportOptions exportOptions;
     bool exportOnlyShown = false; // bara de källor som visas i SHOW

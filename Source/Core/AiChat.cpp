@@ -1,4 +1,6 @@
 #include "AiChat.h"
+#include "AiProvider.h"
+#include <regex>
 
 namespace
 {
@@ -18,6 +20,172 @@ namespace
     {
         return text.length() > length ? text.substring (0, length) + " ..." : text;
     }
+
+    // Samtalet utan bilddata (spektrogram är stora och behövs inte för att fortsätta ett sparat samtal).
+    juce::Array<var> stripImages (const juce::Array<var>& source)
+    {
+        juce::Array<var> out;
+        for (const auto& message : source)
+        {
+            const auto* blocks = message["content"].getArray();
+            if (blocks == nullptr)
+            {
+                out.add (message);
+                continue;
+            }
+            auto copy = message.clone();
+            juce::Array<var> newBlocks;
+            for (const auto& block : *blocks)
+            {
+                auto blockCopy = block.clone();
+                if (const auto* parts = block["content"].getArray())
+                {
+                    juce::Array<var> newParts;
+                    for (const auto& part : *parts)
+                    {
+                        if (part["type"].toString() == "image")
+                        {
+                            auto note = object();
+                            put (note, "type", "text");
+                            put (note, "text", "[image not saved]");
+                            newParts.add (note);
+                        }
+                        else
+                            newParts.add (part);
+                    }
+                    blockCopy.getDynamicObject()->setProperty ("content", newParts);
+                }
+                newBlocks.add (blockCopy);
+            }
+            copy.getDynamicObject()->setProperty ("content", newBlocks);
+            out.add (copy);
+        }
+        return out;
+    }
+
+    const char* const kindNames[] { "user", "assistant", "tool", "note", "error" };
+}
+
+AiChat::Limits AiChat::limits (int costMode)
+{
+    switch (costMode)
+    {
+        case 0:  return { 8, 4096, 2, 300, 8000, true, 40000 };       // Sparsam
+        case 2:  return { 24, 16384, 10, 2000, 30000, false, 300000 }; // Rik
+        default: return { 16, 8192, 4, 800, 20000, true, 100000 };    // Normal
+    }
+}
+
+bool AiChat::isHeavyTool (const juce::String& name)
+{
+    return name == "render_preview" || name == "analyze_audio";
+}
+
+juce::String AiChat::heavyToolWarning (const juce::String& name)
+{
+    return "The AI wants to run " + name + ": it returns a spectrogram image and measurements, roughly 2-5k tokens, and they are sent again with every later step.";
+}
+
+// En kopia av samtalet för anropet. Frågor äldre än keepTurns får kortade verktygsresultat och inga bilder; i de nyare behålls bara
+// bilderna i det senaste resultatet (ett spektrogram kostar tokens varje gång det skickas om).
+juce::Array<juce::var> AiChat::trimForRequest (const juce::Array<juce::var>& source, const Limits& limit)
+{
+    juce::Array<int> turnStarts;
+    int lastResult = -1;
+    for (int i = 0; i < source.size(); ++i)
+    {
+        const auto& message = source.getReference (i);
+        if (message["role"].toString() != "user")
+            continue;
+        if (message["content"].isString())
+            turnStarts.add (i);
+        else
+            lastResult = i;
+    }
+    const auto cutoff = turnStarts.size() > limit.keepTurns ? turnStarts[turnStarts.size() - limit.keepTurns] : 0;
+
+    juce::Array<var> out;
+    for (int i = 0; i < source.size(); ++i)
+    {
+        const auto& message = source.getReference (i);
+        const auto old = i < cutoff;
+        const auto* blocks = message["content"].getArray();
+        if (message["role"].toString() != "user" || blocks == nullptr || (! old && i == lastResult))
+        {
+            out.add (message);
+            continue;
+        }
+
+        auto copy = message.clone();
+        juce::Array<var> newBlocks;
+        for (const auto& block : *blocks)
+        {
+            auto blockCopy = block.clone();
+            if (const auto* parts = block["content"].getArray())
+            {
+                juce::Array<var> newParts;
+                for (const auto& part : *parts)
+                {
+                    const auto type = part["type"].toString();
+                    if (type == "image")
+                    {
+                        auto note = object();
+                        put (note, "type", "text");
+                        put (note, "text", "[image removed to save tokens]");
+                        newParts.add (note);
+                    }
+                    else if (type == "text" && old && part["text"].toString().length() > limit.oldResultChars)
+                    {
+                        auto shortPart = object();
+                        put (shortPart, "type", "text");
+                        put (shortPart, "text", shorten (part["text"].toString(), limit.oldResultChars) + " [old result trimmed to save tokens]");
+                        newParts.add (shortPart);
+                    }
+                    else
+                        newParts.add (part);
+                }
+                blockCopy.getDynamicObject()->setProperty ("content", newParts);
+            }
+            newBlocks.add (blockCopy);
+        }
+        copy.getDynamicObject()->setProperty ("content", newBlocks);
+        out.add (copy);
+    }
+    return out;
+}
+
+juce::String AiChat::getPendingConfirm() const
+{
+    const juce::ScopedLock sl (lock);
+    return confirmText;
+}
+
+void AiChat::answerConfirm (int answer)
+{
+    confirmAnswer = answer;
+}
+
+bool AiChat::confirmTool (const juce::String& name)
+{
+    if (confirmAll)
+        return true;
+    confirmAnswer = 0;
+    {
+        const juce::ScopedLock sl (lock);
+        confirmText = heavyToolWarning (name);
+    }
+    ++version;
+    while (confirmAnswer == 0 && ! threadShouldExit())
+        juce::Thread::sleep (50);
+    const auto answer = confirmAnswer.load();
+    {
+        const juce::ScopedLock sl (lock);
+        confirmText = {};
+    }
+    ++version;
+    if (answer == 3)
+        confirmAll = true;
+    return answer == 1 || answer == 3;
 }
 
 AiChat::AiChat (PluginBase& p) : juce::Thread ("Kickbase AI chat"), processor (p), tools (p) {}
@@ -39,6 +207,8 @@ void AiChat::cancelRequest()
 
 juce::StringArray AiChat::models()
 {
+    if (Settings::chatProvider() == "gemini")
+        return GeminiApi::models();
     return { "claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5", "claude-fable-5-1" };
 }
 
@@ -88,9 +258,182 @@ void AiChat::newChat()
         status = {};
     }
     messages.clear();
+    confirmAll = false;
     tokensIn = 0;
     tokensOut = 0;
     ++version;
+}
+
+juce::File AiChat::sessionsFolder()
+{
+    const auto custom = Settings::get ("chatsFolder");
+    juce::File folder = custom.isNotEmpty() && juce::File::isAbsolutePath (custom) ? juce::File (custom) : Settings::rootFolder().getChildFile ("Chats");
+    folder.createDirectory();
+    return folder;
+}
+
+// Tar bort nycklarna ur en text som ska skrivas till disk: de sparade nycklarna, och allt som ser ut som en nyckel i en adress
+// (Gemini skickar nyckeln som ?key=... och den kan stå kvar i ett felmeddelande).
+juce::String AiChat::redact (juce::String text)
+{
+    for (const auto& secret : { Settings::chatApiKey(), Settings::geminiApiKey() })
+        if (secret.trim().length() >= 8)
+            text = text.replace (secret.trim(), "[key removed]");
+
+    static const std::regex patterns[] {
+        std::regex ("(\\bkey=)[^&\\s\"'\\\\]{1,300}", std::regex::icase),
+        std::regex ("AIza[0-9A-Za-z_\\-]{20,100}"),
+        std::regex ("sk-ant-[0-9A-Za-z_\\-]{10,200}"),
+        std::regex ("((?:authorization|x-api-key|x-goog-api-key|api-key)[\"']?\\s*[:=]\\s*[\"']?)[^\\r\\n\"'\\\\]{1,300}", std::regex::icase),
+        std::regex ("(bearer\\s+)[0-9A-Za-z._~+/\\-]{8,300}", std::regex::icase)
+    };
+    auto result = text.toStdString();
+    result = std::regex_replace (result, patterns[0], "$1[key removed]");
+    result = std::regex_replace (result, patterns[1], "[key removed]");
+    result = std::regex_replace (result, patterns[2], "[key removed]");
+    result = std::regex_replace (result, patterns[3], "$1[key removed]");
+    result = std::regex_replace (result, patterns[4], "$1[key removed]");
+    return juce::String::fromUTF8 (result.c_str());
+}
+
+juce::String AiChat::conversationTitle() const
+{
+    for (const auto& message : messages)
+        if (message["role"].toString() == "user" && message["content"].isString())
+            return shorten (message["content"].toString().replaceCharacters ("\r\n", "  ").trim(), 60);
+    return "Chat";
+}
+
+bool AiChat::saveSession (juce::File& savedTo)
+{
+    if (busy || messages.isEmpty())
+        return false;
+
+    juce::Array<var> entries;
+    for (const auto& entry : getEntries())
+    {
+        auto item = object();
+        put (item, "kind", kindNames[(int) entry.kind]);
+        put (item, "text", entry.text);
+        entries.add (item);
+    }
+
+    const auto now = juce::Time::getCurrentTime();
+    auto root = object();
+    put (root, "format", "kickbase-chat-1");
+    put (root, "title", conversationTitle());
+    put (root, "saved", now.toISO8601 (true));
+    put (root, "tokensIn", (juce::int64) tokensIn.load());
+    put (root, "tokensOut", (juce::int64) tokensOut.load());
+    put (root, "messages", stripImages (messages));
+    put (root, "log", entries);
+
+    const auto name = now.formatted ("%Y-%m-%d_%H-%M-%S") + "_" + juce::File::createLegalFileName (conversationTitle().substring (0, 30).trim()) + ".json";
+    const auto file = sessionsFolder().getChildFile (name);
+    if (! file.replaceWithText (redact (juce::JSON::toString (root, false)), false, false, "\n"))
+        return false;
+    savedTo = file;
+    return true;
+}
+
+bool AiChat::loadSession (const juce::File& file)
+{
+    if (busy)
+        return false;
+    const auto root = juce::JSON::parse (file);
+    const auto* loaded = root["messages"].getArray();
+    if (loaded == nullptr || root["format"].toString() != "kickbase-chat-1")
+        return false;
+
+    std::vector<Entry> entries;
+    if (const auto* items = root["log"].getArray())
+        for (const auto& item : *items)
+        {
+            Entry entry;
+            for (int k = 0; k < (int) std::size (kindNames); ++k)
+                if (item["kind"].toString() == kindNames[k])
+                    entry.kind = (Entry::Kind) k;
+            entry.text = item["text"].toString();
+            entries.push_back (std::move (entry));
+        }
+
+    {
+        const juce::ScopedLock sl (lock);
+        log = std::move (entries);
+        status = {};
+    }
+    messages = *loaded;
+    confirmAll = false;
+    tokensIn = (juce::int64) root["tokensIn"];
+    tokensOut = (juce::int64) root["tokensOut"];
+    Entry note;
+    note.kind = Entry::Kind::note;
+    note.text = "Opened the saved chat \"" + root["title"].toString() + "\". Images were not saved.";
+    addEntry (std::move (note));
+    return true;
+}
+
+bool AiChat::exportText (juce::File& exportedTo)
+{
+    if (busy || messages.isEmpty())
+        return false;
+
+    const char* const labels[] { "YOU", "AI", "TOOL", "NOTE", "ERROR" };
+    juce::String text = "Kickbase AI chat: " + conversationTitle() + "\nExported " + juce::Time::getCurrentTime().toString (true, true) + "\n";
+    for (const auto& entry : getEntries())
+    {
+        text << "\n[" << labels[(int) entry.kind] << "] " << entry.text << "\n";
+        if (! entry.images.empty())
+            text << "[" << (int) entry.images.size() << " image(s) not exported]\n";
+    }
+
+    const auto now = juce::Time::getCurrentTime();
+    const auto file = sessionsFolder().getChildFile (now.formatted ("%Y-%m-%d_%H-%M-%S") + "_" + juce::File::createLegalFileName (conversationTitle().substring (0, 30).trim()) + ".txt");
+    if (! file.replaceWithText (redact (text), false, false, "\r\n"))
+        return false;
+    exportedTo = file;
+    return true;
+}
+
+std::vector<AiChat::SessionInfo> AiChat::listSessions()
+{
+    std::vector<SessionInfo> result;
+    for (const auto& file : sessionsFolder().findChildFiles (juce::File::findFiles, false, "*.json"))
+    {
+        const auto root = juce::JSON::parse (file);
+        if (root["format"].toString() != "kickbase-chat-1")
+            continue;
+        result.push_back ({ file, root["title"].toString(), file.getLastModificationTime() });
+    }
+    std::sort (result.begin(), result.end(), [] (const SessionInfo& a, const SessionInfo& b) { return a.saved > b.saved; });
+    return result;
+}
+
+// Före en ny fråga: är historiken för stor sparas samtalet och exporteras till en textfil, och sedan tas de äldsta frågorna bort ur historiken
+// (loggen på skärmen behålls). Går inte sparningen igenom tas inget bort.
+void AiChat::autoClean (const Limits& limit)
+{
+    if (limit.autoCleanChars <= 0 || juce::JSON::toString (stripImages (messages), true).length() <= limit.autoCleanChars)
+        return;
+
+    juce::Array<int> turnStarts;
+    for (int i = 0; i < messages.size(); ++i)
+        if (messages.getReference (i)["role"].toString() == "user" && messages.getReference (i)["content"].isString())
+            turnStarts.add (i);
+    const auto keep = juce::jmax (1, juce::jmin (limit.keepTurns, turnStarts.size() - 1));
+    if (turnStarts.size() <= keep)
+        return;
+
+    juce::File session, exported;
+    if (! saveSession (session) || ! exportText (exported))
+        return;
+
+    messages.removeRange (0, turnStarts[turnStarts.size() - keep]);
+    Entry note;
+    note.kind = Entry::Kind::note;
+    note.text = "The chat got long, so the older questions were dropped to save tokens. The whole chat was saved to " + session.getFullPathName()
+                + " and exported to " + exported.getFullPathName() + ".";
+    addEntry (std::move (note));
 }
 
 void AiChat::undo()
@@ -119,7 +462,7 @@ void AiChat::send (const juce::String& text)
     if (busy || text.trim().isEmpty())
         return;
 
-    if (Settings::chatApiKey().isEmpty())
+    if (activeKey().isEmpty())
     {
         Entry entry;
         entry.kind = Entry::Kind::error;
@@ -127,6 +470,8 @@ void AiChat::send (const juce::String& text)
         addEntry (std::move (entry));
         return;
     }
+
+    autoClean (limits (Settings::chatCostMode()));
 
     Entry entry;
     entry.kind = Entry::Kind::user;
@@ -142,11 +487,20 @@ void AiChat::send (const juce::String& text)
     startThread (juce::Thread::Priority::normal);
 }
 
-var AiChat::buildRequest() const
+juce::String AiChat::activeKey()
 {
+    return Settings::chatProvider() == "gemini" ? Settings::geminiApiKey() : Settings::chatApiKey();
+}
+
+var AiChat::buildRequest (const Limits& limit) const
+{
+    const auto trimmed = trimForRequest (messages, limit);
+    if (Settings::chatProvider() == "gemini")
+        return GeminiApi::buildRequest (juce::String (systemPrompt) + ToolLayer::guide ("agent"), ToolLayer::tools(), trimmed, limit.maxOutputTokens);
+
     auto body = object();
     put (body, "model", Settings::chatModel());
-    put (body, "max_tokens", 8192);
+    put (body, "max_tokens", juce::jmin (limit.maxOutputTokens, 8192));
 
     // Systemprompten med guiden. Den cachas (cache_control), så att varje anrop i samtalet kostar mindre.
     auto system = object();
@@ -176,19 +530,22 @@ var AiChat::buildRequest() const
     if (! toolList.isEmpty())
         put (toolList.getReference (toolList.size() - 1), "cache_control", cache);
     put (body, "tools", toolList);
-    put (body, "messages", messages);
+    put (body, "messages", trimmed);
     return body;
 }
 
 var AiChat::post (const juce::String& key, const var& body, int& httpStatus, juce::String& error)
 {
     httpStatus = 0;
-    juce::URL url (Settings::get ("chatEndpoint", "https://api.anthropic.com/v1/messages")); // (chatEndpoint: bara för tester)
+    const auto gemini = Settings::chatProvider() == "gemini";
+    juce::URL url (gemini ? GeminiApi::withKey (Settings::get ("geminiEndpoint", GeminiApi::endpoint (Settings::geminiModel())), key) // (geminiEndpoint/chatEndpoint: bara för tester)
+                          : Settings::get ("chatEndpoint", "https://api.anthropic.com/v1/messages"));
     url = url.withPOSTData (juce::JSON::toString (body, true));
-    const juce::String headers = "content-type: application/json\r\nx-api-key: " + key + "\r\nanthropic-version: 2023-06-01\r\n";
+    const juce::String headers = gemini ? "content-type: application/json\r\n"
+                                        : "content-type: application/json\r\nx-api-key: " + key + "\r\nanthropic-version: 2023-06-01\r\n";
 
     // Samma som URL::createInputStream (POST-data i kroppen), men med strömmen åtkomlig så att den kan avbrytas (cancelRequest).
-    juce::WebInputStream stream (url, true);
+    juce::WebInputStream stream (url, false); // false: ?key= (Gemini) ska stanna i URL:en, inte läggas före JSON-kroppen
     stream.withExtraHeaders (headers).withConnectionTimeout (240000).withNumRedirectsToFollow (2).withCustomRequestCommand ("POST");
     {
         const juce::ScopedLock sl (streamLock);
@@ -206,12 +563,26 @@ var AiChat::post (const juce::String& key, const var& body, int& httpStatus, juc
     httpStatus = stream.getStatusCode();
     if (! connected || stream.isError())
     {
-        error = threadShouldExit() ? juce::String ("Cancelled.") : juce::String ("Could not reach api.anthropic.com (no internet, a firewall, or a proxy?).");
+        error = threadShouldExit() ? juce::String ("Cancelled.") : "Could not reach " + juce::String (gemini ? "generativelanguage.googleapis.com" : "api.anthropic.com") + " (no internet, a firewall, or a proxy?).";
         return {};
     }
 
     const auto text = stream.readEntireStreamAsString();
     const auto parsed = juce::JSON::parse (text);
+    if (gemini)
+    {
+        if (httpStatus >= 400)
+        {
+            error = GeminiApi::errorMessage (httpStatus, text);
+            return {};
+        }
+        if (! parsed.isObject())
+        {
+            error = "Unexpected answer from the AI service: " + shorten (text, 300);
+            return {};
+        }
+        return GeminiApi::parseResponse (parsed, ToolLayer::tools(), error); // (tomt/blockerat svar: void + error)
+    }
     if (httpStatus >= 400 || parsed["type"].toString() == "error")
     {
         const auto message = parsed["error"]["message"].toString();
@@ -261,9 +632,11 @@ var AiChat::callTool (const juce::String& name, const var& input)
 
 void AiChat::run()
 {
-    const auto key = Settings::chatApiKey();
+    const auto key = activeKey();
     const auto sizeAtStart = messages.size();
     auto failed = false;
+    const auto limit = limits (Settings::chatCostMode());
+    const auto maxSteps = limit.maxSteps;
 
     for (int step = 0; step < maxSteps && ! threadShouldExit(); ++step)
     {
@@ -271,7 +644,7 @@ void AiChat::run()
         int httpStatus = 0;
         juce::String error;
         var response;
-        const auto request = buildRequest();
+        const auto request = buildRequest (limit);
 
         // Övergående fel (ingen anslutning, för många anrop, överbelastad tjänst) provas om efter en stund; felaktig nyckel eller dåligt anrop inte.
         for (int attempt = 0; attempt < 4; ++attempt)
@@ -337,9 +710,22 @@ void AiChat::run()
             else if (type == "tool_use")
             {
                 const auto name = block["name"].toString();
-                setStatus ("Running " + name + " ...");
-
-                const auto result = callTool (name, block["input"]);
+                var result;
+                if (limit.confirmHeavy && isHeavyTool (name))
+                {
+                    setStatus ("Waiting for your OK ...");
+                    if (! confirmTool (name))
+                    {
+                        result = object();
+                        put (result, "ok", false);
+                        put (result, "error", threadShouldExit() ? "Cancelled." : "The user skipped this tool to save tokens. Continue without it, or ask the user.");
+                    }
+                }
+                if (result.isVoid())
+                {
+                    setStatus ("Running " + name + " ...");
+                    result = callTool (name, block["input"]);
+                }
                 const auto ok = (bool) result["ok"];
 
                 Entry entry;
@@ -351,7 +737,7 @@ void AiChat::run()
                 auto textPart = object();
                 put (textPart, "type", "text");
                 const auto& data = result["data"];
-                put (textPart, "text", ok ? shorten (data.isString() ? data.toString() : juce::JSON::toString (data, false, 4), 30000) : result["error"].toString());
+                put (textPart, "text", ok ? shorten (data.isString() ? data.toString() : juce::JSON::toString (data, false, 4), limit.resultChars) : result["error"].toString());
                 parts.add (textPart);
                 if (ok)
                     if (auto* images = result["images"].getArray())

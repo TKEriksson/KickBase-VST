@@ -1,0 +1,4 @@
+tb303 instr 10 @48k/512      79d677d42c6e3495 peak 0.9661 rms 0.2594
+tb303 instr 3 @44.1k/128     ce4eaa343c915b26 peak 0.9661 rms 0.2113
+tb303 instr 1 @96k/1024      3a6a9e67f1d3b1a9 peak 0.9661 rms 0.2054
+tb303 instr 4 @48k/37        ad3655f84a27e8c5 peak 0.9661 rms 0.2124

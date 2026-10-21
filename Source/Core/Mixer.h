@@ -33,8 +33,11 @@ public:
 
     // Lägger källan (mono om `right` är nullptr) på maximizerns buss eller förbi den, efter gain
     // och panorering, och uppdaterar mätaren. `level` är en extra faktor (t.ex. den torra andelen).
+    // Mätaren visar hela källan efter fadern (före `level`). Anges sendLeft/sendRight får de källan efter
+    // fader och panorering (utan `level`), så att det som skickas till en effektkanal följer fadern också.
     void mix (int source, const float* left, const float* right, int numSamples, float level,
-              juce::AudioBuffer<float>& maxBus, juce::AudioBuffer<float>& bypassBus);
+              juce::AudioBuffer<float>& maxBus, juce::AudioBuffer<float>& bypassBus,
+              float* sendLeft = nullptr, float* sendRight = nullptr);
 
     // Högsta topp (dB) sedan förra anropet, per kanal (0 vänster, 1 höger). Anropas av gränssnittet.
     float takePeakDb (int source, int channel) const;

@@ -38,7 +38,7 @@ private:
     bool paramsReadWhileSoloing = false; // parametrarna lästes i förra biten medan en källa provlyssnades
     bool blockParamsPending = true;      // ett nytt DAW-block har börjat: läs alla parametrar vid nästa 32-rutnätspunkt
     juce::uint32 eventSequence = 0;      // löpnummer för schemalagda händelser (StepEvent::sequence)
-    void readLayerFields (int layer, int solo);
+    void readLayerFields (int layer, juce::uint64 solo);
     void readDuckLength();
     void readModulatedParams(); // bara det som moduleras (bitar efter blockets första)
     static constexpr int ownerNone = -1, ownerKick = 100;
@@ -96,6 +96,7 @@ private:
 
     // Mixerns två stereobussar: det som går genom maximizern, och det som går förbi den.
     juce::AudioBuffer<float> maxBus, bypassBus;
+    juce::AudioBuffer<float> sendBus; // källan efter mixerfadern, på väg till en effektkanal
 
     // När det senaste steget startade ljud (ppq), för kicken och varje instrument: se fadeOutStepsBefore.
     double lastKickStartPpq = -std::numeric_limits<double>::infinity();
@@ -103,6 +104,8 @@ private:
     std::array<int, 128> heldNotes {}; // hur många gånger varje ton slagits an utan att släppas
     int numHeldNotes = 0;
     int currentNote = -1; // senast anslagna ton; bestämmer tonarten
+    int liveVoiceLayer = -1; // instrumentet som spelar tangentbordet live (MIDI IN: INSTRUMENT), -1 = inget
+    bool handleLiveMidi (const juce::MidiMessage& message); // true när meddelandet är ett live-spelat och mönstret ska lämnas ifred
 
     bool patternActive = false;
     double stopAtPpq = std::numeric_limits<double>::infinity();
@@ -120,6 +123,7 @@ private:
     // Swing, humanize och instrumentens fördröjning: en ton kan skjutas framåt i tiden (aldrig bakåt: det skulle kräva latens). Toner som hamnar efter
     // slutet av segmentet väntar i `pending` och spelas i ett senare segment. Läses en gång per block.
     float swing = 0.0f, humanize = 0.0f;
+    std::array<float, numLayers> nudgeMs = filledArray<float, numLayers> (0.0f);
     std::array<float, numLayers> delayMs = filledArray<float, numLayers> (0.0f), swingRow = filledArray<float, numLayers> (0.0f), humanizeRow = filledArray<float, numLayers> (0.0f);
     struct PendingEvent { StepEvent event; int remaining = 0; };
     std::array<PendingEvent, 256> pending {};

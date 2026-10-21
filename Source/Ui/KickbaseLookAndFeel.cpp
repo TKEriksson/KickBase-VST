@@ -180,9 +180,19 @@ void KickbaseLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButto
     const auto accent = button.findColour (juce::ToggleButton::tickColourId);
     const auto bounds = button.getLocalBounds().toFloat().reduced (3.0f);
     const auto size = std::min (bounds.getWidth(), bounds.getHeight());
-    const auto icon = juce::Rectangle<float> (size, size).withCentre (bounds.getCentre());
+    // Knappar med egenskapen "labelled" visar sin text till vänster om ikonen, som sitter längst till höger.
+    const bool labelled = (bool) button.getProperties().getWithDefault ("labelled", false);
+    const auto icon = labelled ? juce::Rectangle<float> (size, size).withRightX (bounds.getRight()).withCentre ({ bounds.getRight() - size * 0.5f, bounds.getCentreY() })
+                               : juce::Rectangle<float> (size, size).withCentre (bounds.getCentre());
     const auto on = button.getToggleState();
     const auto colour = on ? accent : Theme::textDim.withAlpha (highlighted ? 0.9f : 0.6f);
+
+    if (labelled)
+    {
+        g.setColour (on ? accent : Theme::textDim.withAlpha (highlighted ? 0.9f : 0.75f));
+        g.setFont (Theme::font (10.0f, true));
+        g.drawText (button.getButtonText(), bounds.withRight (icon.getX() - 5.0f), juce::Justification::centredRight, false);
+    }
 
     if (on)
     {

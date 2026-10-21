@@ -16,10 +16,12 @@ InstrumentEditor::InstrumentEditor (InstrumentProcessor& p)
     for (auto* component : std::initializer_list<juce::Component*> { &header, &synths, &tools, &info, &keyboard })
         root.addAndMakeVisible (component);
 
-    synths.addTab ("PATTERN", Theme::pattern, pattern);
+    synths.addTab ("PATTERN", Theme::pattern, pattern, pattern.getGrooveBar(), PatternGrooveBar::width);
     synths.addTab ("KICK", Theme::kick, kick, kick.embedInTab(), kick.headerExtrasWidth());
     synths.addTab ("INSTRUMENT", Theme::bass, instruments, instruments.getHeader(), InstrumentHost::headerWidth);
-    synths.addTab ("AI", Theme::gate, aiPage);
+    synths.addTab ("ANALYZER", Theme::lfo, analyzer);
+    synths.addTab ("AI CHAT", Theme::gate, aiPage);
+    synths.addTab ("LIVE CODE", Theme::gate, livePage);
 
     // På/av direkt på kickens flik (instrumenten har sin på/av i flikraden, bredvid väljaren).
     synths.addPower (1, processor.apvts, ParamID::kickOn);
@@ -31,7 +33,6 @@ InstrumentEditor::InstrumentEditor (InstrumentProcessor& p)
     tools.addTab ("MATRIX", Theme::lfo, matrix);
     tools.addTab ("MASTER", Theme::master, masterPage);
     tools.addTab ("SOUNDSTAGE", Theme::mix, soundstage);
-    tools.addTab ("ANALYZER", Theme::lfo, spectrum);
     tools.addTab ("SETTINGS", Theme::textDim, settings);
 
     keyboard.setOctaveForMiddleC (5); // samma tonnamn som FL Studio (mittens C = C5)

@@ -17,6 +17,7 @@
 #include "SampleSlot.h"
 #include "BridgeLink.h"
 #include "Settings.h"
+#include "WavetableEdit.h"
 #include "DeferredRelease.h"
 
 // Det som instrumentet och FX-versionen har gemensamt: parametrar, mönster, klicksampling,
@@ -46,9 +47,9 @@ public:
 
     // SOLO i mönstret: bit n = instrument n+1 (bit 10 = kicken). Är något soloat spelar bara de soloade. Inget som sparas med projektet:
     // solo är ett lyssningshjälpmedel, och ett projekt ska inte öppnas med ett instrument tyst.
-    std::atomic<int> soloMask { 0 };
+    std::atomic<juce::uint64> soloMask { 0 }; // R9b: en bit per radid (0-9 instrument, 10 kicken, 11-63 underrader)
     std::atomic<int> nonFiniteRecoveries { 0 }; // hur många gånger ljudtråden tömt sitt tillstånd efter NaN/inf (se allFinite)
-    static constexpr int kickSoloBit = 1 << 10; // en enda analys per instans: samma som visas i ANALYZER-fliken och som en AI hämtar med get_mix_report
+    static constexpr juce::uint64 kickSoloBit = 1ull << 10; // en enda analys per instans: samma som visas i ANALYZER-fliken och som en AI hämtar med get_mix_report
 
     // Mastersektionen ägs av underklassen (den behöver bara finnas där ljudet bearbetas).
     virtual const MasterSection& getMasterSection() const = 0;
@@ -119,6 +120,17 @@ public:
     LinkedLoad loadPatternPreset (int layer, const juce::File& file, bool withInstrument, int fxChannel = -2);
 
     bool saveUserPreset (Presets::Section section, const juce::String& name, int layer = 0, const PresetLink* link = nullptr);
+    std::unique_ptr<juce::XmlElement> buildPresetXml (Presets::Section section, int layer, const PresetLink* link = nullptr); // samma innehåll som filen
+
+    // Spår = ett instrument och dess rad i mönstret. Instrumenten ligger på fasta platser (0-9), så ett spår flyttas, dupliceras och raderas genom
+    // att innehållet kopieras mellan platserna. copyTrack ger en klipp (ljud, mönster, på/av, duck, FX-skick, mixer, LFO-kopplingar, namn, färg)
+    // som pasteTrack skriver över ett annat instrument med. Bara meddelandetråden.
+    std::unique_ptr<juce::XmlElement> copyTrack (int layer);
+    bool pasteTrack (int layer, const juce::XmlElement& clip);
+    std::function<void()> beforeTrackChange; // sätts av InstrumentHost: river panelerna innan ett instrument skrivs över
+    bool duplicateTrack (int layer);        // en kopia på platsen efter, resten flyttas ner (kräver ett ledigt instrument)
+    bool moveTrack (int layer, int delta);  // byter plats med grannen (delta -1 eller +1)
+    bool deleteTrack (int layer);           // resten flyttas upp och sista instrumentet töms (minst ett instrument kvar)
     bool loadUserPreset (Presets::Section section, const juce::File& file, int layer = 0);
     bool loadPresetXml (const juce::XmlElement& xml, Presets::Section section, int layer, const juce::String& presetName); // själva laddningen (fil eller inbyggt)
     bool loadEmbeddedInit(); // instrumentets fabrikspreset Init: ett Full-preset inbakat i programmet
@@ -144,6 +156,11 @@ public:
     // (message thread); ljudtråden läser tabellerna via userTable. Sparas i projektet.
     // `file` kan också vara en mapp: dess WAV-filer (högst 16, jämnt utvalda, i namnordning) blir tabellens vågformer.
     bool loadUserTable (int layer, int osc, const juce::File& file);
+    // PH2: ändrar övertonernas styrka/fas i oscillatorns tabell (frame < 0: alla frames). Resultatet blir oscillatorns User-tabell, så ingen ny parameter behövs.
+    bool editWavetable (int layer, int osc, int frame, const std::vector<WavetableEdit::Edit>& edits, bool normalise = true);
+    // Delarna (redigeraren håller en fast utgångspunkt så att reglagen inte staplar ändringar): tabellens frames nu, och en ny User-tabell av frames.
+    bool wavetableSource (int layer, int osc, std::vector<float>& frames, int& steps, juce::String& name) const;
+    bool installWavetable (int layer, int osc, std::vector<float> frames, int steps, const juce::String& name);
     void ensureTablesInUse(); // bygger de inbyggda tabeller som oscillatorerna använder nu (blockerar; inte på ljudtråden)
     const Wavetable* userTable (int layer, int osc) const { return userTables[(size_t) (layer * ParamID::oscsPerLayer + osc)].load(); }
     juce::String getUserTableName (int layer, int osc) const { return userNames[(size_t) (layer * ParamID::oscsPerLayer + osc)]; }
@@ -212,6 +229,10 @@ public:
 
     bool loadInstrumentSample (int layer, const juce::File& file);
     void clearInstrumentSample (int layer);
+    // Slicer: skivinställningarna hör till lagrets sampling (sparas med den). Message thread.
+    SampleSlot& instrumentSampleSlot (int layer) { return instrumentSamples[(size_t) juce::jlimit (0, ParamID::numInstrumentLayers - 1, layer)]; }
+    void setInstrumentSlicing (int layer, int mode, float sensitivity, int gridCount) { instrumentSampleSlot (layer).setSlicing (mode, sensitivity, gridCount); patternChanged(); }
+    void setInstrumentSliceMarkers (int layer, std::vector<float> markers) { instrumentSampleSlot (layer).setManualMarkers (std::move (markers)); patternChanged(); }
     juce::String getInstrumentSampleName (int layer) const { return instrumentSamples[(size_t) juce::jlimit (0, ParamID::numInstrumentLayers - 1, layer)].name(); }
     const ClickSample* getActiveInstrumentSample (int layer) const { return instrumentSamples[(size_t) juce::jlimit (0, ParamID::numInstrumentLayers - 1, layer)].active(); }
 
@@ -289,11 +310,19 @@ public:
     std::atomic<bool> restartRequest { false };
     std::atomic<int> previewingLayer { -1 };
 
+    // MIDI in medan pianorullen är öppen: vilken rad som svarar på tangentbordet/MIDI (notlager som i previewRequest), -1 = alla rader.
+    // Bara körtillstånd, ingen parameter: pianorullen sätter den vid öppning och nollar den vid stängning.
+    std::atomic<int> midiInLayer { -1 };
+    // Tonerna som spelas live på den raden (MIDI-ton 0..127, bit för bit), så att pianorullen kan tända tangenterna.
+    std::atomic<uint64_t> liveNotesLow { 0 }, liveNotesHigh { 0 };
+    // MIDI-tonen som radens tonhöjd 0 ligger på (kickens svans, eller instrumentets grundton i tonarten). Pianorullen och live-spelet delar den.
+    int rowRootNote (int noteLayer) const;
+
     // Pianorullens urklipp (gränssnittet): kopierade toner, relativt den första, och var nästa inklistring börjar som standard
     // (där de kopierade slutar, och efter en inklistring där den slutar).
     struct NoteClipboard
     {
-        struct Note { int dt = 0, length = 24, pitch = 0; float velocity = 0.8f; bool slide = false; Pattern::Chord chord {}; };
+        struct Note { int dt = 0, length = 24, pitch = 0; float velocity = 0.8f; bool slide = false; Pattern::Chord chord {}; int index = 0; /* stackindex */ };
         std::vector<Note> notes;
         int span = 0;          // hela de kopierade tonernas längd i ticks
         int nextStart = -1;    // var nästa inklistring börjar, -1 = vid vyns början
@@ -317,7 +346,16 @@ public:
         layerNames[(size_t) juce::jlimit (0, ParamID::numInstrumentLayers - 1, layer)] = name.trim().substring (0, 10);
         ++layerNamesVersion;
     }
+    // Eget färgval per instrument (0 = standardfärgen), sparas i projektet. Ökar `layerNamesVersion`.
+    juce::uint32 getLayerColour (int layer) const { return layerColours[(size_t) juce::jlimit (0, ParamID::numInstrumentLayers - 1, layer)]; }
+    void setLayerColour (int layer, juce::uint32 argb)
+    {
+        layerColours[(size_t) juce::jlimit (0, ParamID::numInstrumentLayers - 1, layer)] = argb;
+        ++layerNamesVersion;
+        ++layerStructureVersion;
+    }
     std::atomic<int> layerNamesVersion { 0 };
+    std::atomic<int> layerStructureVersion { 0 }; // ökas när en färg ändras eller ett instrument klistras in: panelerna byggs om (InstrumentHost)
 
     // Hur många instrument som används (1-10; FX-versionen: 1). Läses av gränssnittet.
     int activeInstruments() const
@@ -331,14 +369,42 @@ public:
     std::atomic<bool> followPlayhead { true }; // pianorullen och stegvyn bläddrar med uppspelningen
     std::atomic<int> lfoActiveVersion { 0 }; // ökas när en LFO läggs till eller tas bort (fas M), så att gränssnittet ritar om
     std::atomic<int> patternVersion { 0 }; // ökas när mönstret ändras, så att gränssnittet ritar om
-    int selectedTab = 0;                   // gränssnittets valda flikar (nedre och övre panelen), så att de
+    std::atomic<juce::uint64> liveCodeLocks { 0 };  // Live Code: en bit per radid (0-9 = instrument, 10 = kicken, 11-63 underrader) som koden inte får skriva över; sparas som de 11 första bitarna
+    std::atomic<int> liveCodeLoads { 0 };  // ökar när ett projekt eller en Full-preset laddats; LIVE CODE-sidan stoppar då LIVE
+    std::atomic<juce::uint64> liveCodeOwned { 0 };  // rader som Live Code skrev senast; andra rader med toner räknas som handritade
+    std::atomic<juce::uint64> liveCodeCodeLocks { 0 };     // F2: lås som koden satt med .lock() (rad + parametrar); sparas ALDRIG, rensas vid stopp och laddning
+    std::atomic<juce::uint64> liveCodeCodeNoteLocks { 0 }; // F2: som ovan men bara noter (.pianoroll.lock())
+    // Effektiva lås = handsatta OR kodens: noter respektive parametrar på raden.
+    juce::uint64 liveCodeNoteLocks() const { return liveCodeLocks.load() | liveCodeCodeLocks.load() | liveCodeCodeNoteLocks.load(); }
+    juce::uint64 liveCodeParamLocks() const { return liveCodeLocks.load() | liveCodeCodeLocks.load(); }
+    // Live Code, steg D: kodtexten och låsen sparas i projektet och i Full-presets (element <LiveCode>, sist, bara när något är satt).
+    // LIVE, CODE ONLY och liveCodeOwned sparas aldrig: inget startar av sig självt vid laddning, och rader med toner är handritade tills koden körs.
+    juce::String getLiveCodeText() const { const juce::ScopedLock lock (liveCodeTextLock); return liveCodeText; }
+    void setLiveCodeText (const juce::String& text) { const juce::ScopedLock lock (liveCodeTextLock); liveCodeText = text; }
+    juce::ValueTree liveCodeToValueTree() const; // ogiltigt träd = inget att spara
+    void liveCodeFromValueTree (const juce::ValueTree& tree);
+    // Live Code, steg E (.lfo/.env): meddelandetråden håller en post per (rad, parameter, sort) med sin CODE-plats. Kopplingarna från
+    // CODE-källor sparas aldrig (Modulation::isCodeSource) och rensas vid laddning, stopp och ny körning utan .lfo/.env.
+    struct CodeMod { juce::String key; int slot = 0; };
+    std::vector<CodeMod> codeMods;
+    void clearCodeMods (bool dropRoutes = true); // stänger alla platser och tar bort alla kopplingar från CODE-källor direkt
+    void sweepCodeRoutes(); // tar bort kopplingar vars plats hunnit tona ut
+    void startCodeSweep();  // meddelandetråden sveper själv tills inga CODE-kopplingar väntar på utfasning (ingen sida behövs)
+    struct CodeSweeper : juce::Timer
+    {
+        explicit CodeSweeper (PluginBase& o) : owner (o) {}
+        ~CodeSweeper() override { stopTimer(); }
+        void timerCallback() override;
+        PluginBase& owner;
+    };
+    CodeSweeper codeSweeper { *this };
+    int selectedTab = 0;                  // gränssnittets valda flikar (nedre och övre panelen), så att de
     int selectedSynthTab = 0;              // finns kvar när fönstret öppnas igen
     int selectedPatternMode = 0;           // PATTERN-flikens läge: 0 PATTERN (toner), 1 GATE
-    std::array<int, ParamID::numInstrumentLayers> selectedInstrumentSource {}; // baslagrets valda källflik: OSC 1-3 eller SAMPLE
+    std::array<int, ParamID::numInstrumentLayers> selectedInstrumentSource {}; // instrumentets valda flik: INSTR, OSC 1-3, SAMPLE eller FILTER
     std::atomic<int> kickTab { 0 };                // kickens vyflik: 0 SYNTH, 1 SAMPLE (bara gränssnittet, sparas inte och ändrar inget ljud)
     int selectedPatternLayer = 0;          // PATTERN-flikens valda lager: 0-9 instrument, 10 kick
     int selectedInstrument = 0;            // INSTRUMENT-flikens valda instrument (0-9)
-    bool modEnvelopesOpen = false;         // INSTRUMENT-sidans dragspel MODULATION (ENV 2, ENV 3 ...) är öppet
     int lfoFolded = -1;                    // LFO-flikens fällda kort (en bit per LFO); -1 = inte bestämt ännu (se LfoPage)
     int selectedLfo = 0;                   // LFO-flikens valda kort (SHOW ONLY SELECTED)
     int lfoRemoveAsk = -1;                 // LFO-kortet som frågar om borttagning (-1 = inget)
@@ -418,15 +484,16 @@ public:
     ModRoutes modRoutes;
     Modulator modulator { apvts, modRoutes };
 
+    // Samplingarna som projektträd; publika så att StateTests kan provköra skivinställningarnas rundtur.
+    juce::ValueTree instrumentSamplesToValueTree() const;
+    void instrumentSamplesFromValueTree (const juce::ValueTree& tree);
+
 protected:
     // Läser kickens och basens parametrar, med LFO-modulering.
     KickParams readModulatedKick (int keyPitchClass) const;
     InstrumentParams readModulatedInstrument (int layer, int rootMidiNote) const;
 
 private:
-    juce::ValueTree instrumentSamplesToValueTree() const;
-    void instrumentSamplesFromValueTree (const juce::ValueTree& tree);
-
     // Originalet sparas i projektet; en omsamplad kopia spelas. Bara message thread och
     // prepareToPlay rör originalet, därför låset (aldrig på ljudtråden).
     static constexpr int numUserSlots = ParamID::numInstrumentLayers * ParamID::oscsPerLayer;
@@ -455,6 +522,9 @@ private:
     std::array<juce::String, numEffectChannels> fxPresetNames;       // FX-presets: ett namn per effektkanal
     std::array<juce::String, Pattern::numNoteLayers> rowPresetNames; // mönster-presets: ett namn per rad (instrument 0-9, kicken sist)
     std::array<juce::String, ParamID::numInstrumentLayers> layerNames;
+    std::array<juce::uint32, ParamID::numInstrumentLayers> layerColours {};
+    juce::String liveCodeText;
+    mutable juce::CriticalSection liveCodeTextLock;
 
     double currentSampleRate = 44100.0;
 

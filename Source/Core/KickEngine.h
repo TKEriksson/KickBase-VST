@@ -58,6 +58,7 @@ struct KickParams
     float clickToneHz = 5000.0f;
     float drive = 0.2f;         // 0..1
     float level = 0.8f;
+    float comp = 0.0f;          // 0..1: kompressor efter crush (0 = av), snabbt anslag, släpp = kickens längd, auto-makeup
 };
 
 // Syntetiserad kick: sinus med pitch-envelope, amplitud-envelope, klick och drive.
@@ -132,6 +133,8 @@ private:
     float envelope = 0.0f;
     juce::dsp::StateVariableTPTFilter<float> highCut, lowCut;
     float highCutSet = -1.0f, lowCutSet = -1.0f;
+    float compLevel = 0.0f;                          // kompressorns toppföljare (linjärt)
+    float compReleaseSet = -1.0f, compReleaseCoef = 0.0f;
 
     // Övertonernas nivåer (n^-tilt) räknas bara om när TILT ändras.
     float harmonicsTiltSet = -1.0e30f, harmonicsNorm = 0.0f;

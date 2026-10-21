@@ -87,6 +87,7 @@ void KickEngine::reset()
     }
     highCut.reset();
     lowCut.reset();
+    compLevel = 0.0f;
     envelope = 0.0f;
 }
 
@@ -153,6 +154,28 @@ float KickEngine::nextSample()
     {
         const auto levels = std::exp2 (15.0f - params.crush * 12.0f); // 16 bitar ... 4 bitar
         y = std::round (y * levels) / levels;
+    }
+    if (params.comp > 0.0f)
+    {
+        // Feed-forward-kompressor: toppföljare (anslag ~1 ms, släpp = kickens längd), tröskel och ratio växer med comp,
+        // auto-makeup så att en full topp förblir ungefär 1.
+        const auto release = (float) juce::jlimit (0.03, 1.0, lengthSeconds (params));
+        if (release != compReleaseSet)
+        {
+            compReleaseCoef = std::exp (-1.0f / (release * (float) sampleRate));
+            compReleaseSet = release;
+        }
+        const auto attackCoef = std::exp (-1.0f / (0.001f * (float) sampleRate));
+        const auto magnitude = std::abs (y);
+        const auto coef = magnitude > compLevel ? attackCoef : compReleaseCoef;
+        compLevel = magnitude + coef * (compLevel - magnitude);
+
+        const auto thresholdDb = -params.comp * 24.0f;
+        const auto ratio = 1.0f + params.comp * 7.0f;
+        const auto levelDb = juce::Decibels::gainToDecibels (compLevel, -100.0f);
+        const auto reductionDb = levelDb > thresholdDb ? (thresholdDb - levelDb) * (1.0f - 1.0f / ratio) : 0.0f;
+        const auto makeupDb = -thresholdDb * (1.0f - 1.0f / ratio);
+        y *= juce::Decibels::decibelsToGain (reductionDb + makeupDb);
     }
     // Filtren ställs bara in när värdet ändras (set-funktionen räknar om koefficienterna ur alla värden: samma resultat).
     if (params.lowCutHz > 21.0f)

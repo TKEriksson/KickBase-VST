@@ -1,16 +1,143 @@
 #include "MixAnalysis.h"
 #include <juce_dsp/juce_dsp.h>
+#include <algorithm>
 #include <map>
 #include <set>
 #include "PluginBase.h"
 #include "OfflineRender.h"
 #include "AnalysisAbout.h"
+#include "Settings.h"
 
 namespace MixAnalysis
 {
     namespace
     {
         constexpr float binNorm = 4.0f / (float) fftSize; // en sinus i full skala blir 0 dB
+        // Trösklar som både findings (evaluate) och verktygsvägen (suggested_fixes) använder; ändra på ett ställe.
+        constexpr int phaseMinActive = 4;               // aktiva 16-delar innan fasfyndet bedöms (golv)
+        constexpr double phaseMinActiveShare = 0.15;    // ...och minst så stor andel av alla 16-delar, så en lång render inte blir känsligare än en kort
+        constexpr float phaseActivePower = 1.0e-4f;     // en 16-del räknas först när kick och bas båda ligger över ungefär -40 dB (kicksvansen räknas inte som möte)
+        constexpr float phaseCorrWarn = -0.3f, phaseCorrProblem = -0.6f;
+        constexpr float phaseSumWarnDb = -3.0f, phaseSumProblemDb = -6.0f;
+        constexpr float lowStereoInfo = 0.8f, lowStereoWarn = 0.5f, lowStereoProblem = 0.0f; // L/R-korrelation 20-120 Hz per takt: under 0,8 info, under 0,5 varning, under 0 problem
+        constexpr double lowStereoMinShare = 0.25;      // ...och minst två takter eller så här stor andel av takterna
+        constexpr double stereoSilentPower = 1.0e-5;    // bandeffekt per sampel under detta (ca -50 dB) räknas som tyst: korrelationen 1
+        constexpr float limiterWarnDb = 6.0f, limiterProblemDb = 9.0f; // mäts på 95:e percentilen över ramarna, inte på enstaka maxblock
+        constexpr double mudLowFloorPerFrame = 1.0e-4;  // medeleffekt 40-150 Hz i kick och bas tillsammans (-40 dB); under det bedöms inte lera
+        // Kick mot bas i lågbandet, per 16-del (AN): kicken ska vinna där de möts, och svansen får inte äta basen.
+        constexpr float kickLeadMarginDb = 3.0f;        // på slag: basen får ligga högst så här mycket under kicken innan kicken inte "vinner"
+        constexpr float tailOverBassDb = 6.0f;          // mellan slag: kicksvansen så här mycket över basen = svansen tar basen
+        constexpr double kickBassMinShare = 0.25;       // ...i minst två 16-delar och så här stor andel av de bedömda
+        constexpr float kickBassActiveDb = -50.0f;      // en 16-del bedöms bara när både kick och bas ligger över detta (RMS)
+        struct KickBassSummary
+        {
+            std::vector<int> leadBars, tailBars; // takter (1-baserade) där kicken inte vinner / där svansen tar basen
+            int hitSlots = 0, tailSlots = 0, leadFails = 0, tailFails = 0;
+            bool leadFound = false, tailFound = false;
+        };
+
+        KickBassSummary summariseKickBass (const PhaseMetrics& p)
+        {
+            KickBassSummary s;
+            const auto slots = p.lowKickDb.size();
+            if (p.lowBassDb.size() != slots || p.lowKickHit.size() != slots)
+                return s;
+            for (size_t i = 0; i < slots; ++i)
+            {
+                if (p.lowKickDb[i] < kickBassActiveDb || p.lowBassDb[i] < kickBassActiveDb)
+                    continue;
+                const auto diff = p.lowKickDb[i] - p.lowBassDb[i]; // positivt = kicken är starkare
+                if (p.lowKickHit[i] != 0)
+                {
+                    ++s.hitSlots;
+                    if (diff < kickLeadMarginDb)
+                    {
+                        ++s.leadFails;
+                        s.leadBars.push_back ((int) i / 16 + 1);
+                    }
+                }
+                else
+                {
+                    ++s.tailSlots;
+                    if (diff > tailOverBassDb)
+                    {
+                        ++s.tailFails;
+                        s.tailBars.push_back ((int) i / 16 + 1);
+                    }
+                }
+            }
+            s.leadBars.erase (std::unique (s.leadBars.begin(), s.leadBars.end()), s.leadBars.end());
+            s.tailBars.erase (std::unique (s.tailBars.begin(), s.tailBars.end()), s.tailBars.end());
+            s.leadFound = s.leadFails >= 2 && (double) s.leadFails >= kickBassMinShare * (double) s.hitSlots;
+            s.tailFound = s.tailFails >= 2 && (double) s.tailFails >= kickBassMinShare * (double) s.tailSlots;
+            return s;
+        }
+
+        // Fasfyndets underlag, gemensamt för findings och verktygsvägen: aktiva 16-delar och medelkorrelationen viktad med effekten (Σkb / Σ√(kk·bb)).
+        struct PhaseSummary
+        {
+            int active = 0, minActive = phaseMinActive;
+            float mean = 0.0f;
+            std::vector<int> badBars;
+            bool enough() const { return active >= minActive; }
+        };
+
+        PhaseSummary summarisePhase (const PhaseMetrics& p)
+        {
+            PhaseSummary s;
+            const auto slots = p.lowCorrelation.size();
+            const auto weighted = p.lowWeight.size() == slots;
+            s.minActive = std::max (phaseMinActive, (int) std::ceil (phaseMinActiveShare * (double) slots));
+            auto sumWeight = 0.0, sumWeighted = 0.0;
+            for (size_t i = 0; i < slots; ++i)
+            {
+                if (p.lowActive[i] == 0 || (weighted && p.lowWeight[i] < phaseActivePower))
+                    continue;
+                const auto w = weighted ? (double) p.lowWeight[i] : 1.0;
+                ++s.active;
+                sumWeight += w;
+                sumWeighted += w * p.lowCorrelation[i];
+                if (p.lowCorrelation[i] < phaseCorrWarn)
+                    s.badBars.push_back ((int) i / 16 + 1);
+            }
+            s.badBars.erase (std::unique (s.badBars.begin(), s.badBars.end()), s.badBars.end());
+            s.mean = sumWeight > 0.0 ? (float) (sumWeighted / sumWeight) : 0.0f;
+            return s;
+        }
+
+        // Basens stereobredd (band 0): lägsta nivån som tillräckligt många takter ligger under.
+        struct StereoSummary
+        {
+            bool found = false;
+            Severity severity = Severity::info;
+            float limit = lowStereoInfo;
+            std::vector<int> bars;
+        };
+
+        StereoSummary summariseStereo (const PhaseMetrics& p)
+        {
+            StereoSummary s;
+            const auto total = p.stereoCorrelation.size();
+            const auto enough = [total] (size_t n) { return n >= 2 || (double) n >= lowStereoMinShare * (double) total; };
+            const struct { float limit; Severity severity; } levels[] = { { lowStereoProblem, Severity::problem }, { lowStereoWarn, Severity::warning }, { lowStereoInfo, Severity::info } };
+            for (const auto& level : levels)
+            {
+                std::vector<int> bars;
+                for (size_t bar = 0; bar < total; ++bar)
+                    if (p.stereoCorrelation[bar][0] < level.limit)
+                        bars.push_back ((int) bar + 1);
+                if (! bars.empty() && enough (bars.size()))
+                {
+                    s.found = true;
+                    s.severity = level.severity;
+                    s.limit = level.limit;
+                    s.bars = std::move (bars);
+                    break;
+                }
+            }
+            return s;
+        }
+
         constexpr float lobePower = 1.5f;                 // en ren ton fördelas på ungefär tre steg (Hann): summan blir 1,5 gånger toppen
 
         juce::String noteName (float hz)
@@ -584,15 +711,195 @@ namespace MixAnalysis
 
         // --- Mastern: limitern.
         r.limiterMaxDb = c.limiterMaxReductionDb;
-        if (c.limiterMaxReductionDb >= 5.0f)
+        auto limiterLevelDb = c.limiterMaxReductionDb; // utan ramvärden (äldre capture) faller vi tillbaka på maxet
+        if (! c.frameLimiterDb.empty())
+        {
+            auto sorted = c.frameLimiterDb;
+            std::sort (sorted.begin(), sorted.end());
+            limiterLevelDb = sorted[(size_t) std::max (0, (int) std::ceil (0.95 * (double) sorted.size()) - 1)];
+        }
+        if (limiterLevelDb >= limiterWarnDb)
         {
             Finding f;
-            f.severity = c.limiterMaxReductionDb >= 9.0f ? Severity::problem : Severity::warning;
+            f.severity = limiterLevelDb >= limiterProblemDb ? Severity::problem : Severity::warning;
             f.category = "master";
             f.sources = { c.names[(size_t) masterSource] };
-            f.title = "The master limiter works hard (up to " + juce::String (c.limiterMaxReductionDb, 1) + " dB)";
-            f.detail = "Kick and instruments together are louder than the master's ceiling, so the limiter squashes the peaks (usually the kick). Lower levels in the MIXER tab or the loudest instruments instead of letting the limiter do it.";
+            f.title = "The master limiter works hard (" + juce::String (limiterLevelDb, 1) + " dB in the loudest 5 % of the time, up to " + juce::String (c.limiterMaxReductionDb, 1) + " dB)";
+            f.detail = "Kick and instruments together are louder than the master's ceiling, so the limiter squashes the peaks (usually the kick). Lower levels in the MIXER tab or the loudest instruments instead of letting the limiter do it. A single peak does not trigger this; the 95th percentile over the frames decides.";
             r.findings.push_back (std::move (f));
+        }
+
+        // --- Fas och stereo (AN steg 2).
+        if (const auto& ph = c.phase; ph.valid)
+        {
+            const auto summary = summarisePhase (ph);
+            const auto activeCount = summary.active;
+            const auto mean = summary.mean;
+            const auto& badBars = summary.badBars;
+            if (summary.enough() && (mean < phaseCorrWarn || ph.sumVsMaxDb < phaseSumWarnDb))
+            {
+                Finding f;
+                f.severity = mean < phaseCorrProblem || ph.sumVsMaxDb < phaseSumProblemDb ? Severity::problem : Severity::warning;
+                f.category = "phase";
+                f.sources = { "Kick", "Instruments" };
+                f.lowHz = 30.0f;
+                f.highHz = 150.0f;
+                f.bars = badBars;
+                f.share = (float) activeCount / (float) std::max<size_t> (1, ph.lowCorrelation.size());
+                f.title = "Kick and bass partly cancel each other at 30-150 Hz (correlation " + juce::String (mean, 2) + ")";
+                f.detail = "The sum of kick and bass peaks " + juce::String (ph.sumVsMaxDb, 1) + " dB against the loudest one alone. Their waves run in opposite directions, so the low end gets thinner. "
+                           "Try another phase or RAND off on the bass, shift the bass note a little in time, or change the kick's start phase. "
+                           "Or read the bass wave with analyse_wavetable and shift its fundamental's phase, or remove the fundamental where it overlaps the kick, with edit_wavetable_harmonics.";
+                r.findings.push_back (std::move (f));
+            }
+            if (activeCount >= 4 && ph.sumVsMaxDb > 3.0f)
+            {
+                Finding f;
+                f.severity = ph.sumVsMaxDb > 6.0f ? Severity::warning : Severity::info;
+                f.category = "phase";
+                f.sources = { "Kick", "Instruments" };
+                f.lowHz = 30.0f;
+                f.highHz = 150.0f;
+                f.share = (float) activeCount / (float) std::max<size_t> (1, ph.lowCorrelation.size());
+                f.title = "Kick and bass add up " + juce::String (ph.sumVsMaxDb, 1) + " dB above the loudest one at 30-150 Hz";
+                f.detail = "Where they play together the low end gets louder than either alone, which eats headroom and can distort the master. "
+                           "Lower the bass velocity (or its level) by about " + juce::String (ph.sumVsMaxDb, 1) + " dB (a factor of " + juce::String (juce::Decibels::decibelsToGain (-ph.sumVsMaxDb), 2) + "), "
+                           "or remove the bass fundamental where it overlaps the kick with edit_wavetable_harmonics.";
+                r.findings.push_back (std::move (f));
+            }
+            const auto kb = summariseKickBass (ph);
+            if (kb.leadFound)
+            {
+                Finding f;
+                f.severity = Severity::warning;
+                f.category = "kickbass";
+                f.sources = { "Kick", "Instruments" };
+                f.lowHz = 30.0f;
+                f.highHz = 150.0f;
+                f.bars = kb.leadBars;
+                f.share = (float) kb.leadFails / (float) std::max (1, kb.hitSlots);
+                f.title = "The bass is as loud as the kick where they meet (" + juce::String (kb.leadFails) + " of " + juce::String (kb.hitSlots) + " hits)";
+                f.detail = "On the kick's hits the bass should be at least " + juce::String (kickLeadMarginDb, 0) + " dB under the kick at 30-150 Hz, so the kick wins the downbeat. Lower the bass level or deepen the sidechain depth on the bass, bars " + barsText (kb.leadBars) + ".";
+                r.findings.push_back (std::move (f));
+            }
+            if (kb.tailFound)
+            {
+                Finding f;
+                f.severity = Severity::info;
+                f.category = "kickbass";
+                f.sources = { "Kick", "Instruments" };
+                f.lowHz = 30.0f;
+                f.highHz = 150.0f;
+                f.bars = kb.tailBars;
+                f.share = (float) kb.tailFails / (float) std::max (1, kb.tailSlots);
+                f.title = "The kick tail takes the bass (" + juce::String (kb.tailFails) + " of " + juce::String (kb.tailSlots) + " steps between hits)";
+                f.detail = "Between hits the kick tail is more than " + juce::String (tailOverBassDb, 0) + " dB louder than the bass at 30-150 Hz, so the bass is hardly heard, bars " + barsText (kb.tailBars) + ". Shorten the kick's decay or release, or lift the bass between hits (shorter sidechain release).";
+                r.findings.push_back (std::move (f));
+            }
+            if (ph.clickHits > 0)
+            {
+                Finding f;
+                f.severity = Severity::warning;
+                f.category = "phase";
+                f.sources = { "Kick" };
+                f.share = (float) ph.clickHits / (float) std::max<size_t> (1, ph.hits.size());
+                f.title = "The kick may click when it is cut off (" + juce::String (ph.clickHits) + " of " + juce::String ((int) ph.hits.size()) + " hits)";
+                f.detail = "The kick is not close to zero when the next hit or its end arrives (above -60 dB), which clicks. Shorten the decay or lengthen the release in AMP ENV.";
+                r.findings.push_back (std::move (f));
+            }
+            if (ph.peakSpreadDb > 1.0f && ph.hits.size() >= 2)
+            {
+                Finding f;
+                f.severity = Severity::info;
+                f.category = "phase";
+                f.sources = { "Kick" };
+                f.title = "The kick's peak level varies " + juce::String (ph.peakSpreadDb, 1) + " dB between hits";
+                f.detail = "Often a random phase or an LFO that hits the kick differently each time. Fixed phase gives equally hard hits.";
+                r.findings.push_back (std::move (f));
+            }
+            const auto stereo = summariseStereo (ph);
+            const auto& wideBars = stereo.bars;
+            if (stereo.found)
+            {
+                Finding f;
+                f.severity = stereo.severity;
+                f.category = "stereo";
+                f.sources = { c.names[(size_t) masterSource] };
+                f.lowHz = 20.0f;
+                f.highHz = 120.0f;
+                f.bars = wideBars;
+                f.share = (float) wideBars.size() / (float) std::max (1, bars);
+                f.title = "The low end below 120 Hz is wide or out of phase between left and right";
+                f.detail = "Left/right correlation is below " + juce::String (stereo.limit, 1) + " in bars " + barsText (wideBars) + ". Wide bass disappears in mono (clubs, phones). Keep bass and kick centred, for example with a lower STEREO/UNISON width.";
+                r.findings.push_back (std::move (f));
+            }
+        }
+
+        // --- Lärdomar från kick+bas-arbetet (plan-v2): RAND-fas på en bas, och för mycket runt 200 Hz.
+        {
+            auto lowShare = [&] (int src, float fromHz, float toHz)
+            {
+                auto part = 0.0, all = 0.0;
+                for (int f = 0; f < frames; ++f)
+                    for (int b = 0; b < nb; ++b)
+                    {
+                        const auto power = std::pow (10.0, level (src, f, b) / 10.0);
+                        all += power;
+                        if (edges[(size_t) b] >= fromHz && edges[(size_t) b + 1] <= toHz)
+                            part += power;
+                    }
+                return all > 0.0 ? (float) (part / all) : 0.0f;
+            };
+            for (int i = 0; i < numInstruments; ++i)
+            {
+                const auto src = firstInstrument + i;
+                if (! c.present[(size_t) src] || c.randomPhase[(size_t) i] < 0.1f || lowShare (src, 0.0f, 150.0f) < 0.5f)
+                    continue;
+                Finding f;
+                f.severity = Severity::warning;
+                f.category = "phase";
+                f.sources = { c.names[(size_t) src] };
+                f.lowHz = 30.0f;
+                f.highHz = 150.0f;
+                f.title = c.names[(size_t) src] + " is a bass with random phase (RAND " + juce::String (juce::roundToInt (c.randomPhase[(size_t) i] * 100.0f)) + "%)";
+                f.detail = "Each note starts at a random point in the wave, so the bass meets the kick differently every time and sometimes cancels it. Set RAND to 0 on a bass (OSC > RAND) and use a fixed PHASE instead.";
+                r.findings.push_back (std::move (f));
+            }
+            // Lera mäts på kicken och på de instrument som är en bas (minst hälften av energin under 150 Hz), inte på mastern: ett pad eller en lead runt 200 Hz är inte kick-och-bas-lera.
+            std::vector<int> lowSources;
+            if (c.present[(size_t) kickSource])
+                lowSources.push_back (kickSource);
+            for (int i = 0; i < numInstruments; ++i)
+                if (c.present[(size_t) (firstInstrument + i)] && lowShare (firstInstrument + i, 0.0f, 150.0f) >= 0.5f)
+                    lowSources.push_back (firstInstrument + i);
+            if (! lowSources.empty())
+            {
+                auto bandPower = [&] (float fromHz, float toHz)
+                {
+                    auto sum = 0.0;
+                    for (const auto src : lowSources)
+                        for (int f = 0; f < frames; ++f)
+                            for (int b = 0; b < nb; ++b)
+                                if (edges[(size_t) b] >= fromHz && edges[(size_t) b + 1] <= toHz)
+                                    sum += std::pow (10.0, level (src, f, b) / 10.0);
+                    return sum;
+                };
+                const auto low = bandPower (40.0f, 150.0f), mud = bandPower (160.0f, 250.0f);
+                if (low > mudLowFloorPerFrame * frames && mud > 0.6 * low)
+                {
+                    Finding f;
+                    f.severity = Severity::warning;
+                    f.category = "mud";
+                    for (const auto src : lowSources)
+                        f.sources.add (c.names[(size_t) src]);
+                    f.lowHz = 160.0f;
+                    f.highHz = 250.0f;
+                    f.share = (float) std::min (1.0, mud / low);
+                    f.title = "A lot of energy around 200 Hz in kick and bass (" + juce::String (10.0 * std::log10 (mud / low), 1) + " dB against 40-150 Hz)";
+                    f.detail = "The range around 200 Hz makes the low end boxy and takes room from the kick's punch. Cut it a few dB with the EQ on the bass (ANALYZER > SPECTRUM > EQ, bell about 200 Hz) or high-pass the layers that do not need it.";
+                    r.findings.push_back (std::move (f));
+                }
+            }
         }
 
         // --- Mot en referenslåt: balansen mellan band, med nivån anpassad över 120 Hz - 5 kHz.
@@ -693,6 +1000,154 @@ namespace MixAnalysis
     }
 
     //==========================================================================================
+    PhaseDescription describePhase (const PhaseMetrics& p)
+    {
+        PhaseDescription d;
+        if (! p.valid)
+            return d;
+
+        auto round2 = [] (float v) { return std::round (v * 100.0) / 100.0; };
+        auto barArray = [] (const std::vector<int>& bars)
+        {
+            juce::Array<juce::var> a;
+            for (auto b : bars)
+                a.add (b);
+            return a;
+        };
+        auto addFinding = [&] (const juce::String& id, const char* severity, const juce::String& what, double value, const std::vector<int>& bars)
+        {
+            auto* o = new juce::DynamicObject();
+            o->setProperty ("id", id);
+            o->setProperty ("severity", juce::String (severity));
+            o->setProperty ("what", what);
+            o->setProperty ("value", value);
+            o->setProperty ("bars", barArray (bars));
+            d.findings.add (juce::var (o));
+        };
+        // Förslagen är alltid kandidater att jämföra (A/B): inget ändras utan att användaren godkänner.
+        auto addFix = [&] (const juce::String& finding, const juce::String& action, const juce::String& target, const juce::String& why)
+        {
+            auto* o = new juce::DynamicObject();
+            o->setProperty ("finding", finding);
+            o->setProperty ("action", action);
+            o->setProperty ("target", target);
+            o->setProperty ("why", why);
+            o->setProperty ("candidate", true);
+            o->setProperty ("needs_approval", true);
+            d.fixes.add (juce::var (o));
+        };
+
+        const auto summary = summarisePhase (p);
+        const auto mean = summary.mean;
+        const auto& badBars = summary.badBars;
+
+        if (summary.enough() && (mean < phaseCorrWarn || p.sumVsMaxDb < phaseSumWarnDb))
+        {
+            addFinding ("kick_bass_cancel", mean < phaseCorrProblem || p.sumVsMaxDb < phaseSumProblemDb ? "problem" : "warning",
+                        "Kick and bass partly cancel at 30-150 Hz (mean correlation, value = correlation)", round2 (mean), badBars);
+            addFix ("kick_bass_cancel", "invert_polarity", "bass layer (OSC phase +180 deg)", "Turns an opposing wave round; try it when the mean correlation is below -0.6.");
+            addFix ("kick_bass_cancel", "fixed_phase", "bass OSC phase / RAND off", "A fixed start phase makes every note meet the kick the same way.");
+            addFix ("kick_bass_cancel", "shift_bass_in_time", "bass notes (a few ms later)", "Moves the bass peak away from the kick's.");
+            addFix ("kick_bass_cancel", "kick_start_phase", "kick start phase", "Alternative to changing the bass: change where the kick's wave starts.");
+        }
+
+        auto flips = 0;
+        for (size_t i = 1; i < p.hits.size(); ++i)
+            if (p.hits[i].polarity != 0 && p.hits[i - 1].polarity != 0 && p.hits[i].polarity != p.hits[i - 1].polarity)
+                ++flips;
+        if (flips > 0)
+        {
+            addFinding ("kick_polarity_varies", "warning", "The kick's first swing changes direction between hits (value = number of changes)", flips, {});
+            addFix ("kick_polarity_varies", "fixed_phase", "kick start phase / RAND off", "A kick that starts in different directions meets the bass differently every hit.");
+        }
+
+        const auto kb = summariseKickBass (p);
+        if (kb.leadFound)
+        {
+            addFinding ("kick_bass_lead", "warning", "The bass is within 3 dB of the kick on the hits (value = number of hits)", kb.leadFails, kb.leadBars);
+            addFix ("kick_bass_lead", "lower_bass_level", "bass level / sidechain depth on the bass", "The kick should win the downbeat at 30-150 Hz.");
+        }
+        if (kb.tailFound)
+        {
+            addFinding ("kick_tail_takes_bass", "info", "The kick tail is over 6 dB above the bass between hits (value = number of steps)", kb.tailFails, kb.tailBars);
+            addFix ("kick_tail_takes_bass", "shorten_decay", "kick AMP ENV decay / release, or sidechain release", "A long tail covers the bass between the hits.");
+        }
+
+        if (p.clickHits > 0)
+        {
+            addFinding ("kick_click", "warning", "The kick ends above -60 dB (value = number of hits)", p.clickHits, {});
+            addFix ("kick_click", "shorten_decay", "kick AMP ENV decay / release", "The kick should be near zero before the next hit.");
+        }
+
+        if (p.peakSpreadDb > 1.0f && p.hits.size() >= 2)
+        {
+            addFinding ("kick_peak_spread", "info", "The kick's peak level varies between hits (value = dB spread)", round2 (p.peakSpreadDb), {});
+            addFix ("kick_peak_spread", "fixed_phase", "kick start phase / LFO retrigger", "Equal start gives equally hard hits.");
+        }
+
+        const auto stereo = summariseStereo (p);
+        const auto& wideBars = stereo.bars;
+        if (stereo.found)
+        {
+            addFinding ("low_end_wide", stereo.severity == Severity::problem ? "problem" : stereo.severity == Severity::warning ? "warning" : "info",
+                        "L/R correlation at 20-120 Hz is under " + juce::String (stereo.limit, 1) + " (value = number of bars)", (int) wideBars.size(), wideBars);
+            addFix ("low_end_wide", "narrow_low_end", "bass STEREO/UNISON width, or a mono-maker below 120 Hz", "Wide bass disappears in mono.");
+        }
+        return d;
+    }
+
+    namespace
+    {
+        // lowband.* : kick/bas-korrelationen per 16-del, summan mot största toppen, slagens topp/klick och stereomåtten per takt.
+        juce::var phaseVar (const PhaseMetrics& p)
+        {
+            auto round2 = [] (float v) { return std::round (v * 100.0) / 100.0; };
+            auto* o = new juce::DynamicObject();
+            juce::Array<juce::var> correlation, sumDiff, hits, stereo;
+            for (size_t i = 0; i < p.lowCorrelation.size(); ++i)
+            {
+                correlation.add (p.lowActive[i] != 0 ? juce::var (round2 (p.lowCorrelation[i])) : juce::var()); // null = kick eller bas är tyst
+                sumDiff.add (p.lowActive[i] != 0 ? juce::var (round2 (p.lowSumDiffDb[i])) : juce::var());
+            }
+            o->setProperty ("correlation", correlation);
+            o->setProperty ("sum_diff_db", sumDiff);
+            o->setProperty ("sum_vs_max_db", round2 (p.sumVsMaxDb));
+            for (const auto& h : p.hits)
+            {
+                auto* e = new juce::DynamicObject();
+                e->setProperty ("peak_db", round2 (h.peakDb));
+                e->setProperty ("polarity", h.polarity);
+                e->setProperty ("end_db", round2 (h.endDb));
+                e->setProperty ("click", h.endDb > -60.0f);
+                hits.add (juce::var (e));
+            }
+            o->setProperty ("kick_hits", hits);
+            o->setProperty ("kick_peak_spread_db", round2 (p.peakSpreadDb));
+            o->setProperty ("click_hits", p.clickHits);
+            for (size_t bar = 0; bar < p.stereoCorrelation.size(); ++bar)
+            {
+                auto* e = new juce::DynamicObject();
+                juce::Array<juce::var> corr, ms;
+                for (int b = 0; b < PhaseMetrics::stereoBands; ++b)
+                {
+                    corr.add (round2 (p.stereoCorrelation[bar][(size_t) b]));
+                    ms.add (round2 (p.midSideDb[bar][(size_t) b]));
+                }
+                e->setProperty ("bar", (int) bar + 1);
+                e->setProperty ("lr_correlation", corr);
+                e->setProperty ("mid_side_db", ms);
+                stereo.add (juce::var (e));
+            }
+            o->setProperty ("stereo_bands_hz", juce::StringArray ({ "<120", "120-500", "500-4000", ">4000" }).joinIntoString (","));
+            o->setProperty ("stereo_per_bar", stereo);
+            o->setProperty ("band_hz", "30-150");
+            const auto structured = describePhase (p);
+            o->setProperty ("phase_findings", structured.findings);
+            o->setProperty ("suggested_fixes", structured.fixes);
+            return juce::var (o);
+        }
+    }
+
     juce::var Report::toVar() const
     {
         auto* root = new juce::DynamicObject();
@@ -709,6 +1164,8 @@ namespace MixAnalysis
         root->setProperty ("limiter_max_reduction_db", limiterMaxDb);
         if (referenceName.isNotEmpty())
             root->setProperty ("reference", referenceName);
+        if (capture != nullptr && capture->phase.valid)
+            root->setProperty ("lowband", phaseVar (capture->phase));
 
         juce::Array<juce::var> sourceList;
         for (const auto& source : sources)
@@ -1550,6 +2007,8 @@ namespace MixAnalysis
                 list.add (juce::var (hit));
             }
             root->setProperty ("kick_hits", list);
+            if (c.phase.valid)
+                root->setProperty ("lowband", phaseVar (c.phase));
         }
 
         // --- Presets, alla inställningar och mönstret i loopens tid
@@ -1796,6 +2255,207 @@ namespace MixAnalysis
     }
 
     //==========================================================================================
+    namespace
+    {
+        // Bandpass (högpass lowHz, lågpass highHz; 0 = av), två biquads per gräns.
+        std::vector<float> bandPass (const std::vector<float>& x, int n, double rate, double lowHz, double highHz)
+        {
+            using Filter = juce::dsp::IIR::Filter<float>;
+            using Coeffs = juce::dsp::IIR::Coefficients<float>;
+            std::vector<Filter> chain;
+            for (int i = 0; i < 2 && lowHz > 0.0; ++i)
+                chain.emplace_back (Coeffs::makeHighPass (rate, (float) lowHz));
+            for (int i = 0; i < 2 && highHz > 0.0; ++i)
+                chain.emplace_back (Coeffs::makeLowPass (rate, (float) highHz));
+            std::vector<float> y ((size_t) n);
+            for (int i = 0; i < n; ++i)
+            {
+                auto v = x[(size_t) i];
+                for (auto& f : chain)
+                    v = f.processSample (v);
+                y[(size_t) i] = v;
+            }
+            return y;
+        }
+
+        float toDb (double ratio, double floorValue = 1.0e-6) { return (float) (20.0 * std::log10 (std::max (ratio, floorValue))); }
+    }
+
+    PhaseMetrics measurePhase (const PhaseInput& in)
+    {
+        PhaseMetrics m;
+        const auto n = (int) std::min ({ in.kickL.size(), in.kickR.size(), in.bassL.size(), in.bassR.size(), in.masterL.size(), in.masterR.size() });
+        if (n <= 0 || in.samplesPerBar <= 0.0 || in.bars <= 0 || in.start >= n)
+            return m;
+        m.valid = true;
+
+        std::vector<float> kick ((size_t) n), bass ((size_t) n);
+        for (int i = 0; i < n; ++i)
+        {
+            kick[(size_t) i] = 0.5f * (in.kickL[(size_t) i] + in.kickR[(size_t) i]);
+            bass[(size_t) i] = 0.5f * (in.bassL[(size_t) i] + in.bassR[(size_t) i]);
+        }
+        const auto kickLow = bandPass (kick, n, in.rate, 30.0, 150.0), bassLow = bandPass (bass, n, in.rate, 30.0, 150.0);
+
+        // Per 16-del: korrelation och summa/differens-energi.
+        const auto per16 = in.samplesPerBar / 16.0;
+        for (int i = 0; i < in.bars * 16; ++i)
+        {
+            const auto from = std::min (n, in.start + (int) std::round (i * per16)), to = std::min (n, in.start + (int) std::round ((i + 1) * per16));
+            double kk = 0.0, bb = 0.0, kb = 0.0;
+            for (int s = from; s < to; ++s)
+            {
+                const double k = kickLow[(size_t) s], b = bassLow[(size_t) s];
+                kk += k * k;
+                bb += b * b;
+                kb += k * b;
+            }
+            const auto len = (double) std::max (1, to - from);
+            const auto active = kk / len > 1.0e-6 && bb / len > 1.0e-6; // över ungefär -60 dB RMS
+            m.lowActive.push_back (active ? 1 : 0);
+            m.lowWeight.push_back ((float) (std::sqrt (kk * bb) / len));
+            m.lowKickDb.push_back ((float) (10.0 * std::log10 (kk / len + 1.0e-12)));
+            m.lowBassDb.push_back ((float) (10.0 * std::log10 (bb / len + 1.0e-12)));
+            m.lowKickHit.push_back (std::any_of (in.onsets.begin(), in.onsets.end(), [from, to] (int o) { return o >= from && o < to; }) ? 1 : 0);
+            m.lowCorrelation.push_back (active ? (float) juce::jlimit (-1.0, 1.0, kb / std::sqrt (kk * bb)) : 0.0f);
+            m.lowSumDiffDb.push_back (active ? (float) (10.0 * std::log10 ((kk + bb + 2.0 * kb + 1.0e-12) / (kk + bb - 2.0 * kb + 1.0e-12))) : 0.0f);
+        }
+
+        // Summans topp mot den största enskilda toppen.
+        {
+            double peakSum = 0.0, peakKick = 0.0, peakBass = 0.0;
+            for (int s = in.start; s < n; ++s)
+            {
+                const double k = kickLow[(size_t) s], b = bassLow[(size_t) s];
+                peakSum = std::max (peakSum, std::abs (k + b));
+                peakKick = std::max (peakKick, std::abs (k));
+                peakBass = std::max (peakBass, std::abs (b));
+            }
+            const auto largest = std::max (peakKick, peakBass);
+            m.sumVsMaxDb = largest > 1.0e-4 ? toDb (peakSum / largest) : 0.0f;
+        }
+
+        // Per slag: topp, första utslagets tecken och värdet där slaget slutar (klick om det inte är nära noll).
+        {
+            auto lowest = 1000.0f, highest = -1000.0f;
+            for (size_t i = 0; i < in.onsets.size(); ++i)
+            {
+                const auto from = in.onsets[i];
+                auto to = std::min (n, from + (int) (0.5 * in.rate));
+                if (i + 1 < in.onsets.size())
+                    to = std::min (to, in.onsets[i + 1]);
+                if (from < 0 || to - from < 64)
+                    continue;
+                PhaseMetrics::Hit hit;
+                float peak = 0.0f;
+                for (int s = from; s < to; ++s)
+                    peak = std::max (peak, std::abs (kick[(size_t) s]));
+                hit.peakDb = toDb (peak, 1.0e-6);
+                for (int s = from; s < to && hit.polarity == 0; ++s)
+                    if (std::abs (kick[(size_t) s]) > 0.1f * peak)
+                        hit.polarity = kick[(size_t) s] > 0.0f ? 1 : -1;
+                hit.endDb = toDb (std::abs (kick[(size_t) to - 1]), 1.0e-6);
+                if (hit.endDb > -60.0f)
+                    ++m.clickHits;
+                if (hit.peakDb > -60.0f)
+                {
+                    lowest = std::min (lowest, hit.peakDb);
+                    highest = std::max (highest, hit.peakDb);
+                }
+                m.hits.push_back (hit);
+            }
+            m.peakSpreadDb = highest >= lowest ? highest - lowest : 0.0f;
+        }
+
+        // Vyns underlag: första slaget som hörs (högst en takts kvart, 0,5 s), vågform och spektrum.
+        for (size_t i = 0; i < m.hits.size() && i < in.onsets.size(); ++i)
+        {
+            if (m.hits[i].peakDb <= -60.0f)
+                continue;
+            const auto from = in.onsets[i];
+            auto to = std::min (n, from + std::min ((int) (in.samplesPerBar / 4.0), (int) (0.5 * in.rate)));
+            if (i + 1 < in.onsets.size())
+                to = std::min (to, in.onsets[i + 1]);
+            const auto len = to - from;
+            if (len < 256)
+                break;
+            m.scopeStep = 8;
+            m.scopeRate = in.rate / m.scopeStep;
+            for (int s = from; s + m.scopeStep <= to; s += m.scopeStep)
+            {
+                float k = 0.0f, b = 0.0f;
+                for (int j = 0; j < m.scopeStep; ++j)
+                {
+                    k += kick[(size_t) (s + j)];
+                    b += bass[(size_t) (s + j)];
+                }
+                m.scopeKick.push_back (k / (float) m.scopeStep);
+                m.scopeBass.push_back (b / (float) m.scopeStep);
+            }
+
+            constexpr int order = 14, fftSize = 1 << order;
+            juce::dsp::FFT fft (order);
+            juce::dsp::WindowingFunction<float> window ((size_t) std::min (len, fftSize), juce::dsp::WindowingFunction<float>::hann);
+            const auto used = std::min (len, fftSize);
+            const auto binHz = (float) (in.rate / fftSize);
+            const auto firstBin = (int) std::ceil (20.0f / binHz), lastBin = (int) std::floor (300.0f / binHz);
+            m.spectrumHz0 = (float) firstBin * binHz;
+            m.spectrumStepHz = binHz;
+            std::vector<float> data ((size_t) fftSize * 2);
+            auto spectrum = [&] (auto sample, std::vector<float>& out)
+            {
+                std::fill (data.begin(), data.end(), 0.0f);
+                for (int s = 0; s < used; ++s)
+                    data[(size_t) s] = sample (from + s);
+                window.multiplyWithWindowingTable (data.data(), (size_t) used);
+                fft.performFrequencyOnlyForwardTransform (data.data(), true);
+                for (int bin = firstBin; bin <= lastBin; ++bin)
+                    out.push_back (toDb ((double) data[(size_t) bin] * 4.0 / used));
+            };
+            spectrum ([&] (int s) { return kick[(size_t) s]; }, m.spectrumKick);
+            spectrum ([&] (int s) { return bass[(size_t) s]; }, m.spectrumBass);
+            spectrum ([&] (int s) { return kick[(size_t) s] + bass[(size_t) s]; }, m.spectrumSum);
+            break;
+        }
+
+        // Stereo per takt i fyra band: L/R-korrelation och M/S.
+        {
+            const double edges[PhaseMetrics::stereoBands + 1] = { 20.0, 120.0, 500.0, 4000.0, 0.0 };
+            std::vector<float> bandL[PhaseMetrics::stereoBands], bandR[PhaseMetrics::stereoBands];
+            for (int b = 0; b < PhaseMetrics::stereoBands; ++b)
+            {
+                const auto lowHz = edges[b], highHz = b == PhaseMetrics::stereoBands - 1 ? 0.0 : edges[b + 1];
+                bandL[b] = bandPass (in.masterL, n, in.rate, lowHz, highHz);
+                bandR[b] = bandPass (in.masterR, n, in.rate, lowHz, highHz);
+            }
+            for (int bar = 0; bar < in.bars; ++bar)
+            {
+                const auto from = std::min (n, in.start + (int) std::round (bar * in.samplesPerBar)), to = std::min (n, in.start + (int) std::round ((bar + 1) * in.samplesPerBar));
+                std::array<float, PhaseMetrics::stereoBands> corr {}, ms {};
+                for (int b = 0; b < PhaseMetrics::stereoBands; ++b)
+                {
+                    double ll = 0.0, rr = 0.0, lr = 0.0;
+                    for (int s = from; s < to; ++s)
+                    {
+                        const double l = bandL[b][(size_t) s], r = bandR[b][(size_t) s];
+                        ll += l * l;
+                        rr += r * r;
+                        lr += l * r;
+                    }
+                    const auto len = (double) std::max (1, to - from);
+                    const auto silent = ll / len < stereoSilentPower || rr / len < stereoSilentPower;
+                    corr[(size_t) b] = silent ? 1.0f : (float) juce::jlimit (-1.0, 1.0, lr / std::sqrt (ll * rr));
+                    const auto mid = 0.25 * (ll + rr + 2.0 * lr), side = 0.25 * (ll + rr - 2.0 * lr);
+                    ms[(size_t) b] = (float) (10.0 * std::log10 ((mid + 1.0e-12) / (side + 1.0e-12)));
+                }
+                m.stereoCorrelation.push_back (corr);
+                m.midSideDb.push_back (ms);
+            }
+        }
+        return m;
+    }
+
+    //==========================================================================================
     std::unique_ptr<PluginBase> prepareCopy (PluginBase& source)
     {
         auto copy = source.cloneForOffline();
@@ -1869,7 +2529,8 @@ namespace MixAnalysis
         juce::dsp::FFT fft (fftOrder);
         juce::dsp::WindowingFunction<float> window ((size_t) fftSize, juce::dsp::WindowingFunction<float>::hann);
         std::array<float, fftSize * 2> data {};
-        std::vector<float> left, right;
+        std::vector<float> left, right, tapL, tapR;
+        PhaseInput phaseInput;
         std::vector<std::array<float, numInstruments>> duckMin;
         std::vector<int> onsets; // sample
         std::vector<float> kickSignal; // hela kickens signal (mono), för svansmätningen
@@ -1900,6 +2561,28 @@ namespace MixAnalysis
                 peak = std::max (peak, std::abs (v));
             for (size_t k = 0; k < left.size(); ++k)
                 kickSignal.push_back (0.5f * (left[k] + right[k]));
+            phaseInput.kickL.insert (phaseInput.kickL.end(), left.begin(), left.end());
+            phaseInput.kickR.insert (phaseInput.kickR.end(), right.begin(), right.end());
+            {
+                // Basen = summan av instrumentens signaler, mastern = utgången (för fas- och stereomåtten).
+                std::vector<float> sumL (left.size(), 0.0f), sumR (left.size(), 0.0f);
+                for (int i = 0; i < std::min (active, numInstruments); ++i)
+                {
+                    copy.instrumentTaps[(size_t) i].copyLatest (n, tapL, tapR);
+                    for (size_t k = 0; k < sumL.size() && k < tapL.size(); ++k)
+                    {
+                        sumL[k] += tapL[k];
+                        sumR[k] += tapR[k];
+                    }
+                }
+                phaseInput.bassL.insert (phaseInput.bassL.end(), sumL.begin(), sumL.end());
+                phaseInput.bassR.insert (phaseInput.bassR.end(), sumR.begin(), sumR.end());
+                copy.getMasterSection().outputTap.copyLatest (n, tapL, tapR);
+                tapL.resize (sumL.size(), 0.0f);
+                tapR.resize (sumL.size(), 0.0f);
+                phaseInput.masterL.insert (phaseInput.masterL.end(), tapL.begin(), tapL.end());
+                phaseInput.masterR.insert (phaseInput.masterR.end(), tapR.begin(), tapR.end());
+            }
             const auto blockIndex = done / blockSize;
             if (peak > 0.15f && peak > previousKickPeak * 1.8f + 0.05f && blockIndex - lastOnsetBlock > 3)
             {
@@ -2073,6 +2756,16 @@ namespace MixAnalysis
             const auto pitchClass = ((keyNote >= 0 ? keyNote : 60) % 12 + 12) % 12;
             capture.kickTailDesignHz = Params::midiToHz ((float) (follow ? Params::kickTailMidiNote (pitchClass) : 24) + tune);
         }
+        for (int i = 0; i < numInstruments; ++i)
+        {
+            using F = InstrumentField;
+            auto value = [&] (F f) { return copy.apvts.getRawParameterValue (ParamID::bass (i, f))->load(); };
+            if (value (F::on) < 0.5f)
+                continue;
+            for (int osc = 0; osc < ParamID::oscsPerLayer; ++osc)
+                if (value (ParamID::oscField (osc, F::aOn)) >= 0.5f && value (ParamID::oscField (osc, F::aLevel)) > 0.05f)
+                    capture.randomPhase[(size_t) i] = std::max (capture.randomPhase[(size_t) i], value (ParamID::oscField (osc, F::aRandom)));
+        }
         capture.limiterMaxReductionDb = limiterMin < 0.999f ? -20.0f * std::log10 (std::max (limiterMin, 1.0e-3f)) : 0.0f;
 
         for (const auto onset : onsets)
@@ -2088,6 +2781,16 @@ namespace MixAnalysis
                 depth[(size_t) i] = -20.0f * std::log10 (std::max (lowest, 1.0e-3f));
             }
             capture.duckDepthDb.push_back (depth);
+        }
+
+        if (! (cancelled && cancelled()))
+        {
+            phaseInput.onsets = onsets;
+            phaseInput.start = preRollSamples;
+            phaseInput.bars = analyseBars;
+            phaseInput.samplesPerBar = samplesPerBar;
+            phaseInput.rate = rate;
+            capture.phase = measurePhase (phaseInput);
         }
 
         auto report = evaluate (capture, options, reference);
@@ -2138,10 +2841,13 @@ void MixAnalyser::run()
 {
     auto result = MixAnalysis::run (*copy, bpm, keyNote, options, reference.get(),
                                     [this] (float p) { progress = p; }, [this] { return threadShouldExit(); });
+    result.synthState = synthState;
+    // Hela exporten sparas direkt (som get_mix_report/save_mix_report men utan att någon frågar), så att en AI kan läsa den färdiga analysen som en fil.
+    if (result.valid && ! threadShouldExit())
+        result.saveExport (Settings::rootFolder().getChildFile ("Analysis").getChildFile ("latest.json"), MixAnalysis::ExportOptions {});
     {
         const juce::ScopedLock sl (lock);
         report = std::move (result);
-        report.synthState = synthState;
     }
     ++version;
     running = false;

@@ -158,6 +158,61 @@ namespace Settings
         set ("chatModel", model == "claude-sonnet-5-5" ? juce::String() : model);
     }
 
+    juce::String chatProvider()
+    {
+        return get ("chatProvider") == "gemini" ? "gemini" : "anthropic";
+    }
+
+    void setChatProvider (const juce::String& provider)
+    {
+        set ("chatProvider", provider == "gemini" ? juce::String ("gemini") : juce::String());
+    }
+
+    juce::String geminiApiKey()
+    {
+        const auto stored = get ("geminiApiKey");
+        return stored.isEmpty() ? juce::String() : unprotect (stored).trim();
+    }
+
+    void setGeminiApiKey (const juce::String& key)
+    {
+        set ("geminiApiKey", key.trim().isEmpty() ? juce::String() : protect (key.trim()));
+    }
+
+    juce::String geminiModel()
+    {
+        const auto model = get ("geminiModel").trim();
+        return model.isEmpty() ? juce::String ("gemini-3.6-flash") : model;
+    }
+
+    void setGeminiModel (const juce::String& model)
+    {
+        set ("geminiModel", model.trim() == "gemini-3.6-flash" ? juce::String() : model.trim());
+    }
+
+    int chatCostMode()
+    {
+        const auto mode = get ("chatCostMode");
+        return mode.isEmpty() ? 1 : juce::jlimit (0, 2, mode.getIntValue());
+    }
+
+    void setChatCostMode (int mode)
+    {
+        set ("chatCostMode", mode == 1 ? juce::String() : juce::String (juce::jlimit (0, 2, mode)));
+    }
+
+    int geminiToolsCheck (const juce::String& model, const juce::String& key)
+    {
+        const auto value = get ("geminiTools:" + model.trim());
+        const auto hash = juce::String::toHexString (key.trim().hashCode64());
+        return value.startsWith (hash + ":") ? value.getTrailingIntValue() : -1;
+    }
+
+    void setGeminiToolsCheck (const juce::String& model, const juce::String& key, bool works)
+    {
+        set ("geminiTools:" + model.trim(), juce::String::toHexString (key.trim().hashCode64()) + ":" + (works ? "1" : "0"));
+    }
+
     namespace
     {
         std::atomic<int> reduceState { -1 }; // -1 = inte läst än (filen tolkas inte vid varje fråga)
@@ -185,6 +240,14 @@ namespace Settings
     {
         reduceState = reduce ? 1 : 0;
         set ("reduceAnimations", reduce ? "1" : juce::String());
+        ++visualChanges;
+    }
+
+    bool collisionGradient() { return get ("collisionGradient") != "0"; }
+
+    void setCollisionGradient (bool on)
+    {
+        set ("collisionGradient", on ? juce::String() : "0");
         ++visualChanges;
     }
 

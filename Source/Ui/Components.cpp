@@ -431,7 +431,7 @@ void ChoiceComponent::Box::mouseDown (const juce::MouseEvent& e)
 }
 
 //==============================================================================
-FxSendControl::FxSendControl (juce::AudioProcessorValueTreeState& apvts, const juce::String& channelID, const juce::String& amountID,
+FxSendControl::FxSendControl (juce::AudioProcessorValueTreeState& apvts, const juce::String& channelID, const juce::String& amountID, const juce::String& modeID,
                               const juce::String& name, juce::Colour accent)
 {
     label.setText ("FX", juce::dontSendNotification);
@@ -457,8 +457,20 @@ FxSendControl::FxSendControl (juce::AudioProcessorValueTreeState& apvts, const j
     amount.setTooltip ("FX SEND AMOUNT - " + Help::forParameter (amountID));
     addAndMakeVisible (amount);
 
+    // INS = amount delar ljudet (resten torrt); SEND = torrt orört, amount läggs till kanalen (klassisk send/retur).
+    mode.setClickingTogglesState (true);
+    mode.setColour (juce::TextButton::buttonColourId, Theme::panel);
+    mode.setColour (juce::TextButton::buttonOnColourId, accent);
+    mode.setColour (juce::TextButton::textColourOffId, Theme::textDim);
+    mode.setColour (juce::TextButton::textColourOnId, Theme::backgroundBottom);
+    mode.setButtonText ("INS");
+    mode.onStateChange = [this] { mode.setButtonText (mode.getToggleState() ? "SEND" : "INS"); };
+    mode.setTooltip ("FX SEND MODE - " + Help::forParameter (modeID));
+    addAndMakeVisible (mode);
+
     channelAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (apvts, channelID, channel);
     amountAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (apvts, amountID, amount);
+    modeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (apvts, modeID, mode);
     juce::ignoreUnused (name);
 }
 
@@ -468,6 +480,8 @@ void FxSendControl::resized()
     label.setBounds (area.removeFromLeft (22));
     area.removeFromLeft (4);
     channel.setBounds (area.removeFromLeft (62));
+    area.removeFromLeft (4);
+    mode.setBounds (area.removeFromLeft (38));
     area.removeFromLeft (4);
     amount.setBounds (area);
 }

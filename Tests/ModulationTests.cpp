@@ -133,7 +133,8 @@ namespace
 
         // Många kopplingar ryms, och de sparas med källans nummer.
         routes.clear();
-        for (int source = 0; source < Modulation::numSources; ++source)
+        // Fler källor (82) än platser (64) sedan CODE-källorna kom: fyll listan.
+        for (int source = 0; source < juce::jmin (Modulation::numSources, Modulation::maxRoutes); ++source)
             check (routes.add (source, cutoff, 0.01f) >= 0, "alla källor ryms");
         const auto tree = routes.toValueTree (processor.getParameters());
         routes.clear();
@@ -232,7 +233,9 @@ namespace
             if (lfoIndexOfSource (s) >= 0)
                 bijective = bijective && lfoSource (lfoIndexOfSource (s)) == s;
         check (bijective, "lfoSource och lfoIndexOfSource är varandras inverser");
-        check (lfoSource (3) == 47 && lfoSource (9) == 53 && numSources == 54, "LFO 4-10 är källa 47-53");
+        check (lfoSource (3) == 47 && lfoSource (9) == 53 && firstEnvSource == 54
+                   && firstCodeSource == 74 && numCodeSources == 8 && numSources == 82,
+               "LFO 4-10 är 47-53 och CODE 1-8 sist på 74-81");
         check (sourceName (47) == "LFO 4" && sourceName (53) == "LFO 10" && sourceName (2) == "LFO 3", "namnen LFO 4 och LFO 10");
         check (! isLfoSource (3) && sourceName (3) == "MACRO 1", "källa 3 är fortfarande makro 1");
 
@@ -289,6 +292,111 @@ namespace
         check (! modulator.snapLocked[9].load() && modulator.snapNote[9].load() == -1, "borttagen LFO 10 nollställs");
     }
 
+    // Live Code-källorna (CODE 1-8): LFO i Hz, ENV (AD) på instrumentets nya ton, utfasning och idle.
+    void testCodeSources()
+    {
+        std::puts ("CODE-källor: LFO, ENV, utfasning och idle");
+        DummyProcessor processor;
+        ModRoutes routes;
+        Modulator modulator (processor.apvts, routes);
+        modulator.setSampleRate (3200.0); // ett kontrollsteg = 10 ms, så 100 steg = 1 s
+        const auto src = Modulation::firstCodeSource;
+        auto step = [&] (int n) { for (int i = 0; i < n; ++i) modulator.update (0.0); };
+        auto& slot = modulator.codeSlots[0];
+
+        step (1);
+        check (slot.idle.load() && modulator.sourceValue (src) == 0.0f, "CODE: oanvänd plats är idle och 0");
+        step (5);
+        check (slot.idle.load() && modulator.sourceValue (src) == 0.0f, "CODE: plats med kind 0 förblir idle och 0");
+
+        // LFO: spann, form och antal uppåtgående nollgenomgångar (perioder) under en viss tid.
+        auto lfoStats = [&] (float hz, int shape, int steps, float& lo, float& hi, int& upward, bool& onlyPlusMinusOne)
+        {
+            slot.rate = hz;
+            slot.shape = shape;
+            slot.kind = 1;
+            step (5); // tonar in på 20 ms
+            lo = 2.0f; hi = -2.0f; upward = 0; onlyPlusMinusOne = true;
+            auto previous = modulator.sourceValue (src);
+            for (int i = 0; i < steps; ++i)
+            {
+                step (1);
+                const auto v = modulator.sourceValue (src);
+                lo = std::min (lo, v);
+                hi = std::max (hi, v);
+                if (previous < 0.0f && v >= 0.0f) ++upward;
+                if (std::abs (std::abs (v) - 1.0f) > 1.0e-4f) onlyPlusMinusOne = false;
+                previous = v;
+            }
+            slot.kind = 0;
+            step (5); // helt utfasad: idle igen
+        };
+        float lo = 0.0f, hi = 0.0f;
+        int upward = 0;
+        bool pm = false;
+        lfoStats (1.0f, 0, 300, lo, hi, upward, pm);
+        check (hi > 0.99f && hi <= 1.0001f && lo < -0.99f && lo >= -1.0001f, "CODE-LFO sinus 1 Hz går -1..1", hi);
+        check (upward >= 2 && upward <= 4, "CODE-LFO 1 Hz: tre perioder på 3 s", (double) upward);
+        lfoStats (4.0f, 0, 300, lo, hi, upward, pm);
+        check (upward >= 11 && upward <= 13, "CODE-LFO 4 Hz ger fyra gånger så många perioder", (double) upward);
+        lfoStats (2.0f, 4, 300, lo, hi, upward, pm);
+        check (pm && upward >= 5 && upward <= 7, "CODE-LFO fyrkant är bara +1/-1", (double) upward);
+        for (int shape = 0; shape <= 5; ++shape)
+        {
+            lfoStats (3.0f, shape, 200, lo, hi, upward, pm);
+            check (lo >= -1.0001f && hi <= 1.0001f && hi - lo > 0.1f, ("CODE-LFO form " + juce::String (shape) + " håller sig inom -1..1 och rör sig").toRawUTF8(), hi - lo);
+        }
+
+        // Utfasning: stäng under gång; värdet går ner mot 0 på ~20 ms och platsen blir idle först då.
+        slot.rate = 1.0f;
+        slot.shape = 4; // fyrkant börjar på +1
+        slot.kind = 1;
+        step (10);
+        const auto onValue = modulator.sourceValue (src);
+        slot.kind = 0;
+        step (1);
+        const auto fading = modulator.sourceValue (src);
+        check (onValue > 0.99f && fading > 0.0f && fading < onValue && ! slot.idle.load(), "CODE: stängd plats tonar ut och är inte idle än", fading);
+        step (5);
+        check (modulator.sourceValue (src) == 0.0f && slot.idle.load(), "CODE: efter ~20 ms är platsen 0 och idle");
+
+        // ENV: noll utan ny ton, stiger över attack, faller över decay, startar om på ny ton, bara instrumentets egna toner räknas.
+        auto& env = modulator.codeSlots[1];
+        const auto envSrc = src + 1;
+        modulator.setInstrumentNoteCount (2, 5);
+        env.layer = 2;
+        env.attackMs = 100.0f;
+        env.decayMs = 200.0f;
+        env.kind = 2;
+        step (10);
+        check (modulator.sourceValue (envSrc) == 0.0f, "CODE-ENV: toner som redan klingat startar inte ENV");
+        modulator.setInstrumentNoteCount (2, 6);
+        float previousValue = 0.0f, peak = 0.0f;
+        bool rising = true, falling = true;
+        int peakStep = 0;
+        for (int i = 1; i <= 40; ++i)
+        {
+            step (1);
+            const auto v = modulator.sourceValue (envSrc);
+            peak = std::max (peak, v);
+            if (v >= peak) peakStep = i;
+            if (i <= 9) rising = rising && v >= previousValue;
+            if (i > 11 && i <= 29) falling = falling && v <= previousValue + 1.0e-6f;
+            previousValue = v;
+        }
+        check (peak > 0.9f && peak <= 1.0001f, "CODE-ENV: toppar nära 1 efter attacken", peak);
+        check (peakStep >= 9 && peakStep <= 11, "CODE-ENV: toppen ligger vid attack-tiden (100 ms)", (double) peakStep);
+        check (rising && falling, "CODE-ENV: stiger under attack och faller under decay");
+        check (modulator.sourceValue (envSrc) == 0.0f, "CODE-ENV: 0 efter attack + decay (300 ms)");
+        modulator.setInstrumentNoteCount (2, 7);
+        step (3);
+        const auto restarted = modulator.sourceValue (envSrc);
+        check (std::abs (restarted - 0.3f) < 0.02f, "CODE-ENV: ny ton startar om från botten (30 ms in = 0,3)", restarted);
+        modulator.setInstrumentNoteCount (1, 99); // annat instrument: ska inte starta om ENV:n
+        step (1);
+        check (std::abs (modulator.sourceValue (envSrc) - 0.4f) < 0.02f, "CODE-ENV: andra instrumentets toner startar inte om (40 ms in = 0,4)", modulator.sourceValue (envSrc));
+    }
+
     // LFO 1-3 ska vara bitidentiska oavsett vad som händer med LFO 4-10.
     void testExtraLfosLeaveFirstThree()
     {
@@ -322,6 +430,68 @@ namespace
         }
         check (same, "LFO 1-3 ger exakt samma värden");
     }
+
+    // BZ: Bézierläge i NodeEnvelope.
+    void testBezierEnvelope()
+    {
+        std::puts ("BZ: Bézier-envelope (tension orörd, handtag, monoton, rundtur)");
+        const std::vector<NodeEnvelope::Point> pts { { 0.0f, 0.0f, -0.6f }, { 0.5f, 1.0f, 0.4f }, { 1.0f, 0.2f, 0.0f } };
+
+        NodeEnvelope plain (1.0f, 1.0f, pts);
+        NodeEnvelope bezier (1.0f, 1.0f, pts);
+        check (bezier.getMode() == NodeEnvelope::Mode::tension, "standardläget är tension");
+
+        // Gamla ValueTree utan mode/handtag läses som tension och ger samma kurva.
+        NodeEnvelope loaded (1.0f, 1.0f, { { 0.0f, 0.5f, 0.0f }, { 1.0f, 0.5f, 0.0f } });
+        loaded.fromValueTree (plain.toValueTree ("Curve"));
+        auto same = true;
+        for (int i = 0; i <= 100; ++i)
+            same = same && loaded.evaluate ((float) i / 100.0f) == plain.evaluate ((float) i / 100.0f);
+        check (same && loaded.getMode() == NodeEnvelope::Mode::tension, "tension-kurvan är oförändrad efter rundtur");
+        check (! plain.toValueTree ("Curve").hasProperty ("mode"), "tension skriver inget mode-attribut");
+
+        // Handtag från tension: Bézierkurvan följer tension-kurvan (liten avvikelse tillåten).
+        bezier.setPoints (NodeEnvelope::withHandlesFromTension (pts));
+        bezier.setMode (NodeEnvelope::Mode::bezier);
+        auto worst = 0.0f;
+        for (int i = 0; i <= 200; ++i)
+            worst = std::max (worst, std::abs (bezier.evaluate ((float) i / 200.0f) - plain.evaluate ((float) i / 200.0f)));
+        // En kubisk kurva träffar tension-kurvan exakt bara vid t=1/3 och 2/3; för branta tensioner (-0.6) blir största avvikelsen ca 0.14.
+        check (worst < 0.15f, "Bézier med handtag från tension ligger nära tension-kurvan", worst);
+
+        // Måttlig tension: avvikelsen är liten.
+        const std::vector<NodeEnvelope::Point> mild { { 0.0f, 0.0f, -0.3f }, { 0.5f, 1.0f, 0.4f }, { 1.0f, 0.2f, 0.0f } };
+        NodeEnvelope mildPlain (1.0f, 1.0f, mild), mildBezier (1.0f, 1.0f, mild);
+        mildBezier.setPoints (NodeEnvelope::withHandlesFromTension (mild));
+        mildBezier.setMode (NodeEnvelope::Mode::bezier);
+        auto mildWorst = 0.0f;
+        for (int i = 0; i <= 200; ++i)
+            mildWorst = std::max (mildWorst, std::abs (mildBezier.evaluate ((float) i / 200.0f) - mildPlain.evaluate ((float) i / 200.0f)));
+        check (mildWorst < 0.08f, "Bézier med handtag från måttlig tension ligger nära tension-kurvan", mildWorst);
+
+        // Handtag med x utanför segmentet klipps, och kurvan är monoton i tiden (ger exakt ett värde per x, inga hopp).
+        auto wild = pts;
+        wild[0].outDx = 5.0f;
+        wild[1].inDx = -5.0f;
+        wild[0].outDy = 0.3f;
+        bezier.setPoints (wild);
+        check (bezier.getPoints()[0].outDx <= 0.5f && bezier.getPoints()[1].inDx >= -0.5f, "handtagens x klipps till segmentet");
+        auto bounded = true;
+        for (int i = 0; i <= 200; ++i)
+        {
+            const auto v = bezier.evaluate ((float) i / 200.0f);
+            bounded = bounded && v >= 0.0f && v <= 1.0f;
+        }
+        check (bounded, "Bézier-värden hålls inom 0..maxValue");
+
+        // Rundtur med handtag.
+        NodeEnvelope again (1.0f, 1.0f, { { 0.0f, 0.5f, 0.0f }, { 1.0f, 0.5f, 0.0f } });
+        again.fromValueTree (bezier.toValueTree ("Curve"));
+        auto equal = again.getMode() == NodeEnvelope::Mode::bezier;
+        for (int i = 0; i <= 100; ++i)
+            equal = equal && std::abs (again.evaluate ((float) i / 100.0f) - bezier.evaluate ((float) i / 100.0f)) < 1.0e-5f;
+        check (equal, "Bézier-kurvan överlever rundtur i ValueTree");
+    }
 }
 
 void runModulationTests()
@@ -332,4 +502,6 @@ void runModulationTests()
     testCustomShapeAndFreeRate();
     testExtraLfos();
     testExtraLfosLeaveFirstThree();
+    testCodeSources();
+    testBezierEnvelope();
 }

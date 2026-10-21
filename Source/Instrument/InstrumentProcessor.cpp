@@ -80,6 +80,7 @@ InstrumentProcessor::InstrumentProcessor()
 void InstrumentProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     prepareBase (sampleRate);
+    modulator.setSampleRate (sampleRate);
     kick.prepare (sampleRate);
     kick.setSeed (1000);
     for (size_t layer = 0; layer < basses.size(); ++layer)
@@ -99,6 +100,10 @@ void InstrumentProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     ensureScratchSize (samplesPerBlock);
 
     patternActive = false;
+    // Hållna toner hör till förra körningen: en "ton av" som aldrig kom (värden avbröt, offlinerenderns sista släpp ligger efter bufferten)
+    // får inte hindra nästa "ton på" från att starta mönstret (wasSilent i handleMidi).
+    heldNotes.fill (0);
+    numHeldNotes = 0;
     masterGain.reset (sampleRate, 0.02);
     masterGain.setCurrentAndTargetValue (params.get (ParamID::gain));
 }
@@ -137,14 +142,21 @@ void InstrumentProcessor::processChunk (juce::AudioBuffer<float>& buffer, juce::
         basses[(size_t) layer].setTempo (clock.getBpm()); // ENV 2 och ENV 3 i läget Sync
     // Moduleringen uppdateras bara på 32-rutnätet. En bit som börjar mitt i ett fönster (när DAW-blocket slutade där) behåller
     // fönstrets värden, så att ljudet blir detsamma vid alla blockstorlekar, också udda.
+    // AMP ENV / FILT ENV läses bara när någon koppling använder dem (annars 0, som inaktiva LFO:er).
+    auto envSourcesUsed = false;
+    for (int r = 0; controlPhase == 0 && r < Modulation::maxRoutes && ! envSourcesUsed; ++r)
+        envSourcesUsed = Modulation::isEnvSource (modRoutes.routes[(size_t) r].source.load());
     for (int layer = 0; controlPhase == 0 && layer < numLayers; ++layer)
     {
-        // Instrumentens källor (ENV 2, ENV 3, velocity, slump) som de var vid blockets början.
+        // Instrumentens källor (ENV 2, ENV 3, velocity, slump, AMP ENV, FILT ENV) som de var vid blockets början.
         if (layer < activeLayers)
             modulator.setInstrumentSources (layer, basses[(size_t) layer].getModulationValue (0), basses[(size_t) layer].getModulationValue (1),
-                                            basses[(size_t) layer].getModulationValue (2), basses[(size_t) layer].getModulationValue (3));
+                                            basses[(size_t) layer].getModulationValue (2), basses[(size_t) layer].getModulationValue (3),
+                                            envSourcesUsed ? basses[(size_t) layer].getModulationValue (4) : 0.0f,
+                                            envSourcesUsed ? basses[(size_t) layer].getModulationValue (5) : 0.0f);
         else
             modulator.setInstrumentSources (layer, 0.0f, 0.0f, 0.0f, 0.0f);
+        modulator.setInstrumentNoteCount (layer, basses[(size_t) layer].getNoteCount());
     }
     if (controlPhase == 0)
         modulator.update (clock.getPpqAt (0), clock.getBpm());
@@ -311,7 +323,10 @@ void InstrumentProcessor::processChunk (juce::AudioBuffer<float>& buffer, juce::
     transportStatus.kickPlayTime = kick.getPlayTime();
     transportStatus.kickTriggers = kick.getTriggerCount();
     for (int layer = 0; layer < numLayers; ++layer)
+    {
         transportStatus.instrumentSamplePosition[(size_t) layer] = layer < activeLayers ? basses[(size_t) layer].getSampleFraction() : -1.0f;
+        transportStatus.instrumentSounding[(size_t) layer] = layer < activeLayers && basses[(size_t) layer].isActive();
+    }
     transportStatus.kickStep = patternActive ? scheduler.getLastKickStep() : -1;
     for (int layer = 0; layer < numLayers; ++layer)
         transportStatus.instrumentSteps[(size_t) layer] = patternActive ? scheduler.getLastInstrumentStep (layer) : -1;
@@ -346,12 +361,13 @@ void InstrumentProcessor::readBlockParams()
     readDuckLength();
 }
 
-void InstrumentProcessor::readLayerFields (int layer, int solo)
+void InstrumentProcessor::readLayerFields (int layer, juce::uint64 solo)
 {
-    layerOn[(size_t) layer] = params.bass (layer, InstrumentField::on) >= 0.5f && (solo == 0 || (solo & (1 << layer)) != 0);
+    layerOn[(size_t) layer] = params.bass (layer, InstrumentField::on) >= 0.5f && (solo == 0 || (solo & (1ull << layer)) != 0);
     duckAmounts[(size_t) layer] = params.bass (layer, InstrumentField::duck); // med LFO-modulering
     gateScales[(size_t) layer] = params.bass (layer, InstrumentField::gate);
     delayMs[(size_t) layer] = params.bass (layer, InstrumentField::delay);
+    nudgeMs[(size_t) layer] = params.bass (layer, InstrumentField::nudgeMs);
     swingRow[(size_t) layer] = params.bass (layer, InstrumentField::swing);
     humanizeRow[(size_t) layer] = params.bass (layer, InstrumentField::humanize);
     gateOn[(size_t) layer] = params.bass (layer, InstrumentField::gateOn) >= 0.5f;
@@ -490,8 +506,72 @@ bool InstrumentProcessor::noteOffEndsPattern (const juce::MidiMessage& message) 
     return message.isAllNotesOff() || message.isAllSoundOff();
 }
 
+bool InstrumentProcessor::handleLiveMidi (const juce::MidiMessage& message)
+{
+    // MIDI IN: INSTRUMENT i pianorullen: tonerna spelas på radens ljud, utan att mönstret startar. Tonhöjd 0 är radens grundton (som i pianorullen).
+    const auto row = midiInLayer.load();
+    auto low = liveNotesLow.load(), high = liveNotesHigh.load();
+    auto isSet = [&] (int note) { return (((note < 64 ? low : high) >> (note & 63)) & 1) != 0; };
+    auto setBit = [&] (int note, bool on)
+    {
+        auto& word = note < 64 ? low : high;
+        const auto bit = (uint64_t) 1 << (note & 63);
+        word = on ? (word | bit) : (word & ~bit);
+    };
+    auto publish = [&]
+    {
+        liveNotesLow = low;
+        liveNotesHigh = high;
+        if (low == 0 && high == 0 && liveVoiceLayer >= 0)
+        {
+            basses[(size_t) liveVoiceLayer].release();
+            liveVoiceLayer = -1;
+        }
+    };
+
+    if (message.isNoteOn())
+    {
+        if (row < 0 || row > Pattern::kickLayer)
+            return false;
+        previewLayer = -1;
+        const auto note = message.getNoteNumber();
+        const auto pitch = juce::jlimit (Pattern::minPitch, Pattern::maxPitch, note - rowRootNote (row));
+        if (row == Pattern::kickLayer)
+        {
+            if (kickOn)
+                kick.trigger (message.getFloatVelocity(), pitch);
+        }
+        else if (row < numLayers && layerOn[(size_t) row])
+        {
+            liveVoiceLayer = row;
+            basses[(size_t) row].noteOn (pitch, message.getFloatVelocity(), std::numeric_limits<int>::max() / 2);
+        }
+        setBit (note, true);
+        publish();
+        return true;
+    }
+    if (message.isNoteOff())
+    {
+        const auto note = message.getNoteNumber();
+        if (! isSet (note))
+            return false;
+        setBit (note, false);
+        publish();
+        return true;
+    }
+    if ((message.isAllNotesOff() || message.isAllSoundOff()) && (low != 0 || high != 0))
+    {
+        low = high = 0;
+        publish();
+    }
+    return false;
+}
+
 void InstrumentProcessor::handleMidi (const juce::MidiMessage& message, int sampleOffset)
 {
+    if (handleLiveMidi (message))
+        return;
+
     if (message.isNoteOn())
     {
         previewLayer = -1; // en riktig ton tar över från förhandsspelningen
@@ -594,7 +674,9 @@ int InstrumentProcessor::delaySamplesFor (const StepEvent& event)
         humanizeState ^= humanizeState << 5;
         ms += (double) humanizeNow * 20.0 * ((double) (humanizeState >> 8) / (double) (1u << 24)); // 0-20 ms senare, slumpat
     }
+    ms += (double) nudgeMs[(size_t) event.layer]; // fas PH: NUDGE +-2 ms; negativt äter av DELAY/swing/humanize (aldrig före notens egen tid: ingen latens)
     delay += ms * 0.001 * getSampleRate();
+    delay = std::max (0.0, delay);
     return (int) delay;
 }
 
@@ -774,15 +856,18 @@ void InstrumentProcessor::finishBlock (int numSamples)
             for (int i = 0; i < numSamples; ++i)
                 instrumentTaps[(size_t) layer].push (0.5f * (data[i] + dataRight[i]));
 
-        // Kanal A-C: amount av ljudet går genom kanalen, resten torrt.
+        // Kanal A-C: INSERT (standard) = amount av ljudet går genom kanalen, resten torrt. SEND = torrt orört, amount läggs till kanalen.
         const auto channel = (int) params.bass (layer, InstrumentField::fxChannel) - 1;
         const auto amountToChannel = params.bass (layer, InstrumentField::fxAmount);
         const auto routed = channel >= 0 && effects.isActive (channel);
-        if (routed)
-            effects.send (channel, data, dataRight, numSamples, amountToChannel);
-        const auto dryGain = routed ? 1.0f - amountToChannel : 1.0f;
+        const auto sendMode = params.bass (layer, InstrumentField::fxSend) >= 0.5f;
+        const auto dryGain = routed && ! sendMode ? 1.0f - amountToChannel : 1.0f;
 
-        mixer.mix (Mixer::firstBassSource + layer, data, dataRight, numSamples, dryGain, maxBus, bypassBus);
+        // Instrumentets fader och panorering gäller hela ljudet: både det torra och det som skickas till kanalen.
+        mixer.mix (Mixer::firstBassSource + layer, data, dataRight, numSamples, dryGain, maxBus, bypassBus,
+                   sendBus.getWritePointer (0), sendBus.getWritePointer (1));
+        if (routed)
+            effects.send (channel, sendBus.getReadPointer (0), sendBus.getReadPointer (1), numSamples, amountToChannel);
         for (int i = 0; i < numSamples; ++i)
             layerOuts[(size_t) layer].add (i, data[i], dataRight[i]);
     }
@@ -791,11 +876,13 @@ void InstrumentProcessor::finishBlock (int numSamples)
     const auto kickChannel = (int) params.get (ParamID::kickFxChannel) - 1;
     const auto kickAmount = params.get (ParamID::kickFxAmount);
     const auto kickRouted = kickChannel >= 0 && effects.isActive (kickChannel);
-    if (kickRouted)
-        effects.send (kickChannel, kickBuffer.getReadPointer (0), nullptr, numSamples, kickAmount);
-    const auto kickDry = kickRouted ? 1.0f - kickAmount : 1.0f;
+    const auto kickSendMode = params.get (ParamID::kickFxSend) >= 0.5f;
+    const auto kickDry = kickRouted && ! kickSendMode ? 1.0f - kickAmount : 1.0f;
 
-    mixer.mix (Mixer::kickSource, kickBuffer.getReadPointer (0), nullptr, numSamples, kickDry, maxBus, bypassBus);
+    mixer.mix (Mixer::kickSource, kickBuffer.getReadPointer (0), nullptr, numSamples, kickDry, maxBus, bypassBus,
+               sendBus.getWritePointer (0), sendBus.getWritePointer (1));
+    if (kickRouted)
+        effects.send (kickChannel, sendBus.getReadPointer (0), sendBus.getReadPointer (1), numSamples, kickAmount);
 
     std::array<bool, numEffectChannels> channelDuck {};
     for (int ch = 0; ch < numEffectChannels; ++ch)
@@ -867,13 +954,15 @@ void InstrumentProcessor::ensureScratchSize (int numSamples)
     instrumentBuffer.setSize (2, numSamples, false, true, true);
     maxBus.setSize (2, numSamples, false, true, true);
     bypassBus.setSize (2, numSamples, false, true, true);
+    sendBus.setSize (2, numSamples, false, true, true);
 }
 
 void InstrumentProcessor::handleEvent (const StepEvent& event)
 {
-    // Förhandsspelning av en enskild rad: de andra raderna är tysta.
-    if (previewLayer >= 0 && previewLayer != PluginBase::previewAllRows
-        && (event.type == StepEvent::Type::kick ? previewLayer != Pattern::kickLayer : event.layer != previewLayer))
+    // Förhandsspelning av en enskild rad: de andra raderna är tysta. Samma sak för tangentbordet/MIDI när pianorullen valt en rad (midiInLayer).
+    const auto onlyRow = previewLayer >= 0 ? previewLayer : midiInLayer.load();
+    if (onlyRow >= 0 && onlyRow != PluginBase::previewAllRows
+        && (event.type == StepEvent::Type::kick ? onlyRow != Pattern::kickLayer : event.layer != onlyRow))
         return;
 
     if (event.type == StepEvent::Type::kick)
@@ -911,6 +1000,17 @@ void InstrumentProcessor::handleEvent (const StepEvent& event)
     for (int i = 0; i < chordNotes; ++i)
         if (const auto interval = note.chord[(size_t) i].load(); interval != 0)
             voices.noteOn (juce::jlimit (Pattern::minPitch, Pattern::maxPitch, note.pitch.load() + interval), note.velocity.load(), gateSamples, true);
+    // Polyfoni: staplade toner på samma tick, före grundtonen. En glide-stapel glider den klingande rösten (ingen ny röst).
+    for (const auto& e : note.extra)
+    {
+        if (! e.on.load())
+            continue;
+        const auto length = e.length.load();
+        if (e.slide.load() && voices.glideTo (e.pitch.load(), std::max (1, (int) (length * samplesPerTick))))
+            continue;
+        const auto samples = std::max (1, (int) (std::max (1.0, length * (double) gateScales[(size_t) layer]) * samplesPerTick));
+        voices.noteOn (e.pitch.load(), e.velocity.load(), samples, true);
+    }
     voices.noteOn (note.pitch.load(), note.velocity.load(), gateSamples);
     lastInstrumentStartPpq[(size_t) layer] = clock.getPpqAt (event.offset);
 }

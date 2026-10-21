@@ -1,5 +1,7 @@
+#include "InstrumentMenu.h"
 #include "Modules.h"
 #include "Help.h"
+#include "../Core/ProjectFile.h"
 
 namespace
 {
@@ -73,28 +75,79 @@ HeaderBar::HeaderBar (PluginBase& p, const juce::String& subtitleIn)
         addAndMakeVisible (restartButton);
     }
 
-    aiButton.setClickingTogglesState (true);
-    aiButton.setColour (juce::TextButton::buttonOnColourId, Theme::mix.withAlpha (0.6f));
-    aiButton.onClick = [this]
-    {
-        processor.setBridgeEnabled (aiButton.getToggleState());
-        aiButton.setToggleState (processor.isBridgeEnabled(), juce::dontSendNotification);
-        updateAiTooltip();
-    };
-    addAndMakeVisible (aiButton);
+    projectButton.onClick = [this] { showProjectMenu(); };
+    addAndMakeVisible (projectButton);
     updateAiTooltip();
     startVisualTimer (Settings::Visual::topBar, 30);
 }
 
 void HeaderBar::updateAiTooltip()
 {
-    aiButton.setTooltip (processor.isBridgeEnabled()
-        ? "AI LINK is ON (instance " + processor.getBridgeId() + "). An AI assistant using the Kickbase MCP bridge can read and change this plugin and hear/measure it offline. Click to switch off."
-        : "AI LINK - Off. Switch on to let an AI assistant (through the Kickbase MCP bridge, for example in Claude Desktop) read and change this plugin. Local only; nothing is sent over the internet by Kickbase.");
+    projectButton.setTooltip (processor.isBridgeEnabled()
+        ? "PROJECT - Save or open a project file (.kbproj), export, and the AI server. The AI SERVER (MCP) is ON (instance " + processor.getBridgeId() + "): an AI assistant using the Kickbase MCP bridge can read and change this plugin and hear/measure it offline."
+        : "PROJECT - Save or open a project file (.kbproj), export, and the AI server. The AI SERVER (MCP) is off. Switch it on to let an AI assistant (through the Kickbase MCP bridge, for example in Claude Desktop) read and change this plugin. Local only; nothing is sent over the internet by Kickbase.");
+    repaint (projectButton.getBounds());
+}
+
+void HeaderBar::showProjectMenu()
+{
+    juce::PopupMenu menu;
+    menu.addItem (1, "Save project...");
+    menu.addItem (2, "Open project...");
+    if (! processor.isEffectVersion())
+        menu.addItem (3, "Export...");
+    menu.addSeparator();
+    menu.addItem (4, "AI server (MCP)", true, processor.isBridgeEnabled());
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&projectButton), [this, safe = juce::Component::SafePointer<HeaderBar> (this)] (int result)
+    {
+        if (safe == nullptr)
+            return;
+        if (result == 1)      saveProject();
+        else if (result == 2) openProject();
+        else if (result == 3) showExportMenu();
+        else if (result == 4)
+        {
+            processor.setBridgeEnabled (! processor.isBridgeEnabled());
+            updateAiTooltip();
+        }
+    });
+}
+
+void HeaderBar::saveProject()
+{
+    chooser = std::make_unique<juce::FileChooser> ("Save project", Settings::exportsFolder().getChildFile ("Kickbase.kbproj"), "*.kbproj");
+    chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles | juce::FileBrowserComponent::warnAboutOverwriting,
+                          [this, safe = juce::Component::SafePointer<HeaderBar> (this)] (const juce::FileChooser& fc)
+    {
+        if (safe == nullptr || fc.getResult() == juce::File())
+            return;
+        juce::String error;
+        if (! ProjectFile::save (processor, fc.getResult().withFileExtension ("kbproj"), KICKBASE_VERSION, error))
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Could not save the project", error);
+    });
+}
+
+void HeaderBar::openProject()
+{
+    chooser = std::make_unique<juce::FileChooser> ("Open project", Settings::exportsFolder(), "*.kbproj");
+    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                          [this, safe = juce::Component::SafePointer<HeaderBar> (this)] (const juce::FileChooser& fc)
+    {
+        if (safe == nullptr || fc.getResult() == juce::File())
+            return;
+        juce::String error;
+        if (! ProjectFile::load (processor, processor.apvts.state.getType(), fc.getResult(), error))
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Could not open the project", error);
+    });
 }
 
 void HeaderBar::paintOverChildren (juce::Graphics& g)
 {
+    // Statuspunkten på PROJECT-knappen: grön när AI-länken är på, grå när den är av.
+    const auto dot = juce::Rectangle<float> (7.0f, 7.0f).withCentre ({ (float) projectButton.getRight() - 9.0f, (float) projectButton.getY() + 9.0f });
+    g.setColour (processor.isBridgeEnabled() ? juce::Colour (0xff4cd964) : Theme::text.withAlpha (0.35f));
+    g.fillEllipse (dot);
+
     // Returpilen på omstartsknappen (ritad, så att den inte beror på att ett typsnitt har symbolen).
     if (! restartButton.isVisible())
         return;
@@ -115,8 +168,18 @@ void HeaderBar::resized()
     const auto hasPreviews = processor.getKeyboardState() != nullptr;
     const auto height = getHeight();
     const auto controlsHeight = 34, controlsY = (height - controlsHeight) / 2;
-    aiButton.setBounds (14 + logo.getWidth() + 22, controlsY, 44, controlsHeight); // AI-knappen först, till vänster om presetväljaren
-    presets.setBounds (aiButton.getRight() + 10, controlsY, hasPreviews ? 160 : 200, controlsHeight);
+    // Till höger (tonart, tempo): sätts först, så att vänstra delen kan krympa så att inget överlappar vid smal bredd.
+    auto right = getLocalBounds().reduced (14, 0);
+    keyBlock = right.removeFromRight (84).withSizeKeepingCentre (84, 40);
+    right.removeFromRight (8);
+    bpmPill = right.removeFromRight (214).reduced (0, (height - 34) / 2);
+    restartButton.setBounds (bpmPill.getRight() - 32, bpmPill.getY() + 4, 26, bpmPill.getHeight() - 8);
+
+    projectButton.setBounds (14 + logo.getWidth() + 22, controlsY, 84, controlsHeight); // PROJECT först, till vänster om presetväljaren
+    auto presetWidth = hasPreviews ? 118 : 200;
+    const auto leftEnd = projectButton.getRight() + 10 + presetWidth + 10 + (hasPreviews ? 70 : 76) + 10 + (hasPreviews ? 112 : 0) + 16 + meterWidth;
+    presetWidth = std::max (70, presetWidth - std::max (0, leftEnd - (bpmPill.getX() - 8)));
+    presets.setBounds (projectButton.getRight() + 10, controlsY, presetWidth, controlsHeight);
     exportButton.setBounds (presets.getRight() + 10, controlsY, hasPreviews ? 70 : 76, controlsHeight);
 
     // PREVIEWS: en inringad ruta med högtalaren och tonväljaren, så att man ser att de hör ihop.
@@ -129,14 +192,6 @@ void HeaderBar::resized()
         listenAll.setBounds (previewGroup.getX() + 7, previewGroup.getY() + 14, 30, previewGroup.getHeight() - 20);
         noteBox.setBounds (listenAll.getRight() + 5, previewGroup.getY() + 14, 62, previewGroup.getHeight() - 20);
     }
-
-
-    // Till höger: tonart med lampan under, och en pill med tempo, takt och en knapp som börjar om vid 1.1.
-    auto right = getLocalBounds().reduced (14, 0);
-    keyBlock = right.removeFromRight (84).withSizeKeepingCentre (84, 40);
-    right.removeFromRight (8);
-    bpmPill = right.removeFromRight (214).reduced (0, (height - 34) / 2);
-    restartButton.setBounds (bpmPill.getRight() - 32, bpmPill.getY() + 4, 26, bpmPill.getHeight() - 8);
 }
 
 void HeaderBar::showExportMenu()
@@ -230,6 +285,11 @@ void HeaderBar::chooseExportTarget (int part, int bars)
 void HeaderBar::timerCallback()
 {
     followVisualRate();
+    if (bridgeShown != processor.isBridgeEnabled()) // ändrad på inställningssidan eller via MCP
+    {
+        bridgeShown = processor.isBridgeEnabled();
+        updateAiTooltip();
+    }
     if (processor.getKeyboardState() != nullptr)
     {
         listenAll.setActive (processor.previewingLayer.load() == PluginBase::previewAllRows);
@@ -424,7 +484,7 @@ KickModule::KickModule (PluginBase& p)
     viewTabs.onChange = [this] (int tab) { processor.kickTab = tab; applyTab(); };
     setHeaderTabs (&viewTabs, 150);
     addAndMakeVisible (viewTabs);
-    fxSend = std::make_unique<FxSendControl> (p.apvts, ParamID::kickFxChannel, ParamID::kickFxAmount, "FX SEND", Theme::kick);
+    fxSend = std::make_unique<FxSendControl> (p.apvts, ParamID::kickFxChannel, ParamID::kickFxAmount, ParamID::kickFxSend, "FX SEND", Theme::kick);
     addAndMakeVisible (*fxSend);
     setHeaderFxSend (fxSend.get());
     addAndMakeVisible (keyMode);
@@ -468,6 +528,8 @@ KickModule::KickModule (PluginBase& p)
                      { "TOP", { knob (ParamID::kickNoise, "NOISE"), knob (ParamID::kickNoiseDecay, "DECAY"), knob (ParamID::kickNoiseTone, "TONE") },
                      "A noisy top layer on top of the kick: snap and air, with its own decay and high-pass tone." },
                      { "CRUSH", { knob (ParamID::kickCrush, "BITS") } },
+                     { "COMP", { knob (ParamID::kickComp, "AMOUNT") },
+                     "Compressor after drive and crush: a fast attack and a release that follows the kick length, with automatic makeup gain. Tighter, denser kick; 0 = off." },
                      { "FILTER", { knob (ParamID::kickLowCut, "LOW CUT"), knob (ParamID::kickVelPitch, "VEL>PITCH") } } });
 
     sampleLabel.setFont (Theme::font (11.0f));
@@ -642,10 +704,10 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
 
     setHeaderPreset (&presets);
     addAndMakeVisible (presets);
-    fxSend = std::make_unique<FxSendControl> (p.apvts, id (F::fxChannel), id (F::fxAmount), "FX SEND", layerAccent);
+    fxSend = std::make_unique<FxSendControl> (p.apvts, id (F::fxChannel), id (F::fxAmount), id (F::fxSend), "FX SEND", layerAccent);
     addAndMakeVisible (*fxSend);
     setHeaderFxSend (fxSend.get());
-    envelope.onBeforePaint = [this] { current = refs.readInstrument (layer, 36); };
+    envelope.onBeforePaint = [this] { current = refs.readInstrument (layer, 36).withTempo (processor.transportStatus.bpm.load(), false); };
 
     envelope.addCurve ({ [this] (double t) { return InstrumentSynth::filterEnvelopeAt (current, t) * current.envAmount / 8.0f; },
                          layerAccent, true, "FILTER" });
@@ -672,15 +734,23 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
     envelope.setNoteOff ([this] { return noteOffNow(); });
     envelope.addHandle ({ [this] { return juce::Point<float> ((float) noteOffNow().seconds + current.releaseMs * 0.001f, 0.0f); },
                           param (p, id (F::release)), nullptr, false, Theme::text });
-    addAndMakeVisible (envelope);
+    instrPage.addAndMakeVisible (envelope);
     envelopeListen.setAccent (layerAccent);
     envelopeListen.setTooltip ("LISTEN - Hold to hear this instrument on the preview note (the PREVIEWS note at the top) for as long as you hold; it starts over if the sound "
                                "ends. Double-click to keep it playing until you click again. Use it while you drag the handles.");
     envelopeListen.onStart = [this] { hold.start (PluginBase::heldLayerAudition (layer)); };
     envelopeListen.onStop = [this] { hold.stop(); };
-    addAndMakeVisible (envelopeListen);
+    instrPage.addAndMakeVisible (envelopeListen);
+    instrPage.addAndMakeVisible (subScope);
+    noiseFilterButton.setTooltip ("NOISE THROUGH FILTER - On: the noise goes through Filter 1 and Filter 2 (set on the FILTER tab). Off: it bypasses both filters.");
+    noiseFilterButton.getProperties().set ("labelled", true);
+    noiseFilterButton.setColour (juce::ToggleButton::tickColourId, layerAccent);
+    noiseFilterButton.setColour (juce::ToggleButton::textColourId, Theme::textDim);
+    instrPage.addAndMakeVisible (noiseFilterButton);
+    noiseFilterAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, ParamID::bass (layer, F::filterNoise), noiseFilterButton);
 
-    // Källorna i flikar: OSC 1, OSC 2, OSC 3 och SAMPLE, var och en med en på/av-knapp på fliken.
+    // Flikarna: INSTR (envelopen och rattarna), OSC 1-3 och SAMPLE med en på/av-knapp på fliken, och FILTER.
+    sources.addTab ("INSTR", layerAccent, instrPage);
     for (int osc = 0; osc < ParamID::oscsPerLayer; ++osc)
         oscs[(size_t) osc] = std::make_unique<OscPanel> (p, layer, osc, layerAccent);
     samplePage = std::make_unique<SamplePage> (p, layer, layerAccent);
@@ -688,39 +758,46 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
     for (int osc = 0; osc < ParamID::oscsPerLayer; ++osc)
     {
         sources.addTab ("OSC " + juce::String (osc + 1), layerAccent, *oscs[(size_t) osc]);
-        sources.addPower (osc, p.apvts, ParamID::bass (layer, ParamID::oscField (osc, F::aOn)));
+        sources.addPower (1 + osc, p.apvts, ParamID::bass (layer, ParamID::oscField (osc, F::aOn)));
     }
     sources.addTab ("SAMPLE", layerAccent, *samplePage);
-    sources.addPower (ParamID::oscsPerLayer, p.apvts, ParamID::bass (layer, F::sampleOn));
+    sources.addPower (1 + ParamID::oscsPerLayer, p.apvts, ParamID::bass (layer, F::sampleOn));
     filterPage = std::make_unique<FilterPage> (p, layer, layerAccent);
     sources.addTab ("FILTER", layerAccent, *filterPage);
+    fmPanel = std::make_unique<FmPanel> (p, layer, layerAccent);
+    sources.addTab ("FM", layerAccent, *fmPanel);
+    sources.addPower (3 + ParamID::oscsPerLayer, p.apvts, ParamID::bass (layer, F::fmOn),
+                      Help::forParameter (ParamID::bass (layer, F::fmOn))); // FM efter FILTER: fliknummer 3 + oscsPerLayer
 
     auto knob = [&] (const juce::String& paramID, const char* name) -> juce::Component*
     {
         controls.push_back (std::make_unique<KnobComponent> (p.apvts, paramID, name, layerAccent));
-        addAndMakeVisible (*controls.back());
+        instrPage.addAndMakeVisible (*controls.back());
         return controls.back().get();
     };
     auto choice = [&] (const juce::String& paramID, const char* name) -> juce::Component*
     {
         controls.push_back (std::make_unique<ChoiceComponent> (p.apvts, paramID, name));
-        addAndMakeVisible (*controls.back());
+        instrPage.addAndMakeVisible (*controls.back());
         return controls.back().get();
     };
 
+    auto* warpEnvKnob = dynamic_cast<KnobComponent*> (knob (id (F::warpEnv), "AMOUNT"));
     // Under källorna, i signalens ordning: tonhöjd, sub/brus, filtrets envelope (själva filtren: FILTER-fliken) -> volym och utgång.
     groups.addRow ({ { "PITCH", { knob (id (F::octave), "OCTAVE"), knob (id (F::tune), "TUNE"),
                                   knob (id (F::pitchEnvAmount), "ENV AMT"), knob (id (F::pitchEnvDecay), "ENV DEC") } },
                      { "SUB", { knob (id (F::sub), "LEVEL"), choice (id (F::subWave), "WAVE"), choice (id (F::subOctave), "OCTAVE") } },
-                     { "NOISE", { knob (id (F::noise), "LEVEL"), knob (id (F::noiseTone), "TONE") } },
+                     { "NOISE", { knob (id (F::noise), "LEVEL"), knob (id (F::noiseTone), "TONE"), choice (id (F::noiseType), "TYPE") } },
                      { "FILTER ENVELOPE", { knob (id (F::envAmount), "AMOUNT"), knob (id (F::envAttack), "ATTACK"), knob (id (F::envDecay), "DECAY"),
                                             knob (id (F::velToEnv), "VEL") } } });
     groups.addRow ({ { "VOLUME ENVELOPE", { knob (id (F::attack), "ATTACK"), knob (id (F::decay), "DECAY"),
                                             knob (id (F::sustain), "SUSTAIN"), knob (id (F::release), "RELEASE") } },
-                     { "WARP ENV", { knob (id (F::warpEnv), "AMOUNT") } },
+                     { "WARP ENV", { warpEnvKnob, choice (id (F::warpEnvSource), "SOURCE"), knob (id (F::warpEnvDecay), "DIRECT DEC") } },
                      { "DRIVE", { knob (id (F::drive), "AMOUNT"), choice (id (F::driveMode), "MODE") } },
                      { "LAYER OUT", { knob (id (F::level), "LEVEL"), knob (id (F::duck), "DUCK"), knob (id (F::gate), "LENGTH"),
-                                      knob (id (F::voices), "VOICES") } } }); // (notlängden: GATE är hackrytmen; VOICES flyttas med gruppen i fas L)
+                                      knob (id (F::voices), "VOICES") } } }); // (notlängden: GATE är hackrytmen; GLIDE har ingen ratt: parametern används inte)
+    // Fas PH: polaritet, startfas och nudge (tidsförskjutning ±2 ms) för att få kick och bas att summera rätt.
+    groups.addRow ({ { "PHASE", { choice (id (F::polarity), "POLARITY"), knob (id (F::phaseDeg), "START"), knob (id (F::nudgeMs), "NUDGE") } } });
     // Fas P: varning när VOICES x unison (summan av de påslagna oscillatorernas stämmor) blir stort, eftersom varje röst kostar lika mycket CPU.
     if (auto* voicesKnob = dynamic_cast<KnobComponent*> (controls.back().get()))
         voicesKnob->setWarning ([this]() -> juce::String
@@ -734,46 +811,15 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
             return juce::String (voices) + " voices x " + juce::String (stacks) + " unison voices = " + juce::String (voices * stacks)
                  + " oscillator voices: heavy on the CPU. Lower VOICES or UNISON if the DAW stutters.";
         });
-
-    // MODULATION: ENV 2 och ENV 3 (egna envelopes att modulera med), och velocity och slump som källor. Varje källa har ett handtag
-    // som dras till en ratt (eller sätts i MATRIX-fliken).
-    auto handle = [&] (int kind, const char* label) -> juce::Component*
+    // Fas S: WARP ENV gör inget när OSC 1:s WARP-läge är Off.
+    warpEnvKnob->setWarning ([this]() -> juce::String
     {
-        controls.push_back (std::make_unique<LfoDragHandle> (Modulation::instrumentSource (layer, kind), label));
-        addAndMakeVisible (*controls.back());
-        return controls.back().get();
-    };
-    const auto modStart = controls.size();
-    const auto env2 = (int) F::env2Attack, env3 = (int) F::env3Attack;
-    modGroups.addRow ({ { "ENV 2", { knob (id ((F) env2), "ATTACK"), knob (id ((F) (env2 + 1)), "DECAY"), knob (id ((F) (env2 + 2)), "SUSTAIN"),
-                                     knob (id ((F) (env2 + 3)), "RELEASE"), handle (0, "DRAG") } },
-                        { "ENV 3", { knob (id ((F) env3), "ATTACK"), knob (id ((F) (env3 + 1)), "DECAY"), knob (id ((F) (env3 + 2)), "SUSTAIN"),
-                                     knob (id ((F) (env3 + 3)), "RELEASE"), handle (1, "DRAG") } },
-                        { "MORE SOURCES", { handle (2, "VELOCITY"), handle (3, "RANDOM") } } });
-    for (auto i = modStart; i < controls.size(); ++i)
-        modControls.push_back (controls[i].get());
-
-    modOpen = p.modEnvelopesOpen;
-    modToggle.onClick = [this]
-    {
-        modOpen = ! modOpen;
-        processor.modEnvelopesOpen = modOpen;
-        updateModToggle();
-        resized();
-        repaint();
-    };
-    modToggle.setTooltip ("MODULATION - Open or close ENV 2 and ENV 3: two extra envelopes (attack, decay, sustain, release) that do not play the sound but move other "
-                          "knobs, plus the note's VELOCITY and a RANDOM value per note as sources. Drag a source's handle onto any knob, or use the MATRIX tab.");
-    addAndMakeVisible (modToggle);
-    updateModToggle();
-}
-
-void InstrumentModule::updateModToggle()
-{
-    modToggle.setButtonText (juce::String (modOpen ? juce::String::fromUTF8 ("\xe2\x96\xbe") : juce::String::fromUTF8 ("\xe2\x96\xb8"))
-                             + "  MODULATION   ENV 2, ENV 3, VELOCITY, RANDOM");
-    for (auto* control : modControls)
-        control->setVisible (modOpen);
+        auto value = [this] (F field) { return processor.apvts.getRawParameterValue (ParamID::bass (layer, field))->load(); };
+        if (value (F::warpEnv) <= 0.0f || value (F::aWarp) >= 0.5f)
+            return {};
+        return "WARP ENV needs a WARP mode on OSC 1 (it is Off now), otherwise it does nothing.";
+    });
+    // ENV 2, ENV 3, VELOCITY och RANDOM (modulationskällorna) finns i ENV-fliken längst ner (fas L: raden här var en dubblett).
 }
 
 bool InstrumentModule::isInterestedInFileDrag (const juce::StringArray& files)
@@ -785,7 +831,7 @@ void InstrumentModule::filesDropped (const juce::StringArray& files, int, int)
 {
     dragHover = false;
     samplePage->loadSample (juce::File (files[0]));
-    sources.setCurrentTab (ParamID::oscsPerLayer); // visa SAMPLE-fliken
+    sources.setCurrentTab (1 + ParamID::oscsPerLayer); // visa SAMPLE-fliken
     repaint();
 }
 
@@ -817,9 +863,11 @@ void SampleView::timerCallback()
     if (position >= 0.0f && (marker < 0.0f || position < marker))
         flashWallTime = juce::Time::getMillisecondCounterHiRes(); // en ny ton (positionen började om)
     const auto flashing = juce::Time::getMillisecondCounterHiRes() - flashWallTime < 500.0;
-    if (sample != shown || start != lastStart || position != marker || flashing)
+    const auto slicer = processor.apvts.getRawParameterValue (ParamID::bass (layer, InstrumentField::slicerOn))->load() >= 0.5f;
+    if (sample != shown || slicer != shownSlicer || start != lastStart || position != marker || flashing)
     {
         shown = sample;
+        shownSlicer = slicer;
         lastStart = start;
         marker = position;
         repaint();
@@ -863,9 +911,24 @@ void SampleView::paint (juce::Graphics& g)
     g.setColour (accent.withAlpha (0.85f));
     g.fillPath (path);
 
-    const auto startX = area.getX() + juce::jlimit (0.0f, 1.0f, lastStart) * area.getWidth();
-    g.setColour (juce::Colours::white.withAlpha (0.8f));
-    g.drawVerticalLine ((int) startX, area.getY(), area.getBottom());
+    if (shownSlicer)
+    {
+        // Skivgränserna (ton n..n+7 spelar skiva 1..8); START gäller inte i slicerläget.
+        g.setColour (juce::Colours::white.withAlpha (0.7f));
+        for (size_t i = 0; i < sample->slices.size(); ++i)
+        {
+            const auto x = area.getX() + (float) sample->slices[i] / (float) length * area.getWidth();
+            g.drawVerticalLine ((int) x, area.getY(), area.getBottom());
+            g.setFont (Theme::font (9.0f));
+            g.drawText (juce::String ((int) i + 1), juce::Rectangle<float> (x + 2.0f, area.getY(), 24.0f, 12.0f), juce::Justification::topLeft);
+        }
+    }
+    else
+    {
+        const auto startX = area.getX() + juce::jlimit (0.0f, 1.0f, lastStart) * area.getWidth();
+        g.setColour (juce::Colours::white.withAlpha (0.8f));
+        g.drawVerticalLine ((int) startX, area.getY(), area.getBottom());
+    }
 
     // Spelmarkör: det som spelats lyses upp, ett lysande streck där samplingen är nu, och en blixt när en ny ton börjar.
     if (marker >= 0.0f)
@@ -899,8 +962,20 @@ void SampleView::paint (juce::Graphics& g)
     }
 }
 
-void SampleView::mouseDown (const juce::MouseEvent&)
+void SampleView::mouseDown (const juce::MouseEvent& e)
 {
+    // Manuellt läge: Skift-klick lägger en skivmarkör, Alt-klick tar bort den närmaste.
+    if (shownSlicer && (e.mods.isShiftDown() || e.mods.isAltDown()) && processor.instrumentSampleSlot (layer).sliceMode() == SampleSlicing::manual)
+    {
+        const auto position = juce::jlimit (0.0f, 1.0f, (float) (e.x - 6) / (float) std::max (1, getWidth() - 12));
+        auto markers = processor.instrumentSampleSlot (layer).manualMarkers();
+        if (e.mods.isShiftDown())
+            markers.push_back (position);
+        else if (! markers.empty())
+            markers.erase (std::min_element (markers.begin(), markers.end(), [position] (float a, float b) { return std::abs (a - position) < std::abs (b - position); }));
+        processor.setInstrumentSliceMarkers (layer, std::move (markers));
+        return;
+    }
     if (processor.getActiveInstrumentSample (layer) != nullptr)
         hold.start (PluginBase::heldSoloAudition (layer, 3)); // bara samplingen, så länge musen hålls (loopar om den tar slut)
 }
@@ -925,6 +1000,46 @@ SamplePage::SamplePage (PluginBase& p, int layerIn, juce::Colour accent)
     knob (F::sampleRoot, "ROOT");
     choice (F::sampleLoop, "LOOP");
     choice (F::sampleKey, "KEY");
+
+    // Slicer: noten väljer skivan (MAP TO = tonen som spelar skiva 1), originalhastighet, ingen loop.
+    slicerToggle.setTooltip ("SLICER - Each note plays one slice of the sample at its original speed (no pitching, no loop). The note decides the slice: the MAP TO note plays slice 1, the next note slice 2, and so on. "
+                             "Notes outside the slices are silent. Off = the sample plays as before.");
+    reverseToggle.setTooltip ("REVERSE - Plays every slice backwards.");
+    for (auto* toggle : { &slicerToggle, &reverseToggle })
+    {
+        toggle->setColour (juce::ToggleButton::tickColourId, accent);
+        toggle->setColour (juce::ToggleButton::textColourId, Theme::textDim);
+        addAndMakeVisible (*toggle);
+    }
+    slicerAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, id (F::slicerOn), slicerToggle);
+    reverseAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, id (F::slicerReverse), reverseToggle);
+    filterSendToggle.setTooltip ("SEND THROUGH FILTER - On: the sample goes through Filter 1 and Filter 2 (set on the FILTER tab). "
+                                 "Off (default): it bypasses both filters, so a sample keeps its full sound.");
+    filterSendToggle.setButtonText ("FILTER");
+    filterSendToggle.getProperties().set ("labelled", true);
+    filterSendToggle.setColour (juce::ToggleButton::tickColourId, accent);
+    filterSendToggle.setColour (juce::ToggleButton::textColourId, Theme::textDim);
+    addAndMakeVisible (filterSendToggle);
+    filterSendAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, id (F::filterSample), filterSendToggle);
+    mapToKnob = std::make_unique<KnobComponent> (p.apvts, id (F::slicerMapTo), "MAP TO", accent);
+    addAndMakeVisible (*mapToKnob);
+    sliceModeBox.addItemList ({ "Grid", "Auto", "Manual" }, 1);
+    sliceModeBox.setTooltip ("Where the slices are: Grid = equal parts (the slider sets how many, max 128), Auto = cut at the hits (the slider sets how sensitive), "
+                             "Manual = Shift-click the waveform to add a marker, Alt-click to remove the nearest.");
+    sliceModeBox.onChange = [this] { applySlicing(); };
+    addAndMakeVisible (sliceModeBox);
+    gridAmount.setRange (1.0, (double) SampleSlicing::maxSlices, 1.0);
+    gridAmount.setTooltip ("How many equal slices (max 128).");
+    sensitivityAmount.setRange (0.0, 1.0, 0.01);
+    sensitivityAmount.setTooltip ("How sensitive the hit detection is: higher = more slices.");
+    for (auto* slider : { &gridAmount, &sensitivityAmount })
+    {
+        slider->setSliderStyle (juce::Slider::LinearHorizontal);
+        slider->setTextBoxStyle (juce::Slider::TextBoxRight, false, 40, 18);
+        slider->onValueChange = [this] { applySlicing(); };
+        addChildComponent (*slider);
+    }
+    syncSlicerControls();
 
     addAndMakeVisible (view);
     label.setFont (Theme::font (11.0f));
@@ -958,6 +1073,29 @@ SamplePage::SamplePage (PluginBase& p, int layerIn, juce::Colour accent)
 void SamplePage::timerCallback()
 {
     updateLabel();
+    syncSlicerControls();
+}
+
+void SamplePage::applySlicing()
+{
+    if (syncing)
+        return;
+    auto& slot = processor.instrumentSampleSlot (layer);
+    const auto mode = juce::jmax (0, sliceModeBox.getSelectedItemIndex());
+    processor.setInstrumentSlicing (layer, mode, (float) sensitivityAmount.getValue(), juce::roundToInt (gridAmount.getValue()));
+    syncSlicerControls();
+}
+
+void SamplePage::syncSlicerControls()
+{
+    const auto& slot = processor.instrumentSampleSlot (layer);
+    const auto mode = slot.sliceMode();
+    const juce::ScopedValueSetter<bool> guard (syncing, true);
+    sliceModeBox.setSelectedItemIndex (mode, juce::dontSendNotification);
+    gridAmount.setValue (slot.sliceGridCount(), juce::dontSendNotification);
+    sensitivityAmount.setValue (slot.sliceSensitivity(), juce::dontSendNotification);
+    gridAmount.setVisible (mode == SampleSlicing::grid);
+    sensitivityAmount.setVisible (mode == SampleSlicing::automatic);
 }
 
 void SamplePage::updateLabel()
@@ -990,11 +1128,14 @@ void SamplePage::resized()
 {
     auto area = getLocalBounds().reduced (4);
     auto top = area.removeFromTop (24);
+    filterSendToggle.setBounds (top.removeFromRight (60));
+    top.removeFromRight (8);
     clearButton.setBounds (top.removeFromRight (24));
     top.removeFromRight (4);
     loadButton.setBounds (top.removeFromRight (56));
     top.removeFromRight (4);
     hearButton.setBounds (top.removeFromRight (56));
+    top.removeFromRight (8);
     label.setBounds (top);
     area.removeFromTop (6);
 
@@ -1002,7 +1143,7 @@ void SamplePage::resized()
     area.removeFromRight (8);
     view.setBounds (area);
 
-    auto knobsRow = right.removeFromTop (right.getHeight() * 3 / 5);
+    auto knobsRow = right.removeFromTop (right.getHeight() * 2 / 5);
     const auto cell = knobsRow.getWidth() / 3;
     for (int i = 0; i < 3; ++i)
         controls[(size_t) i]->setBounds (knobsRow.removeFromLeft (cell));
@@ -1010,6 +1151,18 @@ void SamplePage::resized()
     auto choices = right.removeFromTop (44);
     controls[3]->setBounds (choices.removeFromLeft (choices.getWidth() / 2).reduced (6, 0));
     controls[4]->setBounds (choices.reduced (6, 0));
+
+    right.removeFromTop (4);
+    auto toggles = right.removeFromTop (22);
+    slicerToggle.setBounds (toggles.removeFromLeft (toggles.getWidth() / 2));
+    reverseToggle.setBounds (toggles);
+    right.removeFromTop (3);
+    auto modeRow = right.removeFromTop (22);
+    sliceModeBox.setBounds (modeRow.removeFromLeft (80));
+    modeRow.removeFromLeft (4);
+    gridAmount.setBounds (modeRow);
+    sensitivityAmount.setBounds (modeRow);
+    mapToKnob->setBounds (right.removeFromLeft (cell));
 }
 
 //==============================================================================
@@ -1055,26 +1208,106 @@ void InstrumentModule::resized()
         presets.setBounds (presetBounds (*this));
     auto area = getContentBounds();
 
-    // Överst källorna i flikar (OSC 1-3 och SAMPLE), under dem kurvorna (filter + volym) och rattarna.
-    sources.setBounds (area.removeFromTop (juce::jlimit (224, 280, area.getHeight() * 11 / 24 + 28))); // högre: större wavetable-bild (LISTEN-knappen är borta, man klickar på bilden)
-    area.removeFromTop (6);
+    // Flikarna fyller panelen: INSTR, OSC 1-3, SAMPLE, FILTER.
+    sources.setBounds (area);
+}
 
-    auto leftColumn = area.removeFromLeft (220);
+void InstrumentModule::layoutInstrPage()
+{
+    // Envelopegrafen till vänster, rattraderna till höger (två rader, högst 100 px rattar; resten är frigjord yta).
+    auto area = instrPage.getLocalBounds().reduced (0, 4);
+    auto leftColumn = area.removeFromLeft (juce::jlimit (220, 340, area.getWidth() / 4));
     envelope.setBounds (leftColumn.reduced (0, 2));
     envelopeListen.setBounds (envelope.getRight() - 40, envelope.getY() + 4, 36, 24); // högtalaren i grafens övre högra hörn
     area.removeFromLeft (6);
-
-    // Raderna, sedan dragspelet MODULATION (en rad till när det är öppet).
-    constexpr int toggleHeight = 20;
-    const auto rows = groups.numRows() + (modOpen ? 1 : 0);
-    const auto rowHeight = juce::jlimit (40, 84, (area.getHeight() - toggleHeight - 4) / rows - ControlGroups::titleHeight - 3);
+    const auto rowHeight = juce::jlimit (40, 100, area.getHeight() / groups.numRows() - ControlGroups::titleHeight - 3);
     groups.layout (area, rowHeight);
-    const auto used = groups.numRows() * (ControlGroups::titleHeight + rowHeight + 3);
-    auto rest = area.withTrimmedTop (used);
-    modToggle.setBounds (rest.removeFromTop (toggleHeight));
-    rest.removeFromTop (4);
-    if (modOpen)
-        modGroups.layout (rest, rowHeight);
+
+    // Mini-oscilloskopen sitter i SUB-gruppens rubrikrad, till höger om rubriken.
+    const auto sub = groups.frameOf ("SUB");
+    if (! sub.isEmpty())
+        subScope.setBounds (sub.getRight() - 6 - 54, sub.getY() + 1, 54, ControlGroups::titleHeight);
+
+    // NOISE: skicka-genom-filter-knappen i rubrikraden, till höger om rubriken.
+    const auto noise = groups.frameOf ("NOISE");
+    if (! noise.isEmpty())
+        noiseFilterButton.setBounds (noise.getRight() - 6 - 62, noise.getY() - 1, 62, ControlGroups::titleHeight + 3);
+}
+
+//==============================================================================
+SubScope::SubScope (PluginBase& p, int layerIn) : processor (p), layer (layerIn)
+{
+    setInterceptsMouseClicks (true, false); // tooltip
+    setTooltip ("SUB - Shows the sub oscillator: its wave (WAVE) and size (LEVEL). It glows and moves while this instrument is sounding, so you can see the sub is running even when "
+                "every oscillator is off. It is dim and still when the instrument is silent.");
+    startTimerHz (30);
+}
+
+void SubScope::timerCallback()
+{
+    using F = InstrumentField;
+    const auto newLevel = processor.apvts.getRawParameterValue (ParamID::bass (layer, F::sub))->load();
+    const auto newWave = (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, F::subWave))->load();
+    const auto nowSounding = newLevel > 0.001f && processor.transportStatus.instrumentSounding[(size_t) layer].load();
+
+    const auto target = nowSounding ? 1.0f : 0.0f;
+    const auto newGlow = glow + (target - glow) * 0.3f;
+    const auto changed = newLevel != level || newWave != wave || std::abs (newGlow - glow) > 0.002f || nowSounding;
+
+    level = newLevel;
+    wave = newWave;
+    sounding = nowSounding;
+    glow = std::abs (target - newGlow) < 0.01f ? target : newGlow;
+    if (sounding)
+        phase = std::fmod (phase + 0.035f, 1.0f); // vågen rullar åt vänster
+    if (changed)
+        repaint();
+}
+
+void SubScope::paint (juce::Graphics& g)
+{
+    const auto bounds = getLocalBounds().toFloat().reduced (0.5f);
+    const auto accent = Theme::layerColour (layer);
+
+    g.setColour (juce::Colours::black.withAlpha (0.35f + 0.1f * glow));
+    g.fillRoundedRectangle (bounds, 3.0f);
+    g.setColour (accent.withAlpha (0.25f + 0.55f * glow));
+    g.drawRoundedRectangle (bounds, 3.0f, 1.0f);
+
+    const auto inner = bounds.reduced (3.0f, 2.0f);
+    const auto centreY = inner.getCentreY();
+    const auto halfHeight = inner.getHeight() * 0.5f;
+    const auto size = juce::jlimit (0.0f, 1.0f, level / 0.6f); // LEVEL är 0..1; det mesta av räckvidden används långt under 1
+    const auto amplitude = level > 0.001f ? halfHeight * (0.25f + 0.75f * size) : 0.0f;
+
+    juce::Path path;
+    const auto points = (int) inner.getWidth();
+    for (int i = 0; i <= points; ++i)
+    {
+        const auto x = (float) i / (float) points;
+        const auto p = std::fmod (x * 2.0f + phase, 1.0f); // två perioder över rutan
+        float shape;
+        switch (wave)
+        {
+            case 1:  shape = 1.0f - 4.0f * std::abs (p - 0.5f); break;
+            case 2:  shape = std::tanh (4.0f * std::sin (juce::MathConstants<float>::twoPi * p)); break;
+            case 3:  shape = 2.0f * p - 1.0f; break;
+            default: shape = std::sin (juce::MathConstants<float>::twoPi * p); break;
+        }
+        const auto y = centreY - shape * amplitude;
+        if (i == 0)
+            path.startNewSubPath (inner.getX() + x * inner.getWidth(), y);
+        else
+            path.lineTo (inner.getX() + x * inner.getWidth(), y);
+    }
+
+    if (glow > 0.02f)
+    {
+        g.setColour (accent.withAlpha (0.3f * glow));
+        g.strokePath (path, juce::PathStrokeType (3.5f));
+    }
+    g.setColour (juce::Colour (0xffffffff).interpolatedWith (accent, 0.35f).withAlpha (0.35f + 0.65f * glow));
+    g.strokePath (path, juce::PathStrokeType (1.2f));
 }
 
 //==============================================================================
@@ -1104,14 +1337,38 @@ InstrumentHost::InstrumentHost (PluginBase& p) : processor (p)
     for (auto* component : std::initializer_list<juce::Component*> { &header.selector, &header.addButton, &header.removeButton })
         header.addAndMakeVisible (component);
 
+    header.selector.addMouseListener (this, false); // högerklick: instrumentmenyn (InstrumentMenu.h)
+    processor.beforeTrackChange = [this] { resetPanels(); };
+    lastStructureVersion = processor.layerStructureVersion.load();
     current = juce::jlimit (0, p.activeInstruments() - 1, p.selectedInstrument);
     select (current);
     refresh();
     startTimerHz (4);
 }
 
+void InstrumentHost::resetPanels()
+{
+    header.extras = nullptr;
+    for (size_t i = 0; i < extras.size(); ++i)
+        if (extras[i] != nullptr)
+        {
+            header.removeChildComponent (extras[i]);
+            extras[i] = nullptr;
+        }
+    for (auto& module : modules)
+        module.reset();
+}
+
+void InstrumentHost::mouseDown (const juce::MouseEvent& event)
+{
+    if (event.mods.isPopupMenu() && event.eventComponent == &header.selector)
+        InstrumentMenu::show (processor, current, header.selector);
+}
+
 InstrumentHost::~InstrumentHost()
 {
+    processor.beforeTrackChange = nullptr;
+    header.selector.removeMouseListener (this);
     for (auto* e : extras)
         if (e != nullptr)
             header.removeChildComponent (e);
@@ -1176,6 +1433,16 @@ void InstrumentHost::refresh()
 
 void InstrumentHost::timerCallback()
 {
+    // En färg ändrades eller ett instrument klistrades in: temat uppdateras och panelerna byggs om med de nya färgerna.
+    if (processor.layerStructureVersion.load() != lastStructureVersion)
+    {
+        lastStructureVersion = processor.layerStructureVersion.load();
+        InstrumentMenu::applyColours (processor);
+        resetPanels();
+        select (juce::jlimit (0, processor.activeInstruments() - 1, processor.selectedInstrument));
+        return;
+    }
+
     // ENV-fliken (och andra) kan byta instrument: följ med.
     if (processor.selectedInstrument != current && juce::isPositiveAndBelow (processor.selectedInstrument, processor.activeInstruments()))
         select (processor.selectedInstrument);
@@ -1396,16 +1663,7 @@ PatternModule::PatternModule (PluginBase& p, bool isInstrument)
                         "The other rows are not touched. The whole sound is not part of it: that is the instrument's own preset.");
     addAndMakeVisible (presets);
     if (instrument)
-    {
-        noteEnd = std::make_unique<ChoiceComponent> (p.apvts, ParamID::noteEnd, "NOTE END");
-        addAndMakeVisible (*noteEnd);
-        swingKnob = std::make_unique<KnobComponent> (p.apvts, ParamID::patSwing, "SWING", Theme::pattern);
-        humanizeKnob = std::make_unique<KnobComponent> (p.apvts, ParamID::patHumanize, "HUMANIZE", Theme::pattern);
-        swingKnob->setDescription ("SWING - For the whole pattern: pushes the off-beat sixteenths of ALL instruments later (0 % = straight, 100 % = triplet feel). Each instrument can add its own swing under GRID. The kick stays on the grid.");
-        humanizeKnob->setDescription ("HUMANIZE - For the whole pattern: every note of ALL instruments comes a random 0-20 ms late, so it feels played rather than programmed. Each instrument can add its own under GRID. The kick stays on the grid.");
-        addAndMakeVisible (*swingKnob);
-        addAndMakeVisible (*humanizeKnob);
-    }
+        grooveBar = std::make_unique<PatternGrooveBar> (p.apvts); // visas i flikraden (InstrumentEditor)
 
     // Lanerna för tonerna: velocity, tonlängd och tonhöjd (glide ritas i pianorullen), valda i en rullgardinslista.
     laneOrder = { StepSequencer::Lane::velocity, StepSequencer::Lane::gate };
@@ -1441,10 +1699,10 @@ PatternModule::PatternModule (PluginBase& p, bool isInstrument)
             delays.back()->setDescription ("DELAY - Pushes this instrument's notes later by 0-50 ms, for example to let the kick come first. It can only move notes later, never earlier.");
             addChildComponent (*delays.back());
             swings.push_back (std::make_unique<KnobComponent> (p.apvts, ParamID::bass (layer, InstrumentField::swing), "SWING", colour));
-            swings.back()->setDescription ("SWING - This instrument's own swing: its off-beat sixteenths come later. It is added to the SWING of the whole pattern (top left), up to 100 %.");
+            swings.back()->setDescription ("SWING - This instrument's own swing: its off-beat sixteenths come later. It is added to the SWING of the whole pattern (in the PATTERN tab row), up to 100 %.");
             addChildComponent (*swings.back());
             humanizes.push_back (std::make_unique<KnobComponent> (p.apvts, ParamID::bass (layer, InstrumentField::humanize), "HUMAN", colour));
-            humanizes.back()->setDescription ("HUMANIZE - This instrument's own random timing: every note comes 0-20 ms late at random. It is added to the HUMANIZE of the whole pattern (top left).");
+            humanizes.back()->setDescription ("HUMANIZE - This instrument's own random timing: every note comes 0-20 ms late at random. It is added to the HUMANIZE of the whole pattern (in the PATTERN tab row).");
             addChildComponent (*humanizes.back());
         }
 
@@ -1767,6 +2025,60 @@ void PatternModule::paint (juce::Graphics& g)
     }
 }
 
+PatternGrooveBar::PatternGrooveBar (juce::AudioProcessorValueTreeState& apvts)
+{
+    auto setUpLabel = [this] (juce::Label& label, const juce::String& text)
+    {
+        label.setText (text, juce::dontSendNotification);
+        label.setFont (Theme::font (11.0f, true));
+        label.setColour (juce::Label::textColourId, Theme::textDim);
+        label.setJustificationType (juce::Justification::centredRight);
+        addAndMakeVisible (label);
+    };
+    setUpLabel (noteEndLabel, "NOTE END");
+    setUpLabel (swingLabel, "SWING");
+    setUpLabel (humanizeLabel, "HUMANIZE");
+
+    noteEnd.parameter = apvts.getParameter (ParamID::noteEnd);
+    if (noteEnd.parameter != nullptr)
+        noteEnd.addItemList (noteEnd.parameter->getAllValueStrings(), 1);
+    noteEnd.setTooltip ("NOTE END - " + Help::forParameter (ParamID::noteEnd));
+    addAndMakeVisible (noteEnd);
+    noteEndAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (apvts, ParamID::noteEnd, noteEnd);
+
+    auto setUpSlider = [this, &apvts] (FxSendControl::AmountSlider& slider, const char* paramID, const juce::String& tooltip)
+    {
+        slider.parameter = apvts.getParameter (paramID);
+        slider.setSliderStyle (juce::Slider::LinearHorizontal);
+        slider.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+        slider.setColour (juce::Slider::trackColourId, Theme::pattern);
+        slider.setColour (juce::Slider::thumbColourId, Theme::text);
+        slider.setPopupDisplayEnabled (true, true, nullptr);
+        slider.setTooltip (tooltip);
+        addAndMakeVisible (slider);
+    };
+    setUpSlider (swing, ParamID::patSwing, "SWING - For the whole pattern: pushes the off-beat sixteenths of ALL instruments later (0 % = straight, 100 % = triplet feel). Each instrument can add its own swing under GRID. The kick stays on the grid.");
+    setUpSlider (humanize, ParamID::patHumanize, "HUMANIZE - For the whole pattern: every note of ALL instruments comes a random 0-20 ms late, so it feels played rather than programmed. Each instrument can add its own under GRID. The kick stays on the grid.");
+    swingAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (apvts, ParamID::patSwing, swing);
+    humanizeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (apvts, ParamID::patHumanize, humanize);
+}
+
+void PatternGrooveBar::resized()
+{
+    auto area = getLocalBounds();
+    noteEndLabel.setBounds (area.removeFromLeft (64));
+    area.removeFromLeft (4);
+    noteEnd.setBounds (area.removeFromLeft (100));
+    area.removeFromLeft (10);
+    swingLabel.setBounds (area.removeFromLeft (44));
+    area.removeFromLeft (4);
+    swing.setBounds (area.removeFromLeft (76));
+    area.removeFromLeft (10);
+    humanizeLabel.setBounds (area.removeFromLeft (64));
+    area.removeFromLeft (4);
+    humanize.setBounds (area);
+}
+
 void PatternModule::resized()
 {
     auto area = getLocalBounds();
@@ -1775,20 +2087,6 @@ void PatternModule::resized()
     // läget. Vilket lager som redigeras väljs med knapparna vid namnen i raderna.
     auto column = area.removeFromLeft (134);
     area.removeFromLeft (10);
-
-    if (noteEnd != nullptr)
-    {
-        noteEnd->setBounds (column.removeFromTop (40));
-        column.removeFromTop (6);
-    }
-    column.removeFromTop (2);
-    if (swingKnob != nullptr)
-    {
-        auto groove = column.removeFromTop (52);
-        swingKnob->setBounds (groove.removeFromLeft (groove.getWidth() / 2));
-        humanizeKnob->setBounds (groove);
-        column.removeFromTop (6);
-    }
 
     // Kortet runt det valda instrumentets inställningar: luft mellan ramen och innehållet.
     const auto blockTop = column.getY();

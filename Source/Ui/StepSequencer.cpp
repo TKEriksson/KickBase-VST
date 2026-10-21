@@ -1,5 +1,6 @@
 #include "StepSequencer.h"
 #include "LengthMenu.h"
+#include "InstrumentMenu.h"
 
 namespace
 {
@@ -78,7 +79,7 @@ StepSequencer::StepSequencer (PluginBase& p, juce::StringArray names, std::vecto
         };
         switches->solo.onClick = [this, layerOfRow]
         {
-            processor.soloMask ^= layerOfRow == Pattern::kickLayer ? PluginBase::kickSoloBit : 1 << layerOfRow;
+            processor.soloMask ^= layerOfRow == Pattern::kickLayer ? PluginBase::kickSoloBit : 1ull << layerOfRow;
             refreshSwitches();
             repaint();
         };
@@ -153,9 +154,24 @@ juce::Rectangle<int> StepSequencer::knobBounds (juce::Rectangle<int> row, int in
     return juce::Rectangle<int> (knobPx, knobPx).withPosition (labelColumn.getX() + 1 + index * (knobPx + 2), compactRows ? row.getY() + (row.getHeight() - knobPx) / 2 : row.getY() + 1);
 }
 
+std::vector<int> StepSequencer::makeDisplayOrder() const
+{
+    std::vector<int> order { Pattern::kickLayer };
+    for (int layer = 0; layer < numLayers(); ++layer)
+    {
+        order.push_back (layer);
+        if (processor.isEffectVersion())
+            continue;
+        for (int id = RowRegistry::firstSubRow; id < RowRegistry::maxRows; ++id)
+            if (processor.pattern.rows.instrumentOf (id) == layer)
+                order.push_back (id);
+    }
+    return order;
+}
+
 void StepSequencer::scrollBarMoved (juce::ScrollBar*, double newRangeStart)
 {
-    const auto next = juce::jlimit (0, std::max (0, 1 + numLayers() - visibleRows), (int) std::lround (newRangeStart));
+    const auto next = juce::jlimit (0, std::max (0, (int) displayOrder.size() - visibleRows), (int) std::lround (newRangeStart));
     if (next == rowScroll)
         return;
     rowScroll = next;
@@ -207,7 +223,7 @@ void StepSequencer::ZoomCorner::mouseDoubleClick (const juce::MouseEvent&)
 
 void StepSequencer::scrollRows (int delta)
 {
-    const auto rows = 1 + numLayers();
+    const auto rows = (int) displayOrder.size();
     const auto next = juce::jlimit (0, std::max (0, rows - visibleRows), rowScroll + delta);
     if (next == rowScroll)
         return;
@@ -300,7 +316,7 @@ bool StepSequencer::rowSilent (int layer) const
 {
     const auto solo = processor.soloMask.load();
     const auto isOn = processor.apvts.getRawParameterValue (layer == Pattern::kickLayer ? juce::String (ParamID::kickOn) : ParamID::bass (layer, InstrumentField::on))->load() >= 0.5f;
-    const auto soloed = (solo & (layer == Pattern::kickLayer ? PluginBase::kickSoloBit : 1 << layer)) != 0;
+    const auto soloed = (solo & (layer == Pattern::kickLayer ? PluginBase::kickSoloBit : 1ull << layer)) != 0;
     return ! isOn || (solo != 0 && ! soloed);
 }
 
@@ -313,7 +329,7 @@ void StepSequencer::refreshSwitches()
         if (layerOfRow != Pattern::kickLayer && layerOfRow >= processor.activeInstruments())
             continue;
         const auto muted = processor.apvts.getRawParameterValue (row == 0 ? juce::String (ParamID::kickOn) : ParamID::bass (layerOfRow, InstrumentField::on))->load() < 0.5f;
-        const auto soloed = (processor.soloMask.load() & (layerOfRow == Pattern::kickLayer ? PluginBase::kickSoloBit : 1 << layerOfRow)) != 0;
+        const auto soloed = (processor.soloMask.load() & (layerOfRow == Pattern::kickLayer ? PluginBase::kickSoloBit : 1ull << layerOfRow)) != 0;
         rowSwitches[row]->mute.setToggleState (muted, juce::dontSendNotification);
         rowSwitches[row]->solo.setToggleState (soloed, juce::dontSendNotification);
         bits |= (muted ? 1 : 0) << (row * 2);
@@ -323,9 +339,35 @@ void StepSequencer::refreshSwitches()
     lastSwitchBits = bits;
 }
 
+void StepSequencer::refreshColours()
+{
+    if ((int) layerColours.size() < ParamID::numInstrumentLayers)
+        return; // GATE-versionen (effekten) har en egen färg
+    for (int i = 0; i < ParamID::numInstrumentLayers; ++i)
+        layerColours[(size_t) i] = Theme::layerColour (i);
+    for (size_t row = 1; row < rowKnobs.size(); ++row)
+    {
+        const auto colour = layerColours[row - 1];
+        for (auto* slider : { &rowKnobs[row]->level, &rowKnobs[row]->fx })
+        {
+            slider->setColour (juce::Slider::rotarySliderFillColourId, colour);
+            slider->repaint();
+        }
+        listenButtons[row]->setAccent (colour);
+        loopToggles[row]->setAccent (colour);
+    }
+}
+
 void StepSequencer::timerCallback()
 {
     followVisualRate();
+    if (const auto colourVersion = processor.layerStructureVersion.load(); colourVersion != lastColourVersion)
+    {
+        lastColourVersion = colourVersion;
+        InstrumentMenu::applyColours (processor);
+        refreshColours();
+        repaint();
+    }
     // Rita om bara när något synligt ändrats: markörerna, mönstret, mönsterlängden eller rutnäten.
     auto changed = false;
     auto update = [&changed] (int& last, int now) { if (last != now) { last = now; changed = true; } };
@@ -337,6 +379,11 @@ void StepSequencer::timerCallback()
         if (selectedLayer != Pattern::kickLayer && selectedLayer >= active)
             selectedLayer = std::max (0, active - 1);
         resized(); // instrument har lagts till eller tagits bort: raderna ritas om
+        changed = true;
+    }
+    if (const auto order = makeDisplayOrder(); order != displayOrder)
+    {
+        resized(); // en underrad har lagts till eller tagits bort
         changed = true;
     }
     const auto barsBefore = lastBars;
@@ -466,9 +513,10 @@ void StepSequencer::repaintMarker (int layer, int oldStep, int newStep)
 void StepSequencer::resized()
 {
     auto area = getLocalBounds();
+    displayOrder = makeDisplayOrder();
 
     // Radhöjden: automatisk (så många rader som får plats) eller vald med zoomhörnet. Låga rader blir kompakta.
-    const auto rows = 1 + numLayers();
+    const auto rows = (int) displayOrder.size();
     constexpr int gap = 5, laneHeight = 76, normalMinHeight = 50;
     const auto manual = processor.sequencerRowHeight > 0;
     const auto freeHeight = area.getHeight() - headerHeight - 5 - (laneShown() ? laneHeight + 3 : 0);
@@ -486,7 +534,7 @@ void StepSequencer::resized()
     rowScroll = juce::jlimit (0, rows - visibleRows, rowScroll);
     if (revealSelected && getHeight() > 100)
     {
-        const auto selectedRow = rowOf (selectedLayer);
+        const auto selectedRow = (int) (std::find (displayOrder.begin(), displayOrder.end(), selectedLayer) - displayOrder.begin());
         if (selectedRow < rowScroll)
             rowScroll = selectedRow;
         else if (selectedRow >= rowScroll + visibleRows)
@@ -537,11 +585,11 @@ void StepSequencer::resized()
     laneArea = {};
     selectionFrame = {};
     rowsTop = area.getY();
-    const auto selectedRow = rowOf (selectedLayer);
-    for (int row = rowScroll; row < rowScroll + visibleRows; ++row)
+    for (int displayRow = rowScroll; displayRow < rowScroll + visibleRows; ++displayRow)
     {
+        const auto row = rowOf (displayOrder[(size_t) displayRow]);
         rowRects[(size_t) row] = area.removeFromTop (rowHeight);
-        if (row == selectedRow)
+        if (displayOrder[(size_t) displayRow] == selectedLayer)
         {
             auto frameBottom = rowRects[(size_t) row].getBottom();
             if (laneShown())
@@ -555,13 +603,13 @@ void StepSequencer::resized()
         }
         area.removeFromTop (gap);
     }
-    rowsBottom = std::max (rowRects[(size_t) (rowScroll + visibleRows - 1)].getBottom(), laneArea.getBottom());
+    rowsBottom = std::max (rowRects[(size_t) rowOf (displayOrder[(size_t) (rowScroll + visibleRows - 1)])].getBottom(), laneArea.getBottom());
 
     // Varje rad: rattarna (volym och FX) längst till vänster med radens längd under, och till höger om dem namnet med
     // högtalaren (lyssna) och loop-knappen under. Låga rader lägger allt på en rad (radens längd döljs).
     for (size_t i = 0; i < rowKnobs.size(); ++i)
     {
-        const auto shown = (int) i < rows && ! rowRects[i].isEmpty();
+        const auto shown = ! rowRects[i].isEmpty();
         rowKnobs[i]->level.setVisible (shown);
         rowKnobs[i]->fx.setVisible (shown);
         if (i < lengthButtons.size())
@@ -655,12 +703,14 @@ StepSequencer::Target StepSequencer::targetAt (juce::Point<int> point, int& laye
     if (! laneArea.isEmpty() && point.y >= laneArea.getY() - 2 && point.y < laneArea.getBottom() + 2)
         return inLabels ? Target::none : Target::lane;
 
-    for (int row = 0; row < 1 + numLayers(); ++row)
+    for (const auto id : displayOrder)
     {
-        const auto& rect = rowRects[(size_t) row];
+        const auto& rect = rowRects[(size_t) rowOf (id)];
         if (! rect.isEmpty() && point.y < rect.getBottom() + 2)
         {
-            layer = row == 0 ? Pattern::kickLayer : row - 1;
+            if (isSubRow (id))
+                return Target::none; // underraderna kan inte väljas eller redigeras ännu
+            layer = id;
             return inLabels ? Target::label : Target::bass;
         }
     }
@@ -997,14 +1047,27 @@ void StepSequencer::paint (juce::Graphics& g)
                     juce::Justification::centred);
 
     g.setFont (Theme::font (11.0f, true));
-    for (int rowIndex = 0; rowIndex < 1 + numLayers(); ++rowIndex)
+    for (const auto layer : displayOrder)
     {
-        const auto layer = rowIndex == 0 ? Pattern::kickLayer : rowIndex - 1;
         const auto bounds = rowBounds (layer);
         if (bounds.isEmpty())
             continue;
         const auto row = selectorBounds (bounds);
         const auto colour = colourOf (layer);
+        if (isSubRow (layer))
+        {
+            // Underrad: en dämpad remsa med sort och instrument, utan rattar. Stegen visas i sampler-fliken tills raden får egna steg.
+            int instrument = 0;
+            RowRegistry::Kind kind {};
+            if (processor.pattern.rows.get (layer, instrument, kind))
+            {
+                g.setColour (colour.withAlpha (0.07f));
+                g.fillRoundedRectangle (juce::Rectangle<int>::leftTopRightBottom (stepsColumn.getX(), bounds.getY(), stepsColumn.getRight(), bounds.getBottom()).toFloat(), 3.0f);
+                g.setColour (colour.withAlpha (0.6f));
+                g.drawFittedText (nameOf (instrument) + (kind == RowRegistry::Kind::slicer ? " SLICER" : " SAMPLE"), row.withTrimmedLeft (18), juce::Justification::centredLeft, 1, 0.8f);
+            }
+            continue;
+        }
         const auto selected = layer == selectedLayer && (renameable() || layer == Pattern::kickLayer);
         if (selected)
         {
@@ -1038,11 +1101,11 @@ void StepSequencer::paint (juce::Graphics& g)
         g.setColour (juce::Colour (0xff0d0f1a));
         g.fillRoundedRectangle (overview, 3.0f);
         const auto rowsNow = lengths();
-        const auto lineCount = 1 + numLayers();
+        const auto lineCount = (int) displayOrder.size();
         const auto lineHeight = (overview.getHeight() - 2.0f) / (float) lineCount;
         for (int i = 0; i < lineCount; ++i)
         {
-            const auto layer = i == 0 ? Pattern::kickLayer : i - 1;
+            const auto layer = displayOrder[(size_t) i];
             const auto fraction = (float) rowsNow.barsOf (rowOf (layer)) / (float) std::max (1, shownBars());
             g.setColour (colourOf (layer).withAlpha (0.85f));
             g.fillRect (juce::Rectangle<float> (overview.getX() + 1.0f, overview.getY() + 1.0f + (float) i * lineHeight,
@@ -1223,7 +1286,9 @@ void StepSequencer::mouseDown (const juce::MouseEvent& event)
     if (dragTarget == Target::label)
     {
         dragTarget = Target::none;
-        if (event.mods.isPopupMenu() && (size_t) rowOf (dragLayer) < lengthButtons.size())
+        if (event.mods.isPopupMenu() && dragLayer != Pattern::kickLayer)
+            InstrumentMenu::show (processor, dragLayer, *this, juce::Rectangle<int> (event.getPosition(), event.getPosition()).expanded (1)); // högerklick på radkortet: instrumentmenyn (L4)
+        else if (event.mods.isPopupMenu() && (size_t) rowOf (dragLayer) < lengthButtons.size())
             LengthMenu::show (processor, dragLayer, *lengthButtons[(size_t) rowOf (dragLayer)]); // högerklick på radkortet: AUTO / Lock length / antal takter
         return;
     }
@@ -1317,7 +1382,7 @@ void StepSequencer::mouseWheelMove (const juce::MouseEvent& event, const juce::M
     // Skrollhjulet ändrar tonhöjden en halvton i taget i pitch-lanet, och scrollar raderna när det finns fler än som får plats.
     int layer = 0;
     const auto target = targetAt (event.getPosition(), layer);
-    if (wheel.deltaY != 0.0f && target != Target::lane && 1 + numLayers() > visibleRows)
+    if (wheel.deltaY != 0.0f && target != Target::lane && (int) displayOrder.size() > visibleRows)
     {
         scrollRows (wheel.deltaY > 0.0f ? -1 : 1);
         return;

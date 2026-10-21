@@ -2,6 +2,12 @@
 
 namespace
 {
+    // DURATION-knappens text, t.ex. "0.25 s" eller "2 s".
+    juce::String secondsText (double seconds)
+    {
+        return juce::String (seconds, seconds < 1.0 ? 2 : 0).trimCharactersAtEnd ("0").trimCharactersAtEnd (".") + " s";
+    }
+
     // Envelopens form (0..1): attack linjärt, decay exponentiellt mot sustain, och efter `gateSeconds` release.
     float adsrAt (double seconds, float attackMs, float decayMs, float sustain, float releaseMs, double gateSeconds)
     {
@@ -40,6 +46,11 @@ EnvPage::EnvPage (PluginBase& p) : processor (p), refs (p.apvts)
         rebuild();
     };
     addAndMakeVisible (instrumentBox);
+    moreLabel.setText ("MORE SOURCES", juce::dontSendNotification);
+    moreLabel.setFont (Theme::font (11.0f, true));
+    moreLabel.setColour (juce::Label::textColourId, Theme::textDim);
+    moreLabel.setJustificationType (juce::Justification::centredRight);
+    addAndMakeVisible (moreLabel);
 
     rebuild();
     startTimerHz (4);
@@ -58,6 +69,9 @@ void EnvPage::timerCallback()
     const auto wanted = juce::jlimit (0, processor.activeInstruments() - 1, processor.selectedInstrument);
     if (wanted != layer || processor.activeInstruments() != lastActive || processor.layerNamesVersion.load() != lastNamesVersion)
         rebuild();
+    for (auto& tile : tiles)
+        if (tile.onButton != nullptr)
+            tile.view->setAlpha (tile.onButton->getToggleState() ? 1.0f : 0.35f);
 }
 
 void EnvPage::rebuild()
@@ -74,6 +88,11 @@ void EnvPage::rebuild()
     instrumentBox.setSelectedId (layer + 1, juce::dontSendNotification);
 
     tiles.clear();
+    // Notens velocity och ett slumpvärde per ton som källor: dra handtaget till en ratt.
+    velocityHandle = std::make_unique<LfoDragHandle> (Modulation::instrumentSource (layer, 2), "VELOCITY");
+    randomHandle = std::make_unique<LfoDragHandle> (Modulation::instrumentSource (layer, 3), "RANDOM");
+    addAndMakeVisible (*velocityHandle);
+    addAndMakeVisible (*randomHandle);
     const auto accent = Theme::layerColour (layer);
     const auto thisLayer = layer;
 
@@ -82,9 +101,34 @@ void EnvPage::rebuild()
         Tile tile;
         tile.title = title;
         tile.hint = hint;
-        tile.colour = handleSource >= 0 ? Theme::sourceColour (handleSource) : accent;
-        tile.view = std::make_unique<EnvelopeView> (seconds);
-        tile.view->onBeforePaint = [this, thisLayer] { current = refs.readInstrument (thisLayer, 36); };
+        tile.colour = handleSource >= 0 && ! Modulation::isEnvSource (handleSource) ? Theme::sourceColour (handleSource) : accent;
+        juce::ignoreUnused (seconds); // startvärdet står i durations
+        const auto index = (int) tiles.size();
+        tile.view = std::make_unique<EnvelopeView> (durations[(size_t) index]);
+        // Tiderna i ms (Sync räknat från tempot), så att diagrammet visar det som låter. ON/OFF syns som en tonad ruta i stället.
+        tile.view->onBeforePaint = [this, thisLayer] { current = refs.readInstrument (thisLayer, 36).withTempo (processor.transportStatus.bpm.load(), false); };
+        tile.onButton = std::make_unique<juce::TextButton> ("ON");
+        tile.onButton->setClickingTogglesState (true);
+        tile.onButton->setColour (juce::TextButton::buttonOnColourId, tile.colour.withAlpha (0.6f));
+        tile.onButton->setTooltip ("ON/OFF - " + title + (index == 0 ? ": off = every note plays at full level while it is held."
+                                                        : index == 1 ? ": off = the filter stays at CUTOFF (WARP ENV still follows the shape)."
+                                                                     : ": off = it gives 0, so the knobs it is dragged to stay where they are."));
+        tile.onAttachment = std::make_unique<juce::ButtonParameterAttachment> (*param (processor, layer, ParamID::envOnField (index)), *tile.onButton);
+        addAndMakeVisible (*tile.onButton);
+        tile.durationButton = std::make_unique<juce::TextButton> (secondsText (durations[(size_t) index]));
+        tile.durationButton->setTooltip ("DURATION - How many seconds the graph shows (click to step 0.25, 0.5, 1, 2, 4, 8 s). Only the view, not the sound.");
+        tile.durationButton->onClick = [this, index]
+        {
+            static constexpr double steps[] { 0.25, 0.5, 1.0, 2.0, 4.0, 8.0 };
+            auto& seconds = durations[(size_t) index];
+            auto next = steps[0];
+            for (auto step : steps)
+                if (step > seconds + 1.0e-6) { next = step; break; }
+            seconds = next;
+            tiles[(size_t) index].view->setDisplaySeconds (seconds);
+            tiles[(size_t) index].durationButton->setButtonText (secondsText (seconds));
+        };
+        addAndMakeVisible (*tile.durationButton);
         addAndMakeVisible (*tile.view);
         tile.listen = std::make_unique<ListenButton>();
         tile.listen->setAccent (tile.colour);
@@ -102,31 +146,58 @@ void EnvPage::rebuild()
         return tiles.back().view.get();
     };
 
+    // SYNC: tiderna som notvärden som följer tempot (på) eller ms (av), för ruta `index` (0 ENV 1, 1 FILTER ENV, 2-3 ENV 2-3).
+    auto addModeButton = [&] (int index, const juce::String& tooltip)
+    {
+        auto& tile = tiles[(size_t) index];
+        tile.modeButton = std::make_unique<juce::TextButton> ("SYNC");
+        tile.modeButton->setClickingTogglesState (true);
+        tile.modeButton->setColour (juce::TextButton::buttonOnColourId, tile.colour.withAlpha (0.6f));
+        tile.modeButton->setTooltip (tooltip);
+        tile.modeAttachment = std::make_unique<juce::ButtonParameterAttachment> (*param (processor, layer, ParamID::envTileModeField (index)), *tile.modeButton);
+        addAndMakeVisible (*tile.modeButton);
+    };
+    // Handtagets x-led styr ms-ratten, eller i läget Sync notvärdet.
+    auto pick = [this, thisLayer] (int index, F msField, F syncField)
+    {
+        return [this, thisLayer, index, msField, syncField]
+        {
+            const auto sync = processor.apvts.getRawParameterValue (ParamID::bass (thisLayer, ParamID::envTileModeField (index)))->load() >= 0.5f;
+            return processor.apvts.getParameter (ParamID::bass (thisLayer, sync ? syncField : msField));
+        };
+    };
+
     // ENV 1: volym-envelopen (det som formar ljudet).
     {
-        auto* view = addTile ("ENV 1  VOLUME", "Shapes the loudness of every note: attack, decay, sustain level and release.", 1.0, -1);
+        auto* view = addTile ("ENV 1  VOLUME", "Shapes the loudness of every note: attack, decay, sustain level and release. DRAG the handle onto a knob to let the same shape "
+                                               "move it (source AMP ENV; 0 when ENV 1 is off).", 1.0, Modulation::instrumentSource (layer, Modulation::instrumentSources));
         const auto gate = [this, thisLayer] { return noteOffOf (thisLayer, 0.4).seconds; };
         view->setNoteOff ([this, thisLayer] { return noteOffOf (thisLayer, 0.4); });
         view->addCurve ({ [this, gate] (double t) { return adsrAt (t, current.attackMs, current.decayMs, current.sustain, current.releaseMs, gate()); }, accent, true, "VOLUME" });
-        view->addHandle ({ [this] { return juce::Point<float> (current.attackMs * 0.001f, 1.0f); }, param (processor, layer, F::attack), nullptr, false, Theme::text });
+        view->addHandle ({ [this] { return juce::Point<float> (current.attackMs * 0.001f, 1.0f); }, param (processor, layer, F::attack), nullptr, false, Theme::text, pick (0, F::attack, F::env1AttackSync) });
         view->addHandle ({ [this, gate]
                            {
                                const auto t = (current.attackMs + current.decayMs * 0.5f) * 0.001;
                                return juce::Point<float> ((float) t, adsrAt (t, current.attackMs, current.decayMs, current.sustain, current.releaseMs, gate())); },
-                           param (processor, layer, F::decay), param (processor, layer, F::sustain), false, Theme::text });
-        view->addHandle ({ [this, gate] { return juce::Point<float> ((float) gate() + current.releaseMs * 0.001f, 0.0f); }, param (processor, layer, F::release), nullptr, false, Theme::text });
+                           param (processor, layer, F::decay), param (processor, layer, F::sustain), false, Theme::text, pick (0, F::decay, F::env1DecaySync) });
+        view->addHandle ({ [this, gate] { return juce::Point<float> ((float) gate() + current.releaseMs * 0.001f, 0.0f); }, param (processor, layer, F::release), nullptr, false, Theme::text, pick (0, F::release, F::env1ReleaseSync) });
+        addModeButton (0, "ENV 1 TIME - On: attack, decay and release are note lengths (1/16, 1/4 ... 4 bars) that follow the tempo; off: milliseconds. The handles step through the note lengths.");
     }
 
     // Filter-envelopen: hur mycket och hur länge filtret öppnas i början av varje ton.
     {
-        auto* view = addTile ("FILTER ENVELOPE", "Opens the filter at the start of every note and lets it close again: AMOUNT (how far, in octaves), ATTACK (how fast it opens) and DECAY (how fast it closes).", 0.5, -1);
+        auto* view = addTile ("FILTER ENVELOPE", "Opens the filter at the start of every note and lets it close again: AMOUNT (how far, in octaves), ATTACK (how fast it opens) and DECAY (how fast it closes). DRAG the handle onto a knob "
+                                                  "to let the same shape move it (source FILT ENV, 0..1 without AMOUNT; 0 when the filter envelope is off).", 0.5,
+                              Modulation::instrumentSource (layer, Modulation::instrumentSources + 1));
         view->addCurve ({ [this] (double t) { return InstrumentSynth::filterEnvelopeAt (current, t) * current.envAmount / 8.0f; }, accent, true, "FILTER" });
-        view->addHandle ({ [this] { return juce::Point<float> (std::max (0.0015f, current.envAttackMs * 0.001f), current.envAmount / 8.0f); }, param (processor, layer, F::envAttack), param (processor, layer, F::envAmount), false, accent });
+        view->addHandle ({ [this] { return juce::Point<float> (std::max (0.0015f, current.envAttackMs * 0.001f), current.envAmount / 8.0f); }, param (processor, layer, F::envAttack), param (processor, layer, F::envAmount), false, accent,
+                           pick (1, F::envAttack, F::filterEnvAttackSync) });
         view->addHandle ({ [this]
                            {
                                const auto t = current.envAttackMs * 0.001 + current.envDecayMs * 0.001 / 3.0;
                                return juce::Point<float> ((float) t, InstrumentSynth::filterEnvelopeAt (current, t) * current.envAmount / 8.0f); },
-                           param (processor, layer, F::envDecay), nullptr, false, accent });
+                           param (processor, layer, F::envDecay), nullptr, false, accent, pick (1, F::envDecay, F::filterEnvDecaySync) });
+        addModeButton (1, "FILTER ENV TIME - On: attack and decay are note lengths (1/16, 1/4 ... 4 bars) that follow the tempo; off: milliseconds. The handles step through the note lengths.");
     }
 
     // ENV 2 och ENV 3: modulationskällor.
@@ -138,12 +209,8 @@ void EnvPage::rebuild()
                                                                               "(in the window above), or set it up in the MATRIX tab.", 2.0, source);
         const auto gate = [this, thisLayer] { return noteOffOf (thisLayer, 0.7).seconds; };
         view->setNoteOff ([this, thisLayer] { return noteOffOf (thisLayer, 0.7); });
-        // Tiderna i ms (i läget Sync räknade från tempot), så att diagrammet visar det som låter.
-        auto read = [this, env]
-        {
-            const auto& e = env == 0 ? current.env2 : current.env3;
-            return e.withTempo (processor.transportStatus.bpm.load());
-        };
+        // Tiderna i ms (current är redan räknad från tempot).
+        auto read = [this, env] { return env == 0 ? current.env2 : current.env3; };
         // Handtagets x-led styr ms-ratten, eller i läget Sync notvärdet (attack, decay, release).
         auto timeParam = [this, env, thisLayer, base] (int which)
         {
@@ -163,15 +230,7 @@ void EnvPage::rebuild()
                                return juce::Point<float> ((float) t, adsrAt (t, e.attackMs, e.decayMs, e.sustain, e.releaseMs, gate())); },
                            param (processor, layer, (F) (base + 1)), param (processor, layer, (F) (base + 2)), false, Theme::text, timeParam (1) });
         view->addHandle ({ [read, gate] { return juce::Point<float> ((float) gate() + read().releaseMs * 0.001f, 0.0f); }, param (processor, layer, (F) (base + 3)), nullptr, false, Theme::text, timeParam (2) });
-        {
-            auto& tile = tiles.back();
-            tile.modeButton = std::make_unique<juce::TextButton> ("SYNC");
-            tile.modeButton->setClickingTogglesState (true);
-            tile.modeButton->setColour (juce::TextButton::buttonOnColourId, Theme::sourceColour (source).withAlpha (0.6f));
-            tile.modeButton->setTooltip ("ENV " + juce::String (env + 2) + " TIME - On: attack, decay and release are note lengths (1/16, 1/4 ... 4 bars) that follow the tempo; off: milliseconds. The handles step through the note lengths.");
-            tile.modeAttachment = std::make_unique<juce::ButtonParameterAttachment> (*param (processor, layer, ParamID::envModeField (env)), *tile.modeButton);
-            addAndMakeVisible (*tile.modeButton);
-        }
+        addModeButton (env + 2, "ENV " + juce::String (env + 2) + " TIME - On: attack, decay and release are note lengths (1/16, 1/4 ... 4 bars) that follow the tempo; off: milliseconds. The handles step through the note lengths.");
     }
 
     resized();
@@ -196,6 +255,14 @@ void EnvPage::resized()
     auto top = area.removeFromTop (24);
     instrumentLabel.setBounds (top.removeFromLeft (90));
     instrumentBox.setBounds (top.removeFromLeft (170));
+    if (randomHandle != nullptr)
+    {
+        randomHandle->setBounds (top.removeFromRight (84));
+        top.removeFromRight (6);
+        velocityHandle->setBounds (top.removeFromRight (84));
+        top.removeFromRight (6);
+        moreLabel.setBounds (top.removeFromRight (110));
+    }
     area.removeFromTop (6);
 
     const auto count = (int) tiles.size();
@@ -214,10 +281,14 @@ void EnvPage::resized()
         auto controls = inner.removeFromTop (22);
         if (tile.handle != nullptr)
             tile.handle->setBounds (controls.removeFromRight (72));
+        if (tile.onButton != nullptr)
+            tile.onButton->setBounds (controls.removeFromLeft (40).reduced (2, 0));
         if (tile.modeButton != nullptr)
-            tile.modeButton->setBounds (controls.removeFromLeft (56).reduced (2, 0));
+            tile.modeButton->setBounds (controls.removeFromLeft (52).reduced (2, 0));
         if (tile.listen != nullptr)
             tile.listen->setBounds (controls.removeFromLeft (34).reduced (2, 0));
+        if (tile.durationButton != nullptr)
+            tile.durationButton->setBounds (controls.removeFromLeft (52).reduced (2, 0));
         inner.removeFromTop (2);
         tile.view->setBounds (inner);
     }

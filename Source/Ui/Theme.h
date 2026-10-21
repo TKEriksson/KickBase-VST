@@ -32,8 +32,17 @@ namespace Theme
     inline const juce::Colour lfo     { 0xff5ef2d6 };
 
     // Instrumenten (upp till 10): kalla färger, skilda från kickens orange, så att raderna i mönstret skiljs åt.
+    // Egna färger per instrument (0 = standard). Fylls av editorn från projektets state (PluginBase::getLayerColour).
+    inline std::array<juce::uint32, 10>& layerColourOverrides()
+    {
+        static std::array<juce::uint32, 10> overrides {};
+        return overrides;
+    }
+
     inline juce::Colour layerColour (int index)
     {
+        if (const auto custom = layerColourOverrides()[(size_t) juce::jlimit (0, 9, index)]; custom != 0)
+            return juce::Colour (custom);
         const juce::Colour colours[] { bass, juce::Colour (0xff8f9bff), juce::Colour (0xff5fffb0), juce::Colour (0xffff7ac8), juce::Colour (0xffc3ff6b),
                                        juce::Colour (0xff6bb8ff), juce::Colour (0xffd49bff), juce::Colour (0xff5ff0e0), juce::Colour (0xffffd66b),
                                        juce::Colour (0xffff8a8a) };
@@ -58,8 +67,12 @@ namespace Theme
             const juce::Colour macros[] { juce::Colour (0xfff2a65a), juce::Colour (0xffe9d35c), juce::Colour (0xfff08a6a), juce::Colour (0xffe08cff) };
             return macros[juce::jlimit (0, 3, source - 3)];
         }
-        const auto layer = (source - 7) / 4, kind = (source - 7) % 4;
+        if (Modulation::isCodeSource (source))
+            return lfoColour (source - Modulation::firstCodeSource).withMultipliedSaturation (0.75f);
+        const auto layer = Modulation::layerOfSource (source), kind = Modulation::kindOfSource (source);
         const auto base = layerColour (layer);
+        if (kind >= Modulation::instrumentSources) // AMP ENV ljus (som ENV 1:s handtag), FILT ENV mellan lagrets färg och ljus
+            return kind == Modulation::instrumentSources ? text : base.interpolatedWith (text, 0.5f);
         return kind == 0 ? base : kind == 1 ? base.brighter (0.35f) : kind == 2 ? base.withMultipliedSaturation (0.45f) : base.darker (0.35f);
     }
 
@@ -213,4 +226,3 @@ namespace Theme
         g.drawRect (area, 1);
     }
 }
-

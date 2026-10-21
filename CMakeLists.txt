@@ -47,11 +47,13 @@ set_source_files_properties(${KICKBASE_JUCE_MODULE_CPPS} PROPERTIES SKIP_PRECOMP
 # Ljudkärnan: klocka, mönster och motorer. Inget gränssnitt, går att testa fristående.
 set(CORE_SOURCES
     Source/Core/TransportClock.cpp
+    Source/Core/ProjectFile.cpp
     Source/Core/Pattern.cpp
     Source/Core/KickEngine.cpp
     Source/Core/InstrumentSynth.cpp
     Source/Core/InstrumentVoices.cpp
     Source/Core/Wavetable.cpp
+    Source/Core/WavetableEdit.cpp
     Source/Core/NodeEnvelope.cpp
     Source/Core/StepScheduler.cpp
     Source/Core/Sidechain.cpp
@@ -80,9 +82,11 @@ set(PLUGIN_SOURCES
     Source/Core/Mixer.cpp
     Source/Core/OfflineRender.cpp
     Source/Core/AudioAnalysis.cpp
+    Source/Core/OscPresets.cpp
     Source/Core/RollFiles.cpp
     Source/Core/SampleSlot.cpp
     Source/Core/ToolLayer.cpp
+    Source/Core/LiveCode.cpp
     Source/Core/BridgeLink.cpp
     Source/Core/Params.cpp
     Source/Core/Presets.cpp
@@ -109,11 +113,16 @@ set(PLUGIN_SOURCES
     Source/Ui/LogoPainter.cpp
     Source/Core/WavetablePack.cpp
     Source/Core/AiChat.cpp
+    Source/Core/AiProvider.cpp
     Source/Ui/AiChatPage.cpp
+    Source/Ui/LiveCodePage.cpp
     Source/Ui/Components.cpp
     Source/Ui/Help.cpp
     Source/Ui/FilterPanel.cpp
+    Source/Ui/HarmonicEditor.cpp
     Source/Ui/OscPanel.cpp
+    Source/Ui/FmPanel.cpp
+    Source/Ui/FmPresets.cpp
     Source/Ui/KickDisplay.cpp
     Source/Ui/Scopes.cpp
     Source/Ui/SoundstagePage.cpp
@@ -132,9 +141,9 @@ set(FX_SOURCES
 # Guiderna som MCP-bryggan serverar till AI:n (get_guide), inbakade i programmet.
 # (Resources/InitPreset.mofp: fabrikspresetet Init för instrumentet, ett vanligt Full-preset som läses vid start.)
 # Versionen som ABOUT visar: projektets VERSION (bara den här filen kompileras om när den ändras).
-set_source_files_properties(Source/Ui/AboutPanel.cpp PROPERTIES COMPILE_DEFINITIONS "KICKBASE_VERSION=\"${PROJECT_VERSION}\"")
+set_source_files_properties(Source/Ui/AboutPanel.cpp Source/Ui/Modules.cpp PROPERTIES COMPILE_DEFINITIONS "KICKBASE_VERSION=\"${PROJECT_VERSION}\"")
 
-juce_add_binary_data(KickbaseGuides SOURCES docs/AGENT_GUIDE.md docs/psytrance-kick-bass-reference.md Resources/InitPreset.mofp LICENSE THIRD-PARTY.md)
+juce_add_binary_data(KickbaseGuides SOURCES Resources/AGENT_GUIDE.md Resources/psytrance-kick-bass-reference.md Resources/kick-bass-school.md Resources/InitPreset.mofp Resources/strudel/strudel.all.js LICENSE THIRD-PARTY.md)
 
 # Gemensamt för alla mål: samma definitioner och flaggor.
 function(kickbase_configure target)
@@ -178,7 +187,7 @@ target_sources(Kickbase PRIVATE
     ${INSTRUMENT_SOURCES}
     Source/Instrument/InstrumentEntry.cpp
 )
-target_link_libraries(Kickbase PRIVATE juce::juce_audio_utils juce::juce_dsp KickbaseGuides)
+target_link_libraries(Kickbase PRIVATE juce::juce_audio_utils juce::juce_dsp juce::juce_javascript KickbaseGuides)
 target_precompile_headers(Kickbase PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CMAKE_CURRENT_SOURCE_DIR}/Source/PchPlugin.h>")
 kickbase_configure_plugin(Kickbase)
 
@@ -203,7 +212,7 @@ target_sources(KickbaseFX PRIVATE
     ${FX_SOURCES}
     Source/Fx/FxEntry.cpp
 )
-target_link_libraries(KickbaseFX PRIVATE juce::juce_audio_utils juce::juce_dsp KickbaseGuides)
+target_link_libraries(KickbaseFX PRIVATE juce::juce_audio_utils juce::juce_dsp juce::juce_javascript KickbaseGuides)
 target_precompile_headers(KickbaseFX PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CMAKE_CURRENT_SOURCE_DIR}/Source/PchPlugin.h>")
 kickbase_configure_plugin(KickbaseFX)
 
@@ -215,15 +224,22 @@ target_sources(KickbaseTests PRIVATE
     Tests/EngineTests.cpp
     Tests/MasterTests.cpp
     Tests/ModulationTests.cpp
+    Tests/FmPresetTests.cpp
+    Tests/PersistFmTests.cpp
+    Source/Ui/FmPresets.cpp
     Source/Core/Params.cpp
     Source/Core/Master.cpp
     Source/Core/SourceEq.cpp
     Source/Core/Effects.cpp
+    Source/Core/RollFiles.cpp
     Tests/TestMain.cpp
 )
-target_link_libraries(KickbaseTests PRIVATE juce::juce_audio_processors juce::juce_dsp)
+target_link_libraries(KickbaseTests PRIVATE juce::juce_audio_processors juce::juce_audio_formats juce::juce_dsp)
 target_precompile_headers(KickbaseTests PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CMAKE_CURRENT_SOURCE_DIR}/Source/PchCore.h>")
 kickbase_configure(KickbaseTests)
+# Testprogrammet har NodeEnvelope (16 KB vardera) som std::array på stacken i ModulationTests/PersistFmTests; Release inlinar testfunktionerna
+# och 1 MB räcker inte (exit -1073741571 sedan körning 9). Större stack i testprogrammet tills arrayerna flyttats till heapen.
+target_link_options(KickbaseTests PRIVATE "$<$<CXX_COMPILER_ID:MSVC>:/STACK:8388608>")
 
 # KickbaseMcp: MCP-bryggan (stdio) som AI-appar som Claude Desktop startar. Kör Kickbase utan DAW eller kopplar upp sig
 # mot en Kickbase i DAW:en. Samma program innehåller också utvecklingsverktyget (renderar ljud offline, tar skärmbilder,
@@ -240,6 +256,9 @@ target_sources(KickbaseMcp PRIVATE
     Tools/Profile.cpp
     Tools/AudioTests.cpp
     Tools/StateTests.cpp
+    Tools/AnTests.cpp
+    Tools/RowTests.cpp
+    Tools/ParamSweepTests.cpp
     Tools/LibraryTests.cpp
     Tools/Freesound.cpp
     Tools/Tb303Tests.cpp
@@ -248,7 +267,7 @@ target_sources(KickbaseMcp PRIVATE
     Tools/PatternTests.cpp
 )
 target_compile_definitions(KickbaseMcp PRIVATE JucePlugin_Name="Kickbase" JUCE_MODAL_LOOPS_PERMITTED=1)
-target_link_libraries(KickbaseMcp PRIVATE juce::juce_audio_utils juce::juce_dsp KickbaseGuides)
+target_link_libraries(KickbaseMcp PRIVATE juce::juce_audio_utils juce::juce_dsp juce::juce_javascript KickbaseGuides)
 target_precompile_headers(KickbaseMcp PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CMAKE_CURRENT_SOURCE_DIR}/Source/PchPlugin.h>")
 kickbase_configure(KickbaseMcp)
 add_custom_command(TARGET KickbaseMcp POST_BUILD

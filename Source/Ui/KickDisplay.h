@@ -25,6 +25,7 @@ public:
     void mouseMove (const juce::MouseEvent&) override;
     void mouseExit (const juce::MouseEvent&) override;
     void mouseEnter (const juce::MouseEvent&) override;
+    void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 
 private:
     void timerCallback() override;
@@ -37,12 +38,26 @@ private:
     juce::Rectangle<float> plotArea() const;
     float viewSeconds() const;
     float lengthScale() const;
-    float displayMax() const { return amp ? 1.0f : 60.0f; }
+    float displayMax() const { return amp ? 1.0f : 60.0f / freqZoom; }
+    // Kickverktyg (fas K): markörer ur BPM, tidsläsning, svansens slutfrekvens och tid-frekvens-koppling.
+    float hzAtValue (float value) const;                 // pitch-envelopens värde -> Hz
+    float valueAtHz (float hz) const;                    // Hz -> pitch-envelopens värde (negativt under svansen)
+    float secondsAtHz (float hz) const;                  // första tidpunkten (sekunder) då pitchen nått ner till hz, -1 om aldrig
+    float kickSeconds() const;                           // kickens längd i sekunder
+    float xOfSeconds (float seconds) const;
+    void paintTools (juce::Graphics&);
     juce::Point<float> toScreen (float seconds, float value) const;
     juce::Point<float> fromScreen (juce::Point<float> p) const;
     juce::Point<float> tensionHandle (size_t segment) const;
     int pointAt (juce::Point<float> p) const;
     int tensionHandleAt (juce::Point<float> p) const;
+    // Bézierläge (BZ): handtag kodas som nod * 2 + (1 = ut-handtag, 0 = in-handtag), -1 = inget.
+    bool isBezier() const { return active().getMode() == NodeEnvelope::Mode::bezier; }
+    juce::Point<float> handlePosition (const std::vector<NodeEnvelope::Point>& points, size_t index, bool out) const;
+    int bezierHandleAt (juce::Point<float> p) const;
+    void toggleCurveMode();
+    void smoothNode (std::vector<NodeEnvelope::Point>& points, size_t index) const;
+    void resetHandle (std::vector<NodeEnvelope::Point>& points, int handle) const;
     juce::String describe (const NodeEnvelope::Point& point) const;
     void commit (std::vector<NodeEnvelope::Point> points);
 
@@ -54,16 +69,20 @@ private:
     double triggerWallTime = 0.0;                   // när senaste kicken märktes (ms), för blixten
     float markerSeconds = -1.0f;                    // var kicken är just nu (sekunder), -1 = tyst
     juce::TextButton pitchButton { "PITCH" }, ampButton { "AMP" };
+    juce::TextButton bezierButton { "BEZIER" }; // NODES (tension) eller BEZIER för kurvan som visas
     ListenButton listenButton; // högtalaren bredvid PITCH och AMP: spelar kicken
 
     // Vågformen som ritas (min/max per bildpunkt), omräknad när något ändrats.
-    juce::AudioBuffer<float> waveform;
+    juce::AudioBuffer<float> waveform, ghost; // ghost = samma kick med PHASE 0 (tom när PHASE är 0)
     double waveformSeconds = 0.1;
     juce::int64 lastHash = 0;
     int lastVersionPitch = -1, lastVersionAmp = -1;
 
     std::vector<NodeEnvelope::Point> editing; // kopia under drag
-    int dragged = -1, draggedTension = -1, hovered = -1;
+    int dragged = -1, draggedTension = -1, draggedHandle = -1, hovered = -1;
     float tensionStart = 0.0f, dragStartY = 0.0f;
     float fixedView = 0.0f; // visad längd under drag, så att bilden inte rör sig
+    float timeZoom = 1.0f, freqZoom = 1.0f;  // Ctrl + hjul: tid, Skift + hjul: frekvens (PITCH)
+    float cursorSeconds = -1.0f, cursorValue = 0.0f;  // musen i rutan: tid (sekunder, -1 = utanför) och envelopens värde
+    float markedHz = 0.0f;                   // Ctrl + klick i PITCH: frekvensen som följs i båda graferna (0 = ingen)
 };

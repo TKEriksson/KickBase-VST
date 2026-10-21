@@ -17,6 +17,7 @@ public:
 
     // Uppdaterar mätaren med toppen sedan sist (anropas av MixerView:s timer).
     void updateMeter();
+    void refreshColour(); // instrumentets färg ändrad
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -67,7 +68,7 @@ private:
     static constexpr int stripWidth = 88; // så bred att SC och MAX alltid syns på knapparna; får de inte plats rullar man i sidled
 
     PluginBase& processor;
-    int lastActive = -1, lastFxMask = -1;
+    int lastActive = -1, lastFxMask = -1, lastColourVersion = 0;
     juce::Viewport viewport;
     juce::Component content;
     std::vector<std::unique_ptr<MixerStrip>> strips;

@@ -4,6 +4,8 @@
 #include "../Source/Instrument/InstrumentProcessor.h"
 #include "Scenarios.h"
 #include "../Source/Fx/FxProcessor.h"
+#include "../Source/Core/ToolLayer.h"
+#include "../Source/Core/ProjectFile.h"
 #include "../Source/Ui/Help.h"
 
 namespace
@@ -143,6 +145,112 @@ int persistTest()
         check (processor->retiredTableCount() >= 7, "tabellerna från borttagna instrument frigörs inte direkt (" + juce::String ((int) processor->retiredTableCount()) + " väntar)");
     }
 
+    // 4a. Slicer: Grid 8 ger 8 skivor (första 0, stigande), standardinställningar sparas som förut, och skivinställningarna följer med projektet.
+    {
+        auto processor = std::make_unique<InstrumentProcessor>();
+        processor->loadInstrumentSample (0, Scenarios::writeTestWav ("persist_slices", 110.0, 0.8)); // 0,8 s / 128 = 6,25 ms: över minsta skivan (5 ms), annars blir det ca 120
+        const auto* sample = processor->getActiveInstrumentSample (0);
+        check (sample != nullptr && sample->slices.size() == 8 && sample->slices.front() == 0 && std::is_sorted (sample->slices.begin(), sample->slices.end()), "Slicer: Grid 8 ger 8 stigande skivor");
+
+        auto before = processor->instrumentSamplesToValueTree();
+        check (! before.getChild (0).hasProperty ("sliceMode"), "Slicer: standardinställningar skriver inga nya attribut (gamla filer oförändrade)");
+
+        processor->setInstrumentSlicing (0, SampleSlicing::grid, 0.5f, 200);
+        check (processor->getActiveInstrumentSample (0)->slices.size() == (size_t) SampleSlicing::maxSlices, "Slicer: max 128 skivor");
+        processor->setInstrumentSlicing (0, SampleSlicing::manual, 0.5f, 8);
+        processor->setInstrumentSliceMarkers (0, { 0.5f, 0.25f });
+        check (processor->getActiveInstrumentSample (0)->slices.size() == 3, "Slicer: manuella markörer ger skivor (0 + två)");
+
+        auto other = std::make_unique<InstrumentProcessor>();
+        other->instrumentSamplesFromValueTree (processor->instrumentSamplesToValueTree());
+        check (other->getActiveInstrumentSample (0) != nullptr && other->getActiveInstrumentSample (0)->slices == processor->getActiveInstrumentSample (0)->slices
+               && other->instrumentSampleSlot (0).sliceMode() == SampleSlicing::manual, "Slicer: skivinställningarna följer med projektet");
+
+        processor->clearInstrumentSample (0);
+        check (processor->getActiveInstrumentSample (0) == nullptr, "Slicer: tom sampling är tyst (ingen sampling, inga skivor)");
+    }
+
+    // 4a2. Slicer i ljudet: Grid 8 och MAP TO 2 ger tonerna 2..9 var sin skiva, tonerna utanför är tysta, REVERSE låter annorlunda
+    //      och med slicern av spelas hela samplingen som förut.
+    {
+        auto processor = std::make_unique<InstrumentProcessor>();
+        using F = InstrumentField;
+        Scenarios::setInstrument (*processor, 0, F::on, 1.0f);
+        for (const auto field : { F::aOn, F::bOn, F::cOn })
+            Scenarios::setInstrument (*processor, 0, field, 0.0f);
+        Scenarios::setInstrument (*processor, 0, F::sub, 0.0f);
+        Scenarios::setInstrument (*processor, 0, F::noise, 0.0f);
+        Scenarios::setInstrument (*processor, 0, F::sampleOn, 1.0f);
+        Scenarios::setInstrument (*processor, 0, F::sampleLevel, 1.0f);
+        processor->loadInstrumentSample (0, Scenarios::writeTestWav ("persist_slicer_audio", 110.0, 0.6));
+        for (int other = 1; other < 3; ++other)
+            Scenarios::setInstrument (*processor, other, F::on, 0.0f);
+        auto* kick = processor->apvts.getParameter (ParamID::kickOn);
+        kick->setValueNotifyingHost (kick->convertTo0to1 (0.0f));
+
+        const std::array<int, 10> pitches { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 }; // 1 och 10 ligger utanför skivorna 2..9
+        processor->pattern.clearNotes (0);
+        for (int bar = 0; bar < (int) pitches.size(); ++bar)
+            processor->pattern.addNote (0, bar * Pattern::ticksPerBar, Pattern::ticksPerBar - 12, pitches[(size_t) bar]);
+        processor->pattern.setCustom (0, true);
+        processor->patternChanged();
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (600);
+
+        const auto bpm = 140.0, rate = 48000.0;
+        const auto barSamples = (int) (rate * 60.0 / bpm * 4.0);
+        const auto window = (int) (0.07 * rate); // en skiva är 0,6 s / 8 = 75 ms
+        auto render = [&]
+        {
+            OfflineRender::Settings settings;
+            settings.sampleRate = rate;
+            settings.bpm = bpm;
+            settings.bars = (int) pitches.size();
+            settings.notes = { 52 };
+            return OfflineRender::render (*processor, settings);
+        };
+        auto peakOf = [&] (const juce::AudioBuffer<float>& audio, int bar) { return audio.getMagnitude (0, bar * barSamples, window); };
+        auto differs = [&] (const juce::AudioBuffer<float>& a, int barA, const juce::AudioBuffer<float>& b, int barB)
+        {
+            for (int i = 0; i < window; ++i)
+                if (std::abs (a.getSample (0, barA * barSamples + i) - b.getSample (0, barB * barSamples + i)) > 1.0e-4f)
+                    return true;
+            return false;
+        };
+
+        const auto whole = render(); // slicern av: hela samplingen i varje takt
+        Scenarios::setInstrument (*processor, 0, F::slicerOn, 1.0f);
+        Scenarios::setInstrument (*processor, 0, F::slicerMapTo, 2.0f);
+        const auto sliced = render();
+
+        // Diagnos: peak per takt (fönstret är 70 ms) så att loggen visar varför ett krav faller.
+        for (int bar = 0; bar < (int) pitches.size(); ++bar)
+            std::printf ("  slicer takt %d (ton %d): av %.5f  på %.5f\n", bar, pitches[(size_t) bar], peakOf (whole, bar), peakOf (sliced, bar));
+        std::printf ("  skivor: %d, hela samplingen %d samplar, fönster %d samplar\n",
+                     (int) processor->getActiveInstrumentSample (0)->slices.size(), processor->getActiveInstrumentSample (0)->audio.getNumSamples(), window);
+
+        auto audible = true;
+        for (int bar = 1; bar <= 8; ++bar)
+            audible = audible && peakOf (sliced, bar) > 0.001f;
+        check (audible, "Slicer: tonerna 2..9 spelar var sin skiva (hörbara)");
+        check (peakOf (sliced, 0) < 1.0e-4f && peakOf (sliced, 9) < 1.0e-4f, "Slicer: tonen före och efter skivorna är tyst (ingen wrap)");
+        check (differs (sliced, 1, sliced, 2) && differs (sliced, 2, sliced, 5) && peakOf (sliced, 1) > peakOf (sliced, 8), "Slicer: skivorna har olika innehåll (decay-tonen sjunker)");
+        check (differs (whole, 1, sliced, 2) && peakOf (whole, 0) > 0.001f, "Slicer av: hela samplingen spelas (tonen 1 hörs), skivljudet är annat");
+
+        Scenarios::setInstrument (*processor, 0, F::slicerReverse, 1.0f);
+        const auto reversed = render();
+        std::printf ("  REVERSE takt 1: peak framåt %.5f, bakåt %.5f\n", peakOf (sliced, 1), peakOf (reversed, 1));
+        check (differs (sliced, 1, reversed, 1), "Slicer: REVERSE låter annorlunda än framåt");
+
+        Scenarios::setInstrument (*processor, 0, F::slicerOn, 0.0f);
+        Scenarios::setInstrument (*processor, 0, F::slicerReverse, 0.0f);
+        const auto again = render();
+        auto same = whole.getNumSamples() == again.getNumSamples();
+        for (int i = 0; same && i < whole.getNumSamples(); ++i)
+            same = whole.getSample (0, i) == again.getSample (0, i);
+        std::printf ("  slicer av igen: längd %d mot %d\n", again.getNumSamples(), whole.getNumSamples());
+        check (same, "Slicer av igen: samma ljud som före (bit för bit)");
+    }
+
     // 4b. Morph av: en WAV med fyra cykler ger fyra steg, och Morph av + antalet steg följer med projektet, Full- och instrument-presets (annars låter
     //     ett projekt annorlunda efter omladdning).
     {
@@ -193,6 +301,65 @@ int persistTest()
                "spara och ladda: ENV 3 Sync och 1/4 följer med, ENV 2 är kvar i ms");
     }
 
+    // 4e. Live Code (steg D): koden och låsen följer med projektet och Full-presets; saknas elementet rörs inget; <LiveCode> sparas sist och bara när det behövs.
+    {
+        auto processor = std::make_unique<InstrumentProcessor>();
+        juce::MemoryBlock plain;
+        processor->getStateInformation (plain);
+        auto plainXml = juce::AudioProcessor::getXmlFromBinary (plain.getData(), (int) plain.getSize());
+        check (plainXml != nullptr && plainXml->getChildByName ("LiveCode") == nullptr, "standardtillstånd: inget <LiveCode> sparas");
+
+        processor->setLiveCodeText ("$: s(\"bd*4\")\n// åäö");
+        processor->liveCodeLocks = (1 << 2) | (1 << 10) | (1 << 12); // bit 12 ligger utanför de 11 giltiga
+        auto* modArgs = new juce::DynamicObject();
+        modArgs->setProperty ("code", "note(\"c2\").lfo(\"bass1Cutoff\",2,0.5).s(\"i1\")");
+        modArgs->setProperty ("cycles", 1);
+        modArgs->setProperty ("overwrite", true);
+        ToolLayer tools (*processor);
+        const auto modResult = tools.call ("live_code_create", juce::var (modArgs));
+        check ((bool) modResult["ok"] && ! processor->codeMods.empty(), "testläge: CODE-modulering är aktiv före sparning");
+        processor->liveCodeCodeLocks = 1 << 3; // F2: lås från koden sparas aldrig
+        processor->liveCodeCodeNoteLocks = 1 << 4;
+        juce::MemoryBlock saved;
+        processor->getStateInformation (saved);
+        auto xml = juce::AudioProcessor::getXmlFromBinary (saved.getData(), (int) saved.getSize());
+        check (xml != nullptr && xml->getNumChildElements() > 0 && xml->getChildElement (xml->getNumChildElements() - 1)->hasTagName ("LiveCode"), "<LiveCode> sparas sist");
+        auto savedCodeRoute = false;
+        if (xml != nullptr)
+            if (auto* routes = xml->getChildByName (ModRoutes::treeType.toString()))
+                for (auto* route = routes->getFirstChildElement(); route != nullptr; route = route->getNextElement())
+                    savedCodeRoute = savedCodeRoute || Modulation::isCodeSource (route->getIntAttribute ("source"));
+        check (! savedCodeRoute, "CODE-modulationsrutter sparas aldrig");
+
+        auto copy = copyOf (*processor);
+        check (copy->getLiveCodeText() == processor->getLiveCodeText(), "spara och ladda: koden följer med");
+        check (copy->liveCodeLocks.load() == ((1 << 2) | (1 << 10)), "spara och ladda: låsen följer med (bit utanför 11 bitar tas bort)");
+        check (copy->liveCodeOwned.load() == 0, "inget ägs efter laddning (LIVE startar aldrig av sig själv)");
+        check (copy->liveCodeCodeLocks.load() == 0 && copy->liveCodeCodeNoteLocks.load() == 0 && copy->liveCodeLocks.load() == ((1 << 2) | (1 << 10)), "kodlås sparas aldrig; handlåsen följer med");
+        auto restoredCodeRoute = false;
+        for (const auto& route : copy->modRoutes.routes)
+            restoredCodeRoute = restoredCodeRoute || Modulation::isCodeSource (route.source.load());
+        check (copy->codeMods.empty() && restoredCodeRoute == false, "laddning återställer inga CODE-modulationer");
+
+        // Ett gammalt tillstånd utan elementet lämnar användarens kod och lås orörda.
+        copy->setLiveCodeText ("$: s(\"hh*8\")");
+        copy->setStateInformation (plain.getData(), (int) plain.getSize());
+        check (copy->getLiveCodeText() == "$: s(\"hh*8\")" && copy->liveCodeLocks.load() == ((1 << 2) | (1 << 10)), "tillstånd utan <LiveCode> lämnar koden och låsen som de var");
+
+        // Full-preset har med koden; instrument-preset inte.
+        check (processor->saveUserPreset (Presets::Section::full, "__persist_lc__"), "Full-preset med Live Code sparas");
+        check (processor->saveUserPreset (Presets::Section::bass, "__persist_lc_i__", 0), "instrument-preset sparas");
+        auto other = std::make_unique<InstrumentProcessor>();
+        other->loadUserPreset (Presets::Section::bass, processor->findUserPreset (Presets::Section::bass, "__persist_lc_i__"), 0);
+        check (other->getLiveCodeText().isEmpty() && other->liveCodeLocks.load() == 0, "instrument-preset rör inte Live Code");
+        other->loadUserPreset (Presets::Section::full, processor->findUserPreset (Presets::Section::full, "__persist_lc__"));
+        check (other->getLiveCodeText() == processor->getLiveCodeText() && other->liveCodeLocks.load() == ((1 << 2) | (1 << 10)), "Full-preset ger koden och låsen");
+
+        // Init rör inte användarens kod och kraschar inte.
+        other->loadFactoryPreset (Presets::Section::full, 0);
+        check (other->getLiveCodeText() == processor->getLiveCodeText(), "Init lämnar Live Code-koden orörd");
+    }
+
     // 4d. Filtermodellerna (fas D2): modell och P1/P2 följer med projektet; standard är Kickbase med P1 0 och P2 1 (gamla projekt utan fälten).
     {
         auto processor = std::make_unique<InstrumentProcessor>();
@@ -233,6 +400,57 @@ int persistTest()
                    && std::abs (value (*copy, F::filter2P1) - 0.6f) < 1.0e-4f && std::abs (value (*copy, F::filter2P2) - 0.2f) < 1.0e-4f
                    && (int) value (*copy, F::filterRouting) == 1 && std::abs (value (*copy, F::filterMix) - 0.45f) < 1.0e-4f,
                "spara och ladda: Filter 2 (på, Comb, LP 12, 777 Hz, Parallel, MIX 45 %) följer med");
+    }
+
+    // fas S: FILTER av/på och per källa: standard (på, SAMPLE av) och spara/ladda.
+    {
+        auto processor = std::make_unique<InstrumentProcessor>();
+        using F = InstrumentField;
+        auto value = [] (PluginBase& p, F field) { return p.apvts.getRawParameterValue (ParamID::bass (3, field))->load(); };
+        check (value (*processor, F::filterOn) > 0.5f && value (*processor, F::filterOsc1) > 0.5f && value (*processor, F::filterOsc2) > 0.5f
+                   && value (*processor, F::filterOsc3) > 0.5f && value (*processor, F::filterSample) < 0.5f && value (*processor, F::filterNoise) > 0.5f,
+               "FILTER på för alla källor utom SAMPLE som standard");
+        Scenarios::setInstrument (*processor, 3, F::filterOn, 0.0f);
+        Scenarios::setInstrument (*processor, 3, F::filterOsc2, 0.0f);
+        Scenarios::setInstrument (*processor, 3, F::filterSample, 1.0f);
+        auto copy = copyOf (*processor);
+        check (value (*copy, F::filterOn) < 0.5f && value (*copy, F::filterOsc1) > 0.5f && value (*copy, F::filterOsc2) < 0.5f
+                   && value (*copy, F::filterSample) > 0.5f && value (*copy, F::filterNoise) > 0.5f,
+               "spara och ladda: FILTER av/på och per källa följer med");
+        Scenarios::setInstrument (*processor, 3, F::noiseType, 3.0f);
+        check (value (*copyOf (*processor), F::noiseType) > 2.5f && value (*copyOf (*processor), F::noiseType) < 3.5f, "spara och ladda: NOISE TYPE följer med");
+        Scenarios::setInstrument (*processor, 3, F::warpEnvSource, 1.0f);
+        Scenarios::setInstrument (*processor, 3, F::warpEnvDecay, 12.0f);
+        auto warpCopy = copyOf (*processor);
+        check (value (*warpCopy, F::warpEnvSource) > 0.5f && value (*warpCopy, F::warpEnvSource) < 1.5f && std::abs (value (*warpCopy, F::warpEnvDecay) - 12.0f) < 0.1f,
+               "spara och ladda: WARP ENV-källa och Direct-decay följer med");
+        Scenarios::setInstrument (*processor, 3, F::polarity, 1.0f);
+        Scenarios::setInstrument (*processor, 3, F::phaseDeg, 123.4f);
+        Scenarios::setInstrument (*processor, 3, F::nudgeMs, -0.75f);
+        auto phaseCopy = copyOf (*processor);
+        check (value (*phaseCopy, F::polarity) > 0.5f && std::abs (value (*phaseCopy, F::phaseDeg) - 123.4f) < 0.11f && std::abs (value (*phaseCopy, F::nudgeMs) + 0.75f) < 0.03f,
+               "spara och ladda: POLARITY, START PHASE och NUDGE följer med");
+        check (value (*copyOf (*std::make_unique<InstrumentProcessor>()), F::polarity) < 0.5f, "PH: nya parametrar har standardvärden som ger dagens ljud");
+        {
+            auto fresh = std::make_unique<InstrumentProcessor>();
+            check (value (*copyOf (*fresh), F::fmOn) < 0.5f && value (*copyOf (*fresh), F::fmLevel) < 1.0e-6f && value (*copyOf (*fresh), F::fmFilter) > 0.5f,
+                   "S2: FM är av som standard (nivå 0, genom filtren)");
+        }
+        Scenarios::setInstrument (*processor, 3, F::fmOn, 1.0f);
+        Scenarios::setInstrument (*processor, 3, F::fmLevel, 0.6f);
+        Scenarios::setInstrument (*processor, 3, F::fmRatio, 3.5f);
+        Scenarios::setInstrument (*processor, 3, F::fmIndex, 0.75f);
+        Scenarios::setInstrument (*processor, 3, F::fmEnvAmount, 0.4f);
+        Scenarios::setInstrument (*processor, 3, F::fmEnvTime, 120.0f);
+        Scenarios::setInstrument (*processor, 3, F::fmSemis, -12.0f);
+        Scenarios::setInstrument (*processor, 3, F::fmPreset, 2.0f);
+        Scenarios::setInstrument (*processor, 3, F::fmFilter, 0.0f);
+        auto fmCopy = copyOf (*processor);
+        check (value (*fmCopy, F::fmOn) > 0.5f && std::abs (value (*fmCopy, F::fmLevel) - 0.6f) < 0.01f && std::abs (value (*fmCopy, F::fmRatio) - 3.5f) < 0.01f
+                   && std::abs (value (*fmCopy, F::fmIndex) - 0.75f) < 0.01f && std::abs (value (*fmCopy, F::fmEnvAmount) - 0.4f) < 0.01f
+                   && std::abs (value (*fmCopy, F::fmEnvTime) - 120.0f) < 0.5f && std::abs (value (*fmCopy, F::fmSemis) + 12.0f) < 0.01f
+                   && value (*fmCopy, F::fmPreset) > 1.5f && value (*fmCopy, F::fmPreset) < 2.5f && value (*fmCopy, F::fmFilter) < 0.5f,
+               "spara och ladda: alla FM-parametrar följer med");
     }
 
     // 5. Preset-laddningen sätter varje parameter en gång: en ratt som ändras passerar inte sitt standardvärde på vägen.
@@ -428,6 +646,44 @@ int persistTest()
         check (fx->availableLfos() == 3 && fx->setLfoActive (3, true) == 0 && fx->modulator.activeMask.load() == 7u, "FX: bara LFO 1-3");
     }
 
+    // Fas L: AMP ENV / FILT ENV är källa 54-73. Ett äldre projekt (källor 0-53) läses oförändrat, och de nya sparas och laddas.
+    {
+        auto processor = std::make_unique<InstrumentProcessor>();
+        const auto parameters = processor->getParameters();
+        juce::ValueTree old (ModRoutes::treeType);
+        for (int source : { 0, 6, 7, 46, 47, 53 })
+        {
+            juce::ValueTree child ("Route");
+            child.setProperty ("source", source, nullptr);
+            child.setProperty ("target", ParamID::bass (0, InstrumentField::cutoff), nullptr);
+            child.setProperty ("amount", 0.25, nullptr);
+            old.appendChild (child, nullptr);
+        }
+        processor->modRoutes.fromValueTree (old, parameters);
+        auto oldOk = true;
+        for (int r = 0, i = 0; r < Modulation::maxRoutes; ++r)
+            if (const auto s = processor->modRoutes.routes[(size_t) r].source.load(); s >= 0)
+                oldOk = oldOk && s == old.getChild (i++)["source"].operator int();
+        check (oldOk && processor->modRoutes.toValueTree (parameters).isEquivalentTo (old), "ett äldre projekt med källor 0-53 läses och skrivs oförändrat");
+
+        const auto amp = Modulation::instrumentSource (1, Modulation::instrumentSources), filt = Modulation::instrumentSource (9, Modulation::instrumentSources + 1);
+        check (amp == 56 && filt == 73 && Modulation::sourceName (amp) == "INSTR 2 AMP ENV" && Modulation::sourceName (filt) == "INSTR 10 FILT ENV",
+               "AMP ENV/FILT ENV har nummer 54 + instrument x 2 (+1) och namn med instrumentet");
+        int cutoffIndex = 0;
+        for (int i = 0; i < parameters.size(); ++i)
+            if (auto* withId = dynamic_cast<juce::AudioProcessorParameterWithID*> (parameters[i]); withId != nullptr && withId->paramID == ParamID::bass (0, InstrumentField::cutoff))
+                cutoffIndex = i;
+        processor->modRoutes.clear();
+        processor->modRoutes.add (amp, cutoffIndex, 0.5f);
+        processor->modRoutes.add (filt, cutoffIndex, -0.3f);
+        auto copy = copyOf (*processor);
+        std::vector<int> sources;
+        for (const auto& route : copy->modRoutes.routes)
+            if (route.source.load() >= 0)
+                sources.push_back (route.source.load());
+        check (sources == std::vector<int> { amp, filt }, "kopplingar från AMP ENV/FILT ENV sparas och laddas");
+    }
+
     // Fas P: ackord följer med projektet; en ton utan ackord skrivs som förut (fem fält) och en ton som läggs till på nytt ärver inget ackord.
     {
         auto processor = std::make_unique<InstrumentProcessor>();
@@ -442,6 +698,334 @@ int persistTest()
         check (! copy->pattern.note (1, 0).hasChord(), "en ny ton ärver inte ett gammalt ackord");
     }
 
+    // kbproj: projektfilen (XML) ger samma tillstånd tillbaka; fel filer avvisas utan att något ändras.
+    {
+        auto processor = std::make_unique<InstrumentProcessor>();
+        processor->pattern.clearNotes (1);
+        processor->pattern.addNote (1, 0, 48, 2);
+        processor->loadUserTable (1, 0, tableFile);
+        const auto file = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("persist_test.kbproj");
+        juce::String error;
+        check (ProjectFile::save (*processor, file, "0.0.0", error), "kbproj: projektet sparas");
+        const auto text = file.loadFileAsString();
+        check (text.contains ("kbprojVersion=\"1\"") && text.contains ("pluginVersion=\"0.0.0\""), "kbproj: filen är XML-text med versionsattribut");
+
+        auto loaded = std::make_unique<InstrumentProcessor>();
+        check (ProjectFile::load (*loaded, loaded->apvts.state.getType(), file, error), "kbproj: projektet öppnas");
+        juce::MemoryBlock before, after;
+        processor->getStateInformation (before);
+        loaded->getStateInformation (after);
+        check (before == after, "kbproj: öppnat projekt ger samma tillstånd som det sparade (byte för byte)");
+        check (loaded->pattern.note (1, 0).length == 48 && loaded->userTable (1, 0) != nullptr, "kbproj: toner och inbäddad tabell följer med");
+
+        // Fel filer: inget ändras och felet förklaras.
+        juce::MemoryBlock untouched;
+        loaded->getStateInformation (untouched);
+        auto rejects = [&] (const juce::String& content, const juce::String& what)
+        {
+            const auto bad = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("persist_bad.kbproj");
+            bad.replaceWithText (content);
+            juce::String why;
+            juce::MemoryBlock now;
+            const auto ok = ProjectFile::load (*loaded, loaded->apvts.state.getType(), bad, why);
+            loaded->getStateInformation (now);
+            check (! ok && why.isNotEmpty() && now == untouched, "kbproj avvisar " + what + ": " + why);
+            bad.deleteFile();
+        };
+        rejects ("inte xml alls", "text som inte är XML");
+        rejects ("<Annat kbprojVersion=\"1\"/>", "fel rotelement");
+        rejects (text.replace ("kbprojVersion=\"1\"", "kbprojVersion=\"99\""), "ett nyare format");
+        rejects (text.replace ("kbprojVersion=\"1\"", ""), "en fil utan version");
+        check (! ProjectFile::load (*loaded, loaded->apvts.state.getType(), file.getSiblingFile ("finns_inte.kbproj"), error) && error.isNotEmpty(), "kbproj: saknad fil ger ett fel");
+        file.deleteFile();
+    }
+
     std::puts (failed ? "FEL: sparandetestet misslyckades" : "Sparandetestet gick igenom");
+    return failed ? 1 : 0;
+}
+
+// `tool fulltest` (E0 punkt 2): "allt på"-round-trip. Fyller varje sorts data, och kontrollerar att projektet (get/setStateInformation) och
+// Full-presetet (buildPresetXml/loadUserPreset) ger tillbaka exakt samma XML. Bara test: ingen ändring i PluginBase.
+int fullStateTest()
+{
+    juce::ScopedJuceInitialiser_GUI gui;
+    Scenarios::TemporaryUserFolders folders;
+    auto failed = false;
+    auto check = [&failed] (bool ok, const juce::String& what) { std::printf ("%s: %s\n", ok ? "ok" : "FEL", what.toRawUTF8()); failed |= ! ok; };
+
+    // KÄNDA LUCKOR (docs/work/E0-report.md, fynd 1 och 2): instrumentnamn, färger och previewNote sparas i projektet men inte i Full-presetet.
+    // De kontrollerna är AVSTÄNGDA (räknas inte som fel) tills Tobias beslutat om presetformatet; sätt till true för att slå på dem.
+    constexpr bool strictKnownPresetGaps = false;
+    auto gap = [&] (bool ok, const juce::String& what)
+    {
+        if (strictKnownPresetGaps)
+            check (ok, what);
+        else
+            std::printf ("%s: [avstängd, känd lucka] %s\n", ok ? "ok (kan slås på)" : "LUCKA", what.toRawUTF8());
+    };
+
+    auto stateXml = [] (PluginBase& p) -> std::unique_ptr<juce::XmlElement>
+    {
+        juce::MemoryBlock state;
+        p.getStateInformation (state);
+        return juce::AudioProcessor::getXmlFromBinary (state.getData(), (int) state.getSize());
+    };
+    // Namnger de barn (i ordning) som skiljer sig, så att ett fel pekar på rätt del.
+    auto describeDiff = [] (const juce::XmlElement& a, const juce::XmlElement& b)
+    {
+        juce::StringArray differing;
+        const auto count = std::max (a.getNumChildElements(), b.getNumChildElements());
+        for (int i = 0; i < count; ++i)
+        {
+            const auto* x = a.getChildElement (i);
+            const auto* y = b.getChildElement (i);
+            if (x == nullptr || y == nullptr || ! x->isEquivalentTo (y, false))
+                differing.add ((x != nullptr ? x->getTagName() + ":" + x->getStringAttribute ("id") : juce::String ("saknas")) + " #" + juce::String (i));
+        }
+        return differing.joinIntoString (", ");
+    };
+
+    const auto tableFile = Scenarios::writeTestWav ("full_table", 21.533, 0.2);
+    const auto kickFile = Scenarios::writeTestWav ("full_kick", 55.0, 0.3);
+    const auto bassFile = Scenarios::writeTestWav ("full_bass", 110.0, 0.3);
+    const std::vector<NodeEnvelope::Point> ramp { { 0.0f, 0.0f, 0.0f }, { 1.0f, 1.0f, 0.0f } };
+
+    auto original = std::make_unique<InstrumentProcessor>(); // (på heapen: processorn är för stor för stacken)
+    {
+        auto& p = *original;
+        using F = InstrumentField;
+
+        // Parametrar på flera instrument.
+        for (int layer = 0; layer < ParamID::numInstrumentLayers; layer += 3)
+        {
+            Scenarios::setInstrument (p, layer, F::cutoff, 700.0f + 100.0f * (float) layer);
+            Scenarios::setInstrument (p, layer, F::filterModel, 3.0f);
+            Scenarios::setInstrument (p, layer, F::filter2On, 1.0f);
+        }
+
+        // Mönster: toner, ackord och en låst raddlängd på flera rader.
+        p.pattern.clearNotes (0);
+        p.pattern.addNote (0, 0, 48, 2).setChord ({ 0, 7, 3 });
+        p.pattern.addNote (0, 96, 24, 5);
+        p.pattern.addNote (4, 48, 24, -3);
+        p.pattern.addNote (Pattern::kickLayer, 0, 96, 0);
+        p.pattern.setManualBars (Pattern::kickLayer, 2);
+        p.pattern.setExtraBars (4, 2);
+
+        // Samplingar: kick och instrument 2, samt egna wavetables på flera lager och oscillatorer.
+        check (p.loadClickSample (kickFile), "kick-sampling laddas");
+        check (p.loadInstrumentSample (1, bassFile), "instrument-sampling laddas på instrument 2");
+        check (p.loadUserTable (0, 0, tableFile) && p.loadUserTable (3, 2, tableFile) && p.loadUserTable (9, 1, tableFile), "egna wavetables laddas (instrument 1, 4 och 10)");
+
+        // Kickens envelopes och sidechainkurvan.
+        p.kickPitchEnv.setPoints ({ { 0.0f, 50.0f, -0.4f }, { 0.08f, 0.0f, 0.0f } });
+        p.kickAmpEnv.setPoints ({ { 0.0f, 0.0f, 0.0f }, { 0.001f, 1.0f, 0.0f }, { 0.2f, 0.0f, 0.0f } });
+        p.sidechainCurve.setPoints ({ { 0.0f, 1.0f, 0.0f }, { 0.3f, 0.4f, -0.5f }, { 1.0f, 0.0f, 0.0f } });
+
+        // LFO 4-10 på, med egna kurvor, parametrar och kopplingar.
+        for (int lfo = 3; lfo < Modulation::maxLfos; ++lfo)
+        {
+            p.setLfoActive (lfo, true);
+            p.lfoCurves[(size_t) lfo].setPoints (ramp);
+        }
+        auto* rate = p.apvts.getParameter (Modulation::paramID (8, "Rate"));
+        rate->setValueNotifyingHost (rate->convertTo0to1 (3.0f));
+        auto target = [&p] (int nth)
+        {
+            const auto& parameters = p.getParameters();
+            for (int i = 0; i < parameters.size(); ++i)
+                if (auto* r = dynamic_cast<juce::RangedAudioParameter*> (parameters[i]); r != nullptr && Modulation::isModulatable (*r) && nth-- == 0)
+                    return i;
+            return -1;
+        };
+        p.modRoutes.add (Modulation::lfoSource (0), target (0), 0.5f);
+        p.modRoutes.add (Modulation::lfoSource (4), target (1), -0.25f);
+        p.modRoutes.add (Modulation::lfoSource (8), target (2), 0.75f);
+
+        // Live Code: text och lås.
+        p.setLiveCodeText ("$: note(\"c2 eb2\").s(\"i1\")\n// åäö");
+        p.liveCodeLocks = (1 << 2) | (1 << 10);
+
+        // Instrumentens namn och färger, och förhandsspelningens ton.
+        for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
+        {
+            p.setLayerName (layer, "NAME" + juce::String (layer + 1));
+            p.setLayerColour (layer, 0xff102030u + (juce::uint32) layer * 0x010101u);
+        }
+        p.previewNote = 67;
+    }
+
+    // 1. Projektet: det sparade tillståndet är identiskt efter spara och ladda.
+    {
+        auto before = stateXml (*original);
+        check (before != nullptr, "tillståndet går att läsa som XML");
+        auto copy = copyOf (*original);
+        auto after = stateXml (*copy);
+        check (before != nullptr && after != nullptr, "kopian har ett tillstånd");
+        if (before != nullptr && after != nullptr)
+            check (before->isEquivalentTo (after.get(), false),
+                   "projekt: sparat -> laddat -> sparat ger samma XML" + (before->isEquivalentTo (after.get(), false) ? juce::String() : " (skiljer: " + describeDiff (*before, *after) + ")"));
+
+        for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
+            check (copy->getLayerName (layer) == original->getLayerName (layer) && copy->getLayerColour (layer) == original->getLayerColour (layer),
+                   "projekt: namn och färg på instrument " + juce::String (layer + 1));
+        check (copy->previewNote.load() == 67, "projekt: previewNote");
+        check (copy->userTable (0, 0) != nullptr && copy->userTable (3, 2) != nullptr && copy->userTable (9, 1) != nullptr && copy->userTable (1, 0) == nullptr, "projekt: egna wavetables på rätt plats");
+        check (copy->getClickSampleName() == original->getClickSampleName() && copy->getInstrumentSampleName (1) == original->getInstrumentSampleName (1)
+                   && ! copy->getClickSampleName().isEmpty() && ! copy->getInstrumentSampleName (1).isEmpty(),
+               "projekt: kick- och instrumentsampling");
+        check (copy->getLiveCodeText() == original->getLiveCodeText() && copy->liveCodeLocks.load() == ((1 << 2) | (1 << 10)), "projekt: Live Code och lås");
+        check (copy->modulator.activeMask.load() == original->modulator.activeMask.load() && copy->lfoRouteCount (8) == 1 && copy->lfoRouteCount (4) == 1, "projekt: aktiva LFO:er och kopplingar");
+        check (copy->pattern.note (0, 0).getChord() == original->pattern.note (0, 0).getChord() && copy->pattern.note (0, 0).getChord() != Pattern::Chord {}
+                   && copy->pattern.lengthBars (Pattern::kickLayer) == 2,
+               "projekt: mönster med ackord och radlängd");
+    }
+
+    // 2. Full-presetet: samma innehåll tillbaka i en ny instans (jämförs som preset-XML, namnet borträknat).
+    {
+        check (original->saveUserPreset (Presets::Section::full, "__full_all__"), "Full-preset sparas");
+        const auto file = original->findUserPreset (Presets::Section::full, "__full_all__");
+        auto other = std::make_unique<InstrumentProcessor>();
+        check (other->loadUserPreset (Presets::Section::full, file), "Full-preset laddas");
+
+        auto sent = original->buildPresetXml (Presets::Section::full, 0);
+        auto got = other->buildPresetXml (Presets::Section::full, 0);
+        check (sent != nullptr && got != nullptr, "preset-XML byggs för båda");
+        if (sent != nullptr && got != nullptr)
+        {
+            sent->removeAttribute ("name");
+            got->removeAttribute ("name");
+            const auto same = sent->isEquivalentTo (got.get(), false);
+            check (same, "Full-preset: sparat -> laddat -> byggt ger samma XML" + (same ? juce::String() : " (skiljer: " + describeDiff (*sent, *got) + ")"));
+            check (sent->getIntAttribute ("version", -1) == got->getIntAttribute ("version", -1), "Full-preset: versionsattributet är detsamma (OBS: version=\"1\" har aldrig höjts, E0 fynd 5)");
+        }
+
+        check (other->userTable (0, 0) != nullptr && other->userTable (3, 2) != nullptr && other->userTable (9, 1) != nullptr, "Full-preset: egna wavetables på rätt plats");
+        check (! other->getClickSampleName().isEmpty() && ! other->getInstrumentSampleName (1).isEmpty(), "Full-preset: kick- och instrumentsampling");
+        check (other->getLiveCodeText() == original->getLiveCodeText() && other->liveCodeLocks.load() == ((1 << 2) | (1 << 10)), "Full-preset: Live Code och lås");
+        check (other->modulator.activeMask.load() == original->modulator.activeMask.load() && other->lfoRouteCount (8) == 1, "Full-preset: aktiva LFO:er och kopplingar");
+        check (other->pattern.note (0, 0).getChord() == original->pattern.note (0, 0).getChord() && other->pattern.note (0, 0).getChord() != Pattern::Chord {}
+                   && other->pattern.lengthBars (Pattern::kickLayer) == 2,
+               "Full-preset: mönster med ackord och radlängd");
+
+        // AVSTÄNGDA: sparas i projektet men inte i Full-presetet (E0 fynd 1 och 2). Beslut väntar på Tobias.
+        auto namesAndColours = true;
+        for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
+            namesAndColours = namesAndColours && other->getLayerName (layer) == original->getLayerName (layer) && other->getLayerColour (layer) == original->getLayerColour (layer);
+        gap (namesAndColours, "Full-preset: instrumentnamn och färger (E0 fynd 1)");
+        gap (other->previewNote.load() == 67, "Full-preset: previewNote (E0 fynd 2)");
+    }
+
+    std::puts (failed ? "FEL: allt-på-testet misslyckades" : "Allt-på-testet gick igenom (kända luckor är avstängda, se raderna med LUCKA)");
+    return failed ? 1 : 0;
+}
+
+// `tool rendertooltest`: render_preview via verktygslagret är deterministiskt. Samma tillstånd ger samma mått och en bytelik WAV, i samma instans,
+// efter en ändring + undo och i en ny instans; och rendering ändrar inte tillståndet. Det som skillens loop (render, analysera, justera) bygger på.
+int renderToolTest()
+{
+    juce::ScopedJuceInitialiser_GUI gui;
+    Scenarios::TemporaryUserFolders folders;
+    auto failed = false;
+    auto check = [&failed] (bool ok, const juce::String& what) { std::printf ("%s: %s\n", ok ? "ok" : "FEL", what.toRawUTF8()); failed |= ! ok; };
+
+    struct Rendered { bool ok = false; juce::String metrics; juce::File wav; };
+    auto render = [] (ToolLayer& tools, const juce::String& name, const juce::String& part)
+    {
+        const auto args = juce::JSON::parse ("{\"bars\":2,\"spectrogram\":false,\"name\":\"" + name + "\",\"part\":\"" + part + "\"}");
+        const auto result = tools.call ("render_preview", args);
+        Rendered r;
+        r.ok = (bool) result["ok"];
+        const auto data = result["data"];
+        r.metrics = juce::JSON::toString (data["metrics"], true) + juce::JSON::toString (data["checks"], true);
+        r.wav = juce::File (data["wav_file"].toString());
+        return r;
+    };
+    auto same = [] (const Rendered& a, const Rendered& b)
+    {
+        return a.ok && b.ok && a.metrics == b.metrics && a.wav.existsAsFile() && b.wav.existsAsFile() && a.wav.getSize() > 1000 && a.wav.hasIdenticalContentTo (b.wav);
+    };
+    auto stateText = [] (ToolLayer& tools)
+    {
+        return juce::JSON::toString (tools.call ("get_state", juce::JSON::parse ("{\"all_parameters\":true}")), true);
+    };
+
+    auto processor = std::make_unique<InstrumentProcessor>();
+    ToolLayer tools (*processor);
+
+    const auto before = stateText (tools);
+    for (const char* part : { "", "kick", "bass" })
+    {
+        const juce::String label = juce::String (part).isEmpty() ? juce::String ("full") : juce::String (part);
+        const auto a = render (tools, "det-a-" + label, part);
+        const auto b = render (tools, "det-b-" + label, part);
+        check (a.ok && a.wav.getSize() > 1000, "render_preview " + label + ": ger en WAV");
+        check (same (a, b), "render_preview " + label + ": två anrop i rad ger samma mått och samma WAV");
+    }
+    check (stateText (tools) == before, "rendering ändrar inte tillståndet (get_state före och efter)");
+
+    // En ny instans med samma (Init-)tillstånd.
+    {
+        auto other = std::make_unique<InstrumentProcessor>();
+        ToolLayer otherTools (*other);
+        check (same (render (tools, "det-a-inst", ""), render (otherTools, "det-b-inst", "")), "ny instans med samma tillstånd ger samma rendering");
+    }
+
+    // Provet ser en ändring, och undo ger tillbaka exakt det första.
+    {
+        const auto base = render (tools, "det-base", "");
+        const auto set = tools.call ("set_parameters", juce::JSON::parse ("{\"values\":{\"bass1Cutoff\":250,\"kickDrive\":0.4}}"));
+        check ((bool) set["ok"], "set_parameters tas emot");
+        const auto changed = render (tools, "det-changed", "");
+        check (! same (base, changed), "en ändrad parameter syns i renderingen (testet kan se skillnad)");
+        check ((bool) tools.call ("undo", juce::JSON::parse ("{}"))["ok"], "undo lyckas");
+        check (same (base, render (tools, "det-undone", "")), "efter undo ger rendering samma mått och WAV som före ändringen");
+
+        // compare_renders: ändringen syns som delta, två lika renderingar ger noll.
+        const auto diff = tools.call ("compare_renders", juce::JSON::parse ("{\"before\":\"det-base\",\"after\":\"det-changed\"}"));
+        check ((bool) diff["ok"] && diff["data"]["metric_deltas"].getDynamicObject() != nullptr, "compare_renders ger deltan för två renderingar");
+        auto anyDelta = false;
+        if (auto* deltas = diff["data"]["metric_deltas"].getDynamicObject())
+            for (const auto& property : deltas->getProperties())
+                anyDelta = anyDelta || std::abs ((double) property.value["delta"]) > 1.0e-9;
+        check (anyDelta, "compare_renders: en ändrad parameter ger minst ett delta över noll");
+        const auto none = tools.call ("compare_renders", juce::JSON::parse ("{\"before\":\"det-base\",\"after\":\"det-undone\"}"));
+        auto allZero = (bool) none["ok"] && none["data"]["checks_changed"].size() == 0;
+        if (auto* deltas = none["data"]["metric_deltas"].getDynamicObject())
+            for (const auto& property : deltas->getProperties())
+                allZero = allZero && std::abs ((double) property.value["delta"]) < 1.0e-9;
+        check (allZero, "compare_renders: före ändring och efter undo ger noll i alla delta");
+        check (! (bool) tools.call ("compare_renders", juce::JSON::parse ("{\"before\":\"finns-inte\",\"after\":\"det-base\"}"))["ok"], "compare_renders: okänt namn ger ett fel");
+    }
+
+    // sweep_parameter: en rad per värde, olika värden ger olika mått, och ljudet är orört efteråt.
+    {
+        const auto stateBefore = stateText (tools);
+        const auto sweep = tools.call ("sweep_parameter", juce::JSON::parse ("{\"parameter\":\"kickDrive\",\"values\":[0.1,0.6],\"part\":\"kick\",\"bars\":1}"));
+        const auto rows = sweep["data"]["rows"];
+        check ((bool) sweep["ok"] && rows.size() == 2 && rows[0]["metrics"].getDynamicObject() != nullptr, "sweep_parameter ger en rad med mått per värde");
+        check (juce::JSON::toString (rows[0]["metrics"]) != juce::JSON::toString (rows[1]["metrics"]), "sweep_parameter: olika värden ger olika mått");
+        check (stateText (tools) == stateBefore, "sweep_parameter lämnar ljudet som det var");
+        const auto repeat = tools.call ("sweep_parameter", juce::JSON::parse ("{\"parameter\":\"kickDrive\",\"values\":[0.1,0.6],\"part\":\"kick\",\"bars\":1}"));
+        check (juce::JSON::toString (repeat["data"]["rows"]) == juce::JSON::toString (rows), "sweep_parameter är upprepbar");
+        check (! (bool) tools.call ("sweep_parameter", juce::JSON::parse ("{\"parameter\":\"finnsInte\",\"values\":[1]}"))["ok"], "sweep_parameter: okänd parameter ger ett fel");
+        check ((bool) tools.call ("compare_renders", juce::JSON::parse ("{\"before\":\"sweep_kickDrive_1\",\"after\":\"sweep_kickDrive_2\"}"))["ok"], "sweep-renderingarna kan jämföras med compare_renders");
+    }
+
+    // score_vs_reference (seconds 60 = hela filen, så rendering och referens mäts över samma stycke): en rendering mot sin egen WAV är nära noll, mot en ändrad rendering längre bort.
+    {
+        const auto reference = render (tools, "ref-a", "kick");
+        const auto self = tools.call ("score_vs_reference", juce::JSON::parse ("{\"reference_file\":" + juce::JSON::toString (reference.wav.getFullPathName()) + ",\"kind\":\"kick\",\"seconds\":60,\"name\":\"ref-a\"}"));
+        check ((bool) self["ok"] && self["data"]["terms"].size() >= 7, "score_vs_reference ger termer för en rendering och en referens");
+        tools.call ("set_parameters", juce::JSON::parse ("{\"values\":{\"kickDrive\":0.9,\"kickPitchAmount\":2.0}}"));
+        render (tools, "ref-b", "kick");
+        const auto other = tools.call ("score_vs_reference", juce::JSON::parse ("{\"reference_file\":" + juce::JSON::toString (reference.wav.getFullPathName()) + ",\"kind\":\"kick\",\"seconds\":60,\"name\":\"ref-b\"}"));
+        check (other["data"]["terms"].size() == self["data"]["terms"].size(), "score_vs_reference: lika många termer, så avstånden går att jämföra");
+        check ((bool) other["ok"] && (double) other["data"]["distance"] > (double) self["data"]["distance"], "score_vs_reference: en ändrad kick ligger längre från referensen än kicken själv");
+        check (! (bool) tools.call ("score_vs_reference", juce::JSON::parse ("{\"reference_file\":\"finns-inte.wav\",\"name\":\"ref-a\"}"))["ok"], "score_vs_reference: saknad fil ger ett fel");
+        tools.call ("undo", juce::JSON::parse ("{}"));
+    }
+
+    std::puts (failed ? "FEL: renderingstestet misslyckades" : "Renderingstestet gick igenom");
     return failed ? 1 : 0;
 }

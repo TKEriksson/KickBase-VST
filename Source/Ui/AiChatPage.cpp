@@ -1,4 +1,5 @@
 #include "AiChatPage.h"
+#include "../Core/AiProvider.h"
 
 //==============================================================================
 // Samtalet: ett block per inlägg (användaren till höger, AI:n till vänster, verktygsanrop som små rader), med bilder under.
@@ -139,21 +140,52 @@ AiChatPage::AiChatPage (PluginBase& p) : processor (p), chat (p.getAiChat())
     status.setJustificationType (juce::Justification::centredRight);
     addAndMakeVisible (status);
 
-    for (const auto& model : AiChat::models())
-        modelBox.addItem (model, modelBox.getNumItems() + 1);
-    const auto models = AiChat::models();
-    modelBox.setSelectedId (std::max (0, models.indexOf (Settings::chatModel())) + 1, juce::dontSendNotification);
-    modelBox.setTooltip ("MODEL - Which Claude model answers. Sonnet is a good everyday choice, Opus the most capable (and the most expensive), Haiku the fastest and cheapest. "
-                         "Usage is billed to your own Anthropic account.");
-    modelBox.onChange = [this] { Settings::setChatModel (modelBox.getText()); };
+    modelBox.setEditableText (true); // egen modell kan skrivas in (listan hämtas från Google och kan sakna nya namn)
+    modelBox.onChange = [this]
+    {
+        const auto model = modelBox.getText().trim();
+        if (model.isEmpty())
+            return;
+        if (gemini())
+        {
+            Settings::setGeminiModel (model);
+            checkModel (false);
+        }
+        else
+            Settings::setChatModel (model);
+    };
     addAndMakeVisible (modelBox);
+    populateModels();
+    checkModel (true);
 
-    keyButton.setTooltip ("KEY - Your own Anthropic API key (from console.anthropic.com). It is stored encrypted on this computer and only sent to api.anthropic.com.");
+    costBox.addItem ("Frugal", 1);
+    costBox.addItem ("Normal", 2);
+    costBox.addItem ("Rich", 3);
+    costBox.setSelectedId (Settings::chatCostMode() + 1, juce::dontSendNotification);
+    costBox.setTooltip ("COST - How many tokens the chat may use (a free key runs out fast). Frugal: short answers, few steps, old turns trimmed hard, asks before images. "
+                        "Normal: the everyday balance, asks before images. Rich: long answers, many steps, most of the history kept, never asks.");
+    costBox.onChange = [this] { Settings::setChatCostMode (costBox.getSelectedId() - 1); };
+    addAndMakeVisible (costBox);
+
+    confirmLabel.setFont (Theme::font (12.0f));
+    confirmLabel.setColour (juce::Label::textColourId, Theme::text);
+    confirmLabel.setMinimumHorizontalScale (0.8f);
+    addChildComponent (confirmLabel);
+    runButton.onClick = [this] { chat.answerConfirm (1); refresh(); };
+    skipButton.onClick = [this] { chat.answerConfirm (2); refresh(); };
+    runAlwaysButton.onClick = [this] { chat.answerConfirm (3); refresh(); };
+    runButton.setColour (juce::TextButton::buttonColourId, Theme::bass.withAlpha (0.5f));
+    for (auto* button : { &runButton, &skipButton, &runAlwaysButton })
+        addChildComponent (button);
+
     keyButton.onClick = [this] { showSetup (! setupOpen); };
     addAndMakeVisible (keyButton);
     newChatButton.setTooltip ("NEW CHAT - Starts a new conversation (the sound stays as it is).");
     newChatButton.onClick = [this] { chat.newChat(); refresh(); };
     addAndMakeVisible (newChatButton);
+    chatsButton.setTooltip ("CHATS - Save this chat as a session, open a saved one, or export it to a text file. Long chats are saved and exported automatically before the oldest questions are dropped. API keys are never written to these files.");
+    chatsButton.onClick = [this] { showChatsMenu(); };
+    addAndMakeVisible (chatsButton);
     undoButton.setTooltip ("UNDO - Undoes the AI's last change to the sound.");
     undoButton.onClick = [this] { chat.undo(); refresh(); };
     addAndMakeVisible (undoButton);
@@ -194,16 +226,30 @@ AiChatPage::AiChatPage (PluginBase& p) : processor (p), chat (p.getAiChat())
     setupTitle.setColour (juce::Label::textColourId, Theme::bass);
     setupTitle.setJustificationType (juce::Justification::centred);
     addChildComponent (setupTitle);
-    setupText.setText ("Chat with an AI that designs the sound for you, right here in the synth. It needs your own Anthropic API key (create one at console.anthropic.com).\n\n"
-                       "The key is stored encrypted on this computer and is only ever sent to api.anthropic.com. Usage is billed to your Anthropic account, "
-                       "and a conversation uses some thousand tokens per step (the NEW CHAT button starts over).",
-                       juce::dontSendNotification);
     setupText.setFont (Theme::font (12.0f));
     setupText.setColour (juce::Label::textColourId, Theme::text);
     setupText.setJustificationType (juce::Justification::centred);
     addChildComponent (setupText);
+
+    // Leverantören: två knappar, den valda lyser.
+    anthropicButton.setClickingTogglesState (false);
+    anthropicButton.onClick = [this] { setProvider (false); };
+    addChildComponent (anthropicButton);
+    geminiButton.onClick = [this] { setProvider (true); };
+    addChildComponent (geminiButton);
+    guideButton.setTooltip ("Opens Google AI Studio in your browser, where you create a Gemini API key. Paste it here afterwards.");
+    guideButton.onClick = [this]
+    {
+        juce::URL ("https://aistudio.google.com/apikey").launchInDefaultBrowser();
+        showTestResult ("Google AI Studio opened in your browser. Follow steps 1-3, then paste the key above.", true);
+        keyEditor.grabKeyboardFocus();
+    };
+    addChildComponent (guideButton);
+    testResult.setFont (Theme::font (12.0f, true));
+    testResult.setJustificationType (juce::Justification::centred);
+    addChildComponent (testResult);
+
     keyEditor.setPasswordCharacter ((juce::juce_wchar) 0x2022);
-    keyEditor.setTextToShowWhenEmpty ("sk-ant-...", Theme::textDim);
     keyEditor.setColour (juce::TextEditor::backgroundColourId, Theme::knobBodyDark);
     keyEditor.setColour (juce::TextEditor::textColourId, Theme::text);
     keyEditor.setColour (juce::TextEditor::outlineColourId, Theme::panelBorder);
@@ -214,7 +260,16 @@ AiChatPage::AiChatPage (PluginBase& p) : processor (p), chat (p.getAiChat())
     cancelKeyButton.onClick = [this] { showSetup (false); };
     addChildComponent (cancelKeyButton);
     removeKeyButton.setTooltip ("Removes the saved key from this computer.");
-    removeKeyButton.onClick = [this] { Settings::setChatApiKey ({}); keyEditor.setText ({}, false); lastHadKey = false; showSetup (true); };
+    removeKeyButton.onClick = [this]
+    {
+        if (gemini())
+            Settings::setGeminiApiKey ({});
+        else
+            Settings::setChatApiKey ({});
+        keyEditor.setText ({}, false);
+        lastHadKey = false;
+        showSetup (true);
+    };
     addChildComponent (removeKeyButton);
 
     showSetup (needsKey());
@@ -226,17 +281,131 @@ AiChatPage::~AiChatPage() = default;
 
 bool AiChatPage::needsKey() const
 {
-    return Settings::chatApiKey().isEmpty();
+    return (gemini() ? Settings::geminiApiKey() : Settings::chatApiKey()).isEmpty();
+}
+
+void AiChatPage::populateModels()
+{
+    modelBox.clear (juce::dontSendNotification);
+    const auto models = AiChat::models();
+    for (const auto& model : models)
+        modelBox.addItem (model, modelBox.getNumItems() + 1);
+    const auto current = gemini() ? Settings::geminiModel() : Settings::chatModel();
+    if (models.contains (current))
+        modelBox.setSelectedId (models.indexOf (current) + 1, juce::dontSendNotification);
+    else
+        modelBox.setText (current, juce::dontSendNotification);
+
+    if (gemini())
+    {
+        updateModelNote();
+        modelBox.setTooltip ("MODEL - Which Gemini model answers. Flash is the everyday choice and works on the free tier, Flash-Lite is the fastest, Pro the most capable "
+                             "(its free limits are smaller). The limits for your key are shown in Google AI Studio.");
+        keyButton.setTooltip ("KEY - Your own Gemini API key (free from Google AI Studio). It is stored encrypted on this computer and only sent to generativelanguage.googleapis.com.");
+    }
+    else
+    {
+        modelBox.setTooltip ("MODEL - Which Claude model answers. Sonnet is a good everyday choice, Opus the most capable (and the most expensive), Haiku the fastest and cheapest. "
+                             "Usage is billed to your own Anthropic account.");
+        keyButton.setTooltip ("KEY - Your own Anthropic API key (from console.anthropic.com). It is stored encrypted on this computer and only sent to api.anthropic.com.");
+    }
+}
+
+// Texter och knappar på nyckelsidan för vald leverantör.
+void AiChatPage::updateSetupTexts()
+{
+    const auto useGemini = gemini();
+    anthropicButton.setColour (juce::TextButton::buttonColourId, useGemini ? Theme::knobBodyDark : Theme::bass.withAlpha (0.55f));
+    geminiButton.setColour (juce::TextButton::buttonColourId, useGemini ? Theme::bass.withAlpha (0.55f) : Theme::knobBodyDark);
+    keyEditor.setTextToShowWhenEmpty (useGemini ? "AIza..." : "sk-ant-...", Theme::textDim);
+    saveKeyButton.setButtonText (useGemini ? "TEST & SAVE" : "SAVE KEY");
+    guideButton.setVisible (setupOpen && useGemini);
+
+    if (useGemini)
+        setupText.setText ("Chat with an AI that designs the sound for you, right here in the synth. Google's Gemini has a free tier, so you do not need a paid account.\n\n"
+                           "1. Click GET A FREE KEY: Google AI Studio opens in your browser. Sign in with a Google account.\n"
+                           "2. Click \"Create API key\" and copy the key (it starts with AIza).\n"
+                           "3. Paste it below and click TEST & SAVE.\n\n"
+                           "Free within the limits shown in Google AI Studio; when they are used up the chat tells you and you can try again later. "
+                           "On the free tier Google may use what you send to improve its products and people may read it, so keep private things out. You must be 18 or older. "
+                           "In the EEA, Switzerland and the UK Google's terms can require a paid plan: see ai.google.dev/gemini-api/terms. "
+                           "The key is stored encrypted on this computer and only sent to generativelanguage.googleapis.com.",
+                           juce::dontSendNotification);
+    else
+        setupText.setText ("Chat with an AI that designs the sound for you, right here in the synth. It needs your own Anthropic API key (create one at console.anthropic.com).\n\n"
+                           "The key is stored encrypted on this computer and is only ever sent to api.anthropic.com. Usage is billed to your Anthropic account, "
+                           "and a conversation uses some thousand tokens per step (the NEW CHAT button starts over).",
+                           juce::dontSendNotification);
+}
+
+void AiChatPage::updateModelNote()
+{
+    modelNote = {};
+    if (gemini() && ! needsKey())
+        if (Settings::geminiToolsCheck (Settings::geminiModel(), Settings::geminiApiKey()) == 0)
+            modelNote = "WARNING: " + Settings::geminiModel() + " did not use tools in a test; pick another model.";
+}
+
+void AiChatPage::checkModel (bool fetchList)
+{
+    updateModelNote();
+    if (! gemini() || needsKey() || checking)
+        return;
+    const auto key = Settings::geminiApiKey();
+    const auto model = Settings::geminiModel();
+    const auto needsProbe = Settings::geminiToolsCheck (model, key) < 0;
+    if (! fetchList && ! needsProbe)
+        return;
+
+    checking = true;
+    juce::Thread::launch ([safe = juce::Component::SafePointer<AiChatPage> (this), key, model, fetchList, needsProbe]
+    {
+        const auto list = fetchList ? GeminiApi::fetchModels (key) : juce::StringArray();
+        const auto probe = needsProbe ? GeminiApi::probeTools (key, model) : -1;
+        juce::MessageManager::callAsync ([safe, key, model, list, probe]
+        {
+            if (safe == nullptr)
+                return;
+            safe->checking = false;
+            if (probe >= 0)
+                Settings::setGeminiToolsCheck (model, key, probe == 1);
+            if (! list.isEmpty() && safe->gemini())
+                safe->populateModels();
+            safe->updateModelNote();
+        });
+    });
+}
+
+void AiChatPage::setProvider (bool useGemini)
+{
+    if (chat.isBusy() || useGemini == gemini())
+        return;
+    Settings::setChatProvider (useGemini ? "gemini" : "anthropic");
+    chat.newChat(); // samtalet hör till leverantören: det börjar om
+    populateModels();
+    checkModel (true);
+    lastHadKey = ! needsKey();
+    showSetup (true);
+}
+
+void AiChatPage::showTestResult (const juce::String& message, bool ok)
+{
+    testResult.setText (message, juce::dontSendNotification);
+    testResult.setColour (juce::Label::textColourId, ok ? juce::Colour (0xff7be495) : juce::Colour (0xffff9a9a));
+    testResult.setVisible (setupOpen && message.isNotEmpty());
 }
 
 void AiChatPage::showSetup (bool show)
 {
     setupOpen = show;
     keyEditor.setText ({}, false);
-    for (auto* component : std::initializer_list<juce::Component*> { &setupTitle, &setupText, &keyEditor, &saveKeyButton, &cancelKeyButton, &removeKeyButton })
+    testResult.setText ({}, juce::dontSendNotification);
+    for (auto* component : std::initializer_list<juce::Component*> { &setupTitle, &setupText, &keyEditor, &saveKeyButton, &cancelKeyButton, &removeKeyButton, &anthropicButton, &geminiButton })
         component->setVisible (show);
+    testResult.setVisible (false);
     cancelKeyButton.setVisible (show && ! needsKey());
     removeKeyButton.setVisible (show && ! needsKey());
+    updateSetupTexts();
     viewport.setVisible (! show);
     input.setVisible (! show);
     sendButton.setVisible (! show);
@@ -247,10 +416,39 @@ void AiChatPage::showSetup (bool show)
 void AiChatPage::saveKey()
 {
     const auto key = keyEditor.getText().trim();
-    if (key.isEmpty())
+    if (key.isEmpty() || testing)
         return;
-    Settings::setChatApiKey (key);
-    showSetup (false);
+
+    if (! gemini())
+    {
+        Settings::setChatApiKey (key);
+        showSetup (false);
+        return;
+    }
+
+    // Gemini: nyckeln provas med ett litet anrop på en bakgrundstråd (det kan ta några sekunder), och sparas bara om den fungerar.
+    testing = true;
+    saveKeyButton.setEnabled (false);
+    showTestResult ("Testing the key ...", true);
+    juce::Thread::launch ([safe = juce::Component::SafePointer<AiChatPage> (this), key]
+    {
+        const auto result = GeminiApi::testKey (key);
+        juce::MessageManager::callAsync ([safe, key, result]
+        {
+            if (safe == nullptr)
+                return;
+            safe->testing = false;
+            safe->saveKeyButton.setEnabled (true);
+            if (result.ok && safe->gemini())
+            {
+                Settings::setGeminiApiKey (key);
+                safe->showSetup (false);
+                safe->checkModel (true); // nytt nyckeltest: modelllistan hämtas och modellen provas om (cachen gäller per nyckel)
+            }
+            else
+                safe->showTestResult (result.message, false);
+        });
+    });
 }
 
 void AiChatPage::send (const juce::String& text)
@@ -268,6 +466,58 @@ void AiChatPage::timerCallback()
     refresh();
 }
 
+void AiChatPage::showChatsMenu()
+{
+    auto note = [this] (juce::String text, bool error = false)
+    {
+        AiChat::Entry entry;
+        entry.kind = error ? AiChat::Entry::Kind::error : AiChat::Entry::Kind::note;
+        entry.text = std::move (text);
+        chat.addEntry (std::move (entry));
+    };
+
+    const auto sessions = AiChat::listSessions();
+    juce::PopupMenu open;
+    for (int i = 0; i < (int) sessions.size() && i < 20; ++i)
+        open.addItem (100 + i, sessions[(size_t) i].saved.formatted ("%Y-%m-%d %H:%M") + "  " + sessions[(size_t) i].title);
+    if (sessions.empty())
+        open.addItem (1, "(no saved chats)", false);
+
+    juce::PopupMenu menu;
+    menu.addItem (2, "Save this chat", chat.hasConversation());
+    menu.addItem (3, "Export this chat to a text file", chat.hasConversation());
+    menu.addSubMenu ("Open a saved chat", open, ! sessions.empty());
+    menu.addSeparator();
+    menu.addItem (4, "Show the chats folder");
+
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&chatsButton), [this, sessions, note] (int result)
+    {
+        juce::File file;
+        if (result == 2)
+        {
+            if (chat.saveSession (file))
+                note ("Saved the chat to " + file.getFullPathName());
+            else
+                note ("Could not save the chat.", true);
+        }
+        else if (result == 3)
+        {
+            if (chat.exportText (file))
+                note ("Exported the chat to " + file.getFullPathName());
+            else
+                note ("Could not export the chat.", true);
+        }
+        else if (result == 4)
+            AiChat::sessionsFolder().revealToUser();
+        else if (result >= 100 && result - 100 < (int) sessions.size())
+        {
+            if (! chat.loadSession (sessions[(size_t) (result - 100)].file))
+                note ("Could not open that chat.", true);
+        }
+        refresh();
+    });
+}
+
 void AiChatPage::refresh()
 {
     const auto busy = chat.isBusy();
@@ -281,22 +531,52 @@ void AiChatPage::refresh()
 
         const auto atBottom = viewport.getViewPositionY() + viewport.getViewHeight() >= transcript->getHeight() - 24;
         transcript->setSize (viewport.getMaximumVisibleWidth(), transcript->getHeight());
-        transcript->setEntries (entries);
+        if (entries.empty() && hasKey)
+        {
+            // Hälsningen är bara en visning i en tom chatt: den sparas inte och skickas inte till modellen (kostar inga tokens).
+            AiChat::Entry greeting;
+            greeting.kind = AiChat::Entry::Kind::assistant;
+            greeting.text = "Hi! I'm your co-producer, here to help you make your kick and bass sound the way you hear it in your head.\n\n"
+                            "Here is what I can do:\n"
+                            "- Design sounds: set parameters and build kick and bass patches, layers, FM, filters and modulation\n"
+                            "- Write patterns: notes, rhythms and slices, and live code\n"
+                            "- Shape the mix: effects, EQ and sidechain, and compare against a reference\n"
+                            "- Analyse your mix: find clashes between kick and bass, read the report and fix what it finds\n"
+                            "- Work with presets: browse, load and save sounds\n"
+                            "- Undo anything I change, so it's safe to experiment\n\n"
+                            "How can I help you today?";
+            transcript->setEntries ({ greeting });
+        }
+        else
+            transcript->setEntries (entries);
         if (atBottom || busy)
             viewport.setViewPosition (0, std::max (0, transcript->getHeight() - viewport.getHeight()));
 
         stopButton.setVisible (busy && ! setupOpen);
         sendButton.setVisible (! busy && ! setupOpen);
         newChatButton.setEnabled (! busy);
+        chatsButton.setEnabled (! busy);
         undoButton.setEnabled (! busy);
         input.setEnabled (true);
         for (auto& suggestion : suggestions)
             suggestion.setVisible (entries.empty() && hasKey && ! setupOpen);
     }
 
+    const auto pending = chat.getPendingConfirm();
+    if (pending.isNotEmpty() != confirmOpen)
+    {
+        confirmOpen = pending.isNotEmpty();
+        for (auto* component : std::initializer_list<juce::Component*> { &confirmLabel, &runButton, &skipButton, &runAlwaysButton })
+            component->setVisible (confirmOpen && ! setupOpen);
+        resized();
+    }
+    if (confirmOpen)
+        confirmLabel.setText (pending, juce::dontSendNotification);
+
     const auto statusText = chat.getStatus();
     const auto usage = chat.getUsage();
-    status.setText (statusText.isNotEmpty() ? statusText + (usage.isNotEmpty() ? "   " + usage : juce::String()) : usage, juce::dontSendNotification);
+    status.setText (modelNote.isNotEmpty() ? modelNote
+                    : statusText.isNotEmpty() ? statusText + (usage.isNotEmpty() ? "   " + usage : juce::String()) : usage, juce::dontSendNotification);
 }
 
 void AiChatPage::paint (juce::Graphics& g)
@@ -323,8 +603,12 @@ void AiChatPage::resized()
     undoButton.setBounds (header.removeFromRight (62).reduced (0, 2));
     header.removeFromRight (4);
     newChatButton.setBounds (header.removeFromRight (86).reduced (0, 2));
+    header.removeFromRight (4);
+    chatsButton.setBounds (header.removeFromRight (62).reduced (0, 2));
     header.removeFromRight (8);
     modelBox.setBounds (header.removeFromLeft (170).reduced (0, 2));
+    header.removeFromLeft (4);
+    costBox.setBounds (header.removeFromLeft (80).reduced (0, 2));
     header.removeFromLeft (10);
     status.setBounds (header);
     area.removeFromTop (6);
@@ -335,6 +619,18 @@ void AiChatPage::resized()
     stopButton.setBounds (sendButton.getBounds());
     bottom.removeFromRight (6);
     input.setBounds (bottom);
+
+    if (confirmOpen)
+    {
+        auto strip = area.removeFromBottom (44);
+        area.removeFromBottom (4);
+        runAlwaysButton.setBounds (strip.removeFromRight (170).reduced (0, 6));
+        strip.removeFromRight (4);
+        skipButton.setBounds (strip.removeFromRight (70).reduced (0, 6));
+        strip.removeFromRight (4);
+        runButton.setBounds (strip.removeFromRight (70).reduced (0, 6));
+        confirmLabel.setBounds (strip);
+    }
 
     viewport.setBounds (area);
     transcript->setSize (viewport.getMaximumVisibleWidth(), transcript->getHeight());
@@ -349,15 +645,24 @@ void AiChatPage::resized()
     }
 
     // Nyckelsidan, mitt i ytan.
-    auto setup = getLocalBounds().withTrimmedTop (34).withSizeKeepingCentre (620, 240);
+    auto setup = getLocalBounds().withTrimmedTop (34).withSizeKeepingCentre (640, gemini() ? 400 : 270);
     setupTitle.setBounds (setup.removeFromTop (28));
-    setupText.setBounds (setup.removeFromTop (110));
+    auto providers = setup.removeFromTop (28);
+    anthropicButton.setBounds (providers.removeFromLeft (200));
+    providers.removeFromLeft (6);
+    geminiButton.setBounds (providers.removeFromLeft (200));
+    setup.removeFromTop (6);
+    setupText.setBounds (setup.removeFromTop (gemini() ? 220 : 110));
     setup.removeFromTop (8);
     keyEditor.setBounds (setup.removeFromTop (28));
     setup.removeFromTop (8);
     auto buttons = setup.removeFromTop (28);
     saveKeyButton.setBounds (buttons.removeFromLeft (110));
     buttons.removeFromLeft (6);
+    guideButton.setBounds (buttons.removeFromLeft (190));
+    buttons.removeFromLeft (6);
     cancelKeyButton.setBounds (buttons.removeFromLeft (90));
     removeKeyButton.setBounds (buttons.removeFromRight (120));
+    setup.removeFromTop (6);
+    testResult.setBounds (setup.removeFromTop (36));
 }

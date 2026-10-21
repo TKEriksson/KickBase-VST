@@ -14,19 +14,26 @@
 //   KickbaseTool fitbeat  <ljudfil> <start> <slut> [rolling|galloping|triplet|offbeat]
 //   KickbaseTool comparebeat <ljudfil> <start> <slut> <mönster> <rendering.wav>
 
+#include <set>
 #include "../Source/Core/MixAnalysis.h"
 #include "../Source/Ui/LogoPainter.h"
+#include "../Source/Ui/InstrumentMenu.h"
 #include "../Source/Ui/ListenButton.h"
+#include "../Source/Ui/Theme.h"
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_audio_utils/juce_audio_utils.h>
 #include "../Source/Fx/FxProcessor.h"
 #include "../Source/Core/OfflineRender.h"
 #include "../Source/Core/ToolLayer.h"
+#include "../Source/Core/LiveCode.h"
+#include "../Source/Ui/LiveCodePage.h"
 #include "../Source/Core/AiChat.h"
+#include "../Source/Core/AiProvider.h"
 #include "../Source/Core/Settings.h"
 #include "../Source/Core/WavetablePack.h"
 #include "../Source/Core/LibraryIndex.h"
 #include "../Source/Core/RollFiles.h"
+#include "../Source/Core/OscPresets.h"
 #include "../Source/Instrument/InstrumentProcessor.h"
 #include "Analyzer.h"
 #include "../Source/Core/AudioAnalysis.h"
@@ -252,6 +259,660 @@ namespace
         return 0;
     }
 
+    // Live Code (LC): Strudel-kod blir toner i pianorullen via verktyget live_code_create.
+    int liveCodeTest()
+    {
+        juce::ScopedJuceInitialiser_GUI gui;
+        const auto owner = std::make_unique<InstrumentProcessor>();
+        auto& processor = *owner;
+        processor.setPlayConfigDetails (0, 2, renderRate, blockSize);
+        processor.prepareToPlay (renderRate, blockSize);
+        auto failed = false;
+        auto check = [&failed] (bool ok, const juce::String& what) { std::printf ("%s: %s\n", ok ? "ok" : "FEL", what.toRawUTF8()); failed |= ! ok; };
+        auto run = [&] (const juce::String& code, int cycles = 1)
+        {
+            ToolLayer tools (processor);
+            auto* args = new juce::DynamicObject();
+            args->setProperty ("code", code);
+            args->setProperty ("cycles", cycles);
+            args->setProperty ("overwrite", true); // standardmönstret har egna toner; skyddet testas separat i blocket "Skydd"
+            return tools.call ("live_code_create", juce::var (args));
+        };
+        auto& pattern = processor.pattern;
+        const auto ticks = Pattern::ticksPerBar;
+
+        auto r = run ("note(\"c2 [e2 g2]*2\").s(\"i1\")");
+        check ((bool) r["ok"], "enkel not-kod går igenom");
+        check (pattern.note (0, 0).on.load() && pattern.note (0, 0).pitch.load() == 0, "c2 är pitch 0 på tick 0");
+        check (pattern.note (0, ticks / 2).on.load() && pattern.note (0, ticks / 2).pitch.load() == 4, "e2 = pitch 4 vid halva takten");
+
+        auto* cutoff = dynamic_cast<juce::RangedAudioParameter*> (processor.apvts.getParameter ("bass1Cutoff"));
+        const auto oldCutoff = cutoff != nullptr ? cutoff->convertFrom0to1 (cutoff->getValue()) : 0.0f;
+        r = run ("instr1.Cutoff.set(1300);\n\nnote(\"c2\").s(\"i1\")");
+        check ((bool) r["ok"] && cutoff != nullptr && std::abs (cutoff->convertFrom0to1 (cutoff->getValue()) - 1300.0f) < 1.0f,
+               "CREATE applicerar instr1.Cutoff.set() på den riktiga bass1Cutoff-parametern");
+        r = run ("instr1.Cutoff.set(1500);" + juce::String ("\n") + "note(\"c2\").s(\"i1\")");
+        check ((bool) r["ok"] && cutoff != nullptr && std::abs (cutoff->convertFrom0to1 (cutoff->getValue()) - 1500.0f) < 1.0f,
+               ".set() direkt före mönstret utan blankrad fungerar");
+        auto cutoffNow = [&] { return cutoff != nullptr ? cutoff->convertFrom0to1 (cutoff->getValue()) : 0.0f; };
+        r = run ("instr1.Cutoff.set(900);\n\nconst x = instr1.Cutoff.get();\n\nnote(\"c2\").s(\"i1\")");
+        check (! (bool) r["ok"] && r["error"].toString().contains ("efter skrivning"), ".get() efter .set i samma körning ger fel");
+        r = run ("instr1.Cutoff.set(1300);\n\nnote(\"c2\").s(\"i1\")");
+        r = run ("instr1.cutoff.set(500);\n\nnote(\"c2\").s(\"i1\")");
+        check (! (bool) r["ok"] || std::abs (cutoffNow() - 1300.0f) < 1.0f, "okänt (fel skiftläge) namn ändrar ingen parameter");
+        {
+            auto bad = juce::var (new juce::DynamicObject());
+            bad.getDynamicObject()->setProperty ("bass1cutoff", 500);
+            auto args = juce::var (new juce::DynamicObject());
+            args.getDynamicObject()->setProperty ("values", bad);
+            ToolLayer tools (processor);
+            const auto problems = tools.call ("set_parameters", args)["data"]["problems"];
+            check (problems.size() == 1 && problems[0].toString().contains ("Did you mean bass1Cutoff"), "set_parameters föreslår rätt skiftläge");
+        }
+        processor.liveCodeLocks = ToolLayer::liveCodeBit (0);
+        r = run ("instr1.Cutoff.set(400);\n\nnote(\"c2\").s(\"i2\")");
+        check (std::abs (cutoffNow() - 1300.0f) < 1.0f, "låst instrument: .set hoppas över");
+        check (r["data"]["problems"].size() >= 1, "låst instrument: hoppet rapporteras i problems");
+        processor.liveCodeLocks = 0;
+        {
+            std::set<juce::String> seen;
+            auto unique = true;
+            for (auto& [id, value] : ToolLayer (processor).liveCodeParameters())
+            {
+                juce::ignoreUnused (value);
+                const auto cut = id.indexOfAnyOf ("ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+                if (cut < 1 || ! juce::CharacterFunctions::isLowerCase (id[0]))
+                    continue;
+                auto group = id.substring (0, cut);
+                if (group.startsWith ("bass") && group.substring (4).containsOnly ("0123456789") && group.length() > 4)
+                    group = "instr" + group.substring (4);
+                if (! seen.insert (group + "." + id.substring (cut)).second || group.isEmpty())
+                    unique = false;
+            }
+            check (unique && ! seen.empty(), "parameter-id:n ger unika träd-namn");
+        }
+        if (cutoff != nullptr)
+            Presets::setParameter (*cutoff, cutoff->convertTo0to1 (oldCutoff));
+
+        r = run ("s(\"bd*4\")");
+        check ((bool) r["ok"], "kick-kod går igenom");
+        check (pattern.note (Pattern::kickLayer, 0).on.load() && pattern.note (Pattern::kickLayer, ticks / 4).on.load()
+                   && ! pattern.note (Pattern::kickLayer, ticks / 8).on.load(), "bd*4 ger kick på fjärdedelarna");
+
+        r = run ("note(\"c2,e2,g2,e2\").s(\"i1\")");
+        check ((bool) r["ok"] && pattern.stackSize (0, 0) == 3, "c2,e2,g2 ger tre toner på tick 0 (dubbletten e2 hoppas över)");
+        Pattern::StackNote top;
+        check (pattern.getStack (0, 0, 0, top) && top.pitch == 0 && pattern.getStack (0, 0, 2, top) && top.pitch == 7, "huvudton c2, andra stapeln g2");
+        r = run ("note(\"c2,e2,g2,b2,d3\").s(\"i1\")");
+        check ((bool) r["ok"] && pattern.stackSize (0, 0) == Pattern::maxStack, "fler än maxStack toner kapas");
+
+        check (! (bool) run ("note(\"c2\".s(")["ok"], "syntaxfel ger ett fel, inte en krasch");
+        const auto t0 = juce::Time::getMillisecondCounterHiRes();
+        check (! (bool) run ("while(true){}")["ok"], "en oändlig slinga avbryts");
+        check (juce::Time::getMillisecondCounterHiRes() - t0 < 5000, "avbrottet sker inom 5 s");
+
+        // LIVE CODE-sidan: PLAY, STOP och CREATE klickas som en användare (knapparna hittas bland sidans barn).
+        {
+            LiveCodePage page (processor);
+            page.setBounds (0, 0, 600, 400);
+            page.confirmCreate = false; // en modal ruta skulle blockera testet
+            juce::CodeEditorComponent* code = nullptr;
+            juce::TextButton *play = nullptr, *stop = nullptr, *create = nullptr, *codeOnlyBtn = nullptr;
+            for (auto* c : page.getChildren())
+            {
+                if (auto* e = dynamic_cast<juce::CodeEditorComponent*> (c)) code = e;
+                if (auto* b = dynamic_cast<juce::TextButton*> (c))
+                {
+                    if (b->getButtonText() == "AUTO") play = b;
+                    if (b->getButtonText() == "STOP") stop = b;
+                    if (b->getButtonText() == "CREATE") create = b;
+                    if (b->getButtonText() == "CODE ONLY") codeOnlyBtn = b;
+                }
+            }
+            check (code && play && stop && create, "LIVE CODE-sidan har kodruta, PLAY, STOP och CREATE");
+            if (code && play && stop && create)
+            {
+                auto runFor = [] (int milliseconds) { juce::MessageManager::getInstance()->runDispatchLoopUntil (milliseconds); };
+                int changed = 0;
+                juce::String lastError;
+                page.onPatternChanged = [&changed] { ++changed; };
+                page.onError = [&lastError] (const juce::String& e) { lastError = e; };
+
+                check (! play->getToggleState(), "AUTO: av när sidan skapas (Tobias 21 okt)");
+                check (code->getDocument().getAllContent().isEmpty(), "LIVE CODE: tom kodruta när sidan skapas");
+
+                pattern.clearNotes (0);
+                code->getDocument().replaceAllContent ("note(\"c2,e2\").s(\"i1\")");
+                create->triggerClick();
+                runFor (200); // triggerClick körs via meddelandekön
+                check (changed == 1 && pattern.stackSize (0, 0) == 2, "CREATE skriver koden en gång (två staplade toner)");
+
+                pattern.clearNotes (0);
+                play->triggerClick();
+                runFor (1500);
+                check (pattern.stackSize (0, 0) == 2 && changed >= 2 && lastError.isEmpty(), "PLAY räknar koden i bakgrunden och skriver mönstret");
+
+                const auto before = changed;
+                code->getDocument().replaceAllContent ("note(\"g2\").s(\"i1\")");
+                runFor (1500);
+                check (changed > before && pattern.stackSize (0, 0) == 1 && pattern.note (0, 0).pitch.load() == 7, "PLAY: en ändring i koden uppdaterar mönstret efter debouncen");
+
+                stop->triggerClick();
+                runFor (100);
+                const auto afterStop = changed;
+                code->getDocument().replaceAllContent ("note(\"c2\").s(\"i1\")");
+                runFor (1200);
+                check (changed == afterStop && pattern.note (0, 0).pitch.load() == 7, "STOP: ändringar i koden skrivs inte längre");
+
+                play->triggerClick();
+                code->getDocument().replaceAllContent ("note(\"c2\".s(");
+                runFor (1500);
+                check (lastError.isNotEmpty() && ! lastError.contains ("    at "), "PLAY: ett syntaxfel visas som felmeddelande");
+                stop->triggerClick();
+
+                // flera satser: const, $:-block och blockslut vid tom rad
+                pattern.clearNotes (0);
+                pattern.clearNotes (Pattern::kickLayer); // sidans CREATE har ingen overwrite: tomma rader ger ingen fråga
+                code->getDocument().replaceAllContent ("const n = \"c2,e2\"\n$: note(n).s(\"i1\")\n\n$: s(\"bd*4\")");
+                create->triggerClick();
+                runFor (200);
+                check (pattern.stackSize (0, 0) == 2, "CREATE: const och flera $:-block fungerar");
+
+                // CODE ONLY: soloMask följer raderna Live Code skrivit; användarens SOLO vinner; STOP återställer.
+                if (codeOnlyBtn)
+                {
+                    const auto owned = processor.liveCodeOwned.load();
+                    processor.soloMask = 0;
+                    check (owned != 0 && codeOnlyBtn->isEnabled(), "CODE ONLY: aktiv när Live Code har skrivit rader");
+                    codeOnlyBtn->triggerClick(); runFor (100);
+                    check (processor.soloMask.load() == owned, "CODE ONLY: soloMask = raderna Live Code äger");
+                    stop->triggerClick(); runFor (100);
+                    check (processor.soloMask.load() == 0 && ! codeOnlyBtn->getToggleState(), "CODE ONLY: STOP återställer soloMask");
+                    codeOnlyBtn->triggerClick(); runFor (100);
+                    processor.soloMask = 2; // användaren soloar instrument 2 (annat värde än raderna Live Code äger)
+                    create->triggerClick();
+                    runFor (200);
+                    check (processor.soloMask.load() == 2 && ! codeOnlyBtn->getToggleState(), "CODE ONLY: användarens SOLO vinner");
+                    processor.soloMask = 0;
+                    const auto ownedBefore = processor.liveCodeOwned.load();
+                    processor.liveCodeOwned = 0;
+                    codeOnlyBtn->triggerClick(); runFor (100);
+                    check (! codeOnlyBtn->getToggleState() && processor.soloMask.load() == 0, "CODE ONLY: utan egna rader händer inget (soloMask 0 = hör allt)");
+                    processor.liveCodeOwned = ownedBefore;
+                }
+
+                // AUTO: laddning kör inget, giltig ändring körs av sig själv, ogiltig kod rör inget, borttagen rad töms, handrad ligger kvar.
+                {
+                    stop->triggerClick();
+                    runFor (100);
+                    play->triggerClick();
+                    runFor (600);
+                    check (play->getToggleState(), "AUTO: på igen före laddningen");
+                    juce::ValueTree loaded ("LiveCode");
+                    loaded.setProperty ("code", "note(\"a2\").s(\"i1\")", nullptr);
+                    loaded.setProperty ("locks", 0, nullptr);
+                    processor.liveCodeFromValueTree (loaded);
+                    ++processor.liveCodeLoads;
+                    runFor (700);
+                    check (play->getToggleState(), "laddning: AUTO ligger kvar på");
+                    check (code->getDocument().getAllContent() == "note(\"a2\").s(\"i1\")", "laddning: den nya koden visas");
+                    pattern.clearNotes (0);
+                    runFor (1200);
+                    check (pattern.stackSize (0, 0) == 0, "laddning: inget körs förrän texten ändras");
+
+                    pattern.clearNotes (1);
+                    auto& hand = pattern.edit (1, 0); // handritad ton på en rad koden aldrig skrivit
+                    hand.on = true;
+                    hand.pitch = 3;
+                    code->getDocument().replaceAllContent ("note(\"c2\").s(\"i1\")");
+                    runFor (1200);
+                    check (pattern.stackSize (0, 0) == 1 && (processor.liveCodeOwned.load() & ToolLayer::liveCodeBit (0)) != 0, "AUTO: en giltig ändring körs av sig själv");
+
+                    code->getDocument().replaceAllContent ("note(\"c2\".s(");
+                    runFor (1200);
+                    check (lastError.isNotEmpty() && pattern.stackSize (0, 0) == 1, "AUTO: ogiltig kod ger felrad och rör inget");
+
+                    pattern.clearNotes (2); // inga gamla toner på rad 3, annars frågar sidan om överskrivning
+                    code->getDocument().replaceAllContent ("note(\"c2\").s(\"i3\")"); // bara rad 3 nämns: rad 1 var ägd och töms
+                    runFor (1200);
+                    check (pattern.stackSize (0, 0) == 0 && (processor.liveCodeOwned.load() & ToolLayer::liveCodeBit (0)) == 0, "AUTO: en rad som tagits bort ur koden töms (stack " + juce::String (pattern.stackSize (0, 0)) + ", ägd " + juce::String (processor.liveCodeOwned.load()) + ", fel: " + lastError + ")");
+                    check (pattern.note (1, 0).on.load() && pattern.note (1, 0).pitch.load() == 3, "AUTO: handritad rad rörs aldrig");
+                    pattern.clearNotes (1);
+                }
+            }
+        }
+
+        // Skydd: lås, handritade rader och overwrite (samma regler för UI och AI).
+        {
+            ToolLayer tools (processor);
+            auto make = [] (std::initializer_list<std::pair<const char*, juce::var>> props)
+            {
+                auto* o = new juce::DynamicObject();
+                for (auto& p : props)
+                    o->setProperty (p.first, p.second);
+                return juce::var (o);
+            };
+            auto create = [&] (const juce::String& code, bool overwrite)
+            {
+                return tools.call ("live_code_create", make ({ { "code", code }, { "cycles", 1 }, { "overwrite", overwrite } }));
+            };
+            tools.call ("live_code_lock", make ({ { "layer", 0 }, { "locked", false } }));
+            tools.call ("live_code_lock", make ({ { "layer", "kick" }, { "locked", false } }));
+            processor.liveCodeOwned = 0;
+            pattern.clearNotes (0);
+
+            auto& handNote = pattern.edit (0, 0); // en handritad ton
+            handNote.on = true;
+            handNote.pitch = 5;
+            r = create ("note(\"c2\").s(\"i1\")", false);
+            check (! (bool) r["ok"] && r["conflicts"].getArray() != nullptr && r["conflicts"].getArray()->size() == 1, "handritad rad: fel med conflicts-lista utan overwrite");
+            check (pattern.note (0, 0).pitch.load() == 5, "handritad rad: ingenting ändrades vid konflikt");
+            r = create ("note(\"c2\").s(\"i1\")", true);
+            check ((bool) r["ok"] && pattern.note (0, 0).pitch.load() == 0, "overwrite:true skriver över");
+            r = create ("note(\"e2\").s(\"i1\")", false);
+            check ((bool) r["ok"] && pattern.note (0, 0).pitch.load() == 4, "rad som Live Code skrev själv skrivs över utan fråga");
+
+            tools.call ("live_code_lock", make ({ { "layer", 0 } }));
+            r = create ("note(\"g2\").s(\"i1\")", false);
+            check ((bool) r["ok"] && pattern.note (0, 0).pitch.load() == 4, "låst rad hoppas över");
+            check (processor.liveCodeLocks.load() == ToolLayer::liveCodeBit (0), "låsbiten är satt");
+            tools.call ("live_code_lock", make ({ { "layer", 0 }, { "locked", false } }));
+            check (! (bool) tools.call ("live_code_lock", make ({ { "layer", 11 } }))["ok"], "ogiltig rad i live_code_lock ger fel");
+
+            // live_code_run lägger koden i LIVE-editorn; live_code_stop tömmer bara rader Live Code skrev och som inte är låsta
+            r = tools.call ("live_code_run", make ({ { "code", "note(\"g2\").s(\"i1\")" }, { "cycles", 1 } }));
+            check ((bool) r["ok"] && processor.getLiveCodeText().contains ("g2") && pattern.note (0, 0).pitch.load() == 7, "live_code_run skriver noter och sätter LIVE-texten");
+            tools.call ("live_code_lock", make ({ { "layer", 0 } }));
+            r = tools.call ("live_code_stop", make ({}));
+            check ((bool) r["ok"] && pattern.note (0, 0).pitch.load() == 7, "live_code_stop låter låst rad vara");
+            tools.call ("live_code_lock", make ({ { "layer", 0 }, { "locked", false } }));
+            r = tools.call ("live_code_stop", make ({}));
+            int stopCount = 0; pattern.forEachNote (0, [&stopCount] (int, const Pattern::Note&) { ++stopCount; });
+            check ((bool) r["ok"] && stopCount == 0 && (processor.liveCodeOwned.load() & ToolLayer::liveCodeBit (0)) == 0, "live_code_stop tömmer Live Codes rad och släpper ägandet");
+
+            // live_code_apply med prune:true (AUTO): ägda rader som inte nämns töms, handgjorda rörs aldrig
+            tools.call ("live_code_run", make ({ { "code", "note(\"c2\").s(\"i1\")" }, { "cycles", 1 } }));
+            pattern.clearNotes (1);
+            pattern.edit (1, 0).on = true;
+            r = tools.call ("live_code_apply", make ({ { "items", juce::var (juce::Array<juce::var>()) }, { "overwrite", false }, { "prune", true } }));
+            int pruneCount = 0; pattern.forEachNote (0, [&pruneCount] (int, const Pattern::Note&) { ++pruneCount; });
+            check ((bool) r["ok"] && pruneCount == 0 && pattern.note (1, 0).on.load(), "live_code_apply prune:true tömmer ägd rad, handgjord rad ligger kvar");
+            pattern.clearNotes (1);
+
+            auto described = false;
+            for (auto& t : ToolLayer::tools())
+                if (t.name == "live_code_create")
+                    described = t.description.contains ("overwrite") && t.description.contains ("live_code_lock") && t.description.contains ("$: ")
+                                && t.description.contains (".lfo(") && t.description.contains (".env(") && t.description.contains ("data.problems");
+            check (described, "live_code_create beskriver skydd, block, sliders och .lfo/.env-problem");
+
+            // G2: console.log/warn/error i koden hamnar i konsolkön (host.log), inte i tomma intet
+            {
+                LiveCode consoleLive;
+                juce::Result consoleResult = juce::Result::ok();
+                consoleLive.create ("console.log(\"hej\", 3);\nconsole.warn({a:1});\nconsole.error(\"fel\");\n\nnote(\"c2\").s(\"i1\")", 1, consoleResult);
+                const auto lines = consoleLive.takeConsole();
+                check (consoleResult.wasOk() && lines.contains ("log: hej 3") && lines.contains ("warn: {\"a\":1}") && lines.contains ("error: fel"), // startloggar från bunten städas i G3
+                       "console.log/warn/error går till konsolkön " + consoleResult.getErrorMessage() + " [" + lines.joinIntoString ("|") + "]");
+                check (consoleLive.takeConsole().isEmpty(), "takeConsole tömmer kön");
+
+                // G3: noterna får teckenpositioner i koden (note(" börjar på 5, c2 står på 6..8, e2 på 9..11)
+                LiveCode marksLive;
+                marksLive.create ("note(\"c2 e2\").s(\"i1\")", 1, consoleResult);
+                const auto& marks = marksLive.getMarks();
+                check (consoleResult.wasOk() && marks.size() == 2 && marks[0].layer == 0 && marks[0].beginTick == 0 && marks[1].beginTick == 192
+                           && ! marks[0].locs.empty() && std::find (marks[0].locs.begin(), marks[0].locs.end(), std::make_pair (6, 8)) != marks[0].locs.end() && ! marks[1].locs.empty() && std::find (marks[1].locs.begin(), marks[1].locs.end(), std::make_pair (9, 11)) != marks[1].locs.end(),
+                       "notmarkeringar ger dokumentpositioner " + (consoleResult.failed() ? consoleResult.getErrorMessage() : juce::String ((int) marks.size()) + (marks.empty() ? juce::String() : " " + juce::String (marks[0].locs.size()) + (marks[0].locs.empty() ? juce::String() : " " + juce::String (marks[0].locs[0].first) + "-" + juce::String (marks[0].locs[0].second)))));
+            }
+        }
+
+        // .lfo/.env skapar CODE-rutter; felaktiga modulationsmål rapporteras utan att stoppa notraderna.
+        {
+            auto lfo = run ("note(\"c2\").lfo(\"bass1Cutoff\",2,0.5,\"tri\").s(\"i1\")");
+            const auto lfoSlot = processor.codeMods.empty() ? -1 : processor.codeMods.front().slot;
+            const auto lfoSource = Modulation::firstCodeSource + lfoSlot;
+            const auto lfoRoute = lfoSlot >= 0 ? processor.modRoutes.find (lfoSource, processor.modulator.indexOf ("bass1Cutoff")) : -1;
+            check ((bool) lfo["ok"] && lfo["data"]["problems"].isVoid() && lfoSlot >= 0
+                       && processor.modulator.codeSlots[(size_t) juce::jmax (0, lfoSlot)].kind.load() == 1 && lfoRoute >= 0
+                       && Modulation::sourceName (lfoSource) == "CODE 1" && Theme::sourceColour (lfoSource).getAlpha() == 255,
+                   ".lfo skapar en namngiven, färgsatt CODE-källa och route");
+
+            auto env = run ("note(\"c2\").env(\"bass1Cutoff\",10,200,0.5).s(\"i1\")");
+            const auto envFound = std::find_if (processor.codeMods.begin(), processor.codeMods.end(), [] (const PluginBase::CodeMod& mod) { return mod.key.endsWith ("|env"); });
+            const auto envSlot = envFound == processor.codeMods.end() ? -1 : envFound->slot;
+            const auto envRoute = envSlot >= 0 ? processor.modRoutes.find (Modulation::firstCodeSource + envSlot, processor.modulator.indexOf ("bass1Cutoff")) : -1;
+            check ((bool) env["ok"] && env["data"]["problems"].isVoid() && envSlot >= 0
+                       && processor.modulator.codeSlots[(size_t) juce::jmax (0, envSlot)].kind.load() == 2 && envRoute >= 0,
+                   ".env skapar en AD-källa för instrumentraden");
+
+            auto unknown = run ("note(\"c2\").lfo(\"notAParameter\",2,0.5).s(\"i1\")");
+            auto hasProblem = [] (const juce::var& result, const juce::String& text)
+            {
+                if (auto* problems = result["data"]["problems"].getArray())
+                    for (const auto& problem : *problems)
+                        if (problem.toString().contains (text))
+                            return true;
+                return false;
+            };
+            check ((bool) unknown["ok"] && hasProblem (unknown, "unknown parameter id"),
+                   ".lfo med okänt parameter-id returnerar problems");
+            auto nonModulatable = run ("note(\"c2\").lfo(\"instrumentCount\",2,0.5).s(\"i1\")");
+            check ((bool) nonModulatable["ok"] && hasProblem (nonModulatable, "can't be modulated"),
+                   ".lfo på icke-modulerbar parameter returnerar problems");
+            auto kickEnv = run ("s(\"bd\").env(\"kickTune\",10,200,0.5)");
+            check ((bool) kickEnv["ok"] && hasProblem (kickEnv, "not supported"),
+                   ".env på kick returnerar problems i stället för route");
+        }
+
+        // .lfo/.env påverkar parametern, utfasade rutter sopas av PluginBase, och kodens tak på rutter gäller.
+        {
+            auto codeRoutes = [&]
+            {
+                auto n = 0;
+                for (auto& route : processor.modRoutes.routes)
+                    n += Modulation::isCodeSource (route.source.load()) ? 1 : 0;
+                return n;
+            };
+            auto pump = [&] (int n) { for (int i = 0; i < n; ++i) processor.modulator.update (0.0); };
+            const auto cutoff = processor.modulator.indexOf ("bass1Cutoff");
+            auto* parameter = processor.apvts.getParameter ("bass1Cutoff");
+            const auto base = parameter->convertFrom0to1 (0.5f);
+            auto spread = [&] (float& lowest, float& highest)
+            {
+                lowest = 2.0f;
+                highest = -1.0f;
+                for (int i = 0; i < 4000; ++i)
+                {
+                    pump (1);
+                    const auto v = parameter->convertTo0to1 (processor.modulator.apply (cutoff, base));
+                    lowest = juce::jmin (lowest, v);
+                    highest = juce::jmax (highest, v);
+                }
+            };
+            const auto lfoCode = juce::String ("note(\"c2\").lfo(\"bass1Cutoff\",3,0.4,\"sine\").s(\"i1\")");
+            const auto plainCode = juce::String ("note(\"c2\").s(\"i1\")");
+
+            run (plainCode); // städa: stäng allt från blocken ovan, låt det tona ut och sopa
+            pump (3000);
+            run (plainCode);
+            check (codeRoutes() == 0 && processor.codeMods.empty(), "CODE: utan .lfo/.env finns inga CODE-rutter kvar");
+
+            float lowest = 0.0f, highest = 0.0f;
+            auto withLfo = run (lfoCode);
+            pump (200);
+            spread (lowest, highest);
+            check ((bool) withLfo["ok"] && withLfo["data"]["problems"].isVoid() && highest > 0.85f && lowest < 0.15f,
+                   ".lfo svänger parametern ±djup runt grundvärdet (0,5 ± 0,4)");
+
+            run ("note(\"c2\").lfo(\"bass1Cutoff\",3,0,\"sine\").s(\"i1\")");
+            pump (200);
+            spread (lowest, highest);
+            check (std::abs (highest - 0.5f) < 1.0e-3f && std::abs (lowest - 0.5f) < 1.0e-3f, ".lfo med djup 0 lämnar parametern orörd");
+
+            // 4.3: PluginBase sopar själv, ingen sida behövs. Stängd post: rutten ligger kvar tills platsen tonat ut och nästa körning sopar.
+            run (lfoCode);
+            run (plainCode);
+            check (processor.codeMods.empty() && codeRoutes() == 1, "CODE: stängd post lämnar rutten tills platsen tonat ut");
+            pump (3000);
+            run (plainCode);
+            check (codeRoutes() == 0, "CODE: utfasad rutt sopas bort av nästa körning (4.3)");
+            run (lfoCode);
+            processor.clearCodeMods (false);
+            pump (3000);
+            processor.sweepCodeRoutes();
+            check (codeRoutes() == 0, "CODE: clearCodeMods(false) + sweepCodeRoutes tar bort rutten (det timern gör)");
+
+            // 4.2: taket på kodens rutter (32 av 64). Sju platser hålls på av hand med fem rutter var (35), så en ny post stoppas.
+            for (int s = 1; s < Modulation::numCodeSources; ++s)
+            {
+                processor.modulator.codeSlots[(size_t) s].kind = 1;
+                for (int t = 0; t < 5; ++t)
+                    processor.modRoutes.add (Modulation::firstCodeSource + s, t, 0.1f);
+            }
+            pump (10);
+            const auto before = codeRoutes();
+            auto capped = run (lfoCode);
+            auto sawCap = false;
+            if (auto* list = capped["data"]["problems"].getArray())
+                for (const auto& p : *list)
+                    sawCap = sawCap || p.toString().contains ("at most " + juce::String (Modulation::maxCodeRoutes));
+            check ((bool) capped["ok"] && sawCap && codeRoutes() == before, "CODE: över taket på 32 rutter ger felrad och ingen ny rutt");
+            for (int s = 1; s < Modulation::numCodeSources; ++s)
+                processor.modulator.codeSlots[(size_t) s].kind = 0;
+            processor.clearCodeMods (true);
+            check (codeRoutes() == 0, "CODE: städat efter taktestet");
+        }
+
+        // Lucka 4-6 (lc-e-design §3): gränser, platsåteranvändning och stopp/laddning.
+        {
+            auto codeRoutes = [&]
+            {
+                auto n = 0;
+                for (auto& route : processor.modRoutes.routes)
+                    n += Modulation::isCodeSource (route.source.load()) ? 1 : 0;
+                return n;
+            };
+            auto pump = [&] (int n) { for (int i = 0; i < n; ++i) processor.modulator.update (0.0); };
+            auto hasProblem = [] (const juce::var& result, const juce::String& text)
+            {
+                if (auto* problems = result["data"]["problems"].getArray())
+                    for (const auto& problem : *problems)
+                        if (problem.toString().contains (text))
+                            return true;
+                return false;
+            };
+            const auto plainCode = juce::String ("note(\"c2\").s(\"i1\")");
+            auto clean = [&]
+            {
+                processor.clearCodeMods (true);
+                pump (10);
+                run (plainCode);
+            };
+            clean();
+
+            // Lucka 4a: åtta unika (lager, parameter, sort) ryms, den nionde får felrad.
+            const char* ids[] = { "bass1Cutoff", "bass1Resonance", "bass1EnvAmount", "bass1Decay", "bass1Sustain", "bass1Release", "bass1Drive", "bass1Glide" };
+            juce::String eight = "note(\"c2\")";
+            for (auto* id : ids)
+                eight += ".lfo(\"" + juce::String (id) + "\",1,0.2)";
+            eight += ".s(\"i1\")";
+            auto full = run (eight);
+            check ((bool) full["ok"] && full["data"]["problems"].isVoid() && (int) processor.codeMods.size() == Modulation::numCodeSources,
+                   "CODE: åtta unika modulatorer ryms");
+            auto ninth = run (eight.replace (".s(\"i1\")", ".env(\"bass1Attack\",10,200,0.2).s(\"i1\")"));
+            check ((bool) ninth["ok"] && hasProblem (ninth, "All " + juce::String (Modulation::numCodeSources) + " CODE modulators are in use")
+                       && (int) processor.codeMods.size() == Modulation::numCodeSources,
+                   "CODE: den nionde modulatorn ger felrad och ingen ny plats");
+            clean();
+
+            // Lucka 4b: djup, rate, attack och decay klipps till sina gränser.
+            run ("note(\"c2\").lfo(\"bass1Cutoff\",1000,5,\"sine\").env(\"bass1Resonance\",99999,0,5).s(\"i1\")");
+            auto slotOf = [&] (const juce::String& suffix)
+            {
+                const auto found = std::find_if (processor.codeMods.begin(), processor.codeMods.end(), [&] (const PluginBase::CodeMod& mod) { return mod.key.endsWith (suffix); });
+                return found == processor.codeMods.end() ? -1 : found->slot;
+            };
+            const auto lfoSlot = slotOf ("|lfo");
+            const auto envSlot = slotOf ("|env");
+            const auto lfoRoute = lfoSlot >= 0 ? processor.modRoutes.find (Modulation::firstCodeSource + lfoSlot, processor.modulator.indexOf ("bass1Cutoff")) : -1;
+            check (lfoSlot >= 0 && envSlot >= 0 && lfoRoute >= 0
+                       && processor.modRoutes.routes[(size_t) lfoRoute].amount.load() == 1.0f
+                       && processor.modulator.codeSlots[(size_t) lfoSlot].rate.load() == 200.0f
+                       && processor.modulator.codeSlots[(size_t) envSlot].attackMs.load() == 10000.0f
+                       && processor.modulator.codeSlots[(size_t) envSlot].decayMs.load() == 1.0f,
+                   "CODE: djup 5 klipps till 1, rate 1000 till 200, attack 99999 till 10000, decay 0 till 1");
+            clean();
+
+            // Lucka 4c/4d: NaN, Infinity, text och okänd form ger felrad i stället för krasch.
+            for (auto* bad : { "lfo(\"bass1Cutoff\",NaN,0.5)", "lfo(\"bass1Cutoff\",Infinity,0.5)", "lfo(\"bass1Cutoff\",\"fort\",0.5)", "env(\"bass1Cutoff\",10,200,NaN)" })
+            {
+                auto result = run ("note(\"c2\")." + juce::String (bad) + ".s(\"i1\")");
+                check (! (bool) result["ok"] || result["data"]["problems"].isVoid() == false,
+                       "CODE: ogiltigt tal i .lfo/.env stoppar inte host (" + juce::String (bad) + ")");
+            }
+            auto badShape = run ("note(\"c2\").lfo(\"bass1Cutoff\",2,0.5,\"zigzag\").s(\"i1\")");
+            check (! (bool) badShape["ok"] || badShape["data"]["problems"].isVoid() == false, "CODE: okänd LFO-form ger felrad");
+            clean();
+
+            // Lucka 5: en nyss stängd plats återanvänds inte före utfasning, men gör det efter svepning.
+            const auto lfoA = juce::String ("note(\"c2\").lfo(\"bass1Cutoff\",3,0.4).s(\"i1\")");
+            run (lfoA);
+            pump (1); // idle sätts bara i Modulator::update; utan ljudtråd måste testet köra ett steg så platsen räknas som levande
+            const auto firstSlot = processor.codeMods.empty() ? -1 : processor.codeMods.front().slot;
+            run (plainCode);
+            run ("note(\"c2\").lfo(\"bass1Resonance\",3,0.4).s(\"i1\")");
+            const auto secondSlot = processor.codeMods.empty() ? -1 : processor.codeMods.front().slot;
+            check (firstSlot >= 0 && secondSlot >= 0 && secondSlot != firstSlot, "CODE: ny post får inte den stängda platsen före utfasning");
+            run (plainCode);
+            pump (3000);
+            processor.sweepCodeRoutes();
+            check (codeRoutes() == 0, "CODE: utfasade platser sopas efter pumpning");
+            clean();
+
+            // Lucka 6: stopp och laddning lämnar inga poster eller CODE-rutter.
+            auto settled = [&]
+            {
+                pump (3000);
+                processor.sweepCodeRoutes();
+                return processor.codeMods.empty() && codeRoutes() == 0;
+            };
+            run (lfoA);
+            processor.clearCodeMods (false);
+            check (settled(), "CODE: clearCodeMods(false) lämnar inga poster eller rutter efter svepning");
+            run (lfoA);
+            juce::MemoryBlock state;
+            processor.getStateInformation (state);
+            run (lfoA);
+            processor.setStateInformation (state.getData(), (int) state.getSize());
+            check (settled(), "CODE: setStateInformation lämnar inga poster eller rutter");
+            run (lfoA);
+            processor.loadFactoryPreset (Presets::Section::full, 0);
+            check (settled(), "CODE: fabrikspreset lämnar inga poster eller rutter");
+            clean();
+        }
+
+        // slider(v,min,max): utan dragning gäller värdet i texten, med dragning värdet från reglaget (begränsat till min..max).
+        {
+            auto noteOf = [] (const std::map<int, double>& values)
+            {
+                LiveCode live;
+                live.setSliderValues (values);
+                juce::Result res = juce::Result::ok();
+                if (live.setCode ("note(slider(3,0,12)).s(\"i1\")").failed()) return -999.0;
+                const auto haps = live.query (0, 1, res);
+                return haps.empty() ? -999.0 : (double) haps[0].value["note"];
+            };
+            check (noteOf ({}) == 3.0, "slider(): startvärdet gäller utan dragning");
+            check (noteOf ({ { 0, 7.0 } }) == 7.0, "slider(): dragna värdet gäller");
+            check (noteOf ({ { 0, 99.0 } }) == 12.0, "slider(): värdet begränsas till max");
+            check (noteOf ({ { 1, 7.0 } }) == 3.0, "slider(): värde för ett annat ordningsnummer rör inte detta reglage");
+        }
+
+        // F2: .lock() / .pianoroll.lock() noteras som lås-poster (inte som parameterskrivningar); okänd grupp ger felrad.
+        {
+            LiveCode live;
+            live.setParams ({ { "bass1Cutoff", 0.5 }, { "bass2Cutoff", 0.5 }, { "kickTune", 0.5 }, { "fx1Mix", 0.5 } });
+            const auto res = live.setCode ("instr1.lock();\ninstr2.pianoroll.lock();\nkick.lock();\n\nnote(\"c2\").s(\"i1\")");
+            auto writes = live.takeParamWrites();
+            juce::StringArray seen;
+            if (auto* list = writes.getArray())
+                for (auto& w : *list)
+                    seen.add (w["lock"].toString() + ":" + w["kind"].toString() + ":" + w["id"].toString());
+            check (res.wasOk() && seen.size() == 3 && seen.contains ("bass1:all:") && seen.contains ("bass2:notes:") && seen.contains ("kick:all:"),
+                   ".lock() och .pianoroll.lock() ger lås-poster utan id");
+
+            LiveCode other;
+            other.setParams ({ { "bass1Cutoff", 0.5 }, { "fx1Mix", 0.5 } });
+            check (other.setCode ("fx1.lock();\n\nnote(\"c2\").s(\"i1\")").failed(), ".lock() på grupp utan låsbit (fx1) ger felrad");
+        }
+
+        // F3: fx1.slot2.setEffect("reverb") och fx1.slot2.mix.set(v) noteras som effektposter; samma typ ger ingen post; fel ger felrad.
+        {
+            ToolLayer tools (processor);
+            const auto catalog = tools.liveCodeEffects();
+            auto record = [&catalog] (const juce::String& code, juce::StringArray& seen)
+            {
+                LiveCode live;
+                live.setEffects (catalog);
+                const auto res = live.setCode (code);
+                const auto writes = live.takeParamWrites();
+                if (auto* list = writes.getArray())
+                    for (auto& w : *list)
+                        seen.add (w["fx"].toString() + "." + w["slot"].toString() + ":" + w["type"].toString() + ":" + w["knob"].toString() + ":" + w["value"].toString());
+                return res;
+            };
+            juce::StringArray seen;
+            const auto res = record ("fx1.slot2.setEffect(\"reverb\");\nfx1.slot2.mix.set(0.3);\n\nnote(\"c2\").s(\"i1\")", seen);
+            check (res.wasOk() && seen.size() == 2 && seen[0] == "fx1.2:Reverb::0.0" && seen[1] == "fx1.2:Reverb:MIX:0.3",
+                   "setEffect + ratt ger två effektposter i ordning: " + seen.joinIntoString (" ; ") + " " + res.getErrorMessage());
+
+            juce::StringArray same;
+            const auto current = catalog["slots"][1][0].toString().toLowerCase().removeCharacters (" ");
+            record ("fx2.slot1.setEffect(\"" + current + "\");\n\nnote(\"c2\").s(\"i1\")", same);
+            check (same.isEmpty(), "setEffect med nuvarande typ ger ingen post");
+
+            juce::StringArray none;
+            check (record ("fx1.slot1.setEffect(\"finnsinte\");\n\nnote(\"c2\").s(\"i1\")", none).failed(), "okänd effekt ger felrad");
+            check (record ("fx1.slot1.setEffect(\"off\");\nfx1.slot1.mix.set(1);\n\nnote(\"c2\").s(\"i1\")", none).failed(), "ratt på tom plats ger felrad");
+        }
+
+        // F4: meter.X.get() ger värdet från före körningen; .set/.lfo/.lock på en mätare ger felrad.
+        {
+            LiveCode live;
+            live.setParams ({ { "bass1Cutoff", 0.5 }, { "meter.outputPeak", -42.5 }, { "meter.duck1", 0.25 } });
+            const auto res = live.setCode ("bass1.Cutoff.set(meter.outputPeak.get() + meter.duck1.get());\n\nnote(\"c2\").s(\"i1\")");
+            const auto writes = live.takeParamWrites();
+            check (res.wasOk() && writes.size() == 1 && (double) writes[0]["value"] == -42.25, "mätare läses med .get(): " + res.getErrorMessage());
+            for (auto* bad : { "set(1)", "lfo(1)", "LFO(1)", "lock()" })
+            {
+                LiveCode other;
+                other.setParams ({ { "bass1Cutoff", 0.5 }, { "meter.solo", 0.0 } });
+                check (other.setCode (juce::String ("meter.solo.") + bad + ";\n\nnote(\"c2\").s(\"i1\")").failed(), juce::String ("meter.solo.") + bad + " ger felrad");
+            }
+        }
+
+        // F2: lås från koden blockerar skrivning som handlås, men sparas aldrig och släpps utan att röra handlåset.
+        {
+            ToolLayer tools (processor);
+            auto make = [] (std::initializer_list<std::pair<const char*, juce::var>> props)
+            {
+                auto* o = new juce::DynamicObject();
+                for (auto& p : props)
+                    o->setProperty (p.first, p.second);
+                return juce::var (o);
+            };
+            auto create = [&] (const juce::String& code)
+            {
+                return tools.call ("live_code_create", make ({ { "code", code }, { "cycles", 1 }, { "overwrite", true } }));
+            };
+            tools.call ("live_code_lock", make ({ { "layer", 0 }, { "locked", false } }));
+            processor.liveCodeOwned = 0;
+            pattern.clearNotes (0);
+            create ("note(\"c2\").s(\"i1\")");
+            const auto before = pattern.note (0, 0).pitch.load();
+            processor.liveCodeCodeLocks = ToolLayer::liveCodeBit (0);
+            create ("note(\"g2\").s(\"i1\")");
+            check (pattern.note (0, 0).pitch.load() == before, "kodlås: raden hoppas över");
+            processor.liveCodeCodeLocks = 0;
+            processor.liveCodeCodeNoteLocks = ToolLayer::liveCodeBit (0);
+            create ("note(\"g2\").s(\"i1\")");
+            check (pattern.note (0, 0).pitch.load() == before, "kodlås (pianoroll): noter hoppas över");
+            processor.liveCodeCodeNoteLocks = 0;
+            tools.call ("live_code_lock", make ({ { "layer", 0 } }));
+            processor.liveCodeCodeLocks = ToolLayer::liveCodeBit (0);
+            processor.liveCodeCodeLocks = 0; // stopp släpper bara kodlåset
+            check (processor.liveCodeLocks.load() == ToolLayer::liveCodeBit (0) && processor.liveCodeNoteLocks() == ToolLayer::liveCodeBit (0), "handlås ligger kvar när kodlåset släpps");
+            tools.call ("live_code_lock", make ({ { "layer", 0 }, { "locked", false } }));
+            create ("note(\"g2\").s(\"i1\")");
+            check (pattern.note (0, 0).pitch.load() != before, "ingen lås kvar: raden skrivs igen");
+        }
+
+        int pitch = 0;
+        check (LiveCode::pitchFrom ("c#3", pitch) && pitch == 13 && LiveCode::pitchFrom ("eb2", pitch) && pitch == 3
+                   && LiveCode::pitchFrom (7, pitch) && pitch == 7, "tonnamn och tal blir pitch");
+        return failed ? 1 : 0;
+    }
+
     // Radens längd (R9): AUTO följer innehållet (växer och krymper), ett valt antal låser den, "+ BAR" (extra) släpps när innehållet nått dit.
     // Dialogen som frågar före förkortning (LengthMenu) testas inte här.
     int lengthTest()
@@ -415,6 +1076,55 @@ namespace
         return report.valid ? 0 : 1;
     }
 
+    // Init-check: mixanalysen (inkl. fas/stereo-måtten) på både koden-Init och det riktiga inbakade Init ska ge ett giltigt svar utan krasch,
+    // text och JSON ska gå att skriva, och fas-måtten ska tåla tom insignal. Rendersig (rendersig/rendersigreal) står för "0 diff".
+    int initTest()
+    {
+        juce::ScopedJuceInitialiser_GUI gui;
+        auto failed = false;
+        auto check = [&] (bool ok, const juce::String& what)
+        {
+            std::printf ("%s: %s\n", ok ? "ok" : "FEL", what.toRawUTF8());
+            failed = failed || ! ok;
+        };
+
+        // Tom insignal: ingen krasch, ingen giltig mätning, inga fynd.
+        {
+            MixAnalysis::PhaseInput empty;
+            const auto metrics = MixAnalysis::measurePhase (empty);
+            const auto description = MixAnalysis::describePhase (metrics);
+            check (! metrics.valid, "fasmåtten på tom insignal är inte giltiga");
+            check (description.findings.isEmpty() && description.fixes.isEmpty(), "tom insignal ger inga fynd eller förslag");
+        }
+
+        const auto codeInit = PluginBase::preferCodeInit;
+        for (const auto useCodeInit : { true, false })
+        {
+            PluginBase::preferCodeInit = useCodeInit;
+            const juce::String label = useCodeInit ? "Init (kod)" : "Init (inbakad)";
+            const auto owner = std::make_unique<InstrumentProcessor>();
+            auto& processor = *owner;
+            processor.setPlayConfigDetails (0, 2, renderRate, blockSize);
+            processor.prepareToPlay (renderRate, blockSize);
+            processor.transportStatus.bpm = 145.0;
+            processor.transportStatus.keyNote = 52;
+
+            auto copy = MixAnalysis::prepareCopy (processor);
+            const auto report = MixAnalysis::run (*copy, 145.0, 52, {}, nullptr, {}, {});
+            check (report.valid, label + ": analysen ger en giltig rapport");
+            check (report.toText().isNotEmpty(), label + ": rapporttexten går att skriva");
+            check (juce::JSON::toString (report.toVar()).isNotEmpty(), label + ": rapporten går att skriva som JSON");
+            auto finite = true;
+            for (const auto& finding : report.findings)
+                finite = finite && std::isfinite (finding.lowHz) && std::isfinite (finding.highHz) && std::isfinite (finding.share);
+            check (finite, label + ": alla fynd har ändliga värden");
+        }
+        PluginBase::preferCodeInit = codeInit;
+
+        std::puts (failed ? "FEL: inittest" : "Inittestet gick igenom");
+        return failed ? 1 : 0;
+    }
+
     // EQ per källa: högpass på kicken, ett instrument och mastern tar bort bas, och ett lyft ökar nivån. Mixanalysen ska också ge ett giltigt svar.
     int eqTest()
     {
@@ -486,6 +1196,25 @@ namespace
             const auto viaTool = rmsOf (PluginBase::ExportPart::bass);
             check (viaTool < 0.92f * routed, "sidechainen som AI:n lägger fungerar (" + juce::String (viaTool, 3) + ")");
             Effects::setSlotType (processor.apvts, 0, 0, EffectType::off);
+
+            // INSERT (standard): allt går genom kanalen, så FX1-faderna i botten tystar instrumentet. SEND: torrt orört, bara effektdelen tystnar.
+            // Instrument 1 och 3 tystas på riktigt (botten på faderna), annars hörs de torra och döljer skillnaden.
+            for (const auto source : { 0, 2 })
+                setValue (mixerGain (source), Mixer::minGainDb);
+            const auto onlySecond = rmsOf (PluginBase::ExportPart::bass);
+            Effects::setSlotType (processor.apvts, 0, 0, EffectType::ducker);
+            setValue (Mixer::paramID (Mixer::firstFxSource, "Gain"), Mixer::minGainDb);
+            const auto insertMuted = rmsOf (PluginBase::ExportPart::bass);
+            setValue (ParamID::bass (1, InstrumentField::fxSend), 1.0f);
+            const auto sendMuted = rmsOf (PluginBase::ExportPart::bass);
+            check (insertMuted < 0.1f * onlySecond && sendMuted > 0.5f * onlySecond,
+                   "FX SEND-läget lämnar torrt orört när FX-faderna är nere (INSERT " + juce::String (insertMuted, 3) + ", SEND " + juce::String (sendMuted, 3) + ", före " + juce::String (onlySecond, 3) + ")");
+            setValue (ParamID::bass (1, InstrumentField::fxSend), 0.0f);
+            setValue (Mixer::paramID (Mixer::firstFxSource, "Gain"), 0.0f);
+            for (const auto source : { 0, 2 })
+                setValue (mixerGain (source), 0.0f);
+            Effects::setSlotType (processor.apvts, 0, 0, EffectType::off);
+
             setValue (ParamID::bass (1, InstrumentField::fxChannel), 0.0f);
             for (const auto source : { 0, 2 })
                 setValue (mixerGain (source), 1.0f);
@@ -622,6 +1351,83 @@ namespace
             for (const auto& finding : quiet.findings)
                 stillThere = stillThere || finding.category == "collision";
             check (! stillThere, "en tydligt svagare källa ger ingen krock");
+
+            // Lektionsvarningar: RAND-fas på en bas (A ligger bara i basbandet) och mycket energi runt 200 Hz i mastern.
+            auto hasTitle = [] (const MixAnalysis::Report& rep, const char* part)
+            {
+                for (const auto& finding : rep.findings)
+                    if (finding.title.contains (part))
+                        return true;
+                return false;
+            };
+            capture.randomPhase[0] = 0.8f;
+            check (hasTitle (MixAnalysis::evaluate (capture, options, nullptr), "random phase"), "en bas med RAND-fas ger en varning");
+            capture.randomPhase[0] = 0.0f;
+            check (! hasTitle (MixAnalysis::evaluate (capture, options, nullptr), "random phase"), "en bas utan RAND-fas ger ingen varning");
+
+            const auto& edges = MixAnalysis::bandEdges();
+            auto setMasterMud = [&] (float db) // lera mäts på kick och bas, så leran läggs på kicken (A är basen; ÄNDRAT TESTVILLKOR, AN steg 4)
+            {
+                for (int f = 0; f < 24; ++f)
+                    for (int b = 0; b < MixAnalysis::numBands(); ++b)
+                        if (edges[(size_t) b] >= 160.0f && edges[(size_t) b + 1] <= 250.0f)
+                            capture.band (MixAnalysis::kickSource, f, b) = db;
+            };
+            setMasterMud (-8.0f);
+            check (hasTitle (MixAnalysis::evaluate (capture, options, nullptr), "around 200 Hz"), "lika mycket energi runt 200 Hz som i basen ger en varning");
+            setMasterMud (-60.0f);
+            check (! hasTitle (MixAnalysis::evaluate (capture, options, nullptr), "around 200 Hz"), "lite energi runt 200 Hz ger ingen varning");
+        }
+
+        // Fasmåtten på påhittade signaler: kick och bas i motfas, i fas, och en kick som inte klingar ut (klick).
+        {
+            constexpr int length = 96000; // en takt vid 120 bpm och 48 kHz
+            auto makeInput = [length] (float bassSign, bool decays)
+            {
+                MixAnalysis::PhaseInput in;
+                in.rate = 48000.0;
+                in.samplesPerBar = length;
+                in.bars = 1;
+                in.onsets = { 0, 24000, 48000, 72000 };
+                std::vector<float> kickSignal ((size_t) length);
+                for (int s = 0; s < length; ++s)
+                {
+                    const auto t = (double) (s % 24000) / 48000.0;
+                    kickSignal[(size_t) s] = 0.5f * (float) (std::sin (juce::MathConstants<double>::twoPi * 50.0 * t) * (decays ? std::exp (-t / 0.03) : 1.0));
+                }
+                in.kickL = in.kickR = kickSignal;
+                in.bassL = in.bassR = kickSignal;
+                for (auto& v : in.bassL)
+                    v *= bassSign;
+                in.bassR = in.bassL;
+                in.masterL = in.masterR = kickSignal;
+                return in;
+            };
+            const auto anti = MixAnalysis::measurePhase (makeInput (-1.0f, true));
+            const auto same = MixAnalysis::measurePhase (makeInput (1.0f, true));
+            const auto clicking = MixAnalysis::measurePhase (makeInput (1.0f, false));
+            check (anti.valid && anti.lowCorrelation.size() == 16 && anti.lowCorrelation[0] < -0.95f, "kick och bas i motfas ger korrelation -1");
+            check (same.valid && same.lowCorrelation[0] > 0.95f, "kick och bas i fas ger korrelation +1");
+            check (anti.sumVsMaxDb < -20.0f, "motfas ger en summa långt under den största toppen (" + juce::String (anti.sumVsMaxDb, 1) + " dB)");
+            check (same.sumVsMaxDb > 5.0f && same.sumVsMaxDb < 7.0f, "samma signal i fas ger +6 dB (" + juce::String (same.sumVsMaxDb, 1) + " dB)");
+            check (same.hits.size() == 4 && same.clickHits == 0, "en kick som klingar ut ger inget klick");
+            check (clicking.clickHits >= 3, "en kick som klipps av ger klick (" + juce::String (clicking.clickHits) + " slag)");
+
+            auto hasId = [] (const juce::Array<juce::var>& list, const char* key, const char* id)
+            {
+                for (auto& item : list)
+                    if (item.getProperty (key, {}).toString() == id)
+                        return true;
+                return false;
+            };
+            const auto antiText = MixAnalysis::describePhase (anti);
+            const auto sameText = MixAnalysis::describePhase (same);
+            const auto clickText = MixAnalysis::describePhase (clicking);
+            check (hasId (antiText.findings, "id", "kick_bass_cancel") && hasId (antiText.fixes, "finding", "kick_bass_cancel"),
+                   "AN: motfas ger phase_findings + suggested_fixes");
+            check (antiText.fixes.size() >= 2 && (bool) antiText.fixes[0].getProperty ("needs_approval", false), "AN: förslagen är kandidater som kräver godkännande");
+            check (! hasId (sameText.findings, "id", "kick_bass_cancel"), "AN: kick och bas i fas ger inget fasfynd");
+            check (hasId (clickText.findings, "id", "kick_click") && hasId (clickText.fixes, "finding", "kick_click"), "AN: klick ger fynd + förslag");
         }
 
         std::puts (failed ? "FEL: eqtest" : "EQ- och analystestet gick igenom");
@@ -823,6 +1629,130 @@ namespace
         return restored + failed == 0 ? 0 : 1;
     }
 
+    // Matrix-problemet: en koppling från Matrix (ADD ROUTE, MatrixPage.cpp addRoute) ska ge samma ring och samma modulering som LFO-drag
+    // (Components.cpp itemDropped) för varje modulerbart mål.
+    int matrixTest()
+    {
+        const auto owner = std::make_unique<InstrumentProcessor>();
+        auto& processor = *owner;
+        processor.setPlayConfigDetails (0, 2, renderRate, blockSize);
+        processor.prepareToPlay (renderRate, blockSize);
+
+        auto failed = false;
+        auto check = [&failed] (bool ok, const char* what) { std::printf ("%s: %s\n", ok ? "ok" : "FEL", what); failed |= ! ok; };
+        const auto& parameters = processor.getParameters();
+
+        // Matrix: den första aktiva LFO:n, annars aktiveras LFO 1 (samma urval som MatrixPage::addRoute).
+        auto matrixSource = [&processor]
+        {
+            auto source = -1;
+            for (int lfo = 0; lfo < processor.availableLfos() && source < 0; ++lfo)
+                if (processor.isLfoActive (lfo))
+                    source = Modulation::lfoSource (lfo);
+            if (source < 0)
+            {
+                processor.setLfoActive (0, true);
+                source = 0;
+            }
+            return source;
+        };
+        // Största förskjutningen över ett par varv; ringen och ljudet läser samma tal.
+        auto strongestOffset = [&processor] (int index)
+        {
+            auto strongest = 0.0f;
+            for (int step = 0; step < 64; ++step)
+            {
+                processor.modulator.update (step * 0.0625, 138.0);
+                strongest = std::max (strongest, std::abs (processor.modulator.currentOffset (index)));
+            }
+            return strongest;
+        };
+
+        auto tested = 0, noRoute = 0, noOffset = 0, noRing = 0, differs = 0, notApplied = 0;
+        juce::String firstBad;
+        for (int i = 0; i < parameters.size(); ++i)
+        {
+            auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (parameters[i]);
+            if (ranged == nullptr || ! Modulation::isModulatable (*ranged))
+                continue;
+            ++tested;
+            const auto what = ranged->getParameterID();
+            const auto source = matrixSource();
+
+            // Matrix-vägen
+            processor.modRoutes.clear();
+            const auto slot = processor.modRoutes.add (source, i, 0.25f);
+            const auto found = processor.modRoutes.find (source, i) == slot && slot >= 0;
+            auto ring = false; // KnobComponent::rings: någon koppling med target == parameterIndex
+            for (const auto& route : processor.modRoutes.routes)
+                ring |= route.source.load() >= 0 && route.target.load() == i;
+            const auto viaMatrix = strongestOffset (i);
+            const auto applied = processor.modulator.apply (i, ranged->convertFrom0to1 (0.5f)) != ranged->convertFrom0to1 (0.5f);
+
+            // Drag-vägen
+            processor.modRoutes.clear();
+            processor.modRoutes.add (juce::jlimit (0, Modulation::numSources - 1, source), i, 0.25f);
+            const auto viaDrag = strongestOffset (i);
+
+            noRoute += found ? 0 : 1;
+            noRing += ring ? 0 : 1;
+            noOffset += viaMatrix > 0.0f ? 0 : 1;
+            notApplied += applied || viaMatrix == 0.0f ? 0 : 1;
+            differs += std::abs (viaMatrix - viaDrag) < 1.0e-6f ? 0 : 1;
+            if (firstBad.isEmpty() && ! (found && ring && viaMatrix > 0.0f && std::abs (viaMatrix - viaDrag) < 1.0e-6f))
+                firstBad = what;
+        }
+        processor.modRoutes.clear();
+        std::printf ("  (%d mål; utan koppling %d, utan ring %d, utan förskjutning %d, skiljer mot drag %d, ej påverkat värde %d%s%s)\n", tested, noRoute, noRing,
+                     noOffset, differs, notApplied, firstBad.isEmpty() ? "" : "; första: ", firstBad.toRawUTF8());
+        check (tested > 0 && noRoute == 0 && noRing == 0 && noOffset == 0 && differs == 0 && notApplied == 0, "Matrix-koppling = drag-koppling för alla modulerbara mål");
+
+        // POSITION på varje instrument och OSC: indexet som WavetableView läser (modulator.indexOf, OscPanel.cpp:7) är samma som ratten
+        // (KnobComponent::parameterIndex = getParameters().indexOf) och som Matrix-menyn (id = index + 1), och en koppling dit ger en förskjutning.
+        auto positionBad = 0;
+        juce::String firstPositionBad;
+        for (int layer = 0; layer < maxInstruments; ++layer)
+            for (int osc = 0; osc < 3; ++osc)
+            {
+                const auto id = ParamID::bass (layer, ParamID::oscField (osc, InstrumentField::aPos));
+                auto* parameter = processor.apvts.getParameter (id);
+                const auto knobIndex = parameter != nullptr ? parameters.indexOf (parameter) : -1;
+                const auto viewIndex = processor.modulator.indexOf (id);
+                processor.modRoutes.clear();
+                processor.modRoutes.add (matrixSource(), knobIndex, 0.25f);
+                const auto ok = knobIndex >= 0 && knobIndex == viewIndex && strongestOffset (viewIndex) > 0.0f
+                                && Modulation::isModulatable (*dynamic_cast<juce::RangedAudioParameter*> (parameter));
+                positionBad += ok ? 0 : 1;
+                if (! ok && firstPositionBad.isEmpty())
+                    firstPositionBad = id;
+            }
+        processor.modRoutes.clear();
+        check (positionBad == 0, ("POSITION: samma index för ratt, vy och Matrix på alla instrument/OSC" + (firstPositionBad.isEmpty() ? juce::String() : " (första fel: " + firstPositionBad + ")")).toRawUTF8());
+
+        // CODE-källa (nu valbar i Matrix) mot instrument 1 CUTOFF: kopplingen skapas, hittas och ger en ring.
+        {
+            const auto cutoffId = ParamID::bass (0, InstrumentField::cutoff);
+            const auto cutoffIndex = parameters.indexOf (processor.apvts.getParameter (cutoffId));
+            processor.modRoutes.clear();
+            const auto slot = processor.modRoutes.add (Modulation::firstCodeSource, cutoffIndex, 0.25f);
+            check (cutoffIndex >= 0 && slot >= 0 && processor.modRoutes.find (Modulation::firstCodeSource, cutoffIndex) == slot
+                       && Modulation::isCodeSource (processor.modRoutes.routes[(size_t) slot].source.load()),
+                   "CODE 1 -> instrument 1 CUTOFF kan kopplas i Matrix");
+            processor.modRoutes.clear();
+        }
+
+        // Källvalet: LFO 1 avstängd (ingen koppling) ger LFO 2, inte en tyst källa.
+        processor.setLfoActive (0, false);
+        check (matrixSource() == Modulation::lfoSource (1), "Matrix väljer första aktiva LFO när LFO 1 är borttagen");
+        processor.setLfoActive (1, false);
+        processor.setLfoActive (2, false);
+        const auto fresh = matrixSource();
+        check (fresh == 0 && processor.isLfoActive (0), "Matrix aktiverar LFO 1 när ingen LFO är aktiv");
+
+        std::puts (failed ? "FEL: matrixtestet misslyckades" : "Matrixtestet gick igenom");
+        return failed ? 1 : 0;
+    }
+
     // Flera instrument: lägga till, spara/läsa, ta bort (allt ska rensas) och gamla projekt (kicken var lager 3).
     int instrumentTest()
     {
@@ -866,6 +1796,7 @@ namespace
         processor.pattern.addNote (4, 0, 48, 3);
         processor.pattern.setCustom (4, true);
         processor.setLayerName (4, "Lead");
+        processor.setLayerColour (4, 0xff112233);
         setValue (ParamID::bass (4, InstrumentField::cutoff), 777.0f);
         const auto& parameters = processor.getParameters();
         for (int i = 0; i < parameters.size(); ++i)
@@ -885,6 +1816,104 @@ namespace
             check (other->activeInstruments() == 6 && other->getLayerName (4) == "Lead" && other->pattern.note (4, 0).on.load() && other->pattern.note (4, 0).pitch.load() == 3
                        && std::abs (other->apvts.getRawParameterValue (ParamID::bass (4, InstrumentField::cutoff))->load() - 777.0f) < 1.0f,
                    "sex instrument sparas och läses tillbaka med namn, toner och inställningar");
+        }
+
+        {
+            // L4: färgen följer med projektet; ett projekt utan färg (äldre) ger standardfärg.
+            const auto other = std::make_unique<InstrumentProcessor>();
+            other->setStateInformation (state.getData(), (int) state.getSize());
+            check (other->getLayerColour (4) == 0xff112233 && other->getLayerColour (3) == 0, "L4: färgen sparas och läses, orörda instrument har standardfärg");
+            auto xml = juce::AudioProcessor::getXmlFromBinary (state.getData(), (int) state.getSize());
+            check (xml != nullptr && xml->hasAttribute ("layerColour5"), "L4: färgen ligger i projektets state");
+            xml->removeAttribute ("layerColour5");
+            juce::MemoryBlock old;
+            juce::AudioProcessor::copyXmlToBinary (*xml, old);
+            const auto legacy = std::make_unique<InstrumentProcessor>();
+            legacy->setStateInformation (old.getData(), (int) old.getSize());
+            check (legacy->getLayerColour (4) == 0 && legacy->getLayerName (4) == "Lead", "L4: ett projekt utan färg laddas med standardfärg");
+
+            // Copy/paste/duplicate/move/delete flyttar innehållet mellan platserna.
+            check (other->duplicateTrack (4) && other->activeInstruments() == 7 && other->getLayerName (5) == "Lead" && other->getLayerColour (5) == 0xff112233
+                       && other->pattern.note (5, 0).on.load() && other->pattern.note (4, 0).on.load(), "L4: Duplicate ger en kopia på nästa plats");
+            check (other->moveTrack (5, -1) && other->getLayerName (4) == "Lead" && other->moveTrack (4, 1), "L4: Move byter plats");
+            check (other->deleteTrack (4) && other->activeInstruments() == 6 && other->getLayerName (4) == "Lead" && other->getLayerName (5) == "INSTR 6", "L4: Delete flyttar upp resten");
+            const auto clip = other->copyTrack (4);
+            check (clip != nullptr && other->pasteTrack (1, *clip) && other->getLayerName (1) == "Lead" && other->getLayerColour (1) == 0xff112233
+                       && std::abs (other->apvts.getRawParameterValue (ParamID::bass (1, InstrumentField::cutoff))->load() - 777.0f) < 1.0f, "L4: Copy/Paste flyttar ljud, namn och färg");
+
+            // Move down/up: ALLT per rad följer med (namn, färg, rattar, FX-kanal, noter), inte bara mönstret.
+            {
+                const auto p = std::make_unique<InstrumentProcessor>();
+                p->setStateInformation (state.getData(), (int) state.getSize());
+                auto set = [&p] (const juce::String& id, float real)
+                {
+                    auto* parameter = p->apvts.getParameter (id);
+                    parameter->setValueNotifyingHost (parameter->convertTo0to1 (real));
+                };
+                auto get = [&p] (const juce::String& id) { return p->apvts.getRawParameterValue (id)->load(); };
+                p->pattern.addNote (3, 0, 55, 2);
+                p->pattern.setCustom (3, true);
+                p->setLayerName (3, "Bas");
+                p->setLayerColour (3, 0xff445566);
+                set (ParamID::bass (3, InstrumentField::cutoff), 333.0f);
+                set (ParamID::bass (3, InstrumentField::fxChannel), 2.0f);
+                set (ParamID::bass (4, InstrumentField::fxChannel), 3.0f);
+                const auto pitch3 = p->pattern.note (3, 0).pitch.load(), pitch4 = p->pattern.note (4, 0).pitch.load();
+                const auto version = p->layerStructureVersion.load();
+                check (p->moveTrack (3, 1), "Move down: går att göra");
+                check (p->getLayerName (4) == "Bas" && p->getLayerName (3) == "Lead" && p->getLayerColour (4) == 0xff445566 && p->getLayerColour (3) == 0xff112233,
+                       "Move down: namn och färg följer med");
+                check (std::abs (get (ParamID::bass (4, InstrumentField::cutoff)) - 333.0f) < 1.0f && std::abs (get (ParamID::bass (3, InstrumentField::cutoff)) - 777.0f) < 1.0f,
+                       "Move down: rattarna följer med");
+                check (std::abs (get (ParamID::bass (4, InstrumentField::fxChannel)) - 2.0f) < 0.1f && std::abs (get (ParamID::bass (3, InstrumentField::fxChannel)) - 3.0f) < 0.1f,
+                       "Move down: FX-kanalen följer med");
+                check (p->pattern.note (4, 0).pitch.load() == pitch3 && p->pattern.note (3, 0).pitch.load() == pitch4, "Move down: noterna följer med");
+                check (p->layerStructureVersion.load() != version && p->selectedInstrument == 4, "Move down: vyn byggs om och markeringen följer med");
+            }
+            // Move down mellan de två första raderna, med rutnätslängd och mixer.
+            {
+                const auto p = std::make_unique<InstrumentProcessor>();
+                p->setInstrumentCount (3);
+                auto set = [&p] (const juce::String& id, float real)
+                {
+                    auto* parameter = p->apvts.getParameter (id);
+                    parameter->setValueNotifyingHost (parameter->convertTo0to1 (real));
+                };
+                auto get = [&p] (const juce::String& id) { return p->apvts.getRawParameterValue (id)->load(); };
+                p->setLayerName (0, "Ett");
+                p->setLayerName (1, "Tva");
+                set (ParamID::bass (0, InstrumentField::cutoff), 333.0f);
+                set (ParamID::bass (1, InstrumentField::cutoff), 777.0f);
+                set (ParamID::rowBars (1), 2.0f);
+                set (ParamID::rowBars (2), 4.0f);
+                set (Mixer::paramID (Mixer::firstBassSource + 0, "Gain"), -6.0f);
+                p->pattern.clearNotes (0);
+                p->pattern.clearNotes (1);
+                p->pattern.addNote (1, 0, 55, 2);
+                check (p->moveTrack (0, 1), "Move down 1->2: går att göra");
+                check (p->getLayerName (1) == "Ett" && p->getLayerName (0) == "Tva", "Move down 1->2: namnen byter plats");
+                check (std::abs (get (ParamID::bass (1, InstrumentField::cutoff)) - 333.0f) < 1.0f && std::abs (get (ParamID::bass (0, InstrumentField::cutoff)) - 777.0f) < 1.0f,
+                       "Move down 1->2: rattarna byter plats");
+                check (std::abs (get (ParamID::rowBars (2)) - 2.0f) < 0.1f && std::abs (get (ParamID::rowBars (1)) - 4.0f) < 0.1f, "Move down 1->2: rutnätslängden byter plats");
+                check (std::abs (get (Mixer::paramID (Mixer::firstBassSource + 1, "Gain")) + 6.0f) < 0.1f, "Move down 1->2: mixerkanalen byter plats");
+                check (p->pattern.note (0, 0).on.load() && ! p->pattern.note (1, 0).on.load(), "Move down 1->2: noterna byter plats");
+            }
+            // VOICES-räkningen: överlappande toner, ackordets extra toner, glide återanvänder rösten, tomma rader.
+            {
+                const auto p = std::make_unique<InstrumentProcessor>();
+                auto& pat = p->pattern;
+                pat.clearNotes (2);
+                check (pat.maxSimultaneous (2) == 0, "Voices: tom rad = 0");
+                pat.addNote (2, 0, 48, 0);
+                pat.addNote (2, 48, 48, 3);
+                check (pat.maxSimultaneous (2) == 1, "Voices: toner efter varandra = 1");
+                pat.addNote (2, 96, 96, 0, 0.8f, false, { 4, 7, 0 });
+                check (pat.maxSimultaneous (2) == 3, "Voices: ton + ackord med två extra = 3");
+                pat.addNote (2, 120, 24, 5);
+                check (pat.maxSimultaneous (2) == 4, "Voices: ackord + överlappande ton = 4");
+                pat.addNote (2, 130, 10, 9, 0.8f, true);
+                check (pat.maxSimultaneous (2) == 4, "Voices: glide-ton under en klingande ton räknas inte");
+            }
         }
 
         // Ta bort: instrument 4-6 rensas helt.
@@ -914,6 +1943,14 @@ namespace
                    "matriskopplingar med instrument- och makrokällor sätts via verktyget");
             tools.call ("set_instruments", juce::JSON::parse (R"({"count":2})"));
             check (processor.activeInstruments() == 2, "set_instruments tar bort de sista");
+            tools.call ("edit_instrument", juce::JSON::parse (R"({"action":"colour","layer":0,"colour":"#336699"})"));
+            tools.call ("edit_instrument", juce::JSON::parse (R"({"action":"rename","layer":0,"name":"Verktyg"})"));
+            check (processor.getLayerColour (0) == 0xff336699 && processor.getLayerName (0) == "Verktyg", "edit_instrument sätter färg och namn");
+            tools.call ("edit_instrument", juce::JSON::parse (R"({"action":"move_down","layer":0})"));
+            check (processor.getLayerName (1) == "Verktyg" && processor.getLayerColour (1) == 0xff336699, "edit_instrument flyttar namn och färg med instrumentet");
+            tools.call ("edit_instrument", juce::JSON::parse (R"({"action":"move_up","layer":1})"));
+            tools.call ("edit_instrument", juce::JSON::parse (R"({"action":"colour","layer":0,"colour":""})"));
+            tools.call ("edit_instrument", juce::JSON::parse (R"({"action":"rename","layer":0,"name":""})"));
             processor.setInstrumentCount (3);
         }
 
@@ -960,6 +1997,230 @@ namespace
             fresh->fromValueTree (tree);
             check (fresh->note (Pattern::kickLayer, 0).on.load() && ! fresh->note (3, 0).on.load(), "ett gammalt projekt: kicken hamnar i kicklagret, inte i instrument 4");
             check (! fresh->note (5, 96).on.load(), "ett gammalt projekt: instrument som det inte nämner töms");
+        }
+
+        {
+            // Fas PH: polaritet och startfas. Standardvärdena ger dagens ljud; POLARITY Inverted är exakt det omvända ljudet.
+            auto renderAudition = [] (float polarity, float phaseDeg)
+            {
+                const auto fresh = std::make_unique<InstrumentProcessor>();
+                fresh->setPlayConfigDetails (0, 2, renderRate, blockSize);
+                fresh->prepareToPlay (renderRate, blockSize);
+                for (auto [field, value] : { std::pair { InstrumentField::polarity, polarity }, std::pair { InstrumentField::phaseDeg, phaseDeg } })
+                {
+                    auto* parameter = fresh->apvts.getParameter (ParamID::bass (0, field));
+                    parameter->setValueNotifyingHost (parameter->convertTo0to1 (value));
+                }
+                fresh->requestAudition (PluginBase::layerAudition (0));
+                std::vector<float> samples;
+                juce::AudioBuffer<float> buffer (2, blockSize);
+                juce::MidiBuffer midi;
+                for (int block = 0; block < 12; ++block)
+                {
+                    buffer.clear();
+                    fresh->processBlock (buffer, midi);
+                    samples.insert (samples.end(), buffer.getReadPointer (0), buffer.getReadPointer (0) + blockSize);
+                }
+                return samples;
+            };
+            const auto normal = renderAudition (0.0f, 0.0f), inverted = renderAudition (1.0f, 0.0f), shifted = renderAudition (0.0f, 90.0f);
+            auto peak = 0.0f, sumError = 0.0f, phaseDiff = 0.0f;
+            for (size_t i = 0; i < normal.size(); ++i)
+            {
+                peak = std::max (peak, std::abs (normal[i]));
+                sumError = std::max (sumError, std::abs (normal[i] + inverted[i]));
+                phaseDiff = std::max (phaseDiff, std::abs (normal[i] - shifted[i]));
+            }
+            check (peak > 0.01f, "PH: instrument 1 ger ljud i testet");
+            check (sumError < 1.0e-6f, "PH: POLARITY Inverted ger exakt det inverterade ljudet");
+            check (phaseDiff > 0.01f, "PH: START PHASE 90 grader ändrar vågformen");
+        }
+
+        {
+            // Fas PH: DISPERSER är en ren fasvridning (all-pass): energin består men vågformen ändras.
+            const auto fresh = std::make_unique<InstrumentProcessor>();
+            Effects::setSlotType (fresh->apvts, 0, 0, EffectType::disperser);
+            EffectChain chain (fresh->apvts, 0);
+            chain.prepare (renderRate, blockSize);
+            juce::AudioBuffer<float> buffer (2, blockSize), original;
+            juce::Random random (7);
+            auto inEnergy = 0.0, outEnergy = 0.0, difference = 0.0;
+            for (int block = 0; block < 40; ++block)
+            {
+                for (int ch = 0; ch < 2; ++ch)
+                    for (int i = 0; i < blockSize; ++i)
+                        buffer.setSample (ch, i, random.nextFloat() - 0.5f);
+                original.makeCopyOf (buffer);
+                chain.update (140.0, 0.0);
+                chain.process (buffer, blockSize);
+                if (block < 4)
+                    continue; // låt filtren komma igång
+                for (int i = 0; i < blockSize; ++i)
+                {
+                    inEnergy += original.getSample (0, i) * original.getSample (0, i);
+                    outEnergy += buffer.getSample (0, i) * buffer.getSample (0, i);
+                    difference += std::abs (original.getSample (0, i) - buffer.getSample (0, i));
+                }
+            }
+            check (std::abs (outEnergy / inEnergy - 1.0) < 0.05 && difference / (36.0 * blockSize) > 0.05, "PH: DISPERSER bevarar energin men ändrar fasen");
+        }
+
+        {
+            // FX2: Widener (WIDTH 0 = mono, BASS MONO), Flanger och Transient ger ändliga, förväntade resultat.
+            auto runEffect = [&] (EffectType type, std::vector<std::pair<int, float>> knobValues, int blocks, const std::function<void (juce::AudioBuffer<float>&, int)>& fill, const std::function<void (const juce::AudioBuffer<float>&, int)>& look)
+            {
+                const auto fresh = std::make_unique<InstrumentProcessor>();
+                Effects::setSlotType (fresh->apvts, 0, 0, type);
+                const auto& list = Effects::knobs (type);
+                for (const auto& [index, v] : knobValues)
+                    if (auto* parameter = fresh->apvts.getParameter (Effects::knobParamID (0, 0, index)))
+                        parameter->setValueNotifyingHost (list[(size_t) index].toNormalised (v));
+                EffectChain chain (fresh->apvts, 0);
+                chain.prepare (renderRate, blockSize);
+                juce::AudioBuffer<float> buffer (2, blockSize);
+                for (int block = 0; block < blocks; ++block)
+                {
+                    fill (buffer, block);
+                    chain.update (140.0, 0.0);
+                    chain.process (buffer, blockSize);
+                    look (buffer, block);
+                }
+            };
+            auto noise = [] (juce::AudioBuffer<float>& buffer, int)
+            {
+                static juce::Random random (11);
+                for (int ch = 0; ch < 2; ++ch)
+                    for (int i = 0; i < buffer.getNumSamples(); ++i)
+                        buffer.setSample (ch, i, random.nextFloat() - 0.5f);
+            };
+            auto monoError = 0.0f;
+            runEffect (EffectType::widener, { { 0, 0.0f } }, 4, noise, [&] (const juce::AudioBuffer<float>& b, int)
+            {
+                for (int i = 0; i < b.getNumSamples(); ++i)
+                    monoError = std::max (monoError, std::abs (b.getSample (0, i) - b.getSample (1, i)));
+            });
+            check (monoError < 1.0e-5f, "FX2: WIDENER width 0 % ger mono");
+            auto bassSide = 0.0f, bassPeak = 0.0f;
+            runEffect (EffectType::widener, { { 1, 200.0f } }, 20,
+                       [&] (juce::AudioBuffer<float>& b, int block) // 50 Hz motfas: bara sida, under BASS MONO
+                       {
+                           for (int i = 0; i < b.getNumSamples(); ++i)
+                           {
+                               const auto s = std::sin (juce::MathConstants<double>::twoPi * 50.0 * (block * blockSize + i) / renderRate);
+                               b.setSample (0, i, (float) s); b.setSample (1, i, (float) -s);
+                           }
+                       },
+                       [&] (const juce::AudioBuffer<float>& b, int block)
+                       {
+                           if (block < 10) return;
+                           for (int i = 0; i < b.getNumSamples(); ++i)
+                           {
+                               bassSide = std::max (bassSide, std::abs (b.getSample (0, i) - b.getSample (1, i)));
+                               bassPeak = std::max (bassPeak, std::abs (b.getSample (0, i)));
+                           }
+                       });
+            check (bassSide < 0.6f && bassPeak < 0.3f, // en-pols delning: 50 Hz vid 200 Hz släpper igenom ~0,24 (ingång: skillnad 2,0, topp 1,0)
+ "FX2: WIDENER BASS MONO tar bort basens sidosignal");
+            for (const auto type : { EffectType::flanger, EffectType::transient })
+            {
+                auto finite = true;
+                auto change = 0.0;
+                runEffect (type, type == EffectType::transient ? std::vector<std::pair<int, float>> { { 0, 1.0f } } : std::vector<std::pair<int, float>> {}, 20, noise,
+                           [&] (const juce::AudioBuffer<float>& b, int)
+                           {
+                               for (int ch = 0; ch < 2; ++ch)
+                                   for (int i = 0; i < b.getNumSamples(); ++i)
+                                   {
+                                       const auto v = b.getSample (ch, i);
+                                       finite = finite && std::isfinite (v) && std::abs (v) < 4.0f;
+                                       change += std::abs (v);
+                                   }
+                           });
+                check (finite && change > 1.0, type == EffectType::flanger ? "FX2: FLANGER ger ändligt ljud" : "FX2: TRANSIENT ger ändligt ljud");
+            }
+            // Dynamic EQ: en hög ton på bandets frekvens sänks med RANGE, en tyst ton lämnas orörd.
+            for (const auto amplitude : { 0.5f, 0.001f })
+            {
+                auto peak = 0.0f;
+                runEffect (EffectType::dynamicEq, { { 0, 400.0f }, { 3, -12.0f } }, 30,
+                           [&] (juce::AudioBuffer<float>& b, int block)
+                           {
+                               for (int i = 0; i < b.getNumSamples(); ++i)
+                                   for (int ch = 0; ch < 2; ++ch)
+                                       b.setSample (ch, i, amplitude * (float) std::sin (juce::MathConstants<double>::twoPi * 400.0 * (block * blockSize + i) / renderRate));
+                           },
+                           [&] (const juce::AudioBuffer<float>& b, int block)
+                           {
+                               if (block >= 25)
+                                   for (int i = 0; i < b.getNumSamples(); ++i)
+                                       peak = std::max (peak, std::abs (b.getSample (0, i)));
+                           });
+                if (amplitude > 0.1f)
+                    check (peak < amplitude * 0.4f, "FX2: DYNAMIC EQ sänker ett högt band");
+                else
+                    check (peak > amplitude * 0.9f, "FX2: DYNAMIC EQ lämnar ett tyst band orört");
+            }
+            // Band Ducker: kickens nivå duckar bara den låga delen (LOW DUCK 100 %, HIGH DUCK 0): en 60 Hz-ton sänks, en 3 kHz-ton lämnas.
+            for (const auto hz : { 60.0, 3000.0 })
+            {
+                const auto fresh = std::make_unique<InstrumentProcessor>();
+                Effects::setSlotType (fresh->apvts, 0, 0, EffectType::bandDucker);
+                const auto& list = Effects::knobs (EffectType::bandDucker);
+                const std::vector<std::pair<int, float>> settings { { 0, 0.0f }, { 1, 150.0f }, { 2, 1.0f }, { 3, 0.0f } };
+                for (const auto& [index, v] : settings)
+                    if (auto* parameter = fresh->apvts.getParameter (Effects::knobParamID (0, 0, index)))
+                        parameter->setValueNotifyingHost (list[(size_t) index].toNormalised (v));
+                EffectChain chain (fresh->apvts, 0);
+                chain.prepare (renderRate, blockSize);
+                std::vector<float> key ((size_t) blockSize, 0.8f);
+                SourceSignals sources;
+                sources.left[0] = key.data();
+                chain.setSources (&sources);
+                juce::AudioBuffer<float> buffer (2, blockSize);
+                auto peak = 0.0f;
+                for (int block = 0; block < 30; ++block)
+                {
+                    for (int i = 0; i < blockSize; ++i)
+                        for (int ch = 0; ch < 2; ++ch)
+                            buffer.setSample (ch, i, 0.3f * (float) std::sin (juce::MathConstants<double>::twoPi * hz * (block * blockSize + i) / renderRate));
+                    chain.update (140.0, 0.0);
+                    chain.process (buffer, blockSize);
+                    if (block >= 25)
+                        for (int i = 0; i < blockSize; ++i)
+                            peak = std::max (peak, std::abs (buffer.getSample (0, i)));
+                }
+                if (hz < 100.0)
+                    check (peak < 0.3f * 0.3f, "FX2: BAND DUCKER duckar den låga delen");
+                else
+                    check (peak > 0.3f * 0.85f && peak < 0.3f * 1.15f, "FX2: BAND DUCKER lämnar den höga delen");
+            }
+            // Octaver: oktaven ner/upp läggs ovanpå originalet (toppen blir högre än ingången) och ljudet är ändligt; av = orört.
+            for (const auto amount : { 0.0f, 1.0f })
+            {
+                auto peak = 0.0f;
+                auto finite = true;
+                runEffect (EffectType::octaver, { { 0, amount }, { 1, amount } }, 30,
+                           [&] (juce::AudioBuffer<float>& b, int block)
+                           {
+                               for (int i = 0; i < b.getNumSamples(); ++i)
+                                   for (int ch = 0; ch < 2; ++ch)
+                                       b.setSample (ch, i, 0.3f * (float) std::sin (juce::MathConstants<double>::twoPi * 150.0 * (block * blockSize + i) / renderRate));
+                           },
+                           [&] (const juce::AudioBuffer<float>& b, int block)
+                           {
+                               if (block >= 20)
+                                   for (int i = 0; i < b.getNumSamples(); ++i)
+                                   {
+                                       finite = finite && std::isfinite (b.getSample (0, i));
+                                       peak = std::max (peak, std::abs (b.getSample (0, i)));
+                                   }
+                           });
+                check (finite, "FX2: OCTAVER ger ändligt ljud");
+                if (amount > 0.5f)
+                    check (peak > 0.3f * 1.15f, "FX2: OCTAVER lägger till en oktav");
+                else
+                    check (std::abs (peak - 0.3f) < 0.01f, "FX2: OCTAVER med noll oktav lämnar ljudet orört");
+            }
         }
 
         std::puts (failed ? "FEL: instrumenttestet misslyckades" : "Instrumenttestet gick igenom");
@@ -1239,6 +2500,291 @@ namespace
             }
         }
 
+        // Kostnadsläget: inställning, gränser, beskärning av gammalt samtal och varningen före dyra verktyg.
+        {
+            check (Settings::chatCostMode() == 1, "kostnadsläget är Normal som standard");
+            Settings::setChatCostMode (0);
+            check (Settings::chatCostMode() == 0, "kostnadsläget Sparsam sparas");
+            Settings::setChatCostMode (2);
+            check (Settings::chatCostMode() == 2, "kostnadsläget Rik sparas");
+            Settings::setChatCostMode (1);
+            check (Settings::chatCostMode() == 1, "kostnadsläget kan sättas tillbaka till Normal");
+
+            const auto sparse = AiChat::limits (0), normal = AiChat::limits (1), rich = AiChat::limits (2);
+            check (sparse.maxSteps < normal.maxSteps && normal.maxSteps < rich.maxSteps, "kostnadsläge: fler steg per läge");
+            check (sparse.maxOutputTokens < normal.maxOutputTokens && normal.maxOutputTokens < rich.maxOutputTokens, "kostnadsläge: längre svar per läge");
+            check (sparse.keepTurns < normal.keepTurns && normal.keepTurns < rich.keepTurns, "kostnadsläge: mer historia per läge");
+            check (sparse.confirmHeavy && normal.confirmHeavy && ! rich.confirmHeavy, "kostnadsläge: Rik frågar inte");
+            check (AiChat::isHeavyTool ("render_preview") && AiChat::isHeavyTool ("analyze_audio") && ! AiChat::isHeavyTool ("set_parameters"), "dyra verktyg: render_preview och analyze_audio");
+
+            // Sex frågor, var och en med ett verktygsresultat som har en bild och en lång text.
+            auto make = [] { return new juce::DynamicObject(); };
+            juce::Array<juce::var> history;
+            const auto longText = juce::String::repeatedString ("x", 3000);
+            for (int turn = 0; turn < 6; ++turn)
+            {
+                auto user = make();
+                user->setProperty ("role", "user");
+                user->setProperty ("content", "question " + juce::String (turn));
+                history.add (juce::var (user));
+
+                auto toolUse = make();
+                toolUse->setProperty ("type", "tool_use");
+                toolUse->setProperty ("id", "t" + juce::String (turn));
+                toolUse->setProperty ("name", "render_preview");
+                auto assistant = make();
+                assistant->setProperty ("role", "assistant");
+                assistant->setProperty ("content", juce::Array<juce::var> { juce::var (toolUse) });
+                history.add (juce::var (assistant));
+
+                auto image = make();
+                image->setProperty ("type", "image");
+                auto text = make();
+                text->setProperty ("type", "text");
+                text->setProperty ("text", longText);
+                auto result = make();
+                result->setProperty ("type", "tool_result");
+                result->setProperty ("tool_use_id", "t" + juce::String (turn));
+                result->setProperty ("content", juce::Array<juce::var> { juce::var (image), juce::var (text) });
+                auto resultMessage = make();
+                resultMessage->setProperty ("role", "user");
+                resultMessage->setProperty ("content", juce::Array<juce::var> { juce::var (result) });
+                history.add (juce::var (resultMessage));
+            }
+            const auto before = juce::JSON::toString (juce::var (history));
+            const auto trimmed = AiChat::trimForRequest (history, sparse); // behåller 2 frågor: index 12 och framåt är nya
+            check (trimmed.size() == history.size(), "beskärning: lika många meddelanden");
+            check (juce::JSON::toString (juce::var (history)) == before, "beskärning: historiken rörs inte");
+            const auto partOf = [&] (int message, int part) { return trimmed.getReference (message)["content"][0]["content"][part]; };
+            check (partOf (2, 0)["type"].toString() == "text" && partOf (2, 0)["text"].toString().contains ("image removed"), "beskärning: gammal bild ersätts med en rad");
+            check (partOf (2, 1)["text"].toString().length() < 400 && partOf (2, 1)["text"].toString().contains ("trimmed"), "beskärning: gammalt långt resultat kortas");
+            check (partOf (14, 0)["type"].toString() == "text" && partOf (14, 1)["text"].toString().length() == 3000, "beskärning: nyare resultat behåller sin text men tappar bilden");
+            check (partOf (17, 0)["type"].toString() == "image" && partOf (17, 1)["text"].toString().length() == 3000, "beskärning: det senaste resultatet är orört");
+            check (trimmed.getReference (12)["content"].toString() == "question 4", "beskärning: frågorna är orörda");
+
+            // Gemini: svarstaket följer läget.
+            Settings::setChatProvider ("gemini");
+            const auto capped = GeminiApi::buildRequest ("system", {}, trimmed, 4096);
+            check ((int) capped["generationConfig"]["maxOutputTokens"] == 4096, "Gemini: maxOutputTokens följer kostnadsläget");
+            Settings::setChatProvider ("anthropic");
+        }
+
+        // Varning före ett dyrt verktyg: låtsasserver som först ber om render_preview. answer: 1 kör, 2 hoppa över, 3 kör och fråga inte mer.
+        {
+            const auto runConfirm = [&] (int costMode, int answer, int port, bool& sawPending, juce::String& secondBody, bool& stillAskedLater)
+            {
+                std::atomic<int> requests { 0 };
+                std::atomic<bool> stopServer { false };
+                juce::StreamingSocket listener;
+                if (! listener.createListener (port, "127.0.0.1"))
+                    return false;
+                std::string captured;
+                std::thread server ([&]
+                {
+                    while (! stopServer)
+                    {
+                        std::unique_ptr<juce::StreamingSocket> client (listener.waitForNextConnection());
+                        if (client == nullptr || stopServer)
+                            continue;
+                        std::string request;
+                        char byte;
+                        auto headerEnd = std::string::npos;
+                        while (headerEnd == std::string::npos && client->read (&byte, 1, true) == 1)
+                        {
+                            request.push_back (byte);
+                            headerEnd = request.find ("\r\n\r\n");
+                        }
+                        auto length = 0;
+                        auto lower = request;
+                        std::transform (lower.begin(), lower.end(), lower.begin(), [] (unsigned char c) { return (char) std::tolower (c); });
+                        if (const auto at = lower.find ("content-length:"); at != std::string::npos)
+                            length = std::atoi (request.c_str() + at + 15);
+                        std::string body;
+                        for (int i = 0; i < length && client->read (&byte, 1, true) == 1; ++i)
+                            body.push_back (byte);
+
+                        const auto number = ++requests;
+                        juce::String reply;
+                        if (number == 1 || number == 2)
+                        {
+                            if (number == 2)
+                                captured = body;
+                            const auto id = juce::String (number);
+                            reply = R"({"type":"message","role":"assistant","stop_reason":"tool_use","usage":{"input_tokens":10,"output_tokens":5},"content":[{"type":"tool_use","id":"toolu_c)" + id
+                                  + R"(","name":"analyze_audio","input":{}}]})";
+                        }
+                        else
+                            reply = R"({"type":"message","role":"assistant","stop_reason":"end_turn","usage":{"input_tokens":10,"output_tokens":5},"content":[{"type":"text","text":"ok"}]})";
+                        const auto text = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " + juce::String (reply.getNumBytesAsUTF8())
+                                        + "\r\nConnection: close\r\n\r\n" + reply;
+                        client->write (text.toRawUTF8(), (int) text.getNumBytesAsUTF8());
+                    }
+                });
+
+                Settings::setChatCostMode (costMode);
+                Settings::set ("chatEndpoint", "http://127.0.0.1:" + juce::String (port) + "/v1/messages");
+                chat.newChat();
+                chat.send ("Check the mix");
+                auto asked = 0;
+                for (int i = 0; i < 1500 && (chat.isBusy() || i < 5); ++i)
+                {
+                    juce::MessageManager::getInstance()->runDispatchLoopUntil (40);
+                    if (chat.getPendingConfirm().isNotEmpty())
+                    {
+                        sawPending = true;
+                        ++asked;
+                        chat.answerConfirm (answer);
+                        juce::Thread::sleep (200); // tråden hinner läsa svaret innan nästa varning kan visas
+                    }
+                }
+                stillAskedLater = asked > 1;
+                stopServer = true;
+                juce::StreamingSocket wake;
+                wake.connect ("127.0.0.1", port, 500);
+                wake.close();
+                server.join();
+                secondBody = captured;
+                Settings::set ("chatEndpoint", {});
+                Settings::setChatCostMode (1);
+                return true;
+            };
+
+            auto sawPending = false, askedAgain = false;
+            juce::String body;
+            if (runConfirm (1, 2, 18767, sawPending, body, askedAgain))
+            {
+                check (sawPending, "Normal: varning före analyze_audio");
+                check (body.contains ("skipped this tool"), "SKIP: verktyget körs inte och AI:n får veta det");
+            }
+            sawPending = false;
+            if (runConfirm (1, 1, 18768, sawPending, body, askedAgain))
+            {
+                check (sawPending && ! body.contains ("skipped this tool"), "RUN: verktyget körs");
+                check (askedAgain, "RUN: den frågar igen vid nästa dyra verktyg");
+            }
+            sawPending = false;
+            if (runConfirm (1, 3, 18769, sawPending, body, askedAgain))
+                check (sawPending && ! askedAgain, "RUN, DON'T ASK AGAIN: frågar bara en gång");
+            sawPending = false;
+            if (runConfirm (2, 2, 18770, sawPending, body, askedAgain))
+                check (! sawPending && ! body.contains ("skipped this tool"), "Rik: ingen varning");
+        }
+
+        // Sessioner: spara, öppna, exportera och autorensa; nycklarna får aldrig hamna i filerna.
+        {
+            const auto folder = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("kickbase_chat_sessions_test");
+            folder.deleteRecursively();
+            folder.createDirectory();
+            Settings::set ("chatsFolder", folder.getFullPathName());
+            const juce::String secret = "sk-ant-TESTSECRET12345678";
+            Settings::setChatApiKey (secret);
+            Settings::setChatCostMode (0);
+
+            juce::StreamingSocket listener;
+            const auto port = 18771;
+            if (listener.createListener (port, "127.0.0.1"))
+            {
+                std::atomic<bool> stopServer { false };
+                std::thread server ([&]
+                {
+                    while (! stopServer)
+                    {
+                        std::unique_ptr<juce::StreamingSocket> client (listener.waitForNextConnection());
+                        if (client == nullptr || stopServer)
+                            continue;
+                        std::string request;
+                        char byte;
+                        auto headerEnd = std::string::npos;
+                        while (headerEnd == std::string::npos && client->read (&byte, 1, true) == 1)
+                        {
+                            request.push_back (byte);
+                            headerEnd = request.find ("\r\n\r\n");
+                        }
+                        auto length = 0;
+                        auto lower = request;
+                        std::transform (lower.begin(), lower.end(), lower.begin(), [] (unsigned char c) { return (char) std::tolower (c); });
+                        if (const auto at = lower.find ("content-length:"); at != std::string::npos)
+                            length = std::atoi (request.c_str() + at + 15);
+                        for (int i = 0; i < length && client->read (&byte, 1, true) == 1; ++i) {}
+
+                        const juce::String reply = R"({"type":"message","role":"assistant","stop_reason":"end_turn","usage":{"input_tokens":10,"output_tokens":5},"content":[{"type":"text","text":"see https://x.test/v1?key=AIzaSyAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA and sk-ant-TESTSECRET12345678 ok"}]})";
+                        const auto text = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " + juce::String (reply.getNumBytesAsUTF8())
+                                        + "\r\nConnection: close\r\n\r\n" + reply;
+                        client->write (text.toRawUTF8(), (int) text.getNumBytesAsUTF8());
+                    }
+                });
+
+                Settings::set ("chatEndpoint", "http://127.0.0.1:" + juce::String (port) + "/v1/messages");
+                auto ask = [&] (const juce::String& text)
+                {
+                    chat.send (text);
+                    for (int i = 0; i < 1500 && (chat.isBusy() || i < 5); ++i)
+                        juce::MessageManager::getInstance()->runDispatchLoopUntil (40);
+                };
+                auto hasFile = [&] (const juce::String& pattern) { return folder.findChildFiles (juce::File::findFiles, false, pattern).size(); };
+                auto leaks = [&] (const juce::File& file)
+                {
+                    const auto text = file.loadFileAsString();
+                    return text.contains (secret) || text.contains ("AIzaSyAAAA") || text.contains ("key=AIza");
+                };
+
+                chat.newChat();
+                ask ("hello session");
+                check (chat.hasConversation(), "session: samtalet finns efter en fråga");
+                juce::File saved, exported;
+                check (chat.saveSession (saved) && saved.existsAsFile(), "session: sparas till en fil");
+                check (chat.exportText (exported) && exported.existsAsFile(), "session: exporteras till en textfil");
+                check (exported.loadFileAsString().contains ("hello session") && exported.loadFileAsString().contains ("[AI]"), "session: exporten innehåller samtalet");
+                check (! leaks (saved) && ! leaks (exported), "session: nyckeln finns inte i sessionsfilen eller exporten");
+                check (exported.loadFileAsString().contains ("[key removed]"), "session: nyckeln i svaret är borttagen");
+                check (AiChat::redact ("error at /v1/models/x:generateContent?key=AIzaSyBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB&alt=sse").contains ("&alt=sse")
+                       && ! AiChat::redact ("?key=AIzaSyBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB").contains ("AIza"), "session: redact tar bort key= men lämnar resten av adressen");
+
+                const auto headers = AiChat::redact ("Authorization: Bearer abcdef123456789\nx-goog-api-key: SECRETVALUE12345\n\"x-api-key\":\"SECRETVALUE67890\"");
+                check (! headers.contains ("abcdef123456789") && ! headers.contains ("SECRETVALUE"), "session: redact tar bort Authorization-, x-goog-api-key- och x-api-key-headers");
+
+                chat.newChat();
+                check (! chat.hasConversation(), "session: NEW CHAT tömmer");
+                check (chat.loadSession (saved) && chat.hasConversation(), "session: öppnas igen");
+                auto entries = chat.getEntries();
+                check (! entries.empty() && entries.front().kind == AiChat::Entry::Kind::user && entries.front().text == "hello session", "session: det öppnade samtalet visar frågan");
+                ask ("and then more");
+                check (chat.getEntries().size() > entries.size(), "session: man kan fortsätta ett öppnat samtal");
+                check (AiChat::listSessions().size() == 1, "session: listan visar den sparade chatten");
+
+                // Autorensning: Sparsam rensar över 40 000 tecken, sparar och exporterar först och tar bort de äldsta frågorna.
+                chat.newChat();
+                const auto txtBefore = hasFile ("*.txt"), jsonBefore = hasFile ("*.json");
+                const auto big = juce::String::repeatedString ("lorem ipsum ", 4000);
+                for (int i = 0; i < 4; ++i)
+                    ask (big + juce::String (i));
+                check (hasFile ("*.txt") > txtBefore && hasFile ("*.json") > jsonBefore, "autorensning: samtalet sparas och exporteras innan något tas bort");
+                auto dropped = false;
+                for (const auto& entry : chat.getEntries())
+                    dropped |= entry.text.contains ("older questions were dropped");
+                check (dropped, "autorensning: en notis berättar att de äldsta frågorna togs bort");
+                auto anyLeak = false;
+                for (const auto& file : folder.findChildFiles (juce::File::findFiles, false, "*"))
+                    anyLeak |= leaks (file);
+                check (! anyLeak, "autorensning: ingen nyckel i någon fil i Chats-mappen");
+
+                stopServer = true;
+                juce::StreamingSocket wake;
+                wake.connect ("127.0.0.1", port, 500);
+                wake.close();
+                server.join();
+            }
+            else
+                check (false, "session: kunde inte starta testservern");
+
+            Settings::set ("chatEndpoint", {});
+            Settings::set ("chatsFolder", {});
+            Settings::setChatCostMode (1);
+            Settings::setChatApiKey ("sk-ant-invalid-test-key");
+            chat.newChat();
+            folder.deleteRecursively();
+        }
+
         // Fönstret (pluginet) stängs mitt i ett anrop som aldrig får svar: det ska gå direkt, inte vänta ut anropet.
         {
             juce::StreamingSocket listener;
@@ -1268,6 +2814,104 @@ namespace
                 server.join();
                 Settings::set ("chatEndpoint", {});
             }
+        }
+
+        // Gemini: sparade svar (ingen nyckel, inget nät).
+        {
+            Settings::setGeminiApiKey ("AIzaFakeKey123");
+            check (Settings::geminiApiKey() == "AIzaFakeKey123", "Gemini-nyckeln läses tillbaka");
+            check (! settingsFile.loadFileAsString().contains ("FakeKey"), "Gemini-nyckeln ligger inte i klartext");
+            Settings::setChatProvider ("gemini");
+            check (Settings::chatProvider() == "gemini", "leverantören sparas");
+            check (Settings::geminiModel() == "gemini-3.6-flash", "standardmodellen för Gemini");
+            Settings::setGeminiModel ("my-model");
+            check (Settings::geminiModel() == "my-model", "egen Gemini-modell kan skrivas in");
+            Settings::setGeminiModel ("gemini-3.6-flash");
+            check (Settings::geminiToolsCheck ("m1", "keyA") == -1, "verktygsprov: inte provad än");
+            Settings::setGeminiToolsCheck ("m1", "keyA", false);
+            check (Settings::geminiToolsCheck ("m1", "keyA") == 0 && Settings::geminiToolsCheck ("m1", "keyB") == -1, "verktygsprov: sparas per nyckel");
+            check (! settingsFile.loadFileAsString().contains ("keyA"), "verktygsprov: nyckeln sparas som hash");
+            {
+                const auto listed = GeminiApi::parseModelList (juce::JSON::parse (
+                    R"({"models":[{"name":"models/gemini-3.6-flash","supportedGenerationMethods":["generateContent","countTokens"]},
+                        {"name":"models/gemini-embedding-001","supportedGenerationMethods":["embedContent"]},
+                        {"name":"models/gemini-3-flash-tts","supportedGenerationMethods":["generateContent"]},
+                        {"name":"models/imagen-4","supportedGenerationMethods":["predict"]},
+                        {"name":"models/gemini-3.5-flash-lite","supportedGenerationMethods":["generateContent"]}]})"));
+                check (listed.size() == 2 && listed[0] == "gemini-3.6-flash" && listed[1] == "gemini-3.5-flash-lite", "models.list: bara textmodeller med generateContent, utan models/-prefix");
+                check (GeminiApi::models() == GeminiApi::fallbackModels(), "modellista: reservlistan före hämtning");
+                GeminiApi::setFetchedModels (listed);
+                check (GeminiApi::models() == listed, "modellista: hämtad lista används");
+                GeminiApi::setFetchedModels ({});
+            }
+            check (GeminiApi::errorMessage (404, {}).contains ("MODEL"), "Gemini: 404 pekar på modellvalet");
+
+            const auto tools = ToolLayer::tools();
+            juce::String error;
+
+            const auto textReply = GeminiApi::parseResponse (juce::JSON::parse (
+                R"({"candidates":[{"content":{"role":"model","parts":[{"thought":true,"text":"hmm"},{"text":"Hello there"}]},"finishReason":"STOP"}],
+                    "usageMetadata":{"promptTokenCount":12,"candidatesTokenCount":3}})"), tools, error);
+            check (error.isEmpty() && textReply["content"].size() == 1 && textReply["content"][0]["text"].toString() == "Hello there", "Gemini: textsvar tolkas (tankedelar hoppas över)");
+            check (textReply["stop_reason"].toString() == "end_turn" && (int) textReply["usage"]["input_tokens"] == 12 && (int) textReply["usage"]["output_tokens"] == 3, "Gemini: stopporsak och tokens");
+
+            const auto toolReply = GeminiApi::parseResponse (juce::JSON::parse (
+                R"({"candidates":[{"content":{"role":"model","parts":[{"functionCall":{"name":"set_parameters","args":{"values":"{\"kickClick\":0.5}"}},"thoughtSignature":"sig123"}]},"finishReason":"STOP"}]})"), tools, error);
+            const auto block = toolReply["content"][0];
+            check (block["type"].toString() == "tool_use" && block["name"].toString() == "set_parameters" && toolReply["stop_reason"].toString() == "tool_use", "Gemini: verktygsanrop tolkas");
+            check (block["input"]["values"].isObject() && (double) block["input"]["values"]["kickClick"] == 0.5, "Gemini: JSON-strängargumentet packas upp till ett objekt");
+
+            // Samtalet tillbaka: tool_use -> functionCall (med signaturen), tool_result -> functionResponse med verktygsnamnet.
+            juce::Array<juce::var> messages;
+            auto userMsg = std::make_unique<juce::DynamicObject>();
+            userMsg->setProperty ("role", "user");
+            userMsg->setProperty ("content", "Tune the kick");
+            messages.add (juce::var (userMsg.release()));
+            auto assistantMsg = std::make_unique<juce::DynamicObject>();
+            assistantMsg->setProperty ("role", "assistant");
+            assistantMsg->setProperty ("content", toolReply["content"]);
+            messages.add (juce::var (assistantMsg.release()));
+            auto resultBlock = std::make_unique<juce::DynamicObject>();
+            resultBlock->setProperty ("type", "tool_result");
+            resultBlock->setProperty ("tool_use_id", block["id"]);
+            resultBlock->setProperty ("content", "{\"ok\":true}");
+            auto resultMsg = std::make_unique<juce::DynamicObject>();
+            resultMsg->setProperty ("role", "user");
+            resultMsg->setProperty ("content", juce::Array<juce::var> { juce::var (resultBlock.release()) });
+            messages.add (juce::var (resultMsg.release()));
+            const auto request = GeminiApi::buildRequest ("system text", tools, messages);
+            const auto requestText = juce::JSON::toString (request, true);
+            check (requestText.contains ("functionCall") && requestText.contains ("sig123"), "Gemini: anropet med thoughtSignature skickas tillbaka");
+            check (request["contents"][2]["parts"][0]["functionResponse"]["name"].toString() == "set_parameters", "Gemini: tool_result blir functionResponse med namnet");
+            check (! requestText.contains ("additionalProperties") && request["tools"].size() > 0, "Gemini: verktygsschemat är rensat");
+            check (! request["contents"][1]["parts"][0]["functionCall"].hasProperty ("id") || request["contents"][1]["parts"][0]["functionCall"]["id"].toString() == block["id"].toString(), "Gemini: anrop utan eget id får inget påhittat id");
+            {
+                juce::String idError;
+                const auto idReply = GeminiApi::parseResponse (juce::JSON::parse (R"({"candidates":[{"content":{"role":"model","parts":[{"functionCall":{"name":"set_parameters","args":{},"id":"call_42"}}]},"finishReason":"STOP"}]})"), tools, idError);
+                check (idReply["content"][0]["id"].toString() == "call_42", "Gemini: anropets id behålls");
+                juce::Array<juce::var> idMessages { messages[0], juce::var (new juce::DynamicObject()), juce::var (new juce::DynamicObject()) };
+                idMessages.getReference (1).getDynamicObject()->setProperty ("role", "assistant");
+                idMessages.getReference (1).getDynamicObject()->setProperty ("content", idReply["content"]);
+                auto idResult = std::make_unique<juce::DynamicObject>();
+                idResult->setProperty ("type", "tool_result");
+                idResult->setProperty ("tool_use_id", "call_42");
+                idResult->setProperty ("content", "{}");
+                idMessages.getReference (2).getDynamicObject()->setProperty ("role", "user");
+                idMessages.getReference (2).getDynamicObject()->setProperty ("content", juce::Array<juce::var> { juce::var (idResult.release()) });
+                const auto idRequest = GeminiApi::buildRequest ("s", tools, idMessages);
+                check (idRequest["contents"][1]["parts"][0]["functionCall"]["id"].toString() == "call_42" && idRequest["contents"][2]["parts"][0]["functionResponse"]["id"].toString() == "call_42", "Gemini: id skickas tillbaka i functionCall och functionResponse");
+            }
+
+            check (GeminiApi::parseResponse (juce::JSON::parse (R"({"promptFeedback":{"blockReason":"SAFETY"}})"), tools, error).isVoid() && error.contains ("SAFETY"), "Gemini: blockerat svar ger ett fel");
+            check (GeminiApi::errorMessage (400, R"({"error":{"code":400,"message":"API key not valid. Please pass a valid API key.","status":"INVALID_ARGUMENT"}})").contains ("key"), "Gemini: ogiltig nyckel (400)");
+            check (GeminiApi::errorMessage (403, R"({"error":{"code":403,"message":"denied","status":"PERMISSION_DENIED"}})").isNotEmpty(), "Gemini: 403");
+            check (GeminiApi::errorMessage (429, R"({"error":{"code":429,"message":"Quota exceeded","status":"RESOURCE_EXHAUSTED"}})").containsIgnoreCase ("limit")
+                       || GeminiApi::errorMessage (429, {}).containsIgnoreCase ("limit"), "Gemini: kvot (429) förklaras");
+            check (GeminiApi::errorMessage (0, {}).isNotEmpty(), "Gemini: nätverksfel har ett meddelande");
+
+            Settings::setChatProvider ("anthropic");
+            check (Settings::chatProvider() == "anthropic", "leverantören kan växlas tillbaka");
+            Settings::setGeminiApiKey ({});
         }
 
         Settings::setChatApiKey ({});
@@ -1503,6 +3147,43 @@ namespace
                 std::printf ("  saved %d link %d free1 %d auto %d full %d pat %d keep %d replace %d noEffect %d/%d noInst %d/%d" "\n", savedLinked, linkOk, free1, autoOk, fullOk,
                              savedPattern, keepOk, replaceOk, noEffect.ok, noEffect.effectMissing, noInstrument.ok, noInstrument.instrumentMissing);
             ok = ok && linkedOk;
+
+        // OSC-preset (fas S5): OSC 2 i lager 0 sparas och laddas; OSC 1, filtret och OSC 2:s av/på rörs inte; RESET ger standardvärdena.
+        {
+            using F = InstrumentField;
+            auto get = [&] (F field) { auto* q = processor.apvts.getParameter (ParamID::bass (0, field)); return q->convertFrom0to1 (q->getValue()); };
+            Scenarios::setInstrument (processor, 0, F::bPos, 0.6f);
+            Scenarios::setInstrument (processor, 0, F::bSemi, 7.0f);
+            Scenarios::setInstrument (processor, 0, F::bUnison, 5.0f);
+            Scenarios::setInstrument (processor, 0, F::bTable, 3.0f);
+            Scenarios::setInstrument (processor, 0, F::bOn, 1.0f);
+            Scenarios::setInstrument (processor, 0, F::aPos, 0.25f);
+            const auto oscFile = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("__osctest__/Test/osc.oscpreset");
+            auto saved = OscPresets::save (processor.apvts, 0, 1, oscFile);
+            Scenarios::setInstrument (processor, 0, F::bPos, 0.1f);
+            Scenarios::setInstrument (processor, 0, F::bSemi, -5.0f);
+            Scenarios::setInstrument (processor, 0, F::bTable, 1.0f);
+            Scenarios::setInstrument (processor, 0, F::bOn, 0.0f);
+            Scenarios::setInstrument (processor, 0, F::aPos, 0.9f);
+            const auto cutoffBefore = get (F::cutoff);
+            const auto loadedOsc = OscPresets::load (processor.apvts, 0, 1, oscFile);
+            const auto restored = std::abs (get (F::bPos) - 0.6f) < 0.01f && std::abs (get (F::bSemi) - 7.0f) < 0.01f
+                                  && std::abs (get (F::bUnison) - 5.0f) < 0.01f && (int) get (F::bTable) == 3;
+            const auto untouched = std::abs (get (F::aPos) - 0.9f) < 0.01f && get (F::bOn) < 0.5f && std::abs (get (F::cutoff) - cutoffBefore) < 0.01f;
+            // Ett fält som filen saknar lämnas orört, och en okänd tabell ändrar inte tabellen.
+            Scenarios::setInstrument (processor, 0, F::bSemi, 2.0f);
+            oscFile.replaceWithText ("<KickbaseOsc version=\"1\" Table=\"__finns_inte__\" Pos=\"0.3\"/>");
+            const auto partial = OscPresets::load (processor.apvts, 0, 1, oscFile)
+                                 && std::abs (get (F::bPos) - 0.3f) < 0.01f && std::abs (get (F::bSemi) - 2.0f) < 0.01f && (int) get (F::bTable) == 3;
+            const auto listed = OscPresets::list().contains (oscFile) == (OscPresets::folder() == oscFile.getParentDirectory().getParentDirectory().getParentDirectory());
+            OscPresets::reset (processor.apvts, 0, 1);
+            const auto resetOk = std::abs (get (F::bSemi)) < 0.01f && (int) get (F::bUnison) == 1 && get (F::bOn) < 0.5f && std::abs (get (F::aPos) - 0.9f) < 0.01f;
+            oscFile.getParentDirectory().getParentDirectory().deleteRecursively();
+            std::printf ("OSC-preset: sparad %d, laddad %d, återställd %d, orört %d, delvis %d, reset %d\n",
+                         saved ? 1 : 0, loadedOsc ? 1 : 0, restored ? 1 : 0, untouched ? 1 : 0, partial ? 1 : 0, resetOk ? 1 : 0);
+            (void) listed;
+            ok = ok && saved && loadedOsc && restored && untouched && partial && resetOk;
+        }
         }
 
         std::puts (ok ? "Presettest OK" : "FEL: presettest");
@@ -1566,10 +3247,9 @@ namespace
         if (const auto folded = juce::SystemStats::getEnvironmentVariable ("KB_LFOFOLD", {}); folded.isNotEmpty())
             processor->lfoFolded = folded.getIntValue();
         processor->lfoRemoveAsk = juce::SystemStats::getEnvironmentVariable ("KB_LFOCONFIRM", "0").getIntValue() - 1;
-        processor->modEnvelopesOpen = juce::SystemStats::getEnvironmentVariable ("KB_MODOPEN", "0").getIntValue() != 0; // MODULATION-dragspelet öppet
         processor->selectedInstrument = juce::SystemStats::getEnvironmentVariable ("KB_INSTRUMENT", "0").getIntValue(); // valt instrument (0-9)
         processor->selectedInstrumentSource[(size_t) juce::jlimit (0, 9, processor->selectedInstrument)] =
-            juce::SystemStats::getEnvironmentVariable ("KB_SOURCETAB", "0").getIntValue(); // vald källflik i instrumentet (0-2 = OSC, 3 = SAMPLE, 4 = FILTER)
+            juce::SystemStats::getEnvironmentVariable ("KB_SOURCETAB", "0").getIntValue(); // vald flik i instrumentet (0 = INSTR, 1-3 = OSC, 4 = SAMPLE, 5 = FILTER)
         if (juce::SystemStats::getEnvironmentVariable ("KB_FILTER2", "0").getIntValue() != 0) // FILTER-fliken med Filter 2 på (Formant) och ett Ladder-lågpass i Filter 1
         {
             auto set = [&processor] (const char* id, float value)
@@ -1652,7 +3332,18 @@ namespace
         }
 
         std::unique_ptr<juce::AudioProcessorEditor> editor (processor->createEditorAndMakeActive());
-        const auto image = editor->createComponentSnapshot (editor->getLocalBounds(), true, 1.0f);
+        auto image = editor->createComponentSnapshot (editor->getLocalBounds(), true, 1.0f);
+
+        // KB_MENU=<instrument 0-9>: ritar instrumentmenyn (L4) ovanpå bilden. Popup-fönstret är ett eget fönster, så det hämtas från Desktop.
+        if (const auto menuLayer = juce::SystemStats::getEnvironmentVariable ("KB_MENU", {}); menuLayer.isNotEmpty())
+        {
+            InstrumentMenu::show (*processor, menuLayer.getIntValue(), *editor, juce::Rectangle<int> (60, 120, 2, 2));
+            juce::MessageManager::getInstance()->runDispatchLoopUntil (400);
+            juce::Graphics g (image);
+            for (int i = 0; i < juce::Desktop::getInstance().getNumComponents(); ++i)
+                if (auto* top = juce::Desktop::getInstance().getComponent (i); top != nullptr && top != editor.get() && top->isShowing())
+                    g.drawImageAt (top->createComponentSnapshot (top->getLocalBounds(), true, 1.0f), top->getScreenX() - editor->getScreenX(), top->getScreenY() - editor->getScreenY());
+        }
 
         outFile.deleteFile();
         juce::FileOutputStream stream (outFile);
@@ -1676,7 +3367,12 @@ int audioThreadTest();      // Tools/AudioTests.cpp
 int blockSizeTest();        // Tools/AudioTests.cpp
 int polyTest();             // Tools/AudioTests.cpp
 int persistTest();          // Tools/StateTests.cpp
+int fullStateTest();        // Tools/StateTests.cpp
+int renderToolTest();       // Tools/StateTests.cpp
+int anTest();               // Tools/AnTests.cpp
+int rowKeyTest();           // Tools/RowTests.cpp
 int helpCheck();            // Tools/StateTests.cpp
+int paramTest();            // Tools/ParamSweepTests.cpp
 int libraryCheck (const juce::String& folder); // Tools/LibraryTests.cpp
 int libraryTest();          // Tools/LibraryTests.cpp
 int libraryImport (const juce::StringArray& args); // Tools/LibraryTests.cpp
@@ -1705,7 +3401,7 @@ int toolMain (int argc, char* argv[])
     std::unique_ptr<Scenarios::TemporaryUserFolders> isolation;
     if (const juce::String command (argc > 1 ? argv[1] : ""); command == "presettest" || command == "rolltest" || command == "lengthtest"
         || command == "instrumenttest" || command == "eqtest" || command == "listentest" || command == "auditiontest" || command == "audiotest"
-        || command == "analysetest" || command == "perftest" || command == "polytest" || command == "rendersig" || command == "rendersigwide" || command == "rendersigtb303")
+        || command == "analysetest" || command == "perftest" || command == "polytest" || command == "livetest" || command == "rendersig" || command == "rendersigwide" || command == "rendersigtb303")
         isolation = std::make_unique<Scenarios::TemporaryUserFolders>();
 
     if (argc == 2 && juce::String (argv[1]) == "presettest")
@@ -1720,8 +3416,12 @@ int toolMain (int argc, char* argv[])
         return perfTest();
     if (argc == 2 && juce::String (argv[1]) == "instrumenttest")
         return instrumentTest();
+    if (argc == 2 && juce::String (argv[1]) == "matrixtest")
+        return matrixTest();
     if (argc == 2 && juce::String (argv[1]) == "lengthtest")
         return lengthTest();
+    if (argc == 2 && juce::String (argv[1]) == "livetest")
+        return liveCodeTest();
     if (argc == 3 && juce::String (argv[1]) == "logoimage")
         return logoImage (juce::File::getCurrentWorkingDirectory().getChildFile (argv[2]));
     if (argc == 2 && (juce::String (argv[1]) == "rendersig" || juce::String (argv[1]) == "rendersigreal"))
@@ -1732,6 +3432,8 @@ int toolMain (int argc, char* argv[])
         return listenTest();
     if (argc == 2 && juce::String (argv[1]) == "eqtest")
         return eqTest();
+    if (argc == 2 && juce::String (argv[1]) == "inittest")
+        return initTest();
     if (argc >= 2 && juce::String (argv[1]) == "analysetest")
         return analyseTest (argc > 2 ? juce::String (argv[2]).getIntValue() : 1);
     if (argc == 2 && juce::String (argv[1]) == "rolltest")
@@ -1741,6 +3443,16 @@ int toolMain (int argc, char* argv[])
         return helpCheck();
     if (argc == 2 && juce::String (argv[1]) == "persisttest")
         return persistTest();
+    if (argc == 2 && juce::String (argv[1]) == "fulltest")
+        return fullStateTest();
+    if (argc == 2 && juce::String (argv[1]) == "rendertooltest")
+        return renderToolTest();
+    if (argc == 2 && juce::String (argv[1]) == "antest")
+        return anTest();
+    if (argc == 2 && juce::String (argv[1]) == "rowkeytest")
+        return rowKeyTest();
+    if (argc == 2 && juce::String (argv[1]) == "paramtest")
+        return paramTest();
     // librarycheck [mapp]: validerar biblioteksmanifesten (läser bara). librarytest: reglerna, i en tillfällig mapp.
     if (argc >= 2 && juce::String (argv[1]) == "librarycheck")
         return libraryCheck (argc > 2 ? juce::String (argv[2]) : juce::String());

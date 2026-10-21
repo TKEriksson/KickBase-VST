@@ -106,7 +106,7 @@ private:
     PluginBase& processor;
     const int index;
     const juce::String name;
-    juce::Rectangle<int> foldArea, removeArea, rateArea;
+    juce::Rectangle<int> foldArea, removeArea;
     juce::String lastRateText;
     juce::Label confirmText;
     juce::TextButton confirmRemove { "REMOVE" }, confirmCancel { "CANCEL" };

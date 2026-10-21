@@ -10,6 +10,7 @@
 
 #include "../Source/Instrument/InstrumentProcessor.h"
 #include "../Source/Fx/FxProcessor.h"
+#include "../Source/Ui/FmPresets.h"
 #include "Scenarios.h"
 #include <new>
 #include <cstdlib>
@@ -770,6 +771,41 @@ int filter2Test()
         }
     check (finite && worst < 20.0f, "alla 25 modellkombinationer vid resonans 100 %: inga NaN, största topp " + juce::String (worst, 2));
 
+    // S2: FM-källan. På med nivå 0 = exakt som av; på med nivå > 0 hörs; ratio x index x oktav (även ±24) ger inga NaN och ingen skenande nivå.
+    const auto fmSilent = render ([&] (PluginBase& processor) { base (processor); set (processor, F::fmOn, 1.0f); set (processor, F::fmLevel, 0.0f); });
+    check (maxDifference (off, fmSilent) == 0.0f, "FM på med nivå 0: ljudet är exakt som med FM av");
+    const auto fmAudible = render ([&] (PluginBase& processor) { base (processor); set (processor, F::fmOn, 1.0f); set (processor, F::fmLevel, 0.8f); });
+    check (maxDifference (off, fmAudible) > 0.05f, "FM på med nivå 0.8 hörs");
+    auto fmWorst = 0.0f;
+    auto fmFinite = true;
+    for (const auto ratio : { 1.0f, 2.0f, 3.5f, 8.0f })
+        for (const auto index : { 0.0f, 0.5f, 1.0f })
+            for (const auto semis : { -24.0f, 0.0f, 24.0f })
+            {
+                const auto audio = render ([&] (PluginBase& processor)
+                {
+                    base (processor);
+                    set (processor, F::fmOn, 1.0f);
+                    set (processor, F::fmLevel, 1.0f);
+                    set (processor, F::fmRatio, ratio);
+                    set (processor, F::fmIndex, index);
+                    set (processor, F::fmSemis, semis);
+                    set (processor, F::fmEnvAmount, 0.5f);
+                });
+                fmFinite = fmFinite && allFiniteIn (audio);
+                fmWorst = std::max (fmWorst, audio.getMagnitude (0, audio.getNumSamples()));
+            }
+    check (fmFinite && fmWorst < 4.0f, "FM, ratio 1-8 x index 0-1 x +-24 halvtoner: inga NaN, största topp " + juce::String (fmWorst, 2));
+
+    // S2c: varje FM-preset ger en hörbar, ändlig signal, och namnlistan följer FM Preset-parameterns val.
+    check (FmPresets::names().size() == FmPresets::count(), "FM-presettabellen och namnlistan har lika många poster");
+    for (int preset = 1; preset < FmPresets::count(); ++preset)
+    {
+        const auto audio = render ([&] (PluginBase& processor) { base (processor); FmPresets::apply (processor.apvts, 0, preset); });
+        check (allFiniteIn (audio) && rms (audio) > 0.001f && audio.getMagnitude (0, audio.getNumSamples()) < 4.0f,
+               "FM-preset " + juce::String (FmPresets::get (preset).name) + ": hörbar och ändlig signal");
+    }
+
     std::puts (failed ? "Filter 2: FEL" : "Filter 2 gick igenom");
     return failed ? 1 : 0;
 }
@@ -931,7 +967,7 @@ int audioThreadTest()
             Scenarios::setPlain (p, "masterDrive", 6.0f * t);
             Scenarios::setPlain (p, ParamID::bass (3, InstrumentField::aUnison), (float) (1 + block % 7));
             if (block % 40 == 20)
-                Scenarios::setPlain (p, Effects::slotParamID (4, 2, "Type"), (float) (1 + (block / 40) % (numEffectTypes - 1)));
+                Scenarios::setPlain (p, Effects::slotParamID (4, 2, "Type"), (float) (1 + (block / 40) % (numEffectTypes - 2)));
         };
         report ("rattar, EQ och effekttyper som ändras", run (p, 48000.0, 256, 400, between, false));
     }

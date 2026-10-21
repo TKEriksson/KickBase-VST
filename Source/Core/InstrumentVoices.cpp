@@ -257,5 +257,6 @@ float InstrumentVoices::getModulationValue (int source) const
         return voices[(size_t) lastVoice].getModulationValue (source);
     if (source == 3)
         return randomValue;
+    // AMP ENV / FILT ENV i poly: den senaste rösten, som ENV 2/3.
     return voices[(size_t) lastVoice].isActive() ? voices[(size_t) lastVoice].getModulationValue (source) : 0.0f;
 }

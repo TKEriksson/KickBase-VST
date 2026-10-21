@@ -12,7 +12,7 @@ namespace
         return Modulation::sourceName (source);
     }
 
-    // Källmenyn: LFO:erna, makrona och för varje instrument dess ENV 2, ENV 3, velocity och slump. Menyvalets id är källans nummer + 1.
+    // Källor: LFO:er, makron, instrumentkällor och CODE 1-8 (värdet skrivs av Live Code).
     juce::PopupMenu sourceMenu (const PluginBase& p, int current)
     {
         juce::PopupMenu menu;
@@ -29,7 +29,7 @@ namespace
             {
                 juce::PopupMenu sub;
                 auto containsCurrent = false;
-                for (int kind = 0; kind < Modulation::instrumentSources; ++kind)
+                for (int kind = 0; kind < Modulation::instrumentKinds; ++kind)
                 {
                     const auto source = Modulation::instrumentSource (layer, kind);
                     sub.addItem (1 + source, Modulation::kindName (kind), true, current == source);
@@ -37,6 +37,12 @@ namespace
                 }
                 menu.addSubMenu (p.getLayerName (layer), sub, true, nullptr, containsCurrent);
             }
+        }
+        menu.addSeparator();
+        for (int code = 0; code < Modulation::numCodeSources; ++code)
+        {
+            const auto source = Modulation::firstCodeSource + code;
+            menu.addItem (1 + source, Modulation::sourceName (source), true, current == source);
         }
         return menu;
     }
@@ -48,16 +54,17 @@ namespace
         if (n >= (int) F::aTable && n < (int) F::aTable + ParamID::oscFieldCount)         return "OSC 1";
         if (n >= (int) F::bTable && n < (int) F::bTable + ParamID::oscFieldCount)         return "OSC 2";
         if (n >= (int) F::cTable && n < (int) F::cTable + ParamID::oscFieldCount)         return "OSC 3";
-        if (f == F::sampleLevel || f == F::sampleRoot || f == F::sampleStart)             return "SAMPLE";
+        if (f == F::sampleLevel || f == F::sampleRoot || f == F::sampleStart || f == F::sampleMode)           return "SAMPLE";
         if (n >= (int) F::env2Attack && n <= (int) F::env2Release)                        return "ENV 2";
         if (n >= (int) F::env3Attack && n <= (int) F::env3Release)                        return "ENV 3";
         if (f == F::octave || f == F::tune || f == F::pitchEnvAmount || f == F::pitchEnvDecay) return "PITCH";
         if (f == F::sub || f == F::subWave || f == F::subOctave)                          return "SUB";
-        if (f == F::noise || f == F::noiseTone)                                           return "NOISE";
+        if (f == F::noise || f == F::noiseTone || f == F::noiseType)                                         return "NOISE";
         if (f == F::keyTrack || f == F::cutoff || f == F::resonance || f == F::filterType) return "FILTER";
         if (f == F::envAmount || f == F::envAttack || f == F::envDecay || f == F::velToEnv)                    return "FILTER ENV";
         if (f == F::attack || f == F::decay || f == F::sustain || f == F::release)        return "VOLUME ENV";
-        if (f == F::warpEnv)                                                              return "WARP ENV";
+        if (f == F::warpEnv || f == F::warpEnvDecay || f == F::warpEnvSource)                                                             return "WARP ENV";
+        if (f == F::polarity || f == F::phaseDeg || f == F::nudgeMs)                      return "PHASE";
         if (f == F::drive || f == F::driveMode)                                           return "DRIVE";
         return "OUT";
     }

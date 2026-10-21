@@ -6,6 +6,7 @@
 #include <atomic>
 #include <memory>
 #include "DeferredRelease.h"
+#include "RowRegistry.h"
 
 // Basens rutnät: upplösningen i stegsekvenseraren och förvalda "snap" i pianorullen.
 // Själva tonerna ligger fritt i tid (se Pattern::Note), så ett lager kan ha 16-delar, 8-delar
@@ -36,17 +37,21 @@ constexpr std::array<T, N> filledArray (T value)
     return result;
 }
 
+// R9b: längdtabellen rymmer en plats per radid i poolen. Plats 0-10 är som förut (0 = kicken, 1-10 = instrumenten, parametrarna rowLoop/rowBars);
+// plats 11-63 är underraderna och har samma nummer som sitt radid (de kolliderar inte med 0-10). Se `lengthRowOf`.
+constexpr int numLengthRows = RowRegistry::maxRows;
+
 // Mönstrets längd: hela mönstret (`total`) och varje rads egen längd (kicken är rad 0, sedan instrumenten; 0 = hela
 // mönstret). En rad som är kortare än mönstret loopar (`loops`, per rad) eller spelar en gång och tystnar tills mönstret börjar om.
 struct PatternLengths
 {
     int total = 1;
-    std::array<bool, numPatternRows> loops = [] { std::array<bool, numPatternRows> all {}; all.fill (true); return all; }(); // loopar raden? (annars spelar den en gång och tystnar)
-    std::array<int, numPatternRows> rows {};
+    std::array<bool, numLengthRows> loops = [] { std::array<bool, numLengthRows> all {}; all.fill (true); return all; }(); // loopar raden? (annars spelar den en gång och tystnar)
+    std::array<int, numLengthRows> rows {};
 
     int barsOf (int row) const
     {
-        const auto r = rows[(size_t) juce::jlimit (0, numPatternRows - 1, row)];
+        const auto r = rows[(size_t) juce::jlimit (0, numLengthRows - 1, row)];
         return r <= 0 ? total : std::min (r, total);
     }
 
@@ -55,7 +60,7 @@ struct PatternLengths
     {
         const auto inPattern = (int) (((bar % total) + total) % total);
         const auto rowBars = barsOf (row);
-        if (! loops[(size_t) juce::jlimit (0, numPatternRows - 1, row)] && inPattern >= rowBars)
+        if (! loops[(size_t) juce::jlimit (0, numLengthRows - 1, row)] && inPattern >= rowBars)
             return -1;
         return inPattern % rowBars;
     }
@@ -80,7 +85,10 @@ struct Pattern
     // Kicken är ett extra "notlager" efter instrumenten (lager 10): fritt placerade toner, på samma sätt som baslagren. Tonhöjden flyttar
     // kickens svans (halvtoner från tonarten), velocity styr volymen. Kicken har ingen gate.
     static constexpr int kickLayer = numLayers;
-    static constexpr int numNoteLayers = numLayers + 1;
+    static constexpr int numNoteLayers = numLayers + 1; // grundraderna: instrumentens NOTE-rader och kicken
+    // R9b: lagringen rymmer maxRows rader. Id numNoteLayers och uppåt är underrader (SAMPLE, SLICER) enligt `rows`; grundraderna har sina gamla index.
+    static constexpr int numRowSlots = RowRegistry::maxRows;
+    static_assert (numNoteLayers == RowRegistry::numBaseRows && kickLayer == RowRegistry::kickRow, "RowRegistry och Pattern måste dela radindex");
     static constexpr float defaultKickVelocity = 1.0f;
     static float defaultVelocity (int layer) { return layer == kickLayer ? defaultKickVelocity : 0.8f; }
 
@@ -97,6 +105,19 @@ struct Pattern
     static juce::StringArray gridNames()     { return { "1/4", "1/8", "1/8 T", "1/16", "1/16 T", "1/32", "1/32 T", "1/64" }; }
     static juce::StringArray templateNames() { return { "Rolling", "Galloping", "Triplet", "Offbeat", "Clear" }; }
 
+    // Polyfoni steg 1: en stapel = huvudtonen (index 0) + upp till maxExtraNotes staplade toner (index 1..) på samma tick.
+    static constexpr int maxExtraNotes = 3;
+    static constexpr int maxStack = 1 + maxExtraNotes;
+    struct StackNote { int length = 24; int pitch = 0; float velocity = 0.8f; bool slide = false; }; // värdetyp för API:t
+    struct ExtraNote
+    {
+        std::atomic<bool> on { false };
+        std::atomic<int> length { 24 };
+        std::atomic<int> pitch { 0 };
+        std::atomic<bool> slide { false };
+        std::atomic<float> velocity { 0.8f };
+    };
+
     // En ton i basens mönster. Den ligger på sin starttick; ett lager har högst en ton per tick.
     struct Note
     {
@@ -107,6 +128,10 @@ struct Pattern
         std::atomic<float> velocity { 0.8f };
         // Fas P: ackordets extra toner i halvtoner från tonen, de som inte är 0 först (0 = ingen). Spelas bara med VOICES 2 eller fler.
         std::array<std::atomic<int>, maxChordNotes> chord {};
+
+        // Polyfoni: staplade toner på samma starttick (index 1..maxExtraNotes i API:t, 0 = huvudtonen). Gäller bara när huvudtonen är på.
+        std::array<ExtraNote, maxExtraNotes> extra {};
+        void clearExtras() { for (auto& e : extra) e.on = false; }
 
         Chord getChord() const { return { chord[0].load(), chord[1].load(), chord[2].load() }; }
         bool hasChord() const { return chord[0].load() != 0; }
@@ -122,10 +147,22 @@ struct Pattern
         }
     };
 
+    RowRegistry rows; // R9b: vilka underrader som finns (bara meddelandetråden ändrar, ljudtråden läser)
+
+    // Platsen i PatternLengths för en rad (radid): kicken 0, instrument 0-9 -> 1-10 (som parametrarna rowLoop/rowBars), underrader behåller sitt id (11 och uppåt).
+    static int lengthRowOf (int layer) { return layer == kickLayer ? 0 : layer < kickLayer ? layer + 1 : juce::jlimit (0, numRowSlots - 1, layer); }
+
+    // Loop på/av för en underrad (grundraderna har parametrarna rowLoop). Sparas med mönstret (R9b steg 4).
+    bool loopsRow (int layer) const { return rowLoops[(size_t) juce::jlimit (0, numRowSlots - 1, layer)].load(); }
+    void setLoopsRow (int layer, bool value) { rowLoops[(size_t) juce::jlimit (0, numRowSlots - 1, layer)] = value; }
+
     Pattern()
     {
-        for (int layer = 0; layer < numNoteLayers; ++layer)
+        for (int layer = 0; layer < numRowSlots; ++layer)
+        {
             lengthOf[(size_t) layer] = contentOf[(size_t) layer] = 1;
+            rowLoops[(size_t) layer] = true;
+        }
         applyTemplate (PatternTemplate::rolling);
     }
     ~Pattern();
@@ -195,8 +232,8 @@ struct Pattern
     // Ett lager med "pianorulle": tonerna redigeras i pianorullen (frihand i tid, höjd och glide) och visas som en
     // miniatyr i stället för stegknappar, som i FL Studio. Sätts när man redigerar i pianorullen, och nollställs
     // när lagrets toner rensas eller fylls om.
-    bool isCustom (int layer) const { return custom[(size_t) juce::jlimit (0, numNoteLayers - 1, layer)].load(); }
-    void setCustom (int layer, bool value) { custom[(size_t) juce::jlimit (0, numNoteLayers - 1, layer)] = value; }
+    bool isCustom (int layer) const { return custom[(size_t) juce::jlimit (0, numRowSlots - 1, layer)].load(); }
+    void setCustom (int layer, bool value) { custom[(size_t) juce::jlimit (0, numRowSlots - 1, layer)] = value; }
 
     // Lägger en ny ton (eller ändrar den som redan ligger där). Returnerar den.
     Note& addNote (int layer, int tick, int length, int pitch = 0, float velocity = 0.8f, bool slide = false, const Chord& chord = {});
@@ -206,8 +243,20 @@ struct Pattern
     void removeNote (int layer, int tick)
     {
         if (auto* n = existing (layer, tick))
+        {
             n->on = false;
+            n->clearExtras();
+        }
     }
+
+    // POLYFONI: staplar (se maxStack). Skriv bara från meddelandetråden; läs (const) går bra i ljudtråden.
+    int stackSize (int layer, int tick) const;                              // 0 = ingen ton, 1 = bara huvudtonen, upp till maxStack
+    bool getStack (int layer, int tick, int index, StackNote& out) const;   // false om index inte är på
+    int addExtra (int layer, int tick, const StackNote& n);                 // ledig slot 1..maxExtraNotes, -1 om huvudtonen saknas eller det är fullt
+    void setStack (int layer, int tick, int index, const StackNote& n);     // index 0 = huvudtonen (ackordet rörs inte); en extra måste redan vara på
+    void removeStack (int layer, int tick, int index);                      // 0 tar bort tonen med alla staplar; 1.. bara den staplade
+    // Högsta antalet röster som behövs samtidigt (huvudtoner, ackordstoner och staplar; en glide-ton återanvänder den klingande rösten).
+    int maxSimultaneous (int layer) const;
     void clearNotes (int layer);
 
     // Fyller hela mönstret enligt en mall: kicken och första baslagret, övriga lager töms.
@@ -242,16 +291,17 @@ private:
         GateBlock() { for (auto& step : steps) step = true; }
     };
 
-    static int clampedLayer (int layer) { return juce::jlimit (0, numNoteLayers - 1, layer); }
+    static int clampedLayer (int layer) { return juce::jlimit (0, numRowSlots - 1, layer); }
     static int clampedTick (int tick) { return juce::jlimit (0, maxTicks - 1, tick); }
     const NoteBlock* blockOf (int layer, int bar) const { return noteBlocks[(size_t) clampedLayer (layer)][(size_t) juce::jlimit (0, maxBars - 1, bar)].load (std::memory_order_acquire); }
     void releaseNoteBlocks (int layer, int fromBar); // blocken från och med takten frigörs (DeferredRelease)
 
     static inline const Note emptyNote {};
-    std::array<std::array<std::atomic<NoteBlock*>, maxBars>, numNoteLayers> noteBlocks {};
+    std::array<std::array<std::atomic<NoteBlock*>, maxBars>, numRowSlots> noteBlocks {};
     std::array<std::array<std::atomic<GateBlock*>, maxGateSteps / gateBlockSteps>, numLayers> gateBlocks {};
     DeferredRelease<NoteBlock> retiredNoteBlocks;
     DeferredRelease<GateBlock> retiredGateBlocks;
-    std::array<std::atomic<int>, numNoteLayers> lengthOf {}, contentOf {}, manualOf {}, extraOf {}; // längd och innehåll i takter (min 1), valt antal (0 = AUTO), "+"
-    std::array<std::atomic<bool>, numNoteLayers> custom {};
+    std::array<std::atomic<int>, numRowSlots> lengthOf {}, contentOf {}, manualOf {}, extraOf {}; // längd och innehåll i takter (min 1), valt antal (0 = AUTO), "+"
+    std::array<std::atomic<bool>, numRowSlots> custom {};
+    std::array<std::atomic<bool>, numRowSlots> rowLoops {}; // bara underraderna läser den (grundraderna: parametrarna rowLoop)
 };

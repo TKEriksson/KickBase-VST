@@ -64,6 +64,8 @@ namespace ParamID
     inline constexpr auto kickLevel       = "kickLevel";
     inline constexpr auto kickFxChannel   = "kickFxChannel"; // effektkanal (hör till EFFECTS, inte KICK)
     inline constexpr auto kickFxAmount    = "kickFxAmount";
+    inline constexpr auto kickComp        = "kickComp";        // kompressor efter drive: 0 = av, ju mer desto tätare kick (släpp = kickens längd, auto-makeup)
+    inline constexpr auto kickFxSend      = "kickFxSend";      // FX-kanalen som SEND: av = som förut (amount delar ljudet torrt/blött), på = torrt orört + amount till kanalen
 
     // Baslagren: se ParamID::bass (lager, fält) nedan.
 
@@ -103,6 +105,17 @@ enum class InstrumentField
     filter2On, filter2Model, filter2Type, filter2Cutoff, filter2Reso, filter2P1, filter2P2, // Filter 2 (fas D3): av som standard; ingen egen envelope eller keytrack, men modulerbar
     filterRouting, filterMix,                                     // routing: Serial (Filter 1 -> Filter 2) eller Parallel; MIX: Serial = Filter 2 torr/våt, Parallel = (1-MIX) F1 + MIX F2
     voices,                                                       // fas P: röster per instrument 1..8 (1 = monofoniskt som förut); kan inte moduleras
+    env1On, filterEnvOn, env2On, env3On,                          // fas L: ENV-flikens ON/OFF (envOnField); alla på = som förut
+    env1Mode, env1AttackSync, env1DecaySync, env1ReleaseSync,     // fas L: volym-envelopen i ms (standard) eller Sync, som ENV 2/3
+    filterEnvMode, filterEnvAttackSync, filterEnvDecaySync,       // fas L: filter-envelopen i ms (standard) eller Sync
+    filterOn, filterOsc1, filterOsc2, filterOsc3, filterSample, filterNoise, // fas S: FILTER-flikens av/på (hela Filter 1+2) och av/på per källa (av = källan går förbi båda filtren)
+    noiseType,                                                    // fas S: brustyp: White (standard = som förut), Pink, Brown, Vinyl
+    warpEnvSource, warpEnvDecay,                                  // fas S: WARP ENV-källa (Filter Env = som förut, Direct, ENV 2, ENV 3) och Directs egen decay i ms
+    polarity, phaseDeg, nudgeMs,                                  // fas PH: polaritet (vänd), startfas 0..360 grader för OSC 1-3 och sub, nudge -2..+2 ms (tillägg till DELAY; negativt tar bort av DELAY)
+    fmOn, fmLevel, fmRatio, fmIndex, fmEnvAmount, fmEnvTime, fmSemis, fmPreset, fmFilter, // fas S2: FM-källa (av som standard); fmPreset 0 = Custom (läses inte av DSP, bara av UI)
+    slicerOn, slicerMapTo, slicerReverse, // fas F2: slicer i samplerösten (av som standard); MAP TO = halvtonen som spelar skiva 1
+    fxSend,                                                       // FX-kanalen som SEND (av som standard = som förut: amount delar ljudet torrt/blött)
+    sampleMode,                                                   // fas R9b: lagrets SAMPLE-rad: 0 BLEND (blandas med syntrösten, som förut), 1 INDEPENDENT (egen rad), 2 OFF; sist, så gamla projekt är orörda
     count
 };
 
@@ -119,6 +132,9 @@ namespace ParamID
     // ENV 2 (env 0) och ENV 3 (env 1): Mode-fältet och tidens Sync-fält (which 0 = attack, 1 = decay, 2 = release).
     inline InstrumentField envModeField (int env) { return (InstrumentField) ((int) InstrumentField::env2Mode + env * 4); }
     inline InstrumentField envSyncField (int env, int which) { return (InstrumentField) ((int) envModeField (env) + 1 + which); }
+    // ENV-flikens fyra rutor (0 = ENV 1, 1 = FILTER ENV, 2 = ENV 2, 3 = ENV 3): ON/OFF och tidsläget ms/Sync.
+    inline InstrumentField envOnField (int tile) { return (InstrumentField) ((int) InstrumentField::env1On + tile); }
+    inline InstrumentField envTileModeField (int tile) { return tile == 0 ? InstrumentField::env1Mode : tile == 1 ? InstrumentField::filterEnvMode : envModeField (tile - 2); }
     juce::String bass (int layer, InstrumentField field);   // "bass1Cutoff" ...
     const char* instrumentFieldName (InstrumentField field);      // "Cutoff" ...
 }
@@ -165,6 +181,17 @@ namespace Params
             lengths.loops[(size_t) row] = get (ParamID::rowLoop (row)) >= 0.5f;
             if (row <= activeInstruments)
                 lengths.total = std::max (lengths.total, lengths.rows[(size_t) row]);
+        }
+        // R9b: underraderna (SAMPLE, SLICER) räknas med när deras instrument är aktivt; längd och loop ur mönstret, inte ur parametrar. Tom pool = ingen skillnad.
+        for (int id = RowRegistry::firstSubRow; id < RowRegistry::maxRows; ++id)
+        {
+            if (! pattern.rows.isActive (id))
+                continue;
+            const auto slot = (size_t) Pattern::lengthRowOf (id);
+            lengths.rows[slot] = pattern.lengthBars (id);
+            lengths.loops[slot] = pattern.loopsRow (id);
+            if (pattern.rows.instrumentOf (id) < activeInstruments)
+                lengths.total = std::max (lengths.total, lengths.rows[slot]);
         }
         return lengths;
     }
