@@ -234,7 +234,7 @@ std::vector<ToolLayer::ToolInfo> ToolLayer::tools()
           R"({"type":"object","properties":{"topic":{"type":"string","enum":["agent","psytrance","school"]}}})" },
         { "list_parameters", "Lists the synth's parameters with id, name, type (float/choice/bool), min, max, default, current value, a display text and help (what the knob does, the same text as its tooltip in the plugin). Filter with prefix (e.g. 'kick', 'bass1', 'fxA', 'sc', 'lfo1', 'master', 'mix') or contains. Effect slot knobs are not listed here, see list_effects and set_effect.",
           R"({"type":"object","properties":{"prefix":{"type":"string"},"contains":{"type":"string"},"limit":{"type":"integer"}}})" },
-        { "list_effects", "Lists the 13 effect types and their knobs (name, range, default, unit, choices) for use with set_effect.", R"({"type":"object","properties":{}})" },
+        { "list_effects", "Lists the available effect types and their knobs (name, range, default, unit, choices) for use with set_effect.", R"({"type":"object","properties":{}})" },
         { "get_state", "Reads the current sound: parameters that differ from their defaults (or all), the effect chains, the pattern (notes per bass layer and kick steps), the sidechain curve, the kick envelopes and the LFO routes.",
           R"({"type":"object","properties":{"all_parameters":{"type":"boolean"}}})" },
         { "set_parameters", "Sets parameters in their own units (Hz, ms, dB, semitones, 0..1 for percentages). Choices accept the option name or index (e.g. \"bass1ATable\": \"Classic Saw\"), switches accept true/false. Example: {\"values\":{\"bass1Cutoff\":250,\"kickDrive\":0.3,\"bass1FilterType\":\"LP 24\"}}.",

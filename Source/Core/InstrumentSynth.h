@@ -96,6 +96,16 @@ struct InstrumentParams
     float pitchEnvSemis = 0.0f;  // tonhöjdsenvelope: så många halvtoner över (eller under) tonen i början av varje ton
     float pitchEnvDecayMs = 60.0f;
 
+    // fas S2: FM-källa (2 operatorer, sinus): modulatorn (ratio x frekvensen) fasmodulerar carriern. Av som standard = ljudet oförändrat.
+    bool fmOn = false;
+    float fmLevel = 0.0f;        // 0..1
+    float fmRatio = 1.0f;        // modulatorns frekvens / carrierns, 0.25..8
+    float fmIndex = 0.3f;        // 0..1 (kurva index² till ca 0..8 rad)
+    float fmEnvAmount = 0.0f;    // 0..1: hur mycket indexet följer en exp-envelope (0 = konstant)
+    float fmEnvMs = 60.0f;       // envelopens decay (-60 dB), ms
+    float fmSemis = 0.0f;        // carrierns (och modulatorns) transponering, halvtoner
+    bool fmFilter = true;        // på = FM-källan går genom filtren (som OSC 1-3), av = förbi dem
+
     // Samplingen som tredje ljudkälla (lagrets egen inladdade sampling, eller nullptr): spelas före filtret.
     const ClickSample* sampleData = nullptr;
     float sampleLevel = 0.0f;    // 0..1
@@ -231,6 +241,8 @@ private:
 
     Oscillator oscA, oscB, oscC;
     double subPhase = 0.0;
+    double fmCarrierPhase = 0.0, fmModPhase = 0.0; // FM-källans faser (0..1)
+    float fmEnvLevel = 0.0f;                        // 1 vid anslaget, faller mot 0 (FM ENV)
     double samplePosition = 0.0; // i samplingens samples
     double logFrequency = 0.0, targetLogFrequency = 0.0; // log2(Hz), så att glide låter jämnt
     int glideSamplesLeft = 0;
@@ -272,7 +284,7 @@ private:
     bool filter2WasOn = false;           // av -> på nollställer Filter 2 (gammalt tillstånd ska inte höras)
     float lastKeyFrequency = -1.0f, lastKeyTrack = -1.0f, cachedKeyFollow = 1.0f;
     double lastLogFrequency = 1.0e30, lastPitchOffset = 1.0e30, cachedFrequency = 0.0;
-    CoefficientMemo ampDecayMemo, ampReleaseMemo, pitchEnvMemo, warpDirectMemo;
+    CoefficientMemo ampDecayMemo, ampReleaseMemo, pitchEnvMemo, warpDirectMemo, fmEnvMemo;
 
     // Drive: 0 mjuk (tanh), 1 hård (klippning), 2 vikning (wavefolder), 3 asymmetrisk (jämna övertoner), 4 krossad (bitar).
     // Kurvans konstanter (tanh av förstärkningen m.m.) räknas bara om när DRIVE eller läget ändras; själva uträkningen är densamma som förut.

@@ -111,6 +111,7 @@ enum class InstrumentField
     noiseType,                                                    // fas S: brustyp: White (standard = som förut), Pink, Brown, Vinyl
     warpEnvSource, warpEnvDecay,                                  // fas S: WARP ENV-källa (Filter Env = som förut, Direct, ENV 2, ENV 3) och Directs egen decay i ms
     polarity, phaseDeg, nudgeMs,                                  // fas PH: polaritet (vänd), startfas 0..360 grader för OSC 1-3 och sub, nudge -2..+2 ms (tillägg till DELAY; negativt tar bort av DELAY)
+    fmOn, fmLevel, fmRatio, fmIndex, fmEnvAmount, fmEnvTime, fmSemis, fmPreset, fmFilter, // fas S2: FM-källa (av som standard); fmPreset 0 = Custom (läses inte av DSP, bara av UI)
     count
 };
 

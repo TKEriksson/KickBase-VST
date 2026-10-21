@@ -32,6 +32,8 @@ void InstrumentSynth::reset()
     env3.reset();
     pitchEnv = 0.0f;
     warpDirect = 0.0f;
+    fmCarrierPhase = fmModPhase = 0.0;
+    fmEnvLevel = 0.0f;
     noiseState = 0.0f;
     pinkB0 = pinkB1 = pinkB2 = brownState = vinylHiss = 0.0f;
     filterMid.reset();
@@ -152,7 +154,10 @@ void InstrumentSynth::noteOn (int semitones, float newVelocity, int gateSamples)
         oscB.retrigger (params.oscB, random, extraPhase);
         oscC.retrigger (params.oscC, random, extraPhase);
         subPhase = wrap (extraPhase);
+        fmCarrierPhase = wrap (extraPhase);
+        fmModPhase = 0.0;
     }
+    fmEnvLevel = 1.0f;
 
     noteTime = 0.0;
     env2.trigger();
@@ -426,6 +431,24 @@ InstrumentSynth::Output InstrumentSynth::next()
             white = noiseState * (1.0f + 2.5f * (1.0f - params.noiseTone));
         }
         (fOn && params.filterSrc[4] ? centre : dryCentre) += params.noise * white;
+    }
+
+    // fas S2: FM-källan: sin(2π·(carrierfas + modulator·index)). Av (eller nivå 0) = körs inte alls och ljudet är oförändrat.
+    // Indexet (0..1) ger index² · 8 rad, skalat ned när sidbanden skulle vika över Nyquist: min(1, 8000 / (f0·(ratio + 1))).
+    if (params.fmOn && params.fmLevel > 0.0f)
+    {
+        fmEnvLevel -= fmEnvLevel * (float) fmEnvMemo.get (params.fmEnvMs, sampleRate);
+        const auto carrierHz = juce::jlimit (1.0, sampleRate * 0.45, frequency * std::exp2 ((double) params.fmSemis / 12.0));
+        const auto modHz = juce::jlimit (1.0, sampleRate * 0.45, carrierHz * (double) juce::jlimit (0.25f, 8.0f, params.fmRatio));
+        const auto amount = juce::jlimit (0.0f, 1.0f, params.fmEnvAmount);
+        const auto index = juce::jlimit (0.0f, 1.0f, params.fmIndex) * (1.0f - amount + amount * fmEnvLevel);
+        const auto antiAlias = (float) std::min (1.0, 8000.0 / (carrierHz + modHz));
+        const auto radians = 8.0f * index * index * antiAlias;
+        const auto modulator = radians * (float) std::sin (juce::MathConstants<double>::twoPi * fmModPhase);
+        const auto fm = params.fmLevel * (float) std::sin (juce::MathConstants<double>::twoPi * fmCarrierPhase + (double) modulator);
+        (fOn && params.fmFilter ? centre : dryCentre) += fm;
+        fmCarrierPhase = wrap (fmCarrierPhase + carrierHz / sampleRate);
+        fmModPhase = wrap (fmModPhase + modHz / sampleRate);
     }
 
     // Samplingen: linjär interpolation. Med KEY följer hastigheten noten (samplingens egen tonhöjd = sampleRootHz).

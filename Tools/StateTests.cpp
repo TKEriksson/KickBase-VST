@@ -324,6 +324,26 @@ int persistTest()
         check (value (*phaseCopy, F::polarity) > 0.5f && std::abs (value (*phaseCopy, F::phaseDeg) - 123.4f) < 0.11f && std::abs (value (*phaseCopy, F::nudgeMs) + 0.75f) < 0.03f,
                "spara och ladda: POLARITY, START PHASE och NUDGE följer med");
         check (value (*copyOf (*std::make_unique<InstrumentProcessor>()), F::polarity) < 0.5f, "PH: nya parametrar har standardvärden som ger dagens ljud");
+        {
+            auto fresh = std::make_unique<InstrumentProcessor>();
+            check (value (*copyOf (*fresh), F::fmOn) < 0.5f && value (*copyOf (*fresh), F::fmLevel) < 1.0e-6f && value (*copyOf (*fresh), F::fmFilter) > 0.5f,
+                   "S2: FM är av som standard (nivå 0, genom filtren)");
+        }
+        Scenarios::setInstrument (*processor, 3, F::fmOn, 1.0f);
+        Scenarios::setInstrument (*processor, 3, F::fmLevel, 0.6f);
+        Scenarios::setInstrument (*processor, 3, F::fmRatio, 3.5f);
+        Scenarios::setInstrument (*processor, 3, F::fmIndex, 0.75f);
+        Scenarios::setInstrument (*processor, 3, F::fmEnvAmount, 0.4f);
+        Scenarios::setInstrument (*processor, 3, F::fmEnvTime, 120.0f);
+        Scenarios::setInstrument (*processor, 3, F::fmSemis, -12.0f);
+        Scenarios::setInstrument (*processor, 3, F::fmPreset, 2.0f);
+        Scenarios::setInstrument (*processor, 3, F::fmFilter, 0.0f);
+        auto fmCopy = copyOf (*processor);
+        check (value (*fmCopy, F::fmOn) > 0.5f && std::abs (value (*fmCopy, F::fmLevel) - 0.6f) < 0.01f && std::abs (value (*fmCopy, F::fmRatio) - 3.5f) < 0.01f
+                   && std::abs (value (*fmCopy, F::fmIndex) - 0.75f) < 0.01f && std::abs (value (*fmCopy, F::fmEnvAmount) - 0.4f) < 0.01f
+                   && std::abs (value (*fmCopy, F::fmEnvTime) - 120.0f) < 0.5f && std::abs (value (*fmCopy, F::fmSemis) + 12.0f) < 0.01f
+                   && value (*fmCopy, F::fmPreset) > 1.5f && value (*fmCopy, F::fmPreset) < 2.5f && value (*fmCopy, F::fmFilter) < 0.5f,
+               "spara och ladda: alla FM-parametrar följer med");
     }
 
     // 5. Preset-laddningen sätter varje parameter en gång: en ratt som ändras passerar inte sitt standardvärde på vägen.
