@@ -26,6 +26,12 @@ KickDisplay::KickDisplay (PluginBase& p) : processor (p)
     ampButton.onClick = [this] { setMode (true); };
     addAndMakeVisible (pitchButton);
     addAndMakeVisible (ampButton);
+    bezierButton.setClickingTogglesState (false);
+    bezierButton.setColour (juce::TextButton::buttonOnColourId, Theme::kick);
+    bezierButton.setTooltip ("NODES / BEZIER - Switch the curve you see (PITCH or AMP) between nodes with bendable segments and a Bezier curve with two handles per node. "
+                             "NODES to BEZIER keeps the shape; BEZIER to NODES loses the handles. Alt + click a node smooths it, double-click a handle resets it.");
+    bezierButton.onClick = [this] { toggleCurveMode(); };
+    addAndMakeVisible (bezierButton);
     listenButton.setAccent (Theme::kick);
     listenButton.setTooltip ("LISTEN - Plays the kick (you can also click an empty spot in the kick's picture). Use it while you shape PITCH and AMP.");
     listenButton.onStart = [this] { processor.requestAudition (0); };
@@ -44,8 +50,24 @@ void KickDisplay::setMode (bool showAmp)
     amp = showAmp;
     pitchButton.setToggleState (! amp, juce::dontSendNotification);
     ampButton.setToggleState (amp, juce::dontSendNotification);
+    bezierButton.setToggleState (isBezier(), juce::dontSendNotification);
     editing.clear();
-    dragged = draggedTension = hovered = -1;
+    dragged = draggedTension = draggedHandle = hovered = -1;
+    repaint();
+}
+
+void KickDisplay::toggleCurveMode()
+{
+    auto& envelope = active();
+    if (isBezier())
+        envelope.setMode (NodeEnvelope::Mode::tension); // handtagen ignoreras och sparas inte; tillbaka till BEZIER räknas de om
+    else
+    {
+        envelope.setPoints (NodeEnvelope::withHandlesFromTension (envelope.getPoints()));
+        envelope.setMode (NodeEnvelope::Mode::bezier);
+    }
+    bezierButton.setToggleState (isBezier(), juce::dontSendNotification);
+    processor.markStateChanged();
     repaint();
 }
 
@@ -57,6 +79,8 @@ void KickDisplay::resized()
     ampButton.setBounds (top.removeFromLeft (64));
     top.removeFromLeft (8);
     listenButton.setBounds (top.removeFromLeft (36));
+    top.removeFromLeft (8);
+    bezierButton.setBounds (top.removeFromLeft (70));
 }
 
 juce::int64 KickDisplay::stateHash() const
@@ -84,6 +108,7 @@ void KickDisplay::renderWaveform()
 void KickDisplay::timerCallback()
 {
     followVisualRate();
+    bezierButton.setToggleState (isBezier(), juce::dontSendNotification); // följer med när ett projekt eller en preset laddas
     // Spelmarkören: var kicken är nu, och en blixt när en ny kick slås an (från DAW, mönstret eller ett klick).
     const auto playTime = processor.transportStatus.kickPlayTime.load();
     const auto triggers = processor.transportStatus.kickTriggers.load();
@@ -159,8 +184,67 @@ int KickDisplay::pointAt (juce::Point<float> p) const
     return -1;
 }
 
+juce::Point<float> KickDisplay::handlePosition (const std::vector<NodeEnvelope::Point>& points, size_t index, bool out) const
+{
+    const auto& p = points[index];
+    return out ? toScreen (p.x + p.outDx, p.y + p.outDy) : toScreen (p.x + p.inDx, p.y + p.inDy);
+}
+
+int KickDisplay::bezierHandleAt (juce::Point<float> at) const
+{
+    if (! isBezier())
+        return -1;
+    const auto& points = active().getPoints();
+    for (size_t i = 0; i < points.size(); ++i)
+    {
+        if (i + 1 < points.size() && handlePosition (points, i, true).getDistanceFrom (at) < grabDistance)
+            return (int) i * 2 + 1;
+        if (i > 0 && handlePosition (points, i, false).getDistanceFrom (at) < grabDistance)
+            return (int) i * 2;
+    }
+    return -1;
+}
+
+void KickDisplay::smoothNode (std::vector<NodeEnvelope::Point>& points, size_t index) const
+{
+    // Handtagen läggs på en gemensam linje genom noden, parallell med grannarna: kurvan blir mjuk där.
+    const auto& prev = points[index > 0 ? index - 1 : index];
+    const auto& next = points[index + 1 < points.size() ? index + 1 : index];
+    auto& p = points[index];
+    const auto span = next.x - prev.x;
+    const auto slope = span > 0.0f ? (next.y - prev.y) / span : 0.0f;
+    if (index + 1 < points.size())
+    {
+        p.outDx = (next.x - p.x) / 3.0f;
+        p.outDy = slope * p.outDx;
+    }
+    if (index > 0)
+    {
+        p.inDx = -(p.x - prev.x) / 3.0f;
+        p.inDy = slope * p.inDx;
+    }
+}
+
+void KickDisplay::resetHandle (std::vector<NodeEnvelope::Point>& points, int handle) const
+{
+    // Nollställ = platt handtag, en tredjedel av segmentet (ett handtag på noden själv går inte att ta tag i).
+    auto& p = points[(size_t) handle / 2];
+    if (handle % 2 == 1)
+    {
+        p.outDx = (points[(size_t) handle / 2 + 1].x - p.x) / 3.0f;
+        p.outDy = 0.0f;
+    }
+    else
+    {
+        p.inDx = -(p.x - points[(size_t) handle / 2 - 1].x) / 3.0f;
+        p.inDy = 0.0f;
+    }
+}
+
 int KickDisplay::tensionHandleAt (juce::Point<float> p) const
 {
+    if (isBezier())
+        return -1;
     const auto& points = active().getPoints();
     for (size_t i = 0; i + 1 < points.size(); ++i)
         if (tensionHandle (i).getDistanceFrom (p) < grabDistance)
@@ -378,6 +462,7 @@ void KickDisplay::paint (juce::Graphics& g)
     // Envelopens kurva.
     const auto& points = editing.empty() ? active().getPoints() : editing;
     NodeEnvelope preview (active().getMaxSeconds(), active().getMaxValue(), points);
+    preview.setMode (active().getMode());
     juce::Path curve;
     constexpr int resolution = 240;
     const auto endX = points.back().x;
@@ -396,13 +481,31 @@ void KickDisplay::paint (juce::Graphics& g)
     g.strokePath (curve, juce::PathStrokeType (1.8f));
 
     // Noder och spänningshandtag.
-    for (size_t i = 0; i + 1 < points.size(); ++i)
+    if (isBezier())
     {
-        juce::Path diamond;
-        diamond.addPolygon (tensionHandle (i), 4, 4.0f, juce::MathConstants<float>::pi / 4.0f);
-        g.setColour (colour.withAlpha ((int) i == draggedTension ? 1.0f : 0.5f));
-        g.fillPath (diamond);
+        // Handtag: en liten punkt med en tunn linje till noden (klippta som kurvan räknar dem).
+        const auto& clamped = preview.getPoints();
+        for (size_t i = 0; i < clamped.size(); ++i)
+            for (const auto out : { false, true })
+            {
+                if ((out && i + 1 >= clamped.size()) || (! out && i == 0))
+                    continue;
+                const auto node = toScreen (clamped[i].x, clamped[i].y);
+                const auto handle = handlePosition (clamped, i, out);
+                g.setColour (colour.withAlpha (0.4f));
+                g.drawLine (node.x, node.y, handle.x, handle.y, 1.0f);
+                g.setColour (colour.withAlpha ((int) i * 2 + (out ? 1 : 0) == draggedHandle ? 1.0f : 0.7f));
+                g.fillEllipse (juce::Rectangle<float> (7.0f, 7.0f).withCentre (handle));
+            }
     }
+    else
+        for (size_t i = 0; i + 1 < points.size(); ++i)
+        {
+            juce::Path diamond;
+            diamond.addPolygon (tensionHandle (i), 4, 4.0f, juce::MathConstants<float>::pi / 4.0f);
+            g.setColour (colour.withAlpha ((int) i == draggedTension ? 1.0f : 0.5f));
+            g.fillPath (diamond);
+        }
     for (int i = 0; i < (int) points.size(); ++i)
     {
         const auto screen = toScreen (points[(size_t) i].x, points[(size_t) i].y);
@@ -457,7 +560,7 @@ void KickDisplay::paint (juce::Graphics& g)
     {
         g.setFont (Theme::font (11.0f, true));
         g.setColour (Theme::text);
-        g.drawText (describe (points[(size_t) shown]), getLocalBounds().reduced (10, 6).removeFromTop (22).withTrimmedLeft (140),
+        g.drawText (describe (points[(size_t) shown]), getLocalBounds().reduced (10, 6).removeFromTop (22).withTrimmedLeft (266),
                     juce::Justification::centredLeft);
     }
 
@@ -502,7 +605,7 @@ void KickDisplay::mouseMove (const juce::MouseEvent& event)
     }
 
     // Högtalare över tomma platser (klicka för att lyssna), vanlig pekare över noder och handtag.
-    setMouseCursor (index < 0 && tensionHandleAt (event.position) < 0 ? speakerCursor : juce::MouseCursor::NormalCursor);
+    setMouseCursor (index < 0 && tensionHandleAt (event.position) < 0 && bezierHandleAt (event.position) < 0 ? speakerCursor : juce::MouseCursor::NormalCursor);
 }
 
 void KickDisplay::mouseEnter (const juce::MouseEvent&)
@@ -543,8 +646,17 @@ void KickDisplay::mouseDown (const juce::MouseEvent& event)
         return;
     }
 
+    // Alt + klick på en nod (Bézier): släta ut den.
+    if (event.mods.isAltDown() && point >= 0 && isBezier())
+    {
+        smoothNode (points, (size_t) point);
+        commit (std::move (points));
+        return;
+    }
+
     dragged = point;
     draggedTension = point < 0 ? tensionHandleAt (event.position) : -1;
+    draggedHandle = point < 0 ? bezierHandleAt (event.position) : -1;
     if (draggedTension >= 0)
     {
         tensionStart = points[(size_t) draggedTension].tension;
@@ -554,7 +666,7 @@ void KickDisplay::mouseDown (const juce::MouseEvent& event)
     fixedView = viewSeconds();
 
     // Ett klick på en tom plats provlyssnar kicken.
-    if (point < 0 && draggedTension < 0)
+    if (point < 0 && draggedTension < 0 && draggedHandle < 0)
         processor.requestAudition (0);
 }
 
@@ -580,6 +692,25 @@ void KickDisplay::mouseDrag (const juce::MouseEvent& event)
             point.y = 0.0f; // volymen slutar på noll, annars knäpper det
         repaint();
     }
+    else if (draggedHandle >= 0)
+    {
+        // Handtagets x stannar i segmentet (kurvan ska vara en funktion av tiden), y inom envelopens område.
+        const auto value = fromScreen (event.position);
+        const auto index = (size_t) draggedHandle / 2;
+        auto& p = editing[index];
+        const auto y = juce::jlimit (0.0f, active().getMaxValue(), value.y) - p.y;
+        if (draggedHandle % 2 == 1)
+        {
+            p.outDx = juce::jlimit (0.0f, editing[index + 1].x - p.x, value.x - p.x);
+            p.outDy = y;
+        }
+        else
+        {
+            p.inDx = juce::jlimit (editing[index - 1].x - p.x, 0.0f, value.x - p.x);
+            p.inDy = y;
+        }
+        repaint();
+    }
     else if (draggedTension >= 0)
     {
         const auto& a = editing[(size_t) draggedTension];
@@ -593,11 +724,11 @@ void KickDisplay::mouseDrag (const juce::MouseEvent& event)
 
 void KickDisplay::mouseUp (const juce::MouseEvent&)
 {
-    if (! editing.empty() && (dragged >= 0 || draggedTension >= 0))
+    if (! editing.empty() && (dragged >= 0 || draggedTension >= 0 || draggedHandle >= 0))
         commit (editing);
 
     editing.clear();
-    dragged = draggedTension = -1;
+    dragged = draggedTension = draggedHandle = -1;
     fixedView = 0.0f;
     repaint();
 }
@@ -608,6 +739,15 @@ void KickDisplay::mouseDoubleClick (const juce::MouseEvent& event)
         return;
 
     auto points = active().getPoints();
+
+    // Dubbelklick på ett handtag nollställer det.
+    if (const auto handle = bezierHandleAt (event.position); handle >= 0)
+    {
+        resetHandle (points, handle);
+        commit (std::move (points));
+        return;
+    }
+
     if ((int) points.size() >= NodeEnvelope::maxPoints)
         return;
 
@@ -615,6 +755,18 @@ void KickDisplay::mouseDoubleClick (const juce::MouseEvent& event)
     if (value.x <= 0.0f || value.x >= points.back().x)
         return;
     points.push_back ({ value.x, juce::jlimit (0.0f, active().getMaxValue(), value.y), 0.0f });
+    if (isBezier())
+    {
+        // Den nya noden får platta handtag, annars står kurvan still med en skarp knyck.
+        std::stable_sort (points.begin(), points.end(), [] (const auto& a, const auto& b) { return a.x < b.x; });
+        for (size_t i = 1; i + 1 < points.size(); ++i)
+            if (points[i].x == value.x)
+            {
+                points[i].outDx = (points[i + 1].x - value.x) / 3.0f;
+                points[i].inDx = -(value.x - points[i - 1].x) / 3.0f;
+                points[i].outDy = points[i].inDy = 0.0f;
+            }
+    }
     commit (std::move (points));
 }
 

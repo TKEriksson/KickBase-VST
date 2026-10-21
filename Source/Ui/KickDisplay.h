@@ -51,6 +51,13 @@ private:
     juce::Point<float> tensionHandle (size_t segment) const;
     int pointAt (juce::Point<float> p) const;
     int tensionHandleAt (juce::Point<float> p) const;
+    // Bézierläge (BZ): handtag kodas som nod * 2 + (1 = ut-handtag, 0 = in-handtag), -1 = inget.
+    bool isBezier() const { return active().getMode() == NodeEnvelope::Mode::bezier; }
+    juce::Point<float> handlePosition (const std::vector<NodeEnvelope::Point>& points, size_t index, bool out) const;
+    int bezierHandleAt (juce::Point<float> p) const;
+    void toggleCurveMode();
+    void smoothNode (std::vector<NodeEnvelope::Point>& points, size_t index) const;
+    void resetHandle (std::vector<NodeEnvelope::Point>& points, int handle) const;
     juce::String describe (const NodeEnvelope::Point& point) const;
     void commit (std::vector<NodeEnvelope::Point> points);
 
@@ -62,6 +69,7 @@ private:
     double triggerWallTime = 0.0;                   // när senaste kicken märktes (ms), för blixten
     float markerSeconds = -1.0f;                    // var kicken är just nu (sekunder), -1 = tyst
     juce::TextButton pitchButton { "PITCH" }, ampButton { "AMP" };
+    juce::TextButton bezierButton { "BEZIER" }; // NODES (tension) eller BEZIER för kurvan som visas
     ListenButton listenButton; // högtalaren bredvid PITCH och AMP: spelar kicken
 
     // Vågformen som ritas (min/max per bildpunkt), omräknad när något ändrats.
@@ -71,7 +79,7 @@ private:
     int lastVersionPitch = -1, lastVersionAmp = -1;
 
     std::vector<NodeEnvelope::Point> editing; // kopia under drag
-    int dragged = -1, draggedTension = -1, hovered = -1;
+    int dragged = -1, draggedTension = -1, draggedHandle = -1, hovered = -1;
     float tensionStart = 0.0f, dragStartY = 0.0f;
     float fixedView = 0.0f; // visad längd under drag, så att bilden inte rör sig
     float timeZoom = 1.0f, freqZoom = 1.0f;  // Ctrl + hjul: tid, Skift + hjul: frekvens (PITCH)
