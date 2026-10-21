@@ -313,6 +313,10 @@ public:
     // MIDI in medan pianorullen är öppen: vilken rad som svarar på tangentbordet/MIDI (notlager som i previewRequest), -1 = alla rader.
     // Bara körtillstånd, ingen parameter: pianorullen sätter den vid öppning och nollar den vid stängning.
     std::atomic<int> midiInLayer { -1 };
+    // Tonerna som spelas live på den raden (MIDI-ton 0..127, bit för bit), så att pianorullen kan tända tangenterna.
+    std::atomic<uint64_t> liveNotesLow { 0 }, liveNotesHigh { 0 };
+    // MIDI-tonen som radens tonhöjd 0 ligger på (kickens svans, eller instrumentets grundton i tonarten). Pianorullen och live-spelet delar den.
+    int rowRootNote (int noteLayer) const;
 
     // Pianorullens urklipp (gränssnittet): kopierade toner, relativt den första, och var nästa inklistring börjar som standard
     // (där de kopierade slutar, och efter en inklistring där den slutar).

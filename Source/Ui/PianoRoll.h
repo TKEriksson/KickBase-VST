@@ -161,6 +161,7 @@ private:
     PluginBase& processor;
     std::vector<juce::Colour> layerColours;
     int lastColourVersion = 0; // processor.layerStructureVersion
+    std::pair<uint64_t, uint64_t> liveNow { 0, 0 }; // tonerna som spelas live (MIDI IN: INSTRUMENT): MIDI-ton 0..63 och 64..127
     int layer = 0;
 
     juce::Rectangle<float> toolbarArea, keyArea, rulerArea, gridArea, velocityArea;

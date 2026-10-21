@@ -104,6 +104,8 @@ private:
     std::array<int, 128> heldNotes {}; // hur många gånger varje ton slagits an utan att släppas
     int numHeldNotes = 0;
     int currentNote = -1; // senast anslagna ton; bestämmer tonarten
+    int liveVoiceLayer = -1; // instrumentet som spelar tangentbordet live (MIDI IN: INSTRUMENT), -1 = inget
+    bool handleLiveMidi (const juce::MidiMessage& message); // true när meddelandet är ett live-spelat och mönstret ska lämnas ifred
 
     bool patternActive = false;
     double stopAtPpq = std::numeric_limits<double>::infinity();

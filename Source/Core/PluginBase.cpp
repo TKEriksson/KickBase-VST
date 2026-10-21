@@ -1700,3 +1700,15 @@ void PluginBase::instrumentSamplesFromValueTree (const juce::ValueTree& tree)
         if (! found[(size_t) layer])
             instrumentSamples[(size_t) layer].clear();
 }
+
+int PluginBase::rowRootNote (int noteLayer) const
+{
+    const auto key = transportStatus.keyNote.load();
+    if (noteLayer == Pattern::kickLayer)
+    {
+        // Kickens tonhöjd 0 är dess svans: på tonarten (Follow) eller en fast ton (Fixed).
+        const auto follow = (int) apvts.getRawParameterValue (ParamID::kickKeyFollow)->load() == 1;
+        return follow ? Params::kickTailMidiNote ((key >= 0 ? key : 60) % 12) : 24;
+    }
+    return Params::instrumentRootMidiNote (key >= 0 ? key : 60);
+}

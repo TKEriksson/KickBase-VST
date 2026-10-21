@@ -506,8 +506,72 @@ bool InstrumentProcessor::noteOffEndsPattern (const juce::MidiMessage& message) 
     return message.isAllNotesOff() || message.isAllSoundOff();
 }
 
+bool InstrumentProcessor::handleLiveMidi (const juce::MidiMessage& message)
+{
+    // MIDI IN: INSTRUMENT i pianorullen: tonerna spelas på radens ljud, utan att mönstret startar. Tonhöjd 0 är radens grundton (som i pianorullen).
+    const auto row = midiInLayer.load();
+    auto low = liveNotesLow.load(), high = liveNotesHigh.load();
+    auto isSet = [&] (int note) { return (((note < 64 ? low : high) >> (note & 63)) & 1) != 0; };
+    auto setBit = [&] (int note, bool on)
+    {
+        auto& word = note < 64 ? low : high;
+        const auto bit = (uint64_t) 1 << (note & 63);
+        word = on ? (word | bit) : (word & ~bit);
+    };
+    auto publish = [&]
+    {
+        liveNotesLow = low;
+        liveNotesHigh = high;
+        if (low == 0 && high == 0 && liveVoiceLayer >= 0)
+        {
+            basses[(size_t) liveVoiceLayer].release();
+            liveVoiceLayer = -1;
+        }
+    };
+
+    if (message.isNoteOn())
+    {
+        if (row < 0 || row > Pattern::kickLayer)
+            return false;
+        previewLayer = -1;
+        const auto note = message.getNoteNumber();
+        const auto pitch = juce::jlimit (Pattern::minPitch, Pattern::maxPitch, note - rowRootNote (row));
+        if (row == Pattern::kickLayer)
+        {
+            if (kickOn)
+                kick.trigger (message.getFloatVelocity(), pitch);
+        }
+        else if (row < numLayers && layerOn[(size_t) row])
+        {
+            liveVoiceLayer = row;
+            basses[(size_t) row].noteOn (pitch, message.getFloatVelocity(), std::numeric_limits<int>::max() / 2);
+        }
+        setBit (note, true);
+        publish();
+        return true;
+    }
+    if (message.isNoteOff())
+    {
+        const auto note = message.getNoteNumber();
+        if (! isSet (note))
+            return false;
+        setBit (note, false);
+        publish();
+        return true;
+    }
+    if ((message.isAllNotesOff() || message.isAllSoundOff()) && (low != 0 || high != 0))
+    {
+        low = high = 0;
+        publish();
+    }
+    return false;
+}
+
 void InstrumentProcessor::handleMidi (const juce::MidiMessage& message, int sampleOffset)
 {
+    if (handleLiveMidi (message))
+        return;
+
     if (message.isNoteOn())
     {
         previewLayer = -1; // en riktig ton tar över från förhandsspelningen

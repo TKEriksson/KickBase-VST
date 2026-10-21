@@ -94,10 +94,10 @@ PianoRoll::PianoRoll (PluginBase& p, std::vector<juce::Colour> colours) : proces
     listenButton.onStart = [this] { processor.requestAudition (PluginBase::previewRequest (layer)); };
     listenButton.onStop = [this] { processor.requestAudition (PluginBase::previewStop); };
     midiInBox.addItem ("MIDI IN: ALL", 1);
-    midiInBox.addItem ("MIDI IN: THIS ROW", 2);
+    midiInBox.addItem ("MIDI IN: INSTRUMENT", 2);
     midiInBox.setSelectedId (2, juce::dontSendNotification);
-    midiInBox.setTooltip ("MIDI IN - What the keyboard / MIDI plays while the piano roll is open. THIS ROW (default): only this row, so you can play the sound you are editing. "
-                          "ALL: every row plays as usual. It goes back to ALL when you close the piano roll.");
+    midiInBox.setTooltip ("MIDI IN - What the keyboard / MIDI plays while the piano roll is open. INSTRUMENT (default): the notes you play are heard on this row's sound, "
+                          "live (the pattern does not play) and the keys light up on the piano. ALL: every row plays its pattern as usual. It goes back to ALL when you close the piano roll.");
     midiInBox.onChange = [this] { applyMidiIn(); grabKeyboardFocus(); };
     addAndMakeVisible (midiInBox);
     copyButton.setVisible (false);
@@ -247,14 +247,7 @@ int PianoRoll::snapped (float tick) const
 
 int PianoRoll::rootNote() const
 {
-    const auto key = processor.transportStatus.keyNote.load();
-    if (layer == Pattern::kickLayer)
-    {
-        // Kickens tonhöjd 0 är dess svans: på tonarten (Follow) eller en fast ton (Fixed).
-        const auto follow = (int) processor.apvts.getRawParameterValue (ParamID::kickKeyFollow)->load() == 1;
-        return follow ? Params::kickTailMidiNote ((key >= 0 ? key : 60) % 12) : 24;
-    }
-    return Params::instrumentRootMidiNote (key >= 0 ? key : 60);
+    return processor.rowRootNote (layer);
 }
 
 int PianoRoll::rootPitchClass() const { return rootNote() % 12; }
@@ -735,7 +728,7 @@ void PianoRoll::resized()
     pasteCancelButton.setBounds (slotB);
     top.removeFromLeft (10);
     listenButton.setBounds (top.removeFromLeft (36));
-    midiInBox.setBounds (top.removeFromRight (150));
+    midiInBox.setBounds (top.removeFromRight (170));
     infoArea =juce::Rectangle<float> ((float) listenButton.getRight() + 10.0f, (float) top.getY() - 1.0f,
                                        std::max (0.0f, (float) (top.getRight() - listenButton.getRight()) - 10.0f), 22.0f);
 
@@ -826,6 +819,12 @@ void PianoRoll::timerCallback()
     }
 
     update (lastVersion, processor.patternVersion.load());
+    const std::pair<uint64_t, uint64_t> live { processor.liveNotesLow.load(), processor.liveNotesHigh.load() };
+    if (live != liveNow)
+    {
+        liveNow = live; // tangenterna som spelas just nu tänds
+        changed = true;
+    }
     const auto playTick = playTickNow();
     update (lastPlayTick, playTick / 6); // var 6:e tick räcker
 
@@ -1504,14 +1503,23 @@ void PianoRoll::paint (juce::Graphics& g)
             const auto key = juce::Rectangle<float> (keyArea.getX(), y, keyArea.getWidth() - 2.0f, rowHeight()).reduced (0.0f, 0.5f);
             g.setColour (black ? juce::Colour (0xff23263a) : juce::Colour (0xffc4c8de));
             g.fillRoundedRectangle (key, 2.0f);
+            // Tangenten som spelas live (MIDI IN: INSTRUMENT) lyser i radens färg.
+            const auto midiNote = rootNote() + pitch;
+            const auto liveBits = midiNote < 64 ? liveNow.first : liveNow.second;
+            const auto pressed = midiNote >= 0 && midiNote < 128 && ((liveBits >> (midiNote & 63)) & 1) != 0;
+            if (pressed)
+            {
+                g.setColour (colour.withAlpha (0.9f));
+                g.fillRoundedRectangle (key, 2.0f);
+            }
             if (pitch == 0)
             {
                 g.setColour (colour);
                 g.fillRoundedRectangle (key.withWidth (4.0f), 2.0f);
             }
-            g.setColour (black ? Theme::textDim : juce::Colour (0xff23263a));
+            g.setColour (pressed ? juce::Colour (0xff0b0d18) : black ? Theme::textDim : juce::Colour (0xff23263a));
             g.drawText (juce::MidiMessage::getMidiNoteName (rootNote() + pitch, true, true, 4), key.reduced (7.0f, 0.0f), juce::Justification::centredLeft);
-            g.setColour (black ? Theme::textDim.withAlpha (0.7f) : juce::Colour (0xff5b607c));
+            g.setColour (pressed ? juce::Colour (0xff0b0d18) : black ? Theme::textDim.withAlpha (0.7f) : juce::Colour (0xff5b607c));
             g.drawText ((pitch > 0 ? "+" : "") + juce::String (pitch), key.reduced (3.0f, 0.0f), juce::Justification::centredRight);
         }
     }
