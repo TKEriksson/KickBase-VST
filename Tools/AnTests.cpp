@@ -226,7 +226,39 @@ int anTest()
         check (run (makeMetrics (0.0f, 8, -3.1f), problem) && ! problem, "fas: summan -3,1 dB ger en varning");
         check (run (makeMetrics (0.0f, 8, -6.1f), problem) && problem, "fas: summan -6,1 dB är ett problem");
         check (! run (makeMetrics (-1.0f, 3), problem), "fas: tre hörbara sextondelar räcker inte, hur dålig korrelationen än är");
-        check (run (makeMetrics (-1.0f, 4), problem), "fas: fyra hörbara sextondelar räcker");
+        check (! run (makeMetrics (-1.0f, 4), problem), "fas: fyra av 32 sextondelar räcker inte längre (golvet är 15 %, alltså 5)");
+        check (run (makeMetrics (-1.0f, 5), problem), "fas: fem av 32 sextondelar (15 %) räcker");
+        {
+            // Relativt golv: 64 platser kräver 10 hörbara (15 %), inte bara 4.
+            auto longRun = makeMetrics (-1.0f, 9);
+            longRun.lowCorrelation.assign (64, -1.0f);
+            longRun.lowActive.assign (64, 0);
+            for (size_t i = 0; i < 9; ++i)
+                longRun.lowActive[i] = 1;
+            check (! run (longRun, problem), "fas: 9 av 64 sextondelar räcker inte (golv 10)");
+            longRun.lowActive[9] = 1;
+            check (run (longRun, problem), "fas: 10 av 64 sextondelar räcker");
+        }
+        {
+            // Energiviktat medel: fem tunga platser med -1, femton lätta med +0,5. Oviktat +0,125 (inget fynd), viktat nära -1.
+            auto weighted = makeMetrics (0.5f, 20);
+            weighted.lowWeight.assign (32, 1.0e-4f);
+            for (size_t i = 0; i < 5; ++i)
+            {
+                weighted.lowCorrelation[i] = -1.0f;
+                weighted.lowWeight[i] = 1.0e-2f;
+            }
+            check (run (weighted, problem) && problem, "fas: tunga platser med motfas väger över lätta platser med samfas");
+            for (size_t i = 0; i < 20; ++i)
+                weighted.lowWeight[i] = i < 5 ? 1.0e-4f : 1.0e-2f;
+            check (! run (weighted, problem), "fas: lätta platser med motfas väger inte över tunga med samfas");
+            // Platser under ungefär -40 dB räknas inte som möte.
+            auto faint = makeMetrics (-1.0f, 8);
+            faint.lowWeight.assign (32, 5.0e-5f);
+            check (! run (faint, problem), "fas: åtta platser under effektgolvet räknas inte");
+            faint.lowWeight.assign (32, 1.0e-4f);
+            check (run (faint, problem), "fas: åtta platser på effektgolvet räknas");
+        }
         check (! run (makeMetrics (-1.0f, 0), problem), "fas: inga hörbara sextondelar ger inget fynd");
     }
 

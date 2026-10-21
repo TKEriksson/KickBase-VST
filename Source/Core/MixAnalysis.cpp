@@ -12,12 +12,46 @@ namespace MixAnalysis
     {
         constexpr float binNorm = 4.0f / (float) fftSize; // en sinus i full skala blir 0 dB
         // Trösklar som både findings (evaluate) och verktygsvägen (suggested_fixes) använder; ändra på ett ställe.
-        constexpr int phaseMinActive = 4;               // aktiva 16-delar innan fasfyndet bedöms
+        constexpr int phaseMinActive = 4;               // aktiva 16-delar innan fasfyndet bedöms (golv)
+        constexpr double phaseMinActiveShare = 0.15;    // ...och minst så stor andel av alla 16-delar, så en lång render inte blir känsligare än en kort
+        constexpr float phaseActivePower = 1.0e-4f;     // en 16-del räknas först när kick och bas båda ligger över ungefär -40 dB (kicksvansen räknas inte som möte)
         constexpr float phaseCorrWarn = -0.3f, phaseCorrProblem = -0.6f;
         constexpr float phaseSumWarnDb = -3.0f, phaseSumProblemDb = -6.0f;
         constexpr float lowStereoCorrMin = 0.3f;        // under detta är basen för bred (band 0)
         constexpr float limiterWarnDb = 6.0f, limiterProblemDb = 9.0f; // mäts på 95:e percentilen över ramarna, inte på enstaka maxblock
-constexpr double mudLowFloorPerFrame = 1.0e-4;  // medeleffekt 40-150 Hz i mastern (-40 dB); under det bedöms inte lera
+        constexpr double mudLowFloorPerFrame = 1.0e-4;  // medeleffekt 40-150 Hz i mastern (-40 dB); under det bedöms inte lera
+        // Fasfyndets underlag, gemensamt för findings och verktygsvägen: aktiva 16-delar och medelkorrelationen viktad med effekten (Σkb / Σ√(kk·bb)).
+        struct PhaseSummary
+        {
+            int active = 0, minActive = phaseMinActive;
+            float mean = 0.0f;
+            std::vector<int> badBars;
+            bool enough() const { return active >= minActive; }
+        };
+
+        PhaseSummary summarisePhase (const PhaseMetrics& p)
+        {
+            PhaseSummary s;
+            const auto slots = p.lowCorrelation.size();
+            const auto weighted = p.lowWeight.size() == slots;
+            s.minActive = std::max (phaseMinActive, (int) std::ceil (phaseMinActiveShare * (double) slots));
+            auto sumWeight = 0.0, sumWeighted = 0.0;
+            for (size_t i = 0; i < slots; ++i)
+            {
+                if (p.lowActive[i] == 0 || (weighted && p.lowWeight[i] < phaseActivePower))
+                    continue;
+                const auto w = weighted ? (double) p.lowWeight[i] : 1.0;
+                ++s.active;
+                sumWeight += w;
+                sumWeighted += w * p.lowCorrelation[i];
+                if (p.lowCorrelation[i] < phaseCorrWarn)
+                    s.badBars.push_back ((int) i / 16 + 1);
+            }
+            s.badBars.erase (std::unique (s.badBars.begin(), s.badBars.end()), s.badBars.end());
+            s.mean = sumWeight > 0.0 ? (float) (sumWeighted / sumWeight) : 0.0f;
+            return s;
+        }
+
         constexpr float lobePower = 1.5f;                 // en ren ton fördelas på ungefär tre steg (Hann): summan blir 1,5 gånger toppen
 
         juce::String noteName (float hz)
@@ -612,19 +646,11 @@ constexpr double mudLowFloorPerFrame = 1.0e-4;  // medeleffekt 40-150 Hz i maste
         // --- Fas och stereo (AN steg 2).
         if (const auto& ph = c.phase; ph.valid)
         {
-            auto activeCount = 0;
-            auto sum = 0.0;
-            std::vector<int> badBars;
-            for (size_t i = 0; i < ph.lowCorrelation.size(); ++i)
-                if (ph.lowActive[i] != 0)
-                {
-                    ++activeCount;
-                    sum += ph.lowCorrelation[i];
-                    if (ph.lowCorrelation[i] < phaseCorrWarn)
-                        badBars.push_back ((int) i / 16 + 1);
-                }
-            const auto mean = activeCount > 0 ? (float) (sum / activeCount) : 0.0f;
-            if (activeCount >= phaseMinActive && (mean < phaseCorrWarn || ph.sumVsMaxDb < phaseSumWarnDb))
+            const auto summary = summarisePhase (ph);
+            const auto activeCount = summary.active;
+            const auto mean = summary.mean;
+            const auto& badBars = summary.badBars;
+            if (summary.enough() && (mean < phaseCorrWarn || ph.sumVsMaxDb < phaseSumWarnDb))
             {
                 Finding f;
                 f.severity = mean < phaseCorrProblem || ph.sumVsMaxDb < phaseSumProblemDb ? Severity::problem : Severity::warning;
@@ -873,21 +899,11 @@ constexpr double mudLowFloorPerFrame = 1.0e-4;  // medeleffekt 40-150 Hz i maste
             d.fixes.add (juce::var (o));
         };
 
-        auto activeCount = 0;
-        auto sum = 0.0;
-        std::vector<int> badBars;
-        for (size_t i = 0; i < p.lowCorrelation.size(); ++i)
-            if (p.lowActive[i] != 0)
-            {
-                ++activeCount;
-                sum += p.lowCorrelation[i];
-                if (p.lowCorrelation[i] < phaseCorrWarn)
-                    badBars.push_back ((int) i / 16 + 1);
-            }
-        badBars.erase (std::unique (badBars.begin(), badBars.end()), badBars.end());
-        const auto mean = activeCount > 0 ? (float) (sum / activeCount) : 0.0f;
+        const auto summary = summarisePhase (p);
+        const auto mean = summary.mean;
+        const auto& badBars = summary.badBars;
 
-        if (activeCount >= phaseMinActive && (mean < phaseCorrWarn || p.sumVsMaxDb < phaseSumWarnDb))
+        if (summary.enough() && (mean < phaseCorrWarn || p.sumVsMaxDb < phaseSumWarnDb))
         {
             addFinding ("kick_bass_cancel", mean < phaseCorrProblem || p.sumVsMaxDb < phaseSumProblemDb ? "problem" : "warning",
                         "Kick and bass partly cancel at 30-150 Hz (mean correlation, value = correlation)", round2 (mean), badBars);
@@ -2148,6 +2164,7 @@ constexpr double mudLowFloorPerFrame = 1.0e-4;  // medeleffekt 40-150 Hz i maste
             const auto len = (double) std::max (1, to - from);
             const auto active = kk / len > 1.0e-6 && bb / len > 1.0e-6; // över ungefär -60 dB RMS
             m.lowActive.push_back (active ? 1 : 0);
+            m.lowWeight.push_back ((float) (std::sqrt (kk * bb) / len));
             m.lowCorrelation.push_back (active ? (float) juce::jlimit (-1.0, 1.0, kb / std::sqrt (kk * bb)) : 0.0f);
             m.lowSumDiffDb.push_back (active ? (float) (10.0 * std::log10 ((kk + bb + 2.0 * kb + 1.0e-12) / (kk + bb - 2.0 * kb + 1.0e-12))) : 0.0f);
         }
