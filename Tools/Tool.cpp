@@ -683,6 +683,114 @@ namespace
             check (codeRoutes() == 0, "CODE: städat efter taktestet");
         }
 
+        // Lucka 4-6 (lc-e-design §3): gränser, platsåteranvändning och stopp/laddning.
+        {
+            auto codeRoutes = [&]
+            {
+                auto n = 0;
+                for (auto& route : processor.modRoutes.routes)
+                    n += Modulation::isCodeSource (route.source.load()) ? 1 : 0;
+                return n;
+            };
+            auto pump = [&] (int n) { for (int i = 0; i < n; ++i) processor.modulator.update (0.0); };
+            auto hasProblem = [] (const juce::var& result, const juce::String& text)
+            {
+                if (auto* problems = result["data"]["problems"].getArray())
+                    for (const auto& problem : *problems)
+                        if (problem.toString().contains (text))
+                            return true;
+                return false;
+            };
+            const auto plainCode = juce::String ("note(\"c2\").s(\"i1\")");
+            auto clean = [&]
+            {
+                processor.clearCodeMods (true);
+                pump (10);
+                run (plainCode);
+            };
+            clean();
+
+            // Lucka 4a: åtta unika (lager, parameter, sort) ryms, den nionde får felrad.
+            const char* ids[] = { "bass1Cutoff", "bass1Resonance", "bass1EnvAmount", "bass1Decay", "bass1Sustain", "bass1Release", "bass1Drive", "bass1Glide" };
+            juce::String eight = "note(\"c2\")";
+            for (auto* id : ids)
+                eight += ".lfo(\"" + juce::String (id) + "\",1,0.2)";
+            eight += ".s(\"i1\")";
+            auto full = run (eight);
+            check ((bool) full["ok"] && full["data"]["problems"].isVoid() && (int) processor.codeMods.size() == Modulation::numCodeSources,
+                   "CODE: åtta unika modulatorer ryms");
+            auto ninth = run (eight.replace (".s(\"i1\")", ".env(\"bass1Attack\",10,200,0.2).s(\"i1\")"));
+            check ((bool) ninth["ok"] && hasProblem (ninth, "All " + juce::String (Modulation::numCodeSources) + " CODE modulators are in use")
+                       && (int) processor.codeMods.size() == Modulation::numCodeSources,
+                   "CODE: den nionde modulatorn ger felrad och ingen ny plats");
+            clean();
+
+            // Lucka 4b: djup, rate, attack och decay klipps till sina gränser.
+            run ("note(\"c2\").lfo(\"bass1Cutoff\",1000,5,\"sine\").env(\"bass1Resonance\",99999,0,5).s(\"i1\")");
+            auto slotOf = [&] (const juce::String& suffix)
+            {
+                const auto found = std::find_if (processor.codeMods.begin(), processor.codeMods.end(), [&] (const PluginBase::CodeMod& mod) { return mod.key.endsWith (suffix); });
+                return found == processor.codeMods.end() ? -1 : found->slot;
+            };
+            const auto lfoSlot = slotOf ("|lfo");
+            const auto envSlot = slotOf ("|env");
+            const auto lfoRoute = lfoSlot >= 0 ? processor.modRoutes.find (Modulation::firstCodeSource + lfoSlot, processor.modulator.indexOf ("bass1Cutoff")) : -1;
+            check (lfoSlot >= 0 && envSlot >= 0 && lfoRoute >= 0
+                       && processor.modRoutes.routes[(size_t) lfoRoute].amount.load() == 1.0f
+                       && processor.modulator.codeSlots[(size_t) lfoSlot].rate.load() == 200.0f
+                       && processor.modulator.codeSlots[(size_t) envSlot].attackMs.load() == 10000.0f
+                       && processor.modulator.codeSlots[(size_t) envSlot].decayMs.load() == 1.0f,
+                   "CODE: djup 5 klipps till 1, rate 1000 till 200, attack 99999 till 10000, decay 0 till 1");
+            clean();
+
+            // Lucka 4c/4d: NaN, Infinity, text och okänd form ger felrad i stället för krasch.
+            for (auto* bad : { "lfo(\"bass1Cutoff\",NaN,0.5)", "lfo(\"bass1Cutoff\",Infinity,0.5)", "lfo(\"bass1Cutoff\",\"fort\",0.5)", "env(\"bass1Cutoff\",10,200,NaN)" })
+            {
+                auto result = run ("note(\"c2\")." + juce::String (bad) + ".s(\"i1\")");
+                check (! (bool) result["ok"] || result["data"]["problems"].isVoid() == false,
+                       "CODE: ogiltigt tal i .lfo/.env stoppar inte host (" + juce::String (bad) + ")");
+            }
+            auto badShape = run ("note(\"c2\").lfo(\"bass1Cutoff\",2,0.5,\"zigzag\").s(\"i1\")");
+            check (! (bool) badShape["ok"] || badShape["data"]["problems"].isVoid() == false, "CODE: okänd LFO-form ger felrad");
+            clean();
+
+            // Lucka 5: en nyss stängd plats återanvänds inte före utfasning, men gör det efter svepning.
+            const auto lfoA = juce::String ("note(\"c2\").lfo(\"bass1Cutoff\",3,0.4).s(\"i1\")");
+            run (lfoA);
+            pump (1); // idle sätts bara i Modulator::update; utan ljudtråd måste testet köra ett steg så platsen räknas som levande
+            const auto firstSlot = processor.codeMods.empty() ? -1 : processor.codeMods.front().slot;
+            run (plainCode);
+            run ("note(\"c2\").lfo(\"bass1Resonance\",3,0.4).s(\"i1\")");
+            const auto secondSlot = processor.codeMods.empty() ? -1 : processor.codeMods.front().slot;
+            check (firstSlot >= 0 && secondSlot >= 0 && secondSlot != firstSlot, "CODE: ny post får inte den stängda platsen före utfasning");
+            run (plainCode);
+            pump (3000);
+            processor.sweepCodeRoutes();
+            check (codeRoutes() == 0, "CODE: utfasade platser sopas efter pumpning");
+            clean();
+
+            // Lucka 6: stopp och laddning lämnar inga poster eller CODE-rutter.
+            auto settled = [&]
+            {
+                pump (3000);
+                processor.sweepCodeRoutes();
+                return processor.codeMods.empty() && codeRoutes() == 0;
+            };
+            run (lfoA);
+            processor.clearCodeMods (false);
+            check (settled(), "CODE: clearCodeMods(false) lämnar inga poster eller rutter efter svepning");
+            run (lfoA);
+            juce::MemoryBlock state;
+            processor.getStateInformation (state);
+            run (lfoA);
+            processor.setStateInformation (state.getData(), (int) state.getSize());
+            check (settled(), "CODE: setStateInformation lämnar inga poster eller rutter");
+            run (lfoA);
+            processor.loadFactoryPreset (Presets::Section::full, 0);
+            check (settled(), "CODE: fabrikspreset lämnar inga poster eller rutter");
+            clean();
+        }
+
         // slider(v,min,max): utan dragning gäller värdet i texten, med dragning värdet från reglaget (begränsat till min..max).
         {
             auto noteOf = [] (const std::map<int, double>& values)
