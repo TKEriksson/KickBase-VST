@@ -37,7 +37,8 @@ FmPanel::FmPanel (PluginBase& p, int layerIn, juce::Colour accentIn)
     knob (envTime, F::fmEnvTime, "ENV TIME");
     knob (semis, F::fmSemis, "SEMIS");
 
-    filterToggle.setButtonText ("THROUGH FILTER");
+    filterToggle.setButtonText ("FILTER");
+    filterToggle.getProperties().set ("labelled", true);
     filterToggle.setTooltip (Help::forParameter (id (F::fmFilter)));
     filterToggle.setColour (juce::ToggleButton::tickColourId, accent);
     filterToggle.setColour (juce::ToggleButton::textColourId, Theme::textDim);
@@ -73,11 +74,11 @@ void FmPanel::resized()
 {
     auto area = getLocalBounds().reduced (6, 4);
     area.removeFromBottom (40);
+    filterToggle.setBounds (area.removeFromTop (18).removeFromRight (60));
     auto top = area.removeFromTop (juce::jmin (area.getHeight(), 110));
     preset->setBounds (top.removeFromLeft (150).withTrimmedBottom (juce::jmax (0, top.getHeight() - 40)));
     top.removeFromLeft (8);
     const auto width = juce::jmin (90, top.getWidth() / 6);
     for (auto* k : { level.get(), ratio.get(), index.get(), envAmount.get(), envTime.get(), semis.get() })
         k->setBounds (top.removeFromLeft (width));
-    filterToggle.setBounds (preset->getBounds().translated (0, 46).withHeight (22));
 }

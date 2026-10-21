@@ -251,6 +251,8 @@ OscPanel::OscPanel (PluginBase& p, int layerIn, int oscIn, juce::Colour accentIn
 
     filterSendButton.setTooltip ("SEND THROUGH FILTER - On: this oscillator goes through Filter 1 and Filter 2 (set on the FILTER tab). "
                                  "Off: it bypasses both filters and goes straight to the amp.");
+    filterSendButton.setButtonText ("FILTER");
+    filterSendButton.getProperties().set ("labelled", true);
     filterSendButton.setColour (juce::ToggleButton::tickColourId, accent);
     filterSendButton.setColour (juce::ToggleButton::textColourId, Theme::textDim);
     addAndMakeVisible (filterSendButton);
@@ -561,8 +563,9 @@ void OscPanel::resized()
     auto area = getLocalBounds().reduced (6);
     {
         const auto titleRow = area.removeFromTop (16);
-        filterSendButton.setBounds (titleRow.withTrimmedLeft (52).withWidth (juce::jmax (0, juce::jmin (170, area.getWidth() / 3 - 52))));
         auto strip = titleRow.withTrimmedLeft (area.getWidth() / 3);
+        filterSendButton.setBounds (strip.removeFromRight (60));
+        strip.removeFromRight (4);
         resetOscButton.setBounds (strip.removeFromRight (46).reduced (1, 0));
         savePresetButton.setBounds (strip.removeFromRight (42).reduced (1, 0));
         nextPresetButton.setBounds (strip.removeFromRight (22).reduced (1, 0));

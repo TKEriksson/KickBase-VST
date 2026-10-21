@@ -216,7 +216,7 @@ private:
         g.fillRoundedRectangle (area.toFloat(), 4.0f);
         const auto showFixes = selected >= 0 && selected < (int) report.findings.size() && report.findings[(size_t) selected].category == "phase" && ! fixes.isEmpty();
         const auto fixHeight = showFixes ? 14 * std::min (fixes.size(), 6) + 20 : 0;
-        const auto plot = area.toFloat().reduced (30.0f, 10.0f).withTrimmedBottom (8.0f + (float) fixHeight);
+        const auto plot = area.toFloat().reduced (30.0f, 10.0f).withTrimmedTop (14.0f).withTrimmedBottom (22.0f + (float) fixHeight);
         auto xFor = [&] (float hz) { return plot.getX() + plot.getWidth() * std::log (hz / fieldLowHz) / std::log (fieldHighHz / fieldLowHz); };
         const auto bars = std::max (1, fieldBars > 0 ? fieldBars : report.bars);
         auto yTop = [&] (int bar0) { return plot.getY() + plot.getHeight() * (float) bar0 / (float) bars; };
@@ -247,6 +247,27 @@ private:
         {
             g.setColour (Theme::textDim);
             g.drawText (juce::String (bar + 1), juce::Rectangle<float> (area.getX() + 2.0f, yTop (bar), 24.0f, plot.getHeight() / (float) bars), juce::Justification::centredRight);
+        }
+
+        // Axeltitlar och färgförklaring: sidled = frekvens i Hz (logaritmisk), höjdled = takt i loopen, färg = hur många källor som är starka där.
+        g.setFont (Theme::font (10.0f, true));
+        g.setColour (Theme::textDim);
+        g.drawText ("FREQUENCY (Hz)", juce::Rectangle<float> (plot.getX(), plot.getBottom() + 11.0f, plot.getWidth(), 12.0f), juce::Justification::centred);
+        g.drawText ("BAR", juce::Rectangle<float> (area.getX() + 2.0f, plot.getY() - 14.0f, 28.0f, 12.0f), juce::Justification::centredRight);
+        if (fieldBars > 0)
+        {
+            struct Key { juce::Colour colour; const char* text; };
+            const Key keys[] = { { Theme::track, "1 source" }, { juce::Colour (0xffe8d35c).withAlpha (0.7f), "2 sources" }, { Theme::master.withAlpha (0.95f), "3+ sources" } };
+            auto x = plot.getX() + 8.0f;
+            for (const auto& key : keys)
+            {
+                g.setColour (key.colour);
+                g.fillRect (x, plot.getY() - 12.0f, 10.0f, 8.0f);
+                g.setColour (Theme::textDim);
+                g.drawText (key.text, juce::Rectangle<float> (x + 14.0f, plot.getY() - 14.0f, 60.0f, 12.0f), juce::Justification::centredLeft);
+                x += 78.0f;
+            }
+            g.drawText ("loud at the same time", juce::Rectangle<float> (x, plot.getY() - 14.0f, plot.getRight() - x, 12.0f), juce::Justification::centredLeft);
         }
         if (selected < 0 || selected >= (int) report.findings.size())
             return;

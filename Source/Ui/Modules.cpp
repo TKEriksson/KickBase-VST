@@ -743,6 +743,7 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
     instrPage.addAndMakeVisible (envelopeListen);
     instrPage.addAndMakeVisible (subScope);
     noiseFilterButton.setTooltip ("NOISE THROUGH FILTER - On: the noise goes through Filter 1 and Filter 2 (set on the FILTER tab). Off: it bypasses both filters.");
+    noiseFilterButton.getProperties().set ("labelled", true);
     noiseFilterButton.setColour (juce::ToggleButton::tickColourId, layerAccent);
     noiseFilterButton.setColour (juce::ToggleButton::textColourId, Theme::textDim);
     instrPage.addAndMakeVisible (noiseFilterButton);
@@ -1014,6 +1015,8 @@ SamplePage::SamplePage (PluginBase& p, int layerIn, juce::Colour accent)
     reverseAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, id (F::slicerReverse), reverseToggle);
     filterSendToggle.setTooltip ("SEND THROUGH FILTER - On: the sample goes through Filter 1 and Filter 2 (set on the FILTER tab). "
                                  "Off (default): it bypasses both filters, so a sample keeps its full sound.");
+    filterSendToggle.setButtonText ("FILTER");
+    filterSendToggle.getProperties().set ("labelled", true);
     filterSendToggle.setColour (juce::ToggleButton::tickColourId, accent);
     filterSendToggle.setColour (juce::ToggleButton::textColourId, Theme::textDim);
     addAndMakeVisible (filterSendToggle);
@@ -1125,13 +1128,14 @@ void SamplePage::resized()
 {
     auto area = getLocalBounds().reduced (4);
     auto top = area.removeFromTop (24);
+    filterSendToggle.setBounds (top.removeFromRight (60));
+    top.removeFromRight (8);
     clearButton.setBounds (top.removeFromRight (24));
     top.removeFromRight (4);
     loadButton.setBounds (top.removeFromRight (56));
     top.removeFromRight (4);
     hearButton.setBounds (top.removeFromRight (56));
     top.removeFromRight (8);
-    filterSendToggle.setBounds (top.removeFromRight (juce::jmin (170, top.getWidth() / 2)));
     label.setBounds (top);
     area.removeFromTop (6);
 
