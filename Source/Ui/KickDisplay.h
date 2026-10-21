@@ -73,7 +73,7 @@ private:
     ListenButton listenButton; // högtalaren bredvid PITCH och AMP: spelar kicken
 
     // Vågformen som ritas (min/max per bildpunkt), omräknad när något ändrats.
-    juce::AudioBuffer<float> waveform;
+    juce::AudioBuffer<float> waveform, ghost; // ghost = samma kick med PHASE 0 (tom när PHASE är 0)
     double waveformSeconds = 0.1;
     juce::int64 lastHash = 0;
     int lastVersionPitch = -1, lastVersionAmp = -1;

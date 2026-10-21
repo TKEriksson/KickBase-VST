@@ -104,6 +104,15 @@ void KickDisplay::renderWaveform()
     const auto params = processor.kickForDisplay (0);
     waveform = KickEngine::render (params, processor.clickForDisplay(), 44100.0);
     waveformSeconds = waveform.getNumSamples() / 44100.0;
+
+    // Spökkurva: samma kick med PHASE 0, så man ser vad fasen ändrar. Bara när PHASE är ställd.
+    ghost.setSize (0, 0);
+    if (params.startPhase != 0.0f)
+    {
+        auto reference = params;
+        reference.startPhase = 0.0f;
+        ghost = KickEngine::render (reference, processor.clickForDisplay(), 44100.0);
+    }
 }
 
 void KickDisplay::timerCallback()
@@ -408,35 +417,47 @@ void KickDisplay::paint (juce::Graphics& g)
     // Själva kickens vågform (min/max per bildpunkt), runt mittlinjen.
     if (waveform.getNumSamples() > 1)
     {
-        const auto* data = waveform.getReadPointer (0);
         const auto samplesPerSecond = 44100.0;
         const auto secondsPerPixel = viewSeconds() / area.getWidth();
-        juce::Path wave;
-        std::vector<juce::Point<float>> lower;
-        for (int px = 0; px < (int) area.getWidth(); ++px)
+        auto outline = [&] (const juce::AudioBuffer<float>& buffer)
         {
-            const auto from = (int) (px * secondsPerPixel * samplesPerSecond);
-            const auto to = std::min (waveform.getNumSamples(), (int) ((px + 1) * secondsPerPixel * samplesPerSecond) + 1);
-            if (from >= waveform.getNumSamples())
-                break;
-            auto lo = 0.0f, hi = 0.0f;
-            for (int i = from; i < to; ++i)
+            const auto* data = buffer.getReadPointer (0);
+            juce::Path path;
+            std::vector<juce::Point<float>> lower;
+            for (int px = 0; px < (int) area.getWidth(); ++px)
             {
-                lo = std::min (lo, data[i]);
-                hi = std::max (hi, data[i]);
+                const auto from = (int) (px * secondsPerPixel * samplesPerSecond);
+                const auto to = std::min (buffer.getNumSamples(), (int) ((px + 1) * secondsPerPixel * samplesPerSecond) + 1);
+                if (from >= buffer.getNumSamples())
+                    break;
+                auto lo = 0.0f, hi = 0.0f;
+                for (int i = from; i < to; ++i)
+                {
+                    lo = std::min (lo, data[i]);
+                    hi = std::max (hi, data[i]);
+                }
+                const auto x = area.getX() + (float) px;
+                const auto half = area.getHeight() * 0.5f * 0.92f;
+                const juce::Point<float> top { x, area.getCentreY() - hi * half };
+                if (px == 0)
+                    path.startNewSubPath (top);
+                else
+                    path.lineTo (top);
+                lower.push_back ({ x, area.getCentreY() - lo * half });
             }
-            const auto x = area.getX() + (float) px;
-            const auto half = area.getHeight() * 0.5f * 0.92f;
-            const juce::Point<float> top { x, area.getCentreY() - hi * half };
-            if (px == 0)
-                wave.startNewSubPath (top);
-            else
-                wave.lineTo (top);
-            lower.push_back ({ x, area.getCentreY() - lo * half });
+            for (auto it = lower.rbegin(); it != lower.rend(); ++it)
+                path.lineTo (*it);
+            path.closeSubPath();
+            return path;
+        };
+        const auto wave = outline (waveform);
+        if (ghost.getNumSamples() > 1)
+        {
+            g.setColour (Theme::text.withAlpha (0.5f));
+            g.strokePath (outline (ghost), juce::PathStrokeType (1.0f));
+            g.setFont (Theme::font (9.0f));
+            g.drawText ("outline = PHASE 0", area.reduced (4.0f).removeFromTop (11.0f), juce::Justification::topRight);
         }
-        for (auto it = lower.rbegin(); it != lower.rend(); ++it)
-            wave.lineTo (*it);
-        wave.closeSubPath();
         g.setColour (Theme::bass.withAlpha (markerSeconds >= 0.0f ? 0.32f : 0.55f));
         g.fillPath (wave);
 
