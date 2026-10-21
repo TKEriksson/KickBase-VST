@@ -29,7 +29,8 @@ KickDisplay::KickDisplay (PluginBase& p) : processor (p)
     bezierButton.setClickingTogglesState (false);
     bezierButton.setColour (juce::TextButton::buttonOnColourId, Theme::kick);
     bezierButton.setTooltip ("NODES / BEZIER - Switch the curve you see (PITCH or AMP) between nodes with bendable segments and a Bezier curve with two handles per node. "
-                             "NODES to BEZIER keeps the shape; BEZIER to NODES loses the handles. Alt + click a node smooths it, double-click a handle resets it.");
+                             "NODES to BEZIER keeps the shape closely; BEZIER to NODES loses the handles. Alt + click a node smooths it, double-click a handle resets it, "
+                             "double-click empty space adds a node. The first node has no in-handle and the last no out-handle; handles stay inside their segment.");
     bezierButton.onClick = [this] { toggleCurveMode(); };
     addAndMakeVisible (bezierButton);
     listenButton.setAccent (Theme::kick);
