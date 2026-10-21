@@ -476,15 +476,16 @@ public:
     ModRoutes modRoutes;
     Modulator modulator { apvts, modRoutes };
 
+    // Samplingarna som projektträd; publika så att StateTests kan provköra skivinställningarnas rundtur.
+    juce::ValueTree instrumentSamplesToValueTree() const;
+    void instrumentSamplesFromValueTree (const juce::ValueTree& tree);
+
 protected:
     // Läser kickens och basens parametrar, med LFO-modulering.
     KickParams readModulatedKick (int keyPitchClass) const;
     InstrumentParams readModulatedInstrument (int layer, int rootMidiNote) const;
 
 private:
-    juce::ValueTree instrumentSamplesToValueTree() const;
-    void instrumentSamplesFromValueTree (const juce::ValueTree& tree);
-
     // Originalet sparas i projektet; en omsamplad kopia spelas. Bara message thread och
     // prepareToPlay rör originalet, därför låset (aldrig på ljudtråden).
     static constexpr int numUserSlots = ParamID::numInstrumentLayers * ParamID::oscsPerLayer;
