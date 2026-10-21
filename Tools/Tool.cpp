@@ -646,6 +646,7 @@ namespace
             // Lucka 5: en nyss stängd plats återanvänds inte före utfasning, men gör det efter svepning.
             const auto lfoA = juce::String ("note(\"c2\").lfo(\"bass1Cutoff\",3,0.4).s(\"i1\")");
             run (lfoA);
+            pump (1); // idle sätts bara i Modulator::update; utan ljudtråd måste testet köra ett steg så platsen räknas som levande
             const auto firstSlot = processor.codeMods.empty() ? -1 : processor.codeMods.front().slot;
             run (plainCode);
             run ("note(\"c2\").lfo(\"bass1Resonance\",3,0.4).s(\"i1\")");
