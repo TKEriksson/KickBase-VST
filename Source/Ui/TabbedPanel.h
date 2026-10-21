@@ -93,11 +93,12 @@ public:
     }
 
     // En på/av-knapp på fliken, kopplad till en switch-parameter. Fliken blir dämpad när instrumentet är av.
-    void addPower (int tabIndex, juce::AudioProcessorValueTreeState& apvts, const juce::String& parameterID)
+    void addPower (int tabIndex, juce::AudioProcessorValueTreeState& apvts, const juce::String& parameterID,
+                   const juce::String& tooltip = "ON / OFF - Turns this instrument on or off without opening the tab.")
     {
         auto& tab = tabs[(size_t) tabIndex];
         tab.power = std::make_unique<PowerButton> (tab.accent);
-        tab.power->setTooltip ("ON / OFF - Turns this instrument on or off without opening the tab.");
+        tab.power->setTooltip (tooltip);
         addAndMakeVisible (*tab.power);
         tab.powerAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (apvts, parameterID, *tab.power);
         auto* button = tab.button.get();
