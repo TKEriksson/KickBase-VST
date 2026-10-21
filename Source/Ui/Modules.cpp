@@ -741,6 +741,7 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
     envelopeListen.onStart = [this] { hold.start (PluginBase::heldLayerAudition (layer)); };
     envelopeListen.onStop = [this] { hold.stop(); };
     instrPage.addAndMakeVisible (envelopeListen);
+    instrPage.addAndMakeVisible (subScope);
 
     // Flikarna: INSTR (envelopen och rattarna), OSC 1-3 och SAMPLE med en på/av-knapp på fliken, och FILTER.
     sources.addTab ("INSTR", layerAccent, instrPage);
@@ -1204,6 +1205,87 @@ void InstrumentModule::layoutInstrPage()
     area.removeFromLeft (6);
     const auto rowHeight = juce::jlimit (40, 100, area.getHeight() / groups.numRows() - ControlGroups::titleHeight - 3);
     groups.layout (area, rowHeight);
+
+    // Mini-oscilloskopen sitter i SUB-gruppens rubrikrad, till höger om rubriken.
+    const auto sub = groups.frameOf ("SUB");
+    if (! sub.isEmpty())
+        subScope.setBounds (sub.getRight() - 6 - 54, sub.getY() + 1, 54, ControlGroups::titleHeight);
+}
+
+//==============================================================================
+SubScope::SubScope (PluginBase& p, int layerIn) : processor (p), layer (layerIn)
+{
+    setInterceptsMouseClicks (true, false); // tooltip
+    setTooltip ("SUB - Shows the sub oscillator: its wave (WAVE) and size (LEVEL). It glows and moves while this instrument is sounding, so you can see the sub is running even when "
+                "every oscillator is off. It is dim and still when the instrument is silent.");
+    startTimerHz (30);
+}
+
+void SubScope::timerCallback()
+{
+    using F = InstrumentField;
+    const auto newLevel = processor.apvts.getRawParameterValue (ParamID::bass (layer, F::sub))->load();
+    const auto newWave = (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, F::subWave))->load();
+    const auto nowSounding = newLevel > 0.001f && processor.transportStatus.instrumentSounding[(size_t) layer].load();
+
+    const auto target = nowSounding ? 1.0f : 0.0f;
+    const auto newGlow = glow + (target - glow) * 0.3f;
+    const auto changed = newLevel != level || newWave != wave || std::abs (newGlow - glow) > 0.002f || nowSounding;
+
+    level = newLevel;
+    wave = newWave;
+    sounding = nowSounding;
+    glow = std::abs (target - newGlow) < 0.01f ? target : newGlow;
+    if (sounding)
+        phase = std::fmod (phase + 0.035f, 1.0f); // vågen rullar åt vänster
+    if (changed)
+        repaint();
+}
+
+void SubScope::paint (juce::Graphics& g)
+{
+    const auto bounds = getLocalBounds().toFloat().reduced (0.5f);
+    const auto accent = Theme::layerColour (layer);
+
+    g.setColour (juce::Colours::black.withAlpha (0.35f + 0.1f * glow));
+    g.fillRoundedRectangle (bounds, 3.0f);
+    g.setColour (accent.withAlpha (0.25f + 0.55f * glow));
+    g.drawRoundedRectangle (bounds, 3.0f, 1.0f);
+
+    const auto inner = bounds.reduced (3.0f, 2.0f);
+    const auto centreY = inner.getCentreY();
+    const auto halfHeight = inner.getHeight() * 0.5f;
+    const auto size = juce::jlimit (0.0f, 1.0f, level / 0.6f); // LEVEL är 0..1; det mesta av räckvidden används långt under 1
+    const auto amplitude = level > 0.001f ? halfHeight * (0.25f + 0.75f * size) : 0.0f;
+
+    juce::Path path;
+    const auto points = (int) inner.getWidth();
+    for (int i = 0; i <= points; ++i)
+    {
+        const auto x = (float) i / (float) points;
+        const auto p = std::fmod (x * 2.0f + phase, 1.0f); // två perioder över rutan
+        float shape;
+        switch (wave)
+        {
+            case 1:  shape = 1.0f - 4.0f * std::abs (p - 0.5f); break;
+            case 2:  shape = std::tanh (4.0f * std::sin (juce::MathConstants<float>::twoPi * p)); break;
+            case 3:  shape = 2.0f * p - 1.0f; break;
+            default: shape = std::sin (juce::MathConstants<float>::twoPi * p); break;
+        }
+        const auto y = centreY - shape * amplitude;
+        if (i == 0)
+            path.startNewSubPath (inner.getX() + x * inner.getWidth(), y);
+        else
+            path.lineTo (inner.getX() + x * inner.getWidth(), y);
+    }
+
+    if (glow > 0.02f)
+    {
+        g.setColour (accent.withAlpha (0.3f * glow));
+        g.strokePath (path, juce::PathStrokeType (3.5f));
+    }
+    g.setColour (juce::Colour (0xffffffff).interpolatedWith (accent, 0.35f).withAlpha (0.35f + 0.65f * glow));
+    g.strokePath (path, juce::PathStrokeType (1.2f));
 }
 
 //==============================================================================

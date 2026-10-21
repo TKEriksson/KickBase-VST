@@ -5,7 +5,7 @@
 #include "Theme.h"
 #include <juce_gui_extra/juce_gui_extra.h>
 
-// Fliken LIVE CODE: skriv Strudel-kod (https://strudel.cc). AUTO (på som standard) räknar om koden i bakgrunden ca 400 ms efter varje ändring,
+// Fliken LIVE CODE: skriv Strudel-kod (https://strudel.cc). AUTO (av när synthen startar) räknar om koden i bakgrunden ca 400 ms efter varje ändring,
 // bara om den är giltig, och skriver mönstret i pianorullen (en ångra-punkt först); STOP slutar lyssna; CREATE skriver koden en gång.
 class LiveCodePage : public juce::Component, private juce::Timer, private juce::CodeDocument::Listener
 {

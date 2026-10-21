@@ -186,6 +186,15 @@ public:
     void addRow (std::vector<Group> row) { rows.push_back (std::move (row)); }
     int numRows() const { return (int) rows.size(); }
 
+    // Gruppens ram efter senaste layout (tom om titeln saknas), för den som lägger en liten visning i rubrikraden.
+    juce::Rectangle<int> frameOf (const juce::String& title) const
+    {
+        for (const auto& [bounds, frameTitle] : frames)
+            if (frameTitle == title)
+                return bounds;
+        return {};
+    }
+
     // Lägger ut raderna i `area` (uppifrån). Valrutor (ChoiceComponent) centreras på höjden.
     void layout (juce::Rectangle<int> area, int rowHeight);
     void paint (juce::Graphics& g, juce::Colour accent) const;

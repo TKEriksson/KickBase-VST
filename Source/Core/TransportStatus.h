@@ -24,6 +24,7 @@ struct TransportStatus
     std::atomic<float> kickPlayTime { -1.0f };     // sekunder sedan senaste kicken slog an, -1 = tyst
     std::atomic<int> kickTriggers { 0 };           // räknas upp för varje ny kick
     std::array<std::atomic<float>, Pattern::numLayers> instrumentSamplePosition {}; // 0..1 i samplingen, -1 = spelar inte
+    std::array<std::atomic<bool>, Pattern::numLayers> instrumentSounding {};         // lagret har en röst som låter (även om alla oscillatorer är av: subben)
 
     TransportStatus()
     {

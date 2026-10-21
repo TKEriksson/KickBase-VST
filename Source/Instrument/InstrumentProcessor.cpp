@@ -323,7 +323,10 @@ void InstrumentProcessor::processChunk (juce::AudioBuffer<float>& buffer, juce::
     transportStatus.kickPlayTime = kick.getPlayTime();
     transportStatus.kickTriggers = kick.getTriggerCount();
     for (int layer = 0; layer < numLayers; ++layer)
+    {
         transportStatus.instrumentSamplePosition[(size_t) layer] = layer < activeLayers ? basses[(size_t) layer].getSampleFraction() : -1.0f;
+        transportStatus.instrumentSounding[(size_t) layer] = layer < activeLayers && basses[(size_t) layer].isActive();
+    }
     transportStatus.kickStep = patternActive ? scheduler.getLastKickStep() : -1;
     for (int layer = 0; layer < numLayers; ++layer)
         transportStatus.instrumentSteps[(size_t) layer] = patternActive ? scheduler.getLastInstrumentStep (layer) : -1;

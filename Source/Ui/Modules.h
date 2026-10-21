@@ -172,6 +172,24 @@ private:
     std::vector<std::unique_ptr<juce::Component>> controls; // LEVEL, START, ROOT, LOOP, KEY
 };
 
+// Liten oscilloskop i SUB-gruppens rubrikrad: ritar subbens vågform (WAVE, höjd efter LEVEL) och rör sig, med glöd, bara när lagret
+// låter. Subben spelar även när alla oscillatorer är av, och då syns det här.
+class SubScope : public juce::Component, public juce::SettableTooltipClient, private juce::Timer
+{
+public:
+    SubScope (PluginBase& processor, int layer);
+    void paint (juce::Graphics&) override;
+
+private:
+    void timerCallback() override;
+
+    PluginBase& processor;
+    const int layer;
+    float level = 0.0f, phase = 0.0f, glow = 0.0f;
+    int wave = 0;
+    bool sounding = false;
+};
+
 // Ett baslager (bara instrumentet): källorna i flikar (OSC 1-3 och SAMPLE, var och en med av/på), filter- och
 // amplitud-envelope och rattar. En WAV kan släppas på sidan (eller laddas med LOAD på SAMPLE-fliken).
 class InstrumentModule : public ModulePanel, public juce::FileDragAndDropTarget
@@ -207,6 +225,7 @@ private:
     };
     InstrPage instrPage { *this };
     void layoutInstrPage();
+    SubScope subScope { processor, layer };
 
     EnvelopeView envelope { 0.5 };
     HoldAudition hold { processor };      // klick och håll på LISTEN: instrumentet spelas på förhandsvisningstonen
