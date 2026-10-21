@@ -1,6 +1,7 @@
 #include "InstrumentMenu.h"
 #include "Modules.h"
 #include "Help.h"
+#include "../Core/ProjectFile.h"
 
 namespace
 {
@@ -74,30 +75,79 @@ HeaderBar::HeaderBar (PluginBase& p, const juce::String& subtitleIn)
         addAndMakeVisible (restartButton);
     }
 
-    aiButton.setClickingTogglesState (true);
-    aiButton.setColour (juce::TextButton::buttonOnColourId, Theme::mix.withAlpha (0.6f));
-    aiButton.onClick = [this]
-    {
-        processor.setBridgeEnabled (aiButton.getToggleState());
-        aiButton.setToggleState (processor.isBridgeEnabled(), juce::dontSendNotification);
-        updateAiTooltip();
-    };
-    aiButton.setToggleState (processor.isBridgeEnabled(), juce::dontSendNotification);
-    addAndMakeVisible (aiButton);
+    projectButton.onClick = [this] { showProjectMenu(); };
+    addAndMakeVisible (projectButton);
     updateAiTooltip();
     startVisualTimer (Settings::Visual::topBar, 30);
 }
 
 void HeaderBar::updateAiTooltip()
 {
-    aiButton.setButtonText (processor.isBridgeEnabled() ? "AI SERVER\n(MCP: ON)" : "AI SERVER\n(MCP: OFF)");
-    aiButton.setTooltip (processor.isBridgeEnabled()
-        ? "AI SERVER (MCP) is ON (instance " + processor.getBridgeId() + "). An AI assistant using the Kickbase MCP bridge can read and change this plugin and hear/measure it offline. Click to switch off."
-        : "AI SERVER (MCP) - Off. Switch on to let an AI assistant (through the Kickbase MCP bridge, for example in Claude Desktop) read and change this plugin. Local only; nothing is sent over the internet by Kickbase.");
+    projectButton.setTooltip (processor.isBridgeEnabled()
+        ? "PROJECT - Save or open a project file (.kbproj), export, and the AI server. The AI SERVER (MCP) is ON (instance " + processor.getBridgeId() + "): an AI assistant using the Kickbase MCP bridge can read and change this plugin and hear/measure it offline."
+        : "PROJECT - Save or open a project file (.kbproj), export, and the AI server. The AI SERVER (MCP) is off. Switch it on to let an AI assistant (through the Kickbase MCP bridge, for example in Claude Desktop) read and change this plugin. Local only; nothing is sent over the internet by Kickbase.");
+    repaint (projectButton.getBounds());
+}
+
+void HeaderBar::showProjectMenu()
+{
+    juce::PopupMenu menu;
+    menu.addItem (1, "Save project...");
+    menu.addItem (2, "Open project...");
+    if (! processor.isEffectVersion())
+        menu.addItem (3, "Export...");
+    menu.addSeparator();
+    menu.addItem (4, "AI server (MCP)", true, processor.isBridgeEnabled());
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&projectButton), [this, safe = juce::Component::SafePointer<HeaderBar> (this)] (int result)
+    {
+        if (safe == nullptr)
+            return;
+        if (result == 1)      saveProject();
+        else if (result == 2) openProject();
+        else if (result == 3) showExportMenu();
+        else if (result == 4)
+        {
+            processor.setBridgeEnabled (! processor.isBridgeEnabled());
+            updateAiTooltip();
+        }
+    });
+}
+
+void HeaderBar::saveProject()
+{
+    chooser = std::make_unique<juce::FileChooser> ("Save project", Settings::exportsFolder().getChildFile ("Kickbase.kbproj"), "*.kbproj");
+    chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles | juce::FileBrowserComponent::warnAboutOverwriting,
+                          [this, safe = juce::Component::SafePointer<HeaderBar> (this)] (const juce::FileChooser& fc)
+    {
+        if (safe == nullptr || fc.getResult() == juce::File())
+            return;
+        juce::String error;
+        if (! ProjectFile::save (processor, fc.getResult().withFileExtension ("kbproj"), KICKBASE_VERSION, error))
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Could not save the project", error);
+    });
+}
+
+void HeaderBar::openProject()
+{
+    chooser = std::make_unique<juce::FileChooser> ("Open project", Settings::exportsFolder(), "*.kbproj");
+    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                          [this, safe = juce::Component::SafePointer<HeaderBar> (this)] (const juce::FileChooser& fc)
+    {
+        if (safe == nullptr || fc.getResult() == juce::File())
+            return;
+        juce::String error;
+        if (! ProjectFile::load (processor, processor.apvts.state.getType(), fc.getResult(), error))
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Could not open the project", error);
+    });
 }
 
 void HeaderBar::paintOverChildren (juce::Graphics& g)
 {
+    // Statuspunkten på PROJECT-knappen: grön när AI-länken är på, grå när den är av.
+    const auto dot = juce::Rectangle<float> (7.0f, 7.0f).withCentre ({ (float) projectButton.getRight() - 9.0f, (float) projectButton.getY() + 9.0f });
+    g.setColour (processor.isBridgeEnabled() ? juce::Colour (0xff4cd964) : Theme::text.withAlpha (0.35f));
+    g.fillEllipse (dot);
+
     // Returpilen på omstartsknappen (ritad, så att den inte beror på att ett typsnitt har symbolen).
     if (! restartButton.isVisible())
         return;
@@ -125,11 +175,11 @@ void HeaderBar::resized()
     bpmPill = right.removeFromRight (214).reduced (0, (height - 34) / 2);
     restartButton.setBounds (bpmPill.getRight() - 32, bpmPill.getY() + 4, 26, bpmPill.getHeight() - 8);
 
-    aiButton.setBounds (14 + logo.getWidth() + 22, controlsY, 84, controlsHeight); // AI SERVER först, till vänster om presetväljaren (två rader)
+    projectButton.setBounds (14 + logo.getWidth() + 22, controlsY, 84, controlsHeight); // PROJECT först, till vänster om presetväljaren
     auto presetWidth = hasPreviews ? 118 : 200;
-    const auto leftEnd = aiButton.getRight() + 10 + presetWidth + 10 + (hasPreviews ? 70 : 76) + 10 + (hasPreviews ? 112 : 0) + 16 + meterWidth;
+    const auto leftEnd = projectButton.getRight() + 10 + presetWidth + 10 + (hasPreviews ? 70 : 76) + 10 + (hasPreviews ? 112 : 0) + 16 + meterWidth;
     presetWidth = std::max (70, presetWidth - std::max (0, leftEnd - (bpmPill.getX() - 8)));
-    presets.setBounds (aiButton.getRight() + 10, controlsY, presetWidth, controlsHeight);
+    presets.setBounds (projectButton.getRight() + 10, controlsY, presetWidth, controlsHeight);
     exportButton.setBounds (presets.getRight() + 10, controlsY, hasPreviews ? 70 : 76, controlsHeight);
 
     // PREVIEWS: en inringad ruta med högtalaren och tonväljaren, så att man ser att de hör ihop.
@@ -235,9 +285,9 @@ void HeaderBar::chooseExportTarget (int part, int bars)
 void HeaderBar::timerCallback()
 {
     followVisualRate();
-    if (aiButton.getToggleState() != processor.isBridgeEnabled()) // ändrad på inställningssidan eller via MCP
+    if (bridgeShown != processor.isBridgeEnabled()) // ändrad på inställningssidan eller via MCP
     {
-        aiButton.setToggleState (processor.isBridgeEnabled(), juce::dontSendNotification);
+        bridgeShown = processor.isBridgeEnabled();
         updateAiTooltip();
     }
     if (processor.getKeyboardState() != nullptr)

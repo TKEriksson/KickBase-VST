@@ -137,7 +137,7 @@ set(FX_SOURCES
 # Guiderna som MCP-bryggan serverar till AI:n (get_guide), inbakade i programmet.
 # (Resources/InitPreset.mofp: fabrikspresetet Init för instrumentet, ett vanligt Full-preset som läses vid start.)
 # Versionen som ABOUT visar: projektets VERSION (bara den här filen kompileras om när den ändras).
-set_source_files_properties(Source/Ui/AboutPanel.cpp PROPERTIES COMPILE_DEFINITIONS "KICKBASE_VERSION=\"${PROJECT_VERSION}\"")
+set_source_files_properties(Source/Ui/AboutPanel.cpp Source/Ui/Modules.cpp PROPERTIES COMPILE_DEFINITIONS "KICKBASE_VERSION=\"${PROJECT_VERSION}\"")
 
 juce_add_binary_data(KickbaseGuides SOURCES Resources/AGENT_GUIDE.md Resources/psytrance-kick-bass-reference.md Resources/kick-bass-school.md Resources/InitPreset.mofp Resources/strudel/strudel.all.js LICENSE THIRD-PARTY.md)
 
