@@ -11,6 +11,12 @@ namespace MixAnalysis
     namespace
     {
         constexpr float binNorm = 4.0f / (float) fftSize; // en sinus i full skala blir 0 dB
+        // Trösklar som både findings (evaluate) och verktygsvägen (suggested_fixes) använder; ändra på ett ställe.
+        constexpr int phaseMinActive = 4;               // aktiva 16-delar innan fasfyndet bedöms
+        constexpr float phaseCorrWarn = -0.3f, phaseCorrProblem = -0.6f;
+        constexpr float phaseSumWarnDb = -3.0f, phaseSumProblemDb = -6.0f;
+        constexpr float lowStereoCorrMin = 0.3f;        // under detta är basen för bred (band 0)
+        constexpr double mudLowFloorPerFrame = 1.0e-4;  // medeleffekt 40-150 Hz i mastern (-40 dB); under det bedöms inte lera
         constexpr float lobePower = 1.5f;                 // en ren ton fördelas på ungefär tre steg (Hann): summan blir 1,5 gånger toppen
 
         juce::String noteName (float hz)
@@ -606,14 +612,14 @@ namespace MixAnalysis
                 {
                     ++activeCount;
                     sum += ph.lowCorrelation[i];
-                    if (ph.lowCorrelation[i] < -0.3f)
+                    if (ph.lowCorrelation[i] < phaseCorrWarn)
                         badBars.push_back ((int) i / 16 + 1);
                 }
             const auto mean = activeCount > 0 ? (float) (sum / activeCount) : 0.0f;
-            if (activeCount >= 4 && (mean < -0.3f || ph.sumVsMaxDb < -3.0f))
+            if (activeCount >= phaseMinActive && (mean < phaseCorrWarn || ph.sumVsMaxDb < phaseSumWarnDb))
             {
                 Finding f;
-                f.severity = mean < -0.6f || ph.sumVsMaxDb < -6.0f ? Severity::problem : Severity::warning;
+                f.severity = mean < phaseCorrProblem || ph.sumVsMaxDb < phaseSumProblemDb ? Severity::problem : Severity::warning;
                 f.category = "phase";
                 f.sources = { "Kick", "Instruments" };
                 f.lowHz = 30.0f;
@@ -648,7 +654,7 @@ namespace MixAnalysis
             }
             std::vector<int> wideBars;
             for (size_t bar = 0; bar < ph.stereoCorrelation.size(); ++bar)
-                if (ph.stereoCorrelation[bar][0] < 0.3f)
+                if (ph.stereoCorrelation[bar][0] < lowStereoCorrMin)
                     wideBars.push_back ((int) bar + 1);
             if (! wideBars.empty())
             {
@@ -708,7 +714,7 @@ namespace MixAnalysis
                     return sum;
                 };
                 const auto low = bandPower (40.0f, 150.0f), mud = bandPower (160.0f, 250.0f);
-                if (low > 0.0 && mud > 0.6 * low)
+                if (low > mudLowFloorPerFrame * frames && mud > 0.6 * low)
                 {
                     Finding f;
                     f.severity = Severity::warning;
@@ -867,15 +873,15 @@ namespace MixAnalysis
             {
                 ++activeCount;
                 sum += p.lowCorrelation[i];
-                if (p.lowCorrelation[i] < -0.3f)
+                if (p.lowCorrelation[i] < phaseCorrWarn)
                     badBars.push_back ((int) i / 16 + 1);
             }
         badBars.erase (std::unique (badBars.begin(), badBars.end()), badBars.end());
         const auto mean = activeCount > 0 ? (float) (sum / activeCount) : 0.0f;
 
-        if (activeCount >= 4 && (mean < -0.3f || p.sumVsMaxDb < -3.0f))
+        if (activeCount >= phaseMinActive && (mean < phaseCorrWarn || p.sumVsMaxDb < phaseSumWarnDb))
         {
-            addFinding ("kick_bass_cancel", mean < -0.6f || p.sumVsMaxDb < -6.0f ? "problem" : "warning",
+            addFinding ("kick_bass_cancel", mean < phaseCorrProblem || p.sumVsMaxDb < phaseSumProblemDb ? "problem" : "warning",
                         "Kick and bass partly cancel at 30-150 Hz (mean correlation, value = correlation)", round2 (mean), badBars);
             addFix ("kick_bass_cancel", "invert_polarity", "bass layer (OSC phase +180 deg)", "Turns an opposing wave round; try it when the mean correlation is below -0.6.");
             addFix ("kick_bass_cancel", "fixed_phase", "bass OSC phase / RAND off", "A fixed start phase makes every note meet the kick the same way.");
@@ -907,7 +913,7 @@ namespace MixAnalysis
 
         std::vector<int> wideBars;
         for (size_t bar = 0; bar < p.stereoCorrelation.size(); ++bar)
-            if (p.stereoCorrelation[bar][0] < 0.3f)
+            if (p.stereoCorrelation[bar][0] < lowStereoCorrMin)
                 wideBars.push_back ((int) bar + 1);
         if (! wideBars.empty())
         {

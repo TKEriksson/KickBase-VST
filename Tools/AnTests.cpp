@@ -365,12 +365,12 @@ int anTest()
         // Nästan tyst mix: golvnivån (-120 dB) har fler basband (5) än lerband (2) och ger kvoten 0,4, alltså under gränsen.
         auto quiet = makeCapture();
         check (! hasTitle (evaluate (quiet, options, nullptr), "around 200 Hz"), "lera: en helt tyst master slår inte till");
-        // Fråga till projektledaren, inte ett fel: regeln har inget absolut golv, så en master på -90 dB i lerbandet och -100 dB i basen räknas.
+        // Golv: en master på -90 dB i lerbandet och -100 dB i basen är för tyst för att bedömas (medeleffekt i basen under -40 dB).
         auto faint = makeCapture();
+        setBand (faint, kickSource, 5, -10.0f);
         setBand (faint, masterSource, 6, -100.0f);
         setBand (faint, masterSource, 8, -90.0f);
-        if (hasTitle (evaluate (faint, options, nullptr), "around 200 Hz"))
-            note ("lera: slår till på en master som ligger runt -90 dB (regeln har inget absolut golv, bara kvoten 0,6)");
+        check (! hasTitle (evaluate (faint, options, nullptr), "around 200 Hz"), "lera: en master under -40 dB i basen bedöms inte");
     }
 
     std::puts (failed ? "FEL: antest" : "AN-testet gick igenom");
