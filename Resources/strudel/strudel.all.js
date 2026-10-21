@@ -9237,7 +9237,29 @@ Please check with "npm ls @strudel/core".`
 })();
 // Körs efter bundlen i QuickJS. Stubbar det webbläsaren normalt ger.
 var S = globalThis.Strudel;
-S.setStringParser(S.mini);
+// G3: mini-strängar får dokumentpositioner. Vi skannar kodens strängliteraler och ger varje sträng sin plats (n:te förekomsten av samma text),
+// så att hap.context.locations blir teckenindex i editorn.
+var strLits = [], strSeen = {};
+function scanStrings(code) {
+  strLits = []; strSeen = {};
+  for (var i = 0; i < code.length; i++) {
+    var c = code[i], j;
+    if (c === '/' && code[i + 1] === '/') { while (i < code.length && code[i] !== '\n') i++; }
+    else if (c === '/' && code[i + 1] === '*') { j = code.indexOf('*/', i + 2); i = j < 0 ? code.length : j + 1; }
+    else if (c === '"' || c === "'" || c === '`') {
+      j = i + 1;
+      while (j < code.length && code[j] !== c) { if (code[j] === '\\') j++; j++; }
+      strLits.push({ text: code.slice(i + 1, j), q: i });
+      i = j;
+    }
+  }
+}
+S.setStringParser(function (str) {
+  var list = strLits.filter(function (l) { return l.text === str; });
+  if (!list.length) return S.mini(str);
+  strSeen[str] = strSeen[str] === undefined ? 0 : strSeen[str] + 1;
+  return S.m(str, list[strSeen[str] % list.length].q);
+});
 Object.assign(globalThis, S); // s, note, stack, ... som globala namn, som på strudel.cc
 var current = null;
 // Koden får vara flera satser: `const x = ...`, och mönster som `$: uttryck` (eller `namn: uttryck`).
@@ -9275,13 +9297,18 @@ globalThis.setPattern = function (code) {
     return String(e && e.message ? e.message : e);
   }
 };
+function noteLocs(h) { // [[start, end], ...] i dokumentet, tomt om hapen saknar position
+  var ls = (h.context && h.context.locations) || [], r = [];
+  for (var i = 0; i < ls.length; i++) r.push([ls[i].start, ls[i].end]);
+  return r;
+}
 globalThis.queryJson = function (from, to) {
   var out = [];
   var haps = current.queryArc(from, to);
   for (var i = 0; i < haps.length; i++) {
     var h = haps[i];
     out.push({ b: h.whole ? h.whole.begin.valueOf() : null, e: h.whole ? h.whole.end.valueOf() : null,
-               hasOnset: h.hasOnset(), v: h.value });
+               hasOnset: h.hasOnset(), v: h.value, l: noteLocs(h) });
   }
   return JSON.stringify(out);
 };
@@ -9298,7 +9325,7 @@ globalThis.sliderLive = function (id, min, max) { // läser C++-värdet vid varj
   return S.signal(function () { return host.get(id); }).range(min, max);
 };
 var origSet = globalThis.setPattern;
-globalThis.setPattern = function (code) { sliderCounter = 0; return origSet(code); };
+globalThis.setPattern = function (code) { sliderCounter = 0; scanStrings(code); return origSet(code); };
 
 // Modulation från koden: .lfo(param, hz, djup, form?) och .env(param, attackMs, decayMs, djup) lägger en _mod-lista på varje hap.
 // C++ (LiveCode::collectMods) plockar ut den; lagret kommer från s("iN"). Parametern är ett id från list_parameters, djupet -1..1.
