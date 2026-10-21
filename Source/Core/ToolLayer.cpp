@@ -150,22 +150,61 @@ namespace
         return "";
     }
 
-    var pointsToVar (const std::vector<NodeEnvelope::Point>& points)
+    // [x, y, tension], i Bézierläge med handtagen sist: [x, y, tension, outDx, outDy, inDx, inDy].
+    var pointsToVar (const NodeEnvelope& envelope)
     {
+        const auto bezier = envelope.getMode() == NodeEnvelope::Mode::bezier;
         juce::Array<var> list;
-        for (const auto& point : points)
-            list.add (var (juce::Array<var> { round4 (point.x), round4 (point.y), round4 (point.tension) }));
+        for (const auto& point : envelope.getPoints())
+        {
+            juce::Array<var> node { round4 (point.x), round4 (point.y), round4 (point.tension) };
+            if (bezier)
+                for (const auto handle : { point.outDx, point.outDy, point.inDx, point.inDy })
+                    node.add (round4 (handle));
+            list.add (var (node));
+        }
         return list;
     }
 
-    std::vector<NodeEnvelope::Point> pointsFromVar (const var& value)
+    std::vector<NodeEnvelope::Point> pointsFromVar (const var& value, bool* hasHandles = nullptr)
     {
         std::vector<NodeEnvelope::Point> points;
+        if (hasHandles != nullptr)
+            *hasHandles = false;
         if (auto* list = value.getArray())
             for (const auto& item : *list)
-                if (auto* triple = item.getArray(); triple != nullptr && triple->size() >= 2)
-                    points.push_back ({ (float) (double) (*triple)[0], (float) (double) (*triple)[1], triple->size() > 2 ? (float) (double) (*triple)[2] : 0.0f });
+                if (auto* node = item.getArray(); node != nullptr && node->size() >= 2)
+                {
+                    const auto at = [&] (int i) { return node->size() > i ? (float) (double) (*node)[i] : 0.0f; };
+                    points.push_back ({ at (0), at (1), at (2), at (3), at (4), at (5), at (6) });
+                    if (node->size() >= 7 && hasHandles != nullptr)
+                        *hasHandles = true;
+                }
         return points;
+    }
+
+    // mode "bezier" utan handtag i noderna ger handtag som följer tension-formen; "tension" ignorerar handtagen.
+    juce::String applyEnvelope (NodeEnvelope& envelope, const var& args, const juce::String& name)
+    {
+        const auto modeName = args.hasProperty (name + "_mode") ? args[name + "_mode"].toString().trim().toLowerCase() : juce::String();
+        if (modeName.isNotEmpty() && modeName != "tension" && modeName != "bezier")
+            return name + "_mode must be 'tension' or 'bezier'.";
+
+        bool hasHandles = false;
+        auto points = pointsFromVar (args[name], &hasHandles);
+        if (points.size() < 2)
+            return name + " needs at least two nodes [time_seconds, value, tension].";
+
+        const auto bezier = modeName.isEmpty() ? hasHandles : modeName == "bezier";
+        if (bezier && ! hasHandles)
+        {
+            envelope.setMode (NodeEnvelope::Mode::tension); // setPoints klämmer x, sedan räknas handtagen om
+            envelope.setPoints (std::move (points));
+            points = NodeEnvelope::withHandlesFromTension (envelope.getPoints());
+        }
+        envelope.setPoints (std::move (points));
+        envelope.setMode (bezier ? NodeEnvelope::Mode::bezier : NodeEnvelope::Mode::tension);
+        return {};
     }
 
     juce::File previewFolder() { return Settings::rootFolder().getChildFile ("Previews"); }
@@ -202,8 +241,8 @@ std::vector<ToolLayer::ToolInfo> ToolLayer::tools()
           R"({"type":"object","properties":{"values":{"type":"object","additionalProperties":true}},"required":["values"]})" },
         { "set_effect", "Puts an effect in a slot. channel FX1-FX11 (or the old letters A-K), slot 1-5, type e.g. 'Echo', 'Reverb', 'Distortion' ('Off' clears the slot), knobs by name in real units, e.g. {\"TIME\":\"3/16\",\"FEEDBACK\":0.4}. Unmentioned knobs get the effect's defaults. Bass layers and the kick send to a channel with bassNFxChannel / bassNFxAmount (1 = A) via set_parameters. Type 'Sidechain' ducks the channel by another source: knobs SOURCE ('Kick', 'Instr 1' ... 'Instr 10'), THRESHOLD (dB), DEPTH (0-1), ATTACK (ms), RELEASE (ms). To duck instrument B under instrument A: put a Sidechain effect with SOURCE 'Instr A' in an FX channel and send B 100 % to that channel (bassBFxChannel = that channel number, bassBFxAmount = 1, so nothing of B stays dry). See the guide (get_guide) section 9 for recipes.",
           R"({"type":"object","properties":{"channel":{"type":"string"},"slot":{"type":"integer"},"type":{"type":"string"},"knobs":{"type":"object","additionalProperties":true}},"required":["channel","slot","type"]})" },
-        { "set_kick_envelopes", "Sets the kick's free envelopes as arrays of [time_seconds, value, tension] nodes. pitch: semitones above the tail pitch (0..72, max 0.5 s). amp: volume 0..1 (max 2 s; the kick ends at the last node, which should be 0). Tension -1..1: negative falls/rises fast first, positive holds then moves late. Omit one to leave it unchanged.",
-          R"({"type":"object","properties":{"pitch":{"type":"array","items":{"type":"array","items":{"type":"number"}}},"amp":{"type":"array","items":{"type":"array","items":{"type":"number"}}}}})" },
+        { "set_kick_envelopes", "Sets the kick's free envelopes as arrays of [time_seconds, value, tension] nodes. Optional pitch_mode / amp_mode 'tension' (default) or 'bezier': in bezier mode a node may carry four handle values [time, value, tension, outDx, outDy, inDx, inDy] (handles relative to the node, in seconds and value units; out shapes the segment after the node, in the segment before it, so outDx >= 0 and inDx <= 0; without handles they are derived from the tensions). get_state returns the same format plus kick_pitch_mode / kick_amp_mode. pitch: semitones above the tail pitch (0..72, max 0.5 s). amp: volume 0..1 (max 2 s; the kick ends at the last node, which should be 0). Tension -1..1: negative falls/rises fast first, positive holds then moves late. Omit one to leave it unchanged.",
+          R"({"type":"object","properties":{"pitch":{"type":"array","items":{"type":"array","items":{"type":"number"}}},"amp":{"type":"array","items":{"type":"array","items":{"type":"number"}}},"pitch_mode":{"type":"string"},"amp_mode":{"type":"string"}}})" },
         { "set_pattern", "Writes notes. layer 0-9 = instrument 1-10 (only the first instrumentCount play, see set_instruments), or 'kick'. For an instrument give 'bars' (one text per bar; the row becomes as many bars as you give, so give every distinct bar you need, and use repeat_to to repeat them further) in the pattern language, with a 'grid' such as '1/16', '1/8 T', '1/32'. Step words separated by spaces: '.' rest, g/m/x/X = velocity ghost/soft/normal/accent, then optional pitch (+7, -5), '~' glide note, ':50' length in percent of the step. A GLIDE note (flag '~' / slide:true) works like an FL Studio slide note: it does not play a new note, it glides the note that is sounding to its pitch during its own length and the pitch stays there until that note ends. Example 1/16 rolling bass: [\". m x x . m x x . m x x . m x x\"]. Or give 'notes': [{\"tick\":0,\"length\":24,\"pitch\":0,\"velocity\":0.8,\"slide\":false}] (96 ticks per quarter note, 384 per bar). CHORDS: add \"chord\":[3,7] to a note (up to 3 extra notes, semitones from the note, -24 to +24); the instrument plays them only when its Voices parameter is 2 or more (at most Voices - 1 extra notes), and get_state shows them as a sixth element of the note array. For 'kick' give 'bars' of 16 characters 'x' or '.', e.g. [\"x...x...x...x...\"]. ROW LENGTH: a row is as long as its notes (length 'auto', the default: the last bar that has a note, at least 1 bar; get_state shows bars, length_mode, content_bars). length:\"auto\" or length:N (1-1024) locks the row to N bars (for example 3 bars of notes and a bar of silence); shortening below the notes needs trim:true, otherwise you get an error saying how many notes would go. repeat_to:N repeats the row's content until it is N bars. In a locked row, writing a note beyond the end returns the error 'row is locked to N bars'. The pattern is as long as the longest row. The old patternBars and rowBars parameters are not used any more.",
           R"({"type":"object","properties":{"layer":{},"bars":{"type":"array","items":{"type":"string"}},"grid":{"type":"string"},"gate":{"type":"number"},"notes":{"type":"array","items":{"type":"object"}},"clear":{"type":"boolean"},"length":{},"trim":{"type":"boolean"},"repeat_to":{"type":"integer"}},"required":["layer"]})" },
         { "live_code_create", "Runs Strudel code (Strudel mini-notation and patterns, https://strudel.cc) and writes the result into the piano roll rows: 1 Strudel cycle = 1 bar. s('bd') or s('kick') = the kick row (16 steps per bar); s('i1')..s('i10') = instrument 1-10; note(...) or n(...) without s = instrument 1. Pitch: note names (c2 = pitch 0, the lowest bass note) or numbers (semitones from C2). gain = velocity (default 0.8). Several notes on the same tick (e.g. note('c2,e2,g2')) become stacked notes (max 4 per tick, same pitch skipped). Example: note('c2 [e2 g2]*2').s('i1'). Rows not mentioned are left as they are. Runs in a sandbox with a 500 ms limit. Several patterns: write each as a labelled block, e.g. \"$: note(...).s('i1')\" and \"$: s('bd*4')\" on separate lines; 'const x = ...' lines before them are allowed. PROTECTION: a row that has notes Live Code did not write itself (drawn by hand, imported, or from another tool) is not overwritten silently: the call fails, changes nothing and names the rows. Give overwrite:true to replace them, or protect rows with live_code_lock (locked rows are skipped and listed in skipped_locked). PARAMETERS: instr1.Cutoff.set(1300) writes bass1Cutoff once; put it on its own line before the pattern (names are case-sensitive; .get() before .set only; locked rows skipped, problems in data.problems). .gain() is note velocity, not mixer gain. SLIDERS: slider(value,min,max) with plain numbers, e.g. note(slider(3,0,12)), returns value here; in the LIVE CODE tab it also shows a slider after the line, so a human can drag it while LIVE plays. MODULATION: .lfo(paramId,hz,depth,shape?) adds a free-running LFO to a modulated parameter, e.g. note('c2').lfo('bass1Cutoff',2,0.5,'tri').s('i1'); shape is sine (default), tri, saw, isaw, square or rand. .env(paramId,attackMs,decayMs,depth?) adds an attack/decay envelope triggered by new notes on that instrument, e.g. note('c2').env('bass1Cutoff',10,200,0.5).s('i1'); it is AD, not ADSR, and is not supported on the kick. Parameter ids must be modulatable sound controls from list_parameters. Unsupported modulation is skipped and returned in data.problems; note rows can still be written. CODE 1-8 are internal sources and are not saved in projects or presets.",
@@ -688,8 +727,10 @@ var ToolLayer::getState (const var& args) const
         put (data, "presets", presets);
     }
 
-    put (data, "kick_pitch_envelope", pointsToVar (processor.kickPitchEnv.getPoints()));
-    put (data, "kick_amp_envelope", pointsToVar (processor.kickAmpEnv.getPoints()));
+    put (data, "kick_pitch_envelope", pointsToVar (processor.kickPitchEnv));
+    put (data, "kick_amp_envelope", pointsToVar (processor.kickAmpEnv));
+    put (data, "kick_pitch_mode", processor.kickPitchEnv.getMode() == NodeEnvelope::Mode::bezier ? "bezier" : "tension");
+    put (data, "kick_amp_mode", processor.kickAmpEnv.getMode() == NodeEnvelope::Mode::bezier ? "bezier" : "tension");
 
     juce::Array<var> curve;
     for (const auto& point : processor.sidechainCurve.getPoints())
@@ -812,24 +853,18 @@ var ToolLayer::setEffect (const var& args)
 var ToolLayer::setKickEnvelopes (const var& args)
 {
     if (args.hasProperty ("pitch"))
-    {
-        auto points = pointsFromVar (args["pitch"]);
-        if (points.size() < 2)
-            return fail ("pitch needs at least two nodes [time_seconds, semitones, tension].");
-        processor.kickPitchEnv.setPoints (std::move (points));
-    }
+        if (const auto error = applyEnvelope (processor.kickPitchEnv, args, "pitch"); error.isNotEmpty())
+            return fail (error);
     if (args.hasProperty ("amp"))
-    {
-        auto points = pointsFromVar (args["amp"]);
-        if (points.size() < 2)
-            return fail ("amp needs at least two nodes [time_seconds, volume, tension].");
-        processor.kickAmpEnv.setPoints (std::move (points));
-    }
+        if (const auto error = applyEnvelope (processor.kickAmpEnv, args, "amp"); error.isNotEmpty())
+            return fail (error);
     processor.markStateChanged();
 
     auto data = object();
-    put (data, "kick_pitch_envelope", pointsToVar (processor.kickPitchEnv.getPoints()));
-    put (data, "kick_amp_envelope", pointsToVar (processor.kickAmpEnv.getPoints()));
+    put (data, "kick_pitch_envelope", pointsToVar (processor.kickPitchEnv));
+    put (data, "kick_amp_envelope", pointsToVar (processor.kickAmpEnv));
+    put (data, "kick_pitch_mode", processor.kickPitchEnv.getMode() == NodeEnvelope::Mode::bezier ? "bezier" : "tension");
+    put (data, "kick_amp_mode", processor.kickAmpEnv.getMode() == NodeEnvelope::Mode::bezier ? "bezier" : "tension");
     return ok (data);
 }
 

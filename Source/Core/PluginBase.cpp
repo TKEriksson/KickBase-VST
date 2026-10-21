@@ -873,6 +873,8 @@ void PluginBase::loadFactoryPreset (Presets::Section section, int index, int lay
 
     if (section == Presets::Section::full || section == Presets::Section::kick)
     {
+        kickPitchEnv.setMode (NodeEnvelope::Mode::tension); // reset() rör inte läget
+        kickAmpEnv.setMode (NodeEnvelope::Mode::tension);
         kickPitchEnv.reset();
         kickAmpEnv.reset();
     }
