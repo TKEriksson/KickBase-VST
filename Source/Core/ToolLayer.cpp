@@ -216,6 +216,8 @@ std::vector<ToolLayer::ToolInfo> ToolLayer::tools()
           R"({"type":"object","properties":{"layer":{},"locked":{"type":"boolean"}},"required":["layer"]})" },
         { "set_gate", "Sets a bass layer's GATE: a separate on/off rhythm that chops the layer's sound, with its own grid, independent of the notes. layer 0-9; on (true/false), grid ('1/16' ...), depth 0..1 (1 = fully closed in the off steps), smooth_ms (edge softness), and the steps as 'bars' (one text per bar, repeated over four bars): 'x' = open, '.' = closed, e.g. [\"x.x.x.x.x.x.x.x.\"] on a 1/16 grid. all:'open' or 'closed' fills every step.",
           R"({"type":"object","properties":{"layer":{"type":"integer"},"on":{"type":"boolean"},"grid":{"type":"string"},"depth":{"type":"number"},"smooth_ms":{"type":"number"},"bars":{"type":"array","items":{"type":"string"}},"all":{"type":"string","enum":["open","closed"]}},"required":["layer"]})" },
+        { "edit_wavetable_harmonics", "Edits the harmonics of an oscillator's wavetable (the TABLE of OSC A/B/C of an instrument). harmonics: [{\"n\":1,\"gain_db\":-12,\"phase_deg\":90}] where n 1 = the fundamental, 2 the octave ... up to 511; gain_db (-120 = removed, positive boosts) or linear gain, and phase_deg is added to the harmonic's phase. frame 0-15 edits one wave of the table, 'all' (default) every wave. normalise (default true) keeps each wave's peak level. The result becomes the oscillator's User table (a built-in table is copied first and named '... (edited)'), so the original is never changed. Use it e.g. to remove the fundamental of a bass that fights the kick, or to shift its phase.",
+          R"({"type":"object","properties":{"layer":{"type":"integer","minimum":0,"maximum":9},"osc":{"type":"integer","minimum":0,"maximum":2},"frame":{},"harmonics":{"type":"array","items":{"type":"object"}},"normalise":{"type":"boolean"}},"required":["layer","osc","harmonics"]})" },
         { "set_sidechain_curve", "Sets how the kick ducks the bass. mode 'Kick envelope' follows the kick; mode 'Curve' uses 'points' [[x,y,tension]...] where x is 0..1 across the length (1/16, 1/8, 3/16, 1/4, 1/2, or Kick) and y 0..1 is the ducking (1 = fully ducked). The depth per instrument is bass1Duck, bass2Duck ... bass10Duck.",
           R"({"type":"object","properties":{"mode":{"type":"string"},"length":{"type":"string"},"points":{"type":"array","items":{"type":"array","items":{"type":"number"}}}}})" },
         { "set_instruments", "Sets how many instruments are used (1-10; each has its own pattern, oscillators, filter, envelopes, effect send and sidechain depth; the default is 3). Removing instruments deletes the last ones completely (pattern, sound, sample, wavetables, name, mixer and modulation routes). Adding gives instruments with default settings and an empty pattern.",
@@ -345,7 +347,7 @@ var ToolLayer::call (const juce::String& tool, const var& args)
         return ok (data);
     }
 
-    if (tool == "set_parameters" || tool == "set_effect" || tool == "set_kick_envelopes" || tool == "set_pattern" || tool == "set_sidechain_curve" || tool == "set_gate" || tool == "live_code_create" || tool == "live_code_apply"
+    if (tool == "set_parameters" || tool == "set_effect" || tool == "set_kick_envelopes" || tool == "set_pattern" || tool == "set_sidechain_curve" || tool == "set_gate" || tool == "edit_wavetable_harmonics" || tool == "live_code_create" || tool == "live_code_apply"
         || tool == "set_modulation" || tool == "load_preset" || tool == "reset" || tool == "load_kick_sample" || tool == "load_library_kick" || tool == "load_bass_sample" || tool == "load_piano_roll" || tool == "import_midi")
         snapshot();
 
@@ -355,6 +357,7 @@ var ToolLayer::call (const juce::String& tool, const var& args)
     if (tool == "set_pattern")         return setPattern (args);
     if (tool == "set_sidechain_curve") return setSidechainCurve (args);
     if (tool == "set_gate")            return setGate (args);
+    if (tool == "edit_wavetable_harmonics") return editWavetableHarmonics (args);
     if (tool == "live_code_create")    return liveCodeCreate (args);
     if (tool == "live_code_apply")     return applyLiveCode (args["items"], (bool) args["overwrite"], args["mods"], (bool) args["prune"]); // internt: fliken LIVE CODE (listan kommer från LiveCodeRunner)
     if (tool == "live_code_run")       return liveCodeRun (args);
@@ -1233,6 +1236,44 @@ var ToolLayer::liveCodeLock (const var& args)
     auto data = object();
     put (data, "layer", layerArg);
     put (data, "locked", locked);
+    return ok (data);
+}
+
+var ToolLayer::editWavetableHarmonics (const var& args)
+{
+    const auto layer = (int) args["layer"], osc = (int) args["osc"];
+    if (! juce::isPositiveAndBelow (layer, ParamID::numInstrumentLayers) || ! juce::isPositiveAndBelow (osc, ParamID::oscsPerLayer))
+        return fail ("layer must be 0-9 and osc 0-2 (A, B, C).");
+
+    const auto* list = args["harmonics"].getArray();
+    if (list == nullptr || list->isEmpty())
+        return fail ("harmonics must be a list of {n, gain_db | gain, phase_deg}.");
+
+    std::vector<WavetableEdit::Edit> edits;
+    for (const auto& item : *list)
+    {
+        WavetableEdit::Edit edit;
+        edit.harmonic = (int) item["n"];
+        if (edit.harmonic < 1 || edit.harmonic >= Wavetable::frameSize / 2)
+            return fail ("n must be 1-511.");
+        if (item.hasProperty ("gain_db"))
+            edit.gain = (double) item["gain_db"] <= -120.0 ? 0.0f : juce::Decibels::decibelsToGain ((float) (double) item["gain_db"]);
+        else if (item.hasProperty ("gain"))
+            edit.gain = juce::jmax (0.0f, (float) (double) item["gain"]);
+        edit.phaseShift = juce::degreesToRadians ((float) (double) item["phase_deg"]);
+        edits.push_back (edit);
+    }
+
+    const auto frame = args["frame"].isInt() || args["frame"].isDouble() ? juce::jlimit (0, Wavetable::numFrames - 1, (int) args["frame"]) : -1;
+    const auto normalise = args.hasProperty ("normalise") ? (bool) args["normalise"] : true;
+    if (! processor.editWavetable (layer, osc, frame, edits, normalise))
+        return fail ("Could not edit this oscillator's table (it has no wavetable to edit: a sample or an unavailable table).");
+
+    auto data = object();
+    put (data, "layer", layer);
+    put (data, "osc", osc);
+    put (data, "table", processor.getUserTableName (layer, osc));
+    put (data, "edits", (int) edits.size());
     return ok (data);
 }
 
