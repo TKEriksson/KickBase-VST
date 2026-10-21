@@ -1585,7 +1585,7 @@ namespace
         // (KnobComponent::parameterIndex = getParameters().indexOf) och som Matrix-menyn (id = index + 1), och en koppling dit ger en förskjutning.
         auto positionBad = 0;
         juce::String firstPositionBad;
-        for (int layer = 0; layer < Modulation::maxInstruments; ++layer)
+        for (int layer = 0; layer < maxInstruments; ++layer)
             for (int osc = 0; osc < 3; ++osc)
             {
                 const auto id = ParamID::bass (layer, ParamID::oscField (osc, InstrumentField::aPos));
