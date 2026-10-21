@@ -39,7 +39,7 @@ public:
     static int liveCodeLayerOf (const juce::String& parameterId);
 
 private:
-    juce::var applyLiveCode (const juce::var& items, bool overwrite, const juce::var& mods);
+    juce::var applyLiveCode (const juce::var& items, bool overwrite, const juce::var& mods, bool prune = false); // prune: rader koden äger men inte längre nämner töms (AUTO)
     juce::StringArray applyCodeMods (const juce::var& mods);
     juce::var liveCodeLock (const juce::var& args);
     juce::var listParameters (const juce::var& args) const;

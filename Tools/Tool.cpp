@@ -363,7 +363,7 @@ namespace
                 if (auto* e = dynamic_cast<juce::CodeEditorComponent*> (c)) code = e;
                 if (auto* b = dynamic_cast<juce::TextButton*> (c))
                 {
-                    if (b->getButtonText() == "LIVE") play = b;
+                    if (b->getButtonText() == "AUTO") play = b;
                     if (b->getButtonText() == "STOP") stop = b;
                     if (b->getButtonText() == "CREATE") create = b;
                     if (b->getButtonText() == "CODE ONLY") codeOnlyBtn = b;
@@ -377,6 +377,10 @@ namespace
                 juce::String lastError;
                 page.onPatternChanged = [&changed] { ++changed; };
                 page.onError = [&lastError] (const juce::String& e) { lastError = e; };
+
+                check (play->getToggleState(), "AUTO: på som standard");
+                play->triggerClick(); // de första fallen testar CREATE och LIVE som förut: AUTO av
+                runFor (100);
 
                 pattern.clearNotes (0);
                 code->getDocument().replaceAllContent ("note(\"c2,e2\").s(\"i1\")");
@@ -438,24 +442,43 @@ namespace
                     processor.liveCodeOwned = ownedBefore;
                 }
 
-                // Projekt/preset laddas medan LIVE spelar: LIVE stoppas, den nya koden tas in, och gammal kod skriver inte över det nya mönstret.
+                // AUTO: laddning kör inget, giltig ändring körs av sig själv, ogiltig kod rör inget, borttagen rad töms, handrad ligger kvar.
                 {
                     stop->triggerClick();
                     runFor (100);
                     play->triggerClick();
                     runFor (600);
-                    check (play->getToggleState(), "laddning under LIVE: LIVE spelar före laddningen");
+                    check (play->getToggleState(), "AUTO: på igen före laddningen");
                     juce::ValueTree loaded ("LiveCode");
                     loaded.setProperty ("code", "note(\"a2\").s(\"i1\")", nullptr);
                     loaded.setProperty ("locks", 0, nullptr);
                     processor.liveCodeFromValueTree (loaded);
                     ++processor.liveCodeLoads;
                     runFor (700);
-                    check (! play->getToggleState(), "laddning under LIVE: LIVE stoppas");
-                    check (code->getDocument().getAllContent() == "note(\"a2\").s(\"i1\")", "laddning under LIVE: den nya koden visas");
+                    check (play->getToggleState(), "laddning: AUTO ligger kvar på");
+                    check (code->getDocument().getAllContent() == "note(\"a2\").s(\"i1\")", "laddning: den nya koden visas");
                     pattern.clearNotes (0);
                     runFor (1200);
-                    check (pattern.stackSize (0, 0) == 0, "laddning under LIVE: gammal kod skriver inte över mönstret efteråt");
+                    check (pattern.stackSize (0, 0) == 0, "laddning: inget körs förrän texten ändras");
+
+                    pattern.clearNotes (1);
+                    auto& hand = pattern.edit (1, 0); // handritad ton på en rad koden aldrig skrivit
+                    hand.on = true;
+                    hand.pitch = 3;
+                    code->getDocument().replaceAllContent ("note(\"c2\").s(\"i1\")");
+                    runFor (1200);
+                    check (pattern.stackSize (0, 0) == 1 && (processor.liveCodeOwned.load() & ToolLayer::liveCodeBit (0)) != 0, "AUTO: en giltig ändring körs av sig själv");
+
+                    code->getDocument().replaceAllContent ("note(\"c2\".s(");
+                    runFor (1200);
+                    check (lastError.isNotEmpty() && pattern.stackSize (0, 0) == 1, "AUTO: ogiltig kod ger felrad och rör inget");
+
+                    pattern.clearNotes (2); // inga gamla toner på rad 3, annars frågar sidan om överskrivning
+                    code->getDocument().replaceAllContent ("note(\"c2\").s(\"i3\")"); // bara rad 3 nämns: rad 1 var ägd och töms
+                    runFor (1200);
+                    check (pattern.stackSize (0, 0) == 0 && (processor.liveCodeOwned.load() & ToolLayer::liveCodeBit (0)) == 0, "AUTO: en rad som tagits bort ur koden töms (stack " + juce::String (pattern.stackSize (0, 0)) + ", ägd " + juce::String (processor.liveCodeOwned.load()) + ", fel: " + lastError + ")");
+                    check (pattern.note (1, 0).on.load() && pattern.note (1, 0).pitch.load() == 3, "AUTO: handritad rad rörs aldrig");
+                    pattern.clearNotes (1);
                 }
             }
         }
@@ -508,6 +531,15 @@ namespace
             int stopCount = 0; pattern.forEachNote (0, [&stopCount] (int, const Pattern::Note&) { ++stopCount; });
             check ((bool) r["ok"] && stopCount == 0 && (processor.liveCodeOwned.load() & ToolLayer::liveCodeBit (0)) == 0, "live_code_stop tömmer Live Codes rad och släpper ägandet");
 
+            // live_code_apply med prune:true (AUTO): ägda rader som inte nämns töms, handgjorda rörs aldrig
+            tools.call ("live_code_run", make ({ { "code", "note(\"c2\").s(\"i1\")" }, { "cycles", 1 } }));
+            pattern.clearNotes (1);
+            pattern.edit (1, 0).on = true;
+            r = tools.call ("live_code_apply", make ({ { "items", juce::var (juce::Array<juce::var>()) }, { "overwrite", false }, { "prune", true } }));
+            int pruneCount = 0; pattern.forEachNote (0, [&pruneCount] (int, const Pattern::Note&) { ++pruneCount; });
+            check ((bool) r["ok"] && pruneCount == 0 && pattern.note (1, 0).on.load(), "live_code_apply prune:true tömmer ägd rad, handgjord rad ligger kvar");
+            pattern.clearNotes (1);
+
             auto described = false;
             for (auto& t : ToolLayer::tools())
                 if (t.name == "live_code_create")
@@ -519,10 +551,10 @@ namespace
             {
                 LiveCode consoleLive;
                 juce::Result consoleResult = juce::Result::ok();
-                consoleLive.create ("console.log(\"hej\", 3); console.warn({a:1}); console.error(\"fel\"); note(\"c2\").s(\"i1\")", 1, consoleResult);
+                consoleLive.create ("console.log(\"hej\", 3);\nconsole.warn({a:1});\nconsole.error(\"fel\");\n\nnote(\"c2\").s(\"i1\")", 1, consoleResult);
                 const auto lines = consoleLive.takeConsole();
-                check (consoleResult.wasOk() && lines.size() == 3 && lines[0] == "log: hej 3" && lines[1] == "warn: {\"a\":1}" && lines[2] == "error: fel",
-                       "console.log/warn/error går till konsolkön");
+                check (consoleResult.wasOk() && lines.contains ("log: hej 3") && lines.contains ("warn: {\"a\":1}") && lines.contains ("error: fel"), // startloggar från bunten städas i G3
+                       "console.log/warn/error går till konsolkön " + consoleResult.getErrorMessage() + " [" + lines.joinIntoString ("|") + "]");
                 check (consoleLive.takeConsole().isEmpty(), "takeConsole tömmer kön");
             }
         }

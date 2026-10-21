@@ -5,8 +5,8 @@
 #include "Theme.h"
 #include <juce_gui_extra/juce_gui_extra.h>
 
-// Fliken LIVE CODE: skriv Strudel-kod (https://strudel.cc). LIVE (förut PLAY) räknar om koden i bakgrunden ca 400 ms efter varje ändring och
-// skriver mönstret i pianorullen (en ångra-punkt först); STOP slutar lyssna; CREATE skriver koden en gång.
+// Fliken LIVE CODE: skriv Strudel-kod (https://strudel.cc). AUTO (på som standard) räknar om koden i bakgrunden ca 400 ms efter varje ändring,
+// bara om den är giltig, och skriver mönstret i pianorullen (en ångra-punkt först); STOP slutar lyssna; CREATE skriver koden en gång.
 class LiveCodePage : public juce::Component, private juce::Timer, private juce::CodeDocument::Listener
 {
 public:
@@ -35,7 +35,7 @@ private:
     void showError (const juce::String& text);
     void showConsole (const juce::StringArray& console); // G2: console.log från körningen
     void appendLog (const juce::StringArray& newLines);
-    bool apply (const juce::var& items, bool overwrite, const juce::var& mods); // skriver raderna; frågar först om handritade toner skulle skrivas över
+    bool apply (const juce::var& items, bool overwrite, const juce::var& mods, bool prune = false); // skriver raderna; frågar först om handritade toner skulle skrivas över
     void applyParamWrites (const juce::var& writes);      // F1: .set på parametrar
     void applyEffectWrite (const juce::var& write);       // F3: effektplats (typ eller ratt)
     void warnOverwrite (const juce::var& conflicts, std::function<void (bool overwrite)> retry);
@@ -50,7 +50,7 @@ private:
     ToolLayer tools;
     bool warningOpen = false; // en varning i taget; LIVE väntar tills den är besvarad
     LiveCodeRunner runner;
-    bool playing = false;
+    bool playing = true; // AUTO: på som standard, men kör inget förrän texten ändras
     bool codeOnly = false;
     struct LoadWatch : private juce::Timer // ett projekt kan laddas från vilken tråd som helst: sidan tittar efter på meddelandetråden
     {
@@ -82,7 +82,7 @@ private:
     int errorCount = 0, logLines = 0;
     static constexpr int maxLogLines = 500;
     juce::TextButton codeTab { "KOD" }, errorTab { "KONSOL" };
-    juce::TextButton playButton { "LIVE" }, stopButton { "STOP" }, createButton { "CREATE" }, codeOnlyButton { "CODE ONLY" }; // LIVE är av/på
+    juce::TextButton playButton { "AUTO" }, stopButton { "STOP" }, createButton { "CREATE" }, codeOnlyButton { "CODE ONLY" }; // AUTO är av/på
     juce::Label lockLabel; // LÅS: 1-10 = instrument, K = kicken; en låst rad rör Live Code aldrig
     std::array<juce::TextButton, 11> lockButtons;
     juce::Label errorLabel, licenseLabel;

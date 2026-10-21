@@ -356,7 +356,7 @@ var ToolLayer::call (const juce::String& tool, const var& args)
     if (tool == "set_sidechain_curve") return setSidechainCurve (args);
     if (tool == "set_gate")            return setGate (args);
     if (tool == "live_code_create")    return liveCodeCreate (args);
-    if (tool == "live_code_apply")     return applyLiveCode (args["items"], (bool) args["overwrite"], args["mods"]); // internt: fliken LIVE CODE (listan kommer från LiveCodeRunner)
+    if (tool == "live_code_apply")     return applyLiveCode (args["items"], (bool) args["overwrite"], args["mods"], (bool) args["prune"]); // internt: fliken LIVE CODE (listan kommer från LiveCodeRunner)
     if (tool == "live_code_run")       return liveCodeRun (args);
     if (tool == "live_code_stop")      return liveCodeStop();
     if (tool == "live_code_lock")      return liveCodeLock (args);
@@ -1127,7 +1127,7 @@ juce::StringArray ToolLayer::applyCodeMods (const var& mods)
 
 // Skriver Live Codes rader (en lista med set_pattern-argument). Låsta rader hoppas över. Rader med toner som
 // Live Code inte skrev själv skrivs bara över med overwrite:true; annars ändras ingenting och felet listar raderna.
-var ToolLayer::applyLiveCode (const var& items, bool overwrite, const var& mods)
+var ToolLayer::applyLiveCode (const var& items, bool overwrite, const var& mods, bool prune)
 {
     auto layerOf = [] (const var& item) { return item["layer"].toString().equalsIgnoreCase ("kick") ? (int) Pattern::kickLayer : (int) item["layer"]; };
     auto layerName = [] (int layer) { return layer == Pattern::kickLayer ? juce::String ("kick") : "instrument " + juce::String (layer + 1); };
@@ -1170,6 +1170,21 @@ var ToolLayer::applyLiveCode (const var& items, bool overwrite, const var& mods)
             newOwned |= liveCodeBit (layer);
             written.append (item["layer"]);
         }
+    if (prune) // AUTO: en rad som koden äger men som inte längre står i koden töms; handgjorda och låsta rader rörs aldrig
+    {
+        auto mentioned = 0;
+        if (auto* a = items.getArray())
+            for (auto& item : *a)
+                if (const auto layer = layerOf (item); juce::isPositiveAndBelow (layer, Pattern::numLayers + 1))
+                    mentioned |= liveCodeBit (layer);
+        for (int layer = 0; layer <= Pattern::numLayers; ++layer)
+        {
+            const auto bit = liveCodeBit (layer);
+            if ((newOwned & bit) == 0 || (mentioned & bit) != 0 || (locks & bit) != 0) continue;
+            processor.pattern.clearNotes (layer);
+            newOwned &= ~bit;
+        }
+    }
     processor.liveCodeOwned = newOwned;
     const auto problems = applyCodeMods (mods);
     auto data = object();
