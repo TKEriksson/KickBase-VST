@@ -245,6 +245,7 @@ target_sources(KickbaseMcp PRIVATE
     Tools/Profile.cpp
     Tools/AudioTests.cpp
     Tools/StateTests.cpp
+    Tools/AnTests.cpp
     Tools/LibraryTests.cpp
     Tools/Freesound.cpp
     Tools/Tb303Tests.cpp
