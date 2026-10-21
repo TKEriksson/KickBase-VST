@@ -24,8 +24,11 @@ namespace
         s.defaultValue = parameter.getDefaultValue(); // inte getValue(): en lyssnare kan redan ha flyttat parametern
         for (const auto candidate : { 0.37f, 0.81f, 0.0f, 1.0f, 1.0f - s.defaultValue })
         {
-            parameter.setValueNotifyingHost (candidate);
-            s.setValue = parameter.getValue();
+            // Bool och heltal returnerar getValue() orundat (0.37), medan laddningen lagrar det avrundade (0/1): runda till parameterns steg.
+            const auto& range = parameter.getNormalisableRange();
+            const auto snapped = parameter.convertTo0to1 (range.snapToLegalValue (parameter.convertFrom0to1 (candidate)));
+            parameter.setValueNotifyingHost (snapped);
+            s.setValue = snapped;
             if (std::abs (s.setValue - s.defaultValue) > 1.0e-4f)
             {
                 s.differs = true;
