@@ -192,3 +192,8 @@ Kör: antest, inittest, rendersig, tooltest. Rendersig ska vara oförändrad (ba
 ## kbproj-spec uppdaterad med Tobias beslut (Arbetare 1, 21 okt)
 - Vad: `docs/work/kbproj-spec.md`: D1 XML, D2 bädda in, D4 inte v1, D3 UI vid AI-knappen; layoutförslag A (meny "PROJECT" med Save/Open/AI-läge, statusprick) / B (två knappar) / C (menyrad), rek. A. Bara docs, inget UI byggt.
 - Av: Arbetare 1. Resultat: se hash i rapport till projektledaren.
+
+## AN: "kick vinner" och "svans tar bas" (Arbetare 1)
+- Vad: PhaseMetrics fick lowKickDb/lowBassDb/lowKickHit (per 16-del, 30-150 Hz); summariseKickBass i MixAnalysis.cpp; findings i evaluate (kategori kickbass: varning "kicken vinner inte", tips "svans tar bas") och i describePhase (kick_bass_lead, kick_tail_takes_bass). Trösklar: 3 dB på slag, 6 dB mellan slag, minst 2 16-delar och 25 %, aktiv över -50 dB.
+- Tolkning: "svans tar bas" = kicksvansen dominerar basen mellan slagen (tips, bekräftat av projektledaren).
+- Tester: nytt block i Tools/AnTests.cpp. Ej byggt av mig; projektledaren kör antest och rendersig (ska vara oförändrad, mätningen läser bara).

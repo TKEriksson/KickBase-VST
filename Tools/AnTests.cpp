@@ -262,6 +262,53 @@ int anTest()
         check (! run (makeMetrics (-1.0f, 0), problem), "fas: inga hörbara sextondelar ger inget fynd");
     }
 
+    // --- Kick mot bas per 16-del: kicken ska vinna på slagen (>= 3 dB) och svansen får inte vara över 6 dB över basen.
+    {
+        // 32 sextondelar, slag på var fjärde; `hitDiff` = kick minus bas (dB) på slagen, `tailDiff` mellan slagen.
+        auto kickBass = [] (float hitDiff, float tailDiff, float bassDb = -20.0f)
+        {
+            auto m = makeMetrics (0.0f, 0);
+            m.lowKickDb.assign (32, 0.0f);
+            m.lowBassDb.assign (32, bassDb);
+            m.lowKickHit.assign (32, 0);
+            for (size_t i = 0; i < 32; ++i)
+            {
+                const auto hit = i % 4 == 0;
+                m.lowKickHit[i] = hit ? 1 : 0;
+                m.lowKickDb[i] = bassDb + (hit ? hitDiff : tailDiff);
+            }
+            return m;
+        };
+        auto evalKb = [&options] (const PhaseMetrics& m)
+        {
+            auto c = makeCapture();
+            c.phase = m;
+            return evaluate (c, options, nullptr);
+        };
+        const auto clean = kickBass (10.0f, 0.0f);
+        check (! hasCategory (evalKb (clean), "kickbass") && ! hasId (describePhase (clean), "kick_bass_lead") && ! hasId (describePhase (clean), "kick_tail_takes_bass"),
+              "kick vinner: kicken 10 dB över basen på slagen och svansen under basen ger inget fynd");
+
+        const auto lead = kickBass (2.0f, 0.0f);
+        check (hasTitle (evalKb (lead), "as loud as the kick") && severityOf (evalKb (lead), "as loud as the kick") == Severity::warning && hasId (describePhase (lead), "kick_bass_lead"),
+              "kick vinner: basen 2 dB under kicken på slagen ger en varning");
+        const auto leadEdge = kickBass (3.5f, 0.0f);
+        check (! hasTitle (evalKb (leadEdge), "as loud as the kick") && ! hasId (describePhase (leadEdge), "kick_bass_lead"), "kick vinner: 3,5 dB marginal räcker");
+
+        const auto tail = kickBass (10.0f, 10.0f);
+        check (hasTitle (evalKb (tail), "takes the bass") && severityOf (evalKb (tail), "takes the bass") == Severity::info && hasId (describePhase (tail), "kick_tail_takes_bass"),
+              "svans tar bas: kicksvansen 10 dB över basen mellan slagen ger ett tips");
+        const auto tailEdge = kickBass (10.0f, 5.0f);
+        check (! hasTitle (evalKb (tailEdge), "takes the bass") && ! hasId (describePhase (tailEdge), "kick_tail_takes_bass"), "svans tar bas: 5 dB över basen slår inte till (gräns 6)");
+
+        const auto silent = kickBass (0.0f, 10.0f, -70.0f);
+        check (! hasCategory (evalKb (silent), "kickbass"), "kick vinner: sextondelar under -50 dB bedöms inte");
+
+        auto few = kickBass (10.0f, 0.0f);
+        few.lowKickDb[0] = few.lowBassDb[0] + 0.0f; // bara ett enda misslyckat slag
+        check (! hasTitle (evalKb (few), "as loud as the kick"), "kick vinner: ett enda slag räcker inte (minst två)");
+    }
+
     // --- Klick, toppspridning, stereo: på mätvärdena och på signaler.
     {
         auto evaluateMetrics = [&options] (const PhaseMetrics& m)

@@ -1,5 +1,6 @@
 #include "MixAnalysis.h"
 #include <juce_dsp/juce_dsp.h>
+#include <algorithm>
 #include <map>
 #include <set>
 #include "PluginBase.h"
@@ -22,6 +23,55 @@ namespace MixAnalysis
         constexpr double stereoSilentPower = 1.0e-5;    // bandeffekt per sampel under detta (ca -50 dB) räknas som tyst: korrelationen 1
         constexpr float limiterWarnDb = 6.0f, limiterProblemDb = 9.0f; // mäts på 95:e percentilen över ramarna, inte på enstaka maxblock
         constexpr double mudLowFloorPerFrame = 1.0e-4;  // medeleffekt 40-150 Hz i kick och bas tillsammans (-40 dB); under det bedöms inte lera
+        // Kick mot bas i lågbandet, per 16-del (AN): kicken ska vinna där de möts, och svansen får inte äta basen.
+        constexpr float kickLeadMarginDb = 3.0f;        // på slag: basen får ligga högst så här mycket under kicken innan kicken inte "vinner"
+        constexpr float tailOverBassDb = 6.0f;          // mellan slag: kicksvansen så här mycket över basen = svansen tar basen
+        constexpr double kickBassMinShare = 0.25;       // ...i minst två 16-delar och så här stor andel av de bedömda
+        constexpr float kickBassActiveDb = -50.0f;      // en 16-del bedöms bara när både kick och bas ligger över detta (RMS)
+        struct KickBassSummary
+        {
+            std::vector<int> leadBars, tailBars; // takter (1-baserade) där kicken inte vinner / där svansen tar basen
+            int hitSlots = 0, tailSlots = 0, leadFails = 0, tailFails = 0;
+            bool leadFound = false, tailFound = false;
+        };
+
+        KickBassSummary summariseKickBass (const PhaseMetrics& p)
+        {
+            KickBassSummary s;
+            const auto slots = p.lowKickDb.size();
+            if (p.lowBassDb.size() != slots || p.lowKickHit.size() != slots)
+                return s;
+            for (size_t i = 0; i < slots; ++i)
+            {
+                if (p.lowKickDb[i] < kickBassActiveDb || p.lowBassDb[i] < kickBassActiveDb)
+                    continue;
+                const auto diff = p.lowKickDb[i] - p.lowBassDb[i]; // positivt = kicken är starkare
+                if (p.lowKickHit[i] != 0)
+                {
+                    ++s.hitSlots;
+                    if (diff < kickLeadMarginDb)
+                    {
+                        ++s.leadFails;
+                        s.leadBars.push_back ((int) i / 16 + 1);
+                    }
+                }
+                else
+                {
+                    ++s.tailSlots;
+                    if (diff > tailOverBassDb)
+                    {
+                        ++s.tailFails;
+                        s.tailBars.push_back ((int) i / 16 + 1);
+                    }
+                }
+            }
+            s.leadBars.erase (std::unique (s.leadBars.begin(), s.leadBars.end()), s.leadBars.end());
+            s.tailBars.erase (std::unique (s.tailBars.begin(), s.tailBars.end()), s.tailBars.end());
+            s.leadFound = s.leadFails >= 2 && (double) s.leadFails >= kickBassMinShare * (double) s.hitSlots;
+            s.tailFound = s.tailFails >= 2 && (double) s.tailFails >= kickBassMinShare * (double) s.tailSlots;
+            return s;
+        }
+
         // Fasfyndets underlag, gemensamt för findings och verktygsvägen: aktiva 16-delar och medelkorrelationen viktad med effekten (Σkb / Σ√(kk·bb)).
         struct PhaseSummary
         {
@@ -700,6 +750,35 @@ namespace MixAnalysis
                            "Try another phase or RAND off on the bass, shift the bass note a little in time, or change the kick's start phase.";
                 r.findings.push_back (std::move (f));
             }
+            const auto kb = summariseKickBass (ph);
+            if (kb.leadFound)
+            {
+                Finding f;
+                f.severity = Severity::warning;
+                f.category = "kickbass";
+                f.sources = { "Kick", "Instruments" };
+                f.lowHz = 30.0f;
+                f.highHz = 150.0f;
+                f.bars = kb.leadBars;
+                f.share = (float) kb.leadFails / (float) std::max (1, kb.hitSlots);
+                f.title = "The bass is as loud as the kick where they meet (" + juce::String (kb.leadFails) + " of " + juce::String (kb.hitSlots) + " hits)";
+                f.detail = "On the kick's hits the bass should be at least " + juce::String (kickLeadMarginDb, 0) + " dB under the kick at 30-150 Hz, so the kick wins the downbeat. Lower the bass level or deepen the sidechain depth on the bass, bars " + barsText (kb.leadBars) + ".";
+                r.findings.push_back (std::move (f));
+            }
+            if (kb.tailFound)
+            {
+                Finding f;
+                f.severity = Severity::info;
+                f.category = "kickbass";
+                f.sources = { "Kick", "Instruments" };
+                f.lowHz = 30.0f;
+                f.highHz = 150.0f;
+                f.bars = kb.tailBars;
+                f.share = (float) kb.tailFails / (float) std::max (1, kb.tailSlots);
+                f.title = "The kick tail takes the bass (" + juce::String (kb.tailFails) + " of " + juce::String (kb.tailSlots) + " steps between hits)";
+                f.detail = "Between hits the kick tail is more than " + juce::String (tailOverBassDb, 0) + " dB louder than the bass at 30-150 Hz, so the bass is hardly heard, bars " + barsText (kb.tailBars) + ". Shorten the kick's decay or release, or lift the bass between hits (shorter sidechain release).";
+                r.findings.push_back (std::move (f));
+            }
             if (ph.clickHits > 0)
             {
                 Finding f;
@@ -963,6 +1042,18 @@ namespace MixAnalysis
         {
             addFinding ("kick_polarity_varies", "warning", "The kick's first swing changes direction between hits (value = number of changes)", flips, {});
             addFix ("kick_polarity_varies", "fixed_phase", "kick start phase / RAND off", "A kick that starts in different directions meets the bass differently every hit.");
+        }
+
+        const auto kb = summariseKickBass (p);
+        if (kb.leadFound)
+        {
+            addFinding ("kick_bass_lead", "warning", "The bass is within 3 dB of the kick on the hits (value = number of hits)", kb.leadFails, kb.leadBars);
+            addFix ("kick_bass_lead", "lower_bass_level", "bass level / sidechain depth on the bass", "The kick should win the downbeat at 30-150 Hz.");
+        }
+        if (kb.tailFound)
+        {
+            addFinding ("kick_tail_takes_bass", "info", "The kick tail is over 6 dB above the bass between hits (value = number of steps)", kb.tailFails, kb.tailBars);
+            addFix ("kick_tail_takes_bass", "shorten_decay", "kick AMP ENV decay / release, or sidechain release", "A long tail covers the bass between the hits.");
         }
 
         if (p.clickHits > 0)
@@ -2206,6 +2297,9 @@ namespace MixAnalysis
             const auto active = kk / len > 1.0e-6 && bb / len > 1.0e-6; // över ungefär -60 dB RMS
             m.lowActive.push_back (active ? 1 : 0);
             m.lowWeight.push_back ((float) (std::sqrt (kk * bb) / len));
+            m.lowKickDb.push_back ((float) (10.0 * std::log10 (kk / len + 1.0e-12)));
+            m.lowBassDb.push_back ((float) (10.0 * std::log10 (bb / len + 1.0e-12)));
+            m.lowKickHit.push_back (std::any_of (in.onsets.begin(), in.onsets.end(), [from, to] (int o) { return o >= from && o < to; }) ? 1 : 0);
             m.lowCorrelation.push_back (active ? (float) juce::jlimit (-1.0, 1.0, kb / std::sqrt (kk * bb)) : 0.0f);
             m.lowSumDiffDb.push_back (active ? (float) (10.0 * std::log10 ((kk + bb + 2.0 * kb + 1.0e-12) / (kk + bb - 2.0 * kb + 1.0e-12))) : 0.0f);
         }

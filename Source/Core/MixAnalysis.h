@@ -149,6 +149,8 @@ namespace MixAnalysis
         int clickHits = 0;                   // slag som slutar över -60 dB (klick när nästa börjar)
         std::vector<std::array<float, stereoBands>> stereoCorrelation, midSideDb; // per takt: L/R-korrelation och M/S (dB) i fyra band
         std::vector<float> lowWeight;        // per 16-del: sqrt(kick-effekt * bas-effekt) per sampel; vikt för medelkorrelationen (tom = alla lika tunga)
+        std::vector<float> lowKickDb, lowBassDb; // per 16-del: RMS 30-150 Hz för kick och bas (dB, 0 = full skala); underlag till "kick vinner" och "svans tar bas"
+        std::vector<char> lowKickHit;        // per 16-del: ett kickslag startar i 16-delen (annars är det svans)
 
         // Underlag till KICK+BASS-vyn: det första slag som hörs, kick och bas som mono (nedsamplade med scopeStep), och deras spektrum 20-300 Hz (dB).
         int scopeStep = 8;
