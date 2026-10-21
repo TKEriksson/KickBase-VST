@@ -1587,6 +1587,28 @@ namespace
                            });
                 check (finite && change > 1.0, type == EffectType::flanger ? "FX2: FLANGER ger ändligt ljud" : "FX2: TRANSIENT ger ändligt ljud");
             }
+            // Dynamic EQ: en hög ton på bandets frekvens sänks med RANGE, en tyst ton lämnas orörd.
+            for (const auto amplitude : { 0.5f, 0.001f })
+            {
+                auto peak = 0.0f;
+                runEffect (EffectType::dynamicEq, { { 0, 400.0f }, { 3, -12.0f } }, 30,
+                           [&] (juce::AudioBuffer<float>& b, int block)
+                           {
+                               for (int i = 0; i < b.getNumSamples(); ++i)
+                                   for (int ch = 0; ch < 2; ++ch)
+                                       b.setSample (ch, i, amplitude * (float) std::sin (juce::MathConstants<double>::twoPi * 400.0 * (block * blockSize + i) / renderRate));
+                           },
+                           [&] (const juce::AudioBuffer<float>& b, int block)
+                           {
+                               if (block >= 25)
+                                   for (int i = 0; i < b.getNumSamples(); ++i)
+                                       peak = std::max (peak, std::abs (b.getSample (0, i)));
+                           });
+                if (amplitude > 0.1f)
+                    check (peak < amplitude * 0.4f, "FX2: DYNAMIC EQ sänker ett högt band");
+                else
+                    check (peak > amplitude * 0.9f, "FX2: DYNAMIC EQ lämnar ett tyst band orört");
+            }
         }
 
         std::puts (failed ? "FEL: instrumenttestet misslyckades" : "Instrumenttestet gick igenom");

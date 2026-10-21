@@ -323,6 +323,12 @@ namespace Help
             if (name == "ATTACK")  return "Boosts (+) or softens (-) the punch at the start of each sound, up to 12 dB.";
             if (name == "SUSTAIN") return "Boosts (+) or shortens (-) the tail after the punch, up to 12 dB.";
         }
+        if (typeName == "Dynamic EQ")
+        {
+            if (name == "FREQ")      return "The centre of the band that is watched and changed.";
+            if (name == "THRESHOLD") return "How loud the band must be before it is changed. Full effect 6 dB above this.";
+            if (name == "RANGE")     return "How far the band moves when it is loud. Minus cuts it (tames mud when the lead plays), plus boosts it.";
+        }
         if (typeName == "Maximizer" && name == "RELEASE")
             return "Maximizer: how fast the limiter lets go after a peak. Short = louder but can pump.";
         if (typeName == "Auto Filter" && name == "DEPTH")

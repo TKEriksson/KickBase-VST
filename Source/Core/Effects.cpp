@@ -63,7 +63,7 @@ namespace Effects
     StringArray typeNames()
     {
         return { "Off", "Filter", "Distortion", "EQ", "Chorus", "Phaser", "Echo", "Reverb",
-                 "Compressor", "Trance Gate", "Comb", "Ring Mod", "Bitcrusher", "Auto Filter", "Maximizer", "Sidechain", "Disperser", "Widener", "Flanger", "Transient" };
+                 "Compressor", "Trance Gate", "Comb", "Ring Mod", "Bitcrusher", "Auto Filter", "Maximizer", "Sidechain", "Disperser", "Widener", "Flanger", "Transient", "Dynamic EQ" };
     }
 
     String name (EffectType type)
@@ -74,7 +74,7 @@ namespace Effects
     String shortName (EffectType type)
     {
         const char* names[] { "-", "FILT", "DIST", "EQ", "CHOR", "PHAS", "ECHO", "VERB",
-                              "COMP", "GATE", "COMB", "RING", "CRSH", "AUTO", "MAX", "SIDE", "DISP", "WIDE", "FLNG", "TRAN" };
+                              "COMP", "GATE", "COMB", "RING", "CRSH", "AUTO", "MAX", "SIDE", "DISP", "WIDE", "FLNG", "TRAN", "DEQ" };
         return names[jlimit (0, numEffectTypes - 1, (int) type)];
     }
 
@@ -265,6 +265,14 @@ namespace Effects
             table[(size_t) EffectType::transient] = {
                 value ("ATTACK", -1.0f, 1.0f, 0.0f, 0.0f, Unit::percent),
                 value ("SUSTAIN", -1.0f, 1.0f, 0.0f, 0.0f, Unit::percent),
+                mixKnob (1.0f) };
+            table[(size_t) EffectType::dynamicEq] = {
+                value ("FREQ", 50.0f, 8000.0f, 400.0f, 300.0f, Unit::hz),
+                value ("Q", 0.3f, 8.0f, 1.0f, 1.5f, Unit::plain),
+                value ("THRESHOLD", -60.0f, 0.0f, -24.0f, -24.0f, Unit::db),
+                value ("RANGE", -18.0f, 18.0f, 0.0f, -6.0f, Unit::db), // minus = sänker bandet när det är högt, plus = höjer
+                value ("ATTACK", 0.5f, 50.0f, 5.0f, 5.0f, Unit::ms),
+                value ("RELEASE", 20.0f, 800.0f, 150.0f, 150.0f, Unit::ms),
                 mixKnob (1.0f) };
             return table;
         }();
@@ -1439,6 +1447,60 @@ namespace
             }
         }
     };
+
+    // DYNAMIC EQ: ett band (klocka på FREQ) vars förstärkning följer hur högt just det bandet är. Avkännaren är ett bandpass på
+    // samma frekvens (länkat mellan kanalerna); över THRESHOLD går bandet mot RANGE dB (minus sänker, plus höjer), full effekt 6 dB över.
+    struct DynamicEqFx
+    {
+        std::array<Biquad, 2> detector, band; // detektorn är mono i praktiken (kanal 0), bandet går per kanal
+        float envelope = 0.0f, appliedDb = 0.0f;
+        int counter = 0;
+
+        void prepare (const dsp::ProcessSpec&) { reset(); }
+        void reset()
+        {
+            for (auto& f : detector) f.reset();
+            for (auto& f : band) { f.reset(); f.setIdentity(); }
+            envelope = 0.0f; appliedDb = 0.0f; counter = 0;
+        }
+
+        void process (AudioBuffer<float>& buffer, int numSamples, const Values& k, const Context& context)
+        {
+            using Array = dsp::IIR::ArrayCoefficients<float>;
+            const auto sampleRate = context.sampleRate;
+            const auto freq = jmin (k[0], (float) (sampleRate * 0.45)), q = k[1], threshold = k[2], range = k[3], wet = k[6];
+            const auto attack = 1.0f - std::exp (-1.0f / (float) (jmax (0.1f, k[4]) * 0.001 * sampleRate));
+            const auto release = 1.0f - std::exp (-1.0f / (float) (jmax (1.0f, k[5]) * 0.001 * sampleRate));
+            const auto channels = std::min (2, buffer.getNumChannels());
+            const auto detectorCoefficients = Array::makeBandPass (sampleRate, freq, q);
+            for (auto& f : detector) f.setCoefficients (detectorCoefficients);
+            for (int i = 0; i < numSamples; ++i)
+            {
+                auto level = 0.0f;
+                for (int ch = 0; ch < channels; ++ch)
+                    level = jmax (level, std::abs (detector[(size_t) ch].process (buffer.getSample (ch, i))));
+                envelope += (level - envelope) * (level > envelope ? attack : release);
+                const auto over = jlimit (0.0f, 1.0f, (Decibels::gainToDecibels (envelope + 1.0e-6f) - threshold) / 6.0f);
+                const auto targetDb = range * over;
+                if (++counter >= 16) // koefficienterna räknas om var 16:e sample, bara om förstärkningen ändrats märkbart
+                {
+                    counter = 0;
+                    if (std::abs (targetDb - appliedDb) > 0.02f)
+                    {
+                        appliedDb = targetDb;
+                        const auto coefficients = Array::makePeakFilter (sampleRate, freq, q, Decibels::decibelsToGain (appliedDb));
+                        for (auto& f : band) f.setCoefficients (coefficients);
+                    }
+                }
+                for (int ch = 0; ch < channels; ++ch)
+                {
+                    auto* data = buffer.getWritePointer (ch);
+                    const auto filtered = band[(size_t) ch].process (data[i]);
+                    data[i] += (filtered - data[i]) * wet;
+                }
+            }
+        }
+    };
 }
 
 //==============================================================================
@@ -1473,6 +1535,7 @@ struct EffectChain::Impl
         WidenerFx widener;
         FlangerFx flanger;
         TransientFx transient;
+        DynamicEqFx dynamicEq;
 
         template <typename Function>
         void forEachEffect (Function&& function)
@@ -1480,7 +1543,7 @@ struct EffectChain::Impl
             function (filter); function (distortion); function (eq); function (chorus); function (phaser);
             function (echo); function (reverb); function (compressor); function (gate); function (comb);
             function (ringMod); function (bitcrusher); function (autoFilter); function (maximizer); function (ducker); function (disperser);
-            function (widener); function (flanger); function (transient);
+            function (widener); function (flanger); function (transient); function (dynamicEq);
         }
 
         void resetCurrent()
@@ -1506,6 +1569,7 @@ struct EffectChain::Impl
                 case EffectType::widener:    widener.reset(); break;
                 case EffectType::flanger:    flanger.reset(); break;
                 case EffectType::transient:  transient.reset(); break;
+                case EffectType::dynamicEq:  dynamicEq.reset(); break;
                 case EffectType::off:
                 case EffectType::count:      break;
             }
@@ -1534,6 +1598,7 @@ struct EffectChain::Impl
                 case EffectType::widener:    widener.process (buffer, numSamples, values, context); break;
                 case EffectType::flanger:    flanger.process (buffer, numSamples, values, context); break;
                 case EffectType::transient:  transient.process (buffer, numSamples, values, context); break;
+                case EffectType::dynamicEq:  dynamicEq.process (buffer, numSamples, values, context); break;
                 case EffectType::off:
                 case EffectType::count:      break;
             }
