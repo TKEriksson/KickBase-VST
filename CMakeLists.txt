@@ -47,6 +47,7 @@ set_source_files_properties(${KICKBASE_JUCE_MODULE_CPPS} PROPERTIES SKIP_PRECOMP
 # Ljudkärnan: klocka, mönster och motorer. Inget gränssnitt, går att testa fristående.
 set(CORE_SOURCES
     Source/Core/TransportClock.cpp
+    Source/Core/ProjectFile.cpp
     Source/Core/Pattern.cpp
     Source/Core/KickEngine.cpp
     Source/Core/InstrumentSynth.cpp

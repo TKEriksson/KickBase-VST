@@ -5,6 +5,7 @@
 #include "Scenarios.h"
 #include "../Source/Fx/FxProcessor.h"
 #include "../Source/Core/ToolLayer.h"
+#include "../Source/Core/ProjectFile.h"
 #include "../Source/Ui/Help.h"
 
 namespace
@@ -566,6 +567,48 @@ int persistTest()
         check (notes.contains ("0/48/2/0/0.800/7/3;") && notes.endsWith ("96/24/0/0/0.800"), "ackordet skrivs bara på tonen som har ett: " + notes);
         copy->pattern.addNote (1, 0, 48, 2);
         check (! copy->pattern.note (1, 0).hasChord(), "en ny ton ärver inte ett gammalt ackord");
+    }
+
+    // kbproj: projektfilen (XML) ger samma tillstånd tillbaka; fel filer avvisas utan att något ändras.
+    {
+        auto processor = std::make_unique<InstrumentProcessor>();
+        processor->pattern.clearNotes (1);
+        processor->pattern.addNote (1, 0, 48, 2);
+        processor->loadUserTable (1, 0, tableFile);
+        const auto file = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("persist_test.kbproj");
+        juce::String error;
+        check (ProjectFile::save (*processor, file, "0.0.0", error), "kbproj: projektet sparas");
+        const auto text = file.loadFileAsString();
+        check (text.contains ("kbprojVersion=\"1\"") && text.contains ("pluginVersion=\"0.0.0\""), "kbproj: filen är XML-text med versionsattribut");
+
+        auto loaded = std::make_unique<InstrumentProcessor>();
+        check (ProjectFile::load (*loaded, file, error), "kbproj: projektet öppnas");
+        juce::MemoryBlock before, after;
+        processor->getStateInformation (before);
+        loaded->getStateInformation (after);
+        check (before == after, "kbproj: öppnat projekt ger samma tillstånd som det sparade (byte för byte)");
+        check (loaded->pattern.note (1, 0).length == 48 && loaded->userTable (1, 0) != nullptr, "kbproj: toner och inbäddad tabell följer med");
+
+        // Fel filer: inget ändras och felet förklaras.
+        juce::MemoryBlock untouched;
+        loaded->getStateInformation (untouched);
+        auto rejects = [&] (const juce::String& content, const juce::String& what)
+        {
+            const auto bad = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("persist_bad.kbproj");
+            bad.replaceWithText (content);
+            juce::String why;
+            juce::MemoryBlock now;
+            const auto ok = ProjectFile::load (*loaded, bad, why);
+            loaded->getStateInformation (now);
+            check (! ok && why.isNotEmpty() && now == untouched, "kbproj avvisar " + what + ": " + why);
+            bad.deleteFile();
+        };
+        rejects ("inte xml alls", "text som inte är XML");
+        rejects ("<Annat kbprojVersion=\"1\"/>", "fel rotelement");
+        rejects (text.replace ("kbprojVersion=\"1\"", "kbprojVersion=\"99\""), "ett nyare format");
+        rejects (text.replace ("kbprojVersion=\"1\"", ""), "en fil utan version");
+        check (! ProjectFile::load (*loaded, file.getSiblingFile ("finns_inte.kbproj"), error) && error.isNotEmpty(), "kbproj: saknad fil ger ett fel");
+        file.deleteFile();
     }
 
     std::puts (failed ? "FEL: sparandetestet misslyckades" : "Sparandetestet gick igenom");

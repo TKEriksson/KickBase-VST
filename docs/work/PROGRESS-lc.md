@@ -226,3 +226,12 @@ Kör: antest, inittest, rendersig, tooltest. Rendersig ska vara oförändrad (ba
 - Signaturen är oförändrad, så UI (`InstrumentMenu.h`), PianoRoll och MCP `export_midi` får spåren utan ändring. MCP-beskrivningen nämner dem.
 - Slicer-noter från MAP TO uppåt: parametern MAP TO finns inte än, noterna exporteras med radens tonhöjder tills F2 steg 3 lägger mappningen.
 - Test: nytt fall i Tests/EngineTests.cpp efter "dubblettpitch" (2 spår, namnet "Bass 1 - SAMPLE"). Ej byggt av mig. Kör: bygget, enginetest, rendersig (oförändrad, ingen ljudväg rörd).
+
+## Arbetare 1: R9b steg 7 parkerat (UI-listor)
+- Beslut (projektledaren, 21 okt): steg 7 skjuts till F2 steg 3, när underrader går att skapa i UI. Orsak: `StepSequencer.cpp` har radindex till lager hårdkodat på ca 15 ställen (`row == 0 ? Pattern::kickLayer : row - 1` på :26, :33, :313, :381, :402, :690, :1029, :1072; radloopar :23, :685, :1027; rowScroll/visibleRows :568; rowBounds :464/:973/:1004; solo/mute :82/:304/:317; movedMarkers :422/:430) och widgetvektorer dimensionerade på `totalLayers() + 1`. Mappningen byts en gång, när den kan verifieras mot riktiga rader. Inget ändrat i UI.
+
+## Arbetare 1: kbproj-kärnan (spara/öppna projektfil, utan UI)
+- Vad: `Source/Core/ProjectFile.h/.cpp`: `ProjectFile::save (processor, file, pluginVersion, error)` och `load (processor, file, error)`. Formatet är XML (D1): samma träd som `getStateInformation` (inbäddade samplingar och tabeller, D2) med attributen `kbprojVersion="1"` och `pluginVersion` på roten. Sparar via `TemporaryFile`. `load` kontrollerar först fil finns, max 256 MB, giltig XML, rotnamn, version (saknas/nyare = fel) och tar bort attributen innan `setStateInformation`; vid fel ändras inget.
+- Ingen UI (layoutval A/B/C obesvarat), ingen parameter, ingen ljudväg; rendersig oförändrad. Inte inkopplad någonstans än. `CMakeLists.txt` CORE_SOURCES fick `ProjectFile.cpp`.
+- Test: nytt block sist i `persistTest` (Tools/StateTests.cpp): spara, öppna i ny instans, state-blobben lika byte för byte, ton och tabell följer med, fem avvisade fall (ej XML, fel rot, version 99, ingen version, saknad fil) lämnar tillståndet orört.
+- Av: Arbetare 1, content-g. Ej byggt av mig. Kör: bygget (alla mål, ny fil i CORE_SOURCES), `persisttest`, `fulltest`, rendersig (oförändrad).
