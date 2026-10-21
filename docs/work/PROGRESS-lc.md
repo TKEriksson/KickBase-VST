@@ -69,3 +69,5 @@
 - G2 KONSOL: livetest grön (bibliotekets startloggar rensas efter bundle-laddning, LiveCode.cpp load()).
 - G3 notmarkering: JS 8075eb3 + C++/UI (LiveCode::Mark, LiveCodeRunner::getMarks, LiveCodePage MarkOverlay). Alla tester gröna: Tests, livetest, chattest, persisttest, helpcheck, HostTest. Ej visuellt granskat i editorn (Tobias sover).
 - Kvar: G1 flytande fönster, sedan S3 UNISON/Reese.
+- G1 flytande fönster: BLOCKERAD (öppna beslut i lc-g-design.md: överlägg eller DocumentWindow, `document` ut ur LiveCodePage som Arbetare 2 äger). Hoppad.
+- S3 UNISON/Reese finns redan i koden (Params/InstrumentSynth/OscPanel), AN och FX1 finns. Nästa: FX2 (B8 widener, B9 dynamic EQ + flanger, B10 transient shaper), nya effekttyper sist i typlistan.
