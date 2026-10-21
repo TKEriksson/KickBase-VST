@@ -107,6 +107,8 @@ The spectrogram has a log frequency axis 20 Hz–20 kHz, bright = loud, vertical
 
 Also check yourself: the first bass note after a kick is a little softer (rolling feel); notes do not overlap (lower `bassNGate`, or shorten notes); the bass fundamental and kick tail are tonally related (same note/octave is a starting point, not a universal target; compare small tuning differences); wide/unison sounds stay narrow in the low end (`masterMonoBelow` helps, but keep `Stereo` modest on low layers).
 
+Comparing renders: give each `render_preview` a `name`, then `compare_renders before=<name> after=<name>` returns the metric deltas (after minus before) and the checks that started or stopped passing. `sweep_parameter` tries one parameter at up to 12 values and returns one row of metrics and failed checks per value, then restores the sound (no undo step used); its renders are kept as `sweep_<parameter>_<n>` for `compare_renders`. The same sound renders to the same numbers, so a number that moves after a change was moved by the change.
+
 ## 8. Pitfalls
 
 - A row grows with its notes (AUTO) or is locked to a number of bars; a note is never kept beyond the end of its row.

@@ -234,6 +234,8 @@ std::vector<ToolLayer::ToolInfo> ToolLayer::tools()
           R"({"type":"object","properties":{"bpm":{"type":"number"},"bars":{"type":"integer"},"note":{"type":"integer"},"part":{"type":"string","enum":["full","kick","bass"]},"name":{"type":"string"},"spectrogram":{"type":"boolean"}}})" },
         { "compare_renders", "Compares two render_preview results by their 'name' (default 'preview'): the delta (after minus before) of every metric, and the checks that started or stopped passing. Use it after one change: render_preview name=before, change, render_preview name=after, compare_renders. Both renders must come from this session (instance).",
           R"({"type":"object","properties":{"before":{"type":"string"},"after":{"type":"string"}},"required":["before","after"]})" },
+        { "sweep_parameter", "Tries one parameter at several values: for each value it sets the parameter, renders (as render_preview) and returns a table of the key metrics and failed checks, then puts the sound back exactly as it was (no undo step is used). Max 12 values. Takes the render_preview arguments bpm, bars, note and part. Each render is also kept as 'sweep_<parameter>_<n>' for compare_renders. Example: {\"parameter\":\"kickDrive\",\"values\":[0.1,0.3,0.5],\"part\":\"kick\"}.",
+          R"({"type":"object","properties":{"parameter":{"type":"string"},"values":{"type":"array","items":{}},"bpm":{"type":"number"},"bars":{"type":"integer"},"note":{"type":"integer"},"part":{"type":"string","enum":["full","kick","bass"]}},"required":["parameter","values"]})" },
         { "save_piano_roll", "Saves a bass layer's notes (and pattern length and grid) as a piano roll preset file (Documents\\Kickbase\\Presets\\Piano Roll), which the plugin's piano roll PRESET menu lists and can load into any layer.",
           R"({"type":"object","properties":{"layer":{"type":"integer"},"name":{"type":"string"}},"required":["layer","name"]})" },
         { "load_piano_roll", "Loads a saved piano roll preset (by name or file path) into a bass layer, replacing its notes and setting the pattern length and grid it was saved with.",
@@ -296,6 +298,7 @@ var ToolLayer::call (const juce::String& tool, const var& args)
     if (tool == "list_library")     return listLibrary (args);
     if (tool == "render_preview")   return renderPreview (args);
     if (tool == "compare_renders")  return compareRenders (args);
+    if (tool == "sweep_parameter")  return sweepParameter (args);
     if (tool == "analyse_mix")      return analyseMix (args);
     if (tool == "get_mix_report")   return getMixReport (args);
     if (tool == "save_mix_report")  return saveMixReport (args);
@@ -1762,6 +1765,64 @@ var ToolLayer::compareRenders (const var& args) const
     put (data, "metric_deltas", deltas);
     put (data, "checks_changed", changedChecks);
     return ok (data);
+}
+
+var ToolLayer::sweepParameter (const var& args)
+{
+    const auto id = args["parameter"].toString();
+    auto* parameter = findParameter (processor, id);
+    auto* values = args["values"].getArray();
+    if (parameter == nullptr)
+        return fail ("Unknown parameter: " + id + " (use list_parameters).");
+    if (values == nullptr || values->isEmpty() || values->size() > 12)
+        return fail ("Give 'values': 1-12 values for the parameter.");
+
+    juce::MemoryBlock original;
+    processor.getStateInformation (original);
+
+    auto renderArgs = object();
+    for (const char* key : { "bpm", "bars", "note", "part" })
+        if (args.hasProperty (key))
+            put (renderArgs, key, args[key]);
+    put (renderArgs, "spectrogram", false);
+    if (! args.hasProperty ("bars"))
+        put (renderArgs, "bars", 2);
+
+    juce::Array<var> rows;
+    for (int i = 0; i < values->size(); ++i)
+    {
+        auto row = object();
+        put (row, "requested", (*values)[i]);
+        juce::String problem;
+        if (! assign (*parameter, (*values)[i], problem))
+        {
+            put (row, "error", problem);
+            rows.add (row);
+            continue;
+        }
+        put (row, "value", valueOf (*parameter));
+        put (renderArgs, "name", "sweep_" + id + "_" + juce::String (i + 1));
+        const auto rendered = renderPreview (renderArgs);
+        const auto data = rendered["data"];
+        put (row, "name", renderArgs["name"]);
+        put (row, "metrics", data["metrics"]);
+        juce::Array<var> failedChecks;
+        if (auto* checks = data["checks"].getArray())
+            for (const auto& check : *checks)
+                if (! (bool) check["pass"])
+                    failedChecks.add (check["check"]);
+        put (row, "failed_checks", failedChecks);
+        rows.add (row);
+    }
+
+    processor.setStateInformation (original.getData(), (int) original.getSize());
+    processor.patternChanged();
+
+    auto result = object();
+    put (result, "parameter", id);
+    put (result, "rows", rows);
+    put (result, "restored", true);
+    return ok (result);
 }
 
 var ToolLayer::analyzeAudio (const var& args)

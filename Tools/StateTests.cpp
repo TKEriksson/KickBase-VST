@@ -826,6 +826,20 @@ int renderToolTest()
         check (! (bool) tools.call ("compare_renders", juce::JSON::parse ("{\"before\":\"finns-inte\",\"after\":\"det-base\"}"))["ok"], "compare_renders: okänt namn ger ett fel");
     }
 
+    // sweep_parameter: en rad per värde, olika värden ger olika mått, och ljudet är orört efteråt.
+    {
+        const auto stateBefore = stateText (tools);
+        const auto sweep = tools.call ("sweep_parameter", juce::JSON::parse ("{\"parameter\":\"kickDrive\",\"values\":[0.1,0.6],\"part\":\"kick\",\"bars\":1}"));
+        const auto rows = sweep["data"]["rows"];
+        check ((bool) sweep["ok"] && rows.size() == 2 && rows[0]["metrics"].getDynamicObject() != nullptr, "sweep_parameter ger en rad med mått per värde");
+        check (juce::JSON::toString (rows[0]["metrics"]) != juce::JSON::toString (rows[1]["metrics"]), "sweep_parameter: olika värden ger olika mått");
+        check (stateText (tools) == stateBefore, "sweep_parameter lämnar ljudet som det var");
+        const auto repeat = tools.call ("sweep_parameter", juce::JSON::parse ("{\"parameter\":\"kickDrive\",\"values\":[0.1,0.6],\"part\":\"kick\",\"bars\":1}"));
+        check (juce::JSON::toString (repeat["data"]["rows"]) == juce::JSON::toString (rows), "sweep_parameter är upprepbar");
+        check (! (bool) tools.call ("sweep_parameter", juce::JSON::parse ("{\"parameter\":\"finnsInte\",\"values\":[1]}"))["ok"], "sweep_parameter: okänd parameter ger ett fel");
+        check ((bool) tools.call ("compare_renders", juce::JSON::parse ("{\"before\":\"sweep_kickDrive_1\",\"after\":\"sweep_kickDrive_2\"}"))["ok"], "sweep-renderingarna kan jämföras med compare_renders");
+    }
+
     std::puts (failed ? "FEL: renderingstestet misslyckades" : "Renderingstestet gick igenom");
     return failed ? 1 : 0;
 }
