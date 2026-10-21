@@ -47,12 +47,12 @@ namespace
     template <typename Processor>
     int sweep (const char* label, int& untestableTotal)
     {
-        Processor source;
+        auto source = std::make_unique<Processor> ();
         // Laddningen rensar LFO utanför activeLfos som saknar rutter (PluginBase.cpp applyLoadedLfos/clearLfo, ~:829-855) och återställer deras parametrar.
         // Det är avsett produktbeteende; testet aktiverar alla LFO före sweepen så att deras parametrar verkligen provas.
-        for (auto lfo = 0; lfo < source.availableLfos(); ++lfo)
-            source.setLfoActive (lfo, true);
-        const auto& all = source.getParameters();
+        for (auto lfo = 0; lfo < source->availableLfos(); ++lfo)
+            source->setLfoActive (lfo, true);
+        const auto& all = source->getParameters();
         std::vector<Setting> settings;
         auto problems = 0;
 
@@ -86,11 +86,11 @@ namespace
         }
 
         juce::MemoryBlock state;
-        source.getStateInformation (state);
-        Processor loaded;
-        loaded.setStateInformation (state.getData(), (int) state.getSize());
+        source->getStateInformation (state);
+        auto loaded = std::make_unique<Processor> ();
+        loaded->setStateInformation (state.getData(), (int) state.getSize());
 
-        const auto& loadedAll = loaded.getParameters();
+        const auto& loadedAll = loaded->getParameters();
         if (loadedAll.size() != all.size())
         {
             std::printf ("FEL %s: parameterantal %d mot %d efter laddning\n", label, (int) all.size(), (int) loadedAll.size());
