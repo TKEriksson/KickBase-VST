@@ -365,7 +365,16 @@ public:
     struct CodeMod { juce::String key; int slot = 0; };
     std::vector<CodeMod> codeMods;
     void clearCodeMods (bool dropRoutes = true); // stänger alla platser och tar bort alla kopplingar från CODE-källor direkt
-    void sweepCodeRoutes(); // tar bort kopplingar vars plats hunnit tona ut (anropas av meddelandetråden då och då)
+    void sweepCodeRoutes(); // tar bort kopplingar vars plats hunnit tona ut
+    void startCodeSweep();  // meddelandetråden sveper själv tills inga CODE-kopplingar väntar på utfasning (ingen sida behövs)
+    struct CodeSweeper : juce::Timer
+    {
+        explicit CodeSweeper (PluginBase& o) : owner (o) {}
+        ~CodeSweeper() override { stopTimer(); }
+        void timerCallback() override;
+        PluginBase& owner;
+    };
+    CodeSweeper codeSweeper { *this };
     int selectedTab = 0;                  // gränssnittets valda flikar (nedre och övre panelen), så att de
     int selectedSynthTab = 0;              // finns kvar när fönstret öppnas igen
     int selectedPatternMode = 0;           // PATTERN-flikens läge: 0 PATTERN (toner), 1 GATE

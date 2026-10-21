@@ -939,6 +939,7 @@ var ToolLayer::liveCodeCreate (const var& args)
 juce::StringArray ToolLayer::applyCodeMods (const var& mods)
 {
     juce::StringArray problems;
+    processor.sweepCodeRoutes(); // platser som hunnit tona ut sedan förra körningen
     struct Wanted { juce::String key; const var* mod; int index; };
     std::vector<Wanted> wanted;
     if (auto* list = mods.getArray())
@@ -962,6 +963,7 @@ juce::StringArray ToolLayer::applyCodeMods (const var& mods)
         if (stays) { ++it; continue; }
         processor.modulator.codeSlots[(size_t) it->slot].kind = 0;
         it = processor.codeMods.erase (it);
+        processor.startCodeSweep();
     }
 
     // 2. Uppdatera eller skapa.
@@ -1005,6 +1007,13 @@ juce::StringArray ToolLayer::applyCodeMods (const var& mods)
         const auto route = processor.modRoutes.find (source, w.index);
         if (route >= 0)
             processor.modRoutes.routes[(size_t) route].amount = amount;
+        else if (std::count_if (processor.modRoutes.routes.begin(), processor.modRoutes.routes.end(),
+                                [] (const ModRoutes::Route& r) { return Modulation::isCodeSource (r.source.load()); }) >= Modulation::maxCodeRoutes)
+        {
+            problems.add ("Live Code may own at most " + juce::String (Modulation::maxCodeRoutes) + " of the " + juce::String (Modulation::maxRoutes) + " modulation routes");
+            cs.kind = 0;
+            continue;
+        }
         else if (processor.modRoutes.add (source, w.index, amount) < 0)
         {
             problems.add ("All " + juce::String (Modulation::maxRoutes) + " routes are in use");

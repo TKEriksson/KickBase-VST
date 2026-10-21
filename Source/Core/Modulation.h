@@ -36,6 +36,7 @@ namespace Modulation
     constexpr int numCodeSources = 8;
     constexpr int numSources = firstCodeSource + numCodeSources;
     constexpr int maxRoutes = 64;
+    constexpr int maxCodeRoutes = 32; // så många av de 64 kopplingarna får koden äga (resten är kvar åt handritade)
 
     inline int lfoSource (int lfo)             { return lfo < numLfos ? lfo : firstExtraLfoSource + (lfo - numLfos); }
     inline int lfoIndexOfSource (int source)   { return source >= 0 && source < numLfos ? source : source >= firstExtraLfoSource && source < firstEnvSource ? numLfos + (source - firstExtraLfoSource) : -1; }
