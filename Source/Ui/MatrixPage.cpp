@@ -48,7 +48,7 @@ namespace
         if (n >= (int) F::aTable && n < (int) F::aTable + ParamID::oscFieldCount)         return "OSC 1";
         if (n >= (int) F::bTable && n < (int) F::bTable + ParamID::oscFieldCount)         return "OSC 2";
         if (n >= (int) F::cTable && n < (int) F::cTable + ParamID::oscFieldCount)         return "OSC 3";
-        if (f == F::sampleLevel || f == F::sampleRoot || f == F::sampleStart)             return "SAMPLE";
+        if (f == F::sampleLevel || f == F::sampleRoot || f == F::sampleStart || f == F::sampleMode)           return "SAMPLE";
         if (n >= (int) F::env2Attack && n <= (int) F::env2Release)                        return "ENV 2";
         if (n >= (int) F::env3Attack && n <= (int) F::env3Release)                        return "ENV 3";
         if (f == F::octave || f == F::tune || f == F::pitchEnvAmount || f == F::pitchEnvDecay) return "PITCH";

@@ -110,6 +110,7 @@ enum class InstrumentField
     noiseType,                                                    // fas S: brustyp: White (standard = som förut), Pink, Brown, Vinyl
     warpEnvSource, warpEnvDecay,                                  // fas S: WARP ENV-källa (Filter Env = som förut, Direct, ENV 2, ENV 3) och Directs egen decay i ms
     polarity, phaseDeg, nudgeMs,                                  // fas PH: polaritet (vänd), startfas 0..360 grader för OSC 1-3 och sub, nudge -2..+2 ms (tillägg till DELAY; negativt tar bort av DELAY)
+    sampleMode,                                                   // fas R9b: lagrets SAMPLE-rad: 0 BLEND (blandas med syntrösten, som förut), 1 INDEPENDENT (egen rad), 2 OFF; sist, så gamla projekt är orörda
     count
 };
 

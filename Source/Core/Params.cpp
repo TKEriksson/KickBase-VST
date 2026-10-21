@@ -98,7 +98,7 @@ namespace ParamID
                                      "Env1Mode", "Env1AttackSync", "Env1DecaySync", "Env1ReleaseSync",
                                      "FilterEnvMode", "FilterEnvAttackSync", "FilterEnvDecaySync",
                                      "FilterOn", "FilterOsc1", "FilterOsc2", "FilterOsc3", "FilterSample", "FilterNoise", "NoiseType", "WarpEnvSource", "WarpEnvDecay",
-                                     "Polarity", "PhaseDeg", "NudgeMs" };
+                                     "Polarity", "PhaseDeg", "NudgeMs", "SampleMode" };
         static_assert (std::size (names) == (size_t) InstrumentField::count);
         return names[(size_t) field];
     }
@@ -395,6 +395,8 @@ namespace Params
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::polarity), 1 }, title + "Polarity Invert", StringArray { "Normal", "Inverted" }, 0));
         layout.add (floatParam (id (F::phaseDeg), title + "Start Phase", NormalisableRange<float> (0.0f, 360.0f, 0.1f), 0.0f, [] (float v) { return String (v, 1) + juce::String (juce::CharPointer_UTF8 ("°")); }));
         layout.add (floatParam (id (F::nudgeMs), title + "Nudge", NormalisableRange<float> (-2.0f, 2.0f, 0.05f), 0.0f, [] (float v) { return String (v, 2) + " ms"; }));
+        // fas R9b: SAMPLE-radens läge (BLEND = som förut, standard)
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::sampleMode), 1 }, title + "Sample Mode", StringArray { "Blend", "Independent", "Off" }, 0));
     }
 
     void addFxParams (Layout& layout)

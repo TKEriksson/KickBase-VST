@@ -73,12 +73,20 @@ private:
 
     // Radens egna längd i steg (kortare än mönstret när raden har en egen längd): efter den loopar eller tystnar raden.
     // Lager 0-9 är instrumenten och lager 10 (Pattern::kickLayer) är kicken. Radens nummer för längderna: kick 0, instrument 1-10.
-    static int rowOf (int layer) { return layer == Pattern::kickLayer ? 0 : layer + 1; }
+    // Underrader (SAMPLE/SLICER, R9b) har id från RowRegistry::firstSubRow och en egen längdplats; de visas efter sitt instrument.
+    static int rowOf (int layer) { return Pattern::lengthRowOf (layer); }
+    static bool isSubRow (int layer) { return layer >= RowRegistry::firstSubRow; }
+    std::vector<int> makeDisplayOrder() const; // lager-id i visningsordning: kicken, sedan varje instrument följt av sina underrader
     int instrumentOwnSteps (const PatternLengths& l, int layer) const { return l.barsOf (rowOf (layer)) * Pattern::instrumentStepsPerBar (grid (layer)); }
     int gateOwnSteps (const PatternLengths& l, int layer) const { return l.barsOf (rowOf (layer)) * Pattern::instrumentStepsPerBar (gateGrid (layer)); }
 
     juce::Rectangle<int> rowBounds (int layer) const { return rowRects[(size_t) rowOf (layer)]; }
-    juce::Colour colourOf (int layer) const { return layer == Pattern::kickLayer ? Theme::kick : layerColours[(size_t) layer]; }
+    juce::Colour colourOf (int layer) const
+    {
+        if (isSubRow (layer)) // en underrad har sitt instruments färg
+            layer = juce::jlimit (0, Pattern::numLayers - 1, processor.pattern.rows.instrumentOf (layer));
+        return layer == Pattern::kickLayer ? Theme::kick : layerColours[(size_t) layer];
+    }
     juce::String nameOf (int layer) const;
     bool renameable() const { return totalLayers() > 1; } // instrumentets lager kan döpas om; FX-versionens GATE-rad inte
 
@@ -157,7 +165,8 @@ private:
     juce::Rectangle<int> pageArea, headerLabels;
 
     juce::Rectangle<int> labelColumn, stepsColumn, laneArea;
-    std::array<juce::Rectangle<int>, numPatternRows> rowRects; // radernas ytor (tom = utanför, bortscrollad eller instrumentet används inte)
+    std::vector<int> displayOrder { Pattern::kickLayer }; // raderna uppifrån och ned (byggs om i resized)
+    std::array<juce::Rectangle<int>, Pattern::numRowSlots> rowRects; // indexerad med längdplatsen (rowOf) // radernas ytor (tom = utanför, bortscrollad eller instrumentet används inte)
     int rowsTop = 0, rowsBottom = 0;
     bool revealSelected = true;
     int rowScroll = 0, visibleRows = numPatternRows; // första synliga rad och hur många som får plats (fler rader än plats: scrolla)
