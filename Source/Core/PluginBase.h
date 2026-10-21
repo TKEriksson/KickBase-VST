@@ -158,6 +158,9 @@ public:
     bool loadUserTable (int layer, int osc, const juce::File& file);
     // PH2: ändrar övertonernas styrka/fas i oscillatorns tabell (frame < 0: alla frames). Resultatet blir oscillatorns User-tabell, så ingen ny parameter behövs.
     bool editWavetable (int layer, int osc, int frame, const std::vector<WavetableEdit::Edit>& edits, bool normalise = true);
+    // Delarna (redigeraren håller en fast utgångspunkt så att reglagen inte staplar ändringar): tabellens frames nu, och en ny User-tabell av frames.
+    bool wavetableSource (int layer, int osc, std::vector<float>& frames, int& steps, juce::String& name) const;
+    bool installWavetable (int layer, int osc, std::vector<float> frames, int steps, const juce::String& name);
     void ensureTablesInUse(); // bygger de inbyggda tabeller som oscillatorerna använder nu (blockerar; inte på ljudtråden)
     const Wavetable* userTable (int layer, int osc) const { return userTables[(size_t) (layer * ParamID::oscsPerLayer + osc)].load(); }
     juce::String getUserTableName (int layer, int osc) const { return userNames[(size_t) (layer * ParamID::oscsPerLayer + osc)]; }
