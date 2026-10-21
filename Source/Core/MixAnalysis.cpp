@@ -764,6 +764,101 @@ namespace MixAnalysis
     }
 
     //==========================================================================================
+    PhaseDescription describePhase (const PhaseMetrics& p)
+    {
+        PhaseDescription d;
+        if (! p.valid)
+            return d;
+
+        auto round2 = [] (float v) { return std::round (v * 100.0) / 100.0; };
+        auto barArray = [] (const std::vector<int>& bars)
+        {
+            juce::Array<juce::var> a;
+            for (auto b : bars)
+                a.add (b);
+            return a;
+        };
+        auto addFinding = [&] (const juce::String& id, const char* severity, const juce::String& what, double value, const std::vector<int>& bars)
+        {
+            auto* o = new juce::DynamicObject();
+            o->setProperty ("id", id);
+            o->setProperty ("severity", juce::String (severity));
+            o->setProperty ("what", what);
+            o->setProperty ("value", value);
+            o->setProperty ("bars", barArray (bars));
+            d.findings.add (juce::var (o));
+        };
+        // Förslagen är alltid kandidater att jämföra (A/B): inget ändras utan att användaren godkänner.
+        auto addFix = [&] (const juce::String& finding, const juce::String& action, const juce::String& target, const juce::String& why)
+        {
+            auto* o = new juce::DynamicObject();
+            o->setProperty ("finding", finding);
+            o->setProperty ("action", action);
+            o->setProperty ("target", target);
+            o->setProperty ("why", why);
+            o->setProperty ("candidate", true);
+            o->setProperty ("needs_approval", true);
+            d.fixes.add (juce::var (o));
+        };
+
+        auto activeCount = 0;
+        auto sum = 0.0;
+        std::vector<int> badBars;
+        for (size_t i = 0; i < p.lowCorrelation.size(); ++i)
+            if (p.lowActive[i] != 0)
+            {
+                ++activeCount;
+                sum += p.lowCorrelation[i];
+                if (p.lowCorrelation[i] < -0.3f)
+                    badBars.push_back ((int) i / 16 + 1);
+            }
+        badBars.erase (std::unique (badBars.begin(), badBars.end()), badBars.end());
+        const auto mean = activeCount > 0 ? (float) (sum / activeCount) : 0.0f;
+
+        if (activeCount >= 4 && (mean < -0.3f || p.sumVsMaxDb < -3.0f))
+        {
+            addFinding ("kick_bass_cancel", mean < -0.6f || p.sumVsMaxDb < -6.0f ? "problem" : "warning",
+                        "Kick and bass partly cancel at 30-150 Hz (mean correlation, value = correlation)", round2 (mean), badBars);
+            addFix ("kick_bass_cancel", "invert_polarity", "bass layer (OSC phase +180 deg)", "Turns an opposing wave round; try it when the mean correlation is below -0.6.");
+            addFix ("kick_bass_cancel", "fixed_phase", "bass OSC phase / RAND off", "A fixed start phase makes every note meet the kick the same way.");
+            addFix ("kick_bass_cancel", "shift_bass_in_time", "bass notes (a few ms later)", "Moves the bass peak away from the kick's.");
+            addFix ("kick_bass_cancel", "kick_start_phase", "kick start phase", "Alternative to changing the bass: change where the kick's wave starts.");
+        }
+
+        auto flips = 0;
+        for (size_t i = 1; i < p.hits.size(); ++i)
+            if (p.hits[i].polarity != 0 && p.hits[i - 1].polarity != 0 && p.hits[i].polarity != p.hits[i - 1].polarity)
+                ++flips;
+        if (flips > 0)
+        {
+            addFinding ("kick_polarity_varies", "warning", "The kick's first swing changes direction between hits (value = number of changes)", flips, {});
+            addFix ("kick_polarity_varies", "fixed_phase", "kick start phase / RAND off", "A kick that starts in different directions meets the bass differently every hit.");
+        }
+
+        if (p.clickHits > 0)
+        {
+            addFinding ("kick_click", "warning", "The kick ends above -60 dB (value = number of hits)", p.clickHits, {});
+            addFix ("kick_click", "shorten_decay", "kick AMP ENV decay / release", "The kick should be near zero before the next hit.");
+        }
+
+        if (p.peakSpreadDb > 1.0f && p.hits.size() >= 2)
+        {
+            addFinding ("kick_peak_spread", "info", "The kick's peak level varies between hits (value = dB spread)", round2 (p.peakSpreadDb), {});
+            addFix ("kick_peak_spread", "fixed_phase", "kick start phase / LFO retrigger", "Equal start gives equally hard hits.");
+        }
+
+        std::vector<int> wideBars;
+        for (size_t bar = 0; bar < p.stereoCorrelation.size(); ++bar)
+            if (p.stereoCorrelation[bar][0] < 0.3f)
+                wideBars.push_back ((int) bar + 1);
+        if (! wideBars.empty())
+        {
+            addFinding ("low_end_wide", "warning", "L/R correlation below 120 Hz is under 0.3 (value = number of bars)", (int) wideBars.size(), wideBars);
+            addFix ("low_end_wide", "narrow_low_end", "bass STEREO/UNISON width, or a mono-maker below 120 Hz", "Wide bass disappears in mono.");
+        }
+        return d;
+    }
+
     namespace
     {
         // lowband.* : kick/bas-korrelationen per 16-del, summan mot största toppen, slagens topp/klick och stereomåtten per takt.
@@ -809,6 +904,9 @@ namespace MixAnalysis
             o->setProperty ("stereo_bands_hz", juce::StringArray ({ "<120", "120-500", "500-4000", ">4000" }).joinIntoString (","));
             o->setProperty ("stereo_per_bar", stereo);
             o->setProperty ("band_hz", "30-150");
+            const auto structured = describePhase (p);
+            o->setProperty ("phase_findings", structured.findings);
+            o->setProperty ("suggested_fixes", structured.fixes);
             return juce::var (o);
         }
     }

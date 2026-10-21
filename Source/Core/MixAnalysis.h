@@ -167,6 +167,13 @@ namespace MixAnalysis
     };
     PhaseMetrics measurePhase (const PhaseInput& input);
 
+    // Samma fynd som texten i rapporten, men som data (phase_findings) och med förslag (suggested_fixes). Förslagen är kandidater som användaren godkänner.
+    struct PhaseDescription
+    {
+        juce::Array<juce::var> findings, fixes;
+    };
+    PhaseDescription describePhase (const PhaseMetrics& metrics);
+
     // Rådata från en körning. Öppen så att utvärderingen kan testas på påhittade data.
     struct Capture
     {

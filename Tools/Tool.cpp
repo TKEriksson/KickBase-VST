@@ -1001,6 +1001,22 @@ namespace
             check (same.sumVsMaxDb > 5.0f && same.sumVsMaxDb < 7.0f, "samma signal i fas ger +6 dB (" + juce::String (same.sumVsMaxDb, 1) + " dB)");
             check (same.hits.size() == 4 && same.clickHits == 0, "en kick som klingar ut ger inget klick");
             check (clicking.clickHits >= 3, "en kick som klipps av ger klick (" + juce::String (clicking.clickHits) + " slag)");
+
+            auto hasId = [] (const juce::Array<juce::var>& list, const char* key, const char* id)
+            {
+                for (auto& item : list)
+                    if (item.getProperty (key, {}).toString() == id)
+                        return true;
+                return false;
+            };
+            const auto antiText = MixAnalysis::describePhase (anti);
+            const auto sameText = MixAnalysis::describePhase (same);
+            const auto clickText = MixAnalysis::describePhase (clicking);
+            check (hasId (antiText.findings, "id", "kick_bass_cancel") && hasId (antiText.fixes, "finding", "kick_bass_cancel"),
+                   "AN: motfas ger phase_findings + suggested_fixes");
+            check (antiText.fixes.size() >= 2 && (bool) antiText.fixes[0].getProperty ("needs_approval", false), "AN: förslagen är kandidater som kräver godkännande");
+            check (! hasId (sameText.findings, "id", "kick_bass_cancel"), "AN: kick och bas i fas ger inget fasfynd");
+            check (hasId (clickText.findings, "id", "kick_click") && hasId (clickText.fixes, "finding", "kick_click"), "AN: klick ger fynd + förslag");
         }
 
         std::puts (failed ? "FEL: eqtest" : "EQ- och analystestet gick igenom");
