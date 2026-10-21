@@ -7,7 +7,7 @@ You control **Kickbase**, a psytrance kick + bass synth, through MCP tools. This
 1. `get_guide` (this), `get_guide topic=psytrance` and `get_guide topic=school` once per session.
 2. `list_presets` / `load_preset` for a starting point, or `reset` for the Init sound.
 3. Change things: `set_parameters`, `set_effect`, `set_kick_envelopes`, `set_pattern`, `set_sidechain_curve`, `set_modulation`.
-4. `render_preview` (full, then `part=kick` and `part=bass` separately). Read the **metrics**, the **checks** and look at the **spectrogram image**. You cannot hear: the numbers and the picture are your ears.
+4. `render_preview` (full, then `part=kick` and `part=bass` separately; give each a `name` to compare later). Read the **metrics**, the **checks** and look at the **spectrogram image**. You cannot hear: the numbers and the picture are your ears.
 5. Adjust and repeat. Use `undo` freely. Save with `save_preset` (it appears in the plugin's preset menus; ask the user to listen).
 6. Always tell the user what you changed and why, and that you could only measure, not listen.
 
@@ -107,7 +107,9 @@ The spectrogram has a log frequency axis 20 Hz–20 kHz, bright = loud, vertical
 
 Also check yourself: the first bass note after a kick is a little softer (rolling feel); notes do not overlap (lower `bassNGate`, or shorten notes); the bass fundamental and kick tail are tonally related (same note/octave is a starting point, not a universal target; compare small tuning differences); wide/unison sounds stay narrow in the low end (`masterMonoBelow` helps, but keep `Stereo` modest on low layers).
 
-Comparing renders: give each `render_preview` a `name`, then `compare_renders before=<name> after=<name>` returns the metric deltas (after minus before) and the checks that started or stopped passing. `sweep_parameter` tries one parameter at up to 12 values and returns one row of metrics and failed checks per value, then restores the sound (no undo step used); its renders are kept as `sweep_<parameter>_<n>` for `compare_renders`. The same sound renders to the same numbers, so a number that moves after a change was moved by the change. `score_vs_reference reference_file=<wav> name=<render>` measures the reference like `analyze_audio` and returns one distance (mean absolute difference over band energies, RMS, centroid and, for kick, tail and length; 0 = same) plus the terms; render the same `part` as the reference. It shows which way a change moved the sound, not whether it is good.
+Example (kick): `render_preview part=kick name=r1`, `sweep_parameter parameter=kickDrive values=[0.1,0.3,0.5] part=kick`, `set_parameters kickDrive=0.3`, `render_preview part=kick name=r2`, `compare_renders before=r1 after=r2`, `score_vs_reference reference_file=<kick.wav> kind=kick name=r2`.
+
+Comparing renders: give each `render_preview` a `name`, then `compare_renders before=<name> after=<name>` returns the metric deltas (after minus before) and the checks that started or stopped passing. `sweep_parameter` tries one parameter at up to 12 values and returns one row of metrics and failed checks per value, then restores the sound (no undo step used); its renders are kept as `sweep_<parameter>_<n>` for `compare_renders`. The same sound renders to the same numbers, so a number that moves after a change was moved by the change. `score_vs_reference reference_file=<wav> name=<render>` measures the reference like `analyze_audio` and returns one distance (mean absolute difference over band energies, RMS, centroid and, for kick, tail and length; 0 = same) plus the terms; render the same `part` as the reference and pass `kind=kick` (or `bass`) for a kick/bass reference, otherwise the tail and length terms are left out. `start`, `seconds` and `bpm` select the part of the reference file to measure. It shows which way a change moved the sound, not whether it is good.
 
 ## 8. Pitfalls
 
