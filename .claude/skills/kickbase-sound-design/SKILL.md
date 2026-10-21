@@ -17,7 +17,7 @@ Goal: no `problem` or `warning` finding left that you can act on, and the checks
 2. `render_preview` full, then `part=kick` and `part=bass`. Note the metrics (kick tail frequency 40-55 Hz, kick length, DC, peak, band energy) and the checks that fail.
 3. `analyse_mix` (starts in the background), then `get_mix_report` until it is done. Do not change anything while it runs. Read the findings (problem, then warning) with `sources` and `bars`.
 4. Pick ONE finding, the most severe. Change one thing (at most two knobs that belong together) with the matching recipe from the guide. Never tune several unrelated things in one round: you could not tell which one helped.
-5. `render_preview` and `analyse_mix` again. Compare with the previous round: finding gone, still there, or a new one.
+5. `render_preview` (give each render a `name`, e.g. `r1`, `r2`) and `analyse_mix` again. `compare_renders before=r1 after=r2` gives the metric deltas and the checks that changed. Compare with the previous round: finding gone, still there, or a new one.
    - Better: keep it, go to the next finding.
    - Same or worse: `undo`, try a different fix for the same finding (once).
 6. Repeat from 4.

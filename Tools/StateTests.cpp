@@ -808,6 +808,22 @@ int renderToolTest()
         check (! same (base, changed), "en ändrad parameter syns i renderingen (testet kan se skillnad)");
         check ((bool) tools.call ("undo", juce::JSON::parse ("{}"))["ok"], "undo lyckas");
         check (same (base, render (tools, "det-undone", "")), "efter undo ger rendering samma mått och WAV som före ändringen");
+
+        // compare_renders: ändringen syns som delta, två lika renderingar ger noll.
+        const auto diff = tools.call ("compare_renders", juce::JSON::parse ("{\"before\":\"det-base\",\"after\":\"det-changed\"}"));
+        check ((bool) diff["ok"] && diff["data"]["metric_deltas"].getDynamicObject() != nullptr, "compare_renders ger deltan för två renderingar");
+        auto anyDelta = false;
+        if (auto* deltas = diff["data"]["metric_deltas"].getDynamicObject())
+            for (const auto& property : deltas->getProperties())
+                anyDelta = anyDelta || std::abs ((double) property.value["delta"]) > 1.0e-9;
+        check (anyDelta, "compare_renders: en ändrad parameter ger minst ett delta över noll");
+        const auto none = tools.call ("compare_renders", juce::JSON::parse ("{\"before\":\"det-base\",\"after\":\"det-undone\"}"));
+        auto allZero = (bool) none["ok"] && none["data"]["checks_changed"].size() == 0;
+        if (auto* deltas = none["data"]["metric_deltas"].getDynamicObject())
+            for (const auto& property : deltas->getProperties())
+                allZero = allZero && std::abs ((double) property.value["delta"]) < 1.0e-9;
+        check (allZero, "compare_renders: före ändring och efter undo ger noll i alla delta");
+        check (! (bool) tools.call ("compare_renders", juce::JSON::parse ("{\"before\":\"finns-inte\",\"after\":\"det-base\"}"))["ok"], "compare_renders: okänt namn ger ett fel");
     }
 
     std::puts (failed ? "FEL: renderingstestet misslyckades" : "Renderingstestet gick igenom");

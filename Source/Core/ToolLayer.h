@@ -1,5 +1,6 @@
 #pragma once
 
+#include <map>
 #include "MixAnalysis.h"
 #include "PluginBase.h"
 
@@ -57,6 +58,7 @@ private:
     juce::var loadPreset (const juce::var& args);
     juce::var savePreset (const juce::var& args);
     juce::var renderPreview (const juce::var& args);
+    juce::var compareRenders (const juce::var& args) const;
     juce::var analyseMix (const juce::var& args);
     juce::var getMixReport (const juce::var& args);
     juce::var saveMixReport (const juce::var& args);
@@ -74,4 +76,5 @@ private:
 
     PluginBase& processor;
     std::vector<juce::MemoryBlock> undoStack, redoStack;
+    std::map<juce::String, juce::var> renderedPreviews; // render_preview-namn -> {metrics, checks}, för compare_renders
 };

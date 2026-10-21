@@ -232,6 +232,8 @@ std::vector<ToolLayer::ToolInfo> ToolLayer::tools()
           R"({"type":"object","properties":{"section":{"type":"string"},"name":{"type":"string"},"layer":{"type":"integer"}},"required":["section","name"]})" },
         { "render_preview", "Renders the current sound offline (note held for 'bars' bars) and measures it. Returns metrics (peak, RMS, DC, spectral centroid, energy per band, stereo, kick length and tail frequency, checks against the psytrance rules) and a spectrogram image; the WAV is saved under Documents\\Kickbase\\Previews. part 'kick' or 'bass' renders one alone (kick part gets a close-up spectrogram). note is the MIDI key (52 = E4: bass root E1 at 41 Hz, kick tail near E1).",
           R"({"type":"object","properties":{"bpm":{"type":"number"},"bars":{"type":"integer"},"note":{"type":"integer"},"part":{"type":"string","enum":["full","kick","bass"]},"name":{"type":"string"},"spectrogram":{"type":"boolean"}}})" },
+        { "compare_renders", "Compares two render_preview results by their 'name' (default 'preview'): the delta (after minus before) of every metric, and the checks that started or stopped passing. Use it after one change: render_preview name=before, change, render_preview name=after, compare_renders. Both renders must come from this session (instance).",
+          R"({"type":"object","properties":{"before":{"type":"string"},"after":{"type":"string"}},"required":["before","after"]})" },
         { "save_piano_roll", "Saves a bass layer's notes (and pattern length and grid) as a piano roll preset file (Documents\\Kickbase\\Presets\\Piano Roll), which the plugin's piano roll PRESET menu lists and can load into any layer.",
           R"({"type":"object","properties":{"layer":{"type":"integer"},"name":{"type":"string"}},"required":["layer","name"]})" },
         { "load_piano_roll", "Loads a saved piano roll preset (by name or file path) into a bass layer, replacing its notes and setting the pattern length and grid it was saved with.",
@@ -293,6 +295,7 @@ var ToolLayer::call (const juce::String& tool, const var& args)
     if (tool == "list_presets")     return listPresets (args);
     if (tool == "list_library")     return listLibrary (args);
     if (tool == "render_preview")   return renderPreview (args);
+    if (tool == "compare_renders")  return compareRenders (args);
     if (tool == "analyse_mix")      return analyseMix (args);
     if (tool == "get_mix_report")   return getMixReport (args);
     if (tool == "save_mix_report")  return saveMixReport (args);
@@ -1686,6 +1689,10 @@ var ToolLayer::renderPreview (const var& args)
     put (data, "metrics", metrics);
     put (data, "checks", checks);
     put (data, "wav_file", wav.getFullPathName());
+    auto remembered = object();
+    put (remembered, "metrics", metrics);
+    put (remembered, "checks", checks);
+    renderedPreviews[name] = remembered;
 
     auto result = ok (data);
     if (wantImage)
@@ -1700,6 +1707,61 @@ var ToolLayer::renderPreview (const var& args)
         put (data, "spectrogram_file", folder.getChildFile (name + ".png").getFullPathName());
     }
     return result;
+}
+
+namespace
+{
+    // Går igenom två metrics-träd i samma form och samlar skillnaden (efter minus före) för varje tal.
+    void collectDeltas (const var& before, const var& after, const juce::String& path, var& out)
+    {
+        if (auto* properties = after.getDynamicObject())
+        {
+            for (const auto& property : properties->getProperties())
+                collectDeltas (before[property.name], property.value, path + (path.isEmpty() ? "" : ".") + property.name.toString(), out);
+        }
+        else if ((after.isDouble() || after.isInt()) && (before.isDouble() || before.isInt()))
+        {
+            auto entry = object();
+            put (entry, "before", round4 ((double) before));
+            put (entry, "after", round4 ((double) after));
+            put (entry, "delta", round4 ((double) after - (double) before));
+            put (out, path, entry);
+        }
+    }
+}
+
+var ToolLayer::compareRenders (const var& args) const
+{
+    const auto beforeName = juce::File::createLegalFileName (args["before"].toString().trim());
+    const auto afterName = juce::File::createLegalFileName (args["after"].toString().trim());
+    const auto before = renderedPreviews.find (beforeName);
+    const auto after = renderedPreviews.find (afterName);
+    if (before == renderedPreviews.end() || after == renderedPreviews.end())
+        return fail ("Both renders must be made with render_preview in this session first (give each a name). Missing: "
+                     + juce::String (before == renderedPreviews.end() ? beforeName : juce::String()) + " " + juce::String (after == renderedPreviews.end() ? afterName : juce::String()));
+
+    auto deltas = object();
+    collectDeltas (before->second["metrics"], after->second["metrics"], {}, deltas);
+
+    juce::Array<var> changedChecks;
+    const auto& afterChecks = *after->second["checks"].getArray();
+    for (const auto& oldCheck : *before->second["checks"].getArray())
+        for (const auto& newCheck : afterChecks)
+            if (oldCheck["check"] == newCheck["check"] && (bool) oldCheck["pass"] != (bool) newCheck["pass"])
+            {
+                auto entry = object();
+                put (entry, "check", newCheck["check"]);
+                put (entry, "now", (bool) newCheck["pass"] ? "passes" : "fails");
+                put (entry, "detail", newCheck["detail"]);
+                changedChecks.add (entry);
+            }
+
+    auto data = object();
+    put (data, "before", beforeName);
+    put (data, "after", afterName);
+    put (data, "metric_deltas", deltas);
+    put (data, "checks_changed", changedChecks);
+    return ok (data);
 }
 
 var ToolLayer::analyzeAudio (const var& args)
