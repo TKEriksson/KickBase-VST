@@ -71,3 +71,8 @@
 - Kvar: G1 flytande fönster, sedan S3 UNISON/Reese.
 - G1 flytande fönster: BLOCKERAD (öppna beslut i lc-g-design.md: överlägg eller DocumentWindow, `document` ut ur LiveCodePage som Arbetare 2 äger). Hoppad.
 - S3 UNISON/Reese finns redan i koden (Params/InstrumentSynth/OscPanel), AN och FX1 finns. Nästa: FX2 (B8 widener, B9 dynamic EQ + flanger, B10 transient shaper), nya effekttyper sist i typlistan.
+
+## Arbetare 1, 21 okt: FX2 del 1 (kod klar, EJ byggd)
+- Widener, Flanger, Transient tillagda sist i EffectType (Effects.h:19, Effects.cpp knob-tabell + WidenerFx/FlangerFx/TransientFx, Slot), Help.cpp, test sist i instrumenttestet (Tool.cpp). Commit 6350f47.
+- Väntar på PL "bygg nu": b-gem, KickbaseTests, KickbaseTool livetest/helpcheck/persisttest (typindex!), HostTest.
+- Kvar i FX2: dynamic EQ, transient-oktav ner/upp, per-band ducking.
