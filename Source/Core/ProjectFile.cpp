@@ -8,7 +8,7 @@ namespace
 
 namespace ProjectFile
 {
-    bool save (PluginBase& processor, const juce::File& file, const juce::String& pluginVersion, juce::String& error)
+    bool save (juce::AudioProcessor& processor, const juce::File& file, const juce::String& pluginVersion, juce::String& error)
     {
         juce::MemoryBlock state;
         processor.getStateInformation (state);
@@ -35,7 +35,7 @@ namespace ProjectFile
         return true;
     }
 
-    bool load (PluginBase& processor, const juce::File& file, juce::String& error)
+    bool load (juce::AudioProcessor& processor, const juce::Identifier& rootType, const juce::File& file, juce::String& error)
     {
         if (! file.existsAsFile())
         {
@@ -54,7 +54,7 @@ namespace ProjectFile
             error = "Filen är inte ett projekt (ingen giltig XML).";
             return false;
         }
-        if (! xml->hasTagName (processor.apvts.state.getType()))
+        if (! xml->hasTagName (rootType.toString()))
         {
             error = "Filen är inte ett Kickbase-projekt.";
             return false;

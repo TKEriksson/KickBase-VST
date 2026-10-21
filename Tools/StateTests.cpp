@@ -582,7 +582,7 @@ int persistTest()
         check (text.contains ("kbprojVersion=\"1\"") && text.contains ("pluginVersion=\"0.0.0\""), "kbproj: filen är XML-text med versionsattribut");
 
         auto loaded = std::make_unique<InstrumentProcessor>();
-        check (ProjectFile::load (*loaded, file, error), "kbproj: projektet öppnas");
+        check (ProjectFile::load (*loaded, loaded->apvts.state.getType(), file, error), "kbproj: projektet öppnas");
         juce::MemoryBlock before, after;
         processor->getStateInformation (before);
         loaded->getStateInformation (after);
@@ -598,7 +598,7 @@ int persistTest()
             bad.replaceWithText (content);
             juce::String why;
             juce::MemoryBlock now;
-            const auto ok = ProjectFile::load (*loaded, bad, why);
+            const auto ok = ProjectFile::load (*loaded, loaded->apvts.state.getType(), bad, why);
             loaded->getStateInformation (now);
             check (! ok && why.isNotEmpty() && now == untouched, "kbproj avvisar " + what + ": " + why);
             bad.deleteFile();
@@ -607,7 +607,7 @@ int persistTest()
         rejects ("<Annat kbprojVersion=\"1\"/>", "fel rotelement");
         rejects (text.replace ("kbprojVersion=\"1\"", "kbprojVersion=\"99\""), "ett nyare format");
         rejects (text.replace ("kbprojVersion=\"1\"", ""), "en fil utan version");
-        check (! ProjectFile::load (*loaded, file.getSiblingFile ("finns_inte.kbproj"), error) && error.isNotEmpty(), "kbproj: saknad fil ger ett fel");
+        check (! ProjectFile::load (*loaded, loaded->apvts.state.getType(), file.getSiblingFile ("finns_inte.kbproj"), error) && error.isNotEmpty(), "kbproj: saknad fil ger ett fel");
         file.deleteFile();
     }
 
