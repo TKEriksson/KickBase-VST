@@ -148,7 +148,7 @@ int persistTest()
     // 4a. Slicer: Grid 8 ger 8 skivor (första 0, stigande), standardinställningar sparas som förut, och skivinställningarna följer med projektet.
     {
         auto processor = std::make_unique<InstrumentProcessor>();
-        processor->loadInstrumentSample (0, Scenarios::writeTestWav ("persist_slices", 110.0, 0.6));
+        processor->loadInstrumentSample (0, Scenarios::writeTestWav ("persist_slices", 110.0, 0.8)); // 0,8 s / 128 = 6,25 ms: över minsta skivan (5 ms), annars blir det ca 120
         const auto* sample = processor->getActiveInstrumentSample (0);
         check (sample != nullptr && sample->slices.size() == 8 && sample->slices.front() == 0 && std::is_sorted (sample->slices.begin(), sample->slices.end()), "Slicer: Grid 8 ger 8 stigande skivor");
 
@@ -222,6 +222,12 @@ int persistTest()
         Scenarios::setInstrument (*processor, 0, F::slicerMapTo, 2.0f);
         const auto sliced = render();
 
+        // Diagnos: peak per takt (fönstret är 70 ms) så att loggen visar varför ett krav faller.
+        for (int bar = 0; bar < (int) pitches.size(); ++bar)
+            std::printf ("  slicer takt %d (ton %d): av %.5f  på %.5f\n", bar, pitches[(size_t) bar], peakOf (whole, bar), peakOf (sliced, bar));
+        std::printf ("  skivor: %d, hela samplingen %d samplar, fönster %d samplar\n",
+                     (int) processor->getActiveInstrumentSample (0)->slices.size(), processor->getActiveInstrumentSample (0)->audio.getNumSamples(), window);
+
         auto audible = true;
         for (int bar = 1; bar <= 8; ++bar)
             audible = audible && peakOf (sliced, bar) > 0.001f;
@@ -232,6 +238,7 @@ int persistTest()
 
         Scenarios::setInstrument (*processor, 0, F::slicerReverse, 1.0f);
         const auto reversed = render();
+        std::printf ("  REVERSE takt 1: peak framåt %.5f, bakåt %.5f\n", peakOf (sliced, 1), peakOf (reversed, 1));
         check (differs (sliced, 1, reversed, 1), "Slicer: REVERSE låter annorlunda än framåt");
 
         Scenarios::setInstrument (*processor, 0, F::slicerOn, 0.0f);
@@ -240,6 +247,7 @@ int persistTest()
         auto same = whole.getNumSamples() == again.getNumSamples();
         for (int i = 0; same && i < whole.getNumSamples(); ++i)
             same = whole.getSample (0, i) == again.getSample (0, i);
+        std::printf ("  slicer av igen: längd %d mot %d\n", again.getNumSamples(), whole.getNumSamples());
         check (same, "Slicer av igen: samma ljud som före (bit för bit)");
     }
 
