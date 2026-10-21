@@ -9408,3 +9408,16 @@ globalThis.buildEffects = function (json) {
     });
   });
 };
+
+// Mätare (F4): meter.outputPeak, meter.gainReduction, meter.duck1..10, meter.solo. Bara .get() (värdet från före körningen); .set/.lfo/.lock ger felrad.
+globalThis.buildMeters = function (names) {
+  var m = {};
+  names.forEach(function (n) {
+    var leaf = { get: function () { return host.paramGet('meter.' + n); } };
+    ['set', 'lfo', 'LFO', 'lock'].forEach(function (bad) {
+      leaf[bad] = function () { throw new Error('meter.' + n + '.' + bad + ': en mätare kan bara läsas, använd .get()'); };
+    });
+    m[n] = leaf;
+  });
+  globalThis.meter = m;
+};

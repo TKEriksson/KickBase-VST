@@ -108,11 +108,16 @@ juce::Result LiveCode::setCode (const juce::String& code)
     if (auto r = load(); r.failed()) return r;
     if (! paramValues.empty())
     {
-        juce::Array<juce::var> ids;
+        juce::Array<juce::var> ids, meters;
         for (auto& kv : paramValues)
-            ids.add (kv.first);
+            if (kv.first.startsWith ("meter.")) // F4: mätare bygger inte parameterträdet
+                meters.add (kv.first.fromFirstOccurrenceOf (".", false, false));
+            else
+                ids.add (kv.first);
         juce::Result built = juce::Result::ok();
         engine.evaluate ("buildParams(" + juce::JSON::toString (juce::var (ids), true) + ")", &built);
+        if (built.failed()) return built;
+        engine.evaluate ("buildMeters(" + juce::JSON::toString (juce::var (meters), true) + ")", &built);
         if (built.failed()) return built;
     }
     if (effectCatalog.isObject())

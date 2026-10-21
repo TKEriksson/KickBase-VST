@@ -559,6 +559,21 @@ namespace
             check (record ("fx1.slot1.setEffect(\"off\");\nfx1.slot1.mix.set(1);\n\nnote(\"c2\").s(\"i1\")", none).failed(), "ratt på tom plats ger felrad");
         }
 
+        // F4: meter.X.get() ger värdet från före körningen; .set/.lfo/.lock på en mätare ger felrad.
+        {
+            LiveCode live;
+            live.setParams ({ { "bass1Cutoff", 0.5 }, { "meter.outputPeak", -42.5 }, { "meter.duck1", 0.25 } });
+            const auto res = live.setCode ("bass1.Cutoff.set(meter.outputPeak.get() + meter.duck1.get());\n\nnote(\"c2\").s(\"i1\")");
+            const auto writes = live.takeParamWrites();
+            check (res.wasOk() && writes.size() == 1 && (double) writes[0]["value"] == -42.25, "mätare läses med .get(): " + res.getErrorMessage());
+            for (auto* bad : { "set(1)", "lfo(1)", "LFO(1)", "lock()" })
+            {
+                LiveCode other;
+                other.setParams ({ { "bass1Cutoff", 0.5 }, { "meter.solo", 0.0 } });
+                check (other.setCode (juce::String ("meter.solo.") + bad + ";\n\nnote(\"c2\").s(\"i1\")").failed(), juce::String ("meter.solo.") + bad + " ger felrad");
+            }
+        }
+
         // F2: lås från koden blockerar skrivning som handlås, men sparas aldrig och släpps utan att röra handlåset.
         {
             ToolLayer tools (processor);

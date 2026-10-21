@@ -377,6 +377,13 @@ void LiveCodePage::refreshCodeOnly()
 
 void LiveCodePage::runNow()
 {
+    auto params = tools.liveCodeParameters();
+    // F4: mätare, läses här på meddelandetråden ur befintliga atomics (ingen ny tapp i ljudvägen)
+    params["meter.outputPeak"] = processor.getMasterSection().outputPeakDb.load();
+    params["meter.gainReduction"] = processor.getMasterSection().gainReductionDb.load();
+    params["meter.solo"] = processor.soloMask.load();
+    for (size_t i = 0; i < processor.duckReduction.size(); ++i)
+        params["meter.duck" + juce::String ((int) i + 1)] = processor.duckReduction[i].load();
     runner.run (document.getAllContent(), cycles, [this] (const juce::var& list, const juce::String& error, const juce::var& mods, const juce::var& writes)
     {
         if (error.isNotEmpty())
@@ -396,7 +403,7 @@ void LiveCodePage::runNow()
         apply (list, false, mods);
         processor.liveCodeCodeLocks = lockAll;
         processor.liveCodeCodeNoteLocks = lockNotes;
-    }, sliderValues, tools.liveCodeParameters(), tools.liveCodeEffects());
+    }, sliderValues, std::move (params), tools.liveCodeEffects());
 }
 
 // F3: {fx, slot, type, knob, value}. Ett typbyte (knob tomt) nollställer rattarna som set_effect gör; en ratt behåller de andra (keep).
