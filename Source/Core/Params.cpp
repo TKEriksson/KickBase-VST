@@ -99,7 +99,8 @@ namespace ParamID
                                      "FilterEnvMode", "FilterEnvAttackSync", "FilterEnvDecaySync",
                                      "FilterOn", "FilterOsc1", "FilterOsc2", "FilterOsc3", "FilterSample", "FilterNoise", "NoiseType", "WarpEnvSource", "WarpEnvDecay",
                                      "Polarity", "PhaseDeg", "NudgeMs",
-                                     "FmOn", "FmLevel", "FmRatio", "FmIndex", "FmEnvAmount", "FmEnvTime", "FmSemis", "FmPreset", "FmFilter" };
+                                     "FmOn", "FmLevel", "FmRatio", "FmIndex", "FmEnvAmount", "FmEnvTime", "FmSemis", "FmPreset", "FmFilter",
+                                     "SlicerOn", "SlicerMapTo", "SlicerReverse" };
         static_assert (std::size (names) == (size_t) InstrumentField::count);
         return names[(size_t) field];
     }
@@ -408,6 +409,10 @@ namespace Params
         layout.add (floatParam (id (F::fmSemis), title + "FM Semis", NormalisableRange<float> (-24.0f, 24.0f, 1.0f), 0.0f, [] (float v) { return String (juce::roundToInt (v)) + " st"; }));
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::fmPreset), 1 }, title + "FM Preset", StringArray { "Custom", "Zap", "Acid Squelch", "Metallic Lead", "FM Pluck" }, 0));
         layout.add (std::make_unique<AudioParameterBool> (ParameterID { id (F::fmFilter), 1 }, title + "FM Filter", true));
+        // fas F2: slicer (av som standard = ljudet oförändrat); skivmarkörerna sparas i samplingen (SampleSlot)
+        layout.add (std::make_unique<AudioParameterBool> (ParameterID { id (F::slicerOn), 1 }, title + "Slicer On", false));
+        layout.add (std::make_unique<AudioParameterInt> (ParameterID { id (F::slicerMapTo), 1 }, title + "Slicer Map To", -96, 96, 0));
+        layout.add (std::make_unique<AudioParameterBool> (ParameterID { id (F::slicerReverse), 1 }, title + "Slicer Reverse", false));
     }
 
     void addFxParams (Layout& layout)
@@ -685,5 +690,8 @@ InstrumentParams ParamRefs::readInstrument (int layer, int rootMidiNote) const
     p.fmEnvMs = get (F::fmEnvTime);
     p.fmSemis = get (F::fmSemis);
     p.fmFilter = get (F::fmFilter) >= 0.5f;
+    p.slicerOn = get (F::slicerOn) >= 0.5f;
+    p.slicerMapTo = juce::roundToInt (get (F::slicerMapTo));
+    p.slicerReverse = get (F::slicerReverse) >= 0.5f;
     return p;
 }

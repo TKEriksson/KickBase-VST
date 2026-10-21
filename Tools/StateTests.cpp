@@ -144,6 +144,31 @@ int persistTest()
         check (processor->retiredTableCount() >= 7, "tabellerna från borttagna instrument frigörs inte direkt (" + juce::String ((int) processor->retiredTableCount()) + " väntar)");
     }
 
+    // 4a. Slicer: Grid 8 ger 8 skivor (första 0, stigande), standardinställningar sparas som förut, och skivinställningarna följer med projektet.
+    {
+        auto processor = std::make_unique<InstrumentProcessor>();
+        processor->loadInstrumentSample (0, Scenarios::writeTestWav ("persist_slices", 110.0, 0.6));
+        const auto* sample = processor->getActiveInstrumentSample (0);
+        check (sample != nullptr && sample->slices.size() == 8 && sample->slices.front() == 0 && std::is_sorted (sample->slices.begin(), sample->slices.end()), "Slicer: Grid 8 ger 8 stigande skivor");
+
+        auto before = processor->instrumentSamplesToValueTree();
+        check (! before.getChild (0).hasProperty ("sliceMode"), "Slicer: standardinställningar skriver inga nya attribut (gamla filer oförändrade)");
+
+        processor->setInstrumentSlicing (0, SampleSlicing::grid, 0.5f, 200);
+        check (processor->getActiveInstrumentSample (0)->slices.size() == (size_t) SampleSlicing::maxSlices, "Slicer: max 128 skivor");
+        processor->setInstrumentSlicing (0, SampleSlicing::manual, 0.5f, 8);
+        processor->setInstrumentSliceMarkers (0, { 0.5f, 0.25f });
+        check (processor->getActiveInstrumentSample (0)->slices.size() == 3, "Slicer: manuella markörer ger skivor (0 + två)");
+
+        auto other = std::make_unique<InstrumentProcessor>();
+        other->instrumentSamplesFromValueTree (processor->instrumentSamplesToValueTree());
+        check (other->getActiveInstrumentSample (0) != nullptr && other->getActiveInstrumentSample (0)->slices == processor->getActiveInstrumentSample (0)->slices
+               && other->instrumentSampleSlot (0).sliceMode() == SampleSlicing::manual, "Slicer: skivinställningarna följer med projektet");
+
+        processor->clearInstrumentSample (0);
+        check (processor->getActiveInstrumentSample (0) == nullptr, "Slicer: tom sampling är tyst (ingen sampling, inga skivor)");
+    }
+
     // 4b. Morph av: en WAV med fyra cykler ger fyra steg, och Morph av + antalet steg följer med projektet, Full- och instrument-presets (annars låter
     //     ett projekt annorlunda efter omladdning).
     {

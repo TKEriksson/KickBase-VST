@@ -114,6 +114,9 @@ struct InstrumentParams
     bool sampleOn = false;       // samplingen hörs bara när den är på
     bool sampleKeyTrack = false; // av = spelas med sin egen tonhöjd och hastighet
     float sampleStart = 0.0f;    // 0..1: var i samplingen varje ton börjar
+    bool slicerOn = false;       // noten väljer en skiva (ClickSample::slices) i stället för hela samplingen; originalhastighet, ingen loop
+    int slicerMapTo = 0;         // halvtonen (från tonarten) som spelar skiva 1; n..n+7 spelar skiva 1..8
+    bool slicerReverse = false;  // alla skivor spelas baklänges
 
     InstrumentParams() { oscB.level = 0.0f; oscC.level = 0.0f; oscC.on = false; }
 
@@ -244,6 +247,8 @@ private:
     double fmCarrierPhase = 0.0, fmModPhase = 0.0; // FM-källans faser (0..1)
     float fmEnvLevel = 0.0f;                        // 1 vid anslaget, faller mot 0 (FM ENV)
     double samplePosition = 0.0; // i samplingens samples
+    bool sliceVoice = false;     // tonen spelar en skiva (satt i noteOn)
+    int sliceBegin = 0, sliceEnd = 0;
     double logFrequency = 0.0, targetLogFrequency = 0.0; // log2(Hz), så att glide låter jämnt
     int glideSamplesLeft = 0;
     double glideStep = 0.0;  // ändring i log-frekvens per sample under ett glide

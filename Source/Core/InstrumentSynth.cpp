@@ -28,6 +28,7 @@ void InstrumentSynth::reset()
     gateRemaining = 0;
     glideSamplesLeft = 0;
     samplePosition = 0.0;
+    sliceVoice = false;
     env2.reset();
     env3.reset();
     pitchEnv = 0.0f;
@@ -166,6 +167,20 @@ void InstrumentSynth::noteOn (int semitones, float newVelocity, int gateSamples)
     warpDirect = 1.0f;
     randomValue = modRandom.nextFloat();
     samplePosition = params.sampleData != nullptr ? (double) params.sampleStart * (double) params.sampleData->audio.getNumSamples() : 0.0;
+    sliceVoice = false;
+    if (params.slicerOn && params.sampleData != nullptr)
+    {
+        // Noten väljer skivan; utanför skivorna (eller över max 128) är det tyst, ingen wrap.
+        const auto& slices = params.sampleData->slices;
+        const auto index = semitones - params.slicerMapTo;
+        if (index >= 0 && (size_t) index < slices.size())
+        {
+            sliceBegin = slices[(size_t) index];
+            sliceEnd = (size_t) index + 1 < slices.size() ? slices[(size_t) index + 1] : params.sampleData->audio.getNumSamples();
+            sliceVoice = sliceEnd > sliceBegin;
+            samplePosition = params.slicerReverse ? (double) (sliceEnd - 1) : (double) sliceBegin;
+        }
+    }
     velocity = newVelocity;
     stage = Stage::attack; // attacken börjar från nuvarande nivå, så inget knäpp
     gateRemaining = gateSamples;
@@ -456,7 +471,22 @@ InstrumentSynth::Output InstrumentSynth::next()
     {
         const auto& audio = params.sampleData->audio;
         const auto length = audio.getNumSamples();
-        if (length > 1)
+        if (params.slicerOn)
+        {
+            // Skiva: originalhastighet framåt eller bakåt, stannar vid skivans kant; 64 samples fade mot kanterna mot klick.
+            if (sliceVoice && length > 1 && samplePosition >= (double) sliceBegin && samplePosition < (double) sliceEnd)
+            {
+                const auto* data = audio.getReadPointer (0);
+                const auto index = (int) samplePosition;
+                const auto fraction = (float) (samplePosition - (double) index);
+                const auto following = index + 1 < sliceEnd ? data[index + 1] : 0.0f;
+                const auto edge = std::min (samplePosition - (double) sliceBegin + 1.0, (double) sliceEnd - samplePosition);
+                const auto fade = (float) std::min (1.0, edge / 64.0);
+                (fOn && params.filterSrc[3] ? centre : dryCentre) += fade * params.sampleLevel * (data[index] + fraction * (following - data[index]));
+                samplePosition += params.slicerReverse ? -1.0 : 1.0;
+            }
+        }
+        else if (length > 1)
         {
             if (samplePosition >= (double) length && params.sampleLoop)
                 samplePosition = std::fmod (samplePosition, (double) length);

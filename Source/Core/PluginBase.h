@@ -229,6 +229,10 @@ public:
 
     bool loadInstrumentSample (int layer, const juce::File& file);
     void clearInstrumentSample (int layer);
+    // Slicer: skivinställningarna hör till lagrets sampling (sparas med den). Message thread.
+    SampleSlot& instrumentSampleSlot (int layer) { return instrumentSamples[(size_t) juce::jlimit (0, ParamID::numInstrumentLayers - 1, layer)]; }
+    void setInstrumentSlicing (int layer, int mode, float sensitivity, int gridCount) { instrumentSampleSlot (layer).setSlicing (mode, sensitivity, gridCount); patternChanged(); }
+    void setInstrumentSliceMarkers (int layer, std::vector<float> markers) { instrumentSampleSlot (layer).setManualMarkers (std::move (markers)); patternChanged(); }
     juce::String getInstrumentSampleName (int layer) const { return instrumentSamples[(size_t) juce::jlimit (0, ParamID::numInstrumentLayers - 1, layer)].name(); }
     const ClickSample* getActiveInstrumentSample (int layer) const { return instrumentSamples[(size_t) juce::jlimit (0, ParamID::numInstrumentLayers - 1, layer)].active(); }
 

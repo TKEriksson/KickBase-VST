@@ -806,9 +806,11 @@ void SampleView::timerCallback()
     if (position >= 0.0f && (marker < 0.0f || position < marker))
         flashWallTime = juce::Time::getMillisecondCounterHiRes(); // en ny ton (positionen började om)
     const auto flashing = juce::Time::getMillisecondCounterHiRes() - flashWallTime < 500.0;
-    if (sample != shown || start != lastStart || position != marker || flashing)
+    const auto slicer = processor.apvts.getRawParameterValue (ParamID::bass (layer, InstrumentField::slicerOn))->load() >= 0.5f;
+    if (sample != shown || slicer != shownSlicer || start != lastStart || position != marker || flashing)
     {
         shown = sample;
+        shownSlicer = slicer;
         lastStart = start;
         marker = position;
         repaint();
@@ -852,9 +854,24 @@ void SampleView::paint (juce::Graphics& g)
     g.setColour (accent.withAlpha (0.85f));
     g.fillPath (path);
 
-    const auto startX = area.getX() + juce::jlimit (0.0f, 1.0f, lastStart) * area.getWidth();
-    g.setColour (juce::Colours::white.withAlpha (0.8f));
-    g.drawVerticalLine ((int) startX, area.getY(), area.getBottom());
+    if (shownSlicer)
+    {
+        // Skivgränserna (ton n..n+7 spelar skiva 1..8); START gäller inte i slicerläget.
+        g.setColour (juce::Colours::white.withAlpha (0.7f));
+        for (size_t i = 0; i < sample->slices.size(); ++i)
+        {
+            const auto x = area.getX() + (float) sample->slices[i] / (float) length * area.getWidth();
+            g.drawVerticalLine ((int) x, area.getY(), area.getBottom());
+            g.setFont (Theme::font (9.0f));
+            g.drawText (juce::String ((int) i + 1), juce::Rectangle<float> (x + 2.0f, area.getY(), 24.0f, 12.0f), juce::Justification::topLeft);
+        }
+    }
+    else
+    {
+        const auto startX = area.getX() + juce::jlimit (0.0f, 1.0f, lastStart) * area.getWidth();
+        g.setColour (juce::Colours::white.withAlpha (0.8f));
+        g.drawVerticalLine ((int) startX, area.getY(), area.getBottom());
+    }
 
     // Spelmarkör: det som spelats lyses upp, ett lysande streck där samplingen är nu, och en blixt när en ny ton börjar.
     if (marker >= 0.0f)
@@ -888,8 +905,20 @@ void SampleView::paint (juce::Graphics& g)
     }
 }
 
-void SampleView::mouseDown (const juce::MouseEvent&)
+void SampleView::mouseDown (const juce::MouseEvent& e)
 {
+    // Manuellt läge: Skift-klick lägger en skivmarkör, Alt-klick tar bort den närmaste.
+    if (shownSlicer && (e.mods.isShiftDown() || e.mods.isAltDown()) && processor.instrumentSampleSlot (layer).sliceMode() == SampleSlicing::manual)
+    {
+        const auto position = juce::jlimit (0.0f, 1.0f, (float) (e.x - 6) / (float) std::max (1, getWidth() - 12));
+        auto markers = processor.instrumentSampleSlot (layer).manualMarkers();
+        if (e.mods.isShiftDown())
+            markers.push_back (position);
+        else if (! markers.empty())
+            markers.erase (std::min_element (markers.begin(), markers.end(), [position] (float a, float b) { return std::abs (a - position) < std::abs (b - position); }));
+        processor.setInstrumentSliceMarkers (layer, std::move (markers));
+        return;
+    }
     if (processor.getActiveInstrumentSample (layer) != nullptr)
         hold.start (PluginBase::heldSoloAudition (layer, 3)); // bara samplingen, så länge musen hålls (loopar om den tar slut)
 }
@@ -914,6 +943,38 @@ SamplePage::SamplePage (PluginBase& p, int layerIn, juce::Colour accent)
     knob (F::sampleRoot, "ROOT");
     choice (F::sampleLoop, "LOOP");
     choice (F::sampleKey, "KEY");
+
+    // Slicer: noten väljer skivan (MAP TO = tonen som spelar skiva 1), originalhastighet, ingen loop.
+    slicerToggle.setTooltip ("SLICER - Each note plays one slice of the sample at its original speed (no pitching, no loop). The note decides the slice: the MAP TO note plays slice 1, the next note slice 2, and so on. "
+                             "Notes outside the slices are silent. Off = the sample plays as before.");
+    reverseToggle.setTooltip ("REVERSE - Plays every slice backwards.");
+    for (auto* toggle : { &slicerToggle, &reverseToggle })
+    {
+        toggle->setColour (juce::ToggleButton::tickColourId, accent);
+        toggle->setColour (juce::ToggleButton::textColourId, Theme::textDim);
+        addAndMakeVisible (*toggle);
+    }
+    slicerAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, id (F::slicerOn), slicerToggle);
+    reverseAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, id (F::slicerReverse), reverseToggle);
+    mapToKnob = std::make_unique<KnobComponent> (p.apvts, id (F::slicerMapTo), "MAP TO", accent);
+    addAndMakeVisible (*mapToKnob);
+    sliceModeBox.addItemList ({ "Grid", "Auto", "Manual" }, 1);
+    sliceModeBox.setTooltip ("Where the slices are: Grid = equal parts (the slider sets how many, max 128), Auto = cut at the hits (the slider sets how sensitive), "
+                             "Manual = Shift-click the waveform to add a marker, Alt-click to remove the nearest.");
+    sliceModeBox.onChange = [this] { applySlicing(); };
+    addAndMakeVisible (sliceModeBox);
+    gridAmount.setRange (1.0, (double) SampleSlicing::maxSlices, 1.0);
+    gridAmount.setTooltip ("How many equal slices (max 128).");
+    sensitivityAmount.setRange (0.0, 1.0, 0.01);
+    sensitivityAmount.setTooltip ("How sensitive the hit detection is: higher = more slices.");
+    for (auto* slider : { &gridAmount, &sensitivityAmount })
+    {
+        slider->setSliderStyle (juce::Slider::LinearHorizontal);
+        slider->setTextBoxStyle (juce::Slider::TextBoxRight, false, 40, 18);
+        slider->onValueChange = [this] { applySlicing(); };
+        addChildComponent (*slider);
+    }
+    syncSlicerControls();
 
     addAndMakeVisible (view);
     label.setFont (Theme::font (11.0f));
@@ -947,6 +1008,29 @@ SamplePage::SamplePage (PluginBase& p, int layerIn, juce::Colour accent)
 void SamplePage::timerCallback()
 {
     updateLabel();
+    syncSlicerControls();
+}
+
+void SamplePage::applySlicing()
+{
+    if (syncing)
+        return;
+    auto& slot = processor.instrumentSampleSlot (layer);
+    const auto mode = juce::jmax (0, sliceModeBox.getSelectedItemIndex());
+    processor.setInstrumentSlicing (layer, mode, (float) sensitivityAmount.getValue(), juce::roundToInt (gridAmount.getValue()));
+    syncSlicerControls();
+}
+
+void SamplePage::syncSlicerControls()
+{
+    const auto& slot = processor.instrumentSampleSlot (layer);
+    const auto mode = slot.sliceMode();
+    const juce::ScopedValueSetter<bool> guard (syncing, true);
+    sliceModeBox.setSelectedItemIndex (mode, juce::dontSendNotification);
+    gridAmount.setValue (slot.sliceGridCount(), juce::dontSendNotification);
+    sensitivityAmount.setValue (slot.sliceSensitivity(), juce::dontSendNotification);
+    gridAmount.setVisible (mode == SampleSlicing::grid);
+    sensitivityAmount.setVisible (mode == SampleSlicing::automatic);
 }
 
 void SamplePage::updateLabel()
@@ -991,7 +1075,7 @@ void SamplePage::resized()
     area.removeFromRight (8);
     view.setBounds (area);
 
-    auto knobsRow = right.removeFromTop (right.getHeight() * 3 / 5);
+    auto knobsRow = right.removeFromTop (right.getHeight() * 2 / 5);
     const auto cell = knobsRow.getWidth() / 3;
     for (int i = 0; i < 3; ++i)
         controls[(size_t) i]->setBounds (knobsRow.removeFromLeft (cell));
@@ -999,6 +1083,18 @@ void SamplePage::resized()
     auto choices = right.removeFromTop (44);
     controls[3]->setBounds (choices.removeFromLeft (choices.getWidth() / 2).reduced (6, 0));
     controls[4]->setBounds (choices.reduced (6, 0));
+
+    right.removeFromTop (4);
+    auto toggles = right.removeFromTop (22);
+    slicerToggle.setBounds (toggles.removeFromLeft (toggles.getWidth() / 2));
+    reverseToggle.setBounds (toggles);
+    right.removeFromTop (3);
+    auto modeRow = right.removeFromTop (22);
+    sliceModeBox.setBounds (modeRow.removeFromLeft (80));
+    modeRow.removeFromLeft (4);
+    gridAmount.setBounds (modeRow);
+    sensitivityAmount.setBounds (modeRow);
+    mapToKnob->setBounds (right.removeFromLeft (cell));
 }
 
 //==============================================================================

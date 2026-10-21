@@ -131,6 +131,7 @@ private:
     const int layer;
     juce::Colour accent;
     const ClickSample* shown = nullptr;
+    bool shownSlicer = false;
     float lastStart = -1.0f;
     bool hover = false;
     juce::MouseCursor speakerCursor = Cursors::speaker();
@@ -149,10 +150,18 @@ public:
 private:
     void timerCallback() override;
     void updateLabel();
+    void applySlicing();      // ComboBox/Slider -> samplingens skivinställningar
+    void syncSlicerControls(); // samplingen -> ComboBox/Slider (efter laddning av projekt)
 
     PluginBase& processor;
     const int layer;
     SampleView view;
+    juce::ToggleButton slicerToggle { "SLICER" }, reverseToggle { "REVERSE" };
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> slicerAttachment, reverseAttachment;
+    std::unique_ptr<KnobComponent> mapToKnob;
+    juce::ComboBox sliceModeBox;
+    juce::Slider gridAmount, sensitivityAmount; // en per läge, så att inget område byts under användaren
+    bool syncing = false;
     juce::Label label;
     juce::TextButton loadButton { "LOAD" }, clearButton { "X" }, hearButton { "HEAR" };
     std::unique_ptr<juce::FileChooser> chooser;
