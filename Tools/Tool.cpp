@@ -2782,6 +2782,7 @@ int blockSizeTest();        // Tools/AudioTests.cpp
 int polyTest();             // Tools/AudioTests.cpp
 int persistTest();          // Tools/StateTests.cpp
 int helpCheck();            // Tools/StateTests.cpp
+int paramTest();            // Tools/ParamSweepTests.cpp
 int libraryCheck (const juce::String& folder); // Tools/LibraryTests.cpp
 int libraryTest();          // Tools/LibraryTests.cpp
 int libraryImport (const juce::StringArray& args); // Tools/LibraryTests.cpp
@@ -2848,6 +2849,8 @@ int toolMain (int argc, char* argv[])
         return helpCheck();
     if (argc == 2 && juce::String (argv[1]) == "persisttest")
         return persistTest();
+    if (argc == 2 && juce::String (argv[1]) == "paramtest")
+        return paramTest();
     // librarycheck [mapp]: validerar biblioteksmanifesten (läser bara). librarytest: reglerna, i en tillfällig mapp.
     if (argc >= 2 && juce::String (argv[1]) == "librarycheck")
         return libraryCheck (argc > 2 ? juce::String (argv[2]) : juce::String());
