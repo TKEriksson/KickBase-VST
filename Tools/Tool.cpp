@@ -2751,6 +2751,8 @@ namespace
                 ask ("and then more");
                 check (chat.getEntries().size() > entries.size(), "session: man kan fortsätta ett öppnat samtal");
                 check (AiChat::listSessions().size() == 1, "session: listan visar den sparade chatten");
+                check (! AiChat::deleteSession (juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("finns_inte.json")),
+                       "session: deleteSession rör inget utanför Chats-mappen");
 
                 // Autorensning: Sparsam rensar över 40 000 tecken, sparar och exporterar först och tar bort de äldsta frågorna.
                 chat.newChat();
