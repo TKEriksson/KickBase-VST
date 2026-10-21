@@ -2910,6 +2910,7 @@ int persistTest();          // Tools/StateTests.cpp
 int fullStateTest();        // Tools/StateTests.cpp
 int renderToolTest();       // Tools/StateTests.cpp
 int anTest();               // Tools/AnTests.cpp
+int rowKeyTest();           // Tools/RowTests.cpp
 int helpCheck();            // Tools/StateTests.cpp
 int libraryCheck (const juce::String& folder); // Tools/LibraryTests.cpp
 int libraryTest();          // Tools/LibraryTests.cpp
@@ -2985,6 +2986,8 @@ int toolMain (int argc, char* argv[])
         return renderToolTest();
     if (argc == 2 && juce::String (argv[1]) == "antest")
         return anTest();
+    if (argc == 2 && juce::String (argv[1]) == "rowkeytest")
+        return rowKeyTest();
     // librarycheck [mapp]: validerar biblioteksmanifesten (läser bara). librarytest: reglerna, i en tillfällig mapp.
     if (argc >= 2 && juce::String (argv[1]) == "librarycheck")
         return libraryCheck (argc > 2 ? juce::String (argv[2]) : juce::String());
