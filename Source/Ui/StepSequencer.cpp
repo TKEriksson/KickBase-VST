@@ -79,7 +79,7 @@ StepSequencer::StepSequencer (PluginBase& p, juce::StringArray names, std::vecto
         };
         switches->solo.onClick = [this, layerOfRow]
         {
-            processor.soloMask ^= layerOfRow == Pattern::kickLayer ? PluginBase::kickSoloBit : 1 << layerOfRow;
+            processor.soloMask ^= layerOfRow == Pattern::kickLayer ? PluginBase::kickSoloBit : 1ull << layerOfRow;
             refreshSwitches();
             repaint();
         };
@@ -301,7 +301,7 @@ bool StepSequencer::rowSilent (int layer) const
 {
     const auto solo = processor.soloMask.load();
     const auto isOn = processor.apvts.getRawParameterValue (layer == Pattern::kickLayer ? juce::String (ParamID::kickOn) : ParamID::bass (layer, InstrumentField::on))->load() >= 0.5f;
-    const auto soloed = (solo & (layer == Pattern::kickLayer ? PluginBase::kickSoloBit : 1 << layer)) != 0;
+    const auto soloed = (solo & (layer == Pattern::kickLayer ? PluginBase::kickSoloBit : 1ull << layer)) != 0;
     return ! isOn || (solo != 0 && ! soloed);
 }
 
@@ -314,7 +314,7 @@ void StepSequencer::refreshSwitches()
         if (layerOfRow != Pattern::kickLayer && layerOfRow >= processor.activeInstruments())
             continue;
         const auto muted = processor.apvts.getRawParameterValue (row == 0 ? juce::String (ParamID::kickOn) : ParamID::bass (layerOfRow, InstrumentField::on))->load() < 0.5f;
-        const auto soloed = (processor.soloMask.load() & (layerOfRow == Pattern::kickLayer ? PluginBase::kickSoloBit : 1 << layerOfRow)) != 0;
+        const auto soloed = (processor.soloMask.load() & (layerOfRow == Pattern::kickLayer ? PluginBase::kickSoloBit : 1ull << layerOfRow)) != 0;
         rowSwitches[row]->mute.setToggleState (muted, juce::dontSendNotification);
         rowSwitches[row]->solo.setToggleState (soloed, juce::dontSendNotification);
         bits |= (muted ? 1 : 0) << (row * 2);

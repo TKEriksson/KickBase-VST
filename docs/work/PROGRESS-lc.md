@@ -205,3 +205,11 @@ Kör: antest, inittest, rendersig, tooltest. Rendersig ska vara oförändrad (ba
 ## Arbetare 1: R9b steg 4 (spara/ladda `row`)
 - Vad: `Pattern::toValueTree` skriver även aktiva underrader (id 11+) som `Notes` med `layer`, `row` (nyckel, t.ex. "i3.sample") och `loop`; grundrader får inget `row`, så filer utan underrader är byte för byte som förut. `fromValueTree`: `row` löses med `rows.idOfKeyCreate` (okänd nyckel eller full pool hoppas över), annars gammalt index 0-10. Full laddning (`clearUnmentionedLayers`) tömmer och återställer underraderna först. `rowFromValueTree` tar underrad-id och tar bort `row` så att vald rad styr. Ingen versionshöjning (version 2 delas med E0); äldre plugin läser nya filer och ignorerar underraderna (lager över 10 hoppades redan över).
 - Av: Arbetare 1, content-g. Ej byggt av mig. Kör: bygget, `rendersig` (oförändrad), `rowkeytest`, `persisttest`, `fulltest`.
+
+## Arbetare 1: R9b steg 5 (ToolLayer/MCP/Live Code 64-bit)
+- `soloMask`, `liveCodeLocks`, `liveCodeOwned` är `std::atomic<juce::uint64>`; bit = radid (0-9 instrument, 10 kick, 11-63 underrader) = samma som förut, så inget ändras när poolen är tom. `kickSoloBit = 1ull << 10`, `ToolLayer::liveCodeBit` = `1ull << layer`.
+- Sparfilen oförändrad: `locks` skrivs/läses som de 11 första bitarna (0x7ff).
+- `ToolLayer::rowOfArg` (ToolLayer.cpp): argumentet `layer` i `set_pattern` / `live_code_lock` tar 0-9, "kick" eller nyckel ("i3.sample", 0-baserad). `set_pattern` skapar en underrad som saknas; `live_code_lock` kräver att raden finns. Svaret ger nyckeln för underrader.
+- Underradens rutnät kommer från sitt instruments gridparameter och skrivs inte tillbaka. `Presets::writePatternLine` tar aktiva underrader. `live_code_stop` går över alla radid.
+- Live Code (Strudel) emitterar fortfarande bara grundrader; underradsnycklar i Strudel hör till F2.
+- Ej byggt av mig. Testa: bygge, rendersig (oförändrad), rowkeytest, persisttest, fulltest, Tool.cpp-/StateTests-fallen för Live Code (lås, CODE ONLY, live_code_stop).

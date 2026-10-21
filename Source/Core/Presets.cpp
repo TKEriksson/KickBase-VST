@@ -142,7 +142,7 @@ namespace Presets
     // Skriver en bas-rad (se Presets::Extras::PatternLine) till mönstret.
     void writePatternLine (Pattern& pattern, const Extras::PatternLine& line)
     {
-        if (line.bars.empty() || ! juce::isPositiveAndBelow (line.layer, Pattern::numNoteLayers))
+        if (line.bars.empty() || ! juce::isPositiveAndBelow (line.layer, Pattern::numRowSlots) || (line.layer >= Pattern::numNoteLayers && ! pattern.rows.isActive (line.layer)))
             return;
 
         pattern.clearNotes (line.layer);

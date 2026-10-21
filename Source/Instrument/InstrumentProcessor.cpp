@@ -354,9 +354,9 @@ void InstrumentProcessor::readBlockParams()
     readDuckLength();
 }
 
-void InstrumentProcessor::readLayerFields (int layer, int solo)
+void InstrumentProcessor::readLayerFields (int layer, juce::uint64 solo)
 {
-    layerOn[(size_t) layer] = params.bass (layer, InstrumentField::on) >= 0.5f && (solo == 0 || (solo & (1 << layer)) != 0);
+    layerOn[(size_t) layer] = params.bass (layer, InstrumentField::on) >= 0.5f && (solo == 0 || (solo & (1ull << layer)) != 0);
     duckAmounts[(size_t) layer] = params.bass (layer, InstrumentField::duck); // med LFO-modulering
     gateScales[(size_t) layer] = params.bass (layer, InstrumentField::gate);
     delayMs[(size_t) layer] = params.bass (layer, InstrumentField::delay);

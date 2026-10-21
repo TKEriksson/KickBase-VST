@@ -46,9 +46,9 @@ public:
 
     // SOLO i mönstret: bit n = instrument n+1 (bit 10 = kicken). Är något soloat spelar bara de soloade. Inget som sparas med projektet:
     // solo är ett lyssningshjälpmedel, och ett projekt ska inte öppnas med ett instrument tyst.
-    std::atomic<int> soloMask { 0 };
+    std::atomic<juce::uint64> soloMask { 0 }; // R9b: en bit per radid (0-9 instrument, 10 kicken, 11-63 underrader)
     std::atomic<int> nonFiniteRecoveries { 0 }; // hur många gånger ljudtråden tömt sitt tillstånd efter NaN/inf (se allFinite)
-    static constexpr int kickSoloBit = 1 << 10; // en enda analys per instans: samma som visas i ANALYZER-fliken och som en AI hämtar med get_mix_report
+    static constexpr juce::uint64 kickSoloBit = 1ull << 10; // en enda analys per instans: samma som visas i ANALYZER-fliken och som en AI hämtar med get_mix_report
 
     // Mastersektionen ägs av underklassen (den behöver bara finnas där ljudet bearbetas).
     virtual const MasterSection& getMasterSection() const = 0;
@@ -351,9 +351,9 @@ public:
     std::atomic<bool> followPlayhead { true }; // pianorullen och stegvyn bläddrar med uppspelningen
     std::atomic<int> lfoActiveVersion { 0 }; // ökas när en LFO läggs till eller tas bort (fas M), så att gränssnittet ritar om
     std::atomic<int> patternVersion { 0 }; // ökas när mönstret ändras, så att gränssnittet ritar om
-    std::atomic<int> liveCodeLocks { 0 };  // Live Code: en bit per rad (0-9 = instrument, 10 = kicken) som koden inte får skriva över
+    std::atomic<juce::uint64> liveCodeLocks { 0 };  // Live Code: en bit per radid (0-9 = instrument, 10 = kicken, 11-63 underrader) som koden inte får skriva över; sparas som de 11 första bitarna
     std::atomic<int> liveCodeLoads { 0 };  // ökar när ett projekt eller en Full-preset laddats; LIVE CODE-sidan stoppar då LIVE
-    std::atomic<int> liveCodeOwned { 0 };  // rader som Live Code skrev senast; andra rader med toner räknas som handritade
+    std::atomic<juce::uint64> liveCodeOwned { 0 };  // rader som Live Code skrev senast; andra rader med toner räknas som handritade
     // Live Code, steg D: kodtexten och låsen sparas i projektet och i Full-presets (element <LiveCode>, sist, bara när något är satt).
     // LIVE, CODE ONLY och liveCodeOwned sparas aldrig: inget startar av sig självt vid laddning, och rader med toner är handritade tills koden körs.
     juce::String getLiveCodeText() const { const juce::ScopedLock lock (liveCodeTextLock); return liveCodeText; }

@@ -562,18 +562,18 @@ juce::ValueTree PluginBase::liveCodeToValueTree() const
 {
     const auto text = getLiveCodeText();
     const auto locks = liveCodeLocks.load();
-    if (text.isEmpty() && locks == 0)
+    if (text.isEmpty() && (locks & 0x7ff) == 0)
         return {};
     juce::ValueTree tree ("LiveCode");
     tree.setProperty ("code", text, nullptr);
-    tree.setProperty ("locks", locks, nullptr);
+    tree.setProperty ("locks", (int) (locks & 0x7ff), nullptr); // filformatet är oförändrat: bit 0-10 (underraders lås sparas inte)
     return tree;
 }
 
 void PluginBase::liveCodeFromValueTree (const juce::ValueTree& tree)
 {
     setLiveCodeText (tree.getProperty ("code").toString());
-    liveCodeLocks = (int) tree.getProperty ("locks", 0) & 0x7ff; // bit 0-9 instrument, 10 kicken
+    liveCodeLocks = (juce::uint64) ((int) tree.getProperty ("locks", 0) & 0x7ff); // bit 0-9 instrument, 10 kicken
     liveCodeOwned = 0;
 }
 

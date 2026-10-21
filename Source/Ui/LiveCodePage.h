@@ -60,7 +60,7 @@ private:
     };
     int seenLoads = 0;
     LoadWatch loadWatch { [this] { checkLoaded(); layoutSliders(); processor.sweepCodeRoutes(); } };
-    int savedSolo = 0, ownSolo = 0; // soloMask före CODE ONLY, och det värde CODE ONLY själv satte
+    juce::uint64 savedSolo = 0, ownSolo = 0; // soloMask före CODE ONLY, och det värde CODE ONLY själv satte
 
     void showTab (bool errors);
 

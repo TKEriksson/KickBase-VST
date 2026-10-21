@@ -38,7 +38,7 @@ private:
     bool paramsReadWhileSoloing = false; // parametrarna lästes i förra biten medan en källa provlyssnades
     bool blockParamsPending = true;      // ett nytt DAW-block har börjat: läs alla parametrar vid nästa 32-rutnätspunkt
     juce::uint32 eventSequence = 0;      // löpnummer för schemalagda händelser (StepEvent::sequence)
-    void readLayerFields (int layer, int solo);
+    void readLayerFields (int layer, juce::uint64 solo);
     void readDuckLength();
     void readModulatedParams(); // bara det som moduleras (bitar efter blockets första)
     static constexpr int ownerNone = -1, ownerKick = 100;

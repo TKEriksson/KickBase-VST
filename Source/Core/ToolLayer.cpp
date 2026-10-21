@@ -204,7 +204,7 @@ std::vector<ToolLayer::ToolInfo> ToolLayer::tools()
           R"({"type":"object","properties":{"channel":{"type":"string"},"slot":{"type":"integer"},"type":{"type":"string"},"knobs":{"type":"object","additionalProperties":true}},"required":["channel","slot","type"]})" },
         { "set_kick_envelopes", "Sets the kick's free envelopes as arrays of [time_seconds, value, tension] nodes. pitch: semitones above the tail pitch (0..72, max 0.5 s). amp: volume 0..1 (max 2 s; the kick ends at the last node, which should be 0). Tension -1..1: negative falls/rises fast first, positive holds then moves late. Omit one to leave it unchanged.",
           R"({"type":"object","properties":{"pitch":{"type":"array","items":{"type":"array","items":{"type":"number"}}},"amp":{"type":"array","items":{"type":"array","items":{"type":"number"}}}}})" },
-        { "set_pattern", "Writes notes. layer 0-9 = instrument 1-10 (only the first instrumentCount play, see set_instruments), or 'kick'. For an instrument give 'bars' (one text per bar; the row becomes as many bars as you give, so give every distinct bar you need, and use repeat_to to repeat them further) in the pattern language, with a 'grid' such as '1/16', '1/8 T', '1/32'. Step words separated by spaces: '.' rest, g/m/x/X = velocity ghost/soft/normal/accent, then optional pitch (+7, -5), '~' glide note, ':50' length in percent of the step. A GLIDE note (flag '~' / slide:true) works like an FL Studio slide note: it does not play a new note, it glides the note that is sounding to its pitch during its own length and the pitch stays there until that note ends. Example 1/16 rolling bass: [\". m x x . m x x . m x x . m x x\"]. Or give 'notes': [{\"tick\":0,\"length\":24,\"pitch\":0,\"velocity\":0.8,\"slide\":false}] (96 ticks per quarter note, 384 per bar). CHORDS: add \"chord\":[3,7] to a note (up to 3 extra notes, semitones from the note, -24 to +24); the instrument plays them only when its Voices parameter is 2 or more (at most Voices - 1 extra notes), and get_state shows them as a sixth element of the note array. For 'kick' give 'bars' of 16 characters 'x' or '.', e.g. [\"x...x...x...x...\"]. ROW LENGTH: a row is as long as its notes (length 'auto', the default: the last bar that has a note, at least 1 bar; get_state shows bars, length_mode, content_bars). length:\"auto\" or length:N (1-1024) locks the row to N bars (for example 3 bars of notes and a bar of silence); shortening below the notes needs trim:true, otherwise you get an error saying how many notes would go. repeat_to:N repeats the row's content until it is N bars. In a locked row, writing a note beyond the end returns the error 'row is locked to N bars'. The pattern is as long as the longest row. The old patternBars and rowBars parameters are not used any more.",
+        { "set_pattern", "Writes notes. layer 0-9 = instrument 1-10 (only the first instrumentCount play, see set_instruments), or 'kick', or a sub-row key 'i3.sample' / 'i3.slicer' (0-based: i0 = instrument 1; the row is created if missing). For an instrument give 'bars' (one text per bar; the row becomes as many bars as you give, so give every distinct bar you need, and use repeat_to to repeat them further) in the pattern language, with a 'grid' such as '1/16', '1/8 T', '1/32'. Step words separated by spaces: '.' rest, g/m/x/X = velocity ghost/soft/normal/accent, then optional pitch (+7, -5), '~' glide note, ':50' length in percent of the step. A GLIDE note (flag '~' / slide:true) works like an FL Studio slide note: it does not play a new note, it glides the note that is sounding to its pitch during its own length and the pitch stays there until that note ends. Example 1/16 rolling bass: [\". m x x . m x x . m x x . m x x\"]. Or give 'notes': [{\"tick\":0,\"length\":24,\"pitch\":0,\"velocity\":0.8,\"slide\":false}] (96 ticks per quarter note, 384 per bar). CHORDS: add \"chord\":[3,7] to a note (up to 3 extra notes, semitones from the note, -24 to +24); the instrument plays them only when its Voices parameter is 2 or more (at most Voices - 1 extra notes), and get_state shows them as a sixth element of the note array. For 'kick' give 'bars' of 16 characters 'x' or '.', e.g. [\"x...x...x...x...\"]. ROW LENGTH: a row is as long as its notes (length 'auto', the default: the last bar that has a note, at least 1 bar; get_state shows bars, length_mode, content_bars). length:\"auto\" or length:N (1-1024) locks the row to N bars (for example 3 bars of notes and a bar of silence); shortening below the notes needs trim:true, otherwise you get an error saying how many notes would go. repeat_to:N repeats the row's content until it is N bars. In a locked row, writing a note beyond the end returns the error 'row is locked to N bars'. The pattern is as long as the longest row. The old patternBars and rowBars parameters are not used any more.",
           R"({"type":"object","properties":{"layer":{},"bars":{"type":"array","items":{"type":"string"}},"grid":{"type":"string"},"gate":{"type":"number"},"notes":{"type":"array","items":{"type":"object"}},"clear":{"type":"boolean"},"length":{},"trim":{"type":"boolean"},"repeat_to":{"type":"integer"}},"required":["layer"]})" },
         { "live_code_create", "Runs Strudel code (Strudel mini-notation and patterns, https://strudel.cc) and writes the result into the piano roll rows: 1 Strudel cycle = 1 bar. s('bd') or s('kick') = the kick row (16 steps per bar); s('i1')..s('i10') = instrument 1-10; note(...) or n(...) without s = instrument 1. Pitch: note names (c2 = pitch 0, the lowest bass note) or numbers (semitones from C2). gain = velocity (default 0.8). Several notes on the same tick (e.g. note('c2,e2,g2')) become stacked notes (max 4 per tick, same pitch skipped). Example: note('c2 [e2 g2]*2').s('i1'). Rows not mentioned are left as they are. Runs in a sandbox with a 500 ms limit. Several patterns: write each as a labelled block, e.g. \"$: note(...).s('i1')\" and \"$: s('bd*4')\" on separate lines; 'const x = ...' lines before them are allowed. PROTECTION: a row that has notes Live Code did not write itself (drawn by hand, imported, or from another tool) is not overwritten silently: the call fails, changes nothing and names the rows. Give overwrite:true to replace them, or protect rows with live_code_lock (locked rows are skipped and listed in skipped_locked). PARAMETERS: instr1.Cutoff.set(1300) writes bass1Cutoff once; put it on its own line before the pattern (names are case-sensitive; .get() before .set only; locked rows skipped, problems in data.problems). .gain() is note velocity, not mixer gain. SLIDERS: slider(value,min,max) with plain numbers, e.g. note(slider(3,0,12)), returns value here; in the LIVE CODE tab it also shows a slider after the line, so a human can drag it while LIVE plays. MODULATION: .lfo(paramId,hz,depth,shape?) adds a free-running LFO to a modulated parameter, e.g. note('c2').lfo('bass1Cutoff',2,0.5,'tri').s('i1'); shape is sine (default), tri, saw, isaw, square or rand. .env(paramId,attackMs,decayMs,depth?) adds an attack/decay envelope triggered by new notes on that instrument, e.g. note('c2').env('bass1Cutoff',10,200,0.5).s('i1'); it is AD, not ADSR, and is not supported on the kick. Parameter ids must be modulatable sound controls from list_parameters. Unsupported modulation is skipped and returned in data.problems; note rows can still be written. CODE 1-8 are internal sources and are not saved in projects or presets.",
           R"({"type":"object","properties":{"code":{"type":"string"},"cycles":{"type":"integer","minimum":1,"maximum":64,"description":"how many bars to write, default 4"},"overwrite":{"type":"boolean","description":"replace rows with notes Live Code did not write"}},"required":["code"]})" },
@@ -393,6 +393,20 @@ std::map<juce::String, double> ToolLayer::liveCodeParameters() const
         if (auto* parameter = dynamic_cast<juce::RangedAudioParameter*> (p); parameter != nullptr && ! isEffectSlotParameter (parameter->getParameterID()))
             out[parameter->getParameterID()] = (double) parameter->convertFrom0to1 (parameter->getValue());
     return out;
+}
+
+int ToolLayer::rowOfArg (const juce::var& arg, bool create) const
+{
+    auto& rows = processor.pattern.rows;
+    auto text = arg.toString().trim();
+    if (arg.isInt() || arg.isInt64() || arg.isDouble() || (text.isNotEmpty() && text.containsOnly ("0123456789")))
+        return juce::isPositiveAndBelow ((int) arg, Pattern::numNoteLayers) ? (int) arg : -2;
+    int instrument = 0;
+    RowRegistry::Kind kind;
+    if (! RowRegistry::parseKey (text, instrument, kind))
+        return -2;
+    const auto id = create ? rows.idOfKeyCreate (text) : rows.idOfKey (text);
+    return id >= 0 ? id : -1;
 }
 
 int ToolLayer::liveCodeLayerOf (const juce::String& id)
@@ -814,12 +828,13 @@ var ToolLayer::setPattern (const var& args)
     auto& pattern = processor.pattern;
     const auto layerArg = args["layer"];
 
-    const auto isKick = layerArg.toString().equalsIgnoreCase ("kick");
-    const auto layer = isKick ? Pattern::kickLayer : (int) layerArg;
-    if (! juce::isPositiveAndBelow (layer, Pattern::numNoteLayers))
-        return fail ("layer must be 0-9 or 'kick'.");
+    const auto layer = rowOfArg (layerArg, true);
+    if (layer < 0)
+        return fail ("layer must be 0-9, 'kick' or a sub-row key such as 'i3.sample' or 'i3.slicer' (0-based; fails too if all " + juce::String (RowRegistry::maxRows) + " rows are in use).");
+    const auto isKick = layer == Pattern::kickLayer;
+    const auto isSub = layer >= Pattern::numNoteLayers; // underrad: rutnätet hämtas från sitt instrument och skrivs inte tillbaka
 
-    const auto gridParameterID = isKick ? juce::String (ParamID::rowGridKick) : ParamID::bass (layer, InstrumentField::grid);
+    const auto gridParameterID = isKick ? juce::String (ParamID::rowGridKick) : ParamID::bass (isSub ? pattern.rows.instrumentOf (layer) : layer, InstrumentField::grid);
     auto grid = (int) processor.apvts.getRawParameterValue (gridParameterID)->load();
     if (args.hasProperty ("grid"))
     {
@@ -957,14 +972,14 @@ var ToolLayer::setPattern (const var& args)
         pattern.setManualBars (layer, wantedLength);
     }
 
-    if (auto* gridParameter = findParameter (processor, gridParameterID))
+    if (auto* gridParameter = isSub ? nullptr : findParameter (processor, gridParameterID))
         Presets::setParameter (*gridParameter, gridParameter->convertTo0to1 ((float) grid));
     processor.patternChanged();
 
     auto count = 0;
     pattern.forEachNote (layer, [&count] (int, const Pattern::Note&) { ++count; });
     auto data = object();
-    put (data, "layer", isKick ? juce::var ("kick") : juce::var (layer));
+    put (data, "layer", isKick ? juce::var ("kick") : isSub ? juce::var (pattern.rows.keyOf (layer)) : juce::var (layer));
     put (data, "notes", count);
     put (data, "grid", Pattern::gridNames()[grid]);
     put (data, "bars", pattern.lengthBars (layer));
@@ -1111,8 +1126,8 @@ juce::StringArray ToolLayer::applyCodeMods (const var& mods)
 // Live Code inte skrev själv skrivs bara över med overwrite:true; annars ändras ingenting och felet listar raderna.
 var ToolLayer::applyLiveCode (const var& items, bool overwrite, const var& mods)
 {
-    auto layerOf = [] (const var& item) { return item["layer"].toString().equalsIgnoreCase ("kick") ? (int) Pattern::kickLayer : (int) item["layer"]; };
-    auto layerName = [] (int layer) { return layer == Pattern::kickLayer ? juce::String ("kick") : "instrument " + juce::String (layer + 1); };
+    auto layerOf = [this] (const var& item) { return rowOfArg (item["layer"], false); }; // -1: en underrad som inte finns än (setPattern skapar den), -2: ogiltig
+    auto layerName = [this] (int layer) { return layer == Pattern::kickLayer ? juce::String ("kick") : layer >= Pattern::numNoteLayers ? processor.pattern.rows.keyOf (layer) : "instrument " + juce::String (layer + 1); };
     const auto locks = processor.liveCodeLocks.load();
     const auto owned = processor.liveCodeOwned.load();
 
@@ -1122,7 +1137,7 @@ var ToolLayer::applyLiveCode (const var& items, bool overwrite, const var& mods)
         for (auto& item : *a)
         {
             const auto layer = layerOf (item);
-            if (! juce::isPositiveAndBelow (layer, Pattern::numLayers + 1)) continue; // setPattern ger felet
+            if (layer < 0) continue; // ogiltig rad (setPattern ger felet) eller en ny underrad: ingen lås, inga toner
             if ((locks & liveCodeBit (layer)) != 0) { skipped.append (item["layer"]); continue; }
             auto count = 0;
             processor.pattern.forEachNote (layer, [&count] (int, const Pattern::Note&) { ++count; });
@@ -1145,11 +1160,10 @@ var ToolLayer::applyLiveCode (const var& items, bool overwrite, const var& mods)
     if (auto* a = items.getArray())
         for (auto& item : *a)
         {
-            const auto layer = layerOf (item);
-            if (! juce::isPositiveAndBelow (layer, Pattern::numLayers + 1) || (locks & liveCodeBit (layer)) != 0) continue;
+            if (const auto before = layerOf (item); before == -2 || (before >= 0 && (locks & liveCodeBit (before)) != 0)) continue;
             auto r = setPattern (item);
             if (! (bool) r["ok"]) { processor.liveCodeOwned = newOwned; return r; }
-            newOwned |= liveCodeBit (layer);
+            newOwned |= liveCodeBit (layerOf (item)); // setPattern har skapat raden vid behov
             written.append (item["layer"]);
         }
     processor.liveCodeOwned = newOwned;
@@ -1174,13 +1188,15 @@ var ToolLayer::liveCodeStop()
     const auto locks = processor.liveCodeLocks.load();
     auto owned = processor.liveCodeOwned.load();
     var cleared (juce::Array<var>{});
-    for (int layer = 0; layer <= Pattern::numLayers; ++layer)
+    for (int layer = 0; layer < Pattern::numRowSlots; ++layer)
     {
         const auto bit = liveCodeBit (layer);
         if ((owned & bit) == 0 || (locks & bit) != 0) continue;
         processor.pattern.clearNotes (layer);
         owned &= ~bit;
-        if (layer == Pattern::numLayers) cleared.append ("kick"); else cleared.append (layer);
+        if (layer == Pattern::kickLayer) cleared.append ("kick");
+        else if (layer >= Pattern::numNoteLayers) cleared.append (processor.pattern.rows.keyOf (layer));
+        else cleared.append (layer);
     }
     processor.liveCodeOwned = owned;
     auto data = object();
@@ -1191,9 +1207,9 @@ var ToolLayer::liveCodeStop()
 var ToolLayer::liveCodeLock (const var& args)
 {
     const auto layerArg = args["layer"];
-    const auto layer = layerArg.toString().equalsIgnoreCase ("kick") ? (int) Pattern::kickLayer : (int) layerArg;
-    if (! juce::isPositiveAndBelow (layer, Pattern::numLayers + 1) || (layer != Pattern::kickLayer && ! layerArg.isInt() && ! layerArg.isInt64() && ! layerArg.isDouble()))
-        return fail ("layer must be 0-9 or 'kick'.");
+    const auto layer = rowOfArg (layerArg, false);
+    if (layer < 0)
+        return fail ("layer must be 0-9, 'kick' or the key of an existing sub-row such as 'i3.sample'.");
     const auto locked = args.hasProperty ("locked") ? (bool) args["locked"] : true;
     if (locked) processor.liveCodeLocks |= liveCodeBit (layer);
     else        processor.liveCodeLocks &= ~liveCodeBit (layer);
