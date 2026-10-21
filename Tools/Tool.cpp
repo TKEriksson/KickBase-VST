@@ -759,6 +759,55 @@ namespace
         return report.valid ? 0 : 1;
     }
 
+    // Init-check: mixanalysen (inkl. fas/stereo-måtten) på både koden-Init och det riktiga inbakade Init ska ge ett giltigt svar utan krasch,
+    // text och JSON ska gå att skriva, och fas-måtten ska tåla tom insignal. Rendersig (rendersig/rendersigreal) står för "0 diff".
+    int initTest()
+    {
+        juce::ScopedJuceInitialiser_GUI gui;
+        auto failed = false;
+        auto check = [&] (bool ok, const juce::String& what)
+        {
+            std::printf ("%s: %s\n", ok ? "ok" : "FEL", what.toRawUTF8());
+            failed = failed || ! ok;
+        };
+
+        // Tom insignal: ingen krasch, ingen giltig mätning, inga fynd.
+        {
+            MixAnalysis::PhaseInput empty;
+            const auto metrics = MixAnalysis::measurePhase (empty);
+            const auto description = MixAnalysis::describePhase (metrics);
+            check (! metrics.valid, "fasmåtten på tom insignal är inte giltiga");
+            check (description.findings.isEmpty() && description.fixes.isEmpty(), "tom insignal ger inga fynd eller förslag");
+        }
+
+        const auto codeInit = PluginBase::preferCodeInit;
+        for (const auto useCodeInit : { true, false })
+        {
+            PluginBase::preferCodeInit = useCodeInit;
+            const juce::String label = useCodeInit ? "Init (kod)" : "Init (inbakad)";
+            const auto owner = std::make_unique<InstrumentProcessor>();
+            auto& processor = *owner;
+            processor.setPlayConfigDetails (0, 2, renderRate, blockSize);
+            processor.prepareToPlay (renderRate, blockSize);
+            processor.transportStatus.bpm = 145.0;
+            processor.transportStatus.keyNote = 52;
+
+            auto copy = MixAnalysis::prepareCopy (processor);
+            const auto report = MixAnalysis::run (*copy, 145.0, 52, {}, nullptr, {}, {});
+            check (report.valid, label + ": analysen ger en giltig rapport");
+            check (report.toText().isNotEmpty(), label + ": rapporttexten går att skriva");
+            check (juce::JSON::toString (report.toVar()).isNotEmpty(), label + ": rapporten går att skriva som JSON");
+            auto finite = true;
+            for (const auto& finding : report.findings)
+                finite = finite && std::isfinite (finding.lowHz) && std::isfinite (finding.highHz) && std::isfinite (finding.share);
+            check (finite, label + ": alla fynd har ändliga värden");
+        }
+        PluginBase::preferCodeInit = codeInit;
+
+        std::puts (failed ? "FEL: inittest" : "Inittestet gick igenom");
+        return failed ? 1 : 0;
+    }
+
     // EQ per källa: högpass på kicken, ett instrument och mastern tar bort bas, och ett lyft ökar nivån. Mixanalysen ska också ge ett giltigt svar.
     int eqTest()
     {
@@ -2916,6 +2965,8 @@ int toolMain (int argc, char* argv[])
         return listenTest();
     if (argc == 2 && juce::String (argv[1]) == "eqtest")
         return eqTest();
+    if (argc == 2 && juce::String (argv[1]) == "inittest")
+        return initTest();
     if (argc >= 2 && juce::String (argv[1]) == "analysetest")
         return analyseTest (argc > 2 ? juce::String (argv[2]).getIntValue() : 1);
     if (argc == 2 && juce::String (argv[1]) == "rolltest")
