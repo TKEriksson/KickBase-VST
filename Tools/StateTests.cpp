@@ -747,3 +747,69 @@ int fullStateTest()
     std::puts (failed ? "FEL: allt-på-testet misslyckades" : "Allt-på-testet gick igenom (kända luckor är avstängda, se raderna med LUCKA)");
     return failed ? 1 : 0;
 }
+
+// `tool rendertooltest`: render_preview via verktygslagret är deterministiskt. Samma tillstånd ger samma mått och en bytelik WAV, i samma instans,
+// efter en ändring + undo och i en ny instans; och rendering ändrar inte tillståndet. Det som skillens loop (render, analysera, justera) bygger på.
+int renderToolTest()
+{
+    juce::ScopedJuceInitialiser_GUI gui;
+    Scenarios::TemporaryUserFolders folders;
+    auto failed = false;
+    auto check = [&failed] (bool ok, const juce::String& what) { std::printf ("%s: %s\n", ok ? "ok" : "FEL", what.toRawUTF8()); failed |= ! ok; };
+
+    struct Rendered { bool ok = false; juce::String metrics; juce::File wav; };
+    auto render = [] (ToolLayer& tools, const juce::String& name, const juce::String& part)
+    {
+        const auto args = juce::JSON::parse ("{\"bars\":2,\"spectrogram\":false,\"name\":\"" + name + "\",\"part\":\"" + part + "\"}");
+        const auto result = tools.call ("render_preview", args);
+        Rendered r;
+        r.ok = (bool) result["ok"];
+        const auto data = result["data"];
+        r.metrics = juce::JSON::toString (data["metrics"], true) + juce::JSON::toString (data["checks"], true);
+        r.wav = juce::File (data["wav_file"].toString());
+        return r;
+    };
+    auto same = [] (const Rendered& a, const Rendered& b)
+    {
+        return a.ok && b.ok && a.metrics == b.metrics && a.wav.existsAsFile() && b.wav.existsAsFile() && a.wav.getSize() > 1000 && a.wav.hasIdenticalContentTo (b.wav);
+    };
+    auto stateText = [] (ToolLayer& tools)
+    {
+        return juce::JSON::toString (tools.call ("get_state", juce::JSON::parse ("{\"all_parameters\":true}")), true);
+    };
+
+    auto processor = std::make_unique<InstrumentProcessor>();
+    ToolLayer tools (*processor);
+
+    const auto before = stateText (tools);
+    for (const char* part : { "", "kick", "bass" })
+    {
+        const juce::String label = juce::String (part).isEmpty() ? juce::String ("full") : juce::String (part);
+        const auto a = render (tools, "det-a-" + label, part);
+        const auto b = render (tools, "det-b-" + label, part);
+        check (a.ok && a.wav.getSize() > 1000, "render_preview " + label + ": ger en WAV");
+        check (same (a, b), "render_preview " + label + ": två anrop i rad ger samma mått och samma WAV");
+    }
+    check (stateText (tools) == before, "rendering ändrar inte tillståndet (get_state före och efter)");
+
+    // En ny instans med samma (Init-)tillstånd.
+    {
+        auto other = std::make_unique<InstrumentProcessor>();
+        ToolLayer otherTools (*other);
+        check (same (render (tools, "det-a-inst", ""), render (otherTools, "det-b-inst", "")), "ny instans med samma tillstånd ger samma rendering");
+    }
+
+    // Provet ser en ändring, och undo ger tillbaka exakt det första.
+    {
+        const auto base = render (tools, "det-base", "");
+        const auto set = tools.call ("set_parameters", juce::JSON::parse ("{\"values\":{\"bass1Cutoff\":250,\"kickDrive\":0.4}}"));
+        check ((bool) set["ok"], "set_parameters tas emot");
+        const auto changed = render (tools, "det-changed", "");
+        check (! same (base, changed), "en ändrad parameter syns i renderingen (testet kan se skillnad)");
+        check ((bool) tools.call ("undo", juce::JSON::parse ("{}"))["ok"], "undo lyckas");
+        check (same (base, render (tools, "det-undone", "")), "efter undo ger rendering samma mått och WAV som före ändringen");
+    }
+
+    std::puts (failed ? "FEL: renderingstestet misslyckades" : "Renderingstestet gick igenom");
+    return failed ? 1 : 0;
+}
