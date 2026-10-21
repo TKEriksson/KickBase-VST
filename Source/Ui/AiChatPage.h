@@ -35,6 +35,8 @@ private:
 
     void timerCallback() override;
     void refresh();
+    void layoutSuggestions(); // hjälptexten och förslagsknapparna ligger under hälsningen i en tom chatt
+    juce::Rectangle<int> hintBounds;
     void showChatsMenu();
     void send (const juce::String& text);
     void showSetup (bool show);

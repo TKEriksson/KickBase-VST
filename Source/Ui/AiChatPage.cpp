@@ -589,6 +589,7 @@ void AiChatPage::refresh()
         }
         else
             transcript->setEntries (entries);
+        layoutSuggestions();
         if (atBottom || busy)
             viewport.setViewPosition (0, std::max (0, transcript->getHeight() - viewport.getHeight()));
 
@@ -627,9 +628,24 @@ void AiChatPage::paint (juce::Graphics& g)
     {
         g.setColour (Theme::textDim);
         g.setFont (Theme::font (13.0f));
-        g.drawText ("Tell the AI what sound you want, or try one of these:", viewport.getBounds().withHeight (60).withY (viewport.getY() + viewport.getHeight() / 2 - 60),
-                    juce::Justification::centred);
+        g.drawText ("Tell the AI what sound you want, or try one of these:", hintBounds, juce::Justification::centred);
     }
+}
+
+void AiChatPage::layoutSuggestions()
+{
+    // Under hälsningen (transcriptens höjd); får de inte plats ligger de längst ner i vyn.
+    const auto area = viewport.getBounds();
+    const auto chipWidth = std::min (330, (area.getWidth() - 40) / 3);
+    const auto top = std::min (area.getY() + transcript->getHeight() + 10, area.getBottom() - 30 - 26 - 6);
+    hintBounds = { area.getX(), top, area.getWidth(), 22 };
+    auto chips = juce::Rectangle<int> (chipWidth * 3 + 16, 30).withCentre ({ area.getCentreX(), top + 22 + 4 + 15 });
+    for (auto& suggestion : suggestions)
+    {
+        suggestion.setBounds (chips.removeFromLeft (chipWidth));
+        chips.removeFromLeft (8);
+    }
+    repaint();
 }
 
 void AiChatPage::resized()
@@ -676,13 +692,7 @@ void AiChatPage::resized()
     transcript->setSize (viewport.getMaximumVisibleWidth(), transcript->getHeight());
     transcript->layoutBlocks();
 
-    const auto chipWidth = std::min (330, (area.getWidth() - 40) / 3);
-    auto chips = juce::Rectangle<int> (chipWidth * 3 + 16, 30).withCentre ({ area.getCentreX(), area.getCentreY() + 10 });
-    for (auto& suggestion : suggestions)
-    {
-        suggestion.setBounds (chips.removeFromLeft (chipWidth));
-        chips.removeFromLeft (8);
-    }
+    layoutSuggestions();
 
     // Nyckelsidan, mitt i ytan.
     auto setup = getLocalBounds().withTrimmedTop (34).withSizeKeepingCentre (640, gemini() ? 400 : 270);
