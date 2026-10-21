@@ -966,6 +966,32 @@ namespace
             for (const auto& finding : quiet.findings)
                 stillThere = stillThere || finding.category == "collision";
             check (! stillThere, "en tydligt svagare källa ger ingen krock");
+
+            // Lektionsvarningar: RAND-fas på en bas (A ligger bara i basbandet) och mycket energi runt 200 Hz i mastern.
+            auto hasTitle = [] (const MixAnalysis::Report& rep, const char* part)
+            {
+                for (const auto& finding : rep.findings)
+                    if (finding.title.contains (part))
+                        return true;
+                return false;
+            };
+            capture.randomPhase[0] = 0.8f;
+            check (hasTitle (MixAnalysis::evaluate (capture, options, nullptr), "random phase"), "en bas med RAND-fas ger en varning");
+            capture.randomPhase[0] = 0.0f;
+            check (! hasTitle (MixAnalysis::evaluate (capture, options, nullptr), "random phase"), "en bas utan RAND-fas ger ingen varning");
+
+            const auto& edges = MixAnalysis::bandEdges();
+            auto setMasterMud = [&] (float db)
+            {
+                for (int f = 0; f < 24; ++f)
+                    for (int b = 0; b < MixAnalysis::numBands(); ++b)
+                        if (edges[(size_t) b] >= 160.0f && edges[(size_t) b + 1] <= 250.0f)
+                            capture.band (MixAnalysis::masterSource, f, b) = db;
+            };
+            setMasterMud (-8.0f);
+            check (hasTitle (MixAnalysis::evaluate (capture, options, nullptr), "around 200 Hz"), "lika mycket energi runt 200 Hz som i basen ger en varning");
+            setMasterMud (-60.0f);
+            check (! hasTitle (MixAnalysis::evaluate (capture, options, nullptr), "around 200 Hz"), "lite energi runt 200 Hz ger ingen varning");
         }
 
         // Fasmåtten på påhittade signaler: kick och bas i motfas, i fas, och en kick som inte klingar ut (klick).

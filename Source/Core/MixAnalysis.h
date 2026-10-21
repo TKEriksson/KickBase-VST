@@ -191,6 +191,7 @@ namespace MixAnalysis
         std::vector<double> kickOnsetSeconds;   // kickens slag
         float kickTailMeasuredHz = 0.0f;        // kickens svansfrekvens uppmätt i tidsdomänen efter varje slag (0 = ej mätbar)
         float kickTailDesignHz = 0.0f;          // kickens svans enligt inställningarna (tonart + TUNE)
+        std::array<float, numInstruments> randomPhase {}; // highest RAND phase (0..1) among the instrument's active oscillators (0 = off or instrument off)
         std::vector<float> barPower;            // [takt][källa][fftSize/2]: medeleffekt per steg över takten
         std::vector<int> barFrameCount;         // antal ramar per takt
         std::vector<float> framePeakDb, frameRmsDb; // [ram][källa]: toppnivå och RMS över ramens 171 ms (dB, 0 = full skala)

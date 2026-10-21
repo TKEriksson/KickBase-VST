@@ -666,6 +666,64 @@ namespace MixAnalysis
             }
         }
 
+        // --- Lärdomar från kick+bas-arbetet (plan-v2): RAND-fas på en bas, och för mycket runt 200 Hz.
+        {
+            auto lowShare = [&] (int src, float fromHz, float toHz)
+            {
+                auto part = 0.0, all = 0.0;
+                for (int f = 0; f < frames; ++f)
+                    for (int b = 0; b < nb; ++b)
+                    {
+                        const auto power = std::pow (10.0, level (src, f, b) / 10.0);
+                        all += power;
+                        if (edges[(size_t) b] >= fromHz && edges[(size_t) b + 1] <= toHz)
+                            part += power;
+                    }
+                return all > 0.0 ? (float) (part / all) : 0.0f;
+            };
+            for (int i = 0; i < numInstruments; ++i)
+            {
+                const auto src = firstInstrument + i;
+                if (! c.present[(size_t) src] || c.randomPhase[(size_t) i] < 0.1f || lowShare (src, 0.0f, 150.0f) < 0.5f)
+                    continue;
+                Finding f;
+                f.severity = Severity::warning;
+                f.category = "phase";
+                f.sources = { c.names[(size_t) src] };
+                f.lowHz = 30.0f;
+                f.highHz = 150.0f;
+                f.title = c.names[(size_t) src] + " is a bass with random phase (RAND " + juce::String (juce::roundToInt (c.randomPhase[(size_t) i] * 100.0f)) + "%)";
+                f.detail = "Each note starts at a random point in the wave, so the bass meets the kick differently every time and sometimes cancels it. Set RAND to 0 on a bass (OSC > RAND) and use a fixed PHASE instead.";
+                r.findings.push_back (std::move (f));
+            }
+            if (c.present[(size_t) masterSource])
+            {
+                auto bandPower = [&] (float fromHz, float toHz)
+                {
+                    auto sum = 0.0;
+                    for (int f = 0; f < frames; ++f)
+                        for (int b = 0; b < nb; ++b)
+                            if (edges[(size_t) b] >= fromHz && edges[(size_t) b + 1] <= toHz)
+                                sum += std::pow (10.0, level (masterSource, f, b) / 10.0);
+                    return sum;
+                };
+                const auto low = bandPower (40.0f, 150.0f), mud = bandPower (160.0f, 250.0f);
+                if (low > 0.0 && mud > 0.6 * low)
+                {
+                    Finding f;
+                    f.severity = Severity::warning;
+                    f.category = "mud";
+                    f.sources = { c.names[(size_t) masterSource] };
+                    f.lowHz = 160.0f;
+                    f.highHz = 250.0f;
+                    f.share = (float) std::min (1.0, mud / low);
+                    f.title = "A lot of energy around 200 Hz in kick and bass (" + juce::String (10.0 * std::log10 (mud / low), 1) + " dB against 40-150 Hz)";
+                    f.detail = "The range around 200 Hz makes the low end boxy and takes room from the kick's punch. Cut it a few dB with the EQ on the bass (ANALYZER > SPECTRUM > EQ, bell about 200 Hz) or high-pass the layers that do not need it.";
+                    r.findings.push_back (std::move (f));
+                }
+            }
+        }
+
         // --- Mot en referenslåt: balansen mellan band, med nivån anpassad över 120 Hz - 5 kHz.
         if (reference != nullptr && c.present[(size_t) masterSource])
         {
@@ -2514,6 +2572,16 @@ namespace MixAnalysis
             const auto tune = copy.apvts.getRawParameterValue (ParamID::kickTune)->load();
             const auto pitchClass = ((keyNote >= 0 ? keyNote : 60) % 12 + 12) % 12;
             capture.kickTailDesignHz = Params::midiToHz ((float) (follow ? Params::kickTailMidiNote (pitchClass) : 24) + tune);
+        }
+        for (int i = 0; i < numInstruments; ++i)
+        {
+            using F = InstrumentField;
+            auto value = [&] (F f) { return copy.apvts.getRawParameterValue (ParamID::bass (i, f))->load(); };
+            if (value (F::on) < 0.5f)
+                continue;
+            for (int osc = 0; osc < ParamID::oscsPerLayer; ++osc)
+                if (value (ParamID::oscField (osc, F::aOn)) >= 0.5f && value (ParamID::oscField (osc, F::aLevel)) > 0.05f)
+                    capture.randomPhase[(size_t) i] = std::max (capture.randomPhase[(size_t) i], value (ParamID::oscField (osc, F::aRandom)));
         }
         capture.limiterMaxReductionDb = limiterMin < 0.999f ? -20.0f * std::log10 (std::max (limiterMin, 1.0e-3f)) : 0.0f;
 
