@@ -484,8 +484,12 @@ juce::ValueTree Pattern::toValueTree() const
     tree.setProperty ("version", currentVersion, nullptr);
 
     // En rad per lager: start/längd/ton/slide/velocity för varje ton, åtskilda med semikolon.
-    for (int layer = 0; layer < numNoteLayers; ++layer)
+    // R9b: därefter de underrader som finns (id 11 och uppåt). De märks med `row` (nyckeln, t.ex. "i3.sample") och `loop`; grundraderna får inget
+    // `row` (filerna blir lika som förut när inga underrader finns) och en äldre version hoppar över lager över 10.
+    for (int layer = 0; layer < numRowSlots; ++layer)
     {
+        if (layer >= numNoteLayers && ! rows.isActive (layer))
+            continue;
         juce::StringArray entries;
         for (int tick = 0; tick < maxTicks; ++tick)
         {
@@ -519,6 +523,11 @@ juce::ValueTree Pattern::toValueTree() const
         child.setProperty ("layer", layer, nullptr);
         child.setProperty ("notes", entries.joinIntoString (";"), nullptr);
         child.setProperty ("custom", isCustom (layer), nullptr);
+        if (layer >= numNoteLayers)
+        {
+            child.setProperty ("row", rows.keyOf (layer), nullptr);
+            child.setProperty ("loop", loopsRow (layer), nullptr);
+        }
         child.setProperty ("length", manualBars (layer) > 0 ? juce::String (manualBars (layer)) : juce::String ("auto"), nullptr); // AUTO eller valt antal takter
         if (extraBars (layer) > 0)
             child.setProperty ("extra", extraBars (layer), nullptr);
@@ -563,11 +572,14 @@ juce::ValueTree Pattern::rowToValueTree (int layer) const
 
 void Pattern::rowFromValueTree (int layer, const juce::ValueTree& tree)
 {
-    if (! tree.hasType (treeType) || ! juce::isPositiveAndBelow (layer, numNoteLayers))
+    if (! tree.hasType (treeType) || ! juce::isPositiveAndBelow (layer, numRowSlots) || (layer >= numNoteLayers && ! rows.isActive (layer)))
         return;
     auto copy = tree.createCopy();
     for (auto child : copy)
+    {
         child.setProperty ("layer", layer, nullptr);
+        child.removeProperty ("row", nullptr); // raden är redan vald (layer); nyckeln i en sparad underrad ska inte flytta den
+    }
     // Det finns alltid en Notes-rad (även utan toner) i en sparad rad: raden töms först, så att inget gammalt blir kvar.
     clearNotes (layer);
     fromValueTree (copy, false);
@@ -599,7 +611,20 @@ void Pattern::fromValueTree (const juce::ValueTree& tree, bool clearUnmentionedL
         return juce::isPositiveAndBelow (stored, 3) ? (int) oldOrder[stored] : -1;
     };
 
-    std::array<bool, numNoteLayers> cleared {};
+    // R9b: en full laddning ersätter underraderna också (en rad finns bara om trädet nämner den).
+    if (clearUnmentionedLayers)
+    {
+        for (int id = numNoteLayers; id < numRowSlots; ++id)
+            if (rows.isActive (id))
+            {
+                clearNotes (id);
+                manualOf[(size_t) id] = extraOf[(size_t) id] = 0;
+                setLoopsRow (id, true);
+            }
+        rows.clearSubRows();
+    }
+
+    std::array<bool, numRowSlots> cleared {};
     auto clearOnce = [&] (int layer)
     {
         if (! cleared[(size_t) layer])
@@ -614,7 +639,13 @@ void Pattern::fromValueTree (const juce::ValueTree& tree, bool clearUnmentionedL
         auto layer = (int) child.getProperty ("layer", 0);
         if (version <= 5 && child.hasType ("Notes") && layer == 3)
             layer = kickLayer; // före version 6 var kicken lager 3 (det fanns tre instrument)
-        if (! juce::isPositiveAndBelow (layer, numNoteLayers))
+        if (child.hasProperty ("row")) // R9b: nyckeln gäller före indexet; en okänd nyckel eller full pool hoppas över
+        {
+            layer = rows.idOfKeyCreate (child["row"].toString());
+            if (layer < 0)
+                continue;
+        }
+        if (! juce::isPositiveAndBelow (layer, numRowSlots) || (layer >= numNoteLayers && ! rows.isActive (layer)))
             continue;
 
         if (child.hasType ("Gate") && layer < numLayers)
@@ -627,6 +658,8 @@ void Pattern::fromValueTree (const juce::ValueTree& tree, bool clearUnmentionedL
         {
             clearOnce (layer);
             setCustom (layer, (bool) child["custom"]);
+            if (layer >= numNoteLayers)
+                setLoopsRow (layer, ! child.hasProperty ("loop") || (bool) child["loop"]);
             const auto lengthText = child["length"].toString(); // saknas i projekt före version 7 (då AUTO; gamla längder: applyLegacyLengths)
             manualOf[(size_t) layer] = juce::jlimit (0, maxBars, lengthText.containsOnly ("0123456789") ? lengthText.getIntValue() : 0);
             extraOf[(size_t) layer] = juce::jlimit (0, maxBars, (int) child["extra"]);
