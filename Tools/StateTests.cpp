@@ -840,14 +840,15 @@ int renderToolTest()
         check ((bool) tools.call ("compare_renders", juce::JSON::parse ("{\"before\":\"sweep_kickDrive_1\",\"after\":\"sweep_kickDrive_2\"}"))["ok"], "sweep-renderingarna kan jämföras med compare_renders");
     }
 
-    // score_vs_reference: en rendering mot sin egen WAV är nära noll, mot en ändrad rendering längre bort.
+    // score_vs_reference (seconds 60 = hela filen, så rendering och referens mäts över samma stycke): en rendering mot sin egen WAV är nära noll, mot en ändrad rendering längre bort.
     {
         const auto reference = render (tools, "ref-a", "kick");
-        const auto self = tools.call ("score_vs_reference", juce::JSON::parse ("{\"reference_file\":" + juce::JSON::toString (reference.wav.getFullPathName()) + ",\"kind\":\"kick\",\"seconds\":2,\"name\":\"ref-a\"}"));
+        const auto self = tools.call ("score_vs_reference", juce::JSON::parse ("{\"reference_file\":" + juce::JSON::toString (reference.wav.getFullPathName()) + ",\"kind\":\"kick\",\"seconds\":60,\"name\":\"ref-a\"}"));
         check ((bool) self["ok"] && self["data"]["terms"].size() >= 7, "score_vs_reference ger termer för en rendering och en referens");
         tools.call ("set_parameters", juce::JSON::parse ("{\"values\":{\"kickDrive\":0.9,\"kickPitchAmount\":2.0}}"));
         render (tools, "ref-b", "kick");
-        const auto other = tools.call ("score_vs_reference", juce::JSON::parse ("{\"reference_file\":" + juce::JSON::toString (reference.wav.getFullPathName()) + ",\"kind\":\"kick\",\"seconds\":2,\"name\":\"ref-b\"}"));
+        const auto other = tools.call ("score_vs_reference", juce::JSON::parse ("{\"reference_file\":" + juce::JSON::toString (reference.wav.getFullPathName()) + ",\"kind\":\"kick\",\"seconds\":60,\"name\":\"ref-b\"}"));
+        check (other["data"]["terms"].size() == self["data"]["terms"].size(), "score_vs_reference: lika många termer, så avstånden går att jämföra");
         check ((bool) other["ok"] && (double) other["data"]["distance"] > (double) self["data"]["distance"], "score_vs_reference: en ändrad kick ligger längre från referensen än kicken själv");
         check (! (bool) tools.call ("score_vs_reference", juce::JSON::parse ("{\"reference_file\":\"finns-inte.wav\",\"name\":\"ref-a\"}"))["ok"], "score_vs_reference: saknad fil ger ett fel");
         tools.call ("undo", juce::JSON::parse ("{}"));
