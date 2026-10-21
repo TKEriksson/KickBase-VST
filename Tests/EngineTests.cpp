@@ -8,6 +8,7 @@
 #include "../Source/Core/Pattern.h"
 #include "../Source/Core/RollFiles.h"
 #include "../Source/Core/StepGate.h"
+#include "../Source/Core/WavetableEdit.h"
 #include "TestUtils.h"
 #include <cmath>
 #include <vector>
@@ -632,6 +633,33 @@ namespace
             for (int step = 0; step < 4; ++step)
                 basicOk = basicOk && std::abs (basic.sample ((float) step / 3.0f, 0.2, 512.0, false) - basic.sample ((float) step / 3.0f, 0.2, 512.0, true)) < 1.0e-6f;
             check (basicOk && std::abs (basic.sample (0.5f, 0.2, 512.0, false) - basic.sample (2.0f / 3.0f, 0.2, 512.0, false)) < 1.0e-6f, "Basic: Morph av hoppar mellan sinus, triangel, såg och fyrkant");
+        }
+        // PH2: övertonsredigering. Utan ändringar är FFT-vägen identitet; grundtonen nollas; fasskift flyttar bara fasen.
+        {
+            auto edited = frames;
+            WavetableEdit::apply (edited, -1, { { 1, 1.0f, 0.0f } }, false);
+            auto worst = 0.0f;
+            for (size_t i = 0; i < edited.size(); ++i)
+                worst = std::max (worst, std::abs (edited[i] - frames[i]));
+            check (worst < 1.0e-4f, "WavetableEdit: ingen ändring ger samma frames (FFT fram och tillbaka)", worst);
+
+            std::vector<float> amp, phase, amp2, phase2;
+            WavetableEdit::analyse (frames.data(), 8, amp, phase);
+            WavetableEdit::apply (edited, 0, { { 1, 0.0f, 0.0f }, { 2, 1.0f, 0.5f } }, false);
+            WavetableEdit::analyse (edited.data(), 8, amp2, phase2);
+            check (amp[0] > 0.05f && amp2[0] < 1.0e-4f, "WavetableEdit: grundtonen kan nollas", amp2[0]);
+            check (std::abs (amp2[1] - amp[1]) < 1.0e-4f && std::abs (std::remainder (phase2[1] - phase[1] - 0.5f, juce::MathConstants<float>::twoPi)) < 1.0e-3f,
+                   "WavetableEdit: fasskift ändrar fasen men inte amplituden");
+            check (std::abs (edited[(size_t) Wavetable::frameSize * 3 + 100] - frames[(size_t) Wavetable::frameSize * 3 + 100]) < 1.0e-4f, "WavetableEdit: bara vald frame ändras");
+
+            WavetableEdit::apply (edited, -1, { { 1, 0.5f, 0.0f } }, true);
+            auto peakBefore = 0.0f, peakAfter = 0.0f;
+            for (int i = 0; i < Wavetable::frameSize; ++i)
+            {
+                peakBefore = std::max (peakBefore, std::abs (frames[(size_t) Wavetable::frameSize * 5 + (size_t) i]));
+                peakAfter = std::max (peakAfter, std::abs (edited[(size_t) Wavetable::frameSize * 5 + (size_t) i]));
+            }
+            check (peakAfter > 0.0f && std::abs (peakAfter - peakBefore) < 1.0e-3f || peakBefore < 1.0e-3f, "WavetableEdit: normalisering behåller toppvärdet", peakAfter);
         }
         auto fourSteps = Wavetables::fromFrames ("test", frames, 4);
         check (fourSteps != nullptr && fourSteps->getSteps() == 4 && restored->getSteps() == Wavetable::numFrames, "fromFrames: antalet steg följer med, saknas det blir det 16");

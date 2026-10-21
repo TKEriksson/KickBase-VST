@@ -5,6 +5,7 @@
 #include "MixAnalysis.h"
 #include "OfflineRender.h"
 #include "Mixer.h"
+#include "WavetableEdit.h"
 #include <map>
 
 // Tal som sparade projekt och presets bygger på: ändras de läses gamla filer fel (eller måste migreras).
@@ -220,6 +221,54 @@ bool PluginBase::loadUserTable (int layer, int osc, const juce::File& file)
 
     // Välj tabellen i oscillatorn.
     if (auto* parameter = apvts.getParameter (ParamID::bass (layer, ParamID::oscField (osc, InstrumentField::aTable))))
+    {
+        parameter->beginChangeGesture();
+        parameter->setValueNotifyingHost (parameter->convertTo0to1 ((float) Wavetables::userIndex()));
+        parameter->endChangeGesture();
+    }
+    markStateChanged();
+    return true;
+}
+
+bool PluginBase::editWavetable (int layer, int osc, int frame, const std::vector<WavetableEdit::Edit>& edits, bool normalise)
+{
+    if (! juce::isPositiveAndBelow (layer, ParamID::numInstrumentLayers) || ! juce::isPositiveAndBelow (osc, ParamID::oscsPerLayer) || edits.empty())
+        return false;
+
+    auto* parameter = apvts.getParameter (ParamID::bass (layer, ParamID::oscField (osc, InstrumentField::aTable)));
+    if (parameter == nullptr)
+        return false;
+
+    // Källa: oscillatorns egen User-tabell om den är vald, annars den inbyggda tabellen som är vald (blir en redigerad kopia i User).
+    const auto slot = layer * ParamID::oscsPerLayer + osc;
+    const auto choice = (int) std::lround (parameter->convertFrom0to1 (parameter->getValue()));
+    std::vector<float> frames;
+    auto steps = Wavetable::numFrames;
+    juce::String name;
+    if (choice == Wavetables::userIndex() && userTable (layer, osc) != nullptr && userFrames[(size_t) slot].size() == (size_t) Wavetable::numFrames * Wavetable::frameSize)
+    {
+        frames = userFrames[(size_t) slot];
+        steps = userTable (layer, osc)->getSteps();
+        name = userNames[(size_t) slot];
+    }
+    else if (choice != Wavetables::userIndex())
+    {
+        Wavetables::ensure (choice);
+        const auto& source = Wavetables::get (choice);
+        frames = WavetableEdit::framesOf (source);
+        steps = source.getSteps();
+        name = Wavetables::names()[choice] + " (edited)";
+    }
+    else
+        return false;
+
+    WavetableEdit::apply (frames, frame, edits, normalise);
+    auto table = Wavetables::fromFrames (name, frames, steps);
+    if (table == nullptr)
+        return false;
+
+    setUserTable (slot, std::move (table), std::move (frames), name);
+    if (choice != Wavetables::userIndex())
     {
         parameter->beginChangeGesture();
         parameter->setValueNotifyingHost (parameter->convertTo0to1 ((float) Wavetables::userIndex()));

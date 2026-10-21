@@ -52,6 +52,7 @@ set(CORE_SOURCES
     Source/Core/InstrumentSynth.cpp
     Source/Core/InstrumentVoices.cpp
     Source/Core/Wavetable.cpp
+    Source/Core/WavetableEdit.cpp
     Source/Core/NodeEnvelope.cpp
     Source/Core/StepScheduler.cpp
     Source/Core/Sidechain.cpp

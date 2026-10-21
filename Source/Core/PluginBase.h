@@ -17,6 +17,7 @@
 #include "SampleSlot.h"
 #include "BridgeLink.h"
 #include "Settings.h"
+#include "WavetableEdit.h"
 #include "DeferredRelease.h"
 
 // Det som instrumentet och FX-versionen har gemensamt: parametrar, mönster, klicksampling,
@@ -155,6 +156,8 @@ public:
     // (message thread); ljudtråden läser tabellerna via userTable. Sparas i projektet.
     // `file` kan också vara en mapp: dess WAV-filer (högst 16, jämnt utvalda, i namnordning) blir tabellens vågformer.
     bool loadUserTable (int layer, int osc, const juce::File& file);
+    // PH2: ändrar övertonernas styrka/fas i oscillatorns tabell (frame < 0: alla frames). Resultatet blir oscillatorns User-tabell, så ingen ny parameter behövs.
+    bool editWavetable (int layer, int osc, int frame, const std::vector<WavetableEdit::Edit>& edits, bool normalise = true);
     void ensureTablesInUse(); // bygger de inbyggda tabeller som oscillatorerna använder nu (blockerar; inte på ljudtråden)
     const Wavetable* userTable (int layer, int osc) const { return userTables[(size_t) (layer * ParamID::oscsPerLayer + osc)].load(); }
     juce::String getUserTableName (int layer, int osc) const { return userNames[(size_t) (layer * ParamID::oscsPerLayer + osc)]; }
