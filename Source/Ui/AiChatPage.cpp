@@ -359,8 +359,27 @@ void AiChatPage::updateModelNote()
 void AiChatPage::checkModel (bool fetchList)
 {
     updateModelNote();
-    if (! gemini() || needsKey() || checking)
+    if (needsKey() || checking)
         return;
+    if (! gemini())
+    {
+        if (! fetchList)
+            return;
+        checking = true;
+        juce::Thread::launch ([safe = juce::Component::SafePointer<AiChatPage> (this), key = Settings::chatApiKey()]
+        {
+            const auto list = AiChat::fetchAnthropicModels (key);
+            juce::MessageManager::callAsync ([safe, list]
+            {
+                if (safe == nullptr)
+                    return;
+                safe->checking = false;
+                if (! list.isEmpty() && ! safe->gemini())
+                    safe->populateModels();
+            });
+        });
+        return;
+    }
     const auto key = Settings::geminiApiKey();
     const auto model = Settings::geminiModel();
     const auto needsProbe = Settings::geminiToolsCheck (model, key) < 0;

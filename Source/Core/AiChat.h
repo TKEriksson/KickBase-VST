@@ -21,6 +21,7 @@ public:
     ~AiChat() override;
 
     static juce::StringArray models();
+    static juce::StringArray fetchAnthropicModels (const juce::String& key); // blockerar: bakgrundstråd; sparar listan för models()
 
     // Kostnadsläget (Settings::chatCostMode: 0 Sparsam, 1 Normal, 2 Rik): hur många steg, hur långa svar och hur mycket gammalt
     // samtal som skickas om vid varje anrop. Hela historiken skickas om vid varje steg, så det är den som kostar.
