@@ -278,6 +278,7 @@ int anTest()
         check (mildWide.stereoCorrelation[0][0] > 0.3f, "stereo: 1,5 gånger ger korrelation " + juce::String (mildWide.stereoCorrelation[0][0], 2) + " (> 0,3)");
         check (mono.stereoCorrelation[0][0] > 0.99f, "stereo: mono ger korrelation 1");
         auto c = makeCapture();
+        setBand (c, firstInstrument, 5, -10.0f); // evaluate avbryter med "Nothing plays" om ingen källa är starkare än -75 dB
         c.phase = wide;
         check (hasCategory (evaluate (c, options, nullptr), "stereo"), "stereo: bred bas ger fynd i evaluate");
     }
@@ -287,6 +288,7 @@ int anTest()
         auto run = [&options] (float db)
         {
             auto c = makeCapture();
+            setBand (c, firstInstrument, 5, -10.0f); // se stereo ovan: tyst underlag ger bara ett felmeddelande
             c.limiterMaxReductionDb = db;
             return evaluate (c, options, nullptr);
         };
@@ -348,6 +350,7 @@ int anTest()
         {
             auto c = makeCapture();
             c.present[(size_t) masterSource] = masterPresent;
+            setBand (c, kickSource, 5, -10.0f); // mastern räknas inte in i gmax; någon annan källa måste spela
             setBand (c, masterSource, 6, -10.0f);                                               // 100-125 Hz
             setBand (c, masterSource, 8, -10.0f + 10.0f * std::log10 (ratio));                  // 160-200 Hz
             return hasTitle (evaluate (c, options, nullptr), "around 200 Hz");
