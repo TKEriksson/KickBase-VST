@@ -306,6 +306,23 @@ namespace Help
             if (name == "SPREAD") return "Spreads the filters over a range of frequencies (0 % = all at FREQ, 100 % = +-2 octaves). Wider = smoother, longer sweep.";
             if (name == "Q")      return "Sharpness of each all-pass: higher = a more concentrated delay around the frequency.";
         }
+        if (typeName == "Widener")
+        {
+            if (name == "WIDTH")     return "Stereo width: 0 % = mono, 100 % = unchanged, 200 % = twice the side signal.";
+            if (name == "BASS MONO") return "Everything below this frequency is made mono so the bass stays tight and punchy. 20 Hz = off.";
+            if (name == "PAN")       return "Balance: moves the whole sound left or right.";
+        }
+        if (typeName == "Flanger")
+        {
+            if (name == "DELAY")    return "The centre of the short delay. Shorter = higher, more metallic sweep.";
+            if (name == "DEPTH")    return "How far the delay swings around DELAY.";
+            if (name == "FEEDBACK") return "How much of the delayed sound is fed back in. Negative values give a hollow, inverted sound.";
+        }
+        if (typeName == "Transient")
+        {
+            if (name == "ATTACK")  return "Boosts (+) or softens (-) the punch at the start of each sound, up to 12 dB.";
+            if (name == "SUSTAIN") return "Boosts (+) or shortens (-) the tail after the punch, up to 12 dB.";
+        }
         if (typeName == "Maximizer" && name == "RELEASE")
             return "Maximizer: how fast the limiter lets go after a peak. Short = louder but can pump.";
         if (typeName == "Auto Filter" && name == "DEPTH")

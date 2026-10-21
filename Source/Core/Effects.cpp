@@ -63,7 +63,7 @@ namespace Effects
     StringArray typeNames()
     {
         return { "Off", "Filter", "Distortion", "EQ", "Chorus", "Phaser", "Echo", "Reverb",
-                 "Compressor", "Trance Gate", "Comb", "Ring Mod", "Bitcrusher", "Auto Filter", "Maximizer", "Sidechain", "Disperser" };
+                 "Compressor", "Trance Gate", "Comb", "Ring Mod", "Bitcrusher", "Auto Filter", "Maximizer", "Sidechain", "Disperser", "Widener", "Flanger", "Transient" };
     }
 
     String name (EffectType type)
@@ -74,7 +74,7 @@ namespace Effects
     String shortName (EffectType type)
     {
         const char* names[] { "-", "FILT", "DIST", "EQ", "CHOR", "PHAS", "ECHO", "VERB",
-                              "COMP", "GATE", "COMB", "RING", "CRSH", "AUTO", "MAX", "SIDE", "DISP" };
+                              "COMP", "GATE", "COMB", "RING", "CRSH", "AUTO", "MAX", "SIDE", "DISP", "WIDE", "FLNG", "TRAN" };
         return names[jlimit (0, numEffectTypes - 1, (int) type)];
     }
 
@@ -249,6 +249,22 @@ namespace Effects
                 value ("FREQ", 50.0f, 8000.0f, 400.0f, 300.0f, Unit::hz),
                 value ("SPREAD", 0.0f, 1.0f, 0.0f, 0.0f, Unit::percent),
                 value ("Q", 0.3f, 4.0f, 0.7f, 0.7f, Unit::plain),
+                mixKnob (1.0f) };
+            // FX2 (sist): stereobredd med mono-bas, flanger, transient shaper.
+            table[(size_t) EffectType::widener] = {
+                value ("WIDTH", 0.0f, 2.0f, 1.0f, 1.0f, Unit::percent),
+                value ("BASS MONO", 20.0f, 500.0f, 120.0f, 20.0f, Unit::hz), // 20 Hz = av
+                value ("PAN", -1.0f, 1.0f, 0.0f, 0.0f, Unit::percent),
+                mixKnob (1.0f) };
+            table[(size_t) EffectType::flanger] = {
+                value ("RATE", 0.02f, 10.0f, 0.5f, 0.3f, Unit::hz),
+                value ("DEPTH", 0.0f, 1.0f, 0.0f, 0.7f, Unit::percent),
+                value ("DELAY", 0.1f, 10.0f, 2.0f, 1.5f, Unit::ms),
+                value ("FEEDBACK", -0.95f, 0.95f, 0.0f, 0.5f, Unit::percent),
+                mixKnob (0.5f) };
+            table[(size_t) EffectType::transient] = {
+                value ("ATTACK", -1.0f, 1.0f, 0.0f, 0.0f, Unit::percent),
+                value ("SUSTAIN", -1.0f, 1.0f, 0.0f, 0.0f, Unit::percent),
                 mixKnob (1.0f) };
             return table;
         }();
@@ -1307,6 +1323,122 @@ namespace
             }
         }
     };
+
+    // WIDENER: bredd på sida/mitt-signalen (0 = mono, 100 % = orört, 200 % = dubbel sida), BASS MONO gör allt under frekvensen mono
+    // (så att basen håller ihop), PAN är en balans. Delningen är ett en-pols lågpass; höga delen är resten, så summan är exakt.
+    struct WidenerFx
+    {
+        std::array<OnePole, 2> low;
+
+        void prepare (const dsp::ProcessSpec&) { reset(); }
+        void reset() { low = {}; }
+
+        void process (AudioBuffer<float>& buffer, int numSamples, const Values& k, const Context& context)
+        {
+            if (buffer.getNumChannels() < 2)
+                return;
+            const auto width = k[0], pan = k[2], wet = k[3];
+            const auto bassMono = k[1] > 21.0f;
+            const auto coefficient = onePoleCoefficient (k[1], context.sampleRate);
+            const auto gainLeft = pan > 0.0f ? 1.0f - pan : 1.0f, gainRight = pan < 0.0f ? 1.0f + pan : 1.0f;
+            auto* left = buffer.getWritePointer (0);
+            auto* right = buffer.getWritePointer (1);
+            for (int i = 0; i < numSamples; ++i)
+            {
+                const auto dryLeft = left[i], dryRight = right[i];
+                auto lowLeft = 0.0f, lowRight = 0.0f;
+                if (bassMono)
+                {
+                    lowLeft = low[0].lowpass (dryLeft, coefficient);
+                    lowRight = low[1].lowpass (dryRight, coefficient);
+                }
+                const auto highLeft = dryLeft - lowLeft, highRight = dryRight - lowRight;
+                const auto mid = 0.5f * (highLeft + highRight), side = 0.5f * (highLeft - highRight) * width;
+                const auto lowMid = 0.5f * (lowLeft + lowRight);
+                const auto outLeft = (mid + side + lowMid) * gainLeft, outRight = (mid - side + lowMid) * gainRight;
+                left[i] = dryLeft + (outLeft - dryLeft) * wet;
+                right[i] = dryRight + (outRight - dryRight) * wet;
+            }
+        }
+    };
+
+    // FLANGER: kort fördröjning (DELAY) som en sinus-LFO svänger med DEPTH, återkopplad (FEEDBACK, negativ ger ihåligt ljud).
+    // Höger kanals LFO ligger ett kvarts varv efter vänsters, så bilden blir bred.
+    struct FlangerFx
+    {
+        dsp::DelayLine<float, dsp::DelayLineInterpolationTypes::Linear> line;
+        std::array<float, 2> feedbackState {};
+        double phase = 0.0;
+
+        void prepare (const dsp::ProcessSpec& spec)
+        {
+            line.prepare ({ spec.sampleRate, spec.maximumBlockSize, 2 });
+            line.setMaximumDelayInSamples ((int) (spec.sampleRate * 0.025) + 4);
+            reset();
+        }
+
+        void reset() { line.reset(); feedbackState = {}; phase = 0.0; }
+
+        void process (AudioBuffer<float>& buffer, int numSamples, const Values& k, const Context& context)
+        {
+            const auto rate = k[0], depth = k[1], centre = k[2] * 0.001f * (float) context.sampleRate, feedback = k[3], wet = k[4];
+            const auto increment = (double) rate / context.sampleRate;
+            const auto channels = std::min (2, buffer.getNumChannels());
+            for (int i = 0; i < numSamples; ++i)
+            {
+                for (int ch = 0; ch < channels; ++ch)
+                {
+                    const auto lfo = (float) std::sin (MathConstants<double>::twoPi * (phase + 0.25 * ch));
+                    const auto delay = jmax (1.0f, centre * (1.0f + depth * 0.9f * lfo));
+                    auto* data = buffer.getWritePointer (ch);
+                    const auto dry = data[i];
+                    line.pushSample (ch, dry + feedbackState[(size_t) ch] * feedback);
+                    const auto delayed = line.popSample (ch, delay, true);
+                    feedbackState[(size_t) ch] = delayed;
+                    data[i] = dry + (delayed - dry) * wet;
+                }
+                phase += increment;
+                if (phase >= 1.0) phase -= 1.0;
+            }
+        }
+    };
+
+    // TRANSIENT: jämför en snabb och en långsam envelopp. Snabb över långsam = anslag (ATTACK höjer/sänker det), tvärtom = släpp
+    // (SUSTAIN). Upp till +-12 dB. Avkänningen är länkad mellan kanalerna, så bilden håller.
+    struct TransientFx
+    {
+        float fast = 0.0f, slow = 0.0f, gain = 1.0f;
+
+        void prepare (const dsp::ProcessSpec&) { reset(); }
+        void reset() { fast = slow = 0.0f; gain = 1.0f; }
+
+        void process (AudioBuffer<float>& buffer, int numSamples, const Values& k, const Context& context)
+        {
+            const auto attack = k[0], sustain = k[1], wet = k[2];
+            const auto fastUp = onePoleCoefficient (400.0f, context.sampleRate), fastDown = onePoleCoefficient (25.0f, context.sampleRate);
+            const auto slowUp = onePoleCoefficient (15.0f, context.sampleRate), slowDown = onePoleCoefficient (15.0f, context.sampleRate);
+            const auto smooth = onePoleCoefficient (200.0f, context.sampleRate);
+            const auto channels = std::min (2, buffer.getNumChannels());
+            for (int i = 0; i < numSamples; ++i)
+            {
+                auto level = 0.0f;
+                for (int ch = 0; ch < channels; ++ch)
+                    level = jmax (level, std::abs (buffer.getSample (ch, i)));
+                fast += (level - fast) * (level > fast ? fastUp : fastDown);
+                slow += (level - slow) * (level > slow ? slowUp : slowDown);
+                const auto ratio = (fast + 1.0e-5f) / (slow + 1.0e-5f);
+                const auto octaves = std::log2 (ratio);
+                const auto db = octaves > 0.0f ? attack * 12.0f * jmin (octaves, 2.0f) * 0.5f
+                                               : sustain * 12.0f * jmin (-octaves, 2.0f) * 0.5f;
+                gain += (Decibels::decibelsToGain (db) - gain) * smooth;
+                for (int ch = 0; ch < channels; ++ch)
+                {
+                    auto* data = buffer.getWritePointer (ch);
+                    data[i] += (data[i] * gain - data[i]) * wet;
+                }
+            }
+        }
+    };
 }
 
 //==============================================================================
@@ -1338,6 +1470,9 @@ struct EffectChain::Impl
         MaximizerFx maximizer;
         DuckerFx ducker;
         DisperserFx disperser;
+        WidenerFx widener;
+        FlangerFx flanger;
+        TransientFx transient;
 
         template <typename Function>
         void forEachEffect (Function&& function)
@@ -1345,6 +1480,7 @@ struct EffectChain::Impl
             function (filter); function (distortion); function (eq); function (chorus); function (phaser);
             function (echo); function (reverb); function (compressor); function (gate); function (comb);
             function (ringMod); function (bitcrusher); function (autoFilter); function (maximizer); function (ducker); function (disperser);
+            function (widener); function (flanger); function (transient);
         }
 
         void resetCurrent()
@@ -1367,6 +1503,9 @@ struct EffectChain::Impl
                 case EffectType::maximizer:  maximizer.reset(); break;
                 case EffectType::ducker:     ducker.reset(); break;
                 case EffectType::disperser:  disperser.reset(); break;
+                case EffectType::widener:    widener.reset(); break;
+                case EffectType::flanger:    flanger.reset(); break;
+                case EffectType::transient:  transient.reset(); break;
                 case EffectType::off:
                 case EffectType::count:      break;
             }
@@ -1392,6 +1531,9 @@ struct EffectChain::Impl
                 case EffectType::maximizer:  maximizer.process (buffer, numSamples, values, context); break;
                 case EffectType::ducker:     ducker.process (buffer, numSamples, values, context); break;
                 case EffectType::disperser:  disperser.process (buffer, numSamples, values, context); break;
+                case EffectType::widener:    widener.process (buffer, numSamples, values, context); break;
+                case EffectType::flanger:    flanger.process (buffer, numSamples, values, context); break;
+                case EffectType::transient:  transient.process (buffer, numSamples, values, context); break;
                 case EffectType::off:
                 case EffectType::count:      break;
             }

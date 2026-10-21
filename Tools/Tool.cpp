@@ -1514,6 +1514,80 @@ namespace
             check (std::abs (outEnergy / inEnergy - 1.0) < 0.05 && difference / (36.0 * blockSize) > 0.05, "PH: DISPERSER bevarar energin men ändrar fasen");
         }
 
+        {
+            // FX2: Widener (WIDTH 0 = mono, BASS MONO), Flanger och Transient ger ändliga, förväntade resultat.
+            auto runEffect = [&] (EffectType type, std::vector<std::pair<int, float>> knobValues, int blocks, const std::function<void (juce::AudioBuffer<float>&, int)>& fill, const std::function<void (const juce::AudioBuffer<float>&, int)>& look)
+            {
+                const auto fresh = std::make_unique<InstrumentProcessor>();
+                Effects::setSlotType (fresh->apvts, 0, 0, type);
+                const auto& list = Effects::knobs (type);
+                for (const auto& [index, v] : knobValues)
+                    if (auto* parameter = fresh->apvts.getParameter (Effects::knobParamID (0, 0, index)))
+                        parameter->setValueNotifyingHost (list[(size_t) index].toNormalised (v));
+                EffectChain chain (fresh->apvts, 0);
+                chain.prepare (renderRate, blockSize);
+                juce::AudioBuffer<float> buffer (2, blockSize);
+                for (int block = 0; block < blocks; ++block)
+                {
+                    fill (buffer, block);
+                    chain.update (140.0, 0.0);
+                    chain.process (buffer, blockSize);
+                    look (buffer, block);
+                }
+            };
+            auto noise = [] (juce::AudioBuffer<float>& buffer, int)
+            {
+                static juce::Random random (11);
+                for (int ch = 0; ch < 2; ++ch)
+                    for (int i = 0; i < buffer.getNumSamples(); ++i)
+                        buffer.setSample (ch, i, random.nextFloat() - 0.5f);
+            };
+            auto monoError = 0.0f;
+            runEffect (EffectType::widener, { { 0, 0.0f } }, 4, noise, [&] (const juce::AudioBuffer<float>& b, int)
+            {
+                for (int i = 0; i < b.getNumSamples(); ++i)
+                    monoError = std::max (monoError, std::abs (b.getSample (0, i) - b.getSample (1, i)));
+            });
+            check (monoError < 1.0e-5f, "FX2: WIDENER width 0 % ger mono");
+            auto bassSide = 0.0f, bassPeak = 0.0f;
+            runEffect (EffectType::widener, { { 1, 200.0f } }, 20,
+                       [&] (juce::AudioBuffer<float>& b, int block) // 50 Hz motfas: bara sida, under BASS MONO
+                       {
+                           for (int i = 0; i < b.getNumSamples(); ++i)
+                           {
+                               const auto s = std::sin (juce::MathConstants<double>::twoPi * 50.0 * (block * blockSize + i) / renderRate);
+                               b.setSample (0, i, (float) s); b.setSample (1, i, (float) -s);
+                           }
+                       },
+                       [&] (const juce::AudioBuffer<float>& b, int block)
+                       {
+                           if (block < 10) return;
+                           for (int i = 0; i < b.getNumSamples(); ++i)
+                           {
+                               bassSide = std::max (bassSide, std::abs (b.getSample (0, i) - b.getSample (1, i)));
+                               bassPeak = std::max (bassPeak, std::abs (b.getSample (0, i)));
+                           }
+                       });
+            check (bassSide < 0.45f && bassPeak < 0.45f, "FX2: WIDENER BASS MONO tar bort basens sidosignal");
+            for (const auto type : { EffectType::flanger, EffectType::transient })
+            {
+                auto finite = true;
+                auto change = 0.0;
+                runEffect (type, type == EffectType::transient ? std::vector<std::pair<int, float>> { { 0, 1.0f } } : std::vector<std::pair<int, float>> {}, 20, noise,
+                           [&] (const juce::AudioBuffer<float>& b, int)
+                           {
+                               for (int ch = 0; ch < 2; ++ch)
+                                   for (int i = 0; i < b.getNumSamples(); ++i)
+                                   {
+                                       const auto v = b.getSample (ch, i);
+                                       finite = finite && std::isfinite (v) && std::abs (v) < 4.0f;
+                                       change += std::abs (v);
+                                   }
+                           });
+                check (finite && change > 1.0, type == EffectType::flanger ? "FX2: FLANGER ger ändligt ljud" : "FX2: TRANSIENT ger ändligt ljud");
+            }
+        }
+
         std::puts (failed ? "FEL: instrumenttestet misslyckades" : "Instrumenttestet gick igenom");
         return failed ? 1 : 0;
     }
