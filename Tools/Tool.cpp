@@ -519,11 +519,19 @@ namespace
             {
                 LiveCode consoleLive;
                 juce::Result consoleResult = juce::Result::ok();
-                consoleLive.create ("console.log(\"hej\", 3); console.warn({a:1}); console.error(\"fel\"); note(\"c2\").s(\"i1\")", 1, consoleResult);
+                consoleLive.create ("console.log(\"hej\", 3);\nconsole.warn({a:1});\nconsole.error(\"fel\");\n\nnote(\"c2\").s(\"i1\")", 1, consoleResult);
                 const auto lines = consoleLive.takeConsole();
                 check (consoleResult.wasOk() && lines.size() == 3 && lines[0] == "log: hej 3" && lines[1] == "warn: {\"a\":1}" && lines[2] == "error: fel",
-                       "console.log/warn/error går till konsolkön");
+                       "console.log/warn/error går till konsolkön " + (consoleResult.failed() ? consoleResult.getErrorMessage() : lines.joinIntoString ("|")));
                 check (consoleLive.takeConsole().isEmpty(), "takeConsole tömmer kön");
+
+                // G3: noterna får teckenpositioner i koden (note(" börjar på 5, c2 står på 6..8, e2 på 9..11)
+                LiveCode marksLive;
+                marksLive.create ("note(\"c2 e2\").s(\"i1\")", 1, consoleResult);
+                const auto& marks = marksLive.getMarks();
+                check (consoleResult.wasOk() && marks.size() == 2 && marks[0].layer == 0 && marks[0].beginTick == 0 && marks[1].beginTick == 192
+                           && ! marks[0].locs.empty() && std::find (marks[0].locs.begin(), marks[0].locs.end(), std::make_pair (6, 8)) != marks[0].locs.end() && ! marks[1].locs.empty() && std::find (marks[1].locs.begin(), marks[1].locs.end(), std::make_pair (9, 11)) != marks[1].locs.end(),
+                       "notmarkeringar ger dokumentpositioner " + (consoleResult.failed() ? consoleResult.getErrorMessage() : juce::String ((int) marks.size()) + (marks.empty() ? juce::String() : " " + juce::String (marks[0].locs.size()) + (marks[0].locs.empty() ? juce::String() : " " + juce::String (marks[0].locs[0].first) + "-" + juce::String (marks[0].locs[0].second)))));
             }
         }
 

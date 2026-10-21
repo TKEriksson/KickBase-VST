@@ -5,9 +5,11 @@
 - E:s Release-build, enhetstester, livetest, persisttest, HostTest, renderjämförelser, `blocksizetest` och `audiotest` passerade i LCUI-worktree.
 - Den integrerade releasebyggningen i `KickBase-VST-rel` passerade med exit 0 och producerade instrument-/FX-VST3 + testverktyg.
 - Releasegrenens `KickbaseTests`, Live Code, persistens, preset, prestanda, chatt, fyra renderkontroller, blockstorlek, audiotest och HostTest (Init/editor) passerade. F1-parameterträdet klarade JS-smoketest; interaktivt `.set/.get` i DAW återstår för Tobias.
-- Releaseblockerare: CREATE-bekräftelsen ignorerar `ow` och skickar alltid `overwrite=true` (`LiveCodePage.cpp:507-512`), trots att "Lock these" skickar `false` (`:486`). Nuvarande låsfilter i `ToolLayer.cpp:1073` skyddar låsta rader normalt, men lås-/notändring medan dialogen är öppen kan kringgå konfliktkontrollen. Byggvarningen C4100 pekade ut den oanvända parametern. Se `docs/work/LESSONS.md`; behöver rättas och byggas om före DAW-installation.
+- Releaseblockerare: CREATE-callbacken skickar nu `ow` vidare i stället för alltid `overwrite=true` (`LiveCodePage.cpp:507-512`). Release-ombyggnad (`EXIT:0`), Live Code-test och HostTest passerade; C4100-varningen för `ow` är borta. Dialogens tre val bör Tobias handtesta i DAW. Bakgrund i `docs/work/LESSONS.md`.
+- Tobias handtestade CREATE i DAW med två `$:`-block (`note("c2 [e2 g2]*2").s("i1")` och `note("D2 [G3 b2]*4").s("i5")`); UI:t bekräftade "Written: instrument 1, instrument 5". Empty hade bara ett instrument, så Tobias skapade instrument 5 manuellt efteråt; då visades dess redan genererade toner i pianorullen. CREATE skapar inte instrumentplatser. LFO och sliders är ännu inte DAW-verifierade; `.set()` hör till LIVE, inte CREATE.
+- Uppföljande CREATE-test körde kick, instrument 1 med cutoff-LFO och instrument 5 med `slider()`-gain. Bekräftelsen listade instrument 1, instrument 5 och kick; två sliders syntes. Kod/slider-UI är verifierat, men inte hörbart LFO-/nivåbeteende. `.set()` hör till LIVE, inte CREATE.
 - `docs/` återställdes och gitignoren togs bort enligt Tobias. CMake/MCP-guidekällor ligger i `Resources/`.
-- Inget pushat. VST-installationstest pausas tills blockeraren är fixad; AUTO och F2–F4 är utanför release.
+- Inget pushat. Tobias kan prova VST3 lokalt och handtesta dialogens tre val; AUTO och F2–F4 är utanför release.
 
 ## Sessioner (namn ändras vid omstart, adressera via ListAgents)
 - 72 = projektledare. 40 = "arbetare 2" (Live Code, worktree KickBase-VST-lcui, branch content-lcui). 6b = "arbetare 1" (Gemini, worktree KickBase-VST-lc, branch content-gemini från main 64928e6).
@@ -53,3 +55,17 @@
 - Handritade toner skyddas fortfarande av `warnOverwrite`. Inget får köras av sig självt vid laddning av projekt/preset (jfr f1e5167).
 - LIVE-knappen blir en AUTO-bryterare, på som standard. Klockstyrda saker (`slider`, F1 `.set`) skriver redan bara vid ändring.
 - Rör `LiveCodePage` och owned-reglerna som E också rör: gör efter E-merge. Tester: ogiltig kod ändrar inget, borttagen rad töms, handrad kvar, laddning kör inget, Init kraschar inte.
+
+- 21 okt: F1 `.set/.get` i CREATE + LIVE klart i release-test (tak 30 skriv/s, lås hoppas över, "Did you mean"-fel, blankrads-regel i guide/verktygsbeskrivning). Release byggd; KickbaseTests, livetest, chattest, persisttest och Init-check (HostTest) gröna. Rendersig ej körd (ingen ljudtrådskod).
+- Gemini ogiltig-JSON: tillåten igen (misstanke buildRequest AiProvider.cpp:298). Ollama hoppas över tills vidare (Tobias). Kö: AGPL-banner + THIRD-PARTY.md + helpcheck, MCP live_code_run/stop, Gemini-fix.
+
+- [content-docs, 21 okt] MCP live_code_run/stop (b751a7e), glue .set (9d4d4d4), AGPL/THIRD-PARTY (ce77236) byggda och gröna. BLOCKERAT: `git merge content-f2` nekades av auto-läget (behörighet) – behöver Tobias/PL att köra mergen eller ge tillåtelse. Gemini: enstaka live-test gav 503 (hög belastning), orsak ej bekräftad live.
+- Gemini "invalid JSON" (content-docs 50f81b3, ej byggd): orsak = hypotes. Gemini 3 skickar functionCall.id som kastades och inte returnerades i functionResponse (AiProvider.cpp). Ett live-test (3.5-flash-lite) gav 200 på grundformatet; 3.6-flash gav 503. Chattest för id-rundresan tillagd. Väntar på bygge (Arbetare 2 bygger).
+- BLOCKERAD, behöver Tobias: `git merge content-f2` nekades av behörighetsläget. Hoppad tills han svarar; release-test fast-forward väntar på grönt bygge.
+- BLOCKERAD, behöver Tobias: fast-forward av release-test till content-docs (50f81b3, grönt bygge) nekades av behörighetsläget (git branch -f). Kommando: git branch -f release-test content-docs (om release-test inte är utcheckad).
+- Ny kö (PL 21 okt): (1) G2 KONSOL på gren content-g från content-docs (console.log-kö i glue.js/strudel.all.js, liten konsolyta i LiveCodePage, små commits; Arbetare 2 rör samma fil för F4/AUTO); test i livetest. (2) G3 notmarkering om hap.context.locations nås. (3) G1 flytande fönster sist. (4) Om blockerad/klar: S3 UNISON/Reese per OSC (plan-v2, nya parametrar sist, rendersig 0 diff, Init ej krasch). Bygg bara på "bygg nu". Väntar på Tobias: release-test fast-forward + content-f2-merge.
+
+## Arbetare 1, 21 okt: G2 + G3 klara (lokala commits, ej mergade)
+- G2 KONSOL: livetest grön (bibliotekets startloggar rensas efter bundle-laddning, LiveCode.cpp load()).
+- G3 notmarkering: JS 8075eb3 + C++/UI (LiveCode::Mark, LiveCodeRunner::getMarks, LiveCodePage MarkOverlay). Alla tester gröna: Tests, livetest, chattest, persisttest, helpcheck, HostTest. Ej visuellt granskat i editorn (Tobias sover).
+- Kvar: G1 flytande fönster, sedan S3 UNISON/Reese.

@@ -89,6 +89,7 @@ juce::Result LiveCode::load()
     auto r = engine.execute (juce::String::fromUTF8 (BinaryData::strudel_all_js, BinaryData::strudel_all_jsSize));
     engine.maximumExecutionTime = juce::RelativeTime::milliseconds (500);
     loaded = r.wasOk();
+    consoleLines.clear(); // bibliotekets egna startloggar ("Strudel core loaded") är inte användarens
     return r;
 }
 
@@ -126,6 +127,10 @@ std::vector<LiveCode::Hap> LiveCode::query (double from, double to, juce::Result
             hap.begin = h["b"];
             hap.end = h["e"];
             hap.value = h["v"];
+            if (auto* ls = h["l"].getArray())
+                for (auto& p : *ls)
+                    if (auto* se = p.getArray(); se != nullptr && se->size() == 2)
+                        hap.locs.emplace_back ((int) (*se)[0], (int) (*se)[1]);
             if (hap.begin >= from && hap.begin < to) out.push_back (std::move (hap));
         }
     return out;
@@ -264,5 +269,19 @@ juce::var LiveCode::create (const juce::String& code, int cycles, juce::Result& 
     auto haps = query (0, cycles, result);
     if (result.failed()) return {};
     mods = collectMods (haps);
+    marks.clear();
+    for (auto& h : haps)
+    {
+        if (h.locs.empty()) continue;
+        const auto s = h.value["s"].toString().toLowerCase();
+        Mark m;
+        if (s == "bd" || s == "kick") m.layer = -1;
+        else if (s.length() > 1 && s.startsWithChar ('i') && s.substring (1).containsOnly ("0123456789"))
+            m.layer = juce::jlimit (1, 10, s.substring (1).getIntValue()) - 1;
+        m.beginTick = juce::roundToInt (h.begin * ticksPerCycle);
+        m.endTick = std::max (m.beginTick + 1, juce::roundToInt (h.end * ticksPerCycle));
+        m.locs = h.locs;
+        marks.push_back (std::move (m));
+    }
     return toPatternArgs (haps, cycles);
 }

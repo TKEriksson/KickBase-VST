@@ -71,6 +71,26 @@ private:
     std::vector<SliderSpec> sliderSpecs;
     juce::String sliderText;                               // texten specarna är hämtade ur
     std::vector<std::unique_ptr<juce::Slider>> sliderViews; // ett per giltigt slider()-anrop (index = ordningsnummer)
+    // G3: noterna som låter just nu lyses upp i koden. Marks hör till en viss text (hash) och slängs när texten ändras.
+    struct MarkOverlay : juce::Component
+    {
+        MarkOverlay() { setInterceptsMouseClicks (false, false); }
+        void paint (juce::Graphics& g) override { if (onPaint) onPaint (g); }
+        std::function<void (juce::Graphics&)> onPaint;
+    };
+    struct MarkWatch : private juce::Timer
+    {
+        explicit MarkWatch (std::function<void()> f) : callback (std::move (f)) { startTimerHz (30); }
+        ~MarkWatch() override { stopTimer(); }
+        void timerCallback() override { callback(); }
+        std::function<void()> callback;
+    };
+    void updateMarks();
+    void paintMarks (juce::Graphics& g);
+    MarkOverlay markOverlay;
+    std::vector<LiveCode::Mark> marks;
+    std::vector<std::pair<int, int>> activeLocs;
+    MarkWatch markWatch { [this] { updateMarks(); } };
     double paramWindowStart = 0.0; // tak på .set: högst maxParamWritesPerSecond skrivningar per sekund (en slider som dras kör koden hela tiden)
     int paramWindowCount = 0;
     static constexpr int maxParamWritesPerSecond = 30;

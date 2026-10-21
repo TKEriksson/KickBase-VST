@@ -23,6 +23,8 @@ LiveCodePage::LiveCodePage (PluginBase& processor) : processor (processor), tool
     document.clearUndoHistory();
     document.setSavePoint();
     addAndMakeVisible (editor);
+    markOverlay.onPaint = [this] (juce::Graphics& g) { paintMarks (g); };
+    editor.addAndMakeVisible (markOverlay);
     document.addListener (this);
 
     errorLog.setMultiLine (true, true);
@@ -135,11 +137,50 @@ void LiveCodePage::resized()
     errorLabel.setBounds (area.removeFromBottom (22));
     area.removeFromBottom (4);
     editor.setBounds (area);
+    markOverlay.setBounds (editor.getLocalBounds());
     errorLog.setBounds (area);
 }
 
-void LiveCodePage::codeDocumentTextInserted (const juce::String&, int) { codeChanged(); }
-void LiveCodePage::codeDocumentTextDeleted (int, int) { codeChanged(); }
+void LiveCodePage::codeDocumentTextInserted (const juce::String&, int) { marks.clear(); codeChanged(); }
+void LiveCodePage::codeDocumentTextDeleted (int, int) { marks.clear(); codeChanged(); }
+
+// 30 Hz: vilka noter låter nu? Spelpositionen är i tick i radens loop (som pianorullens markör); marks räknades över `cycles` takter.
+void LiveCodePage::updateMarks()
+{
+    std::vector<std::pair<int, int>> now;
+    if (playing && isShowing())
+    {
+        const auto loop = cycles * LiveCode::ticksPerCycle;
+        for (auto& m : marks)
+        {
+            const auto& ts = processor.transportStatus;
+            const auto raw = m.layer < 0 ? ts.kickStep.load() : ts.instrumentSteps[(size_t) m.layer].load();
+            if (raw < 0) continue;
+            const auto t = raw % loop;
+            if (t >= m.beginTick && t < std::max (m.endTick, m.beginTick + LiveCode::ticksPerCycle / 16)) // minst en 16-del så korta noter syns
+                now.insert (now.end(), m.locs.begin(), m.locs.end());
+        }
+    }
+    if (now != activeLocs)
+    {
+        activeLocs = std::move (now);
+        markOverlay.repaint();
+    }
+}
+
+void LiveCodePage::paintMarks (juce::Graphics& g)
+{
+    g.setColour (Theme::mix.withAlpha (0.45f));
+    const auto length = document.getNumCharacters();
+    for (auto& [start, end] : activeLocs)
+    {
+        if (start < 0 || end <= start || end > length) continue;
+        const auto a = editor.getCharacterBounds (juce::CodeDocument::Position (document, start));
+        const auto b = editor.getCharacterBounds (juce::CodeDocument::Position (document, end - 1));
+        if (a.getY() != b.getY()) continue; // flera rader (mallsträng): hoppa över
+        g.fillRoundedRectangle (a.getUnion (b).expanded (1, 0).toFloat(), 3.0f);
+    }
+}
 
 void LiveCodePage::codeChanged()
 {
@@ -375,8 +416,10 @@ void LiveCodePage::refreshCodeOnly()
 
 void LiveCodePage::runNow()
 {
-    runner.run (document.getAllContent(), cycles, [this] (const juce::var& list, const juce::String& error, const juce::var& mods, const juce::var& writes, const juce::StringArray& console)
+    const auto text = document.getAllContent();
+    runner.run (text, cycles, [this, hash = text.hashCode64()] (const juce::var& list, const juce::String& error, const juce::var& mods, const juce::var& writes, const juce::StringArray& console)
     {
+        marks = error.isEmpty() && document.getAllContent().hashCode64() == hash ? runner.getMarks() : std::vector<LiveCode::Mark>{};
         showConsole (console);
         if (error.isNotEmpty())
             return showError (error);

@@ -28,16 +28,23 @@ public:
             const auto mods = live.getMods();
             auto writes = live.takeParamWrites();
             auto console = live.takeConsole();
-            juce::MessageManager::callAsync ([this, gen, list, res, mods, writes, console, done]
+            auto marks = live.getMarks();
+            juce::MessageManager::callAsync ([this, gen, list, res, mods, writes, console, marks = std::move (marks), done]
             {
-                if (gen == generation.load()) done (list, res.failed() ? res.getErrorMessage() : juce::String(), mods, writes, console);
+                if (gen != generation.load()) return;
+                lastMarks = marks;
+                done (list, res.failed() ? res.getErrorMessage() : juce::String(), mods, writes, console);
             });
         });
     }
 
     void cancel() { generation.fetch_add (1); }
 
+    // Notmarkeringar (G3) från senaste lyckade svaret; giltiga inuti Done-återanropet och efteråt (message thread).
+    const std::vector<LiveCode::Mark>& getMarks() const { return lastMarks; }
+
 private:
+    std::vector<LiveCode::Mark> lastMarks;
     std::atomic<int> generation { 0 };
     juce::ThreadPool pool { 1 };
 };

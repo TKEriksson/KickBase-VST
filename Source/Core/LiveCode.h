@@ -33,7 +33,17 @@ public:
     {
         double begin = 0, end = 0;  // i cykler
         juce::var value;            // objekt med s, note, n, gain ...
+        std::vector<std::pair<int, int>> locs; // teckenpositioner [start, slut) i koden (G3), tom om saknas
     };
+
+    // Notmarkering (G3): var i koden en not står och när den låter. Tick = cykel * 384, inom mönstrets loop.
+    // layer: -1 = kicken, annars instrument 0..9 (samma regel som toPatternArgs/collectMods).
+    struct Mark
+    {
+        int layer = 0, beginTick = 0, endTick = 0;
+        std::vector<std::pair<int, int>> locs;
+    };
+    const std::vector<Mark>& getMarks() const { return marks; }
 
     // Alla händelser som börjar i [from, to) cykler.
     std::vector<Hap> query (double from, double to, juce::Result& result);
@@ -61,6 +71,7 @@ private:
     juce::JavascriptEngine engine;
     bool loaded = false;
     juce::var mods;
+    std::vector<Mark> marks;
     static juce::var collectMods (const std::vector<Hap>& haps);
     juce::Result load();
 };
