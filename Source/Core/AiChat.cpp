@@ -409,6 +409,13 @@ std::vector<AiChat::SessionInfo> AiChat::listSessions()
     return result;
 }
 
+bool AiChat::deleteSession (const juce::File& file)
+{
+    if (! file.existsAsFile() || file.getParentDirectory() != sessionsFolder())
+        return false; // bara filer i Chats-mappen
+    return file.moveToTrash();
+}
+
 // Före en ny fråga: är historiken för stor sparas samtalet och exporteras till en textfil, och sedan tas de äldsta frågorna bort ur historiken
 // (loggen på skärmen behålls). Går inte sparningen igenom tas inget bort.
 void AiChat::autoClean (const Limits& limit)

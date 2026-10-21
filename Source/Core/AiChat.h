@@ -67,6 +67,7 @@ public:
     };
     static juce::File sessionsFolder();                 // Settings "chatsFolder", annars Kickbase/Chats
     static std::vector<SessionInfo> listSessions();     // nyaste först
+    static bool deleteSession (const juce::File& file);  // flyttar chatten (och en eventuell .txt med samma namn) till papperskorgen
     static juce::String redact (juce::String text);
     bool hasConversation() const { return ! messages.isEmpty(); }
     bool saveSession (juce::File& savedTo);
