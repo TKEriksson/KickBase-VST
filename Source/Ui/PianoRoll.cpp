@@ -4,7 +4,7 @@
 
 namespace
 {
-    constexpr float keyWidth = 46.0f, toolbarHeight = 46.0f, rulerHeight = 16.0f, velocityHeight = 40.0f, edgeGrab = 6.0f, barSize = 11.0f;
+    constexpr float keyWidth = 46.0f, toolbarHeight = 46.0f, rulerHeight = 16.0f, velocityHeight = 40.0f, edgeGrab = 6.0f, barSize = 11.0f, hintHeight = 16.0f;
     constexpr float maxPixelsPerTick = 3.0f;
 
     // jlimit kräver lägsta <= högsta; här kan intervallet vara tomt (då vinner det lägsta).
@@ -93,6 +93,13 @@ PianoRoll::PianoRoll (PluginBase& p, std::vector<juce::Colour> colours) : proces
                              "Press again to start over; double-click to let it play until you click again.");
     listenButton.onStart = [this] { processor.requestAudition (PluginBase::previewRequest (layer)); };
     listenButton.onStop = [this] { processor.requestAudition (PluginBase::previewStop); };
+    midiInBox.addItem ("MIDI IN: ALL", 1);
+    midiInBox.addItem ("MIDI IN: THIS ROW", 2);
+    midiInBox.setSelectedId (2, juce::dontSendNotification);
+    midiInBox.setTooltip ("MIDI IN - What the keyboard / MIDI plays while the piano roll is open. THIS ROW (default): only this row, so you can play the sound you are editing. "
+                          "ALL: every row plays as usual. It goes back to ALL when you close the piano roll.");
+    midiInBox.onChange = [this] { applyMidiIn(); grabKeyboardFocus(); };
+    addAndMakeVisible (midiInBox);
     copyButton.setVisible (false);
     pasteButton.setVisible (false);
     pasteOkButton.setVisible (false);
@@ -185,8 +192,24 @@ void PianoRoll::setLayer (int newLayer)
         dragKey = {};
         dragStartKey = {};
         attachGridBox();
+        applyMidiIn();
     }
     repaint();
+}
+
+void PianoRoll::applyMidiIn()
+{
+    processor.midiInLayer = isShowing() && midiInBox.getSelectedId() == 2 ? layer : -1;
+}
+
+void PianoRoll::visibilityChanged()
+{
+    applyMidiIn();
+}
+
+PianoRoll::~PianoRoll()
+{
+    processor.midiInLayer = -1;
 }
 
 int PianoRoll::bars() const
@@ -679,6 +702,7 @@ void PianoRoll::resized()
 {
     auto area = getLocalBounds().toFloat();
     toolbarArea = area.removeFromTop (toolbarHeight);
+    hintArea = area.removeFromBottom (hintHeight);
     keyArea = area.withWidth (keyWidth).withTrimmedTop (rulerHeight).withTrimmedBottom (velocityHeight + 4.0f + barSize);
     rulerArea = area.withTrimmedLeft (keyWidth).withTrimmedRight (barSize).withHeight (rulerHeight);
     velocityArea = area.withTrimmedLeft (keyWidth).withTrimmedRight (barSize).removeFromBottom (velocityHeight);
@@ -711,7 +735,8 @@ void PianoRoll::resized()
     pasteCancelButton.setBounds (slotB);
     top.removeFromLeft (10);
     listenButton.setBounds (top.removeFromLeft (36));
-    infoArea = juce::Rectangle<float> ((float) listenButton.getRight() + 10.0f, (float) top.getY() - 1.0f,
+    midiInBox.setBounds (top.removeFromRight (150));
+    infoArea =juce::Rectangle<float> ((float) listenButton.getRight() + 10.0f, (float) top.getY() - 1.0f,
                                        std::max (0.0f, (float) (top.getRight() - listenButton.getRight()) - 10.0f), 22.0f);
 
     presetButton.setBounds (bottom.removeFromRight (62));
@@ -1521,6 +1546,12 @@ void PianoRoll::paint (juce::Graphics& g)
                                         : juce::String ((int) selection.size()) + " selected";
     g.drawText (info, infoArea.withTrimmedLeft (88.0f), juce::Justification::centredRight);
 
+    // Tipsrad längst ner: genvägarna.
+    g.setColour (Theme::textDim);
+    g.setFont (Theme::font (10.0f, false));
+    g.drawText ("SPACE: play / stop   |   SHIFT + SPACE: play only this piano roll   |   CTRL + C / X / V: copy, cut, paste   |   DEL: delete   |   ARROWS: move notes",
+                hintArea.withTrimmedLeft (6.0f), juce::Justification::centredLeft);
+
     // Velocity.
     g.setColour (juce::Colours::black.withAlpha (0.3f));
     g.fillRect (velocityArea);
@@ -1939,6 +1970,14 @@ bool PianoRoll::keyPressed (const juce::KeyPress& key)
 {
     const auto mods = key.getModifiers();
     const auto ctrl = mods.isCtrlDown() || mods.isCommandDown();
+
+    // Mellanslag: förhandsspela hela synthen (igen = stopp). Skift + mellanslag: bara den här pianorullen.
+    if (key.getKeyCode() == juce::KeyPress::spaceKey && ! ctrl)
+    {
+        const auto row = mods.isShiftDown() ? layer : PluginBase::previewAllRows;
+        processor.requestAudition (processor.previewingLayer.load() == row ? PluginBase::previewStop : PluginBase::previewRequest (row));
+        return true;
+    }
 
     // Inklistring pågår: Enter bekräftar, Esc avbryter. Skrollning och zoom fungerar som vanligt.
     if (pasting)

@@ -28,10 +28,14 @@
 // - Verktygsraden: SNAP av/på, rutnätet (snap) 1/4 ... 1/64, radhöjd, markera alla och ta bort, GLIDE, samt
 //   PRESET (spara och ladda pianorullar) och MIDI (exportera och importera MIDI-filer).
 // - Remsan längst ner är velocity: dra i en tons stapel.
+// - Mellanslag startar och stoppar förhandsspelningen av hela synthen; Skift + mellanslag spelar bara den här pianorullen (som LISTEN).
+//   MIDI-in-rutan (uppe till höger) väljer vad tangentbordet/MIDI spelar medan pianorullen är öppen: bara den här raden (standard) eller alla.
+//   Tipsraden allra längst ner visar genvägarna.
 class PianoRoll : public juce::Component, public juce::SettableTooltipClient, private VisualTimer, private juce::ScrollBar::Listener
 {
 public:
     PianoRoll (PluginBase& processor, std::vector<juce::Colour> layerColours);
+    ~PianoRoll() override;
 
     void setLayer (int newLayer);
 
@@ -48,6 +52,7 @@ public:
     void mouseExit (const juce::MouseEvent&) override;
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
     bool keyPressed (const juce::KeyPress&) override;
+    void visibilityChanged() override;
 
 private:
     enum class Drag { none, move, resize, velocity, box, erase, paste };
@@ -181,6 +186,9 @@ private:
     juce::Component::SafePointer<juce::AlertWindow> saveDialog;
     juce::Rectangle<float> infoArea;
     juce::ComboBox gridBox;                                 // rutnät
+    juce::ComboBox midiInBox;                               // MIDI in medan pianorullen är öppen: alla instrument eller bara den här raden
+    juce::Rectangle<float> hintArea;                        // tipsraden längst ner
+    void applyMidiIn();
     juce::TextButton lengthButton, extendButton { "+ BAR" };  // radens längd (AUTO n / valt antal: klick öppnar menyn) och förläng med en takt
     juce::TextButton voicesDownButton { "-" }, voicesUpButton { "+" };
     juce::Label voicesLabel;                                // "VOICES n"

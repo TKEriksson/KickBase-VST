@@ -895,9 +895,10 @@ void InstrumentProcessor::ensureScratchSize (int numSamples)
 
 void InstrumentProcessor::handleEvent (const StepEvent& event)
 {
-    // Förhandsspelning av en enskild rad: de andra raderna är tysta.
-    if (previewLayer >= 0 && previewLayer != PluginBase::previewAllRows
-        && (event.type == StepEvent::Type::kick ? previewLayer != Pattern::kickLayer : event.layer != previewLayer))
+    // Förhandsspelning av en enskild rad: de andra raderna är tysta. Samma sak för tangentbordet/MIDI när pianorullen valt en rad (midiInLayer).
+    const auto onlyRow = previewLayer >= 0 ? previewLayer : midiInLayer.load();
+    if (onlyRow >= 0 && onlyRow != PluginBase::previewAllRows
+        && (event.type == StepEvent::Type::kick ? onlyRow != Pattern::kickLayer : event.layer != onlyRow))
         return;
 
     if (event.type == StepEvent::Type::kick)
