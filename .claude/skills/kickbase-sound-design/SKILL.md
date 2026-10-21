@@ -5,10 +5,6 @@ description: Use when designing, tuning or judging a psytrance kick or bass soun
 
 # Kickbase sound design
 
-Read these before changing parameters:
-
-1. `docs/kick-bass-school.md` – the kick and bass school: how to build and judge the sound step by step (MCP: `get_guide topic=school`).
-2. `docs/psytrance-kick-bass-reference.md` – numeric reference for psytrance kick and bass (MCP: `get_guide topic=psytrance`).
-3. `docs/AGENT_GUIDE.md` – the tool manual and workflow (MCP: `get_guide`).
+Start with `get_guide` (MCP): it is the tool manual and workflow, always current, and covers kick/bass phase (`get_mix_report` with `include lowband`), Live Code, LFO 1-10 and stacked-note polyphony. The topics `get_guide topic=school` (kick and bass school) and `topic=psytrance` (numeric reference) go deeper.
 
 Workflow: change, `render_preview` (full, then kick and bass alone), read metrics and checks, adjust. You can only measure, not listen: tell the user what you changed and why.
