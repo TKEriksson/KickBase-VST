@@ -12,7 +12,7 @@ namespace
         return Modulation::sourceName (source);
     }
 
-    // Handritade källor: LFO:er, makron och instrumentkällor. CODE-källor visas på sina rutter men väljs bara från Live Code.
+    // Källor: LFO:er, makron, instrumentkällor och CODE 1-8 (värdet skrivs av Live Code).
     juce::PopupMenu sourceMenu (const PluginBase& p, int current)
     {
         juce::PopupMenu menu;
@@ -37,6 +37,12 @@ namespace
                 }
                 menu.addSubMenu (p.getLayerName (layer), sub, true, nullptr, containsCurrent);
             }
+        }
+        menu.addSeparator();
+        for (int code = 0; code < Modulation::numCodeSources; ++code)
+        {
+            const auto source = Modulation::firstCodeSource + code;
+            menu.addItem (1 + source, Modulation::sourceName (source), true, current == source);
         }
         return menu;
     }

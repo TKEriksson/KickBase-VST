@@ -1201,6 +1201,40 @@ namespace
                      noOffset, differs, notApplied, firstBad.isEmpty() ? "" : "; första: ", firstBad.toRawUTF8());
         check (tested > 0 && noRoute == 0 && noRing == 0 && noOffset == 0 && differs == 0 && notApplied == 0, "Matrix-koppling = drag-koppling för alla modulerbara mål");
 
+        // POSITION på varje instrument och OSC: indexet som WavetableView läser (modulator.indexOf, OscPanel.cpp:7) är samma som ratten
+        // (KnobComponent::parameterIndex = getParameters().indexOf) och som Matrix-menyn (id = index + 1), och en koppling dit ger en förskjutning.
+        auto positionBad = 0;
+        juce::String firstPositionBad;
+        for (int layer = 0; layer < Modulation::maxInstruments; ++layer)
+            for (int osc = 0; osc < 3; ++osc)
+            {
+                const auto id = ParamID::bass (layer, ParamID::oscField (osc, InstrumentField::aPos));
+                auto* parameter = processor.apvts.getParameter (id);
+                const auto knobIndex = parameter != nullptr ? parameters.indexOf (parameter) : -1;
+                const auto viewIndex = processor.modulator.indexOf (id);
+                processor.modRoutes.clear();
+                processor.modRoutes.add (matrixSource(), knobIndex, 0.25f);
+                const auto ok = knobIndex >= 0 && knobIndex == viewIndex && strongestOffset (viewIndex) > 0.0f
+                                && Modulation::isModulatable (*dynamic_cast<juce::RangedAudioParameter*> (parameter));
+                positionBad += ok ? 0 : 1;
+                if (! ok && firstPositionBad.isEmpty())
+                    firstPositionBad = id;
+            }
+        processor.modRoutes.clear();
+        check (positionBad == 0, ("POSITION: samma index för ratt, vy och Matrix på alla instrument/OSC" + (firstPositionBad.isEmpty() ? juce::String() : " (första fel: " + firstPositionBad + ")")).toRawUTF8());
+
+        // CODE-källa (nu valbar i Matrix) mot instrument 1 CUTOFF: kopplingen skapas, hittas och ger en ring.
+        {
+            const auto cutoffId = ParamID::bass (0, InstrumentField::cutoff);
+            const auto cutoffIndex = parameters.indexOf (processor.apvts.getParameter (cutoffId));
+            processor.modRoutes.clear();
+            const auto slot = processor.modRoutes.add (Modulation::firstCodeSource, cutoffIndex, 0.25f);
+            check (cutoffIndex >= 0 && slot >= 0 && processor.modRoutes.find (Modulation::firstCodeSource, cutoffIndex) == slot
+                       && Modulation::isCodeSource (processor.modRoutes.routes[(size_t) slot].source.load()),
+                   "CODE 1 -> instrument 1 CUTOFF kan kopplas i Matrix");
+            processor.modRoutes.clear();
+        }
+
         // Källvalet: LFO 1 avstängd (ingen koppling) ger LFO 2, inte en tyst källa.
         processor.setLfoActive (0, false);
         check (matrixSource() == Modulation::lfoSource (1), "Matrix väljer första aktiva LFO när LFO 1 är borttagen");
