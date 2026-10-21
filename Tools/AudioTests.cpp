@@ -10,6 +10,7 @@
 
 #include "../Source/Instrument/InstrumentProcessor.h"
 #include "../Source/Fx/FxProcessor.h"
+#include "../Source/Ui/FmPresets.h"
 #include "Scenarios.h"
 #include <new>
 #include <cstdlib>
@@ -795,6 +796,15 @@ int filter2Test()
                 fmWorst = std::max (fmWorst, audio.getMagnitude (0, audio.getNumSamples()));
             }
     check (fmFinite && fmWorst < 4.0f, "FM, ratio 1-8 x index 0-1 x +-24 halvtoner: inga NaN, största topp " + juce::String (fmWorst, 2));
+
+    // S2c: varje FM-preset ger en hörbar, ändlig signal, och namnlistan följer FM Preset-parameterns val.
+    check (FmPresets::names().size() == FmPresets::count(), "FM-presettabellen och namnlistan har lika många poster");
+    for (int preset = 1; preset < FmPresets::count(); ++preset)
+    {
+        const auto audio = render ([&] (PluginBase& processor) { base (processor); FmPresets::apply (processor.apvts, 0, preset); });
+        check (allFiniteIn (audio) && rms (audio) > 0.001f && audio.getMagnitude (0, audio.getNumSamples()) < 4.0f,
+               "FM-preset " + juce::String (FmPresets::get (preset).name) + ": hörbar och ändlig signal");
+    }
 
     std::puts (failed ? "Filter 2: FEL" : "Filter 2 gick igenom");
     return failed ? 1 : 0;

@@ -707,6 +707,9 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
     sources.addPower (1 + ParamID::oscsPerLayer, p.apvts, ParamID::bass (layer, F::sampleOn));
     filterPage = std::make_unique<FilterPage> (p, layer, layerAccent);
     sources.addTab ("FILTER", layerAccent, *filterPage);
+    fmPanel = std::make_unique<FmPanel> (p, layer, layerAccent);
+    sources.addTab ("FM", layerAccent, *fmPanel);
+    sources.addPower (2 + ParamID::oscsPerLayer, p.apvts, ParamID::bass (layer, F::fmOn)); // FM efter FILTER: fliknummer 2 + oscsPerLayer
 
     auto knob = [&] (const juce::String& paramID, const char* name) -> juce::Component*
     {

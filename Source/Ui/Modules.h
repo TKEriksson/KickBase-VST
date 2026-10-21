@@ -13,6 +13,7 @@
 #include "KickLibraryPanel.h"
 #include "LfoPage.h"
 #include "OscPanel.h"
+#include "FmPanel.h"
 #include "EnvelopeView.h"
 #include "FilterPanel.h"
 #include "PianoRoll.h"
@@ -201,7 +202,8 @@ private:
     std::array<std::unique_ptr<OscPanel>, ParamID::oscsPerLayer> oscs;
     std::unique_ptr<SamplePage> samplePage;
     std::vector<std::unique_ptr<juce::Component>> controls;
-    std::unique_ptr<FilterPage> filterPage;                               // FILTER-fliken: kurvan, Filter 1 och Filter 2
+    std::unique_ptr<FmPanel> fmPanel;                                     // FM-fliken (sist, så att fliknumren före den inte förskjuts)
+    std::unique_ptr<FilterPage> filterPage;                             // FILTER-fliken: kurvan, Filter 1 och Filter 2
     ControlGroups groups; // PITCH, SUB, NOISE, FILTER ENV, VOLUME ENV, WARP ENV, DRIVE, OUT (ENV 2/3, VELOCITY, RANDOM: ENV-fliken)
     PresetButton presets;
     std::unique_ptr<FxSendControl> fxSend;

@@ -120,6 +120,8 @@ set(PLUGIN_SOURCES
     Source/Ui/FilterPanel.cpp
     Source/Ui/HarmonicEditor.cpp
     Source/Ui/OscPanel.cpp
+    Source/Ui/FmPanel.cpp
+    Source/Ui/FmPresets.cpp
     Source/Ui/KickDisplay.cpp
     Source/Ui/Scopes.cpp
     Source/Ui/SoundstagePage.cpp
