@@ -115,6 +115,7 @@ enum class InstrumentField
     fmOn, fmLevel, fmRatio, fmIndex, fmEnvAmount, fmEnvTime, fmSemis, fmPreset, fmFilter, // fas S2: FM-källa (av som standard); fmPreset 0 = Custom (läses inte av DSP, bara av UI)
     slicerOn, slicerMapTo, slicerReverse, // fas F2: slicer i samplerösten (av som standard); MAP TO = halvtonen som spelar skiva 1
     fxSend,                                                       // FX-kanalen som SEND (av som standard = som förut: amount delar ljudet torrt/blött)
+    sampleMode,                                                   // fas R9b: lagrets SAMPLE-rad: 0 BLEND (blandas med syntrösten, som förut), 1 INDEPENDENT (egen rad), 2 OFF; sist, så gamla projekt är orörda
     count
 };
 

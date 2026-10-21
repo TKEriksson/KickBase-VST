@@ -11,6 +11,7 @@ class ReportContent : public juce::Component
 {
 public:
     std::function<void (int)> onSelect;
+    std::function<void (int)> onOpen; // dubbelklick: visa fyndet i spektrumet
     int selected = -1;
 
     void setReport (const MixAnalysis::Report& newReport);
@@ -18,6 +19,7 @@ public:
     void setWidth (int width);
     void paint (juce::Graphics&) override;
     void mouseDown (const juce::MouseEvent&) override;
+    void mouseDoubleClick (const juce::MouseEvent&) override;
     const MixAnalysis::Report& getReport() const { return report; }
 
 private:
@@ -103,7 +105,7 @@ private:
 
     void startAnalysis();
     void takeReport();
-    void selectFinding (int index);
+    void selectFinding (int index, bool showSpectrum = false);
     void chooseReference();
     void loadReferenceFile (const juce::File& file);
     void copyReport();

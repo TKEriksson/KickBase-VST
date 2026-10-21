@@ -69,7 +69,7 @@ void ReportContent::layoutRows()
         juce::AttributedString summary;
         summary.append (juce::String (report.bars) + " bars at " + juce::String (juce::roundToInt (report.bpm)) + " BPM"
                             + (report.kickTailHz > 0.0f ? ", kick tail " + juce::String (report.kickTailHz, 1) + " Hz" : juce::String())
-                            + (report.referenceName.isNotEmpty() ? ", reference: " + report.referenceName : juce::String()) + ". Click a finding to see it in the spectrum.",
+                            + (report.referenceName.isNotEmpty() ? ", reference: " + report.referenceName : juce::String()) + ". Click a finding to select it, double-click to see it in the spectrum.",
                         Theme::font (10.5f), Theme::textDim);
         add (summary, 0, -1);
 
@@ -154,6 +154,17 @@ void ReportContent::mouseDown (const juce::MouseEvent& event)
         {
             if (onSelect)
                 onSelect (row.finding);
+            return;
+        }
+}
+
+void ReportContent::mouseDoubleClick (const juce::MouseEvent& event)
+{
+    for (const auto& row : rows)
+        if (event.y >= row.top && event.y < row.top + row.height && row.kind != 0 && row.finding >= 0 && row.finding < (int) report.findings.size())
+        {
+            if (onOpen)
+                onOpen (row.finding);
             return;
         }
 }
@@ -263,6 +274,7 @@ SpectrumPage::SpectrumPage (PluginBase& p) : processor (p), analyser (p.getMixAn
     exportOptions = MixAnalysis::ExportOptions::fromString (Settings::get ("exportContent"));
 
     content.onSelect = [this] (int index) { selectFinding (index); };
+    content.onOpen = [this] (int index) { selectFinding (index, true); };
     viewport.setViewedComponent (&content, false);
     viewport.setScrollBarsShown (true, false);
     addChildComponent (viewport);
@@ -295,7 +307,7 @@ SpectrumPage::SpectrumPage (PluginBase& p) : processor (p), analyser (p.getMixAn
             analysing = false;
             analyseButton.setButtonText ("ANALYSE");
             if (mode > 1 && ! content.getReport().findings.empty())
-                selectFinding (0);
+                selectFinding (0, true);
         }
         if (juce::SystemStats::getEnvironmentVariable ("KB_VIEW", "0").getIntValue() != 0)
             setView (true);
@@ -540,7 +552,7 @@ void SpectrumPage::takeReport()
     repaint();
 }
 
-void SpectrumPage::selectFinding (int index)
+void SpectrumPage::selectFinding (int index, bool showSpectrum)
 {
     const auto& report = content.getReport();
     if (index < 0 || index >= (int) report.findings.size())
@@ -573,7 +585,8 @@ void SpectrumPage::selectFinding (int index)
     }
     if (! analyserButton.getToggleState())
         analyserButton.setToggleState (true, juce::dontSendNotification);
-    setView (false); // visa fyndet i spektrumet
+    if (showSpectrum)
+        setView (false); // dubbelklick: visa fyndet i spektrumet
     repaint();
 }
 

@@ -6,6 +6,7 @@
 #include "PluginBase.h"
 #include "OfflineRender.h"
 #include "AnalysisAbout.h"
+#include "Settings.h"
 
 namespace MixAnalysis
 {
@@ -2840,10 +2841,13 @@ void MixAnalyser::run()
 {
     auto result = MixAnalysis::run (*copy, bpm, keyNote, options, reference.get(),
                                     [this] (float p) { progress = p; }, [this] { return threadShouldExit(); });
+    result.synthState = synthState;
+    // Hela exporten sparas direkt (som get_mix_report/save_mix_report men utan att någon frågar), så att en AI kan läsa den färdiga analysen som en fil.
+    if (result.valid && ! threadShouldExit())
+        result.saveExport (Settings::rootFolder().getChildFile ("Analysis").getChildFile ("latest.json"), MixAnalysis::ExportOptions {});
     {
         const juce::ScopedLock sl (lock);
         report = std::move (result);
-        report.synthState = synthState;
     }
     ++version;
     running = false;

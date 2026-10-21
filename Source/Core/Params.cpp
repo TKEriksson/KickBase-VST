@@ -101,7 +101,7 @@ namespace ParamID
                                      "Polarity", "PhaseDeg", "NudgeMs",
                                      "FmOn", "FmLevel", "FmRatio", "FmIndex", "FmEnvAmount", "FmEnvTime", "FmSemis", "FmPreset", "FmFilter",
                                      "SlicerOn", "SlicerMapTo", "SlicerReverse",
-                                     "FxSend" };
+                                     "FxSend", "SampleMode" };
         static_assert (std::size (names) == (size_t) InstrumentField::count);
         return names[(size_t) field];
     }
@@ -416,6 +416,8 @@ namespace Params
         layout.add (std::make_unique<AudioParameterInt> (ParameterID { id (F::slicerMapTo), 1 }, title + "Slicer Map To", -96, 96, 0));
         layout.add (std::make_unique<AudioParameterBool> (ParameterID { id (F::slicerReverse), 1 }, title + "Slicer Reverse", false));
         layout.add (std::make_unique<AudioParameterBool> (ParameterID { id (F::fxSend), 1 }, title + "FX Send", false)); // sist: SEND-läge för FX-kanalen (av = som förut)
+        // fas R9b: SAMPLE-radens läge (BLEND = som förut, standard)
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::sampleMode), 1 }, title + "Sample Mode", StringArray { "Blend", "Independent", "Off" }, 0));
     }
 
     void addFxParams (Layout& layout)
