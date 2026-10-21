@@ -573,6 +573,85 @@ namespace
                    ".env på kick returnerar problems i stället för route");
         }
 
+        // .lfo/.env påverkar parametern, utfasade rutter sopas av PluginBase, och kodens tak på rutter gäller.
+        {
+            auto codeRoutes = [&]
+            {
+                auto n = 0;
+                for (auto& route : processor.modRoutes.routes)
+                    n += Modulation::isCodeSource (route.source.load()) ? 1 : 0;
+                return n;
+            };
+            auto pump = [&] (int n) { for (int i = 0; i < n; ++i) processor.modulator.update (0.0); };
+            const auto cutoff = processor.modulator.indexOf ("bass1Cutoff");
+            auto* parameter = processor.apvts.getParameter ("bass1Cutoff");
+            const auto base = parameter->convertFrom0to1 (0.5f);
+            auto spread = [&] (float& lowest, float& highest)
+            {
+                lowest = 2.0f;
+                highest = -1.0f;
+                for (int i = 0; i < 4000; ++i)
+                {
+                    pump (1);
+                    const auto v = parameter->convertTo0to1 (processor.modulator.apply (cutoff, base));
+                    lowest = juce::jmin (lowest, v);
+                    highest = juce::jmax (highest, v);
+                }
+            };
+            const auto lfoCode = juce::String ("note(\"c2\").lfo(\"bass1Cutoff\",3,0.4,\"sine\").s(\"i1\")");
+            const auto plainCode = juce::String ("note(\"c2\").s(\"i1\")");
+
+            run (plainCode); // städa: stäng allt från blocken ovan, låt det tona ut och sopa
+            pump (3000);
+            run (plainCode);
+            check (codeRoutes() == 0 && processor.codeMods.empty(), "CODE: utan .lfo/.env finns inga CODE-rutter kvar");
+
+            float lowest = 0.0f, highest = 0.0f;
+            auto withLfo = run (lfoCode);
+            pump (200);
+            spread (lowest, highest);
+            check ((bool) withLfo["ok"] && withLfo["data"]["problems"].isVoid() && highest > 0.85f && lowest < 0.15f,
+                   ".lfo svänger parametern ±djup runt grundvärdet (0,5 ± 0,4)");
+
+            run ("note(\"c2\").lfo(\"bass1Cutoff\",3,0,\"sine\").s(\"i1\")");
+            pump (200);
+            spread (lowest, highest);
+            check (std::abs (highest - 0.5f) < 1.0e-3f && std::abs (lowest - 0.5f) < 1.0e-3f, ".lfo med djup 0 lämnar parametern orörd");
+
+            // 4.3: PluginBase sopar själv, ingen sida behövs. Stängd post: rutten ligger kvar tills platsen tonat ut och nästa körning sopar.
+            run (lfoCode);
+            run (plainCode);
+            check (processor.codeMods.empty() && codeRoutes() == 1, "CODE: stängd post lämnar rutten tills platsen tonat ut");
+            pump (3000);
+            run (plainCode);
+            check (codeRoutes() == 0, "CODE: utfasad rutt sopas bort av nästa körning (4.3)");
+            run (lfoCode);
+            processor.clearCodeMods (false);
+            pump (3000);
+            processor.sweepCodeRoutes();
+            check (codeRoutes() == 0, "CODE: clearCodeMods(false) + sweepCodeRoutes tar bort rutten (det timern gör)");
+
+            // 4.2: taket på kodens rutter (32 av 64). Sju platser hålls på av hand med fem rutter var (35), så en ny post stoppas.
+            for (int s = 1; s < Modulation::numCodeSources; ++s)
+            {
+                processor.modulator.codeSlots[(size_t) s].kind = 1;
+                for (int t = 0; t < 5; ++t)
+                    processor.modRoutes.add (Modulation::firstCodeSource + s, t, 0.1f);
+            }
+            pump (10);
+            const auto before = codeRoutes();
+            auto capped = run (lfoCode);
+            auto sawCap = false;
+            if (auto* list = capped["data"]["problems"].getArray())
+                for (const auto& p : *list)
+                    sawCap = sawCap || p.toString().contains ("at most " + juce::String (Modulation::maxCodeRoutes));
+            check ((bool) capped["ok"] && sawCap && codeRoutes() == before, "CODE: över taket på 32 rutter ger felrad och ingen ny rutt");
+            for (int s = 1; s < Modulation::numCodeSources; ++s)
+                processor.modulator.codeSlots[(size_t) s].kind = 0;
+            processor.clearCodeMods (true);
+            check (codeRoutes() == 0, "CODE: städat efter taktestet");
+        }
+
         // slider(v,min,max): utan dragning gäller värdet i texten, med dragning värdet från reglaget (begränsat till min..max).
         {
             auto noteOf = [] (const std::map<int, double>& values)

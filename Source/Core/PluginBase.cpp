@@ -586,6 +586,27 @@ void PluginBase::clearCodeMods (bool dropRoutes)
             if (Modulation::isCodeSource (modRoutes.routes[(size_t) i].source.load()))
                 modRoutes.remove (i);
     codeMods.clear();
+    if (! dropRoutes)
+        startCodeSweep();
+}
+
+void PluginBase::startCodeSweep()
+{
+    // Utan meddelandehanterare (verktygstester) finns ingen timer; sweepCodeRoutes anropas då av applyCodeMods och direkt.
+    if (juce::MessageManager::getInstanceWithoutCreating() != nullptr && ! codeSweeper.isTimerRunning())
+        codeSweeper.startTimer (100);
+}
+
+void PluginBase::CodeSweeper::timerCallback()
+{
+    owner.sweepCodeRoutes();
+    for (const auto& route : owner.modRoutes.routes)
+    {
+        const auto source = route.source.load();
+        if (Modulation::isCodeSource (source) && owner.modulator.codeSlots[(size_t) (source - Modulation::firstCodeSource)].kind.load() == 0)
+            return; // en stängd plats tonar fortfarande ut: titta igen om 100 ms
+    }
+    stopTimer();
 }
 
 void PluginBase::sweepCodeRoutes()
