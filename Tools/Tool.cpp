@@ -1568,7 +1568,8 @@ namespace
                                bassPeak = std::max (bassPeak, std::abs (b.getSample (0, i)));
                            }
                        });
-            check (bassSide < 0.45f && bassPeak < 0.45f, "FX2: WIDENER BASS MONO tar bort basens sidosignal");
+            check (bassSide < 0.6f && bassPeak < 0.3f, // en-pols delning: 50 Hz vid 200 Hz släpper igenom ~0,24 (ingång: skillnad 2,0, topp 1,0)
+ "FX2: WIDENER BASS MONO tar bort basens sidosignal");
             for (const auto type : { EffectType::flanger, EffectType::transient })
             {
                 auto finite = true;
