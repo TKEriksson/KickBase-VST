@@ -138,7 +138,7 @@ private:
 class FxSendControl : public juce::Component
 {
 public:
-    FxSendControl (juce::AudioProcessorValueTreeState& apvts, const juce::String& channelID, const juce::String& amountID,
+    FxSendControl (juce::AudioProcessorValueTreeState& apvts, const juce::String& channelID, const juce::String& amountID, const juce::String& modeID,
                    const juce::String& name, juce::Colour accent);
 
     void resized() override;
@@ -153,9 +153,11 @@ public:
 private:
     juce::Label label;
     ChoiceComponent::Box channel;
+    juce::TextButton mode;
     AmountSlider amount;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> channelAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> amountAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> modeAttachment;
 };
 
 // Raden längst ner som alltid förklarar det musen är över (tooltip-texten för kontrollen
@@ -313,7 +315,7 @@ private:
             }
             if (fxSend != nullptr)
             {
-                fxSend->setBounds (area.removeFromRight (168));
+                fxSend->setBounds (area.removeFromRight (206));
                 area.removeFromRight (8);
             }
             if (preset != nullptr)

@@ -100,7 +100,8 @@ namespace ParamID
                                      "FilterOn", "FilterOsc1", "FilterOsc2", "FilterOsc3", "FilterSample", "FilterNoise", "NoiseType", "WarpEnvSource", "WarpEnvDecay",
                                      "Polarity", "PhaseDeg", "NudgeMs",
                                      "FmOn", "FmLevel", "FmRatio", "FmIndex", "FmEnvAmount", "FmEnvTime", "FmSemis", "FmPreset", "FmFilter",
-                                     "SlicerOn", "SlicerMapTo", "SlicerReverse" };
+                                     "SlicerOn", "SlicerMapTo", "SlicerReverse",
+                                     "FxSend" };
         static_assert (std::size (names) == (size_t) InstrumentField::count);
         return names[(size_t) field];
     }
@@ -212,7 +213,8 @@ namespace Params
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::kickFxChannel, 1 }, "Kick FX Channel",
                                                             fxChannelChoices(), 0));
         layout.add (percent (ParamID::kickFxAmount, "Kick FX Amount", 1.0f));
-        layout.add (percent (ParamID::kickComp, "Kick Comp", 0.0f)); // sist i gruppen: DAW-ordningen och gamla presets rörs inte
+        layout.add (percent (ParamID::kickComp, "Kick Comp", 0.0f)); // (kickComp var sist i gruppen: DAW-ordningen och gamla presets rörs inte)
+        layout.add (std::make_unique<AudioParameterBool> (ParameterID { ParamID::kickFxSend, 1 }, "Kick FX Send", false));
     }
 
     void addInstrumentCommonParams (Layout& layout, int layer, float defaultLevel)
@@ -413,6 +415,7 @@ namespace Params
         layout.add (std::make_unique<AudioParameterBool> (ParameterID { id (F::slicerOn), 1 }, title + "Slicer On", false));
         layout.add (std::make_unique<AudioParameterInt> (ParameterID { id (F::slicerMapTo), 1 }, title + "Slicer Map To", -96, 96, 0));
         layout.add (std::make_unique<AudioParameterBool> (ParameterID { id (F::slicerReverse), 1 }, title + "Slicer Reverse", false));
+        layout.add (std::make_unique<AudioParameterBool> (ParameterID { id (F::fxSend), 1 }, title + "FX Send", false)); // sist: SEND-läge för FX-kanalen (av = som förut)
     }
 
     void addFxParams (Layout& layout)

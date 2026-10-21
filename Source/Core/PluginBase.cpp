@@ -1098,6 +1098,7 @@ namespace
                  { "duck", ParamID::bass (layer, InstrumentField::duck) },
                  { "fxChannel", ParamID::bass (layer, InstrumentField::fxChannel) },
                  { "fxAmount", ParamID::bass (layer, InstrumentField::fxAmount) },
+                 { "fxSend", ParamID::bass (layer, InstrumentField::fxSend) },
                  { "mixGain", mixer ("Gain") }, { "mixPan", mixer ("Pan") }, { "mixDuck", mixer ("Duck") }, { "mixMax", mixer ("Max") } };
     }
 

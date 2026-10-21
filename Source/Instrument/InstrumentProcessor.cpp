@@ -792,11 +792,12 @@ void InstrumentProcessor::finishBlock (int numSamples)
             for (int i = 0; i < numSamples; ++i)
                 instrumentTaps[(size_t) layer].push (0.5f * (data[i] + dataRight[i]));
 
-        // Kanal A-C: amount av ljudet går genom kanalen, resten torrt.
+        // Kanal A-C: INSERT (standard) = amount av ljudet går genom kanalen, resten torrt. SEND = torrt orört, amount läggs till kanalen.
         const auto channel = (int) params.bass (layer, InstrumentField::fxChannel) - 1;
         const auto amountToChannel = params.bass (layer, InstrumentField::fxAmount);
         const auto routed = channel >= 0 && effects.isActive (channel);
-        const auto dryGain = routed ? 1.0f - amountToChannel : 1.0f;
+        const auto sendMode = params.bass (layer, InstrumentField::fxSend) >= 0.5f;
+        const auto dryGain = routed && ! sendMode ? 1.0f - amountToChannel : 1.0f;
 
         // Instrumentets fader och panorering gäller hela ljudet: både det torra och det som skickas till kanalen.
         mixer.mix (Mixer::firstBassSource + layer, data, dataRight, numSamples, dryGain, maxBus, bypassBus,
@@ -811,7 +812,8 @@ void InstrumentProcessor::finishBlock (int numSamples)
     const auto kickChannel = (int) params.get (ParamID::kickFxChannel) - 1;
     const auto kickAmount = params.get (ParamID::kickFxAmount);
     const auto kickRouted = kickChannel >= 0 && effects.isActive (kickChannel);
-    const auto kickDry = kickRouted ? 1.0f - kickAmount : 1.0f;
+    const auto kickSendMode = params.get (ParamID::kickFxSend) >= 0.5f;
+    const auto kickDry = kickRouted && ! kickSendMode ? 1.0f - kickAmount : 1.0f;
 
     mixer.mix (Mixer::kickSource, kickBuffer.getReadPointer (0), nullptr, numSamples, kickDry, maxBus, bypassBus,
                sendBus.getWritePointer (0), sendBus.getWritePointer (1));

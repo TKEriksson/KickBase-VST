@@ -484,7 +484,7 @@ KickModule::KickModule (PluginBase& p)
     viewTabs.onChange = [this] (int tab) { processor.kickTab = tab; applyTab(); };
     setHeaderTabs (&viewTabs, 150);
     addAndMakeVisible (viewTabs);
-    fxSend = std::make_unique<FxSendControl> (p.apvts, ParamID::kickFxChannel, ParamID::kickFxAmount, "FX SEND", Theme::kick);
+    fxSend = std::make_unique<FxSendControl> (p.apvts, ParamID::kickFxChannel, ParamID::kickFxAmount, ParamID::kickFxSend, "FX SEND", Theme::kick);
     addAndMakeVisible (*fxSend);
     setHeaderFxSend (fxSend.get());
     addAndMakeVisible (keyMode);
@@ -704,7 +704,7 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
 
     setHeaderPreset (&presets);
     addAndMakeVisible (presets);
-    fxSend = std::make_unique<FxSendControl> (p.apvts, id (F::fxChannel), id (F::fxAmount), "FX SEND", layerAccent);
+    fxSend = std::make_unique<FxSendControl> (p.apvts, id (F::fxChannel), id (F::fxAmount), id (F::fxSend), "FX SEND", layerAccent);
     addAndMakeVisible (*fxSend);
     setHeaderFxSend (fxSend.get());
     envelope.onBeforePaint = [this] { current = refs.readInstrument (layer, 36).withTempo (processor.transportStatus.bpm.load(), false); };
