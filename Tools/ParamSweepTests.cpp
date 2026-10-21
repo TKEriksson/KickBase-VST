@@ -9,17 +9,19 @@ namespace
     struct Setting
     {
         juce::RangedAudioParameter* parameter = nullptr;
+        int index = 0; // plats i getParameters(), samma i den laddade processorn
         float defaultValue = 0.0f;
         float setValue = 0.0f;
         bool differs = false;
     };
 
     // Första kandidaten som efter avrundning (meny, heltal, av/på) skiljer sig från standardvärdet.
-    Setting applyNonDefault (juce::RangedAudioParameter& parameter)
+    Setting applyNonDefault (juce::RangedAudioParameter& parameter, int index)
     {
         Setting s;
         s.parameter = &parameter;
-        s.defaultValue = parameter.getValue();
+        s.index = index;
+        s.defaultValue = parameter.getDefaultValue(); // inte getValue(): en lyssnare kan redan ha flyttat parametern
         for (const auto candidate : { 0.37f, 0.81f, 0.0f, 1.0f })
         {
             parameter.setValueNotifyingHost (candidate);
@@ -41,8 +43,9 @@ namespace
     }
 
     // Returnerar antal fel. Alla parametrar i `source` sätts, sparas och jämförs med en ny processor av samma typ.
+    // `untestableTotal` räknas upp med antalet parametrar som inte kunde provas.
     template <typename Processor>
-    int sweep (const char* label)
+    int sweep (const char* label, int& untestableTotal)
     {
         Processor source;
         // Laddningen rensar LFO utanför activeLfos som saknar rutter (PluginBase.cpp applyLoadedLfos/clearLfo, ~:829-855) och återställer deras parametrar.
@@ -53,8 +56,9 @@ namespace
         std::vector<Setting> settings;
         auto problems = 0;
 
-        for (auto* p : all)
+        for (auto index = 0; index < all.size(); ++index)
         {
+            auto* p = all[index];
             auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (p);
             if (ranged == nullptr)
             {
@@ -62,7 +66,7 @@ namespace
                 ++problems;
                 continue;
             }
-            settings.push_back (applyNonDefault (*ranged));
+            settings.push_back (applyNonDefault (*ranged, index));
         }
 
         auto untestable = 0, coupled = 0;
@@ -94,13 +98,12 @@ namespace
         }
 
         auto survived = 0, tested = 0;
-        for (size_t i = 0; i < settings.size() && (int) i < loadedAll.size(); ++i)
+        for (const auto& s : settings)
         {
-            const auto& s = settings[i];
-            if (! s.differs)
+            if (! s.differs || s.index >= loadedAll.size())
                 continue;
             ++tested;
-            const auto got = loadedAll[(int) i]->getValue();
+            const auto got = loadedAll[s.index]->getValue();
             if (std::abs (got - s.setValue) <= 1.0e-4f)
                 ++survived;
             else
@@ -117,6 +120,7 @@ namespace
             std::printf ("FEL %s: räkningen går inte ihop med getParameters().size()\n", label);
             ++problems;
         }
+        untestableTotal += untestable;
         return problems;
     }
 }
@@ -124,7 +128,11 @@ namespace
 int paramTest()
 {
     juce::ScopedJuceInitialiser_GUI gui;
-    const auto problems = sweep<InstrumentProcessor> ("instrument") + sweep<FxProcessor> ("fx");
-    std::printf ("%s\n", problems == 0 ? "paramtest: ok" : "paramtest: FEL, se raderna ovan");
+    auto untestable = 0;
+    const auto problems = sweep<InstrumentProcessor> ("instrument", untestable) + sweep<FxProcessor> ("fx", untestable);
+    if (problems == 0)
+        std::printf ("paramtest: ok (%d otestade)\n", untestable);
+    else
+        std::printf ("paramtest: FEL, se raderna ovan (%d otestade)\n", untestable);
     return problems == 0 ? 0 : 1;
 }
