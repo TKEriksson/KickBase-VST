@@ -116,6 +116,7 @@ private:
         report = analyser.getReport();
         selected = report.findings.empty() ? -1 : 0;
         scroll = 0;
+        fixes = report.capture != nullptr ? MixAnalysis::describePhase (report.capture->phase).fixes : juce::Array<juce::var>();
         buildField();
         repaint();
     }
@@ -213,7 +214,9 @@ private:
         const auto area = fieldArea();
         g.setColour (Theme::panel);
         g.fillRoundedRectangle (area.toFloat(), 4.0f);
-        const auto plot = area.toFloat().reduced (30.0f, 10.0f).withTrimmedBottom (8.0f);
+        const auto showFixes = selected >= 0 && selected < (int) report.findings.size() && report.findings[(size_t) selected].category == "phase" && ! fixes.isEmpty();
+        const auto fixHeight = showFixes ? 14 * std::min (fixes.size(), 6) + 20 : 0;
+        const auto plot = area.toFloat().reduced (30.0f, 10.0f).withTrimmedBottom (8.0f + (float) fixHeight);
         auto xFor = [&] (float hz) { return plot.getX() + plot.getWidth() * std::log (hz / fieldLowHz) / std::log (fieldHighHz / fieldLowHz); };
         const auto bars = std::max (1, fieldBars > 0 ? fieldBars : report.bars);
         auto yTop = [&] (int bar0) { return plot.getY() + plot.getHeight() * (float) bar0 / (float) bars; };
@@ -248,6 +251,17 @@ private:
         if (selected < 0 || selected >= (int) report.findings.size())
             return;
         const auto& f = report.findings[(size_t) selected];
+        if (showFixes)
+        {
+            auto strip = area.withTrimmedTop (area.getHeight() - fixHeight).reduced (8, 2);
+            g.setColour (Theme::textDim);
+            g.setFont (Theme::font (10.5f, true));
+            g.drawText ("SUGGESTED FIXES - candidates to try with A/B; nothing is changed until you approve", strip.removeFromTop (16), juce::Justification::centredLeft, true);
+            g.setFont (Theme::font (10.5f));
+            for (int i = 0; i < std::min (fixes.size(), 6); ++i)
+                g.drawText (juce::String (juce::CharPointer_UTF8 ("â¢ ")) + fixes[i].getProperty ("target", {}).toString() + " - " + fixes[i].getProperty ("why", {}).toString(),
+                            strip.removeFromTop (14), juce::Justification::centredLeft, true);
+        }
         const auto colour = severityColour (f.severity);
         if (f.highHz > f.lowHz && f.highHz > 0.0f)
         {
@@ -270,6 +284,7 @@ private:
     MixAnalyser& analyser;
     juce::TextButton analyseButton { "ANALYSE" };
     MixAnalysis::Report report;
+    juce::Array<juce::var> fixes; // suggested_fixes ur fasmåtten (visas när ett fasfynd är valt)
     std::vector<std::uint8_t> field; // [takt][band]: antal källor som ligger nära varandra (0-4)
     int fieldBars = 0, selected = -1, scroll = 0, shownVersion = 0;
     bool analysing = false, gradientShown = true;
