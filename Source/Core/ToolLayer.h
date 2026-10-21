@@ -51,6 +51,7 @@ private:
     juce::var setPattern (const juce::var& args);
     juce::var setGate (const juce::var& args);
     juce::var editWavetableHarmonics (const juce::var& args);
+    juce::var analyseWavetable (const juce::var& args);
     juce::var liveCodeCreate (const juce::var& args);
     juce::var liveCodeRun (const juce::var& args);
     juce::var liveCodeStop();

@@ -622,7 +622,23 @@ namespace MixAnalysis
                 f.share = (float) activeCount / (float) std::max<size_t> (1, ph.lowCorrelation.size());
                 f.title = "Kick and bass partly cancel each other at 30-150 Hz (correlation " + juce::String (mean, 2) + ")";
                 f.detail = "The sum of kick and bass peaks " + juce::String (ph.sumVsMaxDb, 1) + " dB against the loudest one alone. Their waves run in opposite directions, so the low end gets thinner. "
-                           "Try another phase or RAND off on the bass, shift the bass note a little in time, or change the kick's start phase.";
+                           "Try another phase or RAND off on the bass, shift the bass note a little in time, or change the kick's start phase. "
+                           "Or read the bass wave with analyse_wavetable and shift its fundamental's phase, or remove the fundamental where it overlaps the kick, with edit_wavetable_harmonics.";
+                r.findings.push_back (std::move (f));
+            }
+            if (activeCount >= 4 && ph.sumVsMaxDb > 3.0f)
+            {
+                Finding f;
+                f.severity = ph.sumVsMaxDb > 6.0f ? Severity::warning : Severity::info;
+                f.category = "phase";
+                f.sources = { "Kick", "Instruments" };
+                f.lowHz = 30.0f;
+                f.highHz = 150.0f;
+                f.share = (float) activeCount / (float) std::max<size_t> (1, ph.lowCorrelation.size());
+                f.title = "Kick and bass add up " + juce::String (ph.sumVsMaxDb, 1) + " dB above the loudest one at 30-150 Hz";
+                f.detail = "Where they play together the low end gets louder than either alone, which eats headroom and can distort the master. "
+                           "Lower the bass velocity (or its level) by about " + juce::String (ph.sumVsMaxDb, 1) + " dB (a factor of " + juce::String (juce::Decibels::decibelsToGain (-ph.sumVsMaxDb), 2) + "), "
+                           "or remove the bass fundamental where it overlaps the kick with edit_wavetable_harmonics.";
                 r.findings.push_back (std::move (f));
             }
             if (ph.clickHits > 0)

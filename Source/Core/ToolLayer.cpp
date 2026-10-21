@@ -218,6 +218,8 @@ std::vector<ToolLayer::ToolInfo> ToolLayer::tools()
           R"({"type":"object","properties":{"layer":{"type":"integer"},"on":{"type":"boolean"},"grid":{"type":"string"},"depth":{"type":"number"},"smooth_ms":{"type":"number"},"bars":{"type":"array","items":{"type":"string"}},"all":{"type":"string","enum":["open","closed"]}},"required":["layer"]})" },
         { "edit_wavetable_harmonics", "Edits the harmonics of an oscillator's wavetable (the TABLE of OSC A/B/C of an instrument). harmonics: [{\"n\":1,\"gain_db\":-12,\"phase_deg\":90}] where n 1 = the fundamental, 2 the octave ... up to 511; gain_db (-120 = removed, positive boosts) or linear gain, and phase_deg is added to the harmonic's phase. frame 0-15 edits one wave of the table, 'all' (default) every wave. normalise (default true) keeps each wave's peak level. The result becomes the oscillator's User table (a built-in table is copied first and named '... (edited)'), so the original is never changed. Use it e.g. to remove the fundamental of a bass that fights the kick, or to shift its phase.",
           R"({"type":"object","properties":{"layer":{"type":"integer","minimum":0,"maximum":9},"osc":{"type":"integer","minimum":0,"maximum":2},"frame":{},"harmonics":{"type":"array","items":{"type":"object"}},"normalise":{"type":"boolean"}},"required":["layer","osc","harmonics"]})" },
+        { "analyse_wavetable", "Reads an oscillator's wavetable as harmonics: for one frame (default 0) the level (dB, relative to the loudest harmonic) and the phase (degrees, sine convention: s = sum A_k sin(2 pi k t + phase_k)) of harmonics 1..count (default 16, max 64). Use it before edit_wavetable_harmonics, e.g. to see the fundamental's phase and shift it so the bass starts in phase with the kick. Works on the built-in tables as well as on user tables.",
+          R"({"type":"object","properties":{"layer":{"type":"integer","minimum":0,"maximum":9},"osc":{"type":"integer","minimum":0,"maximum":2},"frame":{"type":"integer","minimum":0,"maximum":15},"count":{"type":"integer","minimum":1,"maximum":64}},"required":["layer","osc"]})" },
         { "set_sidechain_curve", "Sets how the kick ducks the bass. mode 'Kick envelope' follows the kick; mode 'Curve' uses 'points' [[x,y,tension]...] where x is 0..1 across the length (1/16, 1/8, 3/16, 1/4, 1/2, or Kick) and y 0..1 is the ducking (1 = fully ducked). The depth per instrument is bass1Duck, bass2Duck ... bass10Duck.",
           R"({"type":"object","properties":{"mode":{"type":"string"},"length":{"type":"string"},"points":{"type":"array","items":{"type":"array","items":{"type":"number"}}}}})" },
         { "set_instruments", "Sets how many instruments are used (1-10; each has its own pattern, oscillators, filter, envelopes, effect send and sidechain depth; the default is 3). Removing instruments deletes the last ones completely (pattern, sound, sample, wavetables, name, mixer and modulation routes). Adding gives instruments with default settings and an empty pattern.",
@@ -295,6 +297,7 @@ var ToolLayer::call (const juce::String& tool, const var& args)
     if (tool == "list_presets")     return listPresets (args);
     if (tool == "list_library")     return listLibrary (args);
     if (tool == "render_preview")   return renderPreview (args);
+    if (tool == "analyse_wavetable") return analyseWavetable (args);
     if (tool == "analyse_mix")      return analyseMix (args);
     if (tool == "get_mix_report")   return getMixReport (args);
     if (tool == "save_mix_report")  return saveMixReport (args);
@@ -1274,6 +1277,43 @@ var ToolLayer::editWavetableHarmonics (const var& args)
     put (data, "osc", osc);
     put (data, "table", processor.getUserTableName (layer, osc));
     put (data, "edits", (int) edits.size());
+    return ok (data);
+}
+
+var ToolLayer::analyseWavetable (const var& args)
+{
+    const auto layer = (int) args["layer"], osc = (int) args["osc"];
+    if (! juce::isPositiveAndBelow (layer, ParamID::numInstrumentLayers) || ! juce::isPositiveAndBelow (osc, ParamID::oscsPerLayer))
+        return fail ("layer must be 0-9 and osc 0-2 (A, B, C).");
+
+    std::vector<float> frames;
+    auto steps = 0;
+    juce::String name;
+    if (! processor.wavetableSource (layer, osc, frames, steps, name))
+        return fail ("This oscillator has no wavetable to read (a sample or an unavailable table).");
+
+    const auto frame = juce::jlimit (0, Wavetable::numFrames - 1, args.hasProperty ("frame") ? (int) args["frame"] : 0);
+    const auto count = juce::jlimit (1, 64, args.hasProperty ("count") ? (int) args["count"] : 16);
+    std::vector<float> amp, phase;
+    WavetableEdit::analyse (frames.data() + (size_t) frame * Wavetable::frameSize, count, amp, phase);
+    const auto loudest = juce::jmax (1.0e-9f, *std::max_element (amp.begin(), amp.end()));
+
+    juce::Array<var> harmonics;
+    for (int k = 0; k < count; ++k)
+    {
+        auto item = object();
+        put (item, "n", k + 1);
+        put (item, "level_db", round4 (juce::Decibels::gainToDecibels (amp[(size_t) k] / loudest, -120.0f)));
+        put (item, "phase_deg", juce::roundToInt (juce::radiansToDegrees (phase[(size_t) k])));
+        harmonics.add (item);
+    }
+
+    auto data = object();
+    put (data, "layer", layer);
+    put (data, "osc", osc);
+    put (data, "table", name);
+    put (data, "frame", frame);
+    put (data, "harmonics", harmonics);
     return ok (data);
 }
 
