@@ -53,6 +53,7 @@ set(CORE_SOURCES
     Source/Core/InstrumentSynth.cpp
     Source/Core/InstrumentVoices.cpp
     Source/Core/Wavetable.cpp
+    Source/Core/WavetableEdit.cpp
     Source/Core/NodeEnvelope.cpp
     Source/Core/StepScheduler.cpp
     Source/Core/Sidechain.cpp
@@ -118,7 +119,10 @@ set(PLUGIN_SOURCES
     Source/Ui/Components.cpp
     Source/Ui/Help.cpp
     Source/Ui/FilterPanel.cpp
+    Source/Ui/HarmonicEditor.cpp
     Source/Ui/OscPanel.cpp
+    Source/Ui/FmPanel.cpp
+    Source/Ui/FmPresets.cpp
     Source/Ui/KickDisplay.cpp
     Source/Ui/Scopes.cpp
     Source/Ui/SoundstagePage.cpp
@@ -220,6 +224,9 @@ target_sources(KickbaseTests PRIVATE
     Tests/EngineTests.cpp
     Tests/MasterTests.cpp
     Tests/ModulationTests.cpp
+    Tests/FmPresetTests.cpp
+    Tests/PersistFmTests.cpp
+    Source/Ui/FmPresets.cpp
     Source/Core/Params.cpp
     Source/Core/Master.cpp
     Source/Core/SourceEq.cpp
@@ -248,6 +255,7 @@ target_sources(KickbaseMcp PRIVATE
     Tools/StateTests.cpp
     Tools/AnTests.cpp
     Tools/RowTests.cpp
+    Tools/ParamSweepTests.cpp
     Tools/LibraryTests.cpp
     Tools/Freesound.cpp
     Tools/Tb303Tests.cpp

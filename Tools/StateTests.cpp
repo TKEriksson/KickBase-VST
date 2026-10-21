@@ -145,6 +145,104 @@ int persistTest()
         check (processor->retiredTableCount() >= 7, "tabellerna från borttagna instrument frigörs inte direkt (" + juce::String ((int) processor->retiredTableCount()) + " väntar)");
     }
 
+    // 4a. Slicer: Grid 8 ger 8 skivor (första 0, stigande), standardinställningar sparas som förut, och skivinställningarna följer med projektet.
+    {
+        auto processor = std::make_unique<InstrumentProcessor>();
+        processor->loadInstrumentSample (0, Scenarios::writeTestWav ("persist_slices", 110.0, 0.6));
+        const auto* sample = processor->getActiveInstrumentSample (0);
+        check (sample != nullptr && sample->slices.size() == 8 && sample->slices.front() == 0 && std::is_sorted (sample->slices.begin(), sample->slices.end()), "Slicer: Grid 8 ger 8 stigande skivor");
+
+        auto before = processor->instrumentSamplesToValueTree();
+        check (! before.getChild (0).hasProperty ("sliceMode"), "Slicer: standardinställningar skriver inga nya attribut (gamla filer oförändrade)");
+
+        processor->setInstrumentSlicing (0, SampleSlicing::grid, 0.5f, 200);
+        check (processor->getActiveInstrumentSample (0)->slices.size() == (size_t) SampleSlicing::maxSlices, "Slicer: max 128 skivor");
+        processor->setInstrumentSlicing (0, SampleSlicing::manual, 0.5f, 8);
+        processor->setInstrumentSliceMarkers (0, { 0.5f, 0.25f });
+        check (processor->getActiveInstrumentSample (0)->slices.size() == 3, "Slicer: manuella markörer ger skivor (0 + två)");
+
+        auto other = std::make_unique<InstrumentProcessor>();
+        other->instrumentSamplesFromValueTree (processor->instrumentSamplesToValueTree());
+        check (other->getActiveInstrumentSample (0) != nullptr && other->getActiveInstrumentSample (0)->slices == processor->getActiveInstrumentSample (0)->slices
+               && other->instrumentSampleSlot (0).sliceMode() == SampleSlicing::manual, "Slicer: skivinställningarna följer med projektet");
+
+        processor->clearInstrumentSample (0);
+        check (processor->getActiveInstrumentSample (0) == nullptr, "Slicer: tom sampling är tyst (ingen sampling, inga skivor)");
+    }
+
+    // 4a2. Slicer i ljudet: Grid 8 och MAP TO 2 ger tonerna 2..9 var sin skiva, tonerna utanför är tysta, REVERSE låter annorlunda
+    //      och med slicern av spelas hela samplingen som förut.
+    {
+        auto processor = std::make_unique<InstrumentProcessor>();
+        using F = InstrumentField;
+        Scenarios::setInstrument (*processor, 0, F::on, 1.0f);
+        for (const auto field : { F::aOn, F::bOn, F::cOn })
+            Scenarios::setInstrument (*processor, 0, field, 0.0f);
+        Scenarios::setInstrument (*processor, 0, F::sub, 0.0f);
+        Scenarios::setInstrument (*processor, 0, F::noise, 0.0f);
+        Scenarios::setInstrument (*processor, 0, F::sampleOn, 1.0f);
+        Scenarios::setInstrument (*processor, 0, F::sampleLevel, 1.0f);
+        processor->loadInstrumentSample (0, Scenarios::writeTestWav ("persist_slicer_audio", 110.0, 0.6));
+        for (int other = 1; other < 3; ++other)
+            Scenarios::setInstrument (*processor, other, F::on, 0.0f);
+        auto* kick = processor->apvts.getParameter (ParamID::kickOn);
+        kick->setValueNotifyingHost (kick->convertTo0to1 (0.0f));
+
+        const std::array<int, 10> pitches { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 }; // 1 och 10 ligger utanför skivorna 2..9
+        processor->pattern.clearNotes (0);
+        for (int bar = 0; bar < (int) pitches.size(); ++bar)
+            processor->pattern.addNote (0, bar * Pattern::ticksPerBar, Pattern::ticksPerBar - 12, pitches[(size_t) bar]);
+        processor->pattern.setCustom (0, true);
+        processor->patternChanged();
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (600);
+
+        const auto bpm = 140.0, rate = 48000.0;
+        const auto barSamples = (int) (rate * 60.0 / bpm * 4.0);
+        const auto window = (int) (0.07 * rate); // en skiva är 0,6 s / 8 = 75 ms
+        auto render = [&]
+        {
+            OfflineRender::Settings settings;
+            settings.sampleRate = rate;
+            settings.bpm = bpm;
+            settings.bars = (int) pitches.size();
+            settings.notes = { 52 };
+            return OfflineRender::render (*processor, settings);
+        };
+        auto peakOf = [&] (const juce::AudioBuffer<float>& audio, int bar) { return audio.getMagnitude (0, bar * barSamples, window); };
+        auto differs = [&] (const juce::AudioBuffer<float>& a, int barA, const juce::AudioBuffer<float>& b, int barB)
+        {
+            for (int i = 0; i < window; ++i)
+                if (std::abs (a.getSample (0, barA * barSamples + i) - b.getSample (0, barB * barSamples + i)) > 1.0e-4f)
+                    return true;
+            return false;
+        };
+
+        const auto whole = render(); // slicern av: hela samplingen i varje takt
+        Scenarios::setInstrument (*processor, 0, F::slicerOn, 1.0f);
+        Scenarios::setInstrument (*processor, 0, F::slicerMapTo, 2.0f);
+        const auto sliced = render();
+
+        auto audible = true;
+        for (int bar = 1; bar <= 8; ++bar)
+            audible = audible && peakOf (sliced, bar) > 0.001f;
+        check (audible, "Slicer: tonerna 2..9 spelar var sin skiva (hörbara)");
+        check (peakOf (sliced, 0) < 1.0e-4f && peakOf (sliced, 9) < 1.0e-4f, "Slicer: tonen före och efter skivorna är tyst (ingen wrap)");
+        check (differs (sliced, 1, sliced, 2) && differs (sliced, 2, sliced, 5) && peakOf (sliced, 1) > peakOf (sliced, 8), "Slicer: skivorna har olika innehåll (decay-tonen sjunker)");
+        check (differs (whole, 1, sliced, 2) && peakOf (whole, 0) > 0.001f, "Slicer av: hela samplingen spelas (tonen 1 hörs), skivljudet är annat");
+
+        Scenarios::setInstrument (*processor, 0, F::slicerReverse, 1.0f);
+        const auto reversed = render();
+        check (differs (sliced, 1, reversed, 1), "Slicer: REVERSE låter annorlunda än framåt");
+
+        Scenarios::setInstrument (*processor, 0, F::slicerOn, 0.0f);
+        Scenarios::setInstrument (*processor, 0, F::slicerReverse, 0.0f);
+        const auto again = render();
+        auto same = whole.getNumSamples() == again.getNumSamples();
+        for (int i = 0; same && i < whole.getNumSamples(); ++i)
+            same = whole.getSample (0, i) == again.getSample (0, i);
+        check (same, "Slicer av igen: samma ljud som före (bit för bit)");
+    }
+
     // 4b. Morph av: en WAV med fyra cykler ger fyra steg, och Morph av + antalet steg följer med projektet, Full- och instrument-presets (annars låter
     //     ett projekt annorlunda efter omladdning).
     {
@@ -212,6 +310,8 @@ int persistTest()
         ToolLayer tools (*processor);
         const auto modResult = tools.call ("live_code_create", juce::var (modArgs));
         check ((bool) modResult["ok"] && ! processor->codeMods.empty(), "testläge: CODE-modulering är aktiv före sparning");
+        processor->liveCodeCodeLocks = 1 << 3; // F2: lås från koden sparas aldrig
+        processor->liveCodeCodeNoteLocks = 1 << 4;
         juce::MemoryBlock saved;
         processor->getStateInformation (saved);
         auto xml = juce::AudioProcessor::getXmlFromBinary (saved.getData(), (int) saved.getSize());
@@ -227,6 +327,7 @@ int persistTest()
         check (copy->getLiveCodeText() == processor->getLiveCodeText(), "spara och ladda: koden följer med");
         check (copy->liveCodeLocks.load() == ((1 << 2) | (1 << 10)), "spara och ladda: låsen följer med (bit utanför 11 bitar tas bort)");
         check (copy->liveCodeOwned.load() == 0, "inget ägs efter laddning (LIVE startar aldrig av sig själv)");
+        check (copy->liveCodeCodeLocks.load() == 0 && copy->liveCodeCodeNoteLocks.load() == 0 && copy->liveCodeLocks.load() == ((1 << 2) | (1 << 10)), "kodlås sparas aldrig; handlåsen följer med");
         auto restoredCodeRoute = false;
         for (const auto& route : copy->modRoutes.routes)
             restoredCodeRoute = restoredCodeRoute || Modulation::isCodeSource (route.source.load());
@@ -322,6 +423,26 @@ int persistTest()
         check (value (*phaseCopy, F::polarity) > 0.5f && std::abs (value (*phaseCopy, F::phaseDeg) - 123.4f) < 0.11f && std::abs (value (*phaseCopy, F::nudgeMs) + 0.75f) < 0.03f,
                "spara och ladda: POLARITY, START PHASE och NUDGE följer med");
         check (value (*copyOf (*std::make_unique<InstrumentProcessor>()), F::polarity) < 0.5f, "PH: nya parametrar har standardvärden som ger dagens ljud");
+        {
+            auto fresh = std::make_unique<InstrumentProcessor>();
+            check (value (*copyOf (*fresh), F::fmOn) < 0.5f && value (*copyOf (*fresh), F::fmLevel) < 1.0e-6f && value (*copyOf (*fresh), F::fmFilter) > 0.5f,
+                   "S2: FM är av som standard (nivå 0, genom filtren)");
+        }
+        Scenarios::setInstrument (*processor, 3, F::fmOn, 1.0f);
+        Scenarios::setInstrument (*processor, 3, F::fmLevel, 0.6f);
+        Scenarios::setInstrument (*processor, 3, F::fmRatio, 3.5f);
+        Scenarios::setInstrument (*processor, 3, F::fmIndex, 0.75f);
+        Scenarios::setInstrument (*processor, 3, F::fmEnvAmount, 0.4f);
+        Scenarios::setInstrument (*processor, 3, F::fmEnvTime, 120.0f);
+        Scenarios::setInstrument (*processor, 3, F::fmSemis, -12.0f);
+        Scenarios::setInstrument (*processor, 3, F::fmPreset, 2.0f);
+        Scenarios::setInstrument (*processor, 3, F::fmFilter, 0.0f);
+        auto fmCopy = copyOf (*processor);
+        check (value (*fmCopy, F::fmOn) > 0.5f && std::abs (value (*fmCopy, F::fmLevel) - 0.6f) < 0.01f && std::abs (value (*fmCopy, F::fmRatio) - 3.5f) < 0.01f
+                   && std::abs (value (*fmCopy, F::fmIndex) - 0.75f) < 0.01f && std::abs (value (*fmCopy, F::fmEnvAmount) - 0.4f) < 0.01f
+                   && std::abs (value (*fmCopy, F::fmEnvTime) - 120.0f) < 0.5f && std::abs (value (*fmCopy, F::fmSemis) + 12.0f) < 0.01f
+                   && value (*fmCopy, F::fmPreset) > 1.5f && value (*fmCopy, F::fmPreset) < 2.5f && value (*fmCopy, F::fmFilter) < 0.5f,
+               "spara och ladda: alla FM-parametrar följer med");
     }
 
     // 5. Preset-laddningen sätter varje parameter en gång: en ratt som ändras passerar inte sitt standardvärde på vägen.

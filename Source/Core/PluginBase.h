@@ -17,6 +17,7 @@
 #include "SampleSlot.h"
 #include "BridgeLink.h"
 #include "Settings.h"
+#include "WavetableEdit.h"
 #include "DeferredRelease.h"
 
 // Det som instrumentet och FX-versionen har gemensamt: parametrar, mönster, klicksampling,
@@ -155,6 +156,11 @@ public:
     // (message thread); ljudtråden läser tabellerna via userTable. Sparas i projektet.
     // `file` kan också vara en mapp: dess WAV-filer (högst 16, jämnt utvalda, i namnordning) blir tabellens vågformer.
     bool loadUserTable (int layer, int osc, const juce::File& file);
+    // PH2: ändrar övertonernas styrka/fas i oscillatorns tabell (frame < 0: alla frames). Resultatet blir oscillatorns User-tabell, så ingen ny parameter behövs.
+    bool editWavetable (int layer, int osc, int frame, const std::vector<WavetableEdit::Edit>& edits, bool normalise = true);
+    // Delarna (redigeraren håller en fast utgångspunkt så att reglagen inte staplar ändringar): tabellens frames nu, och en ny User-tabell av frames.
+    bool wavetableSource (int layer, int osc, std::vector<float>& frames, int& steps, juce::String& name) const;
+    bool installWavetable (int layer, int osc, std::vector<float> frames, int steps, const juce::String& name);
     void ensureTablesInUse(); // bygger de inbyggda tabeller som oscillatorerna använder nu (blockerar; inte på ljudtråden)
     const Wavetable* userTable (int layer, int osc) const { return userTables[(size_t) (layer * ParamID::oscsPerLayer + osc)].load(); }
     juce::String getUserTableName (int layer, int osc) const { return userNames[(size_t) (layer * ParamID::oscsPerLayer + osc)]; }
@@ -223,6 +229,10 @@ public:
 
     bool loadInstrumentSample (int layer, const juce::File& file);
     void clearInstrumentSample (int layer);
+    // Slicer: skivinställningarna hör till lagrets sampling (sparas med den). Message thread.
+    SampleSlot& instrumentSampleSlot (int layer) { return instrumentSamples[(size_t) juce::jlimit (0, ParamID::numInstrumentLayers - 1, layer)]; }
+    void setInstrumentSlicing (int layer, int mode, float sensitivity, int gridCount) { instrumentSampleSlot (layer).setSlicing (mode, sensitivity, gridCount); patternChanged(); }
+    void setInstrumentSliceMarkers (int layer, std::vector<float> markers) { instrumentSampleSlot (layer).setManualMarkers (std::move (markers)); patternChanged(); }
     juce::String getInstrumentSampleName (int layer) const { return instrumentSamples[(size_t) juce::jlimit (0, ParamID::numInstrumentLayers - 1, layer)].name(); }
     const ClickSample* getActiveInstrumentSample (int layer) const { return instrumentSamples[(size_t) juce::jlimit (0, ParamID::numInstrumentLayers - 1, layer)].active(); }
 
@@ -354,6 +364,11 @@ public:
     std::atomic<juce::uint64> liveCodeLocks { 0 };  // Live Code: en bit per radid (0-9 = instrument, 10 = kicken, 11-63 underrader) som koden inte får skriva över; sparas som de 11 första bitarna
     std::atomic<int> liveCodeLoads { 0 };  // ökar när ett projekt eller en Full-preset laddats; LIVE CODE-sidan stoppar då LIVE
     std::atomic<juce::uint64> liveCodeOwned { 0 };  // rader som Live Code skrev senast; andra rader med toner räknas som handritade
+    std::atomic<juce::uint64> liveCodeCodeLocks { 0 };     // F2: lås som koden satt med .lock() (rad + parametrar); sparas ALDRIG, rensas vid stopp och laddning
+    std::atomic<juce::uint64> liveCodeCodeNoteLocks { 0 }; // F2: som ovan men bara noter (.pianoroll.lock())
+    // Effektiva lås = handsatta OR kodens: noter respektive parametrar på raden.
+    juce::uint64 liveCodeNoteLocks() const { return liveCodeLocks.load() | liveCodeCodeLocks.load() | liveCodeCodeNoteLocks.load(); }
+    juce::uint64 liveCodeParamLocks() const { return liveCodeLocks.load() | liveCodeCodeLocks.load(); }
     // Live Code, steg D: kodtexten och låsen sparas i projektet och i Full-presets (element <LiveCode>, sist, bara när något är satt).
     // LIVE, CODE ONLY och liveCodeOwned sparas aldrig: inget startar av sig självt vid laddning, och rader med toner är handritade tills koden körs.
     juce::String getLiveCodeText() const { const juce::ScopedLock lock (liveCodeTextLock); return liveCodeText; }

@@ -28,10 +28,13 @@ void InstrumentSynth::reset()
     gateRemaining = 0;
     glideSamplesLeft = 0;
     samplePosition = 0.0;
+    sliceVoice = false;
     env2.reset();
     env3.reset();
     pitchEnv = 0.0f;
     warpDirect = 0.0f;
+    fmCarrierPhase = fmModPhase = 0.0;
+    fmEnvLevel = 0.0f;
     noiseState = 0.0f;
     pinkB0 = pinkB1 = pinkB2 = brownState = vinylHiss = 0.0f;
     filterMid.reset();
@@ -152,7 +155,10 @@ void InstrumentSynth::noteOn (int semitones, float newVelocity, int gateSamples)
         oscB.retrigger (params.oscB, random, extraPhase);
         oscC.retrigger (params.oscC, random, extraPhase);
         subPhase = wrap (extraPhase);
+        fmCarrierPhase = wrap (extraPhase);
+        fmModPhase = 0.0;
     }
+    fmEnvLevel = 1.0f;
 
     noteTime = 0.0;
     env2.trigger();
@@ -161,6 +167,20 @@ void InstrumentSynth::noteOn (int semitones, float newVelocity, int gateSamples)
     warpDirect = 1.0f;
     randomValue = modRandom.nextFloat();
     samplePosition = params.sampleData != nullptr ? (double) params.sampleStart * (double) params.sampleData->audio.getNumSamples() : 0.0;
+    sliceVoice = false;
+    if (params.slicerOn && params.sampleData != nullptr)
+    {
+        // Noten väljer skivan; utanför skivorna (eller över max 128) är det tyst, ingen wrap.
+        const auto& slices = params.sampleData->slices;
+        const auto index = semitones - params.slicerMapTo;
+        if (index >= 0 && (size_t) index < slices.size())
+        {
+            sliceBegin = slices[(size_t) index];
+            sliceEnd = (size_t) index + 1 < slices.size() ? slices[(size_t) index + 1] : params.sampleData->audio.getNumSamples();
+            sliceVoice = sliceEnd > sliceBegin;
+            samplePosition = params.slicerReverse ? (double) (sliceEnd - 1) : (double) sliceBegin;
+        }
+    }
     velocity = newVelocity;
     stage = Stage::attack; // attacken börjar från nuvarande nivå, så inget knäpp
     gateRemaining = gateSamples;
@@ -428,12 +448,45 @@ InstrumentSynth::Output InstrumentSynth::next()
         (fOn && params.filterSrc[4] ? centre : dryCentre) += params.noise * white;
     }
 
+    // fas S2: FM-källan: sin(2π·(carrierfas + modulator·index)). Av (eller nivå 0) = körs inte alls och ljudet är oförändrat.
+    // Indexet (0..1) ger index² · 8 rad, skalat ned när sidbanden skulle vika över Nyquist: min(1, 8000 / (f0·(ratio + 1))).
+    if (params.fmOn && params.fmLevel > 0.0f)
+    {
+        fmEnvLevel -= fmEnvLevel * (float) fmEnvMemo.get (params.fmEnvMs, sampleRate);
+        const auto carrierHz = juce::jlimit (1.0, sampleRate * 0.45, frequency * std::exp2 ((double) params.fmSemis / 12.0));
+        const auto modHz = juce::jlimit (1.0, sampleRate * 0.45, carrierHz * (double) juce::jlimit (0.25f, 8.0f, params.fmRatio));
+        const auto amount = juce::jlimit (0.0f, 1.0f, params.fmEnvAmount);
+        const auto index = juce::jlimit (0.0f, 1.0f, params.fmIndex) * (1.0f - amount + amount * fmEnvLevel);
+        const auto antiAlias = (float) std::min (1.0, 8000.0 / (carrierHz + modHz));
+        const auto radians = 8.0f * index * index * antiAlias;
+        const auto modulator = radians * (float) std::sin (juce::MathConstants<double>::twoPi * fmModPhase);
+        const auto fm = params.fmLevel * (float) std::sin (juce::MathConstants<double>::twoPi * fmCarrierPhase + (double) modulator);
+        (fOn && params.fmFilter ? centre : dryCentre) += fm;
+        fmCarrierPhase = wrap (fmCarrierPhase + carrierHz / sampleRate);
+        fmModPhase = wrap (fmModPhase + modHz / sampleRate);
+    }
+
     // Samplingen: linjär interpolation. Med KEY följer hastigheten noten (samplingens egen tonhöjd = sampleRootHz).
     if (params.sampleOn && params.sampleData != nullptr && params.sampleLevel > 0.0f)
     {
         const auto& audio = params.sampleData->audio;
         const auto length = audio.getNumSamples();
-        if (length > 1)
+        if (params.slicerOn)
+        {
+            // Skiva: originalhastighet framåt eller bakåt, stannar vid skivans kant; 64 samples fade mot kanterna mot klick.
+            if (sliceVoice && length > 1 && samplePosition >= (double) sliceBegin && samplePosition < (double) sliceEnd)
+            {
+                const auto* data = audio.getReadPointer (0);
+                const auto index = (int) samplePosition;
+                const auto fraction = (float) (samplePosition - (double) index);
+                const auto following = index + 1 < sliceEnd ? data[index + 1] : 0.0f;
+                const auto edge = std::min (samplePosition - (double) sliceBegin + 1.0, (double) sliceEnd - samplePosition);
+                const auto fade = (float) std::min (1.0, edge / 64.0);
+                (fOn && params.filterSrc[3] ? centre : dryCentre) += fade * params.sampleLevel * (data[index] + fraction * (following - data[index]));
+                samplePosition += params.slicerReverse ? -1.0 : 1.0;
+            }
+        }
+        else if (length > 1)
         {
             if (samplePosition >= (double) length && params.sampleLoop)
                 samplePosition = std::fmod (samplePosition, (double) length);

@@ -430,6 +430,68 @@ namespace
         }
         check (same, "LFO 1-3 ger exakt samma värden");
     }
+
+    // BZ: Bézierläge i NodeEnvelope.
+    void testBezierEnvelope()
+    {
+        std::puts ("BZ: Bézier-envelope (tension orörd, handtag, monoton, rundtur)");
+        const std::vector<NodeEnvelope::Point> pts { { 0.0f, 0.0f, -0.6f }, { 0.5f, 1.0f, 0.4f }, { 1.0f, 0.2f, 0.0f } };
+
+        NodeEnvelope plain (1.0f, 1.0f, pts);
+        NodeEnvelope bezier (1.0f, 1.0f, pts);
+        check (bezier.getMode() == NodeEnvelope::Mode::tension, "standardläget är tension");
+
+        // Gamla ValueTree utan mode/handtag läses som tension och ger samma kurva.
+        NodeEnvelope loaded (1.0f, 1.0f, { { 0.0f, 0.5f, 0.0f }, { 1.0f, 0.5f, 0.0f } });
+        loaded.fromValueTree (plain.toValueTree ("Curve"));
+        auto same = true;
+        for (int i = 0; i <= 100; ++i)
+            same = same && loaded.evaluate ((float) i / 100.0f) == plain.evaluate ((float) i / 100.0f);
+        check (same && loaded.getMode() == NodeEnvelope::Mode::tension, "tension-kurvan är oförändrad efter rundtur");
+        check (! plain.toValueTree ("Curve").hasProperty ("mode"), "tension skriver inget mode-attribut");
+
+        // Handtag från tension: Bézierkurvan följer tension-kurvan (liten avvikelse tillåten).
+        bezier.setPoints (NodeEnvelope::withHandlesFromTension (pts));
+        bezier.setMode (NodeEnvelope::Mode::bezier);
+        auto worst = 0.0f;
+        for (int i = 0; i <= 200; ++i)
+            worst = std::max (worst, std::abs (bezier.evaluate ((float) i / 200.0f) - plain.evaluate ((float) i / 200.0f)));
+        // En kubisk kurva träffar tension-kurvan exakt bara vid t=1/3 och 2/3; för branta tensioner (-0.6) blir största avvikelsen ca 0.14.
+        check (worst < 0.15f, "Bézier med handtag från tension ligger nära tension-kurvan", worst);
+
+        // Måttlig tension: avvikelsen är liten.
+        const std::vector<NodeEnvelope::Point> mild { { 0.0f, 0.0f, -0.3f }, { 0.5f, 1.0f, 0.4f }, { 1.0f, 0.2f, 0.0f } };
+        NodeEnvelope mildPlain (1.0f, 1.0f, mild), mildBezier (1.0f, 1.0f, mild);
+        mildBezier.setPoints (NodeEnvelope::withHandlesFromTension (mild));
+        mildBezier.setMode (NodeEnvelope::Mode::bezier);
+        auto mildWorst = 0.0f;
+        for (int i = 0; i <= 200; ++i)
+            mildWorst = std::max (mildWorst, std::abs (mildBezier.evaluate ((float) i / 200.0f) - mildPlain.evaluate ((float) i / 200.0f)));
+        check (mildWorst < 0.08f, "Bézier med handtag från måttlig tension ligger nära tension-kurvan", mildWorst);
+
+        // Handtag med x utanför segmentet klipps, och kurvan är monoton i tiden (ger exakt ett värde per x, inga hopp).
+        auto wild = pts;
+        wild[0].outDx = 5.0f;
+        wild[1].inDx = -5.0f;
+        wild[0].outDy = 0.3f;
+        bezier.setPoints (wild);
+        check (bezier.getPoints()[0].outDx <= 0.5f && bezier.getPoints()[1].inDx >= -0.5f, "handtagens x klipps till segmentet");
+        auto bounded = true;
+        for (int i = 0; i <= 200; ++i)
+        {
+            const auto v = bezier.evaluate ((float) i / 200.0f);
+            bounded = bounded && v >= 0.0f && v <= 1.0f;
+        }
+        check (bounded, "Bézier-värden hålls inom 0..maxValue");
+
+        // Rundtur med handtag.
+        NodeEnvelope again (1.0f, 1.0f, { { 0.0f, 0.5f, 0.0f }, { 1.0f, 0.5f, 0.0f } });
+        again.fromValueTree (bezier.toValueTree ("Curve"));
+        auto equal = again.getMode() == NodeEnvelope::Mode::bezier;
+        for (int i = 0; i <= 100; ++i)
+            equal = equal && std::abs (again.evaluate ((float) i / 100.0f) - bezier.evaluate ((float) i / 100.0f)) < 1.0e-5f;
+        check (equal, "Bézier-kurvan överlever rundtur i ValueTree");
+    }
 }
 
 void runModulationTests()
@@ -441,4 +503,5 @@ void runModulationTests()
     testExtraLfos();
     testExtraLfosLeaveFirstThree();
     testCodeSources();
+    testBezierEnvelope();
 }

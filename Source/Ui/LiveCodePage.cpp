@@ -44,8 +44,10 @@ LiveCodePage::LiveCodePage (PluginBase& processor) : processor (processor), tool
     showTab (false);
 
     playButton.setClickingTogglesState (true);
+    playButton.setToggleState (true, juce::dontSendNotification); // AUTO på som standard; ingenting körs förrän texten ändras (eller AUTO slås på igen)
+    playButton.setTooltip ("AUTO: valid code runs by itself after each edit. Nothing runs when a project loads.");
 
-    playButton.onClick = [this] { setPlaying (playButton.getToggleState()); }; // LIVE av/på
+    playButton.onClick = [this] { setPlaying (playButton.getToggleState()); }; // AUTO av/på
     stopButton.onClick = [this] { playButton.setToggleState (false, juce::dontSendNotification); setPlaying (false); setCodeOnly (false); };
     createButton.onClick = [this] { create(); };
     codeOnlyButton.setClickingTogglesState (true);
@@ -102,7 +104,7 @@ void LiveCodePage::paint (juce::Graphics& g)
 {
     g.setColour (playing ? Theme::mix : Theme::textDim);
     g.setFont (Theme::font (11.0f, true));
-    g.drawText (playing ? "LIVE" : "STOPPED", getLocalBounds().removeFromTop (22).removeFromRight (90).reduced (6, 0), juce::Justification::centredRight);
+    g.drawText (playing ? "AUTO" : "STOPPED", getLocalBounds().removeFromTop (22).removeFromRight (90).reduced (6, 0), juce::Justification::centredRight);
 }
 
 void LiveCodePage::resized()
@@ -184,7 +186,7 @@ void LiveCodePage::paintMarks (juce::Graphics& g)
 
 void LiveCodePage::codeChanged()
 {
-    processor.setLiveCodeText (document.getAllContent()); // sparas med projektet; LIVE sparas aldrig
+    processor.setLiveCodeText (document.getAllContent()); // sparas med projektet; AUTO-läget sparas aldrig
     if (ownEdit)
         return;
     sliderValues.clear(); // ordningsnumren kan ha flyttat sig
@@ -319,7 +321,7 @@ void LiveCodePage::setPlaying (bool shouldPlay)
     playing = shouldPlay;
     if (playing)
     {
-        lastParamWrites.clear(); // första körningen efter LIVE skriver alltid
+        lastParamWrites.clear(); // första körningen efter AUTO på skriver alltid
         stopTimer();
         runNow();
     }
@@ -327,6 +329,8 @@ void LiveCodePage::setPlaying (bool shouldPlay)
     {
         stopTimer();
         runner.cancel();
+        processor.liveCodeCodeLocks = 0; // F2: lås från koden släpps vid stopp (handlås ligger kvar)
+        processor.liveCodeCodeNoteLocks = 0;
         processor.clearCodeMods (false); // LFO/ENV från koden tonar ut och kopplingarna städas av loadWatch
     }
     repaint();
@@ -338,12 +342,15 @@ void LiveCodePage::timerCallback()
     runNow();
 }
 
-// Ett projekt eller preset kan ha laddats medan sidan fanns: ta in den sparade koden (aldrig under LIVE, och aldrig tom kod).
+// Ett projekt eller preset kan ha laddats medan sidan fanns: ta in den sparade koden (körs aldrig av sig själv, och aldrig tom kod).
 void LiveCodePage::syncSavedCode()
 {
     const auto saved = processor.getLiveCodeText();
-    if (! playing && saved.isNotEmpty() && saved != document.getAllContent())
+    if (saved.isNotEmpty() && saved != document.getAllContent())
+    {
+        const juce::ScopedValueSetter<bool> guard (ownEdit, true); // inläst kod är ingen ändring: AUTO får inte köra den
         document.replaceAllContent (saved);
+    }
 }
 
 void LiveCodePage::checkLoaded()
@@ -352,10 +359,13 @@ void LiveCodePage::checkLoaded()
     if (loads == seenLoads)
         return;
     seenLoads = loads;
-    if (playing) // LIVE skulle annars skriva över det nya projektets mönster med gammal kod
+    if (playing) // AUTO ligger kvar på, men en väntande eller pågående körning med gammal kod kastas så att det nya projektets mönster är orört
     {
-        playButton.setToggleState (false, juce::dontSendNotification);
-        setPlaying (false); // runner.cancel() kastar en pågående körning
+        stopTimer();
+        runner.cancel();
+        lastParamWrites.clear();
+        processor.liveCodeCodeLocks = 0;
+        processor.liveCodeCodeNoteLocks = 0;
         setCodeOnly (false);
     }
     syncSavedCode();
@@ -416,6 +426,13 @@ void LiveCodePage::refreshCodeOnly()
 
 void LiveCodePage::runNow()
 {
+    auto params = tools.liveCodeParameters();
+    // F4: mätare, läses här på meddelandetråden ur befintliga atomics (ingen ny tapp i ljudvägen)
+    params["meter.outputPeak"] = processor.getMasterSection().outputPeakDb.load();
+    params["meter.gainReduction"] = processor.getMasterSection().gainReductionDb.load();
+    params["meter.solo"] = processor.soloMask.load();
+    for (size_t i = 0; i < processor.duckReduction.size(); ++i)
+        params["meter.duck" + juce::String ((int) i + 1)] = processor.duckReduction[i].load();
     const auto text = document.getAllContent();
     runner.run (text, cycles, [this, hash = text.hashCode64()] (const juce::var& list, const juce::String& error, const juce::var& mods, const juce::var& writes, const juce::StringArray& console)
     {
@@ -425,9 +442,49 @@ void LiveCodePage::runNow()
             return showError (error);
 
         showError ({});
+        // F2: en .lock() som tagits bort ur koden släpper direkt; en ny låser först efter att körningen skrivit (första gången skrivs, sedan låses).
+        juce::uint64 lockAll = 0, lockNotes = 0;
+        if (auto* entries = writes.getArray())
+            for (auto& w : *entries)
+                if (w.hasProperty ("lock"))
+                    if (const auto layer = ToolLayer::liveCodeLayerOf (w["lock"].toString()); layer >= 0)
+                        (w["kind"].toString() == "notes" ? lockNotes : lockAll) |= ToolLayer::liveCodeBit (layer);
+        processor.liveCodeCodeLocks &= lockAll;
+        processor.liveCodeCodeNoteLocks &= lockNotes;
         applyParamWrites (writes);
-        apply (list, false, mods);
-    }, sliderValues, tools.liveCodeParameters());
+        apply (list, false, mods, true); // AUTO/LIVE: rader som tagits bort ur koden töms
+        processor.liveCodeCodeLocks = lockAll;
+        processor.liveCodeCodeNoteLocks = lockNotes;
+    }, sliderValues, std::move (params), tools.liveCodeEffects());
+}
+
+// F3: {fx, slot, type, knob, value}. Ett typbyte (knob tomt) nollställer rattarna som set_effect gör; en ratt behåller de andra (keep).
+// Som .set på parametrar skrivs bara det som ändrats i koden sedan förra körningen.
+void LiveCodePage::applyEffectWrite (const juce::var& w)
+{
+    const auto knob = w["knob"].toString();
+    const auto key = w["fx"].toString() + "." + w["slot"].toString() + (knob.isEmpty() ? ".type" : ".knob." + knob);
+    const auto text = w["type"].toString() + "|" + w["value"].toString();
+    if (const auto it = lastParamWrites.find (key); it != lastParamWrites.end() && it->second == text)
+        return;
+    lastParamWrites[key] = text;
+    auto args = juce::var (new juce::DynamicObject());
+    auto* o = args.getDynamicObject();
+    o->setProperty ("channel", w["fx"]);
+    o->setProperty ("slot", w["slot"]);
+    o->setProperty ("type", w["type"]);
+    if (knob.isNotEmpty())
+    {
+        auto knobs = juce::var (new juce::DynamicObject());
+        knobs.getDynamicObject()->setProperty (juce::Identifier (knob), w["value"]);
+        o->setProperty ("knobs", knobs);
+        o->setProperty ("keep", true);
+    }
+    const auto result = tools.call ("set_effect", args);
+    if (! (bool) result["ok"])
+        showError (result["error"].toString());
+    else if (auto* problems = result["data"]["problems"].getArray(); problems != nullptr && ! problems->isEmpty())
+        showError ((*problems)[0].toString());
 }
 
 // .set på parametrar: skriver bara det som ändrats i koden sedan förra körningen (så handvridning inte slås ut var gång) och
@@ -437,7 +494,7 @@ void LiveCodePage::applyParamWrites (const juce::var& writes)
     auto* list = writes.getArray();
     if (list == nullptr)
         return;
-    const auto locks = processor.liveCodeLocks.load();
+    const auto locks = processor.liveCodeParamLocks();
     auto values = juce::var (new juce::DynamicObject());
     const auto now = juce::Time::getMillisecondCounterHiRes();
     if (now - paramWindowStart >= 1000.0)
@@ -448,6 +505,13 @@ void LiveCodePage::applyParamWrites (const juce::var& writes)
     auto capped = false;
     for (auto& w : *list)
     {
+        if (w.hasProperty ("lock"))
+            continue; // lås-poster hanteras i runNow
+        if (w.hasProperty ("fx"))
+        {
+            applyEffectWrite (w); // F3: typbyte eller ratt på en effektplats, i kodens ordning
+            continue;
+        }
         const auto id = w["id"].toString();
         const auto text = w["value"].toString();
         if (const auto layer = ToolLayer::liveCodeLayerOf (id); layer >= 0 && (locks & ToolLayer::liveCodeBit (layer)) != 0)
@@ -477,7 +541,7 @@ void LiveCodePage::applyParamWrites (const juce::var& writes)
 }
 
 // Skriver raderna via live_code_apply. Handritade toner som skulle skrivas över ger en fråga (en i taget) i stället för att tyst försvinna.
-bool LiveCodePage::apply (const juce::var& items, bool overwrite, const juce::var& mods)
+bool LiveCodePage::apply (const juce::var& items, bool overwrite, const juce::var& mods, bool prune)
 {
     if (warningOpen)
         return false;
@@ -485,11 +549,12 @@ bool LiveCodePage::apply (const juce::var& items, bool overwrite, const juce::va
     args.getDynamicObject()->setProperty ("items", items);
     args.getDynamicObject()->setProperty ("overwrite", overwrite);
     args.getDynamicObject()->setProperty ("mods", mods);
+    args.getDynamicObject()->setProperty ("prune", prune);
     const auto result = tools.call ("live_code_apply", args);
     if (! (bool) result["ok"])
     {
         if (auto* conflicts = result["conflicts"].getArray(); conflicts != nullptr && ! conflicts->isEmpty())
-            warnOverwrite (result["conflicts"], [this, items, mods] (bool ow) { apply (items, ow, mods); });
+            warnOverwrite (result["conflicts"], [this, items, mods, prune] (bool ow) { apply (items, ow, mods, prune); });
         else
             showError (result["error"].toString());
         return false;

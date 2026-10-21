@@ -363,7 +363,7 @@ namespace
                 if (auto* e = dynamic_cast<juce::CodeEditorComponent*> (c)) code = e;
                 if (auto* b = dynamic_cast<juce::TextButton*> (c))
                 {
-                    if (b->getButtonText() == "LIVE") play = b;
+                    if (b->getButtonText() == "AUTO") play = b;
                     if (b->getButtonText() == "STOP") stop = b;
                     if (b->getButtonText() == "CREATE") create = b;
                     if (b->getButtonText() == "CODE ONLY") codeOnlyBtn = b;
@@ -377,6 +377,10 @@ namespace
                 juce::String lastError;
                 page.onPatternChanged = [&changed] { ++changed; };
                 page.onError = [&lastError] (const juce::String& e) { lastError = e; };
+
+                check (play->getToggleState(), "AUTO: på som standard");
+                play->triggerClick(); // de första fallen testar CREATE och LIVE som förut: AUTO av
+                runFor (100);
 
                 pattern.clearNotes (0);
                 code->getDocument().replaceAllContent ("note(\"c2,e2\").s(\"i1\")");
@@ -438,24 +442,43 @@ namespace
                     processor.liveCodeOwned = ownedBefore;
                 }
 
-                // Projekt/preset laddas medan LIVE spelar: LIVE stoppas, den nya koden tas in, och gammal kod skriver inte över det nya mönstret.
+                // AUTO: laddning kör inget, giltig ändring körs av sig själv, ogiltig kod rör inget, borttagen rad töms, handrad ligger kvar.
                 {
                     stop->triggerClick();
                     runFor (100);
                     play->triggerClick();
                     runFor (600);
-                    check (play->getToggleState(), "laddning under LIVE: LIVE spelar före laddningen");
+                    check (play->getToggleState(), "AUTO: på igen före laddningen");
                     juce::ValueTree loaded ("LiveCode");
                     loaded.setProperty ("code", "note(\"a2\").s(\"i1\")", nullptr);
                     loaded.setProperty ("locks", 0, nullptr);
                     processor.liveCodeFromValueTree (loaded);
                     ++processor.liveCodeLoads;
                     runFor (700);
-                    check (! play->getToggleState(), "laddning under LIVE: LIVE stoppas");
-                    check (code->getDocument().getAllContent() == "note(\"a2\").s(\"i1\")", "laddning under LIVE: den nya koden visas");
+                    check (play->getToggleState(), "laddning: AUTO ligger kvar på");
+                    check (code->getDocument().getAllContent() == "note(\"a2\").s(\"i1\")", "laddning: den nya koden visas");
                     pattern.clearNotes (0);
                     runFor (1200);
-                    check (pattern.stackSize (0, 0) == 0, "laddning under LIVE: gammal kod skriver inte över mönstret efteråt");
+                    check (pattern.stackSize (0, 0) == 0, "laddning: inget körs förrän texten ändras");
+
+                    pattern.clearNotes (1);
+                    auto& hand = pattern.edit (1, 0); // handritad ton på en rad koden aldrig skrivit
+                    hand.on = true;
+                    hand.pitch = 3;
+                    code->getDocument().replaceAllContent ("note(\"c2\").s(\"i1\")");
+                    runFor (1200);
+                    check (pattern.stackSize (0, 0) == 1 && (processor.liveCodeOwned.load() & ToolLayer::liveCodeBit (0)) != 0, "AUTO: en giltig ändring körs av sig själv");
+
+                    code->getDocument().replaceAllContent ("note(\"c2\".s(");
+                    runFor (1200);
+                    check (lastError.isNotEmpty() && pattern.stackSize (0, 0) == 1, "AUTO: ogiltig kod ger felrad och rör inget");
+
+                    pattern.clearNotes (2); // inga gamla toner på rad 3, annars frågar sidan om överskrivning
+                    code->getDocument().replaceAllContent ("note(\"c2\").s(\"i3\")"); // bara rad 3 nämns: rad 1 var ägd och töms
+                    runFor (1200);
+                    check (pattern.stackSize (0, 0) == 0 && (processor.liveCodeOwned.load() & ToolLayer::liveCodeBit (0)) == 0, "AUTO: en rad som tagits bort ur koden töms (stack " + juce::String (pattern.stackSize (0, 0)) + ", ägd " + juce::String (processor.liveCodeOwned.load()) + ", fel: " + lastError + ")");
+                    check (pattern.note (1, 0).on.load() && pattern.note (1, 0).pitch.load() == 3, "AUTO: handritad rad rörs aldrig");
+                    pattern.clearNotes (1);
                 }
             }
         }
@@ -508,6 +531,15 @@ namespace
             int stopCount = 0; pattern.forEachNote (0, [&stopCount] (int, const Pattern::Note&) { ++stopCount; });
             check ((bool) r["ok"] && stopCount == 0 && (processor.liveCodeOwned.load() & ToolLayer::liveCodeBit (0)) == 0, "live_code_stop tömmer Live Codes rad och släpper ägandet");
 
+            // live_code_apply med prune:true (AUTO): ägda rader som inte nämns töms, handgjorda rörs aldrig
+            tools.call ("live_code_run", make ({ { "code", "note(\"c2\").s(\"i1\")" }, { "cycles", 1 } }));
+            pattern.clearNotes (1);
+            pattern.edit (1, 0).on = true;
+            r = tools.call ("live_code_apply", make ({ { "items", juce::var (juce::Array<juce::var>()) }, { "overwrite", false }, { "prune", true } }));
+            int pruneCount = 0; pattern.forEachNote (0, [&pruneCount] (int, const Pattern::Note&) { ++pruneCount; });
+            check ((bool) r["ok"] && pruneCount == 0 && pattern.note (1, 0).on.load(), "live_code_apply prune:true tömmer ägd rad, handgjord rad ligger kvar");
+            pattern.clearNotes (1);
+
             auto described = false;
             for (auto& t : ToolLayer::tools())
                 if (t.name == "live_code_create")
@@ -521,8 +553,8 @@ namespace
                 juce::Result consoleResult = juce::Result::ok();
                 consoleLive.create ("console.log(\"hej\", 3);\nconsole.warn({a:1});\nconsole.error(\"fel\");\n\nnote(\"c2\").s(\"i1\")", 1, consoleResult);
                 const auto lines = consoleLive.takeConsole();
-                check (consoleResult.wasOk() && lines.size() == 3 && lines[0] == "log: hej 3" && lines[1] == "warn: {\"a\":1}" && lines[2] == "error: fel",
-                       "console.log/warn/error går till konsolkön " + (consoleResult.failed() ? consoleResult.getErrorMessage() : lines.joinIntoString ("|")));
+                check (consoleResult.wasOk() && lines.contains ("log: hej 3") && lines.contains ("warn: {\"a\":1}") && lines.contains ("error: fel"), // startloggar från bunten städas i G3
+                       "console.log/warn/error går till konsolkön " + consoleResult.getErrorMessage() + " [" + lines.joinIntoString ("|") + "]");
                 check (consoleLive.takeConsole().isEmpty(), "takeConsole tömmer kön");
 
                 // G3: noterna får teckenpositioner i koden (note(" börjar på 5, c2 står på 6..8, e2 på 9..11)
@@ -667,6 +699,105 @@ namespace
             check (noteOf ({ { 0, 7.0 } }) == 7.0, "slider(): dragna värdet gäller");
             check (noteOf ({ { 0, 99.0 } }) == 12.0, "slider(): värdet begränsas till max");
             check (noteOf ({ { 1, 7.0 } }) == 3.0, "slider(): värde för ett annat ordningsnummer rör inte detta reglage");
+        }
+
+        // F2: .lock() / .pianoroll.lock() noteras som lås-poster (inte som parameterskrivningar); okänd grupp ger felrad.
+        {
+            LiveCode live;
+            live.setParams ({ { "bass1Cutoff", 0.5 }, { "bass2Cutoff", 0.5 }, { "kickTune", 0.5 }, { "fx1Mix", 0.5 } });
+            const auto res = live.setCode ("instr1.lock();\ninstr2.pianoroll.lock();\nkick.lock();\n\nnote(\"c2\").s(\"i1\")");
+            auto writes = live.takeParamWrites();
+            juce::StringArray seen;
+            if (auto* list = writes.getArray())
+                for (auto& w : *list)
+                    seen.add (w["lock"].toString() + ":" + w["kind"].toString() + ":" + w["id"].toString());
+            check (res.wasOk() && seen.size() == 3 && seen.contains ("bass1:all:") && seen.contains ("bass2:notes:") && seen.contains ("kick:all:"),
+                   ".lock() och .pianoroll.lock() ger lås-poster utan id");
+
+            LiveCode other;
+            other.setParams ({ { "bass1Cutoff", 0.5 }, { "fx1Mix", 0.5 } });
+            check (other.setCode ("fx1.lock();\n\nnote(\"c2\").s(\"i1\")").failed(), ".lock() på grupp utan låsbit (fx1) ger felrad");
+        }
+
+        // F3: fx1.slot2.setEffect("reverb") och fx1.slot2.mix.set(v) noteras som effektposter; samma typ ger ingen post; fel ger felrad.
+        {
+            ToolLayer tools (processor);
+            const auto catalog = tools.liveCodeEffects();
+            auto record = [&catalog] (const juce::String& code, juce::StringArray& seen)
+            {
+                LiveCode live;
+                live.setEffects (catalog);
+                const auto res = live.setCode (code);
+                const auto writes = live.takeParamWrites();
+                if (auto* list = writes.getArray())
+                    for (auto& w : *list)
+                        seen.add (w["fx"].toString() + "." + w["slot"].toString() + ":" + w["type"].toString() + ":" + w["knob"].toString() + ":" + w["value"].toString());
+                return res;
+            };
+            juce::StringArray seen;
+            const auto res = record ("fx1.slot2.setEffect(\"reverb\");\nfx1.slot2.mix.set(0.3);\n\nnote(\"c2\").s(\"i1\")", seen);
+            check (res.wasOk() && seen.size() == 2 && seen[0] == "fx1.2:Reverb::0.0" && seen[1] == "fx1.2:Reverb:MIX:0.3",
+                   "setEffect + ratt ger två effektposter i ordning: " + seen.joinIntoString (" ; ") + " " + res.getErrorMessage());
+
+            juce::StringArray same;
+            const auto current = catalog["slots"][1][0].toString().toLowerCase().removeCharacters (" ");
+            record ("fx2.slot1.setEffect(\"" + current + "\");\n\nnote(\"c2\").s(\"i1\")", same);
+            check (same.isEmpty(), "setEffect med nuvarande typ ger ingen post");
+
+            juce::StringArray none;
+            check (record ("fx1.slot1.setEffect(\"finnsinte\");\n\nnote(\"c2\").s(\"i1\")", none).failed(), "okänd effekt ger felrad");
+            check (record ("fx1.slot1.setEffect(\"off\");\nfx1.slot1.mix.set(1);\n\nnote(\"c2\").s(\"i1\")", none).failed(), "ratt på tom plats ger felrad");
+        }
+
+        // F4: meter.X.get() ger värdet från före körningen; .set/.lfo/.lock på en mätare ger felrad.
+        {
+            LiveCode live;
+            live.setParams ({ { "bass1Cutoff", 0.5 }, { "meter.outputPeak", -42.5 }, { "meter.duck1", 0.25 } });
+            const auto res = live.setCode ("bass1.Cutoff.set(meter.outputPeak.get() + meter.duck1.get());\n\nnote(\"c2\").s(\"i1\")");
+            const auto writes = live.takeParamWrites();
+            check (res.wasOk() && writes.size() == 1 && (double) writes[0]["value"] == -42.25, "mätare läses med .get(): " + res.getErrorMessage());
+            for (auto* bad : { "set(1)", "lfo(1)", "LFO(1)", "lock()" })
+            {
+                LiveCode other;
+                other.setParams ({ { "bass1Cutoff", 0.5 }, { "meter.solo", 0.0 } });
+                check (other.setCode (juce::String ("meter.solo.") + bad + ";\n\nnote(\"c2\").s(\"i1\")").failed(), juce::String ("meter.solo.") + bad + " ger felrad");
+            }
+        }
+
+        // F2: lås från koden blockerar skrivning som handlås, men sparas aldrig och släpps utan att röra handlåset.
+        {
+            ToolLayer tools (processor);
+            auto make = [] (std::initializer_list<std::pair<const char*, juce::var>> props)
+            {
+                auto* o = new juce::DynamicObject();
+                for (auto& p : props)
+                    o->setProperty (p.first, p.second);
+                return juce::var (o);
+            };
+            auto create = [&] (const juce::String& code)
+            {
+                return tools.call ("live_code_create", make ({ { "code", code }, { "cycles", 1 }, { "overwrite", true } }));
+            };
+            tools.call ("live_code_lock", make ({ { "layer", 0 }, { "locked", false } }));
+            processor.liveCodeOwned = 0;
+            pattern.clearNotes (0);
+            create ("note(\"c2\").s(\"i1\")");
+            const auto before = pattern.note (0, 0).pitch.load();
+            processor.liveCodeCodeLocks = ToolLayer::liveCodeBit (0);
+            create ("note(\"g2\").s(\"i1\")");
+            check (pattern.note (0, 0).pitch.load() == before, "kodlås: raden hoppas över");
+            processor.liveCodeCodeLocks = 0;
+            processor.liveCodeCodeNoteLocks = ToolLayer::liveCodeBit (0);
+            create ("note(\"g2\").s(\"i1\")");
+            check (pattern.note (0, 0).pitch.load() == before, "kodlås (pianoroll): noter hoppas över");
+            processor.liveCodeCodeNoteLocks = 0;
+            tools.call ("live_code_lock", make ({ { "layer", 0 } }));
+            processor.liveCodeCodeLocks = ToolLayer::liveCodeBit (0);
+            processor.liveCodeCodeLocks = 0; // stopp släpper bara kodlåset
+            check (processor.liveCodeLocks.load() == ToolLayer::liveCodeBit (0) && processor.liveCodeNoteLocks() == ToolLayer::liveCodeBit (0), "handlås ligger kvar när kodlåset släpps");
+            tools.call ("live_code_lock", make ({ { "layer", 0 }, { "locked", false } }));
+            create ("note(\"g2\").s(\"i1\")");
+            check (pattern.note (0, 0).pitch.load() != before, "ingen lås kvar: raden skrivs igen");
         }
 
         int pitch = 0;
@@ -3115,6 +3246,7 @@ int renderToolTest();       // Tools/StateTests.cpp
 int anTest();               // Tools/AnTests.cpp
 int rowKeyTest();           // Tools/RowTests.cpp
 int helpCheck();            // Tools/StateTests.cpp
+int paramTest();            // Tools/ParamSweepTests.cpp
 int libraryCheck (const juce::String& folder); // Tools/LibraryTests.cpp
 int libraryTest();          // Tools/LibraryTests.cpp
 int libraryImport (const juce::StringArray& args); // Tools/LibraryTests.cpp
@@ -3193,6 +3325,8 @@ int toolMain (int argc, char* argv[])
         return anTest();
     if (argc == 2 && juce::String (argv[1]) == "rowkeytest")
         return rowKeyTest();
+    if (argc == 2 && juce::String (argv[1]) == "paramtest")
+        return paramTest();
     // librarycheck [mapp]: validerar biblioteksmanifesten (läser bara). librarytest: reglerna, i en tillfällig mapp.
     if (argc >= 2 && juce::String (argv[1]) == "librarycheck")
         return libraryCheck (argc > 2 ? juce::String (argv[2]) : juce::String());

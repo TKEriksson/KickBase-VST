@@ -7,6 +7,7 @@
 #include "MixAnalysis.h"
 #include <BinaryData.h>
 #include "../Ui/Help.h"
+#include "../Ui/FmPresets.h"
 
 using juce::var;
 
@@ -150,22 +151,62 @@ namespace
         return "";
     }
 
-    var pointsToVar (const std::vector<NodeEnvelope::Point>& points)
+    // [x, y, tension], i Bézierläge med handtagen sist: [x, y, tension, outDx, outDy, inDx, inDy].
+    var pointsToVar (const NodeEnvelope& envelope)
     {
+        const auto bezier = envelope.getMode() == NodeEnvelope::Mode::bezier;
         juce::Array<var> list;
-        for (const auto& point : points)
-            list.add (var (juce::Array<var> { round4 (point.x), round4 (point.y), round4 (point.tension) }));
+        for (const auto& point : envelope.getPoints())
+        {
+            juce::Array<var> node { round4 (point.x), round4 (point.y), round4 (point.tension) };
+            if (bezier)
+                for (const auto handle : { point.outDx, point.outDy, point.inDx, point.inDy })
+                    node.add (round4 (handle));
+            list.add (var (node));
+        }
         return list;
     }
 
-    std::vector<NodeEnvelope::Point> pointsFromVar (const var& value)
+    std::vector<NodeEnvelope::Point> pointsFromVar (const var& value, bool* hasHandles = nullptr)
     {
         std::vector<NodeEnvelope::Point> points;
+        if (hasHandles != nullptr)
+            *hasHandles = false;
         if (auto* list = value.getArray())
             for (const auto& item : *list)
-                if (auto* triple = item.getArray(); triple != nullptr && triple->size() >= 2)
-                    points.push_back ({ (float) (double) (*triple)[0], (float) (double) (*triple)[1], triple->size() > 2 ? (float) (double) (*triple)[2] : 0.0f });
+                if (auto* node = item.getArray(); node != nullptr && node->size() >= 2)
+                {
+                    const auto at = [&] (int i) { return node->size() > i ? (float) (double) (*node)[i] : 0.0f; };
+                    points.push_back ({ at (0), at (1), at (2), at (3), at (4), at (5), at (6) });
+                    if (node->size() >= 7 && hasHandles != nullptr)
+                        *hasHandles = true;
+                }
         return points;
+    }
+
+    // mode "bezier" utan handtag i noderna ger handtag som följer tension-formen; "tension" ignorerar handtagen.
+    juce::String applyEnvelope (NodeEnvelope& envelope, const var& args, const juce::String& name)
+    {
+        const juce::Identifier modeKey (name + "_mode"), pointsKey (name);
+        const auto modeName = args.hasProperty (modeKey) ? args[modeKey].toString().trim().toLowerCase() : juce::String();
+        if (modeName.isNotEmpty() && modeName != "tension" && modeName != "bezier")
+            return name + "_mode must be 'tension' or 'bezier'.";
+
+        bool hasHandles = false;
+        auto points = pointsFromVar (args[pointsKey], &hasHandles);
+        if (points.size() < 2)
+            return name + " needs at least two nodes [time_seconds, value, tension].";
+
+        const auto bezier = modeName.isEmpty() ? hasHandles : modeName == "bezier";
+        if (bezier && ! hasHandles)
+        {
+            envelope.setMode (NodeEnvelope::Mode::tension); // setPoints klämmer x, sedan räknas handtagen om
+            envelope.setPoints (std::move (points));
+            points = NodeEnvelope::withHandlesFromTension (envelope.getPoints());
+        }
+        envelope.setPoints (std::move (points));
+        envelope.setMode (bezier ? NodeEnvelope::Mode::bezier : NodeEnvelope::Mode::tension);
+        return {};
     }
 
     juce::File previewFolder() { return Settings::rootFolder().getChildFile ("Previews"); }
@@ -195,15 +236,15 @@ std::vector<ToolLayer::ToolInfo> ToolLayer::tools()
           R"({"type":"object","properties":{"topic":{"type":"string","enum":["agent","psytrance","school"]}}})" },
         { "list_parameters", "Lists the synth's parameters with id, name, type (float/choice/bool), min, max, default, current value, a display text and help (what the knob does, the same text as its tooltip in the plugin). Filter with prefix (e.g. 'kick', 'bass1', 'fxA', 'sc', 'lfo1', 'master', 'mix') or contains. Effect slot knobs are not listed here, see list_effects and set_effect.",
           R"({"type":"object","properties":{"prefix":{"type":"string"},"contains":{"type":"string"},"limit":{"type":"integer"}}})" },
-        { "list_effects", "Lists the 13 effect types and their knobs (name, range, default, unit, choices) for use with set_effect.", R"({"type":"object","properties":{}})" },
+        { "list_effects", "Lists the available effect types and their knobs (name, range, default, unit, choices) for use with set_effect.", R"({"type":"object","properties":{}})" },
         { "get_state", "Reads the current sound: parameters that differ from their defaults (or all), the effect chains, the pattern (notes per bass layer and kick steps), the sidechain curve, the kick envelopes and the LFO routes.",
           R"({"type":"object","properties":{"all_parameters":{"type":"boolean"}}})" },
         { "set_parameters", "Sets parameters in their own units (Hz, ms, dB, semitones, 0..1 for percentages). Choices accept the option name or index (e.g. \"bass1ATable\": \"Classic Saw\"), switches accept true/false. Example: {\"values\":{\"bass1Cutoff\":250,\"kickDrive\":0.3,\"bass1FilterType\":\"LP 24\"}}.",
           R"({"type":"object","properties":{"values":{"type":"object","additionalProperties":true}},"required":["values"]})" },
         { "set_effect", "Puts an effect in a slot. channel FX1-FX11 (or the old letters A-K), slot 1-5, type e.g. 'Echo', 'Reverb', 'Distortion' ('Off' clears the slot), knobs by name in real units, e.g. {\"TIME\":\"3/16\",\"FEEDBACK\":0.4}. Unmentioned knobs get the effect's defaults. Bass layers and the kick send to a channel with bassNFxChannel / bassNFxAmount (1 = A) via set_parameters. Type 'Sidechain' ducks the channel by another source: knobs SOURCE ('Kick', 'Instr 1' ... 'Instr 10'), THRESHOLD (dB), DEPTH (0-1), ATTACK (ms), RELEASE (ms). To duck instrument B under instrument A: put a Sidechain effect with SOURCE 'Instr A' in an FX channel and send B 100 % to that channel (bassBFxChannel = that channel number, bassBFxAmount = 1, so nothing of B stays dry). See the guide (get_guide) section 9 for recipes.",
           R"({"type":"object","properties":{"channel":{"type":"string"},"slot":{"type":"integer"},"type":{"type":"string"},"knobs":{"type":"object","additionalProperties":true}},"required":["channel","slot","type"]})" },
-        { "set_kick_envelopes", "Sets the kick's free envelopes as arrays of [time_seconds, value, tension] nodes. pitch: semitones above the tail pitch (0..72, max 0.5 s). amp: volume 0..1 (max 2 s; the kick ends at the last node, which should be 0). Tension -1..1: negative falls/rises fast first, positive holds then moves late. Omit one to leave it unchanged.",
-          R"({"type":"object","properties":{"pitch":{"type":"array","items":{"type":"array","items":{"type":"number"}}},"amp":{"type":"array","items":{"type":"array","items":{"type":"number"}}}}})" },
+        { "set_kick_envelopes", "Sets the kick's free envelopes as arrays of [time_seconds, value, tension] nodes. Optional pitch_mode / amp_mode 'tension' (default) or 'bezier': in bezier mode a node may carry four handle values [time, value, tension, outDx, outDy, inDx, inDy] (handles relative to the node, in seconds and value units; out shapes the segment after the node, in the segment before it, so outDx >= 0 and inDx <= 0; without handles they are derived from the tensions). get_state returns the same format plus kick_pitch_mode / kick_amp_mode. pitch: semitones above the tail pitch (0..72, max 0.5 s). amp: volume 0..1 (max 2 s; the kick ends at the last node, which should be 0). Tension -1..1: negative falls/rises fast first, positive holds then moves late. Omit one to leave it unchanged.",
+          R"({"type":"object","properties":{"pitch":{"type":"array","items":{"type":"array","items":{"type":"number"}}},"amp":{"type":"array","items":{"type":"array","items":{"type":"number"}}},"pitch_mode":{"type":"string"},"amp_mode":{"type":"string"}}})" },
         { "set_pattern", "Writes notes. layer 0-9 = instrument 1-10 (only the first instrumentCount play, see set_instruments), or 'kick', or a sub-row key 'i3.sample' / 'i3.slicer' (0-based: i0 = instrument 1; the row is created if missing). For an instrument give 'bars' (one text per bar; the row becomes as many bars as you give, so give every distinct bar you need, and use repeat_to to repeat them further) in the pattern language, with a 'grid' such as '1/16', '1/8 T', '1/32'. Step words separated by spaces: '.' rest, g/m/x/X = velocity ghost/soft/normal/accent, then optional pitch (+7, -5), '~' glide note, ':50' length in percent of the step. A GLIDE note (flag '~' / slide:true) works like an FL Studio slide note: it does not play a new note, it glides the note that is sounding to its pitch during its own length and the pitch stays there until that note ends. Example 1/16 rolling bass: [\". m x x . m x x . m x x . m x x\"]. Or give 'notes': [{\"tick\":0,\"length\":24,\"pitch\":0,\"velocity\":0.8,\"slide\":false}] (96 ticks per quarter note, 384 per bar). CHORDS: add \"chord\":[3,7] to a note (up to 3 extra notes, semitones from the note, -24 to +24); the instrument plays them only when its Voices parameter is 2 or more (at most Voices - 1 extra notes), and get_state shows them as a sixth element of the note array. For 'kick' give 'bars' of 16 characters 'x' or '.', e.g. [\"x...x...x...x...\"]. ROW LENGTH: a row is as long as its notes (length 'auto', the default: the last bar that has a note, at least 1 bar; get_state shows bars, length_mode, content_bars). length:\"auto\" or length:N (1-1024) locks the row to N bars (for example 3 bars of notes and a bar of silence); shortening below the notes needs trim:true, otherwise you get an error saying how many notes would go. repeat_to:N repeats the row's content until it is N bars. In a locked row, writing a note beyond the end returns the error 'row is locked to N bars'. The pattern is as long as the longest row. The old patternBars and rowBars parameters are not used any more.",
           R"({"type":"object","properties":{"layer":{},"bars":{"type":"array","items":{"type":"string"}},"grid":{"type":"string"},"gate":{"type":"number"},"notes":{"type":"array","items":{"type":"object"}},"clear":{"type":"boolean"},"length":{},"trim":{"type":"boolean"},"repeat_to":{"type":"integer"}},"required":["layer"]})" },
         { "live_code_create", "Runs Strudel code (Strudel mini-notation and patterns, https://strudel.cc) and writes the result into the piano roll rows: 1 Strudel cycle = 1 bar. s('bd') or s('kick') = the kick row (16 steps per bar); s('i1')..s('i10') = instrument 1-10; note(...) or n(...) without s = instrument 1. Pitch: note names (c2 = pitch 0, the lowest bass note) or numbers (semitones from C2). gain = velocity (default 0.8). Several notes on the same tick (e.g. note('c2,e2,g2')) become stacked notes (max 4 per tick, same pitch skipped). Example: note('c2 [e2 g2]*2').s('i1'). Rows not mentioned are left as they are. Runs in a sandbox with a 500 ms limit. Several patterns: write each as a labelled block, e.g. \"$: note(...).s('i1')\" and \"$: s('bd*4')\" on separate lines; 'const x = ...' lines before them are allowed. PROTECTION: a row that has notes Live Code did not write itself (drawn by hand, imported, or from another tool) is not overwritten silently: the call fails, changes nothing and names the rows. Give overwrite:true to replace them, or protect rows with live_code_lock (locked rows are skipped and listed in skipped_locked). PARAMETERS: instr1.Cutoff.set(1300) writes bass1Cutoff once; put it on its own line before the pattern (names are case-sensitive; .get() before .set only; locked rows skipped, problems in data.problems). .gain() is note velocity, not mixer gain. SLIDERS: slider(value,min,max) with plain numbers, e.g. note(slider(3,0,12)), returns value here; in the LIVE CODE tab it also shows a slider after the line, so a human can drag it while LIVE plays. MODULATION: .lfo(paramId,hz,depth,shape?) adds a free-running LFO to a modulated parameter, e.g. note('c2').lfo('bass1Cutoff',2,0.5,'tri').s('i1'); shape is sine (default), tri, saw, isaw, square or rand. .env(paramId,attackMs,decayMs,depth?) adds an attack/decay envelope triggered by new notes on that instrument, e.g. note('c2').env('bass1Cutoff',10,200,0.5).s('i1'); it is AD, not ADSR, and is not supported on the kick. Parameter ids must be modulatable sound controls from list_parameters. Unsupported modulation is skipped and returned in data.problems; note rows can still be written. CODE 1-8 are internal sources and are not saved in projects or presets.",
@@ -216,6 +257,12 @@ std::vector<ToolLayer::ToolInfo> ToolLayer::tools()
           R"({"type":"object","properties":{"layer":{},"locked":{"type":"boolean"}},"required":["layer"]})" },
         { "set_gate", "Sets a bass layer's GATE: a separate on/off rhythm that chops the layer's sound, with its own grid, independent of the notes. layer 0-9; on (true/false), grid ('1/16' ...), depth 0..1 (1 = fully closed in the off steps), smooth_ms (edge softness), and the steps as 'bars' (one text per bar, repeated over four bars): 'x' = open, '.' = closed, e.g. [\"x.x.x.x.x.x.x.x.\"] on a 1/16 grid. all:'open' or 'closed' fills every step.",
           R"({"type":"object","properties":{"layer":{"type":"integer"},"on":{"type":"boolean"},"grid":{"type":"string"},"depth":{"type":"number"},"smooth_ms":{"type":"number"},"bars":{"type":"array","items":{"type":"string"}},"all":{"type":"string","enum":["open","closed"]}},"required":["layer"]})" },
+        { "set_fm", "Sets a bass layer's FM source (two sine operators: a modulator bends the phase of a carrier; the FM tab). layer 0-9; preset ('Custom', 'Zap', 'Acid Squelch', 'Metallic Lead', 'FM Pluck': also sets the pitch envelope, and a high-pass in Filter 2 for the lead) and then optional fields on top of it: on, level 0..1, ratio (modulator/carrier; whole numbers sound harmonic, others metallic), index (brightness), env_amount 0..1 and env_ms (how fast the brightness falls), semis (carrier transpose), filter (true = through the layer's filters). Any single field makes the preset 'Custom'. set_parameters also reaches the same values as bass<N>FmLevel etc.",
+          R"({"type":"object","properties":{"layer":{"type":"integer"},"preset":{"type":"string"},"on":{"type":"boolean"},"level":{"type":"number"},"ratio":{"type":"number"},"index":{"type":"number"},"env_amount":{"type":"number"},"env_ms":{"type":"number"},"semis":{"type":"number"},"filter":{"type":"boolean"}},"required":["layer"]})" },
+        { "edit_wavetable_harmonics", "Edits the harmonics of an oscillator's wavetable (the TABLE of OSC A/B/C of an instrument). harmonics: [{\"n\":1,\"gain_db\":-12,\"phase_deg\":90}] where n 1 = the fundamental, 2 the octave ... up to 511; gain_db (-120 = removed, positive boosts) or linear gain, and phase_deg is added to the harmonic's phase. frame 0-15 edits one wave of the table, 'all' (default) every wave. normalise (default true) keeps each wave's peak level. The result becomes the oscillator's User table (a built-in table is copied first and named '... (edited)'), so the original is never changed. Use it e.g. to remove the fundamental of a bass that fights the kick, or to shift its phase.",
+          R"({"type":"object","properties":{"layer":{"type":"integer","minimum":0,"maximum":9},"osc":{"type":"integer","minimum":0,"maximum":2},"frame":{},"harmonics":{"type":"array","items":{"type":"object"}},"normalise":{"type":"boolean"}},"required":["layer","osc","harmonics"]})" },
+        { "analyse_wavetable", "Reads an oscillator's wavetable as harmonics: for one frame (default 0) the level (dB, relative to the loudest harmonic) and the phase (degrees, sine convention: s = sum A_k sin(2 pi k t + phase_k)) of harmonics 1..count (default 16, max 64). Use it before edit_wavetable_harmonics, e.g. to see the fundamental's phase and shift it so the bass starts in phase with the kick. Works on the built-in tables as well as on user tables.",
+          R"({"type":"object","properties":{"layer":{"type":"integer","minimum":0,"maximum":9},"osc":{"type":"integer","minimum":0,"maximum":2},"frame":{"type":"integer","minimum":0,"maximum":15},"count":{"type":"integer","minimum":1,"maximum":64}},"required":["layer","osc"]})" },
         { "set_sidechain_curve", "Sets how the kick ducks the bass. mode 'Kick envelope' follows the kick; mode 'Curve' uses 'points' [[x,y,tension]...] where x is 0..1 across the length (1/16, 1/8, 3/16, 1/4, 1/2, or Kick) and y 0..1 is the ducking (1 = fully ducked). The depth per instrument is bass1Duck, bass2Duck ... bass10Duck.",
           R"({"type":"object","properties":{"mode":{"type":"string"},"length":{"type":"string"},"points":{"type":"array","items":{"type":"array","items":{"type":"number"}}}}})" },
         { "set_instruments", "Sets how many instruments are used (1-10; each has its own pattern, oscillators, filter, envelopes, effect send and sidechain depth; the default is 3). Removing instruments deletes the last ones completely (pattern, sound, sample, wavetables, name, mixer and modulation routes). Adding gives instruments with default settings and an empty pattern.",
@@ -248,8 +295,8 @@ std::vector<ToolLayer::ToolInfo> ToolLayer::tools()
           R"({"type":"object","properties":{"layer":{"type":"integer"},"file":{"type":"string"},"note":{"type":"integer"}},"required":["layer","file"]})" },
         { "analyze_audio", "Measures an audio file (WAV, AIFF, FLAC or MP3) the same way render_preview measures the synth, so you can compare a reference (a kick sample, a snippet of a track) with your sound: metrics, spectrogram image and, for kind 'kick', the kick length and tail frequency. start/seconds select a part (default: the first 20 s). Use bpm for the beat lines.",
           R"({"type":"object","properties":{"file":{"type":"string"},"kind":{"type":"string","enum":["kick","music"]},"start":{"type":"number"},"seconds":{"type":"number"},"bpm":{"type":"number"}},"required":["file"]})" },
-        { "load_bass_sample", "Loads a WAV/AIFF/FLAC file (max 12 s, mono-summed) as an instrument's sample source: it plays alongside the oscillators (through the filter and envelope), scaled by bassNSampleLevel (set here with 'level', default 1); it switches bassNSampleOn on. layer 0-9. key_track true makes it follow the notes (root_note = the MIDI note the sample was recorded at, C5 = 60), loop repeats it while the note is held, start 0..1. Empty or missing file clears the sample. Turn the oscillators off (bassNAOn, bassNBOn, bassNCOn = false) and bassNSub/bassNNoise down to hear the sample alone.",
-          R"({"type":"object","properties":{"layer":{"type":"integer"},"file":{"type":"string"},"level":{"type":"number"},"key_track":{"type":"boolean"},"root_note":{"type":"integer"},"loop":{"type":"boolean"},"start":{"type":"number"}},"required":["layer"]})" },
+        { "load_bass_sample", "Loads a WAV/AIFF/FLAC file (max 12 s, mono-summed) as an instrument's sample source: it plays alongside the oscillators (through the filter and envelope), scaled by bassNSampleLevel (set here with 'level', default 1); it switches bassNSampleOn on. layer 0-9. key_track true makes it follow the notes (root_note = the MIDI note the sample was recorded at, C5 = 60), loop repeats it while the note is held, start 0..1. Slicer (optional): slicer true plays one slice per note at original speed instead of the whole sample (note semitones - map_to = slice index, first slice = map_to, outside the slices is silent); slice_mode grid|auto|manual, grid = number of equal slices (default 8), sensitivity 0..1 (auto), markers = array of 0..1 positions (manual), reverse true plays slices backwards. Empty or missing file clears the sample. Turn the oscillators off (bassNAOn, bassNBOn, bassNCOn = false) and bassNSub/bassNNoise down to hear the sample alone.",
+          R"({"type":"object","properties":{"layer":{"type":"integer"},"file":{"type":"string"},"level":{"type":"number"},"key_track":{"type":"boolean"},"root_note":{"type":"integer"},"loop":{"type":"boolean"},"start":{"type":"number"},"slicer":{"type":"boolean"},"slice_mode":{"type":"string"},"grid":{"type":"integer"},"sensitivity":{"type":"number"},"markers":{"type":"array","items":{"type":"number"}},"map_to":{"type":"integer"},"reverse":{"type":"boolean"}},"required":["layer"]})" },
         { "load_kick_sample", "Loads a WAV/AIFF/FLAC file (max 2 s, mono-summed) as the kick's sample. kickSampleMode (Click | Layer | Replace) decides how it is used: Click = the first moments of every kick on top of the synthesized body, scaled by kickClick; Layer = the whole sample on top of the synthesized kick (kickSampleLevel); Replace = the sample is the kick (the synthesized body is silent). kickSampleTune plays it faster or slower. Empty or missing file clears it.",
           R"({"type":"object","properties":{"file":{"type":"string"}}})" },
         { "list_library", "Lists the sounds in the user's library (Documents\\Kickbase\\Library: kicks, bass sounds, synth sounds, pads and loops from free packs and the user's own recordings). Each item has id, name, category, package, tags, license, author and, if known, bpm and root_note. PERSONAL items are the user's own sounds (personal: true): they may be used but are never included in anything that is shared. Filter with category (Kicks, Bass, Synth, Pads, BassLoops, SynthLoops, Multi) and search (all words must match name, package, tags, author or license). Packages with a broken manifest are not listed; their problems are returned.",
@@ -302,6 +349,7 @@ var ToolLayer::call (const juce::String& tool, const var& args)
     if (tool == "compare_renders")  return compareRenders (args);
     if (tool == "sweep_parameter")  return sweepParameter (args);
     if (tool == "score_vs_reference") return scoreVsReference (args);
+    if (tool == "analyse_wavetable") return analyseWavetable (args);
     if (tool == "analyse_mix")      return analyseMix (args);
     if (tool == "get_mix_report")   return getMixReport (args);
     if (tool == "save_mix_report")  return saveMixReport (args);
@@ -354,7 +402,7 @@ var ToolLayer::call (const juce::String& tool, const var& args)
         return ok (data);
     }
 
-    if (tool == "set_parameters" || tool == "set_effect" || tool == "set_kick_envelopes" || tool == "set_pattern" || tool == "set_sidechain_curve" || tool == "set_gate" || tool == "live_code_create" || tool == "live_code_apply"
+    if (tool == "set_parameters" || tool == "set_effect" || tool == "set_kick_envelopes" || tool == "set_pattern" || tool == "set_sidechain_curve" || tool == "set_gate" || tool == "set_fm" || tool == "edit_wavetable_harmonics" || tool == "live_code_create" || tool == "live_code_apply"
         || tool == "set_modulation" || tool == "load_preset" || tool == "reset" || tool == "load_kick_sample" || tool == "load_library_kick" || tool == "load_bass_sample" || tool == "load_piano_roll" || tool == "import_midi")
         snapshot();
 
@@ -364,8 +412,10 @@ var ToolLayer::call (const juce::String& tool, const var& args)
     if (tool == "set_pattern")         return setPattern (args);
     if (tool == "set_sidechain_curve") return setSidechainCurve (args);
     if (tool == "set_gate")            return setGate (args);
+    if (tool == "set_fm")              return setFm (args);
+    if (tool == "edit_wavetable_harmonics") return editWavetableHarmonics (args);
     if (tool == "live_code_create")    return liveCodeCreate (args);
-    if (tool == "live_code_apply")     return applyLiveCode (args["items"], (bool) args["overwrite"], args["mods"]); // internt: fliken LIVE CODE (listan kommer från LiveCodeRunner)
+    if (tool == "live_code_apply")     return applyLiveCode (args["items"], (bool) args["overwrite"], args["mods"], (bool) args["prune"]); // internt: fliken LIVE CODE (listan kommer från LiveCodeRunner)
     if (tool == "live_code_run")       return liveCodeRun (args);
     if (tool == "live_code_stop")      return liveCodeStop();
     if (tool == "live_code_lock")      return liveCodeLock (args);
@@ -407,6 +457,32 @@ int ToolLayer::rowOfArg (const juce::var& arg, bool create) const
         return -2;
     const auto id = create ? rows.idOfKeyCreate (text) : rows.idOfKey (text);
     return id >= 0 ? id : -1;
+}
+
+var ToolLayer::liveCodeEffects() const
+{
+    auto out = object();
+    juce::Array<var> types, slots;
+    auto knobs = object();
+    for (int t = 1; t < numEffectTypes; ++t) // 0 = Off, hanteras som "off" i koden
+    {
+        types.add (Effects::typeNames()[t]);
+        juce::Array<var> names;
+        for (const auto& knob : Effects::knobs ((EffectType) t))
+            names.add (knob.name);
+        put (knobs, Effects::typeNames()[t], names);
+    }
+    for (int c = 0; c < numEffectChannels; ++c)
+    {
+        juce::Array<var> row;
+        for (int s = 0; s < slotsPerChannel; ++s)
+            row.add (Effects::typeNames()[(int) Effects::slotType (processor.apvts, c, s)]);
+        slots.add (row);
+    }
+    put (out, "types", types);
+    put (out, "knobs", knobs);
+    put (out, "slots", slots);
+    return out;
 }
 
 int ToolLayer::liveCodeLayerOf (const juce::String& id)
@@ -679,8 +755,10 @@ var ToolLayer::getState (const var& args) const
         put (data, "presets", presets);
     }
 
-    put (data, "kick_pitch_envelope", pointsToVar (processor.kickPitchEnv.getPoints()));
-    put (data, "kick_amp_envelope", pointsToVar (processor.kickAmpEnv.getPoints()));
+    put (data, "kick_pitch_envelope", pointsToVar (processor.kickPitchEnv));
+    put (data, "kick_amp_envelope", pointsToVar (processor.kickAmpEnv));
+    put (data, "kick_pitch_mode", processor.kickPitchEnv.getMode() == NodeEnvelope::Mode::bezier ? "bezier" : "tension");
+    put (data, "kick_amp_mode", processor.kickAmpEnv.getMode() == NodeEnvelope::Mode::bezier ? "bezier" : "tension");
 
     juce::Array<var> curve;
     for (const auto& point : processor.sidechainCurve.getPoints())
@@ -754,7 +832,8 @@ var ToolLayer::setEffect (const var& args)
         return fail ("Unknown effect type. Options: " + Effects::typeNames().joinIntoString (" | "));
 
     const auto type = (EffectType) typeIndex;
-    Effects::setSlotType (processor.apvts, channel, slot, type); // sätter också rattarnas standardvärden
+    if (! ((bool) args["keep"] && Effects::slotType (processor.apvts, channel, slot) == type)) // keep: samma typ behåller rattarna (Live Code .set på en ratt)
+        Effects::setSlotType (processor.apvts, channel, slot, type); // sätter också rattarnas standardvärden
 
     juce::Array<var> problems;
     if (auto* knobs = args["knobs"].getDynamicObject())
@@ -802,24 +881,18 @@ var ToolLayer::setEffect (const var& args)
 var ToolLayer::setKickEnvelopes (const var& args)
 {
     if (args.hasProperty ("pitch"))
-    {
-        auto points = pointsFromVar (args["pitch"]);
-        if (points.size() < 2)
-            return fail ("pitch needs at least two nodes [time_seconds, semitones, tension].");
-        processor.kickPitchEnv.setPoints (std::move (points));
-    }
+        if (const auto error = applyEnvelope (processor.kickPitchEnv, args, "pitch"); error.isNotEmpty())
+            return fail (error);
     if (args.hasProperty ("amp"))
-    {
-        auto points = pointsFromVar (args["amp"]);
-        if (points.size() < 2)
-            return fail ("amp needs at least two nodes [time_seconds, volume, tension].");
-        processor.kickAmpEnv.setPoints (std::move (points));
-    }
+        if (const auto error = applyEnvelope (processor.kickAmpEnv, args, "amp"); error.isNotEmpty())
+            return fail (error);
     processor.markStateChanged();
 
     auto data = object();
-    put (data, "kick_pitch_envelope", pointsToVar (processor.kickPitchEnv.getPoints()));
-    put (data, "kick_amp_envelope", pointsToVar (processor.kickAmpEnv.getPoints()));
+    put (data, "kick_pitch_envelope", pointsToVar (processor.kickPitchEnv));
+    put (data, "kick_amp_envelope", pointsToVar (processor.kickAmpEnv));
+    put (data, "kick_pitch_mode", processor.kickPitchEnv.getMode() == NodeEnvelope::Mode::bezier ? "bezier" : "tension");
+    put (data, "kick_amp_mode", processor.kickAmpEnv.getMode() == NodeEnvelope::Mode::bezier ? "bezier" : "tension");
     return ok (data);
 }
 
@@ -1133,11 +1206,11 @@ juce::StringArray ToolLayer::applyCodeMods (const var& mods)
 
 // Skriver Live Codes rader (en lista med set_pattern-argument). Låsta rader hoppas över. Rader med toner som
 // Live Code inte skrev själv skrivs bara över med overwrite:true; annars ändras ingenting och felet listar raderna.
-var ToolLayer::applyLiveCode (const var& items, bool overwrite, const var& mods)
+var ToolLayer::applyLiveCode (const var& items, bool overwrite, const var& mods, bool prune)
 {
     auto layerOf = [this] (const var& item) { return rowOfArg (item["layer"], false); }; // -1: en underrad som inte finns än (setPattern skapar den), -2: ogiltig
     auto layerName = [this] (int layer) { return layer == Pattern::kickLayer ? juce::String ("kick") : layer >= Pattern::numNoteLayers ? processor.pattern.rows.keyOf (layer) : "instrument " + juce::String (layer + 1); };
-    const auto locks = processor.liveCodeLocks.load();
+    const auto locks = processor.liveCodeNoteLocks();
     const auto owned = processor.liveCodeOwned.load();
 
     var written (juce::Array<var>{}), skipped (juce::Array<var>{}), conflicts (juce::Array<var>{});
@@ -1175,6 +1248,21 @@ var ToolLayer::applyLiveCode (const var& items, bool overwrite, const var& mods)
             newOwned |= liveCodeBit (layerOf (item)); // setPattern har skapat raden vid behov
             written.append (item["layer"]);
         }
+    if (prune) // AUTO: en rad som koden äger men som inte längre står i koden töms; handgjorda och låsta rader rörs aldrig
+    {
+        auto mentioned = 0;
+        if (auto* a = items.getArray())
+            for (auto& item : *a)
+                if (const auto layer = layerOf (item); juce::isPositiveAndBelow (layer, Pattern::numLayers + 1))
+                    mentioned |= liveCodeBit (layer);
+        for (int layer = 0; layer <= Pattern::numLayers; ++layer)
+        {
+            const auto bit = liveCodeBit (layer);
+            if ((newOwned & bit) == 0 || (mentioned & bit) != 0 || (locks & bit) != 0) continue;
+            processor.pattern.clearNotes (layer);
+            newOwned &= ~bit;
+        }
+    }
     processor.liveCodeOwned = newOwned;
     const auto problems = applyCodeMods (mods);
     auto data = object();
@@ -1228,6 +1316,81 @@ var ToolLayer::liveCodeLock (const var& args)
     return ok (data);
 }
 
+var ToolLayer::editWavetableHarmonics (const var& args)
+{
+    const auto layer = (int) args["layer"], osc = (int) args["osc"];
+    if (! juce::isPositiveAndBelow (layer, ParamID::numInstrumentLayers) || ! juce::isPositiveAndBelow (osc, ParamID::oscsPerLayer))
+        return fail ("layer must be 0-9 and osc 0-2 (A, B, C).");
+
+    const auto* list = args["harmonics"].getArray();
+    if (list == nullptr || list->isEmpty())
+        return fail ("harmonics must be a list of {n, gain_db | gain, phase_deg}.");
+
+    std::vector<WavetableEdit::Edit> edits;
+    for (const auto& item : *list)
+    {
+        WavetableEdit::Edit edit;
+        edit.harmonic = (int) item["n"];
+        if (edit.harmonic < 1 || edit.harmonic >= Wavetable::frameSize / 2)
+            return fail ("n must be 1-511.");
+        if (item.hasProperty ("gain_db"))
+            edit.gain = (double) item["gain_db"] <= -120.0 ? 0.0f : juce::Decibels::decibelsToGain ((float) (double) item["gain_db"]);
+        else if (item.hasProperty ("gain"))
+            edit.gain = juce::jmax (0.0f, (float) (double) item["gain"]);
+        edit.phaseShift = juce::degreesToRadians ((float) (double) item["phase_deg"]);
+        edits.push_back (edit);
+    }
+
+    const auto frame = args["frame"].isInt() || args["frame"].isDouble() ? juce::jlimit (0, Wavetable::numFrames - 1, (int) args["frame"]) : -1;
+    const auto normalise = args.hasProperty ("normalise") ? (bool) args["normalise"] : true;
+    if (! processor.editWavetable (layer, osc, frame, edits, normalise))
+        return fail ("Could not edit this oscillator's table (it has no wavetable to edit: a sample or an unavailable table).");
+
+    auto data = object();
+    put (data, "layer", layer);
+    put (data, "osc", osc);
+    put (data, "table", processor.getUserTableName (layer, osc));
+    put (data, "edits", (int) edits.size());
+    return ok (data);
+}
+
+var ToolLayer::analyseWavetable (const var& args)
+{
+    const auto layer = (int) args["layer"], osc = (int) args["osc"];
+    if (! juce::isPositiveAndBelow (layer, ParamID::numInstrumentLayers) || ! juce::isPositiveAndBelow (osc, ParamID::oscsPerLayer))
+        return fail ("layer must be 0-9 and osc 0-2 (A, B, C).");
+
+    std::vector<float> frames;
+    auto steps = 0;
+    juce::String name;
+    if (! processor.wavetableSource (layer, osc, frames, steps, name))
+        return fail ("This oscillator has no wavetable to read (a sample or an unavailable table).");
+
+    const auto frame = juce::jlimit (0, Wavetable::numFrames - 1, args.hasProperty ("frame") ? (int) args["frame"] : 0);
+    const auto count = juce::jlimit (1, 64, args.hasProperty ("count") ? (int) args["count"] : 16);
+    std::vector<float> amp, phase;
+    WavetableEdit::analyse (frames.data() + (size_t) frame * Wavetable::frameSize, count, amp, phase);
+    const auto loudest = juce::jmax (1.0e-9f, *std::max_element (amp.begin(), amp.end()));
+
+    juce::Array<var> harmonics;
+    for (int k = 0; k < count; ++k)
+    {
+        auto item = object();
+        put (item, "n", k + 1);
+        put (item, "level_db", round4 (juce::Decibels::gainToDecibels (amp[(size_t) k] / loudest, -120.0f)));
+        put (item, "phase_deg", juce::roundToInt (juce::radiansToDegrees (phase[(size_t) k])));
+        harmonics.add (item);
+    }
+
+    auto data = object();
+    put (data, "layer", layer);
+    put (data, "osc", osc);
+    put (data, "table", name);
+    put (data, "frame", frame);
+    put (data, "harmonics", harmonics);
+    return ok (data);
+}
+
 var ToolLayer::setGate (const var& args)
 {
     const auto layer = (int) args["layer"];
@@ -1264,6 +1427,47 @@ var ToolLayer::setGate (const var& args)
     put (data, "layer", layer);
     put (data, "grid", Pattern::gridNames()[gridIndexNow]);
     put (data, "steps_per_bar", stepsPerBar);
+    return ok (data);
+}
+
+var ToolLayer::setFm (const var& args)
+{
+    using F = InstrumentField;
+    const auto layer = (int) args["layer"];
+    if (! juce::isPositiveAndBelow (layer, Pattern::numLayers))
+        return fail ("layer must be 0-9.");
+
+    // Först presetet (om något), sedan enskilda fält ovanpå; med fält blir presetvalet Custom.
+    auto presetIndex = 0;
+    if (args.hasProperty ("preset"))
+    {
+        const auto names = FmPresets::names();
+        const auto value = args["preset"];
+        presetIndex = value.isString() && ! value.toString().containsOnly ("0123456789") ? names.indexOf (value.toString().trim(), true) : (int) value;
+        if (! juce::isPositiveAndBelow (presetIndex, names.size()))
+            return fail ("Unknown FM preset. Options: " + names.joinIntoString (" | "));
+        FmPresets::apply (processor.apvts, layer, presetIndex);
+    }
+
+    juce::String problem;
+    auto changedFields = false;
+    for (const auto& [key, field] : { std::pair<const char*, F> { "on", F::fmOn }, { "level", F::fmLevel }, { "ratio", F::fmRatio }, { "index", F::fmIndex },
+                                      { "env_amount", F::fmEnvAmount }, { "env_ms", F::fmEnvTime }, { "semis", F::fmSemis }, { "filter", F::fmFilter } })
+        if (args.hasProperty (key))
+        {
+            auto* parameter = findParameter (processor, ParamID::bass (layer, field));
+            if (parameter == nullptr || ! assign (*parameter, args[key], problem))
+                return fail (problem.isEmpty() ? juce::String ("No such FM parameter.") : problem);
+            changedFields = changedFields || juce::String (key) != "on";
+        }
+
+    if (auto* choice = findParameter (processor, ParamID::bass (layer, F::fmPreset)))
+        if (args.hasProperty ("preset") || changedFields)
+            assign (*choice, changedFields ? 0 : presetIndex, problem);
+
+    auto data = object();
+    put (data, "layer", layer);
+    put (data, "preset", FmPresets::names()[changedFields ? 0 : presetIndex]);
     return ok (data);
 }
 
@@ -2180,6 +2384,26 @@ var ToolLayer::loadInstrumentSample (const var& args)
     if (args.hasProperty ("root_note"))  set (InstrumentField::sampleRoot, (float) (int) args["root_note"]);
     if (args.hasProperty ("loop"))       set (InstrumentField::sampleLoop, (bool) args["loop"] ? 1.0f : 0.0f);
     if (args.hasProperty ("start"))      set (InstrumentField::sampleStart, (float) (double) args["start"]);
+    if (args.hasProperty ("slicer"))     set (InstrumentField::slicerOn, (bool) args["slicer"] ? 1.0f : 0.0f);
+    if (args.hasProperty ("map_to"))     set (InstrumentField::slicerMapTo, (float) (int) args["map_to"]);
+    if (args.hasProperty ("reverse"))    set (InstrumentField::slicerReverse, (bool) args["reverse"] ? 1.0f : 0.0f);
+    if (args.hasProperty ("slice_mode") || args.hasProperty ("grid") || args.hasProperty ("sensitivity") || args.hasProperty ("markers"))
+    {
+        const auto wanted = args["slice_mode"].toString().toLowerCase();
+        auto& slot = processor.instrumentSampleSlot (layer);
+        const auto mode = wanted == "auto" ? SampleSlicing::automatic : wanted == "manual" ? SampleSlicing::manual
+                        : wanted == "grid" ? SampleSlicing::grid : slot.sliceMode();
+        if (auto* list = args["markers"].getArray())
+        {
+            std::vector<float> markers;
+            for (const auto& marker : *list)
+                markers.push_back ((float) (double) marker);
+            processor.setInstrumentSliceMarkers (layer, std::move (markers));
+        }
+        processor.setInstrumentSlicing (layer, mode,
+                                        args.hasProperty ("sensitivity") ? (float) (double) args["sensitivity"] : slot.sliceSensitivity(),
+                                        args.hasProperty ("grid") ? (int) args["grid"] : slot.sliceGridCount());
+    }
     processor.patternChanged();
     return ok ("Loaded " + processor.getInstrumentSampleName (layer) + " into layer " + juce::String (layer) + ".");
 }

@@ -38,6 +38,31 @@ namespace
                 writes.add (juce::var (w));
                 return a.arguments[1];
             });
+            // lock(mål, art): F2. Noteras som {lock, kind} i samma lista; LiveCodePage delar upp dem från parameterskrivningarna.
+            setMethod ("lock", [&writes] (const juce::var::NativeFunctionArgs& a) -> juce::var
+            {
+                if (a.numArguments < 2)
+                    return {};
+                auto* w = new juce::DynamicObject();
+                w->setProperty ("lock", a.arguments[0].toString());
+                w->setProperty ("kind", a.arguments[1].toString());
+                writes.add (juce::var (w));
+                return {};
+            });
+            // effect(kanal, plats, typ, ratt, värde): F3. Typ-byte har ratt "" ; en ratt har typen som den har efter ev. byte i samma körning.
+            setMethod ("effect", [&writes] (const juce::var::NativeFunctionArgs& a) -> juce::var
+            {
+                if (a.numArguments < 5)
+                    return {};
+                auto* w = new juce::DynamicObject();
+                w->setProperty ("fx", a.arguments[0].toString());
+                w->setProperty ("slot", (int) a.arguments[1]);
+                w->setProperty ("type", a.arguments[2].toString());
+                w->setProperty ("knob", a.arguments[3].toString());
+                w->setProperty ("value", a.arguments[4]);
+                writes.add (juce::var (w));
+                return {};
+            });
             setMethod ("paramGet", [&params] (const juce::var::NativeFunctionArgs& a) -> juce::var
             {
                 if (a.numArguments < 1)
@@ -98,11 +123,22 @@ juce::Result LiveCode::setCode (const juce::String& code)
     if (auto r = load(); r.failed()) return r;
     if (! paramValues.empty())
     {
-        juce::Array<juce::var> ids;
+        juce::Array<juce::var> ids, meters;
         for (auto& kv : paramValues)
-            ids.add (kv.first);
+            if (kv.first.startsWith ("meter.")) // F4: mätare bygger inte parameterträdet
+                meters.add (kv.first.fromFirstOccurrenceOf (".", false, false));
+            else
+                ids.add (kv.first);
         juce::Result built = juce::Result::ok();
         engine.evaluate ("buildParams(" + juce::JSON::toString (juce::var (ids), true) + ")", &built);
+        if (built.failed()) return built;
+        engine.evaluate ("buildMeters(" + juce::JSON::toString (juce::var (meters), true) + ")", &built);
+        if (built.failed()) return built;
+    }
+    if (effectCatalog.isObject())
+    {
+        juce::Result built = juce::Result::ok();
+        engine.evaluate ("buildEffects(" + juce::JSON::toString (juce::var (juce::JSON::toString (effectCatalog, true))) + ")", &built);
         if (built.failed()) return built;
     }
     juce::Result res = juce::Result::ok();

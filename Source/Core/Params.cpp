@@ -98,7 +98,9 @@ namespace ParamID
                                      "Env1Mode", "Env1AttackSync", "Env1DecaySync", "Env1ReleaseSync",
                                      "FilterEnvMode", "FilterEnvAttackSync", "FilterEnvDecaySync",
                                      "FilterOn", "FilterOsc1", "FilterOsc2", "FilterOsc3", "FilterSample", "FilterNoise", "NoiseType", "WarpEnvSource", "WarpEnvDecay",
-                                     "Polarity", "PhaseDeg", "NudgeMs" };
+                                     "Polarity", "PhaseDeg", "NudgeMs",
+                                     "FmOn", "FmLevel", "FmRatio", "FmIndex", "FmEnvAmount", "FmEnvTime", "FmSemis", "FmPreset", "FmFilter",
+                                     "SlicerOn", "SlicerMapTo", "SlicerReverse" };
         static_assert (std::size (names) == (size_t) InstrumentField::count);
         return names[(size_t) field];
     }
@@ -210,6 +212,7 @@ namespace Params
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::kickFxChannel, 1 }, "Kick FX Channel",
                                                             fxChannelChoices(), 0));
         layout.add (percent (ParamID::kickFxAmount, "Kick FX Amount", 1.0f));
+        layout.add (percent (ParamID::kickComp, "Kick Comp", 0.0f)); // sist i gruppen: DAW-ordningen och gamla presets rörs inte
     }
 
     void addInstrumentCommonParams (Layout& layout, int layer, float defaultLevel)
@@ -395,6 +398,21 @@ namespace Params
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::polarity), 1 }, title + "Polarity Invert", StringArray { "Normal", "Inverted" }, 0));
         layout.add (floatParam (id (F::phaseDeg), title + "Start Phase", NormalisableRange<float> (0.0f, 360.0f, 0.1f), 0.0f, [] (float v) { return String (v, 1) + juce::String (juce::CharPointer_UTF8 ("°")); }));
         layout.add (floatParam (id (F::nudgeMs), title + "Nudge", NormalisableRange<float> (-2.0f, 2.0f, 0.05f), 0.0f, [] (float v) { return String (v, 2) + " ms"; }));
+        // fas S2: FM-källa (av som standard = ljudet oförändrat)
+        const auto fmPercent = [] (float v) { return String (juce::roundToInt (v * 100.0f)) + " %"; };
+        layout.add (std::make_unique<AudioParameterBool> (ParameterID { id (F::fmOn), 1 }, title + "FM On", false));
+        layout.add (floatParam (id (F::fmLevel), title + "FM Level", NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.0f, fmPercent));
+        layout.add (floatParam (id (F::fmRatio), title + "FM Ratio", NormalisableRange<float> (0.25f, 8.0f, 0.25f), 1.0f, [] (float v) { return String (v, 2) + "x"; }));
+        layout.add (floatParam (id (F::fmIndex), title + "FM Index", NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.3f, fmPercent));
+        layout.add (floatParam (id (F::fmEnvAmount), title + "FM Env Amount", NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.0f, fmPercent));
+        layout.add (ms (1.0f, 400.0f, 60.0f, 60.0f, id (F::fmEnvTime), title + "FM Env Time"));
+        layout.add (floatParam (id (F::fmSemis), title + "FM Semis", NormalisableRange<float> (-24.0f, 24.0f, 1.0f), 0.0f, [] (float v) { return String (juce::roundToInt (v)) + " st"; }));
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::fmPreset), 1 }, title + "FM Preset", StringArray { "Custom", "Zap", "Acid Squelch", "Metallic Lead", "FM Pluck" }, 0));
+        layout.add (std::make_unique<AudioParameterBool> (ParameterID { id (F::fmFilter), 1 }, title + "FM Filter", true));
+        // fas F2: slicer (av som standard = ljudet oförändrat); skivmarkörerna sparas i samplingen (SampleSlot)
+        layout.add (std::make_unique<AudioParameterBool> (ParameterID { id (F::slicerOn), 1 }, title + "Slicer On", false));
+        layout.add (std::make_unique<AudioParameterInt> (ParameterID { id (F::slicerMapTo), 1 }, title + "Slicer Map To", -96, 96, 0));
+        layout.add (std::make_unique<AudioParameterBool> (ParameterID { id (F::slicerReverse), 1 }, title + "Slicer Reverse", false));
     }
 
     void addFxParams (Layout& layout)
@@ -554,6 +572,7 @@ KickParams ParamRefs::readKick (int keyPitchClass) const
     p.drive         = get (ParamID::kickDrive);
     p.highCutHz     = get (ParamID::kickHighCut);
     p.level         = get (ParamID::kickLevel);
+    p.comp          = get (ParamID::kickComp);
     return p;
 }
 
@@ -663,5 +682,16 @@ InstrumentParams ParamRefs::readInstrument (int layer, int rootMidiNote) const
     p.sampleKeyTrack = (int) get (F::sampleKey) == 1;
     p.sampleStart    = get (F::sampleStart);
     p.sampleOn       = get (F::sampleOn) >= 0.5f;
+    p.fmOn = get (F::fmOn) >= 0.5f;
+    p.fmLevel = get (F::fmLevel);
+    p.fmRatio = get (F::fmRatio);
+    p.fmIndex = get (F::fmIndex);
+    p.fmEnvAmount = get (F::fmEnvAmount);
+    p.fmEnvMs = get (F::fmEnvTime);
+    p.fmSemis = get (F::fmSemis);
+    p.fmFilter = get (F::fmFilter) >= 0.5f;
+    p.slicerOn = get (F::slicerOn) >= 0.5f;
+    p.slicerMapTo = juce::roundToInt (get (F::slicerMapTo));
+    p.slicerReverse = get (F::slicerReverse) >= 0.5f;
     return p;
 }

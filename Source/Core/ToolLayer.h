@@ -38,11 +38,13 @@ public:
     int rowOfArg (const juce::var& arg, bool create) const;
     // Live Code F1: parametrar som koden kan läsa (id -> värde i egna enheter, utan effektplatsernas) och skriva.
     std::map<juce::String, double> liveCodeParameters() const;
+    // Live Code F3: effektkatalogen koden ser: {types:[namn], knobs:{typ:[rattnamn]}, slots:[[typ x5] x11]} (ögonblicksbild från före körningen).
+    juce::var liveCodeEffects() const;
     // Rad (0-9 instrument, 10 kick via liveCodeBit) som parametern hör till, -1 om ingen (master, lfo, fx ...).
     static int liveCodeLayerOf (const juce::String& parameterId);
 
 private:
-    juce::var applyLiveCode (const juce::var& items, bool overwrite, const juce::var& mods);
+    juce::var applyLiveCode (const juce::var& items, bool overwrite, const juce::var& mods, bool prune = false); // prune: rader koden äger men inte längre nämner töms (AUTO)
     juce::StringArray applyCodeMods (const juce::var& mods);
     juce::var liveCodeLock (const juce::var& args);
     juce::var listParameters (const juce::var& args) const;
@@ -53,6 +55,9 @@ private:
     juce::var setKickEnvelopes (const juce::var& args);
     juce::var setPattern (const juce::var& args);
     juce::var setGate (const juce::var& args);
+    juce::var setFm (const juce::var& args);
+    juce::var editWavetableHarmonics (const juce::var& args);
+    juce::var analyseWavetable (const juce::var& args);
     juce::var liveCodeCreate (const juce::var& args);
     juce::var liveCodeRun (const juce::var& args);
     juce::var liveCodeStop();

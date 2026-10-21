@@ -9385,5 +9385,68 @@ globalThis.buildParams = function (ids) {
       if (made[g]) made[g][m[2]] = leaf(id); else skipped.push(id);
     });
   });
+  Object.keys(made).forEach(function (g) {
+    if (!made[g]) return;
+    var inst = /^instr(\d+)$/.exec(g);
+    var target = inst ? 'bass' + inst[1] : (g === 'kick' ? 'kick' : null);
+    if (!target) return;
+    made[g].lock = function () { return host.lock(target, 'all'); };
+    made[g].pianoroll = { lock: function () { return host.lock(target, 'notes'); } };
+  });
   return JSON.stringify(skipped);
+};
+
+// Effekter (F3): fx1.slot2.setEffect("reverb") byter typ på plats 2 i FX1; fx1.slot2.mix.set(0.3) sätter en ratt (i egna enheter, val som text).
+// Katalogen (typer, rattnamn, nuvarande typ per plats) kommer från C++ (ToolLayer::liveCodeEffects). Samma typ som förut ger ingen post, så
+// handvridna rattar rörs bara när koden ändras. Namn jämförs utan versaler, mellanslag och understreck ("trancegate", "bit_crusher").
+globalThis.buildEffects = function (json) {
+  var cat = JSON.parse(json), typeByKey = { off: 'Off' };
+  function key(s) { return String(s).toLowerCase().replace(/[^a-z0-9]/g, ''); }
+  cat.types.forEach(function (t) { typeByKey[key(t)] = t; });
+  cat.slots.forEach(function (row, c) {
+    var g = 'fx' + (c + 1), grp = globalThis[g];
+    if (grp === undefined) { grp = {}; globalThis[g] = grp; } else if (grp === null || typeof grp !== 'object') return;
+    var cur = row.slice();
+    row.forEach(function (t0, s) {
+      var label = g + '.slot' + (s + 1), obj = {}, knobKeys = [];
+      function knobs() {
+        knobKeys.forEach(function (k) { delete obj[k]; });
+        knobKeys = [];
+        (cat.knobs[cur[s]] || []).forEach(function (name) {
+          var k = key(name);
+          if (k === 'seteffect') return;
+          knobKeys.push(k);
+          obj[k] = { set: function (v) {
+            if (typeof v !== 'number' && typeof v !== 'string') throw new Error(label + '.' + k + '.set: ge ett tal eller en text');
+            host.effect(g, s + 1, cur[s], name, v);
+            return v;
+          } };
+        });
+      }
+      obj.setEffect = function (name) {
+        var type = typeByKey[key(name)];
+        if (!type) throw new Error(label + '.setEffect: okänd effekt "' + name + '". Val: off, ' + cat.types.map(key).join(', '));
+        if (type !== cur[s]) { cur[s] = type; host.effect(g, s + 1, type, '', 0); knobs(); }
+        return type;
+      };
+      knobs();
+      grp['slot' + (s + 1)] = new Proxy(obj, { get: function (t, k) {
+        if (typeof k === 'symbol' || k in t) return t[k];
+        throw new Error(label + ' (' + cur[s] + ') har ingen ratt "' + String(k) + '"' + (knobKeys.length ? '. Rattar: ' + knobKeys.join(', ') : ' (platsen är tom, börja med setEffect)'));
+      } });
+    });
+  });
+};
+
+// Mätare (F4): meter.outputPeak, meter.gainReduction, meter.duck1..10, meter.solo. Bara .get() (värdet från före körningen); .set/.lfo/.lock ger felrad.
+globalThis.buildMeters = function (names) {
+  var m = {};
+  names.forEach(function (n) {
+    var leaf = { get: function () { return host.paramGet('meter.' + n); } };
+    ['set', 'lfo', 'LFO', 'lock'].forEach(function (bad) {
+      leaf[bad] = function () { throw new Error('meter.' + n + '.' + bad + ': en mätare kan bara läsas, använd .get()'); };
+    });
+    m[n] = leaf;
+  });
+  globalThis.meter = m;
 };

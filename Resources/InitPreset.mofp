@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<KickbasePreset section="Full" plugin="instrument" version="1">
+<KickbasePreset section="Full" plugin="instrument" version="2" activeLfos="7">
   <Params>
     <Param id="patternBars" value="2.0"/>
     <Param id="rowBarsKick" value="2.0"/>

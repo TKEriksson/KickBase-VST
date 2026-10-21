@@ -21,6 +21,14 @@ public:
     juce::String name() const;
     bool hasSample() const { return active() != nullptr; }
 
+    // Skivor (slicer): markörerna hör till samplingen och sparas med den. Ändringen bygger om kopian (message thread).
+    void setSlicing (int mode, float sensitivity, int gridCount);
+    void setManualMarkers (std::vector<float> normalised);   // 0..1 av samplingens längd
+    int sliceMode() const { const juce::ScopedLock scoped (lock); return mode; }
+    float sliceSensitivity() const { const juce::ScopedLock scoped (lock); return sensitivity; }
+    int sliceGridCount() const { const juce::ScopedLock scoped (lock); return gridCount; }
+    std::vector<float> manualMarkers() const { const juce::ScopedLock scoped (lock); return markers; }
+
     // Sparas som ett barn i projektets (eller presetets) träd. `type` är barnets typ.
     juce::ValueTree toValueTree (const juce::Identifier& type) const;
     void fromValueTree (const juce::ValueTree& tree);
@@ -34,6 +42,10 @@ private:
     juce::AudioBuffer<float> original;
     double originalRate = 0.0;
     juce::String originalName;
+    int mode = SampleSlicing::grid;
+    float sensitivity = 0.5f;
+    int gridCount = 8;
+    std::vector<float> markers;
 
     std::atomic<ClickSample*> activeSample { nullptr };
     std::unique_ptr<ClickSample> owned;

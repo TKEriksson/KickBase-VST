@@ -1,4 +1,5 @@
 #include "OscPanel.h"
+#include "HarmonicEditor.h"
 
 WavetableView::WavetableView (PluginBase& p, int layerIn, int oscIn, juce::Colour accentIn)
     : processor (p), layer (layerIn), osc (oscIn), accent (accentIn)
@@ -195,6 +196,17 @@ void WavetableView::mouseDown (const juce::MouseEvent& e)
     {
         display = display == Display::wave ? Display::scope : display == Display::scope ? Display::spectrum : Display::wave;
         repaint();
+        return;
+    }
+    if (e.mods.isPopupMenu()) // PH2: högerklick öppnar övertonsredigeraren
+    {
+        juce::PopupMenu menu;
+        menu.addItem (1, "Edit harmonics...");
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this), [this] (int result)
+        {
+            if (result == 1)
+                juce::CallOutBox::launchAsynchronously (std::make_unique<HarmonicEditor> (processor, layer, osc, accent), getScreenBounds(), nullptr);
+        });
         return;
     }
     hold.start (PluginBase::heldSoloAudition (layer, osc)); // bara den här oscillatorn, så länge musen hålls (loopar om ljudet tar slut)

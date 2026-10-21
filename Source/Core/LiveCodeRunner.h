@@ -14,15 +14,16 @@ public:
 
     ~LiveCodeRunner() { generation.fetch_add (1); pool.removeAllJobs (true, 2000); }
 
-    void run (const juce::String& code, int cycles, Done done, std::map<int, double> sliders = {}, std::map<juce::String, double> params = {})
+    void run (const juce::String& code, int cycles, Done done, std::map<int, double> sliders = {}, std::map<juce::String, double> params = {}, juce::var effects = {})
     {
         const auto gen = generation.fetch_add (1) + 1;
         pool.removeAllJobs (false, 0);
-        pool.addJob ([this, code, cycles, gen, sliders = std::move (sliders), params = std::move (params), done = std::move (done)]
+        pool.addJob ([this, code, cycles, gen, sliders = std::move (sliders), params = std::move (params), effects = std::move (effects), done = std::move (done)]
         {
             LiveCode live;
             live.setSliderValues (sliders);
             live.setParams (params);
+            live.setEffects (effects);
             juce::Result res = juce::Result::ok();
             auto list = live.create (code, cycles, res);
             const auto mods = live.getMods();
