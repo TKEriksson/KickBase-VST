@@ -17,7 +17,7 @@ namespace RollFiles
     // Ersätter lagrets toner med filens, och radens längd (AUTO/valt antal) med den filen sparades med. Ger rutnätet.
     bool load (Pattern& pattern, int layer, const juce::File& file, InstrumentGrid& grid);
 
-    // Skriver lagrets toner som en MIDI-fil (tempo, 4/4, en spår). `rootMidiNote` är basens grundton (tonhöjden 0);
+    // Skriver lagrets toner som en MIDI-fil (tempo, 4/4, ett spår; plus ett namngivet spår per aktiv underrad med toner om raden är ett instrument). `rootMidiNote` är basens grundton (tonhöjden 0);
     // glide-toner skrivs som vanliga toner, eftersom MIDI inte har glide-toner.
     bool exportMidi (const Pattern& pattern, int layer, int bars, double bpm, int rootMidiNote, const juce::File& file);
 

@@ -220,3 +220,9 @@ Kör: antest, inittest, rendersig, tooltest. Rendersig ska vara oförändrad (ba
 - Orsak 2 (lera i en bas): regeln summerar kick + bas (`lowSources`). Med kicken på -10 dB blir low = 0,1 + 0,1 och kvoten 0,32 (< 0,6), så "0,63 gånger" (basen ensam) kunde aldrig slå till. **Testet var fel, regeln rätt (2984fcf).**
 - ÄNDRAT VÄRDE 2: raden använder nu kick-lågband -30 dB (ny parameter `kickLowDb`) och bas -10/-11 dB: low = 0,101, lera = 0,079, kvot 0,79 > 0,6. Tröskeln 0,6 och golvet orörda; padraden och master-raden oförändrade.
 - Ej byggt av mig. Kör: antest (ska bli grönt); rendersig påverkas inte (bara Tools/AnTests.cpp).
+
+## Arbetare 1: R9b steg 6 (MIDI-export per underrad)
+- `RollFiles::exportMidi` (RollFiles.cpp) bygger spåren med `buildTrack`: spår 0 som förut (tempo, 4/4, inget namn), därefter ett spår per aktiv underrad med toner som hör till instrumentet, med spårnamn (meta 3), t.ex. "Bass 3 - SAMPLE" / "Bass 3 - SLICER". Underrader utan toner hoppas över; kick och underrader till andra instrument ingår inte. Underradens spår är minst lika långt som huvudspåret.
+- Signaturen är oförändrad, så UI (`InstrumentMenu.h`), PianoRoll och MCP `export_midi` får spåren utan ändring. MCP-beskrivningen nämner dem.
+- Slicer-noter från MAP TO uppåt: parametern MAP TO finns inte än, noterna exporteras med radens tonhöjder tills F2 steg 3 lägger mappningen.
+- Test: nytt fall i Tests/EngineTests.cpp efter "dubblettpitch" (2 spår, namnet "Bass 1 - SAMPLE"). Ej byggt av mig. Kör: bygget, enginetest, rendersig (oförändrad, ingen ljudväg rörd).

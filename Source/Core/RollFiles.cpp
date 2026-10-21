@@ -94,15 +94,25 @@ namespace RollFiles
         return true;
     }
 
-    bool exportMidi (const Pattern& pattern, int layer, int bars, double bpm, int rootMidiNote, const juce::File& file)
+    // Ett spår med radens toner. Tomt namn = inget spårnamn; tempo och taktart skrivs bara på det första spåret (formatet är MIDI typ 1).
+    static juce::MidiMessageSequence buildTrack (const Pattern& pattern, int layer, int bars, double bpm, int rootMidiNote, const juce::String& name)
     {
         juce::MidiMessageSequence track;
-        auto tempo = juce::MidiMessage::tempoMetaEvent ((int) std::round (60000000.0 / std::max (20.0, bpm)));
-        tempo.setTimeStamp (0.0);
-        track.addEvent (tempo);
-        auto signature = juce::MidiMessage::timeSignatureMetaEvent (4, 4);
-        signature.setTimeStamp (0.0);
-        track.addEvent (signature);
+        if (name.isNotEmpty())
+        {
+            auto trackName = juce::MidiMessage::textMetaEvent (3, name); // meta 3 = spårnamn
+            trackName.setTimeStamp (0.0);
+            track.addEvent (trackName);
+        }
+        else
+        {
+            auto tempo = juce::MidiMessage::tempoMetaEvent ((int) std::round (60000000.0 / std::max (20.0, bpm)));
+            tempo.setTimeStamp (0.0);
+            track.addEvent (tempo);
+            auto signature = juce::MidiMessage::timeSignatureMetaEvent (4, 4);
+            signature.setTimeStamp (0.0);
+            track.addEvent (signature);
+        }
 
         const auto addMidiNote = [&track, rootMidiNote] (int tick, int length, int pitch, float noteVelocity)
         {
@@ -137,10 +147,30 @@ namespace RollFiles
         end.setTimeStamp ((double) (bars * Pattern::ticksPerBar));
         track.addEvent (end);
         track.updateMatchedPairs();
+        return track;
+    }
 
+    bool exportMidi (const Pattern& pattern, int layer, int bars, double bpm, int rootMidiNote, const juce::File& file)
+    {
         juce::MidiFile midi;
         midi.setTicksPerQuarterNote (Pattern::ticksPerQuarter);
-        midi.addTrack (track);
+        midi.addTrack (buildTrack (pattern, layer, bars, bpm, rootMidiNote, {}));
+
+        // R9b: varje aktiv underrad med toner till instrumentet blir ett eget namngivet spår ("Bass 3 - SAMPLE"). Tysta underrader (inga toner) hoppas över.
+        if (juce::isPositiveAndBelow (layer, RowRegistry::numInstruments))
+            for (int id = RowRegistry::firstSubRow; id < Pattern::numRowSlots; ++id)
+            {
+                int instrument = 0;
+                RowRegistry::Kind kind;
+                if (! pattern.rows.get (id, instrument, kind) || instrument != layer)
+                    continue;
+                auto notes = 0;
+                pattern.forEachNote (id, [&notes] (int, const Pattern::Note&) { ++notes; });
+                if (notes == 0)
+                    continue;
+                const auto name = "Bass " + juce::String (layer + 1) + " - " + (kind == RowRegistry::Kind::slicer ? "SLICER" : "SAMPLE");
+                midi.addTrack (buildTrack (pattern, id, std::max (bars, pattern.lengthBars (id)), bpm, rootMidiNote, name));
+            }
 
         file.getParentDirectory().createDirectory();
         file.deleteFile();

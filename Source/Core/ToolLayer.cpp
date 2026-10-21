@@ -242,7 +242,7 @@ std::vector<ToolLayer::ToolInfo> ToolLayer::tools()
           R"({"type":"object","properties":{"layer":{"type":"integer"},"name":{"type":"string"}},"required":["layer","name"]})" },
         { "load_piano_roll", "Loads a saved piano roll preset (by name or file path) into a bass layer, replacing its notes and setting the pattern length and grid it was saved with.",
           R"({"type":"object","properties":{"layer":{"type":"integer"},"name":{"type":"string"},"file":{"type":"string"}},"required":["layer"]})" },
-        { "export_midi", "Exports a bass layer's notes as a MIDI file (96 ticks per quarter, tempo, 4/4). note is the MIDI key that sets the bass root (default 52 = E4: root E1); glide notes are written as ordinary notes. Default folder Documents\\Kickbase\\Exports.",
+        { "export_midi", "Exports a bass layer's notes as a MIDI file (96 ticks per quarter, tempo, 4/4). note is the MIDI key that sets the bass root (default 52 = E4: root E1); glide notes are written as ordinary notes. An instrument's active sub-rows (sample/slicer) with notes follow as extra named tracks, e.g. 'Bass 3 - SAMPLE'. Default folder Documents\\Kickbase\\Exports.",
           R"({"type":"object","properties":{"layer":{"type":"integer"},"file":{"type":"string"},"bpm":{"type":"number"},"note":{"type":"integer"}},"required":["layer"]})" },
         { "import_midi", "Imports a MIDI file into a bass layer (replacing its notes; pitches are placed relative to the bass root of 'note', default 52, and moved by octaves to fit within 96 semitones) and sets the pattern length (1, 2, 4 ... 64 bars) as needed.",
           R"({"type":"object","properties":{"layer":{"type":"integer"},"file":{"type":"string"},"note":{"type":"integer"}},"required":["layer","file"]})" },

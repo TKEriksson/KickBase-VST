@@ -834,6 +834,29 @@ namespace
         check (RollFiles::importMidi (sameBack, 0, midiFile, 60, &skipped) && skipped == 0 && sameBack.stackSize (0, 0) == 2,
                "dubblettpitch exporteras en gång");
 
+        // R9b steg 6: en aktiv underrad med toner blir ett eget namngivet spår; en tyst underrad och andra instruments underrader exporteras inte.
+        const auto subPtr = std::make_unique<Pattern>(); auto& sub = *subPtr;
+        sub.clearNotes (0);
+        sub.addNote (0, 0, 24, 0, 0.8f);
+        const auto sampleRow = sub.rows.add (0, RowRegistry::Kind::sample);
+        const auto slicerRow = sub.rows.add (0, RowRegistry::Kind::slicer);
+        const auto otherRow = sub.rows.add (1, RowRegistry::Kind::sample);
+        sub.addNote (sampleRow, 0, 24, 5, 0.7f);
+        sub.addNote (otherRow, 0, 24, 3, 0.7f);
+        (void) slicerRow;
+        check (RollFiles::exportMidi (sub, 0, 1, 130.0, 60, midiFile), "exportera underrader till MIDI");
+        {
+            juce::FileInputStream in (midiFile);
+            juce::MidiFile back;
+            check (in.openedOk() && back.readFrom (in) && back.getNumTracks() == 2, "MIDI: huvudspår + ett spår för den aktiva underraden (tyst underrad och annat instrument hoppas över)");
+            auto named = false;
+            if (back.getNumTracks() == 2)
+                for (int i = 0; i < back.getTrack (1)->getNumEvents(); ++i)
+                    if (const auto& m = back.getTrack (1)->getEventPointer (i)->message; m.isTrackNameEvent() && m.getTextFromTextMetaEvent() == "Bass 1 - SAMPLE")
+                        named = true;
+            check (named, "MIDI: underradens spår heter 'Bass 1 - SAMPLE'");
+        }
+
         // Fem samtidiga toner: huvudton + tre staplade, en tappas och räknas.
         const auto fivePtr = std::make_unique<Pattern>(); auto& five = *fivePtr;
         five.clearNotes (0);
