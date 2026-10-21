@@ -16,7 +16,6 @@ LiveCodePage::LiveCodePage (PluginBase& processor) : processor (processor), tool
     editor.setColour (juce::CodeEditorComponent::lineNumberBackgroundId, Theme::panel.darker (0.3f));
     editor.setColour (juce::CodeEditorComponent::lineNumberTextId, Theme::textDim);
     editor.setColour (juce::CodeEditorComponent::highlightColourId, Theme::mix.withAlpha (0.25f));
-    document.replaceAllContent ("$: note(\"c2 [e2 g2]*2\").s(\"i1\")\n$: s(\"bd*4\")");
     if (const auto saved = processor.getLiveCodeText(); saved.isNotEmpty()) // kod sparad i projektet (steg D)
         document.replaceAllContent (saved);
     seenLoads = processor.liveCodeLoads.load();
@@ -44,7 +43,7 @@ LiveCodePage::LiveCodePage (PluginBase& processor) : processor (processor), tool
     showTab (false);
 
     playButton.setClickingTogglesState (true);
-    playButton.setToggleState (true, juce::dontSendNotification); // AUTO på som standard; ingenting körs förrän texten ändras (eller AUTO slås på igen)
+    playButton.setToggleState (false, juce::dontSendNotification); // AUTO är alltid av när synthen startar; användaren slår på det
     playButton.setTooltip ("AUTO: valid code runs by itself after each edit. Nothing runs when a project loads.");
 
     playButton.onClick = [this] { setPlaying (playButton.getToggleState()); }; // AUTO av/på
@@ -323,7 +322,8 @@ void LiveCodePage::setPlaying (bool shouldPlay)
     {
         lastParamWrites.clear(); // första körningen efter AUTO på skriver alltid
         stopTimer();
-        runNow();
+        if (document.getAllContent().trim().isNotEmpty()) // tom editor: inget att köra, rader och modulering lämnas orörda
+            runNow();
     }
     else
     {

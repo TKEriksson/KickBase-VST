@@ -50,7 +50,7 @@ private:
     ToolLayer tools;
     bool warningOpen = false; // en varning i taget; LIVE väntar tills den är besvarad
     LiveCodeRunner runner;
-    bool playing = true; // AUTO: på som standard, men kör inget förrän texten ändras
+    bool playing = false; // AUTO: av när synthen startar
     bool codeOnly = false;
     struct LoadWatch : private juce::Timer // ett projekt kan laddas från vilken tråd som helst: sidan tittar efter på meddelandetråden
     {
