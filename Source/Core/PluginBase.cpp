@@ -918,6 +918,9 @@ void PluginBase::loadFactoryPreset (Presets::Section section, int index, int lay
             clearInstrumentSample (l);
         for (int slot = 0; slot < numUserSlots; ++slot)
             clearUserTable (slot);
+        layerNames.fill ({}); // som den inbakade Init-filen: standardnamn och -färger
+        layerColours.fill (0);
+        ++layerNamesVersion;
         presetNames.fill ({}); // delarna kommer inte längre från sina egna presets
         instrumentPresetNames.fill ({});
         rowPresetNames.fill ({});
@@ -960,7 +963,7 @@ std::unique_ptr<juce::XmlElement> PluginBase::buildPresetXml (Presets::Section s
     auto& root = *rootPtr;
     root.setAttribute ("section", Presets::sectionName (section));
     root.setAttribute ("plugin", effectVersion ? "fx" : "instrument");
-    root.setAttribute ("version", 1);
+    root.setAttribute ("version", 2); // 2: Full har <LayerNames>; äldre filer (saknas eller 1) ger standardnamn och -färger
     if (section == Presets::Section::effects)
         root.setAttribute ("scope", "channel"); // en effektkanal
     if (section == Presets::Section::pattern)
@@ -993,6 +996,17 @@ std::unique_ptr<juce::XmlElement> PluginBase::buildPresetXml (Presets::Section s
                                    : section == Presets::Section::effects ? Presets::effectIdToCanonical (ranged->getParameterID(), layer)
                                                                           : ranged->getParameterID());
         entry->setAttribute ("value", (double) ranged->convertFrom0to1 (ranged->getValue()));
+    }
+
+    if (section == Presets::Section::full)
+    {
+        auto* namesXml = root.createNewChildElement ("LayerNames");
+        for (int i = 0; i < ParamID::numInstrumentLayers; ++i)
+        {
+            namesXml->setAttribute ("name" + juce::String (i + 1), layerNames[(size_t) i]);
+            if (layerColours[(size_t) i] != 0) // som i projekttillståndet: bara ändrade färger
+                namesXml->setAttribute ("colour" + juce::String (i + 1), (juce::int64) layerColours[(size_t) i]);
+        }
     }
 
     if (section == Presets::Section::full)
@@ -1287,6 +1301,18 @@ bool PluginBase::loadPresetXml (const juce::XmlElement& xmlElement, Presets::Sec
     // sätts, och dess startvärde är inte avrundat (t.ex. 59.9999962 i stället för 60).
     for (size_t i = 0; i < sectionParameters.size(); ++i)
         Presets::setParameter (*sectionParameters[i], targets[i]);
+
+    if (section == Presets::Section::full)
+    {
+        // Ett Full-preset ersätter alla namn och färger; filer utan <LayerNames> (version 1) ger standard.
+        const auto* namesXml = xml->getChildByName ("LayerNames");
+        for (int i = 0; i < ParamID::numInstrumentLayers; ++i)
+        {
+            layerNames[(size_t) i] = namesXml != nullptr ? namesXml->getStringAttribute ("name" + juce::String (i + 1)) : juce::String();
+            layerColours[(size_t) i] = namesXml != nullptr ? (juce::uint32) namesXml->getStringAttribute ("colour" + juce::String (i + 1), "0").getLargeIntValue() : 0;
+        }
+        ++layerNamesVersion;
+    }
 
     if (section == Presets::Section::full)
         if (const auto* patternXml = xml->getChildByName (Pattern::treeType))
