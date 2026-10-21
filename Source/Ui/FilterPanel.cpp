@@ -236,22 +236,55 @@ FilterPage::FilterPage (PluginBase& p, int layerIn, juce::Colour accentIn)
     routingNote.setInterceptsMouseClicks (false, false);
     addAndMakeVisible (routingNote);
 
-    static const char* const switchNames[] { "FILTER ON", "OSC 1", "OSC 2", "OSC 3", "SAMPLE", "NOISE" };
-    static const char* const switchTips[] {
-        "FILTER ON / OFF - Off: the whole instrument bypasses Filter 1 and Filter 2 (the amp envelope still works).",
-        "OSC 1 THROUGH FILTER - Off: OSC 1 bypasses both filters.", "OSC 2 THROUGH FILTER - Off: OSC 2 bypasses both filters.",
-        "OSC 3 THROUGH FILTER - Off: OSC 3 bypasses both filters.", "SAMPLE THROUGH FILTER - Off (default): the sample bypasses both filters.",
-        "NOISE THROUGH FILTER - Off: the noise bypasses both filters." };
-    for (size_t i = 0; i < switches.size(); ++i)
+    filterOnButton.setTooltip ("FILTER ON / OFF - Off: the whole instrument bypasses Filter 1 and Filter 2 (the amp envelope still works).");
+    filterOnButton.setColour (juce::ToggleButton::tickColourId, accent);
+    filterOnButton.setColour (juce::ToggleButton::textColourId, Theme::text);
+    addAndMakeVisible (filterOnButton);
+    filterOnAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, ParamID::bass (layer, F::filterOn), filterOnButton);
+
+    sourcesButton.setTooltip ("SOURCES THROUGH FILTER - Click to choose which sources are filtered (ticked = through Filter 1 and 2, unticked = bypasses both). "
+                              "The same switch is on each source's own tab (OSC 1-3, SAMPLE; NOISE on the INSTR tab).");
+    sourcesButton.onClick = [this] { showSourcesMenu(); };
+    addAndMakeVisible (sourcesButton);
+    for (int i = 0; i < numSources; ++i)
     {
-        auto& s = switches[i];
-        s.button.setButtonText (switchNames[i]);
-        s.button.setTooltip (switchTips[i]);
-        s.button.setColour (juce::ToggleButton::tickColourId, accent);
-        s.button.setColour (juce::ToggleButton::textColourId, Theme::textDim);
-        addAndMakeVisible (s.button);
-        s.attachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, ParamID::bass (layer, (F) ((int) F::filterOn + (int) i)), s.button);
+        auto* parameter = p.apvts.getParameter (ParamID::bass (layer, (F) ((int) F::filterOsc1 + i)));
+        sourceAttachments[(size_t) i] = std::make_unique<juce::ParameterAttachment> (*parameter, [this, i] (float value)
+        {
+            sourceOn[(size_t) i] = value >= 0.5f;
+            updateSourcesText();
+        });
+        sourceAttachments[(size_t) i]->sendInitialUpdate();
     }
+}
+
+static const char* const sourceNames[] { "OSC 1", "OSC 2", "OSC 3", "SAMPLE", "NOISE" };
+
+void FilterPage::updateSourcesText()
+{
+    juce::StringArray names;
+    for (int i = 0; i < numSources; ++i)
+        if (sourceOn[(size_t) i])
+            names.add (sourceNames[i]);
+    sourcesButton.setButtonText ((names.isEmpty() ? juce::String ("NONE (all bypass the filter)") : names.joinIntoString (", ")) + "  v");
+}
+
+// Flerval: menyn öppnas igen efter varje klick så att flera källor kan växlas i rad; Esc eller klick utanför stänger den.
+void FilterPage::showSourcesMenu()
+{
+    juce::PopupMenu menu;
+    menu.addSectionHeader ("Through the filter (click to toggle)");
+    for (int i = 0; i < numSources; ++i)
+        menu.addItem (i + 1, sourceNames[i], true, sourceOn[(size_t) i]);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (sourcesButton),
+                        [safe = juce::Component::SafePointer<FilterPage> (this)] (int result)
+                        {
+                            if (safe == nullptr || result <= 0)
+                                return;
+                            const auto index = (size_t) (result - 1);
+                            safe->sourceAttachments[index]->setValueAsCompleteGesture (safe->sourceOn[index] ? 0.0f : 1.0f);
+                            juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->showSourcesMenu(); });
+                        });
 }
 
 void FilterPage::makeBlock (Block& block, bool isSecond)
@@ -340,7 +373,7 @@ void FilterPage::paint (juce::Graphics& g)
 {
     g.setColour (Theme::textDim);
     g.setFont (Theme::font (10.0f));
-    g.drawText ("SENT THROUGH FILTER:", switchCaption, juce::Justification::centredLeft);
+    g.drawText ("THROUGH FILTER:", switchCaption, juce::Justification::centredLeft);
     paintGroupFrame (g, first.frame, first.title, accent, 0);
     paintGroupFrame (g, second.frame, second.title, filter2Colour, 20);
 }
@@ -353,9 +386,10 @@ void FilterPage::resized()
     area.removeFromRight (6);
     auto switchRow = area.removeFromTop (22);
     area.removeFromTop (2);
-    switchCaption = switchRow.removeFromLeft (130);
-    for (auto& s : switches)
-        s.button.setBounds (switchRow.removeFromLeft (84));
+    filterOnButton.setBounds (switchRow.removeFromLeft (104));
+    switchRow.removeFromLeft (10);
+    switchCaption = switchRow.removeFromLeft (100);
+    sourcesButton.setBounds (switchRow.removeFromLeft (juce::jmin (300, switchRow.getWidth())));
 
     auto bottom = area.removeFromBottom (40);
     area.removeFromBottom (4);

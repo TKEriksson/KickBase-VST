@@ -742,6 +742,11 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
     envelopeListen.onStop = [this] { hold.stop(); };
     instrPage.addAndMakeVisible (envelopeListen);
     instrPage.addAndMakeVisible (subScope);
+    noiseFilterButton.setTooltip ("NOISE THROUGH FILTER - On: the noise goes through Filter 1 and Filter 2 (set on the FILTER tab). Off: it bypasses both filters.");
+    noiseFilterButton.setColour (juce::ToggleButton::tickColourId, layerAccent);
+    noiseFilterButton.setColour (juce::ToggleButton::textColourId, Theme::textDim);
+    instrPage.addAndMakeVisible (noiseFilterButton);
+    noiseFilterAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, ParamID::bass (layer, F::filterNoise), noiseFilterButton);
 
     // Flikarna: INSTR (envelopen och rattarna), OSC 1-3 och SAMPLE med en på/av-knapp på fliken, och FILTER.
     sources.addTab ("INSTR", layerAccent, instrPage);
@@ -1007,6 +1012,12 @@ SamplePage::SamplePage (PluginBase& p, int layerIn, juce::Colour accent)
     }
     slicerAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, id (F::slicerOn), slicerToggle);
     reverseAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, id (F::slicerReverse), reverseToggle);
+    filterSendToggle.setTooltip ("SEND THROUGH FILTER - On: the sample goes through Filter 1 and Filter 2 (set on the FILTER tab). "
+                                 "Off (default): it bypasses both filters, so a sample keeps its full sound.");
+    filterSendToggle.setColour (juce::ToggleButton::tickColourId, accent);
+    filterSendToggle.setColour (juce::ToggleButton::textColourId, Theme::textDim);
+    addAndMakeVisible (filterSendToggle);
+    filterSendAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, id (F::filterSample), filterSendToggle);
     mapToKnob = std::make_unique<KnobComponent> (p.apvts, id (F::slicerMapTo), "MAP TO", accent);
     addAndMakeVisible (*mapToKnob);
     sliceModeBox.addItemList ({ "Grid", "Auto", "Manual" }, 1);
@@ -1119,6 +1130,8 @@ void SamplePage::resized()
     loadButton.setBounds (top.removeFromRight (56));
     top.removeFromRight (4);
     hearButton.setBounds (top.removeFromRight (56));
+    top.removeFromRight (8);
+    filterSendToggle.setBounds (top.removeFromRight (juce::jmin (170, top.getWidth() / 2)));
     label.setBounds (top);
     area.removeFromTop (6);
 
@@ -1210,6 +1223,11 @@ void InstrumentModule::layoutInstrPage()
     const auto sub = groups.frameOf ("SUB");
     if (! sub.isEmpty())
         subScope.setBounds (sub.getRight() - 6 - 54, sub.getY() + 1, 54, ControlGroups::titleHeight);
+
+    // NOISE: skicka-genom-filter-knappen i rubrikraden, till höger om rubriken.
+    const auto noise = groups.frameOf ("NOISE");
+    if (! noise.isEmpty())
+        noiseFilterButton.setBounds (noise.getRight() - 6 - 62, noise.getY() - 1, 62, ControlGroups::titleHeight + 3);
 }
 
 //==============================================================================

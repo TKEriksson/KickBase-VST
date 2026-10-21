@@ -72,12 +72,15 @@ private:
     Block first, second;
     std::unique_ptr<ChoiceComponent> routing;
     juce::Label routingNote;
-    // fas S: FILTER av/på för hela instrumentet och per källa (ett sätt att låta t.ex. SAMPLE eller NOISE gå förbi båda filtren)
-    struct SourceSwitch
-    {
-        juce::ToggleButton button;
-        std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> attachment;
-    };
-    juce::Rectangle<int> switchCaption; // text till vänster om brytarna: vad raden gör
-    std::array<SourceSwitch, 6> switches; // FILTER, OSC 1, OSC 2, OSC 3, SAMPLE, NOISE (i ordning med InstrumentField::filterOn ...)
+    // fas S: FILTER av/på för hela instrumentet (en knapp) och per källa (en flervalsmeny: låter t.ex. SAMPLE eller NOISE gå förbi båda filtren).
+    // Samma parametrar finns som en knapp i varje källas egen flik.
+    void showSourcesMenu();
+    void updateSourcesText();
+    static constexpr int numSources = 5; // OSC 1, OSC 2, OSC 3, SAMPLE, NOISE (i ordning med InstrumentField::filterOsc1 ...)
+    juce::ToggleButton filterOnButton { "FILTER ON" };
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> filterOnAttachment;
+    juce::TextButton sourcesButton;
+    std::array<std::unique_ptr<juce::ParameterAttachment>, numSources> sourceAttachments;
+    std::array<bool, numSources> sourceOn {};
+    juce::Rectangle<int> switchCaption; // text framför menyn: vad den gör
 };

@@ -77,6 +77,8 @@ private:
     juce::Label tableLabel;
     juce::TextButton tableButton;
     std::array<juce::TextButton, 4> shapeButtons; // SIN, TRI, SAW, SQR: de klassiska vågformerna
+    juce::ToggleButton filterSendButton { "SEND THROUGH FILTER" }; // samma parameter som i FILTER-fliken (THROUGH FILTER-menyn)
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> filterSendAttachment;
     juce::TextButton wavButton { "WAV" };
     juce::TextButton morphButton { "MORPH" };
     std::unique_ptr<juce::ButtonParameterAttachment> morphAttachment;

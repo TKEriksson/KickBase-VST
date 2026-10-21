@@ -161,7 +161,8 @@ private:
     const int layer;
     SampleView view;
     juce::ToggleButton slicerToggle { "SLICER" }, reverseToggle { "REVERSE" };
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> slicerAttachment, reverseAttachment;
+    juce::ToggleButton filterSendToggle { "SEND THROUGH FILTER" }; // samma parameter som i FILTER-fliken
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> slicerAttachment, reverseAttachment, filterSendAttachment;
     std::unique_ptr<KnobComponent> mapToKnob;
     juce::ComboBox sliceModeBox;
     juce::Slider gridAmount, sensitivityAmount; // en per läge, så att inget område byts under användaren
@@ -226,6 +227,8 @@ private:
     InstrPage instrPage { *this };
     void layoutInstrPage();
     SubScope subScope { processor, layer };
+    juce::ToggleButton noiseFilterButton { "FILTER" }; // NOISE-gruppens skicka-genom-filter (samma parameter som i FILTER-fliken)
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> noiseFilterAttachment;
 
     EnvelopeView envelope { 0.5 };
     HoldAudition hold { processor };      // klick och håll på LISTEN: instrumentet spelas på förhandsvisningstonen

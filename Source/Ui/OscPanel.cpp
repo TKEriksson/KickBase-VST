@@ -249,6 +249,14 @@ OscPanel::OscPanel (PluginBase& p, int layerIn, int oscIn, juce::Colour accentIn
     addAndMakeVisible (warp);
     addAndMakeVisible (view);
 
+    filterSendButton.setTooltip ("SEND THROUGH FILTER - On: this oscillator goes through Filter 1 and Filter 2 (set on the FILTER tab). "
+                                 "Off: it bypasses both filters and goes straight to the amp.");
+    filterSendButton.setColour (juce::ToggleButton::tickColourId, accent);
+    filterSendButton.setColour (juce::ToggleButton::textColourId, Theme::textDim);
+    addAndMakeVisible (filterSendButton);
+    filterSendAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
+        p.apvts, ParamID::bass (layer, (InstrumentField) ((int) InstrumentField::filterOsc1 + osc)), filterSendButton);
+
     // Klassiska vågformer med ett klick (som i FL:s 3x Osc), utan att behöva förstå wavetables.
     const char* shapeNames[] { "SIN", "TRI", "SAW", "SQR" };
     const char* shapeHelp[] { "Pure sine wave.", "Triangle wave: soft, with only odd overtones.",
@@ -552,7 +560,9 @@ void OscPanel::resized()
 {
     auto area = getLocalBounds().reduced (6);
     {
-        auto strip = area.removeFromTop (16).withTrimmedLeft (area.getWidth() / 3);
+        const auto titleRow = area.removeFromTop (16);
+        filterSendButton.setBounds (titleRow.withTrimmedLeft (52).withWidth (juce::jmax (0, juce::jmin (170, area.getWidth() / 3 - 52))));
+        auto strip = titleRow.withTrimmedLeft (area.getWidth() / 3);
         resetOscButton.setBounds (strip.removeFromRight (46).reduced (1, 0));
         savePresetButton.setBounds (strip.removeFromRight (42).reduced (1, 0));
         nextPresetButton.setBounds (strip.removeFromRight (22).reduced (1, 0));
