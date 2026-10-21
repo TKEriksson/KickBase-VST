@@ -531,7 +531,24 @@ void AiChatPage::refresh()
 
         const auto atBottom = viewport.getViewPositionY() + viewport.getViewHeight() >= transcript->getHeight() - 24;
         transcript->setSize (viewport.getMaximumVisibleWidth(), transcript->getHeight());
-        transcript->setEntries (entries);
+        if (entries.empty() && hasKey)
+        {
+            // Hälsningen är bara en visning i en tom chatt: den sparas inte och skickas inte till modellen (kostar inga tokens).
+            AiChat::Entry greeting;
+            greeting.kind = AiChat::Entry::Kind::assistant;
+            greeting.text = "Hi! I'm your co-producer, here to help you make your kick and bass sound the way you hear it in your head.\n\n"
+                            "Here is what I can do:\n"
+                            "- Design sounds: set parameters and build kick and bass patches, layers, FM, filters and modulation\n"
+                            "- Write patterns: notes, rhythms and slices, and live code\n"
+                            "- Shape the mix: effects, EQ and sidechain, and compare against a reference\n"
+                            "- Analyse your mix: find clashes between kick and bass, read the report and fix what it finds\n"
+                            "- Work with presets: browse, load and save sounds\n"
+                            "- Undo anything I change, so it's safe to experiment\n\n"
+                            "How can I help you today?";
+            transcript->setEntries ({ greeting });
+        }
+        else
+            transcript->setEntries (entries);
         if (atBottom || busy)
             viewport.setViewPosition (0, std::max (0, transcript->getHeight() - viewport.getHeight()));
 
