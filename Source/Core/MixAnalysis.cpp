@@ -16,7 +16,8 @@ namespace MixAnalysis
         constexpr float phaseCorrWarn = -0.3f, phaseCorrProblem = -0.6f;
         constexpr float phaseSumWarnDb = -3.0f, phaseSumProblemDb = -6.0f;
         constexpr float lowStereoCorrMin = 0.3f;        // under detta är basen för bred (band 0)
-        constexpr double mudLowFloorPerFrame = 1.0e-4;  // medeleffekt 40-150 Hz i mastern (-40 dB); under det bedöms inte lera
+        constexpr float limiterWarnDb = 6.0f, limiterProblemDb = 9.0f; // mäts på 95:e percentilen över ramarna, inte på enstaka maxblock
+constexpr double mudLowFloorPerFrame = 1.0e-4;  // medeleffekt 40-150 Hz i mastern (-40 dB); under det bedöms inte lera
         constexpr float lobePower = 1.5f;                 // en ren ton fördelas på ungefär tre steg (Hann): summan blir 1,5 gånger toppen
 
         juce::String noteName (float hz)
@@ -590,14 +591,21 @@ namespace MixAnalysis
 
         // --- Mastern: limitern.
         r.limiterMaxDb = c.limiterMaxReductionDb;
-        if (c.limiterMaxReductionDb >= 5.0f)
+        auto limiterLevelDb = c.limiterMaxReductionDb; // utan ramvärden (äldre capture) faller vi tillbaka på maxet
+        if (! c.frameLimiterDb.empty())
+        {
+            auto sorted = c.frameLimiterDb;
+            std::sort (sorted.begin(), sorted.end());
+            limiterLevelDb = sorted[(size_t) std::max (0, (int) std::ceil (0.95 * (double) sorted.size()) - 1)];
+        }
+        if (limiterLevelDb >= limiterWarnDb)
         {
             Finding f;
-            f.severity = c.limiterMaxReductionDb >= 9.0f ? Severity::problem : Severity::warning;
+            f.severity = limiterLevelDb >= limiterProblemDb ? Severity::problem : Severity::warning;
             f.category = "master";
             f.sources = { c.names[(size_t) masterSource] };
-            f.title = "The master limiter works hard (up to " + juce::String (c.limiterMaxReductionDb, 1) + " dB)";
-            f.detail = "Kick and instruments together are louder than the master's ceiling, so the limiter squashes the peaks (usually the kick). Lower levels in the MIXER tab or the loudest instruments instead of letting the limiter do it.";
+            f.title = "The master limiter works hard (" + juce::String (limiterLevelDb, 1) + " dB in the loudest 5 % of the time, up to " + juce::String (c.limiterMaxReductionDb, 1) + " dB)";
+            f.detail = "Kick and instruments together are louder than the master's ceiling, so the limiter squashes the peaks (usually the kick). Lower levels in the MIXER tab or the loudest instruments instead of letting the limiter do it. A single peak does not trigger this; the 95th percentile over the frames decides.";
             r.findings.push_back (std::move (f));
         }
 

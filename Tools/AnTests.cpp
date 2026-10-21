@@ -283,7 +283,7 @@ int anTest()
         check (hasCategory (evaluate (c, options, nullptr), "stereo"), "stereo: bred bas ger fynd i evaluate");
     }
 
-    // --- Limitern: gränsen är 5 dB (varning) och 9 dB (problem).
+    // --- Limitern: 95:e percentilen över ramarna, gränsen är 6 dB (varning) och 9 dB (problem). Utan ramvärden gäller maxet.
     {
         auto run = [&options] (float db)
         {
@@ -293,10 +293,24 @@ int anTest()
             return evaluate (c, options, nullptr);
         };
         check (! hasCategory (run (0.0f), "master"), "limiter: ingen sänkning ger inget fynd");
-        check (! hasCategory (run (4.9f), "master"), "limiter: 4,9 dB slår inte till");
-        check (hasCategory (run (5.0f), "master") && severityOf (run (5.0f), "limiter") == Severity::warning, "limiter: 5,0 dB ger en varning");
+        check (! hasCategory (run (5.9f), "master"), "limiter: 5,9 dB slår inte till");
+        check (hasCategory (run (6.0f), "master") && severityOf (run (6.0f), "limiter") == Severity::warning, "limiter: 6,0 dB ger en varning");
         check (severityOf (run (8.9f), "limiter") == Severity::warning, "limiter: 8,9 dB är fortfarande en varning");
         check (severityOf (run (9.0f), "limiter") == Severity::problem, "limiter: 9,0 dB är ett problem");
+
+        // Percentil: ett enda ramvärde på 12 dB (av 32) räcker inte, flera höga ramar gör det.
+        auto runFrames = [&options] (int highFrames)
+        {
+            auto c = makeCapture();
+            setBand (c, firstInstrument, 5, -10.0f);
+            c.frameLimiterDb.assign ((size_t) c.frames, 0.0f);
+            for (int i = 0; i < highFrames; ++i)
+                c.frameLimiterDb[(size_t) i] = 12.0f;
+            c.limiterMaxReductionDb = 12.0f;
+            return evaluate (c, options, nullptr);
+        };
+        check (! hasCategory (runFrames (1), "master"), "limiter: en enda hög ram (maxet 12 dB) ger inget fynd");
+        check (severityOf (runFrames (4), "limiter") == Severity::problem, "limiter: fyra av 32 ramar på 12 dB ger ett problem");
     }
 
     // --- Rumlande djupbas under 30 Hz.
