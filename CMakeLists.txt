@@ -237,6 +237,9 @@ target_sources(KickbaseTests PRIVATE
 target_link_libraries(KickbaseTests PRIVATE juce::juce_audio_processors juce::juce_audio_formats juce::juce_dsp)
 target_precompile_headers(KickbaseTests PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CMAKE_CURRENT_SOURCE_DIR}/Source/PchCore.h>")
 kickbase_configure(KickbaseTests)
+# Testprogrammet har NodeEnvelope (16 KB vardera) som std::array på stacken i ModulationTests/PersistFmTests; Release inlinar testfunktionerna
+# och 1 MB räcker inte (exit -1073741571 sedan körning 9). Större stack i testprogrammet tills arrayerna flyttats till heapen.
+target_link_options(KickbaseTests PRIVATE "$<$<CXX_COMPILER_ID:MSVC>:/STACK:8388608>")
 
 # KickbaseMcp: MCP-bryggan (stdio) som AI-appar som Claude Desktop startar. Kör Kickbase utan DAW eller kopplar upp sig
 # mot en Kickbase i DAW:en. Samma program innehåller också utvecklingsverktyget (renderar ljud offline, tar skärmbilder,
