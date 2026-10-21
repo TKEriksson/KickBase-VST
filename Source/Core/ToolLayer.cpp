@@ -187,12 +187,13 @@ namespace
     // mode "bezier" utan handtag i noderna ger handtag som följer tension-formen; "tension" ignorerar handtagen.
     juce::String applyEnvelope (NodeEnvelope& envelope, const var& args, const juce::String& name)
     {
-        const auto modeName = args.hasProperty (name + "_mode") ? args[name + "_mode"].toString().trim().toLowerCase() : juce::String();
+        const juce::Identifier modeKey (name + "_mode"), pointsKey (name);
+        const auto modeName = args.hasProperty (modeKey) ? args[modeKey].toString().trim().toLowerCase() : juce::String();
         if (modeName.isNotEmpty() && modeName != "tension" && modeName != "bezier")
             return name + "_mode must be 'tension' or 'bezier'.";
 
         bool hasHandles = false;
-        auto points = pointsFromVar (args[name], &hasHandles);
+        auto points = pointsFromVar (args[pointsKey], &hasHandles);
         if (points.size() < 2)
             return name + " needs at least two nodes [time_seconds, value, tension].";
 
