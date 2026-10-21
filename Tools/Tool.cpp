@@ -1293,6 +1293,130 @@ namespace
         return restored + failed == 0 ? 0 : 1;
     }
 
+    // Matrix-problemet: en koppling från Matrix (ADD ROUTE, MatrixPage.cpp addRoute) ska ge samma ring och samma modulering som LFO-drag
+    // (Components.cpp itemDropped) för varje modulerbart mål.
+    int matrixTest()
+    {
+        const auto owner = std::make_unique<InstrumentProcessor>();
+        auto& processor = *owner;
+        processor.setPlayConfigDetails (0, 2, renderRate, blockSize);
+        processor.prepareToPlay (renderRate, blockSize);
+
+        auto failed = false;
+        auto check = [&failed] (bool ok, const char* what) { std::printf ("%s: %s\n", ok ? "ok" : "FEL", what); failed |= ! ok; };
+        const auto& parameters = processor.getParameters();
+
+        // Matrix: den första aktiva LFO:n, annars aktiveras LFO 1 (samma urval som MatrixPage::addRoute).
+        auto matrixSource = [&processor]
+        {
+            auto source = -1;
+            for (int lfo = 0; lfo < processor.availableLfos() && source < 0; ++lfo)
+                if (processor.isLfoActive (lfo))
+                    source = Modulation::lfoSource (lfo);
+            if (source < 0)
+            {
+                processor.setLfoActive (0, true);
+                source = 0;
+            }
+            return source;
+        };
+        // Största förskjutningen över ett par varv; ringen och ljudet läser samma tal.
+        auto strongestOffset = [&processor] (int index)
+        {
+            auto strongest = 0.0f;
+            for (int step = 0; step < 64; ++step)
+            {
+                processor.modulator.update (step * 0.0625, 138.0);
+                strongest = std::max (strongest, std::abs (processor.modulator.currentOffset (index)));
+            }
+            return strongest;
+        };
+
+        auto tested = 0, noRoute = 0, noOffset = 0, noRing = 0, differs = 0, notApplied = 0;
+        juce::String firstBad;
+        for (int i = 0; i < parameters.size(); ++i)
+        {
+            auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (parameters[i]);
+            if (ranged == nullptr || ! Modulation::isModulatable (*ranged))
+                continue;
+            ++tested;
+            const auto what = ranged->getParameterID();
+            const auto source = matrixSource();
+
+            // Matrix-vägen
+            processor.modRoutes.clear();
+            const auto slot = processor.modRoutes.add (source, i, 0.25f);
+            const auto found = processor.modRoutes.find (source, i) == slot && slot >= 0;
+            auto ring = false; // KnobComponent::rings: någon koppling med target == parameterIndex
+            for (const auto& route : processor.modRoutes.routes)
+                ring |= route.source.load() >= 0 && route.target.load() == i;
+            const auto viaMatrix = strongestOffset (i);
+            const auto applied = processor.modulator.apply (i, ranged->convertFrom0to1 (0.5f)) != ranged->convertFrom0to1 (0.5f);
+
+            // Drag-vägen
+            processor.modRoutes.clear();
+            processor.modRoutes.add (juce::jlimit (0, Modulation::numSources - 1, source), i, 0.25f);
+            const auto viaDrag = strongestOffset (i);
+
+            noRoute += found ? 0 : 1;
+            noRing += ring ? 0 : 1;
+            noOffset += viaMatrix > 0.0f ? 0 : 1;
+            notApplied += applied || viaMatrix == 0.0f ? 0 : 1;
+            differs += std::abs (viaMatrix - viaDrag) < 1.0e-6f ? 0 : 1;
+            if (firstBad.isEmpty() && ! (found && ring && viaMatrix > 0.0f && std::abs (viaMatrix - viaDrag) < 1.0e-6f))
+                firstBad = what;
+        }
+        processor.modRoutes.clear();
+        std::printf ("  (%d mål; utan koppling %d, utan ring %d, utan förskjutning %d, skiljer mot drag %d, ej påverkat värde %d%s%s)\n", tested, noRoute, noRing,
+                     noOffset, differs, notApplied, firstBad.isEmpty() ? "" : "; första: ", firstBad.toRawUTF8());
+        check (tested > 0 && noRoute == 0 && noRing == 0 && noOffset == 0 && differs == 0 && notApplied == 0, "Matrix-koppling = drag-koppling för alla modulerbara mål");
+
+        // POSITION på varje instrument och OSC: indexet som WavetableView läser (modulator.indexOf, OscPanel.cpp:7) är samma som ratten
+        // (KnobComponent::parameterIndex = getParameters().indexOf) och som Matrix-menyn (id = index + 1), och en koppling dit ger en förskjutning.
+        auto positionBad = 0;
+        juce::String firstPositionBad;
+        for (int layer = 0; layer < Modulation::maxInstruments; ++layer)
+            for (int osc = 0; osc < 3; ++osc)
+            {
+                const auto id = ParamID::bass (layer, ParamID::oscField (osc, InstrumentField::aPos));
+                auto* parameter = processor.apvts.getParameter (id);
+                const auto knobIndex = parameter != nullptr ? parameters.indexOf (parameter) : -1;
+                const auto viewIndex = processor.modulator.indexOf (id);
+                processor.modRoutes.clear();
+                processor.modRoutes.add (matrixSource(), knobIndex, 0.25f);
+                const auto ok = knobIndex >= 0 && knobIndex == viewIndex && strongestOffset (viewIndex) > 0.0f
+                                && Modulation::isModulatable (*dynamic_cast<juce::RangedAudioParameter*> (parameter));
+                positionBad += ok ? 0 : 1;
+                if (! ok && firstPositionBad.isEmpty())
+                    firstPositionBad = id;
+            }
+        processor.modRoutes.clear();
+        check (positionBad == 0, ("POSITION: samma index för ratt, vy och Matrix på alla instrument/OSC" + (firstPositionBad.isEmpty() ? juce::String() : " (första fel: " + firstPositionBad + ")")).toRawUTF8());
+
+        // CODE-källa (nu valbar i Matrix) mot instrument 1 CUTOFF: kopplingen skapas, hittas och ger en ring.
+        {
+            const auto cutoffId = ParamID::bass (0, InstrumentField::cutoff);
+            const auto cutoffIndex = parameters.indexOf (processor.apvts.getParameter (cutoffId));
+            processor.modRoutes.clear();
+            const auto slot = processor.modRoutes.add (Modulation::firstCodeSource, cutoffIndex, 0.25f);
+            check (cutoffIndex >= 0 && slot >= 0 && processor.modRoutes.find (Modulation::firstCodeSource, cutoffIndex) == slot
+                       && Modulation::isCodeSource (processor.modRoutes.routes[(size_t) slot].source.load()),
+                   "CODE 1 -> instrument 1 CUTOFF kan kopplas i Matrix");
+            processor.modRoutes.clear();
+        }
+
+        // Källvalet: LFO 1 avstängd (ingen koppling) ger LFO 2, inte en tyst källa.
+        processor.setLfoActive (0, false);
+        check (matrixSource() == Modulation::lfoSource (1), "Matrix väljer första aktiva LFO när LFO 1 är borttagen");
+        processor.setLfoActive (1, false);
+        processor.setLfoActive (2, false);
+        const auto fresh = matrixSource();
+        check (fresh == 0 && processor.isLfoActive (0), "Matrix aktiverar LFO 1 när ingen LFO är aktiv");
+
+        std::puts (failed ? "FEL: matrixtestet misslyckades" : "Matrixtestet gick igenom");
+        return failed ? 1 : 0;
+    }
+
     // Flera instrument: lägga till, spara/läsa, ta bort (allt ska rensas) och gamla projekt (kicken var lager 3).
     int instrumentTest()
     {
@@ -2955,6 +3079,8 @@ int toolMain (int argc, char* argv[])
         return perfTest();
     if (argc == 2 && juce::String (argv[1]) == "instrumenttest")
         return instrumentTest();
+    if (argc == 2 && juce::String (argv[1]) == "matrixtest")
+        return matrixTest();
     if (argc == 2 && juce::String (argv[1]) == "lengthtest")
         return lengthTest();
     if (argc == 2 && juce::String (argv[1]) == "livetest")
