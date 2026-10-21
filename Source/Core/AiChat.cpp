@@ -545,7 +545,7 @@ var AiChat::post (const juce::String& key, const var& body, int& httpStatus, juc
                                         : "content-type: application/json\r\nx-api-key: " + key + "\r\nanthropic-version: 2023-06-01\r\n";
 
     // Samma som URL::createInputStream (POST-data i kroppen), men med strömmen åtkomlig så att den kan avbrytas (cancelRequest).
-    juce::WebInputStream stream (url, true);
+    juce::WebInputStream stream (url, false); // false: ?key= (Gemini) ska stanna i URL:en, inte läggas före JSON-kroppen
     stream.withExtraHeaders (headers).withConnectionTimeout (240000).withNumRedirectsToFollow (2).withCustomRequestCommand ("POST");
     {
         const juce::ScopedLock sl (streamLock);

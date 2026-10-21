@@ -492,7 +492,7 @@ namespace GeminiApi
 
         juce::URL url (withKey (Settings::get ("geminiEndpoint", endpoint (model)), key)); // (geminiEndpoint: bara för tester)
         url = url.withPOSTData (juce::JSON::toString (body, true));
-        juce::WebInputStream stream (url, true);
+        juce::WebInputStream stream (url, false); // false: ?key= ska stanna i URL:en, inte läggas före JSON-kroppen (juce_URL.cpp createHeadersAndPostData)
         stream.withExtraHeaders ("content-type: application/json\r\n")
               .withConnectionTimeout (20000).withNumRedirectsToFollow (2).withCustomRequestCommand ("POST");
         if (! stream.connect (nullptr) || stream.isError())
@@ -528,7 +528,7 @@ namespace GeminiApi
 
         juce::URL url (withKey (Settings::get ("geminiEndpoint", endpoint (Settings::geminiModel())), key)); // (geminiEndpoint: bara för tester)
         url = url.withPOSTData (juce::JSON::toString (body, true));
-        juce::WebInputStream stream (url, true);
+        juce::WebInputStream stream (url, false); // false: ?key= ska stanna i URL:en, inte läggas före JSON-kroppen (juce_URL.cpp createHeadersAndPostData)
         stream.withExtraHeaders ("content-type: application/json\r\n")
               .withConnectionTimeout (20000).withNumRedirectsToFollow (2).withCustomRequestCommand ("POST");
 
