@@ -1030,12 +1030,12 @@ namespace
             check (! hasTitle (MixAnalysis::evaluate (capture, options, nullptr), "random phase"), "en bas utan RAND-fas ger ingen varning");
 
             const auto& edges = MixAnalysis::bandEdges();
-            auto setMasterMud = [&] (float db)
+            auto setMasterMud = [&] (float db) // lera mäts på kick och bas, så leran läggs på kicken (A är basen; ÄNDRAT TESTVILLKOR, AN steg 4)
             {
                 for (int f = 0; f < 24; ++f)
                     for (int b = 0; b < MixAnalysis::numBands(); ++b)
                         if (edges[(size_t) b] >= 160.0f && edges[(size_t) b + 1] <= 250.0f)
-                            capture.band (MixAnalysis::masterSource, f, b) = db;
+                            capture.band (MixAnalysis::kickSource, f, b) = db;
             };
             setMasterMud (-8.0f);
             check (hasTitle (MixAnalysis::evaluate (capture, options, nullptr), "around 200 Hz"), "lika mycket energi runt 200 Hz som i basen ger en varning");

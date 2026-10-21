@@ -21,7 +21,7 @@ namespace MixAnalysis
         constexpr double lowStereoMinShare = 0.25;      // ...och minst två takter eller så här stor andel av takterna
         constexpr double stereoSilentPower = 1.0e-5;    // bandeffekt per sampel under detta (ca -50 dB) räknas som tyst: korrelationen 1
         constexpr float limiterWarnDb = 6.0f, limiterProblemDb = 9.0f; // mäts på 95:e percentilen över ramarna, inte på enstaka maxblock
-        constexpr double mudLowFloorPerFrame = 1.0e-4;  // medeleffekt 40-150 Hz i mastern (-40 dB); under det bedöms inte lera
+        constexpr double mudLowFloorPerFrame = 1.0e-4;  // medeleffekt 40-150 Hz i kick och bas tillsammans (-40 dB); under det bedöms inte lera
         // Fasfyndets underlag, gemensamt för findings och verktygsvägen: aktiva 16-delar och medelkorrelationen viktad med effekten (Σkb / Σ√(kk·bb)).
         struct PhaseSummary
         {
@@ -769,15 +769,23 @@ namespace MixAnalysis
                 f.detail = "Each note starts at a random point in the wave, so the bass meets the kick differently every time and sometimes cancels it. Set RAND to 0 on a bass (OSC > RAND) and use a fixed PHASE instead.";
                 r.findings.push_back (std::move (f));
             }
-            if (c.present[(size_t) masterSource])
+            // Lera mäts på kicken och på de instrument som är en bas (minst hälften av energin under 150 Hz), inte på mastern: ett pad eller en lead runt 200 Hz är inte kick-och-bas-lera.
+            std::vector<int> lowSources;
+            if (c.present[(size_t) kickSource])
+                lowSources.push_back (kickSource);
+            for (int i = 0; i < numInstruments; ++i)
+                if (c.present[(size_t) (firstInstrument + i)] && lowShare (firstInstrument + i, 0.0f, 150.0f) >= 0.5f)
+                    lowSources.push_back (firstInstrument + i);
+            if (! lowSources.empty())
             {
                 auto bandPower = [&] (float fromHz, float toHz)
                 {
                     auto sum = 0.0;
-                    for (int f = 0; f < frames; ++f)
-                        for (int b = 0; b < nb; ++b)
-                            if (edges[(size_t) b] >= fromHz && edges[(size_t) b + 1] <= toHz)
-                                sum += std::pow (10.0, level (masterSource, f, b) / 10.0);
+                    for (const auto src : lowSources)
+                        for (int f = 0; f < frames; ++f)
+                            for (int b = 0; b < nb; ++b)
+                                if (edges[(size_t) b] >= fromHz && edges[(size_t) b + 1] <= toHz)
+                                    sum += std::pow (10.0, level (src, f, b) / 10.0);
                     return sum;
                 };
                 const auto low = bandPower (40.0f, 150.0f), mud = bandPower (160.0f, 250.0f);
@@ -786,7 +794,8 @@ namespace MixAnalysis
                     Finding f;
                     f.severity = Severity::warning;
                     f.category = "mud";
-                    f.sources = { c.names[(size_t) masterSource] };
+                    for (const auto src : lowSources)
+                        f.sources.add (c.names[(size_t) src]);
                     f.lowHz = 160.0f;
                     f.highHz = 250.0f;
                     f.share = (float) std::min (1.0, mud / low);

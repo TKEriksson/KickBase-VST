@@ -415,15 +415,14 @@ int anTest()
         check (! hasTitle (evaluate (c, options, nullptr), "random phase"), "RAND: ett instrument som inte finns ger ingen varning");
     }
 
-    // --- Lera: 160-250 Hz mot 40-150 Hz i mastern, gränsen är 0,6 gånger effekten.
+    // --- Lera: 160-250 Hz mot 40-150 Hz i kicken och i instrument som är en bas (minst hälften av energin under 150 Hz), gränsen är 0,6 gånger effekten.
     {
-        auto run = [&options] (float ratio, bool masterPresent = true)
+        // ÄNDRAT TESTVILLKOR (AN steg 4): leran mäts nu på kick+bas i stället för på mastern; fallen flyttade från master till kick.
+        auto run = [&options] (float ratio)
         {
             auto c = makeCapture();
-            c.present[(size_t) masterSource] = masterPresent;
-            setBand (c, kickSource, 5, -10.0f); // mastern räknas inte in i gmax; någon annan källa måste spela
-            setBand (c, masterSource, 6, -10.0f);                                               // 100-125 Hz
-            setBand (c, masterSource, 8, -10.0f + 10.0f * std::log10 (ratio));                  // 160-200 Hz
+            setBand (c, kickSource, 6, -10.0f);                                                 // 100-125 Hz
+            setBand (c, kickSource, 8, -10.0f + 10.0f * std::log10 (ratio));                    // 160-200 Hz
             return hasTitle (evaluate (c, options, nullptr), "around 200 Hz");
         };
         check (! run (0.1f), "lera: 0,1 gånger slår inte till");
@@ -431,17 +430,36 @@ int anTest()
         check (! run (0.59f), "lera: 0,59 gånger slår inte till");
         check (run (0.61f), "lera: 0,61 gånger ger en varning");
         check (run (1.0f), "lera: lika mycket ger en varning");
-        check (! run (1.0f, false), "lera: utan master ger ingen varning");
+
+        // En bas (instrument med det mesta under 150 Hz) räknas med; ett pad med samma lera räknas inte; leran i mastern räknas inte.
+        auto withInstrument = [&options] (float lowDb, float mudDb, bool kickHasMud)
+        {
+            auto c = makeCapture();
+            setBand (c, kickSource, 6, -10.0f);
+            if (kickHasMud)
+                setBand (c, kickSource, 8, -10.0f);
+            setBand (c, firstInstrument, 6, lowDb);
+            setBand (c, firstInstrument, 8, mudDb);
+            return hasTitle (evaluate (c, options, nullptr), "around 200 Hz");
+        };
+        check (withInstrument (-10.0f, -12.0f, false), "lera: leran i en bas (0,63 gånger) räknas med och ger en varning");
+        check (! withInstrument (-30.0f, -10.0f, false), "lera: ett pad med energi mest runt 200 Hz räknas inte som kick-och-bas-lera");
+        {
+            auto c = makeCapture();
+            setBand (c, kickSource, 6, -10.0f);
+            setBand (c, masterSource, 8, -5.0f);
+            check (! hasTitle (evaluate (c, options, nullptr), "around 200 Hz"), "lera: leran i mastern räknas inte längre");
+        }
 
         // Nästan tyst mix: golvnivån (-120 dB) har fler basband (5) än lerband (2) och ger kvoten 0,4, alltså under gränsen.
         auto quiet = makeCapture();
-        check (! hasTitle (evaluate (quiet, options, nullptr), "around 200 Hz"), "lera: en helt tyst master slår inte till");
-        // Golv: en master på -90 dB i lerbandet och -100 dB i basen är för tyst för att bedömas (medeleffekt i basen under -40 dB).
+        check (! hasTitle (evaluate (quiet, options, nullptr), "around 200 Hz"), "lera: en helt tyst mix slår inte till");
+        // Golv: en kick på -90 dB i lerbandet och -100 dB i basen är för tyst för att bedömas (medeleffekt i basen under -40 dB).
         auto faint = makeCapture();
-        setBand (faint, kickSource, 5, -10.0f);
-        setBand (faint, masterSource, 6, -100.0f);
-        setBand (faint, masterSource, 8, -90.0f);
-        check (! hasTitle (evaluate (faint, options, nullptr), "around 200 Hz"), "lera: en master under -40 dB i basen bedöms inte");
+        setBand (faint, firstInstrument, 5, -10.0f); // någon måste spela för att mixen inte ska avbrytas
+        setBand (faint, kickSource, 6, -100.0f);
+        setBand (faint, kickSource, 8, -90.0f);
+        check (! hasTitle (evaluate (faint, options, nullptr), "around 200 Hz"), "lera: en kick under -40 dB i basen bedöms inte");
     }
 
     std::puts (failed ? "FEL: antest" : "AN-testet gick igenom");
