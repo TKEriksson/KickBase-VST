@@ -223,6 +223,8 @@ target_sources(KickbaseTests PRIVATE
     Tests/EngineTests.cpp
     Tests/MasterTests.cpp
     Tests/ModulationTests.cpp
+    Tests/FmPresetTests.cpp
+    Source/Ui/FmPresets.cpp
     Source/Core/Params.cpp
     Source/Core/Master.cpp
     Source/Core/SourceEq.cpp

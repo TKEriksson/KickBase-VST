@@ -6,6 +6,7 @@ int main()
     runEngineTests();
     runMasterTests();
     runModulationTests();
+    runFmPresetTests();
 
     if (testFailures() > 0)
     {

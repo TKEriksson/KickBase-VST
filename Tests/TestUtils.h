@@ -22,3 +22,4 @@ void runTransportClockTests();
 void runEngineTests();
 void runMasterTests();
 void runModulationTests();
+void runFmPresetTests();

@@ -3,6 +3,7 @@
 #include "FmPresets.h"
 #include "Help.h"
 #include "../Core/Params.h"
+#include "../Core/UserChangeWatcher.h"
 
 FmPanel::FmPanel (PluginBase& p, int layerIn, juce::Colour accentIn)
     : processor (p), layer (layerIn), accent (accentIn)
@@ -14,7 +15,7 @@ FmPanel::FmPanel (PluginBase& p, int layerIn, juce::Colour accentIn)
         slot = std::make_unique<KnobComponent> (processor.apvts, id (field), name, accent);
         addAndMakeVisible (*slot);
         // Bara ändringar som inte kommer från ett presetval räknas: då är det inte längre presetens ljud.
-        knobWatchers.push_back (std::make_unique<juce::ParameterAttachment> (*processor.apvts.getParameter (id (field)), [this] (float)
+        knobWatchers.push_back (std::make_unique<UserChangeWatcher> (*processor.apvts.getParameter (id (field)), [this] (float)
         {
             if (applyingPreset)
                 return;
@@ -43,8 +44,9 @@ FmPanel::FmPanel (PluginBase& p, int layerIn, juce::Colour accentIn)
     addAndMakeVisible (filterToggle);
     filterAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (processor.apvts, id (F::fmFilter), filterToggle);
 
-    presetAttachment = std::make_unique<juce::ParameterAttachment> (*processor.apvts.getParameter (id (F::fmPreset)),
-                                                                     [this] (float value) { presetChanged ((int) std::lround (value)); });
+    // Bara användarens menyval fyller i ratterna; laddning, undo och automation av fmPreset får inte skriva över andra parametrar.
+    presetWatcher = std::make_unique<UserChangeWatcher> (*processor.apvts.getParameter (id (F::fmPreset)),
+                                                         [this] (float value) { presetChanged ((int) std::lround (value)); });
 }
 
 FmPanel::~FmPanel() = default;

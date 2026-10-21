@@ -2,6 +2,7 @@
 
 #include "../Core/PluginBase.h"
 #include "Components.h"
+#include "../Core/UserChangeWatcher.h"
 
 // FM-fliken i källpanelen (fas S2c): två operatorer (carrier och modulator, båda sinus). RATIO är modulatorns frekvens relativt carrier,
 // INDEX hur kraftigt den moduleras, ENV AMT/ENV TIME hur snabbt indexet faller efter anslaget. PRESET fyller ratterna (och tonhöjdsenvelopen,
@@ -26,6 +27,6 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> filterAttachment;
     std::unique_ptr<ChoiceComponent> preset;
     std::unique_ptr<KnobComponent> level, ratio, index, envAmount, envTime, semis;
-    std::unique_ptr<juce::ParameterAttachment> presetAttachment;
-    std::vector<std::unique_ptr<juce::ParameterAttachment>> knobWatchers; // en ratt som ändras av användaren: preset -> Custom
+    std::unique_ptr<UserChangeWatcher> presetWatcher;
+    std::vector<std::unique_ptr<UserChangeWatcher>> knobWatchers; // en ratt som ändras av användaren: preset -> Custom
 };
