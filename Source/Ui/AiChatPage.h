@@ -33,6 +33,34 @@ private:
         }
     };
 
+    // STOP-knappen med en snurrande båge runt kanten så att man ser att AI:n arbetar; timern går bara medan knappen syns.
+    class StopButton : public juce::TextButton, private juce::Timer
+    {
+    public:
+        using juce::TextButton::TextButton;
+        void visibilityChanged() override
+        {
+            if (isVisible())
+                startTimerHz (30);
+            else
+                stopTimer();
+        }
+        void paintButton (juce::Graphics& g, bool over, bool down) override
+        {
+            juce::TextButton::paintButton (g, over, down);
+            const auto r = getLocalBounds().toFloat().reduced (2.0f);
+            const auto radius = r.getHeight() * 0.5f;
+            const auto start = (float) (juce::Time::getMillisecondCounter() % 1200) / 1200.0f * juce::MathConstants<float>::twoPi;
+            juce::Path arc;
+            arc.addCentredArc (r.getCentreX(), r.getCentreY(), r.getWidth() * 0.5f, radius, 0.0f, start, start + 1.4f, true);
+            g.setColour (findColour (juce::TextButton::textColourOffId).withAlpha (0.9f));
+            g.strokePath (arc, juce::PathStrokeType (2.0f));
+        }
+
+    private:
+        void timerCallback() override { repaint(); }
+    };
+
     void timerCallback() override;
     void refresh();
     void layoutSuggestions(); // hjälptexten och förslagsknapparna ligger under hälsningen i en tom chatt
@@ -64,7 +92,8 @@ private:
     juce::Label title, status, setupTitle, setupText, testResult, confirmLabel;
     juce::ComboBox modelBox, costBox;
     juce::TextButton runButton { "RUN" }, skipButton { "SKIP" }, runAlwaysButton { "RUN, DON'T ASK AGAIN" };
-    juce::TextButton keyButton { "KEY" }, newChatButton { "NEW CHAT" }, chatsButton { "CHATS" },undoButton { "UNDO" }, sendButton { "SEND" }, stopButton { "STOP" };
+    juce::TextButton keyButton { "KEY" }, newChatButton { "NEW CHAT" }, chatsButton { "CHATS" },undoButton { "UNDO" }, sendButton { "SEND" };
+    StopButton stopButton { "STOP" };
     juce::TextButton saveKeyButton { "SAVE KEY" }, cancelKeyButton { "CANCEL" }, removeKeyButton { "REMOVE KEY" };
     juce::TextButton anthropicButton { "ANTHROPIC (paid key)" }, geminiButton { "GEMINI (free option)" }, guideButton { "GET A FREE KEY (GUIDE)" };
     std::array<juce::TextButton, 3> suggestions;
