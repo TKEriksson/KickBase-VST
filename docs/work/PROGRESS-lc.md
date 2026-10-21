@@ -213,3 +213,10 @@ Kör: antest, inittest, rendersig, tooltest. Rendersig ska vara oförändrad (ba
 - Underradens rutnät kommer från sitt instruments gridparameter och skrivs inte tillbaka. `Presets::writePatternLine` tar aktiva underrader. `live_code_stop` går över alla radid.
 - Live Code (Strudel) emitterar fortfarande bara grundrader; underradsnycklar i Strudel hör till F2.
 - Ej byggt av mig. Testa: bygge, rendersig (oförändrad), rowkeytest, persisttest, fulltest, Tool.cpp-/StateTests-fallen för Live Code (lås, CODE ONLY, live_code_stop).
+
+## Arbetare 1: antest-fix (bevisat per rad)
+- Orsak 1 (21 FEL: fas, motfas, klick, toppspridning, stereo, tyst-giltig): testfångsterna var helt tysta (alla band -120 dB). `evaluate` avbryter då med "Nothing plays" (MixAnalysis.cpp, `gmax < -75 dB`, sedan eb5f365) före fas-/stereofynd. **Testet var fel, regeln rimlig.** Fix: `makeAudible` (AnTests.cpp) lägger ett instrument på -10 dB i band 5; inga trösklar ändrade.
+- ÄNDRAT VÄRDE 1: "tyst: analysen är giltig" (`report.valid`) är nu "analysen avbryts med felet 'Nothing plays' och fasmätningen är giltig". En helt tyst slinga är ingen giltig analys enligt regeln; fasmätningen kontrolleras fortfarande.
+- Orsak 2 (lera i en bas): regeln summerar kick + bas (`lowSources`). Med kicken på -10 dB blir low = 0,1 + 0,1 och kvoten 0,32 (< 0,6), så "0,63 gånger" (basen ensam) kunde aldrig slå till. **Testet var fel, regeln rätt (2984fcf).**
+- ÄNDRAT VÄRDE 2: raden använder nu kick-lågband -30 dB (ny parameter `kickLowDb`) och bas -10/-11 dB: low = 0,101, lera = 0,079, kvot 0,79 > 0,6. Tröskeln 0,6 och golvet orörda; padraden och master-raden oförändrade.
+- Ej byggt av mig. Kör: antest (ska bli grönt); rendersig påverkas inte (bara Tools/AnTests.cpp).

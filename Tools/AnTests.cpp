@@ -59,6 +59,14 @@ namespace
         return c;
     }
 
+    // En hörbar källa (A, 80-100 Hz på -10 dB). evaluate() avbryter med "Nothing plays" (MixAnalysis.cpp, gmax < -75 dB) om ingen källa hörs,
+    // och då skapas inga fas- eller stereofynd. Fas- och stereoraderna ska pröva fasreglerna, inte tystgolvet.
+    void makeAudible (Capture& c)
+    {
+        for (int f = 0; f < c.frames; ++f)
+            c.band (firstInstrument, f, 5) = -10.0f;
+    }
+
     void setBand (Capture& c, int source, int b, float db)
     {
         for (int f = 0; f < c.frames; ++f)
@@ -140,7 +148,9 @@ int anTest()
             std::fill (v->begin(), v->end(), 0.0f);
         c.phase = measurePhase (silent);
         const auto report = evaluate (c, options, nullptr);
-        check (report.valid && c.phase.valid, "tyst: analysen är giltig");
+        // ÄNDRAT TESTVILLKOR (AN-testen, ej regeln): en helt tyst slinga är ingen giltig analys; evaluate() svarar "Nothing plays" (gmax < -75 dB, sedan eb5f365).
+        // Förr krävdes report.valid. Fasmätningen ska fortfarande vara giltig, och inga fynd får finnas.
+        check (! report.valid && ! report.error.isEmpty() && c.phase.valid, "tyst: analysen avbryts med felet 'Nothing plays' och fasmätningen är giltig");
         check (report.findings.empty(), "tyst: inga fynd alls (" + juce::String ((int) report.findings.size()) + " fynd)");
         for (const auto& finding : report.findings)
             note ("tyst gav ändå: " + finding.title);
@@ -191,6 +201,7 @@ int anTest()
     // --- Kollision: samma signal i motfas (fas), samma band (spektrum).
     {
         auto c = makeCapture();
+        makeAudible (c);
         c.phase = measurePhase (makeSignals (-1.0f, 50.0));
         const auto report = evaluate (c, options, nullptr);
         check (hasTitle (report, "partly cancel") && severityOf (report, "partly cancel") == Severity::problem, "kick och bas i motfas: fasfynd, allvarligt");
@@ -212,6 +223,7 @@ int anTest()
         auto run = [&options] (const PhaseMetrics& m, bool& problem)
         {
             auto c = makeCapture();
+            makeAudible (c);
             c.phase = m;
             const auto r = evaluate (c, options, nullptr);
             problem = severityOf (r, "partly cancel") == Severity::problem;
@@ -282,6 +294,7 @@ int anTest()
         auto evalKb = [&options] (const PhaseMetrics& m)
         {
             auto c = makeCapture();
+            makeAudible (c);
             c.phase = m;
             return evaluate (c, options, nullptr);
         };
@@ -314,6 +327,7 @@ int anTest()
         auto evaluateMetrics = [&options] (const PhaseMetrics& m)
         {
             auto c = makeCapture();
+            makeAudible (c);
             c.phase = m;
             return evaluate (c, options, nullptr);
         };
@@ -479,17 +493,20 @@ int anTest()
         check (run (1.0f), "lera: lika mycket ger en varning");
 
         // En bas (instrument med det mesta under 150 Hz) räknas med; ett pad med samma lera räknas inte; leran i mastern räknas inte.
-        auto withInstrument = [&options] (float lowDb, float mudDb, bool kickHasMud)
+        // ÄNDRAT TESTVILLKOR (AN-testen, ej regeln): regeln summerar kickens och basens 40-150 Hz (MixAnalysis.cpp: lowSources). Med kicken på -10 dB blir
+        // low = 0,1 + 0,1 och kvoten bara 0,32 (< 0,6), så den gamla raden (basen ensam, 0,63 gånger) kunde aldrig slå till. Kickens lågband är nu -30 dB
+        // i bas-raden (low = 0,101 mot lera 0,079 = 0,79 gånger); tröskeln 0,6 är orörd.
+        auto withInstrument = [&options] (float lowDb, float mudDb, bool kickHasMud, float kickLowDb = -10.0f)
         {
             auto c = makeCapture();
-            setBand (c, kickSource, 6, -10.0f);
+            setBand (c, kickSource, 6, kickLowDb);
             if (kickHasMud)
                 setBand (c, kickSource, 8, -10.0f);
             setBand (c, firstInstrument, 6, lowDb);
             setBand (c, firstInstrument, 8, mudDb);
             return hasTitle (evaluate (c, options, nullptr), "around 200 Hz");
         };
-        check (withInstrument (-10.0f, -12.0f, false), "lera: leran i en bas (0,63 gånger) räknas med och ger en varning");
+        check (withInstrument (-10.0f, -11.0f, false, -30.0f), "lera: leran i en bas (0,79 gånger mot kick och bas) räknas med och ger en varning");
         check (! withInstrument (-30.0f, -10.0f, false), "lera: ett pad med energi mest runt 200 Hz räknas inte som kick-och-bas-lera");
         {
             auto c = makeCapture();
