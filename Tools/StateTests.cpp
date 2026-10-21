@@ -840,6 +840,19 @@ int renderToolTest()
         check ((bool) tools.call ("compare_renders", juce::JSON::parse ("{\"before\":\"sweep_kickDrive_1\",\"after\":\"sweep_kickDrive_2\"}"))["ok"], "sweep-renderingarna kan jämföras med compare_renders");
     }
 
+    // score_vs_reference: en rendering mot sin egen WAV är nära noll, mot en ändrad rendering längre bort.
+    {
+        const auto reference = render (tools, "ref-a", "kick");
+        const auto self = tools.call ("score_vs_reference", juce::JSON::parse ("{\"reference_file\":" + juce::JSON::toString (reference.wav.getFullPathName()) + ",\"kind\":\"kick\",\"seconds\":2,\"name\":\"ref-a\"}"));
+        check ((bool) self["ok"] && self["data"]["terms"].size() >= 7, "score_vs_reference ger termer för en rendering och en referens");
+        tools.call ("set_parameters", juce::JSON::parse ("{\"values\":{\"kickDrive\":0.9,\"kickPitchAmount\":2.0}}"));
+        render (tools, "ref-b", "kick");
+        const auto other = tools.call ("score_vs_reference", juce::JSON::parse ("{\"reference_file\":" + juce::JSON::toString (reference.wav.getFullPathName()) + ",\"kind\":\"kick\",\"seconds\":2,\"name\":\"ref-b\"}"));
+        check ((bool) other["ok"] && (double) other["data"]["distance"] > (double) self["data"]["distance"], "score_vs_reference: en ändrad kick ligger längre från referensen än kicken själv");
+        check (! (bool) tools.call ("score_vs_reference", juce::JSON::parse ("{\"reference_file\":\"finns-inte.wav\",\"name\":\"ref-a\"}"))["ok"], "score_vs_reference: saknad fil ger ett fel");
+        tools.call ("undo", juce::JSON::parse ("{}"));
+    }
+
     std::puts (failed ? "FEL: renderingstestet misslyckades" : "Renderingstestet gick igenom");
     return failed ? 1 : 0;
 }

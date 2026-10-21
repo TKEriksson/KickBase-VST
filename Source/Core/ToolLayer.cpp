@@ -236,6 +236,8 @@ std::vector<ToolLayer::ToolInfo> ToolLayer::tools()
           R"({"type":"object","properties":{"before":{"type":"string"},"after":{"type":"string"}},"required":["before","after"]})" },
         { "sweep_parameter", "Tries one parameter at several values: for each value it sets the parameter, renders (as render_preview) and returns a table of the key metrics and failed checks, then puts the sound back exactly as it was (no undo step is used). Max 12 values. Takes the render_preview arguments bpm, bars, note and part. Each render is also kept as 'sweep_<parameter>_<n>' for compare_renders. Example: {\"parameter\":\"kickDrive\",\"values\":[0.1,0.3,0.5],\"part\":\"kick\"}.",
           R"({"type":"object","properties":{"parameter":{"type":"string"},"values":{"type":"array","items":{}},"bpm":{"type":"number"},"bars":{"type":"integer"},"note":{"type":"integer"},"part":{"type":"string","enum":["full","kick","bass"]}},"required":["parameter","values"]})" },
+        { "score_vs_reference", "How far a render is from a reference recording: measures reference_file like analyze_audio and compares it with a render_preview of this session (name, default 'preview'; make the render with the same part: kind 'kick' goes with part=kick). Returns the terms (band energies in dB, RMS dB, centroid in semitones, and for kick the tail in semitones and the length in ms/10) with render, reference and difference, and 'distance' = the mean absolute difference over the terms (0 = same; lower is closer). Use it to see which direction a change moved the sound, not as a measure of quality: a reference of another musical key or length will never reach 0.",
+          R"({"type":"object","properties":{"reference_file":{"type":"string"},"kind":{"type":"string","enum":["kick","bass","mix"]},"name":{"type":"string"},"start":{"type":"number"},"seconds":{"type":"number"},"bpm":{"type":"number"}},"required":["reference_file"]})" },
         { "save_piano_roll", "Saves a bass layer's notes (and pattern length and grid) as a piano roll preset file (Documents\\Kickbase\\Presets\\Piano Roll), which the plugin's piano roll PRESET menu lists and can load into any layer.",
           R"({"type":"object","properties":{"layer":{"type":"integer"},"name":{"type":"string"}},"required":["layer","name"]})" },
         { "load_piano_roll", "Loads a saved piano roll preset (by name or file path) into a bass layer, replacing its notes and setting the pattern length and grid it was saved with.",
@@ -299,6 +301,7 @@ var ToolLayer::call (const juce::String& tool, const var& args)
     if (tool == "render_preview")   return renderPreview (args);
     if (tool == "compare_renders")  return compareRenders (args);
     if (tool == "sweep_parameter")  return sweepParameter (args);
+    if (tool == "score_vs_reference") return scoreVsReference (args);
     if (tool == "analyse_mix")      return analyseMix (args);
     if (tool == "get_mix_report")   return getMixReport (args);
     if (tool == "save_mix_report")  return saveMixReport (args);
@@ -1885,6 +1888,59 @@ var ToolLayer::analyzeAudio (const var& args)
     put (entry, "data", AudioAnalysis::pngBase64 (image));
     put (result, "images", juce::Array<var> { entry });
     return result;
+}
+
+var ToolLayer::scoreVsReference (const var& args)
+{
+    auto name = juce::File::createLegalFileName (args["name"].toString().trim());
+    if (name.isEmpty())
+        name = "preview";
+    const auto render = renderedPreviews.find (name);
+    if (render == renderedPreviews.end())
+        return fail ("Make a render_preview with name '" + name + "' first (same part as the reference).");
+
+    auto analyseArgs = object();
+    for (const char* key : { "start", "seconds", "bpm", "kind" })
+        if (args.hasProperty (key))
+            put (analyseArgs, key, args[key]);
+    put (analyseArgs, "file", args["reference_file"]);
+    const auto analysed = analyzeAudio (analyseArgs);
+    if (! (bool) analysed["ok"])
+        return analysed;
+
+    const auto mine = render->second["metrics"];
+    const auto theirs = analysed["data"]["metrics"];
+    juce::Array<var> terms;
+    double sum = 0.0;
+    auto add = [&] (const juce::String& what, double a, double b, const juce::String& unit)
+    {
+        auto entry = object();
+        put (entry, "term", what);
+        put (entry, "render", round4 (a));
+        put (entry, "reference", round4 (b));
+        put (entry, "difference", round4 (a - b));
+        put (entry, "unit", unit);
+        terms.add (entry);
+        sum += std::abs (a - b);
+    };
+    const char* bandNames[] { "below_60hz", "60_250hz", "250_1000hz", "1k_5khz", "above_5khz" };
+    for (const char* band : bandNames)
+        add (juce::String ("band_") + band, (double) mine["band_energy_db_relative_to_total"][band], (double) theirs["band_energy_db_relative_to_total"][band], "dB");
+    add ("rms_db", (double) mine["rms_db"], (double) theirs["rms_db"], "dB");
+    const auto centroidA = std::max (1.0, (double) mine["spectral_centroid_hz"]), centroidB = std::max (1.0, (double) theirs["spectral_centroid_hz"]);
+    add ("spectral_centroid", 12.0 * std::log2 (centroidA / 440.0), 12.0 * std::log2 (centroidB / 440.0), "semitones re 440 Hz");
+    if (mine.hasProperty ("kick_tail_hz") && theirs.hasProperty ("kick_tail_hz") && (double) mine["kick_tail_hz"] > 0.0 && (double) theirs["kick_tail_hz"] > 0.0)
+    {
+        add ("kick_tail", 12.0 * std::log2 ((double) mine["kick_tail_hz"] / 440.0), 12.0 * std::log2 ((double) theirs["kick_tail_hz"] / 440.0), "semitones re 440 Hz");
+        add ("kick_length", (double) mine["kick_length_ms"] / 10.0, (double) theirs["kick_length_ms"] / 10.0, "ms/10");
+    }
+
+    auto data = object();
+    put (data, "render", name);
+    put (data, "reference_file", args["reference_file"]);
+    put (data, "terms", terms);
+    put (data, "distance", round4 (terms.isEmpty() ? 0.0 : sum / (double) terms.size()));
+    return ok (data);
 }
 
 var ToolLayer::pianoRollFiles (const juce::String& tool, const var& args)

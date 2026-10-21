@@ -60,6 +60,7 @@ private:
     juce::var renderPreview (const juce::var& args);
     juce::var compareRenders (const juce::var& args) const;
     juce::var sweepParameter (const juce::var& args);
+    juce::var scoreVsReference (const juce::var& args);
     juce::var analyseMix (const juce::var& args);
     juce::var getMixReport (const juce::var& args);
     juce::var saveMixReport (const juce::var& args);
