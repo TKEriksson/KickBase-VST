@@ -21,6 +21,7 @@ public:
     ~AiChat() override;
 
     static juce::StringArray models();
+    static juce::StringArray fetchAnthropicModels (const juce::String& key); // blockerar: bakgrundstråd; sparar listan för models()
 
     // Kostnadsläget (Settings::chatCostMode: 0 Sparsam, 1 Normal, 2 Rik): hur många steg, hur långa svar och hur mycket gammalt
     // samtal som skickas om vid varje anrop. Hela historiken skickas om vid varje steg, så det är den som kostar.
@@ -67,6 +68,7 @@ public:
     };
     static juce::File sessionsFolder();                 // Settings "chatsFolder", annars Kickbase/Chats
     static std::vector<SessionInfo> listSessions();     // nyaste först
+    static bool deleteSession (const juce::File& file);  // flyttar chatten (och en eventuell .txt med samma namn) till papperskorgen
     static juce::String redact (juce::String text);
     bool hasConversation() const { return ! messages.isEmpty(); }
     bool saveSession (juce::File& savedTo);

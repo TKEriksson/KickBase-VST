@@ -146,6 +146,7 @@ AiChatPage::AiChatPage (PluginBase& p) : processor (p), chat (p.getAiChat())
         const auto model = modelBox.getText().trim();
         if (model.isEmpty())
             return;
+        const auto previous = gemini() ? Settings::geminiModel() : Settings::chatModel();
         if (gemini())
         {
             Settings::setGeminiModel (model);
@@ -153,6 +154,15 @@ AiChatPage::AiChatPage (PluginBase& p) : processor (p), chat (p.getAiChat())
         }
         else
             Settings::setChatModel (model);
+
+        // Byte mitt i ett samtal syns i loggen (inte i en tom chatt, och inte när samma namn väljs igen).
+        if (model != previous && ! chat.getEntries().empty())
+        {
+            AiChat::Entry entry;
+            entry.kind = AiChat::Entry::Kind::note;
+            entry.text = "Model changed to " + model + ".";
+            chat.addEntry (std::move (entry));
+        }
     };
     addAndMakeVisible (modelBox);
     populateModels();
@@ -349,8 +359,27 @@ void AiChatPage::updateModelNote()
 void AiChatPage::checkModel (bool fetchList)
 {
     updateModelNote();
-    if (! gemini() || needsKey() || checking)
+    if (needsKey() || checking)
         return;
+    if (! gemini())
+    {
+        if (! fetchList)
+            return;
+        checking = true;
+        juce::Thread::launch ([safe = juce::Component::SafePointer<AiChatPage> (this), key = Settings::chatApiKey()]
+        {
+            const auto list = AiChat::fetchAnthropicModels (key);
+            juce::MessageManager::callAsync ([safe, list]
+            {
+                if (safe == nullptr)
+                    return;
+                safe->checking = false;
+                if (! list.isEmpty() && ! safe->gemini())
+                    safe->populateModels();
+            });
+        });
+        return;
+    }
     const auto key = Settings::geminiApiKey();
     const auto model = Settings::geminiModel();
     const auto needsProbe = Settings::geminiToolsCheck (model, key) < 0;
@@ -483,10 +512,17 @@ void AiChatPage::showChatsMenu()
     if (sessions.empty())
         open.addItem (1, "(no saved chats)", false);
 
+    juce::PopupMenu remove;
+    for (int i = 0; i < (int) sessions.size() && i < 20; ++i)
+        remove.addItem (200 + i, sessions[(size_t) i].saved.formatted ("%Y-%m-%d %H:%M") + "  " + sessions[(size_t) i].title);
+    remove.addSeparator();
+    remove.addItem (5, "Delete all saved chats");
+
     juce::PopupMenu menu;
     menu.addItem (2, "Save this chat", chat.hasConversation());
     menu.addItem (3, "Export this chat to a text file", chat.hasConversation());
     menu.addSubMenu ("Open a saved chat", open, ! sessions.empty());
+    menu.addSubMenu ("Delete a saved chat (to the recycle bin)", remove, ! sessions.empty());
     menu.addSeparator();
     menu.addItem (4, "Show the chats folder");
 
@@ -513,6 +549,29 @@ void AiChatPage::showChatsMenu()
         {
             if (! chat.loadSession (sessions[(size_t) (result - 100)].file))
                 note ("Could not open that chat.", true);
+        }
+        else if ((result >= 200 && result - 200 < (int) sessions.size()) || result == 5)
+        {
+            // Bekräfta, och flytta till papperskorgen. Den öppna chatten ligger kvar på skärmen.
+            const auto all = result == 5;
+            const auto first = all ? 0 : result - 200, last = all ? (int) sessions.size() : first + 1;
+            const auto text = all ? juce::String ("Move all ") + juce::String ((int) sessions.size()) + " saved chats to the recycle bin?"
+                                  : "Move \"" + sessions[(size_t) first].title + "\" to the recycle bin?";
+            juce::AlertWindow::showAsync (juce::MessageBoxOptions().withIconType (juce::MessageBoxIconType::QuestionIcon)
+                                              .withTitle ("Delete saved chat").withMessage (text)
+                                              .withButton ("Delete").withButton ("Cancel"),
+                                          [this, sessions, first, last, note] (int choice)
+                                          {
+                                              if (choice != 1)
+                                                  return;
+                                              auto failed = 0;
+                                              for (int i = first; i < last; ++i)
+                                                  failed += AiChat::deleteSession (sessions[(size_t) i].file) ? 0 : 1;
+                                              note (failed == 0 ? "Moved " + juce::String (last - first) + " saved chat(s) to the recycle bin."
+                                                                : "Could not delete " + juce::String (failed) + " chat(s).", failed != 0);
+                                              refresh();
+                                          });
+            return;
         }
         refresh();
     });
@@ -549,6 +608,7 @@ void AiChatPage::refresh()
         }
         else
             transcript->setEntries (entries);
+        layoutSuggestions();
         if (atBottom || busy)
             viewport.setViewPosition (0, std::max (0, transcript->getHeight() - viewport.getHeight()));
 
@@ -587,9 +647,24 @@ void AiChatPage::paint (juce::Graphics& g)
     {
         g.setColour (Theme::textDim);
         g.setFont (Theme::font (13.0f));
-        g.drawText ("Tell the AI what sound you want, or try one of these:", viewport.getBounds().withHeight (60).withY (viewport.getY() + viewport.getHeight() / 2 - 60),
-                    juce::Justification::centred);
+        g.drawText ("Tell the AI what sound you want, or try one of these:", hintBounds, juce::Justification::centred);
     }
+}
+
+void AiChatPage::layoutSuggestions()
+{
+    // Under hälsningen (transcriptens höjd); får de inte plats ligger de längst ner i vyn.
+    const auto area = viewport.getBounds();
+    const auto chipWidth = std::min (330, (area.getWidth() - 40) / 3);
+    const auto top = std::min (area.getY() + transcript->getHeight() + 10, area.getBottom() - 30 - 26 - 6);
+    hintBounds = { area.getX(), top, area.getWidth(), 22 };
+    auto chips = juce::Rectangle<int> (chipWidth * 3 + 16, 30).withCentre ({ area.getCentreX(), top + 22 + 4 + 15 });
+    for (auto& suggestion : suggestions)
+    {
+        suggestion.setBounds (chips.removeFromLeft (chipWidth));
+        chips.removeFromLeft (8);
+    }
+    repaint();
 }
 
 void AiChatPage::resized()
@@ -636,13 +711,7 @@ void AiChatPage::resized()
     transcript->setSize (viewport.getMaximumVisibleWidth(), transcript->getHeight());
     transcript->layoutBlocks();
 
-    const auto chipWidth = std::min (330, (area.getWidth() - 40) / 3);
-    auto chips = juce::Rectangle<int> (chipWidth * 3 + 16, 30).withCentre ({ area.getCentreX(), area.getCentreY() + 10 });
-    for (auto& suggestion : suggestions)
-    {
-        suggestion.setBounds (chips.removeFromLeft (chipWidth));
-        chips.removeFromLeft (8);
-    }
+    layoutSuggestions();
 
     // Nyckelsidan, mitt i ytan.
     auto setup = getLocalBounds().withTrimmedTop (34).withSizeKeepingCentre (640, gemini() ? 400 : 270);

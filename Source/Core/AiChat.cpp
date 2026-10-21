@@ -205,11 +205,58 @@ void AiChat::cancelRequest()
         activeStream->cancel();
 }
 
+namespace
+{
+    juce::CriticalSection anthropicModelsLock;
+    juce::StringArray anthropicModels; // listan från GET /v1/models (tom = inte hämtad, reservlistan gäller)
+}
+
 juce::StringArray AiChat::models()
 {
     if (Settings::chatProvider() == "gemini")
         return GeminiApi::models();
+    const juce::ScopedLock sl (anthropicModelsLock);
+    if (! anthropicModels.isEmpty())
+        return anthropicModels;
     return { "claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5", "claude-fable-5-1" };
+}
+
+// GET /v1/models: { data: [{ id, display_name }], has_more, last_id } med de modeller nyckeln får använda, nyaste först (after_id för nästa sida).
+juce::StringArray AiChat::fetchAnthropicModels (const juce::String& key)
+{
+    juce::StringArray list;
+    juce::String afterId;
+    for (int page = 0; page < 10; ++page)
+    {
+        auto url = juce::URL ("https://api.anthropic.com/v1/models").withParameter ("limit", "1000");
+        if (afterId.isNotEmpty())
+            url = url.withParameter ("after_id", afterId);
+        juce::WebInputStream stream (url, false);
+        stream.withExtraHeaders ("x-api-key: " + key.trim() + "\r\nanthropic-version: 2023-06-01\r\n").withConnectionTimeout (15000).withNumRedirectsToFollow (2);
+        if (! stream.connect (nullptr) || stream.isError() || stream.getStatusCode() >= 400)
+            break;
+        const auto response = juce::JSON::parse (stream.readEntireStreamAsString());
+        if (auto* data = response["data"].getArray())
+            for (const auto& model : *data)
+            {
+                const auto id = model["id"].toString();
+                if (! id.startsWith ("claude-") || model["lifecycle"].toString() == "deprecated")
+                    continue;
+                // Saknas lifecycle (äldre svar) döljs de gamla modellerna på prefix.
+                if (model["lifecycle"].isVoid() && (id.startsWith ("claude-3") || id.startsWith ("claude-2")))
+                    continue;
+                list.addIfNotAlreadyThere (id);
+            }
+        afterId = response["last_id"].toString();
+        if (! static_cast<bool> (response["has_more"]) || afterId.isEmpty())
+            break;
+    }
+    if (! list.isEmpty())
+    {
+        const juce::ScopedLock sl (anthropicModelsLock);
+        anthropicModels = list;
+    }
+    return list;
 }
 
 juce::String AiChat::getStatus() const
@@ -407,6 +454,13 @@ std::vector<AiChat::SessionInfo> AiChat::listSessions()
     }
     std::sort (result.begin(), result.end(), [] (const SessionInfo& a, const SessionInfo& b) { return a.saved > b.saved; });
     return result;
+}
+
+bool AiChat::deleteSession (const juce::File& file)
+{
+    if (! file.existsAsFile() || file.getParentDirectory() != sessionsFolder())
+        return false; // bara filer i Chats-mappen
+    return file.moveToTrash();
 }
 
 // Före en ny fråga: är historiken för stor sparas samtalet och exporteras till en textfil, och sedan tas de äldsta frågorna bort ur historiken
