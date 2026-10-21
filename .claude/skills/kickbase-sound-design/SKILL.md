@@ -16,6 +16,7 @@ Goal: no `problem` or `warning` finding left that you can act on, and the checks
 1. `list_instances` / `use_instance` if the user wants it heard in the DAW; otherwise `headless`. `get_state` once to know the starting point (and `save_preset` a backup if the user cares about it).
 2. `render_preview` full, then `part=kick` and `part=bass`. Note the metrics (kick tail frequency 40-55 Hz, kick length, DC, peak, band energy) and the checks that fail.
 3. `analyse_mix` (starts in the background), then `get_mix_report` until it is done. Do not change anything while it runs. Read the findings (problem, then warning) with `sources` and `bars`.
+3b. To choose a value instead of guessing, `sweep_parameter` (e.g. `kickDrive` at 3-5 values, `part=kick`) gives a table of metrics per value and puts the sound back; then set the best value with `set_parameters`.
 4. Pick ONE finding, the most severe. Change one thing (at most two knobs that belong together) with the matching recipe from the guide. Never tune several unrelated things in one round: you could not tell which one helped.
 5. `render_preview` (give each render a `name`, e.g. `r1`, `r2`) and `analyse_mix` again. `compare_renders before=r1 after=r2` gives the metric deltas and the checks that changed. Compare with the previous round: finding gone, still there, or a new one.
    - Better: keep it, go to the next finding.
