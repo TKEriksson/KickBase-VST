@@ -19,13 +19,15 @@ namespace
     // En kick-lik (pitch) och en LFO-lik kurva: olika maxvärden och punktantal, Bézier med handtag.
     NodeEnvelope emptyCurve (bool lfoLike)
     {
-        return lfoLike ? NodeEnvelope (1.0f, 1.0f, { { 0.0f, 0.0f, 0.0f }, { 1.0f, 0.0f, 0.0f } })
-                       : NodeEnvelope (0.5f, 72.0f, { { 0.0f, 42.0f, -0.6f }, { 0.045f, 0.0f, 0.0f } });
+        // NodeEnvelope är varken kopierbar eller flyttbar (std::atomic): två separata return, ingen ?:
+        if (lfoLike)
+            return NodeEnvelope (1.0f, 1.0f, { { 0.0f, 0.0f, 0.0f }, { 1.0f, 0.0f, 0.0f } });
+        return NodeEnvelope (0.5f, 72.0f, { { 0.0f, 42.0f, -0.6f }, { 0.045f, 0.0f, 0.0f } });
     }
 
-    NodeEnvelope makeCurve (bool lfoLike)
+    // Fyller `e` (en emptyCurve): kan inte returneras som namngivet värde, NodeEnvelope är inte kopierbar.
+    void fillCurve (NodeEnvelope& e, bool lfoLike)
     {
-        auto e = emptyCurve (lfoLike);
         std::vector<NodeEnvelope::Point> pts;
         if (lfoLike)
             pts = { { 0.0f, 0.1f, 0.0f }, { 0.3f, 0.9f, 0.4f }, { 0.7f, 0.2f, -0.5f }, { 1.0f, 0.6f, 0.0f } };
@@ -42,7 +44,6 @@ namespace
         }
         e.setPoints (pts);
         e.setMode (NodeEnvelope::Mode::bezier);
-        return e;
     }
 
     float maxDiff (const NodeEnvelope& a, const NodeEnvelope& b, float span)
@@ -59,7 +60,8 @@ namespace
 
         for (bool lfoLike : { false, true })
         {
-            const auto original = makeCurve (lfoLike);
+            auto original = emptyCurve (lfoLike);
+            fillCurve (original, lfoLike);
             const juce::Identifier type (lfoLike ? "LfoCurve1" : "KickPitchEnv");
             const auto span = original.getPoints().back().x;
 
