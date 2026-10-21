@@ -329,6 +329,13 @@ namespace Help
             if (name == "THRESHOLD") return "How loud the band must be before it is changed. Full effect 6 dB above this.";
             if (name == "RANGE")     return "How far the band moves when it is loud. Minus cuts it (tames mud when the lead plays), plus boosts it.";
         }
+        if (typeName == "Octaver")
+        {
+            if (name == "OCT DOWN")   return "Adds a copy one octave lower (a clean sub under the sound). Works best on single notes.";
+            if (name == "OCT UP")     return "Adds a copy one octave higher, from rectifying the signal.";
+            if (name == "TONE")       return "Low-pass for the octave-down layer. Lower = rounder sub.";
+            if (name == "TRANSIENT")  return "0 = octaves always on. Up = octaves only on the attack of each sound.";
+        }
         if (typeName == "Maximizer" && name == "RELEASE")
             return "Maximizer: how fast the limiter lets go after a peak. Short = louder but can pump.";
         if (typeName == "Auto Filter" && name == "DEPTH")

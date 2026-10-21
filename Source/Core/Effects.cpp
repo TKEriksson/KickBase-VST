@@ -63,7 +63,7 @@ namespace Effects
     StringArray typeNames()
     {
         return { "Off", "Filter", "Distortion", "EQ", "Chorus", "Phaser", "Echo", "Reverb",
-                 "Compressor", "Trance Gate", "Comb", "Ring Mod", "Bitcrusher", "Auto Filter", "Maximizer", "Sidechain", "Disperser", "Widener", "Flanger", "Transient", "Dynamic EQ" };
+                 "Compressor", "Trance Gate", "Comb", "Ring Mod", "Bitcrusher", "Auto Filter", "Maximizer", "Sidechain", "Disperser", "Widener", "Flanger", "Transient", "Dynamic EQ", "Octaver" };
     }
 
     String name (EffectType type)
@@ -74,7 +74,7 @@ namespace Effects
     String shortName (EffectType type)
     {
         const char* names[] { "-", "FILT", "DIST", "EQ", "CHOR", "PHAS", "ECHO", "VERB",
-                              "COMP", "GATE", "COMB", "RING", "CRSH", "AUTO", "MAX", "SIDE", "DISP", "WIDE", "FLNG", "TRAN", "DEQ" };
+                              "COMP", "GATE", "COMB", "RING", "CRSH", "AUTO", "MAX", "SIDE", "DISP", "WIDE", "FLNG", "TRAN", "DEQ", "OCT" };
         return names[jlimit (0, numEffectTypes - 1, (int) type)];
     }
 
@@ -273,6 +273,12 @@ namespace Effects
                 value ("RANGE", -18.0f, 18.0f, 0.0f, -6.0f, Unit::db), // minus = sänker bandet när det är högt, plus = höjer
                 value ("ATTACK", 0.5f, 50.0f, 5.0f, 5.0f, Unit::ms),
                 value ("RELEASE", 20.0f, 800.0f, 150.0f, 150.0f, Unit::ms),
+                mixKnob (1.0f) };
+            table[(size_t) EffectType::octaver] = {
+                value ("OCT DOWN", 0.0f, 1.0f, 0.0f, 0.5f, Unit::percent),
+                value ("OCT UP", 0.0f, 1.0f, 0.0f, 0.0f, Unit::percent),
+                value ("TONE", 60.0f, 600.0f, 200.0f, 200.0f, Unit::hz), // lågpass före oktaven ner (och på den)
+                value ("TRANSIENT", 0.0f, 1.0f, 0.0f, 0.0f, Unit::percent), // 0 = oktaven ligger alltid på, 1 = bara på anslagen
                 mixKnob (1.0f) };
             return table;
         }();
@@ -1448,6 +1454,63 @@ namespace
         }
     };
 
+    // OCTAVER: oktav ner = delare (vänder tecken vid varannan nollgenomgång av det lågpassade ljudet, fyrkant med ljudets nivå, sedan
+    // lågpass). Oktav upp = helvågslikriktning (|x|) utan likspänning. TRANSIENT släpper bara igenom oktaverna på anslag (snabb
+    // envelope över långsam). Mono-summan används, och oktaven läggs lika på båda kanalerna.
+    struct OctaverFx
+    {
+        float tone = 0.0f, envelope = 0.0f, previous = 0.0f, flip = 1.0f, divided = 0.0f, downSmooth = 0.0f;
+        float upDc = 0.0f, fast = 0.0f, slow = 0.0f, gate = 1.0f;
+
+        void prepare (const dsp::ProcessSpec&) { reset(); }
+        void reset() { tone = envelope = previous = divided = downSmooth = upDc = fast = slow = 0.0f; flip = 1.0f; gate = 1.0f; }
+
+        void process (AudioBuffer<float>& buffer, int numSamples, const Values& k, const Context& context)
+        {
+            const auto down = k[0], up = k[1], transient = k[3], wet = k[4];
+            const auto toneCoefficient = onePoleCoefficient (k[2], context.sampleRate);
+            const auto outCoefficient = onePoleCoefficient (k[2] * 0.7f, context.sampleRate);
+            const auto envelopeCoefficient = onePoleCoefficient (30.0f, context.sampleRate);
+            const auto dcCoefficient = onePoleCoefficient (60.0f, context.sampleRate);
+            const auto fastUp = onePoleCoefficient (400.0f, context.sampleRate), fastDown = onePoleCoefficient (25.0f, context.sampleRate);
+            const auto slowCoefficient = onePoleCoefficient (15.0f, context.sampleRate);
+            const auto gateCoefficient = onePoleCoefficient (150.0f, context.sampleRate);
+            const auto channels = std::min (2, buffer.getNumChannels());
+            for (int i = 0; i < numSamples; ++i)
+            {
+                auto mono = 0.0f;
+                for (int ch = 0; ch < channels; ++ch)
+                    mono += buffer.getSample (ch, i);
+                mono /= (float) jmax (1, channels);
+
+                tone += (mono - tone) * toneCoefficient;
+                envelope += (std::abs (tone) - envelope) * envelopeCoefficient;
+                if (previous <= 0.0f && tone > 0.0f)
+                    flip = -flip; // en nollgenomgång uppåt per period: vartannat tecken ger halva frekvensen
+                previous = tone;
+                divided = flip * envelope * 1.6f;
+                downSmooth += (divided - downSmooth) * outCoefficient;
+
+                const auto rectified = std::abs (mono);
+                upDc += (rectified - upDc) * dcCoefficient;
+                const auto upSignal = rectified - upDc;
+
+                fast += (rectified - fast) * (rectified > fast ? fastUp : fastDown);
+                slow += (rectified - slow) * slowCoefficient;
+                const auto target = jlimit (0.0f, 1.0f, (fast / (slow + 1.0e-5f) - 1.0f));
+                gate += (target - gate) * gateCoefficient;
+                const auto amount = 1.0f - transient + transient * gate;
+
+                const auto octave = (downSmooth * down + upSignal * up) * amount;
+                for (int ch = 0; ch < channels; ++ch)
+                {
+                    auto* data = buffer.getWritePointer (ch);
+                    data[i] += octave * wet;
+                }
+            }
+        }
+    };
+
     // DYNAMIC EQ: ett band (klocka på FREQ) vars förstärkning följer hur högt just det bandet är. Avkännaren är ett bandpass på
     // samma frekvens (länkat mellan kanalerna); över THRESHOLD går bandet mot RANGE dB (minus sänker, plus höjer), full effekt 6 dB över.
     struct DynamicEqFx
@@ -1536,6 +1599,7 @@ struct EffectChain::Impl
         FlangerFx flanger;
         TransientFx transient;
         DynamicEqFx dynamicEq;
+        OctaverFx octaver;
 
         template <typename Function>
         void forEachEffect (Function&& function)
@@ -1543,7 +1607,7 @@ struct EffectChain::Impl
             function (filter); function (distortion); function (eq); function (chorus); function (phaser);
             function (echo); function (reverb); function (compressor); function (gate); function (comb);
             function (ringMod); function (bitcrusher); function (autoFilter); function (maximizer); function (ducker); function (disperser);
-            function (widener); function (flanger); function (transient); function (dynamicEq);
+            function (widener); function (flanger); function (transient); function (dynamicEq); function (octaver);
         }
 
         void resetCurrent()
@@ -1570,6 +1634,7 @@ struct EffectChain::Impl
                 case EffectType::flanger:    flanger.reset(); break;
                 case EffectType::transient:  transient.reset(); break;
                 case EffectType::dynamicEq:  dynamicEq.reset(); break;
+                case EffectType::octaver:    octaver.reset(); break;
                 case EffectType::off:
                 case EffectType::count:      break;
             }
@@ -1599,6 +1664,7 @@ struct EffectChain::Impl
                 case EffectType::flanger:    flanger.process (buffer, numSamples, values, context); break;
                 case EffectType::transient:  transient.process (buffer, numSamples, values, context); break;
                 case EffectType::dynamicEq:  dynamicEq.process (buffer, numSamples, values, context); break;
+                case EffectType::octaver:    octaver.process (buffer, numSamples, values, context); break;
                 case EffectType::off:
                 case EffectType::count:      break;
             }

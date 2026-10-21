@@ -1609,6 +1609,33 @@ namespace
                 else
                     check (peak > amplitude * 0.9f, "FX2: DYNAMIC EQ lämnar ett tyst band orört");
             }
+            // Octaver: oktaven ner/upp läggs ovanpå originalet (toppen blir högre än ingången) och ljudet är ändligt; av = orört.
+            for (const auto amount : { 0.0f, 1.0f })
+            {
+                auto peak = 0.0f;
+                auto finite = true;
+                runEffect (EffectType::octaver, { { 0, amount }, { 1, amount } }, 30,
+                           [&] (juce::AudioBuffer<float>& b, int block)
+                           {
+                               for (int i = 0; i < b.getNumSamples(); ++i)
+                                   for (int ch = 0; ch < 2; ++ch)
+                                       b.setSample (ch, i, 0.3f * (float) std::sin (juce::MathConstants<double>::twoPi * 150.0 * (block * blockSize + i) / renderRate));
+                           },
+                           [&] (const juce::AudioBuffer<float>& b, int block)
+                           {
+                               if (block >= 20)
+                                   for (int i = 0; i < b.getNumSamples(); ++i)
+                                   {
+                                       finite = finite && std::isfinite (b.getSample (0, i));
+                                       peak = std::max (peak, std::abs (b.getSample (0, i)));
+                                   }
+                           });
+                check (finite, "FX2: OCTAVER ger ändligt ljud");
+                if (amount > 0.5f)
+                    check (peak > 0.3f * 1.15f, "FX2: OCTAVER lägger till en oktav");
+                else
+                    check (std::abs (peak - 0.3f) < 0.01f, "FX2: OCTAVER med noll oktav lämnar ljudet orört");
+            }
         }
 
         std::puts (failed ? "FEL: instrumenttestet misslyckades" : "Instrumenttestet gick igenom");
