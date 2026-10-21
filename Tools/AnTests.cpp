@@ -188,13 +188,21 @@ int anTest()
         setBand (c, firstInstrument, 5, -10.0f);
         setBand (c, masterSource, 3, -10.0f);
         setBand (c, masterSource, 5, -10.0f);
-        c.phase = measurePhase (makeSignals (1.0f, 100.0));
+        // ÄNDRAT TESTUNDERLAG (AN-testen, ej regeln): kick och bas hade samma amplitud, och sedan cde9d61 ("kick vinner") är det ett riktigt fynd (kick_bass_lead: basen inom 3 dB av kicken).
+        // Basen sänks till ca -5 dB under kicken (kick vinner med marginal; ändå inte så mycket att svansen tar basen, gräns 6 dB). Korrelation och trösklar är orörda.
+        auto in = makeSignals (1.0f, 100.0);
+        for (auto* v : { &in.bassL, &in.bassR })
+            for (auto& x : *v)
+                x *= 0.55f;
+        c.phase = measurePhase (in);
         const auto report = evaluate (c, options, nullptr);
         check (c.phase.valid && c.phase.lowCorrelation[0] > -0.3f, "kick+bas utan kollision: korrelationen " + juce::String (c.phase.lowCorrelation[0], 2) + " är över -0,3");
         for (auto* category : { "phase", "stereo", "mud", "master", "sub", "collision" })
             check (! hasCategory (report, category), juce::String ("kick+bas utan kollision: inget fynd i ") + category);
         for (const auto& finding : report.findings)
             note ("kick+bas utan kollision gav: [" + finding.category + "] " + finding.title);
+        for (const auto& f : describePhase (c.phase).findings)
+            note ("kick+bas utan kollision: describePhase gav " + f["id"].toString());
         check (describePhase (c.phase).findings.isEmpty(), "kick+bas utan kollision: describePhase ger inga fynd");
     }
 
