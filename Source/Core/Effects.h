@@ -18,7 +18,7 @@
 // Effects::knobs(typ) säger vad de betyder och hur de räknas om till riktiga enheter.
 enum class EffectType { off, filter, distortion, eq, chorus, phaser, echo, reverb,
                         compressor, gate, comb, ringMod, bitcrusher, autoFilter, maximizer, ducker, disperser,
-                        widener, flanger, transient, dynamicEq, octaver, count }; // FX2 (sist i listan: projekt sparar typens index)
+                        widener, flanger, transient, dynamicEq, octaver, bandDucker, count }; // FX2 (sist i listan: projekt sparar typens index)
 constexpr int numEffectTypes = (int) EffectType::count; // inklusive Off
 constexpr int numEffectChannels = 11; // FX1 ... FX11
 constexpr int slotsPerChannel = 5;

@@ -63,7 +63,7 @@ namespace Effects
     StringArray typeNames()
     {
         return { "Off", "Filter", "Distortion", "EQ", "Chorus", "Phaser", "Echo", "Reverb",
-                 "Compressor", "Trance Gate", "Comb", "Ring Mod", "Bitcrusher", "Auto Filter", "Maximizer", "Sidechain", "Disperser", "Widener", "Flanger", "Transient", "Dynamic EQ", "Octaver" };
+                 "Compressor", "Trance Gate", "Comb", "Ring Mod", "Bitcrusher", "Auto Filter", "Maximizer", "Sidechain", "Disperser", "Widener", "Flanger", "Transient", "Dynamic EQ", "Octaver", "Band Ducker" };
     }
 
     String name (EffectType type)
@@ -74,7 +74,7 @@ namespace Effects
     String shortName (EffectType type)
     {
         const char* names[] { "-", "FILT", "DIST", "EQ", "CHOR", "PHAS", "ECHO", "VERB",
-                              "COMP", "GATE", "COMB", "RING", "CRSH", "AUTO", "MAX", "SIDE", "DISP", "WIDE", "FLNG", "TRAN", "DEQ", "OCT" };
+                              "COMP", "GATE", "COMB", "RING", "CRSH", "AUTO", "MAX", "SIDE", "DISP", "WIDE", "FLNG", "TRAN", "DEQ", "OCT", "BDUC" };
         return names[jlimit (0, numEffectTypes - 1, (int) type)];
     }
 
@@ -279,6 +279,15 @@ namespace Effects
                 value ("OCT UP", 0.0f, 1.0f, 0.0f, 0.0f, Unit::percent),
                 value ("TONE", 60.0f, 600.0f, 200.0f, 200.0f, Unit::hz), // lågpass före oktaven ner (och på den)
                 value ("TRANSIENT", 0.0f, 1.0f, 0.0f, 0.0f, Unit::percent), // 0 = oktaven ligger alltid på, 1 = bara på anslagen
+                mixKnob (1.0f) };
+            table[(size_t) EffectType::bandDucker] = {
+                choice ("SOURCE", { "Kick", "Instr 1", "Instr 2", "Instr 3", "Instr 4", "Instr 5", "Instr 6", "Instr 7", "Instr 8", "Instr 9", "Instr 10" }, 0),
+                value ("SPLIT", 60.0f, 500.0f, 150.0f, 150.0f, Unit::hz),
+                value ("LOW DUCK", 0.0f, 1.0f, 0.0f, 0.9f, Unit::percent),
+                value ("HIGH DUCK", 0.0f, 1.0f, 0.0f, 0.3f, Unit::percent),
+                value ("THRESHOLD", -48.0f, 0.0f, -20.0f, -24.0f, Unit::db),
+                value ("ATTACK", 0.5f, 50.0f, 5.0f, 3.0f, Unit::ms),
+                value ("RELEASE", 20.0f, 800.0f, 150.0f, 200.0f, Unit::ms),
                 mixKnob (1.0f) };
             return table;
         }();
@@ -1297,6 +1306,73 @@ namespace
         }
     };
 
+    // BAND DUCKER: som SIDECHAIN, men ljudet delas först i låg och hög del (LR4 vid SPLIT) som duckas olika mycket: låga delen djupt
+    // (kickens plats), höga delen lite eller inte alls. Delen summeras tillbaka (LR4 ger flat summa, ändrad bara i fas).
+    struct BandDuckerFx
+    {
+        // [kanal][steg]: två Butterworth-steg i serie = Linkwitz-Riley 4:e ordningen
+        std::array<std::array<Biquad, 2>, 2> low, high;
+        float envelope = 0.0f, lastSplit = 0.0f;
+
+        void prepare (const dsp::ProcessSpec&) { reset(); }
+        void reset()
+        {
+            for (auto& channel : low) for (auto& f : channel) f.reset();
+            for (auto& channel : high) for (auto& f : channel) f.reset();
+            envelope = 0.0f;
+            lastSplit = 0.0f;
+        }
+
+        void process (AudioBuffer<float>& buffer, int numSamples, const Values& k, const Context& context)
+        {
+            const auto source = jlimit (0, SourceSignals::count - 1, (int) k[0]);
+            if (context.sources == nullptr || context.sources->left[(size_t) source] == nullptr)
+                return; // källan spelar inte: inget att ducka efter
+            const auto* keyLeft = context.sources->left[(size_t) source];
+            const auto* keyRight = context.sources->right[(size_t) source];
+
+            using Array = dsp::IIR::ArrayCoefficients<float>;
+            const auto split = k[1], lowDepth = k[2], highDepth = k[3], thresholdDb = k[4], wet = k[7];
+            if (std::abs (split - lastSplit) > 0.01f)
+            {
+                lastSplit = split;
+                const auto lowCoefficients = Array::makeLowPass (context.sampleRate, split, 0.70710678f);
+                const auto highCoefficients = Array::makeHighPass (context.sampleRate, split, 0.70710678f);
+                for (int ch = 0; ch < 2; ++ch)
+                    for (int s = 0; s < 2; ++s)
+                    {
+                        low[(size_t) ch][(size_t) s].setCoefficients (lowCoefficients);
+                        high[(size_t) ch][(size_t) s].setCoefficients (highCoefficients);
+                    }
+            }
+            const auto attack = 1.0f - std::exp (-1.0f / (std::max (0.1f, k[5]) * 0.001f * (float) context.sampleRate));
+            const auto release = 1.0f - std::exp (-1.0f / (std::max (1.0f, k[6]) * 0.001f * (float) context.sampleRate));
+            const auto channels = std::min (2, buffer.getNumChannels());
+
+            for (int i = 0; i < numSamples; ++i)
+            {
+                auto level = std::abs (keyLeft[i]);
+                if (keyRight != nullptr)
+                    level = std::max (level, std::abs (keyRight[i]));
+                envelope += (level - envelope) * (level > envelope ? attack : release);
+                const auto db = 20.0f * std::log10 (envelope + 1.0e-5f);
+                const auto amount = jlimit (0.0f, 1.0f, (db - thresholdDb) / 12.0f);
+                const auto lowGain = 1.0f - lowDepth * amount;
+                const auto highGain = 1.0f - highDepth * amount;
+                for (int ch = 0; ch < channels; ++ch)
+                {
+                    const auto x = buffer.getSample (ch, i);
+                    auto& l = low[(size_t) ch];
+                    auto& h = high[(size_t) ch];
+                    const auto lowPart = l[1].process (l[0].process (x));
+                    const auto highPart = h[1].process (h[0].process (x));
+                    const auto ducked = lowPart * lowGain + highPart * highGain;
+                    buffer.setSample (ch, i, x + (ducked - x) * wet);
+                }
+            }
+        }
+    };
+
     // DISPERSER: en kedja av all-pass-filter (2:a ordningen, STAGES st) som bara vrider fasen och sprider gruppfördröjningen runt FREQ,
     // så att en kick får "chirp" och sin transient utsmetad utan att tonen ändras. SPREAD sprider filtrens frekvenser (0 = alla på FREQ,
     // 100 % = +-2 oktaver); MIX 100 % är ren fasvridning. Koefficienterna räknas om en gång per block.
@@ -1600,6 +1676,7 @@ struct EffectChain::Impl
         TransientFx transient;
         DynamicEqFx dynamicEq;
         OctaverFx octaver;
+        BandDuckerFx bandDucker;
 
         template <typename Function>
         void forEachEffect (Function&& function)
@@ -1607,7 +1684,7 @@ struct EffectChain::Impl
             function (filter); function (distortion); function (eq); function (chorus); function (phaser);
             function (echo); function (reverb); function (compressor); function (gate); function (comb);
             function (ringMod); function (bitcrusher); function (autoFilter); function (maximizer); function (ducker); function (disperser);
-            function (widener); function (flanger); function (transient); function (dynamicEq); function (octaver);
+            function (widener); function (flanger); function (transient); function (dynamicEq); function (octaver); function (bandDucker);
         }
 
         void resetCurrent()
@@ -1635,6 +1712,7 @@ struct EffectChain::Impl
                 case EffectType::transient:  transient.reset(); break;
                 case EffectType::dynamicEq:  dynamicEq.reset(); break;
                 case EffectType::octaver:    octaver.reset(); break;
+                case EffectType::bandDucker: bandDucker.reset(); break;
                 case EffectType::off:
                 case EffectType::count:      break;
             }
@@ -1665,6 +1743,7 @@ struct EffectChain::Impl
                 case EffectType::transient:  transient.process (buffer, numSamples, values, context); break;
                 case EffectType::dynamicEq:  dynamicEq.process (buffer, numSamples, values, context); break;
                 case EffectType::octaver:    octaver.process (buffer, numSamples, values, context); break;
+                case EffectType::bandDucker: bandDucker.process (buffer, numSamples, values, context); break;
                 case EffectType::off:
                 case EffectType::count:      break;
             }

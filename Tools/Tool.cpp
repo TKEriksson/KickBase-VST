@@ -1609,6 +1609,40 @@ namespace
                 else
                     check (peak > amplitude * 0.9f, "FX2: DYNAMIC EQ lämnar ett tyst band orört");
             }
+            // Band Ducker: kickens nivå duckar bara den låga delen (LOW DUCK 100 %, HIGH DUCK 0): en 60 Hz-ton sänks, en 3 kHz-ton lämnas.
+            for (const auto hz : { 60.0, 3000.0 })
+            {
+                const auto fresh = std::make_unique<InstrumentProcessor>();
+                Effects::setSlotType (fresh->apvts, 0, 0, EffectType::bandDucker);
+                const auto& list = Effects::knobs (EffectType::bandDucker);
+                const std::vector<std::pair<int, float>> settings { { 0, 0.0f }, { 1, 150.0f }, { 2, 1.0f }, { 3, 0.0f } };
+                for (const auto& [index, v] : settings)
+                    if (auto* parameter = fresh->apvts.getParameter (Effects::knobParamID (0, 0, index)))
+                        parameter->setValueNotifyingHost (list[(size_t) index].toNormalised (v));
+                EffectChain chain (fresh->apvts, 0);
+                chain.prepare (renderRate, blockSize);
+                std::vector<float> key ((size_t) blockSize, 0.8f);
+                SourceSignals sources;
+                sources.left[0] = key.data();
+                chain.setSources (&sources);
+                juce::AudioBuffer<float> buffer (2, blockSize);
+                auto peak = 0.0f;
+                for (int block = 0; block < 30; ++block)
+                {
+                    for (int i = 0; i < blockSize; ++i)
+                        for (int ch = 0; ch < 2; ++ch)
+                            buffer.setSample (ch, i, 0.3f * (float) std::sin (juce::MathConstants<double>::twoPi * hz * (block * blockSize + i) / renderRate));
+                    chain.update (140.0, 0.0);
+                    chain.process (buffer, blockSize);
+                    if (block >= 25)
+                        for (int i = 0; i < blockSize; ++i)
+                            peak = std::max (peak, std::abs (buffer.getSample (0, i)));
+                }
+                if (hz < 100.0)
+                    check (peak < 0.3f * 0.3f, "FX2: BAND DUCKER duckar den låga delen");
+                else
+                    check (peak > 0.3f * 0.85f && peak < 0.3f * 1.15f, "FX2: BAND DUCKER lämnar den höga delen");
+            }
             // Octaver: oktaven ner/upp läggs ovanpå originalet (toppen blir högre än ingången) och ljudet är ändligt; av = orört.
             for (const auto amount : { 0.0f, 1.0f })
             {

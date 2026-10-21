@@ -329,6 +329,12 @@ namespace Help
             if (name == "THRESHOLD") return "How loud the band must be before it is changed. Full effect 6 dB above this.";
             if (name == "RANGE")     return "How far the band moves when it is loud. Minus cuts it (tames mud when the lead plays), plus boosts it.";
         }
+        if (typeName == "Band Ducker")
+        {
+            if (name == "SPLIT")     return "Where the sound is divided into a low and a high part.";
+            if (name == "LOW DUCK")  return "How far the low part (below SPLIT) is pushed down when the source plays. High = room for the kick.";
+            if (name == "HIGH DUCK") return "How far the high part is pushed down. Keep it low for a pump that does not dull the top.";
+        }
         if (typeName == "Octaver")
         {
             if (name == "OCT DOWN")   return "Adds a copy one octave lower (a clean sub under the sound). Works best on single notes.";
