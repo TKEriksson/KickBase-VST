@@ -29,9 +29,9 @@ LiveCodePage::LiveCodePage (PluginBase& processor) : processor (processor), tool
     errorLog.setReadOnly (true);
     errorLog.setFont (juce::Font (juce::FontOptions (juce::Font::getDefaultMonospacedFontName(), 13.0f, juce::Font::plain)));
     errorLog.setColour (juce::TextEditor::backgroundColourId, Theme::panel);
-    errorLog.setColour (juce::TextEditor::textColourId, juce::Colour (0xffff9a9a));
+    errorLog.setColour (juce::TextEditor::textColourId, Theme::text);
     errorLog.setColour (juce::TextEditor::outlineColourId, Theme::panelBorder);
-    errorLog.setText ("Inga fel än.", false);
+    errorLog.setText ("Konsolen är tom: fel och console.log från koden visas här.", false);
     addChildComponent (errorLog);
 
     codeTab.setClickingTogglesState (false);
@@ -126,7 +126,7 @@ void LiveCodePage::resized()
     auto tabs = area.removeFromTop (24);
     codeTab.setBounds (tabs.removeFromLeft (70));
     tabs.removeFromLeft (4);
-    errorTab.setBounds (tabs.removeFromLeft (90));
+    errorTab.setBounds (tabs.removeFromLeft (110));
     area.removeFromTop (4);
 
     auto bottom = area.removeFromBottom (20);
@@ -375,8 +375,9 @@ void LiveCodePage::refreshCodeOnly()
 
 void LiveCodePage::runNow()
 {
-    runner.run (document.getAllContent(), cycles, [this] (const juce::var& list, const juce::String& error, const juce::var& mods, const juce::var& writes)
+    runner.run (document.getAllContent(), cycles, [this] (const juce::var& list, const juce::String& error, const juce::var& mods, const juce::var& writes, const juce::StringArray& console)
     {
+        showConsole (console);
         if (error.isNotEmpty())
             return showError (error);
 
@@ -586,10 +587,37 @@ void LiveCodePage::showError (const juce::String& text)
     if (text.isNotEmpty())
     {
         ++errorCount;
-        errorLog.setText (juce::Time::getCurrentTime().toString (false, true) + "  " + text + "\n\n" + (errorCount > 1 ? errorLog.getText() : juce::String()), false);
-        errorLog.moveCaretToTop (false);
-        errorTab.setButtonText ("FEL (" + juce::String (errorCount) + ")");
+        auto lines = juce::StringArray::fromLines (text);
+        lines.set (0, "FEL  " + lines[0]);
+        appendLog (lines);
+        errorTab.setButtonText ("KONSOL (" + juce::String (errorCount) + ")");
         if (onError)
             onError (text);
     }
+}
+
+// G2: konsolen visar fel och console.log, senaste överst, högst maxLogLines rader. newLines läses uppifrån och ned.
+void LiveCodePage::appendLog (const juce::StringArray& newLines)
+{
+    juce::StringArray all;
+    const auto stamp = juce::Time::getCurrentTime().toString (false, true) + "  ";
+    for (int i = 0; i < newLines.size(); ++i)
+        all.add (i == 0 ? stamp + newLines[i] : "    " + newLines[i]);
+    if (logLines > 0)
+        all.addArray (juce::StringArray::fromLines (errorLog.getText()));
+    if (all.size() > maxLogLines)
+        all.removeRange (maxLogLines, all.size() - maxLogLines);
+    logLines = all.size();
+    errorLog.setText (all.joinIntoString ("\n"), false);
+    errorLog.moveCaretToTop (false);
+}
+
+void LiveCodePage::showConsole (const juce::StringArray& console)
+{
+    if (console.isEmpty())
+        return;
+    auto lines = console;
+    for (int i = 0; i < lines.size(); ++i)
+        lines.set (i, lines[i].replaceFirstOccurrenceOf ("log: ", "").replaceFirstOccurrenceOf ("warn: ", "VARNING  ").replaceFirstOccurrenceOf ("error: ", "FEL  "));
+    appendLog (lines);
 }

@@ -514,6 +514,17 @@ namespace
                     described = t.description.contains ("overwrite") && t.description.contains ("live_code_lock") && t.description.contains ("$: ")
                                 && t.description.contains (".lfo(") && t.description.contains (".env(") && t.description.contains ("data.problems");
             check (described, "live_code_create beskriver skydd, block, sliders och .lfo/.env-problem");
+
+            // G2: console.log/warn/error i koden hamnar i konsolkön (host.log), inte i tomma intet
+            {
+                LiveCode consoleLive;
+                juce::Result consoleResult = juce::Result::ok();
+                consoleLive.create ("console.log(\"hej\", 3); console.warn({a:1}); console.error(\"fel\"); note(\"c2\").s(\"i1\")", 1, consoleResult);
+                const auto lines = consoleLive.takeConsole();
+                check (consoleResult.wasOk() && lines.size() == 3 && lines[0] == "log: hej 3" && lines[1] == "warn: {\"a\":1}" && lines[2] == "error: fel",
+                       "console.log/warn/error går till konsolkön");
+                check (consoleLive.takeConsole().isEmpty(), "takeConsole tömmer kön");
+            }
         }
 
         // .lfo/.env skapar CODE-rutter; felaktiga modulationsmål rapporteras utan att stoppa notraderna.
