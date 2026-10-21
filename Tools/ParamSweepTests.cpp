@@ -45,6 +45,10 @@ namespace
     int sweep (const char* label)
     {
         Processor source;
+        // Laddningen rensar LFO utanför activeLfos som saknar rutter (PluginBase.cpp applyLoadedLfos/clearLfo, ~:829-855) och återställer deras parametrar.
+        // Det är avsett produktbeteende; testet aktiverar alla LFO före sweepen så att deras parametrar verkligen provas.
+        for (auto lfo = 0; lfo < source.availableLfos(); ++lfo)
+            source.setLfoActive (lfo, true);
         const auto& all = source.getParameters();
         std::vector<Setting> settings;
         auto problems = 0;
