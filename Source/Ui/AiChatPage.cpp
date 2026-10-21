@@ -209,6 +209,7 @@ AiChatPage::AiChatPage (PluginBase& p) : processor (p), chat (p.getAiChat())
     input.setColour (juce::TextEditor::outlineColourId, Theme::panelBorder);
     input.setColour (juce::TextEditor::focusedOutlineColourId, Theme::bass);
     input.onSend = [this] { send (input.getText()); };
+    input.onTextChange = [this] { updateSendButton(); };
     addAndMakeVisible (input);
     sendButton.setColour (juce::TextButton::buttonColourId, Theme::bass.withAlpha (0.5f));
     sendButton.onClick = [this] { send (input.getText()); };
@@ -480,14 +481,27 @@ void AiChatPage::saveKey()
     });
 }
 
-void AiChatPage::send (const juce::String& text)
+void AiChatPage::send (const juce::String& typed)
 {
+    // Tomt fält efter stegtaket: Enter och knappen (CONTINUE) skickar "continue".
+    const auto text = typed.trim().isEmpty() && chat.canContinue() ? juce::String ("continue") : typed;
     if (text.trim().isEmpty() || chat.isBusy())
         return;
     input.clear();
     chat.send (text);
     refresh();
     input.grabKeyboardFocus();
+}
+
+void AiChatPage::updateSendButton()
+{
+    // CONTINUE (grön) bara när svaret stoppats av ett tak och fältet är tomt; annars SEND.
+    const auto continuing = chat.canContinue() && input.getText().trim().isEmpty();
+    if (continuing == (sendButton.getButtonText() == "CONTINUE"))
+        return;
+    sendButton.setButtonText (continuing ? "CONTINUE" : "SEND");
+    sendButton.setTooltip (continuing ? "CONTINUE - The AI stopped before it was done. Sends 'continue' (Enter in an empty field does the same)." : juce::String());
+    sendButton.setColour (juce::TextButton::buttonColourId, continuing ? juce::Colour (0xff2e9e4f) : Theme::bass.withAlpha (0.5f));
 }
 
 void AiChatPage::timerCallback()
@@ -579,6 +593,7 @@ void AiChatPage::showChatsMenu()
 
 void AiChatPage::refresh()
 {
+    updateSendButton();
     const auto busy = chat.isBusy();
     const auto entries = chat.getEntries();
     const auto hasKey = ! needsKey();

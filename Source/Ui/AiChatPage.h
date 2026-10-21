@@ -67,6 +67,7 @@ private:
     juce::Rectangle<int> hintBounds;
     void showChatsMenu();
     void send (const juce::String& text);
+    void updateSendButton();
     void showSetup (bool show);
     void saveKey();
     bool needsKey() const;

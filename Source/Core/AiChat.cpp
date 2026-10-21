@@ -305,6 +305,7 @@ void AiChat::newChat()
         status = {};
     }
     messages.clear();
+    stoppedEarly = false;
     confirmAll = false;
     tokensIn = 0;
     tokensOut = 0;
@@ -410,6 +411,7 @@ bool AiChat::loadSession (const juce::File& file)
         status = {};
     }
     messages = *loaded;
+    stoppedEarly = false;
     confirmAll = false;
     tokensIn = (juce::int64) root["tokensIn"];
     tokensOut = (juce::int64) root["tokensOut"];
@@ -537,6 +539,7 @@ void AiChat::send (const juce::String& text)
     put (message, "content", text.trim());
     messages.add (message);
 
+    stoppedEarly = false;
     busy = true;
     startThread (juce::Thread::Priority::normal);
 }
@@ -831,6 +834,7 @@ void AiChat::run()
                 entry.kind = Entry::Kind::note;
                 entry.text = "The answer was cut off (too long). Write 'continue' to go on.";
                 addEntry (std::move (entry));
+                stoppedEarly = true;
             }
             break;
         }
@@ -846,6 +850,7 @@ void AiChat::run()
             entry.kind = Entry::Kind::note;
             entry.text = "Stopped after " + juce::String (maxSteps) + " steps. Write 'continue' to go on.";
             addEntry (std::move (entry));
+            stoppedEarly = true;
         }
     }
 
@@ -854,6 +859,7 @@ void AiChat::run()
     {
         while (messages.size() > sizeAtStart)
             messages.remove (messages.size() - 1);
+        stoppedEarly = false;
         if (threadShouldExit() && ! failed)
         {
             Entry entry;

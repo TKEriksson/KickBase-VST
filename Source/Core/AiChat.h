@@ -46,6 +46,7 @@ public:
     void undo();                            // ångrar AI:ns senaste ändring (verktyget undo)
 
     bool isBusy() const { return busy; }
+    bool canContinue() const { return ! busy && stoppedEarly; } // svaret avbröts av stegtaket eller längdtaket: "continue" tar vid
     juce::String getStatus() const;         // "Thinking ...", "Running set_parameters ..." eller tom
     std::vector<Entry> getEntries() const;  // en kopia av samtalet som det visas
     juce::String getUsage() const;          // "12.3k in / 1.2k out" (tokens i det här samtalet)
@@ -94,6 +95,7 @@ private:
     std::vector<Entry> log;
     juce::String status;
     std::atomic<bool> busy { false };
+    std::atomic<bool> stoppedEarly { false }; // sätts när run() slutar på stegtaket eller max_tokens; nollställs av nästa send, newChat och loadSession
 
     // Anropet som pågår (annars nullptr), så att stop() och destruktorn kan avbryta en blockerande läsning (WebInputStream::cancel är gjord
     // för att anropas från en annan tråd). Förr väntade destruktorn upp till 15 s på ett svar när fönstret stängdes mitt i ett anrop.
