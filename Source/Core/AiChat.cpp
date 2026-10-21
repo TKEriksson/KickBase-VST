@@ -240,8 +240,12 @@ juce::StringArray AiChat::fetchAnthropicModels (const juce::String& key)
             for (const auto& model : *data)
             {
                 const auto id = model["id"].toString();
-                if (id.startsWith ("claude-") && ! id.startsWith ("claude-3") && ! id.startsWith ("claude-2")) // gamla modeller döljs
-                    list.addIfNotAlreadyThere (id);
+                if (! id.startsWith ("claude-") || model["lifecycle"].toString() == "deprecated")
+                    continue;
+                // Saknas lifecycle (äldre svar) döljs de gamla modellerna på prefix.
+                if (model["lifecycle"].isVoid() && (id.startsWith ("claude-3") || id.startsWith ("claude-2")))
+                    continue;
+                list.addIfNotAlreadyThere (id);
             }
         afterId = response["last_id"].toString();
         if (! static_cast<bool> (response["has_more"]) || afterId.isEmpty())
