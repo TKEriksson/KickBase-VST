@@ -1005,7 +1005,7 @@ std::unique_ptr<juce::XmlElement> PluginBase::buildPresetXml (Presets::Section s
         {
             namesXml->setAttribute ("name" + juce::String (i + 1), layerNames[(size_t) i]);
             if (layerColours[(size_t) i] != 0) // som i projekttillståndet: bara ändrade färger
-                namesXml->setAttribute ("colour" + juce::String (i + 1), (juce::int64) layerColours[(size_t) i]);
+                namesXml->setAttribute ("colour" + juce::String (i + 1), juce::String ((juce::int64) layerColours[(size_t) i])); // String: setAttribute(int64) är tvetydig (C2668); läses med getLargeIntValue (:1312)
         }
     }
 
