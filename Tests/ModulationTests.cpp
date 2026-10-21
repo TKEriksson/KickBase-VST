@@ -344,7 +344,7 @@ namespace
         for (int shape = 0; shape <= 5; ++shape)
         {
             lfoStats (3.0f, shape, 200, lo, hi, upward, pm);
-            check (lo >= -1.0001f && hi <= 1.0001f && hi - lo > 0.1f, "CODE-LFO form " + juce::String (shape) + " håller sig inom -1..1 och rör sig", hi - lo);
+            check (lo >= -1.0001f && hi <= 1.0001f && hi - lo > 0.1f, ("CODE-LFO form " + juce::String (shape) + " håller sig inom -1..1 och rör sig").toRawUTF8(), hi - lo);
         }
 
         // Utfasning: stäng under gång; värdet går ner mot 0 på ~20 ms och platsen blir idle först då.
