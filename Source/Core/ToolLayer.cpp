@@ -7,6 +7,7 @@
 #include "MixAnalysis.h"
 #include <BinaryData.h>
 #include "../Ui/Help.h"
+#include "../Ui/FmPresets.h"
 
 using juce::var;
 
@@ -255,6 +256,8 @@ std::vector<ToolLayer::ToolInfo> ToolLayer::tools()
           R"({"type":"object","properties":{"layer":{},"locked":{"type":"boolean"}},"required":["layer"]})" },
         { "set_gate", "Sets a bass layer's GATE: a separate on/off rhythm that chops the layer's sound, with its own grid, independent of the notes. layer 0-9; on (true/false), grid ('1/16' ...), depth 0..1 (1 = fully closed in the off steps), smooth_ms (edge softness), and the steps as 'bars' (one text per bar, repeated over four bars): 'x' = open, '.' = closed, e.g. [\"x.x.x.x.x.x.x.x.\"] on a 1/16 grid. all:'open' or 'closed' fills every step.",
           R"({"type":"object","properties":{"layer":{"type":"integer"},"on":{"type":"boolean"},"grid":{"type":"string"},"depth":{"type":"number"},"smooth_ms":{"type":"number"},"bars":{"type":"array","items":{"type":"string"}},"all":{"type":"string","enum":["open","closed"]}},"required":["layer"]})" },
+        { "set_fm", "Sets a bass layer's FM source (two sine operators: a modulator bends the phase of a carrier; the FM tab). layer 0-9; preset ('Custom', 'Zap', 'Acid Squelch', 'Metallic Lead', 'FM Pluck': also sets the pitch envelope, and a high-pass in Filter 2 for the lead) and then optional fields on top of it: on, level 0..1, ratio (modulator/carrier; whole numbers sound harmonic, others metallic), index (brightness), env_amount 0..1 and env_ms (how fast the brightness falls), semis (carrier transpose), filter (true = through the layer's filters). Any single field makes the preset 'Custom'. set_parameters also reaches the same values as bass<N>FmLevel etc.",
+          R"({"type":"object","properties":{"layer":{"type":"integer"},"preset":{"type":"string"},"on":{"type":"boolean"},"level":{"type":"number"},"ratio":{"type":"number"},"index":{"type":"number"},"env_amount":{"type":"number"},"env_ms":{"type":"number"},"semis":{"type":"number"},"filter":{"type":"boolean"}},"required":["layer"]})" },
         { "edit_wavetable_harmonics", "Edits the harmonics of an oscillator's wavetable (the TABLE of OSC A/B/C of an instrument). harmonics: [{\"n\":1,\"gain_db\":-12,\"phase_deg\":90}] where n 1 = the fundamental, 2 the octave ... up to 511; gain_db (-120 = removed, positive boosts) or linear gain, and phase_deg is added to the harmonic's phase. frame 0-15 edits one wave of the table, 'all' (default) every wave. normalise (default true) keeps each wave's peak level. The result becomes the oscillator's User table (a built-in table is copied first and named '... (edited)'), so the original is never changed. Use it e.g. to remove the fundamental of a bass that fights the kick, or to shift its phase.",
           R"({"type":"object","properties":{"layer":{"type":"integer","minimum":0,"maximum":9},"osc":{"type":"integer","minimum":0,"maximum":2},"frame":{},"harmonics":{"type":"array","items":{"type":"object"}},"normalise":{"type":"boolean"}},"required":["layer","osc","harmonics"]})" },
         { "analyse_wavetable", "Reads an oscillator's wavetable as harmonics: for one frame (default 0) the level (dB, relative to the loudest harmonic) and the phase (degrees, sine convention: s = sum A_k sin(2 pi k t + phase_k)) of harmonics 1..count (default 16, max 64). Use it before edit_wavetable_harmonics, e.g. to see the fundamental's phase and shift it so the bass starts in phase with the kick. Works on the built-in tables as well as on user tables.",
@@ -389,7 +392,7 @@ var ToolLayer::call (const juce::String& tool, const var& args)
         return ok (data);
     }
 
-    if (tool == "set_parameters" || tool == "set_effect" || tool == "set_kick_envelopes" || tool == "set_pattern" || tool == "set_sidechain_curve" || tool == "set_gate" || tool == "edit_wavetable_harmonics" || tool == "live_code_create" || tool == "live_code_apply"
+    if (tool == "set_parameters" || tool == "set_effect" || tool == "set_kick_envelopes" || tool == "set_pattern" || tool == "set_sidechain_curve" || tool == "set_gate" || tool == "set_fm" || tool == "edit_wavetable_harmonics" || tool == "live_code_create" || tool == "live_code_apply"
         || tool == "set_modulation" || tool == "load_preset" || tool == "reset" || tool == "load_kick_sample" || tool == "load_library_kick" || tool == "load_bass_sample" || tool == "load_piano_roll" || tool == "import_midi")
         snapshot();
 
@@ -399,6 +402,7 @@ var ToolLayer::call (const juce::String& tool, const var& args)
     if (tool == "set_pattern")         return setPattern (args);
     if (tool == "set_sidechain_curve") return setSidechainCurve (args);
     if (tool == "set_gate")            return setGate (args);
+    if (tool == "set_fm")              return setFm (args);
     if (tool == "edit_wavetable_harmonics") return editWavetableHarmonics (args);
     if (tool == "live_code_create")    return liveCodeCreate (args);
     if (tool == "live_code_apply")     return applyLiveCode (args["items"], (bool) args["overwrite"], args["mods"], (bool) args["prune"]); // internt: fliken LIVE CODE (listan kommer från LiveCodeRunner)
@@ -1388,6 +1392,47 @@ var ToolLayer::setGate (const var& args)
     put (data, "layer", layer);
     put (data, "grid", Pattern::gridNames()[gridIndexNow]);
     put (data, "steps_per_bar", stepsPerBar);
+    return ok (data);
+}
+
+var ToolLayer::setFm (const var& args)
+{
+    using F = InstrumentField;
+    const auto layer = (int) args["layer"];
+    if (! juce::isPositiveAndBelow (layer, Pattern::numLayers))
+        return fail ("layer must be 0-9.");
+
+    // Först presetet (om något), sedan enskilda fält ovanpå; med fält blir presetvalet Custom.
+    auto presetIndex = 0;
+    if (args.hasProperty ("preset"))
+    {
+        const auto names = FmPresets::names();
+        const auto value = args["preset"];
+        presetIndex = value.isString() && ! value.toString().containsOnly ("0123456789") ? names.indexOf (value.toString().trim(), true) : (int) value;
+        if (! juce::isPositiveAndBelow (presetIndex, names.size()))
+            return fail ("Unknown FM preset. Options: " + names.joinIntoString (" | "));
+        FmPresets::apply (processor.apvts, layer, presetIndex);
+    }
+
+    juce::String problem;
+    auto changedFields = false;
+    for (const auto& [key, field] : { std::pair<const char*, F> { "on", F::fmOn }, { "level", F::fmLevel }, { "ratio", F::fmRatio }, { "index", F::fmIndex },
+                                      { "env_amount", F::fmEnvAmount }, { "env_ms", F::fmEnvTime }, { "semis", F::fmSemis }, { "filter", F::fmFilter } })
+        if (args.hasProperty (key))
+        {
+            auto* parameter = findParameter (processor, ParamID::bass (layer, field));
+            if (parameter == nullptr || ! assign (*parameter, args[key], problem))
+                return fail (problem.isEmpty() ? juce::String ("No such FM parameter.") : problem);
+            changedFields = changedFields || juce::String (key) != "on";
+        }
+
+    if (auto* choice = findParameter (processor, ParamID::bass (layer, F::fmPreset)))
+        if (args.hasProperty ("preset") || changedFields)
+            assign (*choice, changedFields ? 0 : presetIndex, problem);
+
+    auto data = object();
+    put (data, "layer", layer);
+    put (data, "preset", FmPresets::names()[changedFields ? 0 : presetIndex]);
     return ok (data);
 }
 
