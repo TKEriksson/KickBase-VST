@@ -1198,15 +1198,21 @@ namespace
             Effects::setSlotType (processor.apvts, 0, 0, EffectType::off);
 
             // INSERT (standard): allt går genom kanalen, så FX1-faderna i botten tystar instrumentet. SEND: torrt orört, bara effektdelen tystnar.
+            // Instrument 1 och 3 tystas på riktigt (botten på faderna), annars hörs de torra och döljer skillnaden.
+            for (const auto source : { 0, 2 })
+                setValue (mixerGain (source), Mixer::minGainDb);
+            const auto onlySecond = rmsOf (PluginBase::ExportPart::bass);
             Effects::setSlotType (processor.apvts, 0, 0, EffectType::ducker);
             setValue (Mixer::paramID (Mixer::firstFxSource, "Gain"), Mixer::minGainDb);
             const auto insertMuted = rmsOf (PluginBase::ExportPart::bass);
             setValue (ParamID::bass (1, InstrumentField::fxSend), 1.0f);
             const auto sendMuted = rmsOf (PluginBase::ExportPart::bass);
-            check (insertMuted < 0.1f * routed && sendMuted > 0.5f * routed,
-                   "FX SEND-läget lämnar torrt orört när FX-faderna är nere (INSERT " + juce::String (insertMuted, 3) + ", SEND " + juce::String (sendMuted, 3) + ", före " + juce::String (routed, 3) + ")");
+            check (insertMuted < 0.1f * onlySecond && sendMuted > 0.5f * onlySecond,
+                   "FX SEND-läget lämnar torrt orört när FX-faderna är nere (INSERT " + juce::String (insertMuted, 3) + ", SEND " + juce::String (sendMuted, 3) + ", före " + juce::String (onlySecond, 3) + ")");
             setValue (ParamID::bass (1, InstrumentField::fxSend), 0.0f);
             setValue (Mixer::paramID (Mixer::firstFxSource, "Gain"), 0.0f);
+            for (const auto source : { 0, 2 })
+                setValue (mixerGain (source), 0.0f);
             Effects::setSlotType (processor.apvts, 0, 0, EffectType::off);
 
             setValue (ParamID::bass (1, InstrumentField::fxChannel), 0.0f);
