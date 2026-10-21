@@ -285,10 +285,31 @@ int anTest()
         check (! hasTitle (evaluateMetrics (m), "peak level varies"), "toppspridning: ett enda slag ger inget fynd");
 
         auto stereo = makeMetrics (0.0f, 0);
-        stereo.stereoCorrelation[1][0] = 0.31f;
-        check (! hasCategory (evaluateMetrics (stereo), "stereo") && ! hasId (describePhase (stereo), "low_end_wide"), "stereo: korrelation 0,31 under 120 Hz slår inte till");
-        stereo.stereoCorrelation[1][0] = 0.29f;
-        check (hasCategory (evaluateMetrics (stereo), "stereo") && hasId (describePhase (stereo), "low_end_wide"), "stereo: korrelation 0,29 ger en varning");
+        const auto stereoSeverity = [&] (float corr, size_t barsBelow = 1)
+        {
+            auto st = makeMetrics (0.0f, 0);
+            for (size_t i = 0; i < barsBelow; ++i)
+                st.stereoCorrelation[i][0] = corr;
+            const auto found = hasCategory (evaluateMetrics (st), "stereo");
+            check (found == hasId (describePhase (st), "low_end_wide"), "stereo: findings och verktygsvägen är överens vid " + juce::String (corr, 2));
+            return found ? (int) severityOf (evaluateMetrics (st), "low end") + 1 : 0;
+        };
+        // ÄNDRAT TESTVILLKOR (AN steg 3): förr varning under 0,3; nu info under 0,8, varning under 0,5, problem under 0.
+        check (stereoSeverity (0.81f) == 0, "stereo: korrelation 0,81 slår inte till");
+        check (stereoSeverity (0.79f) == 1, "stereo: korrelation 0,79 ger info");
+        check (stereoSeverity (0.51f) == 1, "stereo: korrelation 0,51 är fortfarande info");
+        check (stereoSeverity (0.49f) == 2, "stereo: korrelation 0,49 ger en varning");
+        check (stereoSeverity (0.01f) == 2, "stereo: korrelation 0,01 är fortfarande en varning");
+        check (stereoSeverity (-0.01f) == 3, "stereo: korrelation -0,01 ger ett problem");
+        {
+            // En takt av många räcker inte (under 2 takter och under 25 %); två takter räcker.
+            auto many = makeMetrics (0.0f, 0);
+            many.stereoCorrelation.assign (16, { 1.0f, 1.0f, 1.0f, 1.0f });
+            many.stereoCorrelation[3][0] = -1.0f;
+            check (! hasCategory (evaluateMetrics (many), "stereo") && ! hasId (describePhase (many), "low_end_wide"), "stereo: en takt av 16 räcker inte");
+            many.stereoCorrelation[4][0] = -1.0f;
+            check (hasCategory (evaluateMetrics (many), "stereo") && hasId (describePhase (many), "low_end_wide"), "stereo: två takter av 16 räcker");
+        }
         stereo.stereoCorrelation[1][0] = 1.0f;
         stereo.stereoCorrelation[1][2] = -1.0f; // bara de högre banden
         check (! hasCategory (evaluateMetrics (stereo), "stereo"), "stereo: breda mellan- och diskantband räknas inte (regeln gäller basen)");
@@ -309,6 +330,10 @@ int anTest()
         check (wide.stereoCorrelation[0][0] < 0.3f, "stereo: höger = vänster + 5 gånger en ortogonal ton ger korrelation " + juce::String (wide.stereoCorrelation[0][0], 2) + " (< 0,3)");
         check (mildWide.stereoCorrelation[0][0] > 0.3f, "stereo: 1,5 gånger ger korrelation " + juce::String (mildWide.stereoCorrelation[0][0], 2) + " (> 0,3)");
         check (mono.stereoCorrelation[0][0] > 0.99f, "stereo: mono ger korrelation 1");
+        for (auto* ch : { &wideInput.masterL, &wideInput.masterR })
+            for (auto& v : *ch)
+                v *= 0.001f;
+        check (measurePhase (wideInput).stereoCorrelation[0][0] > 0.99f, "stereo: bred men nästan tyst bas (under -50 dB) räknas som tyst, korrelation 1");
         auto c = makeCapture();
         setBand (c, firstInstrument, 5, -10.0f); // evaluate avbryter med "Nothing plays" om ingen källa är starkare än -75 dB
         c.phase = wide;

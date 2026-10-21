@@ -17,7 +17,9 @@ namespace MixAnalysis
         constexpr float phaseActivePower = 1.0e-4f;     // en 16-del räknas först när kick och bas båda ligger över ungefär -40 dB (kicksvansen räknas inte som möte)
         constexpr float phaseCorrWarn = -0.3f, phaseCorrProblem = -0.6f;
         constexpr float phaseSumWarnDb = -3.0f, phaseSumProblemDb = -6.0f;
-        constexpr float lowStereoCorrMin = 0.3f;        // under detta är basen för bred (band 0)
+        constexpr float lowStereoInfo = 0.8f, lowStereoWarn = 0.5f, lowStereoProblem = 0.0f; // L/R-korrelation 20-120 Hz per takt: under 0,8 info, under 0,5 varning, under 0 problem
+        constexpr double lowStereoMinShare = 0.25;      // ...och minst två takter eller så här stor andel av takterna
+        constexpr double stereoSilentPower = 1.0e-5;    // bandeffekt per sampel under detta (ca -50 dB) räknas som tyst: korrelationen 1
         constexpr float limiterWarnDb = 6.0f, limiterProblemDb = 9.0f; // mäts på 95:e percentilen över ramarna, inte på enstaka maxblock
         constexpr double mudLowFloorPerFrame = 1.0e-4;  // medeleffekt 40-150 Hz i mastern (-40 dB); under det bedöms inte lera
         // Fasfyndets underlag, gemensamt för findings och verktygsvägen: aktiva 16-delar och medelkorrelationen viktad med effekten (Σkb / Σ√(kk·bb)).
@@ -49,6 +51,39 @@ namespace MixAnalysis
             }
             s.badBars.erase (std::unique (s.badBars.begin(), s.badBars.end()), s.badBars.end());
             s.mean = sumWeight > 0.0 ? (float) (sumWeighted / sumWeight) : 0.0f;
+            return s;
+        }
+
+        // Basens stereobredd (band 0): lägsta nivån som tillräckligt många takter ligger under.
+        struct StereoSummary
+        {
+            bool found = false;
+            Severity severity = Severity::info;
+            float limit = lowStereoInfo;
+            std::vector<int> bars;
+        };
+
+        StereoSummary summariseStereo (const PhaseMetrics& p)
+        {
+            StereoSummary s;
+            const auto total = p.stereoCorrelation.size();
+            const auto enough = [total] (size_t n) { return n >= 2 || (double) n >= lowStereoMinShare * (double) total; };
+            const struct { float limit; Severity severity; } levels[] = { { lowStereoProblem, Severity::problem }, { lowStereoWarn, Severity::warning }, { lowStereoInfo, Severity::info } };
+            for (const auto& level : levels)
+            {
+                std::vector<int> bars;
+                for (size_t bar = 0; bar < total; ++bar)
+                    if (p.stereoCorrelation[bar][0] < level.limit)
+                        bars.push_back ((int) bar + 1);
+                if (! bars.empty() && enough (bars.size()))
+                {
+                    s.found = true;
+                    s.severity = level.severity;
+                    s.limit = level.limit;
+                    s.bars = std::move (bars);
+                    break;
+                }
+            }
             return s;
         }
 
@@ -686,14 +721,12 @@ namespace MixAnalysis
                 f.detail = "Often a random phase or an LFO that hits the kick differently each time. Fixed phase gives equally hard hits.";
                 r.findings.push_back (std::move (f));
             }
-            std::vector<int> wideBars;
-            for (size_t bar = 0; bar < ph.stereoCorrelation.size(); ++bar)
-                if (ph.stereoCorrelation[bar][0] < lowStereoCorrMin)
-                    wideBars.push_back ((int) bar + 1);
-            if (! wideBars.empty())
+            const auto stereo = summariseStereo (ph);
+            const auto& wideBars = stereo.bars;
+            if (stereo.found)
             {
                 Finding f;
-                f.severity = Severity::warning;
+                f.severity = stereo.severity;
                 f.category = "stereo";
                 f.sources = { c.names[(size_t) masterSource] };
                 f.lowHz = 20.0f;
@@ -701,7 +734,7 @@ namespace MixAnalysis
                 f.bars = wideBars;
                 f.share = (float) wideBars.size() / (float) std::max (1, bars);
                 f.title = "The low end below 120 Hz is wide or out of phase between left and right";
-                f.detail = "Left/right correlation is below 0.3 in bars " + barsText (wideBars) + ". Wide bass disappears in mono (clubs, phones). Keep bass and kick centred, for example with a lower STEREO/UNISON width.";
+                f.detail = "Left/right correlation is below " + juce::String (stereo.limit, 1) + " in bars " + barsText (wideBars) + ". Wide bass disappears in mono (clubs, phones). Keep bass and kick centred, for example with a lower STEREO/UNISON width.";
                 r.findings.push_back (std::move (f));
             }
         }
@@ -935,13 +968,12 @@ namespace MixAnalysis
             addFix ("kick_peak_spread", "fixed_phase", "kick start phase / LFO retrigger", "Equal start gives equally hard hits.");
         }
 
-        std::vector<int> wideBars;
-        for (size_t bar = 0; bar < p.stereoCorrelation.size(); ++bar)
-            if (p.stereoCorrelation[bar][0] < lowStereoCorrMin)
-                wideBars.push_back ((int) bar + 1);
-        if (! wideBars.empty())
+        const auto stereo = summariseStereo (p);
+        const auto& wideBars = stereo.bars;
+        if (stereo.found)
         {
-            addFinding ("low_end_wide", "warning", "L/R correlation below 120 Hz is under 0.3 (value = number of bars)", (int) wideBars.size(), wideBars);
+            addFinding ("low_end_wide", stereo.severity == Severity::problem ? "problem" : stereo.severity == Severity::warning ? "warning" : "info",
+                        "L/R correlation at 20-120 Hz is under " + juce::String (stereo.limit, 1) + " (value = number of bars)", (int) wideBars.size(), wideBars);
             addFix ("low_end_wide", "narrow_low_end", "bass STEREO/UNISON width, or a mono-maker below 120 Hz", "Wide bass disappears in mono.");
         }
         return d;
@@ -2268,11 +2300,11 @@ namespace MixAnalysis
 
         // Stereo per takt i fyra band: L/R-korrelation och M/S.
         {
-            const double edges[PhaseMetrics::stereoBands + 1] = { 0.0, 120.0, 500.0, 4000.0, 0.0 };
+            const double edges[PhaseMetrics::stereoBands + 1] = { 20.0, 120.0, 500.0, 4000.0, 0.0 };
             std::vector<float> bandL[PhaseMetrics::stereoBands], bandR[PhaseMetrics::stereoBands];
             for (int b = 0; b < PhaseMetrics::stereoBands; ++b)
             {
-                const auto lowHz = b == 0 ? 0.0 : edges[b], highHz = b == PhaseMetrics::stereoBands - 1 ? 0.0 : edges[b + 1];
+                const auto lowHz = edges[b], highHz = b == PhaseMetrics::stereoBands - 1 ? 0.0 : edges[b + 1];
                 bandL[b] = bandPass (in.masterL, n, in.rate, lowHz, highHz);
                 bandR[b] = bandPass (in.masterR, n, in.rate, lowHz, highHz);
             }
@@ -2291,7 +2323,7 @@ namespace MixAnalysis
                         lr += l * r;
                     }
                     const auto len = (double) std::max (1, to - from);
-                    const auto silent = ll / len < 1.0e-9 || rr / len < 1.0e-9;
+                    const auto silent = ll / len < stereoSilentPower || rr / len < stereoSilentPower;
                     corr[(size_t) b] = silent ? 1.0f : (float) juce::jlimit (-1.0, 1.0, lr / std::sqrt (ll * rr));
                     const auto mid = 0.25 * (ll + rr + 2.0 * lr), side = 0.25 * (ll + rr - 2.0 * lr);
                     ms[(size_t) b] = (float) (10.0 * std::log10 ((mid + 1.0e-12) / (side + 1.0e-12)));
