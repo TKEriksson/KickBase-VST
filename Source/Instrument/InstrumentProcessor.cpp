@@ -100,6 +100,10 @@ void InstrumentProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     ensureScratchSize (samplesPerBlock);
 
     patternActive = false;
+    // Hållna toner hör till förra körningen: en "ton av" som aldrig kom (värden avbröt, offlinerenderns sista släpp ligger efter bufferten)
+    // får inte hindra nästa "ton på" från att starta mönstret (wasSilent i handleMidi).
+    heldNotes.fill (0);
+    numHeldNotes = 0;
     masterGain.reset (sampleRate, 0.02);
     masterGain.setCurrentAndTargetValue (params.get (ParamID::gain));
 }
