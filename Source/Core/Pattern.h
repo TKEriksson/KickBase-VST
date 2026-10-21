@@ -37,17 +37,21 @@ constexpr std::array<T, N> filledArray (T value)
     return result;
 }
 
+// R9b: längdtabellen rymmer en plats per radid i poolen. Plats 0-10 är som förut (0 = kicken, 1-10 = instrumenten, parametrarna rowLoop/rowBars);
+// plats 11-63 är underraderna och har samma nummer som sitt radid (de kolliderar inte med 0-10). Se `lengthRowOf`.
+constexpr int numLengthRows = RowRegistry::maxRows;
+
 // Mönstrets längd: hela mönstret (`total`) och varje rads egen längd (kicken är rad 0, sedan instrumenten; 0 = hela
 // mönstret). En rad som är kortare än mönstret loopar (`loops`, per rad) eller spelar en gång och tystnar tills mönstret börjar om.
 struct PatternLengths
 {
     int total = 1;
-    std::array<bool, numPatternRows> loops = [] { std::array<bool, numPatternRows> all {}; all.fill (true); return all; }(); // loopar raden? (annars spelar den en gång och tystnar)
-    std::array<int, numPatternRows> rows {};
+    std::array<bool, numLengthRows> loops = [] { std::array<bool, numLengthRows> all {}; all.fill (true); return all; }(); // loopar raden? (annars spelar den en gång och tystnar)
+    std::array<int, numLengthRows> rows {};
 
     int barsOf (int row) const
     {
-        const auto r = rows[(size_t) juce::jlimit (0, numPatternRows - 1, row)];
+        const auto r = rows[(size_t) juce::jlimit (0, numLengthRows - 1, row)];
         return r <= 0 ? total : std::min (r, total);
     }
 
@@ -56,7 +60,7 @@ struct PatternLengths
     {
         const auto inPattern = (int) (((bar % total) + total) % total);
         const auto rowBars = barsOf (row);
-        if (! loops[(size_t) juce::jlimit (0, numPatternRows - 1, row)] && inPattern >= rowBars)
+        if (! loops[(size_t) juce::jlimit (0, numLengthRows - 1, row)] && inPattern >= rowBars)
             return -1;
         return inPattern % rowBars;
     }
@@ -145,10 +149,20 @@ struct Pattern
 
     RowRegistry rows; // R9b: vilka underrader som finns (bara meddelandetråden ändrar, ljudtråden läser)
 
+    // Platsen i PatternLengths för en rad (radid): kicken 0, instrument 0-9 -> 1-10 (som parametrarna rowLoop/rowBars), underrader behåller sitt id (11 och uppåt).
+    static int lengthRowOf (int layer) { return layer == kickLayer ? 0 : layer < kickLayer ? layer + 1 : juce::jlimit (0, numRowSlots - 1, layer); }
+
+    // Loop på/av för en underrad (grundraderna har parametrarna rowLoop). Sparas med mönstret (R9b steg 4).
+    bool loopsRow (int layer) const { return rowLoops[(size_t) juce::jlimit (0, numRowSlots - 1, layer)].load(); }
+    void setLoopsRow (int layer, bool value) { rowLoops[(size_t) juce::jlimit (0, numRowSlots - 1, layer)] = value; }
+
     Pattern()
     {
         for (int layer = 0; layer < numRowSlots; ++layer)
+        {
             lengthOf[(size_t) layer] = contentOf[(size_t) layer] = 1;
+            rowLoops[(size_t) layer] = true;
+        }
         applyTemplate (PatternTemplate::rolling);
     }
     ~Pattern();
@@ -289,4 +303,5 @@ private:
     DeferredRelease<GateBlock> retiredGateBlocks;
     std::array<std::atomic<int>, numRowSlots> lengthOf {}, contentOf {}, manualOf {}, extraOf {}; // längd och innehåll i takter (min 1), valt antal (0 = AUTO), "+"
     std::array<std::atomic<bool>, numRowSlots> custom {};
+    std::array<std::atomic<bool>, numRowSlots> rowLoops {}; // bara underraderna läser den (grundraderna: parametrarna rowLoop)
 };

@@ -197,3 +197,7 @@ Kör: antest, inittest, rendersig, tooltest. Rendersig ska vara oförändrad (ba
 - Vad: PhaseMetrics fick lowKickDb/lowBassDb/lowKickHit (per 16-del, 30-150 Hz); summariseKickBass i MixAnalysis.cpp; findings i evaluate (kategori kickbass: varning "kicken vinner inte", tips "svans tar bas") och i describePhase (kick_bass_lead, kick_tail_takes_bass). Trösklar: 3 dB på slag, 6 dB mellan slag, minst 2 16-delar och 25 %, aktiv över -50 dB.
 - Tolkning: "svans tar bas" = kicksvansen dominerar basen mellan slagen (tips, bekräftat av projektledaren).
 - Tester: nytt block i Tools/AnTests.cpp. Ej byggt av mig; projektledaren kör antest och rendersig (ska vara oförändrad, mätningen läser bara).
+
+## Arbetare 1: R9b steg 3 (radlängder/loop för underrader)
+- Vad: `PatternLengths` rymmer 64 platser (`numLengthRows`); plats 0-10 oförändrad (0 = kick, 1-10 = instrument, parametrarna rowLoop/rowBars), underrader använder sitt radid (11-63) via `Pattern::lengthRowOf`. `Pattern::loopsRow/setLoopsRow` (default true) bär loop för underrader, eftersom inga nya host-parametrar skapas (ID:n och ordning oförändrade, så presets och rendersig påverkas inte). `readPatternLengthsWith` tar med aktiva underrader (tom pool = ingen skillnad). Sparas i steg 4.
+- Av: Arbetare 1, content-g. Ej byggt av mig. Kör: bygget, `rowkeytest`, `rendersig` (oförändrad), `persisttest`/`fulltest`.

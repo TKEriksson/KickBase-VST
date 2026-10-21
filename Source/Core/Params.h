@@ -176,6 +176,17 @@ namespace Params
             if (row <= activeInstruments)
                 lengths.total = std::max (lengths.total, lengths.rows[(size_t) row]);
         }
+        // R9b: underraderna (SAMPLE, SLICER) räknas med när deras instrument är aktivt; längd och loop ur mönstret, inte ur parametrar. Tom pool = ingen skillnad.
+        for (int id = RowRegistry::firstSubRow; id < RowRegistry::maxRows; ++id)
+        {
+            if (! pattern.rows.isActive (id))
+                continue;
+            const auto slot = (size_t) Pattern::lengthRowOf (id);
+            lengths.rows[slot] = pattern.lengthBars (id);
+            lengths.loops[slot] = pattern.loopsRow (id);
+            if (pattern.rows.instrumentOf (id) < activeInstruments)
+                lengths.total = std::max (lengths.total, lengths.rows[slot]);
+        }
         return lengths;
     }
 
