@@ -17,7 +17,12 @@ public:
     {
         float x = 0.0f, y = 0.0f;
         float tension = 0.0f; // -1..1: 0 = rak linje, negativ = snabbt fall först
+        // Bézierläge (BZ): handtag relativt punkten. out styr segmentet till nästa punkt, in segmentet från förra.
+        // x begränsas i setPoints så att kurvan förblir en funktion av tiden. Tension-läget ignorerar dem.
+        float outDx = 0.0f, outDy = 0.0f, inDx = 0.0f, inDy = 0.0f;
     };
+
+    enum class Mode { tension, bezier }; // per kurva; tension = som förut
 
     static constexpr int maxPoints = 24;
     static constexpr int tableSize = 4096;
@@ -30,6 +35,10 @@ public:
     const std::vector<Point>& getPoints() const { return points; }
     void setPoints (std::vector<Point> newPoints);
     float evaluate (float seconds) const; // från punkterna
+    Mode getMode() const { return mode; }
+    void setMode (Mode newMode);
+    // Handtag så att Bézierkurvan följer nuvarande tension-form (x linjärt, y matchad vid 1/3 och 2/3).
+    static std::vector<Point> withHandlesFromTension (std::vector<Point> pts);
 
     // Ljudtråden: värdet vid `seconds` (tabell med interpolation); efter sista punkten dess värde.
     float lookup (double seconds) const;
@@ -50,6 +59,7 @@ private:
 
     const float maxSeconds, maxValue;
     std::vector<Point> defaults, points;
+    Mode mode = Mode::tension;
     std::array<std::atomic<float>, tableSize> table {};
     std::atomic<float> end { 0.1f };
 };
