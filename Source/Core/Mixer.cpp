@@ -106,7 +106,7 @@ void Mixer::beginBlock()
 }
 
 void Mixer::mix (int source, const float* left, const float* right, int numSamples, float level,
-                 AudioBuffer<float>& maxBus, AudioBuffer<float>& bypassBus)
+                 AudioBuffer<float>& maxBus, AudioBuffer<float>& bypassBus, float* sendLeft, float* sendRight)
 {
     auto& strip = strips[(size_t) source];
     auto& bus = max[(size_t) source]->load() >= 0.5f ? maxBus : bypassBus;
@@ -116,11 +116,15 @@ void Mixer::mix (int source, const float* left, const float* right, int numSampl
 
     for (int i = 0; i < numSamples; ++i)
     {
-        const auto gain = strip.gain.getNextValue() * level;
+        const auto gain = strip.gain.getNextValue();
         const auto l = left[i] * gain * strip.panLeft.getNextValue();
         const auto r = (right != nullptr ? right[i] : left[i]) * gain * strip.panRight.getNextValue();
-        outLeft[i] += l;
-        outRight[i] += r;
+        outLeft[i] += l * level;
+        outRight[i] += r * level;
+        if (sendLeft != nullptr)
+            sendLeft[i] = l;
+        if (sendRight != nullptr)
+            sendRight[i] = r;
         peakLeft = std::max (peakLeft, std::abs (l));
         peakRight = std::max (peakRight, std::abs (r));
     }

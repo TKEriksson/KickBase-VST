@@ -796,11 +796,13 @@ void InstrumentProcessor::finishBlock (int numSamples)
         const auto channel = (int) params.bass (layer, InstrumentField::fxChannel) - 1;
         const auto amountToChannel = params.bass (layer, InstrumentField::fxAmount);
         const auto routed = channel >= 0 && effects.isActive (channel);
-        if (routed)
-            effects.send (channel, data, dataRight, numSamples, amountToChannel);
         const auto dryGain = routed ? 1.0f - amountToChannel : 1.0f;
 
-        mixer.mix (Mixer::firstBassSource + layer, data, dataRight, numSamples, dryGain, maxBus, bypassBus);
+        // Instrumentets fader och panorering gäller hela ljudet: både det torra och det som skickas till kanalen.
+        mixer.mix (Mixer::firstBassSource + layer, data, dataRight, numSamples, dryGain, maxBus, bypassBus,
+                   sendBus.getWritePointer (0), sendBus.getWritePointer (1));
+        if (routed)
+            effects.send (channel, sendBus.getReadPointer (0), sendBus.getReadPointer (1), numSamples, amountToChannel);
         for (int i = 0; i < numSamples; ++i)
             layerOuts[(size_t) layer].add (i, data[i], dataRight[i]);
     }
@@ -809,11 +811,12 @@ void InstrumentProcessor::finishBlock (int numSamples)
     const auto kickChannel = (int) params.get (ParamID::kickFxChannel) - 1;
     const auto kickAmount = params.get (ParamID::kickFxAmount);
     const auto kickRouted = kickChannel >= 0 && effects.isActive (kickChannel);
-    if (kickRouted)
-        effects.send (kickChannel, kickBuffer.getReadPointer (0), nullptr, numSamples, kickAmount);
     const auto kickDry = kickRouted ? 1.0f - kickAmount : 1.0f;
 
-    mixer.mix (Mixer::kickSource, kickBuffer.getReadPointer (0), nullptr, numSamples, kickDry, maxBus, bypassBus);
+    mixer.mix (Mixer::kickSource, kickBuffer.getReadPointer (0), nullptr, numSamples, kickDry, maxBus, bypassBus,
+               sendBus.getWritePointer (0), sendBus.getWritePointer (1));
+    if (kickRouted)
+        effects.send (kickChannel, sendBus.getReadPointer (0), sendBus.getReadPointer (1), numSamples, kickAmount);
 
     std::array<bool, numEffectChannels> channelDuck {};
     for (int ch = 0; ch < numEffectChannels; ++ch)
@@ -885,6 +888,7 @@ void InstrumentProcessor::ensureScratchSize (int numSamples)
     instrumentBuffer.setSize (2, numSamples, false, true, true);
     maxBus.setSize (2, numSamples, false, true, true);
     bypassBus.setSize (2, numSamples, false, true, true);
+    sendBus.setSize (2, numSamples, false, true, true);
 }
 
 void InstrumentProcessor::handleEvent (const StepEvent& event)

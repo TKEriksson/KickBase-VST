@@ -88,7 +88,7 @@ R"KB("how_to_analyse": [
   "Give instruments different registers: change bassNOctave or bassNTune so fundamentals do not coincide, but stay on the same note or an octave/fifth of the kick tail.",
   "Retune: kickTune (semitones) moves the kick tail; bassNTune (semitones) and bassNOctave move an instrument; aim for the kick tail at 40-55 Hz and on a note of the key.",
   "Remove rumble: bassNEqHp or masterEqHp 30-40 Hz, or raise the instrument's octave.",
-  "Lower or raise levels: bassNLevel (instrument; scales its dry and its FX-sent part), kickLevel, mixer gains (mixBassNGain, mixKickGain scale only the dry part; the part sent to an FX channel is scaled by that channel's strip mixFxAGain...mixFxKGain); lowering the loudest instruments is better than letting the limiter work (masterCeiling, masterDrive).",
+  "Lower or raise levels: bassNLevel (instrument; scales its dry and its FX-sent part), kickLevel, mixer gains (mixBassNGain, mixKickGain scale the whole source, both its dry part and the part sent to an FX channel; the FX channel's return is then scaled again by that channel's strip mixFxAGain...mixFxKGain); lowering the loudest instruments is better than letting the limiter work (masterCeiling, masterDrive).",
   "Shorten sustains: bassNRelease, bassNDecay or the note length in the pattern, so a note does not ring over the next kick; or move the note start away from the kick.",
   "Tame mud: a cut around 200-400 Hz (bassNEq3F/G) on the instruments; harshness: a cut or low pass in the 2-5 kHz range.",
   "Effects that smear the kick: check which effect channels get sent to; reduce bassNFxAmount for long echoes/reverbs on bass, add a Sidechain effect or raise the channel's own duck (fxXDuck).",
