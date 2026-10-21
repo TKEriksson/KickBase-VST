@@ -181,6 +181,7 @@ namespace Help
             { "kickClickTone", "Brightness of the synthesized click." },
             { "kickClipMode", "Drive character: Soft (smooth tanh), Hard (clipping), Tube (asymmetric, adds even harmonics) or Fold (loud parts fold back: metallic)." },
             { "kickDrive", "Saturation on the kick: rounder and louder, more harmonics." },
+            { "kickComp", "Compressor on the kick (after drive and crush): fast attack, release follows the kick length, automatic makeup gain. Tighter and denser; 0 = off." },
             { "kickHighCut", "Low-pass filter on the kick. Tames the click and the top end." },
             { "kickLevel", "Volume of the kick." },
 

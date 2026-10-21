@@ -64,6 +64,7 @@ namespace ParamID
     inline constexpr auto kickLevel       = "kickLevel";
     inline constexpr auto kickFxChannel   = "kickFxChannel"; // effektkanal (hör till EFFECTS, inte KICK)
     inline constexpr auto kickFxAmount    = "kickFxAmount";
+    inline constexpr auto kickComp        = "kickComp";        // kompressor efter drive: 0 = av, ju mer desto tätare kick (släpp = kickens längd, auto-makeup)
 
     // Baslagren: se ParamID::bass (lager, fält) nedan.
 

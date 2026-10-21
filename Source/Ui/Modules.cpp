@@ -478,6 +478,8 @@ KickModule::KickModule (PluginBase& p)
                      { "TOP", { knob (ParamID::kickNoise, "NOISE"), knob (ParamID::kickNoiseDecay, "DECAY"), knob (ParamID::kickNoiseTone, "TONE") },
                      "A noisy top layer on top of the kick: snap and air, with its own decay and high-pass tone." },
                      { "CRUSH", { knob (ParamID::kickCrush, "BITS") } },
+                     { "COMP", { knob (ParamID::kickComp, "AMOUNT") },
+                     "Compressor after drive and crush: a fast attack and a release that follows the kick length, with automatic makeup gain. Tighter, denser kick; 0 = off." },
                      { "FILTER", { knob (ParamID::kickLowCut, "LOW CUT"), knob (ParamID::kickVelPitch, "VEL>PITCH") } } });
 
     sampleLabel.setFont (Theme::font (11.0f));

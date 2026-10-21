@@ -210,6 +210,7 @@ namespace Params
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::kickFxChannel, 1 }, "Kick FX Channel",
                                                             fxChannelChoices(), 0));
         layout.add (percent (ParamID::kickFxAmount, "Kick FX Amount", 1.0f));
+        layout.add (percent (ParamID::kickComp, "Kick Comp", 0.0f)); // sist i gruppen: DAW-ordningen och gamla presets rörs inte
     }
 
     void addInstrumentCommonParams (Layout& layout, int layer, float defaultLevel)
@@ -554,6 +555,7 @@ KickParams ParamRefs::readKick (int keyPitchClass) const
     p.drive         = get (ParamID::kickDrive);
     p.highCutHz     = get (ParamID::kickHighCut);
     p.level         = get (ParamID::kickLevel);
+    p.comp          = get (ParamID::kickComp);
     return p;
 }
 
