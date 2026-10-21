@@ -22,7 +22,7 @@ namespace
         s.parameter = &parameter;
         s.index = index;
         s.defaultValue = parameter.getDefaultValue(); // inte getValue(): en lyssnare kan redan ha flyttat parametern
-        for (const auto candidate : { 0.37f, 0.81f, 0.0f, 1.0f })
+        for (const auto candidate : { 0.37f, 0.81f, 0.0f, 1.0f, 1.0f - s.defaultValue })
         {
             parameter.setValueNotifyingHost (candidate);
             s.setValue = parameter.getValue();
