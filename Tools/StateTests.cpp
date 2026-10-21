@@ -571,3 +571,179 @@ int persistTest()
     std::puts (failed ? "FEL: sparandetestet misslyckades" : "Sparandetestet gick igenom");
     return failed ? 1 : 0;
 }
+
+// `tool fulltest` (E0 punkt 2): "allt på"-round-trip. Fyller varje sorts data, och kontrollerar att projektet (get/setStateInformation) och
+// Full-presetet (buildPresetXml/loadUserPreset) ger tillbaka exakt samma XML. Bara test: ingen ändring i PluginBase.
+int fullStateTest()
+{
+    juce::ScopedJuceInitialiser_GUI gui;
+    Scenarios::TemporaryUserFolders folders;
+    auto failed = false;
+    auto check = [&failed] (bool ok, const juce::String& what) { std::printf ("%s: %s\n", ok ? "ok" : "FEL", what.toRawUTF8()); failed |= ! ok; };
+
+    // KÄNDA LUCKOR (docs/work/E0-report.md, fynd 1 och 2): instrumentnamn, färger och previewNote sparas i projektet men inte i Full-presetet.
+    // De kontrollerna är AVSTÄNGDA (räknas inte som fel) tills Tobias beslutat om presetformatet; sätt till true för att slå på dem.
+    constexpr bool strictKnownPresetGaps = false;
+    auto gap = [&] (bool ok, const juce::String& what)
+    {
+        if (strictKnownPresetGaps)
+            check (ok, what);
+        else
+            std::printf ("%s: [avstängd, känd lucka] %s\n", ok ? "ok (kan slås på)" : "LUCKA", what.toRawUTF8());
+    };
+
+    auto stateXml = [] (PluginBase& p) -> std::unique_ptr<juce::XmlElement>
+    {
+        juce::MemoryBlock state;
+        p.getStateInformation (state);
+        return juce::AudioProcessor::getXmlFromBinary (state.getData(), (int) state.getSize());
+    };
+    // Namnger de barn (i ordning) som skiljer sig, så att ett fel pekar på rätt del.
+    auto describeDiff = [] (const juce::XmlElement& a, const juce::XmlElement& b)
+    {
+        juce::StringArray differing;
+        const auto count = std::max (a.getNumChildElements(), b.getNumChildElements());
+        for (int i = 0; i < count; ++i)
+        {
+            const auto* x = a.getChildElement (i);
+            const auto* y = b.getChildElement (i);
+            if (x == nullptr || y == nullptr || ! x->isEquivalentTo (y, false))
+                differing.add ((x != nullptr ? x->getTagName() + ":" + x->getStringAttribute ("id") : juce::String ("saknas")) + " #" + juce::String (i));
+        }
+        return differing.joinIntoString (", ");
+    };
+
+    const auto tableFile = Scenarios::writeTestWav ("full_table", 21.533, 0.2);
+    const auto kickFile = Scenarios::writeTestWav ("full_kick", 55.0, 0.3);
+    const auto bassFile = Scenarios::writeTestWav ("full_bass", 110.0, 0.3);
+    const std::vector<NodeEnvelope::Point> ramp { { 0.0f, 0.0f, 0.0f }, { 1.0f, 1.0f, 0.0f } };
+
+    auto original = std::make_unique<InstrumentProcessor>(); // (på heapen: processorn är för stor för stacken)
+    {
+        auto& p = *original;
+        using F = InstrumentField;
+
+        // Parametrar på flera instrument.
+        for (int layer = 0; layer < ParamID::numInstrumentLayers; layer += 3)
+        {
+            Scenarios::setInstrument (p, layer, F::cutoff, 700.0f + 100.0f * (float) layer);
+            Scenarios::setInstrument (p, layer, F::filterModel, 3.0f);
+            Scenarios::setInstrument (p, layer, F::filter2On, 1.0f);
+        }
+
+        // Mönster: toner, ackord och en låst raddlängd på flera rader.
+        p.pattern.clearNotes (0);
+        p.pattern.addNote (0, 0, 48, 2).setChord ({ 0, 7, 3 });
+        p.pattern.addNote (0, 96, 24, 5);
+        p.pattern.addNote (4, 48, 24, -3);
+        p.pattern.addNote (Pattern::kickLayer, 0, 96, 0);
+        p.pattern.setManualBars (Pattern::kickLayer, 2);
+        p.pattern.setExtraBars (4, 2);
+
+        // Samplingar: kick och instrument 2, samt egna wavetables på flera lager och oscillatorer.
+        check (p.loadClickSample (kickFile), "kick-sampling laddas");
+        check (p.loadInstrumentSample (1, bassFile), "instrument-sampling laddas på instrument 2");
+        check (p.loadUserTable (0, 0, tableFile) && p.loadUserTable (3, 2, tableFile) && p.loadUserTable (9, 1, tableFile), "egna wavetables laddas (instrument 1, 4 och 10)");
+
+        // Kickens envelopes och sidechainkurvan.
+        p.kickPitchEnv.setPoints ({ { 0.0f, 50.0f, -0.4f }, { 0.08f, 0.0f, 0.0f } });
+        p.kickAmpEnv.setPoints ({ { 0.0f, 0.0f, 0.0f }, { 0.001f, 1.0f, 0.0f }, { 0.2f, 0.0f, 0.0f } });
+        p.sidechainCurve.setPoints ({ { 0.0f, 1.0f, 0.0f }, { 0.3f, 0.4f, -0.5f }, { 1.0f, 0.0f, 0.0f } });
+
+        // LFO 4-10 på, med egna kurvor, parametrar och kopplingar.
+        for (int lfo = 3; lfo < Modulation::maxLfos; ++lfo)
+        {
+            p.setLfoActive (lfo, true);
+            p.lfoCurves[(size_t) lfo].setPoints (ramp);
+        }
+        auto* rate = p.apvts.getParameter (Modulation::paramID (8, "Rate"));
+        rate->setValueNotifyingHost (rate->convertTo0to1 (3.0f));
+        auto target = [&p] (int nth)
+        {
+            const auto& parameters = p.getParameters();
+            for (int i = 0; i < parameters.size(); ++i)
+                if (auto* r = dynamic_cast<juce::RangedAudioParameter*> (parameters[i]); r != nullptr && Modulation::isModulatable (*r) && nth-- == 0)
+                    return i;
+            return -1;
+        };
+        p.modRoutes.add (Modulation::lfoSource (0), target (0), 0.5f);
+        p.modRoutes.add (Modulation::lfoSource (4), target (1), -0.25f);
+        p.modRoutes.add (Modulation::lfoSource (8), target (2), 0.75f);
+
+        // Live Code: text och lås.
+        p.setLiveCodeText ("$: note(\"c2 eb2\").s(\"i1\")\n// åäö");
+        p.liveCodeLocks = (1 << 2) | (1 << 10);
+
+        // Instrumentens namn och färger, och förhandsspelningens ton.
+        for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
+        {
+            p.setLayerName (layer, "NAME" + juce::String (layer + 1));
+            p.setLayerColour (layer, 0xff102030u + (juce::uint32) layer * 0x010101u);
+        }
+        p.previewNote = 67;
+    }
+
+    // 1. Projektet: det sparade tillståndet är identiskt efter spara och ladda.
+    {
+        auto before = stateXml (*original);
+        check (before != nullptr, "tillståndet går att läsa som XML");
+        auto copy = copyOf (*original);
+        auto after = stateXml (*copy);
+        check (before != nullptr && after != nullptr, "kopian har ett tillstånd");
+        if (before != nullptr && after != nullptr)
+            check (before->isEquivalentTo (after.get(), false),
+                   "projekt: sparat -> laddat -> sparat ger samma XML" + (before->isEquivalentTo (after.get(), false) ? juce::String() : " (skiljer: " + describeDiff (*before, *after) + ")"));
+
+        for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
+            check (copy->getLayerName (layer) == original->getLayerName (layer) && copy->getLayerColour (layer) == original->getLayerColour (layer),
+                   "projekt: namn och färg på instrument " + juce::String (layer + 1));
+        check (copy->previewNote.load() == 67, "projekt: previewNote");
+        check (copy->userTable (0, 0) != nullptr && copy->userTable (3, 2) != nullptr && copy->userTable (9, 1) != nullptr && copy->userTable (1, 0) == nullptr, "projekt: egna wavetables på rätt plats");
+        check (copy->getClickSampleName() == original->getClickSampleName() && copy->getInstrumentSampleName (1) == original->getInstrumentSampleName (1)
+                   && ! copy->getClickSampleName().isEmpty() && ! copy->getInstrumentSampleName (1).isEmpty(),
+               "projekt: kick- och instrumentsampling");
+        check (copy->getLiveCodeText() == original->getLiveCodeText() && copy->liveCodeLocks.load() == ((1 << 2) | (1 << 10)), "projekt: Live Code och lås");
+        check (copy->modulator.activeMask.load() == original->modulator.activeMask.load() && copy->lfoRouteCount (8) == 1 && copy->lfoRouteCount (4) == 1, "projekt: aktiva LFO:er och kopplingar");
+        check (copy->pattern.note (0, 0).getChord() == original->pattern.note (0, 0).getChord() && copy->pattern.note (0, 0).getChord() != Pattern::Chord {}
+                   && copy->pattern.lengthBars (Pattern::kickLayer) == 2,
+               "projekt: mönster med ackord och radlängd");
+    }
+
+    // 2. Full-presetet: samma innehåll tillbaka i en ny instans (jämförs som preset-XML, namnet borträknat).
+    {
+        check (original->saveUserPreset (Presets::Section::full, "__full_all__"), "Full-preset sparas");
+        const auto file = original->findUserPreset (Presets::Section::full, "__full_all__");
+        auto other = std::make_unique<InstrumentProcessor>();
+        check (other->loadUserPreset (Presets::Section::full, file), "Full-preset laddas");
+
+        auto sent = original->buildPresetXml (Presets::Section::full, 0);
+        auto got = other->buildPresetXml (Presets::Section::full, 0);
+        check (sent != nullptr && got != nullptr, "preset-XML byggs för båda");
+        if (sent != nullptr && got != nullptr)
+        {
+            sent->removeAttribute ("name");
+            got->removeAttribute ("name");
+            const auto same = sent->isEquivalentTo (got.get(), false);
+            check (same, "Full-preset: sparat -> laddat -> byggt ger samma XML" + (same ? juce::String() : " (skiljer: " + describeDiff (*sent, *got) + ")"));
+            check (sent->getIntAttribute ("version", -1) == got->getIntAttribute ("version", -1), "Full-preset: versionsattributet är detsamma (OBS: version=\"1\" har aldrig höjts, E0 fynd 5)");
+        }
+
+        check (other->userTable (0, 0) != nullptr && other->userTable (3, 2) != nullptr && other->userTable (9, 1) != nullptr, "Full-preset: egna wavetables på rätt plats");
+        check (! other->getClickSampleName().isEmpty() && ! other->getInstrumentSampleName (1).isEmpty(), "Full-preset: kick- och instrumentsampling");
+        check (other->getLiveCodeText() == original->getLiveCodeText() && other->liveCodeLocks.load() == ((1 << 2) | (1 << 10)), "Full-preset: Live Code och lås");
+        check (other->modulator.activeMask.load() == original->modulator.activeMask.load() && other->lfoRouteCount (8) == 1, "Full-preset: aktiva LFO:er och kopplingar");
+        check (other->pattern.note (0, 0).getChord() == original->pattern.note (0, 0).getChord() && other->pattern.note (0, 0).getChord() != Pattern::Chord {}
+                   && other->pattern.lengthBars (Pattern::kickLayer) == 2,
+               "Full-preset: mönster med ackord och radlängd");
+
+        // AVSTÄNGDA: sparas i projektet men inte i Full-presetet (E0 fynd 1 och 2). Beslut väntar på Tobias.
+        auto namesAndColours = true;
+        for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
+            namesAndColours = namesAndColours && other->getLayerName (layer) == original->getLayerName (layer) && other->getLayerColour (layer) == original->getLayerColour (layer);
+        gap (namesAndColours, "Full-preset: instrumentnamn och färger (E0 fynd 1)");
+        gap (other->previewNote.load() == 67, "Full-preset: previewNote (E0 fynd 2)");
+    }
+
+    std::puts (failed ? "FEL: allt-på-testet misslyckades" : "Allt-på-testet gick igenom (kända luckor är avstängda, se raderna med LUCKA)");
+    return failed ? 1 : 0;
+}
