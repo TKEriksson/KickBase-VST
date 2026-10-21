@@ -29,9 +29,9 @@ LiveCodePage::LiveCodePage (PluginBase& processor) : processor (processor), tool
     errorLog.setReadOnly (true);
     errorLog.setFont (juce::Font (juce::FontOptions (juce::Font::getDefaultMonospacedFontName(), 13.0f, juce::Font::plain)));
     errorLog.setColour (juce::TextEditor::backgroundColourId, Theme::panel);
-    errorLog.setColour (juce::TextEditor::textColourId, juce::Colour (0xffff9a9a));
+    errorLog.setColour (juce::TextEditor::textColourId, Theme::text);
     errorLog.setColour (juce::TextEditor::outlineColourId, Theme::panelBorder);
-    errorLog.setText ("Inga fel än.", false);
+    errorLog.setText ("Konsolen är tom: fel och console.log från koden visas här.", false);
     addChildComponent (errorLog);
 
     codeTab.setClickingTogglesState (false);
@@ -126,7 +126,7 @@ void LiveCodePage::resized()
     auto tabs = area.removeFromTop (24);
     codeTab.setBounds (tabs.removeFromLeft (70));
     tabs.removeFromLeft (4);
-    errorTab.setBounds (tabs.removeFromLeft (90));
+    errorTab.setBounds (tabs.removeFromLeft (110));
     area.removeFromTop (4);
 
     auto bottom = area.removeFromBottom (20);
@@ -384,8 +384,9 @@ void LiveCodePage::runNow()
     params["meter.solo"] = processor.soloMask.load();
     for (size_t i = 0; i < processor.duckReduction.size(); ++i)
         params["meter.duck" + juce::String ((int) i + 1)] = processor.duckReduction[i].load();
-    runner.run (document.getAllContent(), cycles, [this] (const juce::var& list, const juce::String& error, const juce::var& mods, const juce::var& writes)
+    runner.run (document.getAllContent(), cycles, [this] (const juce::var& list, const juce::String& error, const juce::var& mods, const juce::var& writes, const juce::StringArray& console)
     {
+        showConsole (console);
         if (error.isNotEmpty())
             return showError (error);
 
@@ -444,6 +445,13 @@ void LiveCodePage::applyParamWrites (const juce::var& writes)
         return;
     const auto locks = processor.liveCodeParamLocks();
     auto values = juce::var (new juce::DynamicObject());
+    const auto now = juce::Time::getMillisecondCounterHiRes();
+    if (now - paramWindowStart >= 1000.0)
+    {
+        paramWindowStart = now;
+        paramWindowCount = 0;
+    }
+    auto capped = false;
     for (auto& w : *list)
     {
         if (w.hasProperty ("lock"))
@@ -459,9 +467,17 @@ void LiveCodePage::applyParamWrites (const juce::var& writes)
             continue;
         if (const auto it = lastParamWrites.find (id); it != lastParamWrites.end() && it->second == text)
             continue;
+        if (paramWindowCount >= maxParamWritesPerSecond)
+        {
+            capped = true; // lastParamWrites rörs inte, så värdet skrivs vid nästa körning
+            continue;
+        }
+        ++paramWindowCount;
         lastParamWrites[id] = text;
         values.getDynamicObject()->setProperty (juce::Identifier (id), w["value"]);
     }
+    if (capped)
+        showError ("Too many .set() writes per second (max " + juce::String (maxParamWritesPerSecond) + "); the rest are written on the next run.");
     if (values.getDynamicObject()->getProperties().size() == 0)
         return;
     auto args = juce::var (new juce::DynamicObject());
@@ -469,7 +485,7 @@ void LiveCodePage::applyParamWrites (const juce::var& writes)
     const auto result = tools.call ("set_parameters", args);
     if (! (bool) result["ok"])
         showError (result["error"].toString());
-    else if (auto* problems = result["problems"].getArray(); problems != nullptr && ! problems->isEmpty())
+    else if (auto* problems = result["data"]["problems"].getArray(); problems != nullptr && ! problems->isEmpty())
         showError ((*problems)[0].toString());
 }
 
@@ -565,7 +581,7 @@ void LiveCodePage::create()
                 auto a = juce::var (new juce::DynamicObject());
                 a.getDynamicObject()->setProperty ("code", document.getAllContent());
                 a.getDynamicObject()->setProperty ("cycles", cycles);
-                a.getDynamicObject()->setProperty ("overwrite", true);
+                a.getDynamicObject()->setProperty ("overwrite", ow);
                 const auto r = tools.call ("live_code_create", a);
                 if (! (bool) r["ok"])
                     return showError (r["error"].toString());
@@ -600,12 +616,21 @@ void LiveCodePage::finishCreate (const juce::var& result)
     const auto data = result["data"];
     const auto written = rowNames (data["layers"]);
     const auto skipped = rowNames (data["skipped_locked"]);
+    juce::StringArray problems;
+    if (auto* list = data["problems"].getArray())
+        for (const auto& problem : *list)
+            problems.add (problem.toString());
     auto message = juce::String ("The code ran.\n\n");
     message << (written.isEmpty() ? juce::String ("No rows were written.") : "Written: " + written.joinIntoString (", ") + ".");
     if (! skipped.isEmpty())
         message << "\n\nCould not run (locked, skipped): " + skipped.joinIntoString (", ") + ".";
+    if (! problems.isEmpty())
+    {
+        message << "\n\nSome actions were skipped:\n" << problems.joinIntoString ("\n");
+        showError (problems.joinIntoString ("\n"));
+    }
     juce::AlertWindow::showAsync (juce::MessageBoxOptions()
-                                      .withIconType (skipped.isEmpty() ? juce::MessageBoxIconType::InfoIcon : juce::MessageBoxIconType::WarningIcon)
+                                      .withIconType (skipped.isEmpty() && problems.isEmpty() ? juce::MessageBoxIconType::InfoIcon : juce::MessageBoxIconType::WarningIcon)
                                       .withTitle ("Live Code")
                                       .withMessage (message)
                                       .withButton ("OK"),
@@ -618,10 +643,37 @@ void LiveCodePage::showError (const juce::String& text)
     if (text.isNotEmpty())
     {
         ++errorCount;
-        errorLog.setText (juce::Time::getCurrentTime().toString (false, true) + "  " + text + "\n\n" + (errorCount > 1 ? errorLog.getText() : juce::String()), false);
-        errorLog.moveCaretToTop (false);
-        errorTab.setButtonText ("FEL (" + juce::String (errorCount) + ")");
+        auto lines = juce::StringArray::fromLines (text);
+        lines.set (0, "FEL  " + lines[0]);
+        appendLog (lines);
+        errorTab.setButtonText ("KONSOL (" + juce::String (errorCount) + ")");
         if (onError)
             onError (text);
     }
+}
+
+// G2: konsolen visar fel och console.log, senaste överst, högst maxLogLines rader. newLines läses uppifrån och ned.
+void LiveCodePage::appendLog (const juce::StringArray& newLines)
+{
+    juce::StringArray all;
+    const auto stamp = juce::Time::getCurrentTime().toString (false, true) + "  ";
+    for (int i = 0; i < newLines.size(); ++i)
+        all.add (i == 0 ? stamp + newLines[i] : "    " + newLines[i]);
+    if (logLines > 0)
+        all.addArray (juce::StringArray::fromLines (errorLog.getText()));
+    if (all.size() > maxLogLines)
+        all.removeRange (maxLogLines, all.size() - maxLogLines);
+    logLines = all.size();
+    errorLog.setText (all.joinIntoString ("\n"), false);
+    errorLog.moveCaretToTop (false);
+}
+
+void LiveCodePage::showConsole (const juce::StringArray& console)
+{
+    if (console.isEmpty())
+        return;
+    auto lines = console;
+    for (int i = 0; i < lines.size(); ++i)
+        lines.set (i, lines[i].replaceFirstOccurrenceOf ("log: ", "").replaceFirstOccurrenceOf ("warn: ", "VARNING  ").replaceFirstOccurrenceOf ("error: ", "FEL  "));
+    appendLog (lines);
 }

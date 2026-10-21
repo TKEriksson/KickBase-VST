@@ -110,6 +110,8 @@ namespace
                         toolNames[block["id"].toString()] = block["name"].toString();
                         auto call = object();
                         put (call, "name", block["name"]);
+                        if (! block["id"].toString().startsWith ("gemini-")) // Geminis eget anrops-id skickas tillbaka oförändrat
+                            put (call, "id", block["id"]);
                         put (call, "args", block["input"].isObject() ? block["input"] : object());
                         auto part = object();
                         put (part, "functionCall", call);
@@ -123,6 +125,8 @@ namespace
                         put (response, (bool) block["is_error"] ? "error" : "output", resultText (block["content"], images));
                         auto result = object();
                         put (result, "name", toolNames[block["tool_use_id"].toString()]);
+                        if (! block["tool_use_id"].toString().startsWith ("gemini-"))
+                            put (result, "id", block["tool_use_id"]);
                         put (result, "response", response);
                         auto part = object();
                         put (part, "functionResponse", result);
@@ -364,7 +368,8 @@ namespace GeminiApi
                         }
                     auto block = object();
                     put (block, "type", "tool_use");
-                    put (block, "id", "gemini-" + juce::Uuid().toString());
+                    const auto callId = part["functionCall"]["id"].toString(); // Gemini 3 ger varje anrop ett id som svaret ska ange
+                    put (block, "id", callId.isNotEmpty() ? callId : "gemini-" + juce::Uuid().toString());
                     put (block, "name", name);
                     put (block, "input", input);
                     if (part.hasProperty ("thoughtSignature"))

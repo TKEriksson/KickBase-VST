@@ -33,6 +33,8 @@ private:
     void create();
     void finishCreate (const juce::var& result);
     void showError (const juce::String& text);
+    void showConsole (const juce::StringArray& console); // G2: console.log från körningen
+    void appendLog (const juce::StringArray& newLines);
     bool apply (const juce::var& items, bool overwrite, const juce::var& mods); // skriver raderna; frågar först om handritade toner skulle skrivas över
     void applyParamWrites (const juce::var& writes);      // F1: .set på parametrar
     void applyEffectWrite (const juce::var& write);       // F3: effektplats (typ eller ratt)
@@ -70,12 +72,16 @@ private:
     std::vector<SliderSpec> sliderSpecs;
     juce::String sliderText;                               // texten specarna är hämtade ur
     std::vector<std::unique_ptr<juce::Slider>> sliderViews; // ett per giltigt slider()-anrop (index = ordningsnummer)
+    double paramWindowStart = 0.0; // tak på .set: högst maxParamWritesPerSecond skrivningar per sekund (en slider som dras kör koden hela tiden)
+    int paramWindowCount = 0;
+    static constexpr int maxParamWritesPerSecond = 30;
     std::map<juce::String, juce::String> lastParamWrites;  // F1: senast skrivna värdetext per parameter (bara ändringar skrivs)
     std::map<int, double> sliderValues;                    // dragna värden (ordningsnummer -> värde) tills de skrivits in i texten
     bool ownEdit = false;                                  // reglaget skriver själv i texten: ingen ny kodändringsloop
-    juce::TextEditor errorLog; // fliken FEL: hela meddelandet, senaste överst
-    int errorCount = 0;
-    juce::TextButton codeTab { "KOD" }, errorTab { "FEL" };
+    juce::TextEditor errorLog; // fliken KONSOL: fel och console.log, senaste överst
+    int errorCount = 0, logLines = 0;
+    static constexpr int maxLogLines = 500;
+    juce::TextButton codeTab { "KOD" }, errorTab { "KONSOL" };
     juce::TextButton playButton { "LIVE" }, stopButton { "STOP" }, createButton { "CREATE" }, codeOnlyButton { "CODE ONLY" }; // LIVE är av/på
     juce::Label lockLabel; // LÅS: 1-10 = instrument, K = kicken; en låst rad rör Live Code aldrig
     std::array<juce::TextButton, 11> lockButtons;

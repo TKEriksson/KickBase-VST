@@ -206,8 +206,12 @@ std::vector<ToolLayer::ToolInfo> ToolLayer::tools()
           R"({"type":"object","properties":{"pitch":{"type":"array","items":{"type":"array","items":{"type":"number"}}},"amp":{"type":"array","items":{"type":"array","items":{"type":"number"}}}}})" },
         { "set_pattern", "Writes notes. layer 0-9 = instrument 1-10 (only the first instrumentCount play, see set_instruments), or 'kick'. For an instrument give 'bars' (one text per bar; the row becomes as many bars as you give, so give every distinct bar you need, and use repeat_to to repeat them further) in the pattern language, with a 'grid' such as '1/16', '1/8 T', '1/32'. Step words separated by spaces: '.' rest, g/m/x/X = velocity ghost/soft/normal/accent, then optional pitch (+7, -5), '~' glide note, ':50' length in percent of the step. A GLIDE note (flag '~' / slide:true) works like an FL Studio slide note: it does not play a new note, it glides the note that is sounding to its pitch during its own length and the pitch stays there until that note ends. Example 1/16 rolling bass: [\". m x x . m x x . m x x . m x x\"]. Or give 'notes': [{\"tick\":0,\"length\":24,\"pitch\":0,\"velocity\":0.8,\"slide\":false}] (96 ticks per quarter note, 384 per bar). CHORDS: add \"chord\":[3,7] to a note (up to 3 extra notes, semitones from the note, -24 to +24); the instrument plays them only when its Voices parameter is 2 or more (at most Voices - 1 extra notes), and get_state shows them as a sixth element of the note array. For 'kick' give 'bars' of 16 characters 'x' or '.', e.g. [\"x...x...x...x...\"]. ROW LENGTH: a row is as long as its notes (length 'auto', the default: the last bar that has a note, at least 1 bar; get_state shows bars, length_mode, content_bars). length:\"auto\" or length:N (1-1024) locks the row to N bars (for example 3 bars of notes and a bar of silence); shortening below the notes needs trim:true, otherwise you get an error saying how many notes would go. repeat_to:N repeats the row's content until it is N bars. In a locked row, writing a note beyond the end returns the error 'row is locked to N bars'. The pattern is as long as the longest row. The old patternBars and rowBars parameters are not used any more.",
           R"({"type":"object","properties":{"layer":{},"bars":{"type":"array","items":{"type":"string"}},"grid":{"type":"string"},"gate":{"type":"number"},"notes":{"type":"array","items":{"type":"object"}},"clear":{"type":"boolean"},"length":{},"trim":{"type":"boolean"},"repeat_to":{"type":"integer"}},"required":["layer"]})" },
-        { "live_code_create", "Runs Strudel code (Strudel mini-notation and patterns, https://strudel.cc) and writes the result into the piano roll rows: 1 Strudel cycle = 1 bar. s('bd') or s('kick') = the kick row (16 steps per bar); s('i1')..s('i10') = instrument 1-10; note(...) or n(...) without s = instrument 1. Pitch: note names (c2 = pitch 0, the lowest bass note) or numbers (semitones from C2). gain = velocity (default 0.8). Several notes on the same tick (e.g. note('c2,e2,g2')) become stacked notes (max 4 per tick, same pitch skipped). Example: note('c2 [e2 g2]*2').s('i1'). Rows not mentioned are left as they are. Runs in a sandbox with a 500 ms limit. Several patterns: write each as a labelled block, e.g. \"$: note(...).s('i1')\" and \"$: s('bd*4')\" on separate lines; 'const x = ...' lines before them are allowed. PROTECTION: a row that has notes Live Code did not write itself (drawn by hand, imported, or from another tool) is not overwritten silently: the call fails, changes nothing and names the rows. Give overwrite:true to replace them, or protect rows with live_code_lock (locked rows are skipped and listed in skipped_locked). SLIDERS: slider(value,min,max) with plain numbers, e.g. note(slider(3,0,12)), returns value here; in the LIVE CODE tab it also shows a slider after the line, so a human can drag it while LIVE plays. MODULATION: .lfo(paramId,hz,depth,shape?) adds a free-running LFO to a modulated parameter, e.g. note('c2').lfo('bass1Cutoff',2,0.5,'tri').s('i1'); shape is sine (default), tri, saw, isaw, square or rand. .env(paramId,attackMs,decayMs,depth?) adds an attack/decay envelope triggered by new notes on that instrument, e.g. note('c2').env('bass1Cutoff',10,200,0.5).s('i1'); it is AD, not ADSR, and is not supported on the kick. Parameter ids must be modulatable sound controls from list_parameters. Unsupported modulation is skipped and returned in data.problems; note rows can still be written. CODE 1-8 are internal sources and are not saved in projects or presets.",
+        { "live_code_create", "Runs Strudel code (Strudel mini-notation and patterns, https://strudel.cc) and writes the result into the piano roll rows: 1 Strudel cycle = 1 bar. s('bd') or s('kick') = the kick row (16 steps per bar); s('i1')..s('i10') = instrument 1-10; note(...) or n(...) without s = instrument 1. Pitch: note names (c2 = pitch 0, the lowest bass note) or numbers (semitones from C2). gain = velocity (default 0.8). Several notes on the same tick (e.g. note('c2,e2,g2')) become stacked notes (max 4 per tick, same pitch skipped). Example: note('c2 [e2 g2]*2').s('i1'). Rows not mentioned are left as they are. Runs in a sandbox with a 500 ms limit. Several patterns: write each as a labelled block, e.g. \"$: note(...).s('i1')\" and \"$: s('bd*4')\" on separate lines; 'const x = ...' lines before them are allowed. PROTECTION: a row that has notes Live Code did not write itself (drawn by hand, imported, or from another tool) is not overwritten silently: the call fails, changes nothing and names the rows. Give overwrite:true to replace them, or protect rows with live_code_lock (locked rows are skipped and listed in skipped_locked). PARAMETERS: instr1.Cutoff.set(1300) writes bass1Cutoff once; put it on its own line before the pattern (names are case-sensitive; .get() before .set only; locked rows skipped, problems in data.problems). .gain() is note velocity, not mixer gain. SLIDERS: slider(value,min,max) with plain numbers, e.g. note(slider(3,0,12)), returns value here; in the LIVE CODE tab it also shows a slider after the line, so a human can drag it while LIVE plays. MODULATION: .lfo(paramId,hz,depth,shape?) adds a free-running LFO to a modulated parameter, e.g. note('c2').lfo('bass1Cutoff',2,0.5,'tri').s('i1'); shape is sine (default), tri, saw, isaw, square or rand. .env(paramId,attackMs,decayMs,depth?) adds an attack/decay envelope triggered by new notes on that instrument, e.g. note('c2').env('bass1Cutoff',10,200,0.5).s('i1'); it is AD, not ADSR, and is not supported on the kick. Parameter ids must be modulatable sound controls from list_parameters. Unsupported modulation is skipped and returned in data.problems; note rows can still be written. CODE 1-8 are internal sources and are not saved in projects or presets.",
           R"({"type":"object","properties":{"code":{"type":"string"},"cycles":{"type":"integer","minimum":1,"maximum":64,"description":"how many bars to write, default 4"},"overwrite":{"type":"boolean","description":"replace rows with notes Live Code did not write"}},"required":["code"]})" },
+        { "live_code_run", "Like live_code_create, and also puts the code in the LIVE CODE tab's editor so the person sees what is playing. Same arguments, protection and answer as live_code_create.",
+          R"({"type":"object","properties":{"code":{"type":"string"},"cycles":{"type":"integer","minimum":1,"maximum":64},"overwrite":{"type":"boolean"}},"required":["code"]})" },
+        { "live_code_stop", "Stops Live Code: empties the rows Live Code wrote itself (not hand-drawn rows, not locked rows) and gives them back to the person. Returns the cleared layers.",
+          R"({"type":"object","properties":{}})" },
         { "live_code_lock", "Protects a row against Live Code (live_code_create and the LIVE CODE tab skip it) or removes the protection. layer 0-9 = instrument 1-10, or 'kick'; locked true (default) or false. The lock is not saved with the sound yet.",
           R"({"type":"object","properties":{"layer":{},"locked":{"type":"boolean"}},"required":["layer"]})" },
         { "set_gate", "Sets a bass layer's GATE: a separate on/off rhythm that chops the layer's sound, with its own grid, independent of the notes. layer 0-9; on (true/false), grid ('1/16' ...), depth 0..1 (1 = fully closed in the off steps), smooth_ms (edge softness), and the steps as 'bars' (one text per bar, repeated over four bars): 'x' = open, '.' = closed, e.g. [\"x.x.x.x.x.x.x.x.\"] on a 1/16 grid. all:'open' or 'closed' fills every step.",
@@ -353,6 +357,8 @@ var ToolLayer::call (const juce::String& tool, const var& args)
     if (tool == "set_gate")            return setGate (args);
     if (tool == "live_code_create")    return liveCodeCreate (args);
     if (tool == "live_code_apply")     return applyLiveCode (args["items"], (bool) args["overwrite"], args["mods"]); // internt: fliken LIVE CODE (listan kommer från LiveCodeRunner)
+    if (tool == "live_code_run")       return liveCodeRun (args);
+    if (tool == "live_code_stop")      return liveCodeStop();
     if (tool == "live_code_lock")      return liveCodeLock (args);
     if (tool == "set_modulation")      return setModulation (args);
     if (tool == "load_preset")         return loadPreset (args);
@@ -719,7 +725,11 @@ var ToolLayer::setParameters (const var& args)
         auto* parameter = findParameter (processor, id);
         if (parameter == nullptr)
         {
-            problems.add ("Unknown parameter: " + id + " (use list_parameters)");
+            juce::String hint;
+            for (auto* other : processor.getParameters())
+                if (auto* candidate = dynamic_cast<juce::RangedAudioParameter*> (other); candidate != nullptr && candidate->getParameterID().equalsIgnoreCase (id))
+                    hint = " Did you mean " + candidate->getParameterID() + "? (names are case-sensitive)";
+            problems.add ("Unknown parameter: " + id + "." + hint + (hint.isEmpty() ? " (use list_parameters)" : ""));
             continue;
         }
         juce::String problem;
@@ -987,13 +997,47 @@ var ToolLayer::liveCodeCreate (const var& args)
     const int cycles = juce::jlimit (1, 64, args.hasProperty ("cycles") ? (int) args["cycles"] : 4);
 
     LiveCode live;
+    live.setParams (liveCodeParameters());
     juce::Result res = juce::Result::ok();
     auto list = live.create (code, cycles, res);
     if (res.failed()) return fail ("Strudel: " + res.getErrorMessage());
 
+    const auto writes = live.takeParamWrites();
     auto r = applyLiveCode (list, (bool) args["overwrite"], live.getMods());
     if (! (bool) r["ok"]) return r;
     auto data = r["data"];
+
+    auto values = object();
+    juce::Array<var> lockedProblems;
+    const auto locks = processor.liveCodeLocks.load();
+    if (auto* writeList = writes.getArray())
+        for (auto& write : *writeList)
+        {
+            const auto id = write["id"].toString();
+            if (const auto layer = liveCodeLayerOf (id); layer >= 0 && (locks & liveCodeBit (layer)) != 0)
+                lockedProblems.add (id + ": row is locked, not written");
+            else
+                values.getDynamicObject()->setProperty (juce::Identifier (id), write["value"]);
+        }
+
+    var setData;
+    if (! values.getDynamicObject()->getProperties().isEmpty())
+    {
+        auto setArgs = object();
+        put (setArgs, "values", values);
+        setData = setParameters (setArgs)["data"];
+        put (data, "parameters", setData["applied"]);
+    }
+
+    juce::Array<var> problems;
+    if (auto* existing = data["problems"].getArray())
+        problems.addArray (*existing);
+    problems.addArray (lockedProblems);
+    if (auto* rejected = setData["problems"].getArray())
+        problems.addArray (*rejected);
+    if (! problems.isEmpty())
+        put (data, "problems", problems);
+
     put (data, "cycles", cycles);
     return ok (data);
 }
@@ -1133,6 +1177,32 @@ var ToolLayer::applyLiveCode (const var& items, bool overwrite, const var& mods)
     put (data, "skipped_locked", skipped);
     if (! problems.isEmpty())
         put (data, "problems", problems);
+    return ok (data);
+}
+
+var ToolLayer::liveCodeRun (const var& args)
+{
+    auto r = liveCodeCreate (args);
+    if ((bool) r["ok"]) processor.setLiveCodeText (args["code"].toString());
+    return r;
+}
+
+var ToolLayer::liveCodeStop()
+{
+    const auto locks = processor.liveCodeLocks.load();
+    auto owned = processor.liveCodeOwned.load();
+    var cleared (juce::Array<var>{});
+    for (int layer = 0; layer <= Pattern::numLayers; ++layer)
+    {
+        const auto bit = liveCodeBit (layer);
+        if ((owned & bit) == 0 || (locks & bit) != 0) continue;
+        processor.pattern.clearNotes (layer);
+        owned &= ~bit;
+        if (layer == Pattern::numLayers) cleared.append ("kick"); else cleared.append (layer);
+    }
+    processor.liveCodeOwned = owned;
+    auto data = object();
+    put (data, "cleared", cleared);
     return ok (data);
 }
 

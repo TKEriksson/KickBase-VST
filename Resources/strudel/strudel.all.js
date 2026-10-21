@@ -1,5 +1,5 @@
 /* Contains Strudel (@strudel/core, @strudel/mini), Copyright (C) Strudel contributors, AGPL-3.0-or-later, https://codeberg.org/uzu/strudel */
-var console = { log(){}, warn(){}, error(){}, debug(){}, info(){} };
+var console = (function () { var out = function (level) { return function () { var s = []; for (var i = 0; i < arguments.length; i++) { try { s.push(typeof arguments[i] === "string" ? arguments[i] : JSON.stringify(arguments[i])); } catch (e) { s.push(String(arguments[i])); } } host.log(level, s.join(" ")); }; }; return { log: out("log"), info: out("log"), warn: out("warn"), error: out("error"), debug: function () {} }; })();
 // Webbläsar-globaler som Strudel/kabelsalat rör vid inläsning. Stubbade, inget körs på riktigt.
 var performance = { now: function () { return Date.now(); } };
 var setTimeout = function () { return 0; }, clearTimeout = function () {}, setInterval = setTimeout, clearInterval = clearTimeout;
@@ -9262,7 +9262,9 @@ globalThis.setPattern = function (code) {
       body = sp.pre + '\nreturn stack(' + sp.blocks.map(function (b) { return '(' + b + ')'; }).join(',') + ');';
     } else {
       var parts = code.replace(/\s+$/, '').split(/\n\s*\n/);
-      var last = parts.pop().replace(/;\s*$/, '');
+      var lines = parts.pop().split('\n'), setRe = /^\s*[A-Za-z_]\w*\.[A-Za-z_]\w*\.set\(.*\)\s*;?\s*$/;
+      while (lines.length > 1 && setRe.test(lines[0])) parts.push(lines.shift().replace(/;?\s*$/, ';')); // instrN.Param.set(..) rakt före mönstret är ett eget påstående
+      var last = lines.join('\n').replace(/;\s*$/, '');
       body = parts.join('\n\n') + '\nreturn (' + last + ');';
     }
     current = (new Function(body))();

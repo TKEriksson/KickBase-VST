@@ -11,8 +11,15 @@ namespace
     // värdekartan (begränsad till min..max), annars startvärdet. host.get(id) är reserverad för reglage utan omkörning.
     struct HostObject : juce::DynamicObject
     {
-        HostObject (const std::map<int, double>& values, const std::map<juce::String, double>& params, juce::Array<juce::var>& writes)
+        HostObject (const std::map<int, double>& values, const std::map<juce::String, double>& params, juce::Array<juce::var>& writes, juce::StringArray& console)
         {
+            // log(level, text): console.* i koden; hamnar i konsolen i Live Code-sidan (aldrig skrivet från ljudtråden)
+            setMethod ("log", [&console] (const juce::var::NativeFunctionArgs& a) -> juce::var
+            {
+                if (a.numArguments >= 2 && console.size() < LiveCode::maxConsoleLines)
+                    console.add (a.arguments[0].toString() + ": " + a.arguments[1].toString());
+                return {};
+            });
             // paramSet(id, v): bara noteras här; själva skrivningen görs på message thread efter körningen. paramGet(id): värdet från före körningen.
             setMethod ("paramSet", [&writes] (const juce::var::NativeFunctionArgs& a) -> juce::var
             {
@@ -80,7 +87,7 @@ namespace
 LiveCode::LiveCode()
 {
     engine.maximumExecutionTime = juce::RelativeTime::milliseconds (500);
-    engine.registerNativeObject ("host", new HostObject (sliderValues, paramValues, paramWrites));
+    engine.registerNativeObject ("host", new HostObject (sliderValues, paramValues, paramWrites, consoleLines));
 }
 
 void LiveCode::setSliderValues (std::map<int, double> values) { sliderValues = std::move (values); }
@@ -90,6 +97,13 @@ juce::var LiveCode::takeParamWrites()
 {
     juce::var out (paramWrites);
     paramWrites.clear();
+    return out;
+}
+
+juce::StringArray LiveCode::takeConsole()
+{
+    auto out = consoleLines;
+    consoleLines.clear();
     return out;
 }
 

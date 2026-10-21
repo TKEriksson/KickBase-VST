@@ -10,7 +10,7 @@ class LiveCodeRunner
 {
 public:
     // list = set_pattern-argument, mods = .lfo/.env, writes = {id, value} från .set; error är tomt om körningen lyckades.
-    using Done = std::function<void (const juce::var& list, const juce::String& error, const juce::var& mods, const juce::var& writes)>;
+    using Done = std::function<void (const juce::var& list, const juce::String& error, const juce::var& mods, const juce::var& writes, const juce::StringArray& console)>;
 
     ~LiveCodeRunner() { generation.fetch_add (1); pool.removeAllJobs (true, 2000); }
 
@@ -28,9 +28,10 @@ public:
             auto list = live.create (code, cycles, res);
             const auto mods = live.getMods();
             auto writes = live.takeParamWrites();
-            juce::MessageManager::callAsync ([this, gen, list, res, mods, writes, done]
+            auto console = live.takeConsole();
+            juce::MessageManager::callAsync ([this, gen, list, res, mods, writes, console, done]
             {
-                if (gen == generation.load()) done (list, res.failed() ? res.getErrorMessage() : juce::String(), mods, writes);
+                if (gen == generation.load()) done (list, res.failed() ? res.getErrorMessage() : juce::String(), mods, writes, console);
             });
         });
     }

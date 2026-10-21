@@ -24,6 +24,10 @@ public:
     void setEffects (juce::var catalog) { effectCatalog = std::move (catalog); }
     juce::var takeParamWrites(); // lista med {id, value}, i den ordning koden skrev dem (senaste värdet per id vinner)
 
+    // console.log/warn/error i koden (glue/prelude routar till host.log): en rad per anrop, högst maxConsoleLines per körning.
+    juce::StringArray takeConsole();
+    static constexpr int maxConsoleLines = 200;
+
     // Läser in och utvärderar koden. Ger fel som text (syntax, oändlig loop efter 500 ms).
     juce::Result setCode (const juce::String& code);
 
@@ -55,6 +59,7 @@ private:
     std::map<juce::String, double> paramValues;
     juce::Array<juce::var> paramWrites;
     juce::var effectCatalog;
+    juce::StringArray consoleLines;
     std::map<int, double> sliderValues; // före engine: reglagens svar läser den
     juce::JavascriptEngine engine;
     bool loaded = false;

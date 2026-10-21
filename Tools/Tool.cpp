@@ -14,6 +14,7 @@
 //   KickbaseTool fitbeat  <ljudfil> <start> <slut> [rolling|galloping|triplet|offbeat]
 //   KickbaseTool comparebeat <ljudfil> <start> <slut> <mönster> <rendering.wav>
 
+#include <set>
 #include "../Source/Core/MixAnalysis.h"
 #include "../Source/Ui/LogoPainter.h"
 #include "../Source/Ui/InstrumentMenu.h"
@@ -285,6 +286,54 @@ namespace
         check (pattern.note (0, 0).on.load() && pattern.note (0, 0).pitch.load() == 0, "c2 är pitch 0 på tick 0");
         check (pattern.note (0, ticks / 2).on.load() && pattern.note (0, ticks / 2).pitch.load() == 4, "e2 = pitch 4 vid halva takten");
 
+        auto* cutoff = dynamic_cast<juce::RangedAudioParameter*> (processor.apvts.getParameter ("bass1Cutoff"));
+        const auto oldCutoff = cutoff != nullptr ? cutoff->convertFrom0to1 (cutoff->getValue()) : 0.0f;
+        r = run ("instr1.Cutoff.set(1300);\n\nnote(\"c2\").s(\"i1\")");
+        check ((bool) r["ok"] && cutoff != nullptr && std::abs (cutoff->convertFrom0to1 (cutoff->getValue()) - 1300.0f) < 1.0f,
+               "CREATE applicerar instr1.Cutoff.set() på den riktiga bass1Cutoff-parametern");
+        r = run ("instr1.Cutoff.set(1500);" + juce::String ("\n") + "note(\"c2\").s(\"i1\")");
+        check ((bool) r["ok"] && cutoff != nullptr && std::abs (cutoff->convertFrom0to1 (cutoff->getValue()) - 1500.0f) < 1.0f,
+               ".set() direkt före mönstret utan blankrad fungerar");
+        auto cutoffNow = [&] { return cutoff != nullptr ? cutoff->convertFrom0to1 (cutoff->getValue()) : 0.0f; };
+        r = run ("instr1.Cutoff.set(900);\n\nconst x = instr1.Cutoff.get();\n\nnote(\"c2\").s(\"i1\")");
+        check (! (bool) r["ok"] && r["error"].toString().contains ("efter skrivning"), ".get() efter .set i samma körning ger fel");
+        r = run ("instr1.Cutoff.set(1300);\n\nnote(\"c2\").s(\"i1\")");
+        r = run ("instr1.cutoff.set(500);\n\nnote(\"c2\").s(\"i1\")");
+        check (! (bool) r["ok"] || std::abs (cutoffNow() - 1300.0f) < 1.0f, "okänt (fel skiftläge) namn ändrar ingen parameter");
+        {
+            auto bad = juce::var (new juce::DynamicObject());
+            bad.getDynamicObject()->setProperty ("bass1cutoff", 500);
+            auto args = juce::var (new juce::DynamicObject());
+            args.getDynamicObject()->setProperty ("values", bad);
+            ToolLayer tools (processor);
+            const auto problems = tools.call ("set_parameters", args)["data"]["problems"];
+            check (problems.size() == 1 && problems[0].toString().contains ("Did you mean bass1Cutoff"), "set_parameters föreslår rätt skiftläge");
+        }
+        processor.liveCodeLocks = ToolLayer::liveCodeBit (0);
+        r = run ("instr1.Cutoff.set(400);\n\nnote(\"c2\").s(\"i2\")");
+        check (std::abs (cutoffNow() - 1300.0f) < 1.0f, "låst instrument: .set hoppas över");
+        check (r["data"]["problems"].size() >= 1, "låst instrument: hoppet rapporteras i problems");
+        processor.liveCodeLocks = 0;
+        {
+            std::set<juce::String> seen;
+            auto unique = true;
+            for (auto& [id, value] : ToolLayer (processor).liveCodeParameters())
+            {
+                juce::ignoreUnused (value);
+                const auto cut = id.indexOfAnyOf ("ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+                if (cut < 1 || ! juce::CharacterFunctions::isLowerCase (id[0]))
+                    continue;
+                auto group = id.substring (0, cut);
+                if (group.startsWith ("bass") && group.substring (4).containsOnly ("0123456789") && group.length() > 4)
+                    group = "instr" + group.substring (4);
+                if (! seen.insert (group + "." + id.substring (cut)).second || group.isEmpty())
+                    unique = false;
+            }
+            check (unique && ! seen.empty(), "parameter-id:n ger unika träd-namn");
+        }
+        if (cutoff != nullptr)
+            Presets::setParameter (*cutoff, cutoff->convertTo0to1 (oldCutoff));
+
         r = run ("s(\"bd*4\")");
         check ((bool) r["ok"], "kick-kod går igenom");
         check (pattern.note (Pattern::kickLayer, 0).on.load() && pattern.note (Pattern::kickLayer, ticks / 4).on.load()
@@ -448,12 +497,34 @@ namespace
             tools.call ("live_code_lock", make ({ { "layer", 0 }, { "locked", false } }));
             check (! (bool) tools.call ("live_code_lock", make ({ { "layer", 11 } }))["ok"], "ogiltig rad i live_code_lock ger fel");
 
+            // live_code_run lägger koden i LIVE-editorn; live_code_stop tömmer bara rader Live Code skrev och som inte är låsta
+            r = tools.call ("live_code_run", make ({ { "code", "note(\"g2\").s(\"i1\")" }, { "cycles", 1 } }));
+            check ((bool) r["ok"] && processor.getLiveCodeText().contains ("g2") && pattern.note (0, 0).pitch.load() == 7, "live_code_run skriver noter och sätter LIVE-texten");
+            tools.call ("live_code_lock", make ({ { "layer", 0 } }));
+            r = tools.call ("live_code_stop", make ({}));
+            check ((bool) r["ok"] && pattern.note (0, 0).pitch.load() == 7, "live_code_stop låter låst rad vara");
+            tools.call ("live_code_lock", make ({ { "layer", 0 }, { "locked", false } }));
+            r = tools.call ("live_code_stop", make ({}));
+            int stopCount = 0; pattern.forEachNote (0, [&stopCount] (int, const Pattern::Note&) { ++stopCount; });
+            check ((bool) r["ok"] && stopCount == 0 && (processor.liveCodeOwned.load() & ToolLayer::liveCodeBit (0)) == 0, "live_code_stop tömmer Live Codes rad och släpper ägandet");
+
             auto described = false;
             for (auto& t : ToolLayer::tools())
                 if (t.name == "live_code_create")
                     described = t.description.contains ("overwrite") && t.description.contains ("live_code_lock") && t.description.contains ("$: ")
                                 && t.description.contains (".lfo(") && t.description.contains (".env(") && t.description.contains ("data.problems");
             check (described, "live_code_create beskriver skydd, block, sliders och .lfo/.env-problem");
+
+            // G2: console.log/warn/error i koden hamnar i konsolkön (host.log), inte i tomma intet
+            {
+                LiveCode consoleLive;
+                juce::Result consoleResult = juce::Result::ok();
+                consoleLive.create ("console.log(\"hej\", 3); console.warn({a:1}); console.error(\"fel\"); note(\"c2\").s(\"i1\")", 1, consoleResult);
+                const auto lines = consoleLive.takeConsole();
+                check (consoleResult.wasOk() && lines.size() == 3 && lines[0] == "log: hej 3" && lines[1] == "warn: {\"a\":1}" && lines[2] == "error: fel",
+                       "console.log/warn/error går till konsolkön");
+                check (consoleLive.takeConsole().isEmpty(), "takeConsole tömmer kön");
+            }
         }
 
         // .lfo/.env skapar CODE-rutter; felaktiga modulationsmål rapporteras utan att stoppa notraderna.
@@ -2195,6 +2266,23 @@ namespace
             check (requestText.contains ("functionCall") && requestText.contains ("sig123"), "Gemini: anropet med thoughtSignature skickas tillbaka");
             check (request["contents"][2]["parts"][0]["functionResponse"]["name"].toString() == "set_parameters", "Gemini: tool_result blir functionResponse med namnet");
             check (! requestText.contains ("additionalProperties") && request["tools"].size() > 0, "Gemini: verktygsschemat är rensat");
+            check (! request["contents"][1]["parts"][0]["functionCall"].hasProperty ("id") || request["contents"][1]["parts"][0]["functionCall"]["id"].toString() == block["id"].toString(), "Gemini: anrop utan eget id får inget påhittat id");
+            {
+                juce::String idError;
+                const auto idReply = GeminiApi::parseResponse (juce::JSON::parse (R"({"candidates":[{"content":{"role":"model","parts":[{"functionCall":{"name":"set_parameters","args":{},"id":"call_42"}}]},"finishReason":"STOP"}]})"), tools, idError);
+                check (idReply["content"][0]["id"].toString() == "call_42", "Gemini: anropets id behålls");
+                juce::Array<juce::var> idMessages { messages[0], juce::var (new juce::DynamicObject()), juce::var (new juce::DynamicObject()) };
+                idMessages.getReference (1).getDynamicObject()->setProperty ("role", "assistant");
+                idMessages.getReference (1).getDynamicObject()->setProperty ("content", idReply["content"]);
+                auto idResult = std::make_unique<juce::DynamicObject>();
+                idResult->setProperty ("type", "tool_result");
+                idResult->setProperty ("tool_use_id", "call_42");
+                idResult->setProperty ("content", "{}");
+                idMessages.getReference (2).getDynamicObject()->setProperty ("role", "user");
+                idMessages.getReference (2).getDynamicObject()->setProperty ("content", juce::Array<juce::var> { juce::var (idResult.release()) });
+                const auto idRequest = GeminiApi::buildRequest ("s", tools, idMessages);
+                check (idRequest["contents"][1]["parts"][0]["functionCall"]["id"].toString() == "call_42" && idRequest["contents"][2]["parts"][0]["functionResponse"]["id"].toString() == "call_42", "Gemini: id skickas tillbaka i functionCall och functionResponse");
+            }
 
             check (GeminiApi::parseResponse (juce::JSON::parse (R"({"promptFeedback":{"blockReason":"SAFETY"}})"), tools, error).isVoid() && error.contains ("SAFETY"), "Gemini: blockerat svar ger ett fel");
             check (GeminiApi::errorMessage (400, R"({"error":{"code":400,"message":"API key not valid. Please pass a valid API key.","status":"INVALID_ARGUMENT"}})").contains ("key"), "Gemini: ogiltig nyckel (400)");

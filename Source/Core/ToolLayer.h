@@ -51,6 +51,8 @@ private:
     juce::var setPattern (const juce::var& args);
     juce::var setGate (const juce::var& args);
     juce::var liveCodeCreate (const juce::var& args);
+    juce::var liveCodeRun (const juce::var& args);
+    juce::var liveCodeStop();
     juce::var setSidechainCurve (const juce::var& args);
     juce::var setModulation (const juce::var& args);
     juce::var listPresets (const juce::var& args) const;
