@@ -241,6 +241,10 @@ namespace Help
             { "bassSamplePan", "Pan for the SAMPLE source (C = centre, exactly as before). Balance-style: the opposite side is turned down, the centre stays at full level." },
             { "bassNoisePan", "Pan for the NOISE source (C = centre, exactly as before)." },
             { "bassFmPan", "Pan for the FM source (C = centre, exactly as before)." },
+            { "bassSlicerOn", "SLICER on: the sample is cut into slices and each note plays one slice (note MAP TO = slice 1, the next note = slice 2 ...). The notes live on their own SLICER row in the pattern." },
+            { "bassSlicerMapTo", "Which note (in semitones from the key) plays slice 1. Slice 2 is one semitone up, and so on." },
+            { "bassSlicerReverse", "Plays every slice backwards." },
+            { "bassSampleMode", "How the sample layer works. Blend: the sample plays together with the synth voice, from the same notes. Independent: the sample has its own pattern row and its own notes. Off: no sample." },
             { "bassSubPhaseDeg", "Start phase of the SUB in degrees, on top of the shared Start Phase. Lets you line up the sub with the kick or the other oscillators on each note. 0 = exactly as before." },
             { "bassFmPhaseDeg", "Start phase of the FM carrier in degrees, on top of the shared Start Phase. 0 = exactly as before." },
             { "bassNoiseWidth", "How wide the noise is: 100 % = mono in the centre (as before), 200 % = different noise in left and right. The sub and the low end of a bass should stay mono, so only the noise gets a width control." },
@@ -363,6 +367,13 @@ namespace Help
             if (name == "OCT UP")     return "Adds a copy one octave higher, from rectifying the signal.";
             if (name == "TONE")       return "Low-pass for the octave-down layer. Lower = rounder sub.";
             if (name == "TRANSIENT")  return "0 = octaves always on. Up = octaves only on the attack of each sound.";
+        }
+        if (typeName == "Low Multiplier")
+        {
+            if (name == "LOW")   return "The bottom of the band that is reshaped (30-200 Hz).";
+            if (name == "HIGH")  return "The top of the band that is reshaped (100-400 Hz). Everything outside LOW-HIGH is left alone.";
+            if (name == "DRIVE") return "How hard the band is shaped. More drive = more harmonics (2x, 3x ...) that make the low end audible on small speakers.";
+            if (name == "MONO")  return "How much of the added harmonics is made mono, so the low end does not get wide. 100 % = fully mono.";
         }
         if (typeName == "Shimmer")
         {

@@ -63,7 +63,7 @@ namespace Effects
     StringArray typeNames()
     {
         return { "Off", "Filter", "Distortion", "EQ", "Chorus", "Phaser", "Echo", "Reverb",
-                 "Compressor", "Trance Gate", "Comb", "Ring Mod", "Bitcrusher", "Auto Filter", "Maximizer", "Sidechain", "Disperser", "Widener", "Flanger", "Transient", "Dynamic EQ", "Octaver", "Band Ducker", "Shimmer" };
+                 "Compressor", "Trance Gate", "Comb", "Ring Mod", "Bitcrusher", "Auto Filter", "Maximizer", "Sidechain", "Disperser", "Widener", "Flanger", "Transient", "Dynamic EQ", "Octaver", "Band Ducker", "Shimmer", "Low Multiplier" };
     }
 
     String name (EffectType type)
@@ -297,6 +297,12 @@ namespace Effects
                 value ("LOW CUT", 20.0f, 2000.0f, 300.0f, 300.0f, Unit::hz),
                 mixKnob (0.3f),
                 choice ("INTERVAL", { "+12", "+7", "+19", "+24" }, 0) };
+            table[(size_t) EffectType::lowMultiplier] = {
+                value ("LOW", 30.0f, 200.0f, 80.0f, 40.0f, Unit::hz),
+                value ("HIGH", 100.0f, 400.0f, 200.0f, 200.0f, Unit::hz),
+                value ("DRIVE", 0.0f, 1.0f, 0.0f, 0.5f, Unit::percent),
+                value ("MONO", 0.0f, 1.0f, 0.0f, 1.0f, Unit::percent),
+                mixKnob (0.5f) };
             return table;
         }();
         return all[(size_t) jlimit (0, numEffectTypes - 1, (int) type)];
@@ -1148,6 +1154,57 @@ namespace
                 buffer.addFrom (ch, 0, wetBuffer, ch, 0, numSamples, k[4]);
         }
     };
+    // LOW MULTIPLIER: bara bandet LOW-HIGH (30-400 Hz) formas om (mjuk klippning) så att det får övertoner som hörs på små högtalare. Det som
+    // läggs till (formad minus original) kan göras mono (MONO), så att lågändan inte blir bred. Bandet själv och allt utanför rörs inte.
+    struct LowMultiplierFx
+    {
+        std::array<dsp::StateVariableTPTFilter<float>, 2> highpass, lowpass;
+        bool prepared = false;
+
+        void prepare (const dsp::ProcessSpec& spec)
+        {
+            dsp::ProcessSpec mono = spec;
+            mono.numChannels = 1;
+            for (auto& f : highpass) { f.prepare (mono); f.setType (dsp::StateVariableTPTFilterType::highpass); }
+            for (auto& f : lowpass) { f.prepare (mono); f.setType (dsp::StateVariableTPTFilterType::lowpass); }
+            prepared = true;
+        }
+
+        void reset()
+        {
+            for (auto& f : highpass) f.reset();
+            for (auto& f : lowpass) f.reset();
+        }
+
+        void process (AudioBuffer<float>& buffer, int numSamples, const Values& k, const Context&)
+        {
+            const auto low = k[0], high = std::max (k[1], k[0] + 20.0f);
+            const auto drive = 1.0f + 12.0f * k[2];
+            const auto norm = 1.0f / std::tanh (drive);
+            const auto mono = k[3], wet = k[4];
+            const auto channels = std::min (2, buffer.getNumChannels());
+            for (auto& f : highpass) f.setCutoffFrequency (low);
+            for (auto& f : lowpass) f.setCutoffFrequency (high);
+
+            for (int i = 0; i < numSamples; ++i)
+            {
+                std::array<float, 2> added {};
+                for (int ch = 0; ch < channels; ++ch)
+                {
+                    const auto band = lowpass[(size_t) ch].processSample (0, highpass[(size_t) ch].processSample (0, buffer.getSample (ch, i)));
+                    added[(size_t) ch] = std::tanh (band * drive) * norm - band;
+                }
+                if (channels == 2)
+                {
+                    const auto mid = 0.5f * (added[0] + added[1]);
+                    for (auto& a : added)
+                        a += (mid - a) * mono;
+                }
+                for (int ch = 0; ch < channels; ++ch)
+                    buffer.setSample (ch, i, buffer.getSample (ch, i) + added[(size_t) ch] * wet);
+            }
+        }
+    };
     struct CompressorFx
     {
         dsp::Compressor<float> compressor;
@@ -1817,6 +1874,7 @@ struct EffectChain::Impl
         OctaverFx octaver;
         BandDuckerFx bandDucker;
         ShimmerFx shimmer;
+        LowMultiplierFx lowMultiplier;
 
         template <typename Function>
         void forEachEffect (Function&& function)
@@ -1824,7 +1882,7 @@ struct EffectChain::Impl
             function (filter); function (distortion); function (eq); function (chorus); function (phaser);
             function (echo); function (reverb); function (compressor); function (gate); function (comb);
             function (ringMod); function (bitcrusher); function (autoFilter); function (maximizer); function (ducker); function (disperser);
-            function (widener); function (flanger); function (transient); function (dynamicEq); function (octaver); function (bandDucker); function (shimmer);
+            function (widener); function (flanger); function (transient); function (dynamicEq); function (octaver); function (bandDucker); function (shimmer); function (lowMultiplier);
         }
 
         void resetCurrent()
@@ -1854,6 +1912,7 @@ struct EffectChain::Impl
                 case EffectType::octaver:    octaver.reset(); break;
                 case EffectType::bandDucker: bandDucker.reset(); break;
                 case EffectType::shimmer:    shimmer.reset(); break;
+                case EffectType::lowMultiplier: lowMultiplier.reset(); break;
                 case EffectType::off:
                 case EffectType::count:      break;
             }
@@ -1886,6 +1945,7 @@ struct EffectChain::Impl
                 case EffectType::octaver:    octaver.process (buffer, numSamples, values, context); break;
                 case EffectType::bandDucker: bandDucker.process (buffer, numSamples, values, context); break;
                 case EffectType::shimmer:    shimmer.process (buffer, numSamples, values, context); break;
+                case EffectType::lowMultiplier: lowMultiplier.process (buffer, numSamples, values, context); break;
                 case EffectType::off:
                 case EffectType::count:      break;
             }

@@ -2298,7 +2298,35 @@ namespace
                 }
                 check (tail[0] > 1.0e-6 && std::abs (tail[1] - tail[0]) > 0.01 * tail[0], "SHIMMER har en svans som ändras av SHIMMER-ratten");
             }
-            // Maximizer läge 2 (SMOOTH): taket håller även med mycket gain.
+            // Low Multiplier: MIX 0 rör inte ljudet; med DRIVE kommer en trediedels-ton (180 Hz ur 60 Hz) till.
+            for (const auto wet : { 0.0f, 1.0f })
+            {
+                auto peakDiff = 0.0f;
+                auto finite = true;
+                runEffect (EffectType::lowMultiplier, { { 2, 1.0f }, { 4, wet } }, 30,
+                           [&] (juce::AudioBuffer<float>& b, int block)
+                           {
+                               for (int i = 0; i < b.getNumSamples(); ++i)
+                                   for (int ch = 0; ch < 2; ++ch)
+                                       b.setSample (ch, i, 0.5f * (float) std::sin (juce::MathConstants<double>::twoPi * 60.0 * (block * blockSize + i) / renderRate));
+                           },
+                           [&] (const juce::AudioBuffer<float>& b, int block)
+                           {
+                               if (block < 10) return;
+                               for (int i = 0; i < b.getNumSamples(); ++i)
+                               {
+                                   const auto v = b.getSample (0, i);
+                                   finite = finite && std::isfinite (v) && std::abs (v) < 4.0f;
+                                   const auto reference = 0.5f * (float) std::sin (juce::MathConstants<double>::twoPi * 60.0 * (block * blockSize + i) / renderRate);
+                                   peakDiff = std::max (peakDiff, std::abs (v - reference));
+                               }
+                           });
+                check (finite, "LOW MULTIPLIER ger ändligt ljud");
+                if (wet < 0.5f)
+                    check (peakDiff < 1.0e-5f, "LOW MULTIPLIER med MIX 0 lämnar ljudet orört");
+                else
+                    check (peakDiff > 0.02f, "LOW MULTIPLIER lägger till övertoner");
+            }            // Maximizer läge 2 (SMOOTH): taket håller även med mycket gain.
             {
                 auto peak = 0.0f;
                 runEffect (EffectType::maximizer, { { 0, 18.0f }, { 2, -3.0f }, { 5, 1.0f } }, 30,
