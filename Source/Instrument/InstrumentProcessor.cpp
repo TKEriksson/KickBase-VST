@@ -487,6 +487,14 @@ void InstrumentProcessor::updatePreviewWindow()
         window.loopEnd = previewLoopEnd.load();
         window.bar0 = previewBar0;
     }
+    else if (previewLayer == PluginBase::previewAllRows && (previewLoopStart.load() >= 0 || previewFrom > 0))
+    {
+        window.allRows = true;
+        window.from = previewFrom;
+        window.loopStart = previewLoopStart.load();
+        window.loopEnd = previewLoopEnd.load();
+        window.bar0 = previewBar0;
+    }
     scheduler.setWindow (window);
 }
 

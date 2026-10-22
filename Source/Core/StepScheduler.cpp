@@ -53,7 +53,7 @@ void StepScheduler::addKick (const Pattern& pattern, const PatternLengths& lengt
 {
     const auto barInRow = lengths.barInRow (0, position.bar);
     auto step = barInRow < 0 ? -1 : barInRow * Pattern::ticksPerBar + position.stepInBar;
-    if (window.row == Pattern::kickLayer)
+    if (window.row == Pattern::kickLayer || window.allRows)
         step = windowTick (lengths.barsOf (0) * Pattern::ticksPerBar, position);
     lastKickStep = step;
 
@@ -65,7 +65,7 @@ void StepScheduler::addBass (int layer, const Pattern& pattern, const PatternLen
 {
     const auto barInRow = lengths.barInRow (1 + layer, position.bar);
     auto tick = barInRow < 0 ? -1 : barInRow * Pattern::ticksPerBar + position.stepInBar;
-    if (window.row == layer)
+    if (window.row == layer || window.allRows)
         tick = windowTick (lengths.barsOf (1 + layer) * Pattern::ticksPerBar, position);
     lastInstrumentSteps[(size_t) layer] = tick;
 

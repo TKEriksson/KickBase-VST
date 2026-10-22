@@ -36,6 +36,7 @@ public:
     struct Window
     {
         int row = -1; // notlager eller kickLayer, -1 = ingen
+        bool allRows = false; // ALL: alla rader följer samma start och loop
         int from = 0, loopStart = -1, loopEnd = -1;
         juce::int64 bar0 = 0; // takten där förhandsspelningen började
     };
