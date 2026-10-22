@@ -106,3 +106,5 @@ Kvar, i ordning:
 
 12. **Gjort: mittenknapp-panorering i pianorullen** (an-master, PianoRoll.cpp Drag::pan): hjulklick + drag panorerar i sid- och höjdled, ritar ingen ton. Ej provat i UI.
 13. **Bugg (Tobias):** dubbelklick på en rad i rapporten (ANALYSIS + REPORT) hoppar till spektrumvyn medan han upplever att han står kvar i rapporten. Koden är avsiktlig (SpectrumPage.cpp:355 onOpen -> selectFinding(index,true) -> setView(false), kommentar 'dubbelklick: visa fyndet i spektrumet'), men uppfattas som bugg. Åtgärd att besluta: ta bort hoppet, eller lägg en tydlig SHOW IN SPECTRUM-knapp. Ej gjort.
+
+14. **Gjort: punkt 13** (SpectrumPage): dubbelklick i rapporten hoppar inte längre; ny knapp SHOW IN SPECTRUM (visas i rapportvyn) öppnar valt fynd i spektrumet. Ej provat i UI.
