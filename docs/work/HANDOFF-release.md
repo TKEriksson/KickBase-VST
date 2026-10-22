@@ -80,3 +80,5 @@ För Copilot eller annan AI som tar över. Läs först: `CLAUDE.md`, `docs/work/
 - Inget av detta är provat i UI av mig; Tobias testar efter `installRel.bat`.
 - PLAN / kvar att göra: (1) pianoroll i eget fönster (POP OUT), (2) GHOST NOTES, (3) sample-slicern enligt `slicer-ui-spec.md`, (4) ta bort `/STACK:8388608` (`CMakeLists.txt:243`), (5) städa gamla worktrees (`-f2`, `-lc`, `-lce`, `-lcui`, `-mx`, `-rel`) först när Tobias bekräftat, (6) AGENT_GUIDE-texten ("15 types").
 - Regler gäller som förut: nya parametrar sist, helpcheck kräver hjälptext, inga nycklar, ingen `installRel.*` i git.
+
+- **TILL SPECIALISTEN:** oförklarad uppspelningsbugg (loop på första takten, ej stoppbar, rullknapp som dök upp sent; löst av omstart av VST). Se PROGRESS-copilot-2026-10-22.md punkt 24-25.
