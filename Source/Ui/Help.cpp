@@ -237,6 +237,18 @@ namespace Help
             { "bassFilterRouting", "How the two filters are connected. SERIAL = the sound goes through FILTER 1 and then FILTER 2. PARALLEL = both filter the same sound side by side and MIX blends their outputs." },
             { "bassFilterMix", "SERIAL: how much of FILTER 2 you hear (0 % = only FILTER 1, 100 % = the full chain). PARALLEL: the balance between FILTER 1 (0 %) and FILTER 2 (100 %)." },
             { "bassFilterType", "Filter type. LP 24 = smooth and dark (classic psy), LP 12 = brighter, Band and High for thin sounds." },
+            { "bassAllpassFreq", "Allpass frequency (20 Hz - 2 kHz). Four allpass stages after the filters turn the phase around this frequency without changing the level: it moves the punch of a bass against the kick, or smears the transient. Does nothing while AP AMT is 0 %." },
+            { "bassSamplePan", "Pan for the SAMPLE source (C = centre, exactly as before). Balance-style: the opposite side is turned down, the centre stays at full level." },
+            { "bassNoisePan", "Pan for the NOISE source (C = centre, exactly as before)." },
+            { "bassFmPan", "Pan for the FM source (C = centre, exactly as before)." },
+            { "bassSlicerOn", "SLICER on: the sample is cut into slices and each note plays one slice (note MAP TO = slice 1, the next note = slice 2 ...). The notes live on their own SLICER row in the pattern." },
+            { "bassSlicerMapTo", "Which note (in semitones from the key) plays slice 1. Slice 2 is one semitone up, and so on." },
+            { "bassSlicerReverse", "Plays every slice backwards." },
+            { "bassSampleMode", "How the sample layer works. Blend: the sample plays together with the synth voice, from the same notes. Independent: the sample has its own pattern row and its own notes. Off: no sample." },
+            { "bassSubPhaseDeg", "Start phase of the SUB in degrees, on top of the shared Start Phase. Lets you line up the sub with the kick or the other oscillators on each note. 0 = exactly as before." },
+            { "bassFmPhaseDeg", "Start phase of the FM carrier in degrees, on top of the shared Start Phase. 0 = exactly as before." },
+            { "bassNoiseWidth", "How wide the noise is: 100 % = mono in the centre (as before), 200 % = different noise in left and right. The sub and the low end of a bass should stay mono, so only the noise gets a width control." },
+            { "bassAllpassAmount", "How much of the allpass chain is mixed in (0 % = off, no CPU and the sound is exactly as before; 100 % = pure phase rotation). In between you get a phaser-like notch." },
             { "bassAMorph", "Morph. On: POS fades smoothly between the waveforms of the table. Off: POS jumps from one waveform to the next (the Basic table has four: sine, triangle, saw, square). A table made from a WAV file has as many steps as the file had cycles. Steps jump, so fast modulation of POS can click." },
             { "bassAOn", "Turns this oscillator on or off. Off = it is not heard (and OSC 2 does not frequency-modulate OSC 1)." },
             { "bassSampleOn", "Turns the sample on or off. Turn the oscillators off (and SUB and NOISE down) to hear only the sample." },
@@ -356,6 +368,23 @@ namespace Help
             if (name == "TONE")       return "Low-pass for the octave-down layer. Lower = rounder sub.";
             if (name == "TRANSIENT")  return "0 = octaves always on. Up = octaves only on the attack of each sound.";
         }
+        if (typeName == "Low Multiplier")
+        {
+            if (name == "LOW")   return "The bottom of the band that is reshaped (30-200 Hz).";
+            if (name == "HIGH")  return "The top of the band that is reshaped (100-400 Hz). Everything outside LOW-HIGH is left alone.";
+            if (name == "DRIVE") return "How hard the band is shaped. More drive = more harmonics (2x, 3x ...) that make the low end audible on small speakers.";
+            if (name == "MONO")  return "How much of the added harmonics is made mono, so the low end does not get wide. 100 % = fully mono.";
+        }
+        if (typeName == "Shimmer")
+        {
+            if (name == "SHIMMER")   return "How much of the reverb tail is sent back through the pitch shift. Up = a tail that climbs and glitters; 0 = a plain reverb.";
+            if (name == "INTERVAL")  return "How far up the tail is shifted each lap, in semitones: +12 an octave, +7 a fifth, +19 an octave and a fifth, +24 two octaves.";
+            if (name == "SIZE")      return "How long the reverb tail is.";
+            if (name == "DAMPING")   return "How quickly the highs die in the tail.";
+            if (name == "LOW CUT")   return "High-pass before the reverb, so the bass stays dry and tight.";
+        }
+        if (typeName == "Maximizer" && name == "MODE")
+            return "Classic: the original limiter and tanh clipper. Smooth: a gentler clipper and a release that adapts to the program (fast and slow parts together). The ceiling holds in both.";
         if (typeName == "Maximizer" && name == "RELEASE")
             return "Maximizer: how fast the limiter lets go after a peak. Short = louder but can pump.";
         if (typeName == "Auto Filter" && name == "DEPTH")

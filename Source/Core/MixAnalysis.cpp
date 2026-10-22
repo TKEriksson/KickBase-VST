@@ -1186,6 +1186,33 @@ namespace MixAnalysis
         }
         root->setProperty ("sources", sourceList);
 
+        if (! afterMaster.empty())
+        {
+            juce::Array<juce::var> shares;
+            for (const auto& share : afterMaster)
+            {
+                auto* o = new juce::DynamicObject();
+                o->setProperty ("name", share.name);
+                o->setProperty ("heard_rms_db", share.heardRmsDb);
+                o->setProperty ("after_master_rms_db", share.masterRmsDb);
+                o->setProperty ("heard_peak_db", share.heardPeakDb);
+                o->setProperty ("after_master_peak_db", share.masterPeakDb);
+                juce::Array<juce::var> heardBands, masterBands, edges;
+                for (int b = 0; b < shareBands; ++b)
+                {
+                    heardBands.add (share.heardBandDb[(size_t) b]);
+                    masterBands.add (share.masterBandDb[(size_t) b]);
+                    edges.add (shareBandName (b));
+                }
+                o->setProperty ("bands_hz", edges);
+                o->setProperty ("heard_band_rms_db", heardBands);
+                o->setProperty ("after_master_band_rms_db", masterBands);
+                shares.add (juce::var (o));
+            }
+            root->setProperty ("after_master", shares);
+            root->setProperty ("after_master_note", "Per source: its own signal (after ducking and EQ, before the mixer fader, pan, effects and master) vs what it adds to the final mix after the master (master output minus master output with the source muted). Not additive when the limiter or compressor works.");
+        }
+
         juce::Array<juce::var> list;
         for (const auto& finding : findings)
         {
@@ -1211,6 +1238,69 @@ namespace MixAnalysis
         return juce::var (root);
     }
 
+    Comparison compareReports (const Report& before, const Report& after)
+    {
+        Comparison result;
+        if (! before.valid || ! after.valid)
+            return result;
+        result.valid = true;
+
+        for (const auto& a : after.sources)
+            for (const auto& b : before.sources)
+                if (a.present && b.present && a.name == b.name)
+                {
+                    Comparison::SourceDelta delta;
+                    delta.name = a.name;
+                    delta.rmsDb = a.rmsDb - b.rmsDb;
+                    delta.peakDb = a.samplePeakDb - b.samplePeakDb;
+                    delta.fundamentalBefore = b.fundamentalHz;
+                    delta.fundamentalAfter = a.fundamentalHz;
+                    result.sources.push_back (delta);
+                    break;
+                }
+
+        const auto key = [] (const Finding& f) { return f.category + "|" + f.title; };
+        std::set<juce::String> beforeKeys, afterKeys;
+        for (const auto& f : before.findings) beforeKeys.insert (key (f));
+        for (const auto& f : after.findings) afterKeys.insert (key (f));
+        for (const auto& f : before.findings)
+            if (afterKeys.count (key (f)) == 0)
+                result.resolved.push_back (f.title);
+        for (const auto& f : after.findings)
+        {
+            if (beforeKeys.count (key (f)) == 0)
+                result.added.push_back (f.title);
+            else
+                ++result.unchanged;
+        }
+        result.limiterDb = after.limiterMaxDb - before.limiterMaxDb;
+        result.kickTailBefore = before.kickTailHz;
+        result.kickTailAfter = after.kickTailHz;
+        return result;
+    }
+
+    juce::String Comparison::toText() const
+    {
+        if (! valid)
+            return "No comparison: keep a report first (KEEP), then analyse again.";
+        const auto signedDb = [] (float v) { return (v >= 0.0f ? "+" : "") + juce::String (v, 1) + " dB"; };
+        juce::String text = "COMPARE (after minus kept)\n";
+        for (const auto& s : sources)
+        {
+            text << s.name << ": level " << signedDb (s.rmsDb) << ", peak " << signedDb (s.peakDb);
+            if (std::abs (s.fundamentalAfter - s.fundamentalBefore) > 0.5f)
+                text << ", fundamental " << juce::String (s.fundamentalBefore, 1) << " -> " << juce::String (s.fundamentalAfter, 1) << " Hz";
+            text << "\n";
+        }
+        if (std::abs (limiterDb) > 0.05f)
+            text << "Limiter max: " << signedDb (limiterDb) << "\n";
+        if (kickTailBefore > 0.0f || kickTailAfter > 0.0f)
+            text << "Kick tail: " << juce::String (kickTailBefore, 1) << " -> " << juce::String (kickTailAfter, 1) << " Hz\n";
+        text << "Findings: " << (int) resolved.size() << " gone, " << (int) added.size() << " new, " << unchanged << " the same\n";
+        for (const auto& t : resolved) text << "  gone: " << t << "\n";
+        for (const auto& t : added) text << "  new: " << t << "\n";
+        return text;
+    }
     juce::String Report::toText() const
     {
         if (! valid)
@@ -2488,11 +2578,137 @@ namespace MixAnalysis
         }
     }
 
-    Report run (PluginBase& copy, double bpm, int keyNote, const Options& options, const Reference* reference,
-                const std::function<void (float)>& progress, const std::function<bool()>& cancelled)
+    const char* shareBandName (int band)
     {
-        constexpr double rate = 48000.0;
-        constexpr int blockSize = 512;
+        static const char* names[shareBands] = { "20-60", "60-150", "150-500", "500-2k", "2k-20k" };
+        return names[juce::jlimit (0, shareBands - 1, band)];
+    }
+
+    void muteSource (PluginBase& copy, int source)
+    {
+        const auto id = source == kickSource ? juce::String (ParamID::kickLevel) : ParamID::bass (source - firstInstrument, InstrumentField::level);
+        if (auto* parameter = copy.apvts.getParameter (id))
+            parameter->setValueNotifyingHost (0.0f);
+    }
+
+    namespace
+    {
+        constexpr double analysisRate = 48000.0;
+        constexpr int analysisBlock = 512;
+    }
+
+    void renderMaster (PluginBase& copy, double bpm, int keyNote, int bars, const std::function<bool()>& cancelled,
+                       std::vector<float>& left, std::vector<float>& right)
+    {
+        std::vector<float> tapL, tapR;
+        OfflineRender::Settings settings;
+        settings.sampleRate = analysisRate;
+        settings.blockSize = analysisBlock;
+        settings.bpm = bpm;
+        settings.bars = bars;
+        settings.notes = { keyNote >= 0 ? keyNote : 60 };
+        settings.extraBars = 0;
+        settings.shouldStop = cancelled;
+        settings.onBlock = [&] (const juce::AudioBuffer<float>&, int, int n)
+        {
+            copy.getMasterSection().outputTap.copyLatest (n, tapL, tapR);
+            tapL.resize ((size_t) n, 0.0f);
+            tapR.resize ((size_t) n, 0.0f);
+            left.insert (left.end(), tapL.begin(), tapL.end());
+            right.insert (right.end(), tapR.begin(), tapR.end());
+        };
+        OfflineRender::render (copy, settings);
+    }
+
+    void addAfterMaster (Report& report, const Stems& stems, std::vector<std::pair<int, std::unique_ptr<PluginBase>>>& mutedCopies,
+                         double bpm, int keyNote, const std::function<void (float)>& progress, const std::function<bool()>& cancelled)
+    {
+        static constexpr float bandEdges[shareBands + 1] = { 20.0f, 60.0f, 150.0f, 500.0f, 2000.0f, 0.0f };
+
+        // Nivåer över hela analysfönstret: RMS och topp (dBFS) och RMS i fem band.
+        auto measure = [] (const std::vector<float>& x, float& rmsDb, float& peakDb, std::array<float, shareBands>& bandDb)
+        {
+            auto level = [] (const std::vector<float>& v, float& rms, float* peak)
+            {
+                double sum = 0.0;
+                float top = 0.0f;
+                for (auto s : v)
+                {
+                    sum += (double) s * s;
+                    top = std::max (top, std::abs (s));
+                }
+                rms = toDb (std::sqrt (sum / (double) std::max<size_t> (1, v.size())));
+                if (peak != nullptr)
+                    *peak = toDb (top);
+            };
+            level (x, rmsDb, &peakDb);
+            for (int b = 0; b < shareBands; ++b)
+            {
+                const auto filtered = bandPass (x, (int) x.size(), analysisRate, bandEdges[b], bandEdges[b + 1]);
+                level (filtered, bandDb[(size_t) b], nullptr);
+            }
+        };
+
+        std::vector<float> fullL = stems.masterL, fullR = stems.masterR;
+        auto done = 0;
+        for (auto& [source, muted] : mutedCopies)
+        {
+            if (cancelled && cancelled())
+                return;
+            std::vector<float> mutedL, mutedR;
+            renderMaster (*muted, bpm, keyNote, stems.totalBars, cancelled, mutedL, mutedR);
+            muted.reset();
+            const auto from = (size_t) std::max (0, stems.start);
+            const auto n = std::min ({ fullL.size(), mutedL.size(), mutedR.size() });
+            if (n <= from || stems.heard[(size_t) source].empty())
+                continue;
+            std::vector<float> contribution (n - from);
+            for (size_t i = from; i < n; ++i)
+                contribution[i - from] = 0.5f * ((fullL[i] - mutedL[i]) + (fullR[i] - mutedR[i]));
+
+            MasterShare share;
+            share.name = source == kickSource ? "Kick" : report.sources.size() > (size_t) source ? report.sources[(size_t) source].name : "Instr " + juce::String (source);
+            measure (contribution, share.masterRmsDb, share.masterPeakDb, share.masterBandDb);
+            const auto& heard = stems.heard[(size_t) source];
+            measure (std::vector<float> (heard.begin() + (long) std::min (from, heard.size()), heard.end()), share.heardRmsDb, share.heardPeakDb, share.heardBandDb);
+            report.afterMaster.push_back (share);
+            if (progress)
+                progress (0.5f + 0.5f * (float) ++done / (float) std::max<size_t> (1, mutedCopies.size()));
+        }
+        mutedCopies.clear();
+
+        // Fynd: där mastern (limiter, kompressor, effekter) skär ett band mycket mer än resten av källans ljud.
+        for (const auto& share : report.afterMaster)
+        {
+            const auto overall = share.masterRmsDb - share.heardRmsDb;
+            if (share.heardRmsDb < -60.0f)
+                continue;
+            for (int b = 0; b < shareBands; ++b)
+            {
+                if (share.heardBandDb[(size_t) b] < share.heardRmsDb - 20.0f)
+                    continue;
+                const auto relative = (share.masterBandDb[(size_t) b] - share.heardBandDb[(size_t) b]) - overall;
+                if (relative > -4.0f)
+                    continue;
+                Finding finding;
+                finding.severity = relative < -8.0f ? Severity::warning : Severity::info;
+                finding.category = "master";
+                finding.title = share.name + ": the master cuts " + juce::String (shareBandName (b)) + " Hz more than the rest";
+                finding.detail = "In the final mix this band ends " + juce::String (-relative, 1) + " dB lower, relative to the rest of the source, than before the mixer and master (overall change "
+                                 + juce::String (overall, 1) + " dB). The limiter, compressor or an effect is taking it. Check the master and the channel it is routed to.";
+                finding.sources.add (share.name);
+                finding.lowHz = bandEdges[b];
+                finding.highHz = b + 1 < shareBands ? bandEdges[b + 1] : 20000.0f;
+                report.findings.push_back (finding);
+            }
+        }
+    }
+
+    Report run (PluginBase& copy, double bpm, int keyNote, const Options& options, const Reference* reference,
+                const std::function<void (float)>& progress, const std::function<bool()>& cancelled, Stems* stems)
+    {
+        constexpr double rate = analysisRate;
+        constexpr int blockSize = analysisBlock;
 
         Capture capture;
         capture.rate = rate;
@@ -2562,6 +2778,11 @@ namespace MixAnalysis
         auto nextFrame = 0;
 
         copy.instrumentTapsOn = true;
+        if (stems != nullptr)
+        {
+            stems->start = preRollSamples;
+            stems->totalBars = preRoll + analyseBars;
+        }
 
         OfflineRender::Settings settings;
         settings.sampleRate = rate;
@@ -2578,6 +2799,12 @@ namespace MixAnalysis
             // Kickens slag: bladets topp hoppar upp jämfört med förra blocket (ett nytt slag börjar nära full nivå även när det förra slagets svans
             // ännu klingar, så en enkel tystnadströskel missar slag som ligger tätt).
             copy.kickTap.copyLatest (n, left, right);
+            if (stems != nullptr)
+            {
+                auto& kickHeard = stems->heard[(size_t) kickSource];
+                for (size_t k = 0; k < left.size(); ++k)
+                    kickHeard.push_back (0.5f * (left[k] + right[k]));
+            }
             auto peak = 0.0f;
             for (auto v : left)
                 peak = std::max (peak, std::abs (v));
@@ -2591,6 +2818,9 @@ namespace MixAnalysis
                 for (int i = 0; i < std::min (active, numInstruments); ++i)
                 {
                     copy.instrumentTaps[(size_t) i].copyLatest (n, tapL, tapR);
+                    if (stems != nullptr)
+                        for (size_t k = 0; k < tapL.size(); ++k)
+                            stems->heard[(size_t) (firstInstrument + i)].push_back (0.5f * (tapL[k] + tapR[k]));
                     for (size_t k = 0; k < sumL.size() && k < tapL.size(); ++k)
                     {
                         sumL[k] += tapL[k];
@@ -2602,6 +2832,11 @@ namespace MixAnalysis
                 copy.getMasterSection().outputTap.copyLatest (n, tapL, tapR);
                 tapL.resize (sumL.size(), 0.0f);
                 tapR.resize (sumL.size(), 0.0f);
+                if (stems != nullptr)
+                {
+                    stems->masterL.insert (stems->masterL.end(), tapL.begin(), tapL.end());
+                    stems->masterR.insert (stems->masterR.end(), tapR.begin(), tapR.end());
+                }
                 phaseInput.masterL.insert (phaseInput.masterL.end(), tapL.begin(), tapL.end());
                 phaseInput.masterR.insert (phaseInput.masterR.end(), tapR.begin(), tapR.end());
             }
@@ -2843,6 +3078,19 @@ bool MixAnalyser::start (PluginBase& source, const MixAnalysis::Options& newOpti
     keyNote = source.transportStatus.keyNote.load();
     copy = MixAnalysis::prepareCopy (source);
     MixAnalysis::applyTap (*copy, options.tap);
+    mutedCopies.clear();
+    if (options.tap == 2)
+    {
+        // En kopia per källa med källan tystad: mastern minus mastern utan källan = vad källan bidrar med i slutmixen.
+        for (int s = MixAnalysis::kickSource; s < MixAnalysis::masterSource; ++s)
+        {
+            if (s != MixAnalysis::kickSource && s - MixAnalysis::firstInstrument >= source.activeInstruments())
+                break;
+            auto muted = MixAnalysis::prepareCopy (source);
+            MixAnalysis::muteSource (*muted, s);
+            mutedCopies.emplace_back (s, std::move (muted));
+        }
+    }
     progress = 0.0f;
     running = true;
     startThread (juce::Thread::Priority::background); // Windows THREAD_PRIORITY_IDLE: bara CPU som annars står oanvänd (fråga 3), DAW:en går före
@@ -2862,8 +3110,14 @@ MixAnalysis::Report MixAnalyser::getReport() const
 
 void MixAnalyser::run()
 {
+    const auto afterMaster = options.tap == 2;
+    MixAnalysis::Stems stems;
     auto result = MixAnalysis::run (*copy, bpm, keyNote, options, reference.get(),
-                                    [this] (float p) { progress = p; }, [this] { return threadShouldExit(); });
+                                    [this, afterMaster] (float p) { progress = afterMaster ? 0.5f * p : p; }, [this] { return threadShouldExit(); },
+                                    afterMaster ? &stems : nullptr);
+    if (afterMaster && result.valid && ! threadShouldExit())
+        MixAnalysis::addAfterMaster (result, stems, mutedCopies, bpm, keyNote, [this] (float p) { progress = p; }, [this] { return threadShouldExit(); });
+    mutedCopies.clear();
     result.synthState = synthState;
     // Hela exporten sparas direkt (som get_mix_report/save_mix_report men utan att någon frågar), så att en AI kan läsa den färdiga analysen som en fil.
     if (result.valid && ! threadShouldExit())

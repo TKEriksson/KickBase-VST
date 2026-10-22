@@ -11,6 +11,7 @@
 #include "../Source/Instrument/InstrumentProcessor.h"
 #include "../Source/Fx/FxProcessor.h"
 #include "../Source/Ui/FmPresets.h"
+#include "../Source/Core/MixAnalysis.h"
 #include "Scenarios.h"
 #include <new>
 #include <cstdlib>
@@ -360,6 +361,125 @@ int polyTest()
     bright.releaseMs = 300.0f;
     bright.sustain = 0.8f;
 
+    // Allpass: AMOUNT 0 ändrar inget; AMOUNT 1 roterar fasen (annan kurvform) men håller nivån.
+    {
+        auto render = [&] (float amount)
+        {
+            auto p = bright;
+            p.allpassFreq = 300.0f;
+            p.allpassAmount = amount;
+            InstrumentVoices v;
+            setUp (v, 1, p);
+            v.noteOn (0, 0.8f, longGate);
+            std::vector<float> out;
+            run (v, out, (int) (rate * 0.5));
+            return out;
+        };
+        const auto off = render (0.0f), full = render (1.0f);
+        auto base = bright;
+        InstrumentVoices v;
+        setUp (v, 1, base);
+        v.noteOn (0, 0.8f, longGate);
+        std::vector<float> reference;
+        run (v, reference, (int) (rate * 0.5));
+        check (off == reference, "allpass AMOUNT 0 ger exakt samma ljud som utan allpass");
+        auto diff = 0.0;
+        for (size_t i = 0; i < off.size(); ++i)
+            diff += std::abs (off[i] - full[i]);
+        check (diff > 1.0, "allpass AMOUNT 1 ändrar kurvformen");
+        check (std::abs (toDb (rmsOf (full, 4800, 24000)) - toDb (rmsOf (off, 4800, 24000))) < 1.5, "allpass AMOUNT 1 håller nivån (inom 1,5 dB)");
+    }
+
+    // INSTR-MIX: brusets pan och bredd. Pan 0 och bredd 100 % är mono; pan höger tystar vänster; bredd 200 % gör vänster och höger okorrelerade.
+    {
+        auto render = [&] (float pan, float width, std::vector<float>& l, std::vector<float>& r)
+        {
+            auto p = bright;
+            p.oscA.on = false;
+            p.sub = 0.0f;
+            p.noise = 0.5f;
+            p.noiseTone = 1.0f;
+            p.cutoffHz = 18000.0f;
+            p.noisePan = pan;
+            p.noiseWidth = width;
+            InstrumentVoices v;
+            setUp (v, 1, p);
+            v.noteOn (0, 0.8f, longGate);
+            for (int i = 0; i < (int) (rate * 0.3); ++i)
+            {
+                const auto o = v.next();
+                l.push_back (o.left * o.amplitude);
+                r.push_back (o.right * o.amplitude);
+            }
+        };
+        std::vector<float> l0, r0, l1, r1, l2, r2;
+        render (0.0f, 1.0f, l0, r0);
+        render (1.0f, 1.0f, l1, r1);
+        render (0.0f, 2.0f, l2, r2);
+        check (l0 == r0 && rmsOf (l0, 4800, 14400) > 0.001, "bruset är mono i mitten som standard");
+        check (rmsOf (l1, 4800, 14400) < 1.0e-6 && rmsOf (r1, 4800, 14400) > 0.001, "NOISE PAN höger tystar vänster kanal");
+        auto dot = 0.0, energy = 1.0e-12;
+        for (size_t i = 4800; i < 14400; ++i)
+        {
+            dot += (double) l2[i] * r2[i];
+            energy += 0.5 * ((double) l2[i] * l2[i] + (double) r2[i] * r2[i]);
+        }
+        check (std::abs (dot / energy) < 0.3, "NOISE WIDTH 200 % ger okorrelerat vänster och höger");
+    }
+
+    // START per källa: suben med 180 graders startfas är motsatt till 0 grader.
+    {
+        auto firstSamples = [&] (float deg)
+        {
+            auto p = bright;
+            p.oscA.on = false;
+            p.sub = 0.5f;
+            p.subPhaseDeg = deg;
+            InstrumentVoices v;
+            setUp (v, 1, p);
+            v.noteOn (0, 0.8f, longGate);
+            std::vector<float> out;
+            for (int i = 0; i < 480; ++i)
+            {
+                const auto o = v.next();
+                out.push_back (o.left * o.amplitude);
+            }
+            return out;
+        };
+        const auto a = firstSamples (0.0f), b = firstSamples (180.0f);
+        auto dot = 0.0, ea = 1.0e-12;
+        for (size_t i = 0; i < a.size(); ++i)
+        {
+            dot += (double) a[i] * b[i];
+            ea += (double) a[i] * a[i];
+        }
+        check (dot / ea < -0.5, "SUB START 180 grader vänder suben mot 0 grader");
+    }
+
+    // COMPARE: skillnaden mellan två rapporter.
+    {
+        MixAnalysis::Report before, after;
+        before.valid = after.valid = true;
+        MixAnalysis::SourceInfo bass;
+        bass.name = "Instr 1";
+        bass.present = true;
+        bass.rmsDb = -20.0f;
+        bass.samplePeakDb = -6.0f;
+        before.sources.push_back (bass);
+        bass.rmsDb = -17.0f;
+        bass.samplePeakDb = -5.0f;
+        after.sources.push_back (bass);
+        MixAnalysis::Finding gone, same, added;
+        gone.category = "collision"; gone.title = "Kick and bass collide";
+        same.category = "sub"; same.title = "Sub too loud";
+        added.category = "master"; added.title = "Limiter works hard";
+        before.findings = { gone, same };
+        after.findings = { same, added };
+        const auto c = MixAnalysis::compareReports (before, after);
+        check (c.valid && c.sources.size() == 1 && std::abs (c.sources[0].rmsDb - 3.0f) < 1.0e-4f, "COMPARE räknar nivåskillnaden per källa");
+        check (c.resolved.size() == 1 && c.added.size() == 1 && c.unchanged == 1, "COMPARE skiljer borta, nya och oförändrade fynd");
+        check (! MixAnalysis::compareReports (MixAnalysis::Report {}, after).valid, "COMPARE utan sparad rapport är ogiltig");
+    }
     // a. Stöld: tre toner med 100 ms mellanrum, 2 röster (den tredje stjäl den första, som hålls) mot 3 röster (ingen stöld).
     {
         auto render = [&] (int voices)

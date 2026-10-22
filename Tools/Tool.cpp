@@ -26,6 +26,7 @@
 #include "../Source/Core/OfflineRender.h"
 #include "../Source/Core/ToolLayer.h"
 #include "../Source/Core/LiveCode.h"
+#include "../Source/Core/LiveCodeComplete.h"
 #include "../Source/Ui/LiveCodePage.h"
 #include "../Source/Core/AiChat.h"
 #include "../Source/Core/AiMemory.h"
@@ -270,6 +271,26 @@ namespace
         processor.prepareToPlay (renderRate, blockSize);
         auto failed = false;
         auto check = [&failed] (bool ok, const juce::String& what) { std::printf ("%s: %s\n", ok ? "ok" : "FEL", what.toRawUTF8()); failed |= ! ok; };
+        {
+            LiveCodeComplete::Source src;
+            src.paramIds = { "bass1Cutoff", "bass1Resonance", "kickDecay" };
+            auto has = [] (const LiveCodeComplete::Result& r, const juce::String& label) { for (auto& i : r.items) if (i.label == label) return true; return false; };
+            const juce::String t1 = "$: s(\"i1\").";
+            const auto a = LiveCodeComplete::complete (t1, t1.length(), src);
+            check (has (a, "lfo") && has (a, "note") && a.replaceFrom == t1.length(), "AUTOCOMPLETE: metoder efter s(...).");
+            const juce::String t2 = "instr1.Cu";
+            const auto b = LiveCodeComplete::complete (t2, t2.length(), src);
+            check (has (b, "Cutoff") && ! has (b, "Resonance"), "AUTOCOMPLETE: prefix filtrerar");
+            const juce::String t3 = "instr1.";
+            const auto c = LiveCodeComplete::complete (t3, t3.length(), src);
+            check (has (c, "Cutoff") && has (c, "lock") && ! has (c, "kickDecay"), "AUTOCOMPLETE: instr1. ger parametrar");
+            const juce::String t4 = "instr1.Cutoff.";
+            check (has (LiveCodeComplete::complete (t4, t4.length(), src), "set"), "AUTOCOMPLETE: parameter ger set/get");
+            const juce::String t5 = "ins";
+            check (has (LiveCodeComplete::complete (t5, t5.length(), src), "instr1"), "AUTOCOMPLETE: globala namn");
+            const juce::String t6 = "meter.";
+            check (has (LiveCodeComplete::complete (t6, t6.length(), src), "outputPeak"), "AUTOCOMPLETE: meter.");
+        }
         auto run = [&] (const juce::String& code, int cycles = 1)
         {
             ToolLayer tools (processor);
@@ -301,6 +322,14 @@ namespace
         r = run ("instr1.Cutoff.set(1300);\n\nnote(\"c2\").s(\"i1\")");
         r = run ("instr1.cutoff.set(500);\n\nnote(\"c2\").s(\"i1\")");
         check (! (bool) r["ok"] || std::abs (cutoffNow() - 1300.0f) < 1.0f, "okänt (fel skiftläge) namn ändrar ingen parameter");
+        r = run ("note(\"c2\").s(\"i1\").lpf(700)");
+        check ((bool) r["ok"] && std::abs (cutoffNow() - 700.0f) < 1.0f, "Strudel .lpf(700) blir bass1Cutoff 700 (genväg)");
+        r = run ("instr1.Cutoff.set(900);\n\nnote(\"c2\").s(\"i1\").lpf(700)");
+        check ((bool) r["ok"] && std::abs (cutoffNow() - 900.0f) < 1.0f, "ett uttryckligt .set vinner över .lpf");
+        r = run ("note(\"c2\").s(\"i1\").pan(1).release(0.05)");
+        check ((bool) r["ok"] && std::abs (processor.apvts.getRawParameterValue ("bass1APan")->load() - 1.0f) < 0.01f, "Strudel .pan(1) blir bass1APan 1");
+        check (std::abs (processor.apvts.getRawParameterValue ("bass1Release")->load() - 50.0f) < 0.5f, "Strudel .release(0.05 s) blir bass1Release 50 ms");
+        r = run ("instr1.Cutoff.set(1300);\n\nnote(\"c2\").s(\"i1\")");
         {
             auto bad = juce::var (new juce::DynamicObject());
             bad.getDynamicObject()->setProperty ("bass1cutoff", 500);
@@ -1245,18 +1274,40 @@ namespace
             check (answer["data"]["kick_tail_hz"].operator double() > 25.0, "rapporten kommer med i svaret (data)");
             {
                 // Mätläge: okänt värde avvisas, dry kör på kopian och lämnar originalets duckning orörd.
-                check (! (bool) tools.call ("analyse_mix", juce::JSON::parse ("{\"tap\":\"after_master\"}"))["ok"], "analyse_mix: okänt tap avvisas");
+                check (! (bool) tools.call ("analyse_mix", juce::JSON::parse ("{\"tap\":\"bogus\"}"))["ok"], "analyse_mix: okänt tap avvisas");
                 const auto duckBefore = processor.apvts.getRawParameterValue ("bass1Duck")->load();
                 const auto dry = tools.call ("analyse_mix", juce::JSON::parse ("{\"tap\":\"dry\"}"));
                 check ((bool) dry["ok"] && dry["data"]["status"].toString() == "started", "analyse_mix tap=dry startar");
                 auto dryAnswer = tools.call ("get_mix_report", juce::JSON::parse ("{}"));
-                for (int i = 0; i < 600 && dryAnswer["data"]["status"].toString() != "done"; ++i)
+                for (int i = 0; i < 1800 && dryAnswer["data"]["status"].toString() != "done"; ++i)
                 {
                     juce::Thread::sleep (100);
                     dryAnswer = tools.call ("get_mix_report", juce::JSON::parse ("{}"));
                 }
                 check (dryAnswer["data"]["status"].toString() == "done", "dry-analysen blir klar");
                 check (processor.apvts.getRawParameterValue ("bass1Duck")->load() == duckBefore, "dry-analysen rör inte originalets duckning");
+
+                // Efter mastern: bidraget per källa, och originalets nivåer rörs inte.
+                const auto levelBefore = processor.apvts.getRawParameterValue ("kickLevel")->load();
+                const auto afterMasterStart = tools.call ("analyse_mix", juce::JSON::parse ("{\"tap\":\"after_master\"}"));
+                check ((bool) afterMasterStart["ok"], "analyse_mix tap=after_master startar");
+                auto afterMasterAnswer = tools.call ("get_mix_report", juce::JSON::parse ("{}"));
+                for (int i = 0; i < 1800 && afterMasterAnswer["data"]["status"].toString() != "done"; ++i)
+                {
+                    juce::Thread::sleep (100);
+                    afterMasterAnswer = tools.call ("get_mix_report", juce::JSON::parse ("{}"));
+                }
+                check (afterMasterAnswer["data"]["status"].toString() == "done", "after_master-analysen blir klar");
+                if (auto* shares = afterMasterAnswer["data"]["after_master"].getArray())
+                {
+                    check (shares->size() >= 2, "after_master: en rad per källa (kick och instrument)");
+                    const auto& kickShare = (*shares)[0];
+                    check (kickShare["after_master_rms_db"].isDouble() && (double) kickShare["after_master_rms_db"] > -80.0 && (double) kickShare["after_master_rms_db"] < 6.0,
+                           "after_master: kickens bidrag i slutmixen är hörbart och rimligt (" + kickShare["after_master_rms_db"].toString() + " dB)");
+                }
+                else
+                    check (false, "after_master finns i rapporten");
+                check (processor.apvts.getRawParameterValue ("kickLevel")->load() == levelBefore, "after_master rör inte originalets kicknivå");
             }
             answer = tools.call ("analyse_mix", juce::JSON::parse ("{}"));
             for (int i = 0; i < 600 && tools.call ("get_mix_report", juce::JSON::parse ("{}"))["data"]["status"].toString() != "done"; ++i)
@@ -2240,6 +2291,78 @@ namespace
                     check (peak > 0.3f * 1.15f, "FX2: OCTAVER lägger till en oktav");
                 else
                     check (std::abs (peak - 0.3f) < 0.01f, "FX2: OCTAVER med noll oktav lämnar ljudet orört");
+            }
+            // Shimmer: en kort stöt ger en svans som är ändlig och begränsad, och SHIMMER ändrar svansen jämfört med 0.
+            {
+                std::array<double, 2> tail {};
+                for (int variant = 0; variant < 2; ++variant)
+                {
+                    auto finite = true;
+                    runEffect (EffectType::shimmer, { { 2, variant == 0 ? 0.0f : 1.0f }, { 4, 1.0f } }, 60,
+                               [&] (juce::AudioBuffer<float>& b, int block)
+                               {
+                                   for (int i = 0; i < b.getNumSamples(); ++i)
+                                       for (int ch = 0; ch < 2; ++ch)
+                                           b.setSample (ch, i, block < 4 ? 0.3f * (float) std::sin (juce::MathConstants<double>::twoPi * 440.0 * (block * blockSize + i) / renderRate) : 0.0f);
+                               },
+                               [&] (const juce::AudioBuffer<float>& b, int block)
+                               {
+                                   for (int i = 0; i < b.getNumSamples(); ++i)
+                                   {
+                                       const auto v = b.getSample (0, i);
+                                       finite = finite && std::isfinite (v) && std::abs (v) < 4.0f;
+                                       if (block >= 20)
+                                           tail[(size_t) variant] += (double) v * v;
+                                   }
+                               });
+                    check (finite, "SHIMMER ger ändligt ljud");
+                }
+                check (tail[0] > 1.0e-6 && std::abs (tail[1] - tail[0]) > 0.01 * tail[0], "SHIMMER har en svans som ändras av SHIMMER-ratten");
+            }
+            // Low Multiplier: MIX 0 rör inte ljudet; med DRIVE kommer en trediedels-ton (180 Hz ur 60 Hz) till.
+            for (const auto wet : { 0.0f, 1.0f })
+            {
+                auto peakDiff = 0.0f;
+                auto finite = true;
+                runEffect (EffectType::lowMultiplier, { { 2, 1.0f }, { 4, wet } }, 30,
+                           [&] (juce::AudioBuffer<float>& b, int block)
+                           {
+                               for (int i = 0; i < b.getNumSamples(); ++i)
+                                   for (int ch = 0; ch < 2; ++ch)
+                                       b.setSample (ch, i, 0.5f * (float) std::sin (juce::MathConstants<double>::twoPi * 60.0 * (block * blockSize + i) / renderRate));
+                           },
+                           [&] (const juce::AudioBuffer<float>& b, int block)
+                           {
+                               if (block < 10) return;
+                               for (int i = 0; i < b.getNumSamples(); ++i)
+                               {
+                                   const auto v = b.getSample (0, i);
+                                   finite = finite && std::isfinite (v) && std::abs (v) < 4.0f;
+                                   const auto reference = 0.5f * (float) std::sin (juce::MathConstants<double>::twoPi * 60.0 * (block * blockSize + i) / renderRate);
+                                   peakDiff = std::max (peakDiff, std::abs (v - reference));
+                               }
+                           });
+                check (finite, "LOW MULTIPLIER ger ändligt ljud");
+                if (wet < 0.5f)
+                    check (peakDiff < 1.0e-5f, "LOW MULTIPLIER med MIX 0 lämnar ljudet orört");
+                else
+                    check (peakDiff > 0.02f, "LOW MULTIPLIER lägger till övertoner");
+            }            // Maximizer läge 2 (SMOOTH): taket håller även med mycket gain.
+            {
+                auto peak = 0.0f;
+                runEffect (EffectType::maximizer, { { 0, 18.0f }, { 2, -3.0f }, { 5, 1.0f } }, 30,
+                           [&] (juce::AudioBuffer<float>& b, int block)
+                           {
+                               for (int i = 0; i < b.getNumSamples(); ++i)
+                                   for (int ch = 0; ch < 2; ++ch)
+                                       b.setSample (ch, i, 0.8f * (float) std::sin (juce::MathConstants<double>::twoPi * 100.0 * (block * blockSize + i) / renderRate));
+                           },
+                           [&] (const juce::AudioBuffer<float>& b, int)
+                           {
+                               for (int i = 0; i < b.getNumSamples(); ++i)
+                                   peak = std::max (peak, std::abs (b.getSample (0, i)));
+                           });
+                check (peak > 0.3f && peak < juce::Decibels::decibelsToGain (-3.0f) * 1.02f, "MAXIMIZER läge SMOOTH håller taket");
             }
         }
 

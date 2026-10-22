@@ -32,6 +32,12 @@ void ReportContent::setNotes (std::vector<PluginBase::AiNote> newNotes)
     layoutRows();
 }
 
+void ReportContent::setComparison (const juce::String& text)
+{
+    comparison = text;
+    layoutRows();
+}
+
 void ReportContent::setWidth (int newWidth)
 {
     width = std::max (120, newWidth);
@@ -42,12 +48,12 @@ void ReportContent::layoutRows()
 {
     rows.clear();
     auto top = 4;
-    auto add = [&] (juce::AttributedString text, int kind, int finding, bool applied = false)
+    auto add = [&] (juce::AttributedString text, int kind, int finding, bool applied = false, int extra = 0)
     {
         Row row;
         row.layout.createLayout (text, (float) (width - 26));
         row.top = top;
-        row.height = (int) std::ceil (row.layout.getHeight()) + 14;
+        row.height = (int) std::ceil (row.layout.getHeight()) + 14 + extra;
         row.kind = kind;
         row.finding = finding;
         row.applied = applied;
@@ -73,6 +79,21 @@ void ReportContent::layoutRows()
                         Theme::font (10.5f), Theme::textDim);
         add (summary, 0, -1);
 
+        if (comparison.isNotEmpty())
+        {
+            juce::AttributedString compare;
+            compare.append (comparison, Theme::font (10.5f), Theme::text);
+            add (compare, 0, -1);
+        }
+
+        if (! report.afterMaster.empty())
+        {
+            juce::AttributedString header;
+            header.append ("AFTER MASTER\n", Theme::font (10.5f, true), Theme::mix);
+            header.append ("What each source adds to the final mix, in dB compared with its own signal, per band (Hz). Red = the mixer and master take level, blue = it gets louder. "
+                           "Left: own level, then level in the final mix.", Theme::font (10.0f), Theme::textDim);
+            add (header, 3, -1, false, (int) report.afterMaster.size() * 18 + 20);
+        }
         if (report.findings.empty())
         {
             juce::AttributedString none;
@@ -144,6 +165,41 @@ void ReportContent::paint (juce::Graphics& g)
                 g.drawRoundedRectangle (bounds, 5.0f, 1.2f);
         }
         row.layout.draw (g, bounds.reduced (12.0f, 7.0f));
+        if (row.kind == 3)
+        {
+            const auto textHeight = (float) row.layout.getHeight();
+            auto y = bounds.getY() + 7.0f + textHeight + 6.0f;
+            const auto nameWidth = 78.0f, levelWidth = 92.0f;
+            const auto cellsLeft = bounds.getX() + 12.0f + nameWidth + levelWidth;
+            const auto cellWidth = std::max (24.0f, (bounds.getRight() - 8.0f - cellsLeft) / (float) MixAnalysis::shareBands);
+            g.setFont (Theme::font (9.0f));
+            g.setColour (Theme::textDim);
+            for (int b = 0; b < MixAnalysis::shareBands; ++b)
+                g.drawText (MixAnalysis::shareBandName (b), juce::Rectangle<float> (cellsLeft + (float) b * cellWidth, y, cellWidth, 12.0f), juce::Justification::centred);
+            y += 14.0f;
+            for (const auto& share : report.afterMaster)
+            {
+                g.setFont (Theme::font (10.5f, true));
+                g.setColour (Theme::text);
+                g.drawText (share.name, juce::Rectangle<float> (bounds.getX() + 12.0f, y, nameWidth - 4.0f, 16.0f), juce::Justification::centredLeft, true);
+                g.setFont (Theme::font (10.0f));
+                g.setColour (Theme::textDim);
+                g.drawText (juce::String (share.heardRmsDb, 0) + " > " + juce::String (share.masterRmsDb, 0),
+                            juce::Rectangle<float> (bounds.getX() + 12.0f + nameWidth, y, levelWidth - 4.0f, 16.0f), juce::Justification::centredLeft);
+                for (int b = 0; b < MixAnalysis::shareBands; ++b)
+                {
+                    const auto cell = juce::Rectangle<float> (cellsLeft + (float) b * cellWidth, y, cellWidth - 2.0f, 16.0f);
+                    const auto active = share.heardBandDb[(size_t) b] > share.heardRmsDb - 24.0f && share.heardRmsDb > -70.0f;
+                    const auto delta = share.masterBandDb[(size_t) b] - share.heardBandDb[(size_t) b];
+                    const auto strength = juce::jlimit (0.0f, 1.0f, std::abs (delta) / 12.0f);
+                    g.setColour ((delta < 0.0f ? juce::Colour (0xffff4d5e) : juce::Colour (0xff6bb8ff)).withAlpha (active ? 0.15f + 0.6f * strength : 0.0f));
+                    g.fillRoundedRectangle (cell, 3.0f);
+                    g.setColour (active ? Theme::text : Theme::textDim.withAlpha (0.4f));
+                    g.drawText (active ? juce::String (delta, 1) : "-", cell, juce::Justification::centred);
+                }
+                y += 18.0f;
+            }
+        }
     }
 }
 
@@ -257,9 +313,11 @@ SpectrumPage::SpectrumPage (PluginBase& p) : processor (p), analyser (p.getMixAn
 
     tapBox.addItem ("AS HEARD", 1);
     tapBox.addItem ("DRY", 2);
+    tapBox.addItem ("AFTER MASTER", 3);
     tapBox.setSelectedId (1, juce::dontSendNotification);
     tapBox.setTooltip ("MEASURE - As heard: after sidechain ducking and EQ (default). Dry: the analysis copy has ducking off and EQ neutral on the kick and every instrument, "
-                       "so you see the real collisions the sidechain and EQ hide. Your sound is not changed.");
+                       "so you see the real collisions the sidechain and EQ hide. After master (advanced, slower: one extra offline render per source): as heard, plus a table of what each source "
+                       "adds to the final mix after the master chain, per frequency band. Your sound is not changed.");
     addAndMakeVisible (tapBox);
 
     exportButton.setTooltip ("EXPORT - Copies the report as text, or saves the whole analysis as a JSON file for an AI or for studying by hand. In the list you choose what to include: "
@@ -274,6 +332,19 @@ SpectrumPage::SpectrumPage (PluginBase& p) : processor (p), analyser (p.getMixAn
         button->setColour (juce::TextButton::buttonOnColourId, Theme::lfo.withAlpha (0.55f));
         addAndMakeVisible (*button);
     }
+    keepButton.setTooltip ("KEEP - Remember this report. Change something, analyse again, and COMPARE shows what changed: level and peak per source, and which findings are gone or new.");
+    keepButton.onClick = [this]
+    {
+        keptReport = content.getReport();
+        keepButton.setButtonText (keptReport.valid ? "KEPT" : "KEEP");
+        updateComparison();
+    };
+    compareButton.setClickingTogglesState (true);
+    compareButton.setColour (juce::TextButton::buttonOnColourId, Theme::lfo.withAlpha (0.55f));
+    compareButton.setTooltip ("COMPARE - Shows, on top of the report, how it differs from the report you kept with KEEP.");
+    compareButton.onClick = [this] { updateComparison(); };
+    addChildComponent (keepButton);
+    addChildComponent (compareButton);
     viewSpectrumButton.setTooltip ("SPECTRUM - The live spectrum of the kick, the instruments and the master, with harmonics, collisions and the EQ.");
     viewReportButton.setTooltip ("ANALYSIS + REPORT - Analyse the whole pattern and read the report: what to look at, and what an AI suggests or has fixed.");
     viewSpectrumButton.onClick = [this] { setView (false); };
@@ -408,7 +479,7 @@ void SpectrumPage::setView (bool report)
     viewReportButton.setToggleState (report, juce::dontSendNotification);
     for (auto* c : std::initializer_list<juce::Component*> { &analyserButton, &collisionsButton, &harmonicsButton, &speedBox, &showButton, &eqButton })
         c->setVisible (! report);
-    for (auto* c : std::initializer_list<juce::Component*> { &analyseButton, &referenceButton, &sensitivityBox, &tapBox, &exportButton })
+    for (auto* c : std::initializer_list<juce::Component*> { &analyseButton, &referenceButton, &sensitivityBox, &tapBox, &exportButton, &keepButton, &compareButton })
         c->setVisible (report);
     viewport.setVisible (report);
     updateRunning();
@@ -444,6 +515,10 @@ void SpectrumPage::resized()
         referenceButton.setBounds (top.removeFromLeft (112));
         top.removeFromLeft (4);
         exportButton.setBounds (top.removeFromLeft (76));
+        top.removeFromLeft (4);
+        keepButton.setBounds (top.removeFromLeft (62));
+        top.removeFromLeft (4);
+        compareButton.setBounds (top.removeFromLeft (84));
         eqTargetBox.setVisible (false);
     }
     else
@@ -534,7 +609,7 @@ void SpectrumPage::startAnalysis()
     processor.requestAudition (PluginBase::previewStop); // förhandslyssningar stoppas först, så att inget annat spelar under analysen
     MixAnalysis::Options options;
     options.sensitivity = juce::jlimit (0, 2, sensitivityBox.getSelectedId() - 1);
-    options.tap = tapBox.getSelectedId() == 2 ? 1 : 0;
+    options.tap = tapBox.getSelectedId() == 2 ? 1 : tapBox.getSelectedId() == 3 ? 2 : 0;
     // Alla inställningar när analysen startar följer med i rapporten (oscillatorer, wavetables, effekter, modulering, mönster, toner).
     ToolLayer tools (processor);
     auto stateArgs = juce::DynamicObject::Ptr (new juce::DynamicObject());
@@ -550,6 +625,11 @@ void SpectrumPage::startAnalysis()
     updateRunning();
 }
 
+void SpectrumPage::updateComparison()
+{
+    content.setComparison (compareButton.getToggleState() ? MixAnalysis::compareReports (keptReport, content.getReport()).toText() : juce::String());
+}
+
 void SpectrumPage::takeReport()
 {
     content.setReport (analyser.getReport());
@@ -557,6 +637,7 @@ void SpectrumPage::takeReport()
     highlightLow = highlightHigh = 0.0f;
     reportVersion = analyser.getVersion();
     exportButton.setEnabled (content.getReport().valid);
+    updateComparison();
     resized();
     viewport.setViewPosition (0, 0);
     repaint();

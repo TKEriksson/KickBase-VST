@@ -387,8 +387,12 @@ SidechainPage::SidechainPage (PluginBase& p)
     scope.setTooltip ("SIDECHAIN SCOPE - Live: the kick (orange), the instruments before the sidechain (white outline) and after it (blue). "
                       "The blue is what the kick lets through: watch it being cut away under each kick. "
                       "The coloured curves in from the top and bottom edges show how much each instrument is ducked.");
-    for (auto* c : std::initializer_list<juce::Component*> { &presets, &mode, &length, &curve, &scope })
+    for (auto* c : std::initializer_list<juce::Component*> { &presets, &mode, &length, &curve, &scope, &halftimeButton })
         addAndMakeVisible (c);
+
+    halftimeButton.setClickingTogglesState (true);
+    halftimeButton.setTooltip ("HALFTIME - The scope shows 8 beats instead of 4, so a halftime or long pattern (kick every other beat) fits. Only changes the view.");
+    halftimeButton.onClick = [this] { scope.setBeats (halftimeButton.getToggleState() ? 8 : 4); };
 
     if (p.isEffectVersion())
     {
@@ -446,6 +450,8 @@ void SidechainPage::resized()
     mode.setBounds (column.removeFromTop (40));
     column.removeFromTop (2);
     length.setBounds (column.removeFromTop (40));
+    column.removeFromTop (6);
+    halftimeButton.setBounds (column.removeFromTop (22));
 
     // Djupet per instrument: en rad var, som rullar lodrätt när de inte får plats (reglagen ska inte bli små).
     if (depthKnob != nullptr)

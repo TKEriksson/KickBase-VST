@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../Core/LiveCodeRunner.h"
+#include "../Core/LiveCodeComplete.h"
 #include "../Core/ToolLayer.h"
 #include "Theme.h"
 #include <juce_gui_extra/juce_gui_extra.h>
@@ -63,8 +64,48 @@ private:
     LoadWatch loadWatch { [this] { checkLoaded(); layoutSliders(); processor.sweepCodeRoutes(); } };
     juce::uint64 savedSolo = 0, ownSolo = 0; // soloMask före CODE ONLY, och det värde CODE ONLY själv satte
 
-    void showTab (bool errors);
+    // Autokomplettering: Ctrl+Space, eller automatiskt efter en punkt. Upp/Ned väljer, Enter/Tab infogar, Esc stänger.
+    struct CompletionPopup : juce::Component
+    {
+        std::vector<LiveCodeComplete::Item> items;
+        int selected = 0, replaceFrom = 0;
+        std::function<void()> onAccept;
+        void paint (juce::Graphics& g) override;
+        void mouseDown (const juce::MouseEvent& e) override { selected = juce::jlimit (0, (int) items.size() - 1, e.y / rowHeight); repaint(); }
+        void mouseDoubleClick (const juce::MouseEvent&) override { if (onAccept) onAccept(); }
+        static constexpr int rowHeight = 20, detailHeight = 38, maxRows = 8;
+    };
+    struct CompletionKeys : juce::KeyListener
+    {
+        std::function<bool (const juce::KeyPress&, juce::Component*)> handler;
+        bool keyPressed (const juce::KeyPress& k, juce::Component* c) override { return handler && handler (k, c); }
+    };
+    CompletionPopup completion;
+    CompletionKeys completionKeys;
+    juce::CodeEditorComponent* completionEditor = nullptr;
+    void openCompletion (juce::CodeEditorComponent& target);
+    void refreshCompletion();
+    void closeCompletion();
+    void acceptCompletion();
+    bool completionKey (const juce::KeyPress& key, juce::Component* origin);
 
+    void showTab (bool errors);
+    void toggleFloat(); // G1: ett flytande fönster med samma kod (samma dokument), så att den syns medan man arbetar i andra flikar
+
+    struct FloatContent : juce::Component
+    {
+        FloatContent (juce::CodeDocument& document, juce::CodeTokeniser& tokeniser) : editor (document, &tokeniser) { addAndMakeVisible (editor); }
+        void resized() override { editor.setBounds (getLocalBounds()); }
+        juce::CodeEditorComponent editor;
+    };
+    struct FloatWindow : juce::DocumentWindow
+    {
+        FloatWindow() : juce::DocumentWindow ("Kickbase Live Code", Theme::panel, juce::DocumentWindow::closeButton) {}
+        void closeButtonPressed() override { if (onClose) onClose(); }
+        std::function<void()> onClose;
+    };
+    std::unique_ptr<FloatWindow> floatWindow;
+    juce::TextButton floatButton { "FLOAT" };
     juce::CodeDocument document;
     juce::CPlusPlusCodeTokeniser tokeniser; // räcker för färg på strängar, siffror, kommentarer
     juce::CodeEditorComponent editor { document, &tokeniser };

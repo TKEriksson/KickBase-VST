@@ -230,7 +230,10 @@ FilterPage::FilterPage (PluginBase& p, int layerIn, juce::Colour accentIn)
 
     routing = std::make_unique<ChoiceComponent> (p.apvts, ParamID::bass (layer, F::filterRouting), "ROUTING");
     addAndMakeVisible (*routing);
-    routingNote.setText ("SERIAL: filter 1, then filter 2.   PARALLEL: both filter the same sound, MIX blends them.", juce::dontSendNotification);
+    allpassFreq = std::make_unique<KnobComponent> (p.apvts, ParamID::bass (layer, F::allpassFreq), "AP FREQ", accent);
+    allpassAmount = std::make_unique<KnobComponent> (p.apvts, ParamID::bass (layer, F::allpassAmount), "AP AMT", accent);
+    addAndMakeVisible (*allpassFreq);
+    addAndMakeVisible (*allpassAmount);    routingNote.setText ("SERIAL: filter 1, then filter 2.   PARALLEL: both filter the same sound, MIX blends them.", juce::dontSendNotification);
     routingNote.setFont (Theme::font (9.0f));
     routingNote.setColour (juce::Label::textColourId, Theme::textDim);
     routingNote.setInterceptsMouseClicks (false, false);
@@ -391,12 +394,15 @@ void FilterPage::resized()
     switchCaption = switchRow.removeFromLeft (100);
     sourcesButton.setBounds (switchRow.removeFromLeft (juce::jmin (300, switchRow.getWidth())));
 
-    auto bottom = area.removeFromBottom (40);
+    auto bottom = area.removeFromBottom (58);
     area.removeFromBottom (4);
     view.setBounds (area);
-    routing->setBounds (bottom.removeFromLeft (120).withTrimmedBottom (2));
+    allpassAmount->setBounds (bottom.removeFromRight (74));
+    allpassFreq->setBounds (bottom.removeFromRight (74));
+    bottom.removeFromRight (8);
+    routing->setBounds (bottom.removeFromLeft (120).withTrimmedBottom (2).withHeight (juce::jmin (40, bottom.getHeight())));
     bottom.removeFromLeft (10);
-    routingNote.setBounds (bottom.withTrimmedTop (14));
+    routingNote.setBounds (bottom.withTrimmedTop (14).withHeight (26));
 
     const auto half = (right.getHeight() - 6) / 2;
     layoutBlock (first, right.removeFromTop (half));

@@ -16,6 +16,7 @@ public:
 
     void setReport (const MixAnalysis::Report& newReport);
     void setNotes (std::vector<PluginBase::AiNote> newNotes);
+    void setComparison (const juce::String& text); // COMPARE: en text överst i rapporten (tom = ingen)
     void setWidth (int width);
     void paint (juce::Graphics&) override;
     void mouseDown (const juce::MouseEvent&) override;
@@ -36,6 +37,7 @@ private:
 
     MixAnalysis::Report report;
     std::vector<PluginBase::AiNote> notes;
+    juce::String comparison;
     std::vector<Row> rows;
     int width = 300;
 };
@@ -129,7 +131,7 @@ private:
 
     PluginBase& processor;
     juce::TextButton analyserButton { "ANALYSER" }, collisionsButton { "COLLISIONS" }, harmonicsButton { "HARMONICS" }, eqButton { "EQ" };
-    juce::TextButton analyseButton { "ANALYSE" }, referenceButton { "REFERENCE" }, exportButton { "EXPORT" };
+    juce::TextButton analyseButton { "ANALYSE" }, referenceButton { "REFERENCE" }, exportButton { "EXPORT" }, keepButton { "KEEP" }, compareButton { "COMPARE" };
     juce::TextButton viewSpectrumButton { "SPECTRUM" }, viewReportButton { "ANALYSIS + REPORT" }; // flikarna i fliken
     juce::ComboBox sensitivityBox, tapBox, eqTargetBox, speedBox;
     juce::TextButton showButton { "SHOW" }; // flervalslista över vilka källor som visas
@@ -144,6 +146,8 @@ private:
     juce::Rectangle<int> plotBody; // diagrammets yta (rapporten ligger till höger om den)
     juce::Viewport viewport;
     ReportContent content;
+    MixAnalysis::Report keptReport; // KEEP: rapporten som COMPARE jämför nästa analys mot
+    void updateComparison();
     bool reportShown = false, analysing = false, reportView = false, embedded = false;
     int notesVersionShown = -1;
     MixAnalysis::ExportOptions exportOptions;
