@@ -1238,6 +1238,69 @@ namespace MixAnalysis
         return juce::var (root);
     }
 
+    Comparison compareReports (const Report& before, const Report& after)
+    {
+        Comparison result;
+        if (! before.valid || ! after.valid)
+            return result;
+        result.valid = true;
+
+        for (const auto& a : after.sources)
+            for (const auto& b : before.sources)
+                if (a.present && b.present && a.name == b.name)
+                {
+                    Comparison::SourceDelta delta;
+                    delta.name = a.name;
+                    delta.rmsDb = a.rmsDb - b.rmsDb;
+                    delta.peakDb = a.samplePeakDb - b.samplePeakDb;
+                    delta.fundamentalBefore = b.fundamentalHz;
+                    delta.fundamentalAfter = a.fundamentalHz;
+                    result.sources.push_back (delta);
+                    break;
+                }
+
+        const auto key = [] (const Finding& f) { return f.category + "|" + f.title; };
+        std::set<juce::String> beforeKeys, afterKeys;
+        for (const auto& f : before.findings) beforeKeys.insert (key (f));
+        for (const auto& f : after.findings) afterKeys.insert (key (f));
+        for (const auto& f : before.findings)
+            if (afterKeys.count (key (f)) == 0)
+                result.resolved.push_back (f.title);
+        for (const auto& f : after.findings)
+        {
+            if (beforeKeys.count (key (f)) == 0)
+                result.added.push_back (f.title);
+            else
+                ++result.unchanged;
+        }
+        result.limiterDb = after.limiterMaxDb - before.limiterMaxDb;
+        result.kickTailBefore = before.kickTailHz;
+        result.kickTailAfter = after.kickTailHz;
+        return result;
+    }
+
+    juce::String Comparison::toText() const
+    {
+        if (! valid)
+            return "No comparison: keep a report first (KEEP), then analyse again.";
+        const auto signedDb = [] (float v) { return (v >= 0.0f ? "+" : "") + juce::String (v, 1) + " dB"; };
+        juce::String text = "COMPARE (after minus kept)\n";
+        for (const auto& s : sources)
+        {
+            text << s.name << ": level " << signedDb (s.rmsDb) << ", peak " << signedDb (s.peakDb);
+            if (std::abs (s.fundamentalAfter - s.fundamentalBefore) > 0.5f)
+                text << ", fundamental " << juce::String (s.fundamentalBefore, 1) << " -> " << juce::String (s.fundamentalAfter, 1) << " Hz";
+            text << "\n";
+        }
+        if (std::abs (limiterDb) > 0.05f)
+            text << "Limiter max: " << signedDb (limiterDb) << "\n";
+        if (kickTailBefore > 0.0f || kickTailAfter > 0.0f)
+            text << "Kick tail: " << juce::String (kickTailBefore, 1) << " -> " << juce::String (kickTailAfter, 1) << " Hz\n";
+        text << "Findings: " << (int) resolved.size() << " gone, " << (int) added.size() << " new, " << unchanged << " the same\n";
+        for (const auto& t : resolved) text << "  gone: " << t << "\n";
+        for (const auto& t : added) text << "  new: " << t << "\n";
+        return text;
+    }
     juce::String Report::toText() const
     {
         if (! valid)

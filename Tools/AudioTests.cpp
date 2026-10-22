@@ -11,6 +11,7 @@
 #include "../Source/Instrument/InstrumentProcessor.h"
 #include "../Source/Fx/FxProcessor.h"
 #include "../Source/Ui/FmPresets.h"
+#include "../Source/Core/MixAnalysis.h"
 #include "Scenarios.h"
 #include <new>
 #include <cstdlib>
@@ -453,6 +454,31 @@ int polyTest()
             ea += (double) a[i] * a[i];
         }
         check (dot / ea < -0.5, "SUB START 180 grader vänder suben mot 0 grader");
+    }
+
+    // COMPARE: skillnaden mellan två rapporter.
+    {
+        MixAnalysis::Report before, after;
+        before.valid = after.valid = true;
+        MixAnalysis::SourceInfo bass;
+        bass.name = "Instr 1";
+        bass.present = true;
+        bass.rmsDb = -20.0f;
+        bass.samplePeakDb = -6.0f;
+        before.sources.push_back (bass);
+        bass.rmsDb = -17.0f;
+        bass.samplePeakDb = -5.0f;
+        after.sources.push_back (bass);
+        MixAnalysis::Finding gone, same, added;
+        gone.category = "collision"; gone.title = "Kick and bass collide";
+        same.category = "sub"; same.title = "Sub too loud";
+        added.category = "master"; added.title = "Limiter works hard";
+        before.findings = { gone, same };
+        after.findings = { same, added };
+        const auto c = MixAnalysis::compareReports (before, after);
+        check (c.valid && c.sources.size() == 1 && std::abs (c.sources[0].rmsDb - 3.0f) < 1.0e-4f, "COMPARE räknar nivåskillnaden per källa");
+        check (c.resolved.size() == 1 && c.added.size() == 1 && c.unchanged == 1, "COMPARE skiljer borta, nya och oförändrade fynd");
+        check (! MixAnalysis::compareReports (MixAnalysis::Report {}, after).valid, "COMPARE utan sparad rapport är ogiltig");
     }
     // a. Stöld: tre toner med 100 ms mellanrum, 2 röster (den tredje stjäl den första, som hålls) mot 3 röster (ingen stöld).
     {

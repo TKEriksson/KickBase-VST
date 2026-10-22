@@ -32,6 +32,12 @@ void ReportContent::setNotes (std::vector<PluginBase::AiNote> newNotes)
     layoutRows();
 }
 
+void ReportContent::setComparison (const juce::String& text)
+{
+    comparison = text;
+    layoutRows();
+}
+
 void ReportContent::setWidth (int newWidth)
 {
     width = std::max (120, newWidth);
@@ -72,6 +78,13 @@ void ReportContent::layoutRows()
                             + (report.referenceName.isNotEmpty() ? ", reference: " + report.referenceName : juce::String()) + ". Click a finding to select it, double-click to see it in the spectrum.",
                         Theme::font (10.5f), Theme::textDim);
         add (summary, 0, -1);
+
+        if (comparison.isNotEmpty())
+        {
+            juce::AttributedString compare;
+            compare.append (comparison, Theme::font (10.5f), Theme::text);
+            add (compare, 0, -1);
+        }
 
         if (! report.afterMaster.empty())
         {
@@ -319,6 +332,19 @@ SpectrumPage::SpectrumPage (PluginBase& p) : processor (p), analyser (p.getMixAn
         button->setColour (juce::TextButton::buttonOnColourId, Theme::lfo.withAlpha (0.55f));
         addAndMakeVisible (*button);
     }
+    keepButton.setTooltip ("KEEP - Remember this report. Change something, analyse again, and COMPARE shows what changed: level and peak per source, and which findings are gone or new.");
+    keepButton.onClick = [this]
+    {
+        keptReport = content.getReport();
+        keepButton.setButtonText (keptReport.valid ? "KEPT" : "KEEP");
+        updateComparison();
+    };
+    compareButton.setClickingTogglesState (true);
+    compareButton.setColour (juce::TextButton::buttonOnColourId, Theme::lfo.withAlpha (0.55f));
+    compareButton.setTooltip ("COMPARE - Shows, on top of the report, how it differs from the report you kept with KEEP.");
+    compareButton.onClick = [this] { updateComparison(); };
+    addChildComponent (keepButton);
+    addChildComponent (compareButton);
     viewSpectrumButton.setTooltip ("SPECTRUM - The live spectrum of the kick, the instruments and the master, with harmonics, collisions and the EQ.");
     viewReportButton.setTooltip ("ANALYSIS + REPORT - Analyse the whole pattern and read the report: what to look at, and what an AI suggests or has fixed.");
     viewSpectrumButton.onClick = [this] { setView (false); };
@@ -453,7 +479,7 @@ void SpectrumPage::setView (bool report)
     viewReportButton.setToggleState (report, juce::dontSendNotification);
     for (auto* c : std::initializer_list<juce::Component*> { &analyserButton, &collisionsButton, &harmonicsButton, &speedBox, &showButton, &eqButton })
         c->setVisible (! report);
-    for (auto* c : std::initializer_list<juce::Component*> { &analyseButton, &referenceButton, &sensitivityBox, &tapBox, &exportButton })
+    for (auto* c : std::initializer_list<juce::Component*> { &analyseButton, &referenceButton, &sensitivityBox, &tapBox, &exportButton, &keepButton, &compareButton })
         c->setVisible (report);
     viewport.setVisible (report);
     updateRunning();
@@ -489,6 +515,10 @@ void SpectrumPage::resized()
         referenceButton.setBounds (top.removeFromLeft (112));
         top.removeFromLeft (4);
         exportButton.setBounds (top.removeFromLeft (76));
+        top.removeFromLeft (4);
+        keepButton.setBounds (top.removeFromLeft (62));
+        top.removeFromLeft (4);
+        compareButton.setBounds (top.removeFromLeft (84));
         eqTargetBox.setVisible (false);
     }
     else
@@ -595,6 +625,11 @@ void SpectrumPage::startAnalysis()
     updateRunning();
 }
 
+void SpectrumPage::updateComparison()
+{
+    content.setComparison (compareButton.getToggleState() ? MixAnalysis::compareReports (keptReport, content.getReport()).toText() : juce::String());
+}
+
 void SpectrumPage::takeReport()
 {
     content.setReport (analyser.getReport());
@@ -602,6 +637,7 @@ void SpectrumPage::takeReport()
     highlightLow = highlightHigh = 0.0f;
     reportVersion = analyser.getVersion();
     exportButton.setEnabled (content.getReport().valid);
+    updateComparison();
     resized();
     viewport.setViewPosition (0, 0);
     repaint();

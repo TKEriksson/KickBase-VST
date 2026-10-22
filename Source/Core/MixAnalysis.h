@@ -136,6 +136,27 @@ namespace MixAnalysis
         bool saveExport (const juce::File& file, const ExportOptions& options, const ExportFilter& filter = {}) const;
     };
 
+    // COMPARE: skillnaden mellan två rapporter (före och efter en ändring): nivåer per källa, fynd som försvunnit och tillkommit.
+    struct Comparison
+    {
+        struct SourceDelta
+        {
+            juce::String name;
+            float rmsDb = 0.0f, peakDb = 0.0f;                  // efter minus före (dB)
+            float fundamentalBefore = 0.0f, fundamentalAfter = 0.0f;
+        };
+
+        bool valid = false;
+        std::vector<SourceDelta> sources;
+        std::vector<juce::String> resolved, added;               // fynd (rubrik) som bara fanns före / bara finns efter
+        int unchanged = 0;                                        // fynd som finns i båda
+        float limiterDb = 0.0f, kickTailBefore = 0.0f, kickTailAfter = 0.0f;
+
+        juce::String toText() const;
+    };
+
+    Comparison compareReports (const Report& before, const Report& after);
+
     // En referenslåt: långtidsmedelvärdet av spektrumet (effekt per steg).
     struct Reference
     {
