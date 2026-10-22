@@ -53,8 +53,10 @@ LiveCodePage::LiveCodePage (PluginBase& processor) : processor (processor), tool
     codeOnlyButton.setColour (juce::TextButton::buttonOnColourId, Theme::mix.darker (0.2f));
     codeOnlyButton.setTooltip ("Hear only the rows Live Code has written (solo). Your own SOLO click wins.");
     codeOnlyButton.onClick = [this] { setCodeOnly (codeOnlyButton.getToggleState()); };
-    for (auto* b : { &playButton, &stopButton, &createButton, &codeOnlyButton })
+    for (auto* b : { &playButton, &stopButton, &createButton, &codeOnlyButton, &floatButton })
         addAndMakeVisible (b);
+    floatButton.setTooltip ("FLOAT: opens the code in its own window (same text) so you can see it while you work in other tabs. Click again to close it.");
+    floatButton.onClick = [this] { toggleFloat(); };
 
     lockLabel.setText ("LOCK:", juce::dontSendNotification);
     lockLabel.setColour (juce::Label::textColourId, Theme::textDim);
@@ -94,6 +96,7 @@ LiveCodePage::LiveCodePage (PluginBase& processor) : processor (processor), tool
 LiveCodePage::~LiveCodePage()
 {
     setCodeOnly (false);
+    floatWindow.reset();
     document.removeListener (this);
     stopTimer();
     runner.cancel();
@@ -117,6 +120,8 @@ void LiveCodePage::resized()
     createButton.setBounds (top.removeFromLeft (90));
     top.removeFromLeft (6);
     codeOnlyButton.setBounds (top.removeFromLeft (100));
+    top.removeFromLeft (6);
+    floatButton.setBounds (top.removeFromLeft (70));
     area.removeFromTop (6);
     auto locks = area.removeFromTop (22);
     lockLabel.setBounds (locks.removeFromLeft (50));
@@ -303,6 +308,40 @@ void LiveCodePage::sliderReleased (int index)
     sliderValues.clear(); // värdet står nu i texten
     if (playing)
         startTimer (debounceMs); // avrundningen kan skilja från det dragna värdet
+}
+
+void LiveCodePage::toggleFloat()
+{
+    if (floatWindow != nullptr)
+    {
+        floatWindow.reset();
+        floatButton.setToggleState (false, juce::dontSendNotification);
+        return;
+    }
+    auto content = std::make_unique<FloatContent> (document, tokeniser);
+    content->editor.setFont (juce::Font (juce::FontOptions (juce::Font::getDefaultMonospacedFontName(), 15.0f, juce::Font::plain)));
+    content->editor.setTabSize (2, true);
+    content->editor.setLineNumbersShown (true);
+    content->editor.setColour (juce::CodeEditorComponent::backgroundColourId, Theme::panel);
+    content->editor.setColour (juce::CodeEditorComponent::defaultTextColourId, Theme::text);
+    content->editor.setColour (juce::CodeEditorComponent::lineNumberBackgroundId, Theme::panel.darker (0.3f));
+    content->editor.setColour (juce::CodeEditorComponent::lineNumberTextId, Theme::textDim);
+    content->editor.setColour (juce::CodeEditorComponent::highlightColourId, Theme::mix.withAlpha (0.25f));
+    content->setSize (520, 420);
+
+    floatWindow = std::make_unique<FloatWindow>();
+    floatWindow->setUsingNativeTitleBar (true);
+    floatWindow->setContentOwned (content.release(), true);
+    floatWindow->setResizable (true, true);
+    floatWindow->setAlwaysOnTop (true);
+    floatWindow->onClose = [safe = juce::Component::SafePointer<LiveCodePage> (this)]
+    {
+        if (safe != nullptr)
+            juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->toggleFloat(); });
+    };
+    floatWindow->centreWithSize (520, 420);
+    floatWindow->setVisible (true);
+    floatButton.setToggleState (true, juce::dontSendNotification);
 }
 
 void LiveCodePage::showTab (bool errors)

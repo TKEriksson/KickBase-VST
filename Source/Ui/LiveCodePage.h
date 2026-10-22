@@ -64,7 +64,22 @@ private:
     juce::uint64 savedSolo = 0, ownSolo = 0; // soloMask före CODE ONLY, och det värde CODE ONLY själv satte
 
     void showTab (bool errors);
+    void toggleFloat(); // G1: ett flytande fönster med samma kod (samma dokument), så att den syns medan man arbetar i andra flikar
 
+    struct FloatContent : juce::Component
+    {
+        FloatContent (juce::CodeDocument& document, juce::CodeTokeniser& tokeniser) : editor (document, &tokeniser) { addAndMakeVisible (editor); }
+        void resized() override { editor.setBounds (getLocalBounds()); }
+        juce::CodeEditorComponent editor;
+    };
+    struct FloatWindow : juce::DocumentWindow
+    {
+        FloatWindow() : juce::DocumentWindow ("Kickbase Live Code", Theme::panel, juce::DocumentWindow::closeButton) {}
+        void closeButtonPressed() override { if (onClose) onClose(); }
+        std::function<void()> onClose;
+    };
+    std::unique_ptr<FloatWindow> floatWindow;
+    juce::TextButton floatButton { "FLOAT" };
     juce::CodeDocument document;
     juce::CPlusPlusCodeTokeniser tokeniser; // räcker för färg på strängar, siffror, kommentarer
     juce::CodeEditorComponent editor { document, &tokeniser };
