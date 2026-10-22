@@ -108,3 +108,5 @@ Kvar, i ordning:
 13. **Bugg (Tobias):** dubbelklick på en rad i rapporten (ANALYSIS + REPORT) hoppar till spektrumvyn medan han upplever att han står kvar i rapporten. Koden är avsiktlig (SpectrumPage.cpp:355 onOpen -> selectFinding(index,true) -> setView(false), kommentar 'dubbelklick: visa fyndet i spektrumet'), men uppfattas som bugg. Åtgärd att besluta: ta bort hoppet, eller lägg en tydlig SHOW IN SPECTRUM-knapp. Ej gjort.
 
 14. **Gjort: punkt 13** (SpectrumPage): dubbelklick i rapporten hoppar inte längre; ny knapp SHOW IN SPECTRUM (visas i rapportvyn) öppnar valt fynd i spektrumet. Ej provat i UI.
+
+15. **Gjort: zoom via rullningslisterna i pianorullen** (PianoRoll.h ZoomScrollBar): dra i tummens början/slut för att zooma tid (nedre listan) eller radhöjd (högra listan, nu 7..60 px). Rättelse till punkt 10: radhöjd fanns redan (changeRowHeight, radhöjd-knapparna i verktygsraden). Ej provat i UI.
