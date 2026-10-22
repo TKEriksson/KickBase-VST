@@ -123,3 +123,6 @@ Kvar, i ordning:
 20. **Release:** byggd från `an-master` (se HANDOFF-release.md). Tester gröna, baslinjer oförändrade (Init 94f0a1b6bd8a3c7f, instr 1 f7139084f716c127, tung instr 10 6a3e65e696d14d10, tb303 03fbeb761547e195).
 
 21. **Plan (ej byggt): två sidechains per frekvensband** (LOW för bas/kick-tail, MID-HI för punch), var och en med egen kurva/djup/release. Se plan-v2.md.
+
+22. **Observerad bugg (22 okt, ej reproducerad):** i FL Studio loopade hela mönstret bara en takt vid ALL-preview och Space (pianorullen öppen). Försvann av sig själv efter att pianorullen stängts och öppnats igen. Koden granskad (StepScheduler/InstrumentProcessor), ingen orsak funnen; misstanke: gammal loop/startmarkör eller midiInLayer-läge som hängde kvar. Kolla om det händer igen.
+23. **Gjort (an-master, ej releasebyggt):** när pianorullen är öppen och har röd loop eller startmarkör följer ALL-preview (Space och ALL-knappen) samma loop/start på alla rader (StepScheduler::Window::allRows, InstrumentProcessor::updatePreviewWindow). Stängd rulle: allt spelas som vanligt. Tester gröna, Init-baslinjen oförändrad. Ej provat i UI.
