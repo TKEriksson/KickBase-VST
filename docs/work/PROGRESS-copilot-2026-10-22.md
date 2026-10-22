@@ -74,3 +74,11 @@ Löpande logg. Nyast sist. En rad per steg: tid, vad, hash/kommando, resultat, n
 ## Allpass, instr-mix och pan/bredd (Copilot, 2026-10-22)
 - 5deb6b8 Allpass FREQ/AMOUNT (nya params sist, AMOUNT 0 = bit-identisk). 6070cf3 MIX-flik (InstrMixPanel), samplePan/noisePan/fmPan/noiseWidth sist; sub alltid mono (ingen subPan, medvetet). Tester i polyTest; rendersig-baslinjer (Init, instr 1, heavy 10, tb303) oförändrade.
 - Kvar: start offset, sidechain-vy, shimmer + maximizer 2, compare, F2/MIDI-slicer (verifiera), LOW-END, CI, merge, release.
+
+
+## Release 22 okt kväll (Copilot)
+- CI av 96e066c grön (bygge Release exit 0, alla tester exit 0, HostTest ok, baselines oförändrade: Init 94f0a1b6bd8a3c7f, instr1 f7139084f716c127, heavy 6a3e65e696d14d10, tb303 03fbeb761547e195). Logg: GitHub/ci-log-96e066c.txt.
+- an-master mergad till main (--no-ff, a109d31) och pushad. Koden är identisk med den testade.
+- Release-artefakter: KickBase-VST-ci\build\Release (Kickbase.vst3, Kickbase FX.vst3, KickbaseMcp). installRel.ps1 pekar nu på -ci (otrackad, committa inte).
+- Kvar: Tobias kör installRel.bat och testar i FL Studio (MIX-fliken, AP/START, HALFTIME, KEEP/COMPARE, shimmer, Maximizer MODE, Low Multiplier, autocomplete Ctrl+Space och efter '.'). Ej hörtestat/sett än.
+- Valfritt senare: ta bort /STACK:8388608 (CMakeLists.txt:243), städa -f2/-lc/-lce/-lcui/-mx/-rel, AGENT_GUIDE ('15 types').
