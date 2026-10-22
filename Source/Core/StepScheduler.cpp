@@ -36,10 +36,25 @@ void StepScheduler::collectJustPassed (const TransportClock& clock, const Patter
             addBass (layer, pattern, lengths, sampleOffset, *position);
 }
 
+int StepScheduler::windowTick (int rowTicks, StepPosition position) const
+{
+    rowTicks = std::max (1, rowTicks);
+    const auto elapsed = (position.bar - window.bar0) * (juce::int64) Pattern::ticksPerBar + position.stepInBar;
+    const auto loopEnd = std::min (window.loopEnd, rowTicks);
+    if (window.loopStart >= 0 && loopEnd > window.loopStart)
+    {
+        const auto length = (juce::int64) (loopEnd - window.loopStart);
+        return window.loopStart + (int) (((elapsed % length) + length) % length);
+    }
+    return (int) ((((juce::int64) window.from + elapsed) % rowTicks + rowTicks) % rowTicks);
+}
+
 void StepScheduler::addKick (const Pattern& pattern, const PatternLengths& lengths, int offset, StepPosition position)
 {
     const auto barInRow = lengths.barInRow (0, position.bar);
-    const auto step = barInRow < 0 ? -1 : barInRow * Pattern::ticksPerBar + position.stepInBar;
+    auto step = barInRow < 0 ? -1 : barInRow * Pattern::ticksPerBar + position.stepInBar;
+    if (window.row == Pattern::kickLayer)
+        step = windowTick (lengths.barsOf (0) * Pattern::ticksPerBar, position);
     lastKickStep = step;
 
     if (step >= 0 && pattern.note (Pattern::kickLayer, step).on.load())
@@ -49,7 +64,9 @@ void StepScheduler::addKick (const Pattern& pattern, const PatternLengths& lengt
 void StepScheduler::addBass (int layer, const Pattern& pattern, const PatternLengths& lengths, int offset, StepPosition position)
 {
     const auto barInRow = lengths.barInRow (1 + layer, position.bar);
-    const auto tick = barInRow < 0 ? -1 : barInRow * Pattern::ticksPerBar + position.stepInBar;
+    auto tick = barInRow < 0 ? -1 : barInRow * Pattern::ticksPerBar + position.stepInBar;
+    if (window.row == layer)
+        tick = windowTick (lengths.barsOf (1 + layer) * Pattern::ticksPerBar, position);
     lastInstrumentSteps[(size_t) layer] = tick;
 
     if (tick >= 0 && pattern.note (layer, tick).on.load())

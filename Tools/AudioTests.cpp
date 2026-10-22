@@ -456,6 +456,59 @@ int polyTest()
         check (dot / ea < -0.5, "SUB START 180 grader vänder suben mot 0 grader");
     }
 
+    // BREDD per källa: FM 200 % är okorrelerat och 100 % mono; OSC 1 med unison och bredd 0 är mono.
+    {
+        auto renderLR = [&] (InstrumentParams p, std::vector<float>& l, std::vector<float>& r)
+        {
+            InstrumentVoices v;
+            setUp (v, 1, p);
+            v.noteOn (0, 0.8f, longGate);
+            for (int i = 0; i < 9600; ++i)
+            {
+                const auto o = v.next();
+                l.push_back (o.left * o.amplitude);
+                r.push_back (o.right * o.amplitude);
+            }
+        };
+        auto correlation = [] (const std::vector<float>& l, const std::vector<float>& r)
+        {
+            auto dot = 0.0, energy = 1.0e-12;
+            for (size_t i = 2400; i < l.size(); ++i)
+            {
+                dot += (double) l[i] * r[i];
+                energy += 0.5 * ((double) l[i] * l[i] + (double) r[i] * r[i]);
+            }
+            return dot / energy;
+        };
+        auto fmOnly = bright;
+        fmOnly.oscA.on = false;
+        fmOnly.sub = 0.0f;
+        fmOnly.noise = 0.0f;
+        fmOnly.fmOn = true;
+        fmOnly.fmLevel = 0.6f;
+        fmOnly.fmRatio = 2.3f;
+        fmOnly.fmIndex = 0.5f;
+        std::vector<float> l0, r0, l1, r1;
+        renderLR (fmOnly, l0, r0);
+        fmOnly.fmWidth = 2.0f;
+        renderLR (fmOnly, l1, r1);
+        check (l0 == r0, "FM är mono som standard");
+        check (std::abs (correlation (l1, r1)) < 0.6 && l1 != r1, "FM WIDTH 200 % ger skillnad mellan vänster och höger");
+
+        auto oscOnly = bright;
+        oscOnly.sub = 0.0f;
+        oscOnly.noise = 0.0f;
+        oscOnly.oscA.unison = 5;
+        oscOnly.oscA.detuneCents = 30.0f;
+        oscOnly.oscA.stereo = 1.0f;
+        std::vector<float> l2, r2, l3, r3;
+        renderLR (oscOnly, l2, r2);
+        oscOnly.aWidth = 0.0f;
+        renderLR (oscOnly, l3, r3);
+        check (l2 != r2, "OSC 1 med unison och STEREO är bred som standard");
+        check (l3 == r3, "OSC 1 WIDTH 0 gör oscillatorn mono");
+    }
+
     // COMPARE: skillnaden mellan två rapporter.
     {
         MixAnalysis::Report before, after;

@@ -92,12 +92,10 @@ private:
     void showTab (bool errors);
     void toggleFloat(); // G1: ett flytande fönster med samma kod (samma dokument), så att den syns medan man arbetar i andra flikar
 
-    struct FloatContent : juce::Component
-    {
-        FloatContent (juce::CodeDocument& document, juce::CodeTokeniser& tokeniser) : editor (document, &tokeniser) { addAndMakeVisible (editor); }
-        void resized() override { editor.setBounds (getLocalBounds()); }
-        juce::CodeEditorComponent editor;
-    };
+    struct FloatContent; // fönstrets innehåll: samma kod och samma knappar som fliken (AUTO, STOP, CREATE, CODE ONLY, LOCK, KOD/KONSOL)
+    void syncFloat();
+    juce::CodeEditorComponent* floatEditor(); // nullptr när FLOAT är stängd
+    juce::String lockSummary() const;
     struct FloatWindow : juce::DocumentWindow
     {
         FloatWindow() : juce::DocumentWindow ("Kickbase Live Code", Theme::panel, juce::DocumentWindow::closeButton) {}
@@ -144,7 +142,7 @@ private:
     static constexpr int maxLogLines = 500;
     juce::TextButton codeTab { "KOD" }, errorTab { "KONSOL" };
     juce::TextButton playButton { "AUTO" }, stopButton { "STOP" }, createButton { "CREATE" }, codeOnlyButton { "CODE ONLY" }; // AUTO är av/på
-    juce::Label lockLabel; // LÅS: 1-10 = instrument, K = kicken; en låst rad rör Live Code aldrig
+    juce::Label lockLabel, lockSummaryLabel; // LÅS: 1-10 = instrument, K = kicken; en låst rad rör Live Code aldrig
     std::array<juce::TextButton, 11> lockButtons;
     juce::Label errorLabel, licenseLabel;
     juce::HyperlinkButton strudelLink { "strudel.cc", juce::URL ("https://strudel.cc") };

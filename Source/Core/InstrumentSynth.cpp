@@ -378,7 +378,9 @@ InstrumentSynth::Output InstrumentSynth::next()
     const auto levelB = params.oscB.on ? params.oscB.level : 0.0f;
     const auto levelC = params.oscC.on ? params.oscC.level : 0.0f;
     const auto bNeeded = params.oscB.on && (params.oscB.level > 0.0f || params.oscA.warp == WarpMode::fm);
-    const auto b = bNeeded ? oscB.next (params.oscB, frequency, sampleRate, params.oscB.warpAmount, 0.0f) : Stereo {};
+    const auto bRaw = bNeeded ? oscB.next (params.oscB, frequency, sampleRate, params.oscB.warpAmount, 0.0f) : Stereo {};
+    const auto bSide = 0.5f * (bRaw.left - bRaw.right) * params.bWidth;
+    const auto b = params.bWidth == 1.0f ? bRaw : Stereo { bRaw.mid() + bSide, bRaw.mid() - bSide };
     float warpSource = envelope;
     if (params.warpEnvSource == 1)
     {
@@ -390,8 +392,16 @@ InstrumentSynth::Output InstrumentSynth::next()
     else if (params.warpEnvSource == 3)
         warpSource = env3.level;
     const auto warpA = params.oscA.warpAmount + params.warpEnv * warpSource;
-    const auto a = levelA > 0.0f ? oscA.next (params.oscA, frequency, sampleRate, warpA, b.mid()) : Stereo {};
-    const auto c = levelC > 0.0f ? oscC.next (params.oscC, frequency, sampleRate, params.oscC.warpAmount, 0.0f) : Stereo {};
+    // Bredd per OSC: sidan (L-R) skalas; 1 = orört (bit för bit som förut). b.mid() ändras inte av breddningen.
+    const auto widen = [] (Stereo s, float width)
+    {
+        if (width == 1.0f)
+            return s;
+        const auto centre = s.mid(), side = 0.5f * (s.left - s.right) * width;
+        return Stereo { centre + side, centre - side };
+    };
+    const auto a = widen (levelA > 0.0f ? oscA.next (params.oscA, frequency, sampleRate, warpA, b.mid()) : Stereo {}, params.aWidth);
+    const auto c = widen (levelC > 0.0f ? oscC.next (params.oscC, frequency, sampleRate, params.oscC.warpAmount, 0.0f) : Stereo {}, params.cWidth);
 
     // Sub och brus ligger i mitten. Mitten och sidan filtreras var för sig (samma filter), och
     // blir sedan vänster och höger igen.
@@ -424,6 +434,17 @@ InstrumentSynth::Output InstrumentSynth::next()
             (filtered ? centre : dryCentre) += x;
         else
             addPanned (filtered, x, x, pan);
+    };
+    // Bredd för monokällor (SAMPLE, FM): som bruset, en fördröjd kopia (17 samplingar) är den okorrelerade delen. 1 = mono som förut.
+    widthDelayPos = (widthDelayPos + 1) & 63;
+    auto addMonoWide = [&] (bool filtered, float x, float pan, float width, float* line)
+    {
+        if (width <= 1.0f)
+            return addMono (filtered, x, pan);
+        line[widthDelayPos] = x;
+        const auto delayed = line[(widthDelayPos + 64 - 17) & 63];
+        const auto angle = juce::jmin (1.0f, width - 1.0f) * juce::MathConstants<float>::pi * 0.25f;
+        addPanned (filtered, x * std::cos (angle) + delayed * std::sin (angle), x * std::cos (angle) - delayed * std::sin (angle), pan);
     };
     (fOn ? centre : dryCentre) += params.sub * subShape;
     if (params.noise > 0.0f)
@@ -486,7 +507,7 @@ InstrumentSynth::Output InstrumentSynth::next()
         const auto radians = 8.0f * index * index * antiAlias;
         const auto modulator = radians * (float) std::sin (juce::MathConstants<double>::twoPi * fmModPhase);
         const auto fm = params.fmLevel * (float) std::sin (juce::MathConstants<double>::twoPi * fmCarrierPhase + (double) modulator);
-        addMono (fOn && params.fmFilter, fm, params.fmPan);
+        addMonoWide (fOn && params.fmFilter, fm, params.fmPan, params.fmWidth, fmDelay);
         fmCarrierPhase = wrap (fmCarrierPhase + carrierHz / sampleRate);
         fmModPhase = wrap (fmModPhase + modHz / sampleRate);
     }
@@ -507,7 +528,7 @@ InstrumentSynth::Output InstrumentSynth::next()
                 const auto following = index + 1 < sliceEnd ? data[index + 1] : 0.0f;
                 const auto edge = std::min (samplePosition - (double) sliceBegin + 1.0, (double) sliceEnd - samplePosition);
                 const auto fade = (float) std::min (1.0, edge / 64.0);
-                addMono (fOn && params.filterSrc[3], fade * params.sampleLevel * (data[index] + fraction * (following - data[index])), params.samplePan);
+                addMonoWide (fOn && params.filterSrc[3], fade * params.sampleLevel * (data[index] + fraction * (following - data[index])), params.samplePan, params.sampleWidth, sampleDelay);
                 samplePosition += params.slicerReverse ? -1.0 : 1.0;
             }
         }
@@ -521,7 +542,7 @@ InstrumentSynth::Output InstrumentSynth::next()
                 const auto index = (int) samplePosition;
                 const auto fraction = (float) (samplePosition - (double) index);
                 const auto following = index + 1 < length ? data[index + 1] : (params.sampleLoop ? data[0] : 0.0f);
-                addMono (fOn && params.filterSrc[3], params.sampleLevel * (data[index] + fraction * (following - data[index])), params.samplePan);
+                addMonoWide (fOn && params.filterSrc[3], params.sampleLevel * (data[index] + fraction * (following - data[index])), params.samplePan, params.sampleWidth, sampleDelay);
                 samplePosition += params.sampleKeyTrack ? frequency / (double) std::max (1.0f, params.sampleRootHz) : 1.0;
             }
         }

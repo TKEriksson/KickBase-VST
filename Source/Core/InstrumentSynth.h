@@ -121,6 +121,8 @@ struct InstrumentParams
     float allpassAmount = 0.0f;  // 0..1: blandning torr -> allpass (1 = ren fasrotation)
     float samplePan = 0.0f, noisePan = 0.0f, fmPan = 0.0f; // INSTR-MIX: -1..1 (0 = mitten, ljudet som förut)
     float subPhaseDeg = 0.0f, fmPhaseDeg = 0.0f; // startfas per källa (grader), läggs till PH-fasen; 0 = som förut
+    float aWidth = 1.0f, bWidth = 1.0f, cWidth = 1.0f; // OSC 1-3: 0 = mono, 1 = som förut, 2 = dubbel sida
+    float sampleWidth = 1.0f, fmWidth = 1.0f;          // 1 = mono (som förut), upp till 2 = okorrelerat
     float noiseWidth = 1.0f;     // 1 = mono (som förut), upp till 2 = okorrelerat brus i L och R
     InstrumentParams() { oscB.level = 0.0f; oscC.level = 0.0f; oscC.on = false; }
 
@@ -295,6 +297,8 @@ private:
     bool allpassWasOn = false;
     float noiseDelay[64] {};             // noiseWidth: en fördröjd kopia av bruset ger den okorrelerade delen
     int noiseDelayPos = 0;
+    float sampleDelay[64] {}, fmDelay[64] {}; // samma sak för SAMPLE och FM
+    int widthDelayPos = 0;
     float lastKeyFrequency = -1.0f, lastKeyTrack = -1.0f, cachedKeyFollow = 1.0f;
     double lastLogFrequency = 1.0e30, lastPitchOffset = 1.0e30, cachedFrequency = 0.0;
     CoefficientMemo ampDecayMemo, ampReleaseMemo, pitchEnvMemo, warpDirectMemo, fmEnvMemo;

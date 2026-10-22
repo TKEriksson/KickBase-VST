@@ -101,7 +101,7 @@ namespace ParamID
                                      "Polarity", "PhaseDeg", "NudgeMs",
                                      "FmOn", "FmLevel", "FmRatio", "FmIndex", "FmEnvAmount", "FmEnvTime", "FmSemis", "FmPreset", "FmFilter",
                                      "SlicerOn", "SlicerMapTo", "SlicerReverse",
-                                     "FxSend", "SampleMode", "AllpassFreq", "AllpassAmount", "SamplePan", "NoisePan", "FmPan", "NoiseWidth", "SubPhaseDeg", "FmPhaseDeg" };
+                                     "FxSend", "SampleMode", "AllpassFreq", "AllpassAmount", "SamplePan", "NoisePan", "FmPan", "NoiseWidth", "SubPhaseDeg", "FmPhaseDeg", "AWidth", "BWidth", "CWidth", "SampleWidth", "FmWidth" };
         static_assert (std::size (names) == (size_t) InstrumentField::count);
         return names[(size_t) field];
     }
@@ -427,7 +427,13 @@ namespace Params
         const auto degText = [] (float v) { return String (v, 1) + juce::String (juce::CharPointer_UTF8 ("°")); };
         layout.add (floatParam (id (F::subPhaseDeg), title + "Sub Start Phase", NormalisableRange<float> (0.0f, 360.0f, 0.1f), 0.0f, degText));
         layout.add (floatParam (id (F::fmPhaseDeg), title + "FM Start Phase", NormalisableRange<float> (0.0f, 360.0f, 0.1f), 0.0f, degText));
-        layout.add (floatParam (id (F::noiseWidth), title + "Noise Width", NormalisableRange<float> (1.0f, 2.0f, 0.01f), 1.0f, [] (float v) { return String (juce::roundToInt (v * 100.0f)) + " %"; }));
+        const auto widthText = [] (float v) { return String (juce::roundToInt (v * 100.0f)) + " %"; };
+        layout.add (floatParam (id (F::noiseWidth), title + "Noise Width", NormalisableRange<float> (1.0f, 2.0f, 0.01f), 1.0f, widthText));
+        layout.add (floatParam (id (F::aWidth), title + "OSC 1 Width", NormalisableRange<float> (0.0f, 2.0f, 0.01f), 1.0f, widthText));
+        layout.add (floatParam (id (F::bWidth), title + "OSC 2 Width", NormalisableRange<float> (0.0f, 2.0f, 0.01f), 1.0f, widthText));
+        layout.add (floatParam (id (F::cWidth), title + "OSC 3 Width", NormalisableRange<float> (0.0f, 2.0f, 0.01f), 1.0f, widthText));
+        layout.add (floatParam (id (F::sampleWidth), title + "Sample Width", NormalisableRange<float> (1.0f, 2.0f, 0.01f), 1.0f, widthText));
+        layout.add (floatParam (id (F::fmWidth), title + "FM Width", NormalisableRange<float> (1.0f, 2.0f, 0.01f), 1.0f, widthText));
             }
 
     void addFxParams (Layout& layout)
@@ -716,5 +722,10 @@ InstrumentParams ParamRefs::readInstrument (int layer, int rootMidiNote) const
     p.noiseWidth = get (F::noiseWidth);
     p.subPhaseDeg = get (F::subPhaseDeg);
     p.fmPhaseDeg = get (F::fmPhaseDeg);
+    p.aWidth = get (F::aWidth);
+    p.bWidth = get (F::bWidth);
+    p.cWidth = get (F::cWidth);
+    p.sampleWidth = get (F::sampleWidth);
+    p.fmWidth = get (F::fmWidth);
     return p;
 }

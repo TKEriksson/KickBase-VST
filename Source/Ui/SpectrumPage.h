@@ -131,7 +131,7 @@ private:
 
     PluginBase& processor;
     juce::TextButton analyserButton { "ANALYSER" }, collisionsButton { "COLLISIONS" }, harmonicsButton { "HARMONICS" }, eqButton { "EQ" };
-    juce::TextButton analyseButton { "ANALYSE" }, referenceButton { "REFERENCE" }, exportButton { "EXPORT" }, keepButton { "KEEP" }, compareButton { "COMPARE" };
+    juce::TextButton analyseButton { "ANALYSE" }, referenceButton { "REFERENCE" }, exportButton { "EXPORT" }, keepButton { "KEEP" }, compareButton { "COMPARE" }, showSpectrumButton { "SHOW IN SPECTRUM" };
     juce::TextButton viewSpectrumButton { "SPECTRUM" }, viewReportButton { "ANALYSIS + REPORT" }; // flikarna i fliken
     juce::ComboBox sensitivityBox, tapBox, eqTargetBox, speedBox;
     juce::TextButton showButton { "SHOW" }; // flervalslista över vilka källor som visas

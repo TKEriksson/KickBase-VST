@@ -5,13 +5,14 @@ InstrMixPanel::InstrMixPanel (PluginBase& p, int layerIn, juce::Colour accentIn)
 {
     using F = InstrumentField;
     const F panA = F::aPan, panB = F::bPan, panC = F::cPan, panSample = F::samplePan, panNoise = F::noisePan, panFm = F::fmPan, widthNoise = F::noiseWidth, subPhase = F::subPhaseDeg, fmPhase = F::fmPhaseDeg;
-    addStrip ("OSC 1", F::aLevel, &panA, nullptr, 0);
-    addStrip ("OSC 2", F::bLevel, &panB, nullptr, 0);
-    addStrip ("OSC 3", F::cLevel, &panC, nullptr, 0);
-    addStrip ("SAMPLE", F::sampleLevel, &panSample, nullptr, 0);
+    const F widthA = F::aWidth, widthB = F::bWidth, widthC = F::cWidth, widthSample = F::sampleWidth, widthFm = F::fmWidth;
+    addStrip ("OSC 1", F::aLevel, &panA, &widthA, 0);
+    addStrip ("OSC 2", F::bLevel, &panB, &widthB, 0);
+    addStrip ("OSC 3", F::cLevel, &panC, &widthC, 0);
+    addStrip ("SAMPLE", F::sampleLevel, &panSample, &widthSample, 0);
     addStrip ("NOISE", F::noise, &panNoise, &widthNoise, 0);
     addStrip ("SUB", F::sub, nullptr, nullptr, 0, &subPhase);
-    addStrip ("FM", F::fmLevel, &panFm, nullptr, 0, &fmPhase);
+    addStrip ("FM", F::fmLevel, &panFm, &widthFm, 0, &fmPhase);
     startTimerHz (4);
 }
 
@@ -48,6 +49,7 @@ void InstrMixPanel::resized()
     {
         strip.frame = cell.reduced (2);
         auto inner = strip.frame.withTrimmedTop (14).reduced (2, 0);
+        strip.meter = inner.removeFromRight (10).withTrimmedBottom (4);
         const auto count = 1 + (strip.pan != nullptr ? 1 : 0) + (strip.width != nullptr ? 1 : 0) + (strip.phase != nullptr ? 1 : 0);
         const auto knobWidth = inner.getWidth() / count;
         strip.level->setBounds (inner.removeFromLeft (knobWidth));
@@ -62,7 +64,7 @@ void InstrMixPanel::resized()
     for (size_t i = 0; i < 4; ++i)
         place (*strips[i], topRow.removeFromLeft (topWidth));
     // NOISE har tre ratter och får dubbel bredd mot SUB.
-    const auto unit = bottomRow.getWidth() / 7;
+    const auto unit = bottomRow.getWidth() / 9;
     place (*strips[4], bottomRow.removeFromLeft (unit * 3));
     place (*strips[5], bottomRow.removeFromLeft (unit * 2));
     place (*strips[6], bottomRow);
@@ -72,7 +74,8 @@ void InstrMixPanel::renderWave()
 {
     // Några cykler vid 110 Hz en stund in i tonen, så att attacken inte styr bilden.
     constexpr double rate = 48000.0;
-    constexpr int skip = 4800, length = 1309;
+    constexpr int skip = 4800;
+    const auto length = juce::jmax (64, (int) (1309.0f / zoomX));
     auto params = refs.readInstrument (layer, 36).withTempo (processor.transportStatus.bpm.load(), false);
     params.rootHz = 110.0f;
     params.level = 1.0f;
@@ -106,6 +109,61 @@ void InstrMixPanel::renderWave()
     }
 }
 
+// Varje källa ensam genom hela kedjan (filter, envelope, pan, bredd): toppen av vänster/höger i dB.
+void InstrMixPanel::renderMeters()
+{
+    constexpr double rate = 48000.0;
+    const auto base = refs.readInstrument (layer, 36).withTempo (processor.transportStatus.bpm.load(), false);
+    for (int source = 0; source < 7; ++source)
+    {
+        auto params = base;
+        params.rootHz = 110.0f;
+        params.level = 1.0f;
+        params.oscA.on = base.oscA.on && source == 0;
+        params.oscB.on = base.oscB.on && source == 1;
+        params.oscC.on = base.oscC.on && source == 2;
+        params.sampleOn = base.sampleOn && source == 3;
+        params.noise = source == 4 ? base.noise : 0.0f;
+        params.sub = source == 5 ? base.sub : 0.0f;
+        params.fmOn = base.fmOn && source == 6;
+        meterSynth.prepare (rate);
+        meterSynth.setSeed (11);
+        meterSynth.setParams (params);
+        meterSynth.noteOn (0, 0.8f, (int) rate);
+        for (int i = 0; i < 4800; ++i)
+            meterSynth.next();
+        auto peak = 0.0f;
+        for (int i = 0; i < 2400; ++i)
+        {
+            const auto o = meterSynth.next();
+            peak = std::max ({ peak, std::abs (o.left * o.amplitude), std::abs (o.right * o.amplitude) });
+        }
+        peakDb[(size_t) source] = peak > 1.0e-5f ? juce::Decibels::gainToDecibels (peak) : -100.0f;
+    }
+}
+
+void InstrMixPanel::mouseWheelMove (const juce::MouseEvent& event, const juce::MouseWheelDetails& wheel)
+{
+    if (! waveArea.contains (event.getPosition()) || wheel.deltaY == 0.0f)
+        return;
+    const auto factor = wheel.deltaY > 0.0f ? 1.25f : 0.8f;
+    if (event.mods.isShiftDown())
+        zoomY = juce::jlimit (0.25f, 8.0f, zoomY * factor);
+    else
+        zoomX = juce::jlimit (0.25f, 8.0f, zoomX * factor);
+    renderWave();
+    repaint (waveArea);
+}
+
+void InstrMixPanel::mouseDoubleClick (const juce::MouseEvent& event)
+{
+    if (! waveArea.contains (event.getPosition()))
+        return;
+    zoomX = zoomY = 1.0f;
+    renderWave();
+    repaint (waveArea);
+}
+
 void InstrMixPanel::timerCallback()
 {
     if (! isShowing())
@@ -120,7 +178,8 @@ void InstrMixPanel::timerCallback()
         return;
     lastKey = key;
     renderWave();
-    repaint (waveArea);
+    renderMeters();
+    repaint();
 }
 
 void InstrMixPanel::paint (juce::Graphics& g)
@@ -129,6 +188,7 @@ void InstrMixPanel::paint (juce::Graphics& g)
     g.setColour (Theme::textDim);
     g.setFont (Theme::font (10.0f, true));
     g.drawText ("COMBINED WAVEFORM (all sources, 110 Hz)", waveArea.withHeight (14), juce::Justification::centredLeft);
+    g.drawText ("ZOOM " + juce::String (zoomX, 2) + "x / " + juce::String (zoomY, 2) + "x  (wheel = time, Shift + wheel = height, double-click = reset)", waveArea.withTrimmedTop (waveArea.getHeight() - 14), juce::Justification::centredLeft);
     wave.removeFromTop (16.0f);
     g.setColour (juce::Colours::black.withAlpha (0.35f));
     g.fillRoundedRectangle (wave, 3.0f);
@@ -139,9 +199,10 @@ void InstrMixPanel::paint (juce::Graphics& g)
     const auto columns = (int) (peaks.size() / 2);
     for (int x = 0; x < columns; ++x)
     {
-        const auto lo = peaks[(size_t) x * 2] * waveGain, hi = peaks[(size_t) x * 2 + 1] * waveGain;
+        const auto lo = peaks[(size_t) x * 2] * waveGain * zoomY, hi = peaks[(size_t) x * 2 + 1] * waveGain * zoomY;
         const auto px = wave.getX() + 4.0f + (float) x;
-        g.drawVerticalLine ((int) px, mid - hi * (wave.getHeight() * 0.45f), mid - lo * (wave.getHeight() * 0.45f) + 1.0f);
+        const auto limit = wave.getHeight() * 0.5f - 1.0f;
+        g.drawVerticalLine ((int) px, mid - juce::jmin (limit, hi * (wave.getHeight() * 0.45f)), mid - juce::jmax (-limit, lo * (wave.getHeight() * 0.45f)) + 1.0f);
     }
 
     for (const auto& strip : strips)
@@ -151,5 +212,22 @@ void InstrMixPanel::paint (juce::Graphics& g)
         g.setColour (Theme::text);
         g.setFont (Theme::font (10.0f, true));
         g.drawText (strip->name + (strip->name == "SUB" ? "  (always mono)" : ""), strip->frame.withHeight (14).reduced (6, 0), juce::Justification::centredLeft);
+    }
+
+    // dB-mätare: källan ensam, toppnivå från -60 till 0 dB (rött över -3 dB).
+    for (size_t i = 0; i < strips.size() && i < peakDb.size(); ++i)
+    {
+        const auto meter = strips[i]->meter.toFloat();
+        if (meter.isEmpty())
+            continue;
+        const auto db = peakDb[i];
+        g.setColour (juce::Colours::black.withAlpha (0.5f));
+        g.fillRoundedRectangle (meter, 2.0f);
+        const auto filled = juce::jlimit (0.0f, 1.0f, (db + 60.0f) / 60.0f);
+        g.setColour (db > -3.0f ? juce::Colour (0xffe05050) : accent);
+        g.fillRect (meter.withTrimmedTop (meter.getHeight() * (1.0f - filled)).reduced (1.0f, 0.0f));
+        g.setColour (Theme::textDim);
+        g.setFont (Theme::font (9.0f));
+        g.drawText (db <= -99.0f ? juce::String ("-inf") : juce::String (juce::roundToInt (db)) + " dB", strips[i]->frame.withHeight (14).reduced (6, 0), juce::Justification::centredRight);
     }
 }

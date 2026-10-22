@@ -105,7 +105,7 @@ private:
     int numHeldNotes = 0;
     int currentNote = -1; // senast anslagna ton; bestämmer tonarten
     int liveVoiceLayer = -1; // instrumentet som spelar tangentbordet live (MIDI IN: INSTRUMENT), -1 = inget
-    bool handleLiveMidi (const juce::MidiMessage& message); // true när meddelandet är ett live-spelat och mönstret ska lämnas ifred
+    bool handleLiveMidi (const juce::MidiMessage& message, int rowOverride = -1); // rowOverride: provlyssning från pianorullen, spelas på den raden // true när meddelandet är ett live-spelat och mönstret ska lämnas ifred
 
     bool patternActive = false;
     double stopAtPpq = std::numeric_limits<double>::infinity();
@@ -116,6 +116,9 @@ private:
     int soloLayer = 0, soloSource = 0, soloSamplesLeft = 0, kickSoloSamplesLeft = 0;
     int heldLayer = -1;    // instrument vars provlyssning hålls (musen nere på en graf), -1 = ingen
     int previewLayer = -1; // rad som förhandsspelas utan DAW-ton, -1 = ingen
+    int previewFrom = 0;   // pianorullens spolning: tick där den enskilda radens förhandsspelning började
+    juce::int64 previewBar0 = 0;
+    void updatePreviewWindow();
     void handlePreviewRequest (int row);
     void stopPreview(); // provlyssning av en enda källa (se PluginBase::requestAudition)
     bool kickOn = true;

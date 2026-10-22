@@ -345,6 +345,9 @@ SpectrumPage::SpectrumPage (PluginBase& p) : processor (p), analyser (p.getMixAn
     compareButton.onClick = [this] { updateComparison(); };
     addChildComponent (keepButton);
     addChildComponent (compareButton);
+    showSpectrumButton.setTooltip ("SHOW IN SPECTRUM - Opens the selected finding in the spectrum view (the sources and the frequency range are highlighted). Select a finding in the list first.");
+    showSpectrumButton.onClick = [this] { if (content.selected >= 0) selectFinding (content.selected, true); };
+    addChildComponent (showSpectrumButton);
     viewSpectrumButton.setTooltip ("SPECTRUM - The live spectrum of the kick, the instruments and the master, with harmonics, collisions and the EQ.");
     viewReportButton.setTooltip ("ANALYSIS + REPORT - Analyse the whole pattern and read the report: what to look at, and what an AI suggests or has fixed.");
     viewSpectrumButton.onClick = [this] { setView (false); };
@@ -352,7 +355,6 @@ SpectrumPage::SpectrumPage (PluginBase& p) : processor (p), analyser (p.getMixAn
     exportOptions = MixAnalysis::ExportOptions::fromString (Settings::get ("exportContent"));
 
     content.onSelect = [this] (int index) { selectFinding (index); };
-    content.onOpen = [this] (int index) { selectFinding (index, true); };
     viewport.setViewedComponent (&content, false);
     viewport.setScrollBarsShown (true, false);
     addChildComponent (viewport);
@@ -479,7 +481,7 @@ void SpectrumPage::setView (bool report)
     viewReportButton.setToggleState (report, juce::dontSendNotification);
     for (auto* c : std::initializer_list<juce::Component*> { &analyserButton, &collisionsButton, &harmonicsButton, &speedBox, &showButton, &eqButton })
         c->setVisible (! report);
-    for (auto* c : std::initializer_list<juce::Component*> { &analyseButton, &referenceButton, &sensitivityBox, &tapBox, &exportButton, &keepButton, &compareButton })
+    for (auto* c : std::initializer_list<juce::Component*> { &analyseButton, &referenceButton, &sensitivityBox, &tapBox, &exportButton, &keepButton, &compareButton, &showSpectrumButton })
         c->setVisible (report);
     viewport.setVisible (report);
     updateRunning();
@@ -519,6 +521,8 @@ void SpectrumPage::resized()
         keepButton.setBounds (top.removeFromLeft (62));
         top.removeFromLeft (4);
         compareButton.setBounds (top.removeFromLeft (84));
+        top.removeFromLeft (4);
+        showSpectrumButton.setBounds (top.removeFromLeft (150));
         eqTargetBox.setVisible (false);
     }
     else

@@ -137,7 +137,12 @@ void InstrumentProcessor::processChunk (juce::AudioBuffer<float>& buffer, juce::
     const auto numSamples = buffer.getNumSamples();
     ensureScratchSize (numSamples);
     keyboardState.processNextMidiBuffer (midi, 0, numSamples, true);
-    clock.beginBlock (getHostPosition(), numSamples);
+    {
+        int auditionRow = 0, auditionNote = 0, auditionVelocity = 0;
+        bool auditionOn = false;
+        while (popNoteAudition (auditionRow, auditionNote, auditionVelocity, auditionOn)) // enskilda toner från pianorullen
+            handleLiveMidi (auditionOn ? juce::MidiMessage::noteOn (1, auditionNote, (juce::uint8) auditionVelocity) : juce::MidiMessage::noteOff (1, auditionNote), auditionRow);
+    }    clock.beginBlock (getHostPosition(), numSamples);
     for (int layer = 0; layer < numLayers; ++layer)
         basses[(size_t) layer].setTempo (clock.getBpm()); // ENV 2 och ENV 3 i läget Sync
     // Moduleringen uppdateras bara på 32-rutnätet. En bit som börjar mitt i ett fönster (när DAW-blocket slutade där) behåller
@@ -461,10 +466,28 @@ void InstrumentProcessor::handlePreviewRequest (int row)
     patternActive = true;
     stopAtPpq = std::numeric_limits<double>::infinity(); // loopar tills den stoppas
 
+    previewFrom = juce::jmax (0, previewFromTick.load());
+    previewBar0 = clock.getBarIndex();
+    updatePreviewWindow();
+
     const auto tolerance = (int) (noteOnToleranceSeconds * getSampleRate());
     scheduler.collectJustPassed (clock, pattern, lengths, 0, tolerance);
     for (const auto& event : scheduler)
         handleEvent (event);
+}
+
+void InstrumentProcessor::updatePreviewWindow()
+{
+    StepScheduler::Window window;
+    if (previewLayer >= 0 && previewLayer <= Pattern::kickLayer)
+    {
+        window.row = previewLayer;
+        window.from = previewFrom;
+        window.loopStart = previewLoopStart.load();
+        window.loopEnd = previewLoopEnd.load();
+        window.bar0 = previewBar0;
+    }
+    scheduler.setWindow (window);
 }
 
 void InstrumentProcessor::stopPreview()
@@ -506,10 +529,10 @@ bool InstrumentProcessor::noteOffEndsPattern (const juce::MidiMessage& message) 
     return message.isAllNotesOff() || message.isAllSoundOff();
 }
 
-bool InstrumentProcessor::handleLiveMidi (const juce::MidiMessage& message)
+bool InstrumentProcessor::handleLiveMidi (const juce::MidiMessage& message, int rowOverride)
 {
     // MIDI IN: INSTRUMENT i pianorullen: tonerna spelas på radens ljud, utan att mönstret startar. Tonhöjd 0 är radens grundton (som i pianorullen).
-    const auto row = midiInLayer.load();
+    const auto row = rowOverride >= 0 ? rowOverride : midiInLayer.load();
     auto low = liveNotesLow.load(), high = liveNotesHigh.load();
     auto isSet = [&] (int note) { return (((note < 64 ? low : high) >> (note & 63)) & 1) != 0; };
     auto setBit = [&] (int note, bool on)
@@ -533,7 +556,8 @@ bool InstrumentProcessor::handleLiveMidi (const juce::MidiMessage& message)
     {
         if (row < 0 || row > Pattern::kickLayer)
             return false;
-        previewLayer = -1;
+        if (rowOverride < 0)
+            previewLayer = -1;
         const auto note = message.getNoteNumber();
         const auto pitch = juce::jlimit (Pattern::minPitch, Pattern::maxPitch, note - rowRootNote (row));
         if (row == Pattern::kickLayer)
@@ -689,6 +713,7 @@ void InstrumentProcessor::renderSegment (int startSample, int endSample, int ste
 
     if (patternActive)
     {
+        updatePreviewWindow(); // loopen kan ändras under spelning
         scheduler.collect (clock, pattern, lengths, startSample, std::max (startSample, std::min (endSample, stepLimit)), stopAtPpq);
 
         // Händelserna i tidsordning: det som väntat från tidigare segment och det som schemaläggaren gav (med swing och fördröjning).

@@ -313,6 +313,39 @@ public:
     // MIDI in medan pianorullen är öppen: vilken rad som svarar på tangentbordet/MIDI (notlager som i previewRequest), -1 = alla rader.
     // Bara körtillstånd, ingen parameter: pianorullen sätter den vid öppning och nollar den vid stängning.
     std::atomic<int> midiInLayer { -1 };
+
+    // Pianorullens spolning och loop för nästa förhandsspelning av en enskild rad (ticks i radens egen tid): spelningen börjar vid
+    // `previewFromTick`; är loopen satt (slut > start) går den i stället runt mellan start och slut. Loopen läses hela tiden, så den kan ändras under spelning.
+    std::atomic<int> openRollLayer { -1 }; // raden vars pianorulle är öppen (för PREVIEWS-knappen i toppen), -1 = ingen
+    std::atomic<int> previewFromTick { 0 }, previewLoopStart { -1 }, previewLoopEnd { -1 };
+
+    // Provlyssning av en enskild ton på en rad (pianorullen: klick på en tangent eller en ritad ton). Ljudtråden spelar den på radens ljud.
+    void postNoteAudition (int row, int midiNote, int velocity, bool on)
+    {
+        int start1 = 0, size1 = 0, start2 = 0, size2 = 0;
+        noteAuditionFifo.prepareToWrite (1, start1, size1, start2, size2);
+        if (size1 > 0)
+        {
+            noteAuditionData[(size_t) start1] = (on ? 1 << 20 : 0) | (juce::jlimit (1, 127, velocity) << 12) | (juce::jlimit (0, 127, midiNote) << 4) | juce::jlimit (0, 15, row);
+            noteAuditionFifo.finishedWrite (1);
+        }
+    }
+    bool popNoteAudition (int& row, int& midiNote, int& velocity, bool& on)
+    {
+        int start1 = 0, size1 = 0, start2 = 0, size2 = 0;
+        noteAuditionFifo.prepareToRead (1, start1, size1, start2, size2);
+        if (size1 == 0)
+            return false;
+        const auto value = noteAuditionData[(size_t) start1];
+        noteAuditionFifo.finishedRead (1);
+        row = value & 15;
+        midiNote = (value >> 4) & 127;
+        velocity = (value >> 12) & 127;
+        on = (value >> 20) != 0;
+        return true;
+    }
+    juce::AbstractFifo noteAuditionFifo { 32 };
+    std::array<int, 32> noteAuditionData {};
     // Tonerna som spelas live på den raden (MIDI-ton 0..127, bit för bit), så att pianorullen kan tända tangenterna.
     std::atomic<uint64_t> liveNotesLow { 0 }, liveNotesHigh { 0 };
     // MIDI-tonen som radens tonhöjd 0 ligger på (kickens svans, eller instrumentets grundton i tonarten). Pianorullen och live-spelet delar den.
