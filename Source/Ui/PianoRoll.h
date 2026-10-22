@@ -9,6 +9,64 @@
 #include "Cursors.h"
 #include "ListenButton.h"
 
+// Rullningslist där man även kan dra i tummens ändar för att zooma (som i FL Studio): dra den ena kanten för att se mer eller mindre.
+class ZoomScrollBar : public juce::ScrollBar
+{
+public:
+    using ScrollBar::ScrollBar;
+    // start och storlek i listans enhet; ändrar vyn utan att tummen hoppar
+    std::function<void (double start, double size)> onZoom;
+
+    void mouseMove (const juce::MouseEvent& e) override { setMouseCursor (edgeAt (e) != 0 ? edgeCursor() : juce::MouseCursor::NormalCursor); ScrollBar::mouseMove (e); }
+    void mouseDown (const juce::MouseEvent& e) override
+    {
+        edge = edgeAt (e);
+        if (edge == 0)
+            return ScrollBar::mouseDown (e);
+        startAtDown = getCurrentRangeStart();
+        sizeAtDown = getCurrentRangeSize();
+    }
+    void mouseDrag (const juce::MouseEvent& e) override
+    {
+        if (edge == 0)
+            return ScrollBar::mouseDrag (e);
+        const auto length = (double) std::max (1, isVertical() ? getHeight() : getWidth());
+        const auto total = getMaximumRangeLimit() - getMinimumRangeLimit();
+        const auto d = (double) (isVertical() ? e.getDistanceFromDragStartY() : e.getDistanceFromDragStartX()) * total / length;
+        auto start = startAtDown, size = sizeAtDown;
+        if (edge < 0) { start += d; size -= d; }
+        else          { size += d; }
+        size = juce::jlimit (total * 0.02, total, size);
+        if (edge < 0)
+            start = startAtDown + sizeAtDown - size;
+        start = juce::jlimit (getMinimumRangeLimit(), getMaximumRangeLimit() - size, start);
+        if (onZoom)
+            onZoom (start, size);
+    }
+    void mouseUp (const juce::MouseEvent& e) override { if (edge == 0) ScrollBar::mouseUp (e); edge = 0; }
+
+private:
+    // -1 = början, 1 = slutet av tummen, 0 = annat
+    int edgeAt (const juce::MouseEvent& e) const
+    {
+        const auto total = getMaximumRangeLimit() - getMinimumRangeLimit();
+        const auto length = (double) (isVertical() ? getHeight() : getWidth());
+        if (total <= 0.0 || length <= 0.0)
+            return 0;
+        const auto pos = (double) (isVertical() ? e.position.y : e.position.x);
+        const auto from = (getCurrentRangeStart() - getMinimumRangeLimit()) / total * length;
+        const auto to = (getCurrentRangeStart() + getCurrentRangeSize() - getMinimumRangeLimit()) / total * length;
+        const auto grab = std::min (7.0, (to - from) * 0.35);
+        if (std::abs (pos - from) <= grab) return -1;
+        if (std::abs (pos - to) <= grab) return 1;
+        return 0;
+    }
+    juce::MouseCursor edgeCursor() const { return isVertical() ? juce::MouseCursor::UpDownResizeCursor : juce::MouseCursor::LeftRightResizeCursor; }
+
+    int edge = 0;
+    double startAtDown = 0.0, sizeAtDown = 0.0;
+};
+
 // Pianorullen för ett baslager, som i FL Studio: tonerna ligger fritt i tiden (1/4 ... 1/64 och
 // trioler) och i höjd, ±96 halvtoner från tonarten.
 //
@@ -212,7 +270,7 @@ private:
     juce::TextButton voicesDownButton { "-" }, voicesUpButton { "+" };
     juce::Label voicesLabel;                                // "VOICES n"
     int askedVoicesNeed = 0;                                // största behov vi redan frågat om (så att samma nej inte upprepas)
-    juce::ScrollBar hBar { false }, vBar { true }; // tid och tonhöjd
+    ZoomScrollBar hBar { false }, vBar { true }; // tid och tonhöjd
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> gridAttachment;
     bool snapEnabled = true;
 

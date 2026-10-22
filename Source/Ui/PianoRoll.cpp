@@ -135,6 +135,20 @@ PianoRoll::PianoRoll (PluginBase& p, std::vector<juce::Colour> colours) : proces
     vBar.addListener (this);
     hBar.setAutoHide (false);
     vBar.setAutoHide (false);
+    hBar.onZoom = [this] (double start, double size)
+    {
+        pixelsPerTick = (float) (gridArea.getWidth() / std::max (1.0, size));
+        scrollTicks = (float) start;
+        clampView();
+        repaint();
+    };
+    vBar.onZoom = [this] (double start, double size)
+    {
+        rowH = juce::jlimit (7.0f, 60.0f, (float) (gridArea.getHeight() / std::max (1.0, size)));
+        topPitch = (float) (Pattern::maxPitch - start);
+        clampView();
+        repaint();
+    };
     hBar.setSingleStepSize (24.0);
     vBar.setSingleStepSize (1.0);
 
@@ -767,7 +781,7 @@ int PianoRoll::pitchBefore (int tick) const
 void PianoRoll::changeRowHeight (float delta)
 {
     const auto centrePitch = topPitch - (float) visibleRows() * 0.5f;
-    rowH = juce::jlimit (7.0f, 30.0f, rowH + delta);
+    rowH = juce::jlimit (7.0f, 60.0f, rowH + delta);
     topPitch = centrePitch + (float) visibleRows() * 0.5f;
     clampView();
     repaint();
