@@ -1245,7 +1245,7 @@ namespace
             check (answer["data"]["kick_tail_hz"].operator double() > 25.0, "rapporten kommer med i svaret (data)");
             {
                 // Mätläge: okänt värde avvisas, dry kör på kopian och lämnar originalets duckning orörd.
-                check (! (bool) tools.call ("analyse_mix", juce::JSON::parse ("{\"tap\":\"after_master\"}"))["ok"], "analyse_mix: okänt tap avvisas");
+                check (! (bool) tools.call ("analyse_mix", juce::JSON::parse ("{\"tap\":\"bogus\"}"))["ok"], "analyse_mix: okänt tap avvisas");
                 const auto duckBefore = processor.apvts.getRawParameterValue ("bass1Duck")->load();
                 const auto dry = tools.call ("analyse_mix", juce::JSON::parse ("{\"tap\":\"dry\"}"));
                 check ((bool) dry["ok"] && dry["data"]["status"].toString() == "started", "analyse_mix tap=dry startar");
@@ -1257,6 +1257,28 @@ namespace
                 }
                 check (dryAnswer["data"]["status"].toString() == "done", "dry-analysen blir klar");
                 check (processor.apvts.getRawParameterValue ("bass1Duck")->load() == duckBefore, "dry-analysen rör inte originalets duckning");
+
+                // Efter mastern: bidraget per källa, och originalets nivåer rörs inte.
+                const auto levelBefore = processor.apvts.getRawParameterValue ("kickLevel")->load();
+                const auto afterMasterStart = tools.call ("analyse_mix", juce::JSON::parse ("{\"tap\":\"after_master\"}"));
+                check ((bool) afterMasterStart["ok"], "analyse_mix tap=after_master startar");
+                auto afterMasterAnswer = tools.call ("get_mix_report", juce::JSON::parse ("{}"));
+                for (int i = 0; i < 1800 && afterMasterAnswer["data"]["status"].toString() != "done"; ++i)
+                {
+                    juce::Thread::sleep (100);
+                    afterMasterAnswer = tools.call ("get_mix_report", juce::JSON::parse ("{}"));
+                }
+                check (afterMasterAnswer["data"]["status"].toString() == "done", "after_master-analysen blir klar");
+                if (auto* shares = afterMasterAnswer["data"]["after_master"].getArray())
+                {
+                    check (shares->size() >= 2, "after_master: en rad per källa (kick och instrument)");
+                    const auto& kickShare = (*shares)[0];
+                    check (kickShare["after_master_rms_db"].isDouble() && (double) kickShare["after_master_rms_db"] > -80.0 && (double) kickShare["after_master_rms_db"] < 6.0,
+                           "after_master: kickens bidrag i slutmixen är hörbart och rimligt (" + kickShare["after_master_rms_db"].toString() + " dB)");
+                }
+                else
+                    check (false, "after_master finns i rapporten");
+                check (processor.apvts.getRawParameterValue ("kickLevel")->load() == levelBefore, "after_master rör inte originalets kicknivå");
             }
             answer = tools.call ("analyse_mix", juce::JSON::parse ("{}"));
             for (int i = 0; i < 600 && tools.call ("get_mix_report", juce::JSON::parse ("{}"))["data"]["status"].toString() != "done"; ++i)

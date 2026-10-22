@@ -37,8 +37,19 @@ namespace MixAnalysis
     {
         int sensitivity = 1; // 0 = låg, 1 = normal, 2 = hög
         int maxBars = 16;    // högst så många takter analyseras
-        int tap = 0;         // 0 = som den hörs (efter sidechain och EQ), 1 = dry (före sidechain och EQ: grundproblemen man annars duckar bort)
+        int tap = 0;         // 0 = som den hörs (efter sidechain och EQ), 1 = dry (före sidechain och EQ: grundproblemen man annars duckar bort), 2 = som 0 plus efter mastern per källa
     };
+
+    // Efter mastern, per källa: vad källan bidrar med i slutmixen = mastern minus mastern med källan tystad (så att limitern och effekterna räknas in).
+    constexpr int shareBands = 5; // 20-60, 60-150, 150-500, 500-2000, 2000-20000 Hz
+    struct MasterShare
+    {
+        juce::String name;
+        float heardRmsDb = -120.0f, masterRmsDb = -120.0f;     // källans egen signal (efter duckning och EQ) mot dess bidrag i slutmixen
+        float heardPeakDb = -120.0f, masterPeakDb = -120.0f;
+        std::array<float, shareBands> heardBandDb {}, masterBandDb {};
+    };
+    const char* shareBandName (int band);
 
     enum class Severity { info, warning, problem };
 
@@ -107,6 +118,7 @@ namespace MixAnalysis
         double bpm = 0.0, seconds = 0.0;
         std::vector<SourceInfo> sources;
         std::vector<Finding> findings;
+        std::vector<MasterShare> afterMaster;   // tap 2: per källa, före och efter mastern
         float kickTailHz = 0.0f, limiterMaxDb = 0.0f;
         float kickTailDesignHz = 0.0f;          // vad kickens TUNE och tonart ger (0 = okänt): jämförs med den uppmätta svansen
         bool kickTailFromTime = false;           // svansen är mätt i tidsdomänen (annars ur medelspektrumet)
@@ -216,8 +228,25 @@ namespace MixAnalysis
     std::unique_ptr<PluginBase> prepareCopy (PluginBase& source);
     // Mätläge för analyskopian (Options::tap): dry = duckning av och EQ neutral på kicken och alla instrument. Rör aldrig originalet.
     void applyTap (PluginBase& copy, int tap);
+    // Signaler från huvudkörningen för efter-master-måttet: källornas egna signaler (mono) och mastern (V/H), från och med `start`.
+    struct Stems
+    {
+        std::array<std::vector<float>, numSources> heard;
+        std::vector<float> masterL, masterR;
+        int start = 0, totalBars = 0;
+    };
+
+    // Tystar en källa i en analyskopia (0 = kicken, 1.. = instrument).
+    void muteSource (PluginBase& copy, int source);
+    // Kör kopian en gång och ger mastern. Används på kopior där en källa tystats.
+    void renderMaster (PluginBase& copy, double bpm, int keyNote, int bars, const std::function<bool()>& cancelled,
+                       std::vector<float>& left, std::vector<float>& right);
+    // Räknar ut rapportens afterMaster (och fynd) av huvudkörningens stems och en tystad kopia per källa.
+    void addAfterMaster (Report& report, const Stems& stems, std::vector<std::pair<int, std::unique_ptr<PluginBase>>>& mutedCopies,
+                         double bpm, int keyNote, const std::function<void (float)>& progress, const std::function<bool()>& cancelled);
+
     Report run (PluginBase& preparedCopy, double bpm, int keyNote, const Options& options, const Reference* reference,
-                const std::function<void (float)>& progress, const std::function<bool()>& cancelled);
+                const std::function<void (float)>& progress, const std::function<bool()>& cancelled, Stems* stems = nullptr);
 }
 
 // Kör analysen på en egen tråd, med förlopp, så att gränssnittet inte hänger sig.
@@ -241,6 +270,7 @@ private:
     void run() override;
 
     std::unique_ptr<PluginBase> copy;
+    std::vector<std::pair<int, std::unique_ptr<PluginBase>>> mutedCopies; // tap 2: en kopia per källa, med källan tystad
     MixAnalysis::Options options;
     std::shared_ptr<const MixAnalysis::Reference> reference;
     juce::var synthState;
