@@ -400,8 +400,8 @@ InstrumentSynth::Output InstrumentSynth::next()
     const auto levelAF = fOn && params.filterSrc[0] ? levelA : 0.0f, levelBF = fOn && params.filterSrc[1] ? levelB : 0.0f, levelCF = fOn && params.filterSrc[2] ? levelC : 0.0f;
     auto left = a.left * levelAF + b.left * levelBF + c.left * levelCF;
     auto right = a.right * levelAF + b.right * levelBF + c.right * levelCF;
-    const auto dryLeft = a.left * (levelA - levelAF) + b.left * (levelB - levelBF) + c.left * (levelC - levelCF);
-    const auto dryRight = a.right * (levelA - levelAF) + b.right * (levelB - levelBF) + c.right * (levelC - levelCF);
+    auto dryLeft = a.left * (levelA - levelAF) + b.left * (levelB - levelBF) + c.left * (levelC - levelCF);
+    auto dryRight = a.right * (levelA - levelAF) + b.right * (levelB - levelBF) + c.right * (levelC - levelCF);
     float dryCentre = 0.0f;
     float subShape;
     switch (params.subWave)
@@ -412,6 +412,19 @@ InstrumentSynth::Output InstrumentSynth::next()
         default: subShape = (float) std::sin (juce::MathConstants<double>::twoPi * subPhase); break;
     }
     auto centre = 0.0f;
+    // INSTR-MIX: pan 0 lägger källan i mitten precis som förut (samma summering, ljudet bit för bit oförändrat); annars balanspan (mitten = full nivå) in i vänster/höger.
+    auto addPanned = [&] (bool filtered, float l, float r, float pan)
+    {
+        (filtered ? left : dryLeft) += l * (pan > 0.0f ? 1.0f - pan : 1.0f);
+        (filtered ? right : dryRight) += r * (pan < 0.0f ? 1.0f + pan : 1.0f);
+    };
+    auto addMono = [&] (bool filtered, float x, float pan)
+    {
+        if (pan == 0.0f)
+            (filtered ? centre : dryCentre) += x;
+        else
+            addPanned (filtered, x, x, pan);
+    };
     (fOn ? centre : dryCentre) += params.sub * subShape;
     if (params.noise > 0.0f)
     {
@@ -445,7 +458,19 @@ InstrumentSynth::Output InstrumentSynth::next()
             noiseState += coefficient * (white - noiseState);
             white = noiseState * (1.0f + 2.5f * (1.0f - params.noiseTone));
         }
-        (fOn && params.filterSrc[4] ? centre : dryCentre) += params.noise * white;
+        const auto noiseOut = params.noise * white;
+        const auto filteredNoise = fOn && params.filterSrc[4];
+        if (params.noiseWidth > 1.0f)
+        {
+            // Bredd: en fördröjd kopia (17 samplingar) är den okorrelerade delen; L = x cos + d sin, R = x cos - d sin (samma effekt, 200 % = helt okorrelerat).
+            noiseDelay[noiseDelayPos] = noiseOut;
+            const auto delayed = noiseDelay[(noiseDelayPos + 64 - 17) & 63];
+            noiseDelayPos = (noiseDelayPos + 1) & 63;
+            const auto angle = juce::jmin (1.0f, params.noiseWidth - 1.0f) * juce::MathConstants<float>::pi * 0.25f;
+            addPanned (filteredNoise, noiseOut * std::cos (angle) + delayed * std::sin (angle), noiseOut * std::cos (angle) - delayed * std::sin (angle), params.noisePan);
+        }
+        else
+            addMono (filteredNoise, noiseOut, params.noisePan);
     }
 
     // fas S2: FM-källan: sin(2π·(carrierfas + modulator·index)). Av (eller nivå 0) = körs inte alls och ljudet är oförändrat.
@@ -461,7 +486,7 @@ InstrumentSynth::Output InstrumentSynth::next()
         const auto radians = 8.0f * index * index * antiAlias;
         const auto modulator = radians * (float) std::sin (juce::MathConstants<double>::twoPi * fmModPhase);
         const auto fm = params.fmLevel * (float) std::sin (juce::MathConstants<double>::twoPi * fmCarrierPhase + (double) modulator);
-        (fOn && params.fmFilter ? centre : dryCentre) += fm;
+        addMono (fOn && params.fmFilter, fm, params.fmPan);
         fmCarrierPhase = wrap (fmCarrierPhase + carrierHz / sampleRate);
         fmModPhase = wrap (fmModPhase + modHz / sampleRate);
     }
@@ -482,7 +507,7 @@ InstrumentSynth::Output InstrumentSynth::next()
                 const auto following = index + 1 < sliceEnd ? data[index + 1] : 0.0f;
                 const auto edge = std::min (samplePosition - (double) sliceBegin + 1.0, (double) sliceEnd - samplePosition);
                 const auto fade = (float) std::min (1.0, edge / 64.0);
-                (fOn && params.filterSrc[3] ? centre : dryCentre) += fade * params.sampleLevel * (data[index] + fraction * (following - data[index]));
+                addMono (fOn && params.filterSrc[3], fade * params.sampleLevel * (data[index] + fraction * (following - data[index])), params.samplePan);
                 samplePosition += params.slicerReverse ? -1.0 : 1.0;
             }
         }
@@ -496,7 +521,7 @@ InstrumentSynth::Output InstrumentSynth::next()
                 const auto index = (int) samplePosition;
                 const auto fraction = (float) (samplePosition - (double) index);
                 const auto following = index + 1 < length ? data[index + 1] : (params.sampleLoop ? data[0] : 0.0f);
-                (fOn && params.filterSrc[3] ? centre : dryCentre) += params.sampleLevel * (data[index] + fraction * (following - data[index]));
+                addMono (fOn && params.filterSrc[3], params.sampleLevel * (data[index] + fraction * (following - data[index])), params.samplePan);
                 samplePosition += params.sampleKeyTrack ? frequency / (double) std::max (1.0f, params.sampleRootHz) : 1.0;
             }
         }

@@ -101,7 +101,7 @@ namespace ParamID
                                      "Polarity", "PhaseDeg", "NudgeMs",
                                      "FmOn", "FmLevel", "FmRatio", "FmIndex", "FmEnvAmount", "FmEnvTime", "FmSemis", "FmPreset", "FmFilter",
                                      "SlicerOn", "SlicerMapTo", "SlicerReverse",
-                                     "FxSend", "SampleMode", "AllpassFreq", "AllpassAmount" };
+                                     "FxSend", "SampleMode", "AllpassFreq", "AllpassAmount", "SamplePan", "NoisePan", "FmPan", "NoiseWidth" };
         static_assert (std::size (names) == (size_t) InstrumentField::count);
         return names[(size_t) field];
     }
@@ -420,6 +420,11 @@ namespace Params
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::sampleMode), 1 }, title + "Sample Mode", StringArray { "Blend", "Independent", "Off" }, 0));
                 layout.add (floatParam (id (F::allpassFreq), title + "Allpass Freq", NormalisableRange<float> (20.0f, 2000.0f, 0.1f, 0.4f), 200.0f, [] (float v) { return String (juce::roundToInt (v)) + " Hz"; }));
                 layout.add (floatParam (id (F::allpassAmount), title + "Allpass Amount", NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.0f, [] (float v) { return String (juce::roundToInt (v * 100.0f)) + " %"; }));
+        const auto panText = [] (float v) { return juce::roundToInt (v * 100.0f) == 0 ? String ("C") : String (juce::roundToInt (std::abs (v) * 100.0f)) + (v < 0.0f ? " L" : " R"); };
+        layout.add (floatParam (id (F::samplePan), title + "Sample Pan", NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f, panText));
+        layout.add (floatParam (id (F::noisePan), title + "Noise Pan", NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f, panText));
+        layout.add (floatParam (id (F::fmPan), title + "FM Pan", NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f, panText));
+        layout.add (floatParam (id (F::noiseWidth), title + "Noise Width", NormalisableRange<float> (1.0f, 2.0f, 0.01f), 1.0f, [] (float v) { return String (juce::roundToInt (v * 100.0f)) + " %"; }));
             }
 
     void addFxParams (Layout& layout)
@@ -702,5 +707,9 @@ InstrumentParams ParamRefs::readInstrument (int layer, int rootMidiNote) const
     p.slicerReverse = get (F::slicerReverse) >= 0.5f;
     p.allpassFreq = get (F::allpassFreq);
     p.allpassAmount = get (F::allpassAmount);
+    p.samplePan = get (F::samplePan);
+    p.noisePan = get (F::noisePan);
+    p.fmPan = get (F::fmPan);
+    p.noiseWidth = get (F::noiseWidth);
     return p;
 }

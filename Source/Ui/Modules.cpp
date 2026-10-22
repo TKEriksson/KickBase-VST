@@ -768,6 +768,8 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
     sources.addTab ("FM", layerAccent, *fmPanel);
     sources.addPower (3 + ParamID::oscsPerLayer, p.apvts, ParamID::bass (layer, F::fmOn),
                       Help::forParameter (ParamID::bass (layer, F::fmOn))); // FM efter FILTER: fliknummer 3 + oscsPerLayer
+    mixPanel = std::make_unique<InstrMixPanel> (p, layer, layerAccent);
+    sources.addTab ("MIX", layerAccent, *mixPanel);
 
     auto knob = [&] (const juce::String& paramID, const char* name) -> juce::Component*
     {

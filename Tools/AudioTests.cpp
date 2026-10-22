@@ -388,6 +388,43 @@ int polyTest()
         check (diff > 1.0, "allpass AMOUNT 1 ändrar kurvformen");
         check (std::abs (toDb (rmsOf (full, 4800, 24000)) - toDb (rmsOf (off, 4800, 24000))) < 1.5, "allpass AMOUNT 1 håller nivån (inom 1,5 dB)");
     }
+
+    // INSTR-MIX: brusets pan och bredd. Pan 0 och bredd 100 % är mono; pan höger tystar vänster; bredd 200 % gör vänster och höger okorrelerade.
+    {
+        auto render = [&] (float pan, float width, std::vector<float>& l, std::vector<float>& r)
+        {
+            auto p = bright;
+            p.oscA.on = false;
+            p.sub = 0.0f;
+            p.noise = 0.5f;
+            p.noiseTone = 1.0f;
+            p.cutoffHz = 18000.0f;
+            p.noisePan = pan;
+            p.noiseWidth = width;
+            InstrumentVoices v;
+            setUp (v, 1, p);
+            v.noteOn (0, 0.8f, longGate);
+            for (int i = 0; i < (int) (rate * 0.3); ++i)
+            {
+                const auto o = v.next();
+                l.push_back (o.left * o.amplitude);
+                r.push_back (o.right * o.amplitude);
+            }
+        };
+        std::vector<float> l0, r0, l1, r1, l2, r2;
+        render (0.0f, 1.0f, l0, r0);
+        render (1.0f, 1.0f, l1, r1);
+        render (0.0f, 2.0f, l2, r2);
+        check (l0 == r0 && rmsOf (l0, 4800, 14400) > 0.001, "bruset är mono i mitten som standard");
+        check (rmsOf (l1, 4800, 14400) < 1.0e-6 && rmsOf (r1, 4800, 14400) > 0.001, "NOISE PAN höger tystar vänster kanal");
+        auto dot = 0.0, energy = 1.0e-12;
+        for (size_t i = 4800; i < 14400; ++i)
+        {
+            dot += (double) l2[i] * r2[i];
+            energy += 0.5 * ((double) l2[i] * l2[i] + (double) r2[i] * r2[i]);
+        }
+        check (std::abs (dot / energy) < 0.3, "NOISE WIDTH 200 % ger okorrelerat vänster och höger");
+    }
     // a. Stöld: tre toner med 100 ms mellanrum, 2 röster (den tredje stjäl den första, som hålls) mot 3 röster (ingen stöld).
     {
         auto render = [&] (int voices)
