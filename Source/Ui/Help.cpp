@@ -241,6 +241,8 @@ namespace Help
             { "bassSamplePan", "Pan for the SAMPLE source (C = centre, exactly as before). Balance-style: the opposite side is turned down, the centre stays at full level." },
             { "bassNoisePan", "Pan for the NOISE source (C = centre, exactly as before)." },
             { "bassFmPan", "Pan for the FM source (C = centre, exactly as before)." },
+            { "bassSubPhaseDeg", "Start phase of the SUB in degrees, on top of the shared Start Phase. Lets you line up the sub with the kick or the other oscillators on each note. 0 = exactly as before." },
+            { "bassFmPhaseDeg", "Start phase of the FM carrier in degrees, on top of the shared Start Phase. 0 = exactly as before." },
             { "bassNoiseWidth", "How wide the noise is: 100 % = mono in the centre (as before), 200 % = different noise in left and right. The sub and the low end of a bass should stay mono, so only the noise gets a width control." },
             { "bassAllpassAmount", "How much of the allpass chain is mixed in (0 % = off, no CPU and the sound is exactly as before; 100 % = pure phase rotation). In between you get a phaser-like notch." },
             { "bassAMorph", "Morph. On: POS fades smoothly between the waveforms of the table. Off: POS jumps from one waveform to the next (the Basic table has four: sine, triangle, saw, square). A table made from a WAV file has as many steps as the file had cycles. Steps jump, so fast modulation of POS can click." },

@@ -101,7 +101,7 @@ namespace ParamID
                                      "Polarity", "PhaseDeg", "NudgeMs",
                                      "FmOn", "FmLevel", "FmRatio", "FmIndex", "FmEnvAmount", "FmEnvTime", "FmSemis", "FmPreset", "FmFilter",
                                      "SlicerOn", "SlicerMapTo", "SlicerReverse",
-                                     "FxSend", "SampleMode", "AllpassFreq", "AllpassAmount", "SamplePan", "NoisePan", "FmPan", "NoiseWidth" };
+                                     "FxSend", "SampleMode", "AllpassFreq", "AllpassAmount", "SamplePan", "NoisePan", "FmPan", "NoiseWidth", "SubPhaseDeg", "FmPhaseDeg" };
         static_assert (std::size (names) == (size_t) InstrumentField::count);
         return names[(size_t) field];
     }
@@ -424,6 +424,9 @@ namespace Params
         layout.add (floatParam (id (F::samplePan), title + "Sample Pan", NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f, panText));
         layout.add (floatParam (id (F::noisePan), title + "Noise Pan", NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f, panText));
         layout.add (floatParam (id (F::fmPan), title + "FM Pan", NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f, panText));
+        const auto degText = [] (float v) { return String (v, 1) + juce::String (juce::CharPointer_UTF8 ("°")); };
+        layout.add (floatParam (id (F::subPhaseDeg), title + "Sub Start Phase", NormalisableRange<float> (0.0f, 360.0f, 0.1f), 0.0f, degText));
+        layout.add (floatParam (id (F::fmPhaseDeg), title + "FM Start Phase", NormalisableRange<float> (0.0f, 360.0f, 0.1f), 0.0f, degText));
         layout.add (floatParam (id (F::noiseWidth), title + "Noise Width", NormalisableRange<float> (1.0f, 2.0f, 0.01f), 1.0f, [] (float v) { return String (juce::roundToInt (v * 100.0f)) + " %"; }));
             }
 
@@ -711,5 +714,7 @@ InstrumentParams ParamRefs::readInstrument (int layer, int rootMidiNote) const
     p.noisePan = get (F::noisePan);
     p.fmPan = get (F::fmPan);
     p.noiseWidth = get (F::noiseWidth);
+    p.subPhaseDeg = get (F::subPhaseDeg);
+    p.fmPhaseDeg = get (F::fmPhaseDeg);
     return p;
 }

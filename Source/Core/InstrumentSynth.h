@@ -120,6 +120,7 @@ struct InstrumentParams
     float allpassFreq = 200.0f;  // 4 allpass i serie efter filtren (mitten och sida var för sig); AMOUNT 0 = av
     float allpassAmount = 0.0f;  // 0..1: blandning torr -> allpass (1 = ren fasrotation)
     float samplePan = 0.0f, noisePan = 0.0f, fmPan = 0.0f; // INSTR-MIX: -1..1 (0 = mitten, ljudet som förut)
+    float subPhaseDeg = 0.0f, fmPhaseDeg = 0.0f; // startfas per källa (grader), läggs till PH-fasen; 0 = som förut
     float noiseWidth = 1.0f;     // 1 = mono (som förut), upp till 2 = okorrelerat brus i L och R
     InstrumentParams() { oscB.level = 0.0f; oscC.level = 0.0f; oscC.on = false; }
 

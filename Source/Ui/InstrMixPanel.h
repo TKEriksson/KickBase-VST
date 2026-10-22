@@ -17,12 +17,12 @@ private:
     struct Strip
     {
         juce::String name;
-        std::unique_ptr<KnobComponent> level, pan, width; // pan och width kan saknas
+        std::unique_ptr<KnobComponent> level, pan, width, phase; // pan, width och phase kan saknas
         juce::Rectangle<int> frame;
     };
 
     void timerCallback() override;
-    void addStrip (const char* name, InstrumentField level, const InstrumentField* pan, const InstrumentField* width, int colourIndex);
+    void addStrip (const char* name, InstrumentField level, const InstrumentField* pan, const InstrumentField* width, int colourIndex, const InstrumentField* phase = nullptr);
     void renderWave();
 
     PluginBase& processor;

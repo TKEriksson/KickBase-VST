@@ -154,8 +154,8 @@ void InstrumentSynth::noteOn (int semitones, float newVelocity, int gateSamples)
         oscA.retrigger (params.oscA, random, extraPhase);
         oscB.retrigger (params.oscB, random, extraPhase);
         oscC.retrigger (params.oscC, random, extraPhase);
-        subPhase = wrap (extraPhase);
-        fmCarrierPhase = wrap (extraPhase);
+        subPhase = wrap (extraPhase + (double) params.subPhaseDeg / 360.0);
+        fmCarrierPhase = wrap (extraPhase + (double) params.fmPhaseDeg / 360.0);
         fmModPhase = 0.0;
     }
     fmEnvLevel = 1.0f;

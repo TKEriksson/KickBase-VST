@@ -4,18 +4,18 @@ InstrMixPanel::InstrMixPanel (PluginBase& p, int layerIn, juce::Colour accentIn)
     : processor (p), layer (layerIn), accent (accentIn), refs (p.apvts)
 {
     using F = InstrumentField;
-    const F panA = F::aPan, panB = F::bPan, panC = F::cPan, panSample = F::samplePan, panNoise = F::noisePan, panFm = F::fmPan, widthNoise = F::noiseWidth;
+    const F panA = F::aPan, panB = F::bPan, panC = F::cPan, panSample = F::samplePan, panNoise = F::noisePan, panFm = F::fmPan, widthNoise = F::noiseWidth, subPhase = F::subPhaseDeg, fmPhase = F::fmPhaseDeg;
     addStrip ("OSC 1", F::aLevel, &panA, nullptr, 0);
     addStrip ("OSC 2", F::bLevel, &panB, nullptr, 0);
     addStrip ("OSC 3", F::cLevel, &panC, nullptr, 0);
     addStrip ("SAMPLE", F::sampleLevel, &panSample, nullptr, 0);
     addStrip ("NOISE", F::noise, &panNoise, &widthNoise, 0);
-    addStrip ("SUB", F::sub, nullptr, nullptr, 0);
-    addStrip ("FM", F::fmLevel, &panFm, nullptr, 0);
+    addStrip ("SUB", F::sub, nullptr, nullptr, 0, &subPhase);
+    addStrip ("FM", F::fmLevel, &panFm, nullptr, 0, &fmPhase);
     startTimerHz (4);
 }
 
-void InstrMixPanel::addStrip (const char* name, InstrumentField level, const InstrumentField* pan, const InstrumentField* width, int)
+void InstrMixPanel::addStrip (const char* name, InstrumentField level, const InstrumentField* pan, const InstrumentField* width, int, const InstrumentField* phase)
 {
     auto strip = std::make_unique<Strip>();
     strip->name = name;
@@ -30,6 +30,8 @@ void InstrMixPanel::addStrip (const char* name, InstrumentField level, const Ins
         strip->pan = make (*pan, "PAN");
     if (width != nullptr)
         strip->width = make (*width, "WIDTH");
+    if (phase != nullptr)
+        strip->phase = make (*phase, "START");
     strips.push_back (std::move (strip));
 }
 
@@ -46,21 +48,23 @@ void InstrMixPanel::resized()
     {
         strip.frame = cell.reduced (2);
         auto inner = strip.frame.withTrimmedTop (14).reduced (2, 0);
-        const auto count = 1 + (strip.pan != nullptr ? 1 : 0) + (strip.width != nullptr ? 1 : 0);
+        const auto count = 1 + (strip.pan != nullptr ? 1 : 0) + (strip.width != nullptr ? 1 : 0) + (strip.phase != nullptr ? 1 : 0);
         const auto knobWidth = inner.getWidth() / count;
         strip.level->setBounds (inner.removeFromLeft (knobWidth));
         if (strip.pan != nullptr)
             strip.pan->setBounds (inner.removeFromLeft (knobWidth));
         if (strip.width != nullptr)
             strip.width->setBounds (inner.removeFromLeft (knobWidth));
+        if (strip.phase != nullptr)
+            strip.phase->setBounds (inner.removeFromLeft (knobWidth));
     };
     const auto topWidth = topRow.getWidth() / 4;
     for (size_t i = 0; i < 4; ++i)
         place (*strips[i], topRow.removeFromLeft (topWidth));
     // NOISE har tre ratter och får dubbel bredd mot SUB.
-    const auto unit = bottomRow.getWidth() / 5;
-    place (*strips[4], bottomRow.removeFromLeft (unit * 2));
-    place (*strips[5], bottomRow.removeFromLeft (unit));
+    const auto unit = bottomRow.getWidth() / 7;
+    place (*strips[4], bottomRow.removeFromLeft (unit * 3));
+    place (*strips[5], bottomRow.removeFromLeft (unit * 2));
     place (*strips[6], bottomRow);
 }
 

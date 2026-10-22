@@ -425,6 +425,35 @@ int polyTest()
         }
         check (std::abs (dot / energy) < 0.3, "NOISE WIDTH 200 % ger okorrelerat vänster och höger");
     }
+
+    // START per källa: suben med 180 graders startfas är motsatt till 0 grader.
+    {
+        auto firstSamples = [&] (float deg)
+        {
+            auto p = bright;
+            p.oscA.on = false;
+            p.sub = 0.5f;
+            p.subPhaseDeg = deg;
+            InstrumentVoices v;
+            setUp (v, 1, p);
+            v.noteOn (0, 0.8f, longGate);
+            std::vector<float> out;
+            for (int i = 0; i < 480; ++i)
+            {
+                const auto o = v.next();
+                out.push_back (o.left * o.amplitude);
+            }
+            return out;
+        };
+        const auto a = firstSamples (0.0f), b = firstSamples (180.0f);
+        auto dot = 0.0, ea = 1.0e-12;
+        for (size_t i = 0; i < a.size(); ++i)
+        {
+            dot += (double) a[i] * b[i];
+            ea += (double) a[i] * a[i];
+        }
+        check (dot / ea < -0.5, "SUB START 180 grader vänder suben mot 0 grader");
+    }
     // a. Stöld: tre toner med 100 ms mellanrum, 2 röster (den tredje stjäl den första, som hålls) mot 3 röster (ingen stöld).
     {
         auto render = [&] (int voices)
