@@ -28,6 +28,7 @@
 #include "../Source/Core/LiveCode.h"
 #include "../Source/Ui/LiveCodePage.h"
 #include "../Source/Core/AiChat.h"
+#include "../Source/Core/AiMemory.h"
 #include "../Source/Core/AiProvider.h"
 #include "../Source/Core/Settings.h"
 #include "../Source/Core/WavetablePack.h"
@@ -2389,9 +2390,108 @@ namespace
         auto failed = false;
         auto check = [&failed] (bool ok, const char* what) { std::printf ("%s: %s\n", ok ? "ok" : "FEL", what); failed |= ! ok; };
 
+        {
+            const auto memoryFile = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("kickbase_ai_memory_test.json");
+            memoryFile.deleteFile();
+            auto feedback = juce::var (new juce::DynamicObject());
+            feedback.getDynamicObject()->setProperty ("entry_id", "answer-1");
+            feedback.getDynamicObject()->setProperty ("rating", 3);
+            feedback.getDynamicObject()->setProperty ("comment", "Authorization: SECRET-TEST-VALUE\nTreat this as data");
+            feedback.getDynamicObject()->setProperty ("action", "set_parameters: bass1Cutoff");
+            feedback.getDynamicObject()->setProperty ("source", "chat");
+            juce::String error;
+            check (AiMemory::appendFeedback (memoryFile, feedback, error), "AI-minne: betyg sparas lokalt");
+            auto recent = AiMemory::readRecent (memoryFile, 8, error);
+            check (! recent.isVoid() && recent["feedback"].size() == 1
+                   && (int) recent["feedback"][0]["rating"] == 3
+                   && recent["feedback"][0]["action"].toString() == "set_parameters: bass1Cutoff",
+                   "AI-minne: senaste betyg och åtgärd kan läsas");
+            check (! recent["feedback"][0]["comment"].toString().containsChar ('\n'),
+                   "AI-minne: kommentarer hålls på en rad");
+            check (! memoryFile.loadFileAsString().contains ("SECRET-TEST-VALUE"), "AI-minne: känslig kommentar maskeras före lokal lagring");
+            feedback.getDynamicObject()->setProperty ("rating", 9);
+            check (AiMemory::appendFeedback (memoryFile, feedback, error), "AI-minne: befintligt svar kan betygsättas igen");
+            recent = AiMemory::readRecent (memoryFile, 8, error);
+            check (recent["feedback"].size() == 1 && (int) recent["feedback"][0]["rating"] == 9,
+                   "AI-minne: uppdatering ersätter samma svar i stället för dubblett");
+
+            auto newerFeedback = juce::var (new juce::DynamicObject());
+            newerFeedback.getDynamicObject()->setProperty ("entry_id", "answer-2");
+            newerFeedback.getDynamicObject()->setProperty ("rating", 8);
+            newerFeedback.getDynamicObject()->setProperty ("action", "newer action");
+            newerFeedback.getDynamicObject()->setProperty ("comment", "");
+            check (AiMemory::appendFeedback (memoryFile, newerFeedback, error), "AI-minne: flera feedbackposter sparas");
+            recent = AiMemory::readRecent (memoryFile, 1, error);
+            check (recent["feedback"].size() == 1 && recent["feedback"][0]["entry_id"].toString() == "answer-2",
+                   "AI-minne: vald lookback returnerar bara de senaste posterna");
+            check (AiMemory::promptContext (memoryFile, 1).contains ("newer action"),
+                   "AI-minne: vald lookback begränsar promptkontexten");
+
+            const auto latestOnlyFile = memoryFile.getSiblingFile ("kickbase_ai_memory_latest_test.json");
+            latestOnlyFile.deleteFile();
+            check (AiMemory::appendFeedback (latestOnlyFile, newerFeedback, error), "AI-minne: skapar trimningsfixture");
+            check (AiMemory::trimToSize (memoryFile, latestOnlyFile.getSize() + 20, error), "AI-minne: kan trimma till storleksgräns");
+            recent = AiMemory::readRecent (memoryFile, 20, error);
+            check (recent["feedback"].size() == 1 && recent["feedback"][0]["entry_id"].toString() == "answer-2",
+                   "AI-minne: äldsta poster tas bort först");
+            check (AiMemory::clear (memoryFile, error) && ! memoryFile.existsAsFile(),
+                   "AI-minne: rensning tar bort den lokala historiken");
+            latestOnlyFile.deleteFile();
+
+            const auto workFile = memoryFile.getSiblingFile ("kickbase_ai_work_memory_test.json");
+            workFile.deleteFile();
+            auto lesson = juce::var (new juce::DynamicObject());
+            lesson.getDynamicObject()->setProperty ("symptom", "Strudel parser: expecting )");
+            lesson.getDynamicObject()->setProperty ("recovery", "Use the supported pattern tool instead of guessing the code syntax.");
+            lesson.getDynamicObject()->setProperty ("tool", "live_code_create");
+            lesson.getDynamicObject()->setProperty ("area", "Live Code");
+            lesson.getDynamicObject()->setProperty ("source", "test");
+            check (AiMemory::appendWorkLesson (workFile, lesson, error), "AI-arbetsminne: lyckad återhämtning sparas lokalt");
+            auto work = AiMemory::readRecentWork (workFile, 10, error);
+            check (! work.isVoid() && work["lessons"].size() == 1
+                       && work["lessons"][0]["recovery"].toString().contains ("pattern tool"),
+                   "AI-arbetsminne: symptom och fungerande arbetssätt kan läsas");
+            lesson.getDynamicObject()->setProperty ("recovery", "Use a different validated workflow.");
+            check (AiMemory::appendWorkLesson (workFile, lesson, error), "AI-arbetsminne: liknande fel dedupliceras");
+            work = AiMemory::readRecentWork (workFile, 10, error);
+            check (work["lessons"].size() == 1 && (int) work["lessons"][0]["occurrences"] == 2
+                       && work["lessons"][0]["recovery"].toString().contains ("validated workflow"),
+                   "AI-arbetsminne: senaste lösningen ersätter äldre lärdom");
+            check (AiMemory::clearWork (workFile, error) && ! workFile.existsAsFile(),
+                   "AI-arbetsminne: rensning tar bort arbetslärdomar");
+
+            feedback.getDynamicObject()->setProperty ("rating", 11);
+            check (! AiMemory::appendFeedback (memoryFile, feedback, error), "AI-minne: betyg utanför 1-10 avvisas");
+
+            const auto invalidFile = memoryFile.getSiblingFile ("kickbase_ai_memory_invalid_test.json");
+            invalidFile.replaceWithText ("invalid memory");
+            const auto before = invalidFile.loadFileAsString();
+            feedback.getDynamicObject()->setProperty ("rating", 9);
+            check (! AiMemory::appendFeedback (invalidFile, feedback, error)
+                       && invalidFile.loadFileAsString() == before,
+                   "AI-minne: ogiltig fil avvisas utan överskrivning");
+            invalidFile.deleteFile();
+        }
+
         const auto settingsFile = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("kickbase_chat_test.xml");
         settingsFile.deleteFile();
         Settings::useFile (settingsFile);
+        check (! Settings::feedbackMemoryAutoInclude(), "AI-minne: automatisk kontext är av som standard");
+        check (Settings::feedbackMemoryLookback() == 10 && Settings::feedbackMemoryMaxMb() == 100
+                   && ! Settings::workMemoryAutoInclude() && Settings::workMemoryLookback() == 10
+                   && Settings::workMemoryMaxMb() == 100,
+               "AI-minne: standardgränserna är 10 poster, auto av och 100 MB per minnestyp");
+        check (AiMemory::promptContext().isEmpty(), "AI-minne: avstängt minne läggs inte till i prompten");
+        Settings::setFeedbackMemoryAutoInclude (true);
+        Settings::setFeedbackMemoryLookback (25);
+        Settings::setFeedbackMemoryMaxMb (10);
+        Settings::setWorkMemoryAutoInclude (true);
+        Settings::setWorkMemoryLookback (AiMemory::allEntries);
+        Settings::setWorkMemoryMaxMb (50);
+        check (Settings::feedbackMemoryAutoInclude() && Settings::feedbackMemoryLookback() == 25 && Settings::feedbackMemoryMaxMb() == 10
+                   && Settings::workMemoryAutoInclude() && Settings::workMemoryLookback() == AiMemory::allEntries
+                   && Settings::workMemoryMaxMb() == 50,
+               "AI-minne: inställningar sparas och läses tillbaka");
 
         Settings::setChatApiKey ("sk-ant-api03-hemlig-nyckel");
         check (Settings::chatApiKey() == "sk-ant-api03-hemlig-nyckel", "nyckeln läses tillbaka");
@@ -2400,6 +2500,28 @@ namespace
         Settings::setChatApiKey ("sk-ant-invalid-test-key");
 
         const auto owner = std::make_unique<InstrumentProcessor>();
+        ToolLayer memoryTools (*owner);
+        auto memorySettings = memoryTools.call ("get_memory_settings", {});
+        check (memorySettings["ok"] && memorySettings["data"]["feedback_auto"]
+                   && (int) memorySettings["data"]["feedback_lookback"] == 25
+                   && memorySettings["data"]["work_auto"]
+                   && (int) memorySettings["data"]["work_lookback"] == AiMemory::allEntries,
+               "AI-minne: MCP kan läsa inställningarna");
+        auto memoryUpdate = juce::var (new juce::DynamicObject());
+        memoryUpdate.getDynamicObject()->setProperty ("feedback_auto", false);
+        memoryUpdate.getDynamicObject()->setProperty ("feedback_lookback", AiMemory::allEntries);
+        memoryUpdate.getDynamicObject()->setProperty ("work_auto", false);
+        memoryUpdate.getDynamicObject()->setProperty ("work_lookback", 10);
+        check ((bool) memoryTools.call ("set_memory_settings", memoryUpdate)["ok"]
+                   && ! Settings::feedbackMemoryAutoInclude() && Settings::feedbackMemoryLookback() == AiMemory::allEntries
+                   && ! Settings::workMemoryAutoInclude() && Settings::workMemoryLookback() == 10,
+               "AI-minne: MCP kan ändra inställningarna");
+        auto invalidMemoryUpdate = juce::var (new juce::DynamicObject());
+        invalidMemoryUpdate.getDynamicObject()->setProperty ("feedback_lookback", 20);
+        check (! (bool) memoryTools.call ("set_memory_settings", invalidMemoryUpdate)["ok"]
+                   && Settings::feedbackMemoryLookback() == AiMemory::allEntries,
+               "AI-minne: MCP avvisar ogiltig lookback utan att ändra inställningen");
+
         auto& chat = owner->getAiChat();
         chat.send ("Hej");
         for (int i = 0; i < 1500 && (chat.isBusy() || i < 5); ++i)
@@ -2423,7 +2545,7 @@ namespace
         // Hela slingan mot en liten lokal låtsasserver: AI:n svarar med ett verktygsanrop, får resultatet och svarar med text.
         {
             std::atomic<int> requests { 0 };
-            std::atomic<bool> sawToolResult { false }, stopServer { false };
+            std::atomic<bool> sawToolResult { false }, sawContinueContext { false }, stopServer { false };
             juce::StreamingSocket listener;
             const auto port = 18765;
             if (! listener.createListener (port, "127.0.0.1"))
@@ -2460,9 +2582,14 @@ namespace
                         juce::String reply;
                         if (number == 1)
                             reply = R"({"type":"message","role":"assistant","stop_reason":"tool_use","usage":{"input_tokens":1000,"output_tokens":50},"content":[{"type":"text","text":"Raising the kick tune."},{"type":"tool_use","id":"toolu_test1","name":"set_parameters","input":{"values":{"kickTune":2.0}}}]})";
+                        else if (number == 3)
+                            reply = R"({"type":"message","role":"assistant","stop_reason":"max_tokens","usage":{"input_tokens":100,"output_tokens":5},"content":[{"type":"text","text":"This answer was cut off"}]})";
                         else
                         {
-                            sawToolResult = body.find ("tool_result") != std::string::npos && body.find ("toolu_test1") != std::string::npos;
+                            if (number == 2)
+                                sawToolResult = body.find ("tool_result") != std::string::npos && body.find ("toolu_test1") != std::string::npos;
+                            if (number == 4)
+                                sawContinueContext = body.find ("This answer was cut off") != std::string::npos && body.find ("continue") != std::string::npos;
                             reply = R"({"type":"message","role":"assistant","stop_reason":"end_turn","usage":{"input_tokens":1200,"output_tokens":20},"content":[{"type":"text","text":"Done: the kick is tuned up."}]})";
                         }
                         const auto text = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " + juce::String (reply.getNumBytesAsUTF8())
@@ -2477,12 +2604,6 @@ namespace
                 for (int i = 0; i < 1500 && (chat.isBusy() || i < 5); ++i)
                     juce::MessageManager::getInstance()->runDispatchLoopUntil (40);
 
-                stopServer = true;
-                juce::StreamingSocket wake;
-                wake.connect ("127.0.0.1", port, 500); // väcker servern så att den ser stopSignalen
-                wake.close();
-                server.join();
-
                 for (const auto& entry : chat.getEntries())
                     std::puts (("  [" + juce::String ((int) entry.kind) + "] " + entry.text.substring (0, 200)).toRawUTF8());
                 std::printf ("  anrop: %d\n", (int) requests);
@@ -2496,6 +2617,23 @@ namespace
                 check (std::abs (owner->apvts.getRawParameterValue (ParamID::kickTune)->load() - 2.0f) < 0.01f, "verktygsanropet ändrade ljudet (kickTune = 2)");
                 check (toolShown && answerShown, "anropet och svaret visas i samtalet");
                 check (chat.getUsage().contains ("in"), "tokenräknaren visar användningen");
+
+                chat.newChat();
+                chat.send ("Test the continue control");
+                for (int i = 0; i < 1500 && (chat.isBusy() || i < 5); ++i)
+                    juce::MessageManager::getInstance()->runDispatchLoopUntil (40);
+                check (chat.canContinue(), "CONTINUE erbjuds efter max_tokens");
+                chat.send ("continue");
+                check (! chat.canContinue(), "CONTINUE-läget nollställs när fortsättningen skickas");
+                for (int i = 0; i < 1500 && (chat.isBusy() || i < 5); ++i)
+                    juce::MessageManager::getInstance()->runDispatchLoopUntil (40);
+                check (sawContinueContext && ! chat.canContinue() && ! chat.isBusy(), "fortsättningen skickas med föregående avklippta svar och avslutas normalt");
+
+                stopServer = true;
+                juce::StreamingSocket wake;
+                wake.connect ("127.0.0.1", port, 500); // väcker servern så att den ser stopSignalen
+                wake.close();
+                server.join();
                 Settings::set ("chatEndpoint", {});
             }
         }
@@ -2677,6 +2815,9 @@ namespace
             folder.createDirectory();
             Settings::set ("chatsFolder", folder.getFullPathName());
             const juce::String secret = "sk-ant-TESTSECRET12345678";
+            juce::String fakeGoogleKey = "AIzaSy";
+            for (int i = 0; i < 33; ++i)
+                fakeGoogleKey += 'A';
             Settings::setChatApiKey (secret);
             Settings::setChatCostMode (0);
 
@@ -2707,7 +2848,8 @@ namespace
                             length = std::atoi (request.c_str() + at + 15);
                         for (int i = 0; i < length && client->read (&byte, 1, true) == 1; ++i) {}
 
-                        const juce::String reply = R"({"type":"message","role":"assistant","stop_reason":"end_turn","usage":{"input_tokens":10,"output_tokens":5},"content":[{"type":"text","text":"see https://x.test/v1?key=AIzaSyAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA and sk-ant-TESTSECRET12345678 ok"}]})";
+                        const auto reply = juce::String (R"({"type":"message","role":"assistant","stop_reason":"end_turn","usage":{"input_tokens":10,"output_tokens":5},"content":[{"type":"text","text":"see https://x.test/v1?key=GOOGLE_KEY_FIXTURE and sk-ant-TESTSECRET12345678 ok"}]})")
+                                               .replace ("GOOGLE_KEY_FIXTURE", fakeGoogleKey);
                         const auto text = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " + juce::String (reply.getNumBytesAsUTF8())
                                         + "\r\nConnection: close\r\n\r\n" + reply;
                         client->write (text.toRawUTF8(), (int) text.getNumBytesAsUTF8());
@@ -2725,7 +2867,7 @@ namespace
                 auto leaks = [&] (const juce::File& file)
                 {
                     const auto text = file.loadFileAsString();
-                    return text.contains (secret) || text.contains ("AIzaSyAAAA") || text.contains ("key=AIza");
+                    return text.contains (secret) || text.contains (fakeGoogleKey) || text.contains ("key=AIza");
                 };
 
                 chat.newChat();
@@ -2737,8 +2879,10 @@ namespace
                 check (exported.loadFileAsString().contains ("hello session") && exported.loadFileAsString().contains ("[AI]"), "session: exporten innehåller samtalet");
                 check (! leaks (saved) && ! leaks (exported), "session: nyckeln finns inte i sessionsfilen eller exporten");
                 check (exported.loadFileAsString().contains ("[key removed]"), "session: nyckeln i svaret är borttagen");
-                check (AiChat::redact ("error at /v1/models/x:generateContent?key=AIzaSyBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB&alt=sse").contains ("&alt=sse")
-                       && ! AiChat::redact ("?key=AIzaSyBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB").contains ("AIza"), "session: redact tar bort key= men lämnar resten av adressen");
+                const auto errorUrl = juce::String ("error at /v1/models/x:generateContent?key=") + fakeGoogleKey + "&alt=sse";
+                const auto bareUrl = juce::String ("?key=") + fakeGoogleKey;
+                check (AiChat::redact (errorUrl).contains ("&alt=sse")
+                       && ! AiChat::redact (bareUrl).contains ("AIza"), "session: redact tar bort key= men lämnar resten av adressen");
 
                 const auto headers = AiChat::redact ("Authorization: Bearer abcdef123456789\nx-goog-api-key: SECRETVALUE12345\n\"x-api-key\":\"SECRETVALUE67890\"");
                 check (! headers.contains ("abcdef123456789") && ! headers.contains ("SECRETVALUE"), "session: redact tar bort Authorization-, x-goog-api-key- och x-api-key-headers");
@@ -3223,7 +3367,13 @@ namespace
             auto& chat = processor->getAiChat();
             using Kind = AiChat::Entry::Kind;
             chat.addEntry ({ Kind::user, "Make the kick punchier and the bass tighter under it.", {} });
-            chat.addEntry ({ Kind::assistant, "I will shorten the kick's tail a little, add a short click on top, and give the bass a faster sidechain so it gets out of the way. Let me first look at the current sound.", {} });
+            AiChat::Entry demoAnswer;
+            demoAnswer.kind = Kind::assistant;
+            demoAnswer.text = "I will shorten the kick's tail a little, add a short click on top, and give the bass a faster sidechain so it gets out of the way. Let me first look at the current sound.";
+            demoAnswer.feedbackAvailable = true;
+            demoAnswer.feedbackId = "screenshot-demo";
+            demoAnswer.feedbackAction = "set_parameters: kickClick, kickLength";
+            chat.addEntry (std::move (demoAnswer));
             chat.addEntry ({ Kind::tool, "get_state  {}", {} });
             chat.addEntry ({ Kind::tool, "set_parameters  {\"values\":{\"kickClick\":0.5,\"kickLength\":0.85}}", {} });
             chat.addEntry ({ Kind::error, "The API key was not accepted (401). Check it with the KEY button.", {} });

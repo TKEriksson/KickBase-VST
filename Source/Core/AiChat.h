@@ -15,6 +15,9 @@ public:
         Kind kind = Kind::note;
         juce::String text;
         std::vector<juce::Image> images; // t.ex. spektrogrammet från render_preview
+        bool feedbackAvailable = false;
+        juce::String feedbackId, feedbackAction, feedbackComment;
+        int feedbackRating = 0;
     };
 
     explicit AiChat (PluginBase& processor);
@@ -46,12 +49,15 @@ public:
     void undo();                            // ångrar AI:ns senaste ändring (verktyget undo)
 
     bool isBusy() const { return busy; }
+    bool canContinue() const { return ! busy && stoppedEarly; } // svaret avbröts av stegtaket eller längdtaket: "continue" tar vid
     juce::String getStatus() const;         // "Thinking ...", "Running set_parameters ..." eller tom
     std::vector<Entry> getEntries() const;  // en kopia av samtalet som det visas
     juce::String getUsage() const;          // "12.3k in / 1.2k out" (tokens i det här samtalet)
     std::atomic<int> version { 0 };         // ökas när något ändrats, så att gränssnittet ritar om
 
     void addEntry (Entry entry);            // lägger ett inlägg i samtalet (används internt, och av tester)
+    bool rateEntry (const juce::String& id, int rating, const juce::String& comment, juce::String& error);
+    bool reviewFeedback (const juce::String& id, juce::String& error);
 
     // Varning innan ett dyrt verktyg: tom när inget väntar. answerConfirm: 1 kör, 2 hoppa över, 3 kör och fråga inte mer i det här samtalet.
     juce::String getPendingConfirm() const;
@@ -89,11 +95,15 @@ private:
     PluginBase& processor;
     ToolLayer tools;
     juce::Array<juce::var> messages; // samtalet i API:ets format (bara bakgrundstråden och send/newChat när den står stilla rör den)
+    juce::String pendingFeedbackAction; // ljudändringar som inväntar AI:ns sammanfattning
+    juce::String pendingFeedbackReviewPrompt;
+    std::atomic<bool> feedbackReviewMode { false };
 
     mutable juce::CriticalSection lock;
     std::vector<Entry> log;
     juce::String status;
     std::atomic<bool> busy { false };
+    std::atomic<bool> stoppedEarly { false }; // sätts när run() slutar på stegtaket eller max_tokens; nollställs av nästa send, newChat och loadSession
 
     // Anropet som pågår (annars nullptr), så att stop() och destruktorn kan avbryta en blockerande läsning (WebInputStream::cancel är gjord
     // för att anropas från en annan tråd). Förr väntade destruktorn upp till 15 s på ett svar när fönstret stängdes mitt i ett anrop.

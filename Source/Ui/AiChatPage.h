@@ -66,7 +66,9 @@ private:
     void layoutSuggestions(); // hjälptexten och förslagsknapparna ligger under hälsningen i en tom chatt
     juce::Rectangle<int> hintBounds;
     void showChatsMenu();
+    void showMemorySettings();
     void send (const juce::String& text);
+    void updateSendButton();
     void showSetup (bool show);
     void saveKey();
     bool needsKey() const;
@@ -92,7 +94,7 @@ private:
     juce::Label title, status, setupTitle, setupText, testResult, confirmLabel;
     juce::ComboBox modelBox, costBox;
     juce::TextButton runButton { "RUN" }, skipButton { "SKIP" }, runAlwaysButton { "RUN, DON'T ASK AGAIN" };
-    juce::TextButton keyButton { "KEY" }, newChatButton { "NEW CHAT" }, chatsButton { "CHATS" },undoButton { "UNDO" }, sendButton { "SEND" };
+    juce::TextButton keyButton { "KEY" }, newChatButton { "NEW CHAT" }, chatsButton { "CHATS" }, memoryButton { "MEM" }, undoButton { "UNDO" }, sendButton { "SEND" };
     StopButton stopButton { "STOP" };
     juce::TextButton saveKeyButton { "SAVE KEY" }, cancelKeyButton { "CANCEL" }, removeKeyButton { "REMOVE KEY" };
     juce::TextButton anthropicButton { "ANTHROPIC (paid key)" }, geminiButton { "GEMINI (free option)" }, guideButton { "GET A FREE KEY (GUIDE)" };

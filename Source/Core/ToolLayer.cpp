@@ -5,6 +5,7 @@
 #include "RollFiles.h"
 #include "LibraryIndex.h"
 #include "MixAnalysis.h"
+#include "AiMemory.h"
 #include <BinaryData.h>
 #include "../Ui/Help.h"
 #include "../Ui/FmPresets.h"
@@ -31,6 +32,19 @@ namespace
         put (result, "ok", false);
         put (result, "error", message);
         return result;
+    }
+
+    bool validMemoryLimit (int count)
+    {
+        return count == AiMemory::allEntries || count == 10 || count == 25 || count == 100 || count == 250
+               || count == 500 || count == 1000 || count == 10000;
+    }
+
+    int memoryLimit (const var& value, int fallback)
+    {
+        if (value.toString().equalsIgnoreCase ("ALL"))
+            return AiMemory::allEntries;
+        return value.isVoid() ? fallback : (int) value;
     }
 
     double round4 (double v) { return std::round (v * 10000.0) / 10000.0; }
@@ -234,6 +248,22 @@ std::vector<ToolLayer::ToolInfo> ToolLayer::tools()
     return {
         { "get_guide", "READ THIS FIRST. Returns the guide for working with Kickbase: how the synth is built, units, the pattern language, workflow and pitfalls. topic 'agent' (default) is the manual; topic 'psytrance' is the sound design reference for psytrance kick and bass; topic 'school' is the kick and bass school (how to build and judge the sound).",
           R"({"type":"object","properties":{"topic":{"type":"string","enum":["agent","psytrance","school"]}}})" },
+        { "get_memory", "Reads recent locally stored user ratings and comments about previous sound changes. Chat and MCP use the same private file. limit accepts 10, 25, 100, 250, 500, 1000, 10000, or -1 (ALL); the safe prompt budget may omit older entries. Returned metadata includes approximate tokens and omissions.",
+          R"({"type":"object","properties":{"limit":{"type":"integer","enum":[-1,10,25,100,250,500,1000,10000]}}})" },
+        { "get_work_memory", "Reads local work-memory lessons: a concise symptom and the changed approach that successfully recovered from it. Use a lesson only when it fits the current error; entries are redacted and are not raw logs. limit accepts 10, 25, 100, 250, 500, 1000, 10000, or -1 (ALL); the safe prompt budget may omit older entries.",
+          R"({"type":"object","properties":{"limit":{"type":"integer","enum":[-1,10,25,100,250,500,1000,10000]}}})" },
+        { "save_feedback", "Stores a user's explicit 1-10 rating for a sound change in the shared local feedback memory. Include a short description of what was changed; never include API keys or project files. After saving, review the rating/comment and propose a plan if useful, but do not change the sound until the user explicitly approves.",
+          R"({"type":"object","properties":{"rating":{"type":"integer","minimum":1,"maximum":10},"comment":{"type":"string"},"action":{"type":"string"}},"required":["rating","action"]})" },
+        { "save_work_lesson", "Save one short, reusable local lesson only after a tool error has been successfully resolved by changing approach. Store a sanitized symptom and the successful recovery, not full logs, code, project data, credentials, or unresolved errors.",
+          R"({"type":"object","properties":{"symptom":{"type":"string"},"recovery":{"type":"string"},"tool":{"type":"string"},"area":{"type":"string"}},"required":["symptom","recovery"]})" },
+        { "get_memory_settings", "Reads local feedback and work-memory settings: automatic inclusion, entry lookback, and separate local storage caps. Automatic prompt inclusion is off by default; the provider may count included context again on later requests.",
+          R"({"type":"object","properties":{}})" },
+        { "set_memory_settings", "Changes local memory settings only when the user explicitly asks. Configure feedback_auto, feedback_lookback, feedback_max_storage_mb, work_auto, work_lookback, and work_max_storage_mb. Lookback accepts 10, 25, 100, 250, 500, 1000, 10000, or -1 (ALL); storage is 1-100 MB and oldest entries are pruned first.",
+          R"({"type":"object","properties":{"feedback_auto":{"type":"boolean"},"feedback_lookback":{"type":"integer","enum":[-1,10,25,100,250,500,1000,10000]},"feedback_max_storage_mb":{"type":"integer","minimum":1,"maximum":100},"work_auto":{"type":"boolean"},"work_lookback":{"type":"integer","enum":[-1,10,25,100,250,500,1000,10000]},"work_max_storage_mb":{"type":"integer","minimum":1,"maximum":100}}})" },
+        { "clear_memory", "Deletes all saved ratings/comments from the shared local feedback memory. Only call after the user explicitly asks to erase it; warn that this affects all chats and MCP clients.",
+          R"({"type":"object","properties":{}})" },
+        { "clear_work_memory", "Deletes all saved local error-recovery lessons. Only call after the user explicitly asks; warn that the lessons are shared by all chats and MCP clients.",
+          R"({"type":"object","properties":{}})" },
         { "list_parameters", "Lists the synth's parameters with id, name, type (float/choice/bool), min, max, default, current value, a display text and help (what the knob does, the same text as its tooltip in the plugin). Filter with prefix (e.g. 'kick', 'bass1', 'fxA', 'sc', 'lfo1', 'master', 'mix') or contains. Effect slot knobs are not listed here, see list_effects and set_effect.",
           R"({"type":"object","properties":{"prefix":{"type":"string"},"contains":{"type":"string"},"limit":{"type":"integer"}}})" },
         { "list_effects", "Lists the available effect types and their knobs (name, range, default, unit, choices) for use with set_effect.", R"({"type":"object","properties":{}})" },
@@ -340,6 +370,108 @@ int ToolLayer::parameterIndex (const juce::String& id) const
 var ToolLayer::call (const juce::String& tool, const var& args)
 {
     if (tool == "get_guide")        return ok (guide (args["topic"].toString()));
+    if (tool == "get_memory")
+    {
+        juce::String error;
+        const auto limit = memoryLimit (args["limit"], Settings::feedbackMemoryLookback());
+        if (! validMemoryLimit (limit))
+            return fail ("limit must be 10, 25, 100, 250, 500, 1000, 10000, or ALL.");
+        const auto memory = AiMemory::readRecent (limit, error);
+        return memory.isVoid() ? fail (error) : ok (memory);
+    }
+    if (tool == "get_work_memory")
+    {
+        juce::String error;
+        const auto limit = memoryLimit (args["limit"], Settings::workMemoryLookback());
+        if (! validMemoryLimit (limit))
+            return fail ("limit must be 10, 25, 100, 250, 500, 1000, 10000, or ALL.");
+        const auto memory = AiMemory::readRecentWork (limit, error);
+        return memory.isVoid() ? fail (error) : ok (memory);
+    }
+    if (tool == "save_feedback")
+    {
+        auto feedback = object();
+        put (feedback, "rating", args["rating"]);
+        put (feedback, "comment", args["comment"]);
+        put (feedback, "action", args["action"]);
+        put (feedback, "source", "MCP");
+        juce::String error;
+        return AiMemory::appendFeedback (feedback, error) ? ok ("Feedback saved locally. Review the rating/comment and suggest a plan if a change is warranted; do not apply changes until the user explicitly approves.")
+                                                          : fail (error);
+    }
+    if (tool == "save_work_lesson")
+    {
+        if (! Settings::workMemoryAutoInclude())
+            return fail ("Work memory is off (opt-in). The user must enable it in the MEMORY popup before lessons are saved.");
+        auto lesson = object();
+        put (lesson, "symptom", args["symptom"]);
+        put (lesson, "recovery", args["recovery"]);
+        put (lesson, "tool", args["tool"]);
+        put (lesson, "area", args["area"]);
+        put (lesson, "source", "AI");
+        juce::String error;
+        return AiMemory::appendWorkLesson (lesson, error) ? ok ("Resolved error lesson saved locally.")
+                                                           : fail (error);
+    }
+    if (tool == "get_memory_settings")
+    {
+        auto settings = object();
+        put (settings, "feedback_auto", Settings::feedbackMemoryAutoInclude());
+        put (settings, "feedback_lookback", Settings::feedbackMemoryLookback());
+        put (settings, "feedback_max_storage_mb", Settings::feedbackMemoryMaxMb());
+        put (settings, "work_auto", Settings::workMemoryAutoInclude());
+        put (settings, "work_lookback", Settings::workMemoryLookback());
+        put (settings, "work_max_storage_mb", Settings::workMemoryMaxMb());
+        put (settings, "estimated_tokens", AiMemory::estimatedPromptTokens());
+        return ok (settings);
+    }
+    if (tool == "set_memory_settings")
+    {
+        const auto feedbackAuto = args["feedback_auto"];
+        const auto feedbackLookback = memoryLimit (args["feedback_lookback"], Settings::feedbackMemoryLookback());
+        const auto feedbackMaxMb = args["feedback_max_storage_mb"];
+        const auto workAuto = args["work_auto"];
+        const auto workLookback = memoryLimit (args["work_lookback"], Settings::workMemoryLookback());
+        const auto workMaxMb = args["work_max_storage_mb"];
+        if ((! feedbackAuto.isVoid() && ! feedbackAuto.isBool())
+            || (! workAuto.isVoid() && ! workAuto.isBool())
+            || (! args["feedback_lookback"].isVoid() && ! validMemoryLimit (feedbackLookback))
+            || (! args["work_lookback"].isVoid() && ! validMemoryLimit (workLookback))
+            || (! feedbackMaxMb.isVoid() && ((int) feedbackMaxMb < 1 || (int) feedbackMaxMb > 100))
+            || (! workMaxMb.isVoid() && ((int) workMaxMb < 1 || (int) workMaxMb > 100)))
+            return fail ("Invalid memory settings. Use approved lookback values (or ALL), booleans for auto inclusion, and storage caps from 1 to 100 MB.");
+
+        juce::String error;
+        if (! feedbackMaxMb.isVoid() && ! AiMemory::trimToLimit (AiMemory::file(), (int) feedbackMaxMb, error))
+            return fail (error);
+        if (! workMaxMb.isVoid() && ! AiMemory::trimWorkToLimit (AiMemory::workFile(), (int) workMaxMb, error))
+            return fail (error);
+        if (! feedbackAuto.isVoid())
+            Settings::setFeedbackMemoryAutoInclude ((bool) feedbackAuto);
+        if (! args["feedback_lookback"].isVoid())
+            Settings::setFeedbackMemoryLookback (feedbackLookback);
+        if (! feedbackMaxMb.isVoid())
+            Settings::setFeedbackMemoryMaxMb ((int) feedbackMaxMb);
+        if (! workAuto.isVoid())
+            Settings::setWorkMemoryAutoInclude ((bool) workAuto);
+        if (! args["work_lookback"].isVoid())
+            Settings::setWorkMemoryLookback (workLookback);
+        if (! workMaxMb.isVoid())
+            Settings::setWorkMemoryMaxMb ((int) workMaxMb);
+        return ok ("Feedback- and work-memory settings updated.");
+    }
+    if (tool == "clear_memory")
+    {
+        juce::String error;
+        return AiMemory::clear (error) ? ok ("All saved feedback was deleted from the shared local memory.")
+                                        : fail (error);
+    }
+    if (tool == "clear_work_memory")
+    {
+        juce::String error;
+        return AiMemory::clearWork (error) ? ok ("All saved local work-memory lessons were deleted.")
+                                            : fail (error);
+    }
     if (tool == "list_parameters")  return listParameters (args);
     if (tool == "list_effects")     return listEffects();
     if (tool == "get_state")        return getState (args);

@@ -46,6 +46,18 @@ namespace Settings
     void setGeminiModel (const juce::String& model);
     int chatCostMode();                             // 0 Sparsam, 1 Normal (standard), 2 Rik: hur snålt chatten använder tokens (AiChat::limits)
     void setChatCostMode (int mode);
+    bool feedbackMemoryAutoInclude();               // standard av: vald feedback läggs till i modellförfrågningar
+    void setFeedbackMemoryAutoInclude (bool include);
+    int feedbackMemoryLookback();                   // senaste poster i kontexten; -1 betyder ALL, standard 10
+    void setFeedbackMemoryLookback (int count);
+    int feedbackMemoryMaxMb();                      // lokal retention, äldsta poster tas bort först (standard 100 MB)
+    void setFeedbackMemoryMaxMb (int megabytes);
+    bool workMemoryAutoInclude();                   // standard av: lokala arbetslärdomar läggs annars till i modellförfrågningar
+    void setWorkMemoryAutoInclude (bool include);
+    int workMemoryLookback();                       // senaste arbetslärdomar; -1 betyder ALL, standard 10
+    void setWorkMemoryLookback (int count);
+    int workMemoryMaxMb();                          // lokal retention, äldsta lärdomar tas bort först (standard 100 MB)
+    void setWorkMemoryMaxMb (int megabytes);
     // Provresultat "kan modellen function calling" per modell och nyckel (nyckelns hash, inte nyckeln): 1 ja, 0 nej, -1 inte provad.
     int geminiToolsCheck (const juce::String& model, const juce::String& key);
     void setGeminiToolsCheck (const juce::String& model, const juce::String& key, bool works);
