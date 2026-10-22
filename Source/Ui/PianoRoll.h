@@ -57,7 +57,7 @@ public:
     void focusLost (FocusChangeType) override { repaint(); }
 
 private:
-    enum class Drag { none, move, resize, velocity, box, erase, paste, ruler, keys };
+    enum class Drag { none, move, resize, velocity, box, erase, paste, ruler, keys, pan };
     enum class Tool { draw, select, erase };
 
     struct NoteData
@@ -219,6 +219,8 @@ private:
     float rowH = 13.0f;
     float pixelsPerTick = 1.0f;
     float scrollTicks = 0.0f;   // tiden längst till vänster
+    juce::Point<float> panStart;  // mittenknapp: dra för att panorera
+    float panScrollTicks = 0.0f, panTopPitch = 0.0f;
     float topPitch = 12.0f;     // översta synliga raden (halvtoner från tonarten)
     NoteKey justCreated;        // tonen som det första klicket i ett dubbelklick skapade
     int lastLength = 0;         // längden på den senast ritade tonen: nästa ton får samma

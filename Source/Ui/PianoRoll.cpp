@@ -1756,6 +1756,17 @@ void PianoRoll::mouseDown (const juce::MouseEvent& event)
     drag = Drag::none;
     dragKey = {};
 
+    // Mittenknappen (hjulklick) panorerar vyn i sidled och höjdled i stället för att rita en ton.
+    if (event.mods.isMiddleButtonDown())
+    {
+        drag = Drag::pan;
+        panStart = event.position;
+        panScrollTicks = scrollTicks;
+        panTopPitch = topPitch;
+        setMouseCursor (juce::MouseCursor::DraggingHandCursor);
+        return;
+    }
+
     // Inklistring: ett klick eller drag väljer var tonerna hamnar (spöket följer musen).
     if (pasting)
     {
@@ -2008,6 +2019,15 @@ void PianoRoll::mouseDrag (const juce::MouseEvent& event)
     if (drag == Drag::none)
         return;
 
+    if (drag == Drag::pan)
+    {
+        scrollTicks = panScrollTicks - (event.position.x - panStart.x) / std::max (0.05f, pixelsPerTick);
+        topPitch = panTopPitch + (event.position.y - panStart.y) / std::max (1.0f, rowHeight());
+        clampView();
+        repaint();
+        return;
+    }
+
     if (drag == Drag::ruler)
     {
         if (! rulerDragged && std::abs (event.getDistanceFromDragStartX()) < 4)
@@ -2125,6 +2145,13 @@ void PianoRoll::mouseDrag (const juce::MouseEvent& event)
 
 void PianoRoll::mouseUp (const juce::MouseEvent&)
 {
+    if (drag == Drag::pan)
+    {
+        drag = Drag::none;
+        setMouseCursor (juce::MouseCursor::NormalCursor);
+        return;
+    }
+
     if (drag == Drag::ruler && ! rulerDragged)
     {
         // Klick på linjalen: startmarkören flyttas dit (spelas den här raden börjar den om därifrån) och en markerad loop släpps.
@@ -2146,7 +2173,7 @@ void PianoRoll::mouseUp (const juce::MouseEvent&)
 void PianoRoll::mouseDoubleClick (const juce::MouseEvent& event)
 {
     bool edge = false;
-    if (! gridArea.contains (event.position) || event.mods.isPopupMenu() || event.mods.isShiftDown() || event.mods.isCtrlDown())
+    if (! gridArea.contains (event.position) || event.mods.isPopupMenu() || event.mods.isMiddleButtonDown() || event.mods.isShiftDown() || event.mods.isCtrlDown())
         return;
     const auto key = noteAtPoint (event.position, edge);
     if (! key.valid())
