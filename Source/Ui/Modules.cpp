@@ -1030,9 +1030,12 @@ SamplePage::SamplePage (PluginBase& p, int layerIn, juce::Colour accent)
     // Slicer: noten väljer skivan (MAP TO = tonen som spelar skiva 1), originalhastighet, ingen loop.
     slicerToggle.setTooltip ("SLICER - Each note plays one slice of the sample at its original speed (no pitching, no loop). The note decides the slice: the MAP TO note plays slice 1, the next note slice 2, and so on. "
                              "Notes outside the slices are silent. Off = the sample plays as before.");
+    slicerToggle.setButtonText ("SLICER");
+    reverseToggle.setButtonText ("REVERSE");
     reverseToggle.setTooltip ("REVERSE - Plays every slice backwards.");
     for (auto* toggle : { &slicerToggle, &reverseToggle })
     {
+        toggle->getProperties().set ("labelled", true);
         toggle->setColour (juce::ToggleButton::tickColourId, accent);
         toggle->setColour (juce::ToggleButton::textColourId, Theme::textDim);
         addAndMakeVisible (*toggle);
@@ -1154,7 +1157,7 @@ void SamplePage::resized()
 {
     auto area = getLocalBounds().reduced (4);
     auto top = area.removeFromTop (24);
-    filterSendToggle.setBounds (top.removeFromRight (60));
+    filterSendToggle.setBounds (top.removeFromRight (84));
     top.removeFromRight (8);
     clearButton.setBounds (top.removeFromRight (24));
     top.removeFromRight (4);
