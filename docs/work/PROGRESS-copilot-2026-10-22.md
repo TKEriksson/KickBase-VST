@@ -49,3 +49,11 @@ Löpande logg. Nyast sist. En rad per steg: tid, vad, hash/kommando, resultat, n
 - ARBETSSÄTT-AVVIKELSE att känna till: tidigare Copilot-pass gjorde Release-bygge i `-ai` i stället för `-ci`. Releaser/CI ska ske i `KickBase-VST-ci` via `C:\Users\hunga\Documents\GitHub\ci-run.ps1`. Rättat nu genom att CI kördes i `-ci`.
 - Kvar/nästa: Tobias testar punkt 1, 2, 4 (+ minnespopup) i FL efter ny installRel.bat; analyzer-thumbnail efter verklig ANALYSE ej visuellt bekräftad; punkt 8 (valbart analysmätläge dry/after_sidechain/after_master) ej påbörjad; "AUTO i stället för LIVE" (HANDOFF-release.md) kvar. Städa gamla worktrees (-test, -refbb, -live, -poly1) efter Tobias OK.
 - 22 okt: PUSHAT main 2ba981c..6cfc29e till origin (docs/ är gitignorerad, så progress/handoff ligger bara lokalt i main-worktreen).
+
+## 22 okt kväll: analysläge (punkt 8)
+- Copilot: branch an-tap (9e01562): analyse_mix tap=as_heard|dry + AS HEARD/DRY i ANALYZER. dry = kopian får duck 0 och neutral EQ på kick/instr. Inget ljudmotorbyte.
+- CI i -ci grön, rendersig oförändrad. Mergad till main och pushad.
+- Ej gjort: after_master per källa och compare (kräver motorändring).
+- Docs: Strudel-effektmappning (live-code-exempel §13) pushad.
+- Tobias att testa i FL: punkt 1, 2, 4, MEMORY-popup, DRY-läget (ny installRel).
+- Kvar: AUTO istället för LIVE, LC-G, Strudel-genvägar, städning av gamla worktrees/grenar (väntar på OK).

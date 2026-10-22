@@ -218,3 +218,6 @@ Spec: docs/work/ai-chat-polish-spec.md. Mergas INTE förrän allt är CI-testat 
 - Pushat till origin: se PROGRESS-copilot-2026-10-22.md (sista raden) för bekräftelse.
 - Rutin som gäller: bygg/CI bara i `KickBase-VST-ci` med `ci-run.ps1 -Revs @('<hash>')`; mergea till main först efter grön CI; fullmakt från Tobias 22 okt 15:40 att commita/mergea/pusha.
 - Nästa: Tobias FL-test (punkt 1, 2, 4, minnespopup) efter ny `installRel.bat`; punkt 8; AUTO i stället för LIVE.
+
+## UPPDATERING 22 okt kväll
+an-tap mergad (analysläge dry/as heard, AGENT_GUIDE §9 uppdaterad). Se PROGRESS-copilot-2026-10-22.md. Nästa: AUTO istället för LIVE, LC-G.
