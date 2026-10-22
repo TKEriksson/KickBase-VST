@@ -57,3 +57,20 @@ Löpande logg. Nyast sist. En rad per steg: tid, vad, hash/kommando, resultat, n
 - Docs: Strudel-effektmappning (live-code-exempel §13) pushad.
 - Tobias att testa i FL: punkt 1, 2, 4, MEMORY-popup, DRY-läget (ny installRel).
 - Kvar: AUTO istället för LIVE, LC-G, Strudel-genvägar, städning av gamla worktrees/grenar (väntar på OK).
+
+## 22 okt eftermiddag: after_master, FLOAT, Strudel-genvägar (Copilot)
+- Gren an-master i -ai (från an-tap): f8f21c6 AFTER MASTER (analyse_mix tap=after_master, tabell per källa och band i ANALYZER, bidrag = master med källan minus master med källan avstängd; bara analys, N+1 renders). CI grön, rendersig oförändrad.
+- 2d3b349 FLOAT (LC-G1): flytande fönster med andra editor på samma dokument. LC-G2 (KONSOL) och G3 (notmarkering) fanns redan i koden.
+- 9c6054d Strudel-genvägar .lpf/.pan/.attack/.release m.fl. för instrument (se live-code-exempel §13). Tester i livetest.
+- AUTO istället för LIVE struket (Tobias: behåll LIVE).
+- Upptäckt: PH (polaritet, nudge, fasgrader), disperser och HarmonicEditor (amp+fas per överton) finns redan i main; de var inte kvar i planen.
+- Slutlig CI på 9c6054d körs; därefter merge till main, push och release i -ci.
+
+## 22 okt: städning (Tobias OK)
+- Borttagna worktrees (rena): -f, -fs, -int, -live, -op, -poly1, -test. Kvar p.g.a. ocommittade ändringar: -f2, -lc, -lce, -lcui, -mx, -rel (mest gamla docs-kopior; docs är nu spårade i main).
+- Raderade 40 grenar som var mergade i main (git branch -d). Kvar: content-d1, content-ph, content-s2, fix-matrix, fix-slicer-test (ej mergade), content-r (finns bara lokalt mot origin), content-g/-gemini/-lce/-lcui (worktree kvar), an-master.
+- /STACK:8388608 (CMakeLists.txt:243) är INTE borttagen än: rotorsaken (stora objekt på stacken i testerna) är inte åtgärdad och kräver en Release-bygg av KickbaseTests för att bevisas. Görs efter CI.
+
+## Allpass, instr-mix och pan/bredd (Copilot, 2026-10-22)
+- 5deb6b8 Allpass FREQ/AMOUNT (nya params sist, AMOUNT 0 = bit-identisk). 6070cf3 MIX-flik (InstrMixPanel), samplePan/noisePan/fmPan/noiseWidth sist; sub alltid mono (ingen subPan, medvetet). Tester i polyTest; rendersig-baslinjer (Init, instr 1, heavy 10, tb303) oförändrade.
+- Kvar: start offset, sidechain-vy, shimmer + maximizer 2, compare, F2/MIDI-slicer (verifiera), LOW-END, CI, merge, release.

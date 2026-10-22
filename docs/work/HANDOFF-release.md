@@ -57,7 +57,7 @@ För Copilot eller annan AI som tar över. Läs först: `CLAUDE.md`, `docs/work/
 ## Uppdatera efter jobbet
 `docs/work/PROGRESS-lc.md` och `docs/plan-v2.md` med: content-f/F1, b2ad056, E-commit, release-bygget.
 
-## Nästa steg efter E och F1: AUTO i stället för LIVE (Tobias idé, 20 okt natt)
+## ~~Nästa steg efter E och F1: AUTO i stället för LIVE~~ (STRUKET 22 okt: Tobias föredrar namnet LIVE; knappen behålls som den är)
 - Koden körs bara när texten ändrats OCH är giltig; då skapas/uppdateras raderna direkt ("CREATED"). Ogiltig kod = bara felrad, förra giltiga resultatet ligger kvar.
 - Tas en kodrad som koden själv äger (`liveCodeOwned`) bort ur koden töms raden. Rör aldrig handgjorda rader. Verifiera först hur owned-rader beter sig idag vid borttagning/stopp (`LiveCodePage.cpp`).
 - Handritade toner skyddas fortfarande av `warnOverwrite`. Inget får köras av sig självt vid laddning av projekt/preset (jfr f1e5167).

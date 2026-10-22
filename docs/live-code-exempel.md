@@ -221,7 +221,7 @@ fx1.slot1.setEffect("reverb")
 $: note("[~ c2 c2 c2]*4").s("i1").lfo("bass1Cutoff", 0.5, 0.6, "tri")
 ```
 
-Ännu inte byggt (skulle kräva nya Strudel-metoder i `glue.js` + C++ och bundle-ombygge): `.lpf(...)` m.fl. direkt på mönstret som genvägar till raderna ovan. Säg till om det önskas.
+Byggt 22 okt (grenen an-master): `.lpf`/`.cutoff`, `.lpq`/`.resonance`, `.attack`/`.decay`/`.sustain`/`.release` (sekunder blir ms), `.distort`/`.shape` (Drive) och `.pan` (0..1) på ett instrumentmönster blir parameterskrivningar, ett värde per körning (första notens värde). Gäller bara instrument, inte kicken. Ett uttryckligt `.set(...)` på samma parameter vinner.
 
 ## Om det inte fungerar
 
