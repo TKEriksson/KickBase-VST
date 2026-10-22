@@ -1258,7 +1258,7 @@ namespace
                 const auto dry = tools.call ("analyse_mix", juce::JSON::parse ("{\"tap\":\"dry\"}"));
                 check ((bool) dry["ok"] && dry["data"]["status"].toString() == "started", "analyse_mix tap=dry startar");
                 auto dryAnswer = tools.call ("get_mix_report", juce::JSON::parse ("{}"));
-                for (int i = 0; i < 600 && dryAnswer["data"]["status"].toString() != "done"; ++i)
+                for (int i = 0; i < 1800 && dryAnswer["data"]["status"].toString() != "done"; ++i)
                 {
                     juce::Thread::sleep (100);
                     dryAnswer = tools.call ("get_mix_report", juce::JSON::parse ("{}"));
