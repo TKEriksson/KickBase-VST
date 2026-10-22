@@ -64,7 +64,8 @@ private:
     juce::TextButton exportButton { "EXPORT" }; // bara i instrumentet
     // PREVIEWS (bara i instrumentet): högtalaren spelar hela synthen på den valda tonen (standard C5) så länge man håller ner den,
     // och tonen gäller alla provlyssningar.
-    ListenButton listenAll;
+    ListenButton listenAll, listenRoll; // listenRoll syns bara medan en pianorulle är öppen
+    bool rollShown = false;
     juce::ComboBox noteBox;
     juce::TextButton restartButton { "" };       // börjar om räknaren och mönstret vid 1.1 (egen klocka)
     juce::Rectangle<int> previewGroup, bpmPill, keyBlock;

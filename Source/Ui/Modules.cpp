@@ -62,6 +62,17 @@ HeaderBar::HeaderBar (PluginBase& p, const juce::String& subtitleIn)
         listenAll.onStop = [this] { processor.requestAudition (PluginBase::previewStop); };
         addAndMakeVisible (listenAll);
 
+        listenRoll.setTooltip ("LISTEN PIANO ROLL - Hold to hear just the open piano roll (from the start marker, or looping the red region) on the preview note. "
+                               "Shift + Space does the same; Space plays the whole synth.");
+        listenRoll.onStart = [this]
+        {
+            const auto row = processor.openRollLayer.load();
+            if (row >= 0)
+                processor.requestAudition (PluginBase::previewRequest (row));
+        };
+        listenRoll.onStop = [this] { processor.requestAudition (PluginBase::previewStop); };
+        addChildComponent (listenRoll);
+
         for (int note = 24; note < 96; ++note) // C1 ... B6
             noteBox.addItem (juce::MidiMessage::getMidiNoteName (note, true, true, 5), note + 1);
         noteBox.setSelectedId (processor.previewNote.load() + 1, juce::dontSendNotification);
@@ -177,20 +188,23 @@ void HeaderBar::resized()
 
     projectButton.setBounds (14 + logo.getWidth() + 22, controlsY, 84, controlsHeight); // PROJECT först, till vänster om presetväljaren
     auto presetWidth = hasPreviews ? 118 : 200;
-    const auto leftEnd = projectButton.getRight() + 10 + presetWidth + 10 + (hasPreviews ? 70 : 76) + 10 + (hasPreviews ? 112 : 0) + 16 + meterWidth;
+    const auto leftEnd = projectButton.getRight() + 10 + presetWidth + 10 + (hasPreviews ? 70 : 76) + 10 + (hasPreviews ? (rollShown ? 148 : 112) : 0) + 16 + meterWidth;
     presetWidth = std::max (70, presetWidth - std::max (0, leftEnd - (bpmPill.getX() - 8)));
     presets.setBounds (projectButton.getRight() + 10, controlsY, presetWidth, controlsHeight);
     exportButton.setBounds (presets.getRight() + 10, controlsY, hasPreviews ? 70 : 76, controlsHeight);
 
     // PREVIEWS: en inringad ruta med högtalaren och tonväljaren, så att man ser att de hör ihop.
-    previewGroup = hasPreviews ? juce::Rectangle<int> (exportButton.getRight() + 10, (height - 44) / 2, 112, 44) : juce::Rectangle<int>();
+    previewGroup = hasPreviews ? juce::Rectangle<int> (exportButton.getRight() + 10, (height - 44) / 2, rollShown ? 148 : 112, 44) : juce::Rectangle<int>();
     listenAll.setVisible (hasPreviews);
     noteBox.setVisible (hasPreviews);
     restartButton.setVisible (hasPreviews);
     if (hasPreviews)
     {
         listenAll.setBounds (previewGroup.getX() + 7, previewGroup.getY() + 14, 30, previewGroup.getHeight() - 20);
-        noteBox.setBounds (listenAll.getRight() + 5, previewGroup.getY() + 14, 62, previewGroup.getHeight() - 20);
+        listenRoll.setVisible (rollShown);
+        if (rollShown)
+            listenRoll.setBounds (listenAll.getRight() + 3, previewGroup.getY() + 14, 30, previewGroup.getHeight() - 20);
+        noteBox.setBounds ((rollShown ? listenRoll.getRight() : listenAll.getRight()) + 5, previewGroup.getY() + 14, 62, previewGroup.getHeight() - 20);
     }
 }
 
@@ -293,6 +307,16 @@ void HeaderBar::timerCallback()
     if (processor.getKeyboardState() != nullptr)
     {
         listenAll.setActive (processor.previewingLayer.load() == PluginBase::previewAllRows);
+        const auto rollOpen = processor.openRollLayer.load() >= 0;
+        if (rollOpen != rollShown)
+        {
+            rollShown = rollOpen;
+            resized();
+            if (auto* parent = getParentComponent())
+                parent->resized(); // mätaren sitter efter PREVIEWS-rutan
+            repaint();
+        }
+        listenRoll.setActive (rollShown && processor.previewingLayer.load() == processor.openRollLayer.load());
         if (noteBox.getSelectedId() != processor.previewNote.load() + 1)
             noteBox.setSelectedId (processor.previewNote.load() + 1, juce::dontSendNotification);
     }

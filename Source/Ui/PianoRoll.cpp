@@ -4,7 +4,7 @@
 
 namespace
 {
-    constexpr float keyWidth = 46.0f, toolbarHeight = 46.0f, rulerHeight = 16.0f, velocityHeight = 40.0f, edgeGrab = 6.0f, barSize = 11.0f, hintHeight = 16.0f;
+    constexpr float keyWidth = 46.0f, toolbarHeight = 46.0f, rulerHeight = 28.0f, velocityHeight = 40.0f, edgeGrab = 6.0f, barSize = 11.0f, hintHeight = 16.0f;
     constexpr float maxPixelsPerTick = 3.0f;
 
     // jlimit kräver lägsta <= högsta; här kan intervallet vara tomt (då vinner det lägsta).
@@ -91,7 +91,7 @@ PianoRoll::PianoRoll (PluginBase& p, std::vector<juce::Colour> colours) : proces
     pasteCancelButton.onClick = [this] { cancelPaste(); grabKeyboardFocus(); };
     listenButton.setTooltip ("LISTEN - Hold to hear just this piano roll on the preview note (the PREVIEWS note at the top, C5 by default), looping while you hold. "
                              "Press again to start over; double-click to let it play until you click again.");
-    listenButton.onStart = [this] { processor.requestAudition (PluginBase::previewRequest (layer)); };
+    listenButton.onStart = [this] { syncPreviewWindow(); processor.requestAudition (PluginBase::previewRequest (layer)); };
     listenButton.onStop = [this] { processor.requestAudition (PluginBase::previewStop); };
     midiInBox.addItem ("MIDI IN: ALL", 1);
     midiInBox.addItem ("MIDI IN: INSTRUMENT", 2);
@@ -193,6 +193,14 @@ void PianoRoll::setLayer (int newLayer)
         dragStartKey = {};
         attachGridBox();
         applyMidiIn();
+        auditionStop (0);
+        cursorTick = 0;
+        loopStart = loopEnd = -1;
+        if (isShowing())
+        {
+            processor.openRollLayer = layer;
+            syncPreviewWindow();
+        }
     }
     repaint();
 }
@@ -205,11 +213,85 @@ void PianoRoll::applyMidiIn()
 void PianoRoll::visibilityChanged()
 {
     applyMidiIn();
+    processor.openRollLayer = isShowing() ? layer : -1;
+    if (isShowing())
+        syncPreviewWindow();
+    else
+    {
+        auditionStop (0);
+        clearPreviewWindow();
+    }
 }
 
 PianoRoll::~PianoRoll()
 {
+    auditionStop (0);
+    clearPreviewWindow();
+    processor.openRollLayer = -1;
     processor.midiInLayer = -1;
+}
+
+void PianoRoll::syncPreviewWindow()
+{
+    processor.previewFromTick = cursorTick;
+    processor.previewLoopStart = hasLoop() ? loopStart : -1;
+    processor.previewLoopEnd = hasLoop() ? loopEnd : -1;
+}
+
+void PianoRoll::clearPreviewWindow()
+{
+    processor.previewFromTick = 0;
+    processor.previewLoopStart = processor.previewLoopEnd = -1;
+}
+
+void PianoRoll::playThisRow()
+{
+    syncPreviewWindow();
+    processor.requestAudition (processor.previewingLayer.load() == layer ? PluginBase::previewStop : PluginBase::previewRequest (layer));
+}
+
+void PianoRoll::clearLoop()
+{
+    if (! hasLoop())
+        return;
+    loopStart = loopEnd = -1;
+    syncPreviewWindow();
+    repaint();
+}
+
+void PianoRoll::auditionStart (int pitch, float velocity)
+{
+    const auto midi = juce::jlimit (0, 127, rootNote() + pitch);
+    if (auditionPitch == midi)
+        return;
+    if (auditionPitch >= 0)
+        processor.postNoteAudition (layer, auditionPitch, 64, false);
+    auditionPitch = midi;
+    auditionStartedAt = juce::Time::getMillisecondCounterHiRes();
+    processor.postNoteAudition (layer, midi, (int) (velocity * 127.0f), true);
+}
+
+// Tonen klingar så länge musen hålls, och minst minimumTicks (tonens längd).
+void PianoRoll::auditionStop (int minimumTicks)
+{
+    if (auditionPitch < 0)
+        return;
+    const auto note = auditionPitch;
+    auditionPitch = -1;
+    const auto noteMs = (double) minimumTicks / (double) Pattern::ticksPerQuarter * 60000.0 / std::max (20.0, processor.transportStatus.bpm.load());
+    const auto leftMs = juce::jlimit (0.0, 4000.0, noteMs - (juce::Time::getMillisecondCounterHiRes() - auditionStartedAt));
+    if (leftMs < 20.0)
+    {
+        processor.postNoteAudition (layer, note, 64, false);
+        return;
+    }
+    juce::Component::SafePointer<PianoRoll> safeThis (this);
+    const auto row = layer;
+    juce::Timer::callAfterDelay ((int) leftMs, [safeThis, note, row]
+    {
+        if (safeThis != nullptr && safeThis->auditionPitch != note)
+            safeThis->processor.postNoteAudition (row, note, 64, false);
+    });
 }
 
 int PianoRoll::bars() const
@@ -811,7 +893,7 @@ void PianoRoll::timerCallback()
     }
     updateToolButtons();
     updateToolbarVisibility();
-    listenButton.setActive (processor.previewingLayer.load() == layer || processor.previewingLayer.load() == PluginBase::previewAllRows);
+    listenButton.setActive (processor.previewingLayer.load() == layer);
     if (flashText.isNotEmpty() && juce::Time::getMillisecondCounterHiRes() > flashUntil)
     {
         flashText = {};
@@ -1478,6 +1560,23 @@ void PianoRoll::paint (juce::Graphics& g)
             }
         }
 
+        // Loopen (rött) och startmarkören.
+        const auto loopRed = juce::Colour (0xffff4d5e);
+        if (hasLoop())
+        {
+            const auto x1 = ticksToX ((float) loopStart), x2 = ticksToX ((float) loopEnd);
+            g.setColour (loopRed.withAlpha (0.12f));
+            g.fillRect (juce::Rectangle<float> (x1, gridArea.getY(), x2 - x1, gridArea.getHeight()));
+            g.setColour (loopRed.withAlpha (0.85f));
+            g.fillRect (juce::Rectangle<float> (x1 - 0.5f, gridArea.getY(), 1.5f, gridArea.getHeight()));
+            g.fillRect (juce::Rectangle<float> (x2 - 1.0f, gridArea.getY(), 1.5f, gridArea.getHeight()));
+        }
+        else if (cursorTick > 0)
+        {
+            g.setColour (juce::Colour (0xff7ad7ff).withAlpha (0.8f));
+            g.fillRect (juce::Rectangle<float> (ticksToX ((float) cursorTick) - 0.5f, gridArea.getY(), 1.5f, gridArea.getHeight()));
+        }
+
         // Uppspelningsmarkören.
         const auto playTick = playTickNow();
         if (playTick >= 0)
@@ -1524,19 +1623,44 @@ void PianoRoll::paint (juce::Graphics& g)
         }
     }
 
-    // Linjalen: takt.slag.
-    g.setFont (Theme::font (9.5f, true));
+    // Linjalen: takt.slag. Klick = startmarkör, drag eller dubbelklick = loop (rött).
     {
         juce::Graphics::ScopedSaveState state (g);
         g.reduceClipRegion (rulerArea.toNearestInt());
-        for (int beat = 0; beat < bars() * 4; ++beat)
+        g.setColour (juce::Colours::black.withAlpha (0.25f));
+        g.fillRect (rulerArea);
+        const auto loopRed = juce::Colour (0xffff4d5e);
+        if (hasLoop())
+        {
+            const auto x1 = ticksToX ((float) loopStart), x2 = ticksToX ((float) loopEnd);
+            g.setColour (loopRed.withAlpha (0.55f));
+            g.fillRect (juce::Rectangle<float> (x1, rulerArea.getY(), x2 - x1, rulerArea.getHeight()));
+        }
+        for (int beat = 0; beat < bars() * 4 + 4 && beat * Pattern::ticksPerQuarter < viewTicks(); ++beat)
         {
             const auto x = ticksToX ((float) (beat * Pattern::ticksPerQuarter));
             if (x < rulerArea.getX() - 20.0f || x > rulerArea.getRight())
                 continue;
-            g.setColour (beat % 4 == 0 ? Theme::text : Theme::textDim);
-            g.drawText (beat % 4 == 0 ? juce::String (beat / 4 + 1) : juce::String (beat / 4 + 1) + "." + juce::String (beat % 4 + 1),
-                        juce::Rectangle<float> (x + 3.0f, rulerArea.getY(), 40.0f, rulerArea.getHeight()), juce::Justification::centredLeft);
+            const auto barLine = beat % 4 == 0;
+            g.setColour (barLine ? Theme::text : Theme::textDim.withAlpha (0.7f));
+            g.fillRect (juce::Rectangle<float> (x, rulerArea.getBottom() - (barLine ? rulerArea.getHeight() : 7.0f), 1.0f, barLine ? rulerArea.getHeight() : 7.0f));
+            g.setFont (Theme::font (barLine ? 13.0f : 9.5f, barLine));
+            g.drawText (barLine ? juce::String (beat / 4 + 1) : juce::String (beat / 4 + 1) + "." + juce::String (beat % 4 + 1),
+                        juce::Rectangle<float> (x + 4.0f, rulerArea.getY(), 40.0f, rulerArea.getHeight() - (barLine ? 0.0f : 3.0f)), barLine ? juce::Justification::centredLeft : juce::Justification::bottomLeft);
+        }
+        if (! hasLoop() && cursorTick > 0)
+        {
+            const auto x = ticksToX ((float) cursorTick);
+            g.setColour (juce::Colour (0xff7ad7ff));
+            juce::Path marker;
+            marker.addTriangle (x - 5.0f, rulerArea.getY(), x + 5.0f, rulerArea.getY(), x, rulerArea.getY() + 8.0f);
+            g.fillPath (marker);
+        }
+        const auto playTick = playTickNow();
+        if (playTick >= 0)
+        {
+            g.setColour (juce::Colour (0xffffe27a));
+            g.fillRect (juce::Rectangle<float> (ticksToX ((float) playTick) - 0.5f, rulerArea.getY(), 1.5f, rulerArea.getHeight()));
         }
     }
 
@@ -1557,7 +1681,7 @@ void PianoRoll::paint (juce::Graphics& g)
     // Tipsrad längst ner: genvägarna.
     g.setColour (Theme::textDim);
     g.setFont (Theme::font (10.0f, false));
-    g.drawText ("SPACE: play / stop   |   SHIFT + SPACE: play only this piano roll   |   CTRL + C / X / V: copy, cut, paste   |   DEL: delete   |   ARROWS: move notes",
+    g.drawText ("SPACE: play / stop   |   SHIFT + SPACE: play only this piano roll   |   RULER: click = start here, drag / double-click = loop (red), Esc = clear   |   CTRL + C / X / V: copy, cut, paste   |   DEL: delete   |   ARROWS: move notes",
                 hintArea.withTrimmedLeft (6.0f), juce::Justification::centredLeft);
 
     // Velocity.
@@ -1587,6 +1711,13 @@ void PianoRoll::paint (juce::Graphics& g)
                 g.fillEllipse (juce::Rectangle<float> (5.0f, 5.0f).withCentre ({ x + 1.5f, velocityArea.getBottom() - 3.0f - height }));
             }
         }
+    }
+
+    // Ram runt hela pianorullen när den är aktiv: då gäller alla genvägar.
+    if (hasKeyboardFocus (true))
+    {
+        g.setColour (colour.withAlpha (0.9f));
+        g.drawRoundedRectangle (bounds.reduced (1.0f), 6.0f, 2.0f);
     }
 }
 
@@ -1652,6 +1783,34 @@ void PianoRoll::mouseDown (const juce::MouseEvent& event)
             dragKey = key;
             mouseDrag (event);
         }
+        return;
+    }
+    if (rulerArea.contains (event.position))
+    {
+        if (event.mods.isPopupMenu())
+        {
+            clearLoop();
+            return;
+        }
+        const auto tick = juce::jlimit (0, std::max (0, totalTicks() - 1), snapped (xToTicks (event.position.x)));
+        if (event.getNumberOfClicks() >= 2)
+        {
+            // Dubbelklick: hela takten blir loopen.
+            loopStart = tick / Pattern::ticksPerBar * Pattern::ticksPerBar;
+            loopEnd = std::min (loopStart + Pattern::ticksPerBar, totalTicks());
+            syncPreviewWindow();
+            repaint();
+            return;
+        }
+        drag = Drag::ruler;
+        rulerAnchor = tick;
+        rulerDragged = false;
+        return;
+    }
+    if (keyArea.contains (event.position) && ! event.mods.isPopupMenu())
+    {
+        drag = Drag::keys;
+        auditionStart (yToPitch (event.position.y), Pattern::defaultVelocity (layer));
         return;
     }
     if (! gridArea.contains (event.position))
@@ -1729,7 +1888,8 @@ void PianoRoll::mouseDown (const juce::MouseEvent& event)
     }
 
     altHeld = event.mods.isAltDown();
-    const auto currentTool = event.mods.isAltDown() ? Tool::erase : event.mods.isShiftDown() ? Tool::select : effectiveTool();
+    const auto additive = event.mods.isShiftDown() || event.mods.isCtrlDown() || event.mods.isCommandDown(); // Skift eller Ctrl lägger till i markeringen
+    const auto currentTool = event.mods.isAltDown() ? Tool::erase : additive ? Tool::select : effectiveTool();
 
     // Sudd: ta bort tonen under musen, och alla man drar över.
     if (currentTool == Tool::erase)
@@ -1745,8 +1905,8 @@ void PianoRoll::mouseDown (const juce::MouseEvent& event)
         if (key != justCreated)
             justCreated = {};
 
-        // Skift lägger till eller tar bort tonen i markeringen utan att flytta något.
-        if (event.mods.isShiftDown())
+        // Skift eller Ctrl lägger till eller tar bort tonen i markeringen utan att flytta något.
+        if (additive)
         {
             if (selection.count (key) > 0)
                 selection.erase (key);
@@ -1769,16 +1929,22 @@ void PianoRoll::mouseDown (const juce::MouseEvent& event)
         grabOffsetTicks = xToTicks (event.position.x) - (float) key.tick;
         dragSnapshot = readNotes();
         dragSelection = selection;
+        if (! edge)
+        {
+            NoteData grabbedNote;
+            if (liveNote (key, grabbedNote))
+                auditionStart (grabbedNote.pitch, grabbedNote.velocity);
+        }
         repaint();
         return;
     }
 
-    // MARKERA-verktyget, eller skift: dra en ruta i tomt (skift lägger till i markeringen, annars ersätter rutan den).
+    // MARKERA-verktyget, skift eller Ctrl: dra en ruta i tomt (skift/Ctrl lägger till i markeringen, annars ersätter rutan den).
     if (currentTool == Tool::select)
     {
         drag = Drag::box;
         boxStart = boxEnd = event.position;
-        boxBase = event.mods.isShiftDown() ? selection : KeySet();
+        boxBase = additive ? selection : KeySet();
         selection = boxBase;
         repaint();
         return;
@@ -1822,6 +1988,7 @@ void PianoRoll::mouseDown (const juce::MouseEvent& event)
     else
         processor.pattern.addNote (layer, start, length, pitch, Pattern::defaultVelocity (layer), glide);
     selection = { created };
+    auditionStart (pitch, Pattern::defaultVelocity (layer));
     justCreated = created;
     drag = Drag::resize; // klick = en kort ton; dras musen åt höger medan knappen hålls följer längden draget
     dragKey = created;
@@ -1841,6 +2008,24 @@ void PianoRoll::mouseDrag (const juce::MouseEvent& event)
     if (drag == Drag::none)
         return;
 
+    if (drag == Drag::ruler)
+    {
+        if (! rulerDragged && std::abs (event.getDistanceFromDragStartX()) < 4)
+            return;
+        rulerDragged = true;
+        const auto tick = juce::jlimit (0, std::max (0, totalTicks() - 1), snapped (xToTicks (event.position.x)));
+        loopStart = std::min (rulerAnchor, tick);
+        loopEnd = std::min (totalTicks(), std::max (rulerAnchor, tick) + snapTicks());
+        syncPreviewWindow();
+        repaint();
+        return;
+    }
+    if (drag == Drag::keys)
+    {
+        if (keyArea.getVerticalRange().contains (event.position.y))
+            auditionStart (yToPitch (event.position.y), Pattern::defaultVelocity (layer));
+        return;
+    }
     if (drag == Drag::paste)
     {
         movePasteTo (event.position);
@@ -1923,6 +2108,7 @@ void PianoRoll::mouseDrag (const juce::MouseEvent& event)
         return;
     }
     applyNotes (moved.target);
+    auditionStart (dragStartPitch + deltaPitch, 0.8f); // hör tonen man flyttar till
     selection.clear();
     for (const auto& entry : moved.where)
         selection.insert (entry.second);
@@ -1939,6 +2125,16 @@ void PianoRoll::mouseDrag (const juce::MouseEvent& event)
 
 void PianoRoll::mouseUp (const juce::MouseEvent&)
 {
+    if (drag == Drag::ruler && ! rulerDragged)
+    {
+        // Klick på linjalen: startmarkören flyttas dit (spelas den här raden börjar den om därifrån) och en markerad loop släpps.
+        cursorTick = rulerAnchor;
+        loopStart = loopEnd = -1;
+        syncPreviewWindow();
+        if (processor.previewingLayer.load() == layer)
+            processor.requestAudition (PluginBase::previewRequest (layer));
+    }
+    auditionStop (drag == Drag::keys || lastLength <= 0 ? Pattern::ticksPerQuarter / 2 : lastLength);
     if (edited)
         commit();
     drag = Drag::none;
@@ -1950,7 +2146,7 @@ void PianoRoll::mouseUp (const juce::MouseEvent&)
 void PianoRoll::mouseDoubleClick (const juce::MouseEvent& event)
 {
     bool edge = false;
-    if (! gridArea.contains (event.position) || event.mods.isPopupMenu() || event.mods.isShiftDown())
+    if (! gridArea.contains (event.position) || event.mods.isPopupMenu() || event.mods.isShiftDown() || event.mods.isCtrlDown())
         return;
     const auto key = noteAtPoint (event.position, edge);
     if (! key.valid())
@@ -1982,8 +2178,10 @@ bool PianoRoll::keyPressed (const juce::KeyPress& key)
     // Mellanslag: förhandsspela hela synthen (igen = stopp). Skift + mellanslag: bara den här pianorullen.
     if (key.getKeyCode() == juce::KeyPress::spaceKey && ! ctrl)
     {
-        const auto row = mods.isShiftDown() ? layer : PluginBase::previewAllRows;
-        processor.requestAudition (processor.previewingLayer.load() == row ? PluginBase::previewStop : PluginBase::previewRequest (row));
+        if (mods.isShiftDown())
+            playThisRow();
+        else
+            processor.requestAudition (processor.previewingLayer.load() == PluginBase::previewAllRows ? PluginBase::previewStop : PluginBase::previewRequest (PluginBase::previewAllRows));
         return true;
     }
 
@@ -2023,6 +2221,8 @@ bool PianoRoll::keyPressed (const juce::KeyPress& key)
     }
     if (key == juce::KeyPress::escapeKey)
     {
+        if (selection.empty())
+            clearLoop();
         selection.clear();
         repaint();
         return true;

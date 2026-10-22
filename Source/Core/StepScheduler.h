@@ -32,6 +32,15 @@ public:
     void collectJustPassed (const TransportClock& clock, const Pattern& pattern, const PatternLengths& lengths,
                             int sampleOffset, int toleranceSamples);
 
+    // Spolning och loop för förhandsspelningen av en enskild rad: i stället för radens vanliga plats spelas ticken från `from` (eller runt i loopen).
+    struct Window
+    {
+        int row = -1; // notlager eller kickLayer, -1 = ingen
+        int from = 0, loopStart = -1, loopEnd = -1;
+        juce::int64 bar0 = 0; // takten där förhandsspelningen började
+    };
+    void setWindow (const Window& newWindow) { window = newWindow; }
+
     const StepEvent* begin() const { return events.data(); }
     const StepEvent* end() const   { return events.data() + numEvents; }
 
@@ -43,7 +52,9 @@ private:
     void addKick (const Pattern& pattern, const PatternLengths& lengths, int offset, StepPosition position);
     void addBass (int layer, const Pattern& pattern, const PatternLengths& lengths, int offset, StepPosition position);
     void add (StepEvent event);
+    int windowTick (int rowTicks, StepPosition position) const;
 
+    Window window;
     int numLayers = Pattern::numLayers;
     // Kickens och baslagrens toner ligger fritt i tiden, så markörerna går i ticks (96 per fjärdedel).
     StepCursor kickCursor { (double) Pattern::ticksPerQuarter };

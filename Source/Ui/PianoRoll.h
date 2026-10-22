@@ -53,9 +53,11 @@ public:
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
     bool keyPressed (const juce::KeyPress&) override;
     void visibilityChanged() override;
+    void focusGained (FocusChangeType) override { repaint(); }
+    void focusLost (FocusChangeType) override { repaint(); }
 
 private:
-    enum class Drag { none, move, resize, velocity, box, erase, paste };
+    enum class Drag { none, move, resize, velocity, box, erase, paste, ruler, keys };
     enum class Tool { draw, select, erase };
 
     struct NoteData
@@ -123,6 +125,22 @@ private:
     void setVoices (int count);
     void checkVoicesNeeded();                        // efter en redigering: behöver mönstret fler VOICES än lagret har? Fråga om att öka
     void setHover (NoteKey key);
+
+    // Spolning och loop (ticks i radens tid): klick på linjalen flyttar startmarkören, drag eller dubbelklick markerar ett parti (rött) som förhandsspelningen loopar.
+    void syncPreviewWindow();
+    void clearPreviewWindow();
+    void playThisRow();                              // förhandsspela bara den här raden från markören (eller loopen); igen = stopp
+    void clearLoop();
+    bool hasLoop() const { return loopStart >= 0 && loopEnd > loopStart; }
+
+    // Provlyssning av en ton (klick på en tangent eller en ritad ton): hålls så länge musen hålls, minst tonens längd.
+    void auditionStart (int pitch, float velocity);
+    void auditionStop (int minimumTicks);
+    int auditionPitch = -1;
+    double auditionStartedAt = 0.0;
+    int auditionVelocity = 100;
+    int cursorTick = 0, loopStart = -1, loopEnd = -1, rulerAnchor = 0;
+    bool rulerDragged = false;
 
     NoteMap readNotes() const;
     void applyNotes (const NoteMap& target); // skriver bara det som ändrats, så att ljudtråden aldrig ser ett tomt mönster
