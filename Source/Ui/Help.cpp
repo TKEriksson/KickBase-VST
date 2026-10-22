@@ -237,6 +237,8 @@ namespace Help
             { "bassFilterRouting", "How the two filters are connected. SERIAL = the sound goes through FILTER 1 and then FILTER 2. PARALLEL = both filter the same sound side by side and MIX blends their outputs." },
             { "bassFilterMix", "SERIAL: how much of FILTER 2 you hear (0 % = only FILTER 1, 100 % = the full chain). PARALLEL: the balance between FILTER 1 (0 %) and FILTER 2 (100 %)." },
             { "bassFilterType", "Filter type. LP 24 = smooth and dark (classic psy), LP 12 = brighter, Band and High for thin sounds." },
+            { "bassAllpassFreq", "Allpass frequency (20 Hz - 2 kHz). Four allpass stages after the filters turn the phase around this frequency without changing the level: it moves the punch of a bass against the kick, or smears the transient. Does nothing while AP AMT is 0 %." },
+            { "bassAllpassAmount", "How much of the allpass chain is mixed in (0 % = off, no CPU and the sound is exactly as before; 100 % = pure phase rotation). In between you get a phaser-like notch." },
             { "bassAMorph", "Morph. On: POS fades smoothly between the waveforms of the table. Off: POS jumps from one waveform to the next (the Basic table has four: sine, triangle, saw, square). A table made from a WAV file has as many steps as the file had cycles. Steps jump, so fast modulation of POS can click." },
             { "bassAOn", "Turns this oscillator on or off. Off = it is not heard (and OSC 2 does not frequency-modulate OSC 1)." },
             { "bassSampleOn", "Turns the sample on or off. Turn the oscillators off (and SUB and NOISE down) to hear only the sample." },

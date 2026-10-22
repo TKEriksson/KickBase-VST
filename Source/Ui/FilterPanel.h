@@ -71,6 +71,7 @@ private:
     FilterResponseView view;
     Block first, second;
     std::unique_ptr<ChoiceComponent> routing;
+    std::unique_ptr<KnobComponent> allpassFreq, allpassAmount; // allpass efter filtren (AMOUNT 0 = av)
     juce::Label routingNote;
     // fas S: FILTER av/på för hela instrumentet (en knapp) och per källa (en flervalsmeny: låter t.ex. SAMPLE eller NOISE gå förbi båda filtren).
     // Samma parametrar finns som en knapp i varje källas egen flik.

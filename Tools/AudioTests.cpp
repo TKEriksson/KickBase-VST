@@ -360,6 +360,34 @@ int polyTest()
     bright.releaseMs = 300.0f;
     bright.sustain = 0.8f;
 
+    // Allpass: AMOUNT 0 ändrar inget; AMOUNT 1 roterar fasen (annan kurvform) men håller nivån.
+    {
+        auto render = [&] (float amount)
+        {
+            auto p = bright;
+            p.allpassFreq = 300.0f;
+            p.allpassAmount = amount;
+            InstrumentVoices v;
+            setUp (v, 1, p);
+            v.noteOn (0, 0.8f, longGate);
+            std::vector<float> out;
+            run (v, out, (int) (rate * 0.5));
+            return out;
+        };
+        const auto off = render (0.0f), full = render (1.0f);
+        auto base = bright;
+        InstrumentVoices v;
+        setUp (v, 1, base);
+        v.noteOn (0, 0.8f, longGate);
+        std::vector<float> reference;
+        run (v, reference, (int) (rate * 0.5));
+        check (off == reference, "allpass AMOUNT 0 ger exakt samma ljud som utan allpass");
+        auto diff = 0.0;
+        for (size_t i = 0; i < off.size(); ++i)
+            diff += std::abs (off[i] - full[i]);
+        check (diff > 1.0, "allpass AMOUNT 1 ändrar kurvformen");
+        check (std::abs (toDb (rmsOf (full, 4800, 24000)) - toDb (rmsOf (off, 4800, 24000))) < 1.5, "allpass AMOUNT 1 håller nivån (inom 1,5 dB)");
+    }
     // a. Stöld: tre toner med 100 ms mellanrum, 2 röster (den tredje stjäl den första, som hålls) mot 3 röster (ingen stöld).
     {
         auto render = [&] (int voices)

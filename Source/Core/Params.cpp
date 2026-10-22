@@ -101,7 +101,7 @@ namespace ParamID
                                      "Polarity", "PhaseDeg", "NudgeMs",
                                      "FmOn", "FmLevel", "FmRatio", "FmIndex", "FmEnvAmount", "FmEnvTime", "FmSemis", "FmPreset", "FmFilter",
                                      "SlicerOn", "SlicerMapTo", "SlicerReverse",
-                                     "FxSend", "SampleMode" };
+                                     "FxSend", "SampleMode", "AllpassFreq", "AllpassAmount" };
         static_assert (std::size (names) == (size_t) InstrumentField::count);
         return names[(size_t) field];
     }
@@ -418,7 +418,9 @@ namespace Params
         layout.add (std::make_unique<AudioParameterBool> (ParameterID { id (F::fxSend), 1 }, title + "FX Send", false)); // sist: SEND-läge för FX-kanalen (av = som förut)
         // fas R9b: SAMPLE-radens läge (BLEND = som förut, standard)
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::sampleMode), 1 }, title + "Sample Mode", StringArray { "Blend", "Independent", "Off" }, 0));
-    }
+                layout.add (floatParam (id (F::allpassFreq), title + "Allpass Freq", NormalisableRange<float> (20.0f, 2000.0f, 0.1f, 0.4f), 200.0f, [] (float v) { return String (juce::roundToInt (v)) + " Hz"; }));
+                layout.add (floatParam (id (F::allpassAmount), title + "Allpass Amount", NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.0f, [] (float v) { return String (juce::roundToInt (v * 100.0f)) + " %"; }));
+            }
 
     void addFxParams (Layout& layout)
     {
@@ -698,5 +700,7 @@ InstrumentParams ParamRefs::readInstrument (int layer, int rootMidiNote) const
     p.slicerOn = get (F::slicerOn) >= 0.5f;
     p.slicerMapTo = juce::roundToInt (get (F::slicerMapTo));
     p.slicerReverse = get (F::slicerReverse) >= 0.5f;
+    p.allpassFreq = get (F::allpassFreq);
+    p.allpassAmount = get (F::allpassAmount);
     return p;
 }

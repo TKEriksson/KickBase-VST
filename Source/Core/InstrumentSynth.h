@@ -117,7 +117,8 @@ struct InstrumentParams
     bool slicerOn = false;       // noten väljer en skiva (ClickSample::slices) i stället för hela samplingen; originalhastighet, ingen loop
     int slicerMapTo = 0;         // halvtonen (från tonarten) som spelar skiva 1; n..n+7 spelar skiva 1..8
     bool slicerReverse = false;  // alla skivor spelas baklänges
-
+    float allpassFreq = 200.0f;  // 4 allpass i serie efter filtren (mitten och sida var för sig); AMOUNT 0 = av
+    float allpassAmount = 0.0f;  // 0..1: blandning torr -> allpass (1 = ren fasrotation)
     InstrumentParams() { oscB.level = 0.0f; oscC.level = 0.0f; oscC.on = false; }
 
     // Samma inställningar med alla envelope-tider i ms (Sync räknat från tempot) och, om applyOnOff, ENV 1/FILTER ENV av inbakade:
@@ -287,6 +288,8 @@ private:
     FilterUnit filterMid, filterSide;
     FilterUnit filter2Mid, filter2Side; // Filter 2 (körs bara när det är på)
     bool filter2WasOn = false;           // av -> på nollställer Filter 2 (gammalt tillstånd ska inte höras)
+    float allpassState[2][4] {};         // allpass: tillstånd för mitten (0) och sidan (1)
+    bool allpassWasOn = false;
     float lastKeyFrequency = -1.0f, lastKeyTrack = -1.0f, cachedKeyFollow = 1.0f;
     double lastLogFrequency = 1.0e30, lastPitchOffset = 1.0e30, cachedFrequency = 0.0;
     CoefficientMemo ampDecayMemo, ampReleaseMemo, pitchEnvMemo, warpDirectMemo, fmEnvMemo;

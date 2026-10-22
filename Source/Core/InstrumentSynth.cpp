@@ -552,6 +552,33 @@ InstrumentSynth::Output InstrumentSynth::next()
     }
     else
         filter2WasOn = false;
+
+    // Allpass: fyra första ordningens allpass vid FREQ roterar fasen utan att ändra nivån; AMOUNT blandar mot torrt. AMOUNT 0 körs inte alls.
+    if (params.allpassAmount > 0.0f)
+    {
+        if (! allpassWasOn)
+        {
+            std::fill (&allpassState[0][0], &allpassState[0][0] + 8, 0.0f);
+            allpassWasOn = true;
+        }
+        const auto t = std::tan (juce::MathConstants<float>::pi * juce::jlimit (20.0f, 2000.0f, params.allpassFreq) / (float) sampleRate);
+        const auto a = (t - 1.0f) / (t + 1.0f);
+        const auto amount = juce::jmin (1.0f, params.allpassAmount);
+        const auto run = [a] (float x, float* z)
+        {
+            for (int i = 0; i < 4; ++i)
+            {
+                const auto y = a * x + z[i];
+                z[i] = x - a * y;
+                x = y;
+            }
+            return x;
+        };
+        sample += amount * (run (sample, allpassState[0]) - sample);
+        side += amount * (run (side, allpassState[1]) - side);
+    }
+    else
+        allpassWasOn = false;
     sample += dryMid; // fas S: förbigångna källor (FILTER av) läggs till efter båda filtren
     side += drySide;
     noteTime += 1.0 / sampleRate;
