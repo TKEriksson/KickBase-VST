@@ -82,3 +82,14 @@ Löpande logg. Nyast sist. En rad per steg: tid, vad, hash/kommando, resultat, n
 - Release-artefakter: KickBase-VST-ci\build\Release (Kickbase.vst3, Kickbase FX.vst3, KickbaseMcp). installRel.ps1 pekar nu på -ci (otrackad, committa inte).
 - Kvar: Tobias kör installRel.bat och testar i FL Studio (MIX-fliken, AP/START, HALFTIME, KEEP/COMPARE, shimmer, Maximizer MODE, Low Multiplier, autocomplete Ctrl+Space och efter '.'). Ej hörtestat/sett än.
 - Valfritt senare: ta bort /STACK:8388608 (CMakeLists.txt:243), städa -f2/-lc/-lce/-lcui/-mx/-rel, AGENT_GUIDE ('15 types').
+
+
+## 22 okt kväll, feedback efter test i FL Studio (Tobias) – ATT GÖRA (Copilot)
+Status: pianorullen klar och committad på an-master (3c59e12): spola/loop (röd), audition av toner, aktiv ram, Shift+Space, egen roll-knapp i PREVIEWS, Ctrl/Shift lägger till i markering. Ej releasad än.
+Kvar, i ordning:
+1. MIX: stereobredd per källa (nya parametrar sist), dB-mätare per strip, zoom på COMBINED WAVEFORM.
+2. LOCK-knapparna (Live Code): otydliga, gör dem tydliga (etikett/ikon/tooltip).
+3. FLOAT-fönstret ska ha alla knappar som LIVE CODE-fliken.
+4. SAMPLE-fliken: de två strömknapparna saknar etikett (slicer-raden), och filterknappen visar "FILTE" i stället för "FILTER" (för smal, klipps av; OscPanel.cpp:254 `filterSendButton`).
+5. Sample-slicer: **specen finns redan: `docs/work/slicer-ui-spec.md`** (Tobias 21 okt, stämmer med det han säger nu) + plan-v2 rad 87/164/280 (F2, SPLICER med egen rad). Steg enligt specen: (1) etiketter/tooltips + SHOW SAMPLE|SLICES med synliga slices + klick-för-att-lyssna, (2) kryssruta OWN PIANO ROLL (varje slice = egen rad/ton "Slice 1, 2, 3"), (3) dra gränser + zoom + MANUAL (klick lägger delning), (4) AUTO SLICE-dialog med CREATE, sedan justerbart. Steg 1 skulle göras direkt efter release/LC men blev inte gjort, därför missat. Specen saknades i plan-v2: länk tillagd nedan.
+6. Därefter CI, merge, release, handoff. MCP i Copilot desktop: Tobias lägger till KickbaseMcp.exe själv i appens MCP-inställningar (%LOCALAPPDATA%\Kickbase\KickbaseMcp.exe, KICKBASE_KEY vid behov).

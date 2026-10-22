@@ -362,3 +362,6 @@ Se [work/PROGRESS.md](work/PROGRESS.md).
 5. ~~SAMPLE-lagrets FILTER-knapp~~ Besvarad 20 okt: OFF för SAMPLE, ON för OSC och NOISE.
 6. ~~Time-stretch~~ Besvarad 20 okt: F2 utan time-stretch (omsampling till tempot); time-stretch som eget steg efter F2.
 7. ~~LFO Sync-läget~~ Besvarad 20 okt: Sync behålls.
+
+
+**Slicer-UI (Tobias 21 okt, återupptaget 22 okt):** se docs/work/slicer-ui-spec.md. Fyra steg: etiketter + SHOW SAMPLE/SLICES + lyssna per slice; OWN PIANO ROLL (Slice 1, 2 … som toner); dra gränser + zoom + MANUAL; AUTO SLICE-dialog med CREATE. Ännu inte byggt.
