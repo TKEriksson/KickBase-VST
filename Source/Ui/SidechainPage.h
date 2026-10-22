@@ -85,5 +85,6 @@ private:
     std::unique_ptr<KnobComponent> depthKnob;           // FX-versionen: ett enda djup
     DuckCurveView curve;
     ScopeView scope;
+    juce::TextButton halftimeButton { "HALFTIME" }; // scopet visar 8 slag i stället för 4
     std::unique_ptr<SourceToggles> sources; // vilka källor som ducks (samma som SC i mixern)
 };

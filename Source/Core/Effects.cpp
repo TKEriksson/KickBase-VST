@@ -63,7 +63,7 @@ namespace Effects
     StringArray typeNames()
     {
         return { "Off", "Filter", "Distortion", "EQ", "Chorus", "Phaser", "Echo", "Reverb",
-                 "Compressor", "Trance Gate", "Comb", "Ring Mod", "Bitcrusher", "Auto Filter", "Maximizer", "Sidechain", "Disperser", "Widener", "Flanger", "Transient", "Dynamic EQ", "Octaver", "Band Ducker" };
+                 "Compressor", "Trance Gate", "Comb", "Ring Mod", "Bitcrusher", "Auto Filter", "Maximizer", "Sidechain", "Disperser", "Widener", "Flanger", "Transient", "Dynamic EQ", "Octaver", "Band Ducker", "Shimmer" };
     }
 
     String name (EffectType type)
@@ -236,7 +236,8 @@ namespace Effects
                 value ("CLIP", 0.0f, 1.0f, 0.0f, 0.3f, Unit::percent),
                 value ("CEILING", -12.0f, 0.0f, 0.0f, -0.3f, Unit::db),
                 value ("RELEASE", 5.0f, 500.0f, 60.0f, 60.0f, Unit::ms),
-                mixKnob (1.0f) };
+                mixKnob (1.0f),
+                choice ("MODE", { "Classic", "Smooth" }, 0) }; // läge 2 (sist)
             table[(size_t) EffectType::ducker] = {
                 choice ("SOURCE", { "Kick", "Instr 1", "Instr 2", "Instr 3", "Instr 4", "Instr 5", "Instr 6", "Instr 7", "Instr 8", "Instr 9", "Instr 10" }, 1),
                 value ("THRESHOLD", -48.0f, 0.0f, -20.0f, -24.0f, Unit::db),
@@ -289,6 +290,13 @@ namespace Effects
                 value ("ATTACK", 0.5f, 50.0f, 5.0f, 3.0f, Unit::ms),
                 value ("RELEASE", 20.0f, 800.0f, 150.0f, 200.0f, Unit::ms),
                 mixKnob (1.0f) };
+            table[(size_t) EffectType::shimmer] = {
+                value ("SIZE", 0.0f, 1.0f, 0.0f, 0.7f, Unit::percent),
+                value ("DAMPING", 0.0f, 1.0f, 0.0f, 0.4f, Unit::percent),
+                value ("SHIMMER", 0.0f, 1.0f, 0.0f, 0.5f, Unit::percent), // hur mycket av oktavtonen som matas tillbaka in i reverbet
+                value ("LOW CUT", 20.0f, 2000.0f, 300.0f, 300.0f, Unit::hz),
+                mixKnob (0.3f),
+                choice ("INTERVAL", { "+12", "+7", "+19", "+24" }, 0) };
             return table;
         }();
         return all[(size_t) jlimit (0, numEffectTypes - 1, (int) type)];
@@ -489,7 +497,7 @@ namespace Effects
     {
         // Antal rattar före FX1: de nya rattarna (därefter) ska ha sitt standardvärde i stället för parameterns 0.5.
         const auto legacyCount = type == EffectType::distortion ? 4 : type == EffectType::echo ? 8 : type == EffectType::reverb ? 5
-                               : type == EffectType::compressor ? 6 : knobsPerSlot;
+                               : type == EffectType::maximizer ? 5 : type == EffectType::compressor ? 6 : knobsPerSlot;
         const auto& list = knobs (type);
         if (k < legacyCount || k >= (int) list.size() || k >= knobsPerSlot)
             return false;
@@ -499,7 +507,7 @@ namespace Effects
 
     void migrateLegacyKnobs (ValueTree& state)
     {
-        if (state.hasProperty ("fxKnobsV"))
+        if ((int) state.getProperty ("fxKnobsV", 0) >= knobsVersion)
             return;
         state.setProperty ("fxKnobsV", knobsVersion, nullptr);
 
@@ -511,13 +519,12 @@ namespace Effects
         const auto write = [&] (const String& id, float v)
         {
             auto child = state.getChildWithProperty ("id", id);
-            if (! child.isValid())
-            {
-                child = ValueTree ("PARAM");
-                child.setProperty ("id", id, nullptr);
-                state.appendChild (child, nullptr);
-            }
+            if (child.isValid())
+                return; // en sparad rattväder ska aldrig skrivas över
+            child = ValueTree ("PARAM");
+            child.setProperty ("id", id, nullptr);
             child.setProperty ("value", v, nullptr);
+            state.appendChild (child, nullptr);
         };
 
         for (int channel = 0; channel < numEffectChannels; ++channel)
@@ -1025,6 +1032,122 @@ namespace
         }
     };
 
+    // SHIMMER: ett reverb vars svans matas tillbaka genom en tonhöjdshöjning (en oktav som standard). Varje varv lägger svansen högre,
+    // så den "glittrar" uppåt. Tonhöjdshöjaren är två korsutjämnade avläsningar av en fördröjningslinje. Återkopplingen går i block om
+    // 64 samplar så att ljudet inte beror på värdens blockstorlek.
+    struct ShimmerFx
+    {
+        static constexpr int chunk = 64;
+
+        struct Shifter
+        {
+            std::vector<float> line;
+            int writePosition = 0;
+            double phase = 0.0;
+
+            float process (float input, double ratio, int windowSamples)
+            {
+                const auto mask = (int) line.size() - 1;
+                line[(size_t) writePosition] = input;
+                writePosition = (writePosition + 1) & mask;
+                phase += (ratio - 1.0) / (double) windowSamples;
+                phase -= std::floor (phase);
+
+                float out = 0.0f;
+                for (int tap = 0; tap < 2; ++tap)
+                {
+                    const auto p = std::fmod (phase + 0.5 * tap, 1.0);
+                    const auto delay = (1.0 - p) * (double) windowSamples;
+                    const auto position = (double) writePosition - 1.0 - delay;
+                    const auto base = (int) std::floor (position);
+                    const auto fraction = (float) (position - (double) base);
+                    const auto a = line[(size_t) (base & mask)], b = line[(size_t) ((base + 1) & mask)];
+                    const auto gain = (float) (0.5 - 0.5 * std::cos (MathConstants<double>::twoPi * p));
+                    out += gain * (a + (b - a) * fraction);
+                }
+                return out;
+            }
+        };
+
+        dsp::Reverb reverb;
+        dsp::StateVariableTPTFilter<float> lowCutFilter;
+        AudioBuffer<float> wetBuffer, feedback;
+        std::array<Shifter, 2> shifters;
+        int windowSamples = 2400;
+
+        void prepare (const dsp::ProcessSpec& spec)
+        {
+            reverb.prepare (spec);
+            lowCutFilter.prepare (spec);
+            lowCutFilter.setType (dsp::StateVariableTPTFilterType::highpass);
+            wetBuffer.setSize ((int) spec.numChannels, (int) spec.maximumBlockSize);
+            feedback.setSize ((int) spec.numChannels, chunk);
+            windowSamples = std::max (64, (int) (spec.sampleRate * 0.05));
+            for (auto& shifter : shifters)
+                shifter.line.assign ((size_t) nextPowerOfTwo (windowSamples + 8), 0.0f);
+            reset();
+        }
+
+        void reset()
+        {
+            reverb.reset();
+            lowCutFilter.reset();
+            feedback.clear();
+            for (auto& shifter : shifters)
+            {
+                std::fill (shifter.line.begin(), shifter.line.end(), 0.0f);
+                shifter.writePosition = 0;
+                shifter.phase = 0.0;
+            }
+        }
+
+        void process (AudioBuffer<float>& buffer, int numSamples, const Values& k, const Context&)
+        {
+            dsp::Reverb::Parameters p;
+            p.roomSize = k[0];
+            p.damping = k[1];
+            p.width = 1.0f;
+            p.wetLevel = 1.0f;
+            p.dryLevel = 0.0f;
+            reverb.setParameters (p);
+            lowCutFilter.setCutoffFrequency (k[3]);
+            const auto amount = k[2] * 0.8f;
+            const auto semitones = std::array<double, 4> { 12.0, 7.0, 19.0, 24.0 }[(size_t) jlimit (0, 3, (int) k[5])];
+            const auto ratio = std::exp2 (semitones / 12.0);
+
+            const auto channels = std::min ({ buffer.getNumChannels(), wetBuffer.getNumChannels(), (int) shifters.size() });
+            for (int ch = 0; ch < channels; ++ch)
+                wetBuffer.copyFrom (ch, 0, buffer, ch, 0, numSamples);
+
+            for (int start = 0; start < numSamples; start += chunk)
+            {
+                const auto length = std::min (chunk, numSamples - start);
+                for (int ch = 0; ch < channels; ++ch)
+                {
+                    auto* wet = wetBuffer.getWritePointer (ch, start);
+                    const auto* fed = feedback.getReadPointer (ch);
+                    for (int i = 0; i < length; ++i)
+                        wet[i] += fed[i] * amount;
+                }
+
+                auto block = dsp::AudioBlock<float> (wetBuffer).getSubBlock ((size_t) start, (size_t) length).getSubsetChannelBlock (0, (size_t) channels);
+                lowCutFilter.process (dsp::ProcessContextReplacing<float> (block));
+                reverb.process (dsp::ProcessContextReplacing<float> (block));
+
+                feedback.clear();
+                for (int ch = 0; ch < channels; ++ch)
+                {
+                    const auto* wet = wetBuffer.getReadPointer (ch, start);
+                    auto* fed = feedback.getWritePointer (ch);
+                    for (int i = 0; i < length; ++i)
+                        fed[i] = std::tanh (shifters[(size_t) ch].process (wet[i], ratio, windowSamples));
+                }
+            }
+
+            for (int ch = 0; ch < channels; ++ch)
+                buffer.addFrom (ch, 0, wetBuffer, ch, 0, numSamples, k[4]);
+        }
+    };
     struct CompressorFx
     {
         dsp::Compressor<float> compressor;
@@ -1206,9 +1329,10 @@ namespace
     struct MaximizerFx
     {
         float envelope = 1.0f; // förstärkningsminskning som tal >= 1 (länkat mellan kanalerna)
+        float fastEnvelope = 1.0f, slowEnvelope = 1.0f; // läge 2
 
         void prepare (const dsp::ProcessSpec&) { reset(); }
-        void reset() { envelope = 1.0f; }
+        void reset() { envelope = fastEnvelope = slowEnvelope = 1.0f; }
 
         void process (AudioBuffer<float>& buffer, int numSamples, const Values& k, const Context& context)
         {
@@ -1217,7 +1341,10 @@ namespace
             const auto ceiling = std::max (0.05f, Decibels::decibelsToGain (k[2]));
             const auto release = (float) std::exp (-1.0 / (std::max (1.0, (double) k[3]) * 0.001 * context.sampleRate));
             const auto wet = k[4];
+            const auto smooth = k[5] > 0.5f;
             const auto channels = std::min (2, buffer.getNumChannels());
+            const auto fastRelease = release * release * release * release;
+            const auto slowRelease = std::sqrt (release);
 
             for (int i = 0; i < numSamples; ++i)
             {
@@ -1227,12 +1354,24 @@ namespace
                 {
                     dry[(size_t) ch] = buffer.getSample (ch, i);
                     const auto x = dry[(size_t) ch] * gain;
-                    processed[(size_t) ch] = x + (std::tanh (x) - x) * clipAmount;
+                    const auto clipped = smooth ? x / std::sqrt (1.0f + x * x) : std::tanh (x);
+                    processed[(size_t) ch] = x + (clipped - x) * clipAmount;
                     peak = std::max (peak, std::abs (processed[(size_t) ch]));
                 }
 
                 const auto needed = std::max (1.0f, peak / ceiling);
-                envelope = std::max (needed, 1.0f + (envelope - 1.0f) * release);
+                if (smooth)
+                {
+                    // LÄGE 2: släpper programberoende, snabb del och långsam del var för sig; medelvärdet är aldrig under det som behövs, så taket håller.
+                    fastEnvelope = std::max (needed, 1.0f + (fastEnvelope - 1.0f) * fastRelease);
+                    slowEnvelope = std::max (needed, 1.0f + (slowEnvelope - 1.0f) * slowRelease);
+                    envelope = 0.5f * (fastEnvelope + slowEnvelope);
+                }
+                else
+                {
+                    envelope = std::max (needed, 1.0f + (envelope - 1.0f) * release);
+                    fastEnvelope = slowEnvelope = envelope;
+                }
 
                 for (int ch = 0; ch < channels; ++ch)
                     buffer.setSample (ch, i, dry[(size_t) ch] + (processed[(size_t) ch] / envelope - dry[(size_t) ch]) * wet);
@@ -1677,6 +1816,7 @@ struct EffectChain::Impl
         DynamicEqFx dynamicEq;
         OctaverFx octaver;
         BandDuckerFx bandDucker;
+        ShimmerFx shimmer;
 
         template <typename Function>
         void forEachEffect (Function&& function)
@@ -1684,7 +1824,7 @@ struct EffectChain::Impl
             function (filter); function (distortion); function (eq); function (chorus); function (phaser);
             function (echo); function (reverb); function (compressor); function (gate); function (comb);
             function (ringMod); function (bitcrusher); function (autoFilter); function (maximizer); function (ducker); function (disperser);
-            function (widener); function (flanger); function (transient); function (dynamicEq); function (octaver); function (bandDucker);
+            function (widener); function (flanger); function (transient); function (dynamicEq); function (octaver); function (bandDucker); function (shimmer);
         }
 
         void resetCurrent()
@@ -1713,6 +1853,7 @@ struct EffectChain::Impl
                 case EffectType::dynamicEq:  dynamicEq.reset(); break;
                 case EffectType::octaver:    octaver.reset(); break;
                 case EffectType::bandDucker: bandDucker.reset(); break;
+                case EffectType::shimmer:    shimmer.reset(); break;
                 case EffectType::off:
                 case EffectType::count:      break;
             }
@@ -1744,6 +1885,7 @@ struct EffectChain::Impl
                 case EffectType::dynamicEq:  dynamicEq.process (buffer, numSamples, values, context); break;
                 case EffectType::octaver:    octaver.process (buffer, numSamples, values, context); break;
                 case EffectType::bandDucker: bandDucker.process (buffer, numSamples, values, context); break;
+                case EffectType::shimmer:    shimmer.process (buffer, numSamples, values, context); break;
                 case EffectType::off:
                 case EffectType::count:      break;
             }

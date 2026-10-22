@@ -35,12 +35,16 @@ public:
     // Rubriken i förstärkningsminskningsläget.
     juce::String gainTitle = "LIMITER GAIN REDUCTION (dB)";
 
+    // Hur många slag fönstret visar (4 som standard; 8 = halvtid, hälften så snabb rullning).
+    void setBeats (int newBeats) { beats = juce::jmax (1, newBeats); }
+
     void paint (juce::Graphics&) override;
 
 private:
     void timerCallback() override;
     double windowSeconds() const;
 
+    int beats = 4;
     PluginBase& processor;
     std::vector<Trace> traces;
     Mode mode;

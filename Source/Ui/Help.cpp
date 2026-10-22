@@ -364,6 +364,16 @@ namespace Help
             if (name == "TONE")       return "Low-pass for the octave-down layer. Lower = rounder sub.";
             if (name == "TRANSIENT")  return "0 = octaves always on. Up = octaves only on the attack of each sound.";
         }
+        if (typeName == "Shimmer")
+        {
+            if (name == "SHIMMER")   return "How much of the reverb tail is sent back through the pitch shift. Up = a tail that climbs and glitters; 0 = a plain reverb.";
+            if (name == "INTERVAL")  return "How far up the tail is shifted each lap, in semitones: +12 an octave, +7 a fifth, +19 an octave and a fifth, +24 two octaves.";
+            if (name == "SIZE")      return "How long the reverb tail is.";
+            if (name == "DAMPING")   return "How quickly the highs die in the tail.";
+            if (name == "LOW CUT")   return "High-pass before the reverb, so the bass stays dry and tight.";
+        }
+        if (typeName == "Maximizer" && name == "MODE")
+            return "Classic: the original limiter and tanh clipper. Smooth: a gentler clipper and a release that adapts to the program (fast and slow parts together). The ceiling holds in both.";
         if (typeName == "Maximizer" && name == "RELEASE")
             return "Maximizer: how fast the limiter lets go after a peak. Short = louder but can pump.";
         if (typeName == "Auto Filter" && name == "DEPTH")

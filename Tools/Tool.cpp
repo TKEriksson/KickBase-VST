@@ -2271,6 +2271,50 @@ namespace
                 else
                     check (std::abs (peak - 0.3f) < 0.01f, "FX2: OCTAVER med noll oktav lämnar ljudet orört");
             }
+            // Shimmer: en kort stöt ger en svans som är ändlig och begränsad, och SHIMMER ändrar svansen jämfört med 0.
+            {
+                std::array<double, 2> tail {};
+                for (int variant = 0; variant < 2; ++variant)
+                {
+                    auto finite = true;
+                    runEffect (EffectType::shimmer, { { 2, variant == 0 ? 0.0f : 1.0f }, { 4, 1.0f } }, 60,
+                               [&] (juce::AudioBuffer<float>& b, int block)
+                               {
+                                   for (int i = 0; i < b.getNumSamples(); ++i)
+                                       for (int ch = 0; ch < 2; ++ch)
+                                           b.setSample (ch, i, block < 4 ? 0.3f * (float) std::sin (juce::MathConstants<double>::twoPi * 440.0 * (block * blockSize + i) / renderRate) : 0.0f);
+                               },
+                               [&] (const juce::AudioBuffer<float>& b, int block)
+                               {
+                                   for (int i = 0; i < b.getNumSamples(); ++i)
+                                   {
+                                       const auto v = b.getSample (0, i);
+                                       finite = finite && std::isfinite (v) && std::abs (v) < 4.0f;
+                                       if (block >= 20)
+                                           tail[(size_t) variant] += (double) v * v;
+                                   }
+                               });
+                    check (finite, "SHIMMER ger ändligt ljud");
+                }
+                check (tail[0] > 1.0e-6 && std::abs (tail[1] - tail[0]) > 0.01 * tail[0], "SHIMMER har en svans som ändras av SHIMMER-ratten");
+            }
+            // Maximizer läge 2 (SMOOTH): taket håller även med mycket gain.
+            {
+                auto peak = 0.0f;
+                runEffect (EffectType::maximizer, { { 0, 18.0f }, { 2, -3.0f }, { 5, 1.0f } }, 30,
+                           [&] (juce::AudioBuffer<float>& b, int block)
+                           {
+                               for (int i = 0; i < b.getNumSamples(); ++i)
+                                   for (int ch = 0; ch < 2; ++ch)
+                                       b.setSample (ch, i, 0.8f * (float) std::sin (juce::MathConstants<double>::twoPi * 100.0 * (block * blockSize + i) / renderRate));
+                           },
+                           [&] (const juce::AudioBuffer<float>& b, int)
+                           {
+                               for (int i = 0; i < b.getNumSamples(); ++i)
+                                   peak = std::max (peak, std::abs (b.getSample (0, i)));
+                           });
+                check (peak > 0.3f && peak < juce::Decibels::decibelsToGain (-3.0f) * 1.02f, "MAXIMIZER läge SMOOTH håller taket");
+            }
         }
 
         std::puts (failed ? "FEL: instrumenttestet misslyckades" : "Instrumenttestet gick igenom");
