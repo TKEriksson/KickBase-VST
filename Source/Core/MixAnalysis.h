@@ -37,6 +37,7 @@ namespace MixAnalysis
     {
         int sensitivity = 1; // 0 = låg, 1 = normal, 2 = hög
         int maxBars = 16;    // högst så många takter analyseras
+        int tap = 0;         // 0 = som den hörs (efter sidechain och EQ), 1 = dry (före sidechain och EQ: grundproblemen man annars duckar bort)
     };
 
     enum class Severity { info, warning, problem };
@@ -213,6 +214,8 @@ namespace MixAnalysis
 
     // Förbereder en kopia av pluginet (meddelandetråden) och kör analysen på den (valfri tråd). `progress` får 0..1.
     std::unique_ptr<PluginBase> prepareCopy (PluginBase& source);
+    // Mätläge för analyskopian (Options::tap): dry = duckning av och EQ neutral på kicken och alla instrument. Rör aldrig originalet.
+    void applyTap (PluginBase& copy, int tap);
     Report run (PluginBase& preparedCopy, double bpm, int keyNote, const Options& options, const Reference* reference,
                 const std::function<void (float)>& progress, const std::function<bool()>& cancelled);
 }

@@ -255,6 +255,13 @@ SpectrumPage::SpectrumPage (PluginBase& p) : processor (p), analyser (p.getMixAn
                                "to count as colliding, how loud they must be and for how long in a bar.");
     addAndMakeVisible (sensitivityBox);
 
+    tapBox.addItem ("AS HEARD", 1);
+    tapBox.addItem ("DRY", 2);
+    tapBox.setSelectedId (1, juce::dontSendNotification);
+    tapBox.setTooltip ("MEASURE - As heard: after sidechain ducking and EQ (default). Dry: the analysis copy has ducking off and EQ neutral on the kick and every instrument, "
+                       "so you see the real collisions the sidechain and EQ hide. Your sound is not changed.");
+    addAndMakeVisible (tapBox);
+
     exportButton.setTooltip ("EXPORT - Copies the report as text, or saves the whole analysis as a JSON file for an AI or for studying by hand. In the list you choose what to include: "
                              "findings, an overview per source, band levels and harmonic series and 1/12-octave spectra for every source and every bar, the kick hits with the ducking, "
                              "the level of every band in every frame through the loop, and all the synth's settings (oscillators, wavetables, filters, effects, modulation, pattern, notes).");
@@ -401,7 +408,7 @@ void SpectrumPage::setView (bool report)
     viewReportButton.setToggleState (report, juce::dontSendNotification);
     for (auto* c : std::initializer_list<juce::Component*> { &analyserButton, &collisionsButton, &harmonicsButton, &speedBox, &showButton, &eqButton })
         c->setVisible (! report);
-    for (auto* c : std::initializer_list<juce::Component*> { &analyseButton, &referenceButton, &sensitivityBox, &exportButton })
+    for (auto* c : std::initializer_list<juce::Component*> { &analyseButton, &referenceButton, &sensitivityBox, &tapBox, &exportButton })
         c->setVisible (report);
     viewport.setVisible (report);
     updateRunning();
@@ -431,6 +438,8 @@ void SpectrumPage::resized()
         analyseButton.setBounds (top.removeFromLeft (110));
         top.removeFromLeft (4);
         sensitivityBox.setBounds (top.removeFromLeft (110));
+        top.removeFromLeft (4);
+        tapBox.setBounds (top.removeFromLeft (96));
         top.removeFromLeft (4);
         referenceButton.setBounds (top.removeFromLeft (112));
         top.removeFromLeft (4);
@@ -525,6 +534,7 @@ void SpectrumPage::startAnalysis()
     processor.requestAudition (PluginBase::previewStop); // förhandslyssningar stoppas först, så att inget annat spelar under analysen
     MixAnalysis::Options options;
     options.sensitivity = juce::jlimit (0, 2, sensitivityBox.getSelectedId() - 1);
+    options.tap = tapBox.getSelectedId() == 2 ? 1 : 0;
     // Alla inställningar när analysen startar följer med i rapporten (oscillatorer, wavetables, effekter, modulering, mönster, toner).
     ToolLayer tools (processor);
     auto stateArgs = juce::DynamicObject::Ptr (new juce::DynamicObject());
@@ -535,7 +545,7 @@ void SpectrumPage::startAnalysis()
         return;
     analysing = true;
     analyseButton.setButtonText ("CANCEL");
-    for (auto* c : std::initializer_list<juce::Component*> { &referenceButton, &sensitivityBox, &eqButton, &eqTargetBox })
+    for (auto* c : std::initializer_list<juce::Component*> { &referenceButton, &sensitivityBox, &tapBox, &eqButton, &eqTargetBox })
         c->setEnabled (false);
     updateRunning();
 }
@@ -1215,7 +1225,7 @@ void SpectrumPage::timerCallback()
     {
         analysing = true;
         analyseButton.setButtonText ("CANCEL");
-        for (auto* c : std::initializer_list<juce::Component*> { &referenceButton, &sensitivityBox, &eqButton, &eqTargetBox })
+        for (auto* c : std::initializer_list<juce::Component*> { &referenceButton, &sensitivityBox, &tapBox, &eqButton, &eqTargetBox })
             c->setEnabled (false);
         updateRunning();
     }
@@ -1230,7 +1240,7 @@ void SpectrumPage::timerCallback()
         {
             analysing = false;
             analyseButton.setButtonText ("ANALYSE");
-            for (auto* c : std::initializer_list<juce::Component*> { &referenceButton, &sensitivityBox, &eqButton, &eqTargetBox })
+            for (auto* c : std::initializer_list<juce::Component*> { &referenceButton, &sensitivityBox, &tapBox, &eqButton, &eqTargetBox })
                 c->setEnabled (true);
             takeReport();
             updateRunning();
