@@ -187,6 +187,42 @@ Noterna ska skrivas även när modulationen avvisas. Är något av detta inte so
 
 `bass1EnvAmount`, `bass1Drive`, `bass1Sustain`, `bass1Release` m.fl. kan vara modulerbara. Byt id i 12a och se om du får en felrad. Listan över alla id:n får du med `list_parameters` (be AI-chatten köra den). Jag kontrollerar dem i nästa CI-körning (den som innehåller testerna för LC E).
 
+## 13. Strudel-effektnamn -> Kickbase (mappning godkänd av Tobias 21 okt, dokumenterad 22 okt)
+
+Strudels egna effektmetoder (`.lpf`, `.room` ...) kräver webbljud (superdough) och gör **ingenting** i vår motor. Använd i stället motsvarigheten nedan. Tabellen bygger på läst kod (`Params.cpp:284-345`, `Effects.cpp:65`, `glue.js` F1/F3); ej provlyssnad.
+
+Viktigt: parametrar och effektplatser sätts **en gång per körning** (de är inte per not som i Strudel). Per-not-variation får du med `.lfo`/`.env` (avsnitt 9, 10, 12). Skriv `.set`-raderna direkt före mönstret.
+
+| Strudel | Kickbase (instrument 1 som exempel) | Enhet / anmärkning |
+|---|---|---|
+| `.lpf(hz)` / `.cutoff(hz)` | `instr1.Cutoff.set(hz)` | Hz, 20-20000. Filtertyp: `instr1.FilterType.set("LP 24")` |
+| `.hpf(hz)` | `instr1.FilterType.set("High")` + `instr1.Cutoff.set(hz)` | Filtret är ett enda per instrument (Filter 2 kan läggas till i FILTER-fliken) |
+| `.lpq(x)` / `.resonance(x)` | `instr1.Resonance.set(x)` | 0-1 |
+| `.attack(s)` / `.release(s)` | `instr1.Attack.set(ms)` / `instr1.Release.set(ms)` | Millisekunder (Strudel använder sekunder: ×1000). Attack 0-50, Release 1-300 |
+| `.decay(s)` / `.sustain(x)` | `instr1.Decay.set(ms)` / `instr1.Sustain.set(x)` | Decay 5-2000 ms, Sustain 0-1 |
+| `.distort(x)` / `.shape(x)` | `instr1.Drive.set(x)` (+ `instr1.DriveMode.set("Hard")`) | Drive 0-1; för kick `kick.Drive.set(x)` |
+| `.crush(bits)` | `instr1.DriveMode.set("Crush")` eller effekt `setEffect("bitcrusher")`; kick: `kick.Crush.set(x)` | Kickens Crush 0-1 |
+| `.room(x)` + `.size(x)` | `fx1.slot1.setEffect("reverb")`, sedan `fx1.slot1.mix.set(x)` | Instrumentet måste skickas till FX-kanal 1 (SEND/INSERT i FX-fliken). Kontrollera rattnamnen med felraden |
+| `.delay(x)` + `.delaytime(s)` + `.delayfeedback(x)` | `fx1.slot2.setEffect("echo")`, sedan `fx1.slot2.mix.set(x)` | Rattnamn i felraden om de skiljer sig |
+| `.pan(x)` | `instr1.APan.set(x)` (OSC A; B/C: `BPan`, `CPan`) | -1..1. Strudel: 0..1 (0,5 = mitten), räkna om: `x*2-1` |
+| `.gain(x)` | `.gain(x)` (fungerar redan: velocity) | 0,05-1 |
+| `s("bd")` | `s("bd")` eller `s("kick")` (fungerar redan) | Kickraden |
+| `.slow/.fast/.every/.off ...` | fungerar (Strudel core) | Mönsterfunktioner, inte ljudeffekter |
+
+Typnamn för `setEffect` (gemener, bara bokstäver/siffror): off, filter, distortion, eq, chorus, phaser, echo, reverb, compressor, trancegate, comb, ringmod, bitcrusher, autofilter, maximizer, sidechain, disperser, widener, flanger, transient, dynamiceq, octaver, bandducker.
+
+Exempel:
+
+```
+instr1.Cutoff.set(900)
+instr1.Resonance.set(0.5)
+instr1.Release.set(80)
+fx1.slot1.setEffect("reverb")
+$: note("[~ c2 c2 c2]*4").s("i1").lfo("bass1Cutoff", 0.5, 0.6, "tri")
+```
+
+Ännu inte byggt (skulle kräva nya Strudel-metoder i `glue.js` + C++ och bundle-ombygge): `.lpf(...)` m.fl. direkt på mönstret som genvägar till raderna ovan. Säg till om det önskas.
+
 ## Om det inte fungerar
 
 - **Inget ljud:** kontrollera att LIVE är på, att instrumentet du adresserar (`i1`, `i2`) finns och att Play är igång.
