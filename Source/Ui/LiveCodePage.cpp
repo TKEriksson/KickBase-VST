@@ -60,7 +60,11 @@ LiveCodePage::LiveCodePage (PluginBase& processor) : processor (processor), tool
     floatButton.setTooltip ("FLOAT: opens the code in its own window (same text) so you can see it while you work in other tabs. Click again to close it.");
     floatButton.onClick = [this] { toggleFloat(); };
 
-    lockLabel.setText ("LOCK:", juce::dontSendNotification);
+    lockLabel.setText ("LOCK ROW:", juce::dontSendNotification);
+    lockLabel.setTooltip ("LOCK ROW - Click a number to lock that instrument row (K = the kick). A locked row is lit and Live Code never writes it, so your own notes stay. Click again to unlock.");
+    lockSummaryLabel.setColour (juce::Label::textColourId, Theme::textDim);
+    lockSummaryLabel.setFont (Theme::font (11.0f));
+    addAndMakeVisible (lockSummaryLabel);
     lockLabel.setColour (juce::Label::textColourId, Theme::textDim);
     lockLabel.setFont (Theme::font (11.0f, true));
     addAndMakeVisible (lockLabel);
@@ -70,8 +74,10 @@ LiveCodePage::LiveCodePage (PluginBase& processor) : processor (processor), tool
         const auto layer = i == 10 ? (int) Pattern::kickLayer : (int) i;
         b.setButtonText (i == 10 ? "K" : juce::String (i + 1));
         b.setClickingTogglesState (true);
-        b.setColour (juce::TextButton::buttonOnColourId, Theme::mix.darker (0.2f));
-        b.setTooltip ("Lock this row: Live Code never writes it");
+        b.setColour (juce::TextButton::buttonOnColourId, juce::Colour (0xffe0a030));
+        b.setColour (juce::TextButton::textColourOnId, juce::Colours::black);
+        b.setTooltip (i == 10 ? "LOCK KICK - Lit = locked: Live Code never writes the kick row. Click again to unlock."
+                              : "LOCK ROW " + juce::String (i + 1) + " - Lit = locked: Live Code never writes instrument " + juce::String (i + 1) + ", so your own notes stay. Click again to unlock.");
         b.onClick = [this, layer, &b]
         {
             auto args = juce::var (new juce::DynamicObject());
@@ -126,12 +132,14 @@ void LiveCodePage::resized()
     floatButton.setBounds (top.removeFromLeft (70));
     area.removeFromTop (6);
     auto locks = area.removeFromTop (22);
-    lockLabel.setBounds (locks.removeFromLeft (50));
+    lockLabel.setBounds (locks.removeFromLeft (76));
     for (auto& b : lockButtons)
     {
-        b.setBounds (locks.removeFromLeft (26));
+        b.setBounds (locks.removeFromLeft (34));
         locks.removeFromLeft (2);
     }
+    locks.removeFromLeft (6);
+    lockSummaryLabel.setBounds (locks);
     area.removeFromTop (6);
     auto tabs = area.removeFromTop (24);
     codeTab.setBounds (tabs.removeFromLeft (70));
@@ -158,9 +166,9 @@ void LiveCodePage::codeDocumentTextInserted (const juce::String& text, int)
         juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<LiveCodePage> (this)]
         {
             if (safe != nullptr && safe->editor.hasKeyboardFocus (true)) safe->openCompletion (safe->editor);
-            else if (safe != nullptr && safe->floatWindow != nullptr)
-                if (auto* content = dynamic_cast<FloatContent*> (safe->floatWindow->getContentComponent()))
-                    if (content->editor.hasKeyboardFocus (true)) safe->openCompletion (content->editor);
+            else if (safe != nullptr)
+                if (auto* floating = safe->floatEditor())
+                    if (floating->hasKeyboardFocus (true)) safe->openCompletion (*floating);
         });
     else if (completionEditor != nullptr)
         juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<LiveCodePage> (this)] { if (safe != nullptr) safe->refreshCompletion(); });
@@ -285,6 +293,7 @@ bool LiveCodePage::completionKey (const juce::KeyPress& key, juce::Component* or
 // 30 Hz: vilka noter låter nu? Spelpositionen är i tick i radens loop (som pianorullens markör); marks räknades över `cycles` takter.
 void LiveCodePage::updateMarks()
 {
+    syncFloat();
     std::vector<std::pair<int, int>> now;
     if (playing && isShowing())
     {
@@ -442,6 +451,140 @@ void LiveCodePage::sliderReleased (int index)
         startTimer (debounceMs); // avrundningen kan skilja från det dragna värdet
 }
 
+struct LiveCodePage::FloatContent : juce::Component
+{
+    explicit FloatContent (LiveCodePage& owner) : page (owner), editor (owner.document, &owner.tokeniser)
+    {
+        addAndMakeVisible (editor);
+        errorLog.setMultiLine (true, true);
+        errorLog.setReadOnly (true);
+        errorLog.setFont (juce::Font (juce::FontOptions (juce::Font::getDefaultMonospacedFontName(), 13.0f, juce::Font::plain)));
+        errorLog.setColour (juce::TextEditor::backgroundColourId, Theme::panel);
+        errorLog.setColour (juce::TextEditor::textColourId, Theme::text);
+        errorLog.setColour (juce::TextEditor::outlineColourId, Theme::panelBorder);
+        addChildComponent (errorLog);
+
+        std::vector<juce::TextButton*> sources { &page.playButton, &page.stopButton, &page.createButton, &page.codeOnlyButton };
+        for (auto& b : page.lockButtons)
+            sources.push_back (&b);
+        for (size_t i = 0; i < sources.size(); ++i)
+        {
+            auto* source = sources[i];
+            auto& own = buttons[i];
+            own.setButtonText (source->getButtonText());
+            own.setTooltip (source->getTooltip());
+            own.setColour (juce::TextButton::buttonOnColourId, source->findColour (juce::TextButton::buttonOnColourId));
+            own.onClick = [source] { source->triggerClick(); };
+            addAndMakeVisible (own);
+            pairs.push_back ({ &own, source });
+        }
+        codeTab.onClick = [this] { showErrors (false); };
+        errorTab.onClick = [this] { showErrors (true); };
+        for (auto* b : { &codeTab, &errorTab })
+            addAndMakeVisible (*b);
+        for (auto* l : { &lockLabel, &lockSummary, &errorLabel })
+            addAndMakeVisible (*l);
+        lockLabel.setText ("LOCK ROW:", juce::dontSendNotification);
+        lockLabel.setTooltip (page.lockLabel.getTooltip());
+        lockLabel.setColour (juce::Label::textColourId, Theme::textDim);
+        lockLabel.setFont (Theme::font (11.0f, true));
+        lockSummary.setColour (juce::Label::textColourId, Theme::textDim);
+        lockSummary.setFont (Theme::font (11.0f));
+        errorLabel.setColour (juce::Label::textColourId, juce::Colour (0xffff9a9a));
+        errorLabel.setFont (Theme::font (12.0f));
+        showErrors (false);
+    }
+
+    void showErrors (bool errors)
+    {
+        editor.setVisible (! errors);
+        errorLog.setVisible (errors);
+        codeTab.setToggleState (! errors, juce::dontSendNotification);
+        errorTab.setToggleState (errors, juce::dontSendNotification);
+        codeTab.setColour (juce::TextButton::buttonColourId, errors ? Theme::panel : Theme::mix.darker (0.4f));
+        errorTab.setColour (juce::TextButton::buttonColourId, errors ? Theme::mix.darker (0.4f) : Theme::panel);
+    }
+
+    // Följer sidans knappar och texter (anropas ofta; sätter bara om något ändrats).
+    void sync()
+    {
+        for (auto& pair : pairs)
+            if (pair.first->getToggleState() != pair.second->getToggleState())
+                pair.first->setToggleState (pair.second->getToggleState(), juce::dontSendNotification);
+        const auto summary = page.lockSummary();
+        if (lockSummary.getText() != summary)
+            lockSummary.setText (summary, juce::dontSendNotification);
+        if (errorLabel.getText() != page.errorLabel.getText())
+            errorLabel.setText (page.errorLabel.getText(), juce::dontSendNotification);
+        if (errorLog.getText() != page.errorLog.getText())
+        {
+            errorLog.setText (page.errorLog.getText(), false);
+            errorLog.moveCaretToTop (false);
+        }
+    }
+
+    void resized() override
+    {
+        auto area = getLocalBounds().reduced (6);
+        auto top = area.removeFromTop (26);
+        for (size_t i = 0; i < 4; ++i)
+        {
+            buttons[i].setBounds (top.removeFromLeft (i == 3 ? 100 : 76));
+            top.removeFromLeft (4);
+        }
+        area.removeFromTop (4);
+        auto locks = area.removeFromTop (24);
+        lockLabel.setBounds (locks.removeFromLeft (76));
+        for (size_t i = 4; i < buttons.size(); ++i)
+        {
+            buttons[i].setBounds (locks.removeFromLeft (34));
+            locks.removeFromLeft (2);
+        }
+        lockSummary.setBounds (locks);
+        area.removeFromTop (4);
+        auto tabs = area.removeFromTop (22);
+        codeTab.setBounds (tabs.removeFromLeft (70));
+        tabs.removeFromLeft (4);
+        errorTab.setBounds (tabs.removeFromLeft (110));
+        area.removeFromTop (4);
+        errorLabel.setBounds (area.removeFromBottom (22));
+        editor.setBounds (area);
+        errorLog.setBounds (area);
+    }
+
+    LiveCodePage& page;
+    juce::CodeEditorComponent editor;
+    juce::TextEditor errorLog;
+    std::array<juce::TextButton, 15> buttons;
+    std::vector<std::pair<juce::TextButton*, juce::TextButton*>> pairs;
+    juce::TextButton codeTab { "KOD" }, errorTab { "KONSOL" };
+    juce::Label lockLabel, lockSummary, errorLabel;
+};
+
+juce::String LiveCodePage::lockSummary() const
+{
+    juce::StringArray locked;
+    for (size_t i = 0; i < lockButtons.size(); ++i)
+        if (lockButtons[i].getToggleState())
+            locked.add (lockButtons[i].getButtonText());
+    return locked.isEmpty() ? juce::String ("Nothing locked") : "Locked: " + locked.joinIntoString (", ");
+}
+
+juce::CodeEditorComponent* LiveCodePage::floatEditor()
+{
+    if (floatWindow != nullptr)
+        if (auto* content = dynamic_cast<FloatContent*> (floatWindow->getContentComponent()))
+            return &content->editor;
+    return nullptr;
+}
+
+void LiveCodePage::syncFloat()
+{
+    if (floatWindow != nullptr)
+        if (auto* content = dynamic_cast<FloatContent*> (floatWindow->getContentComponent()))
+            content->sync();
+}
+
 void LiveCodePage::toggleFloat()
 {
     if (floatWindow != nullptr)
@@ -451,7 +594,7 @@ void LiveCodePage::toggleFloat()
         floatButton.setToggleState (false, juce::dontSendNotification);
         return;
     }
-    auto content = std::make_unique<FloatContent> (document, tokeniser);
+    auto content = std::make_unique<FloatContent> (*this);
     content->editor.setFont (juce::Font (juce::FontOptions (juce::Font::getDefaultMonospacedFontName(), 15.0f, juce::Font::plain)));
     content->editor.setTabSize (2, true);
     content->editor.setLineNumbersShown (true);
@@ -461,19 +604,21 @@ void LiveCodePage::toggleFloat()
     content->editor.setColour (juce::CodeEditorComponent::lineNumberTextId, Theme::textDim);
     content->editor.setColour (juce::CodeEditorComponent::highlightColourId, Theme::mix.withAlpha (0.25f));
     content->editor.addKeyListener (&completionKeys);
-    content->setSize (520, 420);
+    content->setSize (620, 460);
+    content->sync();
 
     floatWindow = std::make_unique<FloatWindow>();
     floatWindow->setUsingNativeTitleBar (true);
     floatWindow->setContentOwned (content.release(), true);
     floatWindow->setResizable (true, true);
+    floatWindow->setResizeLimits (560, 260, 3000, 2000); // så att alla knappar får plats; höjd och bredd är fria
     floatWindow->setAlwaysOnTop (true);
     floatWindow->onClose = [safe = juce::Component::SafePointer<LiveCodePage> (this)]
     {
         if (safe != nullptr)
             juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->toggleFloat(); });
     };
-    floatWindow->centreWithSize (520, 420);
+    floatWindow->centreWithSize (620, 460);
     floatWindow->setVisible (true);
     floatButton.setToggleState (true, juce::dontSendNotification);
 }
@@ -551,6 +696,7 @@ void LiveCodePage::syncLocks()
     const auto locks = processor.liveCodeLocks.load();
     for (size_t i = 0; i < lockButtons.size(); ++i)
         lockButtons[i].setToggleState ((locks & ToolLayer::liveCodeBit (i == 10 ? (int) Pattern::kickLayer : (int) i)) != 0, juce::dontSendNotification);
+    lockSummaryLabel.setText (lockSummary(), juce::dontSendNotification);
 }
 
 void LiveCodePage::setCodeOnly (bool on)
