@@ -201,6 +201,73 @@ namespace Settings
         set ("chatCostMode", mode == 1 ? juce::String() : juce::String (juce::jlimit (0, 2, mode)));
     }
 
+    namespace
+    {
+        bool isMemoryLookback (int count)
+        {
+            return count == -1 || count == 10 || count == 25 || count == 100 || count == 250
+                   || count == 500 || count == 1000 || count == 10000;
+        }
+    }
+
+    bool feedbackMemoryAutoInclude() { return get ("feedbackMemoryAutoInclude") == "1"; }
+
+    void setFeedbackMemoryAutoInclude (bool include)
+    {
+        set ("feedbackMemoryAutoInclude", include ? "1" : juce::String());
+    }
+
+    int feedbackMemoryLookback()
+    {
+        const auto count = get ("feedbackMemoryLookback").getIntValue();
+        return isMemoryLookback (count) ? count : 10;
+    }
+
+    void setFeedbackMemoryLookback (int count)
+    {
+        set ("feedbackMemoryLookback", juce::String (isMemoryLookback (count) ? count : 10));
+    }
+
+    int feedbackMemoryMaxMb()
+    {
+        const auto size = get ("feedbackMemoryMaxMb").getIntValue();
+        return size == 0 ? 100 : juce::jlimit (1, 100, size);
+    }
+
+    void setFeedbackMemoryMaxMb (int megabytes)
+    {
+        set ("feedbackMemoryMaxMb", juce::String (juce::jlimit (1, 100, megabytes)));
+    }
+
+    bool workMemoryAutoInclude() { return get ("workMemoryAutoInclude") == "1"; }
+
+    void setWorkMemoryAutoInclude (bool include)
+    {
+        set ("workMemoryAutoInclude", include ? "1" : juce::String());
+    }
+
+    int workMemoryLookback()
+    {
+        const auto count = get ("workMemoryLookback").getIntValue();
+        return isMemoryLookback (count) ? count : 10;
+    }
+
+    void setWorkMemoryLookback (int count)
+    {
+        set ("workMemoryLookback", juce::String (isMemoryLookback (count) ? count : 10));
+    }
+
+    int workMemoryMaxMb()
+    {
+        const auto size = get ("workMemoryMaxMb").getIntValue();
+        return size == 0 ? 100 : juce::jlimit (1, 100, size);
+    }
+
+    void setWorkMemoryMaxMb (int megabytes)
+    {
+        set ("workMemoryMaxMb", juce::String (juce::jlimit (1, 100, megabytes)));
+    }
+
     int geminiToolsCheck (const juce::String& model, const juce::String& key)
     {
         const auto value = get ("geminiTools:" + model.trim());

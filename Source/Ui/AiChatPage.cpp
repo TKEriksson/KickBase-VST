@@ -1,13 +1,22 @@
 #include "AiChatPage.h"
 #include "../Core/AiProvider.h"
+#include "../Core/AiMemory.h"
+#include "../Core/Settings.h"
+#include <map>
 
 //==============================================================================
 // Samtalet: ett block per inlägg (användaren till höger, AI:n till vänster, verktygsanrop som små rader), med bilder under.
 class AiChatPage::Transcript : public juce::Component
 {
 public:
+    std::function<void (const juce::String&, int, const juce::String&)> onRate;
+    std::function<void (const juce::String&)> onFeedbackError;
+
     void setEntries (std::vector<AiChat::Entry> newEntries)
     {
+        for (const auto& block : blocks)
+            if (block.comment != nullptr)
+                feedbackDrafts[block.feedbackId] = { block.feedbackRating, block.comment->getText() };
         entries = std::move (newEntries);
         layoutBlocks();
     }
@@ -34,6 +43,8 @@ public:
             const auto textHeight = (int) std::ceil (block.layout.getHeight());
             auto blockWidth = std::max (60, (int) std::ceil (block.layout.getWidth()) + 24);
             auto height = textHeight + (entry.kind == Kind::tool ? 8 : 18);
+            if (entry.feedbackAvailable)
+                blockWidth = std::max (blockWidth, 330);
 
             // Bilderna (spektrogram) under texten, i full bredd upp till 720 px.
             auto imagesHeight = 0;
@@ -42,10 +53,41 @@ public:
                 imagesHeight += (int) ((float) imageWidth * (float) image.getHeight() / (float) std::max (1, image.getWidth())) + 6;
             if (! entry.images.empty())
                 blockWidth = std::max (blockWidth, imageWidth + 24), height += imagesHeight + 4;
+            if (entry.feedbackAvailable)
+                height += 54;
 
             const auto x = entry.kind == Kind::user ? width - blockWidth - 12 : entry.kind == Kind::note ? (width - blockWidth) / 2 : 12;
             block.bounds = { x, y, std::min (blockWidth, width - 24), height };
             block.imageWidth = imageWidth;
+            block.feedbackId = entry.feedbackId;
+            if (entry.feedbackAvailable)
+            {
+                const auto draft = feedbackDrafts.find (entry.feedbackId);
+                block.feedbackRating = draft != feedbackDrafts.end() ? draft->second.first : entry.feedbackRating;
+                const auto rowY = block.bounds.getBottom() - 48;
+                block.ratingLabel = { x + 12, rowY, 74, 18 };
+                auto ratingX = block.ratingLabel.getRight() + 2;
+                for (int rating = 1; rating <= 10; ++rating)
+                {
+                    block.ratingBounds[(size_t) (rating - 1)] = { ratingX, rowY, 20, 18 };
+                    ratingX += 21;
+                }
+                block.saveBounds = { block.bounds.getRight() - 70, rowY + 23, 58, 21 };
+                block.comment = std::make_unique<juce::TextEditor>();
+                block.comment->setFont (Theme::font (11.0f));
+                block.comment->setColour (juce::TextEditor::backgroundColourId, Theme::backgroundBottom);
+                block.comment->setColour (juce::TextEditor::textColourId, Theme::text);
+                block.comment->setColour (juce::TextEditor::outlineColourId, Theme::panelBorder);
+                block.comment->setTextToShowWhenEmpty ("What were you not satisfied with? (optional)", Theme::textDim);
+                block.comment->setText (draft != feedbackDrafts.end() ? draft->second.second : entry.feedbackComment, juce::dontSendNotification);
+                block.comment->onTextChange = [this, id = entry.feedbackId, editor = block.comment.get()]
+                {
+                    feedbackDrafts[id].second = editor->getText();
+                };
+                block.comment->setBounds (x + 12, rowY + 22, std::max (40, block.bounds.getWidth() - 92), 22);
+                addAndMakeVisible (*block.comment);
+                feedbackDrafts[entry.feedbackId] = { block.feedbackRating, block.comment->getText() };
+            }
             blocks.push_back (std::move (block));
             y += height + 8;
         }
@@ -95,21 +137,62 @@ public:
                 g.drawImage (image, juce::Rectangle<float> (bounds.getX() + 12.0f, y, (float) block.imageWidth, height));
                 y += height + 6.0f;
             }
+
+            if (block.entry->feedbackAvailable)
+            {
+                g.setFont (Theme::font (10.0f));
+                g.setColour (Theme::textDim);
+                g.drawText (block.entry->feedbackRating > 0 ? "RATED" : "RATE", block.ratingLabel, juce::Justification::centredLeft);
+                for (int i = 0; i < 10; ++i)
+                {
+                    const auto r = block.ratingBounds[(size_t) i].toFloat();
+                    g.setColour (block.feedbackRating == i + 1 ? Theme::mix : Theme::panel);
+                    g.fillRoundedRectangle (r, 3.0f);
+                    g.setColour (block.feedbackRating == i + 1 ? Theme::backgroundBottom : Theme::text);
+                    g.drawText (juce::String (i + 1), r, juce::Justification::centred);
+                }
+                const auto save = block.saveBounds.toFloat();
+                g.setColour (Theme::bass.withAlpha (0.5f));
+                g.fillRoundedRectangle (save, 4.0f);
+                g.setColour (Theme::text);
+                g.drawText ("SAVE", save, juce::Justification::centred);
+            }
         }
     }
 
     void mouseDown (const juce::MouseEvent& event) override
     {
-        if (! event.mods.isPopupMenu())
-            return;
-        for (const auto& block : blocks)
-            if (block.bounds.contains (event.getPosition()))
+        for (auto& block : blocks)
+        {
+            if (event.mods.isPopupMenu() && block.bounds.contains (event.getPosition()))
             {
                 juce::PopupMenu menu;
                 menu.addItem ("Copy text", [text = block.entry->text] { juce::SystemClipboard::copyTextToClipboard (text); });
                 menu.showMenuAsync (juce::PopupMenu::Options());
                 return;
             }
+            if (! block.entry->feedbackAvailable)
+                continue;
+            for (int rating = 1; rating <= 10; ++rating)
+                if (block.ratingBounds[(size_t) (rating - 1)].contains (event.getPosition()))
+                {
+                    block.feedbackRating = rating;
+                    feedbackDrafts[block.feedbackId].first = rating;
+                    repaint();
+                    return;
+                }
+            if (block.saveBounds.contains (event.getPosition()))
+            {
+                if (block.feedbackRating <= 0)
+                {
+                    if (onFeedbackError)
+                        onFeedbackError ("Choose a rating from 1 to 10 first.");
+                }
+                else if (onRate)
+                    onRate (block.feedbackId, block.feedbackRating, block.comment->getText());
+                return;
+            }
+        }
     }
 
     int contentHeight() const { return getHeight(); }
@@ -119,12 +202,18 @@ private:
     {
         const AiChat::Entry* entry = nullptr;
         juce::Rectangle<int> bounds;
+        juce::Rectangle<int> ratingLabel, saveBounds;
+        std::array<juce::Rectangle<int>, 10> ratingBounds;
         juce::TextLayout layout;
+        std::unique_ptr<juce::TextEditor> comment;
+        juce::String feedbackId;
+        int feedbackRating = 0;
         int imageWidth = 0;
     };
 
     std::vector<AiChat::Entry> entries;
     std::vector<Block> blocks;
+    std::map<juce::String, std::pair<int, juce::String>> feedbackDrafts;
 };
 
 //==============================================================================
@@ -196,6 +285,9 @@ AiChatPage::AiChatPage (PluginBase& p) : processor (p), chat (p.getAiChat())
     chatsButton.setTooltip ("CHATS - Save this chat as a session, open a saved one, or export it to a text file. Long chats are saved and exported automatically before the oldest questions are dropped. API keys are never written to these files.");
     chatsButton.onClick = [this] { showChatsMenu(); };
     addAndMakeVisible (chatsButton);
+    memoryButton.setTooltip ("MEMORY - Configure local feedback and work lessons, what the AI may load, and storage limits.");
+    memoryButton.onClick = [this] { showMemorySettings(); };
+    addAndMakeVisible (memoryButton);
     undoButton.setTooltip ("UNDO - Undoes the AI's last change to the sound.");
     undoButton.onClick = [this] { chat.undo(); refresh(); };
     addAndMakeVisible (undoButton);
@@ -227,6 +319,20 @@ AiChatPage::AiChatPage (PluginBase& p) : processor (p), chat (p.getAiChat())
     }
 
     transcript = std::make_unique<Transcript>();
+    transcript->onRate = [this] (const juce::String& id, int rating, const juce::String& comment)
+    {
+        juce::String error;
+        if (chat.rateEntry (id, rating, comment, error))
+        {
+            if (chat.reviewFeedback (id, error))
+                status.setText ("Feedback saved. The AI is reviewing it and will propose a plan without changing the sound.", juce::dontSendNotification);
+            else
+                status.setText ("Feedback saved locally. " + error, juce::dontSendNotification);
+        }
+        else
+            status.setText (error, juce::dontSendNotification);
+    };
+    transcript->onFeedbackError = [this] (const juce::String& error) { status.setText (error, juce::dontSendNotification); };
     viewport.setViewedComponent (transcript.get(), false);
     viewport.setScrollBarsShown (true, false);
     addAndMakeVisible (viewport);
@@ -509,6 +615,169 @@ void AiChatPage::timerCallback()
     refresh();
 }
 
+void AiChatPage::showMemorySettings()
+{
+    const int lookbackValues[] { 10, 25, 100, 250, 500, 1000, 10000, AiMemory::allEntries };
+    auto addLookbacks = [&] (juce::PopupMenu& target, int base, int selected, const juce::String& noun)
+    {
+        for (int i = 0; i < (int) std::size (lookbackValues); ++i)
+        {
+            const auto count = lookbackValues[i];
+            const auto label = count == AiMemory::allEntries ? "ALL available " + noun
+                                                             : juce::String (count) + " recent " + noun;
+            target.addItem (base + i, label, true, count == selected);
+        }
+    };
+
+    juce::PopupMenu feedbackLookback, workLookback;
+    addLookbacks (feedbackLookback, 100, Settings::feedbackMemoryLookback(), "feedback entries");
+    addLookbacks (workLookback, 120, Settings::workMemoryLookback(), "work lessons");
+
+    juce::PopupMenu feedbackRetention, workRetention;
+    for (const auto megabytes : { 1, 10, 50, 100 })
+    {
+        feedbackRetention.addItem (200 + megabytes, juce::String (megabytes) + " MB",
+                                   true, megabytes == Settings::feedbackMemoryMaxMb());
+        workRetention.addItem (400 + megabytes, juce::String (megabytes) + " MB",
+                               true, megabytes == Settings::workMemoryMaxMb());
+    }
+
+    juce::PopupMenu menu;
+    menu.addItem (1, "Auto-include feedback in AI context (may use tokens)", true, Settings::feedbackMemoryAutoInclude());
+    menu.addItem (2, "Auto-include work lessons in AI context (may use tokens)", true, Settings::workMemoryAutoInclude());
+    menu.addSubMenu ("Feedback entries available to the AI", feedbackLookback);
+    menu.addSubMenu ("Work lessons available to the AI", workLookback);
+    menu.addSubMenu ("Maximum local feedback storage", feedbackRetention);
+    menu.addSubMenu ("Maximum local work-memory storage", workRetention);
+    menu.addItem (6, "Estimated selected memory: about " + juce::String (AiMemory::estimatedPromptTokens())
+                          + " tokens per request; later turns may count it again.",
+                  false);
+    menu.addSeparator();
+    menu.addItem (4, "Clear current chat (saved feedback stays)", ! chat.isBusy());
+    menu.addItem (3, "Clear all saved feedback...");
+    menu.addItem (5, "Clear all saved work lessons...");
+
+    const juce::Component::SafePointer<AiChatPage> safe (this);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&memoryButton),     [safe, lookbackValues = std::array<int, 8> { 10, 25, 100, 250, 500, 1000, 10000, AiMemory::allEntries }] (int result)
+    {
+        if (safe == nullptr)
+            return;
+
+        if (result == 1)
+        {
+            const auto enable = ! Settings::feedbackMemoryAutoInclude();
+            Settings::setFeedbackMemoryAutoInclude (enable);
+            safe->status.setText (enable ? "Selected local feedback will be included in AI context; it may be counted again on later requests."
+                                         : "Automatic feedback context is off. The AI may still read it with get_memory when relevant.",
+                                  juce::dontSendNotification);
+        }
+        else if (result == 2)
+        {
+            const auto enable = ! Settings::workMemoryAutoInclude();
+            Settings::setWorkMemoryAutoInclude (enable);
+            safe->status.setText (enable ? "Selected local work lessons will be included in AI context; they may be counted again on later requests."
+                                         : "Automatic work-memory context is off. The AI may still read it with get_work_memory when relevant.",
+                                  juce::dontSendNotification);
+        }
+        else if (result >= 100 && result < 108)
+        {
+            const auto count = lookbackValues[result - 100];
+            Settings::setFeedbackMemoryLookback (count);
+            safe->status.setText ("Feedback lookback set to " + (count == AiMemory::allEntries ? juce::String ("ALL") : juce::String (count))
+                                  + ". Estimated context: about " + juce::String (AiMemory::estimatedPromptTokens()) + " tokens.",
+                                  juce::dontSendNotification);
+        }
+        else if (result >= 120 && result < 128)
+        {
+            const auto count = lookbackValues[result - 120];
+            Settings::setWorkMemoryLookback (count);
+            safe->status.setText ("Work-memory lookback set to " + (count == AiMemory::allEntries ? juce::String ("ALL") : juce::String (count))
+                                  + ". Estimated context: about " + juce::String (AiMemory::estimatedPromptTokens()) + " tokens.",
+                                  juce::dontSendNotification);
+        }
+        else if (result >= 201 && result <= 300)
+        {
+            const auto megabytes = result - 200;
+            juce::String error;
+            if (! AiMemory::trimToLimit (AiMemory::file(), megabytes, error))
+            {
+                safe->status.setText (error, juce::dontSendNotification);
+                return;
+            }
+            Settings::setFeedbackMemoryMaxMb (megabytes);
+            safe->status.setText ("Local feedback storage capped at " + juce::String (megabytes) + " MB.", juce::dontSendNotification);
+        }
+        else if (result >= 401 && result <= 500)
+        {
+            const auto megabytes = result - 400;
+            juce::String error;
+            if (! AiMemory::trimWorkToLimit (AiMemory::workFile(), megabytes, error))
+            {
+                safe->status.setText (error, juce::dontSendNotification);
+                return;
+            }
+            Settings::setWorkMemoryMaxMb (megabytes);
+            safe->status.setText ("Local work memory capped at " + juce::String (megabytes) + " MB.", juce::dontSendNotification);
+        }
+        else if (result == 3)
+        {
+            juce::AlertWindow::showAsync (juce::MessageBoxOptions().withIconType (juce::MessageBoxIconType::WarningIcon)
+                                              .withTitle ("Clear shared feedback memory")
+                                              .withMessage ("This deletes saved ratings and comments shared by all AI chats and MCP clients. "
+                                                            "It does not delete messages from the current chat. Continue?")
+                                              .withButton ("Delete feedback").withButton ("Cancel"),
+                                          [safe] (int choice)
+                                          {
+                                              if (safe == nullptr || choice != 1)
+                                                  return;
+                                              juce::String error;
+                                              safe->status.setText (AiMemory::clear (error)
+                                                                        ? "Saved feedback was cleared from the shared local memory."
+                                                                        : error,
+                                                                    juce::dontSendNotification);
+                                          });
+        }
+        else if (result == 4)
+        {
+            juce::AlertWindow::showAsync (juce::MessageBoxOptions().withIconType (juce::MessageBoxIconType::QuestionIcon)
+                                              .withTitle ("Clear current chat")
+                                              .withMessage ("This removes messages from the open conversation only. Saved chats and shared feedback memory are kept. Continue?")
+                                              .withButton ("Clear chat").withButton ("Cancel"),
+                                          [safe] (int choice)
+                                          {
+                                              if (safe == nullptr || choice != 1)
+                                                  return;
+                                              if (safe->chat.isBusy())
+                                              {
+                                                  safe->status.setText ("Stop the current request before clearing this chat.", juce::dontSendNotification);
+                                                  return;
+                                              }
+                                              safe->chat.newChat();
+                                              safe->refresh();
+                                              safe->status.setText ("Current conversation cleared; saved feedback is unchanged.", juce::dontSendNotification);
+                                          });
+        }
+        else if (result == 5)
+        {
+            juce::AlertWindow::showAsync (juce::MessageBoxOptions().withIconType (juce::MessageBoxIconType::WarningIcon)
+                                              .withTitle ("Clear shared work memory")
+                                              .withMessage ("This deletes all locally saved error-recovery lessons shared by chat and MCP. "
+                                                            "Feedback ratings and current-chat messages are not deleted. Continue?")
+                                              .withButton ("Delete work lessons").withButton ("Cancel"),
+                                          [safe] (int choice)
+                                          {
+                                              if (safe == nullptr || choice != 1)
+                                                  return;
+                                              juce::String error;
+                                              safe->status.setText (AiMemory::clearWork (error)
+                                                                        ? "Saved work lessons were cleared from the shared local memory."
+                                                                        : error,
+                                                                    juce::dontSendNotification);
+                                          });
+        }
+    });
+}
+
 void AiChatPage::showChatsMenu()
 {
     auto note = [this] (juce::String text, bool error = false)
@@ -687,18 +956,20 @@ void AiChatPage::resized()
     auto area = getLocalBounds();
 
     auto header = area.removeFromTop (28);
-    title.setBounds (header.removeFromLeft (130));
-    keyButton.setBounds (header.removeFromRight (56).reduced (0, 2));
+    title.setBounds (header.removeFromLeft (112));
+    keyButton.setBounds (header.removeFromRight (48).reduced (0, 2));
     header.removeFromRight (4);
-    undoButton.setBounds (header.removeFromRight (62).reduced (0, 2));
+    undoButton.setBounds (header.removeFromRight (54).reduced (0, 2));
     header.removeFromRight (4);
-    newChatButton.setBounds (header.removeFromRight (86).reduced (0, 2));
+    newChatButton.setBounds (header.removeFromRight (76).reduced (0, 2));
     header.removeFromRight (4);
-    chatsButton.setBounds (header.removeFromRight (62).reduced (0, 2));
+    chatsButton.setBounds (header.removeFromRight (52).reduced (0, 2));
+    header.removeFromRight (4);
+    memoryButton.setBounds (header.removeFromRight (44).reduced (0, 2));
     header.removeFromRight (8);
-    modelBox.setBounds (header.removeFromLeft (170).reduced (0, 2));
+    modelBox.setBounds (header.removeFromLeft (145).reduced (0, 2));
     header.removeFromLeft (4);
-    costBox.setBounds (header.removeFromLeft (80).reduced (0, 2));
+    costBox.setBounds (header.removeFromLeft (72).reduced (0, 2));
     header.removeFromLeft (10);
     status.setBounds (header);
     area.removeFromTop (6);

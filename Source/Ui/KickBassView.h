@@ -7,8 +7,8 @@
 // ANALYZER > KICK+BASS: hur kick och bas läggs ihop. Vågformen för ett slag (kick, bas och summan, summan färgad efter fas: grönt när
 // de drar åt samma håll, rött när de släcker ut varandra), korrelationen per 16-del som en stapelrad (grönt = adderar, blått = neutralt,
 // rött = släcker ut) och spektrumet 20-300 Hz. Under bilden står åtgärdstips ur måtten.
-// Rent läsande: visar den senaste analysens mått (MixAnalysis::PhaseMetrics), ANALYSE startar en ny. SNAPSHOT sparar det som visas
-// som en ruta (högst sex, CLEAR rensar); klicka på en ruta för att se den, med den senaste analysen som grått spöke ovanpå.
+// Rent läsande: visar den senaste analysens mått (MixAnalysis::PhaseMetrics), ANALYSE startar en ny. Varje analys sparas automatiskt
+// som en ruta (högst sex, CLEAR rensar); SNAPSHOT sparar en extra kopia. Klicka på en ruta för att se den, med senaste analysen som spöke.
 // Timern går bara när vyn syns.
 class KickBassView : public juce::Component, private juce::Timer
 {
@@ -16,7 +16,7 @@ public:
     explicit KickBassView (PluginBase& p) : processor (p), analyser (p.getMixAnalyser())
     {
         analyseButton.setTooltip ("Play the whole pattern offline and measure how the kick and the bass add up (the same analysis as REPORT).");
-        snapshotButton.setTooltip ("Save what is shown now as a box (up to " + juce::String (maxSnapshots) + "). Click a box to look at it, with the latest analysis as a grey ghost on top. Useful when comparing before and after a change.");
+        snapshotButton.setTooltip ("Save what is shown now as an extra snapshot. Every new analysis is also added automatically (up to " + juce::String (maxSnapshots) + " total). Click a box to view it; the latest analysis is the rightmost box.");
         clearButton.setTooltip ("Remove all saved snapshots.");
         analyseButton.onClick = [this] { startOrCancel(); };
         snapshotButton.onClick = [this] { takeSnapshot(); };
@@ -138,11 +138,28 @@ private:
             return;
         auto copy = m;
         if ((int) snapshots.size() >= maxSnapshots)
-            snapshots.erase (snapshots.begin());
+            eraseOldestSnapshot();
         snapshots.push_back ({ std::move (copy), ++snapshotCounter });
         selected = -1;
         updateButtons();
         repaint();
+    }
+
+    void eraseOldestSnapshot()
+    {
+        snapshots.erase (snapshots.begin());
+        if (selected == 0)
+            selected = -1;
+        else if (selected > 0)
+            --selected;
+    }
+
+    void rememberAnalysis (const MixAnalysis::PhaseMetrics& result)
+    {
+        if ((int) snapshots.size() >= maxSnapshots)
+            eraseOldestSnapshot();
+        snapshots.push_back ({ result, ++snapshotCounter });
+        updateButtons();
     }
 
     juce::Rectangle<int> thumbRect (int i) const { return { thumbsX + i * (thumbWidth + 4), 3, thumbWidth, 24 }; }
@@ -159,7 +176,8 @@ private:
             g.drawRoundedRectangle (r.toFloat().reduced (0.5f), 3.0f, i == selected ? 1.6f : 1.0f);
             g.setColour (s.phase.sumVsMaxDb < -3.0f ? Theme::master : Theme::textDim);
             g.setFont (10.5f);
-            g.drawText ("#" + juce::String (s.number) + "  " + juce::String (s.phase.sumVsMaxDb, 1) + " dB", r.reduced (4, 1).removeFromTop (12), juce::Justification::centredLeft);
+            const auto label = i == (int) snapshots.size() - 1 ? "LATEST " : "#" + juce::String (s.number) + " ";
+            g.drawText (label + juce::String (s.phase.sumVsMaxDb, 1) + " dB", r.reduced (4, 1).removeFromTop (12), juce::Justification::centredLeft);
             const auto cells = (int) std::min (s.phase.lowCorrelation.size(), s.phase.lowActive.size());
             if (cells <= 0)
                 continue;
@@ -211,7 +229,10 @@ private:
         {
             capture = report.capture; // håller rådatan vid liv medan vyn visar den
             phase = capture->phase;
-            updateButtons();
+            if (phase.valid && ! phase.scopeKick.empty())
+                rememberAnalysis (phase);
+            else
+                updateButtons();
         }
         repaint();
     }

@@ -11,6 +11,19 @@ You control **Kickbase**, a psytrance kick + bass synth, through MCP tools. This
 5. Adjust and repeat. Use `undo` freely. Save with `save_preset` (it appears in the plugin's preset menus; ask the user to listen).
 6. Always tell the user what you changed and why, and that you could only measure, not listen.
 
+## Local feedback memory
+
+Chat and MCP share private files under `Documents\Kickbase\Memory`; the files are stored locally and are not synced. When memory is loaded, the selected text is sent to the user's chosen AI provider. There are two distinct memories:
+
+- **Feedback memory** (`feedback.json`) stores explicit user ratings/comments and the action that was rated. Treat high/low ratings as evidence of preference and result, not as absolute instructions. When a rating is saved in chat or via MCP, review it and propose a concise plan if a change is warranted, but do not alter the sound until the user explicitly approves.
+- **Work memory** (`work.json`) stores short reusable lessons about an error symptom and the approach that successfully resolved it. After changing approach and successfully recovering from a tool error, save one concise lesson with `save_work_lesson`. Do not save unresolved errors, raw logs, code, project files, credentials, or unrelated user data. Reuse a lesson only if it fits the current situation.
+
+Automatic inclusion of either memory is **off by default**. If enabled, selected recent entries become model context; standard APIs are stateless, so context may be included again on later turns (Anthropic may cache eligible prompts). The popup and `set_memory_settings` configure inclusion, lookback (10, 25, 100, 250, 500, 1000, 10000, or ALL), and separate 1-100 MB retention caps; oldest entries are pruned first. The popup estimates tokens from stored text (roughly characters/4 plus metadata); this is approximate and provider tokenization/caching varies. Retrieval is capped to a safe estimated context budget and returns the number omitted.
+
+When automatic inclusion is off, do not fetch memories at every conversation start. Use `get_memory` or `get_work_memory` when the user asks or the records clearly help the current task. Both tools accept the configured limit or an explicit count/ALL and return only local records. Check `get_memory_settings` when asked about settings. `clear_memory` deletes all saved feedback; `clear_work_memory` deletes all work lessons. Both are shared by every chat and MCP client: explain the scope and require an explicit user request before clearing. NEW CHAT clears only the current conversation.
+
+Only call `save_feedback` when the user explicitly provides a rating from 1 to 10. Never store API keys, project files, or unrelated personal data.
+
 Access key: if the user set an access key in the plugin (SETTINGS tab, AI LINK), the bridge needs the same key in its environment (`KICKBASE_KEY`, or `install-mcp.ps1 -Key <key>`), otherwise every call is refused with an "access key" error: tell the user.
 
 Instances: `list_instances` shows `headless` (private, no DAW, always available) and any Kickbase in a DAW whose **AI button** (top bar) is on. `use_instance` switches. Changes in a DAW instance are audible immediately; `render_preview` still renders offline from a copy.

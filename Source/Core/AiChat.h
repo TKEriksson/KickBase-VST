@@ -15,6 +15,9 @@ public:
         Kind kind = Kind::note;
         juce::String text;
         std::vector<juce::Image> images; // t.ex. spektrogrammet från render_preview
+        bool feedbackAvailable = false;
+        juce::String feedbackId, feedbackAction, feedbackComment;
+        int feedbackRating = 0;
     };
 
     explicit AiChat (PluginBase& processor);
@@ -53,6 +56,8 @@ public:
     std::atomic<int> version { 0 };         // ökas när något ändrats, så att gränssnittet ritar om
 
     void addEntry (Entry entry);            // lägger ett inlägg i samtalet (används internt, och av tester)
+    bool rateEntry (const juce::String& id, int rating, const juce::String& comment, juce::String& error);
+    bool reviewFeedback (const juce::String& id, juce::String& error);
 
     // Varning innan ett dyrt verktyg: tom när inget väntar. answerConfirm: 1 kör, 2 hoppa över, 3 kör och fråga inte mer i det här samtalet.
     juce::String getPendingConfirm() const;
@@ -90,6 +95,9 @@ private:
     PluginBase& processor;
     ToolLayer tools;
     juce::Array<juce::var> messages; // samtalet i API:ets format (bara bakgrundstråden och send/newChat när den står stilla rör den)
+    juce::String pendingFeedbackAction; // ljudändringar som inväntar AI:ns sammanfattning
+    juce::String pendingFeedbackReviewPrompt;
+    std::atomic<bool> feedbackReviewMode { false };
 
     mutable juce::CriticalSection lock;
     std::vector<Entry> log;
