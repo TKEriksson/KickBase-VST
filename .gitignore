@@ -1,4 +1,4 @@
-build/
+﻿build/
 .vs/
 .vscode/*
 !.vscode/settings.json
@@ -16,5 +16,3 @@ __pycache__/
 Resources/strudel/node_modules/
 Resources/strudel/strudel.bundle.js
 
-# Interna dokument och arbetsanteckningar (bara lokalt)
-docs/
