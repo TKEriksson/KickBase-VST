@@ -95,3 +95,5 @@ Kvar, i ordning:
 6. Därefter CI, merge, release, handoff. MCP i Copilot desktop: Tobias lägger till KickbaseMcp.exe själv i appens MCP-inställningar (%LOCALAPPDATA%\Kickbase\KickbaseMcp.exe, KICKBASE_KEY vid behov).
 
 7. **GHOST NOTES i pianorullen (Tobias 22 okt):** multiselect-dropdown GHOST NOTES där man kryssar i vilka andra instrument/rader som ska visas i den öppna rullen, i olika färger (instrumentets färg), halvt genomskinliga eller bara konturer, så man ser vilket instrument noterna tillhör. Endast visning (ingen redigering av ghost-noter). Tas efter MIX/LOCK/FLOAT/slicer, före release om tiden räcker.
+
+8. **Fönsterstorlek i sidled (Tobias 22 okt):** plugin-fönstret (InstrumentEditor.cpp:43-45, FxEditor.cpp:35-37) har fast bildförhållande (setFixedAspectRatio) och kan bara skalas proportionellt. Tobias vill även kunna ändra bredden i sidled; startstorleken/bildförhållandet ska vara som hans nu. Tolkning: ta bort låst aspect ratio, behåll standardstorleken, låt layouten fylla extra bredd (pianorulle, MIX, vågformer). Bekräfta med Tobias om 'ration' menade något annat.
