@@ -25,6 +25,8 @@ LiveCodePage::LiveCodePage (PluginBase& processor) : processor (processor), tool
     markOverlay.onPaint = [this] (juce::Graphics& g) { paintMarks (g); };
     editor.addAndMakeVisible (markOverlay);
     document.addListener (this);
+    completionKeys.handler = [this] (const juce::KeyPress& k, juce::Component* c) { return completionKey (k, c); };
+    editor.addKeyListener (&completionKeys);
 
     errorLog.setMultiLine (true, true);
     errorLog.setReadOnly (true);
@@ -147,8 +149,138 @@ void LiveCodePage::resized()
     errorLog.setBounds (area);
 }
 
-void LiveCodePage::codeDocumentTextInserted (const juce::String&, int) { marks.clear(); codeChanged(); }
-void LiveCodePage::codeDocumentTextDeleted (int, int) { marks.clear(); codeChanged(); }
+void LiveCodePage::codeDocumentTextInserted (const juce::String& text, int)
+{
+    marks.clear();
+    codeChanged();
+    if (ownEdit) return;
+    if (text == "." && completionEditor == nullptr)
+        juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<LiveCodePage> (this)]
+        {
+            if (safe != nullptr && safe->editor.hasKeyboardFocus (true)) safe->openCompletion (safe->editor);
+            else if (safe != nullptr && safe->floatWindow != nullptr)
+                if (auto* content = dynamic_cast<FloatContent*> (safe->floatWindow->getContentComponent()))
+                    if (content->editor.hasKeyboardFocus (true)) safe->openCompletion (content->editor);
+        });
+    else if (completionEditor != nullptr)
+        juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<LiveCodePage> (this)] { if (safe != nullptr) safe->refreshCompletion(); });
+}
+
+void LiveCodePage::codeDocumentTextDeleted (int, int)
+{
+    marks.clear();
+    codeChanged();
+    if (completionEditor != nullptr)
+        juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<LiveCodePage> (this)] { if (safe != nullptr) safe->refreshCompletion(); });
+}
+
+void LiveCodePage::CompletionPopup::paint (juce::Graphics& g)
+{
+    g.fillAll (Theme::panel.darker (0.4f));
+    g.setColour (Theme::panelBorder);
+    g.drawRect (getLocalBounds());
+    const auto rows = juce::jmin ((int) items.size(), maxRows);
+    const auto first = juce::jlimit (0, juce::jmax (0, (int) items.size() - rows), selected - rows + 1);
+    g.setFont (juce::Font (juce::FontOptions (juce::Font::getDefaultMonospacedFontName(), 13.0f, juce::Font::plain)));
+    for (int r = 0; r < rows; ++r)
+    {
+        const auto i = first + r;
+        const auto area = juce::Rectangle<int> (1, r * rowHeight, getWidth() - 2, rowHeight);
+        if (i == selected) { g.setColour (Theme::mix.withAlpha (0.35f)); g.fillRect (area); }
+        g.setColour (Theme::text);
+        g.drawText (items[(size_t) i].label, area.reduced (6, 0), juce::Justification::centredLeft, true);
+    }
+    if (selected >= 0 && selected < (int) items.size())
+    {
+        g.setColour (Theme::textDim);
+        g.setFont (12.0f);
+        g.drawFittedText (items[(size_t) selected].detail, 6, rows * rowHeight + 2, getWidth() - 12, detailHeight - 4, juce::Justification::topLeft, 2);
+    }
+}
+
+void LiveCodePage::openCompletion (juce::CodeEditorComponent& target)
+{
+    if (completionEditor != &target)
+    {
+        closeCompletion();
+        completionEditor = &target;
+        target.addAndMakeVisible (completion);
+        completion.onAccept = [this] { acceptCompletion(); };
+    }
+    refreshCompletion();
+}
+
+void LiveCodePage::closeCompletion()
+{
+    completionEditor = nullptr;
+    if (auto* parent = completion.getParentComponent())
+        parent->removeChildComponent (&completion);
+}
+
+void LiveCodePage::refreshCompletion()
+{
+    if (completionEditor == nullptr) return;
+    LiveCodeComplete::Source src;
+    for (auto& kv : tools.liveCodeParameters())
+        if (! kv.first.startsWith ("meter."))
+            src.paramIds.push_back (kv.first);
+    src.effectCatalog = tools.liveCodeEffects();
+    const auto caret = completionEditor->getCaretPos().getPosition();
+    auto result = LiveCodeComplete::complete (document.getAllContent(), caret, src);
+    if (result.items.empty()) return closeCompletion();
+    completion.items = std::move (result.items);
+    completion.replaceFrom = result.replaceFrom;
+    completion.selected = 0;
+    const auto rows = juce::jmin ((int) completion.items.size(), CompletionPopup::maxRows);
+    const auto w = juce::jmin (460, completionEditor->getWidth() - 10);
+    const auto h = rows * CompletionPopup::rowHeight + CompletionPopup::detailHeight;
+    const auto r = completionEditor->getCharacterBounds (completionEditor->getCaretPos());
+    auto y = r.getBottom() + 2;
+    if (y + h > completionEditor->getHeight()) y = juce::jmax (0, r.getY() - h - 2);
+    completion.setBounds (juce::jlimit (0, juce::jmax (0, completionEditor->getWidth() - w), r.getX()), y, w, h);
+    completion.toFront (false);
+    completion.repaint();
+}
+
+void LiveCodePage::acceptCompletion()
+{
+    if (completionEditor == nullptr || completion.items.empty()) return;
+    const auto item = completion.items[(size_t) juce::jlimit (0, (int) completion.items.size() - 1, completion.selected)];
+    auto* target = completionEditor;
+    const auto from = completion.replaceFrom, caret = target->getCaretPos().getPosition();
+    closeCompletion();
+    document.newTransaction();
+    document.replaceSection (from, caret, item.insert);
+    auto offset = item.insert.length();
+    if (const auto open = item.insert.indexOfChar ('('); open >= 0 && item.insert.endsWithChar (')'))
+        offset = open + 1 + (item.insert.substring (open + 1).startsWithChar ('"') ? 1 : 0);
+    target->moveCaretTo (juce::CodeDocument::Position (document, from + offset), false);
+    target->grabKeyboardFocus();
+}
+
+bool LiveCodePage::completionKey (const juce::KeyPress& key, juce::Component* origin)
+{
+    auto* target = dynamic_cast<juce::CodeEditorComponent*> (origin);
+    if (key.getKeyCode() == juce::KeyPress::spaceKey && key.getModifiers().isCtrlDown() && target != nullptr)
+    {
+        openCompletion (*target);
+        return true;
+    }
+    if (completionEditor == nullptr) return false;
+    const auto code = key.getKeyCode();
+    const auto count = (int) completion.items.size();
+    if (code == juce::KeyPress::escapeKey) { closeCompletion(); return true; }
+    if (code == juce::KeyPress::downKey || code == juce::KeyPress::upKey)
+    {
+        completion.selected = (completion.selected + (code == juce::KeyPress::downKey ? 1 : count - 1)) % juce::jmax (1, count);
+        completion.repaint();
+        return true;
+    }
+    if (code == juce::KeyPress::returnKey || code == juce::KeyPress::tabKey) { acceptCompletion(); return true; }
+    if (code == juce::KeyPress::leftKey || code == juce::KeyPress::rightKey || code == juce::KeyPress::pageUpKey || code == juce::KeyPress::pageDownKey)
+        closeCompletion();
+    return false;
+}
 
 // 30 Hz: vilka noter låter nu? Spelpositionen är i tick i radens loop (som pianorullens markör); marks räknades över `cycles` takter.
 void LiveCodePage::updateMarks()
@@ -314,6 +446,7 @@ void LiveCodePage::toggleFloat()
 {
     if (floatWindow != nullptr)
     {
+        closeCompletion();
         floatWindow.reset();
         floatButton.setToggleState (false, juce::dontSendNotification);
         return;
@@ -327,6 +460,7 @@ void LiveCodePage::toggleFloat()
     content->editor.setColour (juce::CodeEditorComponent::lineNumberBackgroundId, Theme::panel.darker (0.3f));
     content->editor.setColour (juce::CodeEditorComponent::lineNumberTextId, Theme::textDim);
     content->editor.setColour (juce::CodeEditorComponent::highlightColourId, Theme::mix.withAlpha (0.25f));
+    content->editor.addKeyListener (&completionKeys);
     content->setSize (520, 420);
 
     floatWindow = std::make_unique<FloatWindow>();

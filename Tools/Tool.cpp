@@ -26,6 +26,7 @@
 #include "../Source/Core/OfflineRender.h"
 #include "../Source/Core/ToolLayer.h"
 #include "../Source/Core/LiveCode.h"
+#include "../Source/Core/LiveCodeComplete.h"
 #include "../Source/Ui/LiveCodePage.h"
 #include "../Source/Core/AiChat.h"
 #include "../Source/Core/AiMemory.h"
@@ -270,6 +271,26 @@ namespace
         processor.prepareToPlay (renderRate, blockSize);
         auto failed = false;
         auto check = [&failed] (bool ok, const juce::String& what) { std::printf ("%s: %s\n", ok ? "ok" : "FEL", what.toRawUTF8()); failed |= ! ok; };
+        {
+            LiveCodeComplete::Source src;
+            src.paramIds = { "bass1Cutoff", "bass1Resonance", "kickDecay" };
+            auto has = [] (const LiveCodeComplete::Result& r, const juce::String& label) { for (auto& i : r.items) if (i.label == label) return true; return false; };
+            const juce::String t1 = "$: s(\"i1\").";
+            const auto a = LiveCodeComplete::complete (t1, t1.length(), src);
+            check (has (a, "lfo") && has (a, "note") && a.replaceFrom == t1.length(), "AUTOCOMPLETE: metoder efter s(...).");
+            const juce::String t2 = "instr1.Cu";
+            const auto b = LiveCodeComplete::complete (t2, t2.length(), src);
+            check (has (b, "Cutoff") && ! has (b, "Resonance"), "AUTOCOMPLETE: prefix filtrerar");
+            const juce::String t3 = "instr1.";
+            const auto c = LiveCodeComplete::complete (t3, t3.length(), src);
+            check (has (c, "Cutoff") && has (c, "lock") && ! has (c, "kickDecay"), "AUTOCOMPLETE: instr1. ger parametrar");
+            const juce::String t4 = "instr1.Cutoff.";
+            check (has (LiveCodeComplete::complete (t4, t4.length(), src), "set"), "AUTOCOMPLETE: parameter ger set/get");
+            const juce::String t5 = "ins";
+            check (has (LiveCodeComplete::complete (t5, t5.length(), src), "instr1"), "AUTOCOMPLETE: globala namn");
+            const juce::String t6 = "meter.";
+            check (has (LiveCodeComplete::complete (t6, t6.length(), src), "outputPeak"), "AUTOCOMPLETE: meter.");
+        }
         auto run = [&] (const juce::String& code, int cycles = 1)
         {
             ToolLayer tools (processor);
