@@ -112,3 +112,14 @@ Kvar, i ordning:
 15. **Gjort: zoom via rullningslisterna i pianorullen** (PianoRoll.h ZoomScrollBar): dra i tummens början/slut för att zooma tid (nedre listan) eller radhöjd (högra listan, nu 7..60 px). Rättelse till punkt 10: radhöjd fanns redan (changeRowHeight, radhöjd-knapparna i verktygsraden). Ej provat i UI.
 
 16. **Gjort: MIX** (an-master): nya parametrar sist (aWidth,bWidth,cWidth,sampleWidth,fmWidth; OSC 0..200 %, SAMPLE/FM 100..200 %, 100 % = ljudet som förut, rendersig oförändrad), WIDTH-ratt i varje strip utom SUB (sub är mono med avsikt), dB-mätare per källa (källan ensam via egen synth, topp -60..0 dB, röd över -3), zoom i COMBINED WAVEFORM (hjul = tid, Shift+hjul = höjd, dubbelklick = återställ). Polytest utökad (4 kontroller). Ej provat i UI; mätaren visar ensam källas toppnivå, inte liveljud.
+
+17. **Gjort: LOCK-raden och FLOAT-fönstret** (LiveCodePage): raden heter "LOCK ROW:", knapparna är bredare och orange när låsta, en text visar "Locked: 1, 3" eller "Nothing locked". FLOAT-fönstret har nu alla knappar från LIVE CODE (AUTO, STOP, CREATE, CODE ONLY, LOCK, KOD/KONSOL, felrad) och går att ändra storlek (min 560x260). Ej provat i UI.
+18. **Gjort: SAMPLE-etiketter** (Modules.cpp): SLICER- och REVERSE-knapparna har text; filter-knappen är bredare så att "FILTER" inte klipps (var "FILTE"). Commit `dc6edef`. Ej provat i UI.
+19. **EJ GJORT (planen, nästa omgång):**
+    - Pianorollen i eget fönster (POP OUT): eget fönster med minimibredd, fritt i höjd och bredd, delar genvägarna. VST-fönstret ska INTE kunna ändras i bredd (beslut: det stökar till designen).
+    - GHOST NOTES: flervalsmeny i pianorollen, andra instruments toner visas halvgenomskinliga i deras färger, bara visning. Tonerna hämtas med `Pattern::note(layer, tick)` / `getStack`; färger från `layerColours`.
+    - Slicern: hoppad i denna release. Spec: `docs/work/slicer-ui-spec.md` (steg 1-4: etiketter + SHOW SAMPLE|SLICES + lyssna per slice; egen pianorulle med "Slice 1, 2, 3"; dra gränser, zoom, MANUAL; AUTO SLICE-dialog med CREATE).
+    - MCP i Copilot desktop måste Tobias lägga till själv: `C:\Users\hunga\AppData\Local\Kickbase\KickbaseMcp.exe`, inga argument, `KICKBASE_KEY` bara om nyckel satts under SETTINGS > AI LINK; pluginet måste vara öppet i DAW.
+20. **Release:** byggd från `an-master` (se HANDOFF-release.md). Tester gröna, baslinjer oförändrade (Init 94f0a1b6bd8a3c7f, instr 1 f7139084f716c127, tung instr 10 6a3e65e696d14d10, tb303 03fbeb761547e195).
+
+21. **Plan (ej byggt): två sidechains per frekvensband** (LOW för bas/kick-tail, MID-HI för punch), var och en med egen kurva/djup/release. Se plan-v2.md.

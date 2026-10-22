@@ -71,3 +71,12 @@ För Copilot eller annan AI som tar över. Läs först: `CLAUDE.md`, `docs/work/
 - Release-artefakter: KickBase-VST-ci\build\Release (Kickbase.vst3, Kickbase FX.vst3, KickbaseMcp). installRel.ps1 pekar nu på -ci (otrackad, committa inte).
 - Kvar: Tobias kör installRel.bat och testar i FL Studio (MIX-fliken, AP/START, HALFTIME, KEEP/COMPARE, shimmer, Maximizer MODE, Low Multiplier, autocomplete Ctrl+Space och efter '.'). Ej hörtestat/sett än.
 - Valfritt senare: ta bort /STACK:8388608 (CMakeLists.txt:243), städa -f2/-lc/-lce/-lcui/-mx/-rel, AGENT_GUIDE ('15 types').
+
+
+## NY STATUS 2026-10-22 kväll (Copilot, ersätter äldre läge ovan)
+
+- Arbetssätt: kod på `an-master` i `KickBase-VST-ai`; CI och releasebygge i `KickBase-VST-ci` (`ci-run.ps1`, `ci-build.bat`); docs i main. Merge till main med `--no-ff` efter grön CI.
+- Gjort efter Tobias FL-test: pianorulle (loop, sökmarkör, audition, ram, egen knapp i PREVIEWS, Space/Shift+Space, mittenklick-panorering, zoom via rullningslisternas ändar), MIX (WIDTH-rattar, dB-mätare, vågformszoom), LOCK-rad och FLOAT (alla knappar, resize), SHOW IN SPECTRUM, SAMPLE-etiketter. Detaljer: `PROGRESS-copilot-2026-10-22.md` punkt 1-20.
+- Inget av detta är provat i UI av mig; Tobias testar efter `installRel.bat`.
+- PLAN / kvar att göra: (1) pianoroll i eget fönster (POP OUT), (2) GHOST NOTES, (3) sample-slicern enligt `slicer-ui-spec.md`, (4) ta bort `/STACK:8388608` (`CMakeLists.txt:243`), (5) städa gamla worktrees (`-f2`, `-lc`, `-lce`, `-lcui`, `-mx`, `-rel`) först när Tobias bekräftat, (6) AGENT_GUIDE-texten ("15 types").
+- Regler gäller som förut: nya parametrar sist, helpcheck kräver hjälptext, inga nycklar, ingen `installRel.*` i git.

@@ -365,3 +365,5 @@ Se [work/PROGRESS.md](work/PROGRESS.md).
 
 
 **Slicer-UI (Tobias 21 okt, återupptaget 22 okt):** se docs/work/slicer-ui-spec.md. Fyra steg: etiketter + SHOW SAMPLE/SLICES + lyssna per slice; OWN PIANO ROLL (Slice 1, 2 … som toner); dra gränser + zoom + MANUAL; AUTO SLICE-dialog med CREATE. Ännu inte byggt.
+
+- **Idé (Tobias, 22 okt): två sidechains för olika frekvensband.** Kick och bas möts mest i kickens svans (tail), medan kick mot mid/hi mest möts i punchen. Därför bör sidechainen kunna delas upp i två band med var sin kurva/djup/release, till exempel LOW (bas) och MID-HI. Inte byggt; läggs till efter slicern och pianorollens POP OUT/GHOST NOTES. Nya parametrar sist (`docs/ENGINEERING.md`).
