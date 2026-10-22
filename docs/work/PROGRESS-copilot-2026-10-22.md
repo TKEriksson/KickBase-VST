@@ -110,3 +110,5 @@ Kvar, i ordning:
 14. **Gjort: punkt 13** (SpectrumPage): dubbelklick i rapporten hoppar inte längre; ny knapp SHOW IN SPECTRUM (visas i rapportvyn) öppnar valt fynd i spektrumet. Ej provat i UI.
 
 15. **Gjort: zoom via rullningslisterna i pianorullen** (PianoRoll.h ZoomScrollBar): dra i tummens början/slut för att zooma tid (nedre listan) eller radhöjd (högra listan, nu 7..60 px). Rättelse till punkt 10: radhöjd fanns redan (changeRowHeight, radhöjd-knapparna i verktygsraden). Ej provat i UI.
+
+16. **Gjort: MIX** (an-master): nya parametrar sist (aWidth,bWidth,cWidth,sampleWidth,fmWidth; OSC 0..200 %, SAMPLE/FM 100..200 %, 100 % = ljudet som förut, rendersig oförändrad), WIDTH-ratt i varje strip utom SUB (sub är mono med avsikt), dB-mätare per källa (källan ensam via egen synth, topp -60..0 dB, röd över -3), zoom i COMBINED WAVEFORM (hjul = tid, Shift+hjul = höjd, dubbelklick = återställ). Polytest utökad (4 kontroller). Ej provat i UI; mätaren visar ensam källas toppnivå, inte liveljud.
