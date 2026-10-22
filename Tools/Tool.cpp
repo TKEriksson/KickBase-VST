@@ -1244,6 +1244,25 @@ namespace
             check ((bool) answer["ok"] && answer["data"]["status"].toString() == "done" && answer["data"]["findings"].isArray(), "get_mix_report ger rapporten (utan att vänta i anropet)");
             check (answer["data"]["kick_tail_hz"].operator double() > 25.0, "rapporten kommer med i svaret (data)");
             {
+                // Mätläge: okänt värde avvisas, dry kör på kopian och lämnar originalets duckning orörd.
+                check (! (bool) tools.call ("analyse_mix", juce::JSON::parse ("{\"tap\":\"after_master\"}"))["ok"], "analyse_mix: okänt tap avvisas");
+                const auto duckBefore = processor.apvts.getRawParameterValue ("bass1Duck")->load();
+                const auto dry = tools.call ("analyse_mix", juce::JSON::parse ("{\"tap\":\"dry\"}"));
+                check ((bool) dry["ok"] && dry["data"]["status"].toString() == "started", "analyse_mix tap=dry startar");
+                auto dryAnswer = tools.call ("get_mix_report", juce::JSON::parse ("{}"));
+                for (int i = 0; i < 600 && dryAnswer["data"]["status"].toString() != "done"; ++i)
+                {
+                    juce::Thread::sleep (100);
+                    dryAnswer = tools.call ("get_mix_report", juce::JSON::parse ("{}"));
+                }
+                check (dryAnswer["data"]["status"].toString() == "done", "dry-analysen blir klar");
+                check (processor.apvts.getRawParameterValue ("bass1Duck")->load() == duckBefore, "dry-analysen rör inte originalets duckning");
+            }
+            answer = tools.call ("analyse_mix", juce::JSON::parse ("{}"));
+            for (int i = 0; i < 600 && tools.call ("get_mix_report", juce::JSON::parse ("{}"))["data"]["status"].toString() != "done"; ++i)
+                juce::Thread::sleep (100);
+            answer = tools.call ("get_mix_report", juce::JSON::parse ("{}"));
+            {
                 // Samma analys delas med fliken i pluginet: den som verktygen startade är den som ligger hos processorn.
                 check (processor.getMixAnalyser().hasReport() && processor.getMixAnalyser().getReport().valid, "analysen ligger hos processorn (delas med ANALYZER-fliken)");
                 const auto measured = answer["data"]["kick_tail_hz"].operator double(), design = answer["data"]["kick_tail_design_hz"].operator double();

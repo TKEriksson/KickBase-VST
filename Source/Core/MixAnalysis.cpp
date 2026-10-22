@@ -2466,6 +2466,28 @@ namespace MixAnalysis
         return copy;
     }
 
+    void applyTap (PluginBase& copy, int tap)
+    {
+        if (tap != 1)
+            return;
+
+        auto set = [&copy] (const juce::String& id, float value)
+        {
+            if (auto* parameter = copy.apvts.getParameter (id))
+                parameter->setValueNotifyingHost (parameter->convertTo0to1 (value));
+        };
+        for (int source = 0; source <= numInstruments; ++source)
+        {
+            const auto prefix = SourceEq::prefixFor (source);
+            set (prefix + "EqHp", 20.0f);
+            set (prefix + "EqLp", 20000.0f);
+            for (int band = 1; band <= Effects::eqBands; ++band)
+                set (prefix + "Eq" + juce::String (band) + "G", 0.0f);
+            if (source > 0)
+                set (prefix + "Duck", 0.0f);
+        }
+    }
+
     Report run (PluginBase& copy, double bpm, int keyNote, const Options& options, const Reference* reference,
                 const std::function<void (float)>& progress, const std::function<bool()>& cancelled)
     {
@@ -2820,6 +2842,7 @@ bool MixAnalyser::start (PluginBase& source, const MixAnalysis::Options& newOpti
     bpm = std::max (40.0, (double) source.transportStatus.bpm.load());
     keyNote = source.transportStatus.keyNote.load();
     copy = MixAnalysis::prepareCopy (source);
+    MixAnalysis::applyTap (*copy, options.tap);
     progress = 0.0f;
     running = true;
     startThread (juce::Thread::Priority::background); // Windows THREAD_PRIORITY_IDLE: bara CPU som annars står oanvänd (fråga 3), DAW:en går före

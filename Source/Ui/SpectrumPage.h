@@ -131,7 +131,7 @@ private:
     juce::TextButton analyserButton { "ANALYSER" }, collisionsButton { "COLLISIONS" }, harmonicsButton { "HARMONICS" }, eqButton { "EQ" };
     juce::TextButton analyseButton { "ANALYSE" }, referenceButton { "REFERENCE" }, exportButton { "EXPORT" };
     juce::TextButton viewSpectrumButton { "SPECTRUM" }, viewReportButton { "ANALYSIS + REPORT" }; // flikarna i fliken
-    juce::ComboBox sensitivityBox, eqTargetBox, speedBox;
+    juce::ComboBox sensitivityBox, tapBox, eqTargetBox, speedBox;
     juce::TextButton showButton { "SHOW" }; // flervalslista över vilka källor som visas
     std::array<Source, numSources> sources;
 
