@@ -76,5 +76,6 @@ private:
     juce::var mods;
     std::vector<Mark> marks;
     static juce::var collectMods (const std::vector<Hap>& haps);
+    void addControlWrites (const std::vector<Hap>& haps); // Strudel .lpf/.pan ... som parameterskrivningar
     juce::Result load();
 };

@@ -301,6 +301,14 @@ namespace
         r = run ("instr1.Cutoff.set(1300);\n\nnote(\"c2\").s(\"i1\")");
         r = run ("instr1.cutoff.set(500);\n\nnote(\"c2\").s(\"i1\")");
         check (! (bool) r["ok"] || std::abs (cutoffNow() - 1300.0f) < 1.0f, "okänt (fel skiftläge) namn ändrar ingen parameter");
+        r = run ("note(\"c2\").s(\"i1\").lpf(700)");
+        check ((bool) r["ok"] && std::abs (cutoffNow() - 700.0f) < 1.0f, "Strudel .lpf(700) blir bass1Cutoff 700 (genväg)");
+        r = run ("instr1.Cutoff.set(900);\n\nnote(\"c2\").s(\"i1\").lpf(700)");
+        check ((bool) r["ok"] && std::abs (cutoffNow() - 900.0f) < 1.0f, "ett uttryckligt .set vinner över .lpf");
+        r = run ("note(\"c2\").s(\"i1\").pan(1).release(0.05)");
+        check ((bool) r["ok"] && std::abs (processor.apvts.getRawParameterValue ("bass1APan")->load() - 1.0f) < 0.01f, "Strudel .pan(1) blir bass1APan 1");
+        check (std::abs (processor.apvts.getRawParameterValue ("bass1Release")->load() - 50.0f) < 0.5f, "Strudel .release(0.05 s) blir bass1Release 50 ms");
+        r = run ("instr1.Cutoff.set(1300);\n\nnote(\"c2\").s(\"i1\")");
         {
             auto bad = juce::var (new juce::DynamicObject());
             bad.getDynamicObject()->setProperty ("bass1cutoff", 500);

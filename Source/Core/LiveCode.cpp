@@ -297,6 +297,49 @@ juce::var LiveCode::collectMods (const std::vector<Hap>& haps)
     return out;
 }
 
+// Strudels egna ljudmetoder som genvägar: .lpf/.cutoff, .lpq/.resonance, .attack/.decay/.release (sekunder), .sustain, .distort/.shape, .pan (0..1)
+// på ett instrument blir samma skrivning som instrN.X.set(..). Per körning, inte per not: första hapens värde per instrument och parameter gäller.
+// Ett uttryckligt .set på samma parameter vinner. Kicken har andra parametrar och hoppas över.
+void LiveCode::addControlWrites (const std::vector<Hap>& haps)
+{
+    static const struct { const char* control; const char* field; double scale, offset; } table[] = {
+        { "cutoff", "Cutoff", 1.0, 0.0 },    { "resonance", "Resonance", 1.0, 0.0 },
+        { "attack", "Attack", 1000.0, 0.0 }, { "decay", "Decay", 1000.0, 0.0 },
+        { "sustain", "Sustain", 1.0, 0.0 },  { "release", "Release", 1000.0, 0.0 },
+        { "distort", "Drive", 1.0, 0.0 },    { "shape", "Drive", 1.0, 0.0 },
+        { "pan", "APan", 2.0, -1.0 }
+    };
+    juce::StringArray done;
+    for (auto& h : haps)
+    {
+        const auto s = h.value["s"].toString().toLowerCase();
+        if (s == "bd" || s == "kick")
+            continue;
+        int layer = 0;
+        if (s.length() > 1 && s.startsWithChar ('i') && s.substring (1).containsOnly ("0123456789"))
+            layer = juce::jlimit (1, 10, s.substring (1).getIntValue()) - 1;
+        for (const auto& entry : table)
+        {
+            const auto value = h.value[entry.control];
+            if (! (value.isInt() || value.isInt64() || value.isDouble()))
+                continue;
+            const auto id = "bass" + juce::String (layer + 1) + entry.field;
+            if (done.contains (id))
+                continue;
+            done.add (id);
+            auto explicitSet = false;
+            for (auto& w : paramWrites)
+                explicitSet = explicitSet || w["id"].toString() == id;
+            if (explicitSet)
+                continue;
+            auto* w = new juce::DynamicObject();
+            w->setProperty ("id", id);
+            w->setProperty ("value", (double) value * entry.scale + entry.offset);
+            paramWrites.add (juce::var (w));
+        }
+    }
+}
+
 juce::var LiveCode::create (const juce::String& code, int cycles, juce::Result& result)
 {
     mods = juce::var (juce::Array<juce::var>{});
@@ -305,6 +348,7 @@ juce::var LiveCode::create (const juce::String& code, int cycles, juce::Result& 
     auto haps = query (0, cycles, result);
     if (result.failed()) return {};
     mods = collectMods (haps);
+    addControlWrites (haps);
     marks.clear();
     for (auto& h : haps)
     {
