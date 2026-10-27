@@ -21,6 +21,9 @@ public:
 
     void setAccent (juce::Colour colour) { accent = colour; repaint(); }
 
+    // Spela/stopp-ikon (triangel i vila, kvadrat medan det spelar) i stället för högtalaren; högtalaren behålls för mute/lyssna på raderna.
+    void setPlayIcon (bool shouldUsePlayIcon) { playIcon = shouldUsePlayIcon; repaint(); }
+
     void paint (juce::Graphics& g) override
     {
         const auto bounds = getLocalBounds().toFloat().reduced (1.0f);
@@ -30,9 +33,21 @@ public:
         g.setColour (lit ? accent : Theme::panelBorder.withAlpha (hover ? 1.0f : 0.8f));
         g.drawRoundedRectangle (bounds, 5.0f, lit ? 1.6f : 1.0f);
 
-        // Högtalare med ljudvågor, centrerad.
         const auto c = bounds.getCentre();
         const auto s = std::min (bounds.getWidth(), bounds.getHeight()) / 26.0f;
+        if (playIcon)
+        {
+            g.setColour (lit ? juce::Colours::white : Theme::text.withAlpha (0.9f));
+            if (lit)
+                g.fillRect (juce::Rectangle<float> (10.0f * s, 10.0f * s).withCentre (c));
+            else
+                g.fillPath ([&] { juce::Path p; p.addTriangle (c.x - 4.5f * s, c.y - 6.5f * s, c.x - 4.5f * s, c.y + 6.5f * s, c.x + 6.5f * s, c.y); return p; }());
+            if (latched)
+                g.fillEllipse (juce::Rectangle<float> (4.0f, 4.0f).withPosition (bounds.getRight() - 6.0f, bounds.getY() + 2.0f));
+            return;
+        }
+
+        // Högtalare med ljudvågor, centrerad.
         juce::Path body;
         body.startNewSubPath (c.x - 8.0f * s, c.y - 3.5f * s);
         body.lineTo (c.x - 4.0f * s, c.y - 3.5f * s);
@@ -97,7 +112,7 @@ public:
     void mouseExit (const juce::MouseEvent&) override  { hover = false; repaint(); }
 
 private:
-    bool active = false, held = false, latched = false, hover = false;
+    bool active = false, held = false, latched = false, hover = false, playIcon = false;
     juce::Colour accent = Theme::pattern;
 };
 

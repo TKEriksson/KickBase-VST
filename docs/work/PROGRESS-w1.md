@@ -237,3 +237,8 @@ Test: Debug `build.bat Debug all` + "Alla tester gick igenom"; paramtest 0 fel; 
 **Hur:** `TabbedPanel.h` (`pillWidth`, `extrasRow`, `crumbArea`, `crumbSuffix`, `setStripLabel`), `KickbaseLookAndFeel.cpp:313-330` (egenskapen "noshrink"), `AnalyzerPage.h` (remsa + `currentViewName`), `InstrumentEditor.cpp` (synths-höjd 540→522 så sidorna får samma höjd som förut, TOOLS).
 **Test:** Debug-bygge + alla tester gick igenom. Inga parametrar ändrade, rendersig oförändrad (bara UI).
 **FL-punkter:** kolla att alla flikar ryms i bredd (inga avklippta texter), KICK/INSTRUMENT/PATTERN rad 2 ser rätt ut, brödsmulan ändras när ANALYZER-underfliken byts, ström-knappen på KICK-fliken, förhandsknappen längst till höger i rad 1.
+
+## PLAY-grupp (Arbetare 1, 27 okt)
+Kompakt ruta: tempo/takt + PREVIEWS (`HeaderBar::resized`, Modules.cpp). Menyikonen "≡" (`playMenuButton`) döljer/visar LOOP och JOG; valet sparas i Settings `playExtras` (standard = visas). Förhandsknapparna ALL/ROLL är play/stopp-ikoner (`ListenButton::setPlayIcon`); högtalaren finns kvar där den betyder mute/lyssna.
+Test: Debug `build.bat Debug all` + "Alla tester gick igenom". Ingen parameter, rendersig oförändrad.
+FL-punkter: ikonerna på förhandsknapparna, PLAY-menyn döljer/visar LOOP+JOG, valet finns kvar efter omstart.

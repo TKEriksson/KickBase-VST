@@ -53,6 +53,20 @@ HeaderBar::HeaderBar (PluginBase& p, const juce::String& subtitleIn)
     {
         listenAll.setTooltip ("LISTEN - Hold to hear the whole synth (the kick, the instruments and the pattern) on the note chosen next to it, looping while you hold. "
                               "Press again to start over. Double-click to let it keep playing until you click again.");
+        listenAll.setPlayIcon (true); // play/stopp-ikon i toppbaren; högtalaren finns kvar på raderna
+        listenRoll.setPlayIcon (true);
+        playExtras = Settings::get ("playExtras") != "0";
+        playMenuButton.setTooltip ("PLAY - Show or hide LOOP and JOG in this box. Hidden, only the previews and the tempo/bar stay.");
+        playMenuButton.onClick = [this]
+        {
+            playExtras = ! playExtras;
+            Settings::set ("playExtras", playExtras ? juce::String() : juce::String ("0"));
+            resized();
+            if (auto* parent = getParentComponent())
+                parent->resized(); // mätaren och väljaren sitter efter rutan
+            repaint();
+        };
+        addAndMakeVisible (playMenuButton);
         listenAll.onStart = [this] { processor.requestAudition (PluginBase::previewRequest (PluginBase::previewAllRows)); };
         listenAll.onStop = [this] { processor.requestAudition (PluginBase::previewStop); };
         addAndMakeVisible (listenAll);
@@ -483,6 +497,18 @@ void HeaderBar::paintOverChildren (juce::Graphics& g)
     head.addTriangle (centre.x - 8.0f, centre.y + 2.0f, centre.x - 3.0f, centre.y - 2.5f, centre.x - 3.0f, centre.y + 6.5f);
     g.fillPath (head);
 
+    // PLAY-menyn: tre streck, tända när LOOP och JOG visas.
+    if (playMenuButton.isVisible())
+    {
+        const auto m = playMenuButton.getBounds().toFloat().getCentre();
+        g.setColour (playExtras ? Theme::pattern : Theme::text.withAlpha (0.8f));
+        for (const auto dy : { -5.0f, 0.0f, 5.0f })
+            g.drawLine (m.x - 6.0f, m.y + dy, m.x + 6.0f, m.y + dy, 1.8f);
+    }
+
+    if (! jogButton.isVisible())
+        return;
+
     // LP-ikonen på JOG-knappen: en skiva med hål och tonarm. Lyser när hastigheten inte är 1x eller en LFO styr den.
     const auto jogCentre = jogButton.getBounds().toFloat().getCentre();
     auto* jogParam = processor.apvts.getParameter (ParamID::jogSpeed);
@@ -511,26 +537,34 @@ void HeaderBar::resized()
     right.removeFromRight (10);
     keyBlock = right.removeFromRight (84).withSizeKeepingCentre (84, 40);
     right.removeFromRight (8);
-    const auto pillWidth = hasPreviews ? 244 : 214;
+    const auto extras = hasPreviews && playExtras; // LOOP och JOG visas bara när PLAY-menyn är öppen
+    const auto pillWidth = hasPreviews ? (extras ? 244 : 216) : 214;
     const auto pillHeight = 34;
     transportGroup = {};
     previewGroup = {};
     if (hasPreviews)
     {
         const auto previewsWidth = rollShown ? 148 : 112;
-        const auto groupHeight = 62;
-        transportGroup = right.removeFromRight (previewsWidth + pillWidth + 18).withSizeKeepingCentre (previewsWidth + pillWidth + 18, groupHeight);
+        const auto playWidth = 24;
+        const auto groupHeight = extras ? 62 : 48;
+        const auto groupWidth = playWidth + previewsWidth + pillWidth + 22;
+        transportGroup = right.removeFromRight (groupWidth).withSizeKeepingCentre (groupWidth, groupHeight);
         auto inner = transportGroup.reduced (6, 0);
+        playMenuButton.setBounds (inner.removeFromLeft (playWidth).withSizeKeepingCentre (playWidth, 24));
+        inner.removeFromLeft (4);
         previewGroup = inner.removeFromLeft (previewsWidth).withTrimmedBottom (4).withTrimmedTop (3);
         inner.removeFromLeft (6);
         auto transport = inner;
-        // LOOP längst upp i jog-rutan, tempo och takt med JOG och omstart under.
-        auto loopRow = transport.removeFromTop (groupHeight - pillHeight - 6).withTrimmedTop (4);
-        loopButton.setBounds (loopRow.removeFromLeft (52));
-        loopRow.removeFromLeft (6);
-        loopFromLabel.setBounds (loopRow.removeFromLeft (30));
-        loopRow.removeFromLeft (14);
-        loopToLabel.setBounds (loopRow.removeFromLeft (30));
+        // LOOP längst upp i rutan, tempo och takt med JOG och omstart under.
+        if (extras)
+        {
+            auto loopRow = transport.removeFromTop (groupHeight - pillHeight - 6).withTrimmedTop (4);
+            loopButton.setBounds (loopRow.removeFromLeft (52));
+            loopRow.removeFromLeft (6);
+            loopFromLabel.setBounds (loopRow.removeFromLeft (30));
+            loopRow.removeFromLeft (14);
+            loopToLabel.setBounds (loopRow.removeFromLeft (30));
+        }
         bpmPill = transport.removeFromBottom (pillHeight + 3).withTrimmedBottom (3);
     }
     else
@@ -543,7 +577,8 @@ void HeaderBar::resized()
         barLabel.setBounds (inner.removeFromLeft (58).reduced (0, 4));
     }
     for (auto* c : std::initializer_list<juce::Component*> { &loopButton, &loopFromLabel, &loopToLabel })
-        c->setVisible (hasPreviews);
+        c->setVisible (extras);
+    playMenuButton.setVisible (hasPreviews);
 
     projectButton.setBounds (14 + logo.getWidth() + 22, controlsY, 84, controlsHeight); // MENU först, till vänster om presetväljaren
     const auto presetsX = projectButton.getRight() + 10;
@@ -555,7 +590,7 @@ void HeaderBar::resized()
     listenAll.setVisible (hasPreviews);
     noteBox.setVisible (hasPreviews);
     restartButton.setVisible (hasPreviews);
-    jogButton.setVisible (hasPreviews);
+    jogButton.setVisible (extras);
     if (hasPreviews)
     {
         const auto y = previewGroup.getY() + 12, h = previewGroup.getHeight() - 14;

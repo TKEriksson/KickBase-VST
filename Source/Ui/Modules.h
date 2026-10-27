@@ -88,6 +88,8 @@ private:
     juce::TextButton restartButton { "" };       // börjar om räknaren och mönstret vid 1.1 (egen klocka)
     juce::TextButton jogButton { "" };           // JOG / LP (D3b): öppnar hjulet för scratch av den egna klockan
     void showJogPanel();
+    juce::TextButton playMenuButton { "" };      // PLAY-menyn: visar/döljer LOOP och JOG i rutan (valet minns programmet, Settings "playExtras")
+    bool playExtras = true;
     juce::Rectangle<int> previewGroup, bpmPill, keyBlock, transportGroup, meterRect;
     // Lyssnarvolym längst till höger bredvid mätaren: samma parameter som OUTPUT-faderns i mixern (ParamID::gain), ingen egen parameter.
     juce::Slider masterKnob { juce::Slider::RotaryHorizontalVerticalDrag, juce::Slider::NoTextBox };
