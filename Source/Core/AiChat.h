@@ -86,7 +86,7 @@ private:
     void autoClean (const Limits& limits);             // före en ny fråga: sparar + exporterar och tar bort de äldsta frågorna när historiken är för stor
     juce::String conversationTitle() const;
     void setStatus (const juce::String& text);
-    static juce::String activeKey();         // nyckeln för vald leverantör (Settings::chatProvider); Gemini-delen finns i AiProvider.h
+    static juce::String activeKey();         // nyckeln för vald leverantör (Settings::chatProvider); Gemini- och OpenAI/Ollama-delarna finns i AiProvider.h (Ollama: platshållaren "local", skickas aldrig)
     juce::var buildRequest (const Limits& limits) const;
     bool confirmTool (const juce::String& name);   // bakgrundstråden: true = kör verktyget
     juce::var post (const juce::String& key, const juce::var& body, int& httpStatus, juce::String& error);
