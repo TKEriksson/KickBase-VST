@@ -22,3 +22,4 @@
 - Lade in avsnittet Arbetssätt i masterplanen.
 - Arbetare 2: A5 klar (14c37c2 på w2): appendWorkLesson flyttar uppdaterad post sist. Test i chattest. Fortsätter B4, B2. Obs: chattest slutar annars med 'FEL: chatten misslyckades' (nätverk/nyckel, oundersökt).
 - Arbetare 1: T13 kärnan korrekt (kick takt 0/1/2: contentBars=3, lengthBars=3). 'AUTO 2 takter' misstänks vara UI utan patternChanged()/refreshLengths(); behöver FL-test. A3 klar i play-pack (Debug, ocommittat), skickad till specialisten. Fortsätter A4, B1.
+- Tobias: alla FL-tester görs när releasen är byggd, inte löpande. Arbetarna väntar inte på FL.

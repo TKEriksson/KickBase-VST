@@ -8,6 +8,7 @@ Regler (oförändrade): Claude skriver all C++; varje agent egen worktree + egen
 ## Arbetssätt (Tobias 27 okt, gäller tills han ändrar det)
 - Projektledaren delar ut arbete, arbetarna jobbar i egen worktree och för egen `PROGRESS-*.md` löpande. Specialisten (Opus) används sparsamt, bara efter projektledarens bedömning.
 - Arbetarna bygger Debug och kör minimala, relevanta tester. Inga onödiga tester eller skärmbilder.
+- Tobias gör alla FL-tester först när releasen är byggd, inte löpande under fas A. Arbetarna fortsätter därför utan att vänta på FL-test; obekräftade orsaker (t.ex. T13) samlas till release-testet.
 - Releaser görs bara när en stor sektion är klar. Första: hela testlistan T1-T15 (fas A-E, H).
 - Release: Release-bygge, Tobias testar i FL (kör `installRel.bat`), fel rättas, sedan påminner projektledaren Tobias om att merga till main som release och frågar innan. Först efter hans ja mergar projektledaren. Aldrig push utan Tobias.
 - Projektledaren committar docs och masterplan när något ändrats. Copilot pushar/mergar bara om Tobias uttryckligen säger det.
