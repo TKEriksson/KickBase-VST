@@ -120,6 +120,7 @@ Kvar, i grov ordning (projektledaren bedömer före varje fas; Opus bara efter h
 ## Fas G: Release
 Releaser görs bara när stora sektioner är klara, för att hålla nere test och tokens (Tobias 27 okt). Första releasen: när allt från Tobias testlista (`Testar appen 2027-10-23.txt`, T1-T15, fas A-E och H) är fixat och testat i FL. Projektledaren mergar till main först då: efter Release-bygget, Tobias FL-test och eventuella rättelser. Projektledaren påminner Tobias och frågar innan mergen (Tobias 27 okt).
 Tobias kör `installRel.bat` (lokalt, i `.gitignore`) för att ersätta VST3-filerna och KickbaseMcp.exe efter ett Release-bygge. Hörtest i FL som fortfarande saknas: MIX-fliken, AP/START, HALFTIME, KEEP/COMPARE, shimmer, Maximizer MODE, Low Multiplier, autocomplete.
+Efter varje release skriver projektledaren en PDF (publik) som sammanställer allt som ingår i releasen och allt som ska testas i FL och godkännas (Tobias 27 okt). Den ska vara läsbar utan internt sammanhang: inga rollnamn, interna filsökvägar, nycklar eller sloppy-loggar. Sparas i `docs/releases/`.
 
 ## Städning
 - `/STACK:8388608` i `CMakeLists.txt:243` rensas upp.
