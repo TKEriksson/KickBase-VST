@@ -3911,6 +3911,8 @@ int profileCommand (const juce::String& scenario, int instruments, double second
 int uiProfileCommand (int tab, const juce::String& scenario, int instruments, double seconds); // Tools/Profile.cpp
 int renderSignaturesWide(); // Tools/AudioTests.cpp
 int audioThreadTest();      // Tools/AudioTests.cpp
+int reeseTest();            // Tools/AudioTests.cpp
+int multiSampleTest();      // Tools/AudioTests.cpp
 int blockSizeTest();        // Tools/AudioTests.cpp
 int polyTest();             // Tools/AudioTests.cpp
 int ringTest();             // Tools/AudioTests.cpp
@@ -3949,7 +3951,7 @@ int toolMain (int argc, char* argv[])
     // Testerna som sparar presets eller rullar körs i en tillfällig mapp, aldrig i användarens Dokument\Kickbase.
     std::unique_ptr<Scenarios::TemporaryUserFolders> isolation;
     if (const juce::String command (argc > 1 ? argv[1] : ""); command == "presettest" || command == "rolltest" || command == "lengthtest"
-        || command == "instrumenttest" || command == "eqtest" || command == "listentest" || command == "auditiontest" || command == "audiotest"
+        || command == "instrumenttest" || command == "eqtest" || command == "listentest" || command == "auditiontest" || command == "audiotest" || command == "reesetest" || command == "multisampletest"
         || command == "analysetest" || command == "perftest" || command == "polytest" || command == "livetest" || command == "rendersig" || command == "rendersigwide" || command == "rendersigtb303")
         isolation = std::make_unique<Scenarios::TemporaryUserFolders>();
 
@@ -4052,6 +4054,10 @@ int toolMain (int argc, char* argv[])
         return ringTest();
     if (argc == 2 && juce::String (argv[1]) == "audiotest")
         return audioThreadTest();
+    if (argc == 2 && juce::String (argv[1]) == "reesetest")
+        return reeseTest();
+    if (argc == 2 && juce::String (argv[1]) == "multisampletest")
+        return multiSampleTest();
     // uiprofile <flik> <init|heavy> [instrument] [sekunder]: gränssnittets CPU och var meddelandetråden lägger tiden.
     if (argc >= 4 && juce::String (argv[1]) == "uiprofile")
         return uiProfileCommand (juce::String (argv[2]).getIntValue(), juce::String (argv[3]), argc > 4 ? juce::String (argv[4]).getIntValue() : 3,
@@ -4063,6 +4069,46 @@ int toolMain (int argc, char* argv[])
     // params [instrument|fx]: parameterregistret.
     if (argc >= 2 && juce::String (argv[1]) == "params")
         return dumpParameters (argc > 2 ? juce::String (argv[2]) : juce::String ("instrument"));
+
+    // tablespectrum: övertoner 1-12 (dB mot grundtonen) och spektral tyngdpunkt (övertonsnummer) för varje inbyggd tabell vid
+    // position 0, 0.5 och 1 (frame 0, 8, 15). Underlag till docs/school/wavetables.md.
+    if (argc >= 2 && juce::String (argv[1]) == "tablespectrum")
+    {
+        juce::ScopedJuceInitialiser_GUI gui;
+        Wavetables::ensureAll();
+        const auto names = Wavetables::names();
+        constexpr int N = Wavetable::frameSize;
+        for (int choice = 0; choice < names.size(); ++choice)
+        {
+            if (choice == Wavetables::userIndex())
+                continue;
+            const auto& table = Wavetables::get (choice);
+            for (const int frame : { 0, 8, 15 })
+            {
+                const auto* x = table.displayFrame (frame);
+                double mag[65] {};
+                for (int h = 1; h <= 64; ++h)
+                {
+                    double re = 0.0, im = 0.0;
+                    for (int n = 0; n < N; ++n)
+                    {
+                        const auto a = juce::MathConstants<double>::twoPi * h * n / N;
+                        re += x[n] * std::cos (a);
+                        im += x[n] * std::sin (a);
+                    }
+                    mag[h] = std::sqrt (re * re + im * im);
+                }
+                double sum = 0.0, weighted = 0.0;
+                for (int h = 1; h <= 64; ++h) { sum += mag[h]; weighted += h * mag[h]; }
+                juce::String line = juce::String (choice).paddedLeft (' ', 3) + " " + names[choice].paddedRight (' ', 20)
+                                    + " f" + juce::String (frame).paddedLeft (' ', 2) + " c=" + juce::String (sum > 0 ? weighted / sum : 0.0, 1) + " |";
+                for (int h = 1; h <= 12; ++h)
+                    line << " " << juce::String (juce::roundToInt (20.0 * std::log10 (juce::jmax (1.0e-6, mag[h] / juce::jmax (1.0e-9, mag[1])))));
+                std::puts (line.toRawUTF8());
+            }
+        }
+        return 0;
+    }
 
     // audit <del> [nummer] [png-mapp] [bpm]: renderar och mäter fabrikspresets (full, kick, bass, effects).
     if (argc >= 3 && juce::String (argv[1]) == "audit")

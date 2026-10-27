@@ -16,6 +16,7 @@
 #include "SignalTap.h"
 #include "TransportStatus.h"
 #include "SampleSlot.h"
+#include "MultiSample.h"
 #include "BridgeLink.h"
 #include "Settings.h"
 #include "WavetableEdit.h"
@@ -272,6 +273,9 @@ public:
     // Poolen av underrader är delad: är den full får de sista skivorna ingen rad (returnerar antalet skivor som saknar rad p.g.a. det).
     int syncSliceRows (int layer);
     juce::String getInstrumentSampleName (int layer) const { return instrumentSamples[(size_t) juce::jlimit (0, ParamID::numInstrumentLayers - 1, layer)].name(); }
+    // Multisampling: lagrets zoner (valet "Sample Source = Multi"). Message thread ändrar; ljudtråden läser bara banken.
+    MultiSampleSet& instrumentMultiSample (int layer) { return instrumentMultiSamples[(size_t) juce::jlimit (0, ParamID::numInstrumentLayers - 1, layer)]; }
+    const MultiSampleBank* getActiveInstrumentMultiSample (int layer) const { return instrumentMultiSamples[(size_t) juce::jlimit (0, ParamID::numInstrumentLayers - 1, layer)].active(); }
     const ClickSample* getActiveInstrumentSample (int layer) const { return instrumentSamples[(size_t) juce::jlimit (0, ParamID::numInstrumentLayers - 1, layer)].active(); }
 
     // Måste deklareras före apvts (som får en pekare till den). Bara meddelandetråden använder den.
@@ -616,6 +620,7 @@ private:
     std::unique_ptr<BridgeLink::Server> bridge;
 
     SampleSlot kickSample { 2.0 };
+    std::array<MultiSampleSet, ParamID::numInstrumentLayers> instrumentMultiSamples; // tomma tills zoner laddats
     std::array<SampleSlot, ParamID::numInstrumentLayers> instrumentSamples; // 12 s var (minne används först när en sampling laddats)
 
     juce::String& presetNameSlot (Presets::Section section, int layer);

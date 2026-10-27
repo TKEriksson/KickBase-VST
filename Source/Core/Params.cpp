@@ -102,7 +102,8 @@ namespace ParamID
                                      "FmOn", "FmLevel", "FmRatio", "FmIndex", "FmEnvAmount", "FmEnvTime", "FmSemis", "FmPreset", "FmFilter",
                                      "SlicerOn", "SlicerMapTo", "SlicerReverse",
                                      "FxSend", "SampleMode", "AllpassFreq", "AllpassAmount", "SamplePan", "NoisePan", "FmPan", "NoiseWidth", "SubPhaseDeg", "FmPhaseDeg", "AWidth", "BWidth", "CWidth", "SampleWidth", "FmWidth", "RingSource",
-                                     "FundamentalDuckMode", "FundamentalDuckDepth", "FundamentalDuckWindow", "FundamentalDuckSource" };
+                                     "FundamentalDuckMode", "FundamentalDuckDepth", "FundamentalDuckWindow", "FundamentalDuckSource",
+                                     "SampleSource" };
         static_assert (std::size (names) == (size_t) InstrumentField::count);
         return names[(size_t) field];
     }
@@ -436,6 +437,8 @@ namespace Params
         layout.add (floatParam (id (F::fmWidth), title + "FM Width", NormalisableRange<float> (1.0f, 2.0f, 0.01f), 1.0f, widthText));
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::ringSource), 1 }, title + "OSC 1 Ring Source",
                                                             StringArray { "OSC 2", "OSC 3", "OSC 2 x OSC 3" }, 0));
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::sampleSource), 1 }, title + "Sample Source",
+                                                            StringArray { "Single", "Multi" }, 0));
     }
 
     void addFxParams (Layout& layout)
@@ -771,5 +774,6 @@ InstrumentParams ParamRefs::readInstrument (int layer, int rootMidiNote) const
     p.sampleWidth = get (F::sampleWidth);
     p.fmWidth = get (F::fmWidth);
     p.oscA.ringSource = (int) get (F::ringSource);
+    p.sampleMulti = (int) get (F::sampleSource) == 1;
     return p;
 }

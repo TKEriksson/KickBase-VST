@@ -146,6 +146,16 @@ InstrumentSynth::Stereo InstrumentSynth::Oscillator::next (const OscParams& p, d
     return { sumLeft * normal * (pan > 0.0f ? 1.0f - pan : 1.0f), sumRight * normal * (pan < 0.0f ? 1.0f + pan : 1.0f) };
 }
 
+const ClickSample* InstrumentSynth::activeSample() const noexcept
+{
+    if (params.sampleMulti)
+    {
+        const auto* zone = params.sampleBank != nullptr ? params.sampleBank->zone (multiZone) : nullptr;
+        return zone != nullptr ? &zone->sample : nullptr;
+    }
+    return params.sampleData;
+}
+
 void InstrumentSynth::noteOn (int semitones, float newVelocity, int gateSamples, int slice)
 {
     forcedReleaseMs = 0.0; // en ny ton släpps med sin vanliga RELEASE
@@ -175,9 +185,17 @@ void InstrumentSynth::noteOn (int semitones, float newVelocity, int gateSamples,
     pitchEnv = 1.0f;
     warpDirect = 1.0f;
     randomValue = modRandom.nextFloat();
-    samplePosition = params.sampleData != nullptr ? (double) params.sampleStart * (double) params.sampleData->audio.getNumSamples() : 0.0;
+    multiZone = -1;
+    if (params.sampleMulti && params.sampleBank != nullptr)
+    {
+        // Tonen ur frekvensen (A4 = 440 Hz = 69), anslaget 1..127; zonen slås upp igen per sample mot aktuell bank.
+        const auto key = juce::jlimit (0, 127, juce::roundToInt (69.0f + 12.0f * std::log2 (frequency / 440.0f)));
+        multiZone = params.sampleBank->select (key, juce::jlimit (1, 127, juce::roundToInt (newVelocity * 127.0f)));
+    }
+    const auto* startSample = activeSample();
+    samplePosition = startSample != nullptr ? (double) params.sampleStart * (double) startSample->audio.getNumSamples() : 0.0;
     sliceVoice = false;
-    sliceNote = slice >= 0;
+    sliceNote = slice >= 0 && ! params.sampleMulti; // multisampling har inga skivor
     if (sliceNote && params.sampleData != nullptr)
     {
         // En not i raden "Slice N" väljer skivan; saknas skivan är det tyst, ingen wrap.
@@ -529,9 +547,10 @@ InstrumentSynth::Output InstrumentSynth::next()
     }
 
     // Samplingen: linjär interpolation. Med KEY följer hastigheten noten (samplingens egen tonhöjd = sampleRootHz).
-    if (params.sampleOn && params.sampleData != nullptr && params.sampleLevel > 0.0f)
+    const auto* playing = activeSample();
+    if (params.sampleOn && playing != nullptr && params.sampleLevel > 0.0f)
     {
-        const auto& audio = params.sampleData->audio;
+        const auto& audio = playing->audio;
         const auto length = audio.getNumSamples();
         if (sliceNote)
         {
@@ -559,7 +578,10 @@ InstrumentSynth::Output InstrumentSynth::next()
                 const auto fraction = (float) (samplePosition - (double) index);
                 const auto following = index + 1 < length ? data[index + 1] : (params.sampleLoop ? data[0] : 0.0f);
                 addMonoWide (fOn && params.filterSrc[3], params.sampleLevel * (data[index] + fraction * (following - data[index])), params.samplePan, params.sampleWidth, sampleDelay);
-                samplePosition += params.sampleKeyTrack ? frequency / (double) std::max (1.0f, params.sampleRootHz) : 1.0;
+                if (params.sampleMulti)
+                    samplePosition += frequency / (double) std::max (1.0f, params.sampleBank->zone (multiZone)->rootHz);
+                else
+                    samplePosition += params.sampleKeyTrack ? frequency / (double) std::max (1.0f, params.sampleRootHz) : 1.0;
             }
         }
     }

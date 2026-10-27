@@ -12,6 +12,8 @@
 #include "../Source/Fx/FxProcessor.h"
 #include "../Source/Ui/FmPresets.h"
 #include "../Source/Core/MixAnalysis.h"
+#include "../Source/Core/AudioAnalysis.h"
+#include "../Source/Core/MultiSample.h"
 #include "Scenarios.h"
 #include <new>
 #include <cstdlib>
@@ -1359,5 +1361,318 @@ int audioThreadTest()
     }
    #endif
     std::puts (failed ? "FEL: ljudtrådstestet misslyckades" : "Ljudtrådstestet gick igenom");
+    return failed ? 1 : 0;
+}
+
+// S3 Unison/Reese (`tool reesetest`): mäter en Reese-bas (OSC 1 och 2 med unison) med 1, 3, 5 och 7 röster per oscillator.
+// CPU per sekund ljud, allokeringar på ljudtråden (mål 0), DC, toppnivå, stereo under 150 Hz (lowSide) och att allt är ändligt.
+// Siffrorna ska läsas av en människa (docs/school/reese.md); testet fäller bara på allokeringar, icke-ändligt ljud och DC.
+int reeseTest()
+{
+    juce::ScopedJuceInitialiser_GUI gui;
+    auto failed = false;
+    constexpr double rate = 48000.0;
+    constexpr int blockSize = 512;
+    std::printf ("%-28s %7s %6s %6s %6s %7s %6s %6s\n", "RECEPT", "CPU/s", "alloc", "peak", "dc", "lowSide", "side", "finit");
+
+    struct Recipe { const char* name; int unisonA, unisonB, unisonC, voices; float detune; };
+    const Recipe recipes[] = {
+        { "Reese 1+1 (ingen unison)", 1, 1, 1, 1, 20.0f },
+        { "Reese 3+3, detune 20", 3, 3, 1, 1, 20.0f },
+        { "Reese 5+5, detune 20", 5, 5, 1, 1, 20.0f },
+        { "Reese 7+7, detune 20", 7, 7, 1, 1, 20.0f },
+        { "Reese 7+7+7, detune 20", 7, 7, 7, 1, 20.0f },
+        { "Reese 7+7, VOICES 3", 7, 7, 1, 3, 20.0f },
+    };
+    for (const auto& recipe : recipes)
+    {
+        const auto owner = std::make_unique<InstrumentProcessor>();
+        auto& processor = *owner;
+        processor.setPlayConfigDetails (0, 2, rate, blockSize);
+        processor.prepareToPlay (rate, blockSize);
+        Scenarios::setPlain (processor, ParamID::kickOn, 0.0f);
+        for (int layer = 1; layer < ParamID::numInstrumentLayers; ++layer)
+            Scenarios::setInstrument (processor, layer, InstrumentField::on, 0.0f);
+        using F = InstrumentField;
+        Scenarios::setInstrument (processor, 0, F::sub, 0.0f);
+        Scenarios::setInstrument (processor, 0, F::noise, 0.0f);
+        Scenarios::setInstrument (processor, 0, F::aUnison, (float) recipe.unisonA);
+        Scenarios::setInstrument (processor, 0, F::aDetune, recipe.detune);
+        Scenarios::setInstrument (processor, 0, F::bOn, 1.0f);
+        Scenarios::setInstrument (processor, 0, F::bUnison, (float) recipe.unisonB);
+        Scenarios::setInstrument (processor, 0, F::bDetune, recipe.detune);
+        Scenarios::setInstrument (processor, 0, F::bFine, 12.0f);
+        Scenarios::setInstrument (processor, 0, F::cOn, recipe.unisonC > 1 ? 1.0f : 0.0f);
+        Scenarios::setInstrument (processor, 0, F::cUnison, (float) recipe.unisonC);
+        Scenarios::setInstrument (processor, 0, F::cDetune, recipe.detune);
+        Scenarios::setInstrument (processor, 0, F::cFine, -12.0f);
+        Scenarios::setInstrument (processor, 0, F::voices, (float) recipe.voices);
+
+        const auto blocks = (int) (rate * 4.0 / blockSize);
+        juce::AudioBuffer<float> all (2, blocks * blockSize), buffer (2, blockSize);
+        juce::MidiBuffer midi;
+        midi.ensureSize (64);
+        auto counted = 0;
+        auto total = 0.0;
+        for (int block = 0; block < blocks; ++block)
+        {
+            midi.clear();
+            if (block == 0)
+                midi.addEvent (juce::MidiMessage::noteOn (1, 52, (juce::uint8) 100), 0);
+            if (recipe.voices > 1 && block == 4)
+                midi.addEvent (juce::MidiMessage::noteOn (1, 56, (juce::uint8) 100), 0);
+            if (recipe.voices > 1 && block == 8)
+                midi.addEvent (juce::MidiMessage::noteOn (1, 59, (juce::uint8) 100), 0);
+            buffer.clear();
+            allocationCount = 0;
+            countingAllocations = block >= 8;
+            const auto start = juce::Time::getMillisecondCounterHiRes();
+            processor.processBlock (buffer, midi);
+            total += juce::Time::getMillisecondCounterHiRes() - start;
+            countingAllocations = false;
+            counted += allocationCount;
+            for (int ch = 0; ch < 2; ++ch)
+                all.copyFrom (ch, block * blockSize, buffer, ch, 0, blockSize);
+        }
+        const auto m = AudioAnalysis::measure (all, rate);
+        const auto ok = counted == 0 && m.finite && m.dc < 0.05;
+        failed |= ! ok;
+        std::printf ("%-28s %7.4f %6d %6.1f %6.3f %7.1f %6.1f %6s%s\n", recipe.name, total / 1000.0 / 4.0, counted, m.peakDb, m.dc, m.lowSideDb, m.sideDb,
+                     m.finite ? "ja" : "NEJ", ok ? "" : "  FEL");
+    }
+    std::puts (failed ? "FEL: reesetestet misslyckades" : "Reesetestet gick igenom");
+    return failed ? 1 : 0;
+}
+
+// Multisampling etapp 1: datamodell, zonval, omsampling, utbyte och persistens. Inga ljudtrådsberoenden utöver select(), som ska vara allokeringsfri.
+int multiSampleTest()
+{
+    int failed = 0;
+    auto check = [&] (bool ok, const char* what)
+    {
+        if (! ok)
+        {
+            std::printf ("FEL: %s\n", what);
+            ++failed;
+        }
+    };
+    auto sine = [] (double rate, double hz, double seconds)
+    {
+        juce::AudioBuffer<float> b (1, (int) (rate * seconds));
+        for (int i = 0; i < b.getNumSamples(); ++i)
+            b.setSample (0, i, (float) std::sin (juce::MathConstants<double>::twoPi * hz * i / rate));
+        return b;
+    };
+
+    // Rotton ur filnamn.
+    check (MultiSampling::parseRootKey ("Piano_C4") == 60, "C4 = 60");
+    check (MultiSampling::parseRootKey ("Piano_A4") == 69, "A4 = 69");
+    check (MultiSampling::parseRootKey ("bass C#3") == 49, "C#3 = 49");
+    check (MultiSampling::parseRootKey ("Eb2") == 39, "Eb2 = 39");
+    check (MultiSampling::parseRootKey ("bass_048") == 48, "tal 048 = 48");
+    check (MultiSampling::parseRootKey ("Bass3") == 3, "Bass3 är inte en ton");
+    check (MultiSampling::parseRootKey ("kick") == -1, "inget tal = -1");
+    check (MultiSampling::parseRootKey ("sample999") == -1, "999 är utanför");
+
+    MultiSampleSet set;
+    set.prepare (48000.0);
+    check (! set.hasZones() && set.active() == nullptr, "tomt set");
+
+    MultiSampleMapping m;
+    for (const auto root : { 72, 48, 60 })
+    {
+        m.rootKey = root;
+        check (set.addZone (sine (44100.0, 100.0, 0.5), 44100.0, "z" + juce::String (root), m), "addZone");
+    }
+    check (set.zoneCount() == 3 && set.hasZones(), "tre zoner");
+
+    // Omsampling till 48 kHz och rotfrekvens.
+    {
+        const auto* bank = set.active();
+        check (bank != nullptr && bank->zones.size() == 3, "bank med tre zoner");
+        if (bank != nullptr)
+        {
+            const auto expected = (int) (22050 / (44100.0 / 48000.0));
+            check (std::abs (bank->zones[0].sample.audio.getNumSamples() - expected) <= 1, "omsamplad längd 48 kHz");
+            check (std::abs (bank->zones[1].rootHz - 130.81f) < 0.05f, "rotfrekvens C3 (48) = 130.81");
+        }
+    }
+
+    // Automatisk tangentfördelning: zonerna sorteras efter rotton i fördelningen men behåller sin plats i listan.
+    set.autoMapKeyRanges();
+    check (set.mapping (1).keyLow == 0 && set.mapping (1).keyHigh == 54, "rotton 48: 0..54");
+    check (set.mapping (2).keyLow == 55 && set.mapping (2).keyHigh == 66, "rotton 60: 55..66");
+    check (set.mapping (0).keyLow == 67 && set.mapping (0).keyHigh == 127, "rotton 72: 67..127");
+
+    // Zonval, utan allokering.
+    {
+        const auto* bank = set.active();
+        allocationCount = 0;
+        countingAllocations = true;
+        const auto a = bank->select (40, 100), b = bank->select (54, 100), c = bank->select (55, 1), d = bank->select (100, 127);
+        countingAllocations = false;
+        check (allocationCount == 0, "select allokerar inte");
+        check (a == 1 && b == 1 && c == 2 && d == 0, "zonval efter tangent");
+    }
+
+    // Anslagslager: två zoner på samma tangenter, mjuk (1..80) och hård (81..127).
+    {
+        MultiSampleSet layers;
+        layers.prepare (48000.0);
+        m = {};
+        m.rootKey = 60;
+        m.velocityLow = 1;  m.velocityHigh = 80;  layers.addZone (sine (48000.0, 261.6, 0.2), 48000.0, "soft", m);
+        m.velocityLow = 81; m.velocityHigh = 127; layers.addZone (sine (48000.0, 261.6, 0.2), 48000.0, "hard", m);
+        check (layers.active()->select (60, 40) == 0 && layers.active()->select (60, 81) == 1 && layers.active()->select (60, 127) == 1, "anslagslager");
+    }
+
+    // Tom bank, gränser.
+    {
+        MultiSampleBank empty;
+        check (empty.select (60, 100) == -1, "tom bank ger -1");
+        MultiSampleSet limited;
+        limited.prepare (48000.0);
+        int added = 0;
+        for (int i = 0; i < MultiSampling::maxZones + 5; ++i)
+            added += limited.addZone (sine (8000.0, 100.0, 0.1), 8000.0, "x", {}) ? 1 : 0;
+        check (added == MultiSampling::maxZones, "högst maxZones zoner");
+        check (! limited.addZone ({}, 48000.0, "tom", {}), "tom buffert avvisas");
+    }
+
+    // Persistens: omsampling vid annan frekvens, mappningen bevaras.
+    {
+        const auto tree = set.toValueTree ("BassMultiSample");
+        MultiSampleSet loaded;
+        loaded.prepare (96000.0);
+        loaded.fromValueTree (tree);
+        check (loaded.zoneCount() == 3, "tre zoner efter laddning");
+        check (loaded.mapping (2).keyLow == 55 && loaded.mapping (2).keyHigh == 66 && loaded.mapping (2).rootKey == 60, "mappning bevaras");
+        check (loaded.zoneName (0) == "z72", "namn bevaras");
+        const auto* bank = loaded.active();
+        check (bank != nullptr && std::abs (bank->zones[0].sample.audio.getNumSamples() - 48000) <= 2, "omsamplad till 96 kHz");
+
+        MultiSampleSet fromEmpty;
+        fromEmpty.fromValueTree (juce::ValueTree ("BassMultiSample"));
+        check (! fromEmpty.hasZones(), "tomt träd ger tomt set");
+        loaded.fromValueTree ({});
+        check (! loaded.hasZones(), "ogiltigt träd tömmer");
+    }
+
+    // Utbyte: en pekare ljudtråden redan har ska leva vidare.
+    {
+        const auto* oldBank = set.active();
+        const auto oldLength = oldBank->zones[0].sample.audio.getNumSamples();
+        set.removeZone (0);
+        set.setMapping (0, set.mapping (0));
+        check (set.active() != oldBank, "ny bank publicerad");
+        check (oldBank->zones.size() == 3 && oldBank->zones[0].sample.audio.getNumSamples() == oldLength, "gamla banken lever kvar");
+        check (set.retiredCount() >= 1, "gamla banken väntar på frigöring");
+        check (set.zoneCount() == 2, "zon borttagen");
+        set.clear();
+        check (! set.hasZones(), "clear");
+    }
+
+    // Spelaren: zon vid note-on efter tonen, hastighet mot zonens rotton, inga allokeringar, tyst utan bank.
+    {
+        constexpr double rate = 48000.0;
+        auto scaled = [] (juce::AudioBuffer<float> b, float gain) { b.applyGain (gain); return b; };
+        auto keyHz = [] (int key) { return 440.0 * std::pow (2.0, (key - 69) / 12.0); };
+
+        MultiSampleSet set;
+        set.addZone (scaled (sine (rate, keyHz (48), 2.0), 0.2f), rate, "quiet_C3", { 48, 0, 127, 1, 127, 0.0f });
+        set.addZone (scaled (sine (rate, keyHz (72), 2.0), 0.8f), rate, "loud_C5", { 72, 0, 127, 1, 127, 0.0f });
+        set.autoMapKeyRanges();
+        set.prepare (rate);
+
+        InstrumentParams p;
+        p.oscA.on = p.oscB.on = p.oscC.on = false;
+        p.sub = 0.0f;
+        p.cutoffHz = 20000.0f;
+        p.attackMs = 1.0f;
+        p.sustain = 1.0f;
+        p.releaseMs = 50.0f;
+        p.sampleOn = true;
+        p.sampleLevel = 1.0f;
+        p.sampleMulti = true;
+        p.sampleBank = set.active();
+
+        // rootHz = 65.4 (C2 = 36): halvtoner 14 = tangent 50 (zon C3, tyst), 40 = tangent 76 (zon C5, hög).
+        auto play = [&] (const InstrumentParams& params, int semitones, double& hz)
+        {
+            InstrumentSynth s;
+            s.prepare (rate);
+            s.setSeed (3);
+            s.setParams (params);
+            s.reset();
+            s.noteOn (semitones, 1.0f, (int) (rate * 1.5));
+            std::vector<float> out;
+            for (int i = 0; i < (int) (rate * 0.6); ++i)
+                out.push_back (s.nextSample());
+            auto crossings = 0, from = (int) (rate * 0.1);
+            auto sum = 0.0;
+            for (int i = from + 1; i < (int) out.size(); ++i)
+            {
+                if (out[(size_t) i - 1] < 0.0f && out[(size_t) i] >= 0.0f)
+                    ++crossings;
+                sum += (double) out[(size_t) i] * out[(size_t) i];
+            }
+            hz = crossings / ((out.size() - (size_t) from) / rate);
+            return std::sqrt (sum / (double) (out.size() - (size_t) from));
+        };
+
+        double lowHz = 0.0, highHz = 0.0;
+        const auto lowRms = play (p, 14, lowHz), highRms = play (p, 40, highHz);
+        check (std::abs (lowHz - keyHz (50)) < 4.0, "multi: tangent 50 följer tonen");
+        check (std::abs (highHz - keyHz (76)) < 12.0, "multi: tangent 76 följer tonen");
+        check (highRms > 3.0 * lowRms, "multi: tangent 76 väljer den höga zonen, tangent 50 den tysta");
+
+        // Utan bank (eller med multi av och ingen enkel sampling) hörs ingenting.
+        auto empty = p;
+        empty.sampleBank = nullptr;
+        double ignored = 0.0;
+        check (play (empty, 14, ignored) < 1.0e-6, "multi utan bank är tyst");
+
+        // Bankbyte mitt i en ton: rösten slår upp zonen igen, ingen hängande pekare.
+        {
+            InstrumentSynth s;
+            s.prepare (rate);
+            s.setSeed (3);
+            s.setParams (p);
+            s.reset();
+            s.noteOn (40, 1.0f, (int) (rate * 1.5));
+            for (int i = 0; i < 1000; ++i)
+                s.nextSample();
+            MultiSampleSet other;
+            other.addZone (sine (rate, keyHz (60), 0.01), rate, "tiny_C4", { 60, 0, 127, 1, 127, 0.0f });
+            other.prepare (rate);
+            auto swapped = p;
+            swapped.sampleBank = other.active();
+            s.setParams (swapped); // zon 1 finns inte längre
+            auto finite = true;
+            for (int i = 0; i < 4000; ++i)
+                finite = finite && std::isfinite (s.nextSample());
+            check (finite, "multi: bankbyte ger ändliga värden");
+        }
+
+        // Inga allokeringar i ljudtråden.
+        {
+            InstrumentSynth s;
+            s.prepare (rate);
+            s.setParams (p);
+            s.reset();
+            countingAllocations = true;
+            allocationCount = 0;
+            s.noteOn (14, 0.9f, 20000);
+            for (int i = 0; i < 20000; ++i)
+                s.nextSample();
+            s.noteOn (40, 0.5f, 20000);
+            for (int i = 0; i < 20000; ++i)
+                s.nextSample();
+            countingAllocations = false;
+            check (allocationCount == 0, "multi: 0 allokeringar i ljudtråden");
+        }
+    }
+
+    std::puts (failed ? "FEL: multisampletestet misslyckades" : "Multisampletestet gick igenom");
     return failed ? 1 : 0;
 }

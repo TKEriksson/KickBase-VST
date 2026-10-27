@@ -111,3 +111,61 @@
 - Kategori PSY CLEAN (kickar): Psy Clean C, Psy Clean C Tight, Psy Clean D, Psy Clean D Long, Psy Clean F Soft, Psy Clean F Sub, Psy Clean A Punch, Psy Clean G.
 - Kategori PSY ROLLING BASS (basar): inga än (efter godkänd utredning). PSY ROLLING (huvudpresets): inga än.
 - `build.bat Debug all`: alla tester gick igenom. Tobias lyssnar i FL (rad i `fl-testlista.md:65`).
+
+## Del 2 – rollbas-utredning + docs/school (Arbetare 2, Sonnet 5.5, 2026-10-27)
+- Skrivit `docs/school/` (README, kick, rollbas, wavetables, kick-bass-samspel, mixning-fx-sidechain, minimal, goa, presets-logg). `docs/work/rollbas-utredning.md` pekar dit.
+- Mätt: 6 Rolling-basar är nästan identiska, saknar mellanregister (se school/rollbas.md §3).
+- Kvar: tabellspektrum (mäts innan bygge), genreutredning MINIMAL/GOA. Inget byggt, väntar på PL:s ok.
+
+## Del 3: PSY ROLLING BASS (27 okt, Arbetare 2)
+- Byggt: `psyRollBass` + 4 basar sist i `bassPresets()` (index 14–17): FULL-ON ROLL, DEKEL GROOVE, FOREST 1/32, WIDE MID (`PresetData.inl`). Gamla index oförändrade.
+- Mätt (`audit bass`, E1 41 Hz): centroid 112–122 (gamla 81–97), 250–1k −12,0..−12,8 dB (gamla −13,3..−14,5), <60 −6..−8,5. Målet (centroid 150–300, 250–1k −6..−9) **nåddes inte**.
+- Fynd: audit-siffrorna rör sig knappt när cutoff ändras 120→1400 Hz, envAmount 0→3 och OSC A pos 0.2→1.0. Gamla Rolling-varianter är också identiska. Misstanke: audit-spelningen (`Tools/PresetAudit.inl:79`) eller filterkedjan/band-måttet är okänsligt. Behöver utredas innan fler basar kan ställas in mot siffror.
+- Wide Mid saknar fortfarande unison/bredd. Inget kategorinamn i huvudpreset än.
+
+## Lager 1-2 och bas-preset (27 okt, Arbetare 2)
+Läst i koden (inget ändrat): bas-preset laddar bara valt lager (`Presets.cpp:267`); lager 1-2 har default på/0.7 (`Params.cpp:227`) men inga toner i standardmönstret (`Pattern.cpp:426-428`), så de är troligen tysta i pluginet. Audit spelade en MIDI-ton i alla lager: därför dränktes skillnaderna där. Audit fixad (`Tools/PresetAudit.inl:74-76`); gamla basmått ogiltiga. Förslag: ingen ändring av laddningen. Verifiering i DAW av Tobias: ladda ny instans + bas-preset, kolla att bara rad 1 ljuder.
+
+## Del 4: PSY ROLLING huvudpresets (27 okt, Arbetare 2)
+- Byggt: `psyRolling1..4` (Roll Full-On, Roll Wide, Roll Dekel, Roll Forest) sist i `fullPresets()` efter newest10 (`PresetData.inl`), kategori `psyRollingCategory`. PSY CLEAN-kick + ny rollbas, FX-send, Duck, `instrumentCount` 1 (lager 1–2 avstängda).
+- Mätt (`audit full`): peak −2,9..−3,3, RMS ca −11, DC 0, centroid 82–131 Hz. Alla ändliga. `build.bat Debug all` grön. Gamla index/hashar rörs ej.
+- Jag kan bara mäta, inte lyssna: Tobias provar i DAW (testlistan).
+- Nästa: GLIDE BASSES, sedan New Init 1–5.
+
+## Del 5: GLIDE BASSES (27 okt, Arbetare 2)
+- Läst: glide är en flagga per ton, glidtiden = tonens längd (`InstrumentProcessor.cpp:1061`, `Presets.cpp:166`); `F::glide` oanvänd. Recept i `docs/school/glide-bass.md`.
+- GLIDE BASE (Tobias fil): glide-tonerna var 12 ticks (~80 ms) och hördes knappt → förlängda till 60; backup `.mofp.bak`.
+- Byggt: `glideBass1..3` (Glide Sub, Glide Acid, Glide Dive), kategori `glideBassesCategory`, sist i `fullPresets()`. Mätt: peak −0,3..−2,0 (Glide Sub sänkt till bas-nivå 0,50), RMS ca −11, DC 0. Bygg grönt. Ej lyssnat.
+- Nästa: New Init 1–5 (utgår från fabriks-Init; rendersig 94f0a1b6bd8a3c7f ändras ej). Max 3 presets per ny genre (Tobias).
+
+## Kvar (presets pausade efter rel-0.2, beslut Tobias 27 okt)
+Tas efter nästa release, max 3 presets per ny kategori: New Init 1–5 (utgår från fabriks-Init, rendersig 94f0a1b6bd8a3c7f ändras ej), MINIMAL, GOA, DARK PSY, DANCE, TRANCE, TECHNO, EMPIRIKAL, SYNTH, MID BASS, HI BASS, samt presets för S3 Unison/Reese när funktionen finns. Utredningsdokument per genre (`docs/school/*.md`) skrivs vid behov före bygge.
+Nu: programmet, rel-0.3 motornära punkter: 1) S3 Unison/Reese, 2) multisampling (Arbetare 1 har UI).
+
+## PLAN rel-0.3 motornära: S3 Unison/Reese och multisampling (27 okt, Arbetare 2) - väntar på PL:s ok
+**S3 Unison/Reese: finns redan.** Unison per OSC (1..7 röster, detune, blend, slumpfas, pan, spridning, bredd) för OSC A/B/C; UI varnar vid RÖSTER × unison > 24 (`Modules.cpp:1273`). Ingen ombyggnad.
+- Etapp S3-1: mäta, inte bygga. Renderar Reese-recept (2 OSC saw, unison 5-7, detune 8-25 cent) i `audiotest`/`perftest`: CPU per röst, stereo/mono-kompatibilitet (lowSide), DC, 0 allokeringar, blocksizetest.
+- Etapp S3-2: bara om mätningen visar ett verkligt gap (t.ex. faslåsning, för hög CPU). Då nya parametrar sist i `InstrumentField` (före `count`), standard = dagens ljud. Annars inga kodjusteringar; Reese-presets tas efter releasen.
+**Multisampling (Fas C, `docs/content-plan.md:175`)**
+- Lagring: ny `MultiSampleSet` (zoner: tangent lo/hi, rot, velocity lo/hi, loop, ClickSample per zon) bredvid `SampleSlot` (`SampleSlot.h:10`). Laddas och resamplas på meddelandetråden; ljudtråden läser en atomisk pekare; gammalt släpps via `DeferredRelease` (samma mönster som `SampleSlot`).
+- Ljudtråd: vid note-on väljer synten zon (tangent + velocity) och sätter `params.sampleData` till zonens data (`InstrumentSynth.cpp:178`); resten av spelaren (loop, nyckelföljning, start) återanvänds. Inga allokeringar, inga lås. Valet görs en gång per röst; rösten håller zonen till release (pekaren skyddas av DeferredRelease).
+- Persistens/hash: nytt barn i state-trädet (`BassMultiSample`, som `BassSample` i `PluginBase.cpp:1900`). Saknas det laddar gamla projekt/presets som förut. Biblioteks-id + hash eller inbäddat. Inga ID-/hash-ändringar.
+- Parametrar: en ny val-parameter `sampleSource` (0 Enkel = dagens, 1 Multi) sist i `InstrumentField` (före `count`, `Params.h`), standard 0. UI-väljaren (TYPE) är Arbetare 1:s; jag ger bara parametern.
+- Etapper: (1) datamodell + laddare, (2) zonval + spelare (Hermite som val senare), (3) persistens, (4) SFZ-delmängd som import i KickbaseTool, (5) tester: zonval, loop, saknad fil, hash-mismatch, rundtur, 0 allokeringar, blocksizetest, CPU med 8 röster.
+- Risk: polyfoni (`InstrumentVoices`) måste hålla zonpekare per röst; round-robin/layers utanför v1.
+
+### S3 klar (27 okt, Arbetare 2)
+- Godkänd av PL. `KickbaseTool reesetest` tillagd (`Tools/AudioTests.cpp`, `Tools/Tool.cpp`). 0 alloc, DC 0, blocksizetest ok, CPU oförändrat med unison. Inget gap, ingen motorkod ändrad. Recept: `docs/school/reese.md`.
+- Nästa: multisampling etapp 1–3.
+
+## Multisampling etapp 1 klar (Arbetare 2)
+- Datamodell + laddare: `Source/Core/MultiSample.h/.cpp` (zoner, rotton ur filnamn, autoMapKeyRanges, omsampling, atomiskt bankbyte, persistens via ValueTree).
+- Test: `KickbaseTool multisampletest` (rotton, zonval utan allokering, velocity-lager, gränser, round trip, banklivslängd). `build.bat Debug all` grön.
+- Misstag: fel förväntat värde i testet (0,5 s vid 96 kHz = 48000 samplar, jag skrev 44100). Rättat.
+- Nästa: etapp 2 (sampleSource sist i InstrumentField, zonval vid note-on, spelare).
+
+## Multisampling etapp 2 – pausad, delvis (Arbetare 2, 27 okt)
+- Klart: `sampleSource` sist i `InstrumentField` (`Params.h`, `Params.cpp`, fältnamn "SampleSource"), `sampleMulti`/`sampleBank` i `InstrumentParams`, zonval i `noteOn` och uppslag per sampel via `activeSample()` (`InstrumentSynth.cpp`), `instrumentMultiSamples` i `PluginBase`. MultiSample.cpp flyttad till CORE_SOURCES (testmålet länkade inte). `build.bat Debug all` grön.
+- Spelartestet finns sist i `multisampletest` (`Tools/AudioTests.cpp`). Tonhöjdskontrollerna går igenom; kontrollen "tangent 76 väljer höga zonen" FALLERAR och är inte undersökt (misstänkt: nivå/sampleLevel eller zongränser i testuppsättningen, inte bekräftat). Bankbyte, tom bank och 0 allokeringar kom inte att köras före felet i resultatet, kolla utskriften.
+- Nästa: skriv ut lowRms/highRms i testet, hitta orsaken, rätta; sedan etapp 3 (persistens: eget träd "BassMultiSamples", gamla projekt oförändrade), testrad i `fl-testlista.md`, UI/TYPE-väljare med Arbetare 1.
+- Stoppad på PL:s order (sessionsgräns); S3 är klar (64bde98), etapp 1 klar (150fb30).
