@@ -31,3 +31,4 @@
 - Tobias: arbetarna ställer alla frågor via PL (inte direkt till honom).
 - Tobias: vid fråga/blockerare ska arbetarna gå vidare med nästa punkt medan de väntar.
 - Arbetare 1: B1, B3, B5, H2, D6, D3a, A4-resten klara i play-pack (ej FL-testade); global LOOP-knapp beställd. D1: Tobias valde streck mellan toner (högerdrag, Alt+drag fallback). Arbetare 2: B4, B2, H1, H3, H4 klara (5ec5379), D4 steg 1 (be1d320); H5: content-s2 bygger, fix-slicer-test hoppas över (gammal bas, JucePlugin_Name), E2 ej blockerad; .chord tolkas efter Tobias text.
+- Skrev docs/work/undo-spec.md (fas C) som specialist; Arbetare 1 informerad, implementerar C.
