@@ -233,6 +233,7 @@ void PianoRoll::visibilityChanged()
     else
     {
         auditionStop (0);
+        processor.postAuditionAllOff (layer); // H2: ingen ton får hänga kvar när rullen stängs
         clearPreviewWindow();
     }
 }
@@ -240,6 +241,7 @@ void PianoRoll::visibilityChanged()
 PianoRoll::~PianoRoll()
 {
     auditionStop (0);
+    processor.postAuditionAllOff (layer);
     clearPreviewWindow();
     processor.openRollLayer = -1;
     processor.midiInLayer = -1;

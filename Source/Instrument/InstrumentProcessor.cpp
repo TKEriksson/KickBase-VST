@@ -142,6 +142,10 @@ void InstrumentProcessor::processChunk (juce::AudioBuffer<float>& buffer, juce::
         bool auditionOn = false;
         while (popNoteAudition (auditionRow, auditionNote, auditionVelocity, auditionOn)) // enskilda toner från pianorullen
             handleLiveMidi (auditionOn ? juce::MidiMessage::noteOn (1, auditionNote, (juce::uint8) auditionVelocity) : juce::MidiMessage::noteOff (1, auditionNote), auditionRow);
+        if (const auto allOffRows = takeAuditionAllOffRows(); allOffRows != 0)
+            for (int row = 0; row < 16; ++row)
+                if ((allOffRows >> row) & 1)
+                    handleLiveMidi (juce::MidiMessage::allNotesOff (1), row);
     }
     clock.setForceFreeRun (previewLayer >= 0);
     clock.beginBlock (getHostPosition(), numSamples);

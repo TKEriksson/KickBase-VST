@@ -70,6 +70,12 @@ flikraden (30 px reserverad i `resized`), synlig bara för flikar som har anrop.
 Orsak: `rollShown` kollades bara i `HeaderBar::timerCallback`, som går i TOP BAR-takten (`startVisualTimer`, `Modules.cpp:92`); OPTIMIZATIONS/REDUCE ANIMATIONS kan sänka den kraftigt.
 Gjort (Arbetare 1): `HeaderBar::syncRollButton()` + egen `RollWatch`-timer på 10 Hz (`Modules.h`, `Modules.cpp`), bara i instrumentet (där `getKeyboardState()` finns).
 
+## H2 (tappat ton-av i noteAuditionFifo) – Debug grönt, hela sviten exit 0, ej provad i FL
+Orsak: `postNoteAudition` (`PluginBase.h:323`) släppte tyst ett ton-av när kön (32) var full, så tonen hängde kvar.
+Gjort (Arbetare 1): `postAuditionAllOff(row)` (atomisk radmask, går utanför kön) anropas när ett ton-av inte får plats och när pianorullen
+stängs/förstörs (`PianoRoll.cpp` `visibilityChanged`, destruktorn). Ljudtråden skickar all-notes-off per rad (`InstrumentProcessor.cpp:~145`).
+Audition med `rowOverride >= 0` blockeras fortfarande inte när värden spelar (A1 orörd).
+
 ## FL-testlista (samlas av projektledaren)
 - A1: C5 från FL startar mönstret med pianorullen öppen; MIDI IN gäller bara när värden står still.
 - A2/T13: rad 1 takt + Loop 1-2; 3-takters mönster med kick i varje takt (takt 3 ska ha alla slag); "AUTO 2 takter"-misstanken (UI-visning/redigeringsväg utan `refreshLengths`).

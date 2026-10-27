@@ -329,7 +329,13 @@ public:
             noteAuditionData[(size_t) start1] = (on ? 1 << 20 : 0) | (juce::jlimit (1, 127, velocity) << 12) | (juce::jlimit (0, 127, midiNote) << 4) | juce::jlimit (0, 15, row);
             noteAuditionFifo.finishedWrite (1);
         }
+        else if (! on)
+            postAuditionAllOff (row); // full kö: ett tappat ton-av skulle låta tonen hänga, så radens alla toner släpps i stället
     }
+    // Släpper alla provlyssade toner på raden (ljudtråden skickar all-notes-off). Går inte via kön, så den kan inte tappas.
+    void postAuditionAllOff (int row) { auditionAllOffRows.fetch_or (1 << juce::jlimit (0, 15, row)); }
+    int takeAuditionAllOffRows() { return auditionAllOffRows.exchange (0); }
+    std::atomic<int> auditionAllOffRows { 0 };
     bool popNoteAudition (int& row, int& midiNote, int& velocity, bool& on)
     {
         int start1 = 0, size1 = 0, start2 = 0, size2 = 0;
