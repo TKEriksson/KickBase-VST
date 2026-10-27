@@ -43,7 +43,7 @@ Format: **Gör så** → *förväntat resultat*. Bocka av `[ ]` när det stämme
 
 ## INSTRUMENT och OSC
 - [ ] Spela C5 från FL med pianorullen öppen → *mönstret startar och spelar (inte bara en live-ton).*
-- [ ] Meny för OSC-förinställningar: radera mappen Oscillators under Kickbases presets, öppna menyn → *14 startpresets i 6 kategorier (Sub, Bass, Reese, Acid, Growl, Layer); ladda en i varje OSC.*
+- [ ] Meny för OSC-förinställningar: radera mappen Dokument\Kickbase\Presets\Oscillators, öppna menyn → *14 startpresets i 6 kategorier (Sub, Bass, Reese, Acid, Growl, Layer); ladda en i varje OSC.*
 - [ ] Sätt OSC 1 WARP till RING (B) → *formknapparna byts mot "RING: OSC 1 x OSC 2", "x OSC 3", "x OSC 2 x OSC 3"; AMOUNT blandar torrt (0) till full ring (1). Källan måste stå PÅ, annars blir full ring tyst.*
 - [ ] Dra WIDTH upp från 1 under spelande ton → *inga klick.*
 
@@ -60,7 +60,7 @@ Format: **Gör så** → *förväntat resultat*. Bocka av `[ ]` när det stämme
 - [ ] Förhandsknappen på KICK-fliken → *spelar bara kicken.*
 - [ ] Peka på noder i pitch-kurvan → *tonnamn visas vid varje punkt (C4 = 60).*
 - [ ] Fråga AI-chatten om kickens pitch-noder → *AI:n kan ange ton och Hz per nod.*
-- [ ] Ladda de nya kickpresetsen (10 clean-psytrance) → *låter som förväntat, ingen klippning.*
+- [ ] Ladda de nya kickpresetsen → *låter som förväntat, ingen klippning.*
 
 ## PATTERN och pianorulle
 - [ ] Spela mönstret → *spelande toner lyser i pianorullen.*
@@ -75,7 +75,6 @@ Format: **Gör så** → *förväntat resultat*. Bocka av `[ ]` när det stämme
 - [ ] POP OUT i pianorullens nedre rad → *rullen öppnas i eget fönster som går att ändra storlek på; stegen syns kvar i huvudfönstret.*
 - [ ] DOCK eller stäng fönstret → *rullen kommer tillbaka.*
 - [ ] Knappen LISTEN PIANO ROLL → *dyker upp direkt när rullen visas, även med låg animationstakt.*
-- [ ] Växel för projektets sammanlagda vågform i PATTERN → *visar hela projektets våg.*
 
 ## MIX och kombinerad våg
 - [ ] Kombinerad våg: mushjul, mittknappsdrag, rullningslist → *zoomar runt musen (0,1–32x), panorerar, tidsaxeln visas i ms.*
