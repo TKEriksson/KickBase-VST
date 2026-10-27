@@ -111,3 +111,8 @@ Prova i FL: glide-ton med en stapel på samma tick – stapeltonen ska höras.
 Gjort (Arbetare 1): högerdrag på tomt rutnät ritar ett streck (`PianoRoll.cpp` `mouseDown` ~1906, `addStroke`, `mouseUp` ~2259). Högerklick utan drag (<6 px) visar menyn som förut (`strokeMenuNow`). Alt är suddgummi och rörs inte.
 Strecket blir en vanlig glide-ton (`Note.slide`) – eller en staplad glide-ton om en ton redan ligger på starttick – så sparning, uppspelning och MIDI-export återanvänds. Slutet fastnar på en ton som börjar där (glidemålet = tonens tonhöjd), annars tonhöjden vid slutpunkten. Glidar också före en ton.
 Prova i FL: högerdrag uppåt/nedåt i luften; dra till en befintlig ton; högerklick utan drag ska ge menyn; spara/ladda; MIDI-export (approximeras, varning).
+
+## D3 global LOOP – Debug grönt, ej provad i FL
+Gjort (Arbetare 1): `loopButton` + start-/slutetiketter (1-räknade, båda inräknade) till vänster om tempot (`Modules.cpp` konstruktorn, `applyLoopBars`, `resized`). På: `PluginBase::globalLoop`, hoppar till starttakten (`seekBarRequest`). `TransportClock::setLoop` (`TransportClock.h`) tvingar egen klocka; `beginBlock` (`TransportClock.cpp:52-61`) hoppar tillbaka vid slutet och ökar `generation` så stegmarkörerna börjar om. `InstrumentProcessor.cpp` anropar `setLoop` före `beginBlock`.
+Begränsningar: hoppet sker vid blockgräns (inte sampleexakt) – överskottet behålls, så längden stämmer men en not exakt vid loopgränsen kan ligga upp till ett block fel. En VST3 kan inte stoppa DAW:en (FL saknar stöd), så loopen ignorerar DAW:ens position och användaren stoppar DAW:en själv; tipset på knappen säger det. Bara instrumentet.
+Prova i FL: LOOP på med 1–2, ändra till 2–3 under gång, stäng av, DAW som spelar samtidigt.

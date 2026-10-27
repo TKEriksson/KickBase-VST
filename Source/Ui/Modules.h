@@ -83,6 +83,13 @@ private:
     // Transport i egen klocka (D3a): dubbelklicka tempot eller takten för att skriva ett värde, hjulet över takten scrubbar (musiken står still tills hjulet vilat).
     // Spelar värden är de låsta ("styrs av DAW").
     juce::Label bpmLabel, barLabel;
+
+    // Global LOOP (D3): egen klocka som går runt mellan två takter (1-räknade, båda inräknade). DAW:ens transport ignoreras medan den är på.
+    juce::TextButton loopButton { "LOOP" };
+    juce::Label loopFromLabel, loopToLabel;
+    juce::Rectangle<int> loopBlock;
+    static constexpr int loopBlockWidth = 132;
+    void applyLoopBars();
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
     void updateTransportLabels (bool following);
     struct ReleaseTimer : juce::Timer

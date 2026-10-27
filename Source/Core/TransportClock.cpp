@@ -48,6 +48,18 @@ void TransportClock::beginBlock (const juce::Optional<juce::AudioPlayHead::Posit
     else
     {
         blockStartPpq = continuedPpq;
+
+        // Global LOOP: över slutet hoppar klockan tillbaka till början och behåller överskottet. Klockan före loopens start släpps in (man kan ha scrubbat dit).
+        if (loopOn && ! hold)
+        {
+            const auto loopStartPpq = (double) loopStartBar * barLengthPpq, loopEndPpq = (double) loopEndBar * barLengthPpq;
+            if (blockStartPpq >= loopEndPpq - epsilon)
+            {
+                blockStartPpq = loopStartPpq + std::fmod (blockStartPpq - loopEndPpq, loopEndPpq - loopStartPpq);
+                ++generation; // alla StepCursor börjar om, så att stegen i början av loopen spelas igen
+            }
+        }
+
         barStartPpq = std::floor (blockStartPpq / barLengthPpq + epsilon) * barLengthPpq;
     }
 

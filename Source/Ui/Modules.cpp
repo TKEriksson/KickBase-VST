@@ -110,6 +110,31 @@ HeaderBar::HeaderBar (PluginBase& p, const juce::String& subtitleIn)
                 processor.seekBarRequest = bar - 1;
             updateTransportLabels (processor.transportStatus.followingHost.load());
         };
+        loopButton.setClickingTogglesState (true);
+        loopButton.setColour (juce::TextButton::buttonOnColourId, Theme::pattern);
+        loopButton.setTooltip ("LOOP - The plugin loops the bars shown next to it on its own clock and ignores the DAW's position. "
+                               "A plugin cannot stop the DAW, so stop it yourself in the DAW.");
+        loopButton.onClick = [this]
+        {
+            applyLoopBars();
+            const auto on = loopButton.getToggleState();
+            processor.globalLoop = on;
+            if (on)
+                processor.seekBarRequest = processor.globalLoopStartBar.load();
+        };
+        addAndMakeVisible (loopButton);
+        for (auto* label : { &loopFromLabel, &loopToLabel })
+        {
+            setUpLabel (*label, 13.0f);
+            label->setEditable (false, true, false);
+            label->setColour (juce::Label::outlineColourId, Theme::text.withAlpha (0.25f));
+            label->onTextChange = [this] { applyLoopBars(); };
+        }
+        loopFromLabel.setText ("1", juce::dontSendNotification);
+        loopToLabel.setText ("4", juce::dontSendNotification);
+        loopFromLabel.setTooltip ("LOOP start bar (double-click to type).");
+        loopToLabel.setTooltip ("LOOP end bar, included (double-click to type).");
+
         scrubRelease.callback = [this]
         {
             if (scrubBar >= 0)
@@ -213,6 +238,16 @@ void HeaderBar::updateTransportLabels (bool following)
                                    : "BAR - Double-click to type a start bar, or scroll the mouse wheel here to scrub: the music pauses until you stop scrolling.");
 }
 
+void HeaderBar::applyLoopBars()
+{
+    const auto from = std::max (1, loopFromLabel.getText().retainCharacters ("0123456789").getIntValue());
+    const auto to = std::max (from, loopToLabel.getText().retainCharacters ("0123456789").getIntValue());
+    loopFromLabel.setText (juce::String (from), juce::dontSendNotification);
+    loopToLabel.setText (juce::String (to), juce::dontSendNotification);
+    processor.globalLoopStartBar = from - 1;
+    processor.globalLoopEndBar = to; // slutet exklusivt, 0-räknat = sista inräknade takten 1-räknad
+}
+
 void HeaderBar::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel)
 {
     if (processor.getKeyboardState() == nullptr || processor.transportStatus.followingHost.load()
@@ -266,10 +301,25 @@ void HeaderBar::resized()
         barLabel.setBounds (inner.removeFromLeft (58).reduced (0, 4));
     }
 
+    // LOOP-rutan ligger till vänster om tempot (bara instrumentet)
+    loopBlock = {};
+    if (hasPreviews)
+    {
+        loopBlock = right.removeFromRight (loopBlockWidth).withSizeKeepingCentre (loopBlockWidth - 8, 34);
+        auto inner = loopBlock;
+        loopButton.setBounds (inner.removeFromLeft (52));
+        inner.removeFromLeft (6);
+        loopFromLabel.setBounds (inner.removeFromLeft (30));
+        inner.removeFromLeft (14);
+        loopToLabel.setBounds (inner.removeFromLeft (30));
+    }
+    for (auto* c : std::initializer_list<juce::Component*> { &loopButton, &loopFromLabel, &loopToLabel })
+        c->setVisible (hasPreviews);
+
     projectButton.setBounds (14 + logo.getWidth() + 22, controlsY, 84, controlsHeight); // PROJECT först, till vänster om presetväljaren
     auto presetWidth = hasPreviews ? 118 : 200;
     const auto leftEnd = projectButton.getRight() + 10 + presetWidth + 10 + (hasPreviews ? 70 : 76) + 10 + (hasPreviews ? (rollShown ? 148 : 112) : 0) + 16 + meterWidth;
-    presetWidth = std::max (70, presetWidth - std::max (0, leftEnd - (bpmPill.getX() - 8)));
+    presetWidth = std::max (70, presetWidth - std::max (0, leftEnd - ((hasPreviews ? loopBlock.getX() : bpmPill.getX()) - 8)));
     presets.setBounds (projectButton.getRight() + 10, controlsY, presetWidth, controlsHeight);
     exportButton.setBounds (presets.getRight() + 10, controlsY, hasPreviews ? 70 : 76, controlsHeight);
 

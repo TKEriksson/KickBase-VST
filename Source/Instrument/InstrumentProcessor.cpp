@@ -150,6 +150,7 @@ void InstrumentProcessor::processChunk (juce::AudioBuffer<float>& buffer, juce::
     clock.setForceFreeRun (previewLayer >= 0);
     clock.setFreeRunBpm (freeRunBpm.load());
     clock.setHold (transportHold.load());
+    clock.setLoop (globalLoop.load(), globalLoopStartBar.load(), globalLoopEndBar.load());
     clock.beginBlock (getHostPosition(), numSamples);
     if (const auto seekBar = seekBarRequest.exchange (-1); seekBar >= 0)
         clock.seekFreeRunToBar (seekBar);

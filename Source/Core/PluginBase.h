@@ -314,6 +314,9 @@ public:
     std::atomic<double> freeRunBpm { 0.0 };
     std::atomic<bool> transportHold { false };
     std::atomic<int> seekBarRequest { -1 };
+    // Global LOOP (D3): av/på och takterna (0-räknade, slutet exklusivt). På = egen klocka som går runt i loopen (DAW:ens transport ignoreras).
+    std::atomic<bool> globalLoop { false };
+    std::atomic<int> globalLoopStartBar { 0 }, globalLoopEndBar { 4 };
     std::atomic<int> previewingLayer { -1 };
 
     // MIDI in medan pianorullen är öppen: vilken rad som svarar på tangentbordet/MIDI (notlager som i previewRequest), -1 = alla rader.

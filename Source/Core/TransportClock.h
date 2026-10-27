@@ -69,6 +69,17 @@ public:
     void setHold (bool shouldHold)     { hold = shouldHold; }
     void seekFreeRunToBar (juce::int64 bar);
 
+    // Global LOOP (D3): den egna klockan går runt mellan startBar och endBar (0-räknade, slutet exklusivt). DAW:ens transport ignoreras då,
+    // eftersom en VST3 inte kan stoppa den. Hoppet görs vid blockstart, så överskottet (högst ett block) behålls.
+    void setLoop (bool on, juce::int64 startBar, juce::int64 endBar)
+    {
+        loopOn = on && endBar > startBar;
+        loopStartBar = startBar;
+        loopEndBar = endBar;
+        if (loopOn)
+            setForceFreeRun (true);
+    }
+
     bool isFollowingHost() const      { return followingHost; }
     bool isHostPlaying() const        { return hostPlaying; } // värdens råa status, även när klockan går fritt (förhandsspelning)
     double getBpm() const             { return bpm; }
@@ -100,6 +111,8 @@ private:
     bool forceFreeRun = false;
     bool hold = false;
     double freeRunBpm = 0.0;
+    bool loopOn = false;
+    juce::int64 loopStartBar = 0, loopEndBar = 0;
     int generation = 0; // ökas vid omstart så att alla StepCursor glömmer vad de spelat
 };
 
