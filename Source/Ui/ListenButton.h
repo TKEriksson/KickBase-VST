@@ -25,6 +25,12 @@ public:
 
     void setAccent (juce::Colour colour) { accent = colour; repaint(); }
 
+    // Knappen har själv startat ljudet (hållen eller fastlåst), till skillnad från att den bara lyser för att motorn spelar.
+    bool isHeldOrLatched() const { return held || latched; }
+
+    // Släpper den lokala hållningen/fastlåsningen utan att anropa onStop (den som släpper stoppar ljudet själv).
+    void release() { if (held || latched) { held = latched = false; repaint(); } }
+
     // Spela/stopp-ikon (triangel i vila, kvadrat medan det spelar) i stället för högtalaren; högtalaren behålls för mute/lyssna på raderna.
     void setPlayIcon (bool shouldUsePlayIcon) { playIcon = shouldUsePlayIcon; repaint(); }
 
