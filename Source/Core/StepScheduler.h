@@ -42,6 +42,9 @@ public:
     };
     void setWindow (const Window& newWindow) { window = newWindow; }
 
+    // Radens tick under förhandsspelningen (publik så att testerna kan nå den).
+    int windowTick (int rowTicks, int totalTicks, StepPosition position) const;
+
     const StepEvent* begin() const { return events.data(); }
     const StepEvent* end() const   { return events.data() + numEvents; }
 
@@ -53,7 +56,6 @@ private:
     void addKick (const Pattern& pattern, const PatternLengths& lengths, int offset, StepPosition position);
     void addBass (int layer, const Pattern& pattern, const PatternLengths& lengths, int offset, StepPosition position);
     void add (StepEvent event);
-    int windowTick (int rowTicks, StepPosition position) const;
 
     Window window;
     int numLayers = Pattern::numLayers;

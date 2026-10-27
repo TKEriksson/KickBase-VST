@@ -205,8 +205,10 @@ public:
         removeButton.setTooltip ("Remove this route");
         removeButton.onClick = [this]
         {
+            const auto before = owner.processor.snapshotMods();
             owner.processor.modRoutes.remove (index);
             owner.processor.markStateChanged();
+            owner.processor.recordModEdit (before, "Remove mod route");
         };
         addAndMakeVisible (removeButton);
     }
@@ -358,9 +360,11 @@ void MatrixPage::addRoute()
             p.setLfoActive (0, true);
             source = 0;
         }
+        const auto before = safe->processor.snapshotMods();
         if (safe->processor.modRoutes.add (source, result - 1, 0.25f) < 0)
             juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Matrix", "All routes are used (" + juce::String (Modulation::maxRoutes) + ").");
         safe->processor.markStateChanged();
+        safe->processor.recordModEdit (before, "Add mod route");
     });
 }
 

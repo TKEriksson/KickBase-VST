@@ -29,10 +29,17 @@ namespace
 
 PluginBase::PluginBase (const BusesProperties& buses, juce::AudioProcessorValueTreeState::ParameterLayout layout, bool isEffect)
     : AudioProcessor (buses),
-      apvts (*this, nullptr, "Parameters", std::move (layout)),
+      undoManager (30000, 200),
+      apvts (*this, &undoManager, "Parameters", std::move (layout)),
       params (apvts),
       effectVersion (isEffect)
 {
+    // APVTS skriver värdet till trädet utan undo första gången (flushToTree, juce_AudioProcessorValueTreeState.cpp:135-138); fyll i det nu så att första gesten går att ångra
+    for (auto child : apvts.state)
+        if (auto* prm = apvts.getParameter (child.getProperty ("id").toString()))
+            if (! child.hasProperty ("value"))
+                child.setProperty ("value", prm->convertFrom0to1 (prm->getValue()), nullptr);
+
     params.setModulator (&modulator); // ljudtrådens parametrar läses med LFO-modulering
     modulator.setLfoCurves (&lfoCurves);
     presetNames.fill ("Default");
@@ -693,6 +700,7 @@ void PluginBase::setStateInformation (const void* data, int sizeInBytes)
     auto xml = getXmlFromBinary (data, sizeInBytes);
     if (xml == nullptr || ! xml->hasTagName (apvts.state.getType()))
         return;
+    clearHistory ("project loaded"); // (replaceState tömmer också, men utan anteckning)
     clearCodeMods(); // kopplingarna ersätts nedan; poster och platser får inte peka på dem
 
     auto state = juce::ValueTree::fromXml (*xml);
@@ -806,6 +814,189 @@ void PluginBase::patternChanged()
     markStateChanged();
 }
 
+namespace
+{
+// Ett steg i ångra-historiken: raden före och efter. perform/undo skriver tillbaka hela raden och meddelar mönstret
+// (patternChanged skriver inget nytt steg: inget i gränssnittet skriver tillbaka därifrån).
+class PatternRowAction : public juce::UndoableAction
+{
+public:
+    PatternRowAction (PluginBase& p, int l, juce::ValueTree b, juce::ValueTree a) : owner (p), layer (l), before (std::move (b)), after (std::move (a))
+    {
+        units = 1 + (int) ((estimate (before) + estimate (after)) / 1024); // KB, så att historiens tak räknar minne och inte bara antal
+    }
+
+    bool perform() override
+    {
+        if (skipFirst) // ändringen är redan gjord när steget läggs till
+        {
+            skipFirst = false;
+            return true;
+        }
+        apply (after);
+        return true;
+    }
+
+    bool undo() override
+    {
+        apply (before);
+        return true;
+    }
+
+    int getSizeInUnits() override { return units; }
+
+private:
+    static size_t estimate (const juce::ValueTree& t) { return (size_t) t.createXml()->createDocument ({}, true, false).length(); }
+
+    void apply (const juce::ValueTree& tree)
+    {
+        owner.pattern.rowFromValueTree (layer, tree);
+        owner.patternChanged();
+    }
+
+    PluginBase& owner;
+    int layer;
+    juce::ValueTree before, after;
+    bool skipFirst = true;
+    int units = 1;
+};
+}
+
+namespace {
+// Allmän ångra-post: före/efter som träd och en funktion som lägger tillbaka ett träd. Första perform hoppas över (ändringen är redan gjord).
+class TreeAction : public juce::UndoableAction
+{
+public:
+    TreeAction (juce::ValueTree b, juce::ValueTree a, std::function<void (const juce::ValueTree&)> f)
+        : before (std::move (b)), after (std::move (a)), apply (std::move (f)) {}
+
+    bool perform() override
+    {
+        if (skipFirst)
+            skipFirst = false;
+        else
+            apply (after);
+        return true;
+    }
+    bool undo() override { apply (before); return true; }
+    int getSizeInUnits() override { return 2; }
+
+private:
+    juce::ValueTree before, after;
+    std::function<void (const juce::ValueTree&)> apply;
+    bool skipFirst = true;
+};
+}
+
+juce::ValueTree PluginBase::snapshotMods() const { return modRoutes.toValueTree (getParameters()); }
+
+void PluginBase::recordModEdit (const juce::ValueTree& before, const juce::String& name)
+{
+    auto after = snapshotMods();
+    if (! before.isValid() || before.isEquivalentTo (after))
+        return;
+    undoManager.beginNewTransaction (stampedName (name));
+    undoManager.perform (new TreeAction (before, std::move (after), [this] (const juce::ValueTree& t)
+    {
+        modRoutes.fromValueTree (t, getParameters());
+        markStateChanged();
+    }));
+}
+
+juce::ValueTree PluginBase::snapshotAux() const
+{
+    juce::ValueTree aux ("Aux");
+    aux.appendChild (pattern.toValueTree(), nullptr);
+    aux.appendChild (snapshotMods(), nullptr);
+    return aux;
+}
+
+void PluginBase::applyAux (const juce::ValueTree& aux)
+{
+    pattern.fromValueTree (aux.getChild (0), true);
+    modRoutes.fromValueTree (aux.getChild (1), getParameters());
+    patternChanged();
+    markStateChanged();
+}
+
+namespace {
+// Runt en förinställning: huvudpreset (Full) tömmer historiken, en del blir ett enda steg.
+class PresetUndoScope
+{
+public:
+    PresetUndoScope (PluginBase& o, Presets::Section s, const juce::String& n) : owner (o), full (s == Presets::Section::full), name (n)
+    {
+        if (! full)
+            part.emplace (owner, "Load preset: " + name);
+    }
+    ~PresetUndoScope()
+    {
+        if (full)
+            owner.clearHistory (name);
+    }
+
+private:
+    PluginBase& owner;
+    bool full;
+    juce::String name;
+    std::optional<PluginBase::EditScope> part;
+};
+}
+
+PluginBase::EditScope::EditScope (PluginBase& o, const juce::String& name) : owner (o)
+{
+    outermost = owner.editDepth++ == 0;
+    if (! outermost)
+        return;
+    owner.apvts.copyState(); // väntande rattändringar hör inte till åtgärden
+    owner.undoManager.beginNewTransaction (stampedName (name));
+    before = owner.snapshotAux();
+}
+
+PluginBase::EditScope::~EditScope()
+{
+    --owner.editDepth;
+    if (! outermost)
+        return;
+    owner.apvts.copyState();
+    auto after = owner.snapshotAux();
+    if (! before.isEquivalentTo (after))
+        owner.undoManager.perform (new TreeAction (before, std::move (after), [&o = owner] (const juce::ValueTree& t) { o.applyAux (t); }));
+}
+
+juce::ValueTree PluginBase::snapshotRow (int layer) const
+{
+    return pattern.rowToValueTree (layer);
+}
+
+juce::String PluginBase::stampedName (const juce::String& what)
+{
+    return juce::Time::getCurrentTime().formatted ("%H:%M:%S") + " " + what;
+}
+
+void PluginBase::nameParameterGesture (const juce::String& paramName)
+{
+    apvts.copyState(); // flushParameterValuesToValueTree
+    undoManager.setCurrentTransactionName (stampedName ("Knob: " + paramName));
+}
+
+void PluginBase::clearHistory (const juce::String& why)
+{
+    apvts.copyState(); // väntande rattändringar skrivs till trädet nu, annars hamnar de som ett namnlöst steg efter rensningen
+    undoManager.clearUndoHistory();
+    historyClearedNote = why.isEmpty() ? juce::String() : "History cleared: " + why;
+    undoManager.sendChangeMessage();
+}
+
+void PluginBase::recordRowEdit (int layer, const juce::ValueTree& before, const juce::String& name)
+{
+    auto after = pattern.rowToValueTree (layer);
+    if (! before.isValid() || before.isEquivalentTo (after))
+        return;
+    undoManager.beginNewTransaction (stampedName (name + ": " + getLayerName (layer)));
+    undoManager.perform (new PatternRowAction (*this, layer, before, std::move (after)));
+}
+
 void PluginBase::markStateChanged()
 {
     updateHostDisplay (ChangeDetails().withNonParameterStateChanged (true));
@@ -878,6 +1069,7 @@ void PluginBase::applyLoadedLfos (std::uint32_t mask)
 
 void PluginBase::loadFactoryPreset (Presets::Section section, int index, int layer)
 {
+    PresetUndoScope undoScope (*this, section, Presets::factoryName (section, effectVersion, index));
     // Instrumentets Init är ett vanligt Full-preset (Resources/InitPreset.mofp); FX-versionen och övriga delar använder fabrikslistorna i koden.
     if (section == Presets::Section::full && index == 0 && ! preferCodeInit && loadEmbeddedInit())
         return;
@@ -1162,6 +1354,7 @@ bool PluginBase::pasteTrack (int layer, const juce::XmlElement& clip)
     if (bassXml == nullptr || patternXml == nullptr)
         return false;
 
+    EditScope undo (*this, "Paste track: " + getLayerName (layer)); // delpresetarna nedan blir en del av samma steg
     // Det gamla innehållet (och dess kopplingar) rensas först, så att inget blir kvar av det som skrivs över.
     wipeInstrument (layer);
     loadPresetXml (*bassXml, Presets::Section::bass, layer, {});
@@ -1271,6 +1464,7 @@ bool PluginBase::loadEmbeddedInit()
 
 bool PluginBase::loadPresetXml (const juce::XmlElement& xmlElement, Presets::Section section, int layer, const juce::String& presetName)
 {
+    PresetUndoScope undoScope (*this, section, presetName);
     const auto* xml = &xmlElement;
 
     // Delens parametrar får filens värden; de som saknas i filen (t.ex. nya sedan presetet sparades) får sitt standardvärde i stället för att

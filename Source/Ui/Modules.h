@@ -48,6 +48,7 @@ private:
     void showProjectMenu();
     void saveProject (bool askForFile); // askForFile eller ingen projektfil än: filväljaren; annars sparas det direkt till projektfilen
     void saveProjectTo (const juce::File& file);
+    void showHistory();
     void openProject();
     void openProjectFile (const juce::File& file);
     void newProject();
@@ -78,9 +79,39 @@ private:
     // och tonen gäller alla provlyssningar.
     ListenButton listenAll, listenRoll; // listenRoll syns bara medan en pianorulle är öppen
     bool rollShown = false;
+    void syncRollButton(); // visar/döljer LISTEN PIANO ROLL när en pianorulle öppnas eller stängs
+    // Egen fast takt (10 Hz): topbarens takt kan sänkas av OPTIMIZATIONS, och knappen ska komma direkt när rullen öppnas.
+    struct RollWatch : juce::Timer
+    {
+        explicit RollWatch (std::function<void()> f) : callback (std::move (f)) { startTimerHz (10); }
+        void timerCallback() override { callback(); }
+        std::function<void()> callback;
+    };
+    std::unique_ptr<RollWatch> rollWatch;
     juce::ComboBox noteBox;
     juce::TextButton restartButton { "" };       // börjar om räknaren och mönstret vid 1.1 (egen klocka)
     juce::Rectangle<int> previewGroup, bpmPill, keyBlock;
+
+    // Transport i egen klocka (D3a): dubbelklicka tempot eller takten för att skriva ett värde, hjulet över takten scrubbar (musiken står still tills hjulet vilat).
+    // Spelar värden är de låsta ("styrs av DAW").
+    juce::Label bpmLabel, barLabel;
+
+    // Global LOOP (D3): egen klocka som går runt mellan två takter (1-räknade, båda inräknade). DAW:ens transport ignoreras medan den är på.
+    juce::TextButton loopButton { "LOOP" };
+    juce::Label loopFromLabel, loopToLabel;
+    juce::Rectangle<int> loopBlock;
+    static constexpr int loopBlockWidth = 132;
+    void applyLoopBars();
+    void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
+    void updateTransportLabels (bool following);
+    struct ReleaseTimer : juce::Timer
+    {
+        void timerCallback() override { stopTimer(); if (callback) callback(); }
+        std::function<void()> callback;
+    };
+    ReleaseTimer scrubRelease;
+    int scrubBar = -1;          // takten (0-räknad) hjulet pekar på medan man scrubbar, -1 = ingen scrubbning
+    int lastFollowing = -1;
     bool bridgeShown = false;
     juce::TextButton projectButton { "MENU" }; // meny: nytt/spara/öppna projekt, senaste, exportera, AI-server av/på (statuspunkten visar AI-länken)
     float peakL = 0.0f, peakR = 0.0f, holdL = 0.0f, holdR = 0.0f; // utgångsmätaren
@@ -295,6 +326,7 @@ public:
     juce::Component* getHeader() { return &header; }
     void resized() override;
     void select (int layer);
+    int getCurrent() const { return current; }
     void mouseDown (const juce::MouseEvent& event) override;
 
 private:
@@ -381,6 +413,7 @@ private:
     void showGateFillMenu();
     void showPianoRoll (bool open);
     void updateVisibility();
+    void togglePopOut(); // D5: pianorullen i eget fönster / tillbaka
 
     PluginBase& processor;
     const bool instrument;
@@ -395,6 +428,13 @@ private:
     void updateLengthKnobs();
     StepSequencer sequencer;
     PianoRoll pianoRoll;
+    struct PopWindow : juce::DocumentWindow // deklareras efter pianoRoll så att fönstret förstörs först
+    {
+        PopWindow() : juce::DocumentWindow ("Kickbase Piano Roll", Theme::panel, juce::DocumentWindow::allButtons) {}
+        void closeButtonPressed() override { if (onClose) onClose(); }
+        std::function<void()> onClose;
+    };
+    std::unique_ptr<PopWindow> popWindow;
     juce::TextButton patternTab { "PATTERN" }, gateTab { "GATE" };
     PianoRollButton pianoButton;
     void updatePianoButton();

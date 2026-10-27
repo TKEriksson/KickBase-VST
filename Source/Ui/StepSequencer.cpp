@@ -972,6 +972,7 @@ void StepSequencer::showCustomMenu (int layer)
             {
                 if (safeThis == nullptr || choice != 1)
                     return;
+                PluginBase::EditScope undo (safeThis->processor, "Delete piano roll");
                 safeThis->processor.pattern.clearNotes (layer); // nollställer också pianorullsmarkeringen
                 safeThis->processor.patternChanged();
             });
@@ -1309,6 +1310,9 @@ void StepSequencer::mouseDown (const juce::MouseEvent& event)
         return;
     }
 
+    dragUndo.reset();
+    dragUndo.emplace (processor, dragTarget == Target::lane ? "Edit step lane" : mode == Mode::gate ? "Edit gate steps" : "Edit steps");
+
     // Högerklick i lanet återställer steget.
     if (event.mods.isPopupMenu() && dragTarget == Target::lane)
     {
@@ -1321,6 +1325,7 @@ void StepSequencer::mouseDown (const juce::MouseEvent& event)
         }
         processor.patternChanged();
         dragTarget = Target::none;
+        dragUndo.reset();
         repaint();
         return;
     }
@@ -1356,6 +1361,7 @@ void StepSequencer::mouseUp (const juce::MouseEvent&)
     }
     if (edited)
         processor.patternChanged();
+    dragUndo.reset();
 
     dragTarget = Target::none;
 }

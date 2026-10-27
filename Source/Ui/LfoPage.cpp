@@ -412,8 +412,10 @@ void LfoTargets::mouseDown (const juce::MouseEvent&)
             continue;
         menu.addItem ("Remove " + parameters[target]->getName (40), [this, r]
         {
+            const auto before = processor.snapshotMods();
             processor.modRoutes.remove (r);
             processor.markStateChanged();
+            processor.recordModEdit (before, "Remove mod route");
         });
     }
     if (menu.getNumItems() > 0)

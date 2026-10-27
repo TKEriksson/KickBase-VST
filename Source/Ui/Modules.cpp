@@ -1,6 +1,7 @@
 #include "InstrumentMenu.h"
 #include "Modules.h"
 #include "Help.h"
+#include "HistoryPanel.h"
 #include "../Core/ProjectFile.h"
 
 namespace
@@ -77,12 +78,73 @@ HeaderBar::HeaderBar (PluginBase& p, const juce::String& subtitleIn)
         restartButton.setTooltip ("RESTART - Starts the counter and the pattern over at bar 1.1 (when the plugin runs on its own clock; with DAW SYNC the DAW decides).");
         restartButton.onClick = [this] { processor.requestRestart(); };
         addAndMakeVisible (restartButton);
+
+        auto setUpLabel = [this] (juce::Label& label, float size)
+        {
+            label.setFont (Theme::font (size, true));
+            label.setJustificationType (juce::Justification::centred);
+            label.setColour (juce::Label::textColourId, Theme::text);
+            label.setColour (juce::Label::backgroundColourId, juce::Colours::transparentBlack);
+            label.setColour (juce::Label::backgroundWhenEditingColourId, juce::Colour (0xff0b0d18));
+            label.setColour (juce::Label::textWhenEditingColourId, Theme::text);
+            label.setBorderSize ({ 0, 0, 0, 0 });
+            addAndMakeVisible (label);
+        };
+        setUpLabel (bpmLabel, 13.0f);
+        setUpLabel (barLabel, 14.0f);
+        bpmLabel.onTextChange = [this]
+        {
+            const auto value = bpmLabel.getText().retainCharacters ("0123456789.").getDoubleValue();
+            processor.freeRunBpm = value > 0.0 ? juce::jlimit (20.0, 300.0, value) : 0.0; // tom = tillbaka till värdens/standardtempot
+            updateTransportLabels (processor.transportStatus.followingHost.load());
+        };
+        barLabel.onTextChange = [this]
+        {
+            if (const auto bar = barLabel.getText().retainCharacters ("0123456789").getIntValue(); bar >= 1)
+                processor.seekBarRequest = bar - 1;
+            updateTransportLabels (processor.transportStatus.followingHost.load());
+        };
+        loopButton.setClickingTogglesState (true);
+        loopButton.setColour (juce::TextButton::buttonOnColourId, Theme::pattern);
+        loopButton.setTooltip ("LOOP - The plugin loops the bars shown next to it on its own clock and ignores the DAW's position. "
+                               "A plugin cannot stop the DAW, so stop it yourself in the DAW.");
+        loopButton.onClick = [this]
+        {
+            applyLoopBars();
+            const auto on = loopButton.getToggleState();
+            processor.globalLoop = on;
+            if (on)
+                processor.seekBarRequest = processor.globalLoopStartBar.load();
+        };
+        addAndMakeVisible (loopButton);
+        for (auto* label : { &loopFromLabel, &loopToLabel })
+        {
+            setUpLabel (*label, 13.0f);
+            label->setEditable (false, true, false);
+            label->setColour (juce::Label::outlineColourId, Theme::text.withAlpha (0.25f));
+            label->onTextChange = [this] { applyLoopBars(); };
+        }
+        loopFromLabel.setText ("1", juce::dontSendNotification);
+        loopToLabel.setText ("4", juce::dontSendNotification);
+        loopFromLabel.setTooltip ("LOOP start bar (double-click to type).");
+        loopToLabel.setTooltip ("LOOP end bar, included (double-click to type).");
+
+        scrubRelease.callback = [this]
+        {
+            if (scrubBar >= 0)
+                processor.seekBarRequest = scrubBar;
+            processor.transportHold = false;
+            scrubBar = -1;
+        };
+        updateTransportLabels (false);
     }
 
     projectButton.onClick = [this] { showProjectMenu(); };
     addAndMakeVisible (projectButton);
     updateAiTooltip();
     startVisualTimer (Settings::Visual::topBar, 30);
+    if (processor.getKeyboardState() != nullptr)
+        rollWatch = std::make_unique<RollWatch> ([this] { syncRollButton(); });
 }
 
 void HeaderBar::updateAiTooltip()
@@ -116,6 +178,7 @@ void HeaderBar::showProjectMenu()
     }
     menu.addSeparator();
     menu.addItem (6, "AI server (MCP)", true, processor.isBridgeEnabled());
+    menu.addItem (7, "History...");
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&projectButton), [safe = juce::Component::SafePointer<HeaderBar> (this), recent] (int result)
     {
         if (safe == nullptr || result <= 0)
@@ -130,9 +193,30 @@ void HeaderBar::showProjectMenu()
             safe->processor.setBridgeEnabled (! safe->processor.isBridgeEnabled());
             safe->updateAiTooltip();
         }
+        else if (result == 7) safe->showHistory();
         else if (result >= 10 && result - 10 < recent.size())
             safe->openProjectFile (juce::File (recent[result - 10]));
     });
+}
+
+// Icke-modal historikdialog; en enda instans (en andra gång lyfts den befintliga fram).
+void HeaderBar::showHistory()
+{
+    static juce::Component::SafePointer<juce::DialogWindow> open;
+    if (open != nullptr)
+    {
+        open->toFront (true);
+        return;
+    }
+    juce::DialogWindow::LaunchOptions o;
+    o.content.setOwned (new HistoryPanel (processor));
+    o.dialogTitle = "History";
+    o.dialogBackgroundColour = Theme::panel;
+    o.componentToCentreAround = this;
+    o.escapeKeyTriggersCloseButton = true;
+    o.useNativeTitleBar = false;
+    o.resizable = true;
+    open = o.launchAsync();
 }
 
 juce::StringArray HeaderBar::recentProjects() const
@@ -264,6 +348,7 @@ void HeaderBar::openProjectFile (const juce::File& file)
 
 HeaderBar::~HeaderBar()
 {
+    processor.transportHold = false; // ett scrubbhopp som inte hunnit släppas får inte frysa klockan
     if (keyTarget != nullptr)
         keyTarget->removeKeyListener (this);
 }
@@ -289,6 +374,55 @@ bool HeaderBar::keyPressed (const juce::KeyPress& key, juce::Component*)
         return true;
     }
     return false;
+}
+
+void HeaderBar::updateTransportLabels (bool following)
+{
+    if (processor.getKeyboardState() == nullptr)
+        return;
+
+    const auto& status = processor.transportStatus;
+    if (! bpmLabel.isBeingEdited())
+        bpmLabel.setText (juce::String (status.bpm.load(), 1) + " BPM", juce::dontSendNotification);
+    if (! barLabel.isBeingEdited())
+        barLabel.setText (scrubBar >= 0 ? juce::String (scrubBar + 1) + ".1" : juce::String (status.patternBar.load()) + "." + juce::String (status.beat.load()),
+                          juce::dontSendNotification);
+
+    if ((int) following == lastFollowing)
+        return;
+    lastFollowing = (int) following;
+
+    // Med DAW-synk styr värden tempo och takt; en VST3 kan inte ändra dem.
+    bpmLabel.setEditable (false, ! following, false);
+    barLabel.setEditable (false, ! following, false);
+    bpmLabel.setTooltip (following ? "BPM - styrs av DAW (the DAW sets the tempo; a plugin cannot change it)."
+                                   : "BPM - Double-click to type the tempo used when the plugin runs on its own clock. Empty = the DAW's last tempo (or 140).");
+    barLabel.setTooltip (following ? "BAR - styrs av DAW (the DAW sets the position)."
+                                   : "BAR - Double-click to type a start bar, or scroll the mouse wheel here to scrub: the music pauses until you stop scrolling.");
+}
+
+void HeaderBar::applyLoopBars()
+{
+    const auto from = std::max (1, loopFromLabel.getText().retainCharacters ("0123456789").getIntValue());
+    const auto to = std::max (from, loopToLabel.getText().retainCharacters ("0123456789").getIntValue());
+    loopFromLabel.setText (juce::String (from), juce::dontSendNotification);
+    loopToLabel.setText (juce::String (to), juce::dontSendNotification);
+    processor.globalLoopStartBar = from - 1;
+    processor.globalLoopEndBar = to; // slutet exklusivt, 0-räknat = sista inräknade takten 1-räknad
+}
+
+void HeaderBar::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel)
+{
+    if (processor.getKeyboardState() == nullptr || processor.transportStatus.followingHost.load()
+        || ! barLabel.getBounds().contains (e.getPosition()) || wheel.deltaY == 0.0f)
+        return;
+
+    if (scrubBar < 0)
+        scrubBar = std::max (0, processor.transportStatus.patternBar.load() - 1);
+    scrubBar = std::max (0, scrubBar + (wheel.deltaY > 0.0f ? 1 : -1));
+    processor.transportHold = true;
+    barLabel.setText (juce::String (scrubBar + 1) + ".1", juce::dontSendNotification);
+    scrubRelease.startTimer (450);
 }
 
 void HeaderBar::paintOverChildren (juce::Graphics& g)
@@ -331,11 +465,31 @@ void HeaderBar::resized()
     right.removeFromRight (8);
     bpmPill = right.removeFromRight (214).reduced (0, (height - 34) / 2);
     restartButton.setBounds (bpmPill.getRight() - 32, bpmPill.getY() + 4, 26, bpmPill.getHeight() - 8);
+    {
+        auto inner = bpmPill.reduced (bpmPill.getHeight() / 2 - 4, 0); // samma indelning som i paint
+        bpmLabel.setBounds (inner.removeFromLeft (100).reduced (0, 4));
+        barLabel.setBounds (inner.removeFromLeft (58).reduced (0, 4));
+    }
+
+    // LOOP-rutan ligger till vänster om tempot (bara instrumentet)
+    loopBlock = {};
+    if (hasPreviews)
+    {
+        loopBlock = right.removeFromRight (loopBlockWidth).withSizeKeepingCentre (loopBlockWidth - 8, 34);
+        auto inner = loopBlock;
+        loopButton.setBounds (inner.removeFromLeft (52));
+        inner.removeFromLeft (6);
+        loopFromLabel.setBounds (inner.removeFromLeft (30));
+        inner.removeFromLeft (14);
+        loopToLabel.setBounds (inner.removeFromLeft (30));
+    }
+    for (auto* c : std::initializer_list<juce::Component*> { &loopButton, &loopFromLabel, &loopToLabel })
+        c->setVisible (hasPreviews);
 
     projectButton.setBounds (14 + logo.getWidth() + 22, controlsY, 84, controlsHeight); // MENU först, till vänster om presetväljaren
     auto presetWidth = hasPreviews ? 118 : 200;
     const auto leftEnd = projectButton.getRight() + 10 + presetWidth + 10 + (hasPreviews ? (rollShown ? 148 : 112) : 0) + 16 + meterWidth;
-    presetWidth = std::max (70, presetWidth - std::max (0, leftEnd - (bpmPill.getX() - 8)));
+    presetWidth = std::max (70, presetWidth - std::max (0, leftEnd - ((hasPreviews ? loopBlock.getX() : bpmPill.getX()) - 8)));
     presets.setBounds (projectButton.getRight() + 10, controlsY, presetWidth, controlsHeight);
     nameBounds = { projectButton.getX(), controlsY + controlsHeight + 1, presets.getRight() - projectButton.getX(), 14 };
 
@@ -442,6 +596,18 @@ void HeaderBar::chooseExportTarget (int part, int bars)
     });
 }
 
+void HeaderBar::syncRollButton()
+{
+    const auto rollOpen = processor.openRollLayer.load() >= 0;
+    if (rollOpen == rollShown)
+        return;
+    rollShown = rollOpen;
+    resized();
+    if (auto* parent = getParentComponent())
+        parent->resized(); // mätaren sitter efter PREVIEWS-rutan
+    repaint();
+}
+
 void HeaderBar::timerCallback()
 {
     followVisualRate();
@@ -458,15 +624,7 @@ void HeaderBar::timerCallback()
     if (processor.getKeyboardState() != nullptr)
     {
         listenAll.setActive (processor.previewingLayer.load() == PluginBase::previewAllRows);
-        const auto rollOpen = processor.openRollLayer.load() >= 0;
-        if (rollOpen != rollShown)
-        {
-            rollShown = rollOpen;
-            resized();
-            if (auto* parent = getParentComponent())
-                parent->resized(); // mätaren sitter efter PREVIEWS-rutan
-            repaint();
-        }
+        syncRollButton();
         listenRoll.setActive (rollShown && processor.previewingLayer.load() == processor.openRollLayer.load());
         if (noteBox.getSelectedId() != processor.previewNote.load() + 1)
             noteBox.setSelectedId (processor.previewNote.load() + 1, juce::dontSendNotification);
@@ -530,6 +688,7 @@ void HeaderBar::timerCallback()
     if (hash != lastStatusHash)
     {
         lastStatusHash = hash;
+        updateTransportLabels (status.followingHost.load());
         repaint();
     }
 }
@@ -598,13 +757,17 @@ void HeaderBar::paint (juce::Graphics& g)
         auto inner = pill.reduced (pill.getHeight() * 0.5f - 4.0f, 0.0f);
         g.setFont (Theme::font (13.0f, true));
         g.setColour (Theme::text);
-        g.drawText (juce::String (status.bpm.load(), 1) + " BPM", inner.removeFromLeft (100.0f), juce::Justification::centred);
+        const auto labelsDrawn = bpmLabel.isVisible(); // instrumentet: etiketterna ritar tempot och takten (kan skrivas in)
+        auto bpmArea = inner.removeFromLeft (100.0f);
+        if (! labelsDrawn)
+            g.drawText (juce::String (status.bpm.load(), 1) + " BPM", bpmArea, juce::Justification::centred);
         g.setColour (juce::Colour (0xff2c3148));
         g.fillRect (juce::Rectangle<float> (inner.getX(), pill.getY() + 7.0f, 1.0f, pill.getHeight() - 14.0f));
         g.setFont (Theme::font (14.0f, true));
         g.setColour (Theme::text);
-        g.drawText (juce::String (status.patternBar.load()) + "." + juce::String (status.beat.load()), // takten i mönstret (börjar om när mönstret är klart)
-                    inner.removeFromLeft (58.0f), juce::Justification::centred);
+        if (! labelsDrawn)
+            g.drawText (juce::String (status.patternBar.load()) + "." + juce::String (status.beat.load()), // takten i mönstret (börjar om när mönstret är klart)
+                        inner.removeFromLeft (58.0f), juce::Justification::centred);
     }
 
     // PREVIEWS: ramen runt högtalaren och tonväljaren.
@@ -946,6 +1109,21 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
                       Help::forParameter (ParamID::bass (layer, F::fmOn))); // FM efter FILTER: fliknummer 3 + oscsPerLayer
     mixPanel = std::make_unique<InstrMixPanel> (p, layer, layerAccent);
     sources.addTab ("MIX", layerAccent, *mixPanel);
+
+    // B1: förhandsknapp i flikraden. OSC 1-3 och SAMPLE spelar bara sin källa, FILTER/FM/MIX hela instrumentet (INSTR har sin egen knapp i sidan).
+    for (int tab = 1; tab <= 7; ++tab)
+    {
+        const auto source = tab - 1; // fliknummer 1-3 = OSC 1-3, 4 = SAMPLE (källa 3)
+        const auto solo = tab <= 1 + ParamID::oscsPerLayer;
+        const auto whole = tab >= 5;
+        if (! solo && ! whole)
+            continue;
+        sources.setPreview (tab,
+                            [this, source, whole] { hold.start (whole ? PluginBase::heldLayerAudition (layer) : PluginBase::heldSoloAudition (layer, source)); },
+                            [this] { hold.stop(); },
+                            whole ? "LISTEN - Plays the whole instrument on the preview note. Hold to play, double-click to latch."
+                                  : "LISTEN - Plays only this source on the preview note. Hold to play, double-click to latch.");
+    }
 
     auto knob = [&] (const juce::String& paramID, const char* name) -> juce::Component*
     {
@@ -2150,6 +2328,7 @@ PatternModule::PatternModule (PluginBase& p, bool isInstrument)
     sequencer.onLayerSelected = [this] (int layer) { showLayer (layer); };
     sequencer.onOpenPianoRoll = [this] (int layer) { sequencer.selectLayer (layer); showLayer (layer); showPianoRoll (true); };
     pianoRoll.onDeleted = [this] { showPianoRoll (false); };
+    pianoRoll.onPopOut = [this] { togglePopOut(); };
     addAndMakeVisible (sequencer);
     addChildComponent (pianoRoll);
 
@@ -2229,8 +2408,38 @@ void PatternModule::updatePianoButton()
     pianoButton.setState (! processor.pattern.isCustom (shownLayer), processor.pianoRollOpen);
 }
 
+void PatternModule::togglePopOut()
+{
+    if (popWindow != nullptr)
+    {
+        addChildComponent (pianoRoll); // flyttar ut den ur fönstret
+        popWindow.reset();
+        pianoRoll.setPoppedOut (false);
+        resized();
+        updateVisibility();
+        return;
+    }
+    pianoRoll.setSize (940, 540);
+    popWindow = std::make_unique<PopWindow>();
+    popWindow->setUsingNativeTitleBar (true);
+    popWindow->setContentNonOwned (&pianoRoll, true);
+    popWindow->setResizable (true, true);
+    popWindow->setResizeLimits (640, 320, 3000, 2000);
+    popWindow->onClose = [safe = juce::Component::SafePointer<PatternModule> (this)]
+    {
+        juce::MessageManager::callAsync ([safe] { if (safe != nullptr && safe->popWindow != nullptr) safe->togglePopOut(); });
+    };
+    popWindow->centreWithSize (popWindow->getWidth(), popWindow->getHeight());
+    pianoRoll.setVisible (true);
+    popWindow->setVisible (true);
+    pianoRoll.setPoppedOut (true);
+    updateVisibility();
+}
+
 void PatternModule::showPianoRoll (bool open)
 {
+    if (! open && popWindow != nullptr)
+        togglePopOut();
     processor.pianoRollOpen = open;
     updatePianoButton();
     if (open && mode == StepSequencer::Mode::gate)
@@ -2243,8 +2452,9 @@ void PatternModule::updateVisibility()
     const auto gating = instrument && mode == StepSequencer::Mode::gate;
     const auto rollOpen = ! gating && instrument && processor.pianoRollOpen;
 
-    pianoRoll.setVisible (rollOpen);
-    sequencer.setVisible (! rollOpen);
+    if (popWindow == nullptr)
+        pianoRoll.setVisible (rollOpen);
+    sequencer.setVisible (! (rollOpen && popWindow == nullptr)); // utbruten rulle: stegen syns kvar i huvudfönstret
     pianoButton.setVisible (instrument && ! gating);
     fillButton.setVisible (! gating);
     gateFillButton.setVisible (gating);
@@ -2325,6 +2535,7 @@ void PatternModule::showKickFillMenu()
         if (safeThis == nullptr || result <= 0)
             return;
         auto& p = safeThis->processor;
+        PluginBase::EditScope undo (p, "Kick pattern");
         juce::String steps;
         steps << bars[result - 1]; // en takt: kickraden är AUTO och följer innehållet
         p.pattern.setKickSteps (steps, Pattern::ticksPerStep (InstrumentGrid::sixteenth));
@@ -2354,6 +2565,7 @@ void PatternModule::showFillMenu()
             return;
         auto& p = safeThis->processor;
         const auto layer = safeThis->shownLayer;
+        PluginBase::EditScope undo (p, "Pattern template: " + p.getLayerName (layer));
         const auto grid = p.pattern.applyLayerTemplate (layer, (PatternTemplate) (result - 1));
         if (auto* gridParam = p.apvts.getParameter (ParamID::bass (layer, InstrumentField::grid)))
             Presets::setParameter (*gridParam, gridParam->convertTo0to1 ((float) grid));
@@ -2377,6 +2589,7 @@ void PatternModule::showGateFillMenu()
             return;
         auto& p = safeThis->processor;
         const auto layer = safeThis->shownLayer;
+        PluginBase::EditScope undo (p, "Gate fill: " + p.getLayerName (layer));
         const auto gridIndex = juce::jlimit (0, Pattern::numGrids - 1, (int) p.apvts.getRawParameterValue (ParamID::bass (layer, InstrumentField::gateGrid))->load());
         const auto stepsPerBar = Pattern::instrumentStepsPerBar ((InstrumentGrid) gridIndex);
 
@@ -2567,5 +2780,6 @@ void PatternModule::resized()
     blockFrame = juce::Rectangle<int>::leftTopRightBottom (0, blockTop, 134, bottom + 8);
 
     sequencer.setBounds (area);
-    pianoRoll.setBounds (area);
+    if (popWindow == nullptr)
+        pianoRoll.setBounds (area);
 }

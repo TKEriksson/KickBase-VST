@@ -79,6 +79,39 @@ public:
     // Anropas av gränssnittet när mönstret ändrats, så att DAW:en vet att projektet ändrats.
     void patternChanged();
 
+    // Ångra/gör om för en pianorulle (message thread). Anroparen tar `snapshotRow` före ändringen och anropar `recordRowEdit` efteråt:
+    // är raden ändrad läggs ett steg (en transaktion) till, annars inget. Ändringen är redan gjord, så steget utförs inte en gång till.
+    juce::ValueTree snapshotRow (int layer) const;
+    void recordRowEdit (int layer, const juce::ValueTree& before, const juce::String& name);
+    // Transaktionsnamn med klockslag först (hh:mm:ss), t.ex. "14:03:22 Edit notes: Instr 1".
+    static juce::String stampedName (const juce::String& what);
+    // Huvudpreset/projekt laddat: tömmer historiken och visar en rad "History cleared: <why>" i historikdialogen (bara UI, kan inte ångras).
+    void clearHistory (const juce::String& why);
+    juce::String historyClearedNote;
+    // Parameterhandtag slut: tvingar APVTS att skriva ändringen till trädet nu (annars kan den hamna i nästa steg upp till ~500 ms senare) och döper steget.
+    // Modulationsmatrisen (ruttlistan ligger utanför APVTS): ta `snapshotMods` före ändringen och `recordModEdit` efteråt.
+    juce::ValueTree snapshotMods() const;
+    void recordModEdit (const juce::ValueTree& before, const juce::String& name);
+    // Delpreset = ett steg: parametrarna (APVTS) plus mönster och modmatris (TreeAction). Huvudpreset och projekt tömmer historiken (`clearHistory`).
+    juce::ValueTree snapshotAux() const;
+    void applyAux (const juce::ValueTree& aux);
+    void nameParameterGesture (const juce::String& paramName);
+    // Ett undo-steg för en hel åtgärd (mall, Live Code-körning, dra i stegraden): parametrar, mönster och modmatris. Skapa i början av åtgärden, steget läggs när den går ur scope.
+    class EditScope
+    {
+    public:
+        EditScope (PluginBase& o, const juce::String& name);
+        ~EditScope();
+        EditScope (const EditScope&) = delete;
+        EditScope& operator= (const EditScope&) = delete;
+
+    private:
+        PluginBase& owner;
+        juce::ValueTree before;
+        bool outermost = false; // en scope inuti en annan (t.ex. delpreset i klistra in spår) ingår i den yttres steg
+    };
+    int editDepth = 0; // antal öppna EditScope; endast meddelandetråden
+
     // Som patternChanged, för annat som sparas utan att vara en parameter (t.ex. effektordningen).
     void markStateChanged();
     int clearLfo (int index);                  // tar bort kopplingarna, återställer parametrar och kurva, sist biten i masken
@@ -236,6 +269,8 @@ public:
     juce::String getInstrumentSampleName (int layer) const { return instrumentSamples[(size_t) juce::jlimit (0, ParamID::numInstrumentLayers - 1, layer)].name(); }
     const ClickSample* getActiveInstrumentSample (int layer) const { return instrumentSamples[(size_t) juce::jlimit (0, ParamID::numInstrumentLayers - 1, layer)].active(); }
 
+    // Måste deklareras före apvts (som får en pekare till den). Bara meddelandetråden använder den.
+    juce::UndoManager undoManager;
     juce::AudioProcessorValueTreeState apvts;
     Pattern pattern;
     SidechainCurve sidechainCurve;
@@ -308,6 +343,15 @@ public:
     // Börjar om räknaren och mönstret vid 1.1 (egen klocka; med DAW-synk styr DAW:en).
     void requestRestart() { restartRequest = true; }
     std::atomic<bool> restartRequest { false };
+
+    // Transport i egen klocka (D3a), körtillstånd utan parameter: eget tempo (0 = inget), hållning medan takten scrubbas och hopp till en takt (-1 = inget).
+    // Gäller inte när värden spelar (en VST3 kan inte styra värdens transport eller tempo).
+    std::atomic<double> freeRunBpm { 0.0 };
+    std::atomic<bool> transportHold { false };
+    std::atomic<int> seekBarRequest { -1 };
+    // Global LOOP (D3): av/på och takterna (0-räknade, slutet exklusivt). På = egen klocka som går runt i loopen (DAW:ens transport ignoreras).
+    std::atomic<bool> globalLoop { false };
+    std::atomic<int> globalLoopStartBar { 0 }, globalLoopEndBar { 4 };
     std::atomic<int> previewingLayer { -1 };
 
     // MIDI in medan pianorullen är öppen: vilken rad som svarar på tangentbordet/MIDI (notlager som i previewRequest), -1 = alla rader.
@@ -329,7 +373,13 @@ public:
             noteAuditionData[(size_t) start1] = (on ? 1 << 20 : 0) | (juce::jlimit (1, 127, velocity) << 12) | (juce::jlimit (0, 127, midiNote) << 4) | juce::jlimit (0, 15, row);
             noteAuditionFifo.finishedWrite (1);
         }
+        else if (! on)
+            postAuditionAllOff (row); // full kö: ett tappat ton-av skulle låta tonen hänga, så radens alla toner släpps i stället
     }
+    // Släpper alla provlyssade toner på raden (ljudtråden skickar all-notes-off). Går inte via kön, så den kan inte tappas.
+    void postAuditionAllOff (int row) { auditionAllOffRows.fetch_or (1 << juce::jlimit (0, 15, row)); }
+    int takeAuditionAllOffRows() { return auditionAllOffRows.exchange (0); }
+    std::atomic<int> auditionAllOffRows { 0 };
     bool popNoteAudition (int& row, int& midiNote, int& velocity, bool& on)
     {
         int start1 = 0, size1 = 0, start2 = 0, size2 = 0;

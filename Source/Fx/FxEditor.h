@@ -15,6 +15,7 @@
 #include "../Ui/SoundstagePage.h"
 #include "../Ui/Modules.h"
 #include "../Ui/TabbedPanel.h"
+#include "../Ui/UndoKeys.h"
 
 // DragAndDropContainer: LFO:er dras till rattarna.
 class FxEditor : public juce::AudioProcessorEditor, public juce::DragAndDropContainer
@@ -24,6 +25,7 @@ public:
     ~FxEditor() override;
 
     void resized() override;
+    bool keyPressed (const juce::KeyPress& key) override { return handleUndoKey (processor, key); } // Ctrl+Z / Ctrl+Y
 
 private:
     juce::SharedResourcePointer<Theme::TextureCache> textures; // håller texturerna vid liv så länge editorn finns

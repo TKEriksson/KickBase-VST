@@ -176,9 +176,15 @@ void InstrumentVoices::noteOn (int semitones, float velocity, int gateSamples, b
 
 bool InstrumentVoices::glideTo (int semitones, int samples)
 {
-    if (slots[(size_t) lastVoice].fading)
+    if (slots[(size_t) lastVoice].fading || ! voices[(size_t) lastVoice].isSounding())
         return false;
-    return voices[(size_t) lastVoice].glideTo (semitones, samples);
+
+    // Alla klingande toner flyttas lika långt som den senast spelade, så att ett ackord glider som ett ackord.
+    const auto shift = semitones - voices[(size_t) lastVoice].getTargetSemitones();
+    for (int k = 0; k < maxVoices; ++k)
+        if (! slots[(size_t) k].fading && voices[(size_t) k].isSounding())
+            voices[(size_t) k].glideTo (voices[(size_t) k].getTargetSemitones() + shift, samples);
+    return true;
 }
 
 void InstrumentVoices::release()

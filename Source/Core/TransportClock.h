@@ -61,7 +61,27 @@ public:
     // aning efter taktstrecket, så att första slaget ändå kommer med.
     std::optional<StepPosition> takeStepJustPassed (StepCursor& cursor, int sampleOffset, int toleranceSamples) const;
 
+    // Förhandsspelning: den egna klockan används även när DAW:en spelar, så att DAW:ens loop (t.ex. ett mönster på en takt) inte styr den.
+    void setForceFreeRun (bool force) { forceFreeRun = force; if (force) followingHost = false; }
+
+    // Bara egen klocka (D3a): eget tempo (0 = som förut: värdens senaste tempo eller 140), hållning medan man scrubbar takten, och hopp till en takt.
+    void setFreeRunBpm (double newBpm) { freeRunBpm = newBpm; }
+    void setHold (bool shouldHold)     { hold = shouldHold; }
+    void seekFreeRunToBar (juce::int64 bar);
+
+    // Global LOOP (D3): den egna klockan går runt mellan startBar och endBar (0-räknade, slutet exklusivt). DAW:ens transport ignoreras då,
+    // eftersom en VST3 inte kan stoppa den. Hoppet görs vid blockstart, så överskottet (högst ett block) behålls.
+    void setLoop (bool on, juce::int64 startBar, juce::int64 endBar)
+    {
+        loopOn = on && endBar > startBar;
+        loopStartBar = startBar;
+        loopEndBar = endBar;
+        if (loopOn)
+            setForceFreeRun (true);
+    }
+
     bool isFollowingHost() const      { return followingHost; }
+    bool isHostPlaying() const        { return hostPlaying; } // värdens råa status, även när klockan går fritt (förhandsspelning)
     double getBpm() const             { return bpm; }
     double getPpqAt (int sampleOffset) const { return blockStartPpq + sampleOffset * ppqPerSample; }
     double getBarStartPpq() const     { return barStartPpq; }
@@ -87,6 +107,12 @@ private:
     juce::int64 barIndex = 0;
     int blockSize = 0;
     bool followingHost = false;
+    bool hostPlaying = false;
+    bool forceFreeRun = false;
+    bool hold = false;
+    double freeRunBpm = 0.0;
+    bool loopOn = false;
+    juce::int64 loopStartBar = 0, loopEndBar = 0;
     int generation = 0; // ökas vid omstart så att alla StepCursor glömmer vad de spelat
 };
 

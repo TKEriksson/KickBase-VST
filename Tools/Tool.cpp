@@ -3712,6 +3712,7 @@ int blockSizeTest();        // Tools/AudioTests.cpp
 int polyTest();             // Tools/AudioTests.cpp
 int persistTest();          // Tools/StateTests.cpp
 int fullStateTest();        // Tools/StateTests.cpp
+int undoTest();             // Tools/StateTests.cpp
 int renderToolTest();       // Tools/StateTests.cpp
 int anTest();               // Tools/AnTests.cpp
 int rowKeyTest();           // Tools/RowTests.cpp
@@ -3789,6 +3790,8 @@ int toolMain (int argc, char* argv[])
         return persistTest();
     if (argc == 2 && juce::String (argv[1]) == "fulltest")
         return fullStateTest();
+    if (argc == 2 && juce::String (argv[1]) == "undotest")
+        return undoTest();
     if (argc == 2 && juce::String (argv[1]) == "rendertooltest")
         return renderToolTest();
     if (argc == 2 && juce::String (argv[1]) == "antest")

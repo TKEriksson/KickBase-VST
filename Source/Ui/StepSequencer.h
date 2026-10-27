@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include "VisualTimer.h"
 
 #include "../Core/PluginBase.h"
@@ -197,6 +198,7 @@ private:
     bool paintOn = true;        // vad ett drag över av/på-steg sätter
     int dragStartPitch = 0, dragStartY = 0, dragPitch = 0;
     bool edited = false;
+    std::optional<PluginBase::EditScope> dragUndo; // ett klick eller drag är ett ångrasteg, från mouseDown till mouseUp
     int hoverStep = -1;
 
     int lastSwitchBits = -1;

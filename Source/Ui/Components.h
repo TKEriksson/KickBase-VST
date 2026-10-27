@@ -58,6 +58,7 @@ public:
         void mouseUp (const juce::MouseEvent&) override;
         void mouseMove (const juce::MouseEvent&) override;
         void mouseExit (const juce::MouseEvent&) override;
+        void stoppedDragging() override; // döper undo-steget
 
     private:
         KnobComponent& owner;
@@ -105,6 +106,7 @@ private:
     int dragRoute = -1;
     float dragStartAmount = 0.0f;
     float dragStartY = 0.0f;
+    juce::ValueTree modBefore; // modmatrisen före ringdragning (för ångra)
     int lastRoutesVersion = -1;
     mutable int cachedIndex = -1;
     float lastOffset = 0.0f;

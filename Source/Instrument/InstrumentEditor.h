@@ -18,6 +18,8 @@
 #include "../Ui/AnalyzerPage.h"
 #include "../Ui/Modules.h"
 #include "../Ui/TabbedPanel.h"
+#include "../Ui/HoldAudition.h"
+#include "../Ui/UndoKeys.h"
 
 // Överst syntarna (mönster, kick och instrumenten, ett i taget), nedanför verktygen (mönster, effekter, sidechain,
 // LFO:er, master), så att mönstret syns och LFO:er kan dras till rattarna ovanför.
@@ -29,6 +31,7 @@ public:
     ~InstrumentEditor() override;
 
     void resized() override;
+    bool keyPressed (const juce::KeyPress& key) override { return handleUndoKey (processor, key); } // Ctrl+Z / Ctrl+Y
 
 private:
     juce::SharedResourcePointer<Theme::TextureCache> textures; // håller texturerna vid liv så länge editorn finns
@@ -49,6 +52,7 @@ private:
     AiChatPage aiPage { processor };
     LiveCodePage livePage { processor };
     InstrumentHost instruments { processor };
+    HoldAudition holdPreview { processor }; // INSTRUMENT-flikens förhandsknapp (B1)
     TabbedPanel tools { &processor.selectedTab };
     EffectsPage effects { processor };
     SidechainPage sidechain { processor };

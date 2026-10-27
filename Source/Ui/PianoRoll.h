@@ -100,6 +100,10 @@ public:
     // Anropas när pianorullens toner tagits bort (lagret går tillbaka till stegmönstret).
     std::function<void()> onDeleted;
 
+    // D5: POP OUT-knappen (pianorullen i eget fönster). Texten byts till DOCK medan rullen är utbruten.
+    std::function<void()> onPopOut;
+    void setPoppedOut (bool popped) { popOutButton.setButtonText (popped ? "DOCK" : "POP OUT"); }
+
     void paint (juce::Graphics&) override;
     void resized() override;
     void mouseDown (const juce::MouseEvent&) override;
@@ -115,7 +119,7 @@ public:
     void focusLost (FocusChangeType) override { repaint(); }
 
 private:
-    enum class Drag { none, move, resize, velocity, box, erase, paste, ruler, keys, pan };
+    enum class Drag { none, move, resize, velocity, box, erase, paste, ruler, keys, pan, stroke };
     enum class Tool { draw, select, erase };
 
     struct NoteData
@@ -246,7 +250,7 @@ private:
     juce::TextButton snapButton { "SNAP" }, smallerButton { "-" }, biggerButton { "+" }, allButton { "SELECT ALL" }, deleteButton { "DEL" },
                      glideButton { "GLIDE" }, followButton { "FOLLOW" }, presetButton { "PRESET" }, midiButton { "MIDI" },
                      drawButton { "PENCIL" }, selectButton { "SELECT" }, eraseButton { "ERASER" }, copyButton { "COPY" },
-                     pasteButton { "PASTE" }, pasteOkButton { "OK" }, pasteCancelButton { "CANCEL" };
+                     pasteButton { "PASTE" }, pasteOkButton { "OK" }, pasteCancelButton { "CANCEL" }, popOutButton { "POP OUT" };
     ListenButton listenButton; // högtalare: håll för att höra pianorullen (loopar), släpp för att sluta
     Tool tool = Tool::draw;
     bool shiftHeld = false, altHeld = false;
@@ -279,6 +283,10 @@ private:
     float scrollTicks = 0.0f;   // tiden längst till vänster
     juce::Point<float> panStart;  // mittenknapp: dra för att panorera
     float panScrollTicks = 0.0f, panTopPitch = 0.0f;
+    // Glidestreck (D1): högerdrag på tomt rutnät. Ett högerklick utan drag visar menyn som förut.
+    juce::Point<float> strokeStart, strokeEnd;
+    bool strokeMenuNow = false;
+    void addStroke (const juce::Point<float>& from, const juce::Point<float>& to);
     float topPitch = 12.0f;     // översta synliga raden (halvtoner från tonarten)
     NoteKey justCreated;        // tonen som det första klicket i ett dubbelklick skapade
     int lastLength = 0;         // längden på den senast ritade tonen: nästa ton får samma
@@ -295,6 +303,7 @@ private:
     juce::Point<float> boxStart, boxEnd;
     KeySet boxBase;             // markeringen innan rutan (skift lägger till)
     bool edited = false;
+    juce::ValueTree undoBase;   // raden som den var före nästa ändring (tas vid musnedtryck/tangent, nollställs av commit)
     NoteKey hoverKey;
     juce::Point<float> hoverPoint; // var musen är (för pennans hårkors och förhandsvisningen av tonen som skulle läggas)
     bool hoverPointValid = false;
