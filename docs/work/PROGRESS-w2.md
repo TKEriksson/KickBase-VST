@@ -103,3 +103,11 @@
 - Mätt med `KickbaseTool audit full` (kan inte lyssna): toppar -3,1…-0,3 dB, dc ≈ 0, ingen klippning utöver Inits egna -0,3 dB. Newest 4 var för ljus (centroid 244) → cutoff 380, nivå 0,50 → centroid 172. Newest 5 och 6 är ljusa (mellan -10,6/-11,4 dB), avsiktligt för stilen.
 - `build.bat Debug all`: alla tester gick igenom.
 - Tobias måste lyssna i FL (rad i `docs/work/fl-testlista.md`) och säga vilka som ska finjusteras.
+
+## Del 1 av T-kick/rollbas: Psy Clean-kickar (27 okt, Arbetare 2, Claude Sonnet 5.5)
+- Psy140 Clean G är bra för att den är ren sinus (0 övertoner/klick/drive/EQ), har ett brant 70-halvtoners svep på ~120 ms (hårt framtungt: 50 st vid 2 ms, 17 st vid 30 ms) och nästan platt volym (0,9 vid 170 ms, slut 200 ms, tension 0,3), nivå 0,85.
+- Nytt: hjälparen `psyCleanKick` + konstanten `psyCleanCategory` ("PSY CLEAN") och 8 kickar sist i `kickPresets()` (`Source/Core/PresetData.inl`, efter Clean Modern). Inga index flyttade, inga nya parametrar/ID:n. Tonen är `kickKeyFollow` = Fixed (C1 32,7 Hz + tune), så tailHz är känd: `Params.cpp:462-469`, `Params.cpp:561-567`.
+- Mätt (`audit kick`): toppar -3,4…-3,1 dB, dc 0, längd 152–216 ms, svans C 33, D 37–38, F 45/50, A 56, G 50 Hz. F Sub/A Punch/G har högre centroid (107–130) än C/D (77–90) eftersom svansen ligger högre.
+- Kategori PSY CLEAN (kickar): Psy Clean C, Psy Clean C Tight, Psy Clean D, Psy Clean D Long, Psy Clean F Soft, Psy Clean F Sub, Psy Clean A Punch, Psy Clean G.
+- Kategori PSY ROLLING BASS (basar): inga än (efter godkänd utredning). PSY ROLLING (huvudpresets): inga än.
+- `build.bat Debug all`: alla tester gick igenom. Tobias lyssnar i FL (rad i `fl-testlista.md:65`).

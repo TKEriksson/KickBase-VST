@@ -409,6 +409,24 @@ namespace
         return presets;
     }
 
+    // Arbetare 2: kickar i stil med TK_Kick Psy140 Clean G. Ren sinus (inga övertoner, klick, drive), brant svep (70 halvtoner på ~120 ms,
+    // hårt framtungt) och nästan platt volym till strax före slutet. Tonen är Fixed (C1 + tune), så tailHz = 32.7 * 2^(tune/12) oberoende av tangent.
+    // Kategorin hålls här på ett ställe; fabrikspresets får kategori via Arbetare 1:s namn-till-kategori-tabell.
+    constexpr const char* psyCleanCategory = "PSY CLEAN";
+
+    // tone: halvtoner över C1. sweepScale/timeScale skalar Psy140:s svep, length är totallängd (s), attack är stigtiden (s).
+    KickSound psyCleanKick (float tone, float sweepScale, float timeScale, float length, float attack, float level, float click, float drive)
+    {
+        const float s = sweepScale, t = timeScale;
+        return { { { kickKeyFollow, 0 }, { kickTune, tone }, { kickHarmonics, 0.0f }, { kickClick, click }, { kickClickLength, 3.0f },
+                   { kickClickTone, 5000.0f }, { kickDrive, drive }, { kickClipMode, 0 }, { kickLevel, level } },
+                 { { 0.0f, 70.0f * s, 0.0f }, { 0.002f * t, 50.1f * s, 0.0f }, { 0.004f * t, 42.3f * s, 0.0f }, { 0.006f * t, 38.8f * s, 0.0f },
+                   { 0.010f * t, 33.5f * s, 0.0f }, { 0.015f * t, 26.3f * s, 0.0f }, { 0.020f * t, 21.1f * s, 0.0f }, { 0.030f * t, 17.1f * s, 0.0f },
+                   { 0.040f * t, 14.1f * s, 0.0f }, { 0.050f * t, 11.4f * s, 0.0f }, { 0.070f * t, 6.8f * s, 0.0f }, { 0.090f * t, 3.1f * s, 0.0f },
+                   { 0.120f * t, 0.0f, 0.0f }, { 0.150f * t, 0.0f, 0.0f } },
+                 { { 0.0f, 0.0f, 0.0f }, { attack, 1.0f, 0.0f }, { length - 0.03f, 0.9f, 0.0f }, { length, 0.0f, 0.3f } } };
+    }
+
     const std::vector<Preset>& kickPresets()
     {
         static const std::vector<Preset> presets {
@@ -429,6 +447,15 @@ namespace
             kickPreset ("Clean Warm", cleanKick (0.0f, 0.20f, 0.15f, 3000.0f, 0.20f, 2, 30.0f, 0.12f, 0.20f)),
             kickPreset ("Clean Sub", cleanKick (-1.5f, 0.04f, 0.10f, 2500.0f, 0.05f, 0, 26.0f, 0.16f, 0.24f)),
             kickPreset ("Clean Modern", cleanKick (0.5f, 0.14f, 0.40f, 6500.0f, 0.14f, 0, 42.0f, 0.09f, 0.16f)),
+            // Arbetare 2, kategori psyCleanCategory. Argument: ton (halvtoner över C1), svep, svepets tid, längd, attack, nivå, klick, drive.
+            kickPreset ("Psy Clean C", psyCleanKick (0.0f, 1.0f, 1.0f, 0.20f, 0.0005f, 0.85f, 0.0f, 0.0f)),
+            kickPreset ("Psy Clean C Tight", psyCleanKick (0.0f, 1.0f, 0.75f, 0.15f, 0.0005f, 0.85f, 0.0f, 0.0f)),
+            kickPreset ("Psy Clean D", psyCleanKick (2.0f, 1.0f, 1.0f, 0.20f, 0.0005f, 0.85f, 0.0f, 0.0f)),
+            kickPreset ("Psy Clean D Long", psyCleanKick (2.0f, 1.0f, 1.1f, 0.205f, 0.0005f, 0.85f, 0.0f, 0.0f)),
+            kickPreset ("Psy Clean F Soft", psyCleanKick (5.0f, 0.8f, 1.2f, 0.20f, 0.003f, 0.85f, 0.0f, 0.0f)),
+            kickPreset ("Psy Clean F Sub", psyCleanKick (5.0f, 0.9f, 1.4f, 0.20f, 0.001f, 0.88f, 0.0f, 0.0f)),
+            kickPreset ("Psy Clean A Punch", psyCleanKick (9.0f, 1.0f, 0.85f, 0.17f, 0.0005f, 0.85f, 0.10f, 0.05f)),
+            kickPreset ("Psy Clean G", psyCleanKick (7.0f, 1.0f, 1.0f, 0.20f, 0.0005f, 0.85f, 0.0f, 0.0f)),
         };
         return presets;
     }
