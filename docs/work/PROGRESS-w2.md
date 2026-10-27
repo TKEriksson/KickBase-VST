@@ -111,3 +111,8 @@
 - Kategori PSY CLEAN (kickar): Psy Clean C, Psy Clean C Tight, Psy Clean D, Psy Clean D Long, Psy Clean F Soft, Psy Clean F Sub, Psy Clean A Punch, Psy Clean G.
 - Kategori PSY ROLLING BASS (basar): inga än (efter godkänd utredning). PSY ROLLING (huvudpresets): inga än.
 - `build.bat Debug all`: alla tester gick igenom. Tobias lyssnar i FL (rad i `fl-testlista.md:65`).
+
+## Del 2 – rollbas-utredning + docs/school (Arbetare 2, Sonnet 5.5, 2026-10-27)
+- Skrivit `docs/school/` (README, kick, rollbas, wavetables, kick-bass-samspel, mixning-fx-sidechain, minimal, goa, presets-logg). `docs/work/rollbas-utredning.md` pekar dit.
+- Mätt: 6 Rolling-basar är nästan identiska, saknar mellanregister (se school/rollbas.md §3).
+- Kvar: tabellspektrum (mäts innan bygge), genreutredning MINIMAL/GOA. Inget byggt, väntar på PL:s ok.
