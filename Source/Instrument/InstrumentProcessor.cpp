@@ -142,7 +142,9 @@ void InstrumentProcessor::processChunk (juce::AudioBuffer<float>& buffer, juce::
         bool auditionOn = false;
         while (popNoteAudition (auditionRow, auditionNote, auditionVelocity, auditionOn)) // enskilda toner från pianorullen
             handleLiveMidi (auditionOn ? juce::MidiMessage::noteOn (1, auditionNote, (juce::uint8) auditionVelocity) : juce::MidiMessage::noteOff (1, auditionNote), auditionRow);
-    }    clock.beginBlock (getHostPosition(), numSamples);
+    }
+    clock.setForceFreeRun (previewLayer >= 0);
+    clock.beginBlock (getHostPosition(), numSamples);
     for (int layer = 0; layer < numLayers; ++layer)
         basses[(size_t) layer].setTempo (clock.getBpm()); // ENV 2 och ENV 3 i läget Sync
     // Moduleringen uppdateras bara på 32-rutnätet. En bit som börjar mitt i ett fönster (när DAW-blocket slutade där) behåller
@@ -453,13 +455,11 @@ void InstrumentProcessor::refreshEngineParams()
 
 void InstrumentProcessor::handlePreviewRequest (int row)
 {
-    if (numHeldNotes > 0)
-        return; // en riktig ton spelar redan: mönstret hörs ändå
     if (previewLayer >= 0)
         stopPreview(); // ett nytt tryck börjar om från början
 
-    if (! clock.isFollowingHost())
-        clock.restartFreeRunAt (0);
+    clock.setForceFreeRun (true);
+    clock.restartFreeRunAt (0);
     currentNote = previewNote.load(); // tonarten för förhandsspelningen, som om tonen hölls
     refreshEngineParams();
     previewLayer = row;
@@ -562,6 +562,9 @@ bool InstrumentProcessor::handleLiveMidi (const juce::MidiMessage& message, int 
 
     if (message.isNoteOn())
     {
+        // Spelar värden startar värdens toner alltid mönstret; MIDI IN gäller bara när värden står still (pianorullens egen provlyssning, rowOverride, gäller alltid).
+        if (rowOverride < 0 && clock.isHostPlaying())
+            return false;
         if (row < 0 || row > Pattern::kickLayer)
             return false;
         if (rowOverride < 0)
@@ -604,9 +607,18 @@ void InstrumentProcessor::handleMidi (const juce::MidiMessage& message, int samp
     if (handleLiveMidi (message))
         return;
 
+    // PREVIEW har företräde (Tobias): värdens toner avbryter inte förhandsspelningen och startar inget nytt mönster.
+    // Stängs PREVIEW tar värdens toner över igen.
+    if (previewLayer >= 0)
+    {
+        if (message.isNoteOff() && heldNotes[(size_t) message.getNoteNumber()] > 0
+            && --heldNotes[(size_t) message.getNoteNumber()] == 0)
+            --numHeldNotes; // en ton som hölls före förhandsspelningen; stoppar inte den
+        return;
+    }
+
     if (message.isNoteOn())
     {
-        previewLayer = -1; // en riktig ton tar över från förhandsspelningen
         const auto note = message.getNoteNumber();
         const auto wasSilent = numHeldNotes == 0;
 
@@ -993,7 +1005,8 @@ void InstrumentProcessor::ensureScratchSize (int numSamples)
 void InstrumentProcessor::handleEvent (const StepEvent& event)
 {
     // Förhandsspelning av en enskild rad: de andra raderna är tysta. Samma sak för tangentbordet/MIDI när pianorullen valt en rad (midiInLayer).
-    const auto onlyRow = previewLayer >= 0 ? previewLayer : midiInLayer.load();
+    // Spelar värden gäller midiInLayer inte (värdens toner startar hela mönstret).
+    const auto onlyRow = previewLayer >= 0 ? previewLayer : (clock.isHostPlaying() ? -1 : midiInLayer.load());
     if (onlyRow >= 0 && onlyRow != PluginBase::previewAllRows
         && (event.type == StepEvent::Type::kick ? onlyRow != Pattern::kickLayer : event.layer != onlyRow))
         return;

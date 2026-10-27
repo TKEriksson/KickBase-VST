@@ -31,7 +31,8 @@ public:
     // chordNote: en extra ackordton (fas P). Den blir inte den senast spelade rösten och drar inget nytt slumpvärde, så grundtonen
     // (som spelas sist) styr glide och modulering. Med en röst spelas den inte.
     void noteOn (int semitones, float velocity, int gateSamples, bool chordNote = false);
-    // Bara den senast spelade rösten glider. false om den inte klingar (då spelas en ny ton).
+    // Alla klingande röster glider lika många halvtoner som den senast spelade behöver för att nå `semitones`.
+    // false om den senast spelade inte klingar (då spelas en ny ton).
     bool glideTo (int semitones, int samples);
     void release();
     void fadeOutQuickly (double milliseconds);
@@ -45,6 +46,8 @@ public:
     float getSampleFraction() const { return voices[(size_t) lastVoice].getSampleFraction(); }
     // Röster som klingar eller väntar på en ton (för test och gränssnitt).
     int countSounding() const;
+    // Tonen (eller glidemålet) röst k är på väg mot (för test).
+    int getVoiceTarget (int voice) const { return voices[(size_t) voice].getTargetSemitones(); }
 
 private:
     struct Slot

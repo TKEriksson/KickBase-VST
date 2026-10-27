@@ -27,7 +27,8 @@ void TransportClock::beginBlock (const juce::Optional<juce::AudioPlayHead::Posit
     ppqPerSample = bpm / 60.0 / sampleRate;
 
     const auto hostPpq = position.hasValue() ? position->getPpqPosition() : juce::nullopt;
-    followingHost = position.hasValue() && position->getIsPlaying() && hostPpq.hasValue();
+    hostPlaying = position.hasValue() && position->getIsPlaying();
+    followingHost = ! forceFreeRun && hostPlaying && hostPpq.hasValue();
 
     if (followingHost)
     {

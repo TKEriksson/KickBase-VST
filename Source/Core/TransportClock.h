@@ -61,7 +61,11 @@ public:
     // aning efter taktstrecket, så att första slaget ändå kommer med.
     std::optional<StepPosition> takeStepJustPassed (StepCursor& cursor, int sampleOffset, int toleranceSamples) const;
 
+    // Förhandsspelning: den egna klockan används även när DAW:en spelar, så att DAW:ens loop (t.ex. ett mönster på en takt) inte styr den.
+    void setForceFreeRun (bool force) { forceFreeRun = force; if (force) followingHost = false; }
+
     bool isFollowingHost() const      { return followingHost; }
+    bool isHostPlaying() const        { return hostPlaying; } // värdens råa status, även när klockan går fritt (förhandsspelning)
     double getBpm() const             { return bpm; }
     double getPpqAt (int sampleOffset) const { return blockStartPpq + sampleOffset * ppqPerSample; }
     double getBarStartPpq() const     { return barStartPpq; }
@@ -87,6 +91,8 @@ private:
     juce::int64 barIndex = 0;
     int blockSize = 0;
     bool followingHost = false;
+    bool hostPlaying = false;
+    bool forceFreeRun = false;
     int generation = 0; // ökas vid omstart så att alla StepCursor glömmer vad de spelat
 };
 

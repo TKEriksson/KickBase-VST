@@ -141,6 +141,7 @@ InstrumentSynth::Stereo InstrumentSynth::Oscillator::next (const OscParams& p, d
 void InstrumentSynth::noteOn (int semitones, float newVelocity, int gateSamples)
 {
     forcedReleaseMs = 0.0; // en ny ton släpps med sin vanliga RELEASE
+    targetSemitones = semitones;
     const auto frequency = params.rootHz * std::exp2 (semitones / 12.0f);
     targetLogFrequency = std::log2 ((double) frequency);
     logFrequency = targetLogFrequency;
@@ -191,6 +192,7 @@ bool InstrumentSynth::glideTo (int semitones, int samples)
     if (stage == Stage::idle)
         return false;
 
+    targetSemitones = semitones;
     targetLogFrequency = std::log2 ((double) (params.rootHz * std::exp2 (semitones / 12.0f)));
     glideSamplesLeft = std::max (1, samples);
     glideStep = (targetLogFrequency - logFrequency) / (double) glideSamplesLeft;

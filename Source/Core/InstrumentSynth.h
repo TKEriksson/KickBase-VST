@@ -153,6 +153,8 @@ public:
     // En glide-ton (som en "slide note" i FL Studio): ingen ny ton slås an, utan den som klingar glider till
     // `semitones` på `samples` samples och blir kvar där tills den slutar. Ger false om ingenting klingar.
     bool glideTo (int semitones, int samples);
+    bool isSounding() const { return stage != Stage::idle; }
+    int getTargetSemitones() const { return targetSemitones; } // tonen (eller glidemålet) rösten är på väg mot
     void release();
     // Tonar ut tonen på `milliseconds` oavsett RELEASE: när ett steg spelats strax innan en "ton av" som slutar mönstret. Nästa ton börjar som vanligt.
     void fadeOutQuickly (double milliseconds);
@@ -257,6 +259,7 @@ private:
     int sliceBegin = 0, sliceEnd = 0;
     double logFrequency = 0.0, targetLogFrequency = 0.0; // log2(Hz), så att glide låter jämnt
     int glideSamplesLeft = 0;
+    int targetSemitones = 0;
     double glideStep = 0.0;  // ändring i log-frekvens per sample under ett glide
 
     struct ModEnv
