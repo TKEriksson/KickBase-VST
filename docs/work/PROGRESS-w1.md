@@ -191,3 +191,9 @@ Nyckel krypteras som Gemini (`Settings::protect`), `AiChat::redact` rensar den u
 UI: `AiChatPage.cpp` har fyra leverantörsknappar (ANTHROPIC, GEMINI, OPENAI, OLLAMA); för Ollama är nyckelfältet adressfält och SAVE hämtar modelllistan.
 Test utan nyckel: `chattest` (`Tools/Tool.cpp` ~3246) kör sparade svar för modelllistor, text/tool_calls (sträng och objekt), vägran/length, request-bygget (tool → role "tool", ingen bild för Ollama) och felmeddelanden; testslutpunkter via `Settings::get` (`openaiEndpoint`, `openaiBase`). Ljudet oförändrat (inga ljudparametrar).
 FL/handtest: klistra in en OpenAI-nyckel (eller starta Ollama med en verktygsmodell, t.ex. qwen3) och be om "gör kicken kortare".
+
+## 27 okt kväll – samlad gren inför första releasen (Arbetare 1)
+- w2 (9dfbf92, sedan toppen 6952d4e) mergad lokalt i play-pack: `5cb810b` + `e939b1f`. Inget pushat, inget till main.
+- Konflikter: Params.h/.cpp (ringSource behölls), FxProcessor, InstrumentProcessor, Modules.h/.cpp (w2:s projektmeny + mina autosave-rader 8/9, `openProject (startFolder)`), LESSONS.md. Slarv loggat i LESSONS.md.
+- Debug: KickbaseTests, rendersig/wide/tb303, blocksizetest (tar >10 min), audiotest (0 allokeringar), persisttest, undotest, chattest: alla gröna.
+- Release byggd, KickbaseTests gröna.
