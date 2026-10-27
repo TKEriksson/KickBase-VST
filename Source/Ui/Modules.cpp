@@ -1070,12 +1070,16 @@ void SampleView::paint (juce::Graphics& g)
     const auto* data = sample->audio.getReadPointer (0);
     const auto length = sample->audio.getNumSamples();
     const auto width = std::max (1, (int) area.getWidth());
+    const auto viewLow = scroll, viewSpan = 1.0f / zoom; // zoomen: vilken del (0..1) av samplingen som syns
+
+    juce::Graphics::ScopedSaveState clipState (g);
+    g.reduceClipRegion (area.toNearestInt());
 
     juce::Path path;
     for (int x = 0; x < width; ++x)
     {
-        const auto from = (int) ((juce::int64) x * length / width);
-        const auto to = std::max (from + 1, (int) ((juce::int64) (x + 1) * length / width));
+        const auto from = juce::jlimit (0, length - 1, (int) ((viewLow + viewSpan * (float) x / (float) width) * (float) length));
+        const auto to = std::max (from + 1, (int) ((viewLow + viewSpan * (float) (x + 1) / (float) width) * (float) length));
         auto lowest = 0.0f, highest = 0.0f;
         for (int i = from; i < to && i < length; ++i)
         {
@@ -1094,9 +1098,9 @@ void SampleView::paint (juce::Graphics& g)
         const auto count = (int) sample->slices.size();
         for (int i = 0; i < count; ++i)
         {
-            const auto fromX = area.getX() + (float) sample->slices[(size_t) i] / (float) length * area.getWidth();
+            const auto fromX = normToX ((float) sample->slices[(size_t) i] / (float) length);
             const auto toSample = i + 1 < count ? sample->slices[(size_t) i + 1] : length;
-            const auto toX = area.getX() + (float) toSample / (float) length * area.getWidth();
+            const auto toX = normToX ((float) toSample / (float) length);
             const auto box = juce::Rectangle<float> (fromX, area.getY(), std::max (1.0f, toX - fromX), area.getHeight());
             const auto colour = juce::Colour::fromHSV (std::fmod ((float) i * 0.13f, 1.0f), 0.55f, 0.95f, 1.0f);
             g.setColour (colour.withAlpha (i == heldSlice ? 0.45f : 0.2f));
@@ -1119,7 +1123,7 @@ void SampleView::paint (juce::Graphics& g)
         g.setColour (juce::Colours::white.withAlpha (0.7f));
         for (size_t i = 0; i < sample->slices.size(); ++i)
         {
-            const auto x = area.getX() + (float) sample->slices[i] / (float) length * area.getWidth();
+            const auto x = normToX ((float) sample->slices[i] / (float) length);
             g.drawVerticalLine ((int) x, area.getY(), area.getBottom());
             g.setFont (Theme::font (9.0f));
             g.drawText (juce::String ((int) i + 1), juce::Rectangle<float> (x + 2.0f, area.getY(), 24.0f, 12.0f), juce::Justification::topLeft);
@@ -1127,7 +1131,7 @@ void SampleView::paint (juce::Graphics& g)
     }
     else
     {
-        const auto startX = area.getX() + juce::jlimit (0.0f, 1.0f, lastStart) * area.getWidth();
+        const auto startX = normToX (juce::jlimit (0.0f, 1.0f, lastStart));
         g.setColour (juce::Colours::white.withAlpha (0.8f));
         g.drawVerticalLine ((int) startX, area.getY(), area.getBottom());
     }
@@ -1135,7 +1139,7 @@ void SampleView::paint (juce::Graphics& g)
     // Spelmarkör: det som spelats lyses upp, ett lysande streck där samplingen är nu, och en blixt när en ny ton börjar.
     if (marker >= 0.0f)
     {
-        const auto markerX = area.getX() + marker * area.getWidth();
+        const auto markerX = normToX (marker);
         {
             juce::Graphics::ScopedSaveState state (g);
             g.reduceClipRegion (area.withRight (markerX).toNearestInt());
@@ -1169,7 +1173,7 @@ void SampleView::mouseDown (const juce::MouseEvent& e)
     // Manuellt läge: Skift-klick lägger en skivmarkör, Alt-klick tar bort den närmaste.
     if (shownSlicer && (e.mods.isShiftDown() || e.mods.isAltDown()) && processor.instrumentSampleSlot (layer).sliceMode() == SampleSlicing::manual)
     {
-        const auto position = juce::jlimit (0.0f, 1.0f, (float) (e.x - 6) / (float) std::max (1, getWidth() - 12));
+        const auto position = xToNorm ((float) e.x);
         auto markers = processor.instrumentSampleSlot (layer).manualMarkers();
         if (e.mods.isShiftDown())
             markers.push_back (position);
@@ -1177,6 +1181,25 @@ void SampleView::mouseDown (const juce::MouseEvent& e)
             markers.erase (std::min_element (markers.begin(), markers.end(), [position] (float a, float b) { return std::abs (a - position) < std::abs (b - position); }));
         processor.setInstrumentSliceMarkers (layer, std::move (markers));
         return;
+    }
+    if (manualEditing())
+    {
+        // Högerklick tar bort gränsen under musen; vänsterklick på en gräns börjar dra den (ingen provlyssning).
+        if (const auto nearest = nearestMarker ((float) e.x); nearest >= 0)
+        {
+            if (e.mods.isPopupMenu())
+            {
+                auto markers = processor.instrumentSampleSlot (layer).manualMarkers();
+                markers.erase (markers.begin() + nearest);
+                processor.setInstrumentSliceMarkers (layer, std::move (markers));
+                repaint();
+            }
+            else
+                draggedMarker = nearest;
+            return;
+        }
+        if (e.mods.isPopupMenu())
+            return;
     }
     if (const auto* sample = processor.getActiveInstrumentSample (layer); sample != nullptr && shownSlicer && showSlices)
     {
@@ -1195,8 +1218,81 @@ void SampleView::mouseDown (const juce::MouseEvent& e)
         hold.start (PluginBase::heldSoloAudition (layer, 3)); // bara samplingen, så länge musen hålls (loopar om den tar slut)
 }
 
+void SampleView::mouseDrag (const juce::MouseEvent& e)
+{
+    if (draggedMarker < 0)
+        return;
+    auto markers = processor.instrumentSampleSlot (layer).manualMarkers();
+    if (draggedMarker >= (int) markers.size())
+        return;
+    // Gränsen får inte passera sina grannar, så att den dragna behåller sitt index.
+    const auto low = draggedMarker > 0 ? markers[(size_t) draggedMarker - 1] + 0.0005f : 0.0005f;
+    const auto high = draggedMarker + 1 < (int) markers.size() ? markers[(size_t) draggedMarker + 1] - 0.0005f : 0.9995f;
+    markers[(size_t) draggedMarker] = juce::jlimit (low, std::max (low, high), xToNorm ((float) e.x));
+    processor.setInstrumentSliceMarkers (layer, std::move (markers));
+    repaint();
+}
+
+void SampleView::mouseDoubleClick (const juce::MouseEvent& e)
+{
+    // Dubbelklick på en ledig plats lägger en ny gräns (ett enkelklick provlyssnar skivan).
+    if (! manualEditing() || nearestMarker ((float) e.x) >= 0)
+        return;
+    auto markers = processor.instrumentSampleSlot (layer).manualMarkers();
+    markers.push_back (xToNorm ((float) e.x));
+    processor.setInstrumentSliceMarkers (layer, std::move (markers));
+    repaint();
+}
+
+void SampleView::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel)
+{
+    if (processor.getActiveInstrumentSample (layer) == nullptr)
+        return;
+    // Hjulet zoomar mot musen; med Skift scrollar det i sidled.
+    if (e.mods.isShiftDown())
+        scroll = juce::jlimit (0.0f, 1.0f - 1.0f / zoom, scroll - wheel.deltaY * 0.5f / zoom);
+    else
+    {
+        const auto under = xToNorm ((float) e.x);
+        const auto fraction = juce::jlimit (0.0f, 1.0f, (float) (e.x - 6) / (float) std::max (1, getWidth() - 12));
+        zoom = juce::jlimit (1.0f, 64.0f, zoom * std::exp (wheel.deltaY * 1.5f));
+        scroll = juce::jlimit (0.0f, 1.0f - 1.0f / zoom, under - fraction / zoom);
+    }
+    repaint();
+}
+
+float SampleView::normToX (float norm) const
+{
+    return 6.0f + (norm - scroll) * zoom * (float) std::max (1, getWidth() - 12);
+}
+
+float SampleView::xToNorm (float x) const
+{
+    return juce::jlimit (0.0f, 1.0f, scroll + juce::jlimit (0.0f, 1.0f, (x - 6.0f) / (float) std::max (1, getWidth() - 12)) / zoom);
+}
+
+bool SampleView::manualEditing() const
+{
+    return shownSlicer && showSlices && processor.instrumentSampleSlot (layer).sliceMode() == SampleSlicing::manual;
+}
+
+int SampleView::nearestMarker (float x) const
+{
+    const auto markers = processor.instrumentSampleSlot (layer).manualMarkers();
+    auto best = -1;
+    auto bestDistance = 6.0f; // pixlar
+    for (int i = 0; i < (int) markers.size(); ++i)
+        if (const auto distance = std::abs (normToX (markers[(size_t) i]) - x); distance <= bestDistance)
+        {
+            best = i;
+            bestDistance = distance;
+        }
+    return best;
+}
+
 void SampleView::mouseUp (const juce::MouseEvent&)
 {
+    draggedMarker = -1;
     hold.stop();
     if (heldNote >= 0)
         processor.postNoteAudition (layer, heldNote, 0, false);
@@ -1208,7 +1304,7 @@ void SampleView::mouseUp (const juce::MouseEvent&)
 int SampleView::sliceAt (float x, const ClickSample& sample) const
 {
     const auto length = sample.audio.getNumSamples();
-    const auto position = juce::jlimit (0.0f, 0.9999f, (x - 6.0f) / (float) std::max (1, getWidth() - 12)) * (float) length;
+    const auto position = std::min (0.9999f, xToNorm (x)) * (float) length;
     auto found = -1;
     for (size_t i = 0; i < sample.slices.size(); ++i)
         if ((float) sample.slices[i] <= position)

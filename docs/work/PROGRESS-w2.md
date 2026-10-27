@@ -47,3 +47,9 @@
 ## E2 steg 1: skivvyn (Arbetare 2)
 - SHOW SAMPLE|SLICES (`Modules.cpp` SamplePage, `Modules.h:144`): SLICES ritar varje skiva som en färgad ruta med "Slice N" och tonen under; ett klick spelar bara den skivan via `postNoteAudition(layer, rowRootNote+MAP TO+index)`, släpps i `SampleView::mouseUp`.
 - Nya tooltips på SHOW-knapparna och enhet på skivreglaget. Debug-bygge och tester gick igenom. Kvar i E2: steg 2 (OWN PIANO ROLL, ny parameter sist), 3 (dra gränser, zoom, MANUAL), 4 (AUTO SLICE-dialog).
+
+## E2 steg 3: zoom och manuell redigering (Arbetare 2)
+- `SampleView` (Modules.cpp/.h): hjulet zoomar mot musen, Skift+hjul scrollar; vågform, skivrutor, START och spelmarkör går via `normToX`/`xToNorm`.
+- MANUAL + SLICES: dra en gräns flyttar den (`mouseDrag`), högerklick tar bort, **dubbelklick** lägger till (avviker från specens "klick": ett enkelklick provlyssnar skivan). Skift/Alt-klick fungerar som förut.
+- Steg 2 (OWN PIANO ROLL) uppskjutet: rör PianoRoll (Arbetare 1) och kärnan, kräver beslut/samordning.
+- Debug-bygge och tester OK. Ej provat i FL.

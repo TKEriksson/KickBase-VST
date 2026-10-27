@@ -138,6 +138,9 @@ public:
     void paint (juce::Graphics&) override;
     void mouseDown (const juce::MouseEvent&) override;
     void mouseUp (const juce::MouseEvent&) override;
+    void mouseDrag (const juce::MouseEvent&) override;
+    void mouseDoubleClick (const juce::MouseEvent&) override;
+    void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
     void mouseEnter (const juce::MouseEvent&) override { hover = true; repaint(); }
     void mouseExit (const juce::MouseEvent&) override  { hover = false; repaint(); }
 
@@ -149,6 +152,14 @@ private:
     int sliceAt (float x, const ClickSample& sample) const; // skivan under x (pixlar i vyn), -1 = ingen
     int sliceNote (int index) const;                        // MIDI-tonen som spelar skiva `index` (index 0 = MAP TO)
 
+    // E2 steg 3: zoom (hjulet) och scroll; vyn visar delen [scroll, scroll + 1/zoom] av samplingen. Manuellt läge: dra, dubbelklicka och högerklicka på gränser.
+    float normToX (float norm) const;
+    float xToNorm (float x) const;
+    bool manualEditing() const;
+    int nearestMarker (float x) const; // index bland de manuella markörerna inom några pixlar från x, annars -1
+
+    float zoom = 1.0f, scroll = 0.0f;
+    int draggedMarker = -1;
     bool showSlices = false;
     int heldSlice = -1;
     int heldNote = -1; // tonen som provlyssnas medan musen hålls i SLICES-vyn
