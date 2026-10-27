@@ -414,6 +414,9 @@ namespace
     Preset psyRolling2();
     Preset psyRolling3();
     Preset psyRolling4();
+    Preset glideBass1();
+    Preset glideBass2();
+    Preset glideBass3();
 
     const std::vector<Preset>& fullPresets()
     {
@@ -424,7 +427,9 @@ namespace
                                                    newest1(), newest2(), newest3(), newest4(), newest5(),
                                                    newest6(), newest7(), newest8(), newest9(), newest10(),
                                                    // Arbetare 2, kategori psyRollingCategory.
-                                                   psyRolling1(), psyRolling2(), psyRolling3(), psyRolling4() };
+                                                   psyRolling1(), psyRolling2(), psyRolling3(), psyRolling4(),
+                                                   // Arbetare 2, kategori glideBassesCategory.
+                                                   glideBass1(), glideBass2(), glideBass3() };
         return presets;
     }
 
@@ -490,6 +495,40 @@ namespace
                                sendTo (0, 1, 0.18f) }),
                        join ({ fx (0, 0, EffectType::reverb, { 0.5f, 0.7f, 1.0f, 400.0f, 1.0f, 20.0f }), { ch (0, "Duck", 0.9f), ch (0, "EqHp", 250.0f) } }),
                        { { 0, InstrumentGrid::sixteenth, { ". x x m . x x x . m x . . x x x", ". x x x . x m x . x x+3 . . x x-2 x" }, 0.7f } }, 1, 2);
+    }
+
+    // Arbetare 2, GLIDE BASSES: slide-toner (~) glider från föregående tons höjd till sin egen under sin längd (:procent av ett steg),
+    // så glidlängden sätts av tonens längd (F::glide används inte). Se docs/school/glide-bass.md. Lång amp-decay och hög sustain så att glidet hörs.
+    constexpr const char* glideBassesCategory = "GLIDE BASSES";
+
+    // 1. Glide Sub: mjuk sub-bas, hopp och glid uppåt/nedåt mellan rotton, kvint och oktav.
+    Preset glideBass1()
+    {
+        return newest ("Glide Sub", psyCleanKick (0.0f, 1.0f, 1.0f, 0.20f, 0.0005f, 0.85f, 0.0f, 0.0f),
+                       join ({ psyRollBass (0, 0.30f, 95, 0.50f, 0.60f, 0.0f, 0.25f, 700.0f, 0.15f, 2.0f, 120.0f, 0.80f, 400.0f, 40.0f, 0.15f, 0.50f, 0),
+                               sendTo (0, 1, 0.15f) }),
+                       join ({ fx (0, 0, EffectType::distortion, { 0, 0.20f, 5000.0f, 1.0f }), { ch (0, "Duck", 0.85f), ch (0, "EqHp", 150.0f) } }),
+                       { { 0, InstrumentGrid::sixteenth, { "X . . . . . x . x+7~:200 . . . x+12~:100 . . .", "x . . . . . x . x+5~:200 . . . x-5~:200 . . ." }, 0.9f } }, 1, 2);
+    }
+
+    // 2. Glide Acid: TB-303-filter och Psy Acid, korta slides mellan sextondelar.
+    Preset glideBass2()
+    {
+        return newest ("Glide Acid", psyCleanKick (2.0f, 1.0f, 1.0f, 0.20f, 0.0005f, 0.85f, 0.0f, 0.0f),
+                       join ({ psyRollBass (0, 1.00f, 99, 0.90f, 1.00f, 0.0f, 0.10f, 1800.0f, 0.40f, 3.0f, 90.0f, 0.60f, 200.0f, 25.0f, 0.15f, 0.52f, 1),
+                               sendTo (0, 1, 0.18f) }),
+                       join ({ fx (0, 0, EffectType::echo, { 5, 0, 0, 0.5f, 2, 0.30f, 4500.0f, 0.0f, 0, 0.5f }), { ch (0, "Duck", 0.85f), ch (0, "EqHp", 200.0f) } }),
+                       { { 0, InstrumentGrid::sixteenth, { ". x x . x+3~ x . x . x+7~ . x x-2~ . x X", ". x x . x+5~ x . x . x+12~ . x x+7~ . x X" }, 0.7f } }, 1, 2);
+    }
+
+    // 3. Glide Dive: långa oktavfall och uppslid, mörk och bred mellanregister-bas.
+    Preset glideBass3()
+    {
+        return newest ("Glide Dive", psyCleanKick (5.0f, 0.8f, 1.2f, 0.20f, 0.003f, 0.85f, 0.0f, 0.0f),
+                       join ({ psyRollBass (0, 0.60f, 94, 0.70f, 0.80f, 0.0f, 0.15f, 1200.0f, 0.20f, 2.0f, 100.0f, 0.70f, 300.0f, 35.0f, 0.20f, 0.55f, 0),
+                               sendTo (0, 1, 0.20f) }),
+                       join ({ fx (0, 0, EffectType::chorus, { 0.4f, 0.5f, 10.0f, 0.0f, 0.4f }), { ch (0, "Duck", 0.85f), ch (0, "EqHp", 180.0f) } }),
+                       { { 0, InstrumentGrid::sixteenth, { "X . . . x+12 . . . x+12~:200 . . . x~:300 . . .", "x . . x . . x+7 . x+7~:100 . x+12~:100 . x+0~:300 . . ." }, 0.8f } }, 1, 2);
     }
 
     const std::vector<Preset>& kickPresets()

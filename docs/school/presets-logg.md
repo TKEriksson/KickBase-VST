@@ -15,3 +15,6 @@ En rad per preset. Kolumner: namn | kategori | nyckelparametrar | mätt | ändra
 | Roll Wide | PSY ROLLING | Psy Clean D + Wide Mid-bas, chorus-send, 2 takter | peak −3,3, centroid 92, side −120 (mono) | commit följer | stereo kommer bara från chorusen i DAW |
 | Roll Dekel | PSY ROLLING | Psy Clean F Soft + Dekel Groove, eko-send | peak −2,9, centroid 82 | commit följer | mörk |
 | Roll Forest | PSY ROLLING | Psy Clean A Punch + Forest 1/32 (TB-303), litet rum | peak −3,2, centroid 131, 250–1k −11,2 | commit följer | ljusast av fyra |
+| Glide Sub | GLIDE BASSES | PSY CLEAN C-kick + Saw Soft/Sub Punch-bas, sub 0.25, glid rotton→kvint→oktav, eko ej | audit full: centroid 78, DC 0, peak ca −1,5 (efter nivåsänkning) | commit följer | mjuk sub; mät i DAW |
+| Glide Acid | GLIDE BASSES | PSY CLEAN D-kick + Psy Acid, TB-303, korta slides, eko-send | peak −1,2, RMS −11, centroid 84 | commit följer | acid-slides |
+| Glide Dive | GLIDE BASSES | PSY CLEAN F Soft + Saw Soft/Psy Roll, oktavfall 200–300 %, chorus-send | peak −2,0, centroid 84 | commit följer | tydliga dyk |

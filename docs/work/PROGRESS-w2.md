@@ -131,3 +131,9 @@ Läst i koden (inget ändrat): bas-preset laddar bara valt lager (`Presets.cpp:2
 - Mätt (`audit full`): peak −2,9..−3,3, RMS ca −11, DC 0, centroid 82–131 Hz. Alla ändliga. `build.bat Debug all` grön. Gamla index/hashar rörs ej.
 - Jag kan bara mäta, inte lyssna: Tobias provar i DAW (testlistan).
 - Nästa: GLIDE BASSES, sedan New Init 1–5.
+
+## Del 5: GLIDE BASSES (27 okt, Arbetare 2)
+- Läst: glide är en flagga per ton, glidtiden = tonens längd (`InstrumentProcessor.cpp:1061`, `Presets.cpp:166`); `F::glide` oanvänd. Recept i `docs/school/glide-bass.md`.
+- GLIDE BASE (Tobias fil): glide-tonerna var 12 ticks (~80 ms) och hördes knappt → förlängda till 60; backup `.mofp.bak`.
+- Byggt: `glideBass1..3` (Glide Sub, Glide Acid, Glide Dive), kategori `glideBassesCategory`, sist i `fullPresets()`. Mätt: peak −0,3..−2,0 (Glide Sub sänkt till bas-nivå 0,50), RMS ca −11, DC 0. Bygg grönt. Ej lyssnat.
+- Nästa: New Init 1–5 (utgår från fabriks-Init; rendersig 94f0a1b6bd8a3c7f ändras ej). Max 3 presets per ny genre (Tobias).

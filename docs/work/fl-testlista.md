@@ -111,3 +111,5 @@ Format: **Gör så** → *förväntat resultat*. Bocka av `[ ]` när det stämme
 - [ ] Ladda ny instans, välj bas-preset Full-On Roll (PSY ROLLING BASS) → *bara rad 1 ljuder; mellanregistret rullar mot PSY CLEAN-kicken utan att kicken försvinner.*
 - [ ] Jämför Wide Mid, Dekel Groove och Forest 1/32 i DAW → *Wide Mid ljusast, Dekel och Forest mörkare; säg vilken som är för tunn.*
 - [ ] Ladda huvudpreset Roll Full-On, Roll Wide, Roll Dekel, Roll Forest (PSY ROLLING) i DAW → *kick och bas rullar ihop, basen ducker för kicken, bara ett lager ljuder; säg vilken som är för tunn eller för mörk.*
+- [ ] Öppna din GLIDE BASE (Full Instrument) i DAW → *glide-tonerna är nu längre (60 ticks) och ska höras som ett tydligt glid; originalet finns som GLIDE BASE.mofp.bak.*
+- [ ] Ladda Glide Sub, Glide Acid, Glide Dive (GLIDE BASSES) i DAW → *basen glider mellan tonerna utan klick, ducker för kicken; säg om glidet är för kort eller för långt.*
