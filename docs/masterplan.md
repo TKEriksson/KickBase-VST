@@ -115,7 +115,7 @@ Kvar, i grov ordning (projektledaren bedömer före varje fas; Opus bara efter h
 - FX: Echo, Flanger, riktig Sidechain/Maximizer i slots, multiband, FX2; sidechain i två band (LOW och MID-HI).
 - AI-leverantörer: Anthropic, OpenAI, Ollama. C: multisampling. BZ: Bézier-kick. E0/E: presetgranskning.
 - IO: import/export, projekt, autosave.
-- LC-rester: `.LFO()`/`.ENV()`, MCP `live_code_run`/`stop`, AGPL-banner och `THIRD-PARTY.md`, helpcheck.
+- LC-rester: `.LFO()`/`.ENV()`, MCP `live_code_run`/`stop`, AGPL-banner och `THIRD-PARTY.md`, helpcheck. Tillägg (Tobias 27 okt): RING ska finnas på OSC 2 och OSC 3 också, med fritt val av källa bland de två andra, och UI + hjälp ska tydligt förklara att det fungerar så.
 - RING (Tobias 27 okt): ny WARP-läge "RING (B)" där OSC 2 multipliceras med OSC 1, på samma sätt som FM (B). Läggs sist i enum/val (ID:n byts inte). AM mot en egen sinus finns redan som WARP-läge och ringmodulator finns som FX. Granular och additiv tas inte med nu (additiv täcks delvis av harmonieditorn), och 3x FM är struket. Tillägg (Tobias 27 okt): det ska synas tydligt i UI (etikett/tooltip, t.ex. "OSC1 x OSC2") att det är detta som händer, och multiplikationen ska kunna väljas fritt mellan OSC 2 och OSC 3 (båda eller en av dem). Nya val/parametrar sist.
 - Separata VST:er (VS) är struket. Tobias lägger in det själv när allt är klart.
 
