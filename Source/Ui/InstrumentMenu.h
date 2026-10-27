@@ -88,6 +88,9 @@ namespace InstrumentMenu
                                     const auto file = fc.getResult().withFileExtension ("mid");
                                     if (! RollFiles::exportMidi (processor.pattern, layer, processor.pattern.lengthBars (layer), processor.transportStatus.bpm.load(), root, file))
                                         juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Export failed", "Could not write " + file.getFullPathName());
+                                    else if (const auto slides = RollFiles::countSlideNotes (processor.pattern, layer); slides > 0)
+                                        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "MIDI exported",
+                                                                                juce::String (slides) + " glide note(s) were written as plain notes, because MIDI has no glide notes.");
                                 });
     }
 

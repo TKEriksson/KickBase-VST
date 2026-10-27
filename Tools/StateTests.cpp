@@ -1006,6 +1006,20 @@ int undoTest()
         }
     }
 
+    {
+        // Mätning: storlek och tid för en snapshot (före/efter) med en tät pianorulle på 64 takter.
+        auto processor = std::make_unique<InstrumentProcessor>();
+        auto& p = *processor;
+        for (int bar = 0; bar < 64; ++bar)
+            for (int step = 0; step < 16; ++step)
+                p.pattern.addNote (0, bar * Pattern::ticksPerBar + step * 24, 12, step % 12);
+        const auto t0 = juce::Time::getMillisecondCounterHiRes();
+        const auto snap = p.snapshotAux();
+        const auto t1 = juce::Time::getMillisecondCounterHiRes();
+        const auto bytes = snap.createXml()->toString (juce::XmlElement::TextFormat().singleLine()).length();
+        std::printf ("mått: 1024 toner -> snapshot %d byte, %.2f ms\n", (int) bytes, t1 - t0);
+    }
+
     std::puts (failed ? "FEL: ångra-testet misslyckades" : "Ångra-testet gick igenom");
     return failed ? 1 : 0;
 }
