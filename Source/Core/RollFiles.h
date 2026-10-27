@@ -19,6 +19,8 @@ namespace RollFiles
 
     // Skriver lagrets toner som en MIDI-fil (tempo, 4/4, ett spår; plus ett namngivet spår per aktiv underrad med toner om raden är ett instrument). `rootMidiNote` är basens grundton (tonhöjden 0);
     // glide-toner skrivs som vanliga toner, eftersom MIDI inte har glide-toner.
+    // Antal glide-toner i lagret; UI:t använder det för att varna efter en export.
+    int countSlideNotes (const Pattern& pattern, int layer);
     bool exportMidi (const Pattern& pattern, int layer, int bars, double bpm, int rootMidiNote, const juce::File& file);
 
     // Ersätter lagrets toner med en MIDI-fil: toner som ligger utanför ±96 halvtoner från `rootMidiNote` flyttas

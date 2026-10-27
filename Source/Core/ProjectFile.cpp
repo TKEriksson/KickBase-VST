@@ -1,4 +1,6 @@
 #include "ProjectFile.h"
+#include <algorithm>
+#include <vector>
 
 namespace
 {
@@ -77,6 +79,36 @@ namespace ProjectFile
         juce::MemoryBlock state;
         juce::AudioProcessor::copyXmlToBinary (*xml, state);
         processor.setStateInformation (state.getData(), (int) state.getSize());
+        return true;
+    }
+
+    bool AutoSaver::tick()
+    {
+        juce::MemoryBlock state;
+        processor.getStateInformation (state);
+        if (! haveLast || state == lastState)
+        {
+            lastState = state;
+            haveLast = true;
+            return false;
+        }
+
+        juce::String error;
+        if (! folder.createDirectory() || ! save (processor, folder.getChildFile ("autosave-" + id + "-" + juce::String (slot) + ".kbproj"), "autosave", error))
+            return false; // misslyckas tyst (full disk, skrivskyddad mapp); nästa tick försöker igen eftersom hashen inte uppdaterats
+        written = folder.getChildFile ("autosave-" + id + "-" + juce::String (slot) + ".kbproj");
+        slot = (slot + 1) % slots;
+        lastState = state;
+
+        std::vector<juce::File> files;
+        for (const auto& f : folder.findChildFiles (juce::File::findFiles, false, "autosave-*.kbproj"))
+            files.push_back (f);
+        if ((int) files.size() > keepFiles)
+        {
+            std::sort (files.begin(), files.end(), [] (const juce::File& a, const juce::File& b) { return a.getLastModificationTime() > b.getLastModificationTime(); });
+            for (size_t i = (size_t) keepFiles; i < files.size(); ++i)
+                files[i].deleteFile();
+        }
         return true;
     }
 }

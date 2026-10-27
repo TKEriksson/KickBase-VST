@@ -31,6 +31,7 @@ namespace
         Mixer::addParameters (layout);
         Params::addMasterParams (layout);
         Modulation::addExtraLfoParameters (layout); // LFO 4-10 (fas M): nya parametrar sist
+        Params::addJogParams (layout); // JOG (D3b)
         return layout;
     }
 
@@ -150,6 +151,7 @@ void InstrumentProcessor::processChunk (juce::AudioBuffer<float>& buffer, juce::
     clock.setForceFreeRun (previewLayer >= 0);
     clock.setFreeRunBpm (freeRunBpm.load());
     clock.setHold (transportHold.load());
+    clock.setJogRate (jogManual.load() >= 0.0f ? (double) jogManual.load() : (double) params.get (ParamID::jogSpeed));
     clock.setLoop (globalLoop.load(), globalLoopStartBar.load(), globalLoopEndBar.load());
     clock.beginBlock (getHostPosition(), numSamples);
     if (const auto seekBar = seekBarRequest.exchange (-1); seekBar >= 0)
@@ -331,6 +333,7 @@ void InstrumentProcessor::processChunk (juce::AudioBuffer<float>& buffer, juce::
 
     transportStatus.publish (clock);
     transportStatus.patternBar = (int) (((clock.getBarIndex() % lengths.total) + lengths.total) % lengths.total) + 1;
+    transportStatus.patternProgress = ((float) (transportStatus.patternBar.load() - 1) + (float) juce::jlimit (0.0, 1.0, (clock.getPpqAt (0) - clock.getBarStartPpq()) / std::max (1.0e-6, clock.getBarLengthPpq()))) / (float) lengths.total;
     transportStatus.keyNote = currentNote;
     transportStatus.patternActive = patternActive;
     previewingLayer = patternActive ? previewLayer : -1;
@@ -436,6 +439,7 @@ void InstrumentProcessor::refreshEngineParams()
     if (kickSoloSamplesLeft > 0 && getActiveClickSample() != nullptr)
     {
         kickParams.sampleMode = 2; // bara samplingen, i full nivå
+        kickParams.sampleOn = true;
         kickParams.sampleLevel = 1.0f;
     }
     kick.setParams (kickParams);
@@ -856,7 +860,7 @@ void InstrumentProcessor::finishBlock (int numSamples)
     kickEq.process (kickBuffer.getWritePointer (0), nullptr, numSamples);
     const auto* duckData = duckBuffer.getReadPointer (0);
     mixer.beginBlock();
-    // AudioBuffer::clear (start, n) rensar alla kanaler; clear (1, n) betydde start=1 och small över ett 1-samplesblock.
+    // clear (startSample, numSamples) rensar alla kanaler; ett andra anrop med 1 som första argument började på sample 1 (jassert vid block på 1 sample).
     maxBus.clear (0, numSamples);
     bypassBus.clear (0, numSamples);
     effects.beginBlock (numSamples, clock.getBpm(), clock.getPpqAt (0), controlPhase);

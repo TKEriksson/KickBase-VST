@@ -33,7 +33,9 @@ void TransportClock::beginBlock (const juce::Optional<juce::AudioPlayHead::Posit
         bpm = freeRunBpm;
 
     ppqPerSample = bpm / 60.0 / sampleRate;
-    if (hold && ! followingHost)
+    if (! followingHost)
+        ppqPerSample *= jogRate; // JOG (D3b)
+    if ((hold || jogRate < 0.01) && ! followingHost)
         ppqPerSample = 1.0e-9; // klockan står still (hjulet scrubbar); inga steg passeras
 
     if (followingHost)

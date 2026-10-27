@@ -150,6 +150,13 @@ namespace RollFiles
         return track;
     }
 
+    int countSlideNotes (const Pattern& pattern, int layer)
+    {
+        auto count = 0;
+        pattern.forEachNote (layer, [&count] (int, const Pattern::Note& n) { count += n.slide.load() ? 1 : 0; });
+        return count;
+    }
+
     bool exportMidi (const Pattern& pattern, int layer, int bars, double bpm, int rootMidiNote, const juce::File& file)
     {
         juce::MidiFile midi;

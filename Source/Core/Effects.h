@@ -18,7 +18,7 @@
 // Effects::knobs(typ) säger vad de betyder och hur de räknas om till riktiga enheter.
 enum class EffectType { off, filter, distortion, eq, chorus, phaser, echo, reverb,
                         compressor, gate, comb, ringMod, bitcrusher, autoFilter, maximizer, ducker, disperser,
-                        widener, flanger, transient, dynamicEq, octaver, bandDucker, shimmer, lowMultiplier, count }; // FX2 (sist i listan: projekt sparar typens index)
+                        widener, flanger, transient, dynamicEq, octaver, bandDucker, shimmer, lowMultiplier, sidechainCurve, sidechainBands, phaseRotation, count }; // FX2 (sist i listan: projekt sparar typens index)
 constexpr int numEffectTypes = (int) EffectType::count; // inklusive Off
 constexpr int numEffectChannels = 11; // FX1 ... FX11
 constexpr int slotsPerChannel = 5;
@@ -55,7 +55,7 @@ namespace Effects
     // En ratt i en effekttyp.
     struct Knob
     {
-        enum class Unit { plain, percent, hz, ms, db, ratio, bits, times, octaves };
+        enum class Unit { plain, percent, hz, ms, db, ratio, bits, times, octaves, degrees };
 
         juce::String name;
         float min = 0.0f, max = 1.0f;
@@ -145,6 +145,9 @@ public:
 
     // Källorna som SIDECHAIN-effekten lyssnar på (kan vara nullptr).
     void setSources (const SourceSignals* sources);
+
+    // Duckningssignalen från SIDECHAIN-fliken (kickens envelope eller kurvan, 0..1) för SIDECHAIN CURVE/2-BAND; gäller under pågående block.
+    void setDuck (const float* duck);
 
     // Kör kanalens påslagna platser. `buffer` är stereo.
     void process (juce::AudioBuffer<float>& buffer, int numSamples);

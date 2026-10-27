@@ -309,11 +309,14 @@ void KickbaseLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& b
         bounds.removeFromLeft (15);
     else if (sub && on)
         bounds.removeFromLeft (10);
+    if (const auto powerWidth = (int) button.getProperties().getWithDefault ("powerWidth", 0); powerWidth > 0)
+        bounds.removeFromRight (powerWidth); // på/av-ikonen ritas av fliken ovanpå knappen
 
     // Texten krymper först (ner till 7.5 pt) om knappen är smal, och förkortas med ... bara om den ändå inte ryms.
     auto font = getTextButtonFont (button, button.getHeight()).boldened();
-    if (sub)
-        font = font.withHeight (11.0f);
+    const bool noShrink = (bool) button.getProperties().getWithDefault ("noshrink", false);
+    if (sub || noShrink)
+        font = font.withHeight (11.0f); // navigeringsknappar: samma storlek överallt (TabbedPanel mäter bredden med samma typsnitt)
     else if (chip)
         font = Theme::monoFont (11.0f, true);
     font.setExtraKerningFactor (sub ? 0.04f : 0.08f);
@@ -325,7 +328,7 @@ void KickbaseLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& b
         return glyphs.getBoundingBox (0, -1, true).getWidth();
     };
     auto size = font.getHeight();
-    while (size > 7.5f && textWidth (size) > (float) bounds.getWidth())
+    while (! noShrink && size > 7.5f && textWidth (size) > (float) bounds.getWidth())
         size -= 0.5f;
 
     g.setFont (font.withHeight (size));

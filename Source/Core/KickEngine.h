@@ -40,6 +40,8 @@ struct KickParams
     float velPitch = 0.0f;      // 0..1: lägre velocity ger ett mindre pitch-svep
     int sampleMode = 0;         // inladdad sampling: 0 klick (de första millisekunderna), 1 lager (hela, ovanpå kicken), 2 ersätter (bara sampling)
     float sampleLevel = 1.0f;   // nivå för sampling i läge lager/ersätt (klicket använder clickLevel)
+    bool synthOn = true;        // synten på/av (av: bara samplingen, som vid ersätt; utan sampling blir kicken tyst)
+    bool sampleOn = true;       // samplingen på/av (av: som om ingen sampling var inladdad)
     float sampleTuneSemis = 0.0f; // samplingens uppspelningshastighet i halvtoner
     float sampleOffsetMs = 0.0f;  // plus: samplingen startar senare än kicken, minus: den startar inne i samplingen (så att faserna inte tar ut varandra)
 
@@ -92,6 +94,14 @@ public:
     static juce::AudioBuffer<float> render (const KickParams& p, const ClickSample* click, double sampleRate);
 
     // Hur länge kicken klingar: envelopen, eller hela samplingen om den spelas som lager/ersättning.
+    // Läget som gäller på riktigt: -1 ingen sampling i bruk (saknas eller av), annars sampleMode, men 2 (ersätt) när synten är av.
+    static int effectiveSampleMode (const KickParams& p, const ClickSample* sample)
+    {
+        if (sample == nullptr || sample->audio.getNumSamples() <= 0 || ! p.sampleOn)
+            return -1;
+        return p.synthOn ? p.sampleMode : 2;
+    }
+
     static double totalSeconds (const KickParams& p, const ClickSample* sample, double sampleRate);
 
     // Envelopernas form, utan tillstånd. Används även av gränssnittet för att rita kurvorna.

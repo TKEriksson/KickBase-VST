@@ -91,6 +91,7 @@ Format: **Gör så** → *förväntat resultat*. Bocka av `[ ]` när det stämme
 - [ ] Maximizer MODE, KEEP/COMPARE, shimmer, Low Multiplier, AP/START, HALFTIME → *hörtest: varje läge låter olika och rätt, utan klick.*
 - [ ] FX-slot med SIDECHAIN CURVE → *dämpar enligt kickens envelope/kurvan från SIDECHAIN-fliken.*
 - [ ] FX-slot med SIDECHAIN 2-BAND → *LOW och MID-HI dämpas var för sig med eget djup och egen release.*
+- [ ] FX-slot med PHASE ROTATION, FREQ 60 Hz, ROTATION 180 deg på en bas under kicken → *basens grundton byter fas mot kicken (summan blir starkare eller svagare beroende på vridning), nivån i övrigt oförändrad.*
 - [ ] Echo, Flanger, BAND DUCKER och övriga FX2-typer → *ljud i alla slots, inga klick eller tystnad.*
 
 ## LIVE CODE

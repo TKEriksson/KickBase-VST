@@ -449,6 +449,7 @@ void PianoRoll::showPresetMenu()
         else if (juce::isPositiveAndBelow (result - 100, files.size()))
         {
             auto newGrid = InstrumentGrid::sixteenth;
+            PluginBase::EditScope undo (safeThis->processor, "Load piano roll");
             if (RollFiles::load (safeThis->processor.pattern, safeThis->layer, files[result - 100], newGrid))
                 safeThis->afterLoad (newGrid);
             else
@@ -506,6 +507,9 @@ void PianoRoll::showMidiMenu()
                                                 if (! RollFiles::exportMidi (safeThis->processor.pattern, safeThis->layer, safeThis->bars(), safeThis->processor.transportStatus.bpm.load(),
                                                                              safeThis->soundingRoot(), file))
                                                     juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Export failed", "Could not write " + file.getFullPathName());
+                                                else if (const auto slides = RollFiles::countSlideNotes (safeThis->processor.pattern, safeThis->layer); slides > 0)
+                                                    juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "MIDI exported",
+                                                                                            juce::String (slides) + " glide note(s) were written as plain notes, because MIDI has no glide notes.");
                                             });
         }
         else
@@ -517,6 +521,7 @@ void PianoRoll::showMidiMenu()
                                                 if (safeThis == nullptr || ! fc.getResult().existsAsFile())
                                                     return;
                                                 auto skippedNotes = 0;
+                                                PluginBase::EditScope undo (safeThis->processor, "Import MIDI");
                                                 if (RollFiles::importMidi (safeThis->processor.pattern, safeThis->layer, fc.getResult(), safeThis->soundingRoot(), &skippedNotes))
                                                 {
                                                     safeThis->afterLoad (safeThis->grid());
@@ -888,6 +893,7 @@ void PianoRoll::resized()
 void PianoRoll::timerCallback()
 {
     followVisualRate();
+    pruneSelection(); // ångra/gör om från historiken eller menyn kan ha tagit bort valda toner
     if (layer != Pattern::kickLayer)
     {
         const auto text = "VOICES " + juce::String (voices());

@@ -38,8 +38,17 @@ namespace Settings
     void setChatApiKey (const juce::String& key);   // tom = ta bort
     juce::String chatModel();                       // standard: claude-sonnet-5-5
     void setChatModel (const juce::String& model);
-    juce::String chatProvider();                    // "anthropic" (standard) eller "gemini"
+    juce::String chatProvider();                    // "anthropic" (standard), "gemini", "openai" eller "ollama"
     void setChatProvider (const juce::String& provider);
+    // OpenAI: nyckeln skickas bara till api.openai.com. Ollama körs lokalt (ingen nyckel): adressen är standard http://localhost:11434.
+    juce::String openaiApiKey();
+    void setOpenaiApiKey (const juce::String& key); // tom = ta bort
+    juce::String openaiModel();                     // standard: gpt-5-mini
+    void setOpenaiModel (const juce::String& model);
+    juce::String ollamaBaseUrl();
+    void setOllamaBaseUrl (const juce::String& url);
+    juce::String ollamaModel();                     // tom tills användaren valt en
+    void setOllamaModel (const juce::String& model);
     juce::String geminiApiKey();
     void setGeminiApiKey (const juce::String& key); // tom = ta bort
     juce::String geminiModel();                     // standard: gemini-3.6-flash

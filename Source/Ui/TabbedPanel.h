@@ -67,8 +67,8 @@ private:
 class TabbedPanel : public juce::Component, private juce::Timer
 {
 public:
-    static constexpr int headerHeight = 30;
-    static constexpr int workspaceHeaderHeight = 38;
+    static constexpr int headerHeight = 36;
+    static constexpr int extrasRowHeight = 36; // rad 2: sidans kontroller (väljare, på/av, preset) i remsa-stil
 
     // `rememberedTab` pekar på var den valda fliken sparas (t.ex. i processorn), så att
     // samma flik visas när fönstret öppnas igen.
@@ -78,6 +78,9 @@ public:
     // E1: underflikar ritas som en segmenterad rad (egenskapen "subtab" läses av KickbaseLookAndFeel), huvudflikar som pills. Anropas före addTab.
     void setSubTabs() { subTabs = true; }
 
+    // Remsans etikett längst till höger (t.ex. "TOOLS"). Utan etikett visas den valda flikens namn.
+    void setStripLabel (const juce::String& text) { stripLabel = text; }
+
     // `headerExtras` (t.ex. sidans på/av-knapp och presetknapp) visas till höger i flikraden
     // när fliken är vald, så att sidan inte behöver en egen rubrikrad.
     void addTab (const juce::String& name, juce::Colour accent, juce::Component& page, juce::Component* headerExtras = nullptr, int extrasWidth = 380)
@@ -85,6 +88,7 @@ public:
         auto button = std::make_unique<TabButton> (name);
         button->setColour (juce::TextButton::buttonOnColourId, accent);
         button->getProperties().set ("subtab", subTabs);
+        button->getProperties().set ("noshrink", true); // knapptexten krymper aldrig: knappen anpassas efter texten (pillWidth)
         const auto index = (int) tabs.size();
         button->onClick = [this, index] { setCurrentTab (index); };
         button->onDragHover = [this, index] { setCurrentTab (index); };
@@ -105,6 +109,7 @@ public:
         auto& tab = tabs[(size_t) tabIndex];
         tab.power = std::make_unique<PowerButton> (tab.accent);
         tab.power->setTooltip (tooltip);
+        tab.button->getProperties().set ("powerWidth", powerSpace); // LookAndFeel centrerar texten utanför ikonen
         addAndMakeVisible (*tab.power);
         tab.powerAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (apvts, parameterID, *tab.power);
         auto* button = tab.button.get();
@@ -153,6 +158,8 @@ public:
         startTimerHz (4);
     }
 
+    int getCurrentTab() const { return current; }
+
     void setCurrentTab (int index)
     {
         current = juce::jlimit (0, (int) tabs.size() - 1, index);
@@ -167,6 +174,7 @@ public:
                 extras->setVisible (i == current);
         }
         updatePreviewButton();
+        resized(); // sidans höjd beror på om fliken har en rad 2
         repaint();
     }
 
@@ -207,43 +215,37 @@ public:
                 g.setColour (Theme::panelBorderDim);
                 g.drawVerticalLine (labelArea.getX(), (float) labelArea.getY() + 4.0f, (float) labelArea.getBottom() - 4.0f);
                 g.setColour (Theme::slate500);
-                Theme::drawTracked (g, currentTab.button->getButtonText(), labelArea.withTrimmedLeft (8).toFloat(), Theme::monoFont (10.0f, false),
+                Theme::drawTracked (g, stripLabel.isNotEmpty() ? stripLabel : currentTab.button->getButtonText(), labelArea.withTrimmedLeft (8).toFloat(), Theme::monoFont (10.0f, false),
                                     0.14f, juce::Justification::centredLeft);
             }
         }
         else
         {
-            // Stjälk: en liten triangel under den valda fliken som binder den till innehållet under.
-            const auto b = currentTab.button->getBounds().toFloat();
-            const auto cx = b.getCentreX();
-            const auto y = b.getBottom() + 1.0f;
-            juce::Path stem;
-            stem.addTriangle (cx - 7.0f, y, cx + 7.0f, y, cx, y + 7.0f);
-            g.setColour (Theme::panelBorderDim);
-            g.fillPath (stem);
-            juce::Path inner;
-            inner.addTriangle (cx - 5.0f, y, cx + 5.0f, y, cx, y + 5.5f);
-            g.setColour (Theme::panelAlt);
-            g.fillPath (inner);
+            // Brödsmulan (KICKBASE > NAMN [> undersida]) i rad 1 bredvid huvudmenyn ersätter den gamla 38 px-rubrikraden.
+            if (crumbArea.getWidth() > 60)
+            {
+                auto crumb = "KICKBASE  >  " + currentTab.button->getButtonText().toUpperCase();
+                if (crumbSuffix != nullptr)
+                    if (const auto suffix = crumbSuffix(); suffix.isNotEmpty())
+                        crumb << "  >  " << suffix.toUpperCase();
+                g.setColour (Theme::cyan.withAlpha (0.85f));
+                Theme::drawTracked (g, crumb, crumbArea.toFloat(), Theme::monoFont (9.5f, false), 0.14f, juce::Justification::centredLeft);
+            }
 
-            // Arbetsytans rubrikrad: mono-brödsmula i cyan och flikens namn i fet vit text.
-            const auto hb = workspaceHeader.toFloat();
-            g.setColour (Theme::panel);
-            g.fillRoundedRectangle (hb, 12.0f);
-            g.setColour (juce::Colour (0xcc1e293b));
-            g.drawRoundedRectangle (hb.reduced (0.5f), 12.0f, 1.0f);
-            const auto name = currentTab.button->getButtonText();
-            auto text = workspaceHeader.reduced (14, 4);
-            g.setColour (Theme::cyan.withAlpha (0.85f));
-            Theme::drawTracked (g, "KICKBASE  >  " + name, text.removeFromTop (12).toFloat(), Theme::monoFont (9.5f, false), 0.14f,
-                                juce::Justification::centredLeft);
-            g.setColour (Theme::cyan.withAlpha (0.18f));
-            g.setFont (Theme::font (15.0f, true));
-            g.drawText (name.toUpperCase(), text.translated (0, 1), juce::Justification::centredLeft);
-            g.setColour (juce::Colours::white);
-            g.drawText (name.toUpperCase(), text, juce::Justification::centredLeft);
+            // Rad 2: sidans egna kontroller i en mörk remsa (samma stil som underflikarna).
+            if (currentTab.headerExtras != nullptr)
+            {
+                const auto strip = extrasRow.toFloat();
+                g.setColour (Theme::insetStrip);
+                g.fillRoundedRectangle (strip, 12.0f);
+                g.setColour (Theme::panelBorderDim);
+                g.drawRoundedRectangle (strip.reduced (0.5f), 12.0f, 1.0f);
+            }
         }
     }
+
+    // Valfri andra nivån i brödsmulan (t.ex. ANALYZER > SPECTRUM): funktionen anropas vid varje ritning och returnerar undersidans namn.
+    std::function<juce::String()> crumbSuffix;
 
     void resized() override
     {
@@ -253,42 +255,44 @@ public:
             previewButton->setBounds (header.removeFromRight (previewWidth));
             header.removeFromRight (6);
         }
-        auto reserved = 0;
-        for (auto& tab : tabs)
-            if (tab.headerExtras != nullptr)
-                reserved = std::max (reserved, tab.extrasWidth);
-        const auto extrasArea = header.removeFromRight (reserved);
-        for (auto& tab : tabs)
-            if (tab.headerExtras != nullptr)
-                tab.headerExtras->setBounds (extrasArea.withTrimmedLeft (extrasArea.getWidth() - tab.extrasWidth));
-        const auto count = std::max (1, (int) tabs.size());
-        const auto width = std::min (110, (header.getWidth() - 6 * (count - 1)) / count);
-        stripArea = header.expanded (4, 3).withRight (header.getRight() + 4);
-        labelArea = stripArea.withTrimmedLeft (std::max (0, count * (width + 6) + 4)).withTrimmedRight (8);
+        // Knappens bredd = textbredd + 2 x 14 px (+ plats för LED/ström-knapp): texten krymper aldrig.
+        const auto pillsLeft = header.getX();
+        const auto strip = header.expanded (4, 3);
+        stripArea = strip;
+        int usedWidth = 0;
         for (auto& tab : tabs)
         {
+            const auto width = pillWidth (tab);
             tab.button->setBounds (header.removeFromLeft (width));
             if (tab.power != nullptr)
             {
-                tab.power->setBounds (tab.button->getBounds().removeFromRight (22).reduced (3));
+                tab.power->setBounds (tab.button->getBounds().removeFromRight (powerSpace).reduced (4, 6));
                 tab.power->toFront (false);
             }
-            header.removeFromLeft (6);
+            header.removeFromLeft (tabGap);
+            usedWidth += width + tabGap;
         }
+        const auto restArea = juce::Rectangle<int> (pillsLeft + usedWidth + 4, strip.getY(), std::max (0, header.getRight() + 4 - (pillsLeft + usedWidth + 4)), strip.getHeight());
+        labelArea = subTabs ? restArea.withTrimmedRight (8) : juce::Rectangle<int>();
+        crumbArea = subTabs ? juce::Rectangle<int>() : restArea.withTrimmedLeft (10).withTrimmedRight (6);
 
-        auto content = getLocalBounds().reduced (10).withTrimmedTop (headerHeight - 4);
-        if (! subTabs)
-        {
-            content.removeFromTop (6);
-            workspaceHeader = content.removeFromTop (workspaceHeaderHeight);
-            content.removeFromTop (6);
-        }
+        extrasRow = juce::Rectangle<int> (10, headerHeight + 2, std::max (0, getWidth() - 20), extrasRowHeight);
         for (auto& tab : tabs)
+        {
+            auto content = getLocalBounds().reduced (10).withTrimmedTop (headerHeight - 4);
+            if (tab.headerExtras != nullptr)
+            {
+                tab.headerExtras->setBounds (extrasRow.reduced (8, 2));
+                content.setTop (extrasRow.getBottom() + 6);
+            }
             tab.page->setBounds (content);
+        }
     }
 
 private:
     static constexpr int previewWidth = 30;
+    static constexpr int powerSpace = 30; // plats för på/av-ikonen längst till höger på en flik
+    static constexpr int tabGap = 8;
 
     void updatePreviewButton()
     {
@@ -322,11 +326,24 @@ private:
         juce::String previewTooltip;
     };
 
+    // Samma typsnitt som KickbaseLookAndFeel::drawButtonText använder för "noshrink"-knappar (höjd 11, bold, kerning som i LookAndFeel).
+    int pillWidth (const Tab& tab) const
+    {
+        auto font = tab.button->getLookAndFeel().getTextButtonFont (*tab.button, headerHeight).boldened().withHeight (11.0f);
+        font.setExtraKerningFactor (subTabs ? 0.04f : 0.08f);
+        juce::GlyphArrangement glyphs;
+        glyphs.addLineOfText (font, tab.button->getButtonText().toUpperCase(), 0.0f, 0.0f);
+        const auto text = (int) std::ceil (glyphs.getBoundingBox (0, -1, true).getWidth());
+        const auto led = subTabs ? 10 : 15;
+        return text + 2 * 18 + led + (tab.power != nullptr ? powerSpace + 6 : 0); // ikon + marginal mot texten
+    }
+
     std::vector<Tab> tabs;
     std::unique_ptr<ListenButton> previewButton;
     int current = 0;
     bool subTabs = false;
-    juce::Rectangle<int> stripArea, labelArea, workspaceHeader;
+    juce::Rectangle<int> stripArea, labelArea, crumbArea, extrasRow;
+    juce::String stripLabel;
     int* remembered;
     int initialTab;
 };

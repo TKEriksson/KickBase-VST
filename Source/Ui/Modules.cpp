@@ -2,6 +2,7 @@
 #include "Modules.h"
 #include "Help.h"
 #include "HistoryPanel.h"
+#include "JogPanel.h"
 #include "../Core/ProjectFile.h"
 
 namespace
@@ -52,6 +53,20 @@ HeaderBar::HeaderBar (PluginBase& p, const juce::String& subtitleIn)
     {
         listenAll.setTooltip ("LISTEN - Hold to hear the whole synth (the kick, the instruments and the pattern) on the note chosen next to it, looping while you hold. "
                               "Press again to start over. Double-click to let it keep playing until you click again.");
+        listenAll.setPlayIcon (true); // play/stopp-ikon i toppbaren; högtalaren finns kvar på raderna
+        listenRoll.setPlayIcon (true);
+        playExtras = Settings::get ("playExtras") != "0";
+        playMenuButton.setTooltip ("PLAY - Show or hide LOOP and JOG in this box. Hidden, only the previews and the tempo/bar stay.");
+        playMenuButton.onClick = [this]
+        {
+            playExtras = ! playExtras;
+            Settings::set ("playExtras", playExtras ? juce::String() : juce::String ("0"));
+            resized();
+            if (auto* parent = getParentComponent())
+                parent->resized(); // mätaren och väljaren sitter efter rutan
+            repaint();
+        };
+        addAndMakeVisible (playMenuButton);
         listenAll.onStart = [this] { processor.requestAudition (PluginBase::previewRequest (PluginBase::previewAllRows)); };
         listenAll.onStop = [this] { processor.requestAudition (PluginBase::previewStop); };
         addAndMakeVisible (listenAll);
@@ -78,6 +93,11 @@ HeaderBar::HeaderBar (PluginBase& p, const juce::String& subtitleIn)
         restartButton.setTooltip ("RESTART - Starts the counter and the pattern over at bar 1.1 (when the plugin runs on its own clock; with DAW SYNC the DAW decides).");
         restartButton.onClick = [this] { processor.requestRestart(); };
         addAndMakeVisible (restartButton);
+
+        jogButton.setTooltip ("JOG - A turntable wheel for the plugin's own clock: scratch the music or change its speed (also automatable and LFO-modulatable). "
+                              "It never touches the DAW. Lit when the speed is not 1x or has an LFO.");
+        jogButton.onClick = [this] { showJogPanel(); };
+        addAndMakeVisible (jogButton);
 
         auto setUpLabel = [this] (juce::Label& label, float size)
         {
@@ -139,6 +159,15 @@ HeaderBar::HeaderBar (PluginBase& p, const juce::String& subtitleIn)
         updateTransportLabels (false);
     }
 
+    if (auto* gainParam = processor.apvts.getParameter (ParamID::gain))
+    {
+        masterKnob.setTooltip ("MASTER - Your listening volume: the same OUTPUT volume as the fader in the mixer (double-click for the default).");
+        masterKnob.setColour (juce::Slider::rotarySliderFillColourId, Theme::master);
+        masterKnob.setColour (juce::Slider::thumbColourId, Theme::text);
+        masterAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (processor.apvts, ParamID::gain, masterKnob);
+        masterKnob.setDoubleClickReturnValue (true, gainParam->convertFrom0to1 (gainParam->getDefaultValue()));
+        addAndMakeVisible (masterKnob);
+    }
     projectButton.onClick = [this] { showProjectMenu(); };
     addAndMakeVisible (projectButton);
     updateAiTooltip();
@@ -179,6 +208,8 @@ void HeaderBar::showProjectMenu()
     menu.addSeparator();
     menu.addItem (6, "AI server (MCP)", true, processor.isBridgeEnabled());
     menu.addItem (7, "History...");
+    menu.addItem (8, "Autosave every 3 min", true, Settings::get ("autosave") != "0");
+    menu.addItem (9, "Open autosave...");
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&projectButton), [safe = juce::Component::SafePointer<HeaderBar> (this), recent] (int result)
     {
         if (safe == nullptr || result <= 0)
@@ -194,6 +225,10 @@ void HeaderBar::showProjectMenu()
             safe->updateAiTooltip();
         }
         else if (result == 7) safe->showHistory();
+        else if (result == 8)
+            Settings::set ("autosave", Settings::get ("autosave") == "0" ? juce::String() : juce::String ("0"));
+        else if (result == 9)
+            safe->openProject (Settings::rootFolder().getChildFile ("Autosave"));
         else if (result >= 10 && result - 10 < recent.size())
             safe->openProjectFile (juce::File (recent[result - 10]));
     });
@@ -217,6 +252,15 @@ void HeaderBar::showHistory()
     o.useNativeTitleBar = false;
     o.resizable = true;
     open = o.launchAsync();
+}
+
+void HeaderBar::showJogPanel()
+{
+    // CallOutBox med editorn som förälder, så att rattarna i panelen hittar processorn (KnobComponent söker uppåt efter editorn).
+    auto* editor = findParentComponentOfClass<juce::AudioProcessorEditor>();
+    if (editor == nullptr)
+        return;
+    juce::CallOutBox::launchAsynchronously (std::make_unique<JogPanel> (processor), editor->getLocalArea (this, jogButton.getBounds()), editor);
 }
 
 juce::StringArray HeaderBar::recentProjects() const
@@ -321,9 +365,9 @@ void HeaderBar::saveProjectTo (const juce::File& file)
     showNotice ("Saved " + file.getFileNameWithoutExtension());
 }
 
-void HeaderBar::openProject()
+void HeaderBar::openProject (const juce::File& startFolder)
 {
-    chooser = std::make_unique<juce::FileChooser> ("Open project", Settings::exportsFolder(), "*.kbproj");
+    chooser = std::make_unique<juce::FileChooser> ("Open project", startFolder != juce::File() ? startFolder : Settings::exportsFolder(), "*.kbproj");
     chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
                           [safe = juce::Component::SafePointer<HeaderBar> (this)] (const juce::FileChooser& fc)
     {
@@ -452,6 +496,31 @@ void HeaderBar::paintOverChildren (juce::Graphics& g)
     juce::Path head;
     head.addTriangle (centre.x - 8.0f, centre.y + 2.0f, centre.x - 3.0f, centre.y - 2.5f, centre.x - 3.0f, centre.y + 6.5f);
     g.fillPath (head);
+
+    // PLAY-menyn: tre streck, tända när LOOP och JOG visas.
+    if (playMenuButton.isVisible())
+    {
+        const auto m = playMenuButton.getBounds().toFloat().getCentre();
+        g.setColour (playExtras ? Theme::pattern : Theme::text.withAlpha (0.8f));
+        for (const auto dy : { -5.0f, 0.0f, 5.0f })
+            g.drawLine (m.x - 6.0f, m.y + dy, m.x + 6.0f, m.y + dy, 1.8f);
+    }
+
+    if (! jogButton.isVisible())
+        return;
+
+    // LP-ikonen på JOG-knappen: en skiva med hål och tonarm. Lyser när hastigheten inte är 1x eller en LFO styr den.
+    const auto jogCentre = jogButton.getBounds().toFloat().getCentre();
+    auto* jogParam = processor.apvts.getParameter (ParamID::jogSpeed);
+    const auto jogIndex = processor.getParameters().indexOf (jogParam);
+    auto active = jogParam != nullptr && std::abs (jogParam->convertFrom0to1 (jogParam->getValue()) - 1.0f) > 0.001f;
+    for (int r = 0; r < Modulation::maxRoutes && ! active; ++r)
+        active = processor.modRoutes.routes[(size_t) r].source.load() >= 0 && processor.modRoutes.routes[(size_t) r].target.load() == jogIndex;
+    const auto jogColour = active ? Theme::pattern : Theme::text;
+    g.setColour (jogColour);
+    g.drawEllipse (juce::Rectangle<float> (14.0f, 14.0f).withCentre (jogCentre), 1.6f);
+    g.fillEllipse (juce::Rectangle<float> (3.5f, 3.5f).withCentre (jogCentre));
+    g.drawLine (jogCentre.x + 6.0f, jogCentre.y - 8.0f, jogCentre.x + 1.0f, jogCentre.y - 2.0f, 1.4f);
 }
 
 void HeaderBar::resized()
@@ -459,52 +528,77 @@ void HeaderBar::resized()
     const auto hasPreviews = processor.getKeyboardState() != nullptr;
     const auto height = getHeight();
     const auto controlsHeight = 34, controlsY = (height - controlsHeight) / 2;
-    // Till höger (tonart, tempo): sätts först, så att vänstra delen kan krympa så att inget överlappar vid smal bredd.
+    // Till höger: mätare och lyssnarvolym längst ut, sedan tonart, sedan (instrumentet) en gemensam ruta för
+    // PREVIEWS, LOOP, tempo/takt och JOG. Sätts först, så att vänstra delen kan krympa vid smal bredd.
     auto right = getLocalBounds().reduced (14, 0);
+    masterKnob.setBounds (right.removeFromRight (30).withSizeKeepingCentre (30, 30));
+    right.removeFromRight (4);
+    meterRect = right.removeFromRight (meterWidth).withSizeKeepingCentre (meterWidth, 28);
+    right.removeFromRight (10);
     keyBlock = right.removeFromRight (84).withSizeKeepingCentre (84, 40);
     right.removeFromRight (8);
-    bpmPill = right.removeFromRight (214).reduced (0, (height - 34) / 2);
+    const auto extras = hasPreviews && playExtras; // LOOP och JOG visas bara när PLAY-menyn är öppen
+    const auto pillWidth = hasPreviews ? (extras ? 244 : 216) : 214;
+    const auto pillHeight = 34;
+    transportGroup = {};
+    previewGroup = {};
+    if (hasPreviews)
+    {
+        const auto previewsWidth = rollShown ? 148 : 112;
+        const auto playWidth = 24;
+        const auto groupHeight = extras ? 62 : 48;
+        const auto groupWidth = playWidth + previewsWidth + pillWidth + 22;
+        transportGroup = right.removeFromRight (groupWidth).withSizeKeepingCentre (groupWidth, groupHeight);
+        auto inner = transportGroup.reduced (6, 0);
+        playMenuButton.setBounds (inner.removeFromLeft (playWidth).withSizeKeepingCentre (playWidth, 24));
+        inner.removeFromLeft (4);
+        previewGroup = inner.removeFromLeft (previewsWidth).withTrimmedBottom (4).withTrimmedTop (3);
+        inner.removeFromLeft (6);
+        auto transport = inner;
+        // LOOP längst upp i rutan, tempo och takt med JOG och omstart under.
+        if (extras)
+        {
+            auto loopRow = transport.removeFromTop (groupHeight - pillHeight - 6).withTrimmedTop (4);
+            loopButton.setBounds (loopRow.removeFromLeft (52));
+            loopRow.removeFromLeft (6);
+            loopFromLabel.setBounds (loopRow.removeFromLeft (30));
+            loopRow.removeFromLeft (14);
+            loopToLabel.setBounds (loopRow.removeFromLeft (30));
+        }
+        bpmPill = transport.removeFromBottom (pillHeight + 3).withTrimmedBottom (3);
+    }
+    else
+        bpmPill = right.removeFromRight (pillWidth).withSizeKeepingCentre (pillWidth, pillHeight);
     restartButton.setBounds (bpmPill.getRight() - 32, bpmPill.getY() + 4, 26, bpmPill.getHeight() - 8);
+    jogButton.setBounds (restartButton.getX() - 28, bpmPill.getY() + 4, 26, bpmPill.getHeight() - 8);
     {
         auto inner = bpmPill.reduced (bpmPill.getHeight() / 2 - 4, 0); // samma indelning som i paint
         bpmLabel.setBounds (inner.removeFromLeft (100).reduced (0, 4));
         barLabel.setBounds (inner.removeFromLeft (58).reduced (0, 4));
     }
-
-    // LOOP-rutan ligger till vänster om tempot (bara instrumentet)
-    loopBlock = {};
-    if (hasPreviews)
-    {
-        loopBlock = right.removeFromRight (loopBlockWidth).withSizeKeepingCentre (loopBlockWidth - 8, 34);
-        auto inner = loopBlock;
-        loopButton.setBounds (inner.removeFromLeft (52));
-        inner.removeFromLeft (6);
-        loopFromLabel.setBounds (inner.removeFromLeft (30));
-        inner.removeFromLeft (14);
-        loopToLabel.setBounds (inner.removeFromLeft (30));
-    }
     for (auto* c : std::initializer_list<juce::Component*> { &loopButton, &loopFromLabel, &loopToLabel })
-        c->setVisible (hasPreviews);
+        c->setVisible (extras);
+    playMenuButton.setVisible (hasPreviews);
 
     projectButton.setBounds (14 + logo.getWidth() + 22, controlsY, 84, controlsHeight); // MENU först, till vänster om presetväljaren
-    auto presetWidth = hasPreviews ? 118 : 200;
-    const auto leftEnd = projectButton.getRight() + 10 + presetWidth + 10 + (hasPreviews ? (rollShown ? 148 : 112) : 0) + 16 + meterWidth;
-    presetWidth = std::max (70, presetWidth - std::max (0, leftEnd - ((hasPreviews ? loopBlock.getX() : bpmPill.getX()) - 8)));
-    presets.setBounds (projectButton.getRight() + 10, controlsY, presetWidth, controlsHeight);
+    const auto presetsX = projectButton.getRight() + 10;
+    const auto leftLimit = (hasPreviews ? transportGroup.getX() : bpmPill.getX()) - 8;
+    const auto presetWidth = std::max (70, std::min (hasPreviews ? 118 : 200, leftLimit - presetsX));
+    presets.setBounds (presetsX, controlsY, presetWidth, controlsHeight);
     nameBounds = { projectButton.getX(), controlsY + controlsHeight + 1, presets.getRight() - projectButton.getX(), 14 };
 
-    // PREVIEWS: en inringad ruta med högtalaren och tonväljaren, så att man ser att de hör ihop.
-    previewGroup = hasPreviews ? juce::Rectangle<int> (presets.getRight() + 10, (height - 44) / 2, rollShown ? 148 : 112, 44) : juce::Rectangle<int>();
     listenAll.setVisible (hasPreviews);
     noteBox.setVisible (hasPreviews);
     restartButton.setVisible (hasPreviews);
+    jogButton.setVisible (extras);
     if (hasPreviews)
     {
-        listenAll.setBounds (previewGroup.getX() + 7, previewGroup.getY() + 14, 30, previewGroup.getHeight() - 20);
+        const auto y = previewGroup.getY() + 12, h = previewGroup.getHeight() - 14;
+        listenAll.setBounds (previewGroup.getX() + 1, y, 30, h);
         listenRoll.setVisible (rollShown);
         if (rollShown)
-            listenRoll.setBounds (listenAll.getRight() + 3, previewGroup.getY() + 14, 30, previewGroup.getHeight() - 20);
-        noteBox.setBounds ((rollShown ? listenRoll.getRight() : listenAll.getRight()) + 5, previewGroup.getY() + 14, 62, previewGroup.getHeight() - 20);
+            listenRoll.setBounds (listenAll.getRight() + 3, y, 30, h);
+        noteBox.setBounds ((rollShown ? listenRoll.getRight() : listenAll.getRight()) + 5, y, 62, h);
     }
 }
 
@@ -745,6 +839,22 @@ void HeaderBar::paint (juce::Graphics& g)
         g.drawText (following ? "DAW SYNC" : "FREE RUN", block.withTrimmedLeft (18.0f), juce::Justification::centredLeft);
     }
 
+    // Gemensam ruta (instrumentet): PREVIEWS (högtalare, tonväljare), LOOP, tempo/takt och JOG hör ihop.
+    if (! transportGroup.isEmpty())
+    {
+        const auto group = transportGroup.toFloat();
+        g.setColour (Theme::pattern.withAlpha (0.07f));
+        g.fillRoundedRectangle (group, 6.0f);
+        g.setColour (Theme::pattern.withAlpha (0.75f));
+        g.drawRoundedRectangle (group.reduced (0.5f), 6.0f, 1.2f);
+        g.setFont (Theme::font (8.5f, true));
+        g.setColour (Theme::pattern);
+        g.drawText ("PREVIEWS", previewGroup.toFloat().withHeight (12.0f), juce::Justification::centredLeft);
+        const auto dividerX = (float) previewGroup.getRight() + 3.0f;
+        g.setColour (Theme::pattern.withAlpha (0.35f));
+        g.drawVerticalLine ((int) dividerX, group.getY() + 7.0f, group.getBottom() - 7.0f);
+    }
+
     // Tempo och takt i samma kapselformade hårdvarupill; knappen längst till höger börjar om vid 1.1.
     {
         const auto pill = bpmPill.toFloat();
@@ -768,19 +878,6 @@ void HeaderBar::paint (juce::Graphics& g)
         if (! labelsDrawn)
             g.drawText (juce::String (status.patternBar.load()) + "." + juce::String (status.beat.load()), // takten i mönstret (börjar om när mönstret är klart)
                         inner.removeFromLeft (58.0f), juce::Justification::centred);
-    }
-
-    // PREVIEWS: ramen runt högtalaren och tonväljaren.
-    if (! previewGroup.isEmpty())
-    {
-        const auto group = previewGroup.toFloat();
-        g.setColour (Theme::pattern.withAlpha (0.07f));
-        g.fillRoundedRectangle (group, 6.0f);
-        g.setColour (Theme::pattern.withAlpha (0.75f));
-        g.drawRoundedRectangle (group.reduced (0.5f), 6.0f, 1.2f);
-        g.setFont (Theme::font (8.5f, true));
-        g.setColour (Theme::pattern);
-        g.drawText ("PREVIEWS", group.withHeight (14.0f).withTrimmedLeft (8.0f), juce::Justification::centredLeft);
     }
 
     // Utgångsmätare (L och R, -48 till 0 dB): visar att synten faktiskt ger ljud.
@@ -869,6 +966,18 @@ KickModule::KickModule (PluginBase& p)
                      { "COMP", { knob (ParamID::kickComp, "AMOUNT") },
                      "Compressor after drive and crush: a fast attack and a release that follows the kick length, with automatic makeup gain. Tighter, denser kick; 0 = off." },
                      { "FILTER", { knob (ParamID::kickLowCut, "LOW CUT"), knob (ParamID::kickVelPitch, "VEL>PITCH") } } });
+
+    synthToggle.setTooltip ("Kick SYNTH on/off. Off = only the loaded sample is heard (like Replace); with no sample the kick is silent.");
+    sampleToggle.setTooltip ("Kick SAMPLE on/off. Off = the loaded sample is ignored (it stays loaded) and the synth kick plays alone.");
+    synthToggleAttachment = std::make_unique<juce::ButtonParameterAttachment> (*p.apvts.getParameter (ParamID::kickSynthOn), synthToggle);
+    sampleToggleAttachment = std::make_unique<juce::ButtonParameterAttachment> (*p.apvts.getParameter (ParamID::kickSampleOn), sampleToggle);
+    addAndMakeVisible (synthToggle);
+    addAndMakeVisible (sampleToggle);
+    balanceHint.setText ("Balance = LEVEL (SAMPLE view).  MODE (Click/Layer/Replace) still decides how the sample is used.", juce::dontSendNotification);
+    balanceHint.setFont (Theme::font (10.5f));
+    balanceHint.setColour (juce::Label::textColourId, Theme::textDim);
+    balanceHint.setTooltip ("Both on: the synth kick plus the sample, balanced with LEVEL. Click = only the sample's first moments, Layer = the whole sample on top, Replace = the sample alone.");
+    addAndMakeVisible (balanceHint);
 
     sampleLabel.setFont (Theme::font (11.0f));
     sampleLabel.setColour (juce::Label::textColourId, Theme::textDim);
@@ -1002,6 +1111,13 @@ void KickModule::resized()
     listenSampleButton.setBounds (sampleRow.removeFromRight (96));
     sampleRow.removeFromRight (10);
     sampleLabel.setBounds (sampleRow);
+    area.removeFromBottom (4);
+
+    auto sourceRow = area.removeFromBottom (22);
+    synthToggle.setBounds (sourceRow.removeFromLeft (80));
+    sampleToggle.setBounds (sourceRow.removeFromLeft (90));
+    sourceRow.removeFromLeft (8);
+    balanceHint.setBounds (sourceRow);
     area.removeFromBottom (4);
 
     if (sampleTabShown())
@@ -1873,12 +1989,17 @@ void SubScope::paint (juce::Graphics& g)
 void InstrumentHost::Header::resized()
 {
     auto area = getLocalBounds();
+    if (power != nullptr)
+    {
+        power->setBounds (area.removeFromLeft (28));
+        area.removeFromLeft (16);
+    }
     selector.setBounds (area.removeFromLeft (150));
+    area.removeFromLeft (8);
+    addButton.setBounds (area.removeFromLeft (28));
     area.removeFromLeft (4);
-    addButton.setBounds (area.removeFromLeft (24));
-    area.removeFromLeft (2);
-    removeButton.setBounds (area.removeFromLeft (24));
-    area.removeFromLeft (10);
+    removeButton.setBounds (area.removeFromLeft (28));
+    area.removeFromLeft (18);
     if (extras != nullptr)
         extras->setBounds (area);
 }
@@ -1908,12 +2029,20 @@ InstrumentHost::InstrumentHost (PluginBase& p) : processor (p)
 void InstrumentHost::resetPanels()
 {
     header.extras = nullptr;
+    header.power = nullptr;
     for (size_t i = 0; i < extras.size(); ++i)
+    {
         if (extras[i] != nullptr)
         {
             header.removeChildComponent (extras[i]);
             extras[i] = nullptr;
         }
+        if (powers[i] != nullptr)
+        {
+            header.removeChildComponent (powers[i]);
+            powers[i] = nullptr;
+        }
+    }
     for (auto& module : modules)
         module.reset();
 }
@@ -1931,6 +2060,9 @@ InstrumentHost::~InstrumentHost()
     for (auto* e : extras)
         if (e != nullptr)
             header.removeChildComponent (e);
+    for (auto* p : powers)
+        if (p != nullptr)
+            header.removeChildComponent (p);
 }
 
 InstrumentModule& InstrumentHost::moduleFor (int layer)
@@ -1940,8 +2072,11 @@ InstrumentModule& InstrumentHost::moduleFor (int layer)
     {
         slot = std::make_unique<InstrumentModule> (processor, layer);
         addChildComponent (*slot);
-        extras[(size_t) layer] = slot->embedInTab();
+        extras[(size_t) layer] = slot->embedInTab (false); // på/av ligger längst till vänster i Header, inte i sidans kontroller
         header.addChildComponent (*extras[(size_t) layer]);
+        powers[(size_t) layer] = slot->getPower();
+        if (powers[(size_t) layer] != nullptr)
+            header.addChildComponent (*powers[(size_t) layer]);
         slot->setBounds (getLocalBounds());
     }
     return *slot;
@@ -1967,8 +2102,11 @@ void InstrumentHost::select (int layer)
             modules[(size_t) i]->setVisible (i == layer);
         if (extras[(size_t) i] != nullptr)
             extras[(size_t) i]->setVisible (i == layer);
+        if (powers[(size_t) i] != nullptr)
+            powers[(size_t) i]->setVisible (i == layer);
     }
     header.extras = extras[(size_t) layer];
+    header.power = powers[(size_t) layer];
     header.resized();
     lastNamesVersion = -1;
     refresh();

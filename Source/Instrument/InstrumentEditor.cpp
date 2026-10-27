@@ -3,7 +3,7 @@
 namespace
 {
     // Gränssnittet ritas i den här storleken (logiska punkter) och skalas sedan till fönstret. Standardskalan är lite under 1.
-    constexpr int baseWidth = 1180, baseHeight = 1010;
+    constexpr int baseWidth = 1180, baseHeight = 1028;
     constexpr float defaultScale = 0.9f;
 }
 
@@ -18,16 +18,33 @@ InstrumentEditor::InstrumentEditor (InstrumentProcessor& p)
         root.addAndMakeVisible (component);
 
     synths.addTab ("PATTERN", Theme::pattern, pattern, pattern.getGrooveBar(), PatternGrooveBar::width);
-    synths.addTab ("KICK", Theme::kick, kick, kick.embedInTab(), kick.headerExtrasWidth());
+    synths.addTab ("KICK", Theme::kick, kick, kick.embedInTab (false), kick.headerExtrasWidth()); // kickens på/av finns bara på fliken (addPower nedan)
+    if (auto* kickPower = kick.getPower())
+        kickPower->setVisible (false);
     synths.addTab ("INSTRUMENT", Theme::bass, instruments, instruments.getHeader(), InstrumentHost::headerWidth);
     synths.addTab ("ANALYZER", Theme::lfo, analyzer);
     synths.addTab ("AI CHAT", Theme::gate, aiPage);
     synths.addTab ("LIVE CODE", Theme::gate, livePage);
 
+    // EDIT på en rad i mönstret: till ljudfliken för just det instrumentet (kicken = KICK, annars INSTRUMENT med instrumentet valt).
+    pattern.getSequencer().onEditInstrument = [this] (int layer)
+    {
+        if (layer == Pattern::kickLayer)
+        {
+            synths.setCurrentTab (1);
+            return;
+        }
+        instruments.select (layer);
+        synths.setCurrentTab (2);
+    };
+    pattern.getSequencer().onAddInstrument = [this] { instruments.addInstrument(); };
+
     // På/av direkt på kickens flik (instrumenten har sin på/av i flikraden, bredvid väljaren).
     synths.addPower (1, processor.apvts, ParamID::kickOn);
 
     tools.setSubTabs();
+    tools.setStripLabel ("TOOLS");
+    synths.crumbSuffix = [this] { return synths.getCurrentTab() == 3 ? analyzer.currentViewName() : juce::String(); };
     // B1: förhandsknapp per flik. Hela mönstret (PATTERN, ANALYZER, AI CHAT, LIVE CODE), bara kickraden (KICK), instrumentet utan mönster (INSTRUMENT).
     const auto wholePattern = [this] { processor.requestAudition (PluginBase::previewRequest (PluginBase::previewAllRows)); };
     const auto stopPattern = [this] { processor.requestAudition (PluginBase::previewStop); };
@@ -88,7 +105,7 @@ void InstrumentEditor::resized()
     info.setBounds (area.removeFromBottom (22));
     area.removeFromBottom (6);
 
-    synths.setBounds (area.removeFromTop (540));
+    synths.setBounds (area.removeFromTop (534));
     area.removeFromTop (6);
     tools.setBounds (area);
 }

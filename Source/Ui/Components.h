@@ -238,16 +238,18 @@ public:
     }
 
     juce::Colour getAccent() const { return accent; }
+    juce::Component* getPower() { return power.get(); }
     bool isEmbedded() const { return embedded; }
     // Bredden flikraden ska reservera för modulens kontroller i rubriken (på/av, vyflikar, preset, FX-send).
     int headerExtrasWidth() const { return 380 + (headerTabs != nullptr ? headerTabsWidth + 8 : 0); }
 
     // I en flikpanel: ingen egen rubrik (fliken heter likadant). På/av-knappen och presetknappen
     // flyttas till komponenten som returneras, som flikpanelen visar i flikraden.
-    juce::Component* embedInTab()
+    // `powerInControls` false: på/av-knappen läggs inte i raden utan hämtas med getPower() (eller finns på annat håll, t.ex. på flikknappen).
+    juce::Component* embedInTab (bool powerInControls = true)
     {
         embedded = true;
-        if (power != nullptr)
+        if (power != nullptr && powerInControls)
             headerControls.addAndMakeVisible (*power);
         if (headerTabs != nullptr)
             headerControls.addAndMakeVisible (*headerTabs);
@@ -255,7 +257,7 @@ public:
             headerControls.addAndMakeVisible (*headerPreset);
         if (headerFxSend != nullptr)
             headerControls.addAndMakeVisible (*headerFxSend);
-        headerControls.power = power.get();
+        headerControls.power = powerInControls ? power.get() : nullptr;
         headerControls.tabs = headerTabs;
         headerControls.tabsWidth = headerTabsWidth;
         headerControls.preset = headerPreset;
@@ -309,17 +311,19 @@ private:
         {
             auto area = getLocalBounds();
             if (power != nullptr)
-                power->setBounds (area.removeFromLeft (24));
-            area.removeFromLeft (8);
+            {
+                power->setBounds (area.removeFromLeft (28));
+                area.removeFromLeft (14);
+            }
             if (tabs != nullptr)
             {
                 tabs->setBounds (area.removeFromLeft (tabsWidth));
-                area.removeFromLeft (8);
+                area.removeFromLeft (14);
             }
             if (fxSend != nullptr)
             {
                 fxSend->setBounds (area.removeFromRight (206));
-                area.removeFromRight (8);
+                area.removeFromRight (14);
             }
             if (preset != nullptr)
                 preset->setBounds (area);

@@ -83,6 +83,10 @@ private:
     juce::TextButton morphButton { "MORPH" };
     std::unique_ptr<juce::ButtonParameterAttachment> morphAttachment;
     std::unique_ptr<juce::FileChooser> chooser;
+    // RING (B) (bara OSC 1): visar vad OSC 1 multipliceras med och låter en välja; ersätter formknapparna så länge warp är RING (B).
+    juce::ComboBox ringBox;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> ringAttachment;
+    bool ringShown = false;
     int lastTable = -1;
     WavetableView view;
     std::vector<std::unique_ptr<KnobComponent>> knobs;

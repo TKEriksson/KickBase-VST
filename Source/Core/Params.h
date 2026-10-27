@@ -76,6 +76,13 @@ namespace ParamID
 
     // Master
     inline constexpr auto gain = "gain";
+
+    // JOG (D3b): hastighet för den egna klockan i förhandsspelning, 1 = normalt, 0 = står still, 4 = fyra gånger snabbare.
+    inline constexpr auto jogSpeed = "jogSpeed";
+
+    // Kickens SYNTH och SAMPLE på/av (båda på = som förut). Sist i layouten, så att gamla projekt är orörda.
+    inline constexpr auto kickSynthOn  = "kickSynthOn";
+    inline constexpr auto kickSampleOn = "kickSampleOn";
 }
 
 // Varje baslagers parametrar. ID:t är "bass" + lagrets nummer + fältets namn, t.ex. "bass2Cutoff".
@@ -118,6 +125,7 @@ enum class InstrumentField
     sampleMode,                                                   // fas R9b: lagrets SAMPLE-rad: 0 BLEND (blandas med syntrösten, som förut), 1 INDEPENDENT (egen rad), 2 OFF; sist, så gamla projekt är orörda
     allpassFreq, allpassAmount,                                   // allpass efter filtren: 4 första ordningens allpass vid FREQ (20..2000 Hz); AMOUNT 0 (standard) = av och ljudet oförändrat
     samplePan, noisePan, fmPan, noiseWidth, subPhaseDeg, fmPhaseDeg, aWidth, bWidth, cWidth, sampleWidth, fmWidth, // bredd per källa: 100 % = som förut (OSC 0..200 %: 0 = mono; SAMPLE och FM 100..200 %: okorrelerat); INSTR-MIX: pan för SAMPLE, NOISE och FM (0 = mitten = som förut) och brusets bredd (100 % = mono som förut, upp till 200 %); sub är alltid mono i mitten
+    ringSource,                                                  // RING (B) på OSC 1: vad OSC 1 multipliceras med (0 = OSC 2, 1 = OSC 3, 2 = OSC 2 x OSC 3)
     count
 };
 
@@ -153,6 +161,7 @@ namespace Params
     void addInstrumentSynthParams (Layout& layout, int layer);
     void addFxParams (Layout& layout);
     void addMasterParams (Layout& layout);
+    void addJogParams (Layout& layout); // D3b: sist i layouten
 
     juce::StringArray keyNames();
     float midiToHz (float midiNote);
@@ -230,6 +239,7 @@ public:
 
     // Ett baslagers parameter, utan namnuppslag (index räknade i konstruktorn).
     float bass (int layer, InstrumentField field) const;
+    bool hasBass (int layer, InstrumentField field) const { return instrumentEntries[(size_t) layer][(size_t) field] >= 0; } // FX-pluginet saknar t.ex. fxSend
 
     // Antal använda instrument (1-10).
     int instruments() const { return juce::jlimit (1, ParamID::numInstrumentLayers, (int) std::lround (get (ParamID::instrumentCount))); }

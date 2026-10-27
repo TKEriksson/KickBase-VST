@@ -12,6 +12,7 @@ Regler (oförändrade): Claude skriver all C++; varje agent egen worktree + egen
 - Releaser görs bara när en stor sektion är klar. Första: hela testlistan T1-T15 (fas A-E, H).
 - Release: Release-bygge, Tobias testar i FL (kör `installRel.bat`), fel rättas, sedan påminner projektledaren Tobias om att merga till main som release och frågar innan. Först efter hans ja mergar projektledaren. Aldrig push utan Tobias.
 - Projektledaren committar docs och masterplan när något ändrats. Copilot pushar/mergar bara om Tobias uttryckligen säger det.
+- Alla läser `docs/work/LESSONS.md` innan de kodar, bygger och testar.
 - Slarvfel loggas i `docs/work/LESSONS.md`. Uppdatera progressfilen före sessionens slut.
 - Svenska, korta svar, rollnamn (Arbetare 1/2, specialisten, projektledaren).
 
@@ -115,14 +116,25 @@ Kvar, i grov ordning (projektledaren bedömer före varje fas; Opus bara efter h
 - AI-leverantörer: Anthropic, OpenAI, Ollama. C: multisampling. BZ: Bézier-kick. E0/E: presetgranskning.
 - IO: import/export, projekt, autosave.
 - LC-rester: `.LFO()`/`.ENV()`, MCP `live_code_run`/`stop`, AGPL-banner och `THIRD-PARTY.md`, helpcheck.
+- RING (Tobias 27 okt): ny WARP-läge "RING (B)" där OSC 2 multipliceras med OSC 1, på samma sätt som FM (B). Läggs sist i enum/val (ID:n byts inte). AM mot en egen sinus finns redan som WARP-läge och ringmodulator finns som FX. Granular och additiv tas inte med nu (additiv täcks delvis av harmonieditorn), och 3x FM är struket. Tillägg (Tobias 27 okt): det ska synas tydligt i UI (etikett/tooltip, t.ex. "OSC1 x OSC2") att det är detta som händer, och multiplikationen ska kunna väljas fritt mellan OSC 2 och OSC 3 (båda eller en av dem). Nya val/parametrar sist. (RING på OSC 2/3 övervägdes och avstods 27 okt: multiplikationen är symmetrisk, vinsten för liten.)
+- JOG-mål och flera JOGS: STRUKET (Tobias 27 okt: överflödigt). Kvar är D3b med en gemensam jog (hjul, REC-läge, LP-design).
 - Separata VST:er (VS) är struket. Tobias lägger in det själv när allt är klart.
 
 Rapportering (Tobias 27 okt): arbetarna jobbar i långa pass och rapporterar inte förrän de är klara med sin lista, eller när det är helt nödvändigt (blockerare, beslut), eller när Tobias frågar. Specialisten är stängd tills en granskning behövs (fas C: `undo-spec.md`). Frågor till Tobias ställs alltid via projektledaren, aldrig direkt (Tobias sköter all kommunikation via projektledaren). Väntar en fråga eller blockerare på svar går arbetaren vidare med nästa punkt i listan och återkommer till den när svaret kommer. Detta sparar tokens.
 
 ## Fas G: Release
 Releaser görs bara när stora sektioner är klara, för att hålla nere test och tokens (Tobias 27 okt). Första releasen: när allt från Tobias testlista (`Testar appen 2027-10-23.txt`, T1-T15, fas A-E och H) är fixat och testat i FL. Projektledaren mergar till main först då: efter Release-bygget, Tobias FL-test och eventuella rättelser. Projektledaren påminner Tobias och frågar innan mergen (Tobias 27 okt).
-Tobias kör `installRel.bat` (lokalt, i `.gitignore`) för att ersätta VST3-filerna och KickbaseMcp.exe efter ett Release-bygge. Hörtest i FL som fortfarande saknas: MIX-fliken, AP/START, HALFTIME, KEEP/COMPARE, shimmer, Maximizer MODE, Low Multiplier, autocomplete.
+Tobias kör `installAll.bat [VST-config] [MCP-config]` (stäng DAW:en först, annars låser den .vst3) för att ersätta VST3-filerna och KickbaseMcp.exe efter ett Release-bygge. Hörtest i FL som fortfarande saknas: MIX-fliken, AP/START, HALFTIME, KEEP/COMPARE, shimmer, Maximizer MODE, Low Multiplier, autocomplete.
 Efter varje release skriver projektledaren en PDF (publik) som sammanställer allt som ingår i releasen och allt som ska testas i FL och godkännas (Tobias 27 okt). Den ska vara läsbar utan internt sammanhang: inga rollnamn, interna filsökvägar, nycklar eller sloppy-loggar. Sparas i `docs/releases/`.
+
+## Nästa release (rel-0.3, Tobias 27 okt kväll)
+Arbetare 1: JOG (SCRUB/SPEED, RESET, broms A), ett enda uppspelningsläge (en aktiv källa, flikbyte stoppar bara previews), nav-polish (y-marginal, glasdisplay, breadcrumb med instrument och flik, MASTER VOL), preset-kategorier + tangentbordsfokus, kick SYNTH/SAMPLE MIX, TOP DECAY upp till kickens längd, FX multiselect, GHOST NOTES/FOLLOW/instrumentfärg, pop-out, glide-plus, SOUNDSTAGE. Därtill (Tobias): S3 Unison/Reese, multisampling, sample-editor (AMP/PITCH, på/av), klick-lager (3 st) och sampleverktyg, reverse per not, parameterlanes under pianorollen (resizebar). Plan först för sample-editor, klick-lager, reverse och parameterlanes.
+Arbetare 2: Psy Clean-kickar, PSY ROLLING BASS, PSY ROLLING huvudpresets, GLIDE BASSES, New Init 1-5, därefter SYNTH/MID BASS/HI BASS och genrepresets. Förslag, ej beslutat: RING, Echo/Flanger, autosave/IO.
+Uppskjutet: multiband och sidechain i två band som FX-slot, AI-leverantörer, Fas J (preset-skola, AI-byggare).
+OBS: omfattningen är stor; releasen kan delas om testrundan blir för tung.
+
+## Fas J: Preset-skola och AI-presetbyggare (efter första releasen, Tobias 27 okt)
+Arbetare 2 samlar genrekunskap och synthrecept i `docs/school/` (kick, rollbas, wavetables, MINIMAL, GOA, DARK PSY, DANCE, TRANCE, TECHNO, EMPIRIKAL; kategorier i presetmenyerna, GAMLA för äldre). När ett par genrer är klara: skill som läser `docs/school/` och bygger preset via render/`analyse_mix`-loopen (fas 2-3 i `docs/sound-design-roadmap.md`). Tobias öra i FL är facit; hans omdömen sparas som träningsdata.
 
 ## Städning
 - `/STACK:8388608` i `CMakeLists.txt:243` rensas upp.

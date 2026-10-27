@@ -15,7 +15,8 @@ struct TransportStatus
     std::atomic<int> bar { 1 };
     std::atomic<int> beat { 1 };
     std::atomic<int> patternBar { 1 };    // takten i mönstret (börjar om när hela mönstret, den längsta raden, är klart)
-    std::atomic<int> keyNote { -1 };      // tonen som bestämmer tonarten, -1 = ingen
+    std::atomic<float> patternProgress { 0.0f }; // 0..1 genom hela mönstret (för LP-spelarens tonarm)
+    std::atomic<int> keyNote { -1 };    // tonen som bestämmer tonarten, -1 = ingen
     std::atomic<bool> patternActive { false };
     std::atomic<int> kickStep { -1 };     // steg i mönstret som spelas nu, för markören
     std::array<std::atomic<int>, Pattern::numLayers> instrumentSteps {};

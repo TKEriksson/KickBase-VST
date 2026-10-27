@@ -18,6 +18,7 @@
 #include "../Source/Core/MixAnalysis.h"
 #include "../Source/Ui/LogoPainter.h"
 #include "../Source/Ui/InstrumentMenu.h"
+#include "../Source/Ui/JogPanel.h"
 #include "../Source/Ui/ListenButton.h"
 #include "../Source/Ui/Theme.h"
 #include <juce_audio_formats/juce_audio_formats.h>
@@ -2265,6 +2266,71 @@ namespace
                 else
                     check (peak > 0.3f * 0.85f && peak < 0.3f * 1.15f, "FX2: BAND DUCKER lämnar den höga delen");
             }
+            // Sidechain Curve / 2-Band: duckningssignalen (0.8 hela tiden) sänker ljudet; utan signal (nullptr) rörs inget.
+            for (const auto type : { EffectType::sidechainCurve, EffectType::sidechainBands })
+                for (const auto hz : { 60.0, 3000.0 })
+                    for (const auto withDuck : { true, false })
+                    {
+                        const auto fresh = std::make_unique<InstrumentProcessor>();
+                        Effects::setSlotType (fresh->apvts, 0, 0, type);
+                        const auto& list = Effects::knobs (type);
+                        // Curve: DEPTH 100 %. 2-Band: SPLIT 150 Hz, LOW DEPTH 100 %, HIGH DEPTH 0.
+                        const std::vector<std::pair<int, float>> settings = type == EffectType::sidechainCurve
+                            ? std::vector<std::pair<int, float>> { { 0, 1.0f } }
+                            : std::vector<std::pair<int, float>> { { 0, 150.0f }, { 1, 1.0f }, { 2, 0.0f } };
+                        for (const auto& [index, v] : settings)
+                            if (auto* parameter = fresh->apvts.getParameter (Effects::knobParamID (0, 0, index)))
+                                parameter->setValueNotifyingHost (list[(size_t) index].toNormalised (v));
+                        EffectChain chain (fresh->apvts, 0);
+                        chain.prepare (renderRate, blockSize);
+                        std::vector<float> duck ((size_t) blockSize, 0.8f);
+                        chain.setDuck (withDuck ? duck.data() : nullptr);
+                        juce::AudioBuffer<float> buffer (2, blockSize);
+                        auto peak = 0.0f;
+                        for (int block = 0; block < 30; ++block)
+                        {
+                            for (int i = 0; i < blockSize; ++i)
+                                for (int ch = 0; ch < 2; ++ch)
+                                    buffer.setSample (ch, i, 0.3f * (float) std::sin (juce::MathConstants<double>::twoPi * hz * (block * blockSize + i) / renderRate));
+                            chain.update (140.0, 0.0);
+                            chain.process (buffer, blockSize);
+                            if (block >= 25)
+                                for (int i = 0; i < blockSize; ++i)
+                                    peak = std::max (peak, std::abs (buffer.getSample (0, i)));
+                        }
+                        const auto name = Effects::name (type);
+                        if (! withDuck)
+                            check (peak > 0.3f * 0.85f && peak < 0.3f * 1.15f, (juce::String ("FX2: ") + name + " utan duckningssignal rör inte ljudet").toRawUTF8());
+                        else if (type == EffectType::sidechainCurve || hz < 100.0)
+                            check (peak < 0.3f * 0.4f, (juce::String ("FX2: ") + name + " duckar ljudet").toRawUTF8());
+                        else
+                            check (peak > 0.3f * 0.85f && peak < 0.3f * 1.15f, (juce::String ("FX2: ") + name + " lämnar MID-HI orört (HIGH DEPTH 0)").toRawUTF8());
+                    }
+            // Phase Rotation: 60 Hz-sinus. 180 deg vänder fasen (korrelation -1), 90 deg ger kvadratur (0), nivån är oförändrad.
+            for (const auto rotation : { 90.0f, 180.0f })
+            {
+                double dot = 0.0, in2 = 0.0, out2 = 0.0;
+                runEffect (EffectType::phaseRotation, { { 0, 60.0f }, { 1, rotation } }, 40,
+                           [&] (juce::AudioBuffer<float>& b, int block)
+                           {
+                               for (int i = 0; i < b.getNumSamples(); ++i)
+                                   for (int ch = 0; ch < 2; ++ch)
+                                       b.setSample (ch, i, 0.3f * (float) std::sin (juce::MathConstants<double>::twoPi * 60.0 * (block * blockSize + i) / renderRate));
+                           },
+                           [&] (const juce::AudioBuffer<float>& b, int block)
+                           {
+                               if (block >= 30)
+                                   for (int i = 0; i < b.getNumSamples(); ++i)
+                                   {
+                                       const auto in = 0.3 * std::sin (juce::MathConstants<double>::twoPi * 60.0 * (block * blockSize + i) / renderRate);
+                                       const auto out = (double) b.getSample (0, i);
+                                       dot += in * out; in2 += in * in; out2 += out * out;
+                                   }
+                           });
+                const auto correlation = dot / std::sqrt (in2 * out2 + 1.0e-12);
+                check (std::abs (std::sqrt (out2 / in2) - 1.0) < 0.02, "FX2: PHASE ROTATION behåller nivån");
+                check (rotation > 135.0f ? correlation < -0.98 : std::abs (correlation) < 0.05, "FX2: PHASE ROTATION vrider fasen vid FREQ");
+            }
             // Octaver: oktaven ner/upp läggs ovanpå originalet (toppen blir högre än ingången) och ljudet är ändligt; av = orört.
             for (const auto amount : { 0.0f, 1.0f })
             {
@@ -3252,6 +3318,104 @@ namespace
             Settings::setGeminiApiKey ({});
         }
 
+        // OpenAI och Ollama: sparade svar (ingen nyckel, inget nät).
+        {
+            Settings::setOpenaiApiKey ("sk-FakeKey123");
+            check (Settings::openaiApiKey() == "sk-FakeKey123", "OpenAI-nyckeln läses tillbaka");
+            check (! settingsFile.loadFileAsString().contains ("FakeKey"), "OpenAI-nyckeln ligger inte i klartext");
+            Settings::setChatProvider ("openai");
+            check (Settings::chatProvider() == "openai", "leverantören openai sparas");
+            Settings::setChatProvider ("ollama");
+            check (Settings::chatProvider() == "ollama", "leverantören ollama sparas");
+            check (Settings::openaiModel() == "gpt-5-mini", "standardmodellen för OpenAI");
+            check (Settings::ollamaBaseUrl() == "http://localhost:11434" && Settings::ollamaModel().isEmpty(), "Ollama: standardadress och ingen förvald modell");
+
+            const auto listed = OpenAiApi::parseModelList (juce::JSON::parse (
+                R"({"data":[{"id":"gpt-5-mini"},{"id":"text-embedding-3-small"},{"id":"whisper-1"},{"id":"gpt-4o-mini-tts"},{"id":"o3"},{"id":"dall-e-3"},{"id":"gpt-image-1"}]})"), false);
+            check (listed.size() == 2 && listed.contains ("gpt-5-mini") && listed.contains ("o3"), "OpenAI models: bara chattmodeller");
+            const auto local = OpenAiApi::parseModelList (juce::JSON::parse (
+                R"({"data":[{"id":"llama3.1:8b"},{"id":"nomic-embed-text:latest"},{"id":"qwen3:8b"}]})"), true);
+            check (local.size() == 2 && local.contains ("llama3.1:8b") && local.contains ("qwen3:8b"), "Ollama models: allt utom inbäddningsmodeller");
+            check (OpenAiApi::models (false) == OpenAiApi::fallbackModels (false) && OpenAiApi::models (true).isEmpty(), "modellista: reservlistan före hämtning");
+            OpenAiApi::setFetchedModels (true, local);
+            check (OpenAiApi::models (true) == local && OpenAiApi::models (false) == OpenAiApi::fallbackModels (false), "modellista: hämtad lista per leverantör");
+            OpenAiApi::setFetchedModels (true, {});
+
+            juce::String error;
+            const auto textReply = OpenAiApi::parseResponse (juce::JSON::parse (
+                R"({"choices":[{"message":{"role":"assistant","content":"Hello there"},"finish_reason":"stop"}],"usage":{"prompt_tokens":12,"completion_tokens":3}})"), error, false);
+            check (error.isEmpty() && textReply["content"].size() == 1 && textReply["content"][0]["text"].toString() == "Hello there", "OpenAI: textsvar tolkas");
+            check (textReply["stop_reason"].toString() == "end_turn" && (int) textReply["usage"]["input_tokens"] == 12 && (int) textReply["usage"]["output_tokens"] == 3, "OpenAI: stopporsak och tokens");
+
+            const auto toolReply = OpenAiApi::parseResponse (juce::JSON::parse (
+                R"({"choices":[{"message":{"role":"assistant","content":null,"tool_calls":[{"id":"call_1","type":"function","function":{"name":"set_parameters","arguments":"{\"values\":{\"kickClick\":0.5}}"}}]},"finish_reason":"tool_calls"}]})"), error, false);
+            const auto block = toolReply["content"][0];
+            check (block["type"].toString() == "tool_use" && block["id"].toString() == "call_1" && toolReply["stop_reason"].toString() == "tool_use", "OpenAI: verktygsanrop tolkas");
+            check (block["input"]["values"].isObject() && (double) block["input"]["values"]["kickClick"] == 0.5, "OpenAI: argumentsträngen packas upp till ett objekt");
+
+            const auto objectArgs = OpenAiApi::parseResponse (juce::JSON::parse (
+                R"({"choices":[{"message":{"role":"assistant","tool_calls":[{"function":{"name":"set_parameters","arguments":{"values":{"kickClick":0.25}}}}]},"finish_reason":"stop"}]})"), error, true);
+            check (objectArgs["content"][0]["id"].toString().isNotEmpty() && (double) objectArgs["content"][0]["input"]["values"]["kickClick"] == 0.25
+                       && objectArgs["stop_reason"].toString() == "tool_use", "Ollama: argument som objekt och saknat id");
+
+            check (OpenAiApi::parseResponse (juce::JSON::parse (R"({"choices":[{"message":{"content":null,"refusal":"No."},"finish_reason":"stop"}]})"), error, false).isVoid()
+                       && error.contains ("No."), "OpenAI: vägran ger ett fel");
+            check (OpenAiApi::parseResponse (juce::JSON::parse (R"({"choices":[{"message":{"content":""},"finish_reason":"length"}]})"), error, false).isVoid()
+                       && error.contains ("output space"), "OpenAI: slut på utrymme ger ett fel");
+            check (OpenAiApi::parseResponse (juce::JSON::parse (R"({"choices":[]})"), error, true).isVoid() && error.isNotEmpty(), "Ollama: tomt svar ger ett fel");
+
+            // Samtalet tillbaka: tool_use -> tool_calls, tool_result -> role "tool", bilder bara för OpenAI.
+            const auto tools = ToolLayer::tools();
+            juce::Array<juce::var> messages;
+            auto userMsg = std::make_unique<juce::DynamicObject>();
+            userMsg->setProperty ("role", "user");
+            userMsg->setProperty ("content", "Tune the kick");
+            messages.add (juce::var (userMsg.release()));
+            auto assistantMsg = std::make_unique<juce::DynamicObject>();
+            assistantMsg->setProperty ("role", "assistant");
+            assistantMsg->setProperty ("content", toolReply["content"]);
+            messages.add (juce::var (assistantMsg.release()));
+            auto imageSource = std::make_unique<juce::DynamicObject>();
+            imageSource->setProperty ("media_type", "image/png");
+            imageSource->setProperty ("data", "AAAA");
+            auto imagePart = std::make_unique<juce::DynamicObject>();
+            imagePart->setProperty ("type", "image");
+            imagePart->setProperty ("source", juce::var (imageSource.release()));
+            auto textPart = std::make_unique<juce::DynamicObject>();
+            textPart->setProperty ("type", "text");
+            textPart->setProperty ("text", "{\"ok\":true}");
+            auto resultBlock = std::make_unique<juce::DynamicObject>();
+            resultBlock->setProperty ("type", "tool_result");
+            resultBlock->setProperty ("tool_use_id", "call_1");
+            resultBlock->setProperty ("content", juce::Array<juce::var> { juce::var (textPart.release()), juce::var (imagePart.release()) });
+            auto resultMsg = std::make_unique<juce::DynamicObject>();
+            resultMsg->setProperty ("role", "user");
+            resultMsg->setProperty ("content", juce::Array<juce::var> { juce::var (resultBlock.release()) });
+            messages.add (juce::var (resultMsg.release()));
+
+            const auto openai = OpenAiApi::buildRequest ("gpt-5-mini", "system text", tools, messages, 4096, false);
+            check (openai.hasProperty ("max_completion_tokens") && ! openai.hasProperty ("max_tokens") && openai["model"].toString() == "gpt-5-mini", "OpenAI: max_completion_tokens och modell");
+            check (openai["messages"][0]["role"].toString() == "system" && openai["messages"][2]["tool_calls"][0]["id"].toString() == "call_1", "OpenAI: systemtext först, tool_use blir tool_calls");
+            check (openai["messages"][3]["role"].toString() == "tool" && openai["messages"][3]["tool_call_id"].toString() == "call_1"
+                       && openai["messages"][3]["content"].toString() == "{\"ok\":true}", "OpenAI: tool_result blir role tool direkt efter anropet");
+            check (openai["messages"][4]["content"][1]["type"].toString() == "image_url", "OpenAI: bilden skickas som image_url");
+            check (openai["tools"].size() > 0 && openai["tools"][0]["type"].toString() == "function" && openai["tools"][0]["function"]["parameters"].isObject(), "OpenAI: verktygen som functions");
+
+            const auto ollamaRequest = OpenAiApi::buildRequest ("llama3.1:8b", "system text", tools, messages, 4096, true);
+            check (ollamaRequest.hasProperty ("max_tokens") && ! ollamaRequest.hasProperty ("max_completion_tokens"), "Ollama: max_tokens");
+            check (! juce::JSON::toString (ollamaRequest, true).contains ("image_url") && ollamaRequest["messages"].size() == 4, "Ollama: inga bilder skickas");
+
+            check (OpenAiApi::errorMessage (401, {}, false).contains ("key"), "OpenAI: ogiltig nyckel (401)");
+            check (OpenAiApi::errorMessage (404, {}, false).contains ("MODEL"), "OpenAI: 404 pekar på modellvalet");
+            check (OpenAiApi::errorMessage (429, R"({"error":{"message":"quota"}})", false).containsIgnoreCase ("credit"), "OpenAI: kvot (429) förklaras");
+            check (OpenAiApi::errorMessage (404, {}, true).contains ("ollama pull"), "Ollama: 404 förklarar ollama pull");
+            check (OpenAiApi::errorMessage (0, {}, false).isNotEmpty() && OpenAiApi::errorMessage (0, {}, true).isNotEmpty(), "OpenAI/Ollama: nätverksfel har ett meddelande");
+
+            Settings::setChatProvider ("anthropic");
+            Settings::setOpenaiApiKey ({});
+            check (Settings::openaiApiKey().isEmpty(), "OpenAI-nyckeln kan tas bort");
+        }
+
         Settings::setChatApiKey ({});
         check (Settings::chatApiKey().isEmpty(), "nyckeln kan tas bort");
         Settings::useFile ({});
@@ -3522,6 +3686,27 @@ namespace
             (void) listed;
             ok = ok && saved && loadedOsc && restored && untouched && partial && resetOk;
         }
+
+        // Färdiga OSC-presets: skrivs bara när mappen saknas, och varje fil laddas och har en tabell som finns.
+        if (! OscPresets::folder().exists())
+        {
+            OscPresets::ensureFactory();
+            const auto files = OscPresets::list();
+            const auto tables = Wavetables::names();
+            auto allOk = files.size() >= 10;
+            for (const auto& file : files)
+            {
+                const auto xml = juce::XmlDocument::parse (file);
+                allOk = allOk && xml != nullptr && tables.contains (xml->getStringAttribute ("Table")) && OscPresets::load (processor.apvts, 0, 2, file);
+            }
+            const auto before = files.size();
+            files.getFirst().deleteFile();
+            OscPresets::ensureFactory(); // mappen finns nu: en raderad fil skrivs inte tillbaka
+            const auto notRewritten = OscPresets::list().size() == before - 1;
+            OscPresets::folder().deleteRecursively();
+            std::printf ("Färdiga OSC-presets: %d filer, alla giltiga %d, ingen omskrivning %d\n", before, allOk ? 1 : 0, notRewritten ? 1 : 0);
+            ok = ok && allOk && notRewritten;
+        }
         }
 
         std::puts (ok ? "Presettest OK" : "FEL: presettest");
@@ -3689,6 +3874,13 @@ namespace
         std::unique_ptr<juce::AudioProcessorEditor> editor (processor->createEditorAndMakeActive());
         auto image = editor->createComponentSnapshot (editor->getLocalBounds(), true, 1.0f);
 
+        // KB_JOG=1: bilden blir JOG/LP-panelen (som annars bara finns i en CallOutBox) i stället för hela editorn.
+        if (juce::SystemStats::getEnvironmentVariable ("KB_JOG", "0").getIntValue() != 0)
+        {
+            JogPanel jog (*processor);
+            image = jog.createComponentSnapshot (jog.getLocalBounds(), true, 2.0f);
+        }
+
         // KB_MENU=<instrument 0-9>: ritar instrumentmenyn (L4) ovanpå bilden. Popup-fönstret är ett eget fönster, så det hämtas från Desktop.
         if (const auto menuLayer = juce::SystemStats::getEnvironmentVariable ("KB_MENU", {}); menuLayer.isNotEmpty())
         {
@@ -3721,6 +3913,7 @@ int renderSignaturesWide(); // Tools/AudioTests.cpp
 int audioThreadTest();      // Tools/AudioTests.cpp
 int blockSizeTest();        // Tools/AudioTests.cpp
 int polyTest();             // Tools/AudioTests.cpp
+int ringTest();             // Tools/AudioTests.cpp
 int persistTest();          // Tools/StateTests.cpp
 int fullStateTest();        // Tools/StateTests.cpp
 int undoTest();             // Tools/StateTests.cpp
@@ -3855,6 +4048,8 @@ int toolMain (int argc, char* argv[])
         return blockSizeTest();
     if (argc == 2 && juce::String (argv[1]) == "polytest")
         return polyTest();
+    if (argc == 2 && juce::String (argv[1]) == "ringtest")
+        return ringTest();
     if (argc == 2 && juce::String (argv[1]) == "audiotest")
         return audioThreadTest();
     // uiprofile <flik> <init|heavy> [instrument] [sekunder]: gränssnittets CPU och var meddelandetråden lägger tiden.

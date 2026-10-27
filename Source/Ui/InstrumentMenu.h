@@ -88,6 +88,9 @@ namespace InstrumentMenu
                                     const auto file = fc.getResult().withFileExtension ("mid");
                                     if (! RollFiles::exportMidi (processor.pattern, layer, processor.pattern.lengthBars (layer), processor.transportStatus.bpm.load(), root, file))
                                         juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Export failed", "Could not write " + file.getFullPathName());
+                                    else if (const auto slides = RollFiles::countSlideNotes (processor.pattern, layer); slides > 0)
+                                        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "MIDI exported",
+                                                                                juce::String (slides) + " glide note(s) were written as plain notes, because MIDI has no glide notes.");
                                 });
     }
 
@@ -118,7 +121,7 @@ namespace InstrumentMenu
     }
 
     // Visar menyn för ett instrument (0-9) vid `target`.
-    inline void show (PluginBase& processor, int layer, juce::Component& target, juce::Rectangle<int> area = {})
+    inline void show (PluginBase& processor, int layer, juce::Component& target, juce::Rectangle<int> area = {}, std::function<void()> onEdit = {})
     {
         const auto count = processor.activeInstruments();
         if (processor.isEffectVersion() || ! juce::isPositiveAndBelow (layer, count))
@@ -131,6 +134,8 @@ namespace InstrumentMenu
 
         juce::PopupMenu menu;
         menu.addSectionHeader (processor.getLayerName (layer));
+        if (onEdit)
+            menu.addItem (10, "Edit instrument");
         menu.addItem (1, "Rename...");
         menu.addSubMenu ("Color", colours);
         menu.addSeparator();
@@ -149,7 +154,7 @@ namespace InstrumentMenu
         auto options = juce::PopupMenu::Options().withTargetComponent (&target);
         if (! area.isEmpty())
             options = options.withTargetScreenArea (target.localAreaToGlobal (area));
-        menu.showMenuAsync (options, [&processor, layer, safeTarget] (int result)
+        menu.showMenuAsync (options, [&processor, layer, safeTarget, onEdit] (int result)
         {
             if (safeTarget == nullptr || result == 0)
                 return;
@@ -171,6 +176,7 @@ namespace InstrumentMenu
                 case 7: if (clipboard() != nullptr) processor.pasteTrack (layer, *clipboard()); break;
                 case 8: exportMidi (processor, layer, safeTarget); break;
                 case 9: savePattern (processor, layer, safeTarget); break;
+                case 10: if (onEdit) onEdit(); break;
                 default: break;
             }
         });

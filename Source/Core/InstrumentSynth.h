@@ -9,7 +9,8 @@
 enum class InstrumentFilterType { lowpass24, lowpass12, bandpass, highpass };
 
 // Hur fasen förvrängs innan wavetablen läses (Serums "warp"). AM är ingen fasförvrängning utan amplitudmodulerar vågen.
-enum class WarpMode { off, sync, bend, pwm, mirror, fm, flip, quantize, am };
+// RING (B): OSC 1 multipliceras med OSC 2, OSC 3 eller båda (OscParams::ringSource); sist i enumen så gamla projekt är orörda.
+enum class WarpMode { off, sync, bend, pwm, mirror, fm, flip, quantize, am, ring };
 
 // En wavetable-oscillator.
 struct OscParams
@@ -25,6 +26,7 @@ struct OscParams
     float blend = 0.5f;       // sidostämmornas nivå
     WarpMode warp = WarpMode::off;
     float warpAmount = 0.0f;  // 0..1
+    int ringSource = 0;       // bara OSC 1 med warp RING (B): 0 = OSC 2, 1 = OSC 3, 2 = OSC 2 x OSC 3
     float phase = 0.0f;       // startfas 0..1
     float randomPhase = 0.0f; // 0 = samma fas varje ton (tight), 1 = slumpad
     float pan = 0.0f;         // -1 (vänster) ... 1 (höger)

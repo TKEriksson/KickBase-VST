@@ -39,17 +39,13 @@ private:
     void timerCallback() override;
     void showExportMenu();
     static constexpr int meterWidth = 72;
-    int toolsEnd() const // (i Kickbase FX finns ingen EXPORT: då hamnade mätaren över tempot)
-    {
-        return ! previewGroup.isEmpty() ? previewGroup.getRight() : presets.getRight();
-    }
-    juce::Rectangle<int> meterBounds() const { return { toolsEnd() + 16, (getHeight() - 28) / 2, meterWidth, 28 }; }
+    juce::Rectangle<int> meterBounds() const { return meterRect; }
     void updateAiTooltip();
     void showProjectMenu();
     void saveProject (bool askForFile); // askForFile eller ingen projektfil än: filväljaren; annars sparas det direkt till projektfilen
     void saveProjectTo (const juce::File& file);
     void showHistory();
-    void openProject();
+    void openProject (const juce::File& startFolder = {}); // startFolder: var filväljaren börjar (standard: exportmappen)
     void openProjectFile (const juce::File& file);
     void newProject();
     void showNotice (const juce::String& text); // kort bekräftelse i rubriken ("Saved X")
@@ -90,7 +86,14 @@ private:
     std::unique_ptr<RollWatch> rollWatch;
     juce::ComboBox noteBox;
     juce::TextButton restartButton { "" };       // börjar om räknaren och mönstret vid 1.1 (egen klocka)
-    juce::Rectangle<int> previewGroup, bpmPill, keyBlock;
+    juce::TextButton jogButton { "" };           // JOG / LP (D3b): öppnar hjulet för scratch av den egna klockan
+    void showJogPanel();
+    juce::TextButton playMenuButton { "" };      // PLAY-menyn: visar/döljer LOOP och JOG i rutan (valet minns programmet, Settings "playExtras")
+    bool playExtras = true;
+    juce::Rectangle<int> previewGroup, bpmPill, keyBlock, transportGroup, meterRect;
+    // Lyssnarvolym längst till höger bredvid mätaren: samma parameter som OUTPUT-faderns i mixern (ParamID::gain), ingen egen parameter.
+    juce::Slider masterKnob { juce::Slider::RotaryHorizontalVerticalDrag, juce::Slider::NoTextBox };
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> masterAttachment;
 
     // Transport i egen klocka (D3a): dubbelklicka tempot eller takten för att skriva ett värde, hjulet över takten scrubbar (musiken står still tills hjulet vilat).
     // Spelar värden är de låsta ("styrs av DAW").
@@ -99,8 +102,6 @@ private:
     // Global LOOP (D3): egen klocka som går runt mellan två takter (1-räknade, båda inräknade). DAW:ens transport ignoreras medan den är på.
     juce::TextButton loopButton { "LOOP" };
     juce::Label loopFromLabel, loopToLabel;
-    juce::Rectangle<int> loopBlock;
-    static constexpr int loopBlockWidth = 132;
     void applyLoopBars();
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
     void updateTransportLabels (bool following);
@@ -154,6 +155,10 @@ private:
     std::vector<juce::Component*> sampleControls;
     juce::Label sampleHelp;
     std::unique_ptr<FxSendControl> fxSend;
+
+    juce::ToggleButton synthToggle { "SYNTH" }, sampleToggle { "SAMPLE" }; // på/av för de två källorna; LEVEL i SAMPLE-vyn är balansen
+    std::unique_ptr<juce::ButtonParameterAttachment> synthToggleAttachment, sampleToggleAttachment;
+    juce::Label balanceHint;
 
     juce::Label sampleLabel;
     juce::TextButton loadButton { "LOAD" }, clearButton { "X" }, listenSampleButton { "HEAR SAMPLE" };
@@ -317,7 +322,7 @@ private:
 class InstrumentHost : public juce::Component, private juce::Timer
 {
 public:
-    static constexpr int headerWidth = 650;
+    static constexpr int headerWidth = 716;
 
     explicit InstrumentHost (PluginBase& processor);
     ~InstrumentHost() override;
@@ -326,6 +331,7 @@ public:
     void resized() override;
     void select (int layer);
     int getCurrent() const { return current; }
+    void addInstrument(); // ADD INSTRUMENT i mönstret: lägger till och väljer det nya
     void mouseDown (const juce::MouseEvent& event) override;
 
 private:
@@ -334,12 +340,12 @@ private:
         void resized() override;
         juce::TextButton selector, addButton { "+" }, removeButton { "-" };
         juce::Component* extras = nullptr;
+        juce::Component* power = nullptr; // instrumentets på/av, längst till vänster i rad 2
     };
 
     void timerCallback() override;
     void showSelector();
     void rename (int layer);
-    void addInstrument();
     void removeInstrument();
     void refresh();
     void resetPanels(); // river alla paneler (färg/klistra in/ta bort): de byggs om när instrumentet visas
@@ -349,6 +355,7 @@ private:
     Header header;
     std::array<std::unique_ptr<InstrumentModule>, ParamID::numInstrumentLayers> modules;
     std::array<juce::Component*, ParamID::numInstrumentLayers> extras {};
+    std::array<juce::Component*, ParamID::numInstrumentLayers> powers {};
     int current = 0, lastCount = -1, lastNamesVersion = -1, lastStructureVersion = 0;
     bool confirmOpen = false;
     juce::Component::SafePointer<juce::AlertWindow> renameDialog;
@@ -401,6 +408,7 @@ public:
     void resized() override;
     void paint (juce::Graphics&) override;
     juce::Component* getGrooveBar() { return grooveBar.get(); } // till flikraden (nullptr i kickpluginet)
+    StepSequencer& getSequencer() { return sequencer; } // EDIT/ADD INSTRUMENT kopplas av editorn (flikbyte hör inte hit)
 
 private:
     void timerCallback() override;

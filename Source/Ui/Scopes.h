@@ -101,4 +101,9 @@ private:
     PluginBase& processor;
     std::vector<float> left, right;
     float correlation = 1.0f, widthShare = 0.0f;
+
+    // Efterglöd: de senaste bildrutornas punkter (varannan sampel, l/r i par), nyast först i ringen.
+    static constexpr int trailFrames = 4;
+    std::array<std::vector<float>, trailFrames> trail;
+    int trailHead = 0, trailCount = 0;
 };

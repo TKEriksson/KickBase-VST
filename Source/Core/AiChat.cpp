@@ -274,8 +274,11 @@ namespace
 
 juce::StringArray AiChat::models()
 {
-    if (Settings::chatProvider() == "gemini")
+    const auto provider = Settings::chatProvider();
+    if (provider == "gemini")
         return GeminiApi::models();
+    if (provider == "openai" || provider == "ollama")
+        return OpenAiApi::models (provider == "ollama");
     const juce::ScopedLock sl (anthropicModelsLock);
     if (! anthropicModels.isEmpty())
         return anthropicModels;
@@ -476,7 +479,7 @@ juce::File AiChat::sessionsFolder()
 // (Gemini skickar nyckeln som ?key=... och den kan stå kvar i ett felmeddelande).
 juce::String AiChat::redact (juce::String text)
 {
-    for (const auto& secret : { Settings::chatApiKey(), Settings::geminiApiKey() })
+    for (const auto& secret : { Settings::chatApiKey(), Settings::geminiApiKey(), Settings::openaiApiKey() })
         if (secret.trim().length() >= 8)
             text = text.replace (secret.trim(), "[key removed]");
 
@@ -721,16 +724,31 @@ void AiChat::send (const juce::String& text)
 
 juce::String AiChat::activeKey()
 {
-    return Settings::chatProvider() == "gemini" ? Settings::geminiApiKey() : Settings::chatApiKey();
+    const auto provider = Settings::chatProvider();
+    if (provider == "gemini")
+        return Settings::geminiApiKey();
+    if (provider == "openai")
+        return Settings::openaiApiKey();
+    if (provider == "ollama")
+        return "local"; // Ollama har ingen nyckel; värdet gör bara att "nyckel saknas" inte spärrar chatten och skickas aldrig (se post)
+    return Settings::chatApiKey();
 }
 
 var AiChat::buildRequest (const Limits& limit) const
 {
     const auto trimmed = trimForRequest (messages, limit);
     const auto availableTools = toolsForRequest (feedbackReviewMode.load());
-    if (Settings::chatProvider() == "gemini")
+    const auto provider = Settings::chatProvider();
+    if (provider == "gemini")
         return GeminiApi::buildRequest (juce::String (systemPrompt) + ToolLayer::guide ("agent") + AiMemory::promptContext(),
                                        availableTools, trimmed, limit.maxOutputTokens);
+    if (provider == "openai" || provider == "ollama")
+    {
+        const auto ollama = provider == "ollama";
+        return OpenAiApi::buildRequest (ollama ? Settings::ollamaModel() : Settings::openaiModel(),
+                                        juce::String (systemPrompt) + ToolLayer::guide ("agent") + AiMemory::promptContext(),
+                                        availableTools, trimmed, limit.maxOutputTokens, ollama);
+    }
 
     auto body = object();
     put (body, "model", Settings::chatModel());
@@ -771,12 +789,22 @@ var AiChat::buildRequest (const Limits& limit) const
 var AiChat::post (const juce::String& key, const var& body, int& httpStatus, juce::String& error)
 {
     httpStatus = 0;
-    const auto gemini = Settings::chatProvider() == "gemini";
-    juce::URL url (gemini ? GeminiApi::withKey (Settings::get ("geminiEndpoint", GeminiApi::endpoint (Settings::geminiModel())), key) // (geminiEndpoint/chatEndpoint: bara för tester)
-                          : Settings::get ("chatEndpoint", "https://api.anthropic.com/v1/messages"));
+    const auto provider = Settings::chatProvider();
+    const auto gemini = provider == "gemini";
+    const auto ollama = provider == "ollama";
+    const auto openAiStyle = provider == "openai" || ollama;
+    juce::String address;
+    if (gemini)
+        address = GeminiApi::withKey (Settings::get ("geminiEndpoint", GeminiApi::endpoint (Settings::geminiModel())), key); // (geminiEndpoint/chatEndpoint/openaiEndpoint: bara för tester)
+    else if (openAiStyle)
+        address = Settings::get ("openaiEndpoint", OpenAiApi::endpoint (OpenAiApi::defaultBase (ollama)));
+    else
+        address = Settings::get ("chatEndpoint", "https://api.anthropic.com/v1/messages");
+    juce::URL url (address);
     url = url.withPOSTData (juce::JSON::toString (body, true));
-    const juce::String headers = gemini ? "content-type: application/json\r\n"
-                                        : "content-type: application/json\r\nx-api-key: " + key + "\r\nanthropic-version: 2023-06-01\r\n";
+    const juce::String headers = gemini || ollama ? "content-type: application/json\r\n"
+                               : provider == "openai" ? "content-type: application/json\r\nAuthorization: Bearer " + key + "\r\n"
+                               : "content-type: application/json\r\nx-api-key: " + key + "\r\nanthropic-version: 2023-06-01\r\n";
 
     // Samma som URL::createInputStream (POST-data i kroppen), men med strömmen åtkomlig så att den kan avbrytas (cancelRequest).
     juce::WebInputStream stream (url, false); // false: ?key= (Gemini) ska stanna i URL:en, inte läggas före JSON-kroppen
@@ -797,7 +825,8 @@ var AiChat::post (const juce::String& key, const var& body, int& httpStatus, juc
     httpStatus = stream.getStatusCode();
     if (! connected || stream.isError())
     {
-        error = threadShouldExit() ? juce::String ("Cancelled.") : "Could not reach " + juce::String (gemini ? "generativelanguage.googleapis.com" : "api.anthropic.com") + " (no internet, a firewall, or a proxy?).";
+        error = threadShouldExit() ? juce::String ("Cancelled.") : "Could not reach " + juce::String (gemini ? "generativelanguage.googleapis.com" : provider == "openai" ? "api.openai.com" : ollama ? OpenAiApi::defaultBase (true) : "api.anthropic.com")
+                                                                                + (ollama ? " (is Ollama running?)." : " (no internet, a firewall, or a proxy?).");
         return {};
     }
 
@@ -816,6 +845,20 @@ var AiChat::post (const juce::String& key, const var& body, int& httpStatus, juc
             return {};
         }
         return GeminiApi::parseResponse (parsed, toolsForRequest (feedbackReviewMode.load()), error); // (tomt/blockerat svar: void + error)
+    }
+    if (openAiStyle)
+    {
+        if (httpStatus >= 400)
+        {
+            error = OpenAiApi::errorMessage (httpStatus, text, ollama);
+            return {};
+        }
+        if (! parsed.isObject())
+        {
+            error = "Unexpected answer from the AI service: " + shorten (text, 300);
+            return {};
+        }
+        return OpenAiApi::parseResponse (parsed, error, ollama); // (tomt/avvisat svar: void + error)
     }
     if (httpStatus >= 400 || parsed["type"].toString() == "error")
     {
