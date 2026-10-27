@@ -85,6 +85,7 @@ set(PLUGIN_SOURCES
     Source/Core/OscPresets.cpp
     Source/Core/RollFiles.cpp
     Source/Core/SampleSlot.cpp
+    Source/Core/MultiSample.cpp
     Source/Core/ToolLayer.cpp
     Source/Core/LiveCode.cpp
     Source/Core/BridgeLink.cpp

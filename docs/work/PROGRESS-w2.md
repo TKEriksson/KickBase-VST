@@ -157,3 +157,9 @@ Nu: programmet, rel-0.3 motornära punkter: 1) S3 Unison/Reese, 2) multisampling
 ### S3 klar (27 okt, Arbetare 2)
 - Godkänd av PL. `KickbaseTool reesetest` tillagd (`Tools/AudioTests.cpp`, `Tools/Tool.cpp`). 0 alloc, DC 0, blocksizetest ok, CPU oförändrat med unison. Inget gap, ingen motorkod ändrad. Recept: `docs/school/reese.md`.
 - Nästa: multisampling etapp 1–3.
+
+## Multisampling etapp 1 klar (Arbetare 2)
+- Datamodell + laddare: `Source/Core/MultiSample.h/.cpp` (zoner, rotton ur filnamn, autoMapKeyRanges, omsampling, atomiskt bankbyte, persistens via ValueTree).
+- Test: `KickbaseTool multisampletest` (rotton, zonval utan allokering, velocity-lager, gränser, round trip, banklivslängd). `build.bat Debug all` grön.
+- Misstag: fel förväntat värde i testet (0,5 s vid 96 kHz = 48000 samplar, jag skrev 44100). Rättat.
+- Nästa: etapp 2 (sampleSource sist i InstrumentField, zonval vid note-on, spelare).

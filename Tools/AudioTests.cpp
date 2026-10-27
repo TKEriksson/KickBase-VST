@@ -13,6 +13,7 @@
 #include "../Source/Ui/FmPresets.h"
 #include "../Source/Core/MixAnalysis.h"
 #include "../Source/Core/AudioAnalysis.h"
+#include "../Source/Core/MultiSample.h"
 #include "Scenarios.h"
 #include <new>
 #include <cstdlib>
@@ -1440,5 +1441,137 @@ int reeseTest()
                      m.finite ? "ja" : "NEJ", ok ? "" : "  FEL");
     }
     std::puts (failed ? "FEL: reesetestet misslyckades" : "Reesetestet gick igenom");
+    return failed ? 1 : 0;
+}
+
+// Multisampling etapp 1: datamodell, zonval, omsampling, utbyte och persistens. Inga ljudtrådsberoenden utöver select(), som ska vara allokeringsfri.
+int multiSampleTest()
+{
+    int failed = 0;
+    auto check = [&] (bool ok, const char* what)
+    {
+        if (! ok)
+        {
+            std::printf ("FEL: %s\n", what);
+            ++failed;
+        }
+    };
+    auto sine = [] (double rate, double hz, double seconds)
+    {
+        juce::AudioBuffer<float> b (1, (int) (rate * seconds));
+        for (int i = 0; i < b.getNumSamples(); ++i)
+            b.setSample (0, i, (float) std::sin (juce::MathConstants<double>::twoPi * hz * i / rate));
+        return b;
+    };
+
+    // Rotton ur filnamn.
+    check (MultiSampling::parseRootKey ("Piano_C4") == 60, "C4 = 60");
+    check (MultiSampling::parseRootKey ("Piano_A4") == 69, "A4 = 69");
+    check (MultiSampling::parseRootKey ("bass C#3") == 49, "C#3 = 49");
+    check (MultiSampling::parseRootKey ("Eb2") == 39, "Eb2 = 39");
+    check (MultiSampling::parseRootKey ("bass_048") == 48, "tal 048 = 48");
+    check (MultiSampling::parseRootKey ("Bass3") == 3, "Bass3 är inte en ton");
+    check (MultiSampling::parseRootKey ("kick") == -1, "inget tal = -1");
+    check (MultiSampling::parseRootKey ("sample999") == -1, "999 är utanför");
+
+    MultiSampleSet set;
+    set.prepare (48000.0);
+    check (! set.hasZones() && set.active() == nullptr, "tomt set");
+
+    MultiSampleMapping m;
+    for (const auto root : { 72, 48, 60 })
+    {
+        m.rootKey = root;
+        check (set.addZone (sine (44100.0, 100.0, 0.5), 44100.0, "z" + juce::String (root), m), "addZone");
+    }
+    check (set.zoneCount() == 3 && set.hasZones(), "tre zoner");
+
+    // Omsampling till 48 kHz och rotfrekvens.
+    {
+        const auto* bank = set.active();
+        check (bank != nullptr && bank->zones.size() == 3, "bank med tre zoner");
+        if (bank != nullptr)
+        {
+            const auto expected = (int) (22050 / (44100.0 / 48000.0));
+            check (std::abs (bank->zones[0].sample.audio.getNumSamples() - expected) <= 1, "omsamplad längd 48 kHz");
+            check (std::abs (bank->zones[1].rootHz - 130.81f) < 0.05f, "rotfrekvens C3 (48) = 130.81");
+        }
+    }
+
+    // Automatisk tangentfördelning: zonerna sorteras efter rotton i fördelningen men behåller sin plats i listan.
+    set.autoMapKeyRanges();
+    check (set.mapping (1).keyLow == 0 && set.mapping (1).keyHigh == 54, "rotton 48: 0..54");
+    check (set.mapping (2).keyLow == 55 && set.mapping (2).keyHigh == 66, "rotton 60: 55..66");
+    check (set.mapping (0).keyLow == 67 && set.mapping (0).keyHigh == 127, "rotton 72: 67..127");
+
+    // Zonval, utan allokering.
+    {
+        const auto* bank = set.active();
+        allocationCount = 0;
+        countingAllocations = true;
+        const auto a = bank->select (40, 100), b = bank->select (54, 100), c = bank->select (55, 1), d = bank->select (100, 127);
+        countingAllocations = false;
+        check (allocationCount == 0, "select allokerar inte");
+        check (a == 1 && b == 1 && c == 2 && d == 0, "zonval efter tangent");
+    }
+
+    // Anslagslager: två zoner på samma tangenter, mjuk (1..80) och hård (81..127).
+    {
+        MultiSampleSet layers;
+        layers.prepare (48000.0);
+        m = {};
+        m.rootKey = 60;
+        m.velocityLow = 1;  m.velocityHigh = 80;  layers.addZone (sine (48000.0, 261.6, 0.2), 48000.0, "soft", m);
+        m.velocityLow = 81; m.velocityHigh = 127; layers.addZone (sine (48000.0, 261.6, 0.2), 48000.0, "hard", m);
+        check (layers.active()->select (60, 40) == 0 && layers.active()->select (60, 81) == 1 && layers.active()->select (60, 127) == 1, "anslagslager");
+    }
+
+    // Tom bank, gränser.
+    {
+        MultiSampleBank empty;
+        check (empty.select (60, 100) == -1, "tom bank ger -1");
+        MultiSampleSet limited;
+        limited.prepare (48000.0);
+        int added = 0;
+        for (int i = 0; i < MultiSampling::maxZones + 5; ++i)
+            added += limited.addZone (sine (8000.0, 100.0, 0.1), 8000.0, "x", {}) ? 1 : 0;
+        check (added == MultiSampling::maxZones, "högst maxZones zoner");
+        check (! limited.addZone ({}, 48000.0, "tom", {}), "tom buffert avvisas");
+    }
+
+    // Persistens: omsampling vid annan frekvens, mappningen bevaras.
+    {
+        const auto tree = set.toValueTree ("BassMultiSample");
+        MultiSampleSet loaded;
+        loaded.prepare (96000.0);
+        loaded.fromValueTree (tree);
+        check (loaded.zoneCount() == 3, "tre zoner efter laddning");
+        check (loaded.mapping (2).keyLow == 55 && loaded.mapping (2).keyHigh == 66 && loaded.mapping (2).rootKey == 60, "mappning bevaras");
+        check (loaded.zoneName (0) == "z72", "namn bevaras");
+        const auto* bank = loaded.active();
+        check (bank != nullptr && std::abs (bank->zones[0].sample.audio.getNumSamples() - 48000) <= 2, "omsamplad till 96 kHz");
+
+        MultiSampleSet fromEmpty;
+        fromEmpty.fromValueTree (juce::ValueTree ("BassMultiSample"));
+        check (! fromEmpty.hasZones(), "tomt träd ger tomt set");
+        loaded.fromValueTree ({});
+        check (! loaded.hasZones(), "ogiltigt träd tömmer");
+    }
+
+    // Utbyte: en pekare ljudtråden redan har ska leva vidare.
+    {
+        const auto* oldBank = set.active();
+        const auto oldLength = oldBank->zones[0].sample.audio.getNumSamples();
+        set.removeZone (0);
+        set.setMapping (0, set.mapping (0));
+        check (set.active() != oldBank, "ny bank publicerad");
+        check (oldBank->zones.size() == 3 && oldBank->zones[0].sample.audio.getNumSamples() == oldLength, "gamla banken lever kvar");
+        check (set.retiredCount() >= 1, "gamla banken väntar på frigöring");
+        check (set.zoneCount() == 2, "zon borttagen");
+        set.clear();
+        check (! set.hasZones(), "clear");
+    }
+
+    std::puts (failed ? "FEL: multisampletestet misslyckades" : "Multisampletestet gick igenom");
     return failed ? 1 : 0;
 }
