@@ -932,6 +932,18 @@ KickModule::KickModule (PluginBase& p)
                      "Compressor after drive and crush: a fast attack and a release that follows the kick length, with automatic makeup gain. Tighter, denser kick; 0 = off." },
                      { "FILTER", { knob (ParamID::kickLowCut, "LOW CUT"), knob (ParamID::kickVelPitch, "VEL>PITCH") } } });
 
+    synthToggle.setTooltip ("Kick SYNTH on/off. Off = only the loaded sample is heard (like Replace); with no sample the kick is silent.");
+    sampleToggle.setTooltip ("Kick SAMPLE on/off. Off = the loaded sample is ignored (it stays loaded) and the synth kick plays alone.");
+    synthToggleAttachment = std::make_unique<juce::ButtonParameterAttachment> (*p.apvts.getParameter (ParamID::kickSynthOn), synthToggle);
+    sampleToggleAttachment = std::make_unique<juce::ButtonParameterAttachment> (*p.apvts.getParameter (ParamID::kickSampleOn), sampleToggle);
+    addAndMakeVisible (synthToggle);
+    addAndMakeVisible (sampleToggle);
+    balanceHint.setText ("Balance = LEVEL (SAMPLE view).  MODE (Click/Layer/Replace) still decides how the sample is used.", juce::dontSendNotification);
+    balanceHint.setFont (Theme::font (10.5f));
+    balanceHint.setColour (juce::Label::textColourId, Theme::textDim);
+    balanceHint.setTooltip ("Both on: the synth kick plus the sample, balanced with LEVEL. Click = only the sample's first moments, Layer = the whole sample on top, Replace = the sample alone.");
+    addAndMakeVisible (balanceHint);
+
     sampleLabel.setFont (Theme::font (11.0f));
     sampleLabel.setColour (juce::Label::textColourId, Theme::textDim);
     addAndMakeVisible (sampleLabel);
@@ -1064,6 +1076,13 @@ void KickModule::resized()
     listenSampleButton.setBounds (sampleRow.removeFromRight (96));
     sampleRow.removeFromRight (10);
     sampleLabel.setBounds (sampleRow);
+    area.removeFromBottom (4);
+
+    auto sourceRow = area.removeFromBottom (22);
+    synthToggle.setBounds (sourceRow.removeFromLeft (80));
+    sampleToggle.setBounds (sourceRow.removeFromLeft (90));
+    sourceRow.removeFromLeft (8);
+    balanceHint.setBounds (sourceRow);
     area.removeFromBottom (4);
 
     if (sampleTabShown())

@@ -154,6 +154,10 @@ private:
     juce::Label sampleHelp;
     std::unique_ptr<FxSendControl> fxSend;
 
+    juce::ToggleButton synthToggle { "SYNTH" }, sampleToggle { "SAMPLE" }; // på/av för de två källorna; LEVEL i SAMPLE-vyn är balansen
+    std::unique_ptr<juce::ButtonParameterAttachment> synthToggleAttachment, sampleToggleAttachment;
+    juce::Label balanceHint;
+
     juce::Label sampleLabel;
     juce::TextButton loadButton { "LOAD" }, clearButton { "X" }, listenSampleButton { "HEAR SAMPLE" };
     std::unique_ptr<juce::FileChooser> chooser;

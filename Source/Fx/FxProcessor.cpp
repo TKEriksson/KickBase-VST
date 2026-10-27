@@ -93,6 +93,7 @@ void FxProcessor::processChunk (juce::AudioBuffer<float>& buffer)
     if (kickSoloSamplesLeft > 0 && getActiveClickSample() != nullptr)
     {
         kickParams.sampleMode = 2; // provlyssning av bara samplingen
+        kickParams.sampleOn = true;
         kickParams.sampleLevel = 1.0f;
     }
     kickSoloSamplesLeft = std::max (0, kickSoloSamplesLeft - numSamples);

@@ -439,6 +439,7 @@ void InstrumentProcessor::refreshEngineParams()
     if (kickSoloSamplesLeft > 0 && getActiveClickSample() != nullptr)
     {
         kickParams.sampleMode = 2; // bara samplingen, i full nivå
+        kickParams.sampleOn = true;
         kickParams.sampleLevel = 1.0f;
     }
     kick.setParams (kickParams);

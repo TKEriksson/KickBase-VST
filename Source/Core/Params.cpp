@@ -453,6 +453,8 @@ namespace Params
     {
         layout.add (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { ParamID::jogSpeed, 1 }, "Jog Speed",
                                                                  juce::NormalisableRange<float> (0.0f, 4.0f, 0.001f), 1.0f));
+        layout.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { ParamID::kickSynthOn, 1 }, "Kick Synth On", true));
+        layout.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { ParamID::kickSampleOn, 1 }, "Kick Sample On", true));
     }
 
     juce::StringArray keyNames()
@@ -595,6 +597,8 @@ KickParams ParamRefs::readKick (int keyPitchClass) const
     p.velPitch      = get (ParamID::kickVelPitch);
     p.sampleMode    = getChoice (ParamID::kickSampleMode);
     p.sampleLevel   = get (ParamID::kickSampleLevel);
+    p.synthOn       = get (ParamID::kickSynthOn) >= 0.5f;
+    p.sampleOn      = get (ParamID::kickSampleOn) >= 0.5f;
     p.sampleTuneSemis = get (ParamID::kickSampleTune);
     p.sampleOffsetMs = get (ParamID::kickSampleOffset);
     p.drive         = get (ParamID::kickDrive);

@@ -79,6 +79,10 @@ namespace ParamID
 
     // JOG (D3b): hastighet för den egna klockan i förhandsspelning, 1 = normalt, 0 = står still, 4 = fyra gånger snabbare.
     inline constexpr auto jogSpeed = "jogSpeed";
+
+    // Kickens SYNTH och SAMPLE på/av (båda på = som förut). Sist i layouten, så att gamla projekt är orörda.
+    inline constexpr auto kickSynthOn  = "kickSynthOn";
+    inline constexpr auto kickSampleOn = "kickSampleOn";
 }
 
 // Varje baslagers parametrar. ID:t är "bass" + lagrets nummer + fältets namn, t.ex. "bass2Cutoff".
