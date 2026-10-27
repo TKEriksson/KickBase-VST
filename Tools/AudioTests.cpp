@@ -12,6 +12,7 @@
 #include "../Source/Fx/FxProcessor.h"
 #include "../Source/Ui/FmPresets.h"
 #include "../Source/Core/MixAnalysis.h"
+#include "../Source/Core/AudioAnalysis.h"
 #include "Scenarios.h"
 #include <new>
 #include <cstdlib>
@@ -1359,5 +1360,85 @@ int audioThreadTest()
     }
    #endif
     std::puts (failed ? "FEL: ljudtrådstestet misslyckades" : "Ljudtrådstestet gick igenom");
+    return failed ? 1 : 0;
+}
+
+// S3 Unison/Reese (`tool reesetest`): mäter en Reese-bas (OSC 1 och 2 med unison) med 1, 3, 5 och 7 röster per oscillator.
+// CPU per sekund ljud, allokeringar på ljudtråden (mål 0), DC, toppnivå, stereo under 150 Hz (lowSide) och att allt är ändligt.
+// Siffrorna ska läsas av en människa (docs/school/reese.md); testet fäller bara på allokeringar, icke-ändligt ljud och DC.
+int reeseTest()
+{
+    juce::ScopedJuceInitialiser_GUI gui;
+    auto failed = false;
+    constexpr double rate = 48000.0;
+    constexpr int blockSize = 512;
+    std::printf ("%-28s %7s %6s %6s %6s %7s %6s %6s\n", "RECEPT", "CPU/s", "alloc", "peak", "dc", "lowSide", "side", "finit");
+
+    struct Recipe { const char* name; int unisonA, unisonB, unisonC, voices; float detune; };
+    const Recipe recipes[] = {
+        { "Reese 1+1 (ingen unison)", 1, 1, 1, 1, 20.0f },
+        { "Reese 3+3, detune 20", 3, 3, 1, 1, 20.0f },
+        { "Reese 5+5, detune 20", 5, 5, 1, 1, 20.0f },
+        { "Reese 7+7, detune 20", 7, 7, 1, 1, 20.0f },
+        { "Reese 7+7+7, detune 20", 7, 7, 7, 1, 20.0f },
+        { "Reese 7+7, VOICES 3", 7, 7, 1, 3, 20.0f },
+    };
+    for (const auto& recipe : recipes)
+    {
+        const auto owner = std::make_unique<InstrumentProcessor>();
+        auto& processor = *owner;
+        processor.setPlayConfigDetails (0, 2, rate, blockSize);
+        processor.prepareToPlay (rate, blockSize);
+        Scenarios::setPlain (processor, ParamID::kickOn, 0.0f);
+        for (int layer = 1; layer < ParamID::numInstrumentLayers; ++layer)
+            Scenarios::setInstrument (processor, layer, InstrumentField::on, 0.0f);
+        using F = InstrumentField;
+        Scenarios::setInstrument (processor, 0, F::sub, 0.0f);
+        Scenarios::setInstrument (processor, 0, F::noise, 0.0f);
+        Scenarios::setInstrument (processor, 0, F::aUnison, (float) recipe.unisonA);
+        Scenarios::setInstrument (processor, 0, F::aDetune, recipe.detune);
+        Scenarios::setInstrument (processor, 0, F::bOn, 1.0f);
+        Scenarios::setInstrument (processor, 0, F::bUnison, (float) recipe.unisonB);
+        Scenarios::setInstrument (processor, 0, F::bDetune, recipe.detune);
+        Scenarios::setInstrument (processor, 0, F::bFine, 12.0f);
+        Scenarios::setInstrument (processor, 0, F::cOn, recipe.unisonC > 1 ? 1.0f : 0.0f);
+        Scenarios::setInstrument (processor, 0, F::cUnison, (float) recipe.unisonC);
+        Scenarios::setInstrument (processor, 0, F::cDetune, recipe.detune);
+        Scenarios::setInstrument (processor, 0, F::cFine, -12.0f);
+        Scenarios::setInstrument (processor, 0, F::voices, (float) recipe.voices);
+
+        const auto blocks = (int) (rate * 4.0 / blockSize);
+        juce::AudioBuffer<float> all (2, blocks * blockSize), buffer (2, blockSize);
+        juce::MidiBuffer midi;
+        midi.ensureSize (64);
+        auto counted = 0;
+        auto total = 0.0;
+        for (int block = 0; block < blocks; ++block)
+        {
+            midi.clear();
+            if (block == 0)
+                midi.addEvent (juce::MidiMessage::noteOn (1, 52, (juce::uint8) 100), 0);
+            if (recipe.voices > 1 && block == 4)
+                midi.addEvent (juce::MidiMessage::noteOn (1, 56, (juce::uint8) 100), 0);
+            if (recipe.voices > 1 && block == 8)
+                midi.addEvent (juce::MidiMessage::noteOn (1, 59, (juce::uint8) 100), 0);
+            buffer.clear();
+            allocationCount = 0;
+            countingAllocations = block >= 8;
+            const auto start = juce::Time::getMillisecondCounterHiRes();
+            processor.processBlock (buffer, midi);
+            total += juce::Time::getMillisecondCounterHiRes() - start;
+            countingAllocations = false;
+            counted += allocationCount;
+            for (int ch = 0; ch < 2; ++ch)
+                all.copyFrom (ch, block * blockSize, buffer, ch, 0, blockSize);
+        }
+        const auto m = AudioAnalysis::measure (all, rate);
+        const auto ok = counted == 0 && m.finite && m.dc < 0.05;
+        failed |= ! ok;
+        std::printf ("%-28s %7.4f %6d %6.1f %6.3f %7.1f %6.1f %6s%s\n", recipe.name, total / 1000.0 / 4.0, counted, m.peakDb, m.dc, m.lowSideDb, m.sideDb,
+                     m.finite ? "ja" : "NEJ", ok ? "" : "  FEL");
+    }
+    std::puts (failed ? "FEL: reesetestet misslyckades" : "Reesetestet gick igenom");
     return failed ? 1 : 0;
 }

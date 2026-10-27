@@ -3911,6 +3911,7 @@ int profileCommand (const juce::String& scenario, int instruments, double second
 int uiProfileCommand (int tab, const juce::String& scenario, int instruments, double seconds); // Tools/Profile.cpp
 int renderSignaturesWide(); // Tools/AudioTests.cpp
 int audioThreadTest();      // Tools/AudioTests.cpp
+int reeseTest();            // Tools/AudioTests.cpp
 int blockSizeTest();        // Tools/AudioTests.cpp
 int polyTest();             // Tools/AudioTests.cpp
 int ringTest();             // Tools/AudioTests.cpp
@@ -3949,7 +3950,7 @@ int toolMain (int argc, char* argv[])
     // Testerna som sparar presets eller rullar körs i en tillfällig mapp, aldrig i användarens Dokument\Kickbase.
     std::unique_ptr<Scenarios::TemporaryUserFolders> isolation;
     if (const juce::String command (argc > 1 ? argv[1] : ""); command == "presettest" || command == "rolltest" || command == "lengthtest"
-        || command == "instrumenttest" || command == "eqtest" || command == "listentest" || command == "auditiontest" || command == "audiotest"
+        || command == "instrumenttest" || command == "eqtest" || command == "listentest" || command == "auditiontest" || command == "audiotest" || command == "reesetest"
         || command == "analysetest" || command == "perftest" || command == "polytest" || command == "livetest" || command == "rendersig" || command == "rendersigwide" || command == "rendersigtb303")
         isolation = std::make_unique<Scenarios::TemporaryUserFolders>();
 
@@ -4052,6 +4053,8 @@ int toolMain (int argc, char* argv[])
         return ringTest();
     if (argc == 2 && juce::String (argv[1]) == "audiotest")
         return audioThreadTest();
+    if (argc == 2 && juce::String (argv[1]) == "reesetest")
+        return reeseTest();
     // uiprofile <flik> <init|heavy> [instrument] [sekunder]: gränssnittets CPU och var meddelandetråden lägger tiden.
     if (argc >= 4 && juce::String (argv[1]) == "uiprofile")
         return uiProfileCommand (juce::String (argv[2]).getIntValue(), juce::String (argv[3]), argc > 4 ? juce::String (argv[4]).getIntValue() : 3,

@@ -141,3 +141,19 @@ Läst i koden (inget ändrat): bas-preset laddar bara valt lager (`Presets.cpp:2
 ## Kvar (presets pausade efter rel-0.2, beslut Tobias 27 okt)
 Tas efter nästa release, max 3 presets per ny kategori: New Init 1–5 (utgår från fabriks-Init, rendersig 94f0a1b6bd8a3c7f ändras ej), MINIMAL, GOA, DARK PSY, DANCE, TRANCE, TECHNO, EMPIRIKAL, SYNTH, MID BASS, HI BASS, samt presets för S3 Unison/Reese när funktionen finns. Utredningsdokument per genre (`docs/school/*.md`) skrivs vid behov före bygge.
 Nu: programmet, rel-0.3 motornära punkter: 1) S3 Unison/Reese, 2) multisampling (Arbetare 1 har UI).
+
+## PLAN rel-0.3 motornära: S3 Unison/Reese och multisampling (27 okt, Arbetare 2) - väntar på PL:s ok
+**S3 Unison/Reese: finns redan.** Unison per OSC (1..7 röster, detune, blend, slumpfas, pan, spridning, bredd) för OSC A/B/C; UI varnar vid RÖSTER × unison > 24 (`Modules.cpp:1273`). Ingen ombyggnad.
+- Etapp S3-1: mäta, inte bygga. Renderar Reese-recept (2 OSC saw, unison 5-7, detune 8-25 cent) i `audiotest`/`perftest`: CPU per röst, stereo/mono-kompatibilitet (lowSide), DC, 0 allokeringar, blocksizetest.
+- Etapp S3-2: bara om mätningen visar ett verkligt gap (t.ex. faslåsning, för hög CPU). Då nya parametrar sist i `InstrumentField` (före `count`), standard = dagens ljud. Annars inga kodjusteringar; Reese-presets tas efter releasen.
+**Multisampling (Fas C, `docs/content-plan.md:175`)**
+- Lagring: ny `MultiSampleSet` (zoner: tangent lo/hi, rot, velocity lo/hi, loop, ClickSample per zon) bredvid `SampleSlot` (`SampleSlot.h:10`). Laddas och resamplas på meddelandetråden; ljudtråden läser en atomisk pekare; gammalt släpps via `DeferredRelease` (samma mönster som `SampleSlot`).
+- Ljudtråd: vid note-on väljer synten zon (tangent + velocity) och sätter `params.sampleData` till zonens data (`InstrumentSynth.cpp:178`); resten av spelaren (loop, nyckelföljning, start) återanvänds. Inga allokeringar, inga lås. Valet görs en gång per röst; rösten håller zonen till release (pekaren skyddas av DeferredRelease).
+- Persistens/hash: nytt barn i state-trädet (`BassMultiSample`, som `BassSample` i `PluginBase.cpp:1900`). Saknas det laddar gamla projekt/presets som förut. Biblioteks-id + hash eller inbäddat. Inga ID-/hash-ändringar.
+- Parametrar: en ny val-parameter `sampleSource` (0 Enkel = dagens, 1 Multi) sist i `InstrumentField` (före `count`, `Params.h`), standard 0. UI-väljaren (TYPE) är Arbetare 1:s; jag ger bara parametern.
+- Etapper: (1) datamodell + laddare, (2) zonval + spelare (Hermite som val senare), (3) persistens, (4) SFZ-delmängd som import i KickbaseTool, (5) tester: zonval, loop, saknad fil, hash-mismatch, rundtur, 0 allokeringar, blocksizetest, CPU med 8 röster.
+- Risk: polyfoni (`InstrumentVoices`) måste hålla zonpekare per röst; round-robin/layers utanför v1.
+
+### S3 klar (27 okt, Arbetare 2)
+- Godkänd av PL. `KickbaseTool reesetest` tillagd (`Tools/AudioTests.cpp`, `Tools/Tool.cpp`). 0 alloc, DC 0, blocksizetest ok, CPU oförändrat med unison. Inget gap, ingen motorkod ändrad. Recept: `docs/school/reese.md`.
+- Nästa: multisampling etapp 1–3.
