@@ -241,6 +241,9 @@ private:
     bool syncing = false;
     juce::Label label;
     juce::TextButton loadButton { "LOAD" }, clearButton { "X" }, hearButton { "HEAR" };
+    juce::ComboBox sourceBox; // Single / Multi (sampleSource); i Multi laddar LOAD flera filer som zoner
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> sourceAttachment;
+    bool isMulti() const;
     std::unique_ptr<juce::FileChooser> chooser;
     std::vector<std::unique_ptr<juce::Component>> controls; // LEVEL, START, ROOT, LOOP, KEY
 };

@@ -265,6 +265,8 @@ public:
 
     bool loadInstrumentSample (int layer, const juce::File& file);
     void clearInstrumentSample (int layer, bool syncRows = true); // syncRows: false när en förinställning laddas (raderna kommer från dess mönster)
+    int addInstrumentMultiSamples (int layer, const juce::Array<juce::File>& files); // multisampling: lägger till zoner, sprider tangentområdena; returnerar antal som lästes
+    void clearInstrumentMultiSamples (int layer);
     // Slicer: skivinställningarna hör till lagrets sampling (sparas med den). Message thread.
     SampleSlot& instrumentSampleSlot (int layer) { return instrumentSamples[(size_t) juce::jlimit (0, ParamID::numInstrumentLayers - 1, layer)]; }
     void setInstrumentSlicing (int layer, int mode, float sensitivity, int gridCount) { instrumentSampleSlot (layer).setSlicing (mode, sensitivity, gridCount); syncSliceRows (layer); patternChanged(); }

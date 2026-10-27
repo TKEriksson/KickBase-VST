@@ -1711,6 +1711,29 @@ SamplePage::SamplePage (PluginBase& p, int layerIn, juce::Colour accent)
                            "Turn the oscillators off (the power buttons on the OSC tabs) to hear only the sample.");
     loadButton.onClick = [this]
     {
+        if (isMulti())
+        {
+            chooser = std::make_unique<juce::FileChooser> ("Choose the zone samples (name them like Piano_C3 to set the root note)", juce::File(), "*.wav;*.aif;*.aiff;*.flac");
+            chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles | juce::FileBrowserComponent::canSelectMultipleItems,
+                                  [this] (const juce::FileChooser& fc)
+                                  {
+                                      if (fc.getResults().isEmpty())
+                                          return;
+                                      const auto added = processor.addInstrumentMultiSamples (layer, fc.getResults());
+                                      if (added == 0)
+                                      {
+                                          label.setText ("Could not read the files (max " + juce::String (MultiSampling::maxZones) + " zones, "
+                                                         + juce::String ((int) MultiSampling::maxSecondsPerZone) + " s each)", juce::dontSendNotification);
+                                          return;
+                                      }
+                                      if (auto* on = processor.apvts.getParameter (ParamID::bass (layer, InstrumentField::sampleOn)))
+                                          Presets::setParameter (*on, 1.0f);
+                                      if (auto* level = processor.apvts.getParameter (ParamID::bass (layer, InstrumentField::sampleLevel)); level != nullptr && level->getValue() <= 0.0f)
+                                          Presets::setParameter (*level, 1.0f);
+                                      updateLabel();
+                                  });
+            return;
+        }
         chooser = std::make_unique<juce::FileChooser> ("Choose a sample for this layer", juce::File(), "*.wav;*.aif;*.aiff;*.flac");
         chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
                               [this] (const juce::FileChooser& fc)
@@ -1720,8 +1743,20 @@ SamplePage::SamplePage (PluginBase& p, int layerIn, juce::Colour accent)
                               });
     };
     addAndMakeVisible (loadButton);
-    clearButton.setTooltip ("Remove the sample from this layer");
-    clearButton.onClick = [this] { processor.clearInstrumentSample (layer); updateLabel(); };
+    sourceBox.addItemList ({ "Single", "Multi" }, 1);
+    sourceBox.setTooltip ("SINGLE = one sample (with slices). MULTI = several samples (zones) on different keys, e.g. a sampled piano: LOAD takes many files at once "
+                          "and spreads them over the keyboard by the root note in each file name (Piano_C3, bass_048). No slices in Multi.");
+    addAndMakeVisible (sourceBox);
+    sourceAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (p.apvts, id (F::sampleSource), sourceBox);
+    clearButton.setTooltip ("Remove the sample (in Multi: all zones) from this layer");
+    clearButton.onClick = [this]
+    {
+        if (isMulti())
+            processor.clearInstrumentMultiSamples (layer);
+        else
+            processor.clearInstrumentSample (layer);
+        updateLabel();
+    };
     addAndMakeVisible (clearButton);
     hearButton.setTooltip ("HEAR - Plays just this layer's sample (you can also click the waveform).");
     hearButton.onClick = [this] { processor.requestAudition (PluginBase::soloAudition (layer, 3)); };
@@ -1765,14 +1800,30 @@ void SamplePage::syncSlicerControls()
     sliceCapNotice.setVisible (text.isNotEmpty());
 }
 
+bool SamplePage::isMulti() const
+{
+    if (auto* value = processor.apvts.getRawParameterValue (ParamID::bass (layer, InstrumentField::sampleSource)))
+        return (int) value->load() == 1;
+    return false;
+}
+
 void SamplePage::updateLabel()
 {
-    const auto name = processor.getInstrumentSampleName (layer);
-    const auto text = name.isEmpty() ? juce::String ("No sample loaded") : name;
+    juce::String name;
+    if (isMulti())
+    {
+        const auto& set = processor.instrumentMultiSample (layer);
+        const auto count = set.zoneCount();
+        if (count > 0)
+            name = juce::String (count) + (count == 1 ? " zone: " : " zones: ") + set.zoneName (0) + (count > 1 ? ", ..." : "");
+    }
+    else
+        name = processor.getInstrumentSampleName (layer);
+    const auto text = name.isEmpty() ? juce::String (isMulti() ? "No zones loaded" : "No sample loaded") : name;
     if (label.getText() != text)
         label.setText (text, juce::dontSendNotification);
     clearButton.setEnabled (name.isNotEmpty());
-    hearButton.setEnabled (name.isNotEmpty());
+    hearButton.setEnabled (name.isNotEmpty() && ! isMulti());
 }
 
 void SamplePage::loadSample (const juce::File& file)
@@ -1802,6 +1853,8 @@ void SamplePage::resized()
     loadButton.setBounds (top.removeFromRight (56));
     top.removeFromRight (4);
     hearButton.setBounds (top.removeFromRight (56));
+    top.removeFromRight (4);
+    sourceBox.setBounds (top.removeFromRight (74));
     top.removeFromRight (8);
     label.setBounds (top);
     area.removeFromTop (6);

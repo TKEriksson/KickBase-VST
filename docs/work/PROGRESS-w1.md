@@ -339,3 +339,9 @@ Bygge Debug all: grönt, "Alla tester gick igenom" (rendersig oförändrad).
 - Testet "tangent 76 väljer höga zonen" var ett testfel, inte motorfel: motorns mjuka begränsare komprimerade zonen med gain 0,8. Nivåerna sänkta till 0,05/0,4 (AudioTests.cpp, spelartestet). Zonvalet var rätt.
 - Zonerna sparas i eget barn "BassMultiSamples" (PluginBase.cpp, instrumentMultiSamplesToValueTree/FromValueTree). Skrivs bara när zoner finns, så gamla projekt är byte för byte oförändrade. Rundturstest i StateTests.cpp ("Multi: …").
 - Kvar: TYPE-väljaren (sampleSource Single/Multi) i UI, testrad, SFZ-import.
+
+## Multisampling – TYPE-väljare i UI (Arbetare 1, 28 okt)
+- SAMPLE-fliken (`Source/Ui/Modules.cpp` SamplePage): ny ruta Single/Multi (`sourceBox`, kopplad till `sampleSource`) i översta raden. I Multi tar LOAD flera filer på en gång (zoner), rottonen läses ur filnamnet (Piano_C3, bass_048; annars C4), tangentområdena sprids automatiskt halvvägs mellan rottonerna. X rensar alla zoner, etiketten visar antal zoner. HEAR är av i Multi.
+- PluginBase: `addInstrumentMultiSamples` / `clearInstrumentMultiSamples` (PluginBase.cpp, före `syncSliceRows`).
+- Inte gjort: zonredigering (tangentområde/anslag per zon i UI), SFZ-import (steg 4), zoner i preset-export.
+**Testrad DAW (Lemon):** SAMPLE-fliken på ett baslager, välj Multi, LOAD och markera 3 filer namngivna t.ex. Bass_C2, Bass_C3, Bass_C4: etiketten visar "3 zones"; spela C1, C3, C5 från pianorullen/MIDI: varje tangent låter från närmaste zon och tonhöjden följer tangenten; X tömmer; byt till Single: den vanliga samplingen låter som förut; spara och öppna projektet: zonerna finns kvar.

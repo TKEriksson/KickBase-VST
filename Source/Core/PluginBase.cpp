@@ -1902,6 +1902,31 @@ void PluginBase::clearInstrumentSample (int layer, bool syncRows)
     patternChanged();
 }
 
+int PluginBase::addInstrumentMultiSamples (int layer, const juce::Array<juce::File>& files)
+{
+    if (! juce::isPositiveAndBelow (layer, ParamID::numInstrumentLayers))
+        return 0;
+    auto& set = instrumentMultiSamples[(size_t) layer];
+    auto added = 0;
+    for (const auto& file : files)
+        if (set.addFile (file))
+            ++added;
+    if (added > 0)
+    {
+        set.autoMapKeyRanges();
+        patternChanged();
+    }
+    return added;
+}
+
+void PluginBase::clearInstrumentMultiSamples (int layer)
+{
+    if (! juce::isPositiveAndBelow (layer, ParamID::numInstrumentLayers))
+        return;
+    instrumentMultiSamples[(size_t) layer].clear();
+    patternChanged();
+}
+
 int PluginBase::syncSliceRows (int layer)
 {
     if (! juce::isPositiveAndBelow (layer, ParamID::numInstrumentLayers))
