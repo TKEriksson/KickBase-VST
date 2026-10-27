@@ -12,6 +12,7 @@ Regler (oförändrade): Claude skriver all C++; varje agent egen worktree + egen
 - Releaser görs bara när en stor sektion är klar. Första: hela testlistan T1-T15 (fas A-E, H).
 - Release: Release-bygge, Tobias testar i FL (kör `installRel.bat`), fel rättas, sedan påminner projektledaren Tobias om att merga till main som release och frågar innan. Först efter hans ja mergar projektledaren. Aldrig push utan Tobias.
 - Projektledaren committar docs och masterplan när något ändrats. Copilot pushar/mergar bara om Tobias uttryckligen säger det.
+- Alla läser `docs/work/LESSONS.md` innan de kodar, bygger och testar.
 - Slarvfel loggas i `docs/work/LESSONS.md`. Uppdatera progressfilen före sessionens slut.
 - Svenska, korta svar, rollnamn (Arbetare 1/2, specialisten, projektledaren).
 
