@@ -137,12 +137,21 @@ public:
     SampleView (PluginBase& processor, int layer, juce::Colour accent);
     void paint (juce::Graphics&) override;
     void mouseDown (const juce::MouseEvent&) override;
-    void mouseUp (const juce::MouseEvent&) override { hold.stop(); }
+    void mouseUp (const juce::MouseEvent&) override;
     void mouseEnter (const juce::MouseEvent&) override { hover = true; repaint(); }
     void mouseExit (const juce::MouseEvent&) override  { hover = false; repaint(); }
 
+    // E2 steg 1: SLICES visar varje skiva som en egen färgad ruta med namn och ton; ett klick spelar bara den skivan.
+    void setShowSlices (bool show) { showSlices = show; repaint(); }
+
 private:
     void timerCallback() override;
+    int sliceAt (float x, const ClickSample& sample) const; // skivan under x (pixlar i vyn), -1 = ingen
+    int sliceNote (int index) const;                        // MIDI-tonen som spelar skiva `index` (index 0 = MAP TO)
+
+    bool showSlices = false;
+    int heldSlice = -1;
+    int heldNote = -1; // tonen som provlyssnas medan musen hålls i SLICES-vyn
 
     PluginBase& processor;
     HoldAudition hold { processor }; // klick och håll: samplingen spelas så länge musen är nere
@@ -179,6 +188,8 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> slicerAttachment, reverseAttachment, filterSendAttachment;
     std::unique_ptr<KnobComponent> mapToKnob;
     juce::ComboBox sliceModeBox;
+    juce::Label showLabel { {}, "SHOW" };
+    juce::TextButton showSampleButton { "SAMPLE" }, showSlicesButton { "SLICES" };
     juce::Slider gridAmount, sensitivityAmount; // en per läge, så att inget område byts under användaren
     bool syncing = false;
     juce::Label label;

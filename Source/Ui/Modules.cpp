@@ -1088,7 +1088,32 @@ void SampleView::paint (juce::Graphics& g)
     g.setColour (accent.withAlpha (0.85f));
     g.fillPath (path);
 
-    if (shownSlicer)
+    if (shownSlicer && showSlices)
+    {
+        // E2: varje skiva är en egen färgad ruta med rubrik "Slice N" och tonen som spelar den under.
+        const auto count = (int) sample->slices.size();
+        for (int i = 0; i < count; ++i)
+        {
+            const auto fromX = area.getX() + (float) sample->slices[(size_t) i] / (float) length * area.getWidth();
+            const auto toSample = i + 1 < count ? sample->slices[(size_t) i + 1] : length;
+            const auto toX = area.getX() + (float) toSample / (float) length * area.getWidth();
+            const auto box = juce::Rectangle<float> (fromX, area.getY(), std::max (1.0f, toX - fromX), area.getHeight());
+            const auto colour = juce::Colour::fromHSV (std::fmod ((float) i * 0.13f, 1.0f), 0.55f, 0.95f, 1.0f);
+            g.setColour (colour.withAlpha (i == heldSlice ? 0.45f : 0.2f));
+            g.fillRect (box);
+            g.setColour (colour.withAlpha (0.9f));
+            g.drawRect (box, 1.5f);
+            if (box.getWidth() > 34.0f)
+            {
+                g.setColour (juce::Colours::white.withAlpha (0.92f));
+                g.setFont (Theme::font (10.0f));
+                g.drawText ("Slice " + juce::String (i + 1), box.withHeight (14.0f).reduced (3.0f, 0.0f), juce::Justification::centredLeft);
+                g.setColour (Theme::textDim);
+                g.drawText (juce::MidiMessage::getMidiNoteName (sliceNote (i), true, true, 4), box.withTop (box.getBottom() - 16.0f).reduced (3.0f, 0.0f), juce::Justification::centredLeft);
+            }
+        }
+    }
+    else if (shownSlicer)
     {
         // Skivgränserna (ton n..n+7 spelar skiva 1..8); START gäller inte i slicerläget.
         g.setColour (juce::Colours::white.withAlpha (0.7f));
@@ -1153,8 +1178,48 @@ void SampleView::mouseDown (const juce::MouseEvent& e)
         processor.setInstrumentSliceMarkers (layer, std::move (markers));
         return;
     }
+    if (const auto* sample = processor.getActiveInstrumentSample (layer); sample != nullptr && shownSlicer && showSlices)
+    {
+        // Ett klick på en skiva spelar bara den, genom tonen som väljer den (som en riktig ton på raden).
+        const auto index = sliceAt ((float) e.x, *sample);
+        if (index >= 0)
+        {
+            heldSlice = index;
+            heldNote = sliceNote (index);
+            processor.postNoteAudition (layer, heldNote, 100, true);
+            repaint();
+        }
+        return;
+    }
     if (processor.getActiveInstrumentSample (layer) != nullptr)
         hold.start (PluginBase::heldSoloAudition (layer, 3)); // bara samplingen, så länge musen hålls (loopar om den tar slut)
+}
+
+void SampleView::mouseUp (const juce::MouseEvent&)
+{
+    hold.stop();
+    if (heldNote >= 0)
+        processor.postNoteAudition (layer, heldNote, 0, false);
+    heldNote = -1;
+    heldSlice = -1;
+    repaint();
+}
+
+int SampleView::sliceAt (float x, const ClickSample& sample) const
+{
+    const auto length = sample.audio.getNumSamples();
+    const auto position = juce::jlimit (0.0f, 0.9999f, (x - 6.0f) / (float) std::max (1, getWidth() - 12)) * (float) length;
+    auto found = -1;
+    for (size_t i = 0; i < sample.slices.size(); ++i)
+        if ((float) sample.slices[i] <= position)
+            found = (int) i;
+    return found;
+}
+
+int SampleView::sliceNote (int index) const
+{
+    const auto mapTo = juce::roundToInt (processor.apvts.getRawParameterValue (ParamID::bass (layer, InstrumentField::slicerMapTo))->load());
+    return processor.rowRootNote (layer) + mapTo + index;
 }
 
 SamplePage::SamplePage (PluginBase& p, int layerIn, juce::Colour accent)
@@ -1220,6 +1285,25 @@ SamplePage::SamplePage (PluginBase& p, int layerIn, juce::Colour accent)
         addChildComponent (*slider);
     }
     syncSlicerControls();
+
+    // E2: SHOW väljer vad vyn visar: hela samplingen, eller varje skiva som en egen ruta (klick spelar bara den skivan).
+    showLabel.setFont (Theme::font (10.0f));
+    showLabel.setColour (juce::Label::textColourId, Theme::textDim);
+    addAndMakeVisible (showLabel);
+    showSampleButton.setTooltip ("SHOW SAMPLE - Shows the whole waveform. Click and hold it to hear the sample.");
+    showSlicesButton.setTooltip ("SHOW SLICES - Shows every slice as its own coloured box with its name and the note that plays it. Click a slice to hear only that slice.");
+    for (auto* button : { &showSampleButton, &showSlicesButton })
+    {
+        button->setClickingTogglesState (true);
+        button->setRadioGroupId (4711 + layerIn);
+        button->setColour (juce::TextButton::buttonOnColourId, accent);
+        addAndMakeVisible (*button);
+    }
+    showSampleButton.setToggleState (true, juce::dontSendNotification);
+    showSampleButton.onClick = [this] { view.setShowSlices (false); };
+    showSlicesButton.onClick = [this] { view.setShowSlices (true); };
+    gridAmount.setTextValueSuffix (" slices");
+    sensitivityAmount.setTextValueSuffix ("");
 
     addAndMakeVisible (view);
     label.setFont (Theme::font (11.0f));
@@ -1342,6 +1426,13 @@ void SamplePage::resized()
     modeRow.removeFromLeft (4);
     gridAmount.setBounds (modeRow);
     sensitivityAmount.setBounds (modeRow);
+    right.removeFromTop (3);
+    auto showRow = right.removeFromTop (22);
+    showLabel.setBounds (showRow.removeFromLeft (44));
+    showSampleButton.setBounds (showRow.removeFromLeft (70));
+    showRow.removeFromLeft (4);
+    showSlicesButton.setBounds (showRow.removeFromLeft (70));
+    right.removeFromTop (3);
     mapToKnob->setBounds (right.removeFromLeft (cell));
 }
 

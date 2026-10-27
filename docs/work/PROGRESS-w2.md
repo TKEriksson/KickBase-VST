@@ -43,3 +43,7 @@
 - Underflikar (verktygsraden EFFECTS/SIDECHAIN/LFO/…, `tools.setSubTabs()` i InstrumentEditor/FxEditor) ritas nu som segment: rundad rektangel, accentstreck under den valda, ingen LED. Huvudflikar är oförändrade pills. `TabbedPanel.h:77`, `KickbaseLookAndFeel.cpp` (drawButtonBackground/drawButtonText, egenskapen "subtab").
 - Debug-bygge och tester gick igenom. Ingen skärmdump tagen än; Tobias ser det i FL vid release.
 - Kvar i E1: rattar, kontroller, diagram.
+
+## E2 steg 1: skivvyn (Arbetare 2)
+- SHOW SAMPLE|SLICES (`Modules.cpp` SamplePage, `Modules.h:144`): SLICES ritar varje skiva som en färgad ruta med "Slice N" och tonen under; ett klick spelar bara den skivan via `postNoteAudition(layer, rowRootNote+MAP TO+index)`, släpps i `SampleView::mouseUp`.
+- Nya tooltips på SHOW-knapparna och enhet på skivreglaget. Debug-bygge och tester gick igenom. Kvar i E2: steg 2 (OWN PIANO ROLL, ny parameter sist), 3 (dra gränser, zoom, MANUAL), 4 (AUTO SLICE-dialog).
