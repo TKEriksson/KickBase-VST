@@ -14,6 +14,10 @@ public:
     {
         if (shouldBeActive != active)
         {
+            // Motorn har en enda aktiv källa: tar en annan över (eller ljudet stoppas) släpps den lokala fastlåsningen/hållningen,
+            // annars lyser knappen kvar och nästa mouseUp skulle stoppa den nya källan.
+            if (active && ! shouldBeActive)
+                latched = held = false;
             active = shouldBeActive;
             repaint();
         }

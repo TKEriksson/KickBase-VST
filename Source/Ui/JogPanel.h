@@ -50,8 +50,8 @@ public:
                                   "Right-click for DAW automation; drag an LFO here to modulate it.");
         addAndMakeVisible (speedKnob);
 
-        removeButton.setTooltip ("Removes every LFO route to JOG SPEED and sets the speed back to 1. DAW automation is removed in the DAW.");
-        removeButton.onClick = [this] { removeAutomation(); };
+        removeButton.setTooltip ("Sets JOG SPEED back to 1x. LFO routes are not touched (remove them in the modulation matrix); DAW automation is removed in the DAW.");
+        removeButton.onClick = [this] { resetSpeed(); };
         addAndMakeVisible (removeButton);
 
         statusLabel.setFont (Theme::font (11.0f, false));
@@ -157,10 +157,11 @@ public:
         modes.removeFromLeft (4);
         recMode.setBounds (modes.reduced (0, 1));
         top.removeFromTop (2);
-        speedKnob.setBounds (top.withSizeKeepingCentre (70, juce::jmin (90, top.getHeight())));
+        const auto knobArea = top.withSizeKeepingCentre (70, juce::jmin (90, top.getHeight()));
+        speedKnob.setBounds (knobArea);
+        removeButton.setBounds (juce::Rectangle<int> (52, 24).withPosition (knobArea.getRight() + 6, knobArea.getCentreY() - 12));
         area.removeFromTop (4);
         statusLabel.setBounds (area.removeFromTop (34));
-        removeButton.setBounds (area.removeFromTop (26).removeFromLeft (170));
     }
 
     // Handen över skivan visar att den kan gripas (JUCE:s DraggingHandCursor, ingen separat sluten hand finns).
@@ -327,17 +328,15 @@ private:
 
     int speedIndex() const { return processor.getParameters().indexOf (processor.apvts.getParameter (ParamID::jogSpeed)); }
 
-    void removeAutomation()
+    void resetSpeed()
     {
-        const auto index = speedIndex();
-        const auto before = processor.snapshotMods();
-        for (int r = Modulation::maxRoutes - 1; r >= 0; --r)
-            if (processor.modRoutes.routes[(size_t) r].source.load() >= 0 && processor.modRoutes.routes[(size_t) r].target.load() == index)
-                processor.modRoutes.remove (r);
-        processor.markStateChanged();
-        processor.recordModEdit (before, "Remove JOG automation");
+        // RESET: bara hastigheten tillbaka till 1x, en gest (en undo). LFO-rutterna lämnas, de tas bort i modulationsmatrisen.
         if (auto* parameter = processor.apvts.getParameter (ParamID::jogSpeed))
+        {
+            parameter->beginChangeGesture();
             parameter->setValueNotifyingHost (parameter->getDefaultValue());
+            parameter->endChangeGesture();
+        }
     }
 
     void timerCallback() override
@@ -371,13 +370,13 @@ private:
         text += processor.transportStatus.followingHost.load() ? "\nThe DAW is playing: JOG only moves the plugin's own clock (previews, free run)."
                                                                 : "\nJOG moves the plugin's own clock only; the DAW is never touched.";
         statusLabel.setText (text, juce::dontSendNotification);
-        removeButton.setEnabled (! sources.isEmpty() || moved);
-        removeButton.setColour (juce::TextButton::buttonColourId, ! sources.isEmpty() || moved ? juce::Colour (0xff6a2430) : juce::Colour (0xff2c3148));
+        removeButton.setEnabled (moved);
+        removeButton.setColour (juce::TextButton::buttonColourId, moved ? juce::Colour (0xff6a2430) : juce::Colour (0xff2c3148));
         repaint();
     }
 
     PluginBase& processor;
-    juce::TextButton stopMode { "STOP" }, nudgeMode { "KEEP GOING" }, removeButton { "REMOVE AUTOMATION" }, recMode { "REC" };
+    juce::TextButton stopMode { "STOP" }, nudgeMode { "KEEP GOING" }, removeButton { "RESET" }, recMode { "REC" };
     juce::TextButton kindJog { "JOG" }, kindScrub { "SCRUB" }, kindSpeed { "SPEED" };
     KnobComponent speedKnob;
     juce::Label statusLabel;

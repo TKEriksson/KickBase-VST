@@ -255,3 +255,10 @@ FL-punkter: bara en på/av per modul, instrumentets på/av längst till vänster
 **Bugg hittad av audiotest (min egen, från Kick SYNTH/SAMPLE):** `kickSynthOn/kickSampleOn` lades bara i instrumentets layout. FX-pluginets `readKick` (Params.cpp:600-601) slog upp okänt ID → `jassertfalse` (allokerar i Debug) och i Release 0.0 = synth+sample av, alltså tyst kick i FX-pluginet. Fix: `Params::addKickToggleParams` (Params.cpp, Params.h) anropas från både `addJogParams` (samma ordning som förut) och FxProcessor.cpp createLayout. Lärdom i LESSONS.md.
 **Test:** Debug `build.bat Debug all` + "Alla tester gick igenom"; audiotest "Ljudtrådstestet gick igenom" (0 allokeringar); rendersig oförändrad (Init 94f0a1b6bd8a3c7f, Empty 7d67e7bb66bb432b, instr 1 f7139084f716c127); persisttest ok. Release: `build.bat Release all` + "Alla tester gick igenom".
 **DAW-punkter (Lemon):** SCRUB är standard i nytt projekt, gammalt projekt = JOG; hjulet pausar bara vår pattern medan DAW går; vår PLAY återupptar; SPEED-hjulet ändrar JOG SPEED-knappen; kind sparas i projektet; kickens SYNTH/SAMPLE-knappar fungerar i FX-pluginet.
+
+## JOG RESET + lampfix för lyssna-knappar (Arbetare 1, 27 okt)
+- JogPanel: "REMOVE AUTOMATION" ersatt av liten RESET bredvid hastighetsratten (JogPanel.h, `resetSpeed`): jogSpeed=1 i en gest, rör inga LFO-rutter. Släckt när hastigheten redan är 1. Statustexten "No LFO on JOG SPEED." kvar.
+- Lampbugg (piano rollens PLAY låst, sedan mönstrets PLAY): motorn har redan EN källa (`previewingLayer`, InstrumentProcessor.cpp:342). Felet var ListenButtons lokala `latched`/`held` (ListenButton.h) som aldrig rensades när en annan källa tog över. Nu släpps de när motorn slutar rapportera knappen som aktiv (`setActive`).
+- Kvar i single-playback-mode: flikbyte ska stoppa bara enskilda preview-knappar (inte PLAY/piano roll-PLAY).
+- Build Debug + alla inbyggda tester gröna.
+- DAW-test (Lemon): (1) dubbelklicka piano rollens PLAY (fastlåst), tryck mönstrets PLAY: piano rollens lampa släcks och mönstret spelar. (2) JOG-panelen: vrid SPEED, tryck RESET: tillbaka till 1x, ett Ctrl+Z ångrar.
