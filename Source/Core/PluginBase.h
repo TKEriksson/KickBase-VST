@@ -356,6 +356,12 @@ public:
     // JOG (D3b): hjulets handpåläggning (<0 = ingen, annars hastighet 0..4 som ersätter parametern) och läget (0 = stannar medan man rör, 1 = fortsätter).
     std::atomic<float> jogManual { -1.0f };
     std::atomic<int> jogMode { 0 };
+    // Hjulets art, sparas i projektet: 0 = JOG (gamla projekt, lägena ovan), 1 = SCRUB (nya projekt), 2 = SPEED (hjulet styr bara hastigheten).
+    // `scrubActive` = hjulet hålls i SCRUB (klockan lämnar värden); `scrubNudgePpq` = hjulets flytt sedan förra blocket (fjärdedelar, negativt = bakåt).
+    static constexpr int jogKindJog = 0, jogKindScrub = 1, jogKindSpeed = 2;
+    std::atomic<int> jogKind { jogKindScrub };
+    std::atomic<bool> scrubActive { false };
+    std::atomic<double> scrubNudgePpq { 0.0 };
     // Global LOOP (D3): av/på och takterna (0-räknade, slutet exklusivt). På = egen klocka som går runt i loopen (DAW:ens transport ignoreras).
     std::atomic<bool> globalLoop { false };
     std::atomic<int> globalLoopStartBar { 0 }, globalLoopEndBar { 4 };

@@ -453,6 +453,11 @@ namespace Params
     {
         layout.add (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { ParamID::jogSpeed, 1 }, "Jog Speed",
                                                                  juce::NormalisableRange<float> (0.0f, 4.0f, 0.001f), 1.0f));
+        addKickToggleParams (layout);
+    }
+
+    void addKickToggleParams (Layout& layout)
+    {
         layout.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { ParamID::kickSynthOn, 1 }, "Kick Synth On", true));
         layout.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { ParamID::kickSampleOn, 1 }, "Kick Sample On", true));
     }

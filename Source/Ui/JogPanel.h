@@ -23,6 +23,24 @@ public:
         nudgeMode.setTooltip ("KEEP GOING - The music plays on while you touch the wheel. Turn it forward to speed up, back to slow down (it never plays backwards).");
         recMode.setTooltip ("REC - Like STOP, but the wheel writes JOG SPEED as a parameter gesture, so the DAW can record your scratch (Write/Touch/Latch). "
                             "JOG SPEED springs back to 1x when you let go.");
+        for (auto* b : { &kindJog, &kindScrub, &kindSpeed })
+        {
+            b->setRadioGroupId (4712);
+            b->setClickingTogglesState (true);
+            b->setColour (juce::TextButton::buttonOnColourId, Theme::pattern);
+            addAndMakeVisible (*b);
+        }
+        kindScrub.setTooltip ("SCRUB - Grab the wheel and the music leaves the DAW's position and follows the wheel: forward plays, backward rewinds, standing still is silence. "
+                              "Let go and it follows the DAW again. Default in new projects.");
+        kindJog.setTooltip ("JOG - The older wheel: STOP, KEEP GOING or REC (see the buttons below). Kept so old projects sound the same.");
+        kindSpeed.setTooltip ("SPEED - The wheel is a big knob for JOG SPEED: turn it forward for faster, back for slower. The speed stays where you leave it (RESET sets 1x).");
+        (processor.jogKind.load() == PluginBase::jogKindSpeed ? kindSpeed : processor.jogKind.load() == PluginBase::jogKindScrub ? kindScrub : kindJog)
+            .setToggleState (true, juce::dontSendNotification);
+        kindJog.onClick = [this] { setKind (PluginBase::jogKindJog); };
+        kindScrub.onClick = [this] { setKind (PluginBase::jogKindScrub); };
+        kindSpeed.onClick = [this] { setKind (PluginBase::jogKindSpeed); };
+        updateKindVisibility();
+
         (processor.jogMode.load() == 2 ? recMode : processor.jogMode.load() == 1 ? nudgeMode : stopMode).setToggleState (true, juce::dontSendNotification);
         stopMode.onClick = [this] { processor.jogMode = 0; };
         nudgeMode.onClick = [this] { processor.jogMode = 1; };
@@ -48,7 +66,9 @@ public:
     ~JogPanel() override // ett hjul som inte hunnit släppas får inte hålla fast tempot eller lämna en öppen gest
     {
         processor.jogManual = -1.0f;
+        processor.scrubActive = false;
         endGesture();
+        endSpeedGesture();
     }
 
     void paint (juce::Graphics& g) override
@@ -123,14 +143,21 @@ public:
         auto area = getLocalBounds().reduced (10);
         auto top = area.removeFromTop (150);
         top.removeFromLeft (150);
-        auto modes = top.removeFromTop (28);
-        stopMode.setBounds (modes.removeFromLeft (56).reduced (0, 2));
+        auto kinds = top.removeFromTop (24);
+        kindJog.setBounds (kinds.removeFromLeft (56).reduced (0, 1));
+        kinds.removeFromLeft (4);
+        kindScrub.setBounds (kinds.removeFromLeft (70).reduced (0, 1));
+        kinds.removeFromLeft (4);
+        kindSpeed.setBounds (kinds.reduced (0, 1));
+        top.removeFromTop (3);
+        auto modes = top.removeFromTop (24);
+        stopMode.setBounds (modes.removeFromLeft (56).reduced (0, 1));
         modes.removeFromLeft (4);
-        nudgeMode.setBounds (modes.removeFromLeft (84).reduced (0, 2));
+        nudgeMode.setBounds (modes.removeFromLeft (84).reduced (0, 1));
         modes.removeFromLeft (4);
-        recMode.setBounds (modes.reduced (0, 2));
-        top.removeFromTop (6);
-        speedKnob.setBounds (top.withSizeKeepingCentre (70, 90));
+        recMode.setBounds (modes.reduced (0, 1));
+        top.removeFromTop (2);
+        speedKnob.setBounds (top.withSizeKeepingCentre (70, juce::jmin (90, top.getHeight())));
         area.removeFromTop (4);
         statusLabel.setBounds (area.removeFromTop (34));
         removeButton.setBounds (area.removeFromTop (26).removeFromLeft (170));
@@ -154,7 +181,18 @@ public:
             return;
         setMouseCursor (juce::MouseCursor::DraggingHandCursor);
         touching = true;
-        if (processor.jogMode.load() == 2)
+        const auto kind = processor.jogKind.load();
+        if (kind == PluginBase::jogKindScrub)
+            processor.scrubActive = true;
+        else if (kind == PluginBase::jogKindSpeed)
+        {
+            if (auto* parameter = processor.apvts.getParameter (ParamID::jogSpeed))
+            {
+                parameter->beginChangeGesture();
+                speedGestureOpen = true;
+            }
+        }
+        else if (processor.jogMode.load() == 2)
             if (auto* parameter = processor.apvts.getParameter (ParamID::jogSpeed))
             {
                 parameter->beginChangeGesture();
@@ -185,6 +223,24 @@ public:
             lastTime = now;
         }
         shownAngle += delta;
+
+        const auto kind = processor.jogKind.load();
+        if (kind == PluginBase::jogKindScrub && delta < 0.0f)
+        {
+            // Bakåt: klockan flyttas bakåt, ett varv = en takt (4 fjärdedelar).
+            const auto ppq = (double) delta / juce::MathConstants<double>::twoPi * 4.0;
+            auto expected = processor.scrubNudgePpq.load();
+            while (! processor.scrubNudgePpq.compare_exchange_weak (expected, expected + ppq)) {}
+        }
+        else if (kind == PluginBase::jogKindSpeed && speedGestureOpen)
+        {
+            // Ett varv = 1x ändring av hastigheten.
+            if (auto* parameter = processor.apvts.getParameter (ParamID::jogSpeed))
+            {
+                const auto current = parameter->convertFrom0to1 (parameter->getValue());
+                parameter->setValueNotifyingHost (parameter->convertTo0to1 (juce::jlimit (0.0f, 4.0f, current + delta / juce::MathConstants<float>::twoPi)));
+            }
+        }
         apply();
     }
 
@@ -194,11 +250,37 @@ public:
         setMouseCursor (wheelBounds().contains (e.getPosition()) ? juce::MouseCursor::DraggingHandCursor : juce::MouseCursor::NormalCursor);
         velocity = 0.0f;
         processor.jogManual = -1.0f;
+        processor.scrubActive = false;
         endGesture();
+        endSpeedGesture();
         repaint();
     }
 
 private:
+    void setKind (int kind)
+    {
+        processor.jogKind = kind;
+        processor.markStateChanged();
+        updateKindVisibility();
+    }
+
+    void updateKindVisibility()
+    {
+        const auto jog = processor.jogKind.load() == PluginBase::jogKindJog;
+        for (auto* b : { &stopMode, &nudgeMode, &recMode })
+            b->setVisible (jog);
+    }
+
+    // SPEED-läget: hastigheten blir kvar där hjulet lämnades, så gesten stängs utan fjädring.
+    void endSpeedGesture()
+    {
+        if (! speedGestureOpen)
+            return;
+        if (auto* parameter = processor.apvts.getParameter (ParamID::jogSpeed))
+            parameter->endChangeGesture();
+        speedGestureOpen = false;
+    }
+
     // REC-läget: hjulet skriver jogSpeed inom en gest. Vid släpp skrivs 1x (fjädring) innan gesten stängs, så att värdens inspelning får med återgången
     // och inget skrivs över efteråt.
     void endGesture()
@@ -223,6 +305,14 @@ private:
 
     void apply()
     {
+        const auto kind = processor.jogKind.load();
+        if (kind == PluginBase::jogKindSpeed)
+            return; // hjulet skriver parametern direkt i mouseDrag
+        if (kind == PluginBase::jogKindScrub)
+        {
+            processor.jogManual = juce::jlimit (0.0f, 4.0f, velocity); // framåt: hjulets fart; stilla eller bakåt: klockan står still (bakåt flyttas den via scrubNudgePpq)
+            return;
+        }
         const auto mode = processor.jogMode.load();
         const auto rate = mode == 1 ? 1.0f + velocity : velocity;
         if (mode == 2 && gestureOpen)
@@ -288,9 +378,10 @@ private:
 
     PluginBase& processor;
     juce::TextButton stopMode { "STOP" }, nudgeMode { "KEEP GOING" }, removeButton { "REMOVE AUTOMATION" }, recMode { "REC" };
+    juce::TextButton kindJog { "JOG" }, kindScrub { "SCRUB" }, kindSpeed { "SPEED" };
     KnobComponent speedKnob;
     juce::Label statusLabel;
-    bool touching = false, gestureOpen = false;
+    bool touching = false, gestureOpen = false, speedGestureOpen = false;
     float lastAngle = 0.0f, shownAngle = 0.0f, velocity = 0.0f, currentRate = 1.0f, shownProgress = 0.0f;
     double lastTime = 0.0;
 };

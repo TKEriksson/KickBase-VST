@@ -16,6 +16,7 @@ namespace
         Modulation::addParameters (layout);
         MasterSection::addParameters (layout);
         Params::addMasterParams (layout);
+        Params::addKickToggleParams (layout); // readKick läser dem
         return layout;
     }
 }

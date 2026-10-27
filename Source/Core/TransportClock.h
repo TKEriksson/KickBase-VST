@@ -71,6 +71,11 @@ public:
     void setJogRate (double rate)      { jogRate = juce::jlimit (0.0, 4.0, rate); }
     void seekFreeRunToBar (juce::int64 bar);
 
+    // SCRUB: medan hjulet hålls lämnar klockan värden (börjar där värden är) och går på egen hand; vid släpp följer den värden igen.
+    // `nudgePpq` flyttar klockan (negativt = bakåt) i nästa block.
+    void setScrub (bool on)            { scrubRequested = on; }
+    void nudge (double ppq)            { pendingNudgePpq += ppq; }
+
     // Global LOOP (D3): den egna klockan går runt mellan startBar och endBar (0-räknade, slutet exklusivt). DAW:ens transport ignoreras då,
     // eftersom en VST3 inte kan stoppa den. Hoppet görs vid blockstart, så överskottet (högst ett block) behålls.
     void setLoop (bool on, juce::int64 startBar, juce::int64 endBar)
@@ -112,6 +117,8 @@ private:
     bool hostPlaying = false;
     bool forceFreeRun = false;
     bool hold = false;
+    bool scrubRequested = false, scrubbing = false;
+    double pendingNudgePpq = 0.0;
     double jogRate = 1.0;
     double freeRunBpm = 0.0;
     bool loopOn = false;

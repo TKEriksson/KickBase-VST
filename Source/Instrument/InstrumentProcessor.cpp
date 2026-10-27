@@ -153,6 +153,9 @@ void InstrumentProcessor::processChunk (juce::AudioBuffer<float>& buffer, juce::
     clock.setHold (transportHold.load());
     clock.setJogRate (jogManual.load() >= 0.0f ? (double) jogManual.load() : (double) params.get (ParamID::jogSpeed));
     clock.setLoop (globalLoop.load(), globalLoopStartBar.load(), globalLoopEndBar.load());
+    clock.setScrub (scrubActive.load());
+    if (const auto nudge = scrubNudgePpq.exchange (0.0); nudge != 0.0)
+        clock.nudge (nudge);
     clock.beginBlock (getHostPosition(), numSamples);
     if (const auto seekBar = seekBarRequest.exchange (-1); seekBar >= 0)
         clock.seekFreeRunToBar (seekBar);

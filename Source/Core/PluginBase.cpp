@@ -605,6 +605,7 @@ void PluginBase::getStateInformation (juce::MemoryBlock& destData)
     for (int channel = 0; channel < numEffectChannels; ++channel)
         state.setProperty ("presetFx" + juce::String (channel + 1), fxPresetNames[(size_t) channel], nullptr);
     state.setProperty ("previewNote", previewNote.load(), nullptr);
+    state.setProperty ("jogKind", jogKind.load(), nullptr);
     state.setProperty ("fxKnobsV", Effects::knobsVersion, nullptr);
     for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
         state.setProperty ("layerName" + juce::String (layer + 1), layerNames[(size_t) layer], nullptr);
@@ -715,6 +716,7 @@ void PluginBase::setStateInformation (const void* data, int sizeInBytes)
     for (int channel = 0; channel < numEffectChannels; ++channel)
         fxPresetNames[(size_t) channel] = state.getProperty ("presetFx" + juce::String (channel + 1), fxPresetNames[(size_t) channel]).toString();
     previewNote = juce::jlimit (0, 127, (int) state.getProperty ("previewNote", 60));
+    jogKind = juce::jlimit (0, 2, (int) state.getProperty ("jogKind", jogKindJog)); // saknas i gamla projekt: de behåller JOG
     for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
         layerNames[(size_t) layer] = state.getProperty ("layerName" + juce::String (layer + 1), juce::String()).toString();
     for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)

@@ -162,6 +162,7 @@ namespace Params
     void addFxParams (Layout& layout);
     void addMasterParams (Layout& layout);
     void addJogParams (Layout& layout); // D3b: sist i layouten
+    void addKickToggleParams (Layout& layout); // kickens SYNTH/SAMPLE på/av; läses av readKick, så FX-pluginet behöver dem också
 
     juce::StringArray keyNames();
     float midiToHz (float midiNote);
