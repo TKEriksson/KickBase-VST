@@ -82,3 +82,9 @@
 - undotest finns inte på de gamla grenarna (verktyget saknas), så exit 1 där är inte ett fel.
 - OBS till projektledaren: båda grenarna ligger på en gammal main. Slicertesterna i 4dad3e2/d254e2d gäller den gamla MAP TO-slicern som E2 steg 2 tog bort i w2, så de krockar med eller ersätts av E2 vid merge. Merga E2 först och släng/skriv om de två slicertesterna.
 - w2 ombyggd efteråt behövs innan nästa w2-test (build\Debug höll fix-slicer-test-bygget).
+- Svar på projektledarens fråga (H5, de tre övriga grenarna):
+  - `content-d1` (a84e569): bara `docs/content-d1-report.md`, ingen kod, inget bygge behövs.
+  - `content-ph` (3447d16): `juce::Identifier`-nycklar i `applyEnvelope`. Samma ändring finns redan i w2 (`ToolLayer.cpp:222-232`), som byggs och testas gröna, men commiten är inte förfader till w2. Överflödig vid merge (ger konflikt eller tom commit).
+  - `fix-matrix` (bc3e9f8): `maxInstruments` utan `Modulation::`. Samma ändring finns redan i w2 (`Tool.cpp:1785`). Överflödig på samma sätt.
+- Slicertesterna i 4dad3e2 (+2 rader) och d254e2d (0,8 s-WAV, peak per takt) gäller den gamla MAP TO-slicern. Beslut: släng dem. E2 steg 2 har nya tester (syncSliceRows, Slice 3 mot skivindex 2) i `Tools/StateTests.cpp`. Vid merge: ta E2:s version av StateTests, ta inte de två commitarna.
+- Egen lista mot loggen: A5, B2, B4, D2, D4, H1, H3, H4 och E2 är klara. Kvar är bara E1 (designlistan som Tobias underkände).
