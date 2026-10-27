@@ -1,5 +1,6 @@
 #include <set>
 #include "PluginBase.h"
+#include "PresetCategories.h"
 #include <BinaryData.h>
 #include "AiChat.h"
 #include "MixAnalysis.h"
@@ -1268,7 +1269,7 @@ std::unique_ptr<juce::XmlElement> PluginBase::buildPresetXml (Presets::Section s
     return rootPtr;
 }
 
-bool PluginBase::saveUserPreset (Presets::Section section, const juce::String& name, int layer, const PresetLink* link)
+bool PluginBase::saveUserPreset (Presets::Section section, const juce::String& name, int layer, const PresetLink* link, const juce::String& category)
 {
     const auto fileName = juce::File::createLegalFileName (name.trim());
     const auto directory = Presets::folder (section, effectVersion);
@@ -1276,6 +1277,9 @@ bool PluginBase::saveUserPreset (Presets::Section section, const juce::String& n
         return false;
 
     const auto root = buildPresetXml (section, layer, link);
+    // Kategorin är bara ett valfritt attribut: filerna ligger kvar platta i mappen så att länkar (findUserPreset) fortsätter hitta dem.
+    if (const auto validCategory = PresetCategories::normalise (category); validCategory.isNotEmpty() && PresetCategories::usedBy (section))
+        root->setAttribute ("category", validCategory);
     if (! root->writeTo (directory.getChildFile (fileName + presetFileExtension)))
         return false;
 
@@ -1654,6 +1658,13 @@ PluginBase::PresetLink PluginBase::readPresetLink (const juce::File& presetFile)
     return link;
 }
 
+juce::String PluginBase::readPresetCategory (const juce::File& presetFile)
+{
+    if (const auto xml = juce::XmlDocument::parse (presetFile))
+        return PresetCategories::normalise (xml->getStringAttribute ("category"));
+    return {};
+}
+
 juce::File PluginBase::findUserPreset (Presets::Section section, const juce::String& name) const
 {
     if (name.isEmpty())
@@ -1689,7 +1700,7 @@ int PluginBase::firstFreeFxChannel()
     return -1;
 }
 
-bool PluginBase::saveInstrumentPreset (Presets::Section section, int layer, const juce::String& name, const juce::String& fxName)
+bool PluginBase::saveInstrumentPreset (Presets::Section section, int layer, const juce::String& name, const juce::String& fxName, const juce::String& category)
 {
     PresetLink link;
     const auto channel = sendChannelOf (section, layer);
@@ -1702,16 +1713,16 @@ bool PluginBase::saveInstrumentPreset (Presets::Section section, int layer, cons
         link.amount = apvts.getRawParameterValue (section == Presets::Section::kick ? juce::String (ParamID::kickFxAmount)
                                                                                      : ParamID::bass (layer, InstrumentField::fxAmount))->load();
     }
-    return saveUserPreset (section, name, layer, link.valid() ? &link : nullptr);
+    return saveUserPreset (section, name, layer, link.valid() ? &link : nullptr, category);
 }
 
-bool PluginBase::savePatternPreset (int layer, const juce::String& name, const juce::String& instrumentName, const juce::String& fxName)
+bool PluginBase::savePatternPreset (int layer, const juce::String& name, const juce::String& instrumentName, const juce::String& fxName, const juce::String& category)
 {
     PresetLink link;
     if (instrumentName.trim().isNotEmpty())
     {
         const auto kick = layer == Pattern::kickLayer;
-        if (! saveInstrumentPreset (kick ? Presets::Section::kick : Presets::Section::bass, kick ? 0 : layer, instrumentName, fxName))
+        if (! saveInstrumentPreset (kick ? Presets::Section::kick : Presets::Section::bass, kick ? 0 : layer, instrumentName, fxName, category))
             return false;
         link.kind = kick ? "kick" : "instrument";
         link.name = juce::File::createLegalFileName (instrumentName.trim());

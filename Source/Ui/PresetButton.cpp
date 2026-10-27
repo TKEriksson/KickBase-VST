@@ -30,6 +30,7 @@ PresetButton::PresetButton (PluginBase& p, Presets::Section sectionIn, juce::Col
     button.setTooltip (displayName (processor, section) + " presets");
     button.onClick = [this] { showMenu(); };
     addAndMakeVisible (button);
+    setWantsKeyboardFocus (true); // piltangenter bläddrar bland presets (keyPressed)
 
     updateText();
     startTimerHz (4); // projekt och presets kan laddas medan fönstret är öppet
@@ -59,43 +60,154 @@ void PresetButton::updateText()
         button.setButtonText (text);
 }
 
+std::vector<PresetButton::Entry> PresetButton::buildEntries() const
+{
+    std::vector<Entry> entries;
+    const auto categorised = usesCategories();
+    const auto patterns = section == Presets::Section::pattern;
+    const auto channelPresets = section == Presets::Section::effects;
+
+    // Lägger till raderna kategori för kategori (i tabellens ordning), och sist dem utan kategori.
+    const auto addGrouped = [&] (std::vector<Entry> group)
+    {
+        if (! categorised)
+        {
+            entries.insert (entries.end(), group.begin(), group.end());
+            return;
+        }
+        for (const auto& category : PresetCategories::names())
+            for (const auto& entry : group)
+                if (entry.category == category)
+                    entries.push_back (entry);
+        for (const auto& entry : group)
+            if (entry.category.isEmpty())
+                entries.push_back (entry);
+    };
+
+    if (! patterns && ! channelPresets)
+    {
+        const auto effectVersion = processor.isEffectVersion();
+        std::vector<Entry> factory;
+        for (int i = 0; i < Presets::factoryCount (section, effectVersion); ++i)
+        {
+            Entry entry;
+            entry.name = Presets::factoryName (section, effectVersion, i);
+            entry.category = categorised ? PresetCategories::factoryCategory (section, entry.name) : juce::String();
+            entry.factoryIndex = i;
+            factory.push_back (entry);
+        }
+        addGrouped (factory);
+    }
+
+    std::vector<Entry> user;
+    for (const auto& file : processor.getUserPresets (section, layer))
+    {
+        Entry entry;
+        entry.name = file.getFileNameWithoutExtension();
+        entry.category = categorised ? PluginBase::readPresetCategory (file) : juce::String();
+        entry.file = file;
+        user.push_back (entry);
+    }
+    addGrouped (user);
+    return entries;
+}
+
+void PresetButton::loadEntry (const Entry& entry)
+{
+    if (entry.factoryIndex >= 0)
+        processor.loadFactoryPreset (section, entry.factoryIndex, layer);
+    else
+        loadFile (entry.file);
+    updateText();
+}
+
+void PresetButton::step (int direction)
+{
+    const auto entries = buildEntries();
+    if (entries.empty())
+        return;
+    const auto current = processor.getPresetName (section, layer);
+    auto index = -1;
+    for (int i = 0; i < (int) entries.size(); ++i)
+        if (entries[(size_t) i].name == current)
+            index = i;
+    const auto count = (int) entries.size();
+    const auto next = index < 0 ? (direction > 0 ? 0 : count - 1) : (index + direction + count) % count;
+    loadEntry (entries[(size_t) next]);
+}
+
+bool PresetButton::keyPressed (const juce::KeyPress& key)
+{
+    if (key.getModifiers().isAnyModifierKeyDown())
+        return false;
+    if (key == juce::KeyPress::leftKey || key == juce::KeyPress::upKey)
+        step (-1);
+    else if (key == juce::KeyPress::rightKey || key == juce::KeyPress::downKey)
+        step (1);
+    else
+        return false;
+    return true;
+}
+
 void PresetButton::showMenu()
 {
-    const auto effectVersion = processor.isEffectVersion();
     const auto current = processor.getPresetName (section, layer);
-    const auto userPresets = processor.getUserPresets (section, layer);
+    const auto entries = buildEntries();
+    const auto categorised = usesCategories();
 
     juce::PopupMenu menu;
     // Mönster: bara de man sparat själv. Ett sparat mönster innehåller alla rader (kick, instrument, pianorullar, längder, GATE och groove), så ingen
     // rad råkar bli kvar eller tömd. Färdiga rytmer för en rad finns i FILL.
     const auto patterns = section == Presets::Section::pattern;
     const auto channelPresets = section == Presets::Section::effects;
-    if (! patterns && ! channelPresets)
+
+    // Menyns id är radens plats i `entries`, så undermenyerna har unika id.
+    const auto addGroup = [&] (const juce::String& header, bool wantFactory)
     {
-        menu.addSectionHeader ("FACTORY");
-        for (int i = 0; i < Presets::factoryCount (section, effectVersion); ++i)
+        auto any = false;
+        for (const auto& entry : entries)
+            any = any || (entry.factoryIndex >= 0) == wantFactory;
+        if (! any)
+            return;
+        menu.addSectionHeader (header);
+        if (! categorised)
         {
-            const auto name = Presets::factoryName (section, effectVersion, i);
-            menu.addItem (factoryBase + i, name, true, name == current);
+            for (size_t i = 0; i < entries.size(); ++i)
+                if ((entries[i].factoryIndex >= 0) == wantFactory)
+                    menu.addItem (factoryBase + (int) i, entries[i].name, true, entries[i].name == current);
+            return;
         }
-    }
+        for (const auto& category : PresetCategories::names())
+        {
+            juce::PopupMenu sub;
+            auto ticked = false;
+            for (size_t i = 0; i < entries.size(); ++i)
+                if ((entries[i].factoryIndex >= 0) == wantFactory && entries[i].category == category)
+                {
+                    sub.addItem (factoryBase + (int) i, entries[i].name, true, entries[i].name == current);
+                    ticked = ticked || entries[i].name == current;
+                }
+            if (sub.getNumItems() > 0)
+                menu.addSubMenu (category, sub, true, nullptr, ticked);
+        }
+        for (size_t i = 0; i < entries.size(); ++i)
+            if ((entries[i].factoryIndex >= 0) == wantFactory && entries[i].category.isEmpty())
+                menu.addItem (factoryBase + (int) i, entries[i].name, true, entries[i].name == current);
+    };
 
     if (patterns || channelPresets)
     {
         menu.addSectionHeader (patterns ? "PATTERN PRESETS - " + (layer == Pattern::kickLayer ? juce::String ("KICK") : processor.getLayerName (layer))
                                         : "FX PRESETS - " + Effects::channelLabel (layer));
-        if (userPresets.isEmpty())
+        if (entries.empty())
             menu.addItem (nothingId, "(none saved yet)", false);
+        for (size_t i = 0; i < entries.size(); ++i)
+            menu.addItem (factoryBase + (int) i, entries[i].name, true, entries[i].name == current);
     }
-    if (! userPresets.isEmpty())
+    else
     {
-        if (! patterns && ! channelPresets)
-            menu.addSectionHeader ("USER");
-        for (int i = 0; i < userPresets.size(); ++i)
-        {
-            const auto name = userPresets[i].getFileNameWithoutExtension();
-            menu.addItem (userBase + i, name, true, name == current);
-        }
+        addGroup ("FACTORY", true);
+        addGroup ("USER", false);
     }
 
     menu.addSeparator();
@@ -103,12 +215,10 @@ void PresetButton::showMenu()
     menu.addItem (openFolderId, "Open preset folder");
 
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&button),
-                        [this, userPresets] (int result)
+                        [this, entries] (int result)
     {
-        if (result >= userBase && result < userBase + userPresets.size())
-            loadFile (userPresets[result - userBase]);
-        else if (result >= factoryBase && result < userBase)
-            processor.loadFactoryPreset (section, result - factoryBase, layer);
+        if (result >= factoryBase && result < factoryBase + (int) entries.size())
+            loadEntry (entries[(size_t) (result - factoryBase)]);
         else if (result == saveId)
             askForNameAndSave();
         else if (result == openFolderId)
@@ -308,6 +418,14 @@ void PresetButton::askForNameAndSave()
         const auto fxName = processor.getPresetName (Presets::Section::effects, effectChannel);
         window->addTextEditor ("fx", fxName.isNotEmpty() ? fxName : baseName + " FX", "FX preset name:");
     }
+    // Kategori (kick och instrument): hör ihop med instrumentet, så även ett mönster som tar med instrumentet får rutan.
+    const auto categoryApplies = PresetCategories::usedBy (sourceSection) && ! processor.isEffectVersion() && (instrumentPreset || patternRow);
+    if (categoryApplies)
+    {
+        window->addComboBox ("category", PresetCategories::names(), "Category:");
+        if (auto* box = window->getComboBoxComponent ("category"))
+            box->setSelectedItemIndex (PresetCategories::names().indexOf (PresetCategories::defaultName()), juce::dontSendNotification);
+    }
     window->addButton ("Save", 1, juce::KeyPress (juce::KeyPress::returnKey));
     window->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
 
@@ -321,11 +439,13 @@ void PresetButton::askForNameAndSave()
         const auto* link = window->getComboBoxComponent ("link");
         const auto withLink = link != nullptr && link->getSelectedItemIndex() == 1;
         const auto fxName = withLink && window->getTextEditor ("fx") != nullptr ? window->getTextEditorContents ("fx") : juce::String();
+        const auto* categoryBox = window->getComboBoxComponent ("category");
+        const auto category = categoryBox != nullptr ? categoryBox->getText() : juce::String();
         auto saved = false;
         if (safeThis->section == Presets::Section::bass || safeThis->section == Presets::Section::kick)
-            saved = safeThis->processor.saveInstrumentPreset (safeThis->section, safeThis->layer, name, fxName);
+            saved = safeThis->processor.saveInstrumentPreset (safeThis->section, safeThis->layer, name, fxName, category);
         else if (safeThis->section == Presets::Section::pattern)
-            saved = safeThis->processor.savePatternPreset (safeThis->layer, name, withLink ? window->getTextEditorContents ("instrument") : juce::String(), fxName);
+            saved = safeThis->processor.savePatternPreset (safeThis->layer, name, withLink ? window->getTextEditorContents ("instrument") : juce::String(), fxName, category);
         else
             saved = safeThis->processor.saveUserPreset (safeThis->section, name, safeThis->layer);
         if (! saved)

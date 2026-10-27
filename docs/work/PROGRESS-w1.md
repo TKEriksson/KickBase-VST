@@ -262,3 +262,10 @@ FL-punkter: bara en på/av per modul, instrumentets på/av längst till vänster
 - Kvar i single-playback-mode: flikbyte ska stoppa bara enskilda preview-knappar (inte PLAY/piano roll-PLAY).
 - Build Debug + alla inbyggda tester gröna.
 - DAW-test (Lemon): (1) dubbelklicka piano rollens PLAY (fastlåst), tryck mönstrets PLAY: piano rollens lampa släcks och mönstret spelar. (2) JOG-panelen: vrid SPEED, tryck RESET: tillbaka till 1x, ett Ctrl+Z ångrar.
+
+## 3g/3g-2 Presetkategorier + piltangenter (Arbetare 1, 27 okt)
+- Kategori = attribut `category` i .mofp (kick/bass), mapp fortfarande platt (avvikelse från "undermapp + attribut": `findUserPreset` slår upp platt). Fabrikskategorier via namnmap i `PresetCategories.cpp` (PresetData.inl orörd, index/hashar oförändrade). Standard: GAMLA DEFAULT.
+- `PresetButton.cpp`: undermenyer per kategori, spara-dialog med Category-lista, `keyPressed` (vänster/upp = förra, höger/ned = nästa, samma ordning som menyn).
+- Ny trailing-parameter `category` på save-funktionerna (PluginBase.h/.cpp).
+- Test: Debug build + alla tester gröna; rendersig oförändrad (Init 94f0a1b6bd8a3c7f, Empty 7d67e7bb66bb432b, instr 1 f7139084f716c127).
+- DAW-test (Lemon): (1) klicka preset-knappen på Kick/Bass: kategorier som undermenyer. (2) Spara preset: välj kategori, syns under rätt rubrik. (3) Klicka knappen, tryck piltangenter: bläddrar. Om Lemon tar tangenterna: notera.

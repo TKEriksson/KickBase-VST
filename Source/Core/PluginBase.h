@@ -132,15 +132,16 @@ public:
         bool valid() const { return name.isNotEmpty(); }
     };
     static PresetLink readPresetLink (const juce::File& presetFile);
+    static juce::String readPresetCategory (const juce::File& presetFile); // tom om filen saknar (giltig) kategori
     juce::File findUserPreset (Presets::Section section, const juce::String& name) const;
     int sendChannelOf (Presets::Section section, int layer) const;      // effektkanalen (0-10) som kicken (Section::kick) eller instrumentet skickar till, eller -1
     bool fxChannelHasEffects (int channel) const;                        // någon plats på kanalen har en effekt
     int firstFreeFxChannel();                                            // första kanalen utan sändningar, effekter eller EQ, eller -1
 
     // Sparar ett instrument-/kick-preset; med fxName också effektkanalen det skickar till som FX-preset med det namnet, och en länk dit.
-    bool saveInstrumentPreset (Presets::Section section, int layer, const juce::String& name, const juce::String& fxName = {});
+    bool saveInstrumentPreset (Presets::Section section, int layer, const juce::String& name, const juce::String& fxName = {}, const juce::String& category = {});
     // Sparar en rads mönster-preset; med instrumentName också instrumentet (kicken för kickraden) som eget preset, med sin effekt om fxName anges.
-    bool savePatternPreset (int layer, const juce::String& name, const juce::String& instrumentName = {}, const juce::String& fxName = {});
+    bool savePatternPreset (int layer, const juce::String& name, const juce::String& instrumentName = {}, const juce::String& fxName = {}, const juce::String& category = {});
 
     // fxChannel: kanalen den länkade effekten läggs på; -2 = första lediga (finns ingen hoppas effekten över), -1 = ingen effekt, annars den kanalen.
     struct LinkedLoad
@@ -153,7 +154,7 @@ public:
     LinkedLoad loadInstrumentPreset (Presets::Section section, int layer, const juce::File& file, int fxChannel = -2);
     LinkedLoad loadPatternPreset (int layer, const juce::File& file, bool withInstrument, int fxChannel = -2);
 
-    bool saveUserPreset (Presets::Section section, const juce::String& name, int layer = 0, const PresetLink* link = nullptr);
+    bool saveUserPreset (Presets::Section section, const juce::String& name, int layer = 0, const PresetLink* link = nullptr, const juce::String& category = {});
     std::unique_ptr<juce::XmlElement> buildPresetXml (Presets::Section section, int layer, const PresetLink* link = nullptr); // samma innehåll som filen
 
     // Spår = ett instrument och dess rad i mönstret. Instrumenten ligger på fasta platser (0-9), så ett spår flyttas, dupliceras och raderas genom

@@ -90,6 +90,7 @@ set(PLUGIN_SOURCES
     Source/Core/BridgeLink.cpp
     Source/Core/Params.cpp
     Source/Core/Presets.cpp
+    Source/Core/PresetCategories.cpp
     Source/Core/PluginBase.cpp
     Source/Ui/KickbaseLookAndFeel.cpp
     Source/Ui/KickLibraryPanel.cpp
