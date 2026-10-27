@@ -66,6 +66,15 @@ private:
     // och tonen gäller alla provlyssningar.
     ListenButton listenAll, listenRoll; // listenRoll syns bara medan en pianorulle är öppen
     bool rollShown = false;
+    void syncRollButton(); // visar/döljer LISTEN PIANO ROLL när en pianorulle öppnas eller stängs
+    // Egen fast takt (10 Hz): topbarens takt kan sänkas av OPTIMIZATIONS, och knappen ska komma direkt när rullen öppnas.
+    struct RollWatch : juce::Timer
+    {
+        explicit RollWatch (std::function<void()> f) : callback (std::move (f)) { startTimerHz (10); }
+        void timerCallback() override { callback(); }
+        std::function<void()> callback;
+    };
+    std::unique_ptr<RollWatch> rollWatch;
     juce::ComboBox noteBox;
     juce::TextButton restartButton { "" };       // börjar om räknaren och mönstret vid 1.1 (egen klocka)
     juce::Rectangle<int> previewGroup, bpmPill, keyBlock;

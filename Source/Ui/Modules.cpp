@@ -90,6 +90,8 @@ HeaderBar::HeaderBar (PluginBase& p, const juce::String& subtitleIn)
     addAndMakeVisible (projectButton);
     updateAiTooltip();
     startVisualTimer (Settings::Visual::topBar, 30);
+    if (processor.getKeyboardState() != nullptr)
+        rollWatch = std::make_unique<RollWatch> ([this] { syncRollButton(); });
 }
 
 void HeaderBar::updateAiTooltip()
@@ -296,6 +298,18 @@ void HeaderBar::chooseExportTarget (int part, int bars)
     });
 }
 
+void HeaderBar::syncRollButton()
+{
+    const auto rollOpen = processor.openRollLayer.load() >= 0;
+    if (rollOpen == rollShown)
+        return;
+    rollShown = rollOpen;
+    resized();
+    if (auto* parent = getParentComponent())
+        parent->resized(); // mätaren sitter efter PREVIEWS-rutan
+    repaint();
+}
+
 void HeaderBar::timerCallback()
 {
     followVisualRate();
@@ -307,15 +321,7 @@ void HeaderBar::timerCallback()
     if (processor.getKeyboardState() != nullptr)
     {
         listenAll.setActive (processor.previewingLayer.load() == PluginBase::previewAllRows);
-        const auto rollOpen = processor.openRollLayer.load() >= 0;
-        if (rollOpen != rollShown)
-        {
-            rollShown = rollOpen;
-            resized();
-            if (auto* parent = getParentComponent())
-                parent->resized(); // mätaren sitter efter PREVIEWS-rutan
-            repaint();
-        }
+        syncRollButton();
         listenRoll.setActive (rollShown && processor.previewingLayer.load() == processor.openRollLayer.load());
         if (noteBox.getSelectedId() != processor.previewNote.load() + 1)
             noteBox.setSelectedId (processor.previewNote.load() + 1, juce::dontSendNotification);

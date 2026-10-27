@@ -66,6 +66,10 @@ flikraden (30 px reserverad i `resized`), synlig bara för flikar som har anrop.
 - Tonnamn vid pitch-env-noderna fanns redan i UI:t (`KickDisplay.cpp:541-548`, `describe`). Nytt: `get_state` och kick-envelope-svaret ger
   `kick_pitch_nodes` = [{ ms, semitones_above_tail, hz, note }] (`ToolLayer.cpp`, `pitchNodeNotes`), samma uträkning som grafen (C4 = 60).
 
+## B5 (LISTEN PIANO ROLL-knappen kommer sent) – Debug grönt, ej provad i FL
+Orsak: `rollShown` kollades bara i `HeaderBar::timerCallback`, som går i TOP BAR-takten (`startVisualTimer`, `Modules.cpp:92`); OPTIMIZATIONS/REDUCE ANIMATIONS kan sänka den kraftigt.
+Gjort (Arbetare 1): `HeaderBar::syncRollButton()` + egen `RollWatch`-timer på 10 Hz (`Modules.h`, `Modules.cpp`), bara i instrumentet (där `getKeyboardState()` finns).
+
 ## FL-testlista (samlas av projektledaren)
 - A1: C5 från FL startar mönstret med pianorullen öppen; MIDI IN gäller bara när värden står still.
 - A2/T13: rad 1 takt + Loop 1-2; 3-takters mönster med kick i varje takt (takt 3 ska ha alla slag); "AUTO 2 takter"-misstanken (UI-visning/redigeringsväg utan `refreshLengths`).
