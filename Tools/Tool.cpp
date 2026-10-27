@@ -2306,6 +2306,31 @@ namespace
                         else
                             check (peak > 0.3f * 0.85f && peak < 0.3f * 1.15f, (juce::String ("FX2: ") + name + " lämnar MID-HI orört (HIGH DEPTH 0)").toRawUTF8());
                     }
+            // Phase Rotation: 60 Hz-sinus. 180 deg vänder fasen (korrelation -1), 90 deg ger kvadratur (0), nivån är oförändrad.
+            for (const auto rotation : { 90.0f, 180.0f })
+            {
+                double dot = 0.0, in2 = 0.0, out2 = 0.0;
+                runEffect (EffectType::phaseRotation, { { 0, 60.0f }, { 1, rotation } }, 40,
+                           [&] (juce::AudioBuffer<float>& b, int block)
+                           {
+                               for (int i = 0; i < b.getNumSamples(); ++i)
+                                   for (int ch = 0; ch < 2; ++ch)
+                                       b.setSample (ch, i, 0.3f * (float) std::sin (juce::MathConstants<double>::twoPi * 60.0 * (block * blockSize + i) / renderRate));
+                           },
+                           [&] (const juce::AudioBuffer<float>& b, int block)
+                           {
+                               if (block >= 30)
+                                   for (int i = 0; i < b.getNumSamples(); ++i)
+                                   {
+                                       const auto in = 0.3 * std::sin (juce::MathConstants<double>::twoPi * 60.0 * (block * blockSize + i) / renderRate);
+                                       const auto out = (double) b.getSample (0, i);
+                                       dot += in * out; in2 += in * in; out2 += out * out;
+                                   }
+                           });
+                const auto correlation = dot / std::sqrt (in2 * out2 + 1.0e-12);
+                check (std::abs (std::sqrt (out2 / in2) - 1.0) < 0.02, "FX2: PHASE ROTATION behåller nivån");
+                check (rotation > 135.0f ? correlation < -0.98 : std::abs (correlation) < 0.05, "FX2: PHASE ROTATION vrider fasen vid FREQ");
+            }
             // Octaver: oktaven ner/upp läggs ovanpå originalet (toppen blir högre än ingången) och ljudet är ändligt; av = orört.
             for (const auto amount : { 0.0f, 1.0f })
             {

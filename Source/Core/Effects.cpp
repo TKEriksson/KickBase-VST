@@ -63,7 +63,7 @@ namespace Effects
     StringArray typeNames()
     {
         return { "Off", "Filter", "Distortion", "EQ", "Chorus", "Phaser", "Echo", "Reverb",
-                 "Compressor", "Trance Gate", "Comb", "Ring Mod", "Bitcrusher", "Auto Filter", "Maximizer", "Sidechain", "Disperser", "Widener", "Flanger", "Transient", "Dynamic EQ", "Octaver", "Band Ducker", "Shimmer", "Low Multiplier", "Sidechain Curve", "Sidechain 2-Band" };
+                 "Compressor", "Trance Gate", "Comb", "Ring Mod", "Bitcrusher", "Auto Filter", "Maximizer", "Sidechain", "Disperser", "Widener", "Flanger", "Transient", "Dynamic EQ", "Octaver", "Band Ducker", "Shimmer", "Low Multiplier", "Sidechain Curve", "Sidechain 2-Band", "Phase Rotation" };
     }
 
     String name (EffectType type)
@@ -74,7 +74,7 @@ namespace Effects
     String shortName (EffectType type)
     {
         const char* names[] { "-", "FILT", "DIST", "EQ", "CHOR", "PHAS", "ECHO", "VERB",
-                              "COMP", "GATE", "COMB", "RING", "CRSH", "AUTO", "MAX", "SIDE", "DISP", "WIDE", "FLNG", "TRAN", "DEQ", "OCT", "BDUC", "SHIM", "LMUL", "SCRV", "SC2B" };
+                              "COMP", "GATE", "COMB", "RING", "CRSH", "AUTO", "MAX", "SIDE", "DISP", "WIDE", "FLNG", "TRAN", "DEQ", "OCT", "BDUC", "SHIM", "LMUL", "SCRV", "SC2B", "ROT" };
         return names[jlimit (0, numEffectTypes - 1, (int) type)];
     }
 
@@ -131,6 +131,7 @@ namespace Effects
             case Unit::bits:    return String (v, 1) + " bit";
             case Unit::times:   return String (roundToInt (v)) + "x";
             case Unit::octaves: return String (v, 1) + " oct";
+            case Unit::degrees: return String (roundToInt (v)) + " deg";
             case Unit::plain:   break;
         }
         return String (v, 2);
@@ -315,6 +316,11 @@ namespace Effects
                 value ("HIGH DEPTH", 0.0f, 1.0f, 0.3f, 0.3f, Unit::percent),
                 value ("LOW REL", 1.0f, 800.0f, 1.0f, 1.0f, Unit::ms),
                 value ("HIGH REL", 1.0f, 800.0f, 1.0f, 1.0f, Unit::ms),
+                mixKnob (1.0f) };
+            // PHASE ROTATION (som Voxengo PHA-979): vrider fasen vid FREQ (kickens/basens grundton) utan att ändra nivån. Samma vridning på L och R.
+            table[(size_t) EffectType::phaseRotation] = {
+                value ("FREQ", 20.0f, 300.0f, 60.0f, 60.0f, Unit::hz),
+                value ("ROTATION", 0.0f, 360.0f, 0.0f, 180.0f, Unit::degrees),
                 mixKnob (1.0f) };
             return table;
         }();
@@ -1714,6 +1720,43 @@ namespace
         }
     };
 
+    // PHASE ROTATION: två första ordningens allpass i serie. Vid FREQ ger varje steg halva vridningen (fasen -2*atan(f/fc) per steg), så
+    // fc = f / tan(ROTATION/4). Nivån är oförändrad; fasen vrids mjukt över frekvensen (0 deg = förbi, 360 deg = lika med 0 vid FREQ).
+    struct PhaseRotationFx
+    {
+        struct Stage
+        {
+            float x1 = 0.0f, y1 = 0.0f;
+            float process (float x, float a) { const auto y = a * x + x1 - a * y1; x1 = x; y1 = y; return y; }
+        };
+        std::array<std::array<Stage, 2>, 2> stages;
+
+        void prepare (const dsp::ProcessSpec&) { reset(); }
+        void reset() { for (auto& channel : stages) for (auto& s : channel) s = {}; }
+
+        void process (AudioBuffer<float>& buffer, int numSamples, const Values& k, const Context& context)
+        {
+            const auto freq = k[0], rotation = k[1], wet = k[2];
+            if (rotation < 0.5f)
+                return;
+            const auto quarter = (double) jlimit (0.1f, 359.9f, rotation) * MathConstants<double>::pi / 720.0; // ROTATION/4 i radianer
+            const auto fc = jlimit (1.0, context.sampleRate * 0.45, (double) freq / std::tan (quarter));
+            const auto t = std::tan (MathConstants<double>::pi * fc / context.sampleRate);
+            const auto a = (float) ((t - 1.0) / (t + 1.0));
+            for (int ch = 0; ch < std::min (2, buffer.getNumChannels()); ++ch)
+            {
+                auto* data = buffer.getWritePointer (ch);
+                auto& chain = stages[(size_t) ch];
+                for (int i = 0; i < numSamples; ++i)
+                {
+                    const auto dry = data[i];
+                    const auto x = chain[1].process (chain[0].process (dry, a), a);
+                    data[i] = dry + (x - dry) * wet;
+                }
+            }
+        }
+    };
+
     // WIDENER: bredd på sida/mitt-signalen (0 = mono, 100 % = orört, 200 % = dubbel sida), BASS MONO gör allt under frekvensen mono
     // (så att basen håller ihop), PAN är en balans. Delningen är ett en-pols lågpass; höga delen är resten, så summan är exakt.
     struct WidenerFx
@@ -1981,6 +2024,7 @@ struct EffectChain::Impl
         LowMultiplierFx lowMultiplier;
         SidechainCurveFx sidechainCurve;
         SidechainBandsFx sidechainBands;
+        PhaseRotationFx phaseRotation;
 
         template <typename Function>
         void forEachEffect (Function&& function)
@@ -1988,7 +2032,7 @@ struct EffectChain::Impl
             function (filter); function (distortion); function (eq); function (chorus); function (phaser);
             function (echo); function (reverb); function (compressor); function (gate); function (comb);
             function (ringMod); function (bitcrusher); function (autoFilter); function (maximizer); function (ducker); function (disperser);
-            function (widener); function (flanger); function (transient); function (dynamicEq); function (octaver); function (bandDucker); function (shimmer); function (lowMultiplier); function (sidechainCurve); function (sidechainBands);
+            function (widener); function (flanger); function (transient); function (dynamicEq); function (octaver); function (bandDucker); function (shimmer); function (lowMultiplier); function (sidechainCurve); function (sidechainBands); function (phaseRotation);
         }
 
         void resetCurrent()
@@ -2021,6 +2065,7 @@ struct EffectChain::Impl
                 case EffectType::lowMultiplier: lowMultiplier.reset(); break;
                 case EffectType::sidechainCurve: sidechainCurve.reset(); break;
                 case EffectType::sidechainBands: sidechainBands.reset(); break;
+                case EffectType::phaseRotation: phaseRotation.reset(); break;
                 case EffectType::off:
                 case EffectType::count:      break;
             }
@@ -2056,6 +2101,7 @@ struct EffectChain::Impl
                 case EffectType::lowMultiplier: lowMultiplier.process (buffer, numSamples, values, context); break;
                 case EffectType::sidechainCurve: sidechainCurve.process (buffer, numSamples, values, context); break;
                 case EffectType::sidechainBands: sidechainBands.process (buffer, numSamples, values, context); break;
+                case EffectType::phaseRotation: phaseRotation.process (buffer, numSamples, values, context); break;
                 case EffectType::off:
                 case EffectType::count:      break;
             }

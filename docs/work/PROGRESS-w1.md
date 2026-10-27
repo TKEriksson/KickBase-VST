@@ -197,3 +197,9 @@ FL/handtest: klistra in en OpenAI-nyckel (eller starta Ollama med en verktygsmod
 - Konflikter: Params.h/.cpp (ringSource behölls), FxProcessor, InstrumentProcessor, Modules.h/.cpp (w2:s projektmeny + mina autosave-rader 8/9, `openProject (startFolder)`), LESSONS.md. Slarv loggat i LESSONS.md.
 - Debug: KickbaseTests, rendersig/wide/tb303, blocksizetest (tar >10 min), audiotest (0 allokeringar), persisttest, undotest, chattest: alla gröna.
 - Release byggd, KickbaseTests gröna.
+
+## 27 okt kväll – PH: PHASE ROTATION (Arbetare 1, efter Release 03f1dc1)
+- Ny effekttyp sist i `EffectType` (`Effects.h:21`, ID:n oförändrade): PHASE ROTATION (FREQ 20–300 Hz, ROTATION 0–360 deg, MIX). Två första ordningens allpass i serie, samma på L och R; fc = FREQ / tan(ROTATION/4), nivån oförändrad (`PhaseRotationFx` i `Effects.cpp`). Ny enhet `Unit::degrees`.
+- Det Tobias testar i FL (release 03f1dc1) är orört: inga befintliga effekter eller parametrar ändrade, bara en ny typ sist i listan.
+- Test: `Tools/Tool.cpp` (instrumenttest "FX2: PHASE ROTATION ..."): 60 Hz, 180 deg ger korrelation -1, 90 deg kvadratur, nivån oförändrad.
+- Kvar i PH: AI-verktyg för att läsa/sätta grundtonens fas mot kicken (finns delvis: analyse_wavetable/edit_wavetable_harmonics), SHAPER-kontroll (spec till Opus/PL).
