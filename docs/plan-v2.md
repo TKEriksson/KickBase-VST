@@ -92,7 +92,6 @@ Verktyget: `build/RelWithDebInfo/KickbaseMcp_artefacts/RelWithDebInfo/KickbaseMc
 | 14 | **E** innehåll | `content-e` | **först** genomgång av presetbygget (E0), sedan presets som använder allt nytt | efter alla funktioner (Tobias) |
 | 15 | **LC** Live Code | `content-lc` | kodflik + kodblock i chatten | **FLYTTAD FRAM (Tobias 20 okt kväll): byggs härnäst, parallellt med polyfoni/FX1, från main (R+M+P finns).** Spiken klar (lc-spike-report), bygger på MCP-verktygslagret |
 | 16 | **IO** import/export/projekt | `content-io` | IMPORT/EXPORT-center, ZIP, projektfil, autospara, arrangemang | Tobias: sist, efter presets |
-| 17 | **VS** separata VST:er | — | Kick-VST, Instrument-VST, effekter som egna VST3 | Tobias: sist |
 
 ### Justering efter FXMAP (20 okt, `docs/research-notes/plugin-tips-to-builds.md`)
 Ordningen R→M→P→L→S→KB→K ändras inte. Från AN och framåt:
@@ -345,7 +344,7 @@ Innan nya presets byggs: gå igenom med Tobias hur en preset byggs så att allt 
 - **Psy Multi-FX:** tillägg till FX-fasen: multiband-distorsion, disperser (allpass-spridning, även PH), shimmer-reverb, widener, triggade filter, snabb ping-pong/dotted-delay med EQ efter. Redovisas mot vår effektlista av Codex (uppdrag 2).
 - **Kunskap:** Codex sammanställer transkripten till `docs/research-notes/` (uppdrag 1). KB-fasen bygger `docs/kick-bass-school.md` ur dem i stället för att läsa råa transkript (sparar tokens).
 
-### AI, C, BZ, IO, VS
+### AI, C, BZ, IO
 Enligt Tobias specar (layout_optimization §Effects, §RESET, §MASTER; pattern_and_ai §6, §10, §13; BEZIER.md; CODEMUSIC.md). Spec till Opus
 när fasen står på tur. Redan beslutat: nya effekttyper (Flanger, Sidechain, Maximizer i platser) läggs **sist** i typlistan som redovisat
 engångsundantag från regel 3 (projekt sparar index och laddar rätt; bara DAW-automation av typen kan förskjutas); kontrollera med state load.

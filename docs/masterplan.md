@@ -1,0 +1,138 @@
+# Masterplan (v1, projektledare: kickbase-vst-56, 2026-10-27)
+
+STATUS: GODKÄND av specialisten (kickbase-vst-b5) med ändringarna nedan inarbetade. Arbete kan delas ut.
+
+Bygger på: plan-v2.md (faser), HANDOFF-release.md, PROGRESS-copilot-2026-10-22.md, slicer-ui-spec.md, LESSONS.md, ENGINEERING.md och Tobias testlista `research/TEST2026-10-23/Testar appen 2027-10-23.txt` (T1-T15 nedan).
+Regler (oförändrade): Claude skriver all C++; varje agent egen worktree + egen `PROGRESS-*.md`; ingen push utan Tobias; bara projektledaren mergar till main, när allt är testat; Opus (specialisten) bara när Sonnet inte räcker; nya parametrar och modulationskällor sist; testregler enligt LESSONS.md (rätt delmängd, ingen onödig svit); slarvfel loggas i LESSONS.md.
+
+## Tobias testlista (T-nummer)
+| T | Ämne | Typ |
+|---|------|-----|
+| T1 | Dropdowns: fokus + piltangenter, Enter i multiselect | UX |
+| T2 | Preview per flik (motor / instrument / pattern / kick), previewknapp längst till höger | Funktion |
+| T3 | Meny: New Project, Ctrl+S, projektnamn i rubrik, senaste 3, döp om PROJECT, EXPORT in i menyn | UX |
+| T4 | BPM-justering, jog-wheel/scratch, takt-scroll, dubbelklick-takt, LOOP on/off (stoppar DAW) | Funktion, stor |
+| T5 | Perch-mejl (troligen reklam) | Verifierat: buggen är äkta, se A5 |
+| T6 | Combined wave: zoom, panorera, tid/takter, helbredd; samma i Pattern-fliken (toggle) | UI |
+| T7 | Live Code: autocomplete på engelska med exempel, `.chord`, `$:`, förslag i parametrar, editor-tema, autoformat | Stor |
+| T8 | Design: tabbar + kontroller/knobbar/diagram enligt `kickbase_tab_navigation_hierarchy_skiss.html` | Design |
+| T9 | Glide i pianoroll: gäller samtidiga toner, ritbara streck | Funktion + bugg |
+| T10 | KRITISK: synthen spelar bara C5 (THE MOON) | Bugg |
+| T11 | Kick pitch-env: visa tonnamn vid punkter, även för AI | UI |
+| T12 | Highlighta spelande noter i pianorollen | UI |
+| T13 | BUGG: pattern-längd vid olika spårlängder + Loop | Bugg |
+| T14 | Undo/redo (Ctrl+Z, Ctrl+Shift+Z/Y), grupperat per gest | Funktion, stor |
+| T15 | Nya presets: 10 clean-psytrance-kickar, 6 rolling-bass | Innehåll |
+
+## Fas A: Buggar först
+UPPSPELNINGSPAKETET = A1 + A2 + A3, ETT block för EN person: Arbetare 1. Klocka/fönsterkod: `StepScheduler::Window`, `updatePreviewWindow`, `handlePreviewRequest`, `TransportClock`.
+Specialistens granskningspunkter: (a) när orsaken står i PROGRESS, före fixen (A1, A2); (b) när diffen är klar, före merge (A3). Kör Arbetare 1 fast i A2 tar specialisten över analysen.
+- A1 (T10) C5-buggen. Trolig orsak (kodkontrollerad): pianorullens MIDI IN står default på INSTRUMENT (`PianoRoll.cpp:98`). När rullen för instr 1 visas sätts `midiInLayer` (`PianoRoll.cpp:224`), och då spelar `handleLiveMidi` värdens ton live på radens ljud i stället för att starta mönstret (`InstrumentProcessor.cpp:540-579, 995-996`). Omladdning av preset stänger rullen -> `midiInLayer = -1` (`PianoRoll.cpp:245`), därför "fixar" det. BESLUT (Tobias, via specialisten): när värden spelar startar värdens noter alltid mönstret; pianorullens MIDI IN (INSTRUMENT, live-spel på en rad) gäller bara när värden står still. `handleLiveMidi` får alltså inte kapa noten när `hostIsPlaying`.
+- A2 (T13) Pattern-längd/Loop. Ledtråd från bilderna: kickens LENGTH står på AUTO "follow the notes (2 bars)" fast toner ligger i takt 3. Mönstret blir 3 takter, indikatorn säger 2, loopen 1 takt. Misstanke: AUTO-längden räknas olika i UI och scheduler, eller modulo tas på fel längd i en läsare (bugg 4). Börja med test (kick 2 takter, instr 1 takt, utöka kick till 4, Loop 1-2). Förväntat: total längd = längsta spåret eller manuell längd; kortare spår loopar internt; Loop håller sig strikt till intervallet. Orsaken skrivs i PROGRESS före fixen.
+- A3 Enbartaktsloopen i FL: verifiera `docs/work/patch-preview-freerun-untested.diff` (`setForceFreeRun`) i bygge. Specialisten granskar före merge. Hänger ihop med A2.
+- A4 (T9, buggdelen) Glide satt i samma takt som tonen gäller inte. Ska gälla alla samtidigt klingande toner. Före glide-ritverktyget (D1). Arbetare 1.
+- A5 (T5) AiMemory: `appendWorkLesson` uppdaterar på plats (`AiMemory.cpp:333-334`) så en uppdaterad äldsta lektion kan raderas av `pruneToLimit` (rad 74) trots "saved". Fix: ta bort gamla posten och lägg den sist (som `appendFeedback`, rad 263-267). Test: fyll nära taket, uppdatera äldsta med längre recovery, kontrollera att den finns kvar. Logga i LESSONS. Arbetare 2, uppvärmning (isolerad kod).
+
+FL-tester som krävs innan paketet mergas (Tobias/PL kör i FL):
+- (a) Instr 1:s pianoroll öppen, 4 takters C5 från FL: mönstret ska spela, inte en sinuston.
+- (b) Kick 2 takter, instr 1 1 takt, förläng kick till 4: totallängd och indikator rätt, takt 3-4 har alla 4 kickslag.
+- (c) Loop 1-2 i både free-run och värduppspelning.
+- (d) FL i PAT-läge med 1-takts pattern och ALL-preview: hela loopen spelar (A3).
+- (e) Normal värduppspelning följer fortfarande FL-positionen.
+- (f) Init-kontrollen i LESSONS: ladda Init, spela, byt instrument, spara och ladda.
+
+## Fas B: Obligatoriskt UX
+- B1 (T2) Preview per flik + previewknapp (högerjusterad). Arbetare 1, direkt efter paketet (rör `handlePreviewRequest`, `previewLayer`, `midiInLayer`, `InstrumentProcessor.cpp:540-579, 993-999`). Regler: motorflik = bara motorn; INSTR/FILTER/MIX = hela instrumentet utan patterns; PATTERN, Analyzer, AI-chat, Live Code = hela pattern; KICK = bara kicken. MIDI-tangentbord triggar detta.
+- B2 (T3) Meny: byt namn, New Project (med spara-fråga), Ctrl+S med synlig bekräftelse, projektnamn i rubrik, senaste 3, EXPORT in i menyn. Arbetare 2.
+- B3 (T12, T11) Highlight av spelande noter; tonnamn vid pitch-env-punkter + samma info i AI-tillståndet (`get_state`). Arbetare 1.
+- B4 (T1) Dropdown-fokus och piltangenter, enligt pianorollens fokusmönster. Arbetare 2.
+- B5 Småposter: HeaderBar-timern för `rollShown` triggar inte alltid så LISTEN PIANO ROLL-knappen kommer sent (PROGRESS-copilot p25). Arbetare 1.
+
+## Fas C: Undo/redo (T14)
+Arkitektur (specialisten): EN gemensam `juce::UndoManager` i PluginBase.
+- Parametrar: skicka in i APVTS-konstruktorn (`PluginBase.h:239`) och anropa `beginNewTransaction` vid gestens start (mouseDown på knob/slider).
+- Pattern: `UndoableAction` med före/efter-ögonblicksbild av berörda rader, via befintligt edit-API. En gest = en transaktion.
+- Live Code-körning och AI-ändring: en transaktion vardera.
+- Presetladdning (BESLUT, Tobias): att ladda huvudpresetet tömmer historiken (`clearUndoHistory`); att ladda ett del-preset (kick, instrument, motor osv.) är EN ångerbar transaktion. Specialisten tar med detta i `undo-spec.md`.
+- Allt på meddelandetråden, ljudtråden oförändrad.
+Specialisten skriver `docs/work/undo-spec.md` när fasen startar. Implementeras efter paketet och B, före POP OUT, slicer och glide-ritning. Pianorullen först, sedan parametrar. Arbetare 1.
+
+## Fas D: Funktioner
+- D1 (T9) Glide-streck: högerklick-dra ritar streck till de toner glide gäller; går att sätta före noten; MIDI-export approximeras med varning. Arbetare 1.
+- D2 (T6) Combined wave: zoom, panorering (mittknapp/scrollbars), tid i ms + takter, helbredd; Pattern-fliken får toggle för projektets combined wave. Arbetare 2. Rör PatternTab/Editor-layout: samordna med Arbetare 1.
+- D3 (T4) Transport. OMTOLKAD (Tobias OK 2026-10-27): en VST3 kan i praktiken inte styra värdens transport eller tempo (`AudioPlayHead::canControlTransport`/`transportPlay` stöds inte av FL; ett plugin kan inte sätta tempo). Därför:
+  - Kickbases egen BPM, LOOP och takturval gäller bara i free-run/preview.
+  - När värden spelar följer vi FL; LOOP visas inaktiv med tooltip "styrs av DAW".
+  - Verifiera mot JUCE 8.0.15-dokumentationen: https://docs.juce.com/master/classjuce_1_1AudioPlayHead.html
+  - Takt-hover-scroll och dubbelklick på takt (skriv in takt) gäller i free-run.
+  - Takt-hover-scroll: musen över takten + scrollhjul spolar; musiken pausas tills man släpper. Dubbelklick: skriv in startakt.
+  - D3a transportbasen. D3b jog-wheel/scratch (Tobias: väntar tills transporten är stabil): jog-wheel/LP i takt-rutan, miniatyr-LP-knapp bredvid restart öppnar dialog, två lägen (uppspelning framåt stannar / fortsätter), automation + LFO-koppling, scratch funkar oavsett DAW, automationen ska kunna tas bort och synas tydligt. Arbetare 1, efter A/B/C.
+- D4 (T7) Live Code i steg: (1) engelska hjälptexter utan åäö, med exempel för `notes("` (hur man sätter ut noter, samtidiga noter/ackord, vad `* 4` gör m.m.), förslag vid `s("` (instr1 …) och `$:` på tom rad, (2) `.chord(CHORD, BASETONE, START, LENGTH)`, `$:` och parameterförslag, (3) editor (VS Code/Atom Material-tema, färgkodning, autoformat-knapp som lägger kedjan på egna rader och flyttar `s("instr")` först, aktivt instrument markerat med egen färg), (4) arrayer i `.notes()` ger flera röster. Arbetare 2.
+- D5 POP OUT (pianorullen i eget fönster). Arbetare 1 (äger pianorullen). Efter undo.
+- D6 GHOST NOTES i pianorullen. Arbetare 1.
+
+- D7 (T15) Presets: 10 nya clean-psytrance-kickar och 6 rolling-bass-instrument. Använd skill kickbase-sound-design. Arbetare 2 (efter E1 eller när hen har lucka); lätt att ta i `content-*`-spåret.
+
+## Fas E: Design och slicer
+- E1 (T8) Designpass efter funktionsfaserna, helst ren LookAndFeel-ändring så layouten inte görs om två gånger, enligt skissen: tabbar först, sedan knobbar, kontroller, diagram. Arbetare 2. Snapshotsviten (`snapshots.ps1` + `pngdiff.py`) räcker som test.
+- E2 Slicer-UI enligt `slicer-ui-spec.md`, steg 1-4. Arbetare 2. `fix-slicer-test` och `fix-matrix` mergas först.
+
+## Fas F: Oinmergade grenar
+Grenarna L, S och K finns inte. Enligt `git branch --no-merged main` i `-ai`:
+- `content-d1`: 1 docs-commit.
+- `content-ph`: 1 commit, MSVC-fix.
+- `content-s2`: 5 commits, "ej byggt": måste byggas först.
+- `fix-matrix`: 1 commit.
+- `fix-slicer-test`: 1 commit (StateTests 4a).
+Projektledaren bedömer och mergar efter test. T15 (presets) är D7.
+
+## Fas H: Städning efter Copilot-granskningen (prio efter A och B)
+Specialistens granskning (PROGRESS-specialist-2026-10-27.md): inga allvarliga fel, bara småsaker.
+- H1 (C4, verifiera tidigt): Maximizer har MODE som knob 5 (Effects.cpp:506). Migreringen sätter inget standardvärde (Effects.cpp:528, PluginBase.cpp:1317), så gammal knob5 = 1.0 kan ge Smooth i stället för Classic. Test: ladda v2-projekt med maximizer och knob5 = 1.0.
+- H2 (C3): full noteAuditionFifo (32 platser, PluginBase.h) tappar note-off och tonen fastnar. Fix: all-notes-off för raden när rullen stängs. Koordinera med A1 (audition med rowOverride >= 0 får inte blockeras när värden spelar).
+- H3 (C5): InstrumentSynth.cpp:440-447 skriver fördröjningslinjen bara när width > 1, vilket ger klick när WIDTH dras upp från 1. Fix: skriv alltid line[pos] = x.
+- H4 (C1/C2, kosmetiskt): ihopklistrad kommentar Params.h:120, indrag Params.cpp:421-437, `}    clock.beginBlock` på en rad i InstrumentProcessor.cpp:145.
+- H5 (C6): fas F-grenarna har commits märkta "(ej byggt)" (ad768d0, 4dad3e2, d254e2d). Måste byggas och testas före merge.
+- Ägare: Arbetare 2 (H1, H3, H4, H5); Arbetare 1 (H2, efter A1).
+
+## Fas I: Resten av gamla planen (`plan-v2.md`), efter A-H
+Klart och på main: R, M, P, L, LC (A-D, F1, FLOAT, autocomplete, Strudel-genvägar), Gemini, AN, MIX-flik, start offset, Low Multiplier, Shimmer, Maximizer läge 2, HALFTIME, pianorullens scrub/loop/audition/zoom. Ordning och detaljer: `plan-v2.md`.
+Kvar, i grov ordning (projektledaren bedömer före varje fas; Opus bara efter hans bedömning):
+- S: filter på/av per källa, brustyper, WARP ENV-källa, OSC-visning och OSC-presets (status oklart, kolla mot koden först).
+- KB (kunskapsbas/skill, delvis), K (kick-verktyg, oklart), PH (fasverktyg, `content-ph`), S2/FM (`content-s2`, se fas F), S3 (unison/Reese).
+- F2: sampler och slicer-UI (se E2).
+- FX: Echo, Flanger, riktig Sidechain/Maximizer i slots, multiband, FX2; sidechain i två band (LOW och MID-HI).
+- AI-leverantörer: Anthropic, OpenAI, Ollama. C: multisampling. BZ: Bézier-kick. E0/E: presetgranskning.
+- IO: import/export, projekt, autosave.
+- LC-rester: `.LFO()`/`.ENV()`, MCP `live_code_run`/`stop`, AGPL-banner och `THIRD-PARTY.md`, helpcheck.
+- Separata VST:er (VS) är struket. Tobias lägger in det själv när allt är klart.
+
+## Fas G: Release
+Ny release först när fas A-B är testade i FL och Tobias godkänt. Projektledaren mergar till main.
+Tobias kör `installRel.bat` (lokalt, i `.gitignore`) för att ersätta VST3-filerna och KickbaseMcp.exe efter ett Release-bygge. Hörtest i FL som fortfarande saknas: MIX-fliken, AP/START, HALFTIME, KEEP/COMPARE, shimmer, Maximizer MODE, Low Multiplier, autocomplete.
+
+## Städning
+- `/STACK:8388608` i `CMakeLists.txt:243` rensas upp.
+- Texten "15 types" i AGENT_GUIDE är föråldrad.
+- Gamla worktrees är borttagna (27 okt, backup i `%LOCALAPPDATA%\Temp\claude\worktree-backup-2026-10-27\`). Grenarna finns kvar.
+- `installRel.bat/.ps1` ligger i `.gitignore` (Tobias beslut 27 okt).
+
+## Arbetsfördelning
+- Arbetare 1 (pianoroll, preview, transport): A1-A4 (paketet), B1, B3, B5, C, D1, D5, D6, D3, H2.
+- Arbetare 2 (meny, LookAndFeel, Live Code, wave): A5, B2, B4, D2, D4, E1, E2, H1, H3, H4, H5.
+- Specialisten: granskar vid två punkter (A1/A2 orsak, A3 diff), skriver `undo-spec.md`, tar över A2-analysen vid behov.
+- Projektledaren: mergar, F-grenar, kommunikation med Tobias.
+- Alla: egen worktree, egen `PROGRESS-*.md`, aldrig push/merge, slarvfel i LESSONS.md.
+
+## Beslut av Tobias (27 okt)
+1. Värdens noter startar alltid mönstret när värden spelar (A1).
+2. LOOP/BPM-omtolkningen godkänd (D3).
+3. Huvudpreset tömmer undo-historiken, del-preset är en transaktion (fas C).
+4. Copilot får pusha/mergea bara när Tobias uttryckligen säger det.
+5. Gamla worktrees får tas bort (gjort).
+6. Jog-wheel/scratch (D3b) väntar tills transporten är stabil.
+7. `installRel.*` i `.gitignore`.
+8. Separata VST:er är struket ur planen.
+
+## Öppna frågor till Tobias
+Inga just nu.
