@@ -11,10 +11,20 @@
 // Färger och mått för gränssnittet. Mörk slate/charcoal hårdvarubas med modulspeficika accenter.
 namespace Theme
 {
-    inline const juce::Colour backgroundTop    { 0xff1e2133 };
-    inline const juce::Colour backgroundBottom { 0xff0e1018 };
-    inline const juce::Colour panel            { 0xff161826 };
-    inline const juce::Colour panelBorder      { 0xff282c42 };
+    // E1 (skissen): bakgrund #0b0d14, paneler #0e111a/#121622, kantlinjer #232a3b/#1e2636, cyan huvudaccent, fuchsia andra accent.
+    inline const juce::Colour backgroundTop    { 0xff0d1018 };
+    inline const juce::Colour backgroundBottom { 0xff0b0d14 };
+    inline const juce::Colour panel            { 0xff0e111a };
+    inline const juce::Colour panelAlt         { 0xff121622 };
+    inline const juce::Colour panelBorder      { 0xff232a3b };
+    inline const juce::Colour panelBorderDim   { 0xff1e2636 };
+    inline const juce::Colour insetStrip       { 0xff0d1017 };
+    inline const juce::Colour chartBackground  { 0xff07090e };
+    inline const juce::Colour cyan             { 0xff22d3ee };
+    inline const juce::Colour cyanLight        { 0xff67e8f9 };
+    inline const juce::Colour fuchsia          { 0xffe879f9 };
+    inline const juce::Colour slate400         { 0xff94a3b8 };
+    inline const juce::Colour slate500         { 0xff64748b };
     inline const juce::Colour knobBody         { 0xff2a2e45 };
     inline const juce::Colour knobBodyDark     { 0xff121420 };
     inline const juce::Colour track            { 0xff222538 };
@@ -82,6 +92,22 @@ namespace Theme
     inline juce::Font font (float height, bool bold = false)
     {
         return juce::Font (juce::FontOptions (height, bold ? juce::Font::bold : juce::Font::plain));
+    }
+
+    // Monospace för avläsningar och brödsmulor (skissens font-mono).
+    inline juce::Font monoFont (float height, bool bold = false)
+    {
+        return juce::Font (juce::FontOptions (juce::Font::getDefaultMonospacedFontName(), height, bold ? juce::Font::bold : juce::Font::plain));
+    }
+
+    // Text med bokstavsavstånd (skissens tracking-wider) och versaler, centrerad eller vänsterställd i `area`.
+    inline void drawTracked (juce::Graphics& g, const juce::String& textIn, juce::Rectangle<float> area, juce::Font f,
+                             float tracking, juce::Justification just)
+    {
+        const auto s = textIn.toUpperCase();
+        f.setExtraKerningFactor (tracking);
+        g.setFont (f);
+        g.drawText (s, area, just, false);
     }
 
     // Texturerna ägs av en delad resurs som varje öppen editor håller i livet, i stället för av statiska bilder: en statisk
@@ -185,27 +211,47 @@ namespace Theme
     inline void paintMetal (juce::Graphics& g, juce::Rectangle<float> area, float corner, juce::Colour top, juce::Colour bottom,
                             bool bevel = true)
     {
-        // Yttre subtil skugga
-        g.setColour (juce::Colours::black.withAlpha (0.40f));
-        g.fillRoundedRectangle (area.translated (0.0f, 1.5f), corner);
-
-        g.setGradientFill (juce::ColourGradient (top, area.getX(), area.getY(), bottom, area.getX(), area.getBottom(), false));
+        juce::ignoreUnused (top, bottom);
+        // E1: platt mörk panel (skissens gradient #161b26 -> #10131d) med en tunn kantlinje, ingen metallfasning.
+        g.setGradientFill (juce::ColourGradient (juce::Colour (0xff161b26), area.getX(), area.getY(),
+                                                 juce::Colour (0xff10131d), area.getX(), area.getBottom(), false));
         g.fillRoundedRectangle (area, corner);
 
         if (bevel)
         {
-            // Ljus överkant (specular highlight)
-            g.setColour (juce::Colours::white.withAlpha (0.20f));
+            g.setColour (panelBorder);
             g.drawRoundedRectangle (area.reduced (0.5f), corner, 1.0f);
-
-            // Mörk nedsänkt underkant
-            juce::Path edge;
-            edge.addRoundedRectangle (area.reduced (0.5f), corner);
-            juce::Graphics::ScopedSaveState state (g);
-            g.reduceClipRegion (area.getSmallestIntegerContainer().withTop ((int) (area.getBottom() - corner - 2.0f)));
-            g.setColour (juce::Colours::black.withAlpha (0.55f));
-            g.strokePath (edge, juce::PathStrokeType (1.2f));
         }
+    }
+
+    // Diagramyta (vågform, EQ, envelope): #07090e med prickrutnät (cyan, 1 px var 12:e px, opacitet 0.10) och tunn kant.
+    inline void paintChartBackground (juce::Graphics& g, juce::Rectangle<float> area, float corner = 8.0f)
+    {
+        g.setColour (chartBackground);
+        g.fillRoundedRectangle (area, corner);
+        {
+            juce::Graphics::ScopedSaveState state (g);
+            juce::Path clip;
+            clip.addRoundedRectangle (area, corner);
+            g.reduceClipRegion (clip);
+            g.setColour (juce::Colour (0xff38bdf8).withAlpha (0.10f));
+            for (float y = area.getY() + 6.0f; y < area.getBottom(); y += 12.0f)
+                for (float x = area.getX() + 6.0f; x < area.getRight(); x += 12.0f)
+                    g.fillRect (x, y, 1.0f, 1.0f);
+        }
+        g.setColour (panelBorderDim);
+        g.drawRoundedRectangle (area.reduced (0.5f), corner, 1.0f);
+    }
+
+    // Glödande linje för kurvor: bred svag glöd under en tunn klar linje.
+    inline void strokeGlow (juce::Graphics& g, const juce::Path& path, juce::Colour colour, float width = 1.6f)
+    {
+        g.setColour (colour.withAlpha (0.18f));
+        g.strokePath (path, juce::PathStrokeType (width + 4.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        g.setColour (colour.withAlpha (0.35f));
+        g.strokePath (path, juce::PathStrokeType (width + 1.8f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        g.setColour (colour);
+        g.strokePath (path, juce::PathStrokeType (width, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     }
 
     // Fönstrets bakgrund: djup skiffer- och marinblå bas med mjukt studioljus i mitten.
@@ -214,11 +260,6 @@ namespace Theme
         const auto a = area.toFloat();
         g.setGradientFill (juce::ColourGradient (backgroundTop, a.getX(), a.getY(),
                                                  backgroundBottom, a.getRight(), a.getBottom(), false));
-        g.fillRect (area);
-
-        // Mjukt omgivande ljussken uppe i mitten som på professionella rackpaneler
-        g.setGradientFill (juce::ColourGradient (juce::Colours::white.withAlpha (0.045f), a.getCentreX(), a.getY() + 40.0f,
-                                                 juce::Colours::transparentWhite, a.getCentreX(), a.getY() + a.getHeight() * 0.65f, true));
         g.fillRect (area);
 
         // Subtil yttre ram

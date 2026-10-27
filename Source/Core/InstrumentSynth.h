@@ -116,8 +116,6 @@ struct InstrumentParams
     bool sampleOn = false;       // samplingen hörs bara när den är på
     bool sampleKeyTrack = false; // av = spelas med sin egen tonhöjd och hastighet
     float sampleStart = 0.0f;    // 0..1: var i samplingen varje ton börjar
-    bool slicerOn = false;       // noten väljer en skiva (ClickSample::slices) i stället för hela samplingen; originalhastighet, ingen loop
-    int slicerMapTo = 0;         // halvtonen (från tonarten) som spelar skiva 1; n..n+7 spelar skiva 1..8
     bool slicerReverse = false;  // alla skivor spelas baklänges
     float allpassFreq = 200.0f;  // 4 allpass i serie efter filtren (mitten och sida var för sig); AMOUNT 0 = av
     float allpassAmount = 0.0f;  // 0..1: blandning torr -> allpass (1 = ren fasrotation)
@@ -150,7 +148,8 @@ public:
     void setTempo (double newBpm) { if (newBpm != bpm) { bpm = newBpm; refreshEnvTimes(); } }
 
     // Spelar en ton `semitones` från grundtonen i `gateSamples` samples.
-    void noteOn (int semitones, float velocity, int gateSamples);
+    // slice >= 0: en not i raden "Slice N" (0-baserat); spelar den skivan i ClickSample::slices, originalhastighet, ingen loop. -1: vanlig ton.
+    void noteOn (int semitones, float velocity, int gateSamples, int slice = -1);
 
     // En glide-ton (som en "slide note" i FL Studio): ingen ny ton slås an, utan den som klingar glider till
     // `semitones` på `samples` samples och blir kvar där tills den slutar. Ger false om ingenting klingar.
@@ -257,6 +256,7 @@ private:
     double fmCarrierPhase = 0.0, fmModPhase = 0.0; // FM-källans faser (0..1)
     float fmEnvLevel = 0.0f;                        // 1 vid anslaget, faller mot 0 (FM ENV)
     double samplePosition = 0.0; // i samplingens samples
+    bool sliceNote = false;      // tonen kom från en slice-rad (satt i noteOn)
     bool sliceVoice = false;     // tonen spelar en skiva (satt i noteOn)
     int sliceBegin = 0, sliceEnd = 0;
     double logFrequency = 0.0, targetLogFrequency = 0.0; // log2(Hz), så att glide låter jämnt

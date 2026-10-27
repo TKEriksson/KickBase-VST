@@ -8,6 +8,9 @@ class KickbaseLookAndFeel : public juce::LookAndFeel_V4
 public:
     KickbaseLookAndFeel();
 
+    // Tonhöjds-/semitonsrattar får fuchsia pekare och avläsning, övriga cyan.
+    static bool isPitchKnob (const juce::Slider&);
+
     void drawRotarySlider (juce::Graphics&, int x, int y, int width, int height, float sliderPos,
                            float rotaryStartAngle, float rotaryEndAngle, juce::Slider&) override;
 

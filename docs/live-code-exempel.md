@@ -227,5 +227,5 @@ Byggt 22 okt (grenen an-master): `.lpf`/`.cutoff`, `.lpq`/`.resonance`, `.attack
 
 - **Inget ljud:** kontrollera att LIVE är på, att instrumentet du adresserar (`i1`, `i2`) finns och att Play är igång.
 - **Felrad om parametern:** `bass1Cutoff` och `bass1Resonance` är testade. Andra id:n kan vara omodulerbara. Fråga efter `list_parameters` och skriv upp vilka som avvisas.
-- **Slicern:** slicern styrs av MIDI-ton (ton 2–9 = skiva 1–8), inte av Live Code.
+- **Slicern:** varje skiva har en egen rad "Slice N" i mönstret (de 16 första skivorna); en not där spelar skivan. Styrs inte av Live Code.
 - Strudel-funktioner som kräver webbljud (`.room`, `.delay`, `.lpf` och liknande) ger inget i vår motor. Bara toner, längd, gain och våra `.lfo`/`.env` används.

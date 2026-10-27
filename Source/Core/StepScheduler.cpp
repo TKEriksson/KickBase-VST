@@ -74,6 +74,20 @@ void StepScheduler::addBass (int layer, const Pattern& pattern, const PatternLen
 
     if (tick >= 0 && pattern.note (layer, tick).on.load())
         add ({ offset, StepEvent::Type::bass, tick, layer });
+
+    // Skivraderna ("Slice N") följer instrumentets markör men har egen längd/loop; en not i raden spelar skivan.
+    for (int id = RowRegistry::firstSubRow; id < RowRegistry::maxRows; ++id)
+    {
+        const auto slice = pattern.rows.sliceOf (id);
+        if (slice < 0 || pattern.rows.instrumentOf (id) != layer)
+            continue;
+        const auto rowBar = lengths.barInRow (Pattern::lengthRowOf (id), position.bar);
+        auto rowTick = rowBar < 0 ? -1 : rowBar * Pattern::ticksPerBar + position.stepInBar;
+        if (window.row == id || window.allRows)
+            rowTick = windowTick (lengths.barsOf (Pattern::lengthRowOf (id)) * Pattern::ticksPerBar, lengths.total * Pattern::ticksPerBar, position);
+        if (rowTick >= 0 && pattern.note (id, rowTick).on.load())
+            add ({ offset, StepEvent::Type::slice, rowTick, layer, slice });
+    }
 }
 
 void StepScheduler::add (StepEvent event)
@@ -85,7 +99,7 @@ void StepScheduler::add (StepEvent event)
     auto i = numEvents++;
     while (i > 0 && (events[(size_t) i - 1].offset > event.offset
                      || (events[(size_t) i - 1].offset == event.offset && event.type == StepEvent::Type::kick
-                         && events[(size_t) i - 1].type == StepEvent::Type::bass)))
+                         && events[(size_t) i - 1].type != StepEvent::Type::kick)))
     {
         events[(size_t) i] = events[(size_t) i - 1];
         --i;

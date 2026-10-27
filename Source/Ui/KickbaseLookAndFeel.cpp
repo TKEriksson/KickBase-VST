@@ -34,6 +34,12 @@ KickbaseLookAndFeel::KickbaseLookAndFeel()
     setColour (juce::MidiKeyboardComponent::upDownButtonArrowColourId, Theme::textDim);
 }
 
+bool KickbaseLookAndFeel::isPitchKnob (const juce::Slider& slider)
+{
+    const auto id = slider.getComponentID() + " " + slider.getName();
+    return id.containsIgnoreCase ("semi") || id.containsIgnoreCase ("pitch") || id.containsIgnoreCase ("tune");
+}
+
 void KickbaseLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int width, int height, float sliderPos,
                                          float rotaryStartAngle, float rotaryEndAngle, juce::Slider& slider)
 {
@@ -46,16 +52,13 @@ void KickbaseLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int
     const auto arcRadius = radius - 3.5f;
     const auto angle = rotaryStartAngle + sliderPos * (rotaryEndAngle - rotaryStartAngle);
 
-    // 1. Nedsänkt cirkulär sockel i chassit bakom ratten
+    // 1. Platt mörk sockel bakom ratten (E1: ingen metallbevel)
     const auto socketRadius = arcRadius + 2.5f;
     const auto socket = juce::Rectangle<float> (socketRadius * 2.0f, socketRadius * 2.0f).withCentre (centre);
-    g.setGradientFill (juce::ColourGradient (juce::Colour (0xff0e1019), centre.x, socket.getY(),
-                                             juce::Colour (0xff181a28), centre.x, socket.getBottom(), false));
+    g.setColour (Theme::chartBackground);
     g.fillEllipse (socket);
-    g.setColour (juce::Colours::black.withAlpha (0.65f));
+    g.setColour (Theme::panelBorderDim);
     g.drawEllipse (socket, 1.0f);
-    g.setColour (juce::Colours::white.withAlpha (0.06f));
-    g.drawEllipse (socket.reduced (0.5f), 1.0f);
 
     // 2. Släckt spårring
     auto arc = [&] (float from, float to)
@@ -83,45 +86,33 @@ void KickbaseLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int
     g.setColour (juce::Colours::white);
     g.fillEllipse (juce::Rectangle<float> (3.0f, 3.0f).withCentre (dot));
 
-    // 4. Rattknopp: maskinsvarvad aluminium/gunmetal med koncentrisk ring-struktur ("ring-struktur")
+    // 4. Platt mörk knopp (skissen): yttre skiva 145 grader #283042 -> #181d28, inre skiva radiell #1e2433 -> #11141c med tunn kant
     const auto bodyRadius = arcRadius - 4.5f;
     const auto body = juce::Rectangle<float> (bodyRadius * 2.0f, bodyRadius * 2.0f).withCentre (centre);
+    const auto dir = juce::Point<float> (0.5736f, 0.8192f) * bodyRadius; // 145 grader
+    // Skissens .knob-outer: skugga 2px 2px 5px svart 0,6 nere till höger och högdager -1px -1px 3px vit 0,05 uppe till vänster
+    g.setColour (juce::Colours::white.withAlpha (0.05f));
+    g.fillEllipse (body.translated (-1.0f, -1.0f).expanded (1.5f));
+    g.setColour (juce::Colours::black.withAlpha (0.6f));
+    g.fillEllipse (body.translated (2.0f, 2.0f).expanded (1.5f));
+    g.setGradientFill (juce::ColourGradient (juce::Colour (0xff283042), centre - dir, juce::Colour (0xff181d28), centre + dir, false));
+    g.fillEllipse (body);
+    const auto inner = body.reduced (bodyRadius * 0.16f);
+    g.setGradientFill (juce::ColourGradient (juce::Colour (0xff1e2433), inner.getCentreX(), inner.getY() + inner.getHeight() * 0.3f,
+                                             juce::Colour (0xff11141c), inner.getRight(), inner.getBottom(), true));
+    g.fillEllipse (inner);
+    g.setColour (juce::Colour (0xff334155).withAlpha (0.6f));
+    g.drawEllipse (inner, 1.0f);
 
-    // Mjuk djup skugga under ratten
-    g.setColour (juce::Colours::black.withAlpha (0.60f));
-    g.fillEllipse (body.translated (0.0f, 2.0f).expanded (1.0f));
-
-    // Rita den proceduriella borstade ring-texturen
-    const int imgSize = juce::jmax (16, (int) std::round (bodyRadius * 2.0f));
-    const auto& capImage = Theme::circularBrushedTexture (imgSize);
-    g.drawImage (capImage, body);
-
-    // Fasad ytterkant (specular highlight uppe till vänster, skugga nere till höger)
-    g.setColour (juce::Colours::white.withAlpha (0.35f));
-    g.drawEllipse (body.reduced (0.5f), 1.0f);
-    g.setColour (juce::Colours::black.withAlpha (0.45f));
-    g.drawEllipse (body.reduced (bodyRadius * 0.16f), 1.0f);
-
-    // 5. Fräst indikatorspår (milled notch)
-    const auto rInner = bodyRadius * 0.32f;
-    const auto rOuter = bodyRadius * 0.88f;
-    const auto ptStart = centre.getPointOnCircumference (rInner, angle);
-    const auto ptEnd = centre.getPointOnCircumference (rOuter, angle);
-    const auto diff = ptEnd - ptStart;
-    const auto len = std::sqrt (diff.x * diff.x + diff.y * diff.y);
-    const auto normal = len > 0.001f ? juce::Point<float> (-diff.y / len * 0.8f, diff.x / len * 0.8f) : juce::Point<float>();
-
-    // Skugga på ena sidan, ljus på andra
-    g.setColour (juce::Colours::black.withAlpha (0.65f));
-    g.drawLine ({ ptStart - normal, ptEnd - normal }, 1.6f);
-    g.setColour (juce::Colours::white.withAlpha (0.50f));
-    g.drawLine ({ ptStart + normal, ptEnd + normal }, 1.6f);
-    g.setColour (juce::Colours::white);
-    g.drawLine ({ ptStart, ptEnd }, 1.6f);
-
-    // Liten lysande spetsmarkör i modulens accentfärg
-    g.setColour (accent.brighter (0.4f));
-    g.fillEllipse (juce::Rectangle<float> (2.5f, 2.5f).withCentre (ptEnd));
+    // 5. Tunn lysande pekare: cyan (fuchsia för tonhöjd/semitoner)
+    const auto pitchLike = isPitchKnob (slider);
+    const auto pointer = pitchLike ? Theme::fuchsia : Theme::cyan;
+    const auto ptStart = centre.getPointOnCircumference (bodyRadius * 0.30f, angle);
+    const auto ptEnd = centre.getPointOnCircumference (bodyRadius * 0.86f, angle);
+    g.setColour (pointer.withAlpha (0.25f));
+    g.drawLine ({ ptStart, ptEnd }, 4.0f);
+    g.setColour (pointer);
+    g.drawLine ({ ptStart, ptEnd }, 1.5f);
 
     // 6. Infälld display endast för Cutoff (filterfrekvens, matchar Bild 3)
     const bool isCutoff = slider.getComponentID().containsIgnoreCase ("cutoff")
@@ -163,15 +154,24 @@ void KickbaseLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int
     const auto accent = slider.findColour (juce::Slider::trackColourId);
     const auto centreX = (float) x + (float) width * 0.5f;
     const auto groove = juce::Rectangle<float> (4.0f, (float) height).withCentre ({ centreX, (float) y + (float) height * 0.5f });
-    g.setColour (Theme::knobBodyDark);
+    g.setColour (Theme::chartBackground);
     g.fillRoundedRectangle (groove, 2.0f);
-    g.setColour (accent.withAlpha (0.8f));
-    g.fillRoundedRectangle (groove.withTop (sliderPos), 2.0f);
+    g.setColour (Theme::panelBorder);
+    g.drawRoundedRectangle (groove, 2.0f, 1.0f);
+    const auto fill = groove.withTop (sliderPos);
+    g.setColour (accent.withAlpha (0.25f));
+    g.fillRoundedRectangle (fill.expanded (2.0f, 0.0f), 3.0f);
+    g.setColour (accent.withAlpha (0.9f));
+    g.fillRoundedRectangle (fill, 2.0f);
 
+    // Platt handtag med accentkant, som skissens rattar.
     const auto cap = juce::Rectangle<float> ((float) std::min (width, 22), 12.0f).withCentre ({ centreX, sliderPos });
-    Theme::paintMetal (g, cap, 2.5f, juce::Colour (0xffd2d6e6), juce::Colour (0xff7e8499), false);
-    g.setColour (juce::Colours::black.withAlpha (0.55f));
-    g.fillRect (cap.withHeight (1.5f).withCentre (cap.getCentre()));
+    g.setGradientFill (juce::ColourGradient (juce::Colour (0xff283042), cap.getX(), cap.getY(),
+                                             juce::Colour (0xff181d28), cap.getRight(), cap.getBottom(), false));
+    g.fillRoundedRectangle (cap, 3.0f);
+    g.setColour (accent.withAlpha (0.8f));
+    g.drawRoundedRectangle (cap, 3.0f, 1.0f);
+    g.fillRect (cap.withHeight (1.5f).withCentre (cap.getCentre()).reduced (4.0f, 0.0f));
 }
 
 void KickbaseLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButton& button, bool highlighted, bool)
@@ -196,8 +196,15 @@ void KickbaseLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButto
 
     if (on)
     {
-        g.setColour (accent.withAlpha (0.25f));
+        g.setColour (accent.withAlpha (0.12f));
         g.fillEllipse (icon.expanded (3.0f));
+        g.setColour (accent.withAlpha (0.35f));
+        g.drawEllipse (icon.expanded (3.0f), 1.0f);
+    }
+    else
+    {
+        g.setColour (Theme::chartBackground);
+        g.fillEllipse (icon.reduced (1.0f));
     }
 
     juce::Path ring;
@@ -216,41 +223,77 @@ void KickbaseLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button&
     const auto on = button.getToggleState();
     const auto corner = bounds.getHeight() * 0.5f; // Kapsel/pill-form som i Bild 3
 
+    // E1 form 3, kort/chip: kvadratiska kort (radie 3) för flik-i-flik (FX1-FX11, EQ/COMP/FX).
+    if ((bool) button.getProperties().getWithDefault ("chip", false))
+    {
+        g.setColour (on ? accent.withAlpha (0.16f) : Theme::panelAlt.brighter (highlighted || down ? 0.15f : 0.0f));
+        g.fillRoundedRectangle (bounds, 3.0f);
+        g.setColour (on ? Theme::cyan.withAlpha (0.8f) : Theme::panelBorder);
+        g.drawRoundedRectangle (bounds, 3.0f, on ? 1.4f : 1.0f);
+        if (on)
+        {
+            g.setColour (Theme::cyan);
+            g.fillRect (juce::Rectangle<float> (bounds.getX() + 3.0f, bounds.getY() + 1.0f, bounds.getWidth() - 6.0f, 2.0f));
+        }
+        return;
+    }
+
+    // E1 form 2, underflik: platt rektangel (radie 8) utan egen kant eller fyllning (bara hover), på en mörk infälld rad.
+    // Vald: fyllning #161f2e, cyan kant och prick.
+    if ((bool) button.getProperties().getWithDefault ("subtab", false))
+    {
+        const auto segment = bounds.reduced (0.0f, 1.0f);
+        if (on)
+        {
+            g.setColour (juce::Colour (0xff161f2e));
+            g.fillRoundedRectangle (segment, 8.0f);
+            g.setColour (Theme::cyan.withAlpha (0.5f));
+            g.drawRoundedRectangle (segment, 8.0f, 1.0f);
+            const auto dot = juce::Point<float> (segment.getX() + 11.0f, segment.getCentreY());
+            g.setColour (Theme::cyan.withAlpha (0.35f));
+            g.fillEllipse (juce::Rectangle<float> (8.0f, 8.0f).withCentre (dot));
+            g.setColour (Theme::cyanLight);
+            g.fillEllipse (juce::Rectangle<float> (4.0f, 4.0f).withCentre (dot));
+        }
+        else if (highlighted || down)
+        {
+            g.setColour (juce::Colour (0xff1e293b).withAlpha (0.5f));
+            g.fillRoundedRectangle (segment, 8.0f);
+        }
+        return;
+    }
+
+    // E1 form 1, huvudflik: helt rund pill. Vald: gradient cyan -> blå, cyan kant, glöd och pingprick. Overksam: svag fyllning och kant.
     if (on)
     {
-        // Aktiv pill: djup mörk metallkropp med lysande accentkant och mjuk yttre glöd
-        g.setColour (accent.withAlpha (0.22f));
-        g.fillRoundedRectangle (bounds.expanded (1.5f), corner + 1.5f);
+        g.setColour (Theme::cyan.withAlpha (0.20f));
+        g.fillRoundedRectangle (bounds.expanded (2.0f), corner + 2.0f);
+        g.setColour (Theme::cyan.withAlpha (0.12f));
+        g.fillRoundedRectangle (bounds.expanded (4.0f), corner + 4.0f);
 
-        g.setGradientFill (juce::ColourGradient (juce::Colour (0xff2b3048), bounds.getX(), bounds.getY(),
-                                                 juce::Colour (0xff1b1e30), bounds.getX(), bounds.getBottom(), false));
+        g.setGradientFill (juce::ColourGradient (juce::Colour (0xff06b6d4).withAlpha (0.30f), bounds.getX(), bounds.getY(),
+                                                 juce::Colour (0xff2563eb).withAlpha (0.30f), bounds.getRight(), bounds.getBottom(), false));
         g.fillRoundedRectangle (bounds, corner);
-
-        g.setColour (accent.withAlpha (0.85f));
+        g.setColour (juce::Colour (0xff0b0d14).withAlpha (0.55f));
+        g.fillRoundedRectangle (bounds.reduced (1.0f), corner);
+        g.setGradientFill (juce::ColourGradient (juce::Colour (0xff06b6d4).withAlpha (0.30f), bounds.getX(), bounds.getY(),
+                                                 juce::Colour (0xff2563eb).withAlpha (0.30f), bounds.getRight(), bounds.getBottom(), false));
+        g.fillRoundedRectangle (bounds, corner);
+        g.setColour (juce::Colour (0xff22d3ee).withAlpha (0.8f));
         g.drawRoundedRectangle (bounds, corner, 1.2f);
 
-        // Lysande LED-indikator till vänster i pillen
         const auto ledCentre = juce::Point<float> (bounds.getX() + 13.0f, bounds.getCentreY());
-        g.setColour (accent.withAlpha (0.45f));
+        g.setColour (Theme::cyan.withAlpha (0.35f));
         g.fillEllipse (juce::Rectangle<float> (10.0f, 10.0f).withCentre (ledCentre));
-        g.setColour (accent.brighter (0.4f));
-        g.fillEllipse (juce::Rectangle<float> (5.0f, 5.0f).withCentre (ledCentre));
-        g.setColour (juce::Colours::white.withAlpha (0.85f));
-        g.fillEllipse (juce::Rectangle<float> (2.0f, 2.0f).withCentre (ledCentre));
+        g.setColour (Theme::cyanLight);
+        g.fillEllipse (juce::Rectangle<float> (4.5f, 4.5f).withCentre (ledCentre));
     }
     else
     {
-        const auto lift = highlighted || down ? 0.08f : 0.0f;
-        g.setGradientFill (juce::ColourGradient (juce::Colour (0xff25293d).brighter (lift), bounds.getX(), bounds.getY(),
-                                                 juce::Colour (0xff171926).brighter (lift), bounds.getX(), bounds.getBottom(), false));
+        g.setColour (juce::Colour (0xff1e293b).withAlpha (highlighted || down ? 0.6f : 0.4f));
         g.fillRoundedRectangle (bounds, corner);
-
-        g.setColour (juce::Colour (0xff343952));
+        g.setColour (juce::Colour (0xff334155).withAlpha (0.5f));
         g.drawRoundedRectangle (bounds, corner, 1.0f);
-
-        // Ljus kant överst
-        g.setColour (juce::Colours::white.withAlpha (highlighted ? 0.16f : 0.08f));
-        g.drawLine (bounds.getX() + corner * 0.6f, bounds.getY() + 0.5f, bounds.getRight() - corner * 0.6f, bounds.getY() + 0.5f, 1.0f);
     }
 }
 
@@ -260,12 +303,21 @@ void KickbaseLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& b
     auto bounds = button.getLocalBounds().reduced (4, 0);
 
     // En pill som kan lysa (på/av) har alltid plats för LED:en till vänster, hur smal knappen än är: texten får det som blir kvar.
-    if (on || button.getClickingTogglesState())
+    const bool sub = (bool) button.getProperties().getWithDefault ("subtab", false);
+    const bool chip = (bool) button.getProperties().getWithDefault ("chip", false);
+    if ((on || button.getClickingTogglesState()) && ! sub && ! chip)
         bounds.removeFromLeft (15);
+    else if (sub && on)
+        bounds.removeFromLeft (10);
 
     // Texten krymper först (ner till 7.5 pt) om knappen är smal, och förkortas med ... bara om den ändå inte ryms.
     auto font = getTextButtonFont (button, button.getHeight()).boldened();
-    const auto text = button.getButtonText();
+    if (sub)
+        font = font.withHeight (11.0f);
+    else if (chip)
+        font = Theme::monoFont (11.0f, true);
+    font.setExtraKerningFactor (sub ? 0.04f : 0.08f);
+    const auto text = button.getButtonText().toUpperCase();
     auto textWidth = [&] (float size)
     {
         juce::GlyphArrangement glyphs;
@@ -277,7 +329,7 @@ void KickbaseLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& b
         size -= 0.5f;
 
     g.setFont (font.withHeight (size));
-    g.setColour (on ? Theme::text : Theme::textDim);
+    g.setColour (on ? (sub ? Theme::cyanLight : Theme::text) : Theme::textDim);
     g.drawText (text, bounds, juce::Justification::centred, true);
 }
 
@@ -285,16 +337,18 @@ void KickbaseLookAndFeel::drawComboBox (juce::Graphics& g, int width, int height
 {
     const auto bounds = juce::Rectangle<int> (width, height).toFloat().reduced (0.5f);
 
-    // Nedsänkt i metallen: mörk infälld sockel med 1px topp-highlight
-    g.setGradientFill (juce::ColourGradient (juce::Colour (0xff10121e), 0.0f, bounds.getY(),
-                                             juce::Colour (0xff181b2b), 0.0f, bounds.getBottom(), false));
-    g.fillRoundedRectangle (bounds, 5.0f);
-
-    g.setColour (juce::Colour (0xff292e44));
-    g.drawRoundedRectangle (bounds, 5.0f, 1.0f);
-
-    g.setColour (juce::Colours::white.withAlpha (box.hasKeyboardFocus (true) ? 0.30f : 0.08f));
-    g.drawLine (bounds.getX() + 4.0f, bounds.getY() + 0.5f, bounds.getRight() - 4.0f, bounds.getY() + 0.5f, 1.0f);
+    // E1: platt mörk ruta med radie 8, tunn kant och cyan glöd vid fokus.
+    g.setColour (Theme::chartBackground);
+    g.fillRoundedRectangle (bounds, 8.0f);
+    g.setColour (Theme::panelBorder);
+    g.drawRoundedRectangle (bounds, 8.0f, 1.0f);
+    if (box.hasKeyboardFocus (true))
+    {
+        g.setColour (Theme::cyan.withAlpha (0.18f));
+        g.drawRoundedRectangle (bounds, 8.0f, 3.0f);
+        g.setColour (Theme::cyan.withAlpha (0.8f));
+        g.drawRoundedRectangle (bounds, 8.0f, 1.0f);
+    }
 
     // Liten metallisk pil till höger
     const auto arrow = juce::Rectangle<float> ((float) width - 16.0f, (float) height / 2.0f - 2.0f, 8.0f, 4.0f);

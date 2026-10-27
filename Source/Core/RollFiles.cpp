@@ -175,7 +175,7 @@ namespace RollFiles
                 pattern.forEachNote (id, [&notes] (int, const Pattern::Note&) { ++notes; });
                 if (notes == 0)
                     continue;
-                const auto name = "Bass " + juce::String (layer + 1) + " - " + (kind == RowRegistry::Kind::slicer ? "SLICER" : "SAMPLE");
+                const auto name = "Bass " + juce::String (layer + 1) + " - " + (kind == RowRegistry::Kind::slice ? "Slice " + juce::String (pattern.rows.sliceOf (id) + 1) : juce::String ("SAMPLE"));
                 midi.addTrack (buildTrack (pattern, id, std::max (bars, pattern.lengthBars (id)), bpm, rootMidiNote, name));
             }
 

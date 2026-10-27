@@ -13,7 +13,39 @@ InstrMixPanel::InstrMixPanel (PluginBase& p, int layerIn, juce::Colour accentIn)
     addStrip ("NOISE", F::noise, &panNoise, &widthNoise, 0);
     addStrip ("SUB", F::sub, nullptr, nullptr, 0, &subPhase);
     addStrip ("FM", F::fmLevel, &panFm, &widthFm, 0, &fmPhase);
+    wideButton.setTooltip ("Give the combined waveform the full width of the panel (hides the knobs). Click again to bring them back.");
+    wideButton.onClick = [this] { setWide (! wide); };
+    scrollBar.setAutoHide (false);
+    scrollBar.addListener (this);
+    addAndMakeVisible (wideButton);
+    addAndMakeVisible (scrollBar);
     startTimerHz (4);
+}
+
+void InstrMixPanel::setWide (bool on)
+{
+    wide = on;
+    wideButton.setButtonText (wide ? "NARROW" : "WIDE");
+    for (auto& strip : strips)
+        for (auto* knob : { strip->level.get(), strip->pan.get(), strip->width.get(), strip->phase.get() })
+            if (knob != nullptr)
+                knob->setVisible (! wide);
+    resized();
+    renderWave();
+    repaint();
+}
+
+void InstrMixPanel::updateScrollBar()
+{
+    scrollBar.setRangeLimits (0.0, (double) maxPanSamples + (double) (waveArea.getWidth() - 8) * samplesPerColumn());
+    scrollBar.setCurrentRange ((double) panSamples, (double) (waveArea.getWidth() - 8) * samplesPerColumn(), juce::dontSendNotification);
+}
+
+void InstrMixPanel::scrollBarMoved (juce::ScrollBar*, double newRangeStart)
+{
+    panSamples = juce::jlimit (0, maxPanSamples, (int) newRangeStart);
+    renderWave();
+    repaint (waveArea);
 }
 
 void InstrMixPanel::addStrip (const char* name, InstrumentField level, const InstrumentField* pan, const InstrumentField* width, int, const InstrumentField* phase)
@@ -39,7 +71,11 @@ void InstrMixPanel::addStrip (const char* name, InstrumentField level, const Ins
 void InstrMixPanel::resized()
 {
     auto area = getLocalBounds().reduced (6, 4);
-    waveArea = area.removeFromLeft (juce::jmin (260, area.getWidth() / 3));
+    waveArea = wide ? area : area.removeFromLeft (juce::jmin (260, area.getWidth() / 3));
+    wideButton.setBounds (waveArea.getRight() - 56, waveArea.getY(), 56, 14);
+    scrollBar.setBounds (waveArea.getX(), waveArea.getBottom() - 28, waveArea.getWidth(), 12);
+    if (wide)
+        return;
     area.removeFromLeft (8);
     // Två rader: OSC 1-3 + SAMPLE överst, NOISE, SUB och FM under.
     const auto rowHeight = area.getHeight() / 2;
@@ -72,10 +108,12 @@ void InstrMixPanel::resized()
 
 void InstrMixPanel::renderWave()
 {
-    // Några cykler vid 110 Hz en stund in i tonen, så att attacken inte styr bilden.
+    // Några cykler vid 110 Hz en stund in i tonen, så att attacken inte styr bilden; panoreringen flyttar startpunkten framåt.
     constexpr double rate = 48000.0;
     constexpr int skip = 4800;
-    const auto length = juce::jmax (64, (int) (1309.0f / zoomX));
+    const auto columns = juce::jmax (1, waveArea.getWidth() - 8);
+    const auto length = juce::jmax (64, (int) ((double) columns * samplesPerColumn()));
+    updateScrollBar();
     auto params = refs.readInstrument (layer, 36).withTempo (processor.transportStatus.bpm.load(), false);
     params.rootHz = 110.0f;
     params.level = 1.0f;
@@ -83,9 +121,8 @@ void InstrMixPanel::renderWave()
     synth.setSeed (11);
     synth.setParams (params);
     synth.noteOn (0, 0.8f, (int) rate);
-    for (int i = 0; i < skip; ++i)
+    for (int i = 0; i < skip + panSamples; ++i)
         synth.nextSample();
-    const auto columns = juce::jmax (1, waveArea.getWidth() - 8);
     peaks.assign ((size_t) columns * 2, 0.0f);
     std::vector<float> wave ((size_t) length);
     auto maxAbs = 1.0e-6f;
@@ -150,7 +187,28 @@ void InstrMixPanel::mouseWheelMove (const juce::MouseEvent& event, const juce::M
     if (event.mods.isShiftDown())
         zoomY = juce::jlimit (0.25f, 8.0f, zoomY * factor);
     else
-        zoomX = juce::jlimit (0.25f, 8.0f, zoomX * factor);
+    {
+        // Zooma runt musen: samplet under pekaren stannar kvar.
+        const auto column = (double) (event.x - waveArea.getX() - 4);
+        const auto sampleUnderMouse = (double) panSamples + column * samplesPerColumn();
+        zoomX = juce::jlimit (0.1f, 32.0f, zoomX * factor);
+        panSamples = juce::jlimit (0, maxPanSamples, (int) (sampleUnderMouse - column * samplesPerColumn()));
+    }
+    renderWave();
+    repaint (waveArea);
+}
+
+void InstrMixPanel::mouseDown (const juce::MouseEvent& event)
+{
+    panAtDragStart = panSamples;
+    juce::ignoreUnused (event);
+}
+
+void InstrMixPanel::mouseDrag (const juce::MouseEvent& event)
+{
+    if (! event.mods.isMiddleButtonDown() || ! waveArea.contains (event.getMouseDownPosition()))
+        return;
+    panSamples = juce::jlimit (0, maxPanSamples, panAtDragStart - (int) ((double) event.getDistanceFromDragStartX() * samplesPerColumn()));
     renderWave();
     repaint (waveArea);
 }
@@ -160,6 +218,7 @@ void InstrMixPanel::mouseDoubleClick (const juce::MouseEvent& event)
     if (! waveArea.contains (event.getPosition()))
         return;
     zoomX = zoomY = 1.0f;
+    panSamples = 0;
     renderWave();
     repaint (waveArea);
 }
@@ -182,16 +241,44 @@ void InstrMixPanel::timerCallback()
     repaint();
 }
 
+// Lodräta hjälplinjer med tid i ms sedan tonens start (48 kHz); avståndet är ett "snällt" steg som ger minst ~50 px mellan linjerna.
+void InstrMixPanel::paintTimeAxis (juce::Graphics& g, juce::Rectangle<float> wave) const
+{
+    constexpr double samplesPerMs = 48.0;
+    constexpr int skip = 4800;
+    const auto msPerColumn = samplesPerColumn() / samplesPerMs;
+    double step = 200.0;
+    for (const double candidate : { 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0, 200.0 })
+        if (candidate / msPerColumn >= 50.0)
+        {
+            step = candidate;
+            break;
+        }
+    const auto startMs = (double) (skip + panSamples) / samplesPerMs;
+    const auto endMs = startMs + (double) (wave.getWidth() - 8.0f) * msPerColumn;
+    g.setFont (Theme::font (9.0f));
+    for (auto ms = std::ceil (startMs / step) * step; ms <= endMs; ms += step)
+    {
+        const auto x = wave.getX() + 4.0f + (float) ((ms - startMs) / msPerColumn);
+        g.setColour (Theme::textDim.withAlpha (0.2f));
+        g.drawVerticalLine ((int) x, wave.getY(), wave.getBottom());
+        g.setColour (Theme::textDim);
+        g.drawText (juce::String (ms, step < 1.0 ? 2 : (step < 10.0 ? 1 : 0)) + " ms", juce::Rectangle<float> (x + 2.0f, wave.getBottom() - 12.0f, 50.0f, 11.0f), juce::Justification::centredLeft);
+    }
+}
+
 void InstrMixPanel::paint (juce::Graphics& g)
 {
     auto wave = waveArea.toFloat();
     g.setColour (Theme::textDim);
     g.setFont (Theme::font (10.0f, true));
     g.drawText ("COMBINED WAVEFORM (all sources, 110 Hz)", waveArea.withHeight (14), juce::Justification::centredLeft);
-    g.drawText ("ZOOM " + juce::String (zoomX, 2) + "x / " + juce::String (zoomY, 2) + "x  (wheel = time, Shift + wheel = height, double-click = reset)", waveArea.withTrimmedTop (waveArea.getHeight() - 14), juce::Justification::centredLeft);
+    g.drawText ("ZOOM " + juce::String (zoomX, 2) + "x / " + juce::String (zoomY, 2) + "x  (wheel = time, Shift + wheel = height, middle button = pan)", waveArea.withTrimmedTop (waveArea.getHeight() - 14), juce::Justification::centredLeft);
     wave.removeFromTop (16.0f);
+    wave.removeFromBottom (28.0f); // rullningslist och tidsaxel
     g.setColour (juce::Colours::black.withAlpha (0.35f));
     g.fillRoundedRectangle (wave, 3.0f);
+    paintTimeAxis (g, wave);
     const auto mid = wave.getCentreY();
     g.setColour (Theme::textDim.withAlpha (0.4f));
     g.drawHorizontalLine ((int) mid, wave.getX(), wave.getRight());
@@ -205,6 +292,8 @@ void InstrMixPanel::paint (juce::Graphics& g)
         g.drawVerticalLine ((int) px, mid - juce::jmin (limit, hi * (wave.getHeight() * 0.45f)), mid - juce::jmax (-limit, lo * (wave.getHeight() * 0.45f)) + 1.0f);
     }
 
+    if (wide)
+        return;
     for (const auto& strip : strips)
     {
         g.setColour (Theme::textDim.withAlpha (0.35f));

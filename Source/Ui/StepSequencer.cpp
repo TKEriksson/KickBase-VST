@@ -254,6 +254,7 @@ int StepSequencer::bars() const
 
 InstrumentGrid StepSequencer::grid (int layer) const
 {
+    layer = ownerOf (layer);
     const auto id = layer == Pattern::kickLayer ? juce::String (ParamID::rowGridKick) : ParamID::bass (layer, InstrumentField::grid);
     return (InstrumentGrid) juce::jlimit (0, Pattern::numGrids - 1, (int) processor.apvts.getRawParameterValue (id)->load());
 }
@@ -314,6 +315,7 @@ Pattern::Note* StepSequencer::noteAt (int layer, int step) const
 
 bool StepSequencer::rowSilent (int layer) const
 {
+    layer = ownerOf (layer);
     const auto solo = processor.soloMask.load();
     const auto isOn = processor.apvts.getRawParameterValue (layer == Pattern::kickLayer ? juce::String (ParamID::kickOn) : ParamID::bass (layer, InstrumentField::on))->load() >= 0.5f;
     const auto soloed = (solo & (layer == Pattern::kickLayer ? PluginBase::kickSoloBit : 1ull << layer)) != 0;
@@ -467,7 +469,14 @@ void StepSequencer::timerCallback()
         repaint();
     else
         for (int i = 0; i < numMoved; ++i)
-            repaintMarker (movedMarkers[(size_t) i].first, movedMarkers[(size_t) i].second, lastMarkers[(size_t) movedMarkers[(size_t) i].first]);
+        {
+            const auto moved = movedMarkers[(size_t) i].first;
+            repaintMarker (moved, movedMarkers[(size_t) i].second, lastMarkers[(size_t) moved]);
+            if (moved != Pattern::kickLayer) // Slice-raderna följer instrumentets markör
+                for (const auto id : displayOrder)
+                    if (isSliceRow (id) && ownerOf (id) == moved)
+                        repaint (rowBounds (id).expanded (2));
+        }
 }
 
 int StepSequencer::markerStep (int layer) const
@@ -709,7 +718,11 @@ StepSequencer::Target StepSequencer::targetAt (juce::Point<int> point, int& laye
         if (! rect.isEmpty() && point.y < rect.getBottom() + 2)
         {
             if (isSubRow (id))
-                return Target::none; // underraderna kan inte väljas eller redigeras ännu
+            {
+                // Slice-raderna har egna steg (men ingen väljare); SAMPLE-raden redigeras i sampler-fliken.
+                layer = id;
+                return isSliceRow (id) && ! inLabels ? Target::bass : Target::none;
+            }
             layer = id;
             return inLabels ? Target::label : Target::bass;
         }
@@ -999,10 +1012,16 @@ void StepSequencer::paint (juce::Graphics& g)
             return;
         const auto colour = colourOf (layer);
         const auto isKick = layer == Pattern::kickLayer;
-        const auto playTick = isKick ? processor.transportStatus.kickStep.load() : processor.transportStatus.instrumentSteps[(size_t) layer].load();
-        const auto dimmedRow = isKick ? mode == Mode::gate : layer != selectedLayer; // kicken är en vanlig rad, men har ingen gate
+        const auto playTick = isKick ? processor.transportStatus.kickStep.load() : processor.transportStatus.instrumentSteps[(size_t) ownerOf (layer)].load();
+        const auto dimmedRow = isKick ? mode == Mode::gate : ownerOf (layer) != selectedLayer || (isSubRow (layer) && mode == Mode::gate); // kicken är en vanlig rad, men har ingen gate
 
-        if (mode == Mode::gate && ! isKick)
+        if (isSubRow (layer))
+        {
+            // Slice-raden: egna steg, men ingen pianorulle eller gate (GATE-läget dämpar den).
+            paintToggleRow (g, row, instrumentSteps (layer), pageOffset (instrumentSteps (layer)), instrumentOwnSteps (lengthsNow, layer), lengthsNow.loops[(size_t) rowOf (layer)], colour, stepOfTick (layer, playTick),
+                            [this, layer] (int step) { return noteTickAt (layer, step) >= 0; }, dimmedRow);
+        }
+        else if (mode == Mode::gate && ! isKick)
         {
             // GATE: en egen av/på-rytm med eget rutnät. Raden dämpas när lagrets gate är avstängd.
             const auto gateTicks = Pattern::ticksPerStep (gateGrid (layer));
@@ -1020,6 +1039,9 @@ void StepSequencer::paint (juce::Graphics& g)
     paintLayerRow (Pattern::kickLayer);
     for (int layer = 0; layer < numLayers(); ++layer)
         paintLayerRow (layer);
+    for (const auto id : displayOrder)
+        if (isSliceRow (id))
+            paintLayerRow (id);
     if (! processor.isEffectVersion())
     {
         // En rad som inte hörs (avstängd, eller något annat är soloat) tonas ner.
@@ -1035,6 +1057,9 @@ void StepSequencer::paint (juce::Graphics& g)
         dimRow (Pattern::kickLayer);
         for (int layer = 0; layer < numLayers(); ++layer)
             dimRow (layer);
+        for (const auto id : displayOrder)
+            if (isSliceRow (id))
+                dimRow (id);
     }
     if (laneShown())
         paintLane (g);
@@ -1057,15 +1082,18 @@ void StepSequencer::paint (juce::Graphics& g)
         const auto colour = colourOf (layer);
         if (isSubRow (layer))
         {
-            // Underrad: en dämpad remsa med sort och instrument, utan rattar. Stegen visas i sampler-fliken tills raden får egna steg.
+            // Underrad: etikett med sort och instrument, utan rattar. SAMPLE-raden är en dämpad remsa (stegen finns i sampler-fliken); Slice-raden har egna steg.
             int instrument = 0;
             RowRegistry::Kind kind {};
             if (processor.pattern.rows.get (layer, instrument, kind))
             {
-                g.setColour (colour.withAlpha (0.07f));
-                g.fillRoundedRectangle (juce::Rectangle<int>::leftTopRightBottom (stepsColumn.getX(), bounds.getY(), stepsColumn.getRight(), bounds.getBottom()).toFloat(), 3.0f);
+                if (kind != RowRegistry::Kind::slice)
+                {
+                    g.setColour (colour.withAlpha (0.07f));
+                    g.fillRoundedRectangle (juce::Rectangle<int>::leftTopRightBottom (stepsColumn.getX(), bounds.getY(), stepsColumn.getRight(), bounds.getBottom()).toFloat(), 3.0f);
+                }
                 g.setColour (colour.withAlpha (0.6f));
-                g.drawFittedText (nameOf (instrument) + (kind == RowRegistry::Kind::slicer ? " SLICER" : " SAMPLE"), row.withTrimmedLeft (18), juce::Justification::centredLeft, 1, 0.8f);
+                g.drawFittedText (kind == RowRegistry::Kind::slice ? "Slice " + juce::String (processor.pattern.rows.sliceOf (layer) + 1) : nameOf (instrument) + " SAMPLE", row.withTrimmedLeft (18), juce::Justification::centredLeft, 1, 0.8f);
             }
             continue;
         }
@@ -1188,8 +1216,8 @@ void StepSequencer::editAt (juce::Point<int> point, bool firstEvent)
         {
             if (mode == Mode::gate)
             {
-                if (dragLayer == Pattern::kickLayer)
-                    return; // kicken har ingen gate
+                if (dragLayer == Pattern::kickLayer || isSubRow (dragLayer))
+                    return; // kicken och skivraderna har ingen gate
                 const auto gateIndex = stepAt (point.x, dragLayer, gateSteps (dragLayer), gateOwnSteps (lengths(), dragLayer));
                 if (gateIndex < 0)
                     return;
@@ -1282,7 +1310,7 @@ void StepSequencer::mouseDown (const juce::MouseEvent& event)
     edited = false;
 
     // Ett lagers namn eller steg väljer lagret för lanet.
-    if (dragTarget == Target::label || dragTarget == Target::bass)
+    if ((dragTarget == Target::label || dragTarget == Target::bass) && ! isSubRow (dragLayer))
         selectLayer (dragLayer);
     if (dragTarget == Target::label)
     {

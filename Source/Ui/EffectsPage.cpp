@@ -282,6 +282,7 @@ EffectsPage::EffectsPage (PluginBase& p)
         button.setButtonText (viewNames[i]);
         button.setTooltip (viewHelp[i]);
         button.setClickingTogglesState (false);
+        button.getProperties().set ("chip", true);
         button.setColour (juce::TextButton::buttonOnColourId, Theme::effects.withAlpha (0.55f));
         button.onClick = [this, i] { selectView ((View) i); };
         addAndMakeVisible (button);
@@ -292,6 +293,7 @@ EffectsPage::EffectsPage (PluginBase& p)
     {
         auto& button = channelButtons[(size_t) ch];
         button.setButtonText (Effects::channelLabel (ch));
+        button.getProperties().set ("chip", true);
         button.setColour (juce::TextButton::buttonOnColourId, Theme::effects.withAlpha (0.55f));
         button.setTooltip ("FX CHANNEL " + Effects::channelLabel (ch) + " - A mixer channel for effects. Each instrument picks a channel "
                            "and how much of its sound goes through it (FX SEND on the instrument page).");

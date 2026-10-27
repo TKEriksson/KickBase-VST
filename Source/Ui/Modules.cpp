@@ -48,13 +48,6 @@ HeaderBar::HeaderBar (PluginBase& p, const juce::String& subtitleIn)
     : processor (p), subtitle (subtitleIn), logo (subtitleIn), presets (p, Presets::Section::full, Theme::pattern)
 {
     addAndMakeVisible (presets);
-    if (! processor.isEffectVersion())
-    {
-        exportButton.setTooltip ("Export the kick, the instruments or the full mix as a looping WAV file, "
-                                 "at the current tempo and with the last played note.");
-        exportButton.onClick = [this] { showExportMenu(); };
-        addAndMakeVisible (exportButton);
-    }
 
     if (processor.getKeyboardState() != nullptr) // instrumentet
     {
@@ -163,41 +156,58 @@ HeaderBar::HeaderBar (PluginBase& p, const juce::String& subtitleIn)
 void HeaderBar::updateAiTooltip()
 {
     projectButton.setTooltip (processor.isBridgeEnabled()
-        ? "PROJECT - Save or open a project file (.kbproj), export, and the AI server. The AI SERVER (MCP) is ON (instance " + processor.getBridgeId() + "): an AI assistant using the Kickbase MCP bridge can read and change this plugin and hear/measure it offline."
-        : "PROJECT - Save or open a project file (.kbproj), export, and the AI server. The AI SERVER (MCP) is off. Switch it on to let an AI assistant (through the Kickbase MCP bridge, for example in Claude Desktop) read and change this plugin. Local only; nothing is sent over the internet by Kickbase.");
+        ? "MENU - New, open (and the 3 most recent), save (Ctrl+S) a project file (.kbproj), export, and the AI server. The AI SERVER (MCP) is ON (instance " + processor.getBridgeId() + "): an AI assistant using the Kickbase MCP bridge can read and change this plugin and hear/measure it offline."
+        : "MENU - New, open (and the 3 most recent), save (Ctrl+S) a project file (.kbproj), export, and the AI server. The AI SERVER (MCP) is off. Switch it on to let an AI assistant (through the Kickbase MCP bridge, for example in Claude Desktop) read and change this plugin. Local only; nothing is sent over the internet by Kickbase.");
     repaint (projectButton.getBounds());
 }
 
 void HeaderBar::showProjectMenu()
 {
     juce::PopupMenu menu;
-    menu.addItem (1, "Save project...");
+    menu.addItem (1, "New project");
     menu.addItem (2, "Open project...");
-    if (! processor.isEffectVersion())
-        menu.addItem (3, "Export...");
-    menu.addSeparator();
-    menu.addItem (4, "AI server (MCP)", true, processor.isBridgeEnabled());
-    menu.addItem (5, "History...");
-    menu.addItem (6, "Autosave every 3 min", true, Settings::get ("autosave") != "0");
-    menu.addItem (7, "Open autosave...");
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&projectButton), [this, safe = juce::Component::SafePointer<HeaderBar> (this)] (int result)
+    const auto recent = recentProjects();
+    if (! recent.isEmpty())
     {
-        if (safe == nullptr)
+        juce::PopupMenu recents;
+        for (int i = 0; i < recent.size(); ++i)
+            recents.addItem (10 + i, juce::File (recent[i]).getFileNameWithoutExtension());
+        menu.addSubMenu ("Recent projects", recents);
+    }
+    menu.addSeparator();
+    menu.addItem (3, "Save project   Ctrl+S");
+    menu.addItem (4, "Save project as...");
+    if (! processor.isEffectVersion())
+    {
+        menu.addSeparator();
+        menu.addItem (5, "Export...");
+    }
+    menu.addSeparator();
+    menu.addItem (6, "AI server (MCP)", true, processor.isBridgeEnabled());
+    menu.addItem (7, "History...");
+    menu.addItem (8, "Autosave every 3 min", true, Settings::get ("autosave") != "0");
+    menu.addItem (9, "Open autosave...");
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&projectButton), [safe = juce::Component::SafePointer<HeaderBar> (this), recent] (int result)
+    {
+        if (safe == nullptr || result <= 0)
             return;
-        if (result == 1)      saveProject();
-        else if (result == 2) openProject();
-        else if (result == 3) showExportMenu();
-        else if (result == 4)
-        {
-            processor.setBridgeEnabled (! processor.isBridgeEnabled());
-            updateAiTooltip();
-        }
-        else if (result == 5)
-            showHistory();
+        if (result == 1)      safe->newProject();
+        else if (result == 2) safe->openProject();
+        else if (result == 3) safe->saveProject (false);
+        else if (result == 4) safe->saveProject (true);
+        else if (result == 5) safe->showExportMenu();
         else if (result == 6)
+        {
+            safe->processor.setBridgeEnabled (! safe->processor.isBridgeEnabled());
+            safe->updateAiTooltip();
+        }
+        else if (result == 7) safe->showHistory();
+        else if (result == 8)
             Settings::set ("autosave", Settings::get ("autosave") == "0" ? juce::String() : juce::String ("0"));
-        else if (result == 7)
-            openProject (Settings::rootFolder().getChildFile ("Autosave"));
+        else if (result == 9)
+            safe->openProject (Settings::rootFolder().getChildFile ("Autosave"));
+        else if (result >= 10 && result - 10 < recent.size())
+            safe->openProjectFile (juce::File (recent[result - 10]));
     });
 }
 
@@ -230,32 +240,161 @@ void HeaderBar::showJogPanel()
     juce::CallOutBox::launchAsynchronously (std::make_unique<JogPanel> (processor), editor->getLocalArea (this, jogButton.getBounds()), editor);
 }
 
-void HeaderBar::saveProject()
+juce::StringArray HeaderBar::recentProjects() const
 {
-    chooser = std::make_unique<juce::FileChooser> ("Save project", Settings::exportsFolder().getChildFile ("Kickbase.kbproj"), "*.kbproj");
+    juce::StringArray list;
+    list.addLines (Settings::get ("recentProjects"));
+    list.removeEmptyStrings();
+    for (int i = list.size(); --i >= 0;)
+        if (! juce::File (list[i]).existsAsFile())
+            list.remove (i);
+    return list;
+}
+
+void HeaderBar::rememberRecent (const juce::File& file)
+{
+    juce::StringArray list;
+    list.add (file.getFullPathName());
+    for (const auto& path : recentProjects())
+        if (path != file.getFullPathName())
+            list.add (path);
+    while (list.size() > 3)
+        list.remove (list.size() - 1);
+    Settings::set ("recentProjects", list.joinIntoString ("\n"));
+}
+
+void HeaderBar::showNotice (const juce::String& text)
+{
+    notice = text;
+    noticeUntil = juce::Time::getMillisecondCounterHiRes() * 0.001 + 2.5;
+    repaint (nameBounds);
+}
+
+void HeaderBar::newProject()
+{
+    // Frågar om det nuvarande projektet ska sparas; Save sparar till projektfilen (eller frågar efter ett namn), sedan laddas Init-presetet.
+    juce::AlertWindow::showAsync (juce::MessageBoxOptions::makeOptionsYesNoCancel (juce::MessageBoxIconType::QuestionIcon, "New project",
+                                                                                   "Save the current project before starting a new one?", "Save", "Discard", "Cancel", this),
+                                  [safe = juce::Component::SafePointer<HeaderBar> (this)] (int choice) // 1 Save, 2 Discard, 0 Cancel
+    {
+        if (safe == nullptr || choice == 0)
+            return;
+        auto start = [safe]
+        {
+            if (safe == nullptr)
+                return;
+            safe->processor.loadFactoryPreset (Presets::Section::full, 0);
+            safe->processor.currentProjectFile = juce::File();
+            safe->repaint();
+        };
+        if (choice == 2)
+        {
+            start();
+            return;
+        }
+        if (safe->processor.currentProjectFile != juce::File())
+        {
+            safe->saveProjectTo (safe->processor.currentProjectFile);
+            start();
+            return;
+        }
+        // Inget namn än: välj fil först, starta nytt när det är sparat (avbrutet val stannar kvar i projektet).
+        safe->chooser = std::make_unique<juce::FileChooser> ("Save project", Settings::exportsFolder().getChildFile ("Kickbase.kbproj"), "*.kbproj");
+        safe->chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles | juce::FileBrowserComponent::warnAboutOverwriting,
+                                    [safe, start] (const juce::FileChooser& fc)
+        {
+            if (safe == nullptr || fc.getResult() == juce::File())
+                return;
+            safe->saveProjectTo (fc.getResult().withFileExtension ("kbproj"));
+            start();
+        });
+    });
+}
+
+void HeaderBar::saveProject (bool askForFile)
+{
+    if (! askForFile && processor.currentProjectFile != juce::File())
+    {
+        saveProjectTo (processor.currentProjectFile);
+        return;
+    }
+    const auto start = processor.currentProjectFile != juce::File() ? processor.currentProjectFile : Settings::exportsFolder().getChildFile ("Kickbase.kbproj");
+    chooser = std::make_unique<juce::FileChooser> ("Save project", start, "*.kbproj");
     chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles | juce::FileBrowserComponent::warnAboutOverwriting,
-                          [this, safe = juce::Component::SafePointer<HeaderBar> (this)] (const juce::FileChooser& fc)
+                          [safe = juce::Component::SafePointer<HeaderBar> (this)] (const juce::FileChooser& fc)
     {
         if (safe == nullptr || fc.getResult() == juce::File())
             return;
-        juce::String error;
-        if (! ProjectFile::save (processor, fc.getResult().withFileExtension ("kbproj"), KICKBASE_VERSION, error))
-            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Could not save the project", error);
+        safe->saveProjectTo (fc.getResult().withFileExtension ("kbproj"));
     });
+}
+
+void HeaderBar::saveProjectTo (const juce::File& file)
+{
+    juce::String error;
+    if (! ProjectFile::save (processor, file, KICKBASE_VERSION, error))
+    {
+        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Could not save the project", error);
+        return;
+    }
+    processor.currentProjectFile = file;
+    rememberRecent (file);
+    showNotice ("Saved " + file.getFileNameWithoutExtension());
 }
 
 void HeaderBar::openProject (const juce::File& startFolder)
 {
     chooser = std::make_unique<juce::FileChooser> ("Open project", startFolder != juce::File() ? startFolder : Settings::exportsFolder(), "*.kbproj");
     chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
-                          [this, safe = juce::Component::SafePointer<HeaderBar> (this)] (const juce::FileChooser& fc)
+                          [safe = juce::Component::SafePointer<HeaderBar> (this)] (const juce::FileChooser& fc)
     {
         if (safe == nullptr || fc.getResult() == juce::File())
             return;
-        juce::String error;
-        if (! ProjectFile::load (processor, processor.apvts.state.getType(), fc.getResult(), error))
-            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Could not open the project", error);
+        safe->openProjectFile (fc.getResult());
     });
+}
+
+void HeaderBar::openProjectFile (const juce::File& file)
+{
+    juce::String error;
+    if (! ProjectFile::load (processor, processor.apvts.state.getType(), file, error))
+    {
+        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Could not open the project", error);
+        return;
+    }
+    processor.currentProjectFile = file;
+    rememberRecent (file);
+    showNotice ("Opened " + file.getFileNameWithoutExtension());
+}
+
+HeaderBar::~HeaderBar()
+{
+    processor.transportHold = false; // ett scrubbhopp som inte hunnit släppas får inte frysa klockan
+    if (keyTarget != nullptr)
+        keyTarget->removeKeyListener (this);
+}
+
+void HeaderBar::parentHierarchyChanged()
+{
+    // Ctrl+S: lyssnar på hela editorn (fönstret högst upp), så att det räcker att fönstret har fokus.
+    auto* top = getTopLevelComponent();
+    if (top == keyTarget)
+        return;
+    if (keyTarget != nullptr)
+        keyTarget->removeKeyListener (this);
+    keyTarget = top;
+    if (keyTarget != nullptr)
+        keyTarget->addKeyListener (this);
+}
+
+bool HeaderBar::keyPressed (const juce::KeyPress& key, juce::Component*)
+{
+    if (key == juce::KeyPress ('s', juce::ModifierKeys::commandModifier, 0))
+    {
+        saveProject (false);
+        return true;
+    }
+    return false;
 }
 
 void HeaderBar::updateTransportLabels (bool following)
@@ -309,10 +448,17 @@ void HeaderBar::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWhee
 
 void HeaderBar::paintOverChildren (juce::Graphics& g)
 {
-    // Statuspunkten på PROJECT-knappen: grön när AI-länken är på, grå när den är av.
+    // Statuspunkten på MENU-knappen: grön när AI-länken är på, grå när den är av.
     const auto dot = juce::Rectangle<float> (7.0f, 7.0f).withCentre ({ (float) projectButton.getRight() - 9.0f, (float) projectButton.getY() + 9.0f });
     g.setColour (processor.isBridgeEnabled() ? juce::Colour (0xff4cd964) : Theme::text.withAlpha (0.35f));
     g.fillEllipse (dot);
+
+    // Projektnamnet (rubriken) under MENU/presetväljaren; en kort bekräftelse ("Saved X") ersätter det i ett par sekunder.
+    const auto projectName = processor.currentProjectFile.getFileNameWithoutExtension();
+    const auto shown = notice.isNotEmpty() ? notice : (projectName.isNotEmpty() ? projectName : juce::String ("Untitled project"));
+    g.setFont (juce::FontOptions (11.0f));
+    g.setColour (notice.isNotEmpty() ? juce::Colour (0xff4cd964) : Theme::text.withAlpha(projectName.isNotEmpty() ? 0.75f : 0.4f));
+    g.drawText (shown, nameBounds, juce::Justification::centredLeft, true);
 
     // Returpilen på omstartsknappen (ritad, så att den inte beror på att ett typsnitt har symbolen).
     if (! restartButton.isVisible())
@@ -375,15 +521,15 @@ void HeaderBar::resized()
     for (auto* c : std::initializer_list<juce::Component*> { &loopButton, &loopFromLabel, &loopToLabel })
         c->setVisible (hasPreviews);
 
-    projectButton.setBounds (14 + logo.getWidth() + 22, controlsY, 84, controlsHeight); // PROJECT först, till vänster om presetväljaren
+    projectButton.setBounds (14 + logo.getWidth() + 22, controlsY, 84, controlsHeight); // MENU först, till vänster om presetväljaren
     auto presetWidth = hasPreviews ? 118 : 200;
-    const auto leftEnd = projectButton.getRight() + 10 + presetWidth + 10 + (hasPreviews ? 70 : 76) + 10 + (hasPreviews ? (rollShown ? 148 : 112) : 0) + 16 + meterWidth;
+    const auto leftEnd = projectButton.getRight() + 10 + presetWidth + 10 + (hasPreviews ? (rollShown ? 148 : 112) : 0) + 16 + meterWidth;
     presetWidth = std::max (70, presetWidth - std::max (0, leftEnd - ((hasPreviews ? loopBlock.getX() : bpmPill.getX()) - 8)));
     presets.setBounds (projectButton.getRight() + 10, controlsY, presetWidth, controlsHeight);
-    exportButton.setBounds (presets.getRight() + 10, controlsY, hasPreviews ? 70 : 76, controlsHeight);
+    nameBounds = { projectButton.getX(), controlsY + controlsHeight + 1, presets.getRight() - projectButton.getX(), 14 };
 
     // PREVIEWS: en inringad ruta med högtalaren och tonväljaren, så att man ser att de hör ihop.
-    previewGroup = hasPreviews ? juce::Rectangle<int> (exportButton.getRight() + 10, (height - 44) / 2, rollShown ? 148 : 112, 44) : juce::Rectangle<int>();
+    previewGroup = hasPreviews ? juce::Rectangle<int> (presets.getRight() + 10, (height - 44) / 2, rollShown ? 148 : 112, 44) : juce::Rectangle<int>();
     listenAll.setVisible (hasPreviews);
     noteBox.setVisible (hasPreviews);
     restartButton.setVisible (hasPreviews);
@@ -421,7 +567,7 @@ void HeaderBar::showExportMenu()
     menu.addItem (99999, "Without effects (dry: FX channel sends off)", true, exportWithoutEffects);
 
     juce::Component::SafePointer<HeaderBar> safeThis (this);
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&exportButton), [safeThis] (int result)
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&projectButton), [safeThis] (int result)
     {
         if (safeThis == nullptr || result <= 0)
             return;
@@ -501,6 +647,11 @@ void HeaderBar::syncRollButton()
 void HeaderBar::timerCallback()
 {
     followVisualRate();
+    if (notice.isNotEmpty() && juce::Time::getMillisecondCounterHiRes() * 0.001 > noticeUntil)
+    {
+        notice = {};
+        repaint (nameBounds);
+    }
     if (bridgeShown != processor.isBridgeEnabled()) // ändrad på inställningssidan eller via MCP
     {
         bridgeShown = processor.isBridgeEnabled();
@@ -973,6 +1124,7 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
     noiseFilterAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, ParamID::bass (layer, F::filterNoise), noiseFilterButton);
 
     // Flikarna: INSTR (envelopen och rattarna), OSC 1-3 och SAMPLE med en på/av-knapp på fliken, och FILTER.
+    sources.setSubTabs();
     sources.addTab ("INSTR", layerAccent, instrPage);
     for (int osc = 0; osc < ParamID::oscsPerLayer; ++osc)
         oscs[(size_t) osc] = std::make_unique<OscPanel> (p, layer, osc, layerAccent);
@@ -1103,7 +1255,7 @@ void SampleView::timerCallback()
     if (position >= 0.0f && (marker < 0.0f || position < marker))
         flashWallTime = juce::Time::getMillisecondCounterHiRes(); // en ny ton (positionen började om)
     const auto flashing = juce::Time::getMillisecondCounterHiRes() - flashWallTime < 500.0;
-    const auto slicer = processor.apvts.getRawParameterValue (ParamID::bass (layer, InstrumentField::slicerOn))->load() >= 0.5f;
+    const auto slicer = sample != nullptr && sample->slices.size() > 1; // en sampling med flera skivor har "Slice N"-rader
     if (sample != shown || slicer != shownSlicer || start != lastStart || position != marker || flashing)
     {
         shown = sample;
@@ -1133,12 +1285,16 @@ void SampleView::paint (juce::Graphics& g)
     const auto* data = sample->audio.getReadPointer (0);
     const auto length = sample->audio.getNumSamples();
     const auto width = std::max (1, (int) area.getWidth());
+    const auto viewLow = scroll, viewSpan = 1.0f / zoom; // zoomen: vilken del (0..1) av samplingen som syns
+
+    juce::Graphics::ScopedSaveState clipState (g);
+    g.reduceClipRegion (area.toNearestInt());
 
     juce::Path path;
     for (int x = 0; x < width; ++x)
     {
-        const auto from = (int) ((juce::int64) x * length / width);
-        const auto to = std::max (from + 1, (int) ((juce::int64) (x + 1) * length / width));
+        const auto from = juce::jlimit (0, length - 1, (int) ((viewLow + viewSpan * (float) x / (float) width) * (float) length));
+        const auto to = std::max (from + 1, (int) ((viewLow + viewSpan * (float) (x + 1) / (float) width) * (float) length));
         auto lowest = 0.0f, highest = 0.0f;
         for (int i = from; i < to && i < length; ++i)
         {
@@ -1151,13 +1307,37 @@ void SampleView::paint (juce::Graphics& g)
     g.setColour (accent.withAlpha (0.85f));
     g.fillPath (path);
 
-    if (shownSlicer)
+    if (shownSlicer && showSlices)
     {
-        // Skivgränserna (ton n..n+7 spelar skiva 1..8); START gäller inte i slicerläget.
+        // E2: varje skiva är en egen färgad ruta med rubrik "Slice N" (raden i mönstret). Skivor över taket har ingen rad och ritas dämpade.
+        const auto count = (int) sample->slices.size();
+        for (int i = 0; i < count; ++i)
+        {
+            const auto fromX = normToX ((float) sample->slices[(size_t) i] / (float) length);
+            const auto toSample = i + 1 < count ? sample->slices[(size_t) i + 1] : length;
+            const auto toX = normToX ((float) toSample / (float) length);
+            const auto box = juce::Rectangle<float> (fromX, area.getY(), std::max (1.0f, toX - fromX), area.getHeight());
+            const auto colour = juce::Colour::fromHSV (std::fmod ((float) i * 0.13f, 1.0f), 0.55f, 0.95f, 1.0f);
+            const auto hasRow = i < RowRegistry::maxSliceRows;
+            g.setColour (colour.withAlpha (i == heldSlice ? 0.45f : hasRow ? 0.2f : 0.06f));
+            g.fillRect (box);
+            g.setColour (colour.withAlpha (hasRow ? 0.9f : 0.35f));
+            g.drawRect (box, 1.5f);
+            if (box.getWidth() > 34.0f)
+            {
+                g.setColour (juce::Colours::white.withAlpha (hasRow ? 0.92f : 0.4f));
+                g.setFont (Theme::font (10.0f));
+                g.drawText ("Slice " + juce::String (i + 1), box.withHeight (14.0f).reduced (3.0f, 0.0f), juce::Justification::centredLeft);
+            }
+        }
+    }
+    else if (shownSlicer)
+    {
+        // Skivgränserna; START gäller inte när samplingen har flera skivor.
         g.setColour (juce::Colours::white.withAlpha (0.7f));
         for (size_t i = 0; i < sample->slices.size(); ++i)
         {
-            const auto x = area.getX() + (float) sample->slices[i] / (float) length * area.getWidth();
+            const auto x = normToX ((float) sample->slices[i] / (float) length);
             g.drawVerticalLine ((int) x, area.getY(), area.getBottom());
             g.setFont (Theme::font (9.0f));
             g.drawText (juce::String ((int) i + 1), juce::Rectangle<float> (x + 2.0f, area.getY(), 24.0f, 12.0f), juce::Justification::topLeft);
@@ -1165,7 +1345,7 @@ void SampleView::paint (juce::Graphics& g)
     }
     else
     {
-        const auto startX = area.getX() + juce::jlimit (0.0f, 1.0f, lastStart) * area.getWidth();
+        const auto startX = normToX (juce::jlimit (0.0f, 1.0f, lastStart));
         g.setColour (juce::Colours::white.withAlpha (0.8f));
         g.drawVerticalLine ((int) startX, area.getY(), area.getBottom());
     }
@@ -1173,7 +1353,7 @@ void SampleView::paint (juce::Graphics& g)
     // Spelmarkör: det som spelats lyses upp, ett lysande streck där samplingen är nu, och en blixt när en ny ton börjar.
     if (marker >= 0.0f)
     {
-        const auto markerX = area.getX() + marker * area.getWidth();
+        const auto markerX = normToX (marker);
         {
             juce::Graphics::ScopedSaveState state (g);
             g.reduceClipRegion (area.withRight (markerX).toNearestInt());
@@ -1207,7 +1387,7 @@ void SampleView::mouseDown (const juce::MouseEvent& e)
     // Manuellt läge: Skift-klick lägger en skivmarkör, Alt-klick tar bort den närmaste.
     if (shownSlicer && (e.mods.isShiftDown() || e.mods.isAltDown()) && processor.instrumentSampleSlot (layer).sliceMode() == SampleSlicing::manual)
     {
-        const auto position = juce::jlimit (0.0f, 1.0f, (float) (e.x - 6) / (float) std::max (1, getWidth() - 12));
+        const auto position = xToNorm ((float) e.x);
         auto markers = processor.instrumentSampleSlot (layer).manualMarkers();
         if (e.mods.isShiftDown())
             markers.push_back (position);
@@ -1216,8 +1396,134 @@ void SampleView::mouseDown (const juce::MouseEvent& e)
         processor.setInstrumentSliceMarkers (layer, std::move (markers));
         return;
     }
+    if (manualEditing())
+    {
+        // Högerklick tar bort gränsen under musen; vänsterklick på en gräns börjar dra den (ingen provlyssning).
+        if (const auto nearest = nearestMarker ((float) e.x); nearest >= 0)
+        {
+            if (e.mods.isPopupMenu())
+            {
+                auto markers = processor.instrumentSampleSlot (layer).manualMarkers();
+                markers.erase (markers.begin() + nearest);
+                processor.setInstrumentSliceMarkers (layer, std::move (markers));
+                repaint();
+            }
+            else
+                draggedMarker = nearest;
+            return;
+        }
+        if (e.mods.isPopupMenu())
+            return;
+    }
+    if (const auto* sample = processor.getActiveInstrumentSample (layer); sample != nullptr && shownSlicer && showSlices)
+    {
+        // Ett klick på en skiva spelar bara den, så länge musen hålls.
+        const auto index = sliceAt ((float) e.x, *sample);
+        if (index >= 0)
+        {
+            heldSlice = index;
+            heldNote = processor.rowRootNote (layer);
+            processor.postNoteAudition (layer, heldNote, 100, true, index);
+            repaint();
+        }
+        return;
+    }
     if (processor.getActiveInstrumentSample (layer) != nullptr)
         hold.start (PluginBase::heldSoloAudition (layer, 3)); // bara samplingen, så länge musen hålls (loopar om den tar slut)
+}
+
+void SampleView::mouseDrag (const juce::MouseEvent& e)
+{
+    if (draggedMarker < 0)
+        return;
+    auto markers = processor.instrumentSampleSlot (layer).manualMarkers();
+    if (draggedMarker >= (int) markers.size())
+        return;
+    // Gränsen får inte passera sina grannar, så att den dragna behåller sitt index.
+    const auto low = draggedMarker > 0 ? markers[(size_t) draggedMarker - 1] + 0.0005f : 0.0005f;
+    const auto high = draggedMarker + 1 < (int) markers.size() ? markers[(size_t) draggedMarker + 1] - 0.0005f : 0.9995f;
+    markers[(size_t) draggedMarker] = juce::jlimit (low, std::max (low, high), xToNorm ((float) e.x));
+    processor.setInstrumentSliceMarkers (layer, std::move (markers));
+    repaint();
+}
+
+void SampleView::mouseDoubleClick (const juce::MouseEvent& e)
+{
+    // Dubbelklick på en ledig plats lägger en ny gräns (ett enkelklick provlyssnar skivan).
+    if (! manualEditing() || nearestMarker ((float) e.x) >= 0)
+        return;
+    auto markers = processor.instrumentSampleSlot (layer).manualMarkers();
+    markers.push_back (xToNorm ((float) e.x));
+    processor.setInstrumentSliceMarkers (layer, std::move (markers));
+    repaint();
+}
+
+void SampleView::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel)
+{
+    if (processor.getActiveInstrumentSample (layer) == nullptr)
+        return;
+    // Hjulet zoomar mot musen; med Skift scrollar det i sidled.
+    if (e.mods.isShiftDown())
+        scroll = juce::jlimit (0.0f, 1.0f - 1.0f / zoom, scroll - wheel.deltaY * 0.5f / zoom);
+    else
+    {
+        const auto under = xToNorm ((float) e.x);
+        const auto fraction = juce::jlimit (0.0f, 1.0f, (float) (e.x - 6) / (float) std::max (1, getWidth() - 12));
+        zoom = juce::jlimit (1.0f, 64.0f, zoom * std::exp (wheel.deltaY * 1.5f));
+        scroll = juce::jlimit (0.0f, 1.0f - 1.0f / zoom, under - fraction / zoom);
+    }
+    repaint();
+}
+
+float SampleView::normToX (float norm) const
+{
+    return 6.0f + (norm - scroll) * zoom * (float) std::max (1, getWidth() - 12);
+}
+
+float SampleView::xToNorm (float x) const
+{
+    return juce::jlimit (0.0f, 1.0f, scroll + juce::jlimit (0.0f, 1.0f, (x - 6.0f) / (float) std::max (1, getWidth() - 12)) / zoom);
+}
+
+bool SampleView::manualEditing() const
+{
+    return shownSlicer && showSlices && processor.instrumentSampleSlot (layer).sliceMode() == SampleSlicing::manual;
+}
+
+int SampleView::nearestMarker (float x) const
+{
+    const auto markers = processor.instrumentSampleSlot (layer).manualMarkers();
+    auto best = -1;
+    auto bestDistance = 6.0f; // pixlar
+    for (int i = 0; i < (int) markers.size(); ++i)
+        if (const auto distance = std::abs (normToX (markers[(size_t) i]) - x); distance <= bestDistance)
+        {
+            best = i;
+            bestDistance = distance;
+        }
+    return best;
+}
+
+void SampleView::mouseUp (const juce::MouseEvent&)
+{
+    draggedMarker = -1;
+    hold.stop();
+    if (heldNote >= 0)
+        processor.postNoteAudition (layer, heldNote, 0, false);
+    heldNote = -1;
+    heldSlice = -1;
+    repaint();
+}
+
+int SampleView::sliceAt (float x, const ClickSample& sample) const
+{
+    const auto length = sample.audio.getNumSamples();
+    const auto position = std::min (0.9999f, xToNorm (x)) * (float) length;
+    auto found = -1;
+    for (size_t i = 0; i < sample.slices.size(); ++i)
+        if ((float) sample.slices[i] <= position)
+            found = (int) i;
+    return found;
 }
 
 SamplePage::SamplePage (PluginBase& p, int layerIn, juce::Colour accent)
@@ -1241,20 +1547,18 @@ SamplePage::SamplePage (PluginBase& p, int layerIn, juce::Colour accent)
     choice (F::sampleLoop, "LOOP");
     choice (F::sampleKey, "KEY");
 
-    // Slicer: noten väljer skivan (MAP TO = tonen som spelar skiva 1), originalhastighet, ingen loop.
-    slicerToggle.setTooltip ("SLICER - Each note plays one slice of the sample at its original speed (no pitching, no loop). The note decides the slice: the MAP TO note plays slice 1, the next note slice 2, and so on. "
-                             "Notes outside the slices are silent. Off = the sample plays as before.");
-    slicerToggle.setButtonText ("SLICER");
+    // Skivor: varje skiva har en egen rad "Slice N" i mönstret (en not där spelar skivan i originalhastighet, utan loop).
     reverseToggle.setButtonText ("REVERSE");
     reverseToggle.setTooltip ("REVERSE - Plays every slice backwards.");
-    for (auto* toggle : { &slicerToggle, &reverseToggle })
-    {
-        toggle->getProperties().set ("labelled", true);
-        toggle->setColour (juce::ToggleButton::tickColourId, accent);
-        toggle->setColour (juce::ToggleButton::textColourId, Theme::textDim);
-        addAndMakeVisible (*toggle);
-    }
-    slicerAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, id (F::slicerOn), slicerToggle);
+    reverseToggle.getProperties().set ("labelled", true);
+    reverseToggle.setColour (juce::ToggleButton::tickColourId, accent);
+    reverseToggle.setColour (juce::ToggleButton::textColourId, Theme::textDim);
+    addAndMakeVisible (reverseToggle);
+    sliceCapNotice.setFont (Theme::font (10.0f));
+    sliceCapNotice.setColour (juce::Label::textColourId, juce::Colour (0xffe0a040));
+    sliceCapNotice.setTooltip ("A sample can be cut into up to 128 slices, but only the first " + juce::String (RowRegistry::maxSliceRows)
+                               + " get a \"Slice N\" row in the pattern. The slices after that are not played by the pattern. Use fewer slices to get a row for each.");
+    addChildComponent (sliceCapNotice);
     reverseAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, id (F::slicerReverse), reverseToggle);
     filterSendToggle.setTooltip ("SEND THROUGH FILTER - On: the sample goes through Filter 1 and Filter 2 (set on the FILTER tab). "
                                  "Off (default): it bypasses both filters, so a sample keeps its full sound.");
@@ -1264,13 +1568,28 @@ SamplePage::SamplePage (PluginBase& p, int layerIn, juce::Colour accent)
     filterSendToggle.setColour (juce::ToggleButton::textColourId, Theme::textDim);
     addAndMakeVisible (filterSendToggle);
     filterSendAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, id (F::filterSample), filterSendToggle);
-    mapToKnob = std::make_unique<KnobComponent> (p.apvts, id (F::slicerMapTo), "MAP TO", accent);
-    addAndMakeVisible (*mapToKnob);
     sliceModeBox.addItemList ({ "Grid", "Auto", "Manual" }, 1);
     sliceModeBox.setTooltip ("Where the slices are: Grid = equal parts (the slider sets how many, max 128), Auto = cut at the hits (the slider sets how sensitive), "
-                             "Manual = Shift-click the waveform to add a marker, Alt-click to remove the nearest.");
+                             "Manual = your own markers (press CREATE to start from the Grid/Auto result; Shift-click adds a marker, Alt-click removes the nearest).");
     sliceModeBox.onChange = [this] { applySlicing(); };
     addAndMakeVisible (sliceModeBox);
+    createButton.setTooltip ("CREATE - Turns the slices from Grid or Auto into your own markers (Manual mode), so you can then drag, add and remove them: "
+                             "drag a boundary to move it, double-click to add one, right-click a boundary to remove it (zoom with the mouse wheel).");
+    createButton.onClick = [this]
+    {
+        const auto* sample = processor.getActiveInstrumentSample (layer);
+        if (sample == nullptr || sample->slices.size() < 2)
+            return;
+        std::vector<float> markers;
+        for (size_t i = 1; i < sample->slices.size(); ++i)
+            markers.push_back ((float) sample->slices[i] / (float) sample->audio.getNumSamples());
+        processor.setInstrumentSliceMarkers (layer, std::move (markers));
+        processor.setInstrumentSlicing (layer, SampleSlicing::manual, (float) sensitivityAmount.getValue(), juce::roundToInt (gridAmount.getValue()));
+        syncSlicerControls();
+        showSlicesButton.setToggleState (true, juce::dontSendNotification);
+        view.setShowSlices (true);
+    };
+    addAndMakeVisible (createButton);
     gridAmount.setRange (1.0, (double) SampleSlicing::maxSlices, 1.0);
     gridAmount.setTooltip ("How many equal slices (max 128).");
     sensitivityAmount.setRange (0.0, 1.0, 0.01);
@@ -1283,6 +1602,25 @@ SamplePage::SamplePage (PluginBase& p, int layerIn, juce::Colour accent)
         addChildComponent (*slider);
     }
     syncSlicerControls();
+
+    // E2: SHOW väljer vad vyn visar: hela samplingen, eller varje skiva som en egen ruta (klick spelar bara den skivan).
+    showLabel.setFont (Theme::font (10.0f));
+    showLabel.setColour (juce::Label::textColourId, Theme::textDim);
+    addAndMakeVisible (showLabel);
+    showSampleButton.setTooltip ("SHOW SAMPLE - Shows the whole waveform. Click and hold it to hear the sample.");
+    showSlicesButton.setTooltip ("SHOW SLICES - Shows every slice as its own coloured box with its name (its row in the pattern). Click a slice to hear only that slice.");
+    for (auto* button : { &showSampleButton, &showSlicesButton })
+    {
+        button->setClickingTogglesState (true);
+        button->setRadioGroupId (4711 + layerIn);
+        button->setColour (juce::TextButton::buttonOnColourId, accent);
+        addAndMakeVisible (*button);
+    }
+    showSampleButton.setToggleState (true, juce::dontSendNotification);
+    showSampleButton.onClick = [this] { view.setShowSlices (false); };
+    showSlicesButton.onClick = [this] { view.setShowSlices (true); };
+    gridAmount.setTextValueSuffix (" slices");
+    sensitivityAmount.setTextValueSuffix ("");
 
     addAndMakeVisible (view);
     label.setFont (Theme::font (11.0f));
@@ -1339,6 +1677,12 @@ void SamplePage::syncSlicerControls()
     sensitivityAmount.setValue (slot.sliceSensitivity(), juce::dontSendNotification);
     gridAmount.setVisible (mode == SampleSlicing::grid);
     sensitivityAmount.setVisible (mode == SampleSlicing::automatic);
+    createButton.setVisible (mode != SampleSlicing::manual);
+    const auto* sample = processor.getActiveInstrumentSample (layer);
+    const auto count = sample != nullptr ? (int) sample->slices.size() : 0;
+    const auto text = count > RowRegistry::maxSliceRows ? "Only the first " + juce::String (RowRegistry::maxSliceRows) + " slices have rows" : juce::String();
+    sliceCapNotice.setText (text, juce::dontSendNotification);
+    sliceCapNotice.setVisible (text.isNotEmpty());
 }
 
 void SamplePage::updateLabel()
@@ -1397,15 +1741,23 @@ void SamplePage::resized()
 
     right.removeFromTop (4);
     auto toggles = right.removeFromTop (22);
-    slicerToggle.setBounds (toggles.removeFromLeft (toggles.getWidth() / 2));
     reverseToggle.setBounds (toggles);
     right.removeFromTop (3);
     auto modeRow = right.removeFromTop (22);
     sliceModeBox.setBounds (modeRow.removeFromLeft (80));
     modeRow.removeFromLeft (4);
+    createButton.setBounds (modeRow.removeFromRight (64));
+    modeRow.removeFromRight (4);
     gridAmount.setBounds (modeRow);
     sensitivityAmount.setBounds (modeRow);
-    mapToKnob->setBounds (right.removeFromLeft (cell));
+    right.removeFromTop (3);
+    auto showRow = right.removeFromTop (22);
+    showLabel.setBounds (showRow.removeFromLeft (44));
+    showSampleButton.setBounds (showRow.removeFromLeft (70));
+    showRow.removeFromLeft (4);
+    showSlicesButton.setBounds (showRow.removeFromLeft (70));
+    right.removeFromTop (3);
+    sliceCapNotice.setBounds (right.removeFromTop (28));
 }
 
 //==============================================================================

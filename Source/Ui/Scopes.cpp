@@ -45,8 +45,7 @@ void ScopeView::timerCallback()
 void ScopeView::paint (juce::Graphics& g)
 {
     const auto bounds = getLocalBounds().toFloat();
-    g.setColour (Theme::knobBodyDark.withAlpha (0.85f));
-    g.fillRoundedRectangle (bounds, 6.0f);
+    Theme::paintChartBackground (g, bounds, 8.0f);
 
     const auto area = bounds.reduced (6.0f, 8.0f);
 
@@ -268,8 +267,7 @@ float SpectrumView::xFor (float hz, juce::Rectangle<float> area) const
 void SpectrumView::paint (juce::Graphics& g)
 {
     const auto bounds = getLocalBounds().toFloat();
-    g.setColour (Theme::knobBodyDark.withAlpha (0.85f));
-    g.fillRoundedRectangle (bounds, 6.0f);
+    Theme::paintChartBackground (g, bounds, 8.0f);
 
     const auto area = bounds.reduced (8.0f, 10.0f).withTrimmedBottom (10.0f);
     constexpr float dbTop = 0.0f, dbBottom = -90.0f;
@@ -384,8 +382,7 @@ void StereoView::timerCallback()
 void StereoView::paint (juce::Graphics& g)
 {
     const auto bounds = getLocalBounds().toFloat();
-    g.setColour (Theme::knobBodyDark.withAlpha (0.85f));
-    g.fillRoundedRectangle (bounds, 6.0f);
+    Theme::paintChartBackground (g, bounds, 8.0f);
 
     auto area = bounds.reduced (8.0f);
     auto meter = area.removeFromBottom (22.0f);

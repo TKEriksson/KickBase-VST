@@ -40,7 +40,7 @@ public:
     void setLabelAbove (bool above) { labelAbove = above; resized(); }
 
     // Ett nytt namn under ratten (t.ex. P1 och P2 byter namn efter filtermodellen).
-    void setLabelText (const juce::String& text) { name = text; label.setText (text, juce::dontSendNotification); slider.setName (text); }
+    void setLabelText (const juce::String& text) { name = text; label.setText (text.toUpperCase(), juce::dontSendNotification); slider.setName (text); }
 
     // En liveindikator inuti ratten: en båge som visar ett värde 0..1 just nu (t.ex. hur mycket
     // basen duckas under kicken, så att man ser den pumpa).
@@ -88,6 +88,7 @@ private:
     void updateTooltip (int hoveredRing);
 
     juce::Label label;
+    juce::Label valueLabel; // E1: avläsning under ratten
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> attachment;
     juce::RangedAudioParameter* parameter = nullptr;
     juce::String name, description;

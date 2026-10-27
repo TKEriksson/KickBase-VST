@@ -16,6 +16,17 @@ LiveCodePage::LiveCodePage (PluginBase& processor) : processor (processor), tool
     editor.setColour (juce::CodeEditorComponent::lineNumberBackgroundId, Theme::panel.darker (0.3f));
     editor.setColour (juce::CodeEditorComponent::lineNumberTextId, Theme::textDim);
     editor.setColour (juce::CodeEditorComponent::highlightColourId, Theme::mix.withAlpha (0.25f));
+    // Mörkt tema i stil med Atom One Dark; namnen är CPlusPlusCodeTokeniser:s typer.
+    {
+        auto scheme = editor.getColourScheme();
+        const std::pair<const char*, juce::uint32> colours[] = {
+            { "Error", 0xffff6b6b }, { "Comment", 0xff7f848e }, { "Keyword", 0xffc678dd }, { "Operator", 0xff56b6c2 },
+            { "Identifier", 0xffe6e6e6 }, { "Integer", 0xffd19a66 }, { "Float", 0xffd19a66 }, { "String", 0xff98c379 },
+            { "Bracket", 0xffe5c07b }, { "Punctuation", 0xff9aa5b1 }, { "Preprocessor Text", 0xff61afef } };
+        for (const auto& [name, argb] : colours)
+            scheme.set (name, juce::Colour (argb));
+        editor.setColourScheme (scheme);
+    }
     if (const auto saved = processor.getLiveCodeText(); saved.isNotEmpty()) // kod sparad i projektet (steg D)
         document.replaceAllContent (saved);
     seenLoads = processor.liveCodeLoads.load();
@@ -55,8 +66,19 @@ LiveCodePage::LiveCodePage (PluginBase& processor) : processor (processor), tool
     codeOnlyButton.setColour (juce::TextButton::buttonOnColourId, Theme::mix.darker (0.2f));
     codeOnlyButton.setTooltip ("Hear only the rows Live Code has written (solo). Your own SOLO click wins.");
     codeOnlyButton.onClick = [this] { setCodeOnly (codeOnlyButton.getToggleState()); };
-    for (auto* b : { &playButton, &stopButton, &createButton, &codeOnlyButton, &floatButton })
+    for (auto* b : { &playButton, &stopButton, &createButton, &codeOnlyButton, &floatButton, &formatButton })
         addAndMakeVisible (b);
+    formatButton.setTooltip ("FORMAT: one call per line, s(\"...\") first. Blocks with // comments are left as they are. Undo (Ctrl+Z) works.");
+    formatButton.onClick = [this]
+    {
+        const auto before = document.getAllContent();
+        const auto after = LiveCodeFormat::format (before);
+        if (after == before)
+            return;
+        document.newTransaction();
+        document.replaceAllContent (after);
+        editor.moveCaretToTop (false);
+    };
     floatButton.setTooltip ("FLOAT: opens the code in its own window (same text) so you can see it while you work in other tabs. Click again to close it.");
     floatButton.onClick = [this] { toggleFloat(); };
 
@@ -130,6 +152,8 @@ void LiveCodePage::resized()
     codeOnlyButton.setBounds (top.removeFromLeft (100));
     top.removeFromLeft (6);
     floatButton.setBounds (top.removeFromLeft (70));
+    top.removeFromLeft (6);
+    formatButton.setBounds (top.removeFromLeft (80));
     area.removeFromTop (6);
     auto locks = area.removeFromTop (22);
     lockLabel.setBounds (locks.removeFromLeft (76));
@@ -162,7 +186,7 @@ void LiveCodePage::codeDocumentTextInserted (const juce::String& text, int)
     marks.clear();
     codeChanged();
     if (ownEdit) return;
-    if (text == "." && completionEditor == nullptr)
+    if ((text == "." || text == "\"") && completionEditor == nullptr)
         juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<LiveCodePage> (this)]
         {
             if (safe != nullptr && safe->editor.hasKeyboardFocus (true)) safe->openCompletion (safe->editor);

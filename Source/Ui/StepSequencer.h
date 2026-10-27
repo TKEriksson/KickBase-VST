@@ -74,9 +74,12 @@ private:
 
     // Radens egna längd i steg (kortare än mönstret när raden har en egen längd): efter den loopar eller tystnar raden.
     // Lager 0-9 är instrumenten och lager 10 (Pattern::kickLayer) är kicken. Radens nummer för längderna: kick 0, instrument 1-10.
-    // Underrader (SAMPLE/SLICER, R9b) har id från RowRegistry::firstSubRow och en egen längdplats; de visas efter sitt instrument.
+    // Underrader (SAMPLE och "Slice N", R9b) har id från RowRegistry::firstSubRow och en egen längdplats; de visas efter sitt instrument.
     static int rowOf (int layer) { return Pattern::lengthRowOf (layer); }
     static bool isSubRow (int layer) { return layer >= RowRegistry::firstSubRow; }
+    // Instrumentet en rad hör till: lagret självt, eller underradens instrument (rutnät, på/av, solo och markör kommer därifrån).
+    int ownerOf (int layer) const { return isSubRow (layer) ? juce::jlimit (0, Pattern::numLayers - 1, processor.pattern.rows.instrumentOf (layer)) : layer; }
+    bool isSliceRow (int layer) const { return isSubRow (layer) && processor.pattern.rows.sliceOf (layer) >= 0; }
     std::vector<int> makeDisplayOrder() const; // lager-id i visningsordning: kicken, sedan varje instrument följt av sina underrader
     int instrumentOwnSteps (const PatternLengths& l, int layer) const { return l.barsOf (rowOf (layer)) * Pattern::instrumentStepsPerBar (grid (layer)); }
     int gateOwnSteps (const PatternLengths& l, int layer) const { return l.barsOf (rowOf (layer)) * Pattern::instrumentStepsPerBar (gateGrid (layer)); }

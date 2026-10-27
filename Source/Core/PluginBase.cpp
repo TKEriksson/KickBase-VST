@@ -1121,7 +1121,7 @@ void PluginBase::loadFactoryPreset (Presets::Section section, int index, int lay
 
     if (section == Presets::Section::bass)
     {
-        clearInstrumentSample (layer); // fabriksljuden har ingen sampling och inga egna tabeller
+        clearInstrumentSample (layer, false); // fabriksljuden har ingen sampling och inga egna tabeller
         for (int osc = 0; osc < ParamID::oscsPerLayer; ++osc)
             clearUserTable (layer * ParamID::oscsPerLayer + osc);
     }
@@ -1130,7 +1130,7 @@ void PluginBase::loadFactoryPreset (Presets::Section section, int index, int lay
     {
         clearClickSample();
         for (int l = 0; l < ParamID::numInstrumentLayers; ++l)
-            clearInstrumentSample (l);
+            clearInstrumentSample (l, false);
         for (int slot = 0; slot < numUserSlots; ++slot)
             clearUserTable (slot);
         layerNames.fill ({}); // som den inbakade Init-filen: standardnamn och -färger
@@ -1859,15 +1859,42 @@ bool PluginBase::loadInstrumentSample (int layer, const juce::File& file)
 {
     if (! juce::isPositiveAndBelow (layer, ParamID::numInstrumentLayers) || ! instrumentSamples[(size_t) layer].loadFile (file))
         return false;
+    syncSliceRows (layer);
     patternChanged();
     return true;
 }
 
-void PluginBase::clearInstrumentSample (int layer)
+void PluginBase::clearInstrumentSample (int layer, bool syncRows)
 {
     if (juce::isPositiveAndBelow (layer, ParamID::numInstrumentLayers))
         instrumentSamples[(size_t) layer].clear();
+    if (syncRows)
+        syncSliceRows (layer);
     patternChanged();
+}
+
+int PluginBase::syncSliceRows (int layer)
+{
+    if (! juce::isPositiveAndBelow (layer, ParamID::numInstrumentLayers))
+        return 0;
+    const auto* sample = instrumentSamples[(size_t) layer].active();
+    const auto count = sample != nullptr && sample->slices.size() > 1 ? (int) sample->slices.size() : 0;
+    const auto wanted = juce::jmin (count, RowRegistry::maxSliceRows);
+
+    auto missing = 0;
+    {
+        EditScope scope (*this, "Slice rows");
+        for (int slice = RowRegistry::maxSliceRows - 1; slice >= wanted; --slice)
+            if (const auto id = pattern.rows.find (layer, RowRegistry::Kind::slice, slice); id >= 0)
+            {
+                pattern.clearNotes (id);
+                pattern.rows.remove (id);
+            }
+        for (int slice = 0; slice < wanted; ++slice)
+            if (pattern.rows.find (layer, RowRegistry::Kind::slice, slice) < 0 && pattern.rows.add (layer, RowRegistry::Kind::slice, slice) < 0)
+                ++missing;
+    }
+    return missing;
 }
 
 juce::ValueTree PluginBase::instrumentSamplesToValueTree() const

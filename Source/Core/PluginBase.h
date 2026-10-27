@@ -262,11 +262,14 @@ public:
     const ClickSample* clickForDisplay() const { return getActiveClickSample(); } // message thread
 
     bool loadInstrumentSample (int layer, const juce::File& file);
-    void clearInstrumentSample (int layer);
+    void clearInstrumentSample (int layer, bool syncRows = true); // syncRows: false när en förinställning laddas (raderna kommer från dess mönster)
     // Slicer: skivinställningarna hör till lagrets sampling (sparas med den). Message thread.
     SampleSlot& instrumentSampleSlot (int layer) { return instrumentSamples[(size_t) juce::jlimit (0, ParamID::numInstrumentLayers - 1, layer)]; }
-    void setInstrumentSlicing (int layer, int mode, float sensitivity, int gridCount) { instrumentSampleSlot (layer).setSlicing (mode, sensitivity, gridCount); patternChanged(); }
-    void setInstrumentSliceMarkers (int layer, std::vector<float> markers) { instrumentSampleSlot (layer).setManualMarkers (std::move (markers)); patternChanged(); }
+    void setInstrumentSlicing (int layer, int mode, float sensitivity, int gridCount) { instrumentSampleSlot (layer).setSlicing (mode, sensitivity, gridCount); syncSliceRows (layer); patternChanged(); }
+    void setInstrumentSliceMarkers (int layer, std::vector<float> markers) { instrumentSampleSlot (layer).setManualMarkers (std::move (markers)); syncSliceRows (layer); patternChanged(); }
+    // En rad "Slice N" per skiva (högst RowRegistry::maxSliceRows), ett undosteg. Message thread; anropas när samplingen eller skivorna ändrats.
+    // Poolen av underrader är delad: är den full får de sista skivorna ingen rad (returnerar antalet skivor som saknar rad p.g.a. det).
+    int syncSliceRows (int layer);
     juce::String getInstrumentSampleName (int layer) const { return instrumentSamples[(size_t) juce::jlimit (0, ParamID::numInstrumentLayers - 1, layer)].name(); }
     const ClickSample* getActiveInstrumentSample (int layer) const { return instrumentSamples[(size_t) juce::jlimit (0, ParamID::numInstrumentLayers - 1, layer)].active(); }
 
@@ -368,13 +371,14 @@ public:
     std::atomic<int> previewFromTick { 0 }, previewLoopStart { -1 }, previewLoopEnd { -1 };
 
     // Provlyssning av en enskild ton på en rad (pianorullen: klick på en tangent eller en ritad ton). Ljudtråden spelar den på radens ljud.
-    void postNoteAudition (int row, int midiNote, int velocity, bool on)
+    // `slice` >= 0: spela bara den skivan av samplingen (skivraderna "Slice N"), annars hela tonen.
+    void postNoteAudition (int row, int midiNote, int velocity, bool on, int slice = -1)
     {
         int start1 = 0, size1 = 0, start2 = 0, size2 = 0;
         noteAuditionFifo.prepareToWrite (1, start1, size1, start2, size2);
         if (size1 > 0)
         {
-            noteAuditionData[(size_t) start1] = (on ? 1 << 20 : 0) | (juce::jlimit (1, 127, velocity) << 12) | (juce::jlimit (0, 127, midiNote) << 4) | juce::jlimit (0, 15, row);
+            noteAuditionData[(size_t) start1] = ((juce::jlimit (-1, 126, slice) + 1) << 21) | (on ? 1 << 20 : 0) | (juce::jlimit (1, 127, velocity) << 12) | (juce::jlimit (0, 127, midiNote) << 4) | juce::jlimit (0, 15, row);
             noteAuditionFifo.finishedWrite (1);
         }
         else if (! on)
@@ -384,7 +388,7 @@ public:
     void postAuditionAllOff (int row) { auditionAllOffRows.fetch_or (1 << juce::jlimit (0, 15, row)); }
     int takeAuditionAllOffRows() { return auditionAllOffRows.exchange (0); }
     std::atomic<int> auditionAllOffRows { 0 };
-    bool popNoteAudition (int& row, int& midiNote, int& velocity, bool& on)
+    bool popNoteAudition (int& row, int& midiNote, int& velocity, bool& on, int& slice)
     {
         int start1 = 0, size1 = 0, start2 = 0, size2 = 0;
         noteAuditionFifo.prepareToRead (1, start1, size1, start2, size2);
@@ -395,7 +399,8 @@ public:
         row = value & 15;
         midiNote = (value >> 4) & 127;
         velocity = (value >> 12) & 127;
-        on = (value >> 20) != 0;
+        on = ((value >> 20) & 1) != 0;
+        slice = (value >> 21) - 1;
         return true;
     }
     juce::AbstractFifo noteAuditionFifo { 32 };
@@ -490,7 +495,8 @@ public:
     int selectedSynthTab = 0;              // finns kvar när fönstret öppnas igen
     int selectedPatternMode = 0;           // PATTERN-flikens läge: 0 PATTERN (toner), 1 GATE
     std::array<int, ParamID::numInstrumentLayers> selectedInstrumentSource {}; // instrumentets valda flik: INSTR, OSC 1-3, SAMPLE eller FILTER
-    std::atomic<int> kickTab { 0 };                // kickens vyflik: 0 SYNTH, 1 SAMPLE (bara gränssnittet, sparas inte och ändrar inget ljud)
+    juce::File currentProjectFile;                 // projektfilen som senast sparats/öppnats (bara gränssnittet, sparas inte): Ctrl+S sparar hit, namnet visas i rubriken
+    std::atomic<int> kickTab { 0 };              // kickens vyflik: 0 SYNTH, 1 SAMPLE (bara gränssnittet, sparas inte och ändrar inget ljud)
     int selectedPatternLayer = 0;          // PATTERN-flikens valda lager: 0-9 instrument, 10 kick
     int selectedInstrument = 0;            // INSTRUMENT-flikens valda instrument (0-9)
     int lfoFolded = -1;                    // LFO-flikens fällda kort (en bit per LFO); -1 = inte bestämt ännu (se LfoPage)

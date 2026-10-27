@@ -417,8 +417,8 @@ namespace Params
         layout.add (std::make_unique<AudioParameterBool> (ParameterID { id (F::fxSend), 1 }, title + "FX Send", false)); // sist: SEND-läge för FX-kanalen (av = som förut)
         // fas R9b: SAMPLE-radens läge (BLEND = som förut, standard)
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::sampleMode), 1 }, title + "Sample Mode", StringArray { "Blend", "Independent", "Off" }, 0));
-                layout.add (floatParam (id (F::allpassFreq), title + "Allpass Freq", NormalisableRange<float> (20.0f, 2000.0f, 0.1f, 0.4f), 200.0f, [] (float v) { return String (juce::roundToInt (v)) + " Hz"; }));
-                layout.add (floatParam (id (F::allpassAmount), title + "Allpass Amount", NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.0f, [] (float v) { return String (juce::roundToInt (v * 100.0f)) + " %"; }));
+        layout.add (floatParam (id (F::allpassFreq), title + "Allpass Freq", NormalisableRange<float> (20.0f, 2000.0f, 0.1f, 0.4f), 200.0f, [] (float v) { return String (juce::roundToInt (v)) + " Hz"; }));
+        layout.add (floatParam (id (F::allpassAmount), title + "Allpass Amount", NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.0f, [] (float v) { return String (juce::roundToInt (v * 100.0f)) + " %"; }));
         const auto panText = [] (float v) { return juce::roundToInt (v * 100.0f) == 0 ? String ("C") : String (juce::roundToInt (std::abs (v) * 100.0f)) + (v < 0.0f ? " L" : " R"); };
         layout.add (floatParam (id (F::samplePan), title + "Sample Pan", NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f, panText));
         layout.add (floatParam (id (F::noisePan), title + "Noise Pan", NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f, panText));
@@ -435,7 +435,7 @@ namespace Params
         layout.add (floatParam (id (F::fmWidth), title + "FM Width", NormalisableRange<float> (1.0f, 2.0f, 0.01f), 1.0f, widthText));
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::ringSource), 1 }, title + "OSC 1 Ring Source",
                                                             StringArray { "OSC 2", "OSC 3", "OSC 2 x OSC 3" }, 0));
-            }
+    }
 
     void addFxParams (Layout& layout)
     {
@@ -718,8 +718,6 @@ InstrumentParams ParamRefs::readInstrument (int layer, int rootMidiNote) const
     p.fmEnvMs = get (F::fmEnvTime);
     p.fmSemis = get (F::fmSemis);
     p.fmFilter = get (F::fmFilter) >= 0.5f;
-    p.slicerOn = get (F::slicerOn) >= 0.5f;
-    p.slicerMapTo = juce::roundToInt (get (F::slicerMapTo));
     p.slicerReverse = get (F::slicerReverse) >= 0.5f;
     p.allpassFreq = get (F::allpassFreq);
     p.allpassAmount = get (F::allpassAmount);

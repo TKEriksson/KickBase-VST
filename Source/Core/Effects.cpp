@@ -526,7 +526,8 @@ namespace Effects
 
     void migrateLegacyKnobs (ValueTree& state)
     {
-        if ((int) state.getProperty ("fxKnobsV", 0) >= knobsVersion)
+        const auto oldVersion = (int) state.getProperty ("fxKnobsV", 0);
+        if (oldVersion >= knobsVersion)
             return;
         state.setProperty ("fxKnobsV", knobsVersion, nullptr);
 
@@ -553,6 +554,10 @@ namespace Effects
                 if (! isPositiveAndBelow (typeIndex, numEffectTypes))
                     continue;
                 const auto type = (EffectType) typeIndex;
+                // Maximizerns MODE (ratt 6) tillkom i version 3: äldre projekt sparade den oanvända rattens värde (ofta 0.5/1.0 = Smooth), som ska nollas.
+                if (type == EffectType::maximizer && oldVersion < 3)
+                    if (auto stale = state.getChildWithProperty ("id", knobParamID (channel, slot, 5)); stale.isValid())
+                        state.removeChild (stale, nullptr);
                 float value = 0.0f;
                 for (int k = 0; k < knobsPerSlot; ++k)
                     if (newKnobDefault (type, k, value))

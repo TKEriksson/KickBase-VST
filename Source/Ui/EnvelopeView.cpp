@@ -73,8 +73,7 @@ void EnvelopeView::paint (juce::Graphics& g)
         onBeforePaint();
 
     const auto bounds = getLocalBounds().toFloat();
-    g.setColour (Theme::knobBodyDark.withAlpha (0.7f));
-    g.fillRoundedRectangle (bounds, 6.0f);
+    Theme::paintChartBackground (g, bounds, 8.0f);
 
     // Rutnät: lodräta linjer vid jämna tider.
     const auto area = plotArea();

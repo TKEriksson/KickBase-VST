@@ -26,7 +26,7 @@ Detta dokument är tänkt att kunna ges till en annan AI som bakgrund. Bifoga he
 
 **Instrument 1–10 (bas).** Varje har: tre wavetable-oscillatorer (120 inbyggda tabeller + egen WAV; warp-lägen, unison ≤ 7, detune, fas, pan/stereo per oscillator) + sub + brus + en sampling, ett eller två filter (Kickbase, Ladder, Formant, Comb, TB-303; serie/parallell), amp-ADSR, filter-envelope per ton, drive, EQ, FX-send, sidechain-djup, GATE (egen av/på-rytm), swing/humanize/delay. **Glide-toner** fungerar som slide i FL Studio.
 
-**Slicer/sampler** (nytt i releasen): en sampling kan delas i upp till 128 skivor (minst 5 ms); ton `semitones − slicerMapTo` väljer skiva, styrs av MIDI (toner 2–9 = skiva 1–8), av som standard. Orsaken till att den först var tyst var en riktig produktbugg (hållna toner nollställdes inte i `prepareToPlay`, fixat i `InstrumentProcessor.cpp:103-106`).
+**Slicer/sampler** (nytt i releasen): en sampling kan delas i upp till 128 skivor (minst 5 ms); varje skiva har en egen rad "Slice N" i mönstret (E2, de första 16 skivorna); en not där spelar skivan. Den gamla modellen med `slicerMapTo` är borttagen. Orsaken till att den först var tyst var en riktig produktbugg (hållna toner nollställdes inte i `prepareToPlay`, fixat i `InstrumentProcessor.cpp:103-106`).
 
 **Sidechain.** Basen duckas under kicken sample-exakt, per instrument (`bassNDuck`); kurvan är kickens envelope eller en egen ritad. Effekttypen *Sidechain* kan låta ett instrument ducka under ett annat.
 

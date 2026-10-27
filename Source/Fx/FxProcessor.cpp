@@ -246,6 +246,9 @@ void FxProcessor::handleEvent (const StepEvent& event)
         return;
     }
 
+    if (event.type == StepEvent::Type::slice)
+        return; // skivrader ("Slice N") är bara ljud i samplerösten
+
     const auto& note = pattern.note (0, event.step);
     if (note.slide.load())
         return; // en glide-ton styr bara tonhöjd, och här kommer tonhöjden från den andra synthen

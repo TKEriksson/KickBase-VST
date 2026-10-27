@@ -87,7 +87,7 @@ public:
 
 private:
     void timerCallback() override;
-    void showMenu (bool instruments);
+    void showMenu (bool instruments, int initiallySelected = 0);
     int onCount (bool instruments) const;
     void updateTexts();
 

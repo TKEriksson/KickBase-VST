@@ -24,14 +24,16 @@
 
 // Rubrikraden: logotyp, presetmeny och uppspelningsstatus (DAW eller egen klocka, tempo,
 // takt, tonart).
-class HeaderBar : public juce::Component, private VisualTimer
+class HeaderBar : public juce::Component, public juce::KeyListener, private VisualTimer
 {
 public:
     HeaderBar (PluginBase& processor, const juce::String& subtitle);
-    ~HeaderBar() override { processor.transportHold = false; } // ett scrubbhopp som inte hunnit släppas får inte frysa klockan
+    ~HeaderBar() override;
     void paint (juce::Graphics&) override;
     void paintOverChildren (juce::Graphics&) override;
     void resized() override;
+    void parentHierarchyChanged() override;
+    bool keyPressed (const juce::KeyPress&, juce::Component*) override; // Ctrl+S sparar projektet
 
 private:
     void timerCallback() override;
@@ -39,14 +41,24 @@ private:
     static constexpr int meterWidth = 72;
     int toolsEnd() const // (i Kickbase FX finns ingen EXPORT: då hamnade mätaren över tempot)
     {
-        return ! previewGroup.isEmpty() ? previewGroup.getRight() : exportButton.isVisible() ? exportButton.getRight() : presets.getRight();
+        return ! previewGroup.isEmpty() ? previewGroup.getRight() : presets.getRight();
     }
     juce::Rectangle<int> meterBounds() const { return { toolsEnd() + 16, (getHeight() - 28) / 2, meterWidth, 28 }; }
     void updateAiTooltip();
     void showProjectMenu();
+    void saveProject (bool askForFile); // askForFile eller ingen projektfil än: filväljaren; annars sparas det direkt till projektfilen
+    void saveProjectTo (const juce::File& file);
     void showHistory();
-    void saveProject();
-    void openProject (const juce::File& startFolder = {});
+    void openProject (const juce::File& startFolder = {}); // startFolder: var filväljaren börjar (standard: exportmappen)
+    void openProjectFile (const juce::File& file);
+    void newProject();
+    void showNotice (const juce::String& text); // kort bekräftelse i rubriken ("Saved X")
+    void rememberRecent (const juce::File& file);
+    juce::StringArray recentProjects() const;
+    juce::String notice;
+    double noticeUntil = 0.0;
+    juce::Component* keyTarget = nullptr; // komponenten Ctrl+S lyssnas på
+    juce::Rectangle<int> nameBounds;      // projektnamnet under MENU-knappen
     void chooseExportTarget (int part, int bars); // part: 0-2 = full, kick, alla instrument; 3 = tre filer; 4 + n = instrument n
     bool exportWithoutEffects = false;            // rutan "Without effects" i EXPORT-menyn (gränssnittets val, sparas inte)
 
@@ -63,7 +75,6 @@ private:
     PluginBase& processor;
     juce::String subtitle;
     PresetButton presets;
-    juce::TextButton exportButton { "EXPORT" }; // bara i instrumentet
     // PREVIEWS (bara i instrumentet): högtalaren spelar hela synthen på den valda tonen (standard C5) så länge man håller ner den,
     // och tonen gäller alla provlyssningar.
     ListenButton listenAll, listenRoll; // listenRoll syns bara medan en pianorulle är öppen
@@ -104,7 +115,7 @@ private:
     int scrubBar = -1;          // takten (0-räknad) hjulet pekar på medan man scrubbar, -1 = ingen scrubbning
     int lastFollowing = -1;
     bool bridgeShown = false;
-    juce::TextButton projectButton { "PROJECT" }; // meny: spara/öppna projekt, exportera, AI-server av/på (statuspunkten visar AI-länken)
+    juce::TextButton projectButton { "MENU" }; // meny: nytt/spara/öppna projekt, senaste, exportera, AI-server av/på (statuspunkten visar AI-länken)
     float peakL = 0.0f, peakR = 0.0f, holdL = 0.0f, holdR = 0.0f; // utgångsmätaren
     std::vector<float> meterLeft, meterRight;
     std::unique_ptr<juce::FileChooser> chooser;
@@ -159,12 +170,31 @@ public:
     SampleView (PluginBase& processor, int layer, juce::Colour accent);
     void paint (juce::Graphics&) override;
     void mouseDown (const juce::MouseEvent&) override;
-    void mouseUp (const juce::MouseEvent&) override { hold.stop(); }
+    void mouseUp (const juce::MouseEvent&) override;
+    void mouseDrag (const juce::MouseEvent&) override;
+    void mouseDoubleClick (const juce::MouseEvent&) override;
+    void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
     void mouseEnter (const juce::MouseEvent&) override { hover = true; repaint(); }
     void mouseExit (const juce::MouseEvent&) override  { hover = false; repaint(); }
 
+    // E2 steg 1: SLICES visar varje skiva som en egen färgad ruta med namn och ton; ett klick spelar bara den skivan.
+    void setShowSlices (bool show) { showSlices = show; repaint(); }
+
 private:
     void timerCallback() override;
+    int sliceAt (float x, const ClickSample& sample) const; // skivan under x (pixlar i vyn), -1 = ingen
+
+    // E2 steg 3: zoom (hjulet) och scroll; vyn visar delen [scroll, scroll + 1/zoom] av samplingen. Manuellt läge: dra, dubbelklicka och högerklicka på gränser.
+    float normToX (float norm) const;
+    float xToNorm (float x) const;
+    bool manualEditing() const;
+    int nearestMarker (float x) const; // index bland de manuella markörerna inom några pixlar från x, annars -1
+
+    float zoom = 1.0f, scroll = 0.0f;
+    int draggedMarker = -1;
+    bool showSlices = false;
+    int heldSlice = -1;
+    int heldNote = -1; // tonen som provlyssnas medan musen hålls i SLICES-vyn
 
     PluginBase& processor;
     HoldAudition hold { processor }; // klick och håll: samplingen spelas så länge musen är nere
@@ -196,11 +226,14 @@ private:
     PluginBase& processor;
     const int layer;
     SampleView view;
-    juce::ToggleButton slicerToggle { "SLICER" }, reverseToggle { "REVERSE" };
+    juce::ToggleButton reverseToggle { "REVERSE" };
     juce::ToggleButton filterSendToggle { "SEND THROUGH FILTER" }; // samma parameter som i FILTER-fliken
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> slicerAttachment, reverseAttachment, filterSendAttachment;
-    std::unique_ptr<KnobComponent> mapToKnob;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> reverseAttachment, filterSendAttachment;
+    juce::Label sliceCapNotice; // "Only the first 16 slices have rows" när samplingen har fler skivor än skivrader
     juce::ComboBox sliceModeBox;
+    juce::TextButton createButton { "CREATE" }; // E2 steg 4: gör Grid/Auto-resultatet till egna gränser (Manual) som kan flyttas
+    juce::Label showLabel { {}, "SHOW" };
+    juce::TextButton showSampleButton { "SAMPLE" }, showSlicesButton { "SLICES" };
     juce::Slider gridAmount, sensitivityAmount; // en per läge, så att inget område byts under användaren
     bool syncing = false;
     juce::Label label;

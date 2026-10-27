@@ -27,6 +27,7 @@ InstrumentEditor::InstrumentEditor (InstrumentProcessor& p)
     // På/av direkt på kickens flik (instrumenten har sin på/av i flikraden, bredvid väljaren).
     synths.addPower (1, processor.apvts, ParamID::kickOn);
 
+    tools.setSubTabs();
     // B1: förhandsknapp per flik. Hela mönstret (PATTERN, ANALYZER, AI CHAT, LIVE CODE), bara kickraden (KICK), instrumentet utan mönster (INSTRUMENT).
     const auto wholePattern = [this] { processor.requestAudition (PluginBase::previewRequest (PluginBase::previewAllRows)); };
     const auto stopPattern = [this] { processor.requestAudition (PluginBase::previewStop); };

@@ -25,6 +25,7 @@ FxEditor::FxEditor (FxProcessor& p)
     synths.addPower (1, processor.apvts, ParamID::kickOn);
     synths.addPower (2, processor.apvts, ParamID::bass (0, InstrumentField::on));
 
+    tools.setSubTabs();
     tools.addTab ("EFFECTS", Theme::effects, effects);
     tools.addTab ("SIDECHAIN", Theme::mix, sidechain);
     tools.addTab ("LFO", Theme::lfo, lfo);

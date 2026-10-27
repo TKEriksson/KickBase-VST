@@ -68,11 +68,15 @@ class TabbedPanel : public juce::Component, private juce::Timer
 {
 public:
     static constexpr int headerHeight = 30;
+    static constexpr int workspaceHeaderHeight = 38;
 
     // `rememberedTab` pekar på var den valda fliken sparas (t.ex. i processorn), så att
     // samma flik visas när fönstret öppnas igen.
     explicit TabbedPanel (int* rememberedTab = nullptr)
         : remembered (rememberedTab), initialTab (rememberedTab != nullptr ? *rememberedTab : 0) {}
+
+    // E1: underflikar ritas som en segmenterad rad (egenskapen "subtab" läses av KickbaseLookAndFeel), huvudflikar som pills. Anropas före addTab.
+    void setSubTabs() { subTabs = true; }
 
     // `headerExtras` (t.ex. sidans på/av-knapp och presetknapp) visas till höger i flikraden
     // när fliken är vald, så att sidan inte behöver en egen rubrikrad.
@@ -80,6 +84,7 @@ public:
     {
         auto button = std::make_unique<TabButton> (name);
         button->setColour (juce::TextButton::buttonOnColourId, accent);
+        button->getProperties().set ("subtab", subTabs);
         const auto index = (int) tabs.size();
         button->onClick = [this, index] { setCurrentTab (index); };
         button->onDragHover = [this, index] { setCurrentTab (index); };
@@ -168,7 +173,76 @@ public:
     void paint (juce::Graphics& g) override
     {
         const auto bounds = getLocalBounds().toFloat().reduced (0.5f);
-        Theme::paintMetal (g, bounds, 8.0f, juce::Colour (0xf022263a), juce::Colour (0xf0141624));
+        Theme::paintMetal (g, bounds, 8.0f, juce::Colour(), juce::Colour());
+
+        if (tabs.empty())
+            return;
+        const auto& currentTab = tabs[(size_t) current];
+
+        if (subTabs)
+        {
+            // Mörk infälld remsa bakom underflikarna, med flikens namn som liten mono-etikett längst till höger.
+            const auto strip = stripArea.toFloat();
+            g.setColour (Theme::insetStrip);
+            g.fillRoundedRectangle (strip, 12.0f);
+            g.setGradientFill (juce::ColourGradient (juce::Colours::black.withAlpha (0.6f), 0.0f, strip.getY(),
+                                                     juce::Colours::transparentBlack, 0.0f, strip.getY() + 5.0f, false));
+            g.fillRoundedRectangle (strip.reduced (1.0f, 1.0f), 11.0f);
+            g.setColour (Theme::panelBorderDim);
+            g.drawRoundedRectangle (strip.reduced (0.5f), 12.0f, 1.0f);
+
+            // Stjälk under den valda underfliken (skissen: .tab-stem / .tab-stem-inner), så att den binder till innehållet under remsan.
+            const auto cx = currentTab.button->getBounds().toFloat().getCentreX();
+            const auto y = strip.getBottom() - 0.5f;
+            juce::Path stem, stemInner;
+            stem.addTriangle (cx - 6.0f, y, cx + 6.0f, y, cx, y + 6.0f);
+            stemInner.addTriangle (cx - 5.0f, y, cx + 5.0f, y, cx, y + 4.5f);
+            g.setColour (Theme::panelBorderDim);
+            g.fillPath (stem);
+            g.setColour (Theme::panelAlt);
+            g.fillPath (stemInner);
+
+            if (labelArea.getWidth() > 50)
+            {
+                g.setColour (Theme::panelBorderDim);
+                g.drawVerticalLine (labelArea.getX(), (float) labelArea.getY() + 4.0f, (float) labelArea.getBottom() - 4.0f);
+                g.setColour (Theme::slate500);
+                Theme::drawTracked (g, currentTab.button->getButtonText(), labelArea.withTrimmedLeft (8).toFloat(), Theme::monoFont (10.0f, false),
+                                    0.14f, juce::Justification::centredLeft);
+            }
+        }
+        else
+        {
+            // Stjälk: en liten triangel under den valda fliken som binder den till innehållet under.
+            const auto b = currentTab.button->getBounds().toFloat();
+            const auto cx = b.getCentreX();
+            const auto y = b.getBottom() + 1.0f;
+            juce::Path stem;
+            stem.addTriangle (cx - 7.0f, y, cx + 7.0f, y, cx, y + 7.0f);
+            g.setColour (Theme::panelBorderDim);
+            g.fillPath (stem);
+            juce::Path inner;
+            inner.addTriangle (cx - 5.0f, y, cx + 5.0f, y, cx, y + 5.5f);
+            g.setColour (Theme::panelAlt);
+            g.fillPath (inner);
+
+            // Arbetsytans rubrikrad: mono-brödsmula i cyan och flikens namn i fet vit text.
+            const auto hb = workspaceHeader.toFloat();
+            g.setColour (Theme::panel);
+            g.fillRoundedRectangle (hb, 12.0f);
+            g.setColour (juce::Colour (0xcc1e293b));
+            g.drawRoundedRectangle (hb.reduced (0.5f), 12.0f, 1.0f);
+            const auto name = currentTab.button->getButtonText();
+            auto text = workspaceHeader.reduced (14, 4);
+            g.setColour (Theme::cyan.withAlpha (0.85f));
+            Theme::drawTracked (g, "KICKBASE  >  " + name, text.removeFromTop (12).toFloat(), Theme::monoFont (9.5f, false), 0.14f,
+                                juce::Justification::centredLeft);
+            g.setColour (Theme::cyan.withAlpha (0.18f));
+            g.setFont (Theme::font (15.0f, true));
+            g.drawText (name.toUpperCase(), text.translated (0, 1), juce::Justification::centredLeft);
+            g.setColour (juce::Colours::white);
+            g.drawText (name.toUpperCase(), text, juce::Justification::centredLeft);
+        }
     }
 
     void resized() override
@@ -189,6 +263,8 @@ public:
                 tab.headerExtras->setBounds (extrasArea.withTrimmedLeft (extrasArea.getWidth() - tab.extrasWidth));
         const auto count = std::max (1, (int) tabs.size());
         const auto width = std::min (110, (header.getWidth() - 6 * (count - 1)) / count);
+        stripArea = header.expanded (4, 3).withRight (header.getRight() + 4);
+        labelArea = stripArea.withTrimmedLeft (std::max (0, count * (width + 6) + 4)).withTrimmedRight (8);
         for (auto& tab : tabs)
         {
             tab.button->setBounds (header.removeFromLeft (width));
@@ -200,7 +276,13 @@ public:
             header.removeFromLeft (6);
         }
 
-        const auto content = getLocalBounds().reduced (10).withTrimmedTop (headerHeight - 4);
+        auto content = getLocalBounds().reduced (10).withTrimmedTop (headerHeight - 4);
+        if (! subTabs)
+        {
+            content.removeFromTop (6);
+            workspaceHeader = content.removeFromTop (workspaceHeaderHeight);
+            content.removeFromTop (6);
+        }
         for (auto& tab : tabs)
             tab.page->setBounds (content);
     }
@@ -243,6 +325,8 @@ private:
     std::vector<Tab> tabs;
     std::unique_ptr<ListenButton> previewButton;
     int current = 0;
+    bool subTabs = false;
+    juce::Rectangle<int> stripArea, labelArea, workspaceHeader;
     int* remembered;
     int initialTab;
 };
