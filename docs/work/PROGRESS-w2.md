@@ -95,3 +95,11 @@
 - Presets ligger kompilerade i `Source/Core/PresetData.inl` (sist i kick- och basListan, commit 858f72f); inga nya parametrar eller ID:n, äldre index/hashar orörda.
 - Mätt med `KickbaseTool audit kick` / `audit bass` (kan inte lyssna): alla 10 kickar toppar -3,2…-2,6 dB utom Clean Warm (-0,3 dB, mjukklipp läge 2, dc 0,002). Svans 38–45 Hz (Clean Sub 38, Clean Deep 39: strax under 40–55-målet, medvetet djupa). Längd 136–263 ms. Baserna toppar -0,3 dB, rms -10,4…-11,3, tyngdpunkt 81–95 Hz, inget dc.
 - Namnen tillagda i `docs/work/fl-testlista.md` (en rad per grupp). Tobias måste lyssna i FL: sitter kick+bas ihop, och är Clean Warm för het.
+
+## newest 1–10: tio nya fulla huvudpresets (27 okt, Arbetare 2)
+- Kompilerade i `Source/Core/PresetData.inl` (`newest1()`…`newest10()`, hjälpare `newest`/`sendTo`), sist i `fullPresets()` efter Empty så att äldre index och hashar är oförändrade. Inga nya parametrar eller ID:n.
+- Varje preset = kick (mönstermall + pitch/amp-envelope) + baslager (mönster via `extras.pattern`) + FX på kanal A som send.
+- Stilar: 1 full-on, 2 dark forest, 3 progressive (reese på offbeat), 4 hi-tech (zap), 5 Zenonesque (pluck), 6 hård mörk, 7 acid goa (slides + LFO→cutoff), 8 deep reese (sub + reese), 9 minimal natt, 10 twilight (3 lager + LFO→cutoff).
+- Mätt med `KickbaseTool audit full` (kan inte lyssna): toppar -3,1…-0,3 dB, dc ≈ 0, ingen klippning utöver Inits egna -0,3 dB. Newest 4 var för ljus (centroid 244) → cutoff 380, nivå 0,50 → centroid 172. Newest 5 och 6 är ljusa (mellan -10,6/-11,4 dB), avsiktligt för stilen.
+- `build.bat Debug all`: alla tester gick igenom.
+- Tobias måste lyssna i FL (rad i `docs/work/fl-testlista.md`) och säga vilka som ska finjusteras.
