@@ -44,6 +44,7 @@ private:
     juce::Rectangle<int> meterBounds() const { return { toolsEnd() + 16, (getHeight() - 28) / 2, meterWidth, 28 }; }
     void updateAiTooltip();
     void showProjectMenu();
+    void showHistory();
     void saveProject();
     void openProject();
     void chooseExportTarget (int part, int bars); // part: 0-2 = full, kick, alla instrument; 3 = tre filer; 4 + n = instrument n

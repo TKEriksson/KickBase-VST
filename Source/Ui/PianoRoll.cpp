@@ -183,8 +183,10 @@ void PianoRoll::extendRow()
     if (bars() >= Pattern::maxBars)
         return;
     // En tom takt till: längden är minst så lång tills innehållet nått dit (då följer den innehållet igen).
+    const auto before = processor.snapshotRow (layer);
     processor.pattern.setExtraBars (layer, bars() + 1);
     processor.patternChanged();
+    processor.recordRowEdit (layer, before, "Add bar");
     updateScrollBars();
     repaint();
 }
@@ -772,6 +774,8 @@ void PianoRoll::commit()
 {
     processor.pattern.setCustom (layer, true); // lagret visas nu som pianorulle i stället för stegknappar
     processor.patternChanged();
+    processor.recordRowEdit (layer, undoBase, "Edit notes");
+    undoBase = processor.snapshotRow (layer);
     checkVoicesNeeded();
 }
 
@@ -1814,6 +1818,7 @@ void PianoRoll::mouseExit (const juce::MouseEvent&)
 void PianoRoll::mouseDown (const juce::MouseEvent& event)
 {
     grabKeyboardFocus(); // för Ctrl + A, Delete och piltangenterna
+    undoBase = processor.snapshotRow (layer);
     edited = false;
     drag = Drag::none;
     dragKey = {};
@@ -1956,8 +1961,10 @@ void PianoRoll::mouseDown (const juce::MouseEvent& event)
                         if (safeThis == nullptr || choice != 1)
                             return;
                         safeThis->selection.clear();
+                        const auto before = safeThis->processor.snapshotRow (safeThis->layer);
                         safeThis->processor.pattern.clearNotes (safeThis->layer); // nollställer pianorullsmarkeringen
                         safeThis->processor.patternChanged();
+                        safeThis->processor.recordRowEdit (safeThis->layer, before, "Delete the piano roll");
                         if (safeThis->onDeleted)
                             safeThis->onDeleted();
                     });
@@ -2341,6 +2348,8 @@ bool PianoRoll::keyPressed (const juce::KeyPress& key)
         return true;
     }
 
+    undoBase = processor.snapshotRow (layer); // före en eventuell ändring (Delete, piltangenter, klipp ut, inklistring)
+
     // Inklistring pågår: Enter bekräftar, Esc avbryter. Skrollning och zoom fungerar som vanligt.
     if (pasting)
     {
@@ -2368,6 +2377,19 @@ bool PianoRoll::keyPressed (const juce::KeyPress& key)
     if ((mods.isCtrlDown() || mods.isCommandDown()) && (key.getKeyCode() == 'A' || key.getKeyCode() == 'a'))
     {
         selectAll();
+        return true;
+    }
+    if (ctrl && (key.getKeyCode() == 'Z' || key.getKeyCode() == 'z' || key.getKeyCode() == 'Y' || key.getKeyCode() == 'y'))
+    {
+        // Ctrl+Z ångrar; Ctrl+Skift+Z och Ctrl+Y gör om. Det gäller hela plugin:et (parametrar och alla rader), inte bara den här rullen.
+        const auto redo = key.getKeyCode() == 'Y' || key.getKeyCode() == 'y' || mods.isShiftDown();
+        selection.clear();
+        if (redo)
+            processor.undoManager.redo();
+        else
+            processor.undoManager.undo();
+        edited = false;
+        repaint();
         return true;
     }
     if (key == juce::KeyPress::deleteKey || key == juce::KeyPress::backspaceKey)

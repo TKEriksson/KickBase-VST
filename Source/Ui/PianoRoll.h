@@ -303,6 +303,7 @@ private:
     juce::Point<float> boxStart, boxEnd;
     KeySet boxBase;             // markeringen innan rutan (skift lägger till)
     bool edited = false;
+    juce::ValueTree undoBase;   // raden som den var före nästa ändring (tas vid musnedtryck/tangent, nollställs av commit)
     NoteKey hoverKey;
     juce::Point<float> hoverPoint; // var musen är (för pennans hårkors och förhandsvisningen av tonen som skulle läggas)
     bool hoverPointValid = false;

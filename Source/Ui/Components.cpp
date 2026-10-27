@@ -296,8 +296,10 @@ void KnobComponent::showMenu()
         const auto route = ring.route;
         menu.addItem ("Remove " + Modulation::sourceName (ring.source) + " (" + percent (ring.amount) + ")", [processor, route]
         {
+            const auto before = processor->snapshotMods();
             processor->modRoutes.remove (route);
             processor->markStateChanged();
+            processor->recordModEdit (before, "Remove mod route");
         });
     }
     auto* p = parameter;
@@ -318,8 +320,10 @@ void KnobComponent::itemDropped (const SourceDetails& details)
     if (processor != nullptr && index >= 0)
     {
         const auto source = details.description.toString().fromFirstOccurrenceOf ("mod:", false, false).getIntValue();
+        const auto before = processor->snapshotMods();
         processor->modRoutes.add (juce::jlimit (0, Modulation::numSources - 1, source), index, 0.25f);
         processor->markStateChanged();
+        processor->recordModEdit (before, "Add mod route: " + name);
     }
     repaint();
 }
@@ -341,6 +345,8 @@ void KnobComponent::ModSlider::mouseDown (const juce::MouseEvent& e)
         owner.dragRing = ring;
         owner.dragRoute = list[(size_t) ring].route;
         owner.dragStartAmount = list[(size_t) ring].amount;
+        if (auto* processor = findProcessor (owner))
+            owner.modBefore = processor->snapshotMods();
         owner.dragStartY = position.y;
         owner.repaint();
         return;
@@ -377,8 +383,17 @@ void KnobComponent::ModSlider::mouseUp (const juce::MouseEvent& e)
 
     owner.dragRing = -1;
     if (auto* processor = findProcessor (owner))
+    {
         processor->markStateChanged();
+        processor->recordModEdit (owner.modBefore, "Mod amount: " + owner.name);
+    }
     owner.repaint();
+}
+
+void KnobComponent::ModSlider::stoppedDragging()
+{
+    if (auto* processor = findProcessor (owner))
+        processor->nameParameterGesture (owner.name);
 }
 
 void KnobComponent::ModSlider::mouseMove (const juce::MouseEvent& e)
@@ -413,6 +428,8 @@ ChoiceComponent::ChoiceComponent (juce::AudioProcessorValueTreeState& apvts, con
     addAndMakeVisible (label);
 
     attachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (apvts, paramID, box);
+    // Attachmenten startar steget; här får det sitt namn (onChange körs efter attachmentens lyssnare).
+    box.onChange = [this, name] { if (auto* processor = findProcessor (*this)) processor->nameParameterGesture (name); };
 }
 
 void ChoiceComponent::resized()

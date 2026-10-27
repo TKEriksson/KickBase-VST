@@ -920,6 +920,97 @@ int fullStateTest()
     return failed ? 1 : 0;
 }
 
+// `tool undotest` (fas C): ångra/gör om. (a) en parametergest är ett steg, (b) radredigering, (c) huvudpreset tömmer historiken, (d) delpreset är ett steg.
+int undoTest()
+{
+    juce::ScopedJuceInitialiser_GUI gui;
+    Scenarios::TemporaryUserFolders folders;
+    auto failed = false;
+    auto check = [&failed] (bool ok, const juce::String& what) { std::printf ("%s: %s\n", ok ? "ok" : "FEL", what.toRawUTF8()); failed |= ! ok; };
+
+    { // (a) tre setValue i en gest = ett steg
+        auto holder = std::make_unique<InstrumentProcessor>();
+        auto& p = *holder; // (stor: på heapen, som i de andra testerna)
+        juce::RangedAudioParameter* prm = nullptr;
+        for (auto* q : p.getParameters())
+            if (prm == nullptr)
+                prm = dynamic_cast<juce::RangedAudioParameter*> (q);
+        p.clearHistory ({});
+        const auto start = prm->getValue();
+        const auto target = start < 0.5f ? 0.9f : 0.1f;
+        p.undoManager.beginNewTransaction();
+        for (auto v : { 0.3f, 0.6f, target })
+            prm->setValueNotifyingHost (v);
+        p.nameParameterGesture ("Test");
+        check (p.undoManager.getUndoDescriptions().size() == 1, "a: en gest är ett steg");
+        std::printf ("  steg %d, start %g mål %g nu %g id %s\n", p.undoManager.getUndoDescriptions().size(), start, target, prm->getValue(), prm->getParameterID().toRawUTF8());
+        p.undoManager.undo();
+        std::printf ("  efter undo %g\n",prm->getValue());
+        check (std::abs (prm->getValue() - start) < 1.0e-3f, "a: ångra ger startvärdet");
+        p.undoManager.redo();
+        check (std::abs (prm->getValue() - target) < 1.0e-3f, "a: gör om ger slutvärdet");
+    }
+
+    { // (b) radredigering med tre toner
+        auto holder = std::make_unique<InstrumentProcessor>();
+        auto& p = *holder; // (stor: på heapen, som i de andra testerna)
+        p.clearHistory ({});
+        const auto before = p.snapshotRow (0);
+        p.pattern.addNote (0, 0, 24, 0);
+        p.pattern.addNote (0, 96, 24, 3);
+        p.pattern.addNote (0, 192, 24, 5);
+        const auto after = p.pattern.rowToValueTree (0);
+        p.recordRowEdit (0, before, "Edit notes");
+        check (p.undoManager.canUndo(), "b: kan ångra");
+        p.undoManager.undo();
+        check (p.pattern.rowToValueTree (0).isEquivalentTo (before), "b: ångra ger raden före");
+        p.undoManager.redo();
+        check (p.pattern.rowToValueTree (0).isEquivalentTo (after), "b: gör om ger raden efter");
+        const auto steps = p.undoManager.getUndoDescriptions().size();
+        p.recordRowEdit (0, p.snapshotRow (0), "Edit notes");
+        check (p.undoManager.getUndoDescriptions().size() == steps, "b: oförändrad gest lägger inget");
+    }
+
+    { // (c) huvudpreset tömmer historiken
+        auto holder = std::make_unique<InstrumentProcessor>();
+        auto& p = *holder; // (stor: på heapen, som i de andra testerna)
+        const auto before = p.snapshotRow (0);
+        p.pattern.addNote (0, 48, 24, 2);
+        p.recordRowEdit (0, before, "Edit notes");
+        check (p.undoManager.canUndo(), "c: steg finns före laddning");
+        p.loadFactoryPreset (Presets::Section::full, 0);
+        check (! p.undoManager.canUndo(), "c: ingen historik efter huvudpreset");
+    }
+
+    { // (d) delpreset = ett steg som återställer både parametrar och mönster
+        auto holder = std::make_unique<InstrumentProcessor>();
+        auto& p = *holder; // (stor: på heapen, som i de andra testerna)
+        p.loadFactoryPreset (Presets::Section::full, 0);
+        if (Presets::factoryCount (Presets::Section::bass, false) < 2)
+            check (false, "d: bas-fabrikspreset saknas");
+        else
+        {
+            p.clearHistory ({});
+            std::vector<float> values;
+            for (auto* prm : p.getParameters())
+                values.push_back (prm->getValue());
+            const auto patternBefore = p.pattern.toValueTree();
+            p.loadFactoryPreset (Presets::Section::bass, 1, 0);
+            std::printf ("  d-steg: %s\n",p.undoManager.getUndoDescriptions().joinIntoString (" | ").toRawUTF8());
+            check (p.undoManager.getUndoDescriptions().size() == 1, "d: ett steg");
+            p.undoManager.undo();
+            auto same = true;
+            for (size_t i = 0; i < values.size(); ++i)
+                same = same && std::abs (p.getParameters()[(int) i]->getValue() - values[i]) < 1.0e-3f;
+            check (same, "d: parametrarna är tillbaka");
+            check (p.pattern.toValueTree().isEquivalentTo (patternBefore), "d: mönstret är tillbaka");
+        }
+    }
+
+    std::puts (failed ? "FEL: ångra-testet misslyckades" : "Ångra-testet gick igenom");
+    return failed ? 1 : 0;
+}
+
 // `tool rendertooltest`: render_preview via verktygslagret är deterministiskt. Samma tillstånd ger samma mått och en bytelik WAV, i samma instans,
 // efter en ändring + undo och i en ny instans; och rendering ändrar inte tillståndet. Det som skillens loop (render, analysera, justera) bygger på.
 int renderToolTest()

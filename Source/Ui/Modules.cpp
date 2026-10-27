@@ -1,6 +1,7 @@
 #include "InstrumentMenu.h"
 #include "Modules.h"
 #include "Help.h"
+#include "HistoryPanel.h"
 #include "../Core/ProjectFile.h"
 
 namespace
@@ -170,6 +171,7 @@ void HeaderBar::showProjectMenu()
         menu.addItem (3, "Export...");
     menu.addSeparator();
     menu.addItem (4, "AI server (MCP)", true, processor.isBridgeEnabled());
+    menu.addItem (5, "History...");
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&projectButton), [this, safe = juce::Component::SafePointer<HeaderBar> (this)] (int result)
     {
         if (safe == nullptr)
@@ -182,7 +184,29 @@ void HeaderBar::showProjectMenu()
             processor.setBridgeEnabled (! processor.isBridgeEnabled());
             updateAiTooltip();
         }
+        else if (result == 5)
+            showHistory();
     });
+}
+
+// Icke-modal historikdialog; en enda instans (en andra gång lyfts den befintliga fram).
+void HeaderBar::showHistory()
+{
+    static juce::Component::SafePointer<juce::DialogWindow> open;
+    if (open != nullptr)
+    {
+        open->toFront (true);
+        return;
+    }
+    juce::DialogWindow::LaunchOptions o;
+    o.content.setOwned (new HistoryPanel (processor));
+    o.dialogTitle = "History";
+    o.dialogBackgroundColour = Theme::panel;
+    o.componentToCentreAround = this;
+    o.escapeKeyTriggersCloseButton = true;
+    o.useNativeTitleBar = false;
+    o.resizable = true;
+    open = o.launchAsync();
 }
 
 void HeaderBar::saveProject()

@@ -79,6 +79,24 @@ public:
     // Anropas av gränssnittet när mönstret ändrats, så att DAW:en vet att projektet ändrats.
     void patternChanged();
 
+    // Ångra/gör om för en pianorulle (message thread). Anroparen tar `snapshotRow` före ändringen och anropar `recordRowEdit` efteråt:
+    // är raden ändrad läggs ett steg (en transaktion) till, annars inget. Ändringen är redan gjord, så steget utförs inte en gång till.
+    juce::ValueTree snapshotRow (int layer) const;
+    void recordRowEdit (int layer, const juce::ValueTree& before, const juce::String& name);
+    // Transaktionsnamn med klockslag först (hh:mm:ss), t.ex. "14:03:22 Edit notes: Instr 1".
+    static juce::String stampedName (const juce::String& what);
+    // Huvudpreset/projekt laddat: tömmer historiken och visar en rad "History cleared: <why>" i historikdialogen (bara UI, kan inte ångras).
+    void clearHistory (const juce::String& why);
+    juce::String historyClearedNote;
+    // Parameterhandtag slut: tvingar APVTS att skriva ändringen till trädet nu (annars kan den hamna i nästa steg upp till ~500 ms senare) och döper steget.
+    // Modulationsmatrisen (ruttlistan ligger utanför APVTS): ta `snapshotMods` före ändringen och `recordModEdit` efteråt.
+    juce::ValueTree snapshotMods() const;
+    void recordModEdit (const juce::ValueTree& before, const juce::String& name);
+    // Delpreset = ett steg: parametrarna (APVTS) plus mönster och modmatris (TreeAction). Huvudpreset och projekt tömmer historiken (`clearHistory`).
+    juce::ValueTree snapshotAux() const;
+    void applyAux (const juce::ValueTree& aux);
+    void nameParameterGesture (const juce::String& paramName);
+
     // Som patternChanged, för annat som sparas utan att vara en parameter (t.ex. effektordningen).
     void markStateChanged();
     int clearLfo (int index);                  // tar bort kopplingarna, återställer parametrar och kurva, sist biten i masken
@@ -236,6 +254,8 @@ public:
     juce::String getInstrumentSampleName (int layer) const { return instrumentSamples[(size_t) juce::jlimit (0, ParamID::numInstrumentLayers - 1, layer)].name(); }
     const ClickSample* getActiveInstrumentSample (int layer) const { return instrumentSamples[(size_t) juce::jlimit (0, ParamID::numInstrumentLayers - 1, layer)].active(); }
 
+    // Måste deklareras före apvts (som får en pekare till den). Bara meddelandetråden använder den.
+    juce::UndoManager undoManager;
     juce::AudioProcessorValueTreeState apvts;
     Pattern pattern;
     SidechainCurve sidechainCurve;

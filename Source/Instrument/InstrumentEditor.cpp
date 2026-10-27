@@ -10,6 +10,7 @@ namespace
 InstrumentEditor::InstrumentEditor (InstrumentProcessor& p)
     : AudioProcessorEditor (&p), processor (p)
 {
+    setWantsKeyboardFocus (true); // Ctrl+Z / Ctrl+Y når editorn även när bara en ratt är klickad
     setLookAndFeel (&lookAndFeel);
 
     addAndMakeVisible (root);
