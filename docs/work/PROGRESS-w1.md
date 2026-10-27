@@ -203,3 +203,9 @@ FL/handtest: klistra in en OpenAI-nyckel (eller starta Ollama med en verktygsmod
 - Det Tobias testar i FL (release 03f1dc1) är orört: inga befintliga effekter eller parametrar ändrade, bara en ny typ sist i listan.
 - Test: `Tools/Tool.cpp` (instrumenttest "FX2: PHASE ROTATION ..."): 60 Hz, 180 deg ger korrelation -1, 90 deg kvadratur, nivån oförändrad.
 - Kvar i PH: AI-verktyg för att läsa/sätta grundtonens fas mot kicken (finns delvis: analyse_wavetable/edit_wavetable_harmonics), SHAPER-kontroll (spec till Opus/PL).
+
+## 27 okt kväll – UI: toppraden omgrupperad (Arbetare 1)
+- `Source/Ui/Modules.cpp` `HeaderBar::resized`/`paint`, `Modules.h`: PREVIEWS (högtalare + notväljare) och LOOP (med från/till-takt) ligger nu i samma ruta som tempo/takt och JOG; LOOP överst i jog-delen. En gemensam ram (`transportGroup`) med avdelare mellan PREVIEWS och transporten.
+- dB-mätaren ligger längst till höger, med en MASTER-knob (`masterKnob`) bredvid. Knoben är en `SliderAttachment` på `ParamID::gain` (samma parameter som OUTPUT-faderns i mixern, `MixerPage.cpp:184`). Ingen ny parameter, inga ändrade ID:n.
+- Funktionellt oförändrat. Debug-bygget och KickbaseTests gröna. Ej visuellt kontrollerat i FL (Tobias ser layouten först i nästa release).
+- Kvar från PL:s andra UI-lista: Add instrument-knapp, EDIT INSTRUMENT-knapp + högerklick, kickens SYNTH/SAMPLE på/av.

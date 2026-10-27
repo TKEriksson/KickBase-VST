@@ -39,11 +39,7 @@ private:
     void timerCallback() override;
     void showExportMenu();
     static constexpr int meterWidth = 72;
-    int toolsEnd() const // (i Kickbase FX finns ingen EXPORT: då hamnade mätaren över tempot)
-    {
-        return ! previewGroup.isEmpty() ? previewGroup.getRight() : presets.getRight();
-    }
-    juce::Rectangle<int> meterBounds() const { return { toolsEnd() + 16, (getHeight() - 28) / 2, meterWidth, 28 }; }
+    juce::Rectangle<int> meterBounds() const { return meterRect; }
     void updateAiTooltip();
     void showProjectMenu();
     void saveProject (bool askForFile); // askForFile eller ingen projektfil än: filväljaren; annars sparas det direkt till projektfilen
@@ -92,7 +88,10 @@ private:
     juce::TextButton restartButton { "" };       // börjar om räknaren och mönstret vid 1.1 (egen klocka)
     juce::TextButton jogButton { "" };           // JOG / LP (D3b): öppnar hjulet för scratch av den egna klockan
     void showJogPanel();
-    juce::Rectangle<int> previewGroup, bpmPill, keyBlock;
+    juce::Rectangle<int> previewGroup, bpmPill, keyBlock, transportGroup, meterRect;
+    // Lyssnarvolym längst till höger bredvid mätaren: samma parameter som OUTPUT-faderns i mixern (ParamID::gain), ingen egen parameter.
+    juce::Slider masterKnob { juce::Slider::RotaryHorizontalVerticalDrag, juce::Slider::NoTextBox };
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> masterAttachment;
 
     // Transport i egen klocka (D3a): dubbelklicka tempot eller takten för att skriva ett värde, hjulet över takten scrubbar (musiken står still tills hjulet vilat).
     // Spelar värden är de låsta ("styrs av DAW").
@@ -101,8 +100,6 @@ private:
     // Global LOOP (D3): egen klocka som går runt mellan två takter (1-räknade, båda inräknade). DAW:ens transport ignoreras medan den är på.
     juce::TextButton loopButton { "LOOP" };
     juce::Label loopFromLabel, loopToLabel;
-    juce::Rectangle<int> loopBlock;
-    static constexpr int loopBlockWidth = 132;
     void applyLoopBars();
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
     void updateTransportLabels (bool following);

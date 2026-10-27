@@ -145,6 +145,15 @@ HeaderBar::HeaderBar (PluginBase& p, const juce::String& subtitleIn)
         updateTransportLabels (false);
     }
 
+    if (auto* gainParam = processor.apvts.getParameter (ParamID::gain))
+    {
+        masterKnob.setTooltip ("MASTER - Your listening volume: the same OUTPUT volume as the fader in the mixer (double-click for the default).");
+        masterKnob.setColour (juce::Slider::rotarySliderFillColourId, Theme::master);
+        masterKnob.setColour (juce::Slider::thumbColourId, Theme::text);
+        masterAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (processor.apvts, ParamID::gain, masterKnob);
+        masterKnob.setDoubleClickReturnValue (true, gainParam->convertFrom0to1 (gainParam->getDefaultValue()));
+        addAndMakeVisible (masterKnob);
+    }
     projectButton.onClick = [this] { showProjectMenu(); };
     addAndMakeVisible (projectButton);
     updateAiTooltip();
@@ -493,11 +502,39 @@ void HeaderBar::resized()
     const auto hasPreviews = processor.getKeyboardState() != nullptr;
     const auto height = getHeight();
     const auto controlsHeight = 34, controlsY = (height - controlsHeight) / 2;
-    // Till höger (tonart, tempo): sätts först, så att vänstra delen kan krympa så att inget överlappar vid smal bredd.
+    // Till höger: mätare och lyssnarvolym längst ut, sedan tonart, sedan (instrumentet) en gemensam ruta för
+    // PREVIEWS, LOOP, tempo/takt och JOG. Sätts först, så att vänstra delen kan krympa vid smal bredd.
     auto right = getLocalBounds().reduced (14, 0);
+    masterKnob.setBounds (right.removeFromRight (30).withSizeKeepingCentre (30, 30));
+    right.removeFromRight (4);
+    meterRect = right.removeFromRight (meterWidth).withSizeKeepingCentre (meterWidth, 28);
+    right.removeFromRight (10);
     keyBlock = right.removeFromRight (84).withSizeKeepingCentre (84, 40);
     right.removeFromRight (8);
-    bpmPill = right.removeFromRight (hasPreviews ? 244 : 214).reduced (0, (height - 34) / 2);
+    const auto pillWidth = hasPreviews ? 244 : 214;
+    const auto pillHeight = 34;
+    transportGroup = {};
+    previewGroup = {};
+    if (hasPreviews)
+    {
+        const auto previewsWidth = rollShown ? 148 : 112;
+        const auto groupHeight = 62;
+        transportGroup = right.removeFromRight (previewsWidth + pillWidth + 18).withSizeKeepingCentre (previewsWidth + pillWidth + 18, groupHeight);
+        auto inner = transportGroup.reduced (6, 0);
+        previewGroup = inner.removeFromLeft (previewsWidth).withTrimmedBottom (4).withTrimmedTop (3);
+        inner.removeFromLeft (6);
+        auto transport = inner;
+        // LOOP längst upp i jog-rutan, tempo och takt med JOG och omstart under.
+        auto loopRow = transport.removeFromTop (groupHeight - pillHeight - 6).withTrimmedTop (4);
+        loopButton.setBounds (loopRow.removeFromLeft (52));
+        loopRow.removeFromLeft (6);
+        loopFromLabel.setBounds (loopRow.removeFromLeft (30));
+        loopRow.removeFromLeft (14);
+        loopToLabel.setBounds (loopRow.removeFromLeft (30));
+        bpmPill = transport.removeFromBottom (pillHeight + 3).withTrimmedBottom (3);
+    }
+    else
+        bpmPill = right.removeFromRight (pillWidth).withSizeKeepingCentre (pillWidth, pillHeight);
     restartButton.setBounds (bpmPill.getRight() - 32, bpmPill.getY() + 4, 26, bpmPill.getHeight() - 8);
     jogButton.setBounds (restartButton.getX() - 28, bpmPill.getY() + 4, 26, bpmPill.getHeight() - 8);
     {
@@ -505,42 +542,28 @@ void HeaderBar::resized()
         bpmLabel.setBounds (inner.removeFromLeft (100).reduced (0, 4));
         barLabel.setBounds (inner.removeFromLeft (58).reduced (0, 4));
     }
-
-    // LOOP-rutan ligger till vänster om tempot (bara instrumentet)
-    loopBlock = {};
-    if (hasPreviews)
-    {
-        loopBlock = right.removeFromRight (loopBlockWidth).withSizeKeepingCentre (loopBlockWidth - 8, 34);
-        auto inner = loopBlock;
-        loopButton.setBounds (inner.removeFromLeft (52));
-        inner.removeFromLeft (6);
-        loopFromLabel.setBounds (inner.removeFromLeft (30));
-        inner.removeFromLeft (14);
-        loopToLabel.setBounds (inner.removeFromLeft (30));
-    }
     for (auto* c : std::initializer_list<juce::Component*> { &loopButton, &loopFromLabel, &loopToLabel })
         c->setVisible (hasPreviews);
 
     projectButton.setBounds (14 + logo.getWidth() + 22, controlsY, 84, controlsHeight); // MENU först, till vänster om presetväljaren
-    auto presetWidth = hasPreviews ? 118 : 200;
-    const auto leftEnd = projectButton.getRight() + 10 + presetWidth + 10 + (hasPreviews ? (rollShown ? 148 : 112) : 0) + 16 + meterWidth;
-    presetWidth = std::max (70, presetWidth - std::max (0, leftEnd - ((hasPreviews ? loopBlock.getX() : bpmPill.getX()) - 8)));
-    presets.setBounds (projectButton.getRight() + 10, controlsY, presetWidth, controlsHeight);
+    const auto presetsX = projectButton.getRight() + 10;
+    const auto leftLimit = (hasPreviews ? transportGroup.getX() : bpmPill.getX()) - 8;
+    const auto presetWidth = std::max (70, std::min (hasPreviews ? 118 : 200, leftLimit - presetsX));
+    presets.setBounds (presetsX, controlsY, presetWidth, controlsHeight);
     nameBounds = { projectButton.getX(), controlsY + controlsHeight + 1, presets.getRight() - projectButton.getX(), 14 };
 
-    // PREVIEWS: en inringad ruta med högtalaren och tonväljaren, så att man ser att de hör ihop.
-    previewGroup = hasPreviews ? juce::Rectangle<int> (presets.getRight() + 10, (height - 44) / 2, rollShown ? 148 : 112, 44) : juce::Rectangle<int>();
     listenAll.setVisible (hasPreviews);
     noteBox.setVisible (hasPreviews);
     restartButton.setVisible (hasPreviews);
     jogButton.setVisible (hasPreviews);
     if (hasPreviews)
     {
-        listenAll.setBounds (previewGroup.getX() + 7, previewGroup.getY() + 14, 30, previewGroup.getHeight() - 20);
+        const auto y = previewGroup.getY() + 12, h = previewGroup.getHeight() - 14;
+        listenAll.setBounds (previewGroup.getX() + 1, y, 30, h);
         listenRoll.setVisible (rollShown);
         if (rollShown)
-            listenRoll.setBounds (listenAll.getRight() + 3, previewGroup.getY() + 14, 30, previewGroup.getHeight() - 20);
-        noteBox.setBounds ((rollShown ? listenRoll.getRight() : listenAll.getRight()) + 5, previewGroup.getY() + 14, 62, previewGroup.getHeight() - 20);
+            listenRoll.setBounds (listenAll.getRight() + 3, y, 30, h);
+        noteBox.setBounds ((rollShown ? listenRoll.getRight() : listenAll.getRight()) + 5, y, 62, h);
     }
 }
 
@@ -781,6 +804,22 @@ void HeaderBar::paint (juce::Graphics& g)
         g.drawText (following ? "DAW SYNC" : "FREE RUN", block.withTrimmedLeft (18.0f), juce::Justification::centredLeft);
     }
 
+    // Gemensam ruta (instrumentet): PREVIEWS (högtalare, tonväljare), LOOP, tempo/takt och JOG hör ihop.
+    if (! transportGroup.isEmpty())
+    {
+        const auto group = transportGroup.toFloat();
+        g.setColour (Theme::pattern.withAlpha (0.07f));
+        g.fillRoundedRectangle (group, 6.0f);
+        g.setColour (Theme::pattern.withAlpha (0.75f));
+        g.drawRoundedRectangle (group.reduced (0.5f), 6.0f, 1.2f);
+        g.setFont (Theme::font (8.5f, true));
+        g.setColour (Theme::pattern);
+        g.drawText ("PREVIEWS", previewGroup.toFloat().withHeight (12.0f), juce::Justification::centredLeft);
+        const auto dividerX = (float) previewGroup.getRight() + 3.0f;
+        g.setColour (Theme::pattern.withAlpha (0.35f));
+        g.drawVerticalLine ((int) dividerX, group.getY() + 7.0f, group.getBottom() - 7.0f);
+    }
+
     // Tempo och takt i samma kapselformade hårdvarupill; knappen längst till höger börjar om vid 1.1.
     {
         const auto pill = bpmPill.toFloat();
@@ -804,19 +843,6 @@ void HeaderBar::paint (juce::Graphics& g)
         if (! labelsDrawn)
             g.drawText (juce::String (status.patternBar.load()) + "." + juce::String (status.beat.load()), // takten i mönstret (börjar om när mönstret är klart)
                         inner.removeFromLeft (58.0f), juce::Justification::centred);
-    }
-
-    // PREVIEWS: ramen runt högtalaren och tonväljaren.
-    if (! previewGroup.isEmpty())
-    {
-        const auto group = previewGroup.toFloat();
-        g.setColour (Theme::pattern.withAlpha (0.07f));
-        g.fillRoundedRectangle (group, 6.0f);
-        g.setColour (Theme::pattern.withAlpha (0.75f));
-        g.drawRoundedRectangle (group.reduced (0.5f), 6.0f, 1.2f);
-        g.setFont (Theme::font (8.5f, true));
-        g.setColour (Theme::pattern);
-        g.drawText ("PREVIEWS", group.withHeight (14.0f).withTrimmedLeft (8.0f), juce::Justification::centredLeft);
     }
 
     // Utgångsmätare (L och R, -48 till 0 dB): visar att synten faktiskt ger ljud.
