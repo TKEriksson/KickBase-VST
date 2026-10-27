@@ -260,6 +260,7 @@ public:
     juce::Component* getHeader() { return &header; }
     void resized() override;
     void select (int layer);
+    int getCurrent() const { return current; }
     void mouseDown (const juce::MouseEvent& event) override;
 
 private:

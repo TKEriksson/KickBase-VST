@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Theme.h"
+#include "ListenButton.h"
 
 // En liten på/av-knapp (ström-symbol) som sitter på en flik, så att man kan stänga av ett instrument utan att öppna fliken.
 class PowerButton : public juce::Button
@@ -121,6 +122,25 @@ public:
         resized();
     }
 
+    // Förhandsspelning för en flik: högtalaren längst till höger i flikraden (håll = spela, dubbelklick = fastlåst) och gäller bara när fliken
+    // är vald. Flikar utan anrop visar ingen knapp.
+    void setPreview (int tabIndex, std::function<void()> onStart, std::function<void()> onStop, const juce::String& tooltip)
+    {
+        auto& tab = tabs[(size_t) tabIndex];
+        tab.previewStart = std::move (onStart);
+        tab.previewStop = std::move (onStop);
+        tab.previewTooltip = tooltip;
+        if (! previewButton)
+        {
+            previewButton = std::make_unique<ListenButton>();
+            previewButton->onStart = [this] { if (tabs[(size_t) current].previewStart) tabs[(size_t) current].previewStart(); };
+            previewButton->onStop = [this] { if (tabs[(size_t) current].previewStop) tabs[(size_t) current].previewStop(); };
+            addAndMakeVisible (*previewButton);
+        }
+        updatePreviewButton();
+        resized();
+    }
+
     // Flikens text kommer från en funktion (t.ex. ett lagers egna namn) och uppdateras när den ändras.
     void setNameProvider (int tabIndex, std::function<juce::String()> provider)
     {
@@ -141,6 +161,7 @@ public:
             if (auto* extras = tabs[(size_t) i].headerExtras)
                 extras->setVisible (i == current);
         }
+        updatePreviewButton();
         repaint();
     }
 
@@ -153,6 +174,11 @@ public:
     void resized() override
     {
         auto header = getLocalBounds().removeFromTop (headerHeight).reduced (10, 4).withTrimmedTop (2);
+        if (previewButton != nullptr)
+        {
+            previewButton->setBounds (header.removeFromRight (previewWidth));
+            header.removeFromRight (6);
+        }
         auto reserved = 0;
         for (auto& tab : tabs)
             if (tab.headerExtras != nullptr)
@@ -180,6 +206,18 @@ public:
     }
 
 private:
+    static constexpr int previewWidth = 30;
+
+    void updatePreviewButton()
+    {
+        if (previewButton == nullptr || tabs.empty())
+            return;
+        const auto& tab = tabs[(size_t) current];
+        previewButton->setVisible (tab.previewStart != nullptr);
+        previewButton->setAccent (tab.accent);
+        previewButton->setTooltip (tab.previewTooltip);
+    }
+
     void timerCallback() override
     {
         for (auto& tab : tabs)
@@ -198,9 +236,12 @@ private:
         std::unique_ptr<PowerButton> power;
         std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> powerAttachment;
         std::function<juce::String()> nameProvider;
+        std::function<void()> previewStart, previewStop;
+        juce::String previewTooltip;
     };
 
     std::vector<Tab> tabs;
+    std::unique_ptr<ListenButton> previewButton;
     int current = 0;
     int* remembered;
     int initialTab;

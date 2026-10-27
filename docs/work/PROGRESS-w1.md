@@ -51,6 +51,16 @@ Gjort (Arbetare 1): `InstrumentSynth::isSounding()/getTargetSemitones()` (+ `tar
 En röst ger samma beteende som förut. Test i `testInstrumentGlide`-blocket i `EngineTests.cpp` (ackord 0/4/7 + glide till 12 → 5/9/12).
 Hela sviten: exit 0. Kvar att undersöka: stackade extra-glidetoner behandlas före grundtonen och kan glida den förra tonen, inte den nya.
 
+## B1 (förhandsknapp per flik) – Debug grönt, ej provad i FL
+Gjort (Arbetare 1): `TabbedPanel::setPreview(tab, onStart, onStop, tooltip)` (`TabbedPanel.h:125-142`): en delad `ListenButton` längst till höger i
+flikraden (30 px reserverad i `resized`), synlig bara för flikar som har anrop. Koppling:
+- Synth-panelen (`InstrumentEditor.cpp`): PATTERN/ANALYZER/AI CHAT/LIVE CODE = `previewRequest(previewAllRows)`, KICK = `previewRequest(kickLayer)`,
+  INSTRUMENT = `HoldAudition` med `heldLayerAudition(instruments.getCurrent())`. Stopp = `previewStop` resp. `hold.stop()`.
+- Lagrets källflikar (`Modules.cpp`, efter MIX): OSC 1-3 och SAMPLE = `heldSoloAudition(layer, källa)`, FILTER/FM/MIX = `heldLayerAudition(layer)`.
+  INSTR har redan egen knapp i sidan.
+- `InstrumentHost::getCurrent()` (`Modules.h`) nytt.
+Öppen fråga: "MIDI-tangentbordet triggar detta" i masterplanen är oklart (vilken tangent/ton?). Ej gjort; väntar på svar från projektledaren.
+
 ## FL-testlista (samlas av projektledaren)
 - A1: C5 från FL startar mönstret med pianorullen öppen; MIDI IN gäller bara när värden står still.
 - A2/T13: rad 1 takt + Loop 1-2; 3-takters mönster med kick i varje takt (takt 3 ska ha alla slag); "AUTO 2 takter"-misstanken (UI-visning/redigeringsväg utan `refreshLengths`).

@@ -795,6 +795,21 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
     mixPanel = std::make_unique<InstrMixPanel> (p, layer, layerAccent);
     sources.addTab ("MIX", layerAccent, *mixPanel);
 
+    // B1: förhandsknapp i flikraden. OSC 1-3 och SAMPLE spelar bara sin källa, FILTER/FM/MIX hela instrumentet (INSTR har sin egen knapp i sidan).
+    for (int tab = 1; tab <= 7; ++tab)
+    {
+        const auto source = tab - 1; // fliknummer 1-3 = OSC 1-3, 4 = SAMPLE (källa 3)
+        const auto solo = tab <= 1 + ParamID::oscsPerLayer;
+        const auto whole = tab >= 5;
+        if (! solo && ! whole)
+            continue;
+        sources.setPreview (tab,
+                            [this, source, whole] { hold.start (whole ? PluginBase::heldLayerAudition (layer) : PluginBase::heldSoloAudition (layer, source)); },
+                            [this] { hold.stop(); },
+                            whole ? "LISTEN - Plays the whole instrument on the preview note. Hold to play, double-click to latch."
+                                  : "LISTEN - Plays only this source on the preview note. Hold to play, double-click to latch.");
+    }
+
     auto knob = [&] (const juce::String& paramID, const char* name) -> juce::Component*
     {
         controls.push_back (std::make_unique<KnobComponent> (p.apvts, paramID, name, layerAccent));

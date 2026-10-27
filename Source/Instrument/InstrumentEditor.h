@@ -18,6 +18,7 @@
 #include "../Ui/AnalyzerPage.h"
 #include "../Ui/Modules.h"
 #include "../Ui/TabbedPanel.h"
+#include "../Ui/HoldAudition.h"
 
 // Överst syntarna (mönster, kick och instrumenten, ett i taget), nedanför verktygen (mönster, effekter, sidechain,
 // LFO:er, master), så att mönstret syns och LFO:er kan dras till rattarna ovanför.
@@ -49,6 +50,7 @@ private:
     AiChatPage aiPage { processor };
     LiveCodePage livePage { processor };
     InstrumentHost instruments { processor };
+    HoldAudition holdPreview { processor }; // INSTRUMENT-flikens förhandsknapp (B1)
     TabbedPanel tools { &processor.selectedTab };
     EffectsPage effects { processor };
     SidechainPage sidechain { processor };
