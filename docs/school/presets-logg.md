@@ -11,3 +11,7 @@ En rad per preset. Kolumner: namn | kategori | nyckelparametrar | mätt | ändra
 | Wide Mid | PSY ROLLING BASS | som Full-On, cutoff 1500, drive 0.05, nivå 0.52 | centroid 145, 250–1k −10.0 | commit följer | ingen unison ännu (kan läggas till) |
 | Dekel Groove | PSY ROLLING BASS | Saw Soft pos 1.0 + Psy Roll, cutoff 1500, drive 0.10 | centroid 75, 250–1k −14.7 | commit följer | mörkare grooveversion, når inte målet |
 | Forest 1/32 | PSY ROLLING BASS | Psy Acid pos 0.9, TB-303-filter, res 0.45, cutoff 2200 | centroid 67, 250–1k −21.2 | commit följer | mörk acid; mät i DAW |
+| Roll Full-On | PSY ROLLING | PSY CLEAN C-kick + Full-On Roll-bas, distorsion-send, Duck 0.85, 4 takter med oktavhopp | audit full: peak −3,3, RMS −11,0, centroid 89, 250–1k −12,1, DC 0 | commit följer | audit mäter hela mixen inkl. kick |
+| Roll Wide | PSY ROLLING | Psy Clean D + Wide Mid-bas, chorus-send, 2 takter | peak −3,3, centroid 92, side −120 (mono) | commit följer | stereo kommer bara från chorusen i DAW |
+| Roll Dekel | PSY ROLLING | Psy Clean F Soft + Dekel Groove, eko-send | peak −2,9, centroid 82 | commit följer | mörk |
+| Roll Forest | PSY ROLLING | Psy Clean A Punch + Forest 1/32 (TB-303), litet rum | peak −3,2, centroid 131, 250–1k −11,2 | commit följer | ljusast av fyra |

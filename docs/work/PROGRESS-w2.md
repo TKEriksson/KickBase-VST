@@ -125,3 +125,9 @@
 
 ## Lager 1-2 och bas-preset (27 okt, Arbetare 2)
 Läst i koden (inget ändrat): bas-preset laddar bara valt lager (`Presets.cpp:267`); lager 1-2 har default på/0.7 (`Params.cpp:227`) men inga toner i standardmönstret (`Pattern.cpp:426-428`), så de är troligen tysta i pluginet. Audit spelade en MIDI-ton i alla lager: därför dränktes skillnaderna där. Audit fixad (`Tools/PresetAudit.inl:74-76`); gamla basmått ogiltiga. Förslag: ingen ändring av laddningen. Verifiering i DAW av Tobias: ladda ny instans + bas-preset, kolla att bara rad 1 ljuder.
+
+## Del 4: PSY ROLLING huvudpresets (27 okt, Arbetare 2)
+- Byggt: `psyRolling1..4` (Roll Full-On, Roll Wide, Roll Dekel, Roll Forest) sist i `fullPresets()` efter newest10 (`PresetData.inl`), kategori `psyRollingCategory`. PSY CLEAN-kick + ny rollbas, FX-send, Duck, `instrumentCount` 1 (lager 1–2 avstängda).
+- Mätt (`audit full`): peak −2,9..−3,3, RMS ca −11, DC 0, centroid 82–131 Hz. Alla ändliga. `build.bat Debug all` grön. Gamla index/hashar rörs ej.
+- Jag kan bara mäta, inte lyssna: Tobias provar i DAW (testlistan).
+- Nästa: GLIDE BASSES, sedan New Init 1–5.

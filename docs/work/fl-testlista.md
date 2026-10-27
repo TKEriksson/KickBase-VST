@@ -110,3 +110,4 @@ Format: **Gör så** → *förväntat resultat*. Bocka av `[ ]` när det stämme
 - [ ] Be AI:n läsa tillståndet → *kickens pitch-noder med ton och Hz finns med.*
 - [ ] Ladda ny instans, välj bas-preset Full-On Roll (PSY ROLLING BASS) → *bara rad 1 ljuder; mellanregistret rullar mot PSY CLEAN-kicken utan att kicken försvinner.*
 - [ ] Jämför Wide Mid, Dekel Groove och Forest 1/32 i DAW → *Wide Mid ljusast, Dekel och Forest mörkare; säg vilken som är för tunn.*
+- [ ] Ladda huvudpreset Roll Full-On, Roll Wide, Roll Dekel, Roll Forest (PSY ROLLING) i DAW → *kick och bas rullar ihop, basen ducker för kicken, bara ett lager ljuder; säg vilken som är för tunn eller för mörk.*
