@@ -162,7 +162,7 @@ void LiveCodePage::codeDocumentTextInserted (const juce::String& text, int)
     marks.clear();
     codeChanged();
     if (ownEdit) return;
-    if (text == "." && completionEditor == nullptr)
+    if ((text == "." || text == "\"") && completionEditor == nullptr)
         juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<LiveCodePage> (this)]
         {
             if (safe != nullptr && safe->editor.hasKeyboardFocus (true)) safe->openCompletion (safe->editor);

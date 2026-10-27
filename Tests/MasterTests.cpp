@@ -1,6 +1,7 @@
 // Tester för sidechain-kurvan och mastersektionens limiter.
 
 #include "../Source/Core/Effects.h"
+#include "../Source/Core/LiveCodeComplete.h"
 #include "../Source/Core/Master.h"
 #include "../Source/Core/Sidechain.h"
 #include "TestUtils.h"
@@ -148,10 +149,33 @@ namespace
         const auto knob = state.getChildWithProperty ("id", Effects::knobParamID (0, 0, 5));
         check (knob.isValid() && (float) (double) knob.getProperty ("value") == 0.0f, "ratt 6 nollad till Classic", knob.isValid() ? (double) knob.getProperty ("value") : -1.0);
     }
+
+    // D4: autokomplettering inuti strängar och på tom rad
+    void testLiveCodeStringComplete()
+    {
+        std::puts ("D4: Live Code-förslag i strängar");
+        const LiveCodeComplete::Source src;
+        auto has = [] (const LiveCodeComplete::Result& r, const char* label)
+        {
+            for (auto& i : r.items) if (i.label == label) return true;
+            return false;
+        };
+        const juce::String a = "$: s(\"";
+        const auto s = LiveCodeComplete::complete (a, a.length(), src);
+        check (has (s, "i1") && has (s, "bd") && ! has (s, "c2"), "s(\" ger instrumentnamn", (int) s.items.size());
+        const juce::String b = "$: s(\"i1\").note(\"c2 e";
+        const auto n = LiveCodeComplete::complete (b, b.length(), src);
+        check (has (n, "eb1") && ! has (n, "i1") && n.replaceFrom == b.length() - 1, "note(\" ger tonnamn från senaste ordet", n.replaceFrom);
+        const auto empty = LiveCodeComplete::complete ("", 0, src);
+        check (! empty.items.empty() && empty.items.front().label == "$:", "tom rad börjar med $:");
+        const juce::String c = "s(\"i1\").";
+        check (has (LiveCodeComplete::complete (c, c.length(), src), "note"), "efter stängd sträng ger metoder");
+    }
 }
 
 void runMasterTests()
 {
+    testLiveCodeStringComplete();
     testCurveShapeAndTable();
     testCurvePlayer();
     testLimiter();
