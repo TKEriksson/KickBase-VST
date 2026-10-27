@@ -86,3 +86,7 @@ Audition med `rowOverride >= 0` blockeras fortfarande inte när värden spelar (
 ## Lärdomar
 - `build.bat` i worktreen: kör via PowerShell `& cmd.exe /c "<full sökväg>\build.bat" Debug` (cmd /c från bash gav en tom prompt). Varningen om `vswhere.exe` är ofarlig.
 - Ny testkod som använder `StepScheduler` kräver `#include` i `EngineTests.cpp` (missades första bygget).
+
+## D6 (spöktoner i pianorullen) – Debug grönt, ej provad i FL
+Gjort (Arbetare 1): `PianoRoll::paint` (`PianoRoll.cpp`, före "Tonerna") ritar övriga raders toner (`numNoteLayers`, inkl. staplade via `getStack`) svagt i radens färg,
+ej klickbara. Höjd via `rowRootNote(annan) - rootNote()` så MIDI-tonen är gemensam axel. Ingen av/på-knapp än (föreslås om det stör).

@@ -1458,6 +1458,35 @@ void PianoRoll::paint (juce::Graphics& g)
             }
         }
 
+        // D6: spökton – de andra radernas toner, svagt och utan att gå att röra, med MIDI-tonen som gemensam höjdaxel.
+        {
+            const auto gFirst = std::max (0, (int) xToTicks (gridArea.getX()) - Pattern::ticksPerBar * 2);
+            const auto gLast = std::min (editTicks() - 1, (int) xToTicks (gridArea.getRight()) + 1);
+            for (int other = 0; other < Pattern::numNoteLayers; ++other)
+            {
+                if (other == layer)
+                    continue;
+                const auto shift = processor.rowRootNote (other) - rootNote();
+                const auto otherColour = layerColours[(size_t) juce::jlimit (0, (int) layerColours.size() - 1, other)];
+                for (int tick = gFirst; tick <= gLast; ++tick)
+                {
+                    const auto stacked = processor.pattern.stackSize (other, tick);
+                    for (int index = 0; index < stacked; ++index)
+                    {
+                        Pattern::StackNote sn;
+                        if (! processor.pattern.getStack (other, tick, index, sn))
+                            continue;
+                        const auto x0 = ticksToX ((float) tick), x1 = ticksToX ((float) (tick + sn.length));
+                        const juce::Rectangle<float> gb { x0, pitchToY (sn.pitch + shift), std::max (3.0f, x1 - x0), rowHeight() };
+                        g.setColour (otherColour.withAlpha (0.16f));
+                        g.fillRoundedRectangle (gb.reduced (0.0f, 0.5f), 2.5f);
+                        g.setColour (otherColour.withAlpha (0.32f));
+                        g.drawRoundedRectangle (gb.reduced (0.0f, 0.5f), 2.5f, 1.0f);
+                    }
+                }
+            }
+        }
+
         // Tonerna.
         const auto chordAlpha = voices() >= 2 ? 1.0f : 0.35f;
         const auto playHead = playTickNow();
