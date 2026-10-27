@@ -101,7 +101,8 @@ namespace ParamID
                                      "Polarity", "PhaseDeg", "NudgeMs",
                                      "FmOn", "FmLevel", "FmRatio", "FmIndex", "FmEnvAmount", "FmEnvTime", "FmSemis", "FmPreset", "FmFilter",
                                      "SlicerOn", "SlicerMapTo", "SlicerReverse",
-                                     "FxSend", "SampleMode", "AllpassFreq", "AllpassAmount", "SamplePan", "NoisePan", "FmPan", "NoiseWidth", "SubPhaseDeg", "FmPhaseDeg", "AWidth", "BWidth", "CWidth", "SampleWidth", "FmWidth", "RingSource" };
+                                     "FxSend", "SampleMode", "AllpassFreq", "AllpassAmount", "SamplePan", "NoisePan", "FmPan", "NoiseWidth", "SubPhaseDeg", "FmPhaseDeg", "AWidth", "BWidth", "CWidth", "SampleWidth", "FmWidth", "RingSource",
+                                     "FundamentalDuckMode", "FundamentalDuckDepth", "FundamentalDuckWindow", "FundamentalDuckSource" };
         static_assert (std::size (names) == (size_t) InstrumentField::count);
         return names[(size_t) field];
     }
@@ -454,6 +455,34 @@ namespace Params
         layout.add (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { ParamID::jogSpeed, 1 }, "Jog Speed",
                                                                  juce::NormalisableRange<float> (0.0f, 4.0f, 0.001f), 1.0f));
         addKickToggleParams (layout);
+    }
+
+    void addFundamentalDuckParams (Layout& layout)
+    {
+        using namespace juce;
+        using F = InstrumentField;
+        const auto dbText = [] (float v) { return String (v, 1) + " dB"; };
+        const auto centsText = [] (float v) { return String (roundToInt (v)) + " cent"; };
+        StringArray sources { "Kick" };
+        for (int n = 1; n <= ParamID::numInstrumentLayers; ++n)
+            sources.add ("Instr " + String (n));
+        sources.add ("Any");
+
+        layout.add (std::make_unique<AudioParameterBool> (ParameterID { ParamID::fundamentalDuckOn, 1 }, "Fundamental Duck On", false));
+        layout.add (floatParam (ParamID::fundamentalDuckDepth, "Fundamental Duck Depth", NormalisableRange<float> (0.0f, 24.0f, 0.1f), 12.0f, dbText));
+        layout.add (floatParam (ParamID::fundamentalDuckWindow, "Fundamental Duck Window", NormalisableRange<float> (10.0f, 1200.0f, 1.0f), 200.0f, centsText));
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::fundamentalDuckSource, 1 }, "Fundamental Duck Source", sources, 0));
+
+        for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
+        {
+            const auto title = "Instr " + String (layer + 1) + " ";
+            const auto id = [layer] (F field) { return ParamID::bass (layer, field); };
+            layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::fundamentalDuckMode), 1 }, title + "Fundamental Duck Mode",
+                                                                StringArray { "Inherit", "Off", "Own" }, 0));
+            layout.add (floatParam (id (F::fundamentalDuckDepth), title + "Fundamental Duck Depth", NormalisableRange<float> (0.0f, 24.0f, 0.1f), 12.0f, dbText));
+            layout.add (floatParam (id (F::fundamentalDuckWindow), title + "Fundamental Duck Window", NormalisableRange<float> (10.0f, 1200.0f, 1.0f), 200.0f, centsText));
+            layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::fundamentalDuckSource), 1 }, title + "Fundamental Duck Source", sources, 0));
+        }
     }
 
     void addKickToggleParams (Layout& layout)

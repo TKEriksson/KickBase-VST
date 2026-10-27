@@ -32,6 +32,7 @@ namespace
         Params::addMasterParams (layout);
         Modulation::addExtraLfoParameters (layout); // LFO 4-10 (fas M): nya parametrar sist
         Params::addJogParams (layout); // JOG (D3b)
+        Params::addFundamentalDuckParams (layout); // FUNDAMENTAL DUCK: allra sist
         return layout;
     }
 
@@ -90,6 +91,8 @@ void InstrumentProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
         bass.prepare (sampleRate);
     for (auto& ducker : duckers)
         ducker.prepare (sampleRate);
+    for (auto& fd : fundamentalDucks)
+        fd.prepare (sampleRate);
     effects.prepare (sampleRate, samplesPerBlock);
     effects.setModulator (&modulator);
     master.prepare (sampleRate, 2);
@@ -397,6 +400,56 @@ void InstrumentProcessor::readLayerFields (int layer, juce::uint64 solo)
     gateDepth[(size_t) layer] = params.bass (layer, InstrumentField::gateDepth);
     const auto smoothMs = std::max (0.5f, params.bass (layer, InstrumentField::gateSmooth));
     gateCoefficient[(size_t) layer] = (float) (1.0 - std::exp (-1.0 / (0.001 * smoothMs * getSampleRate())));
+
+    // FUNDAMENTAL DUCK: ÄRV (instrumentets värden), AV eller EGEN (motorns egna värden).
+    const auto mode = (int) params.bass (layer, InstrumentField::fundamentalDuckMode);
+    if (mode == 2)
+    {
+        fdDepth[(size_t) layer] = params.bass (layer, InstrumentField::fundamentalDuckDepth);
+        fdWindow[(size_t) layer] = params.bass (layer, InstrumentField::fundamentalDuckWindow);
+        fdSource[(size_t) layer] = (int) params.bass (layer, InstrumentField::fundamentalDuckSource);
+        fdOn[(size_t) layer] = fdDepth[(size_t) layer] > 0.0f;
+    }
+    else
+    {
+        fdDepth[(size_t) layer] = params.get (ParamID::fundamentalDuckDepth);
+        fdWindow[(size_t) layer] = params.get (ParamID::fundamentalDuckWindow);
+        fdSource[(size_t) layer] = (int) params.get (ParamID::fundamentalDuckSource);
+        fdOn[(size_t) layer] = mode == 0 && params.getBool (ParamID::fundamentalDuckOn) && fdDepth[(size_t) layer] > 0.0f;
+    }
+}
+
+// Hur mycket motorn dämpas just nu, 0..1 (1 = hela djupet): källans envelope gånger fönstret (grundtonen nära källans grundton).
+float InstrumentProcessor::fundamentalDuckWeight (int layer, int i, const float* kickEnvelope) const
+{
+    const auto fundamental = fdHz[(size_t) layer];
+    const auto source = fdSource[(size_t) layer];
+    const auto window = std::max (1.0f, fdWindow[(size_t) layer]);
+
+    const auto windowWeight = [&] (float referenceHz)
+    {
+        if (referenceHz <= 0.0f || fundamental <= 0.0f)
+            return 0.0f;
+        const auto cents = std::abs (1200.0f * std::log2 (fundamental / referenceHz));
+        return juce::jlimit (0.0f, 1.0f, 2.0f - cents / window);
+    };
+    const auto fromInstrument = [&] (int other)
+    {
+        if (other == layer || other >= activeLayers || ! layerOn[(size_t) other])
+            return 0.0f;
+        const auto amp = juce::jlimit (0.0f, 1.0f, std::abs (amplitudeBuffer.getReadPointer (other)[i]));
+        return amp * windowWeight (fdHz[(size_t) other]);
+    };
+
+    auto weight = 0.0f;
+    if (source == 0 || source == numLayers + 1)
+        weight = kickEnvelope[i] * windowWeight (kickTailHz);
+    if (source >= 1 && source <= numLayers)
+        weight = fromInstrument (source - 1);
+    else if (source == numLayers + 1)
+        for (int other = 0; other < activeLayers; ++other)
+            weight = std::max (weight, fromInstrument (other));
+    return juce::jlimit (0.0f, 1.0f, weight);
 }
 
 void InstrumentProcessor::readDuckLength()
@@ -446,6 +499,7 @@ void InstrumentProcessor::refreshEngineParams()
         kickParams.sampleLevel = 1.0f;
     }
     kick.setParams (kickParams);
+    kickTailHz = kickParams.tailHz;
     for (int layer = 0; layer < activeLayers; ++layer)
     {
         auto instrumentParams = readModulatedInstrument (layer, instrumentRootNote());
@@ -852,6 +906,7 @@ void InstrumentProcessor::renderSamples (int startSample, int endSample)
             sourceRight[i] = b.right;
             amplitudeData[i] = b.amplitude;
         }
+        fdHz[(size_t) layer] = bass.getFundamentalHz();
     }
 }
 
@@ -875,6 +930,8 @@ void InstrumentProcessor::finishBlock (int numSamples)
         auto* dataRight = layerBufferRight.getWritePointer (layer);
         const auto* amplitude = amplitudeBuffer.getReadPointer (layer);
         auto& ducker = duckers[(size_t) layer];
+        auto& fd = fundamentalDucks[(size_t) layer];
+        const auto fundamentalOn = fdOn[(size_t) layer];
         const auto amount = mixer.duckEnabled (Mixer::firstBassSource + layer) ? duckAmounts[(size_t) layer] : 0.0f;
 
         auto* before = tapBuffer.getWritePointer (0);
@@ -901,15 +958,24 @@ void InstrumentProcessor::finishBlock (int numSamples)
             gateGainRef += (gateTarget - gateGainRef) * gateCoefficient[(size_t) layer];
 
             const auto levelLeft = data[i] * amplitude[i] * gateGainRef, levelRight = dataRight[i] * amplitude[i] * gateGainRef;
+            auto outLeft = levelLeft, outRight = levelRight;
+            if (fundamentalOn || fd.isActive())
+            {
+                if ((i & 7) == 0)
+                    fd.setTarget (fundamentalOn ? fdHz[(size_t) layer] : 0.0f,
+                                  fundamentalOn ? fdDepth[(size_t) layer] * fundamentalDuckWeight (layer, i, duckData) : 0.0f);
+                fd.process (outLeft, outRight);
+            }
             const auto duckGain = ducker.next (duckData[i], amount);
-            data[i] = levelLeft * duckGain;
-            dataRight[i] = levelRight * duckGain;
+            data[i] = outLeft * duckGain;
+            dataRight[i] = outRight * duckGain;
             before[i] += 0.5f * (levelLeft + levelRight);
             after[i] += 0.5f * (data[i] + dataRight[i]);
             duckGainTaps[(size_t) layer].push (duckGain);
             lastDuckGain = duckGain;
         }
         duckReduction[(size_t) layer] = numSamples > 0 ? 1.0f - lastDuckGain : 0.0f;
+        fundamentalDuckDb[(size_t) layer].store (fd.getAttenuationDb(), std::memory_order_relaxed);
         layerEqs[(size_t) layer].process (data, dataRight, numSamples);
         if (instrumentTapsOn.load (std::memory_order_relaxed))
             for (int i = 0; i < numSamples; ++i)
@@ -989,6 +1055,8 @@ void InstrumentProcessor::resetDspState()
         bass.reset();
     for (auto& ducker : duckers)
         ducker.prepare (getSampleRate());
+    for (auto& fd : fundamentalDucks)
+        fd.prepare (getSampleRate());
     effects.reset();
     master.reset();
     kickEq.reset();

@@ -3,6 +3,7 @@
 #include <array>
 #include "../Core/InstrumentVoices.h"
 #include "../Core/Ducker.h"
+#include "../Core/FundamentalDuck.h"
 #include "../Core/Effects.h"
 #include "../Core/KickEngine.h"
 #include "../Core/Master.h"
@@ -143,6 +144,17 @@ private:
     std::array<int, numLayers> gateGrid = filledArray<int, numLayers> ((int) InstrumentGrid::sixteenth);
     std::array<float, numLayers> gateDepth = filledArray<float, numLayers> (1.0f), gateCoefficient = filledArray<float, numLayers> (0.01f),
                                  gateGain = filledArray<float, numLayers> (1.0f);
+    // FUNDAMENTAL DUCK per motor (effektivt värde efter ÄRV/AV/EGEN). Läses en gång per block; fdHz = motorns grundton (senast spelade rösten) i blockets slut.
+    std::array<FundamentalDuck, numLayers> fundamentalDucks;
+    std::array<bool, numLayers> fdOn = filledArray<bool, numLayers> (false);
+    std::array<float, numLayers> fdDepth = filledArray<float, numLayers> (0.0f), fdWindow = filledArray<float, numLayers> (200.0f), fdHz = filledArray<float, numLayers> (0.0f);
+    std::array<int, numLayers> fdSource = filledArray<int, numLayers> (0); // 0 kick, 1..numLayers instrument, numLayers + 1 Any
+    float kickTailHz = 55.0f;
+public:
+    // För gränssnittet (lampa, mätare): dämpningen i dB som är i bruk just nu per motor (0 = av).
+    std::array<std::atomic<float>, numLayers> fundamentalDuckDb {};
+private:
+    float fundamentalDuckWeight (int layer, int i, const float* kickEnvelope) const;
     Sidechain::Mode sidechainMode = Sidechain::Mode::kickEnvelope;
     double duckLengthSamples = 1.0;
     NoteEnd noteEnd = NoteEnd::cut;

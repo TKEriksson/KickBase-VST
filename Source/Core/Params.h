@@ -83,6 +83,12 @@ namespace ParamID
     // Kickens SYNTH och SAMPLE på/av (båda på = som förut). Sist i layouten, så att gamla projekt är orörda.
     inline constexpr auto kickSynthOn  = "kickSynthOn";
     inline constexpr auto kickSampleOn = "kickSampleOn";
+
+    // FUNDAMENTAL DUCK för hela instrumentet (alla motorer som ärver). Sist i layouten (addFundamentalDuckParams).
+    inline constexpr auto fundamentalDuckOn     = "fundamentalDuckOn";
+    inline constexpr auto fundamentalDuckDepth  = "fundamentalDuckDepth";
+    inline constexpr auto fundamentalDuckWindow = "fundamentalDuckWindow";
+    inline constexpr auto fundamentalDuckSource = "fundamentalDuckSource";
 }
 
 // Varje baslagers parametrar. ID:t är "bass" + lagrets nummer + fältets namn, t.ex. "bass2Cutoff".
@@ -126,6 +132,7 @@ enum class InstrumentField
     allpassFreq, allpassAmount,                                   // allpass efter filtren: 4 första ordningens allpass vid FREQ (20..2000 Hz); AMOUNT 0 (standard) = av och ljudet oförändrat
     samplePan, noisePan, fmPan, noiseWidth, subPhaseDeg, fmPhaseDeg, aWidth, bWidth, cWidth, sampleWidth, fmWidth, // bredd per källa: 100 % = som förut (OSC 0..200 %: 0 = mono; SAMPLE och FM 100..200 %: okorrelerat); INSTR-MIX: pan för SAMPLE, NOISE och FM (0 = mitten = som förut) och brusets bredd (100 % = mono som förut, upp till 200 %); sub är alltid mono i mitten
     ringSource,                                                  // RING (B) på OSC 1: vad OSC 1 multipliceras med (0 = OSC 2, 1 = OSC 3, 2 = OSC 2 x OSC 3)
+    fundamentalDuckMode, fundamentalDuckDepth, fundamentalDuckWindow, fundamentalDuckSource, // FUNDAMENTAL DUCK per motor: 0 ÄRV (instrumentets värden, standard), 1 AV, 2 EGEN; registreras sist (addFundamentalDuckParams)
     count
 };
 
@@ -162,6 +169,7 @@ namespace Params
     void addFxParams (Layout& layout);
     void addMasterParams (Layout& layout);
     void addJogParams (Layout& layout); // D3b: sist i layouten
+    void addFundamentalDuckParams (Layout& layout); // FUNDAMENTAL DUCK (instrument + per motor): allra sist i instrumentets layout
     void addKickToggleParams (Layout& layout); // kickens SYNTH/SAMPLE på/av; läses av readKick, så FX-pluginet behöver dem också
 
     juce::StringArray keyNames();

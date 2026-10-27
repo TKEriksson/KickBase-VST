@@ -253,7 +253,16 @@ namespace Help
             { "bassBWidth", "Stereo width of OSC 2. 100 % = exactly as before, 0 % = mono, 200 % = twice the side signal. Only does something when the oscillator is stereo (UNISON above 1 or STEREO)." },
             { "bassCWidth", "Stereo width of OSC 3. 100 % = exactly as before, 0 % = mono, 200 % = twice the side signal. Only does something when the oscillator is stereo (UNISON above 1 or STEREO)." },
             { "bassSampleWidth", "Stereo width of the SAMPLE source: 100 % = mono as before, 200 % = a decorrelated copy in left and right. Keep the low end mono." },
-            { "bassRingSource", "RING (B) on OSC 1: what OSC 1 is multiplied by (ring modulation): OSC 2, OSC 3, or OSC 2 x OSC 3. WARP AMOUNT blends from plain OSC 1 to pure ring modulation. The chosen oscillator must be ON; its LEVEL does not matter for the ring." },
+            { "jogSpeed", "Playback speed of the pattern relative to the tempo (the JOG wheel writes this while you hold it). 1x = normal." },
+            { "fundamentalDuckOn", "FUNDAMENTAL DUCK for all engines: dampens the fundamental of every engine while the kick sounds (a narrow dip at the engine's own fundamental). Engines can inherit, switch it off or use their own values. Limits: it follows the last played voice of each engine, and the 2nd harmonic and glides are not followed." },
+            { "fundamentalDuckDepth", "How many dB the fundamental is dampened at full effect while the source sounds (instrument-wide; engines set to INHERIT use it)." },
+            { "fundamentalDuckWindow", "How close in pitch the engine's fundamental must be to the source's, in cents. Inside the window the dip is full; at twice the window it is gone." },
+            { "fundamentalDuckSource", "What triggers the dip: the kick (default), one of the instruments, or Any." },
+            { "bassFundamentalDuckMode", "FUNDAMENTAL DUCK for this engine. INHERIT: uses the instrument-wide values (shown dimmed, 'från instrument'). OFF: this engine is never dampened. OWN: uses its own depth, window and source. Follows the last played voice." },
+            { "bassFundamentalDuckDepth", "OWN mode: how many dB this engine's fundamental is dampened at full effect." },
+            { "bassFundamentalDuckWindow", "OWN mode: how close in pitch (cents) the fundamental must be to the source's for the full dip." },
+            { "bassFundamentalDuckSource", "OWN mode: what triggers the dip for this engine: the kick, another instrument, or Any." },
+            { "bassRingSource","RING (B) on OSC 1: what OSC 1 is multiplied by (ring modulation): OSC 2, OSC 3, or OSC 2 x OSC 3. WARP AMOUNT blends from plain OSC 1 to pure ring modulation. The chosen oscillator must be ON; its LEVEL does not matter for the ring." },
             { "bassFmWidth","Stereo width of the FM source: 100 % = mono as before, 200 % = a decorrelated copy in left and right." },
             { "bassNoiseWidth", "How wide the noise is: 100 % = mono in the centre (as before), 200 % = different noise in left and right. The sub and the low end of a bass should stay mono, so only the noise gets a width control." },
             { "bassAllpassAmount", "How much of the allpass chain is mixed in (0 % = off, no CPU and the sound is exactly as before; 100 % = pure phase rotation). In between you get a phaser-like notch." },
@@ -369,6 +378,16 @@ namespace Help
             if (name == "LOW DUCK")  return "How far the low part (below SPLIT) is pushed down when the source plays. High = room for the kick.";
             if (name == "HIGH DUCK") return "How far the high part is pushed down. Keep it low for a pump that does not dull the top.";
         }
+        if (typeName == "Sidechain 2-Band")
+        {
+            if (name == "SPLIT")      return "Where the sound is divided into a low and a high part (a Linkwitz-Riley split, so the parts add back to the original).";
+            if (name == "LOW DEPTH")  return "How far the low part (below SPLIT) is pushed down by the volume curve. 100 % = full curve depth.";
+            if (name == "HIGH DEPTH") return "How far the high part (above SPLIT) is pushed down by the volume curve. Keep it lower for a pump that does not dull the top.";
+            if (name == "LOW REL")    return "How fast the low part comes back after the kick. Longer = the sub stays out of the way for longer.";
+            if (name == "HIGH REL")   return "How fast the high part comes back after the kick.";
+        }
+        if (typeName == "Phase Rotation" && name == "ROTATION")
+            return "How far the phase is turned at FREQ, in degrees. The level does not change; only the timing of the low end against the kick does.";
         if (typeName == "Octaver")
         {
             if (name == "OCT DOWN")   return "Adds a copy one octave lower (a clean sub under the sound). Works best on single notes.";

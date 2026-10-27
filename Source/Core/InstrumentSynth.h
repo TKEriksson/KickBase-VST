@@ -171,6 +171,8 @@ public:
     Output next();
     float nextSample() { const auto o = next(); return 0.5f * (o.left + o.right) * o.amplitude; }
     bool isActive() const { return stage != Stage::idle; }
+    // Rösten grundton i Hz just nu (glide och tonhöjdsmodulering inräknade); 0 före första tonen. Läses av FUNDAMENTAL DUCK.
+    float getFrequencyHz() const { return (float) cachedFrequency; }
     bool isReleasing() const { return stage == Stage::release; }
 
     // Modulationskällorna: 0 = ENV 2, 1 = ENV 3, 2 = senaste tonens velocity, 3 = ett slumptal per ton, 4 = AMP ENV (ENV 1),

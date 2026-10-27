@@ -44,6 +44,8 @@ public:
     bool isActive() const;
     float getModulationValue (int source) const;
     juce::uint64 getNoteCount() const { return noteCounter; } // antal startade toner (Live Code ENV startar på ändringen)
+    // Den senast spelade rösten grundton i Hz (0 när den inte klingar): det FUNDAMENTAL DUCK dämpar.
+    float getFundamentalHz() const { return voices[(size_t) lastVoice].isActive() ? voices[(size_t) lastVoice].getFrequencyHz() : 0.0f; }
     float getSampleFraction() const { return voices[(size_t) lastVoice].getSampleFraction(); }
     // Röster som klingar eller väntar på en ton (för test och gränssnitt).
     int countSounding() const;
