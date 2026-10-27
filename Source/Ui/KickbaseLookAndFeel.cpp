@@ -149,15 +149,24 @@ void KickbaseLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int
     const auto accent = slider.findColour (juce::Slider::trackColourId);
     const auto centreX = (float) x + (float) width * 0.5f;
     const auto groove = juce::Rectangle<float> (4.0f, (float) height).withCentre ({ centreX, (float) y + (float) height * 0.5f });
-    g.setColour (Theme::knobBodyDark);
+    g.setColour (Theme::chartBackground);
     g.fillRoundedRectangle (groove, 2.0f);
-    g.setColour (accent.withAlpha (0.8f));
-    g.fillRoundedRectangle (groove.withTop (sliderPos), 2.0f);
+    g.setColour (Theme::panelBorder);
+    g.drawRoundedRectangle (groove, 2.0f, 1.0f);
+    const auto fill = groove.withTop (sliderPos);
+    g.setColour (accent.withAlpha (0.25f));
+    g.fillRoundedRectangle (fill.expanded (2.0f, 0.0f), 3.0f);
+    g.setColour (accent.withAlpha (0.9f));
+    g.fillRoundedRectangle (fill, 2.0f);
 
+    // Platt handtag med accentkant, som skissens rattar.
     const auto cap = juce::Rectangle<float> ((float) std::min (width, 22), 12.0f).withCentre ({ centreX, sliderPos });
-    Theme::paintMetal (g, cap, 2.5f, juce::Colour (0xffd2d6e6), juce::Colour (0xff7e8499), false);
-    g.setColour (juce::Colours::black.withAlpha (0.55f));
-    g.fillRect (cap.withHeight (1.5f).withCentre (cap.getCentre()));
+    g.setGradientFill (juce::ColourGradient (juce::Colour (0xff283042), cap.getX(), cap.getY(),
+                                             juce::Colour (0xff181d28), cap.getRight(), cap.getBottom(), false));
+    g.fillRoundedRectangle (cap, 3.0f);
+    g.setColour (accent.withAlpha (0.8f));
+    g.drawRoundedRectangle (cap, 3.0f, 1.0f);
+    g.fillRect (cap.withHeight (1.5f).withCentre (cap.getCentre()).reduced (4.0f, 0.0f));
 }
 
 void KickbaseLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButton& button, bool highlighted, bool)
@@ -182,8 +191,15 @@ void KickbaseLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButto
 
     if (on)
     {
-        g.setColour (accent.withAlpha (0.25f));
+        g.setColour (accent.withAlpha (0.12f));
         g.fillEllipse (icon.expanded (3.0f));
+        g.setColour (accent.withAlpha (0.35f));
+        g.drawEllipse (icon.expanded (3.0f), 1.0f);
+    }
+    else
+    {
+        g.setColour (Theme::chartBackground);
+        g.fillEllipse (icon.reduced (1.0f));
     }
 
     juce::Path ring;

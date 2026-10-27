@@ -64,3 +64,4 @@
 - Ändrat: Theme.h, TabbedPanel.h, Components.h/.cpp, KickbaseLookAndFeel.cpp, EffectsPage.cpp, Modules.cpp:928 plus diagrambakgrunder.
 - Ej omgjort: toggle-knappen (neonring) och linjära reglage (metallhandtag).
 - Bilder: build\snap-e1b\ (kick, pattern, tab20, tab21, fx, ai). Bygge + tester gröna.
+- E1 steg 2 (27 okt): toggle-knappen (mjukare glöd, mörk fylld skiva när av) och vertikala fadrar (mörkt spår med kant, glödande fyllning, platt handtag med accentkant) i samma stil. KickbaseLookAndFeel.cpp. Bilder: build\snap-e1c\. Bygge + tester gröna.
