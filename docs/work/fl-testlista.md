@@ -61,6 +61,8 @@ Format: **Gör så** → *förväntat resultat*. Bocka av `[ ]` när det stämme
 - [ ] Peka på noder i pitch-kurvan → *tonnamn visas vid varje punkt (C4 = 60).*
 - [ ] Fråga AI-chatten om kickens pitch-noder → *AI:n kan ange ton och Hz per nod.*
 - [ ] Ladda de nya kickpresetsen → *låter som förväntat, ingen klippning.*
+- [ ] Ladda kickpresetsen Clean Full-On, Clean Tight, Clean Deep, Clean Round, Clean Punchy, Clean Long, Clean Snappy, Clean Warm, Clean Sub, Clean Modern → *rena psytrance-kickar, svans kring 40–45 Hz, ingen klippning (Clean Warm är hetast, toppen nära 0 dB).*
+- [ ] Ladda basinstrumenten Rolling Tight, Rolling Deep, Rolling Bright, Rolling Fat, Rolling Soft, Rolling Snap (ihop med en kick) → *rullande bas som sitter under kicken utan att mulla eller klippa.*
 
 ## PATTERN och pianorulle
 - [ ] Spela mönstret → *spelande toner lyser i pianorullen.*
