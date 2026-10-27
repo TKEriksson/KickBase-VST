@@ -268,6 +268,132 @@ namespace
     }
 
     Preset bassPreset (const char* name, std::vector<Value> values) { return { name, std::move (values) }; }
+
+    //==========================================================================================
+    // "newest 1-10": hela huvudpresets (kick + bas + FX + mönster). Kicken kommer från mallen (en kick på varje fjärdedel),
+    // basens mönster skrivs här. Lager över det första ligger en oktav upp. FX-kanal A/B används som SEND (torrt orört).
+
+    std::vector<Value> sendTo (int l, int channelChoice, float amount)
+    {
+        return { b (l, F::fxChannel, (float) channelChoice), b (l, F::fxSend, 1), b (l, F::fxAmount, amount) };
+    }
+
+    using Line = Presets::Extras::PatternLine;
+
+    Preset newest (const char* name, const KickSound& kick, std::vector<Value> layers, std::vector<Value> fxValues,
+                   std::vector<Line> lines, int instruments, int bars)
+    {
+        Preset p { name, join ({ kick.values, layers, fxValues,
+                                 { { ParamID::instrumentCount, (float) instruments }, { "patternBars", (float) bars } } }) };
+        p.extras.pitchEnv = kick.pitch;
+        p.extras.ampEnv = kick.amp;
+        p.extras.pattern = std::move (lines);
+        return p;
+    }
+
+    // Rullande figur: tre sextondelar efter varje kick.
+    constexpr const char* rollBar = ". x x x . x x x . x x x . x x x";
+
+    // 1. Full-on: klassisk rullande såg, parallell mjuk distorsion.
+    Preset newest1()
+    {
+        return newest ("newest 1", kickFullOn(),
+                       join ({ rollBass (0, 12, 12, 0.0f, 0.15f, 200.0f, 0.18f, 2.6f, 35.0f, 0.80f, 0.18f, 0.72f), sendTo (0, 1, 0.20f) }),
+                       join ({ fx (0, 0, EffectType::distortion, { 0, 0.30f, 5000.0f, 1.0f }), { ch (0, "Duck", 0.8f), ch (0, "EqHp", 120.0f) } }),
+                       { { 0, InstrumentGrid::sixteenth, { ". x x x . x x x . x x x . x x X" }, 0.7f } }, 1, 1);
+    }
+
+    // 2. Dark forest: lång skogskick, mörk bas med brus och ett mörkt rum.
+    Preset newest2()
+    {
+        return newest ("newest 2", kickForest(),
+                       join ({ bassForest (0), sendTo (0, 1, 0.18f) }),
+                       join ({ fx (0, 0, EffectType::reverb, { 0.7f, 0.7f, 1.0f, 400.0f, 1.0f, 20.0f }), { ch (0, "Duck", 0.9f), ch (0, "EqHp", 250.0f) } }),
+                       { { 0, InstrumentGrid::sixteenth, { ". x x m . x x x . m x . . x x x", ". x x x . x m x . x x+3 . . x x-2 x" }, 0.7f } }, 1, 2);
+    }
+
+    // 3. Progressive: rund kick, bred reese på offbeat-åttondelar, eko på sidan.
+    Preset newest3()
+    {
+        return newest ("newest 3", kickProgressive(),
+                       join ({ bassReese (0), sendTo (0, 1, 0.22f) }),
+                       join ({ fx (0, 0, EffectType::echo, { 5, 0, 0, 0.5f, 2, 0.35f, 4500.0f, 0.0f, 0, 0.6f }), { ch (0, "Duck", 0.85f), ch (0, "EqHp", 200.0f) } }),
+                       { { 0, InstrumentGrid::sixteenth, { ". . x:180 . . . x:180 . . . x:180 . . . x:180 ." }, 0.7f } }, 1, 1);
+    }
+
+    // 4. Hi-tech: kort snabb kick, FM-zap med oktavhopp, phaser.
+    Preset newest4()
+    {
+        return newest ("newest 4", kickHiTech(),
+                       join ({ bassZap (0), { b (0, F::cutoff, 380.0f), b (0, F::level, 0.50f) }, sendTo (0, 1, 0.25f) }),
+                       join ({ fx (0, 0, EffectType::phaser, { 0.3f, 0.6f, 900.0f, 0.4f, 0.4f }), { ch (0, "Duck", 0.85f), ch (0, "EqHp", 180.0f) } }),
+                       { { 0, InstrumentGrid::sixteenth, { ". x x x . x x+12 x . x x x . x+12 x x" }, 0.6f } }, 1, 1);
+    }
+
+    // 5. Zenonesque: punch i mellanregistret, hård distorsion med högpassad parallell.
+    Preset newest5()
+    {
+        return newest ("newest 5", kickZenon(),
+                       join ({ bassPluck (0), sendTo (0, 1, 0.25f) }),
+                       join ({ fx (0, 0, EffectType::distortion, { 1, 0.45f, 5000.0f, 1.0f }), { ch (0, "Duck", 0.85f), ch (0, "EqHp", 150.0f) } }),
+                       { { 0, InstrumentGrid::sixteenth, { ". x x x . x x x . x x+12 x . x+7 x x" }, 0.7f } }, 1, 1);
+    }
+
+    // 6. Hårt och mörkt: hård kick, tung klippt bas, vikt distorsion.
+    Preset newest6()
+    {
+        return newest ("newest 6", kickHardPsy(),
+                       join ({ rollBass (0, 12, 13, 0.30f, 0.10f, 260.0f, 0.30f, 3.5f, 30.0f, 0.75f, 0.50f, 0.64f), sendTo (0, 1, 0.20f) }),
+                       join ({ fx (0, 0, EffectType::distortion, { 2, 0.50f, 3500.0f, 0.8f }), { ch (0, "Duck", 0.9f), ch (0, "EqHp", 200.0f) } }),
+                       { { 0, InstrumentGrid::sixteenth, { ". X x x . X x x . X x x . X x x", ". X x x . X x x . X x-5 x . X x x" }, 0.7f } }, 1, 2);
+    }
+
+    // 7. Acid goa: ren kick, resonant acid med glid, LFO 1 på filtret, eko.
+    Preset newest7()
+    {
+        Preset p = newest ("newest 7", cleanKick (0.5f, 0.12f, 0.30f, 5000.0f, 0.16f, 0, 38.0f, 0.10f, 0.18f),
+                           join ({ bassAcid (0), sendTo (0, 1, 0.20f),
+                                   std::vector<Value> { { "lfo1On", 1 }, { "lfo1Shape", 0 }, { "lfo1Rate", 8 } } }),
+                           join ({ fx (0, 0, EffectType::echo, { 5, 0, 0, 0.5f, 2, 0.30f, 5000.0f, 0.0f, 0, 0.5f }), { ch (0, "Duck", 0.85f), ch (0, "EqHp", 220.0f) } }),
+                           { { 0, InstrumentGrid::sixteenth, { "x . m x+3~ . x . m+7 . x . X+12 . x+10 .", "x . . m x . x+7~ . m . x+3 . x . X+5 x" }, 0.7f } }, 1, 2);
+        p.extras.routes = { { 0, "bass1Cutoff", 0.25f } };
+        return p;
+    }
+
+    // 8. Deep reese: lång sub på offbeat plus bred reese som rullar, chorus på reesen.
+    Preset newest8()
+    {
+        return newest ("newest 8", cleanKick (-1.0f, 0.10f, 0.18f, 3500.0f, 0.10f, 0, 30.0f, 0.14f, 0.23f),
+                       join ({ initSub (0), bassReese (1), { b (1, F::octave, 1), b (1, F::level, 0.40f) }, sendTo (1, 1, 0.30f) }),
+                       join ({ fx (0, 0, EffectType::chorus, { 0.4f, 0.5f, 10.0f, 0.0f, 0.4f }), { ch (0, "Duck", 0.8f), ch (0, "EqHp", 250.0f) } }),
+                       { { 0, InstrumentGrid::sixteenth, { ". . x:190 . . . x:190 . . . x:190 . . . x:190 ." }, 0.7f },
+                         { 1, InstrumentGrid::sixteenth, { ". m x x . m x x . m x x . m x X" }, 0.7f } }, 2, 1);
+    }
+
+    // 9. Minimal natt: gles figur, djup bas, litet rum.
+    Preset newest9()
+    {
+        return newest ("newest 9", cleanKick (-0.5f, 0.06f, 0.10f, 3000.0f, 0.08f, 0, 28.0f, 0.15f, 0.22f),
+                       join ({ rollBass (0, 12, 10, 0.0f, 0.30f, 170.0f, 0.20f, 2.4f, 50.0f, 0.88f, 0.20f, 0.72f), sendTo (0, 1, 0.12f) }),
+                       join ({ fx (0, 0, EffectType::reverb, { 0.4f, 0.8f, 0.8f, 500.0f, 1.0f, 10.0f }), { ch (0, "Duck", 0.9f), ch (0, "EqHp", 300.0f) } }),
+                       { { 0, InstrumentGrid::sixteenth, { ". . x . . . . x . . x . . . x .", ". . x . . . x . . . . x . . x x+7" }, 0.7f } }, 1, 2);
+    }
+
+    // 10. Skymning: tre lager (sub, rullande mellanbas, acid) och LFO 1 på acidens filter.
+    Preset newest10()
+    {
+        Preset p = newest ("newest 10", cleanKick (0.0f, 0.10f, 0.30f, 6000.0f, 0.12f, 0, 36.0f, 0.11f, 0.19f),
+                           join ({ bassSub (0), rollBass (1, 12, 12, 0.0f, 0.0f, 420.0f, 0.24f, 3.0f, 85.0f, 0.70f, 0.28f, 0.50f),
+                                   { b (1, F::octave, 1), b (1, F::duck, 0.8f) },
+                                   initAcid (2), { b (2, F::level, 0.40f) }, sendTo (2, 1, 0.20f),
+                                   std::vector<Value> { { "lfo1On", 1 }, { "lfo1Shape", 0 }, { "lfo1Rate", 8 } } }),
+                           join ({ fx (0, 0, EffectType::echo, { 5, 0, 0, 0.5f, 2, 0.30f, 5000.0f, 0.0f, 0, 0.5f }), { ch (0, "Duck", 0.85f), ch (0, "EqHp", 250.0f) } }),
+                           { { 0, InstrumentGrid::sixteenth, { ". . x:190 . . . x:190 . . . x:190 . . . x:190 ." }, 0.7f },
+                             { 1, InstrumentGrid::sixteenth, { ". m x x . m x x . m x x . m x X" }, 0.7f },
+                             { 2, InstrumentGrid::sixteenth, { "x . m . x+3 . x . m+7 . x . X+12 . x+10 ." }, 0.7f } }, 3, 1);
+        p.extras.routes = { { 0, "bass3Cutoff", 0.30f } };
+        return p;
+    }
 }
 
 namespace
@@ -276,7 +402,10 @@ namespace
     {
         // Empty ligger sist: rendersig-index och hashar för de andra är oförändrade.
         static const std::vector<Preset> presets { initPreset(), basicMorphPreset(),
-                                                   { "Empty", { { ParamID::instrumentCount, 1 }, { "patternBars", 1 } }, PatternTemplate::clear } };
+                                                   { "Empty", { { ParamID::instrumentCount, 1 }, { "patternBars", 1 } }, PatternTemplate::clear },
+                                                   // "newest 1-10" sist (efter Empty) så att äldre index och hashar är oförändrade.
+                                                   newest1(), newest2(), newest3(), newest4(), newest5(),
+                                                   newest6(), newest7(), newest8(), newest9(), newest10() };
         return presets;
     }
 

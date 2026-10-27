@@ -63,6 +63,7 @@ Format: **Gör så** → *förväntat resultat*. Bocka av `[ ]` när det stämme
 - [ ] Ladda de nya kickpresetsen → *låter som förväntat, ingen klippning.*
 - [ ] Ladda kickpresetsen Clean Full-On, Clean Tight, Clean Deep, Clean Round, Clean Punchy, Clean Long, Clean Snappy, Clean Warm, Clean Sub, Clean Modern → *rena psytrance-kickar, svans kring 40–45 Hz, ingen klippning (Clean Warm är hetast, toppen nära 0 dB).*
 - [ ] Ladda basinstrumenten Rolling Tight, Rolling Deep, Rolling Bright, Rolling Fat, Rolling Soft, Rolling Snap (ihop med en kick) → *rullande bas som sitter under kicken utan att mulla eller klippa.*
+- [ ] Ladda huvudpresetsen newest 1–10 (ett i taget, spela E4 i låtens tempo) → *tio olika stilar (full-on, dark forest, progressive, hi-tech, Zenonesque, hård, acid goa, deep reese, minimal, 3 lager); kick + bas sitter ihop, ingen klippning, FX-kanal A hörs svagt som send. Bara mätta, inte avlyssnade: lyssna och notera vilka som ska finjusteras.*
 
 ## PATTERN och pianorulle
 - [ ] Spela mönstret → *spelande toner lyser i pianorullen.*
