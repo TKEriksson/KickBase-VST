@@ -761,6 +761,7 @@ void LiveCodePage::runNow()
             return showError (error);
 
         showError ({});
+        PluginBase::EditScope undo (processor, "Live Code run"); // en körning är ett ångrasteg; ändras inget läggs inget
         // F2: en .lock() som tagits bort ur koden släpper direkt; en ny låser först efter att körningen skrivit (första gången skrivs, sedan låses).
         juce::uint64 lockAll = 0, lockNotes = 0;
         if (auto* entries = writes.getArray())

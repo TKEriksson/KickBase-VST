@@ -31,6 +31,7 @@ namespace LengthMenu
         bars = juce::jlimit (0, Pattern::maxBars, bars);
         if (bars == 0)
         {
+            PluginBase::EditScope undo (processor, "Row length: " + processor.getLayerName (layer) + " AUTO");
             pattern.setManualBars (layer, 0);
             processor.patternChanged();
             if (afterwards)
@@ -44,6 +45,7 @@ namespace LengthMenu
         {
             if (target == nullptr)
                 return;
+            PluginBase::EditScope undo (processor, "Row length: " + processor.getLayerName (layer) + " " + juce::String (bars));
             processor.pattern.trimRow (layer, bars);
             processor.pattern.setManualBars (layer, bars);
             processor.patternChanged();
@@ -58,7 +60,7 @@ namespace LengthMenu
         juce::AlertWindow::showAsync (juce::MessageBoxOptions::makeOptionsOkCancel (
                                           juce::MessageBoxIconType::WarningIcon, "Shorten the row",
                                           "Locking the row to " + juce::String (bars) + (bars == 1 ? " bar" : " bars") + " removes " + juce::String (lost)
-                                              + (lost == 1 ? " note" : " notes") + " after the end. This can't be undone.",
+                                              + (lost == 1 ? " note" : " notes") + " after the end. You can undo it with Ctrl+Z.",
                                           "Shorten", "Cancel", target.getComponent()),
                                       [apply] (int choice)
                                       {

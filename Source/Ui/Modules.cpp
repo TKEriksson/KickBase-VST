@@ -2176,6 +2176,7 @@ void PatternModule::showKickFillMenu()
         if (safeThis == nullptr || result <= 0)
             return;
         auto& p = safeThis->processor;
+        PluginBase::EditScope undo (p, "Kick pattern");
         juce::String steps;
         steps << bars[result - 1]; // en takt: kickraden är AUTO och följer innehållet
         p.pattern.setKickSteps (steps, Pattern::ticksPerStep (InstrumentGrid::sixteenth));
@@ -2205,6 +2206,7 @@ void PatternModule::showFillMenu()
             return;
         auto& p = safeThis->processor;
         const auto layer = safeThis->shownLayer;
+        PluginBase::EditScope undo (p, "Pattern template: " + p.getLayerName (layer));
         const auto grid = p.pattern.applyLayerTemplate (layer, (PatternTemplate) (result - 1));
         if (auto* gridParam = p.apvts.getParameter (ParamID::bass (layer, InstrumentField::grid)))
             Presets::setParameter (*gridParam, gridParam->convertTo0to1 ((float) grid));
@@ -2228,6 +2230,7 @@ void PatternModule::showGateFillMenu()
             return;
         auto& p = safeThis->processor;
         const auto layer = safeThis->shownLayer;
+        PluginBase::EditScope undo (p, "Gate fill: " + p.getLayerName (layer));
         const auto gridIndex = juce::jlimit (0, Pattern::numGrids - 1, (int) p.apvts.getRawParameterValue (ParamID::bass (layer, InstrumentField::gateGrid))->load());
         const auto stepsPerBar = Pattern::instrumentStepsPerBar ((InstrumentGrid) gridIndex);
 

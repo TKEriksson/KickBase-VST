@@ -926,31 +926,42 @@ class PresetUndoScope
 public:
     PresetUndoScope (PluginBase& o, Presets::Section s, const juce::String& n) : owner (o), full (s == Presets::Section::full), name (n)
     {
-        if (full)
-            return;
-        owner.apvts.copyState(); // väntande rattändringar hör inte till presetet
-        owner.undoManager.beginNewTransaction (PluginBase::stampedName ("Load preset: " + name));
-        before = owner.snapshotAux();
+        if (! full)
+            part.emplace (owner, "Load preset: " + name);
     }
     ~PresetUndoScope()
     {
         if (full)
-        {
             owner.clearHistory (name);
-            return;
-        }
-        owner.apvts.copyState();
-        auto after = owner.snapshotAux();
-        if (! before.isEquivalentTo (after))
-            owner.undoManager.perform (new TreeAction (before, std::move (after), [&o = owner] (const juce::ValueTree& t) { o.applyAux (t); }));
     }
 
 private:
     PluginBase& owner;
     bool full;
     juce::String name;
-    juce::ValueTree before;
+    std::optional<PluginBase::EditScope> part;
 };
+}
+
+PluginBase::EditScope::EditScope (PluginBase& o, const juce::String& name) : owner (o)
+{
+    outermost = owner.editDepth++ == 0;
+    if (! outermost)
+        return;
+    owner.apvts.copyState(); // väntande rattändringar hör inte till åtgärden
+    owner.undoManager.beginNewTransaction (stampedName (name));
+    before = owner.snapshotAux();
+}
+
+PluginBase::EditScope::~EditScope()
+{
+    --owner.editDepth;
+    if (! outermost)
+        return;
+    owner.apvts.copyState();
+    auto after = owner.snapshotAux();
+    if (! before.isEquivalentTo (after))
+        owner.undoManager.perform (new TreeAction (before, std::move (after), [&o = owner] (const juce::ValueTree& t) { o.applyAux (t); }));
 }
 
 juce::ValueTree PluginBase::snapshotRow (int layer) const
@@ -1343,6 +1354,7 @@ bool PluginBase::pasteTrack (int layer, const juce::XmlElement& clip)
     if (bassXml == nullptr || patternXml == nullptr)
         return false;
 
+    EditScope undo (*this, "Paste track: " + getLayerName (layer)); // delpresetarna nedan blir en del av samma steg
     // Det gamla innehållet (och dess kopplingar) rensas först, så att inget blir kvar av det som skrivs över.
     wipeInstrument (layer);
     loadPresetXml (*bassXml, Presets::Section::bass, layer, {});

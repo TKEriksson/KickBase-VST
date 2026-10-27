@@ -96,6 +96,21 @@ public:
     juce::ValueTree snapshotAux() const;
     void applyAux (const juce::ValueTree& aux);
     void nameParameterGesture (const juce::String& paramName);
+    // Ett undo-steg för en hel åtgärd (mall, Live Code-körning, dra i stegraden): parametrar, mönster och modmatris. Skapa i början av åtgärden, steget läggs när den går ur scope.
+    class EditScope
+    {
+    public:
+        EditScope (PluginBase& o, const juce::String& name);
+        ~EditScope();
+        EditScope (const EditScope&) = delete;
+        EditScope& operator= (const EditScope&) = delete;
+
+    private:
+        PluginBase& owner;
+        juce::ValueTree before;
+        bool outermost = false; // en scope inuti en annan (t.ex. delpreset i klistra in spår) ingår i den yttres steg
+    };
+    int editDepth = 0; // antal öppna EditScope; endast meddelandetråden
 
     // Som patternChanged, för annat som sparas utan att vara en parameter (t.ex. effektordningen).
     void markStateChanged();
