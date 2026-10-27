@@ -619,6 +619,8 @@ void PluginBase::getStateInformation (juce::MemoryBlock& destData)
     state.appendChild (pattern.toValueTree(), nullptr);
     state.appendChild (kickSample.toValueTree (clickTreeType), nullptr);
     state.appendChild (instrumentSamplesToValueTree(), nullptr);
+    if (auto multi = instrumentMultiSamplesToValueTree(); multi.getNumChildren() > 0) // bara när zoner finns: gamla projekt får oförändrat tillstånd
+        state.appendChild (multi, nullptr);
     state.appendChild (userTablesToValueTree(), nullptr);
     state.appendChild (sidechainCurve.toValueTree(), nullptr);
     state.appendChild (modRoutes.toValueTree (getParameters()), nullptr);
@@ -759,6 +761,17 @@ void PluginBase::setStateInformation (const void* data, int sizeInBytes)
     {
         for (auto& slot : instrumentSamples)
             slot.clear();
+    }
+
+    if (auto multiTree = state.getChildWithName ("BassMultiSamples"); multiTree.isValid())
+    {
+        instrumentMultiSamplesFromValueTree (multiTree);
+        state.removeChild (multiTree, nullptr);
+    }
+    else
+    {
+        for (auto& set : instrumentMultiSamples)
+            set.clear();
     }
 
     if (auto userTree = state.getChildWithName ("UserTables"); userTree.isValid())
@@ -1924,6 +1937,33 @@ juce::ValueTree PluginBase::instrumentSamplesToValueTree() const
             tree.appendChild (child, nullptr);
         }
     return tree;
+}
+
+juce::ValueTree PluginBase::instrumentMultiSamplesToValueTree() const
+{
+    juce::ValueTree tree ("BassMultiSamples");
+    for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
+        if (instrumentMultiSamples[(size_t) layer].zoneCount() > 0)
+        {
+            auto child = instrumentMultiSamples[(size_t) layer].toValueTree ("BassMultiSample");
+            child.setProperty ("layer", layer, nullptr);
+            tree.appendChild (child, nullptr);
+        }
+    return tree;
+}
+
+void PluginBase::instrumentMultiSamplesFromValueTree (const juce::ValueTree& tree)
+{
+    std::array<bool, ParamID::numInstrumentLayers> found {};
+    for (const auto& child : tree)
+        if (const auto layer = (int) child.getProperty ("layer", -1); juce::isPositiveAndBelow (layer, ParamID::numInstrumentLayers))
+        {
+            instrumentMultiSamples[(size_t) layer].fromValueTree (child);
+            found[(size_t) layer] = true;
+        }
+    for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
+        if (! found[(size_t) layer])
+            instrumentMultiSamples[(size_t) layer].clear();
 }
 
 void PluginBase::instrumentSamplesFromValueTree (const juce::ValueTree& tree)

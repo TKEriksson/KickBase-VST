@@ -145,6 +145,26 @@ int persistTest()
         check (processor->retiredTableCount() >= 7, "tabellerna från borttagna instrument frigörs inte direkt (" + juce::String ((int) processor->retiredTableCount()) + " väntar)");
     }
 
+    // 3b. Multisampling: zonerna följer med projektet i ett eget barn; utan zoner skrivs inget (gamla projekt oförändrade).
+    {
+        auto processor = std::make_unique<InstrumentProcessor>();
+        check (processor->instrumentMultiSamplesToValueTree().getNumChildren() == 0, "Multi: utan zoner är trädet tomt");
+        juce::AudioBuffer<float> tone (1, 4410);
+        for (int i = 0; i < tone.getNumSamples(); ++i)
+            tone.setSample (0, i, std::sin (0.05f * (float) i));
+        processor->instrumentMultiSample (1).addZone (tone, 44100.0, "A_C3", { 48, 0, 60, 1, 127, 5.0f });
+        processor->instrumentMultiSample (1).addZone (tone, 44100.0, "A_C5", { 72, 61, 127, 1, 127, 0.0f });
+        auto tree = processor->instrumentMultiSamplesToValueTree();
+        check (tree.getNumChildren() == 1, "Multi: bara instrumentet med zoner skrivs");
+
+        auto other = std::make_unique<InstrumentProcessor>();
+        other->instrumentMultiSamplesFromValueTree (tree);
+        const auto& back = other->instrumentMultiSample (1);
+        check (back.zoneCount() == 2 && back.zoneName (1) == "A_C5" && back.mapping (0).keyHigh == 60 && back.mapping (0).tuneCents == 5.0f && back.mapping (1).rootKey == 72,
+               "Multi: zoner, namn och mappning följer med projektet");
+        check (other->instrumentMultiSample (0).zoneCount() == 0, "Multi: övriga instrument förblir tomma");
+    }
+
     // 4a. Slicer: Grid 8 ger 8 skivor (första 0, stigande), standardinställningar sparas som förut, och skivinställningarna följer med projektet.
     {
         auto processor = std::make_unique<InstrumentProcessor>();

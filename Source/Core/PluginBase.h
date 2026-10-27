@@ -595,6 +595,8 @@ public:
     // Samplingarna som projektträd; publika så att StateTests kan provköra skivinställningarnas rundtur.
     juce::ValueTree instrumentSamplesToValueTree() const;
     void instrumentSamplesFromValueTree (const juce::ValueTree& tree);
+    juce::ValueTree instrumentMultiSamplesToValueTree() const; // "BassMultiSamples": eget barn, äldre projekt saknar det
+    void instrumentMultiSamplesFromValueTree (const juce::ValueTree& tree);
 
 protected:
     // Läser kickens och basens parametrar, med LFO-modulering.

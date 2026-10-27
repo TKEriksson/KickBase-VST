@@ -334,3 +334,8 @@ SIDECHAIN-fliken (bara instrumentet): ruta längst ned, `Source/Ui/SidechainPage
 Inte gjort: förhandsvisning i OscPanel och ANALYZER-markör (kräver ljudtråd→UI-väg), tas senare vid behov.
 Bygge Debug all: grönt, "Alla tester gick igenom" (rendersig oförändrad).
 **Testrad DAW (Lemon):** öppna SIDECHAIN, slå på FUNDAMENTAL DUCK (DEPTH 12 dB, källa Kick), spela bas på kickens ton: lampan på motorraden tänds vid varje kick och dB-siffran rör sig; ÄRV visar grå värden; AV släcker lampan; EGEN med DEPTH 0 ger ingen dämpning.
+
+## Multisampling – steg 3 persistens (Arbetare 1, 28 okt)
+- Testet "tangent 76 väljer höga zonen" var ett testfel, inte motorfel: motorns mjuka begränsare komprimerade zonen med gain 0,8. Nivåerna sänkta till 0,05/0,4 (AudioTests.cpp, spelartestet). Zonvalet var rätt.
+- Zonerna sparas i eget barn "BassMultiSamples" (PluginBase.cpp, instrumentMultiSamplesToValueTree/FromValueTree). Skrivs bara när zoner finns, så gamla projekt är byte för byte oförändrade. Rundturstest i StateTests.cpp ("Multi: …").
+- Kvar: TYPE-väljaren (sampleSource Single/Multi) i UI, testrad, SFZ-import.
