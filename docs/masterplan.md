@@ -142,6 +142,7 @@ Tobias kör `installRel.bat` (lokalt, i `.gitignore`) för att ersätta VST3-fil
 5. Gamla worktrees får tas bort (gjort).
 6. Jog-wheel/scratch (D3b) väntar tills transporten är stabil.
 7. `installRel.*` i `.gitignore`.
+9. PREVIEW har företräde: medan PREVIEW är på ignoreras värdens noter (InstrumentProcessor.cpp:614 avbryter inte längre förhandsspelningen) och Kickbases loop gäller. Stängs PREVIEW tar värden över (A1 gäller i övrigt).
 8. Separata VST:er är struket ur planen.
 
 ## Öppna frågor till Tobias

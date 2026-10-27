@@ -47,6 +47,23 @@ Fynd:
 
 Listan är skickad till projektledaren. Jag föreslog en liten städfas med prio efter A och B, och att C4 verifieras tidigt.
 
+## Granskning (b) av diffen för A1–A3 (Arbetare 1, KickBase-VST-w1, gren play-pack, ej committad)
+Godkänd. Jag har bara läst koden.
+- A1, OK.
+  - `handleLiveMidi` hoppar bara över note-on när värden spelar. Note-off går fortfarande fram, och provlyssning med rowOverride påverkas inte.
+  - `hostPlaying` är den råa statusen och sätts i beginBlock (TransportClock.cpp:30). handleMidi (rad 607) körs efter beginBlock, så värdet gäller det aktuella blocket.
+  - handleEvent ignorerar midiInLayer när värden spelar.
+- A2, OK.
+  - Loopen går nu i mönstertid och klipps mot hela mönstret, och `% rowTicks` tar hand om korta rader.
+  - `from` används inom loopen.
+  - Ligger loopStart på eller efter total faller koden tillbaka på `from`, vilket är acceptabelt.
+- A3, OK.
+  - handlePreviewRequest körs efter beginBlock (rad 241) och slår av followingHost innan restartFreeRunAt. Därför blir omstarten av.
+  - FxProcessor påverkas inte.
+  - previewBar0 blir 0.
+- Fråga till projektledaren och Tobias, inget fel: `handleMidi` på InstrumentProcessor.cpp:614 avbryter förhandsspelningen vid varje note-on från värden. Spelar FL ett mönster med noter till instrumentet, slutar förhandsspelningen vid nästa FL-not, och klockan följer värden igen. Det stämmer med Tobias beslut att värdens noter startar mönstret. A3 hjälper då bara när FL spelar utan noter till instrumentet.
+- FL-test: stoppa förhandsspelningen medan FL spelar och kontrollera att det inte blir någon dubbel eller tappad första not, eftersom klockan hoppar tillbaka till värdens ppq utan att generation ökar.
+
 ## Nästa
 - Skriva `docs/work/undo-spec.md` när fas C startar.
 - Granska orsaksanalysen och diffen för A1–A3 när Arbetare 1 är klar.
