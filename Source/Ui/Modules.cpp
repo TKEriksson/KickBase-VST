@@ -84,6 +84,40 @@ HeaderBar::HeaderBar (PluginBase& p, const juce::String& subtitleIn)
         restartButton.setTooltip ("RESTART - Starts the counter and the pattern over at bar 1.1 (when the plugin runs on its own clock; with DAW SYNC the DAW decides).");
         restartButton.onClick = [this] { processor.requestRestart(); };
         addAndMakeVisible (restartButton);
+
+        auto setUpLabel = [this] (juce::Label& label, float size)
+        {
+            label.setFont (Theme::font (size, true));
+            label.setJustificationType (juce::Justification::centred);
+            label.setColour (juce::Label::textColourId, Theme::text);
+            label.setColour (juce::Label::backgroundColourId, juce::Colours::transparentBlack);
+            label.setColour (juce::Label::backgroundWhenEditingColourId, juce::Colour (0xff0b0d18));
+            label.setColour (juce::Label::textWhenEditingColourId, Theme::text);
+            label.setBorderSize ({ 0, 0, 0, 0 });
+            addAndMakeVisible (label);
+        };
+        setUpLabel (bpmLabel, 13.0f);
+        setUpLabel (barLabel, 14.0f);
+        bpmLabel.onTextChange = [this]
+        {
+            const auto value = bpmLabel.getText().retainCharacters ("0123456789.").getDoubleValue();
+            processor.freeRunBpm = value > 0.0 ? juce::jlimit (20.0, 300.0, value) : 0.0; // tom = tillbaka till värdens/standardtempot
+            updateTransportLabels (processor.transportStatus.followingHost.load());
+        };
+        barLabel.onTextChange = [this]
+        {
+            if (const auto bar = barLabel.getText().retainCharacters ("0123456789").getIntValue(); bar >= 1)
+                processor.seekBarRequest = bar - 1;
+            updateTransportLabels (processor.transportStatus.followingHost.load());
+        };
+        scrubRelease.callback = [this]
+        {
+            if (scrubBar >= 0)
+                processor.seekBarRequest = scrubBar;
+            processor.transportHold = false;
+            scrubBar = -1;
+        };
+        updateTransportLabels (false);
     }
 
     projectButton.onClick = [this] { showProjectMenu(); };
@@ -154,6 +188,45 @@ void HeaderBar::openProject()
     });
 }
 
+void HeaderBar::updateTransportLabels (bool following)
+{
+    if (processor.getKeyboardState() == nullptr)
+        return;
+
+    const auto& status = processor.transportStatus;
+    if (! bpmLabel.isBeingEdited())
+        bpmLabel.setText (juce::String (status.bpm.load(), 1) + " BPM", juce::dontSendNotification);
+    if (! barLabel.isBeingEdited())
+        barLabel.setText (scrubBar >= 0 ? juce::String (scrubBar + 1) + ".1" : juce::String (status.patternBar.load()) + "." + juce::String (status.beat.load()),
+                          juce::dontSendNotification);
+
+    if ((int) following == lastFollowing)
+        return;
+    lastFollowing = (int) following;
+
+    // Med DAW-synk styr värden tempo och takt; en VST3 kan inte ändra dem.
+    bpmLabel.setEditable (false, ! following, false);
+    barLabel.setEditable (false, ! following, false);
+    bpmLabel.setTooltip (following ? "BPM - styrs av DAW (the DAW sets the tempo; a plugin cannot change it)."
+                                   : "BPM - Double-click to type the tempo used when the plugin runs on its own clock. Empty = the DAW's last tempo (or 140).");
+    barLabel.setTooltip (following ? "BAR - styrs av DAW (the DAW sets the position)."
+                                   : "BAR - Double-click to type a start bar, or scroll the mouse wheel here to scrub: the music pauses until you stop scrolling.");
+}
+
+void HeaderBar::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel)
+{
+    if (processor.getKeyboardState() == nullptr || processor.transportStatus.followingHost.load()
+        || ! barLabel.getBounds().contains (e.getPosition()) || wheel.deltaY == 0.0f)
+        return;
+
+    if (scrubBar < 0)
+        scrubBar = std::max (0, processor.transportStatus.patternBar.load() - 1);
+    scrubBar = std::max (0, scrubBar + (wheel.deltaY > 0.0f ? 1 : -1));
+    processor.transportHold = true;
+    barLabel.setText (juce::String (scrubBar + 1) + ".1", juce::dontSendNotification);
+    scrubRelease.startTimer (450);
+}
+
 void HeaderBar::paintOverChildren (juce::Graphics& g)
 {
     // Statuspunkten på PROJECT-knappen: grön när AI-länken är på, grå när den är av.
@@ -187,6 +260,11 @@ void HeaderBar::resized()
     right.removeFromRight (8);
     bpmPill = right.removeFromRight (214).reduced (0, (height - 34) / 2);
     restartButton.setBounds (bpmPill.getRight() - 32, bpmPill.getY() + 4, 26, bpmPill.getHeight() - 8);
+    {
+        auto inner = bpmPill.reduced (bpmPill.getHeight() / 2 - 4, 0); // samma indelning som i paint
+        bpmLabel.setBounds (inner.removeFromLeft (100).reduced (0, 4));
+        barLabel.setBounds (inner.removeFromLeft (58).reduced (0, 4));
+    }
 
     projectButton.setBounds (14 + logo.getWidth() + 22, controlsY, 84, controlsHeight); // PROJECT först, till vänster om presetväljaren
     auto presetWidth = hasPreviews ? 118 : 200;
@@ -385,6 +463,7 @@ void HeaderBar::timerCallback()
     if (hash != lastStatusHash)
     {
         lastStatusHash = hash;
+        updateTransportLabels (status.followingHost.load());
         repaint();
     }
 }
@@ -453,13 +532,17 @@ void HeaderBar::paint (juce::Graphics& g)
         auto inner = pill.reduced (pill.getHeight() * 0.5f - 4.0f, 0.0f);
         g.setFont (Theme::font (13.0f, true));
         g.setColour (Theme::text);
-        g.drawText (juce::String (status.bpm.load(), 1) + " BPM", inner.removeFromLeft (100.0f), juce::Justification::centred);
+        const auto labelsDrawn = bpmLabel.isVisible(); // instrumentet: etiketterna ritar tempot och takten (kan skrivas in)
+        auto bpmArea = inner.removeFromLeft (100.0f);
+        if (! labelsDrawn)
+            g.drawText (juce::String (status.bpm.load(), 1) + " BPM", bpmArea, juce::Justification::centred);
         g.setColour (juce::Colour (0xff2c3148));
         g.fillRect (juce::Rectangle<float> (inner.getX(), pill.getY() + 7.0f, 1.0f, pill.getHeight() - 14.0f));
         g.setFont (Theme::font (14.0f, true));
         g.setColour (Theme::text);
-        g.drawText (juce::String (status.patternBar.load()) + "." + juce::String (status.beat.load()), // takten i mönstret (börjar om när mönstret är klart)
-                    inner.removeFromLeft (58.0f), juce::Justification::centred);
+        if (! labelsDrawn)
+            g.drawText (juce::String (status.patternBar.load()) + "." + juce::String (status.beat.load()), // takten i mönstret (börjar om när mönstret är klart)
+                        inner.removeFromLeft (58.0f), juce::Justification::centred);
     }
 
     // PREVIEWS: ramen runt högtalaren och tonväljaren.

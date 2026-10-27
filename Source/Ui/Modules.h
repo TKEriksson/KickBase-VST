@@ -28,6 +28,7 @@ class HeaderBar : public juce::Component, private VisualTimer
 {
 public:
     HeaderBar (PluginBase& processor, const juce::String& subtitle);
+    ~HeaderBar() override { processor.transportHold = false; } // ett scrubbhopp som inte hunnit släppas får inte frysa klockan
     void paint (juce::Graphics&) override;
     void paintOverChildren (juce::Graphics&) override;
     void resized() override;
@@ -78,6 +79,20 @@ private:
     juce::ComboBox noteBox;
     juce::TextButton restartButton { "" };       // börjar om räknaren och mönstret vid 1.1 (egen klocka)
     juce::Rectangle<int> previewGroup, bpmPill, keyBlock;
+
+    // Transport i egen klocka (D3a): dubbelklicka tempot eller takten för att skriva ett värde, hjulet över takten scrubbar (musiken står still tills hjulet vilat).
+    // Spelar värden är de låsta ("styrs av DAW").
+    juce::Label bpmLabel, barLabel;
+    void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
+    void updateTransportLabels (bool following);
+    struct ReleaseTimer : juce::Timer
+    {
+        void timerCallback() override { stopTimer(); if (callback) callback(); }
+        std::function<void()> callback;
+    };
+    ReleaseTimer scrubRelease;
+    int scrubBar = -1;          // takten (0-räknad) hjulet pekar på medan man scrubbar, -1 = ingen scrubbning
+    int lastFollowing = -1;
     bool bridgeShown = false;
     juce::TextButton projectButton { "PROJECT" }; // meny: spara/öppna projekt, exportera, AI-server av/på (statuspunkten visar AI-länken)
     float peakL = 0.0f, peakR = 0.0f, holdL = 0.0f, holdR = 0.0f; // utgångsmätaren

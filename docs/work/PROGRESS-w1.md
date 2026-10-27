@@ -95,3 +95,10 @@ ej klickbara. Höjd via `rowRootNote(annan) - rootNote()` så MIDI-tonen är gem
 Gjort (Arbetare 1): knappen POP OUT/DOCK i pianorullens nedre rad (`PianoRoll.cpp`, `popOutButton`, `onPopOut`). `PatternModule::togglePopOut` (`Modules.cpp`)
 lägger rullen i ett `PopWindow` (`DocumentWindow`, inbyggd titelrad, storleksändring, `setContentNonOwned`). Stäng-knappen och DOCK för tillbaka rullen via `callAsync`.
 Stegen syns kvar i huvudfönstret medan rullen är utbruten; `showPianoRoll(false)` docka tillbaka först. `popWindow` deklareras efter `pianoRoll` så att fönstret förstörs först.
+
+## D3a (BPM/takt kan skrivas in, takt-scrub) – Debug grönt, ej provad i FL
+Gjort (Arbetare 1): `HeaderBar` har nu `bpmLabel`/`barLabel` (`Modules.cpp`, konstruktorn + `updateTransportLabels`, `mouseWheelMove`). Dubbelklick skriver in tempo (20–300, tomt = som förut) eller starttakt.
+Mushjul över takten scrubbar: `transportHold` fryser klockan (`TransportClock::setHold`) och hoppar (`seekFreeRunToBar`) när hjulet vilat 450 ms (ett hjul har ingen släpp-händelse).
+Gäller bara egen klocka (PREVIEW/ingen värd som spelar). När DAW:en styr är etiketterna låsta med tipset "styrs av DAW" – en VST3 kan inte ändra värdens tempo eller transport.
+Inte byggt: global LOOP-knapp (bara loop per rad och loopområde finns; en global knapp är nytt arbete) – projektledaren avgör om den behövs.
+Prova i FL: scrubba takten under PREVIEW; skriv 150 BPM i PREVIEW; kolla att etiketterna är låsta när FL spelar.

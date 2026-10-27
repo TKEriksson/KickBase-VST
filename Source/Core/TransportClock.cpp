@@ -12,8 +12,12 @@ void TransportClock::prepare (double newSampleRate)
 void TransportClock::beginBlock (const juce::Optional<juce::AudioPlayHead::PositionInfo>& position, int numSamples)
 {
     // Där den egna klockan skulle vara nu om den fick fortsätta från förra blocket.
-    const auto continuedPpq = blockStartPpq + blockSize * ppqPerSample;
+    const auto continuedPpq = hold ? blockStartPpq : blockStartPpq + blockSize * ppqPerSample;
     blockSize = numSamples;
+
+    const auto hostPpq = position.hasValue() ? position->getPpqPosition() : juce::nullopt;
+    hostPlaying = position.hasValue() && position->getIsPlaying();
+    followingHost = ! forceFreeRun && hostPlaying && hostPpq.hasValue();
 
     if (position.hasValue())
     {
@@ -24,11 +28,13 @@ void TransportClock::beginBlock (const juce::Optional<juce::AudioPlayHead::Posit
             barLengthPpq = sig->numerator * 4.0 / sig->denominator;
     }
 
-    ppqPerSample = bpm / 60.0 / sampleRate;
+    // Egen klocka: Kickbases eget tempo (om satt) och hållning gäller bara här. Spelar värden styr den (en VST3 kan inte ändra värdens tempo).
+    if (! followingHost && freeRunBpm > 0.0)
+        bpm = freeRunBpm;
 
-    const auto hostPpq = position.hasValue() ? position->getPpqPosition() : juce::nullopt;
-    hostPlaying = position.hasValue() && position->getIsPlaying();
-    followingHost = ! forceFreeRun && hostPlaying && hostPpq.hasValue();
+    ppqPerSample = bpm / 60.0 / sampleRate;
+    if (hold && ! followingHost)
+        ppqPerSample = 1.0e-9; // klockan står still (hjulet scrubbar); inga steg passeras
 
     if (followingHost)
     {
@@ -56,6 +62,17 @@ void TransportClock::restartFreeRunAt (int sampleOffset)
     blockStartPpq = -sampleOffset * ppqPerSample;
     barStartPpq = 0.0;
     barIndex = 0;
+    ++generation;
+}
+
+void TransportClock::seekFreeRunToBar (juce::int64 bar)
+{
+    if (followingHost)
+        return;
+
+    blockStartPpq = (double) bar * barLengthPpq;
+    barStartPpq = blockStartPpq;
+    barIndex = bar;
     ++generation;
 }
 

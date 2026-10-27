@@ -148,7 +148,11 @@ void InstrumentProcessor::processChunk (juce::AudioBuffer<float>& buffer, juce::
                     handleLiveMidi (juce::MidiMessage::allNotesOff (1), row);
     }
     clock.setForceFreeRun (previewLayer >= 0);
+    clock.setFreeRunBpm (freeRunBpm.load());
+    clock.setHold (transportHold.load());
     clock.beginBlock (getHostPosition(), numSamples);
+    if (const auto seekBar = seekBarRequest.exchange (-1); seekBar >= 0)
+        clock.seekFreeRunToBar (seekBar);
     for (int layer = 0; layer < numLayers; ++layer)
         basses[(size_t) layer].setTempo (clock.getBpm()); // ENV 2 och ENV 3 i läget Sync
     // Moduleringen uppdateras bara på 32-rutnätet. En bit som börjar mitt i ett fönster (när DAW-blocket slutade där) behåller

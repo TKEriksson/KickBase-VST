@@ -308,6 +308,12 @@ public:
     // Börjar om räknaren och mönstret vid 1.1 (egen klocka; med DAW-synk styr DAW:en).
     void requestRestart() { restartRequest = true; }
     std::atomic<bool> restartRequest { false };
+
+    // Transport i egen klocka (D3a), körtillstånd utan parameter: eget tempo (0 = inget), hållning medan takten scrubbas och hopp till en takt (-1 = inget).
+    // Gäller inte när värden spelar (en VST3 kan inte styra värdens transport eller tempo).
+    std::atomic<double> freeRunBpm { 0.0 };
+    std::atomic<bool> transportHold { false };
+    std::atomic<int> seekBarRequest { -1 };
     std::atomic<int> previewingLayer { -1 };
 
     // MIDI in medan pianorullen är öppen: vilken rad som svarar på tangentbordet/MIDI (notlager som i previewRequest), -1 = alla rader.

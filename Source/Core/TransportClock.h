@@ -64,6 +64,11 @@ public:
     // Förhandsspelning: den egna klockan används även när DAW:en spelar, så att DAW:ens loop (t.ex. ett mönster på en takt) inte styr den.
     void setForceFreeRun (bool force) { forceFreeRun = force; if (force) followingHost = false; }
 
+    // Bara egen klocka (D3a): eget tempo (0 = som förut: värdens senaste tempo eller 140), hållning medan man scrubbar takten, och hopp till en takt.
+    void setFreeRunBpm (double newBpm) { freeRunBpm = newBpm; }
+    void setHold (bool shouldHold)     { hold = shouldHold; }
+    void seekFreeRunToBar (juce::int64 bar);
+
     bool isFollowingHost() const      { return followingHost; }
     bool isHostPlaying() const        { return hostPlaying; } // värdens råa status, även när klockan går fritt (förhandsspelning)
     double getBpm() const             { return bpm; }
@@ -93,6 +98,8 @@ private:
     bool followingHost = false;
     bool hostPlaying = false;
     bool forceFreeRun = false;
+    bool hold = false;
+    double freeRunBpm = 0.0;
     int generation = 0; // ökas vid omstart så att alla StepCursor glömmer vad de spelat
 };
 
