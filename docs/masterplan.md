@@ -117,7 +117,7 @@ Kvar, i grov ordning (projektledaren bedömer före varje fas; Opus bara efter h
 - LC-rester: `.LFO()`/`.ENV()`, MCP `live_code_run`/`stop`, AGPL-banner och `THIRD-PARTY.md`, helpcheck.
 - Separata VST:er (VS) är struket. Tobias lägger in det själv när allt är klart.
 
-Rapportering (Tobias 27 okt): arbetarna jobbar i långa pass och rapporterar inte förrän de är klara med sin lista, eller när det är helt nödvändigt (blockerare, beslut), eller när Tobias frågar. Specialisten är stängd tills en granskning behövs (fas C: `undo-spec.md`). Frågor till Tobias ställs alltid via projektledaren, aldrig direkt (Tobias sköter all kommunikation via projektledaren). Detta sparar tokens.
+Rapportering (Tobias 27 okt): arbetarna jobbar i långa pass och rapporterar inte förrän de är klara med sin lista, eller när det är helt nödvändigt (blockerare, beslut), eller när Tobias frågar. Specialisten är stängd tills en granskning behövs (fas C: `undo-spec.md`). Frågor till Tobias ställs alltid via projektledaren, aldrig direkt (Tobias sköter all kommunikation via projektledaren). Väntar en fråga eller blockerare på svar går arbetaren vidare med nästa punkt i listan och återkommer till den när svaret kommer. Detta sparar tokens.
 
 ## Fas G: Release
 Releaser görs bara när stora sektioner är klara, för att hålla nere test och tokens (Tobias 27 okt). Första releasen: när allt från Tobias testlista (`Testar appen 2027-10-23.txt`, T1-T15, fas A-E och H) är fixat och testat i FL. Projektledaren mergar till main först då: efter Release-bygget, Tobias FL-test och eventuella rättelser. Projektledaren påminner Tobias och frågar innan mergen (Tobias 27 okt).
