@@ -16,3 +16,7 @@ __pycache__/
 Resources/strudel/node_modules/
 Resources/strudel/strudel.bundle.js
 
+
+# Lokala installationsskript (Tobias eget bruk)
+installRel.bat
+installRel.ps1
