@@ -1812,6 +1812,7 @@ PatternModule::PatternModule (PluginBase& p, bool isInstrument)
     sequencer.onLayerSelected = [this] (int layer) { showLayer (layer); };
     sequencer.onOpenPianoRoll = [this] (int layer) { sequencer.selectLayer (layer); showLayer (layer); showPianoRoll (true); };
     pianoRoll.onDeleted = [this] { showPianoRoll (false); };
+    pianoRoll.onPopOut = [this] { togglePopOut(); };
     addAndMakeVisible (sequencer);
     addChildComponent (pianoRoll);
 
@@ -1891,8 +1892,38 @@ void PatternModule::updatePianoButton()
     pianoButton.setState (! processor.pattern.isCustom (shownLayer), processor.pianoRollOpen);
 }
 
+void PatternModule::togglePopOut()
+{
+    if (popWindow != nullptr)
+    {
+        addChildComponent (pianoRoll); // flyttar ut den ur fönstret
+        popWindow.reset();
+        pianoRoll.setPoppedOut (false);
+        resized();
+        updateVisibility();
+        return;
+    }
+    pianoRoll.setSize (940, 540);
+    popWindow = std::make_unique<PopWindow>();
+    popWindow->setUsingNativeTitleBar (true);
+    popWindow->setContentNonOwned (&pianoRoll, true);
+    popWindow->setResizable (true, true);
+    popWindow->setResizeLimits (640, 320, 3000, 2000);
+    popWindow->onClose = [safe = juce::Component::SafePointer<PatternModule> (this)]
+    {
+        juce::MessageManager::callAsync ([safe] { if (safe != nullptr && safe->popWindow != nullptr) safe->togglePopOut(); });
+    };
+    popWindow->centreWithSize (popWindow->getWidth(), popWindow->getHeight());
+    pianoRoll.setVisible (true);
+    popWindow->setVisible (true);
+    pianoRoll.setPoppedOut (true);
+    updateVisibility();
+}
+
 void PatternModule::showPianoRoll (bool open)
 {
+    if (! open && popWindow != nullptr)
+        togglePopOut();
     processor.pianoRollOpen = open;
     updatePianoButton();
     if (open && mode == StepSequencer::Mode::gate)
@@ -1905,8 +1936,9 @@ void PatternModule::updateVisibility()
     const auto gating = instrument && mode == StepSequencer::Mode::gate;
     const auto rollOpen = ! gating && instrument && processor.pianoRollOpen;
 
-    pianoRoll.setVisible (rollOpen);
-    sequencer.setVisible (! rollOpen);
+    if (popWindow == nullptr)
+        pianoRoll.setVisible (rollOpen);
+    sequencer.setVisible (! (rollOpen && popWindow == nullptr)); // utbruten rulle: stegen syns kvar i huvudfönstret
     pianoButton.setVisible (instrument && ! gating);
     fillButton.setVisible (! gating);
     gateFillButton.setVisible (gating);
@@ -2229,5 +2261,6 @@ void PatternModule::resized()
     blockFrame = juce::Rectangle<int>::leftTopRightBottom (0, blockTop, 134, bottom + 8);
 
     sequencer.setBounds (area);
-    pianoRoll.setBounds (area);
+    if (popWindow == nullptr)
+        pianoRoll.setBounds (area);
 }

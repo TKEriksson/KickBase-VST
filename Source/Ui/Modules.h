@@ -356,6 +356,7 @@ private:
     void showGateFillMenu();
     void showPianoRoll (bool open);
     void updateVisibility();
+    void togglePopOut(); // D5: pianorullen i eget fönster / tillbaka
 
     PluginBase& processor;
     const bool instrument;
@@ -370,6 +371,13 @@ private:
     void updateLengthKnobs();
     StepSequencer sequencer;
     PianoRoll pianoRoll;
+    struct PopWindow : juce::DocumentWindow // deklareras efter pianoRoll så att fönstret förstörs först
+    {
+        PopWindow() : juce::DocumentWindow ("Kickbase Piano Roll", Theme::panel, juce::DocumentWindow::allButtons) {}
+        void closeButtonPressed() override { if (onClose) onClose(); }
+        std::function<void()> onClose;
+    };
+    std::unique_ptr<PopWindow> popWindow;
     juce::TextButton patternTab { "PATTERN" }, gateTab { "GATE" };
     PianoRollButton pianoButton;
     void updatePianoButton();

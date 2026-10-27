@@ -100,6 +100,10 @@ public:
     // Anropas när pianorullens toner tagits bort (lagret går tillbaka till stegmönstret).
     std::function<void()> onDeleted;
 
+    // D5: POP OUT-knappen (pianorullen i eget fönster). Texten byts till DOCK medan rullen är utbruten.
+    std::function<void()> onPopOut;
+    void setPoppedOut (bool popped) { popOutButton.setButtonText (popped ? "DOCK" : "POP OUT"); }
+
     void paint (juce::Graphics&) override;
     void resized() override;
     void mouseDown (const juce::MouseEvent&) override;
@@ -246,7 +250,7 @@ private:
     juce::TextButton snapButton { "SNAP" }, smallerButton { "-" }, biggerButton { "+" }, allButton { "SELECT ALL" }, deleteButton { "DEL" },
                      glideButton { "GLIDE" }, followButton { "FOLLOW" }, presetButton { "PRESET" }, midiButton { "MIDI" },
                      drawButton { "PENCIL" }, selectButton { "SELECT" }, eraseButton { "ERASER" }, copyButton { "COPY" },
-                     pasteButton { "PASTE" }, pasteOkButton { "OK" }, pasteCancelButton { "CANCEL" };
+                     pasteButton { "PASTE" }, pasteOkButton { "OK" }, pasteCancelButton { "CANCEL" }, popOutButton { "POP OUT" };
     ListenButton listenButton; // högtalare: håll för att höra pianorullen (loopar), släpp för att sluta
     Tool tool = Tool::draw;
     bool shiftHeld = false, altHeld = false;

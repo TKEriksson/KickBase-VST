@@ -129,8 +129,10 @@ PianoRoll::PianoRoll (PluginBase& p, std::vector<juce::Colour> colours) : proces
     deleteButton.onClick = [this] { deleteSelected(); };
 
     for (auto* c : std::initializer_list<juce::Component*> { &snapButton, &gridBox, &smallerButton, &biggerButton, &allButton, &deleteButton, &glideButton, &followButton, &presetButton, &midiButton, &drawButton, &selectButton, &eraseButton,
-                                                                 &copyButton, &pasteButton, &pasteOkButton, &pasteCancelButton, &listenButton, &hBar, &vBar })
+                                                                 &copyButton, &pasteButton, &pasteOkButton, &pasteCancelButton, &listenButton, &popOutButton, &hBar, &vBar })
         addAndMakeVisible (c);
+    popOutButton.setTooltip ("POP OUT - Opens the piano roll in its own window that you can move and resize (for a second screen). Click DOCK, or close the window, to bring it back.");
+    popOutButton.onClick = [this] { if (onPopOut) onPopOut(); };
     hBar.addListener (this);
     vBar.addListener (this);
     hBar.setAutoHide (false);
@@ -833,6 +835,8 @@ void PianoRoll::resized()
     presetButton.setBounds (bottom.removeFromRight (62));
     bottom.removeFromRight (4);
     midiButton.setBounds (bottom.removeFromRight (48));
+    bottom.removeFromRight (4);
+    popOutButton.setBounds (bottom.removeFromRight (64));
     snapButton.setBounds (bottom.removeFromLeft (50));
     bottom.removeFromLeft (4);
     gridBox.setBounds (bottom.removeFromLeft (76));

@@ -90,3 +90,8 @@ Audition med `rowOverride >= 0` blockeras fortfarande inte när värden spelar (
 ## D6 (spöktoner i pianorullen) – Debug grönt, ej provad i FL
 Gjort (Arbetare 1): `PianoRoll::paint` (`PianoRoll.cpp`, före "Tonerna") ritar övriga raders toner (`numNoteLayers`, inkl. staplade via `getStack`) svagt i radens färg,
 ej klickbara. Höjd via `rowRootNote(annan) - rootNote()` så MIDI-tonen är gemensam axel. Ingen av/på-knapp än (föreslås om det stör).
+
+## D5 (POP OUT, pianorullen i eget fönster) – Debug grönt, ej provad i FL
+Gjort (Arbetare 1): knappen POP OUT/DOCK i pianorullens nedre rad (`PianoRoll.cpp`, `popOutButton`, `onPopOut`). `PatternModule::togglePopOut` (`Modules.cpp`)
+lägger rullen i ett `PopWindow` (`DocumentWindow`, inbyggd titelrad, storleksändring, `setContentNonOwned`). Stäng-knappen och DOCK för tillbaka rullen via `callAsync`.
+Stegen syns kvar i huvudfönstret medan rullen är utbruten; `showPianoRoll(false)` docka tillbaka först. `popWindow` deklareras efter `pianoRoll` så att fönstret förstörs först.
