@@ -27,3 +27,4 @@
 - Arbetare 1: 7d9c736 i play-pack: A1-A3 + PREVIEW-företräde (InstrumentProcessor.cpp ~612, utan enhetstest, processorn saknar testsele) + A4 (InstrumentVoices.cpp:177, alla röster glider; test ackord). Debug grönt. Kvar i A4: stackade extra-glidetoner kan glida förra tonen. FL-testlista i PROGRESS-w1.md. Fortsätter B1.
 - Tobias: säg alltid åt arbetarna att fortsätta efter varje rapport.
 - Tobias: efter varje release skriver PL en publik PDF (innehåll + FL-test/godkännande). Inlagt i Fas G.
+- Tobias: specialisten stängd; arbetarna jobbar långa pass och rapporterar bara när klara, blockerade eller på fråga.
