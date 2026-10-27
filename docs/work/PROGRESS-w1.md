@@ -107,5 +107,7 @@ Prova i FL: scrubba takten under PREVIEW; skriv 150 BPM i PREVIEW; kolla att eti
 Gjort (Arbetare 1): `InstrumentProcessor.cpp:1044` – när grundtonen är en glide-ton som glider görs inte längre `return` direkt; staplade vanliga toner (`note.extra`, ej glide) slår ändå an (de tappades förut). Staplade glide-toner ger samma glide som grundtonen och hoppas över. Hela ackordet glider redan lika långt (`InstrumentVoices::glideTo`).
 Prova i FL: glide-ton med en stapel på samma tick – stapeltonen ska höras.
 
-## D1 (glidestreck) – väntar
-`Source/Ui/PianoRoll.cpp:1887`: högerklick på tomt rutnät är redan en meny, så strecket ritas med Alt+drag i stället för högerdrag (ändring mot min rekommendation). Behöver svar från projektledaren om det är OK; bygger tills vidare vidare på Alt+drag.
+## D1 (glidestreck) – Debug grönt, ej provad i FL
+Gjort (Arbetare 1): högerdrag på tomt rutnät ritar ett streck (`PianoRoll.cpp` `mouseDown` ~1906, `addStroke`, `mouseUp` ~2259). Högerklick utan drag (<6 px) visar menyn som förut (`strokeMenuNow`). Alt är suddgummi och rörs inte.
+Strecket blir en vanlig glide-ton (`Note.slide`) – eller en staplad glide-ton om en ton redan ligger på starttick – så sparning, uppspelning och MIDI-export återanvänds. Slutet fastnar på en ton som börjar där (glidemålet = tonens tonhöjd), annars tonhöjden vid slutpunkten. Glidar också före en ton.
+Prova i FL: högerdrag uppåt/nedåt i luften; dra till en befintlig ton; högerklick utan drag ska ge menyn; spara/ladda; MIDI-export (approximeras, varning).

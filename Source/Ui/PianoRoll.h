@@ -119,7 +119,7 @@ public:
     void focusLost (FocusChangeType) override { repaint(); }
 
 private:
-    enum class Drag { none, move, resize, velocity, box, erase, paste, ruler, keys, pan };
+    enum class Drag { none, move, resize, velocity, box, erase, paste, ruler, keys, pan, stroke };
     enum class Tool { draw, select, erase };
 
     struct NoteData
@@ -283,6 +283,10 @@ private:
     float scrollTicks = 0.0f;   // tiden längst till vänster
     juce::Point<float> panStart;  // mittenknapp: dra för att panorera
     float panScrollTicks = 0.0f, panTopPitch = 0.0f;
+    // Glidestreck (D1): högerdrag på tomt rutnät. Ett högerklick utan drag visar menyn som förut.
+    juce::Point<float> strokeStart, strokeEnd;
+    bool strokeMenuNow = false;
+    void addStroke (const juce::Point<float>& from, const juce::Point<float>& to);
     float topPitch = 12.0f;     // översta synliga raden (halvtoner från tonarten)
     NoteKey justCreated;        // tonen som det första klicket i ett dubbelklick skapade
     int lastLength = 0;         // längden på den senast ritade tonen: nästa ton får samma
