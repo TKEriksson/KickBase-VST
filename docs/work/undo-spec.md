@@ -41,7 +41,11 @@ Ingen ny datamodell. Använd befintligt API.
 
 ## Tangentbord och meny
 - Ctrl+Z = `undoManager.undo()`, Ctrl+Shift+Z och Ctrl+Y = `redo()`. Fånga i editorns `keyPressed` (högsta nivå) **och** i `PianoRoll::keyPressed` (när den har fokus). Textfält (Live Code-editorn, chatten, preset-namn) behåller sin egen textångring: låt dem hantera tangenterna först (`TextEditor`/`CodeEditorComponent` har egen UndoManager).
-- Lägg "Undo"/"Redo" överst i Meny (Tobias: T-menyn), gråa när inget finns (`canUndo()`/`canRedo()`), med `getUndoDescription()` som text.
+- **Historikdialog (Tobias 27 okt, ersätter Undo/Redo-rader i menyn):** "History..." i Meny öppnar en dialog (icke-modal, går att ha öppen medan man jobbar; samma stil som övriga dialoger). Den listar alla transaktioner, nyast överst. Ångrade steg (redo-delen) visas gråa ovanför en markering "Now", och utförda steg visas under den. Underlaget är `getRedoDescriptions()`/`getUndoDescriptions()`. Lyssna på UndoManager (`ChangeBroadcaster`) så listan uppdateras direkt.
+  - Knappar under listan: **Undo**, **Redo** och **Restore**. Restore går till markerat steg: `undo()` N gånger bakåt eller `redo()` N gånger framåt. Dubbelklick på en rad gör samma sak som Restore.
+  - Gråa knappar när de inte går att använda (`canUndo()`/`canRedo()`).
+  - Namnen ska säga vad som ändrats, till exempel "Edit notes: Instr 1", "Knob: Filter Cut", "Live Code run", "AI edit" och "Load preset: Kick". Tidsstämpeln (hh:mm:ss) läggs i början av transaktionsnamnet, eftersom UndoManager bara bär en sträng per transaktion.
+  - När huvudpreset laddas töms listan (se Presets). Visa då en rad "History cleared: <preset>", som bara står i UI:t och inte går att ångra.
 - FL Studio kan ta Ctrl+Z först när editorn saknar tangentbordsfokus. Det är en DAW-gräns; notera i FL-testlistan att pianorullen/knobbarna måste ha fokus (Tobias bekräftar vid FL-testet).
 
 ## Samspel / kantfall (testa eller dokumentera varje)
@@ -60,7 +64,7 @@ Ingen ny datamodell. Använd befintligt API.
 ## Ordning (Arbetare 1)
 1. UndoManager + APVTS-argument + läs bibliotekskällan (parametrar kan då redan fungera, men gestgränserna saknas).
 2. `PatternRowAction`/`PatternEdit` + pianorullen (`mouseDown/Up`, tangenter, menyn).
-3. Ctrl+Z/Y-tangenter + Meny-rader.
+3. Ctrl+Z/Y-tangenter + historikdialogen (Meny → History...).
 4. Gestgräns för knobbar/sliders/ModSlider.
 5. Live Code/AI/mallar = en transaktion.
 6. Preset-regler (huvud = töm, del = en).
