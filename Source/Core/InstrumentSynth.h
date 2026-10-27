@@ -3,6 +3,7 @@
 #include <juce_dsp/juce_dsp.h>
 #include <array>
 #include "SampleData.h"
+#include "MultiSample.h"
 #include "Wavetable.h"
 #include "FilterUnit.h"
 
@@ -113,6 +114,10 @@ struct InstrumentParams
     float sampleLevel = 0.0f;    // 0..1
     float sampleRootHz = 130.8f; // samplingens egen tonhöjd; med KEY spelas den så att den följer noten
     bool sampleLoop = false;
+    // Multisampling (sampleMulti): zonen väljs i noteOn ur sampleBank efter ton och anslag; spelas alltid med KEY mot zonens rotton, utan skivor.
+    // Rösten sparar bara zonindex och slår upp zonen mot den bank som gäller just nu, så ett bankbyte lämnar ingen hängande pekare.
+    const MultiSampleBank* sampleBank = nullptr;
+    bool sampleMulti = false;
     bool sampleOn = false;       // samplingen hörs bara när den är på
     bool sampleKeyTrack = false; // av = spelas med sin egen tonhöjd och hastighet
     float sampleStart = 0.0f;    // 0..1: var i samplingen varje ton börjar
@@ -191,9 +196,10 @@ public:
     // Var i samplingen den spelar (0..1), eller -1 när ingen sampling klingar. För gränssnittets markör.
     float getSampleFraction() const
     {
-        if (stage == Stage::idle || ! params.sampleOn || params.sampleData == nullptr || params.sampleLevel <= 0.0f)
+        const auto* data = activeSample();
+        if (stage == Stage::idle || ! params.sampleOn || data == nullptr || params.sampleLevel <= 0.0f)
             return -1.0f;
-        const auto length = (double) params.sampleData->audio.getNumSamples();
+        const auto length = (double) data->audio.getNumSamples();
         if (length < 2.0 || (samplePosition >= length && ! params.sampleLoop))
             return -1.0f;
         return (float) (std::fmod (samplePosition, length) / length);
@@ -257,6 +263,8 @@ private:
     float fmEnvLevel = 0.0f;                        // 1 vid anslaget, faller mot 0 (FM ENV)
     double samplePosition = 0.0; // i samplingens samples
     bool sliceNote = false;      // tonen kom från en slice-rad (satt i noteOn)
+    int multiZone = -1;          // zonen i params.sampleBank som tonen valde i noteOn (-1 = ingen)
+    const ClickSample* activeSample() const noexcept; // samplingen rösten spelar: lagrets egen eller multizonen (nullptr om ingen)
     bool sliceVoice = false;     // tonen spelar en skiva (satt i noteOn)
     int sliceBegin = 0, sliceEnd = 0;
     double logFrequency = 0.0, targetLogFrequency = 0.0; // log2(Hz), så att glide låter jämnt

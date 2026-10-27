@@ -130,6 +130,8 @@ void PluginBase::prepareBase (double sampleRate)
     kickSample.prepare (sampleRate);
     for (auto& slot : instrumentSamples)
         slot.prepare (sampleRate);
+    for (auto& set : instrumentMultiSamples)
+        set.prepare (sampleRate);
 }
 
 // params läser med modulering (se konstruktorn), så kick och bas får LFO:erna härifrån.
@@ -155,6 +157,7 @@ InstrumentParams PluginBase::readModulatedInstrument (int layer, int rootMidiNot
     bass.oscB.user = userTable (layer, 1);
     bass.oscC.user = userTable (layer, 2);
     bass.sampleData = getActiveInstrumentSample (layer);
+    bass.sampleBank = getActiveInstrumentMultiSample (layer);
     return bass;
 }
 

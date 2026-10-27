@@ -163,3 +163,9 @@ Nu: programmet, rel-0.3 motornära punkter: 1) S3 Unison/Reese, 2) multisampling
 - Test: `KickbaseTool multisampletest` (rotton, zonval utan allokering, velocity-lager, gränser, round trip, banklivslängd). `build.bat Debug all` grön.
 - Misstag: fel förväntat värde i testet (0,5 s vid 96 kHz = 48000 samplar, jag skrev 44100). Rättat.
 - Nästa: etapp 2 (sampleSource sist i InstrumentField, zonval vid note-on, spelare).
+
+## Multisampling etapp 2 – pausad, delvis (Arbetare 2, 27 okt)
+- Klart: `sampleSource` sist i `InstrumentField` (`Params.h`, `Params.cpp`, fältnamn "SampleSource"), `sampleMulti`/`sampleBank` i `InstrumentParams`, zonval i `noteOn` och uppslag per sampel via `activeSample()` (`InstrumentSynth.cpp`), `instrumentMultiSamples` i `PluginBase`. MultiSample.cpp flyttad till CORE_SOURCES (testmålet länkade inte). `build.bat Debug all` grön.
+- Spelartestet finns sist i `multisampletest` (`Tools/AudioTests.cpp`). Tonhöjdskontrollerna går igenom; kontrollen "tangent 76 väljer höga zonen" FALLERAR och är inte undersökt (misstänkt: nivå/sampleLevel eller zongränser i testuppsättningen, inte bekräftat). Bankbyte, tom bank och 0 allokeringar kom inte att köras före felet i resultatet, kolla utskriften.
+- Nästa: skriv ut lowRms/highRms i testet, hitta orsaken, rätta; sedan etapp 3 (persistens: eget träd "BassMultiSamples", gamla projekt oförändrade), testrad i `fl-testlista.md`, UI/TYPE-väljare med Arbetare 1.
+- Stoppad på PL:s order (sessionsgräns); S3 är klar (64bde98), etapp 1 klar (150fb30).

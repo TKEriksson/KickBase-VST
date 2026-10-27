@@ -51,6 +51,7 @@ set(CORE_SOURCES
     Source/Core/Pattern.cpp
     Source/Core/KickEngine.cpp
     Source/Core/InstrumentSynth.cpp
+    Source/Core/MultiSample.cpp
     Source/Core/InstrumentVoices.cpp
     Source/Core/Wavetable.cpp
     Source/Core/WavetableEdit.cpp
@@ -85,7 +86,6 @@ set(PLUGIN_SOURCES
     Source/Core/OscPresets.cpp
     Source/Core/RollFiles.cpp
     Source/Core/SampleSlot.cpp
-    Source/Core/MultiSample.cpp
     Source/Core/ToolLayer.cpp
     Source/Core/LiveCode.cpp
     Source/Core/BridgeLink.cpp

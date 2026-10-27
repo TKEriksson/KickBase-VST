@@ -1572,6 +1572,107 @@ int multiSampleTest()
         check (! set.hasZones(), "clear");
     }
 
+    // Spelaren: zon vid note-on efter tonen, hastighet mot zonens rotton, inga allokeringar, tyst utan bank.
+    {
+        constexpr double rate = 48000.0;
+        auto scaled = [] (juce::AudioBuffer<float> b, float gain) { b.applyGain (gain); return b; };
+        auto keyHz = [] (int key) { return 440.0 * std::pow (2.0, (key - 69) / 12.0); };
+
+        MultiSampleSet set;
+        set.addZone (scaled (sine (rate, keyHz (48), 2.0), 0.2f), rate, "quiet_C3", { 48, 0, 127, 1, 127, 0.0f });
+        set.addZone (scaled (sine (rate, keyHz (72), 2.0), 0.8f), rate, "loud_C5", { 72, 0, 127, 1, 127, 0.0f });
+        set.autoMapKeyRanges();
+        set.prepare (rate);
+
+        InstrumentParams p;
+        p.oscA.on = p.oscB.on = p.oscC.on = false;
+        p.sub = 0.0f;
+        p.cutoffHz = 20000.0f;
+        p.attackMs = 1.0f;
+        p.sustain = 1.0f;
+        p.releaseMs = 50.0f;
+        p.sampleOn = true;
+        p.sampleLevel = 1.0f;
+        p.sampleMulti = true;
+        p.sampleBank = set.active();
+
+        // rootHz = 65.4 (C2 = 36): halvtoner 14 = tangent 50 (zon C3, tyst), 40 = tangent 76 (zon C5, hög).
+        auto play = [&] (const InstrumentParams& params, int semitones, double& hz)
+        {
+            InstrumentSynth s;
+            s.prepare (rate);
+            s.setSeed (3);
+            s.setParams (params);
+            s.reset();
+            s.noteOn (semitones, 1.0f, (int) (rate * 1.5));
+            std::vector<float> out;
+            for (int i = 0; i < (int) (rate * 0.6); ++i)
+                out.push_back (s.nextSample());
+            auto crossings = 0, from = (int) (rate * 0.1);
+            auto sum = 0.0;
+            for (int i = from + 1; i < (int) out.size(); ++i)
+            {
+                if (out[(size_t) i - 1] < 0.0f && out[(size_t) i] >= 0.0f)
+                    ++crossings;
+                sum += (double) out[(size_t) i] * out[(size_t) i];
+            }
+            hz = crossings / ((out.size() - (size_t) from) / rate);
+            return std::sqrt (sum / (double) (out.size() - (size_t) from));
+        };
+
+        double lowHz = 0.0, highHz = 0.0;
+        const auto lowRms = play (p, 14, lowHz), highRms = play (p, 40, highHz);
+        check (std::abs (lowHz - keyHz (50)) < 4.0, "multi: tangent 50 följer tonen");
+        check (std::abs (highHz - keyHz (76)) < 12.0, "multi: tangent 76 följer tonen");
+        check (highRms > 3.0 * lowRms, "multi: tangent 76 väljer den höga zonen, tangent 50 den tysta");
+
+        // Utan bank (eller med multi av och ingen enkel sampling) hörs ingenting.
+        auto empty = p;
+        empty.sampleBank = nullptr;
+        double ignored = 0.0;
+        check (play (empty, 14, ignored) < 1.0e-6, "multi utan bank är tyst");
+
+        // Bankbyte mitt i en ton: rösten slår upp zonen igen, ingen hängande pekare.
+        {
+            InstrumentSynth s;
+            s.prepare (rate);
+            s.setSeed (3);
+            s.setParams (p);
+            s.reset();
+            s.noteOn (40, 1.0f, (int) (rate * 1.5));
+            for (int i = 0; i < 1000; ++i)
+                s.nextSample();
+            MultiSampleSet other;
+            other.addZone (sine (rate, keyHz (60), 0.01), rate, "tiny_C4", { 60, 0, 127, 1, 127, 0.0f });
+            other.prepare (rate);
+            auto swapped = p;
+            swapped.sampleBank = other.active();
+            s.setParams (swapped); // zon 1 finns inte längre
+            auto finite = true;
+            for (int i = 0; i < 4000; ++i)
+                finite = finite && std::isfinite (s.nextSample());
+            check (finite, "multi: bankbyte ger ändliga värden");
+        }
+
+        // Inga allokeringar i ljudtråden.
+        {
+            InstrumentSynth s;
+            s.prepare (rate);
+            s.setParams (p);
+            s.reset();
+            countingAllocations = true;
+            allocationCount = 0;
+            s.noteOn (14, 0.9f, 20000);
+            for (int i = 0; i < 20000; ++i)
+                s.nextSample();
+            s.noteOn (40, 0.5f, 20000);
+            for (int i = 0; i < 20000; ++i)
+                s.nextSample();
+            countingAllocations = false;
+            check (allocationCount == 0, "multi: 0 allokeringar i ljudtråden");
+        }
+    }
+
     std::puts (failed ? "FEL: multisampletestet misslyckades" : "Multisampletestet gick igenom");
     return failed ? 1 : 0;
 }
