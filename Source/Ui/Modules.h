@@ -181,7 +181,6 @@ public:
 private:
     void timerCallback() override;
     int sliceAt (float x, const ClickSample& sample) const; // skivan under x (pixlar i vyn), -1 = ingen
-    int sliceNote (int index) const;                        // MIDI-tonen som spelar skiva `index` (index 0 = MAP TO)
 
     // E2 steg 3: zoom (hjulet) och scroll; vyn visar delen [scroll, scroll + 1/zoom] av samplingen. Manuellt läge: dra, dubbelklicka och högerklicka på gränser.
     float normToX (float norm) const;
@@ -225,10 +224,10 @@ private:
     PluginBase& processor;
     const int layer;
     SampleView view;
-    juce::ToggleButton slicerToggle { "SLICER" }, reverseToggle { "REVERSE" };
+    juce::ToggleButton reverseToggle { "REVERSE" };
     juce::ToggleButton filterSendToggle { "SEND THROUGH FILTER" }; // samma parameter som i FILTER-fliken
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> slicerAttachment, reverseAttachment, filterSendAttachment;
-    std::unique_ptr<KnobComponent> mapToKnob;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> reverseAttachment, filterSendAttachment;
+    juce::Label sliceCapNotice; // "Only the first 16 slices have rows" när samplingen har fler skivor än skivrader
     juce::ComboBox sliceModeBox;
     juce::TextButton createButton { "CREATE" }; // E2 steg 4: gör Grid/Auto-resultatet till egna gränser (Manual) som kan flyttas
     juce::Label showLabel { {}, "SHOW" };

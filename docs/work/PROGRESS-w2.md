@@ -65,3 +65,13 @@
 - Ej omgjort: toggle-knappen (neonring) och linjära reglage (metallhandtag).
 - Bilder: build\snap-e1b\ (kick, pattern, tab20, tab21, fx, ai). Bygge + tester gröna.
 - E1 steg 2 (27 okt): toggle-knappen (mjukare glöd, mörk fylld skiva när av) och vertikala fadrar (mörkt spår med kant, glödande fyllning, platt handtag med accentkant) i samma stil. KickbaseLookAndFeel.cpp. Bilder: build\snap-e1c\. Bygge + tester gröna.
+
+## E2 steg 2: egen pianorulle, en rad per skiva (27 okt, Arbetare 2)
+- Spec: `docs/work/own-piano-roll-spec.md`. Ny radsort `Kind::slice` (rad "Slice N", de 16 första skivorna, `RowRegistry::maxSliceRows`), händelsetyp `Type::slice` i `StepScheduler.cpp`, skivargument i `InstrumentSynth::noteOn`, `PluginBase::syncSliceRows` (en undo-transaktion). Gamla modellen (SLICER-rad, MAP TO, `slicerOn`/`slicerMapTo`-UI, MCP-argumenten) borttagen; parameter-ID:n kvar men oanvända. UI: "Only the first 16 slices have rows" vid fler än 16.
+- Tester: syncSliceRows (lägg till/ta bort/tak/undo/redo) och "Slice 3 mot direkt skivindex 2" i `Tools/StateTests.cpp`. persisttest grön, rendersig-trion, blocksizetest, audiotest och undotest gröna efter den sista ljudkodsändringen (testfilen och etiketten ändrades därefter).
+- Slice 3-testet: först skillnad 0,036 pga att jämförelsen låg 2 samplar fel (`barSamples` avrundad nedåt); efter exakt start 0,0016 = anslagsskillnaden 102/127 mot 0,8, toleransen är 1 % av peak.
+- audiotest: 4312 allokationer finns redan på ren play-pack-HEAD (gammal skuld enligt Arbetare 1); min kod ökar inte talet.
+- persisttest föll en gång ("CODE-modulering är aktiv före sparning", StateTests.cpp ~345) och gick igenom i alla senare körningar. Orsak ej klarlagd, troligen tidsberoende; ej åtgärdad.
+- Gamla filer: ingen versionshanterad fil använder gamla slicerformatet, inget `git rm`-ades (se spec).
+- Bilder: `docs/work/snapshots-w2/` (slices-pattern, slices-pattern20, slices-sample, slices-over16). Skissen (flikhierarki) har inga skivrader, så skivradernas utseende är inte jämfört mot den, bara flikarna/ramen oförändrade.
+- Ej provat i FL. Redigering av Slice-rader i pianorullen/stegsekvenserna är inte testad separat.

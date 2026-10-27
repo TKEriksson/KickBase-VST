@@ -30,7 +30,8 @@ public:
 
     // chordNote: en extra ackordton (fas P). Den blir inte den senast spelade rösten och drar inget nytt slumpvärde, så grundtonen
     // (som spelas sist) styr glide och modulering. Med en röst spelas den inte.
-    void noteOn (int semitones, float velocity, int gateSamples, bool chordNote = false);
+    // slice >= 0: en not i raden "Slice N" (se InstrumentSynth::noteOn).
+    void noteOn (int semitones, float velocity, int gateSamples, bool chordNote = false, int slice = -1);
     // Alla klingande röster glider lika många halvtoner som den senast spelade behöver för att nå `semitones`.
     // false om den senast spelade inte klingar (då spelas en ny ton).
     bool glideTo (int semitones, int samples);
@@ -55,13 +56,13 @@ private:
         bool fading = false;         // tonas ut på 3 ms (stulen eller över VOICES)
         float fadeGain = 1.0f;
         bool pending = false;        // en ton väntar på att rampen ska bli klar
-        int pendingSemitones = 0, pendingGate = 0;
+        int pendingSemitones = 0, pendingGate = 0, pendingSlice = -1;
         float pendingVelocity = 0.0f;
         juce::uint64 order = 0;      // när tonen började (för "äldsta")
     };
 
     bool occupied (int voice) const;
-    void startNote (int voice, int semitones, float velocity, int gateSamples);
+    void startNote (int voice, int semitones, float velocity, int gateSamples, int slice);
     void startFade (int voice);
     int chooseVictim() const;
 

@@ -3634,6 +3634,17 @@ namespace
             processor->pattern.addNote (1, 192, 96, 0);
             processor->pattern.setCustom (1, true);
         }
+        // KB_SLICES=<n>: instrument 1 får ett testsample i n lika skivor (rutnät) och några noter i de första Slice-raderna.
+        if (const auto slices = juce::SystemStats::getEnvironmentVariable ("KB_SLICES", "0").getIntValue(); slices > 0)
+        {
+            processor->loadInstrumentSample (0, Scenarios::writeTestWav ("snapshot_slices", 110.0, 0.8));
+            processor->setInstrumentSlicing (0, SampleSlicing::grid, 0.5f, slices);
+            for (int index = 0; index < 4; ++index)
+                for (int id = RowRegistry::firstSubRow; id < RowRegistry::maxRows; ++id)
+                    if (processor->pattern.rows.sliceOf (id) == index)
+                        for (int step = index; step < 16; step += 4)
+                            processor->pattern.addNote (id, step * Pattern::ticksPerStep (InstrumentGrid::sixteenth), 24, 0);
+        }
         processor->setPlayConfigDetails (kind == "fx" ? 2 : 0, 2, renderRate, blockSize);
         processor->prepareToPlay (renderRate, blockSize);
 

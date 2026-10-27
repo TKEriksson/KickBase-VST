@@ -1257,7 +1257,7 @@ int audioThreadTest()
         for (int t = 0; t < std::min (numTraces.load(), maxTraces); ++t)
         {
             juce::String key;
-            for (int d = 0; d < 7 && traces[t][d] != nullptr; ++d)
+            for (int d = 0; d < traceDepth && traces[t][d] != nullptr; ++d)
                 key << describe (traces[t][d]) << "\n      ";
             ++counts[key];
         }

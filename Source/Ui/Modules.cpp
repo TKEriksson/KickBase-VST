@@ -1219,7 +1219,7 @@ void SampleView::timerCallback()
     if (position >= 0.0f && (marker < 0.0f || position < marker))
         flashWallTime = juce::Time::getMillisecondCounterHiRes(); // en ny ton (positionen började om)
     const auto flashing = juce::Time::getMillisecondCounterHiRes() - flashWallTime < 500.0;
-    const auto slicer = processor.apvts.getRawParameterValue (ParamID::bass (layer, InstrumentField::slicerOn))->load() >= 0.5f;
+    const auto slicer = sample != nullptr && sample->slices.size() > 1; // en sampling med flera skivor har "Slice N"-rader
     if (sample != shown || slicer != shownSlicer || start != lastStart || position != marker || flashing)
     {
         shown = sample;
@@ -1273,7 +1273,7 @@ void SampleView::paint (juce::Graphics& g)
 
     if (shownSlicer && showSlices)
     {
-        // E2: varje skiva är en egen färgad ruta med rubrik "Slice N" och tonen som spelar den under.
+        // E2: varje skiva är en egen färgad ruta med rubrik "Slice N" (raden i mönstret). Skivor över taket har ingen rad och ritas dämpade.
         const auto count = (int) sample->slices.size();
         for (int i = 0; i < count; ++i)
         {
@@ -1282,23 +1282,22 @@ void SampleView::paint (juce::Graphics& g)
             const auto toX = normToX ((float) toSample / (float) length);
             const auto box = juce::Rectangle<float> (fromX, area.getY(), std::max (1.0f, toX - fromX), area.getHeight());
             const auto colour = juce::Colour::fromHSV (std::fmod ((float) i * 0.13f, 1.0f), 0.55f, 0.95f, 1.0f);
-            g.setColour (colour.withAlpha (i == heldSlice ? 0.45f : 0.2f));
+            const auto hasRow = i < RowRegistry::maxSliceRows;
+            g.setColour (colour.withAlpha (i == heldSlice ? 0.45f : hasRow ? 0.2f : 0.06f));
             g.fillRect (box);
-            g.setColour (colour.withAlpha (0.9f));
+            g.setColour (colour.withAlpha (hasRow ? 0.9f : 0.35f));
             g.drawRect (box, 1.5f);
             if (box.getWidth() > 34.0f)
             {
-                g.setColour (juce::Colours::white.withAlpha (0.92f));
+                g.setColour (juce::Colours::white.withAlpha (hasRow ? 0.92f : 0.4f));
                 g.setFont (Theme::font (10.0f));
                 g.drawText ("Slice " + juce::String (i + 1), box.withHeight (14.0f).reduced (3.0f, 0.0f), juce::Justification::centredLeft);
-                g.setColour (Theme::textDim);
-                g.drawText (juce::MidiMessage::getMidiNoteName (sliceNote (i), true, true, 4), box.withTop (box.getBottom() - 16.0f).reduced (3.0f, 0.0f), juce::Justification::centredLeft);
             }
         }
     }
     else if (shownSlicer)
     {
-        // Skivgränserna (ton n..n+7 spelar skiva 1..8); START gäller inte i slicerläget.
+        // Skivgränserna; START gäller inte när samplingen har flera skivor.
         g.setColour (juce::Colours::white.withAlpha (0.7f));
         for (size_t i = 0; i < sample->slices.size(); ++i)
         {
@@ -1382,13 +1381,13 @@ void SampleView::mouseDown (const juce::MouseEvent& e)
     }
     if (const auto* sample = processor.getActiveInstrumentSample (layer); sample != nullptr && shownSlicer && showSlices)
     {
-        // Ett klick på en skiva spelar bara den, genom tonen som väljer den (som en riktig ton på raden).
+        // Ett klick på en skiva spelar bara den, så länge musen hålls.
         const auto index = sliceAt ((float) e.x, *sample);
         if (index >= 0)
         {
             heldSlice = index;
-            heldNote = sliceNote (index);
-            processor.postNoteAudition (layer, heldNote, 100, true);
+            heldNote = processor.rowRootNote (layer);
+            processor.postNoteAudition (layer, heldNote, 100, true, index);
             repaint();
         }
         return;
@@ -1491,12 +1490,6 @@ int SampleView::sliceAt (float x, const ClickSample& sample) const
     return found;
 }
 
-int SampleView::sliceNote (int index) const
-{
-    const auto mapTo = juce::roundToInt (processor.apvts.getRawParameterValue (ParamID::bass (layer, InstrumentField::slicerMapTo))->load());
-    return processor.rowRootNote (layer) + mapTo + index;
-}
-
 SamplePage::SamplePage (PluginBase& p, int layerIn, juce::Colour accent)
     : processor (p), layer (layerIn), view (p, layerIn, accent)
 {
@@ -1518,20 +1511,18 @@ SamplePage::SamplePage (PluginBase& p, int layerIn, juce::Colour accent)
     choice (F::sampleLoop, "LOOP");
     choice (F::sampleKey, "KEY");
 
-    // Slicer: noten väljer skivan (MAP TO = tonen som spelar skiva 1), originalhastighet, ingen loop.
-    slicerToggle.setTooltip ("SLICER - Each note plays one slice of the sample at its original speed (no pitching, no loop). The note decides the slice: the MAP TO note plays slice 1, the next note slice 2, and so on. "
-                             "Notes outside the slices are silent. Off = the sample plays as before.");
-    slicerToggle.setButtonText ("SLICER");
+    // Skivor: varje skiva har en egen rad "Slice N" i mönstret (en not där spelar skivan i originalhastighet, utan loop).
     reverseToggle.setButtonText ("REVERSE");
     reverseToggle.setTooltip ("REVERSE - Plays every slice backwards.");
-    for (auto* toggle : { &slicerToggle, &reverseToggle })
-    {
-        toggle->getProperties().set ("labelled", true);
-        toggle->setColour (juce::ToggleButton::tickColourId, accent);
-        toggle->setColour (juce::ToggleButton::textColourId, Theme::textDim);
-        addAndMakeVisible (*toggle);
-    }
-    slicerAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, id (F::slicerOn), slicerToggle);
+    reverseToggle.getProperties().set ("labelled", true);
+    reverseToggle.setColour (juce::ToggleButton::tickColourId, accent);
+    reverseToggle.setColour (juce::ToggleButton::textColourId, Theme::textDim);
+    addAndMakeVisible (reverseToggle);
+    sliceCapNotice.setFont (Theme::font (10.0f));
+    sliceCapNotice.setColour (juce::Label::textColourId, juce::Colour (0xffe0a040));
+    sliceCapNotice.setTooltip ("A sample can be cut into up to 128 slices, but only the first " + juce::String (RowRegistry::maxSliceRows)
+                               + " get a \"Slice N\" row in the pattern. The slices after that are not played by the pattern. Use fewer slices to get a row for each.");
+    addChildComponent (sliceCapNotice);
     reverseAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, id (F::slicerReverse), reverseToggle);
     filterSendToggle.setTooltip ("SEND THROUGH FILTER - On: the sample goes through Filter 1 and Filter 2 (set on the FILTER tab). "
                                  "Off (default): it bypasses both filters, so a sample keeps its full sound.");
@@ -1541,8 +1532,6 @@ SamplePage::SamplePage (PluginBase& p, int layerIn, juce::Colour accent)
     filterSendToggle.setColour (juce::ToggleButton::textColourId, Theme::textDim);
     addAndMakeVisible (filterSendToggle);
     filterSendAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, id (F::filterSample), filterSendToggle);
-    mapToKnob = std::make_unique<KnobComponent> (p.apvts, id (F::slicerMapTo), "MAP TO", accent);
-    addAndMakeVisible (*mapToKnob);
     sliceModeBox.addItemList ({ "Grid", "Auto", "Manual" }, 1);
     sliceModeBox.setTooltip ("Where the slices are: Grid = equal parts (the slider sets how many, max 128), Auto = cut at the hits (the slider sets how sensitive), "
                              "Manual = your own markers (press CREATE to start from the Grid/Auto result; Shift-click adds a marker, Alt-click removes the nearest).");
@@ -1583,7 +1572,7 @@ SamplePage::SamplePage (PluginBase& p, int layerIn, juce::Colour accent)
     showLabel.setColour (juce::Label::textColourId, Theme::textDim);
     addAndMakeVisible (showLabel);
     showSampleButton.setTooltip ("SHOW SAMPLE - Shows the whole waveform. Click and hold it to hear the sample.");
-    showSlicesButton.setTooltip ("SHOW SLICES - Shows every slice as its own coloured box with its name and the note that plays it. Click a slice to hear only that slice.");
+    showSlicesButton.setTooltip ("SHOW SLICES - Shows every slice as its own coloured box with its name (its row in the pattern). Click a slice to hear only that slice.");
     for (auto* button : { &showSampleButton, &showSlicesButton })
     {
         button->setClickingTogglesState (true);
@@ -1653,6 +1642,11 @@ void SamplePage::syncSlicerControls()
     gridAmount.setVisible (mode == SampleSlicing::grid);
     sensitivityAmount.setVisible (mode == SampleSlicing::automatic);
     createButton.setVisible (mode != SampleSlicing::manual);
+    const auto* sample = processor.getActiveInstrumentSample (layer);
+    const auto count = sample != nullptr ? (int) sample->slices.size() : 0;
+    const auto text = count > RowRegistry::maxSliceRows ? "Only the first " + juce::String (RowRegistry::maxSliceRows) + " slices have rows" : juce::String();
+    sliceCapNotice.setText (text, juce::dontSendNotification);
+    sliceCapNotice.setVisible (text.isNotEmpty());
 }
 
 void SamplePage::updateLabel()
@@ -1711,7 +1705,6 @@ void SamplePage::resized()
 
     right.removeFromTop (4);
     auto toggles = right.removeFromTop (22);
-    slicerToggle.setBounds (toggles.removeFromLeft (toggles.getWidth() / 2));
     reverseToggle.setBounds (toggles);
     right.removeFromTop (3);
     auto modeRow = right.removeFromTop (22);
@@ -1728,7 +1721,7 @@ void SamplePage::resized()
     showRow.removeFromLeft (4);
     showSlicesButton.setBounds (showRow.removeFromLeft (70));
     right.removeFromTop (3);
-    mapToKnob->setBounds (right.removeFromLeft (cell));
+    sliceCapNotice.setBounds (right.removeFromTop (28));
 }
 
 //==============================================================================

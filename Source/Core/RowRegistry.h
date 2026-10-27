@@ -5,8 +5,8 @@
 #include <atomic>
 
 // R9b: mönsterraderna som en pool om högst maxRows. Rad 0-9 är instrumentens NOTE-rader och rad 10 är kicken (som förut, index oförändrade);
-// underrader (SAMPLE, SLICER) får ett ledigt id från 11 och uppåt. Internt används id:t (index i poolen), i filer, MCP och Live Code
-// nyckeln: "i3" (NOTE-rad för instrument 3, räknat från 0 som lager), "kick", "i3.sample", "i3.slicer".
+// underrader (SAMPLE, skivrader "Slice N") får ett ledigt id från 11 och uppåt. Internt används id:t (index i poolen), i filer, MCP och Live Code
+// nyckeln: "i3" (NOTE-rad för instrument 3, räknat från 0 som lager), "kick", "i3.sample", "i3.slice1" (skiva 1, räknad från 1).
 //
 // Tråd: bara meddelandetråden skapar och tar bort rader (`add`, `remove`, `removeInstrument`). Poolen är en fast array av atomer, så
 // ljudtråden kan läsa (`get`, `isActive`) utan lås och utan allokering.
@@ -19,8 +19,10 @@ public:
     static constexpr int numBaseRows = numInstruments + 1;
     static constexpr int firstSubRow = numBaseRows;
 
-    enum class Kind { note = 0, sample = 1, slicer = 2 };
-    static constexpr int numKinds = 3;
+    // slice: en rad per skiva ("Slice N"); skivans index (0-baserat) ligger i slotens höga bitar. Kind 2 var den gamla SLICER-raden (borttagen).
+    enum class Kind { note = 0, sample = 1, slice = 3 };
+    static constexpr int numKinds = 4;
+    static constexpr int maxSliceRows = 16; // tak: bara de första 16 skivorna får en rad (Tobias/PL 27 okt)
 
     RowRegistry()
     {
@@ -31,29 +33,31 @@ public:
     }
 
     // Ger radens id (skapar den om den saknas). -1: ogiltigt instrument eller sort, eller poolen är full. Kicken har inga underrader.
-    int add (int instrument, Kind kind)
+    int add (int instrument, Kind kind, int slice = 0)
     {
         if (kind == Kind::note)
             return find (instrument, kind);
         if (! juce::isPositiveAndBelow (instrument, numInstruments))
             return -1;
-        if (const auto existing = find (instrument, kind); existing >= 0)
+        if (kind == Kind::slice ? ! juce::isPositiveAndBelow (slice, maxSliceRows) : slice != 0)
+            return -1;
+        if (const auto existing = find (instrument, kind, slice); existing >= 0)
             return existing;
         for (int id = firstSubRow; id < maxRows; ++id)
             if (slots[(size_t) id].load() == free)
             {
-                slots[(size_t) id] = pack (instrument, kind);
+                slots[(size_t) id] = pack (instrument, kind, slice);
                 return id;
             }
         return -1;
     }
 
-    // Radens id eller -1 om den inte finns (skapar ingenting).
-    int find (int instrument, Kind kind) const
+    // Radens id eller -1 om den inte finns (skapar ingenting). `slice`: 0-baserat skivindex (bara för Kind::slice).
+    int find (int instrument, Kind kind, int slice = 0) const
     {
         if (kind == Kind::note)
             return juce::isPositiveAndBelow (instrument, numBaseRows) ? instrument : -1;
-        const auto wanted = pack (instrument, kind);
+        const auto wanted = pack (instrument, kind, slice);
         for (int id = firstSubRow; id < maxRows; ++id)
             if (slots[(size_t) id].load() == wanted)
                 return id;
@@ -69,9 +73,18 @@ public:
         if (! isActive (id))
             return false;
         const auto v = slots[(size_t) id].load();
-        instrument = v >> 4;
+        instrument = (v >> 4) & 255;
         kind = (Kind) (v & 15);
         return true;
+    }
+
+    // Skivindex (0-baserat) för en slice-rad, annars -1.
+    int sliceOf (int id) const
+    {
+        if (! isActive (id))
+            return -1;
+        const auto v = slots[(size_t) id].load();
+        return (Kind) (v & 15) == Kind::slice ? v >> 12 : -1;
     }
 
     // Instrumentet en rad hör till (kicken: kickRow), eller -1.
@@ -96,7 +109,7 @@ public:
     {
         auto removed = 0;
         for (int id = firstSubRow; id < maxRows; ++id)
-            if (slots[(size_t) id].load() != free && (slots[(size_t) id].load() >> 4) == instrument)
+            if (slots[(size_t) id].load() != free && ((slots[(size_t) id].load() >> 4) & 255) == instrument)
             {
                 slots[(size_t) id] = free;
                 ++removed;
@@ -119,22 +132,25 @@ public:
         Kind kind;
         if (! get (id, instrument, kind))
             return {};
-        return keyOf (instrument, kind);
+        return keyOf (instrument, kind, sliceOf (id));
     }
 
-    static juce::String keyOf (int instrument, Kind kind)
+    // Nyckeln; slice-rader: "i3.slice1" (skivan räknas från 1 i nyckeln och i gränssnittet, `slice` här är 0-baserat).
+    static juce::String keyOf (int instrument, Kind kind, int slice = 0)
     {
         if (instrument == kickRow && kind == Kind::note)
             return "kick";
         if (! juce::isPositiveAndBelow (instrument, numInstruments))
             return {};
         const auto base = "i" + juce::String (instrument);
-        return kind == Kind::sample ? base + ".sample" : kind == Kind::slicer ? base + ".slicer" : base;
+        return kind == Kind::sample ? base + ".sample" : kind == Kind::slice ? base + ".slice" + juce::String (slice + 1) : base;
     }
 
-    // Tolkar en nyckel. false vid okänd form, ogiltigt instrument eller kick med suffix.
-    static bool parseKey (const juce::String& key, int& instrument, Kind& kind)
+    // Tolkar en nyckel. false vid okänd form, ogiltigt instrument eller kick med suffix. `slice` (0-baserat) fylls för slice-nycklar.
+    static bool parseKey (const juce::String& key, int& instrument, Kind& kind, int* slice = nullptr)
     {
+        if (slice != nullptr)
+            *slice = 0;
         const auto text = key.trim().toLowerCase();
         if (text == "kick")
         {
@@ -156,8 +172,15 @@ public:
             kind = Kind::note;
         else if (suffix == "sample")
             kind = Kind::sample;
-        else if (suffix == "slicer")
-            kind = Kind::slicer;
+        else if (suffix.startsWith ("slice") && suffix.substring (5).containsOnly ("0123456789") && suffix.length() > 5 && suffix.length() <= 7)
+        {
+            const auto number1 = suffix.substring (5).getIntValue();
+            if (number1 < 1 || number1 > maxSliceRows)
+                return false;
+            kind = Kind::slice;
+            if (slice != nullptr)
+                *slice = number1 - 1;
+        }
         else
             return false;
         instrument = n;
@@ -169,7 +192,8 @@ public:
     {
         int instrument = 0;
         Kind kind;
-        return parseKey (key, instrument, kind) ? find (instrument, kind) : -1;
+        int slice = 0;
+        return parseKey (key, instrument, kind, &slice) ? find (instrument, kind, slice) : -1;
     }
 
     // Som `idOfKey` men skapar underraden vid behov (-1: okänd nyckel eller poolen full).
@@ -177,7 +201,8 @@ public:
     {
         int instrument = 0;
         Kind kind;
-        return parseKey (key, instrument, kind) ? add (instrument, kind) : -1;
+        int slice = 0;
+        return parseKey (key, instrument, kind, &slice) ? add (instrument, kind, slice) : -1;
     }
 
     void clearSubRows()
@@ -188,7 +213,7 @@ public:
 
 private:
     static constexpr int free = -1;
-    static int pack (int instrument, Kind kind) { return (instrument << 4) | (int) kind; }
+    static int pack (int instrument, Kind kind, int slice = 0) { return (slice << 12) | (instrument << 4) | (int) kind; }
 
     std::array<std::atomic<int>, maxRows> slots {};
 };

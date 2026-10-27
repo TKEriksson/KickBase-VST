@@ -931,7 +931,7 @@ namespace
         sub.clearNotes (0);
         sub.addNote (0, 0, 24, 0, 0.8f);
         const auto sampleRow = sub.rows.add (0, RowRegistry::Kind::sample);
-        const auto slicerRow = sub.rows.add (0, RowRegistry::Kind::slicer);
+        const auto slicerRow = sub.rows.add (0, RowRegistry::Kind::slice, 0);
         const auto otherRow = sub.rows.add (1, RowRegistry::Kind::sample);
         sub.addNote (sampleRow, 0, 24, 5, 0.7f);
         sub.addNote (otherRow, 0, 24, 3, 0.7f);

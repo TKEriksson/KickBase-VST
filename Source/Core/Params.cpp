@@ -116,8 +116,9 @@ namespace ParamID
         // ID:n byggs en gång och lever hela programmet ut (funktionerna returnerar const char*).
         const std::array<std::string, numPatternRows>& rowNames (const char* prefix, const char* kick)
         {
-            static std::map<std::string, std::array<std::string, numPatternRows>> cache;
-            auto& names = cache[prefix];
+            // Nyckeln är en string_view över prefixet (alltid en litteral): ingen tillfällig std::string per anrop, så ingen allokering på ljudtråden (Debug allokerade).
+            static std::map<std::string_view, std::array<std::string, numPatternRows>> cache;
+            auto& names = cache[std::string_view (prefix)];
             if (names[0].empty())
             {
                 names[0] = std::string (prefix) + kick;
@@ -711,8 +712,6 @@ InstrumentParams ParamRefs::readInstrument (int layer, int rootMidiNote) const
     p.fmEnvMs = get (F::fmEnvTime);
     p.fmSemis = get (F::fmSemis);
     p.fmFilter = get (F::fmFilter) >= 0.5f;
-    p.slicerOn = get (F::slicerOn) >= 0.5f;
-    p.slicerMapTo = juce::roundToInt (get (F::slicerMapTo));
     p.slicerReverse = get (F::slicerReverse) >= 0.5f;
     p.allpassFreq = get (F::allpassFreq);
     p.allpassAmount = get (F::allpassAmount);

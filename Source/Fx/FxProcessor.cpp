@@ -146,8 +146,8 @@ void FxProcessor::processChunk (juce::AudioBuffer<float>& buffer)
     if (routed)
     {
         effects.send (channel, synthBuffer.getReadPointer (0), synthBuffer.getReadPointer (1), numSamples, amountToChannel);
-        if (params.bass (0, InstrumentField::fxSend) < 0.5f)
-            synthBuffer.applyGain (1.0f - amountToChannel);
+        // FX-pluginet har ingen SEND-parameter (fxSend finns bara i instrumentpluginet): alltid INSERT, amount delar torrt/blött.
+        synthBuffer.applyGain (1.0f - amountToChannel);
     }
 
     // För gränssnittets vågformer: synthen före duckningen (mono-summa).
@@ -244,6 +244,9 @@ void FxProcessor::handleEvent (const StepEvent& event)
         }
         return;
     }
+
+    if (event.type == StepEvent::Type::slice)
+        return; // skivrader ("Slice N") är bara ljud i samplerösten
 
     const auto& note = pattern.note (0, event.step);
     if (note.slide.load())

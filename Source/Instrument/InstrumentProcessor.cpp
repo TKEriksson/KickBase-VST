@@ -138,10 +138,10 @@ void InstrumentProcessor::processChunk (juce::AudioBuffer<float>& buffer, juce::
     ensureScratchSize (numSamples);
     keyboardState.processNextMidiBuffer (midi, 0, numSamples, true);
     {
-        int auditionRow = 0, auditionNote = 0, auditionVelocity = 0;
+        int auditionRow = 0, auditionNote = 0, auditionVelocity = 0, auditionSlice = -1;
         bool auditionOn = false;
-        while (popNoteAudition (auditionRow, auditionNote, auditionVelocity, auditionOn)) // enskilda toner från pianorullen
-            handleLiveMidi (auditionOn ? juce::MidiMessage::noteOn (1, auditionNote, (juce::uint8) auditionVelocity) : juce::MidiMessage::noteOff (1, auditionNote), auditionRow);
+        while (popNoteAudition (auditionRow, auditionNote, auditionVelocity, auditionOn, auditionSlice)) // enskilda toner från pianorullen
+            handleLiveMidi (auditionOn ? juce::MidiMessage::noteOn (1, auditionNote, (juce::uint8) auditionVelocity) : juce::MidiMessage::noteOff (1, auditionNote), auditionRow, auditionSlice);
         if (const auto allOffRows = takeAuditionAllOffRows(); allOffRows != 0)
             for (int row = 0; row < 16; ++row)
                 if ((allOffRows >> row) & 1)
@@ -546,7 +546,7 @@ bool InstrumentProcessor::noteOffEndsPattern (const juce::MidiMessage& message) 
     return message.isAllNotesOff() || message.isAllSoundOff();
 }
 
-bool InstrumentProcessor::handleLiveMidi (const juce::MidiMessage& message, int rowOverride)
+bool InstrumentProcessor::handleLiveMidi (const juce::MidiMessage& message, int rowOverride, int slice)
 {
     // MIDI IN: INSTRUMENT i pianorullen: tonerna spelas på radens ljud, utan att mönstret startar. Tonhöjd 0 är radens grundton (som i pianorullen).
     const auto row = rowOverride >= 0 ? rowOverride : midiInLayer.load();
@@ -588,7 +588,7 @@ bool InstrumentProcessor::handleLiveMidi (const juce::MidiMessage& message, int 
         else if (row < numLayers && layerOn[(size_t) row])
         {
             liveVoiceLayer = row;
-            basses[(size_t) row].noteOn (pitch, message.getFloatVelocity(), std::numeric_limits<int>::max() / 2);
+            basses[(size_t) row].noteOn (slice >= 0 ? 0 : pitch, message.getFloatVelocity(), std::numeric_limits<int>::max() / 2, false, slice);
         }
         setBit (note, true);
         publish();
@@ -783,7 +783,7 @@ void InstrumentProcessor::renderSegment (int startSample, int endSample, int ste
         for (auto event : scheduler)
         {
             event.sequence = ++eventSequence;
-            if (event.type == StepEvent::Type::bass)
+            if (event.type != StepEvent::Type::kick)
                 if (const auto delay = delaySamplesFor (event); delay > 0)
                 {
                     const auto target = event.offset + delay;
@@ -856,13 +856,11 @@ void InstrumentProcessor::finishBlock (int numSamples)
     kickEq.process (kickBuffer.getWritePointer (0), nullptr, numSamples);
     const auto* duckData = duckBuffer.getReadPointer (0);
     mixer.beginBlock();
+    // AudioBuffer::clear (start, n) rensar alla kanaler; clear (1, n) betydde start=1 och small över ett 1-samplesblock.
     maxBus.clear (0, numSamples);
-    maxBus.clear (1, numSamples);
     bypassBus.clear (0, numSamples);
-    bypassBus.clear (1, numSamples);
     effects.beginBlock (numSamples, clock.getBpm(), clock.getPpqAt (0), controlPhase);
     tapBuffer.clear (0, numSamples);
-    tapBuffer.clear (1, numSamples);
 
     for (int layer = 0; layer < activeLayers; ++layer)
     {
@@ -1016,8 +1014,14 @@ void InstrumentProcessor::handleEvent (const StepEvent& event)
     // Förhandsspelning av en enskild rad: de andra raderna är tysta. Samma sak för tangentbordet/MIDI när pianorullen valt en rad (midiInLayer).
     // Spelar värden gäller midiInLayer inte (värdens toner startar hela mönstret).
     const auto onlyRow = previewLayer >= 0 ? previewLayer : (clock.isHostPlaying() ? -1 : midiInLayer.load());
+    // En skivrad ("Slice N") har ett eget radid; förhandsspelas hon spelar bara hon, annars gäller instrumentets rad.
+    const auto sliceRow = event.type == StepEvent::Type::slice ? pattern.rows.find (event.layer, RowRegistry::Kind::slice, event.slice) : -1;
+    if (event.type == StepEvent::Type::slice && sliceRow < 0)
+        return;
     if (onlyRow >= 0 && onlyRow != PluginBase::previewAllRows
-        && (event.type == StepEvent::Type::kick ? onlyRow != Pattern::kickLayer : event.layer != onlyRow))
+        && (event.type == StepEvent::Type::kick ? onlyRow != Pattern::kickLayer
+            : event.type == StepEvent::Type::slice ? (onlyRow != sliceRow && onlyRow != event.layer)
+                                                   : event.layer != onlyRow))
         return;
 
     if (event.type == StepEvent::Type::kick)
@@ -1037,8 +1041,20 @@ void InstrumentProcessor::handleEvent (const StepEvent& event)
     if (layer >= activeLayers || ! layerOn[(size_t) layer])
         return;
 
-    const auto& note = pattern.note (layer, event.step);
     const auto samplesPerTick = clock.getSamplesPerQuarter() / Pattern::ticksPerQuarter;
+
+    if (event.type == StepEvent::Type::slice)
+    {
+        // Raden "Slice N": en egen ton som spelar skiva N från början, med radens egen längd som gate.
+        const auto& sliceNote = pattern.note (sliceRow, event.step);
+        const auto rowTicks = lengths.barsOf (Pattern::lengthRowOf (sliceRow)) * Pattern::ticksPerBar;
+        const auto hold = pattern.holdTicks (sliceRow, event.step, rowTicks, gateScales[(size_t) layer]);
+        basses[(size_t) layer].noteOn (0, sliceNote.velocity.load(), std::max (1, (int) (hold * samplesPerTick)), false, event.slice);
+        lastInstrumentStartPpq[(size_t) layer] = clock.getPpqAt (event.offset);
+        return;
+    }
+
+    const auto& note = pattern.note (layer, event.step);
 
     // En glide-ton slår inte an: den glider tonen som klingar till sin tonhöjd under sin egen längd. Klingar inget
     // spelas den som en vanlig ton.

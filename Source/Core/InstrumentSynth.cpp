@@ -29,6 +29,7 @@ void InstrumentSynth::reset()
     glideSamplesLeft = 0;
     samplePosition = 0.0;
     sliceVoice = false;
+    sliceNote = false;
     env2.reset();
     env3.reset();
     pitchEnv = 0.0f;
@@ -138,7 +139,7 @@ InstrumentSynth::Stereo InstrumentSynth::Oscillator::next (const OscParams& p, d
     return { sumLeft * normal * (pan > 0.0f ? 1.0f - pan : 1.0f), sumRight * normal * (pan < 0.0f ? 1.0f + pan : 1.0f) };
 }
 
-void InstrumentSynth::noteOn (int semitones, float newVelocity, int gateSamples)
+void InstrumentSynth::noteOn (int semitones, float newVelocity, int gateSamples, int slice)
 {
     forcedReleaseMs = 0.0; // en ny ton släpps med sin vanliga RELEASE
     targetSemitones = semitones;
@@ -169,12 +170,13 @@ void InstrumentSynth::noteOn (int semitones, float newVelocity, int gateSamples)
     randomValue = modRandom.nextFloat();
     samplePosition = params.sampleData != nullptr ? (double) params.sampleStart * (double) params.sampleData->audio.getNumSamples() : 0.0;
     sliceVoice = false;
-    if (params.slicerOn && params.sampleData != nullptr)
+    sliceNote = slice >= 0;
+    if (sliceNote && params.sampleData != nullptr)
     {
-        // Noten väljer skivan; utanför skivorna (eller över max 128) är det tyst, ingen wrap.
+        // En not i raden "Slice N" väljer skivan; saknas skivan är det tyst, ingen wrap.
         const auto& slices = params.sampleData->slices;
-        const auto index = semitones - params.slicerMapTo;
-        if (index >= 0 && (size_t) index < slices.size())
+        const auto index = slice;
+        if ((size_t) index < slices.size())
         {
             sliceBegin = slices[(size_t) index];
             sliceEnd = (size_t) index + 1 < slices.size() ? slices[(size_t) index + 1] : params.sampleData->audio.getNumSamples();
@@ -519,7 +521,7 @@ InstrumentSynth::Output InstrumentSynth::next()
     {
         const auto& audio = params.sampleData->audio;
         const auto length = audio.getNumSamples();
-        if (params.slicerOn)
+        if (sliceNote)
         {
             // Skiva: originalhastighet framåt eller bakåt, stannar vid skivans kant; 64 samples fade mot kanterna mot klick.
             if (sliceVoice && length > 1 && samplePosition >= (double) sliceBegin && samplePosition < (double) sliceEnd)

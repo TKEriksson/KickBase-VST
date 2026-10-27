@@ -86,7 +86,7 @@ struct Pattern
     // kickens svans (halvtoner från tonarten), velocity styr volymen. Kicken har ingen gate.
     static constexpr int kickLayer = numLayers;
     static constexpr int numNoteLayers = numLayers + 1; // grundraderna: instrumentens NOTE-rader och kicken
-    // R9b: lagringen rymmer maxRows rader. Id numNoteLayers och uppåt är underrader (SAMPLE, SLICER) enligt `rows`; grundraderna har sina gamla index.
+    // R9b: lagringen rymmer maxRows rader. Id numNoteLayers och uppåt är underrader (SAMPLE, "Slice N") enligt `rows`; grundraderna har sina gamla index.
     static constexpr int numRowSlots = RowRegistry::maxRows;
     static_assert (numNoteLayers == RowRegistry::numBaseRows && kickLayer == RowRegistry::kickRow, "RowRegistry och Pattern måste dela radindex");
     static constexpr float defaultKickVelocity = 1.0f;
