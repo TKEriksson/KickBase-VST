@@ -269,3 +269,7 @@ FL-punkter: bara en på/av per modul, instrumentets på/av längst till vänster
 - Ny trailing-parameter `category` på save-funktionerna (PluginBase.h/.cpp).
 - Test: Debug build + alla tester gröna; rendersig oförändrad (Init 94f0a1b6bd8a3c7f, Empty 7d67e7bb66bb432b, instr 1 f7139084f716c127).
 - DAW-test (Lemon): (1) klicka preset-knappen på Kick/Bass: kategorier som undermenyer. (2) Spara preset: välj kategori, syns under rätt rubrik. (3) Klicka knappen, tryck piltangenter: bläddrar. Om Lemon tar tangenterna: notera.
+
+## Kö-tillägg från projektledaren (27 okt)
+- Sist i rel-0.3/0.4: (1) HarmonicEditor (Source/Ui/HarmonicEditor.cpp, öppnas från OscPanel.cpp:207): genomgång + förslag (hitta, nollställ, förhandslyssning vid drag, undo, >64 övertoner, presets sågtand/fyrkant/udda). Kort plan hit först, skickas till PL före bygge. (2) ANALYZER-fliken mot docs/plan-v2.md:258-271: lista finns/saknas (energitopp där kick och bas möts, kickens svans som fångar basen, fasvarning slumpfas bas, för mycket 200 Hz), bygg det som saknas.
+- S3 Unison/Reese och multisampling flyttade till Arbetare 2.
