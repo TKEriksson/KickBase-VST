@@ -9,6 +9,8 @@ namespace OscPresets
 {
     // Dokument\Kickbase\Presets\Oscillators (kategorier = undermappar).
     juce::File folder();
+    // Skriver ett par färdiga presets första gången (bara om mappen inte finns). Anropas av OSC-panelen, inte av list().
+    void ensureFactory();
     // Alla filer, kategori för kategori (mapp före mapp, sorterade).
     juce::Array<juce::File> list();
 

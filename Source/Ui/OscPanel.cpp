@@ -504,6 +504,7 @@ void OscPanel::loadPreset (const juce::File& file)
 
 void OscPanel::stepPreset (int direction)
 {
+    OscPresets::ensureFactory();
     const auto files = OscPresets::list();
     if (files.isEmpty())
         return;
@@ -514,6 +515,7 @@ void OscPanel::stepPreset (int direction)
 
 void OscPanel::showPresetMenu()
 {
+    OscPresets::ensureFactory();
     const auto files = OscPresets::list();
     const auto root = OscPresets::folder();
     juce::PopupMenu menu;

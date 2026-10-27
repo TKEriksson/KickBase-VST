@@ -46,6 +46,52 @@ namespace OscPresets
         return Settings::presetsFolder().getChildFile ("Oscillators");
     }
 
+    void ensureFactory()
+    {
+        if (folder().exists())
+            return; // mappen finns: användaren har redan egna (eller har raderat våra), vi skriver aldrig över
+        struct Factory { const char* category; const char* name; const char* table; double pos, level, semi, fine; int unison; double detune, blend; int warp; double warpAmount, phase, random, pan, stereo; };
+        // Warp-index 0-4 (Off, Sync, Bend, PWM, Mirror) är samma i alla tre oscillatorerna, så presetsen fungerar var de än laddas.
+        static const Factory presets[] {
+            { "Sub",  "Sub Sine",        "Basic",          0.0,  1.0,   0.0, 0.0, 1,  0.0, 0.5, 0, 0.0, 0.0, 0.0, 0.0, 0.0 },
+            { "Sub",  "Sub Soft Tri",    "Basic",          0.34, 1.0, -12.0, 0.0, 1,  0.0, 0.5, 0, 0.0, 0.0, 0.0, 0.0, 0.0 },
+            { "Bass", "Rolling Saw",     "Saw Soft",       0.5,  0.9,   0.0, 0.0, 1,  0.0, 0.5, 0, 0.0, 0.0, 0.0, 0.0, 0.5 },
+            { "Bass", "Rolling Square",  "Square Soft",    0.5,  0.9,   0.0, 0.0, 1,  0.0, 0.5, 3, 0.25, 0.0, 0.0, 0.0, 0.5 },
+            { "Bass", "Psy Roll",        "Psy Roll",       0.5,  0.9,   0.0, 0.0, 1,  0.0, 0.5, 0, 0.0, 0.0, 0.0, 0.0, 0.5 },
+            { "Bass", "Psy Sub Punch",   "Psy Sub Punch",  0.3,  1.0,   0.0, 0.0, 1,  0.0, 0.5, 0, 0.0, 0.0, 0.0, 0.0, 0.0 },
+            { "Reese","Reese Saw",       "Saw Soft",       0.5,  0.8,   0.0, 0.0, 5, 18.0, 0.5, 0, 0.0, 0.0, 1.0, 0.0, 0.9 },
+            { "Reese","Reese Detuned",   "Saw Bright",     0.6,  0.8,   0.0, 0.0, 7, 30.0, 0.5, 0, 0.0, 0.0, 1.0, 0.0, 1.0 },
+            { "Acid", "Acid Saw",        "Saw Bright",     0.7,  0.9,   0.0, 0.0, 1,  0.0, 0.5, 0, 0.0, 0.0, 0.0, 0.0, 0.3 },
+            { "Acid", "Psy Acid",        "Psy Acid",       0.5,  0.9,   0.0, 0.0, 1,  0.0, 0.5, 0, 0.0, 0.0, 0.0, 0.0, 0.3 },
+            { "Growl","Growl Table",     "Growl",          0.5,  0.8,   0.0, 0.0, 3,  8.0, 0.5, 0, 0.0, 0.0, 0.5, 0.0, 0.7 },
+            { "Growl","Fold Metal",      "Fold",           0.6,  0.7,   0.0, 0.0, 1,  0.0, 0.5, 4, 0.4, 0.0, 0.0, 0.0, 0.5 },
+            { "Layer","Fifth Up",        "Basic",          0.5,  0.5,   7.0, 0.0, 1,  0.0, 0.5, 0, 0.0, 0.0, 0.0, 0.0, 0.5 },
+            { "Layer","Octave Up Comb",  "Comb Sweep",     0.4,  0.5,  12.0, 0.0, 1,  0.0, 0.5, 0, 0.0, 0.0, 0.0, 0.0, 0.5 },
+        };
+        for (const auto& p : presets)
+        {
+            juce::XmlElement root ("KickbaseOsc");
+            root.setAttribute ("version", 1);
+            root.setAttribute ("Table", p.table);
+            root.setAttribute ("Pos", p.pos);
+            root.setAttribute ("Level", p.level);
+            root.setAttribute ("Semi", p.semi);
+            root.setAttribute ("Fine", p.fine);
+            root.setAttribute ("Unison", p.unison);
+            root.setAttribute ("Detune", p.detune);
+            root.setAttribute ("Blend", p.blend);
+            root.setAttribute ("Warp", p.warp);
+            root.setAttribute ("WarpAmount", p.warpAmount);
+            root.setAttribute ("Phase", p.phase);
+            root.setAttribute ("Random", p.random);
+            root.setAttribute ("Pan", p.pan);
+            root.setAttribute ("Stereo", p.stereo);
+            const auto file = folder().getChildFile (p.category).getChildFile (juce::String (p.name) + ".oscpreset");
+            file.getParentDirectory().createDirectory();
+            root.writeTo (file);
+        }
+    }
+
     juce::Array<juce::File> list()
     {
         juce::Array<juce::File> result;

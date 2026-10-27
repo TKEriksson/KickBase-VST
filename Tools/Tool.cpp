@@ -3513,6 +3513,27 @@ namespace
             (void) listed;
             ok = ok && saved && loadedOsc && restored && untouched && partial && resetOk;
         }
+
+        // Färdiga OSC-presets: skrivs bara när mappen saknas, och varje fil laddas och har en tabell som finns.
+        if (! OscPresets::folder().exists())
+        {
+            OscPresets::ensureFactory();
+            const auto files = OscPresets::list();
+            const auto tables = Wavetables::names();
+            auto allOk = files.size() >= 10;
+            for (const auto& file : files)
+            {
+                const auto xml = juce::XmlDocument::parse (file);
+                allOk = allOk && xml != nullptr && tables.contains (xml->getStringAttribute ("Table")) && OscPresets::load (processor.apvts, 0, 2, file);
+            }
+            const auto before = files.size();
+            files.getFirst().deleteFile();
+            OscPresets::ensureFactory(); // mappen finns nu: en raderad fil skrivs inte tillbaka
+            const auto notRewritten = OscPresets::list().size() == before - 1;
+            OscPresets::folder().deleteRecursively();
+            std::printf ("Färdiga OSC-presets: %d filer, alla giltiga %d, ingen omskrivning %d\n", before, allOk ? 1 : 0, notRewritten ? 1 : 0);
+            ok = ok && allOk && notRewritten;
+        }
         }
 
         std::puts (ok ? "Presettest OK" : "FEL: presettest");
