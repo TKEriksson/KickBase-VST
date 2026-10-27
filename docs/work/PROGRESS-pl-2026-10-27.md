@@ -34,3 +34,6 @@
 - Skrev docs/work/undo-spec.md (fas C) som specialist; Arbetare 1 informerad, implementerar C.
 - Tobias: historikdialog (Meny → History..., Undo/Redo/Restore) i stället för Undo/Redo-rader; inlagt i undo-spec.md.
 - Tobias: skicka screenshots till honom när designen (E1) är klar. Arbetare 2 tar fram dem med snapshots.ps1; PL skickar med SendUserFile.
+- Tobias (sessionen 93 % använd, reset 12:40): Arbetare 1 pausad så att designen (Arbetare 2, E1) går först. Väcks efter reset eller när Tobias säger till.
+- Arbetare 1 väckt efter att bilderna skickats. E1 underkänd av Tobias (bara flikraderna ändrade, knobbar/färger/diagram som förut); Arbetare 2 fick full designlista (knobbar, färger, stem, rubrikrad, kontroller, diagram) och ska jämföra mot skissen innan nya bilder.
+- Arbetare 2: own-piano-roll-spec.md godkänd, tak 16 skivrader OK med UI-varning; rendersig-trio + blocksizetest + audiotest krävs. RING (B): tydlig UI-text + val OSC2/OSC3/båda inlagt i masterplan (rad 118).
