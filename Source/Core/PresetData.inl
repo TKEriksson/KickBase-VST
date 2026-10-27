@@ -135,6 +135,18 @@ namespace
                  b (l, F::release, 12.0f), b (l, F::drive, drive), b (l, F::level, level) };
     }
 
+    // Arbetare 2, PSY ROLLING BASS: Saw Soft (15) på OSC A och Psy Roll/Sub Punch/Acid (94/95/99) på OSC B ger mellanregistret (250 Hz-1 kHz)
+    // som rollBass saknar; positionerna styr övertonerna (docs/school/wavetables.md). Fas nollställs, random 0, mono (voices 1).
+    std::vector<Value> psyRollBass (int l, float posA, float tableB, float posB, float levelB, float semiB, float sub, float cutoff, float resonance,
+                                    float envAmount, float envDecay, float sustain, float ampDecay, float release, float drive, float level, float filterModel)
+    {
+        return { osc (l, 0, F::aTable, 15), osc (l, 0, F::aPos, posA), osc (l, 0, F::aLevel, 1.0f), osc (l, 1, F::aTable, tableB),
+                 osc (l, 1, F::aPos, posB), osc (l, 1, F::aLevel, levelB), osc (l, 1, F::aSemi, semiB), b (l, F::sub, sub),
+                 b (l, F::filterType, 0), b (l, F::filterModel, filterModel), b (l, F::cutoff, cutoff), b (l, F::resonance, resonance),
+                 b (l, F::envAmount, envAmount), b (l, F::envDecay, envDecay), b (l, F::velToEnv, 0.5f), b (l, F::attack, 0.5f),
+                 b (l, F::decay, ampDecay), b (l, F::sustain, sustain), b (l, F::release, release), b (l, F::drive, drive), b (l, F::level, level) };
+    }
+
     // A. Klassisk full-on-roll: såg, omedelbar amp, snabb filterenvelope (receptkort A).
     std::vector<Value> bassRolling (int l)
     {
@@ -413,6 +425,7 @@ namespace
     // hårt framtungt) och nästan platt volym till strax före slutet. Tonen är Fixed (C1 + tune), så tailHz = 32.7 * 2^(tune/12) oberoende av tangent.
     // Kategorin hålls här på ett ställe; fabrikspresets får kategori via Arbetare 1:s namn-till-kategori-tabell.
     constexpr const char* psyCleanCategory = "PSY CLEAN";
+    constexpr const char* psyRollingBassCategory = "PSY ROLLING BASS"; // basar Full-On Roll, Dekel Groove, Forest 1/32, Wide Mid
 
     // tone: halvtoner över C1. sweepScale/timeScale skalar Psy140:s svep, length är totallängd (s), attack är stigtiden (s).
     KickSound psyCleanKick (float tone, float sweepScale, float timeScale, float length, float attack, float level, float click, float drive)
@@ -477,6 +490,11 @@ namespace
             bassPreset ("Rolling Fat", rollBass (0, 12, 12, 0.50f, 0.20f, 230.0f, 0.22f, 3.0f, 55.0f, 0.85f, 0.35f, 0.66f)),
             bassPreset ("Rolling Soft", rollBass (0, 0, 10, 0.40f, 0.20f, 190.0f, 0.15f, 2.0f, 60.0f, 0.90f, 0.12f, 0.74f)),
             bassPreset ("Rolling Snap", rollBass (0, 12, 13, 0.20f, 0.10f, 280.0f, 0.30f, 4.0f, 28.0f, 0.70f, 0.30f, 0.70f)),
+            // Arbetare 2, kategori psyRollingBassCategory. Argument: se psyRollBass.
+            bassPreset ("Full-On Roll", psyRollBass (0, 0.85f, 94, 0.60f, 1.00f, 12.0f, 0.10f, 900.0f, 0.20f, 3.0f, 45.0f, 0.40f, 90.0f, 25.0f, 0.50f, 0.55f, 0)),
+            bassPreset ("Dekel Groove", psyRollBass (0, 0.60f, 95, 0.80f, 1.00f, 0.0f, 0.10f, 600.0f, 0.15f, 2.4f, 60.0f, 0.35f, 100.0f, 25.0f, 0.45f, 0.58f, 0)),
+            bassPreset ("Forest 1/32", psyRollBass (0, 0.50f, 99, 0.60f, 1.00f, 0.0f, 0.10f, 1100.0f, 0.30f, 3.0f, 30.0f, 0.30f, 50.0f, 20.0f, 0.55f, 0.55f, 1)),
+            bassPreset ("Wide Mid", psyRollBass (0, 1.00f, 94, 1.00f, 1.00f, 12.0f, 0.10f, 1400.0f, 0.18f, 2.0f, 70.0f, 0.40f, 100.0f, 25.0f, 0.50f, 0.52f, 0)),
         };
         return presets;
     }

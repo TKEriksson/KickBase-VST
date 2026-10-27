@@ -116,3 +116,9 @@
 - Skrivit `docs/school/` (README, kick, rollbas, wavetables, kick-bass-samspel, mixning-fx-sidechain, minimal, goa, presets-logg). `docs/work/rollbas-utredning.md` pekar dit.
 - Mätt: 6 Rolling-basar är nästan identiska, saknar mellanregister (se school/rollbas.md §3).
 - Kvar: tabellspektrum (mäts innan bygge), genreutredning MINIMAL/GOA. Inget byggt, väntar på PL:s ok.
+
+## Del 3: PSY ROLLING BASS (27 okt, Arbetare 2)
+- Byggt: `psyRollBass` + 4 basar sist i `bassPresets()` (index 14–17): FULL-ON ROLL, DEKEL GROOVE, FOREST 1/32, WIDE MID (`PresetData.inl`). Gamla index oförändrade.
+- Mätt (`audit bass`, E1 41 Hz): centroid 112–122 (gamla 81–97), 250–1k −12,0..−12,8 dB (gamla −13,3..−14,5), <60 −6..−8,5. Målet (centroid 150–300, 250–1k −6..−9) **nåddes inte**.
+- Fynd: audit-siffrorna rör sig knappt när cutoff ändras 120→1400 Hz, envAmount 0→3 och OSC A pos 0.2→1.0. Gamla Rolling-varianter är också identiska. Misstanke: audit-spelningen (`Tools/PresetAudit.inl:79`) eller filterkedjan/band-måttet är okänsligt. Behöver utredas innan fler basar kan ställas in mot siffror.
+- Wide Mid saknar fortfarande unison/bredd. Inget kategorinamn i huvudpreset än.
