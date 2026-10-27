@@ -151,3 +151,10 @@ Inget saknas, inget byggt. Fynd:
 - OSC-display WAVE/SCOPE/SPECTRUM med klick-för-lyssning: `OscPanel.cpp:55-64,195-212`.
 - OSC-presets (.oscpreset, meny, Save, RESET): `OscPresets.cpp`, `OscPanel.cpp:238,496-573`. Inga färdiga .oscpreset-filer ligger i repot (mappen skapas vid första Save).
 - S3 unison/Reese per OSC: `aUnison/aDetune` m.fl. (`Params.h:86-88`), `InstrumentSynth.cpp:94`; noterat som klart redan i PROGRESS-lc.md:73.
+
+## Fas I 5) FX: riktig sidechain i slots (Arbetare 1, 27 okt)
+Echo, Flanger, multiband (BAND DUCKER) och FX2-typerna fanns redan. Nytt, sist i `EffectType` (ID:n oförändrade): SIDECHAIN CURVE och SIDECHAIN 2-BAND (`Effects.h` enum, `Effects.cpp` knapptabeller, `SidechainCurveFx`/`SidechainBandsFx`, `EffectChain::setDuck`, anrop i `EffectRack::process`). De får samma duckningssignal som SIDECHAIN-fliken (kickens envelope eller kurvan). Test: `Tools/Tool.cpp` (instrumenttest, "FX2: SIDECHAIN ..."), 8/8 ok. blocksizetest ok, rendersig tb303 instr 10 oförändrad (`03fbeb761547e195`).
+Antaganden: (1) 2-BAND använder den gemensamma globala kurvan, med eget djup och egen release per band (LOW, MID-HI); en egen kurva per band kräver ny kurvredigerare. (2) Slot-Maximizern (`MaximizerFx`) har egen algoritm; att den är identisk med master-limitern är inte verifierat. (3) Hjälptexter i Help.cpp för de nya rattarna är inte skrivna.
+Rättat: `shortName`-listan hade för få poster (shimmer/lowMultiplier utanför arrayen); nu fyra poster till.
+Gammalt fel (inte nytt): audiotest ger FEL med 4312 allokeringar/frigöranden på ljudtråden i tunga lägen (fx tungt: 112896), identiskt på ren HEAD utan mina ändringar. Mätpunkten är `Tools/AudioTests.cpp:94-99`; vilken allokering det är har inte spårats. Behöver egen utredning.
+Kvar i FX (väntar, inte första releasen): MASTER-flik med 5 slots och effektpresets per slot (plan-v2.md:299-302). Läggs sist i FX-listan.

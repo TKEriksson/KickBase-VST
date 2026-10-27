@@ -2265,6 +2265,46 @@ namespace
                 else
                     check (peak > 0.3f * 0.85f && peak < 0.3f * 1.15f, "FX2: BAND DUCKER lämnar den höga delen");
             }
+            // Sidechain Curve / 2-Band: duckningssignalen (0.8 hela tiden) sänker ljudet; utan signal (nullptr) rörs inget.
+            for (const auto type : { EffectType::sidechainCurve, EffectType::sidechainBands })
+                for (const auto hz : { 60.0, 3000.0 })
+                    for (const auto withDuck : { true, false })
+                    {
+                        const auto fresh = std::make_unique<InstrumentProcessor>();
+                        Effects::setSlotType (fresh->apvts, 0, 0, type);
+                        const auto& list = Effects::knobs (type);
+                        // Curve: DEPTH 100 %. 2-Band: SPLIT 150 Hz, LOW DEPTH 100 %, HIGH DEPTH 0.
+                        const std::vector<std::pair<int, float>> settings = type == EffectType::sidechainCurve
+                            ? std::vector<std::pair<int, float>> { { 0, 1.0f } }
+                            : std::vector<std::pair<int, float>> { { 0, 150.0f }, { 1, 1.0f }, { 2, 0.0f } };
+                        for (const auto& [index, v] : settings)
+                            if (auto* parameter = fresh->apvts.getParameter (Effects::knobParamID (0, 0, index)))
+                                parameter->setValueNotifyingHost (list[(size_t) index].toNormalised (v));
+                        EffectChain chain (fresh->apvts, 0);
+                        chain.prepare (renderRate, blockSize);
+                        std::vector<float> duck ((size_t) blockSize, 0.8f);
+                        chain.setDuck (withDuck ? duck.data() : nullptr);
+                        juce::AudioBuffer<float> buffer (2, blockSize);
+                        auto peak = 0.0f;
+                        for (int block = 0; block < 30; ++block)
+                        {
+                            for (int i = 0; i < blockSize; ++i)
+                                for (int ch = 0; ch < 2; ++ch)
+                                    buffer.setSample (ch, i, 0.3f * (float) std::sin (juce::MathConstants<double>::twoPi * hz * (block * blockSize + i) / renderRate));
+                            chain.update (140.0, 0.0);
+                            chain.process (buffer, blockSize);
+                            if (block >= 25)
+                                for (int i = 0; i < blockSize; ++i)
+                                    peak = std::max (peak, std::abs (buffer.getSample (0, i)));
+                        }
+                        const auto name = Effects::name (type);
+                        if (! withDuck)
+                            check (peak > 0.3f * 0.85f && peak < 0.3f * 1.15f, (juce::String ("FX2: ") + name + " utan duckningssignal rör inte ljudet").toRawUTF8());
+                        else if (type == EffectType::sidechainCurve || hz < 100.0)
+                            check (peak < 0.3f * 0.4f, (juce::String ("FX2: ") + name + " duckar ljudet").toRawUTF8());
+                        else
+                            check (peak > 0.3f * 0.85f && peak < 0.3f * 1.15f, (juce::String ("FX2: ") + name + " lämnar MID-HI orört (HIGH DEPTH 0)").toRawUTF8());
+                    }
             // Octaver: oktaven ner/upp läggs ovanpå originalet (toppen blir högre än ingången) och ljudet är ändligt; av = orört.
             for (const auto amount : { 0.0f, 1.0f })
             {
