@@ -114,28 +114,27 @@ namespace ParamID
     namespace
     {
         // ID:n byggs en gång och lever hela programmet ut (funktionerna returnerar const char*).
-        const std::array<std::string, numPatternRows>& rowNames (const char* prefix, const char* kick)
+        // Anropas från ljudtråden varje block: inget uppslag med std::string-nyckel (det allokerar i Debug), bara en färdig tabell per prefix.
+        std::array<std::string, numPatternRows> buildRowNames (const char* prefix)
         {
-            static std::map<std::string, std::array<std::string, numPatternRows>> cache;
-            auto& names = cache[prefix];
-            if (names[0].empty())
-            {
-                names[0] = std::string (prefix) + kick;
-                for (int row = 1; row < numPatternRows; ++row)
-                    names[(size_t) row] = std::string (prefix) + "Bass" + std::to_string (row);
-            }
+            std::array<std::string, numPatternRows> names;
+            names[0] = std::string (prefix) + "Kick";
+            for (int row = 1; row < numPatternRows; ++row)
+                names[(size_t) row] = std::string (prefix) + "Bass" + std::to_string (row);
             return names;
         }
     }
 
     const char* rowLoop (int row)
     {
-        return rowNames ("rowLoop", "Kick")[(size_t) juce::jlimit (0, numPatternRows - 1, row)].c_str();
+        static const auto names = buildRowNames ("rowLoop");
+        return names[(size_t) juce::jlimit (0, numPatternRows - 1, row)].c_str();
     }
 
     const char* rowBars (int row)
     {
-        return rowNames ("rowBars", "Kick")[(size_t) juce::jlimit (0, numPatternRows - 1, row)].c_str();
+        static const auto names = buildRowNames ("rowBars");
+        return names[(size_t) juce::jlimit (0, numPatternRows - 1, row)].c_str();
     }
 }
 

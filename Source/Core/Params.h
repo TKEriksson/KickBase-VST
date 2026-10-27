@@ -235,6 +235,7 @@ public:
 
     // Ett baslagers parameter, utan namnuppslag (index räknade i konstruktorn).
     float bass (int layer, InstrumentField field) const;
+    bool hasBass (int layer, InstrumentField field) const { return instrumentEntries[(size_t) layer][(size_t) field] >= 0; } // FX-pluginet saknar t.ex. fxSend
 
     // Antal använda instrument (1-10).
     int instruments() const { return juce::jlimit (1, ParamID::numInstrumentLayers, (int) std::lround (get (ParamID::instrumentCount))); }

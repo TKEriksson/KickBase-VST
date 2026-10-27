@@ -333,6 +333,7 @@ void InstrumentProcessor::processChunk (juce::AudioBuffer<float>& buffer, juce::
 
     transportStatus.publish (clock);
     transportStatus.patternBar = (int) (((clock.getBarIndex() % lengths.total) + lengths.total) % lengths.total) + 1;
+    transportStatus.patternProgress = ((float) (transportStatus.patternBar.load() - 1) + (float) juce::jlimit (0.0, 1.0, (clock.getPpqAt (0) - clock.getBarStartPpq()) / std::max (1.0e-6, clock.getBarLengthPpq()))) / (float) lengths.total;
     transportStatus.keyNote = currentNote;
     transportStatus.patternActive = patternActive;
     previewingLayer = patternActive ? previewLayer : -1;
@@ -858,13 +859,11 @@ void InstrumentProcessor::finishBlock (int numSamples)
     kickEq.process (kickBuffer.getWritePointer (0), nullptr, numSamples);
     const auto* duckData = duckBuffer.getReadPointer (0);
     mixer.beginBlock();
+    // clear (startSample, numSamples) rensar alla kanaler; ett andra anrop med 1 som första argument började på sample 1 (jassert vid block på 1 sample).
     maxBus.clear (0, numSamples);
-    maxBus.clear (1, numSamples);
     bypassBus.clear (0, numSamples);
-    bypassBus.clear (1, numSamples);
     effects.beginBlock (numSamples, clock.getBpm(), clock.getPpqAt (0), controlPhase);
     tapBuffer.clear (0, numSamples);
-    tapBuffer.clear (1, numSamples);
 
     for (int layer = 0; layer < activeLayers; ++layer)
     {

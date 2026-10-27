@@ -18,6 +18,7 @@
 #include "../Source/Core/MixAnalysis.h"
 #include "../Source/Ui/LogoPainter.h"
 #include "../Source/Ui/InstrumentMenu.h"
+#include "../Source/Ui/JogPanel.h"
 #include "../Source/Ui/ListenButton.h"
 #include "../Source/Ui/Theme.h"
 #include <juce_audio_formats/juce_audio_formats.h>
@@ -3667,6 +3668,13 @@ namespace
 
         std::unique_ptr<juce::AudioProcessorEditor> editor (processor->createEditorAndMakeActive());
         auto image = editor->createComponentSnapshot (editor->getLocalBounds(), true, 1.0f);
+
+        // KB_JOG=1: bilden blir JOG/LP-panelen (som annars bara finns i en CallOutBox) i stället för hela editorn.
+        if (juce::SystemStats::getEnvironmentVariable ("KB_JOG", "0").getIntValue() != 0)
+        {
+            JogPanel jog (*processor);
+            image = jog.createComponentSnapshot (jog.getLocalBounds(), true, 2.0f);
+        }
 
         // KB_MENU=<instrument 0-9>: ritar instrumentmenyn (L4) ovanpå bilden. Popup-fönstret är ett eget fönster, så det hämtas från Desktop.
         if (const auto menuLayer = juce::SystemStats::getEnvironmentVariable ("KB_MENU", {}); menuLayer.isNotEmpty())

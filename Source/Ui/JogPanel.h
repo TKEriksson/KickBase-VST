@@ -10,9 +10,9 @@ class JogPanel : public juce::Component, private juce::Timer
 public:
     explicit JogPanel (PluginBase& p) : processor (p), speedKnob (p.apvts, ParamID::jogSpeed, "JOG SPEED", Theme::pattern)
     {
-        setSize (330, 250);
+        setSize (380, 250);
 
-        for (auto* b : { &stopMode, &nudgeMode })
+        for (auto* b : { &stopMode, &nudgeMode, &recMode })
         {
             b->setRadioGroupId (4711);
             b->setClickingTogglesState (true);
@@ -21,9 +21,12 @@ public:
         }
         stopMode.setTooltip ("STOP - Touching the wheel stops the music. Turn it forward to play at the speed you turn it; let go and it plays on at normal speed.");
         nudgeMode.setTooltip ("KEEP GOING - The music plays on while you touch the wheel. Turn it forward to speed up, back to slow down (it never plays backwards).");
-        (processor.jogMode.load() == 1 ? nudgeMode : stopMode).setToggleState (true, juce::dontSendNotification);
+        recMode.setTooltip ("REC - Like STOP, but the wheel writes JOG SPEED as a parameter gesture, so the DAW can record your scratch (Write/Touch/Latch). "
+                            "JOG SPEED springs back to 1x when you let go.");
+        (processor.jogMode.load() == 2 ? recMode : processor.jogMode.load() == 1 ? nudgeMode : stopMode).setToggleState (true, juce::dontSendNotification);
         stopMode.onClick = [this] { processor.jogMode = 0; };
         nudgeMode.onClick = [this] { processor.jogMode = 1; };
+        recMode.onClick = [this] { processor.jogMode = 2; };
 
         speedKnob.setDescription ("JOG SPEED - Playback speed of the plugin's own clock, 1 = normal, 0 = stopped, 4 = four times as fast. "
                                   "Right-click for DAW automation; drag an LFO here to modulate it.");
@@ -42,28 +45,77 @@ public:
         timerCallback();
     }
 
-    ~JogPanel() override { processor.jogManual = -1.0f; } // ett hjul som inte hunnit släppas får inte hålla fast tempot
+    ~JogPanel() override // ett hjul som inte hunnit släppas får inte hålla fast tempot eller lämna en öppen gest
+    {
+        processor.jogManual = -1.0f;
+        endGesture();
+    }
 
     void paint (juce::Graphics& g) override
     {
         g.fillAll (juce::Colour (0xff121420));
         const auto wheel = wheelBounds().toFloat();
-        g.setColour (juce::Colour (0xff1c1f30));
+        const auto c = wheel.getCentre();
+        const auto r = wheel.getWidth() * 0.5f;
+        const auto circle = [&] (float radius) { return juce::Rectangle<float> (radius * 2.0f, radius * 2.0f).withCentre (c); };
+
+        // Sockel i ljus metall med en mörk ring runt skivan.
+        const auto plinth = wheel.expanded (8.0f);
+        g.setGradientFill (juce::ColourGradient (juce::Colour (0xffd9dbe0), plinth.getX(), plinth.getY(), juce::Colour (0xff9a9ea8), plinth.getRight(), plinth.getBottom(), false));
+        g.fillRoundedRectangle (plinth, 6.0f);
+        g.setColour (juce::Colour (0xff50535c));
+        g.drawRoundedRectangle (plinth, 6.0f, 1.0f);
+        g.setColour (juce::Colour (0xff22242b));
+        g.fillEllipse (wheel.expanded (3.0f));
+
+        // Vinylskiva: svart skiva, fina spårringar, kant som lyser när man håller i den.
+        g.setColour (juce::Colour (0xff08090d));
         g.fillEllipse (wheel);
+        for (float f = 0.40f; f < 0.97f; f += 0.028f)
+        {
+            g.setColour (juce::Colours::white.withAlpha ((int) (f * 100.0f) % 3 == 0 ? 0.07f : 0.035f));
+            g.drawEllipse (circle (r * f), 0.7f);
+        }
         g.setColour (touching ? Theme::pattern : juce::Colour (0xff2c3148));
         g.drawEllipse (wheel.reduced (1.0f), 2.0f);
-        for (int i = 0; i < 12; ++i) // spår som i en skiva
+
+        // Ljusreflex: står still medan skivan snurrar (två motstående kilar).
+        for (int side = 0; side < 2; ++side)
         {
-            const auto a = shownAngle + i * juce::MathConstants<float>::twoPi / 12.0f;
-            const auto c = wheel.getCentre();
-            const auto r = wheel.getWidth() * 0.5f;
-            g.setColour (Theme::text.withAlpha (i == 0 ? 0.9f : 0.2f));
-            g.drawLine (c.x + std::cos (a) * r * 0.55f, c.y + std::sin (a) * r * 0.55f,
-                        c.x + std::cos (a) * r * 0.9f, c.y + std::sin (a) * r * 0.9f, i == 0 ? 3.0f : 1.0f);
+            juce::Path glint;
+            const auto mid = -juce::MathConstants<float>::pi * 0.25f + side * juce::MathConstants<float>::pi;
+            glint.addPieSegment (circle (r * 0.96f), mid - 0.09f, mid + 0.09f, 0.42f);
+            g.setColour (juce::Colours::white.withAlpha (0.10f));
+            g.fillPath (glint);
         }
+
+        // Etikett med hål och en markering som roterar med skivan (visar fart och riktning).
+        g.setColour (juce::Colour (0xff15161c)); // svart etikett som på förebilden, med en tunn färgring
+        g.fillEllipse (circle (r * 0.34f));
+        g.setColour (Theme::pattern);
+        g.drawEllipse (circle (r * 0.34f), 1.0f);
+        const auto a = shownAngle;
+        g.setColour (juce::Colours::white.withAlpha (0.9f));
+        g.drawLine (c.x + std::cos (a) * r * 0.10f, c.y + std::sin (a) * r * 0.10f, c.x + std::cos (a) * r * 0.31f, c.y + std::sin (a) * r * 0.31f, 3.0f);
+        g.setColour (juce::Colours::white.withAlpha (0.25f));
+        g.drawLine (c.x - std::cos (a) * r * 0.10f, c.y - std::sin (a) * r * 0.10f, c.x - std::cos (a) * r * 0.31f, c.y - std::sin (a) * r * 0.31f, 1.5f);
+        g.setColour (juce::Colour (0xff121420));
+        g.fillEllipse (circle (r * 0.05f));
+
+        // Tonarm från hörnet uppe till höger. Nålen börjar vid skivans kant och åker inåt mot etiketten ju längre mönstret har spelats (som en riktig LP).
+        const auto needleRadius = r * (0.95f - 0.60f * shownProgress);
+        const juce::Point<float> pivot (wheel.getRight() - 4.0f, wheel.getY() + 6.0f), needle (c.x + std::cos (-0.38f) * needleRadius, c.y + std::sin (-0.38f) * needleRadius);
+        g.setColour (juce::Colour (0xffb8bcc8));
+        g.drawLine (pivot.x, pivot.y, needle.x, needle.y, 3.0f);
+        g.fillEllipse (juce::Rectangle<float> (10.0f, 10.0f).withCentre (pivot));
+        g.setColour (juce::Colour (0xff6a6f80));
+        g.fillEllipse (juce::Rectangle<float> (5.0f, 5.0f).withCentre (pivot));
+        g.setColour (touching ? Theme::pattern : juce::Colour (0xffe8e8f0));
+        g.fillRoundedRectangle (juce::Rectangle<float> (7.0f, 11.0f).withCentre (needle), 2.0f);
+
         g.setColour (Theme::text);
-        g.setFont (Theme::font (13.0f, true));
-        g.drawText (juce::String (currentRate, 2) + "x", wheel.reduced (wheel.getWidth() * 0.3f), juce::Justification::centred);
+        g.setFont (Theme::font (12.0f, true));
+        g.drawText (juce::String (currentRate, 2) + "x", juce::Rectangle<float> (60.0f, 16.0f).withCentre ({ c.x, c.y + r * 0.62f }), juce::Justification::centred);
     }
 
     void resized() override
@@ -72,9 +124,11 @@ public:
         auto top = area.removeFromTop (150);
         top.removeFromLeft (150);
         auto modes = top.removeFromTop (28);
-        stopMode.setBounds (modes.removeFromLeft (80).reduced (0, 2));
+        stopMode.setBounds (modes.removeFromLeft (56).reduced (0, 2));
         modes.removeFromLeft (4);
-        nudgeMode.setBounds (modes.removeFromLeft (92).reduced (0, 2));
+        nudgeMode.setBounds (modes.removeFromLeft (84).reduced (0, 2));
+        modes.removeFromLeft (4);
+        recMode.setBounds (modes.reduced (0, 2));
         top.removeFromTop (6);
         speedKnob.setBounds (top.withSizeKeepingCentre (70, 90));
         area.removeFromTop (4);
@@ -82,11 +136,30 @@ public:
         removeButton.setBounds (area.removeFromTop (26).removeFromLeft (170));
     }
 
+    // Handen över skivan visar att den kan gripas (JUCE:s DraggingHandCursor, ingen separat sluten hand finns).
+    void mouseMove (const juce::MouseEvent& e) override
+    {
+        setMouseCursor (wheelBounds().contains (e.getPosition()) ? juce::MouseCursor::DraggingHandCursor : juce::MouseCursor::NormalCursor);
+    }
+
+    void mouseExit (const juce::MouseEvent&) override
+    {
+        if (! touching)
+            setMouseCursor (juce::MouseCursor::NormalCursor);
+    }
+
     void mouseDown (const juce::MouseEvent& e) override
     {
         if (! wheelBounds().contains (e.getPosition()))
             return;
+        setMouseCursor (juce::MouseCursor::DraggingHandCursor);
         touching = true;
+        if (processor.jogMode.load() == 2)
+            if (auto* parameter = processor.apvts.getParameter (ParamID::jogSpeed))
+            {
+                parameter->beginChangeGesture();
+                gestureOpen = true;
+            }
         lastAngle = angleOf (e.position);
         lastTime = juce::Time::getMillisecondCounterHiRes();
         velocity = 0.0f;
@@ -115,15 +188,31 @@ public:
         apply();
     }
 
-    void mouseUp (const juce::MouseEvent&) override
+    void mouseUp (const juce::MouseEvent& e) override
     {
         touching = false;
+        setMouseCursor (wheelBounds().contains (e.getPosition()) ? juce::MouseCursor::DraggingHandCursor : juce::MouseCursor::NormalCursor);
         velocity = 0.0f;
         processor.jogManual = -1.0f;
+        endGesture();
         repaint();
     }
 
 private:
+    // REC-läget: hjulet skriver jogSpeed inom en gest. Vid släpp skrivs 1x (fjädring) innan gesten stängs, så att värdens inspelning får med återgången
+    // och inget skrivs över efteråt.
+    void endGesture()
+    {
+        if (! gestureOpen)
+            return;
+        if (auto* parameter = processor.apvts.getParameter (ParamID::jogSpeed))
+        {
+            parameter->setValueNotifyingHost (parameter->getDefaultValue());
+            parameter->endChangeGesture();
+        }
+        gestureOpen = false;
+    }
+
     juce::Rectangle<int> wheelBounds() const { return { 10, 10, 140, 140 }; }
 
     float angleOf (juce::Point<float> p) const
@@ -136,6 +225,13 @@ private:
     {
         const auto mode = processor.jogMode.load();
         const auto rate = mode == 1 ? 1.0f + velocity : velocity;
+        if (mode == 2 && gestureOpen)
+        {
+            if (auto* parameter = processor.apvts.getParameter (ParamID::jogSpeed))
+                parameter->setValueNotifyingHost (parameter->convertTo0to1 (juce::jlimit (0.0f, 4.0f, rate)));
+            processor.jogManual = -1.0f; // parametern bär hastigheten, så att inspelning och uppspelning ger samma ljud
+            return;
+        }
         processor.jogManual = juce::jlimit (0.0f, 4.0f, rate);
     }
 
@@ -167,6 +263,8 @@ private:
         currentRate = manual >= 0.0f ? manual : processor.apvts.getRawParameterValue (ParamID::jogSpeed)->load(); // grundvärdet (LFO-påverkan visas inte här)
         if (! touching)
             shownAngle += currentRate * 0.12f;
+        const auto progress = processor.transportStatus.patternProgress.load();
+        shownProgress = progress < shownProgress - 0.5f ? progress : shownProgress + 0.35f * (progress - shownProgress); // hoppar tillbaka vid loopen, glider annars
 
         const auto index = speedIndex();
         juce::StringArray sources;
@@ -189,10 +287,10 @@ private:
     }
 
     PluginBase& processor;
-    juce::TextButton stopMode { "STOP" }, nudgeMode { "KEEP GOING" }, removeButton { "REMOVE AUTOMATION" };
+    juce::TextButton stopMode { "STOP" }, nudgeMode { "KEEP GOING" }, removeButton { "REMOVE AUTOMATION" }, recMode { "REC" };
     KnobComponent speedKnob;
     juce::Label statusLabel;
-    bool touching = false;
-    float lastAngle = 0.0f, shownAngle = 0.0f, velocity = 0.0f, currentRate = 1.0f;
+    bool touching = false, gestureOpen = false;
+    float lastAngle = 0.0f, shownAngle = 0.0f, velocity = 0.0f, currentRate = 1.0f, shownProgress = 0.0f;
     double lastTime = 0.0;
 };
