@@ -191,6 +191,17 @@ public:
             g.setColour (Theme::panelBorderDim);
             g.drawRoundedRectangle (strip.reduced (0.5f), 12.0f, 1.0f);
 
+            // Stjälk under den valda underfliken (skissen: .tab-stem / .tab-stem-inner), så att den binder till innehållet under remsan.
+            const auto cx = currentTab.button->getBounds().toFloat().getCentreX();
+            const auto y = strip.getBottom() - 0.5f;
+            juce::Path stem, stemInner;
+            stem.addTriangle (cx - 6.0f, y, cx + 6.0f, y, cx, y + 6.0f);
+            stemInner.addTriangle (cx - 5.0f, y, cx + 5.0f, y, cx, y + 4.5f);
+            g.setColour (Theme::panelBorderDim);
+            g.fillPath (stem);
+            g.setColour (Theme::panelAlt);
+            g.fillPath (stemInner);
+
             if (labelArea.getWidth() > 50)
             {
                 g.setColour (Theme::panelBorderDim);

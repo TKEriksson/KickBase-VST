@@ -90,6 +90,11 @@ void KickbaseLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int
     const auto bodyRadius = arcRadius - 4.5f;
     const auto body = juce::Rectangle<float> (bodyRadius * 2.0f, bodyRadius * 2.0f).withCentre (centre);
     const auto dir = juce::Point<float> (0.5736f, 0.8192f) * bodyRadius; // 145 grader
+    // Skissens .knob-outer: skugga 2px 2px 5px svart 0,6 nere till höger och högdager -1px -1px 3px vit 0,05 uppe till vänster
+    g.setColour (juce::Colours::white.withAlpha (0.05f));
+    g.fillEllipse (body.translated (-1.0f, -1.0f).expanded (1.5f));
+    g.setColour (juce::Colours::black.withAlpha (0.6f));
+    g.fillEllipse (body.translated (2.0f, 2.0f).expanded (1.5f));
     g.setGradientFill (juce::ColourGradient (juce::Colour (0xff283042), centre - dir, juce::Colour (0xff181d28), centre + dir, false));
     g.fillEllipse (body);
     const auto inner = body.reduced (bodyRadius * 0.16f);
