@@ -450,6 +450,12 @@ namespace Params
         layout.add (percent (ParamID::gain, "Master", 0.8f));
     }
 
+    void addJogParams (Layout& layout)
+    {
+        layout.add (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { ParamID::jogSpeed, 1 }, "Jog Speed",
+                                                                 juce::NormalisableRange<float> (0.0f, 4.0f, 0.001f), 1.0f));
+    }
+
     juce::StringArray keyNames()
     {
         return { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };

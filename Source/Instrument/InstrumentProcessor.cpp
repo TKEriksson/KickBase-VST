@@ -31,6 +31,7 @@ namespace
         Mixer::addParameters (layout);
         Params::addMasterParams (layout);
         Modulation::addExtraLfoParameters (layout); // LFO 4-10 (fas M): nya parametrar sist
+        Params::addJogParams (layout); // JOG (D3b)
         return layout;
     }
 
@@ -150,6 +151,7 @@ void InstrumentProcessor::processChunk (juce::AudioBuffer<float>& buffer, juce::
     clock.setForceFreeRun (previewLayer >= 0);
     clock.setFreeRunBpm (freeRunBpm.load());
     clock.setHold (transportHold.load());
+    clock.setJogRate (jogManual.load() >= 0.0f ? (double) jogManual.load() : (double) params.get (ParamID::jogSpeed));
     clock.setLoop (globalLoop.load(), globalLoopStartBar.load(), globalLoopEndBar.load());
     clock.beginBlock (getHostPosition(), numSamples);
     if (const auto seekBar = seekBarRequest.exchange (-1); seekBar >= 0)

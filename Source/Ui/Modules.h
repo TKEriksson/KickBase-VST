@@ -79,6 +79,8 @@ private:
     std::unique_ptr<RollWatch> rollWatch;
     juce::ComboBox noteBox;
     juce::TextButton restartButton { "" };       // börjar om räknaren och mönstret vid 1.1 (egen klocka)
+    juce::TextButton jogButton { "" };           // JOG / LP (D3b): öppnar hjulet för scratch av den egna klockan
+    void showJogPanel();
     juce::Rectangle<int> previewGroup, bpmPill, keyBlock;
 
     // Transport i egen klocka (D3a): dubbelklicka tempot eller takten för att skriva ett värde, hjulet över takten scrubbar (musiken står still tills hjulet vilat).

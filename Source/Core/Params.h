@@ -76,6 +76,9 @@ namespace ParamID
 
     // Master
     inline constexpr auto gain = "gain";
+
+    // JOG (D3b): hastighet för den egna klockan i förhandsspelning, 1 = normalt, 0 = står still, 4 = fyra gånger snabbare.
+    inline constexpr auto jogSpeed = "jogSpeed";
 }
 
 // Varje baslagers parametrar. ID:t är "bass" + lagrets nummer + fältets namn, t.ex. "bass2Cutoff".
@@ -154,6 +157,7 @@ namespace Params
     void addInstrumentSynthParams (Layout& layout, int layer);
     void addFxParams (Layout& layout);
     void addMasterParams (Layout& layout);
+    void addJogParams (Layout& layout); // D3b: sist i layouten
 
     juce::StringArray keyNames();
     float midiToHz (float midiNote);

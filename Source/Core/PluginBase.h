@@ -350,6 +350,9 @@ public:
     std::atomic<double> freeRunBpm { 0.0 };
     std::atomic<bool> transportHold { false };
     std::atomic<int> seekBarRequest { -1 };
+    // JOG (D3b): hjulets handpåläggning (<0 = ingen, annars hastighet 0..4 som ersätter parametern) och läget (0 = stannar medan man rör, 1 = fortsätter).
+    std::atomic<float> jogManual { -1.0f };
+    std::atomic<int> jogMode { 0 };
     // Global LOOP (D3): av/på och takterna (0-räknade, slutet exklusivt). På = egen klocka som går runt i loopen (DAW:ens transport ignoreras).
     std::atomic<bool> globalLoop { false };
     std::atomic<int> globalLoopStartBar { 0 }, globalLoopEndBar { 4 };

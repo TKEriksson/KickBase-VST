@@ -2,6 +2,7 @@
 #include "Modules.h"
 #include "Help.h"
 #include "HistoryPanel.h"
+#include "JogPanel.h"
 #include "../Core/ProjectFile.h"
 
 namespace
@@ -85,6 +86,11 @@ HeaderBar::HeaderBar (PluginBase& p, const juce::String& subtitleIn)
         restartButton.setTooltip ("RESTART - Starts the counter and the pattern over at bar 1.1 (when the plugin runs on its own clock; with DAW SYNC the DAW decides).");
         restartButton.onClick = [this] { processor.requestRestart(); };
         addAndMakeVisible (restartButton);
+
+        jogButton.setTooltip ("JOG - A turntable wheel for the plugin's own clock: scratch the music or change its speed (also automatable and LFO-modulatable). "
+                              "It never touches the DAW. Lit when the speed is not 1x or has an LFO.");
+        jogButton.onClick = [this] { showJogPanel(); };
+        addAndMakeVisible (jogButton);
 
         auto setUpLabel = [this] (juce::Label& label, float size)
         {
@@ -215,6 +221,15 @@ void HeaderBar::showHistory()
     open = o.launchAsync();
 }
 
+void HeaderBar::showJogPanel()
+{
+    // CallOutBox med editorn som förälder, så att rattarna i panelen hittar processorn (KnobComponent söker uppåt efter editorn).
+    auto* editor = findParentComponentOfClass<juce::AudioProcessorEditor>();
+    if (editor == nullptr)
+        return;
+    juce::CallOutBox::launchAsynchronously (std::make_unique<JogPanel> (processor), editor->getLocalArea (this, jogButton.getBounds()), editor);
+}
+
 void HeaderBar::saveProject()
 {
     chooser = std::make_unique<juce::FileChooser> ("Save project", Settings::exportsFolder().getChildFile ("Kickbase.kbproj"), "*.kbproj");
@@ -312,6 +327,19 @@ void HeaderBar::paintOverChildren (juce::Graphics& g)
     juce::Path head;
     head.addTriangle (centre.x - 8.0f, centre.y + 2.0f, centre.x - 3.0f, centre.y - 2.5f, centre.x - 3.0f, centre.y + 6.5f);
     g.fillPath (head);
+
+    // LP-ikonen på JOG-knappen: en skiva med hål och tonarm. Lyser när hastigheten inte är 1x eller en LFO styr den.
+    const auto jogCentre = jogButton.getBounds().toFloat().getCentre();
+    auto* jogParam = processor.apvts.getParameter (ParamID::jogSpeed);
+    const auto jogIndex = processor.getParameters().indexOf (jogParam);
+    auto active = jogParam != nullptr && std::abs (jogParam->convertFrom0to1 (jogParam->getValue()) - 1.0f) > 0.001f;
+    for (int r = 0; r < Modulation::maxRoutes && ! active; ++r)
+        active = processor.modRoutes.routes[(size_t) r].source.load() >= 0 && processor.modRoutes.routes[(size_t) r].target.load() == jogIndex;
+    const auto jogColour = active ? Theme::pattern : Theme::text;
+    g.setColour (jogColour);
+    g.drawEllipse (juce::Rectangle<float> (14.0f, 14.0f).withCentre (jogCentre), 1.6f);
+    g.fillEllipse (juce::Rectangle<float> (3.5f, 3.5f).withCentre (jogCentre));
+    g.drawLine (jogCentre.x + 6.0f, jogCentre.y - 8.0f, jogCentre.x + 1.0f, jogCentre.y - 2.0f, 1.4f);
 }
 
 void HeaderBar::resized()
@@ -323,8 +351,9 @@ void HeaderBar::resized()
     auto right = getLocalBounds().reduced (14, 0);
     keyBlock = right.removeFromRight (84).withSizeKeepingCentre (84, 40);
     right.removeFromRight (8);
-    bpmPill = right.removeFromRight (214).reduced (0, (height - 34) / 2);
+    bpmPill = right.removeFromRight (hasPreviews ? 244 : 214).reduced (0, (height - 34) / 2);
     restartButton.setBounds (bpmPill.getRight() - 32, bpmPill.getY() + 4, 26, bpmPill.getHeight() - 8);
+    jogButton.setBounds (restartButton.getX() - 28, bpmPill.getY() + 4, 26, bpmPill.getHeight() - 8);
     {
         auto inner = bpmPill.reduced (bpmPill.getHeight() / 2 - 4, 0); // samma indelning som i paint
         bpmLabel.setBounds (inner.removeFromLeft (100).reduced (0, 4));
@@ -358,6 +387,7 @@ void HeaderBar::resized()
     listenAll.setVisible (hasPreviews);
     noteBox.setVisible (hasPreviews);
     restartButton.setVisible (hasPreviews);
+    jogButton.setVisible (hasPreviews);
     if (hasPreviews)
     {
         listenAll.setBounds (previewGroup.getX() + 7, previewGroup.getY() + 14, 30, previewGroup.getHeight() - 20);

@@ -67,6 +67,8 @@ public:
     // Bara egen klocka (D3a): eget tempo (0 = som förut: värdens senaste tempo eller 140), hållning medan man scrubbar takten, och hopp till en takt.
     void setFreeRunBpm (double newBpm) { freeRunBpm = newBpm; }
     void setHold (bool shouldHold)     { hold = shouldHold; }
+    // JOG (D3b): hastighet relativt tempot (0..4, 1 = normalt), bara egen klocka. Nära 0 står klockan still. Värden styr aldrig det här.
+    void setJogRate (double rate)      { jogRate = juce::jlimit (0.0, 4.0, rate); }
     void seekFreeRunToBar (juce::int64 bar);
 
     // Global LOOP (D3): den egna klockan går runt mellan startBar och endBar (0-räknade, slutet exklusivt). DAW:ens transport ignoreras då,
@@ -110,6 +112,7 @@ private:
     bool hostPlaying = false;
     bool forceFreeRun = false;
     bool hold = false;
+    double jogRate = 1.0;
     double freeRunBpm = 0.0;
     bool loopOn = false;
     juce::int64 loopStartBar = 0, loopEndBar = 0;
