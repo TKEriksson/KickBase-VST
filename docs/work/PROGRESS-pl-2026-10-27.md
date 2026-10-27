@@ -20,3 +20,4 @@
 - Tobias: releaser bara när stora sektioner klara; första = hela testlistan T1-T15 (fas A-E, H). Fas G uppdaterad.
 - Tobias: PL får merga till main efter byggd release + hans test + rättelser; PL påminner och frågar först.
 - Lade in avsnittet Arbetssätt i masterplanen.
+- Arbetare 2: A5 klar (14c37c2 på w2): appendWorkLesson flyttar uppdaterad post sist. Test i chattest. Fortsätter B4, B2. Obs: chattest slutar annars med 'FEL: chatten misslyckades' (nätverk/nyckel, oundersökt).
