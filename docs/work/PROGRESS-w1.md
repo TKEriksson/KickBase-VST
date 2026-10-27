@@ -142,3 +142,12 @@ Allt fanns redan: `.lfo/.env` glue.js:93-114, MCP `live_code_run`/`stop` ToolLay
 ## Fas I 3) IO – autospara (27 okt, Arbetare 1)
 `.kbproj` spara/öppna fanns redan (ProjectFile, Modules.cpp:212-236). Nytt: `ProjectFile::AutoSaver` (ProjectFile.h/.cpp), ägd av PluginBase (timer 3 min, meddelandetråden). Skriver bara när tillståndet ändrats (bytejämförelse), 3 roterande filer per instans i `Dokument\Kickbase\Autosave`, max 12 filer i mappen. PROJECT-menyn: "Autosave every 3 min" (av/på, inställning `autosave`) och "Open autosave..." (läggs sist efter History, Arbetare 2:s rader orörda). Test: persisttest (6 nya checks) grön.
 Kvar i IO: ZIP/import-export-center, arrangemang (ingen spec finns; kbproj-spec säger "inte i v1").
+
+## Fas I 4) S och S3 – kontroll mot koden (Arbetare 1, 27 okt)
+Inget saknas, inget byggt. Fynd:
+- FILTER av/på hela instrumentet + per källa (OSC 1–3, SAMPLE, NOISE): `Params.cpp:392`, `InstrumentSynth.cpp:423`, `FilterPanel.cpp:242,254`, hjälp `Help.cpp:107-110`.
+- Brustyper White/Pink/Brown/Vinyl: `Params.cpp:396`, `InstrumentSynth.cpp:467`, `Modules.cpp:1000`.
+- WARP ENV-källa (Filter Env/Direct/ENV 2/ENV 3) + Direct-decay + varning "needs a WARP mode": `InstrumentSynth.cpp:396-405`, `Params.cpp:397-398`, `Modules.cpp:1005,1030`.
+- OSC-display WAVE/SCOPE/SPECTRUM med klick-för-lyssning: `OscPanel.cpp:55-64,195-212`.
+- OSC-presets (.oscpreset, meny, Save, RESET): `OscPresets.cpp`, `OscPanel.cpp:238,496-573`. Inga färdiga .oscpreset-filer ligger i repot (mappen skapas vid första Save).
+- S3 unison/Reese per OSC: `aUnison/aDetune` m.fl. (`Params.h:86-88`), `InstrumentSynth.cpp:94`; noterat som klart redan i PROGRESS-lc.md:73.
