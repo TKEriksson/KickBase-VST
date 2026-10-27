@@ -3660,6 +3660,7 @@ int renderSignaturesWide(); // Tools/AudioTests.cpp
 int audioThreadTest();      // Tools/AudioTests.cpp
 int blockSizeTest();        // Tools/AudioTests.cpp
 int polyTest();             // Tools/AudioTests.cpp
+int ringTest();             // Tools/AudioTests.cpp
 int persistTest();          // Tools/StateTests.cpp
 int fullStateTest();        // Tools/StateTests.cpp
 int undoTest();             // Tools/StateTests.cpp
@@ -3794,6 +3795,8 @@ int toolMain (int argc, char* argv[])
         return blockSizeTest();
     if (argc == 2 && juce::String (argv[1]) == "polytest")
         return polyTest();
+    if (argc == 2 && juce::String (argv[1]) == "ringtest")
+        return ringTest();
     if (argc == 2 && juce::String (argv[1]) == "audiotest")
         return audioThreadTest();
     // uiprofile <flik> <init|heavy> [instrument] [sekunder]: gränssnittets CPU och var meddelandetråden lägger tiden.

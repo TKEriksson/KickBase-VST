@@ -75,6 +75,7 @@ double InstrumentSynth::warpPhase (WarpMode mode, float amount, double phase, fl
             return std::floor (phase * steps) / steps;
         }
         case WarpMode::am:
+        case WarpMode::ring:
         case WarpMode::off:    break;
     }
     return phase;
@@ -123,6 +124,12 @@ InstrumentSynth::Stereo InstrumentSynth::Oscillator::next (const OscParams& p, d
             // AM: vågen multipliceras med en sinus en oktav upp (Serums AM-warp).
             const auto depth = juce::jlimit (0.0f, 1.0f, warpAmount);
             voice *= 1.0f - depth + depth * (0.5f + 0.5f * (float) std::sin (juce::MathConstants<double>::twoPi * 2.0 * phase));
+        }
+        else if (p.warp == WarpMode::ring && warpAmount > 0.0f)
+        {
+            // RING (B): vågen multipliceras med OSC 2 och/eller OSC 3 (fmInput = faktorn, -1..1). Warp = blandning torr -> ren ringmodulation.
+            const auto depth = juce::jlimit (0.0f, 1.0f, warpAmount);
+            voice *= 1.0f - depth + depth * fmInput;
         }
 
         // Stämmorna sprids över stereobilden (balans: mitten oförändrad, ytterkanten tystnar åt andra sidan).
@@ -379,7 +386,9 @@ InstrumentSynth::Output InstrumentSynth::next()
     const auto levelA = params.oscA.on ? params.oscA.level : 0.0f;
     const auto levelB = params.oscB.on ? params.oscB.level : 0.0f;
     const auto levelC = params.oscC.on ? params.oscC.level : 0.0f;
-    const auto bNeeded = params.oscB.on && (params.oscB.level > 0.0f || params.oscA.warp == WarpMode::fm);
+    const auto ringOn = params.oscA.warp == WarpMode::ring;
+    const auto bNeeded = params.oscB.on && (params.oscB.level > 0.0f || params.oscA.warp == WarpMode::fm || (ringOn && params.oscA.ringSource != 1));
+    const auto cNeeded = params.oscC.on && (params.oscC.level > 0.0f || (ringOn && params.oscA.ringSource != 0));
     const auto bRaw = bNeeded ? oscB.next (params.oscB, frequency, sampleRate, params.oscB.warpAmount, 0.0f) : Stereo {};
     const auto bSide = 0.5f * (bRaw.left - bRaw.right) * params.bWidth;
     const auto b = params.bWidth == 1.0f ? bRaw : Stereo { bRaw.mid() + bSide, bRaw.mid() - bSide };
@@ -402,8 +411,11 @@ InstrumentSynth::Output InstrumentSynth::next()
         const auto centre = s.mid(), side = 0.5f * (s.left - s.right) * width;
         return Stereo { centre + side, centre - side };
     };
-    const auto a = widen (levelA > 0.0f ? oscA.next (params.oscA, frequency, sampleRate, warpA, b.mid()) : Stereo {}, params.aWidth);
-    const auto c = widen (levelC > 0.0f ? oscC.next (params.oscC, frequency, sampleRate, params.oscC.warpAmount, 0.0f) : Stereo {}, params.cWidth);
+    // OSC C före A, eftersom RING (B) kan multiplicera A med C. Av/tyst källa ger faktor 0 (inget hörs vid full RING).
+    const auto c = widen (cNeeded ? oscC.next (params.oscC, frequency, sampleRate, params.oscC.warpAmount, 0.0f) : Stereo {}, params.cWidth);
+    const auto bMid = params.oscB.on ? b.mid() : 0.0f, cMid = params.oscC.on ? c.mid() : 0.0f;
+    const auto modInput = ringOn ? (params.oscA.ringSource == 0 ? bMid : params.oscA.ringSource == 1 ? cMid : bMid * cMid) : b.mid();
+    const auto a = widen (levelA > 0.0f ? oscA.next (params.oscA, frequency, sampleRate, warpA, modInput) : Stereo {}, params.aWidth);
 
     // Sub och brus ligger i mitten. Mitten och sidan filtreras var för sig (samma filter), och
     // blir sedan vänster och höger igen.

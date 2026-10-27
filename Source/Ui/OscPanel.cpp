@@ -289,6 +289,17 @@ OscPanel::OscPanel (PluginBase& p, int layerIn, int oscIn, juce::Colour accentIn
     morphButton.setColour (juce::TextButton::buttonOnColourId, accent.withAlpha (0.6f));
     morphAttachment = std::make_unique<juce::ButtonParameterAttachment> (*p.apvts.getParameter (ParamID::bass (layer, ParamID::oscMorphField (osc))), morphButton);
     addAndMakeVisible (morphButton);
+
+    if (osc == 0)
+    {
+        ringBox.addItemList ({ "RING: OSC 1 x OSC 2", "RING: OSC 1 x OSC 3", "RING: OSC 1 x OSC 2 x OSC 3" }, 1);
+        ringBox.setTooltip ("RING MODULATION - OSC 1 is multiplied by the oscillator(s) you choose here: OSC 2, OSC 3 or both (OSC 1 x OSC 2 x OSC 3). "
+                            "AMOUNT blends from plain OSC 1 (0) to pure ring modulation (100 %). The chosen oscillator must be ON; "
+                            "it does not have to be loud (its LEVEL only sets what you hear of it directly, the ring uses the full wave). Sums and differences of the pitches give the metallic, bell-like sound.");
+        ringAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
+            p.apvts, ParamID::bass (layer, InstrumentField::ringSource), ringBox);
+        addChildComponent (ringBox);
+    }
     startTimerHz (10);
     timerCallback(); // tabellens namn syns direkt
 
@@ -333,6 +344,17 @@ void OscPanel::timerCallback()
         tableButton.setButtonText (name);
         for (size_t i = 0; i < shapeButtons.size(); ++i)
             shapeButtons[i].setToggleState (current == Wavetables::classicIndex ((int) i), juce::dontSendNotification);
+    }
+    if (osc == 0)
+    {
+        const auto ring = (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, ParamID::oscField (osc, InstrumentField::aWarp)))->load() == (int) WarpMode::ring;
+        if (ring != ringShown)
+        {
+            ringShown = ring;
+            ringBox.setVisible (ring);
+            for (auto& button : shapeButtons)
+                button.setVisible (! ring);
+        }
     }
 }
 
@@ -588,6 +610,7 @@ void OscPanel::resized()
     auto shapes = top;
     morphButton.setBounds (shapes.removeFromRight (shapes.getWidth() / 4 + 4).reduced (1, 0)); // längst till höger: MORPH är inte en vågform
     wavButton.setBounds (shapes.removeFromRight (shapes.getWidth() / 5 + 2).reduced (1, 0));
+    ringBox.setBounds (shapes.reduced (1, 0));
     for (auto& button : shapeButtons)
         button.setBounds (shapes.removeFromLeft (shapes.getWidth() / ((int) shapeButtons.size() - (int) (&button - shapeButtons.data()))).reduced (1, 0));
     left.removeFromTop (4);

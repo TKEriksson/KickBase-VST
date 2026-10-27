@@ -101,7 +101,7 @@ namespace ParamID
                                      "Polarity", "PhaseDeg", "NudgeMs",
                                      "FmOn", "FmLevel", "FmRatio", "FmIndex", "FmEnvAmount", "FmEnvTime", "FmSemis", "FmPreset", "FmFilter",
                                      "SlicerOn", "SlicerMapTo", "SlicerReverse",
-                                     "FxSend", "SampleMode", "AllpassFreq", "AllpassAmount", "SamplePan", "NoisePan", "FmPan", "NoiseWidth", "SubPhaseDeg", "FmPhaseDeg", "AWidth", "BWidth", "CWidth", "SampleWidth", "FmWidth" };
+                                     "FxSend", "SampleMode", "AllpassFreq", "AllpassAmount", "SamplePan", "NoisePan", "FmPan", "NoiseWidth", "SubPhaseDeg", "FmPhaseDeg", "AWidth", "BWidth", "CWidth", "SampleWidth", "FmWidth", "RingSource" };
         static_assert (std::size (names) == (size_t) InstrumentField::count);
         return names[(size_t) field];
     }
@@ -268,7 +268,7 @@ namespace Params
                                     [] (float v) { return String (v, 1) + " ct"; }));
             layout.add (percent (oid (F::aBlend), oscTitle + "Blend", 0.5f));
             layout.add (std::make_unique<AudioParameterChoice> (ParameterID { oid (F::aWarp), 1 }, oscTitle + "Warp",
-                                                                osc == 0 ? StringArray { "Off", "Sync", "Bend", "PWM", "Mirror", "FM (B)", "Flip", "Quantize", "AM" }
+                                                                osc == 0 ? StringArray { "Off", "Sync", "Bend", "PWM", "Mirror", "FM (B)", "Flip", "Quantize", "AM", "RING (B)" }
                                                                          : StringArray { "Off", "Sync", "Bend", "PWM", "Mirror", "Flip", "Quantize", "AM" }, 0));
             layout.add (percent (oid (F::aWarpAmount), oscTitle + "Warp Amount", 0.0f));
             layout.add (percent (oid (F::aPhase), oscTitle + "Phase", 0.0f));
@@ -434,6 +434,8 @@ namespace Params
         layout.add (floatParam (id (F::cWidth), title + "OSC 3 Width", NormalisableRange<float> (0.0f, 2.0f, 0.01f), 1.0f, widthText));
         layout.add (floatParam (id (F::sampleWidth), title + "Sample Width", NormalisableRange<float> (1.0f, 2.0f, 0.01f), 1.0f, widthText));
         layout.add (floatParam (id (F::fmWidth), title + "FM Width", NormalisableRange<float> (1.0f, 2.0f, 0.01f), 1.0f, widthText));
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::ringSource), 1 }, title + "OSC 1 Ring Source",
+                                                            StringArray { "OSC 2", "OSC 3", "OSC 2 x OSC 3" }, 0));
             }
 
     void addFxParams (Layout& layout)
@@ -727,5 +729,6 @@ InstrumentParams ParamRefs::readInstrument (int layer, int rootMidiNote) const
     p.cWidth = get (F::cWidth);
     p.sampleWidth = get (F::sampleWidth);
     p.fmWidth = get (F::fmWidth);
+    p.oscA.ringSource = (int) get (F::ringSource);
     return p;
 }
