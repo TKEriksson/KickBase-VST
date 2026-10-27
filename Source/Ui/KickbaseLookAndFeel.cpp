@@ -309,6 +309,8 @@ void KickbaseLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& b
         bounds.removeFromLeft (15);
     else if (sub && on)
         bounds.removeFromLeft (10);
+    if (const auto powerWidth = (int) button.getProperties().getWithDefault ("powerWidth", 0); powerWidth > 0)
+        bounds.removeFromRight (powerWidth); // på/av-ikonen ritas av fliken ovanpå knappen
 
     // Texten krymper först (ner till 7.5 pt) om knappen är smal, och förkortas med ... bara om den ändå inte ryms.
     auto font = getTextButtonFont (button, button.getHeight()).boldened();

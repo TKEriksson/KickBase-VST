@@ -53,7 +53,7 @@ public:
     void resized() override
     {
         auto area = getLocalBounds();
-        stripArea = area.removeFromTop (30);
+        stripArea = area.removeFromTop (36);
         auto strip = stripArea.reduced (6, 3);
         for (auto& b : buttons)
         {
@@ -61,8 +61,8 @@ public:
             font.setExtraKerningFactor (0.04f);
             juce::GlyphArrangement glyphs;
             glyphs.addLineOfText (font, b.getButtonText().toUpperCase(), 0.0f, 0.0f);
-            b.setBounds (strip.removeFromLeft ((int) std::ceil (glyphs.getBoundingBox (0, -1, true).getWidth()) + 2 * 14 + 10));
-            strip.removeFromLeft (6);
+            b.setBounds (strip.removeFromLeft ((int) std::ceil (glyphs.getBoundingBox (0, -1, true).getWidth()) + 2 * 18 + 10));
+            strip.removeFromLeft (8);
         }
         area.removeFromTop (4);
         kickBass.setBounds (area);

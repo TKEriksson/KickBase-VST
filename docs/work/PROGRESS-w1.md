@@ -242,3 +242,8 @@ Test: Debug `build.bat Debug all` + "Alla tester gick igenom"; paramtest 0 fel; 
 Kompakt ruta: tempo/takt + PREVIEWS (`HeaderBar::resized`, Modules.cpp). Menyikonen "≡" (`playMenuButton`) döljer/visar LOOP och JOG; valet sparas i Settings `playExtras` (standard = visas). Förhandsknapparna ALL/ROLL är play/stopp-ikoner (`ListenButton::setPlayIcon`); högtalaren finns kvar där den betyder mute/lyssna.
 Test: Debug `build.bat Debug all` + "Alla tester gick igenom". Ingen parameter, rendersig oförändrad.
 FL-punkter: ikonerna på förhandsknapparna, PLAY-menyn döljer/visar LOOP+JOG, valet finns kvar efter omstart.
+
+## Navigationsjustering (Arbetare 1, 27 okt)
+En på/av per modul: kickens bara på KICK-fliken (`InstrumentEditor.cpp:21`, `embedInTab (false)`); instrumentets längst till vänster i rad 2 (`Modules.cpp` Header::resized, `powers[]`). Flikar med inbyggd på/av räknar bredden med ikonen + marginal (`TabbedPanel.h` pillWidth/powerSpace, LookAndFeel `powerWidth`). Rad 1/2 36 px (+6), mer luft (flikgap 8, padding 18), ANALYZER-remsan 36. `baseHeight` 1028, synths 534.
+Test: Debug `build.bat Debug all` + "Alla tester gick igenom". UI-only, ingen parameter, rendersig oförändrad.
+FL-punkter: bara en på/av per modul, instrumentets på/av längst till vänster, KICK-flikens text/ikon, högre knappar, inget klippt i rad 1-3.

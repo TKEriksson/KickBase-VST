@@ -3,7 +3,7 @@
 namespace
 {
     // Gränssnittet ritas i den här storleken (logiska punkter) och skalas sedan till fönstret. Standardskalan är lite under 1.
-    constexpr int baseWidth = 1180, baseHeight = 1010;
+    constexpr int baseWidth = 1180, baseHeight = 1028;
     constexpr float defaultScale = 0.9f;
 }
 
@@ -18,7 +18,9 @@ InstrumentEditor::InstrumentEditor (InstrumentProcessor& p)
         root.addAndMakeVisible (component);
 
     synths.addTab ("PATTERN", Theme::pattern, pattern, pattern.getGrooveBar(), PatternGrooveBar::width);
-    synths.addTab ("KICK", Theme::kick, kick, kick.embedInTab(), kick.headerExtrasWidth());
+    synths.addTab ("KICK", Theme::kick, kick, kick.embedInTab (false), kick.headerExtrasWidth()); // kickens på/av finns bara på fliken (addPower nedan)
+    if (auto* kickPower = kick.getPower())
+        kickPower->setVisible (false);
     synths.addTab ("INSTRUMENT", Theme::bass, instruments, instruments.getHeader(), InstrumentHost::headerWidth);
     synths.addTab ("ANALYZER", Theme::lfo, analyzer);
     synths.addTab ("AI CHAT", Theme::gate, aiPage);
@@ -103,7 +105,7 @@ void InstrumentEditor::resized()
     info.setBounds (area.removeFromBottom (22));
     area.removeFromBottom (6);
 
-    synths.setBounds (area.removeFromTop (522));
+    synths.setBounds (area.removeFromTop (534));
     area.removeFromTop (6);
     tools.setBounds (area);
 }

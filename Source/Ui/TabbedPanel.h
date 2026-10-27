@@ -67,8 +67,8 @@ private:
 class TabbedPanel : public juce::Component, private juce::Timer
 {
 public:
-    static constexpr int headerHeight = 30;
-    static constexpr int extrasRowHeight = 30; // rad 2: sidans kontroller (väljare, på/av, preset) i remsa-stil
+    static constexpr int headerHeight = 36;
+    static constexpr int extrasRowHeight = 36; // rad 2: sidans kontroller (väljare, på/av, preset) i remsa-stil
 
     // `rememberedTab` pekar på var den valda fliken sparas (t.ex. i processorn), så att
     // samma flik visas när fönstret öppnas igen.
@@ -109,6 +109,7 @@ public:
         auto& tab = tabs[(size_t) tabIndex];
         tab.power = std::make_unique<PowerButton> (tab.accent);
         tab.power->setTooltip (tooltip);
+        tab.button->getProperties().set ("powerWidth", powerSpace); // LookAndFeel centrerar texten utanför ikonen
         addAndMakeVisible (*tab.power);
         tab.powerAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (apvts, parameterID, *tab.power);
         auto* button = tab.button.get();
@@ -265,11 +266,11 @@ public:
             tab.button->setBounds (header.removeFromLeft (width));
             if (tab.power != nullptr)
             {
-                tab.power->setBounds (tab.button->getBounds().removeFromRight (22).reduced (3));
+                tab.power->setBounds (tab.button->getBounds().removeFromRight (powerSpace).reduced (4, 6));
                 tab.power->toFront (false);
             }
-            header.removeFromLeft (6);
-            usedWidth += width + 6;
+            header.removeFromLeft (tabGap);
+            usedWidth += width + tabGap;
         }
         const auto restArea = juce::Rectangle<int> (pillsLeft + usedWidth + 4, strip.getY(), std::max (0, header.getRight() + 4 - (pillsLeft + usedWidth + 4)), strip.getHeight());
         labelArea = subTabs ? restArea.withTrimmedRight (8) : juce::Rectangle<int>();
@@ -290,6 +291,8 @@ public:
 
 private:
     static constexpr int previewWidth = 30;
+    static constexpr int powerSpace = 30; // plats för på/av-ikonen längst till höger på en flik
+    static constexpr int tabGap = 8;
 
     void updatePreviewButton()
     {
@@ -332,7 +335,7 @@ private:
         glyphs.addLineOfText (font, tab.button->getButtonText().toUpperCase(), 0.0f, 0.0f);
         const auto text = (int) std::ceil (glyphs.getBoundingBox (0, -1, true).getWidth());
         const auto led = subTabs ? 10 : 15;
-        return text + 2 * 14 + led + (tab.power != nullptr ? 22 : 0);
+        return text + 2 * 18 + led + (tab.power != nullptr ? powerSpace + 6 : 0); // ikon + marginal mot texten
     }
 
     std::vector<Tab> tabs;

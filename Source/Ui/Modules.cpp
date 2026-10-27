@@ -1989,12 +1989,17 @@ void SubScope::paint (juce::Graphics& g)
 void InstrumentHost::Header::resized()
 {
     auto area = getLocalBounds();
+    if (power != nullptr)
+    {
+        power->setBounds (area.removeFromLeft (28));
+        area.removeFromLeft (16);
+    }
     selector.setBounds (area.removeFromLeft (150));
+    area.removeFromLeft (8);
+    addButton.setBounds (area.removeFromLeft (28));
     area.removeFromLeft (4);
-    addButton.setBounds (area.removeFromLeft (24));
-    area.removeFromLeft (2);
-    removeButton.setBounds (area.removeFromLeft (24));
-    area.removeFromLeft (10);
+    removeButton.setBounds (area.removeFromLeft (28));
+    area.removeFromLeft (18);
     if (extras != nullptr)
         extras->setBounds (area);
 }
@@ -2024,12 +2029,20 @@ InstrumentHost::InstrumentHost (PluginBase& p) : processor (p)
 void InstrumentHost::resetPanels()
 {
     header.extras = nullptr;
+    header.power = nullptr;
     for (size_t i = 0; i < extras.size(); ++i)
+    {
         if (extras[i] != nullptr)
         {
             header.removeChildComponent (extras[i]);
             extras[i] = nullptr;
         }
+        if (powers[i] != nullptr)
+        {
+            header.removeChildComponent (powers[i]);
+            powers[i] = nullptr;
+        }
+    }
     for (auto& module : modules)
         module.reset();
 }
@@ -2047,6 +2060,9 @@ InstrumentHost::~InstrumentHost()
     for (auto* e : extras)
         if (e != nullptr)
             header.removeChildComponent (e);
+    for (auto* p : powers)
+        if (p != nullptr)
+            header.removeChildComponent (p);
 }
 
 InstrumentModule& InstrumentHost::moduleFor (int layer)
@@ -2056,8 +2072,11 @@ InstrumentModule& InstrumentHost::moduleFor (int layer)
     {
         slot = std::make_unique<InstrumentModule> (processor, layer);
         addChildComponent (*slot);
-        extras[(size_t) layer] = slot->embedInTab();
+        extras[(size_t) layer] = slot->embedInTab (false); // på/av ligger längst till vänster i Header, inte i sidans kontroller
         header.addChildComponent (*extras[(size_t) layer]);
+        powers[(size_t) layer] = slot->getPower();
+        if (powers[(size_t) layer] != nullptr)
+            header.addChildComponent (*powers[(size_t) layer]);
         slot->setBounds (getLocalBounds());
     }
     return *slot;
@@ -2083,8 +2102,11 @@ void InstrumentHost::select (int layer)
             modules[(size_t) i]->setVisible (i == layer);
         if (extras[(size_t) i] != nullptr)
             extras[(size_t) i]->setVisible (i == layer);
+        if (powers[(size_t) i] != nullptr)
+            powers[(size_t) i]->setVisible (i == layer);
     }
     header.extras = extras[(size_t) layer];
+    header.power = powers[(size_t) layer];
     header.resized();
     lastNamesVersion = -1;
     refresh();

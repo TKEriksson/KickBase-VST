@@ -322,7 +322,7 @@ private:
 class InstrumentHost : public juce::Component, private juce::Timer
 {
 public:
-    static constexpr int headerWidth = 650;
+    static constexpr int headerWidth = 716;
 
     explicit InstrumentHost (PluginBase& processor);
     ~InstrumentHost() override;
@@ -340,6 +340,7 @@ private:
         void resized() override;
         juce::TextButton selector, addButton { "+" }, removeButton { "-" };
         juce::Component* extras = nullptr;
+        juce::Component* power = nullptr; // instrumentets på/av, längst till vänster i rad 2
     };
 
     void timerCallback() override;
@@ -354,6 +355,7 @@ private:
     Header header;
     std::array<std::unique_ptr<InstrumentModule>, ParamID::numInstrumentLayers> modules;
     std::array<juce::Component*, ParamID::numInstrumentLayers> extras {};
+    std::array<juce::Component*, ParamID::numInstrumentLayers> powers {};
     int current = 0, lastCount = -1, lastNamesVersion = -1, lastStructureVersion = 0;
     bool confirmOpen = false;
     juce::Component::SafePointer<juce::AlertWindow> renameDialog;
