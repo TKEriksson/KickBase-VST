@@ -115,6 +115,7 @@ Kvar, i grov ordning (projektledaren bedömer före varje fas; Opus bara efter h
 - AI-leverantörer: Anthropic, OpenAI, Ollama. C: multisampling. BZ: Bézier-kick. E0/E: presetgranskning.
 - IO: import/export, projekt, autosave.
 - LC-rester: `.LFO()`/`.ENV()`, MCP `live_code_run`/`stop`, AGPL-banner och `THIRD-PARTY.md`, helpcheck.
+- RING (Tobias 27 okt): ny WARP-läge "RING (B)" där OSC 2 multipliceras med OSC 1, på samma sätt som FM (B). Läggs sist i enum/val (ID:n byts inte). AM mot en egen sinus finns redan som WARP-läge och ringmodulator finns som FX. Granular och additiv tas inte med nu (additiv täcks delvis av harmonieditorn), och 3x FM är struket.
 - Separata VST:er (VS) är struket. Tobias lägger in det själv när allt är klart.
 
 Rapportering (Tobias 27 okt): arbetarna jobbar i långa pass och rapporterar inte förrän de är klara med sin lista, eller när det är helt nödvändigt (blockerare, beslut), eller när Tobias frågar. Specialisten är stängd tills en granskning behövs (fas C: `undo-spec.md`). Frågor till Tobias ställs alltid via projektledaren, aldrig direkt (Tobias sköter all kommunikation via projektledaren). Väntar en fråga eller blockerare på svar går arbetaren vidare med nästa punkt i listan och återkommer till den när svaret kommer. Detta sparar tokens.
