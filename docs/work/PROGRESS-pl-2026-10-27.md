@@ -19,3 +19,4 @@
 - Arbetare 1 rapporterar: A1 och A2 fixade i worktree, testsvit grön (Debug), ej provat i FL. Fortsätter med T13 (total != rows), sedan A3-diff till specialisten.
 - Tobias: releaser bara när stora sektioner klara; första = hela testlistan T1-T15 (fas A-E, H). Fas G uppdaterad.
 - Tobias: PL får merga till main efter byggd release + hans test + rättelser; PL påminner och frågar först.
+- Lade in avsnittet Arbetssätt i masterplanen.

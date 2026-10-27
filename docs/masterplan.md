@@ -5,6 +5,15 @@ STATUS: GODKÄND av specialisten (kickbase-vst-b5) med ändringarna nedan inarbe
 Bygger på: plan-v2.md (faser), HANDOFF-release.md, PROGRESS-copilot-2026-10-22.md, slicer-ui-spec.md, LESSONS.md, ENGINEERING.md och Tobias testlista `research/TEST2026-10-23/Testar appen 2027-10-23.txt` (T1-T15 nedan).
 Regler (oförändrade): Claude skriver all C++; varje agent egen worktree + egen `PROGRESS-*.md`; ingen push utan Tobias; bara projektledaren mergar till main, när allt är testat; Opus (specialisten) bara när Sonnet inte räcker; nya parametrar och modulationskällor sist; testregler enligt LESSONS.md (rätt delmängd, ingen onödig svit); slarvfel loggas i LESSONS.md.
 
+## Arbetssätt (Tobias 27 okt, gäller tills han ändrar det)
+- Projektledaren delar ut arbete, arbetarna jobbar i egen worktree och för egen `PROGRESS-*.md` löpande. Specialisten (Opus) används sparsamt, bara efter projektledarens bedömning.
+- Arbetarna bygger Debug och kör minimala, relevanta tester. Inga onödiga tester eller skärmbilder.
+- Releaser görs bara när en stor sektion är klar. Första: hela testlistan T1-T15 (fas A-E, H).
+- Release: Release-bygge, Tobias testar i FL (kör `installRel.bat`), fel rättas, sedan påminner projektledaren Tobias om att merga till main som release och frågar innan. Först efter hans ja mergar projektledaren. Aldrig push utan Tobias.
+- Projektledaren committar docs och masterplan när något ändrats. Copilot pushar/mergar bara om Tobias uttryckligen säger det.
+- Slarvfel loggas i `docs/work/LESSONS.md`. Uppdatera progressfilen före sessionens slut.
+- Svenska, korta svar, rollnamn (Arbetare 1/2, specialisten, projektledaren).
+
 ## Tobias testlista (T-nummer)
 | T | Ämne | Typ |
 |---|------|-----|
