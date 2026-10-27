@@ -150,10 +150,6 @@ private:
     std::array<float, numLayers> fdDepth = filledArray<float, numLayers> (0.0f), fdWindow = filledArray<float, numLayers> (200.0f), fdHz = filledArray<float, numLayers> (0.0f);
     std::array<int, numLayers> fdSource = filledArray<int, numLayers> (0); // 0 kick, 1..numLayers instrument, numLayers + 1 Any
     float kickTailHz = 55.0f;
-public:
-    // För gränssnittet (lampa, mätare): dämpningen i dB som är i bruk just nu per motor (0 = av).
-    std::array<std::atomic<float>, numLayers> fundamentalDuckDb {};
-private:
     float fundamentalDuckWeight (int layer, int i, const float* kickEnvelope) const;
     Sidechain::Mode sidechainMode = Sidechain::Mode::kickEnvelope;
     double duckLengthSamples = 1.0;

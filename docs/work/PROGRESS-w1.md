@@ -328,3 +328,9 @@ Namn i UI: FUNDAMENTAL DUCK (kort FUND DUCK). Kod: `fundamentalDuck*`.
 4. OscPanel: vågform/spektrum före/efter notchen. ANALYZER (CollisionsView notch-Hz-markör, SpectrumView andra kurva) som tillägg efteråt.
 
 **Testrad DAW (Lemon):** slå på FUNDAMENTAL DUCK på instrumentet (DEPTH 12 dB, källa Kick), spela ett mönster med bas på kickens ton: basens grundton ska sjunka vid varje kick och komma tillbaka; sätt en motor på AV: den motorn är oförändrad; sätt EGEN med DEPTH 0: ingen dämpning. (UI-delen testas efter att den byggts.)
+
+## FUNDAMENTAL DUCK – UI byggt (Arbetare 1, 27 okt)
+SIDECHAIN-fliken (bara instrumentet): ruta längst ned, `Source/Ui/SidechainPage.cpp` (FundamentalDuckPanel) + `.h:70`. Överst ON/DEPTH/WINDOW/SOURCE för instrumentet; en rad per aktiv motor med ÄRV/AV/EGEN, lampa + dB-siffra (`fundamentalDuckDb` i PluginBase.h), ärvda värden i grått ("from instrument"), egna reglage i EGEN. Tooltip innehåller "dämpar grundtonen i varje motor medan kicken klingar". UI-texter är engelska (som övriga fliken).
+Inte gjort: förhandsvisning i OscPanel och ANALYZER-markör (kräver ljudtråd→UI-väg), tas senare vid behov.
+Bygge Debug all: grönt, "Alla tester gick igenom" (rendersig oförändrad).
+**Testrad DAW (Lemon):** öppna SIDECHAIN, slå på FUNDAMENTAL DUCK (DEPTH 12 dB, källa Kick), spela bas på kickens ton: lampan på motorraden tänds vid varje kick och dB-siffran rör sig; ÄRV visar grå värden; AV släcker lampan; EGEN med DEPTH 0 ger ingen dämpning.

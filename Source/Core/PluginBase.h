@@ -293,6 +293,9 @@ public:
     std::array<SignalTap, ParamID::numInstrumentLayers> duckGainTaps;
     std::array<std::atomic<float>, ParamID::numInstrumentLayers> duckReduction {};
 
+    // FUNDAMENTAL DUCK: dämpningen i dB som är i bruk just nu per motor (0 = av), för lampan på SIDECHAIN-fliken.
+    std::array<std::atomic<float>, ParamID::numInstrumentLayers> fundamentalDuckDb {};
+
     // Kickens pitch-envelope (halvtoner över svansen, upp till 0,5 s) och volym-envelope
     // (upp till 2 s), redigeras i KICK-fliken.
     NodeEnvelope kickPitchEnv { 0.5f, 72.0f, { { 0.0f, 42.0f, -0.6f }, { 0.045f, 0.0f, 0.0f } } };
