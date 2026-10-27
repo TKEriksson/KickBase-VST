@@ -22,6 +22,8 @@ public:
             b.setButtonText (names[i]);
             b.setTooltip (tips[i]);
             b.setClickingTogglesState (false);
+            b.getProperties().set ("subtab", true); // remsa-stil som instrumentets flikrad, texten krymper aldrig
+            b.getProperties().set ("noshrink", true);
             b.setColour (juce::TextButton::buttonOnColourId, Theme::lfo.withAlpha (0.55f));
             b.onClick = [this, i] { setCurrentView (i); };
             addAndMakeVisible (b);
@@ -44,24 +46,43 @@ public:
         if (view >= 2)
             spectrum.setView (view == 3);
         resized();
+        if (auto* parent = getParentComponent())
+            parent->repaint(); // brödsmulan i rad 1 ritas av flikpanelen
     }
 
     void resized() override
     {
         auto area = getLocalBounds();
-        auto strip = area.removeFromTop (26);
+        stripArea = area.removeFromTop (30);
+        auto strip = stripArea.reduced (6, 3);
         for (auto& b : buttons)
         {
-            b.setBounds (strip.removeFromLeft (110));
-            strip.removeFromLeft (4);
+            auto font = getLookAndFeel().getTextButtonFont (b, 30).boldened().withHeight (11.0f);
+            font.setExtraKerningFactor (0.04f);
+            juce::GlyphArrangement glyphs;
+            glyphs.addLineOfText (font, b.getButtonText().toUpperCase(), 0.0f, 0.0f);
+            b.setBounds (strip.removeFromLeft ((int) std::ceil (glyphs.getBoundingBox (0, -1, true).getWidth()) + 2 * 14 + 10));
+            strip.removeFromLeft (6);
         }
-        area.removeFromTop (2);
+        area.removeFromTop (4);
         kickBass.setBounds (area);
         collisions.setBounds (area);
         spectrum.setBounds (area);
     }
 
+    void paint (juce::Graphics& g) override
+    {
+        const auto strip = stripArea.toFloat();
+        g.setColour (Theme::insetStrip);
+        g.fillRoundedRectangle (strip, 12.0f);
+        g.setColour (Theme::panelBorderDim);
+        g.drawRoundedRectangle (strip.reduced (0.5f), 12.0f, 1.0f);
+    }
+
+    juce::String currentViewName() const { return buttons[(size_t) view].getButtonText(); } // för brödsmulan i rad 1
+
 private:
+    juce::Rectangle<int> stripArea;
     static constexpr int numViews = 4;
     std::array<juce::TextButton, numViews> buttons;
     KickBassView kickBass;

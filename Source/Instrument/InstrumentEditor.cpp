@@ -41,6 +41,8 @@ InstrumentEditor::InstrumentEditor (InstrumentProcessor& p)
     synths.addPower (1, processor.apvts, ParamID::kickOn);
 
     tools.setSubTabs();
+    tools.setStripLabel ("TOOLS");
+    synths.crumbSuffix = [this] { return synths.getCurrentTab() == 3 ? analyzer.currentViewName() : juce::String(); };
     // B1: förhandsknapp per flik. Hela mönstret (PATTERN, ANALYZER, AI CHAT, LIVE CODE), bara kickraden (KICK), instrumentet utan mönster (INSTRUMENT).
     const auto wholePattern = [this] { processor.requestAudition (PluginBase::previewRequest (PluginBase::previewAllRows)); };
     const auto stopPattern = [this] { processor.requestAudition (PluginBase::previewStop); };
@@ -101,7 +103,7 @@ void InstrumentEditor::resized()
     info.setBounds (area.removeFromBottom (22));
     area.removeFromBottom (6);
 
-    synths.setBounds (area.removeFromTop (540));
+    synths.setBounds (area.removeFromTop (522));
     area.removeFromTop (6);
     tools.setBounds (area);
 }
