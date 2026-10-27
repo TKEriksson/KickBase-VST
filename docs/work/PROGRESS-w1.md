@@ -59,7 +59,12 @@ flikraden (30 px reserverad i `resized`), synlig bara för flikar som har anrop.
 - Lagrets källflikar (`Modules.cpp`, efter MIX): OSC 1-3 och SAMPLE = `heldSoloAudition(layer, källa)`, FILTER/FM/MIX = `heldLayerAudition(layer)`.
   INSTR har redan egen knapp i sidan.
 - `InstrumentHost::getCurrent()` (`Modules.h`) nytt.
-Öppen fråga: "MIDI-tangentbordet triggar detta" i masterplanen är oklart (vilken tangent/ton?). Ej gjort; väntar på svar från projektledaren.
+"MIDI-tangentbordet triggar detta": besvarat av Tobias – det är vilken ton man än spelar; inget extra att bygga.
+
+## B3 (spelande toner lyser, tonnamn vid pitch-noder) – Debug grönt, ej provad i FL
+- Pianorullen (`PianoRoll.cpp`, paint): tonen lyser upp när uppspelningsmarkören (`playTickNow()`) ligger inom den; repaint var 6:e tick (`timerCallback`).
+- Tonnamn vid pitch-env-noderna fanns redan i UI:t (`KickDisplay.cpp:541-548`, `describe`). Nytt: `get_state` och kick-envelope-svaret ger
+  `kick_pitch_nodes` = [{ ms, semitones_above_tail, hz, note }] (`ToolLayer.cpp`, `pitchNodeNotes`), samma uträkning som grafen (C4 = 60).
 
 ## FL-testlista (samlas av projektledaren)
 - A1: C5 från FL startar mönstret med pianorullen öppen; MIDI IN gäller bara när värden står still.

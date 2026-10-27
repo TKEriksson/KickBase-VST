@@ -922,7 +922,7 @@ void PianoRoll::timerCallback()
         changed = true;
     }
     const auto playTick = playTickNow();
-    update (lastPlayTick, playTick / 6); // var 6:e tick räcker
+    update (lastPlayTick, playTick < 0 ? -1 : playTick / 6); // var 6:e tick räcker (tonernas lysning följer med)
 
     // FOLLOW: när uppspelningen lämnar bilden bläddrar vyn till de takter som spelar.
     followButton.setToggleState (processor.followPlayhead.load(), juce::dontSendNotification);
@@ -1458,6 +1458,7 @@ void PianoRoll::paint (juce::Graphics& g)
 
         // Tonerna.
         const auto chordAlpha = voices() >= 2 ? 1.0f : 0.35f;
+        const auto playHead = playTickNow();
         const auto first = std::max (0, (int) xToTicks (gridArea.getX()) - Pattern::ticksPerBar * 2);
         const auto last = std::min (editTicks() - 1, (int) xToTicks (gridArea.getRight()) + 1);
         NoteData note;
@@ -1481,6 +1482,10 @@ void PianoRoll::paint (juce::Graphics& g)
                 g.setColour (Theme::pattern.withAlpha (0.9f));
                 g.drawLine (b.getX(), fromY, b.getRight(), b.getCentreY(), 2.0f);
             }
+            // B3: tonen som klingar just nu (uppspelningsmarkören ligger inom den) lyser upp.
+            const auto playing = playHead >= 0 && playHead >= key.tick && playHead < key.tick + note.length;
+            if (playing)
+                c = c.brighter (0.6f).interpolatedWith (juce::Colours::white, 0.35f);
             if (selected)
                 c = c.brighter (0.45f).interpolatedWith (juce::Colours::white, 0.25f);
             if (key.index == 0)

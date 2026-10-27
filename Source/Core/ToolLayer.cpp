@@ -181,6 +181,26 @@ namespace
         return list;
     }
 
+    // B3: pitch-envelopens noder som toner, samma uträkning som kickens PITCH-graf: [{ ms, semitones_above_tail, hz, note }].
+    var pitchNodeNotes (PluginBase& processor)
+    {
+        static const char* names[] { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
+        const auto params = processor.kickForDisplay (0);
+        juce::Array<var> list;
+        for (const auto& point : processor.kickPitchEnv.getPoints())
+        {
+            const auto hz = (double) params.tailHz * std::exp2 ((double) point.y * params.pitchAmount / 12.0);
+            const auto midi = (int) std::round (69.0 + 12.0 * std::log2 (hz / 440.0));
+            auto* node = new juce::DynamicObject();
+            node->setProperty ("ms", round4 (point.x * params.lengthScale * 1000.0f));
+            node->setProperty ("semitones_above_tail", round4 (point.y * params.pitchAmount));
+            node->setProperty ("hz", round4 (hz));
+            node->setProperty ("note", juce::String (names[((midi % 12) + 12) % 12]) + juce::String (midi / 12 - 1)); // C4 = 60
+            list.add (var (node));
+        }
+        return list;
+    }
+
     std::vector<NodeEnvelope::Point> pointsFromVar (const var& value, bool* hasHandles = nullptr)
     {
         std::vector<NodeEnvelope::Point> points;
@@ -888,6 +908,7 @@ var ToolLayer::getState (const var& args) const
     }
 
     put (data, "kick_pitch_envelope", pointsToVar (processor.kickPitchEnv));
+    put (data, "kick_pitch_nodes", pitchNodeNotes (processor));
     put (data, "kick_amp_envelope", pointsToVar (processor.kickAmpEnv));
     put (data, "kick_pitch_mode", processor.kickPitchEnv.getMode() == NodeEnvelope::Mode::bezier ? "bezier" : "tension");
     put (data, "kick_amp_mode", processor.kickAmpEnv.getMode() == NodeEnvelope::Mode::bezier ? "bezier" : "tension");
@@ -1022,6 +1043,7 @@ var ToolLayer::setKickEnvelopes (const var& args)
 
     auto data = object();
     put (data, "kick_pitch_envelope", pointsToVar (processor.kickPitchEnv));
+    put (data, "kick_pitch_nodes", pitchNodeNotes (processor));
     put (data, "kick_amp_envelope", pointsToVar (processor.kickAmpEnv));
     put (data, "kick_pitch_mode", processor.kickPitchEnv.getMode() == NodeEnvelope::Mode::bezier ? "bezier" : "tension");
     put (data, "kick_amp_mode", processor.kickAmpEnv.getMode() == NodeEnvelope::Mode::bezier ? "bezier" : "tension");
