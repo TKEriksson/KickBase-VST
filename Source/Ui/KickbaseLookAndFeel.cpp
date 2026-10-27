@@ -293,6 +293,12 @@ void KickbaseLookAndFeel::drawComboBox (juce::Graphics& g, int width, int height
     g.setColour (juce::Colour (0xff292e44));
     g.drawRoundedRectangle (bounds, 5.0f, 1.0f);
 
+    if (box.hasKeyboardFocus (true))
+    {
+        g.setColour (Theme::pattern.withAlpha (0.85f));
+        g.drawRoundedRectangle (bounds, 5.0f, 1.5f);
+    }
+
     g.setColour (juce::Colours::white.withAlpha (box.hasKeyboardFocus (true) ? 0.30f : 0.08f));
     g.drawLine (bounds.getX() + 4.0f, bounds.getY() + 0.5f, bounds.getRight() - 4.0f, bounds.getY() + 0.5f, 1.0f);
 

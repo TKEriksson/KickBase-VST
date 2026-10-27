@@ -273,20 +273,20 @@ void FilterPage::updateSourcesText()
 }
 
 // Flerval: menyn öppnas igen efter varje klick så att flera källor kan växlas i rad; Esc eller klick utanför stänger den.
-void FilterPage::showSourcesMenu()
+void FilterPage::showSourcesMenu (int initiallySelected)
 {
     juce::PopupMenu menu;
     menu.addSectionHeader ("Through the filter (click to toggle)");
     for (int i = 0; i < numSources; ++i)
         menu.addItem (i + 1, sourceNames[i], true, sourceOn[(size_t) i]);
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (sourcesButton),
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (sourcesButton).withInitiallySelectedItem (initiallySelected),
                         [safe = juce::Component::SafePointer<FilterPage> (this)] (int result)
                         {
                             if (safe == nullptr || result <= 0)
                                 return;
                             const auto index = (size_t) (result - 1);
                             safe->sourceAttachments[index]->setValueAsCompleteGesture (safe->sourceOn[index] ? 0.0f : 1.0f);
-                            juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->showSourcesMenu(); });
+                            juce::MessageManager::callAsync ([safe, result] { if (safe != nullptr) safe->showSourcesMenu (result); }); // markerad post kvar: piltangenter + Enter fortsätter där man var
                         });
 }
 

@@ -1,5 +1,6 @@
 // Tester för sidechain-kurvan och mastersektionens limiter.
 
+#include "../Source/Core/Effects.h"
 #include "../Source/Core/Master.h"
 #include "../Source/Core/Sidechain.h"
 #include "TestUtils.h"
@@ -127,6 +128,26 @@ namespace
         check (peak > ceiling * 0.9f, "men inte onödigt mycket lägre", peak);
         check (master.gainReductionDb.load() < -4.0f, "mätaren visar förstärkningsminskning", master.gainReductionDb.load());
     }
+
+    // H1: ett gammalt projekt (före Maximizerns MODE) har ett oanvänt sparat värde på ratt 6; det ska bli Classic, inte Smooth.
+    void testMaximizerModeMigration()
+    {
+        std::puts ("H1: gammalt Maximizer-projekt får MODE = Classic");
+        juce::ValueTree state ("Parameters");
+        auto add = [&] (const juce::String& id, float v)
+        {
+            juce::ValueTree p ("PARAM");
+            p.setProperty ("id", id, nullptr);
+            p.setProperty ("value", v, nullptr);
+            state.appendChild (p, nullptr);
+        };
+        add (Effects::slotParamID (0, 0, "Type"), (float) (int) EffectType::maximizer);
+        add (Effects::knobParamID (0, 0, 5), 1.0f);
+        state.setProperty ("fxKnobsV", 2, nullptr);
+        Effects::migrateLegacyKnobs (state);
+        const auto knob = state.getChildWithProperty ("id", Effects::knobParamID (0, 0, 5));
+        check (knob.isValid() && (float) (double) knob.getProperty ("value") == 0.0f, "ratt 6 nollad till Classic", knob.isValid() ? (double) knob.getProperty ("value") : -1.0);
+    }
 }
 
 void runMasterTests()
@@ -134,4 +155,5 @@ void runMasterTests()
     testCurveShapeAndTable();
     testCurvePlayer();
     testLimiter();
+    testMaximizerModeMigration();
 }

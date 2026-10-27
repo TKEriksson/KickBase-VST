@@ -24,13 +24,16 @@
 
 // Rubrikraden: logotyp, presetmeny och uppspelningsstatus (DAW eller egen klocka, tempo,
 // takt, tonart).
-class HeaderBar : public juce::Component, private VisualTimer
+class HeaderBar : public juce::Component, public juce::KeyListener, private VisualTimer
 {
 public:
     HeaderBar (PluginBase& processor, const juce::String& subtitle);
+    ~HeaderBar() override;
     void paint (juce::Graphics&) override;
     void paintOverChildren (juce::Graphics&) override;
     void resized() override;
+    void parentHierarchyChanged() override;
+    bool keyPressed (const juce::KeyPress&, juce::Component*) override; // Ctrl+S sparar projektet
 
 private:
     void timerCallback() override;
@@ -38,13 +41,23 @@ private:
     static constexpr int meterWidth = 72;
     int toolsEnd() const // (i Kickbase FX finns ingen EXPORT: då hamnade mätaren över tempot)
     {
-        return ! previewGroup.isEmpty() ? previewGroup.getRight() : exportButton.isVisible() ? exportButton.getRight() : presets.getRight();
+        return ! previewGroup.isEmpty() ? previewGroup.getRight() : presets.getRight();
     }
     juce::Rectangle<int> meterBounds() const { return { toolsEnd() + 16, (getHeight() - 28) / 2, meterWidth, 28 }; }
     void updateAiTooltip();
     void showProjectMenu();
-    void saveProject();
+    void saveProject (bool askForFile); // askForFile eller ingen projektfil än: filväljaren; annars sparas det direkt till projektfilen
+    void saveProjectTo (const juce::File& file);
     void openProject();
+    void openProjectFile (const juce::File& file);
+    void newProject();
+    void showNotice (const juce::String& text); // kort bekräftelse i rubriken ("Saved X")
+    void rememberRecent (const juce::File& file);
+    juce::StringArray recentProjects() const;
+    juce::String notice;
+    double noticeUntil = 0.0;
+    juce::Component* keyTarget = nullptr; // komponenten Ctrl+S lyssnas på
+    juce::Rectangle<int> nameBounds;      // projektnamnet under MENU-knappen
     void chooseExportTarget (int part, int bars); // part: 0-2 = full, kick, alla instrument; 3 = tre filer; 4 + n = instrument n
     bool exportWithoutEffects = false;            // rutan "Without effects" i EXPORT-menyn (gränssnittets val, sparas inte)
 
@@ -61,7 +74,6 @@ private:
     PluginBase& processor;
     juce::String subtitle;
     PresetButton presets;
-    juce::TextButton exportButton { "EXPORT" }; // bara i instrumentet
     // PREVIEWS (bara i instrumentet): högtalaren spelar hela synthen på den valda tonen (standard C5) så länge man håller ner den,
     // och tonen gäller alla provlyssningar.
     ListenButton listenAll, listenRoll; // listenRoll syns bara medan en pianorulle är öppen
@@ -70,7 +82,7 @@ private:
     juce::TextButton restartButton { "" };       // börjar om räknaren och mönstret vid 1.1 (egen klocka)
     juce::Rectangle<int> previewGroup, bpmPill, keyBlock;
     bool bridgeShown = false;
-    juce::TextButton projectButton { "PROJECT" }; // meny: spara/öppna projekt, exportera, AI-server av/på (statuspunkten visar AI-länken)
+    juce::TextButton projectButton { "MENU" }; // meny: nytt/spara/öppna projekt, senaste, exportera, AI-server av/på (statuspunkten visar AI-länken)
     float peakL = 0.0f, peakR = 0.0f, holdL = 0.0f, holdR = 0.0f; // utgångsmätaren
     std::vector<float> meterLeft, meterRight;
     std::unique_ptr<juce::FileChooser> chooser;

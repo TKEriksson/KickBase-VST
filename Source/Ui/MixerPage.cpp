@@ -358,7 +358,7 @@ void SourceToggles::updateTexts()
     fxButton.setButtonText ("FX CHANNELS  " + juce::String (lastFxOn) + "/" + juce::String (Mixer::numSources - Mixer::firstFxSource) + "  " + arrow);
 }
 
-void SourceToggles::showMenu (bool instruments)
+void SourceToggles::showMenu (bool instruments, int initiallySelected)
 {
     const auto mask = processor.fxChannelUsageMask();
     const auto first = instruments ? Mixer::firstBassSource : Mixer::firstFxSource;
@@ -375,7 +375,7 @@ void SourceToggles::showMenu (bool instruments)
     menu.addItem (1001, "All off");
 
     juce::Component::SafePointer<SourceToggles> safeThis (this);
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (instruments ? &instrumentsButton : &fxButton), [safeThis, instruments, first, end] (int result)
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (instruments ? &instrumentsButton : &fxButton).withInitiallySelectedItem (initiallySelected), [safeThis, instruments, first, end] (int result)
     {
         if (safeThis == nullptr || result == 0)
             return;
@@ -399,7 +399,7 @@ void SourceToggles::showMenu (bool instruments)
             set (source, safeThis->processor.apvts.getRawParameterValue (Mixer::paramID (source, safeThis->field))->load() < 0.5f);
         }
         safeThis->timerCallback();
-        juce::MessageManager::callAsync ([safeThis, instruments] { if (safeThis != nullptr) safeThis->showMenu (instruments); }); // öppnas igen: flera kan kryssas i
+        juce::MessageManager::callAsync ([safeThis, instruments, result] { if (safeThis != nullptr) safeThis->showMenu (instruments, result); }); // öppnas igen: flera kan kryssas i
     });
 }
 

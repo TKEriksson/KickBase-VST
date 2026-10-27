@@ -142,7 +142,8 @@ void InstrumentProcessor::processChunk (juce::AudioBuffer<float>& buffer, juce::
         bool auditionOn = false;
         while (popNoteAudition (auditionRow, auditionNote, auditionVelocity, auditionOn)) // enskilda toner från pianorullen
             handleLiveMidi (auditionOn ? juce::MidiMessage::noteOn (1, auditionNote, (juce::uint8) auditionVelocity) : juce::MidiMessage::noteOff (1, auditionNote), auditionRow);
-    }    clock.beginBlock (getHostPosition(), numSamples);
+    }
+    clock.beginBlock (getHostPosition(), numSamples);
     for (int layer = 0; layer < numLayers; ++layer)
         basses[(size_t) layer].setTempo (clock.getBpm()); // ENV 2 och ENV 3 i läget Sync
     // Moduleringen uppdateras bara på 32-rutnätet. En bit som börjar mitt i ett fönster (när DAW-blocket slutade där) behåller

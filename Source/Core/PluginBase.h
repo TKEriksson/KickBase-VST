@@ -435,7 +435,8 @@ public:
     int selectedSynthTab = 0;              // finns kvar när fönstret öppnas igen
     int selectedPatternMode = 0;           // PATTERN-flikens läge: 0 PATTERN (toner), 1 GATE
     std::array<int, ParamID::numInstrumentLayers> selectedInstrumentSource {}; // instrumentets valda flik: INSTR, OSC 1-3, SAMPLE eller FILTER
-    std::atomic<int> kickTab { 0 };                // kickens vyflik: 0 SYNTH, 1 SAMPLE (bara gränssnittet, sparas inte och ändrar inget ljud)
+    juce::File currentProjectFile;                 // projektfilen som senast sparats/öppnats (bara gränssnittet, sparas inte): Ctrl+S sparar hit, namnet visas i rubriken
+    std::atomic<int> kickTab { 0 };              // kickens vyflik: 0 SYNTH, 1 SAMPLE (bara gränssnittet, sparas inte och ändrar inget ljud)
     int selectedPatternLayer = 0;          // PATTERN-flikens valda lager: 0-9 instrument, 10 kick
     int selectedInstrument = 0;            // INSTRUMENT-flikens valda instrument (0-9)
     int lfoFolded = -1;                    // LFO-flikens fällda kort (en bit per LFO); -1 = inte bestämt ännu (se LfoPage)

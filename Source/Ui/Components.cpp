@@ -427,7 +427,10 @@ void ChoiceComponent::Box::mouseDown (const juce::MouseEvent& e)
     if (e.mods.isPopupMenu() && parameter != nullptr)
         showParameterMenu (*this, *parameter, {});
     else
+    {
+        grabKeyboardFocus(); // fokus kvar på rutan efter valet, så piltangenter byter värde och Enter öppnar listan
         juce::ComboBox::mouseDown (e);
+    }
 }
 
 //==============================================================================

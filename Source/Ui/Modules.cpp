@@ -46,13 +46,6 @@ HeaderBar::HeaderBar (PluginBase& p, const juce::String& subtitleIn)
     : processor (p), subtitle (subtitleIn), logo (subtitleIn), presets (p, Presets::Section::full, Theme::pattern)
 {
     addAndMakeVisible (presets);
-    if (! processor.isEffectVersion())
-    {
-        exportButton.setTooltip ("Export the kick, the instruments or the full mix as a looping WAV file, "
-                                 "at the current tempo and with the last played note.");
-        exportButton.onClick = [this] { showExportMenu(); };
-        addAndMakeVisible (exportButton);
-    }
 
     if (processor.getKeyboardState() != nullptr) // instrumentet
     {
@@ -95,69 +88,222 @@ HeaderBar::HeaderBar (PluginBase& p, const juce::String& subtitleIn)
 void HeaderBar::updateAiTooltip()
 {
     projectButton.setTooltip (processor.isBridgeEnabled()
-        ? "PROJECT - Save or open a project file (.kbproj), export, and the AI server. The AI SERVER (MCP) is ON (instance " + processor.getBridgeId() + "): an AI assistant using the Kickbase MCP bridge can read and change this plugin and hear/measure it offline."
-        : "PROJECT - Save or open a project file (.kbproj), export, and the AI server. The AI SERVER (MCP) is off. Switch it on to let an AI assistant (through the Kickbase MCP bridge, for example in Claude Desktop) read and change this plugin. Local only; nothing is sent over the internet by Kickbase.");
+        ? "MENU - New, open (and the 3 most recent), save (Ctrl+S) a project file (.kbproj), export, and the AI server. The AI SERVER (MCP) is ON (instance " + processor.getBridgeId() + "): an AI assistant using the Kickbase MCP bridge can read and change this plugin and hear/measure it offline."
+        : "MENU - New, open (and the 3 most recent), save (Ctrl+S) a project file (.kbproj), export, and the AI server. The AI SERVER (MCP) is off. Switch it on to let an AI assistant (through the Kickbase MCP bridge, for example in Claude Desktop) read and change this plugin. Local only; nothing is sent over the internet by Kickbase.");
     repaint (projectButton.getBounds());
 }
 
 void HeaderBar::showProjectMenu()
 {
     juce::PopupMenu menu;
-    menu.addItem (1, "Save project...");
+    menu.addItem (1, "New project");
     menu.addItem (2, "Open project...");
-    if (! processor.isEffectVersion())
-        menu.addItem (3, "Export...");
-    menu.addSeparator();
-    menu.addItem (4, "AI server (MCP)", true, processor.isBridgeEnabled());
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&projectButton), [this, safe = juce::Component::SafePointer<HeaderBar> (this)] (int result)
+    const auto recent = recentProjects();
+    if (! recent.isEmpty())
     {
-        if (safe == nullptr)
+        juce::PopupMenu recents;
+        for (int i = 0; i < recent.size(); ++i)
+            recents.addItem (10 + i, juce::File (recent[i]).getFileNameWithoutExtension());
+        menu.addSubMenu ("Recent projects", recents);
+    }
+    menu.addSeparator();
+    menu.addItem (3, "Save project   Ctrl+S");
+    menu.addItem (4, "Save project as...");
+    if (! processor.isEffectVersion())
+    {
+        menu.addSeparator();
+        menu.addItem (5, "Export...");
+    }
+    menu.addSeparator();
+    menu.addItem (6, "AI server (MCP)", true, processor.isBridgeEnabled());
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&projectButton), [safe = juce::Component::SafePointer<HeaderBar> (this), recent] (int result)
+    {
+        if (safe == nullptr || result <= 0)
             return;
-        if (result == 1)      saveProject();
-        else if (result == 2) openProject();
-        else if (result == 3) showExportMenu();
-        else if (result == 4)
+        if (result == 1)      safe->newProject();
+        else if (result == 2) safe->openProject();
+        else if (result == 3) safe->saveProject (false);
+        else if (result == 4) safe->saveProject (true);
+        else if (result == 5) safe->showExportMenu();
+        else if (result == 6)
         {
-            processor.setBridgeEnabled (! processor.isBridgeEnabled());
-            updateAiTooltip();
+            safe->processor.setBridgeEnabled (! safe->processor.isBridgeEnabled());
+            safe->updateAiTooltip();
         }
+        else if (result >= 10 && result - 10 < recent.size())
+            safe->openProjectFile (juce::File (recent[result - 10]));
     });
 }
 
-void HeaderBar::saveProject()
+juce::StringArray HeaderBar::recentProjects() const
 {
-    chooser = std::make_unique<juce::FileChooser> ("Save project", Settings::exportsFolder().getChildFile ("Kickbase.kbproj"), "*.kbproj");
+    juce::StringArray list;
+    list.addLines (Settings::get ("recentProjects"));
+    list.removeEmptyStrings();
+    for (int i = list.size(); --i >= 0;)
+        if (! juce::File (list[i]).existsAsFile())
+            list.remove (i);
+    return list;
+}
+
+void HeaderBar::rememberRecent (const juce::File& file)
+{
+    juce::StringArray list;
+    list.add (file.getFullPathName());
+    for (const auto& path : recentProjects())
+        if (path != file.getFullPathName())
+            list.add (path);
+    while (list.size() > 3)
+        list.remove (list.size() - 1);
+    Settings::set ("recentProjects", list.joinIntoString ("\n"));
+}
+
+void HeaderBar::showNotice (const juce::String& text)
+{
+    notice = text;
+    noticeUntil = juce::Time::getMillisecondCounterHiRes() * 0.001 + 2.5;
+    repaint (nameBounds);
+}
+
+void HeaderBar::newProject()
+{
+    // Frågar om det nuvarande projektet ska sparas; Save sparar till projektfilen (eller frågar efter ett namn), sedan laddas Init-presetet.
+    juce::AlertWindow::showAsync (juce::MessageBoxOptions::makeOptionsYesNoCancel (juce::MessageBoxIconType::QuestionIcon, "New project",
+                                                                                   "Save the current project before starting a new one?", "Save", "Discard", "Cancel", this),
+                                  [safe = juce::Component::SafePointer<HeaderBar> (this)] (int choice) // 1 Save, 2 Discard, 0 Cancel
+    {
+        if (safe == nullptr || choice == 0)
+            return;
+        auto start = [safe]
+        {
+            if (safe == nullptr)
+                return;
+            safe->processor.loadFactoryPreset (Presets::Section::full, 0);
+            safe->processor.currentProjectFile = juce::File();
+            safe->repaint();
+        };
+        if (choice == 2)
+        {
+            start();
+            return;
+        }
+        if (safe->processor.currentProjectFile != juce::File())
+        {
+            safe->saveProjectTo (safe->processor.currentProjectFile);
+            start();
+            return;
+        }
+        // Inget namn än: välj fil först, starta nytt när det är sparat (avbrutet val stannar kvar i projektet).
+        safe->chooser = std::make_unique<juce::FileChooser> ("Save project", Settings::exportsFolder().getChildFile ("Kickbase.kbproj"), "*.kbproj");
+        safe->chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles | juce::FileBrowserComponent::warnAboutOverwriting,
+                                    [safe, start] (const juce::FileChooser& fc)
+        {
+            if (safe == nullptr || fc.getResult() == juce::File())
+                return;
+            safe->saveProjectTo (fc.getResult().withFileExtension ("kbproj"));
+            start();
+        });
+    });
+}
+
+void HeaderBar::saveProject (bool askForFile)
+{
+    if (! askForFile && processor.currentProjectFile != juce::File())
+    {
+        saveProjectTo (processor.currentProjectFile);
+        return;
+    }
+    const auto start = processor.currentProjectFile != juce::File() ? processor.currentProjectFile : Settings::exportsFolder().getChildFile ("Kickbase.kbproj");
+    chooser = std::make_unique<juce::FileChooser> ("Save project", start, "*.kbproj");
     chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles | juce::FileBrowserComponent::warnAboutOverwriting,
-                          [this, safe = juce::Component::SafePointer<HeaderBar> (this)] (const juce::FileChooser& fc)
+                          [safe = juce::Component::SafePointer<HeaderBar> (this)] (const juce::FileChooser& fc)
     {
         if (safe == nullptr || fc.getResult() == juce::File())
             return;
-        juce::String error;
-        if (! ProjectFile::save (processor, fc.getResult().withFileExtension ("kbproj"), KICKBASE_VERSION, error))
-            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Could not save the project", error);
+        safe->saveProjectTo (fc.getResult().withFileExtension ("kbproj"));
     });
+}
+
+void HeaderBar::saveProjectTo (const juce::File& file)
+{
+    juce::String error;
+    if (! ProjectFile::save (processor, file, KICKBASE_VERSION, error))
+    {
+        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Could not save the project", error);
+        return;
+    }
+    processor.currentProjectFile = file;
+    rememberRecent (file);
+    showNotice ("Saved " + file.getFileNameWithoutExtension());
 }
 
 void HeaderBar::openProject()
 {
     chooser = std::make_unique<juce::FileChooser> ("Open project", Settings::exportsFolder(), "*.kbproj");
     chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
-                          [this, safe = juce::Component::SafePointer<HeaderBar> (this)] (const juce::FileChooser& fc)
+                          [safe = juce::Component::SafePointer<HeaderBar> (this)] (const juce::FileChooser& fc)
     {
         if (safe == nullptr || fc.getResult() == juce::File())
             return;
-        juce::String error;
-        if (! ProjectFile::load (processor, processor.apvts.state.getType(), fc.getResult(), error))
-            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Could not open the project", error);
+        safe->openProjectFile (fc.getResult());
     });
+}
+
+void HeaderBar::openProjectFile (const juce::File& file)
+{
+    juce::String error;
+    if (! ProjectFile::load (processor, processor.apvts.state.getType(), file, error))
+    {
+        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Could not open the project", error);
+        return;
+    }
+    processor.currentProjectFile = file;
+    rememberRecent (file);
+    showNotice ("Opened " + file.getFileNameWithoutExtension());
+}
+
+HeaderBar::~HeaderBar()
+{
+    if (keyTarget != nullptr)
+        keyTarget->removeKeyListener (this);
+}
+
+void HeaderBar::parentHierarchyChanged()
+{
+    // Ctrl+S: lyssnar på hela editorn (fönstret högst upp), så att det räcker att fönstret har fokus.
+    auto* top = getTopLevelComponent();
+    if (top == keyTarget)
+        return;
+    if (keyTarget != nullptr)
+        keyTarget->removeKeyListener (this);
+    keyTarget = top;
+    if (keyTarget != nullptr)
+        keyTarget->addKeyListener (this);
+}
+
+bool HeaderBar::keyPressed (const juce::KeyPress& key, juce::Component*)
+{
+    if (key == juce::KeyPress ('s', juce::ModifierKeys::commandModifier, 0))
+    {
+        saveProject (false);
+        return true;
+    }
+    return false;
 }
 
 void HeaderBar::paintOverChildren (juce::Graphics& g)
 {
-    // Statuspunkten på PROJECT-knappen: grön när AI-länken är på, grå när den är av.
+    // Statuspunkten på MENU-knappen: grön när AI-länken är på, grå när den är av.
     const auto dot = juce::Rectangle<float> (7.0f, 7.0f).withCentre ({ (float) projectButton.getRight() - 9.0f, (float) projectButton.getY() + 9.0f });
     g.setColour (processor.isBridgeEnabled() ? juce::Colour (0xff4cd964) : Theme::text.withAlpha (0.35f));
     g.fillEllipse (dot);
+
+    // Projektnamnet (rubriken) under MENU/presetväljaren; en kort bekräftelse ("Saved X") ersätter det i ett par sekunder.
+    const auto projectName = processor.currentProjectFile.getFileNameWithoutExtension();
+    const auto shown = notice.isNotEmpty() ? notice : (projectName.isNotEmpty() ? projectName : juce::String ("Untitled project"));
+    g.setFont (juce::FontOptions (11.0f));
+    g.setColour (notice.isNotEmpty() ? juce::Colour (0xff4cd964) : Theme::text.withAlpha(projectName.isNotEmpty() ? 0.75f : 0.4f));
+    g.drawText (shown, nameBounds, juce::Justification::centredLeft, true);
 
     // Returpilen på omstartsknappen (ritad, så att den inte beror på att ett typsnitt har symbolen).
     if (! restartButton.isVisible())
@@ -186,15 +332,15 @@ void HeaderBar::resized()
     bpmPill = right.removeFromRight (214).reduced (0, (height - 34) / 2);
     restartButton.setBounds (bpmPill.getRight() - 32, bpmPill.getY() + 4, 26, bpmPill.getHeight() - 8);
 
-    projectButton.setBounds (14 + logo.getWidth() + 22, controlsY, 84, controlsHeight); // PROJECT först, till vänster om presetväljaren
+    projectButton.setBounds (14 + logo.getWidth() + 22, controlsY, 84, controlsHeight); // MENU först, till vänster om presetväljaren
     auto presetWidth = hasPreviews ? 118 : 200;
-    const auto leftEnd = projectButton.getRight() + 10 + presetWidth + 10 + (hasPreviews ? 70 : 76) + 10 + (hasPreviews ? (rollShown ? 148 : 112) : 0) + 16 + meterWidth;
+    const auto leftEnd = projectButton.getRight() + 10 + presetWidth + 10 + (hasPreviews ? (rollShown ? 148 : 112) : 0) + 16 + meterWidth;
     presetWidth = std::max (70, presetWidth - std::max (0, leftEnd - (bpmPill.getX() - 8)));
     presets.setBounds (projectButton.getRight() + 10, controlsY, presetWidth, controlsHeight);
-    exportButton.setBounds (presets.getRight() + 10, controlsY, hasPreviews ? 70 : 76, controlsHeight);
+    nameBounds = { projectButton.getX(), controlsY + controlsHeight + 1, presets.getRight() - projectButton.getX(), 14 };
 
     // PREVIEWS: en inringad ruta med högtalaren och tonväljaren, så att man ser att de hör ihop.
-    previewGroup = hasPreviews ? juce::Rectangle<int> (exportButton.getRight() + 10, (height - 44) / 2, rollShown ? 148 : 112, 44) : juce::Rectangle<int>();
+    previewGroup = hasPreviews ? juce::Rectangle<int> (presets.getRight() + 10, (height - 44) / 2, rollShown ? 148 : 112, 44) : juce::Rectangle<int>();
     listenAll.setVisible (hasPreviews);
     noteBox.setVisible (hasPreviews);
     restartButton.setVisible (hasPreviews);
@@ -231,7 +377,7 @@ void HeaderBar::showExportMenu()
     menu.addItem (99999, "Without effects (dry: FX channel sends off)", true, exportWithoutEffects);
 
     juce::Component::SafePointer<HeaderBar> safeThis (this);
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&exportButton), [safeThis] (int result)
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&projectButton), [safeThis] (int result)
     {
         if (safeThis == nullptr || result <= 0)
             return;
@@ -299,6 +445,11 @@ void HeaderBar::chooseExportTarget (int part, int bars)
 void HeaderBar::timerCallback()
 {
     followVisualRate();
+    if (notice.isNotEmpty() && juce::Time::getMillisecondCounterHiRes() * 0.001 > noticeUntil)
+    {
+        notice = {};
+        repaint (nameBounds);
+    }
     if (bridgeShown != processor.isBridgeEnabled()) // ändrad på inställningssidan eller via MCP
     {
         bridgeShown = processor.isBridgeEnabled();

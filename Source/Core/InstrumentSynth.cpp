@@ -439,9 +439,9 @@ InstrumentSynth::Output InstrumentSynth::next()
     widthDelayPos = (widthDelayPos + 1) & 63;
     auto addMonoWide = [&] (bool filtered, float x, float pan, float width, float* line)
     {
+        line[widthDelayPos] = x; // skrivs alltid, så att fördröjningslinjen är fylld när WIDTH dras upp från 1 (annars klick)
         if (width <= 1.0f)
             return addMono (filtered, x, pan);
-        line[widthDelayPos] = x;
         const auto delayed = line[(widthDelayPos + 64 - 17) & 63];
         const auto angle = juce::jmin (1.0f, width - 1.0f) * juce::MathConstants<float>::pi * 0.25f;
         addPanned (filtered, x * std::cos (angle) + delayed * std::sin (angle), x * std::cos (angle) - delayed * std::sin (angle), pan);
