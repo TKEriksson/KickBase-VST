@@ -32,3 +32,9 @@
 - Mörkt editortema (Atom One Dark-färger) via `setColourScheme` i `LiveCodePage.cpp`.
 - Kvar: `.chord(...)` (väntar på svar via projektledaren), färg per aktivt instrument, flera röster via arrayer i `.notes()`. Flytande fönstret har inte nya temat/FORMAT än.
 - Debug-bygget: alla tester gick igenom.
+
+## D4 steg 2: `.chord(CHORD, BASETONE, START, LENGTH)` (Arbetare 2)
+- `Resources/strudel/glue.js` (`modProto.chord`): staplar en `.note()` per ackordton, `.late(START)` och `.clip(LENGTH)`. Provkört under node: `s("i1").chord("major","c2",0,["1/4","4/4","2/4"])` ger C2 (clip 0.25), E2 (1), G2 (0.5).
+- Tolkningar: START och LENGTH är bråkdelar av en cykel (tal eller "a/b"); standard LENGTH = 1/4; en LENGTH-array som är kortare än ackordet upprepas; BASETONE är notnamn eller tal (C2 = 0), standard c2; CHORD kan också vara en array med intervall.
+- Ackordnamn (autokomplettering i första strängen): major, minor, dim, aug, sus2, sus4, power, major7, minor7, dom7, dim7, minor7b5, major9, minor9, dom9, add9, six, minor6.
+- Test: `chord("maj` -> `major7` i `Tests/MasterTests.cpp`. Debug-bygget går igenom.

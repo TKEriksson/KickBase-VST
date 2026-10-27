@@ -28,6 +28,7 @@ namespace LiveCodeComplete
             { "n", "n(\"\")", "n(\"0 3 5\") notes as numbers (semitones above C2)" },
             { "gain", "gain()", "gain(0.8) velocity 0.05-1" },
             { "velocity", "velocity()", "velocity(0.8) som gain" },
+            { "chord", "chord(\"major\", \"c2\", 0, \"1/4\")", "chord(CHORD, BASETONE, START, LENGTH) stacks the chord tones, e.g. .chord(\"major7\", \"c2\", \"0\", [\"1/4\",\"4/4\",\"2/4\"]). START and LENGTH are fractions of a cycle; a LENGTH array gives each tone its own length; default LENGTH 1/4" },
             { "lfo", "lfo(\"bass1Cutoff\", 1, 0.5, \"sine\")", "lfo(id, hz, depth -1..1, shape sine|tri|saw|isaw|square|rand)" },
             { "env", "env(\"bass1Cutoff\", 10, 200, 0.5)", "env(id, attackMs, decayMs, depth -1..1)" },
             { "cutoff", "cutoff()", "cutoff(0.5) filter cutoff (shortcut to instr.Cutoff, same value range as the parameter)" },
@@ -195,6 +196,10 @@ namespace LiveCodeComplete
                 pool = sampleNames();
             else if (inString == "note" || inString == "n" || inString == "notes")
                 pool = noteNames();
+            else if (inString == "chord")
+                for (const char* name : { "major", "minor", "dim", "aug", "sus2", "sus4", "power", "major7", "minor7", "dom7", "dim7",
+                                          "minor7b5", "major9", "minor9", "dom9", "add9", "six", "minor6" })
+                    pool.push_back ({ name, name, juce::String ("chord ") + name });
             else if (inString == "lfo" || inString == "env")
                 for (const auto& id : src.paramIds)
                     pool.push_back ({ id, id, "parameter " + id + " (modulation target)" });

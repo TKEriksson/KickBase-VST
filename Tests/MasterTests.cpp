@@ -171,6 +171,8 @@ namespace
         check (! empty.items.empty() && empty.items.front().label == "$:", "tom rad börjar med $:");
         const juce::String c = "s(\"i1\").";
         check (has (LiveCodeComplete::complete (c, c.length(), src), "note"), "efter stängd sträng ger metoder");
+        const juce::String ch = "$: s(\"i1\").chord(\"maj";
+        check (has (LiveCodeComplete::complete (ch, ch.length(), src), "major7"), "chord(\" ger ackordnamn");
         LiveCodeComplete::Source withParams;
         withParams.paramIds = { "bass1Cutoff" };
         const juce::String d = "$: s(\"i1\").lfo(\"bass1C";
