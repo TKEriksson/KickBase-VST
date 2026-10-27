@@ -331,9 +331,8 @@ namespace AiMemory
         put (record, "source", cleanText (lesson["source"], 32));
         put (record, "occurrences", existing >= 0 ? (int) lessons->getReference (existing)["occurrences"] + 1 : 1);
         if (existing >= 0)
-            lessons->set (existing, record);
-        else
-            lessons->add (record);
+            lessons->remove (existing);
+        lessons->add (record);
 
         if (! pruneToLimit (root, workFormat, "lessons", (juce::int64) Settings::workMemoryMaxMb() * 1024 * 1024, error))
             return false;

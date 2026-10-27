@@ -2635,6 +2635,56 @@ namespace
                    && Settings::workMemoryMaxMb() == 50,
                "AI-minne: inställningar sparas och läses tillbaka");
 
+        {
+            // A5: en uppdaterad äldsta lärdom ska läggas sist, så pruneToLimit inte raderar den (äldsta tas bort först).
+            juce::String error;
+            Settings::setWorkMemoryMaxMb (1);
+            const juce::int64 limit = 1024 * 1024;
+            const auto fullFile = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("kickbase_ai_work_full_test.json");
+            fullFile.deleteFile();
+            auto makeLesson = [] (const juce::String& symptom, const juce::String& recovery)
+            {
+                auto l = juce::var (new juce::DynamicObject());
+                l.getDynamicObject()->setProperty ("symptom", symptom);
+                l.getDynamicObject()->setProperty ("recovery", recovery);
+                l.getDynamicObject()->setProperty ("tool", "t");
+                l.getDynamicObject()->setProperty ("area", "A5");
+                l.getDynamicObject()->setProperty ("source", "test");
+                return l;
+            };
+            const auto oldest = juce::String ("oldest lesson");
+            // Fixturen skrivs direkt (samma format som AiMemory): ett append per post vore för långsamt för 1 MB. Taket mäts på serialiserad text (JUCE ger \r\n), som pruneToLimit gör.
+            auto makeRecord = [&] (const juce::String& symptom, const juce::String& recovery)
+            {
+                auto r = makeLesson (symptom, recovery);
+                r.getDynamicObject()->setProperty ("saved", "2026-01-01T00:00:00.000Z");
+                r.getDynamicObject()->setProperty ("occurrences", 1);
+                return r;
+            };
+            juce::Array<juce::var> records;
+            records.add (makeRecord (oldest, "short"));
+            auto root = juce::var (new juce::DynamicObject());
+            root.getDynamicObject()->setProperty ("format", "kickbase-ai-work-memory-1");
+            auto size = [&] { root.getDynamicObject()->setProperty ("lessons", records); return (juce::int64) juce::JSON::toString (root, false).toStdString().size(); };
+            for (int i = 0; size() < limit - 1700; ++i)
+                records.add (makeRecord ("big " + juce::String (i) + " " + juce::String::repeatedString ("word ", 110),
+                                        juce::String::repeatedString ("fix ", 240)));
+            for (int i = 0; size() < limit - 900; ++i)
+                records.add (makeRecord ("small " + juce::String (i), "ok"));
+            const auto filled = size() <= limit && fullFile.replaceWithText (juce::JSON::toString (root, false), false, false, "\n");
+            check (filled && size() > limit - 900 && size() <= limit, "AI-arbetsminne: fixturen fylld nära taket");
+
+            check (AiMemory::appendWorkLesson (fullFile, makeLesson (oldest, juce::String::repeatedString ("longer ", 140)), error),
+                   "AI-arbetsminne: uppdatering av äldsta lärdom nära taket sparas");
+            const auto after = AiMemory::readRecentWork (fullFile, AiMemory::allEntries, error);
+            const auto* list = after["lessons"].getArray();
+            check (list != nullptr && list->size() > 1 && fullFile.getSize() <= limit
+                       && list->getReference (list->size() - 1)["symptom"].toString() == oldest
+                       && (int) list->getReference (list->size() - 1)["occurrences"] == 2,
+                   "AI-arbetsminne: uppdaterad äldsta lärdom finns kvar sist efter beskärning");
+            fullFile.deleteFile();
+        }
+
         Settings::setChatApiKey ("sk-ant-api03-hemlig-nyckel");
         check (Settings::chatApiKey() == "sk-ant-api03-hemlig-nyckel", "nyckeln läses tillbaka");
         check (! settingsFile.loadFileAsString().contains ("hemlig"), "nyckeln ligger inte i klartext i filen");
