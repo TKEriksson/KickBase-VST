@@ -34,6 +34,12 @@ PluginBase::PluginBase (const BusesProperties& buses, juce::AudioProcessorValueT
       params (apvts),
       effectVersion (isEffect)
 {
+    // APVTS skriver värdet till trädet utan undo första gången (flushToTree, juce_AudioProcessorValueTreeState.cpp:135-138); fyll i det nu så att första gesten går att ångra
+    for (auto child : apvts.state)
+        if (auto* prm = apvts.getParameter (child.getProperty ("id").toString()))
+            if (! child.hasProperty ("value"))
+                child.setProperty ("value", prm->convertFrom0to1 (prm->getValue()), nullptr);
+
     params.setModulator (&modulator); // ljudtrådens parametrar läses med LFO-modulering
     modulator.setLfoCurves (&lfoCurves);
     presetNames.fill ("Default");
@@ -965,6 +971,7 @@ void PluginBase::nameParameterGesture (const juce::String& paramName)
 
 void PluginBase::clearHistory (const juce::String& why)
 {
+    apvts.copyState(); // väntande rattändringar skrivs till trädet nu, annars hamnar de som ett namnlöst steg efter rensningen
     undoManager.clearUndoHistory();
     historyClearedNote = why.isEmpty() ? juce::String() : "History cleared: " + why;
     undoManager.sendChangeMessage();

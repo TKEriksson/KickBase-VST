@@ -934,7 +934,9 @@ int undoTest()
         juce::RangedAudioParameter* prm = nullptr;
         for (auto* q : p.getParameters())
             if (prm == nullptr)
-                prm = dynamic_cast<juce::RangedAudioParameter*> (q);
+                if (auto* r = dynamic_cast<juce::RangedAudioParameter*> (q))
+                    if (r->getNumSteps() > 1000) // en vanlig flyttalsknapp, inte ett heltal som processorn styr
+                        prm = r;
         p.clearHistory ({});
         const auto start = prm->getValue();
         const auto target = start < 0.5f ? 0.9f : 0.1f;
@@ -943,9 +945,7 @@ int undoTest()
             prm->setValueNotifyingHost (v);
         p.nameParameterGesture ("Test");
         check (p.undoManager.getUndoDescriptions().size() == 1, "a: en gest är ett steg");
-        std::printf ("  steg %d, start %g mål %g nu %g id %s\n", p.undoManager.getUndoDescriptions().size(), start, target, prm->getValue(), prm->getParameterID().toRawUTF8());
         p.undoManager.undo();
-        std::printf ("  efter undo %g\n",prm->getValue());
         check (std::abs (prm->getValue() - start) < 1.0e-3f, "a: ångra ger startvärdet");
         p.undoManager.redo();
         check (std::abs (prm->getValue() - target) < 1.0e-3f, "a: gör om ger slutvärdet");
@@ -996,7 +996,6 @@ int undoTest()
                 values.push_back (prm->getValue());
             const auto patternBefore = p.pattern.toValueTree();
             p.loadFactoryPreset (Presets::Section::bass, 1, 0);
-            std::printf ("  d-steg: %s\n",p.undoManager.getUndoDescriptions().joinIntoString (" | ").toRawUTF8());
             check (p.undoManager.getUndoDescriptions().size() == 1, "d: ett steg");
             p.undoManager.undo();
             auto same = true;
