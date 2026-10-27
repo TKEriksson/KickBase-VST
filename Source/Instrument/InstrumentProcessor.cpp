@@ -1042,7 +1042,14 @@ void InstrumentProcessor::handleEvent (const StepEvent& event)
     // En glide-ton slår inte an: den glider tonen som klingar till sin tonhöjd under sin egen längd. Klingar inget
     // spelas den som en vanlig ton.
     if (note.slide.load() && basses[(size_t) layer].glideTo (note.pitch.load(), std::max (1, (int) (note.length.load() * samplesPerTick))))
+    {
+        // Staplade vanliga toner på samma tick ska ändå slå an (de tappades förut); staplade glide-toner ger samma glide och hoppas över.
+        for (const auto& e : note.extra)
+            if (e.on.load() && ! e.slide.load())
+                basses[(size_t) layer].noteOn (e.pitch.load(), e.velocity.load(),
+                                               std::max (1, (int) (std::max (1.0, e.length.load() * (double) gateScales[(size_t) layer]) * samplesPerTick)), true);
         return;
+    }
 
     const auto holdTicks = pattern.holdTicks (layer, event.step, lengths.total * Pattern::ticksPerBar, gateScales[(size_t) layer]);
     const auto gateSamples = std::max (1, (int) (holdTicks * samplesPerTick));

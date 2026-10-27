@@ -102,3 +102,10 @@ Mushjul över takten scrubbar: `transportHold` fryser klockan (`TransportClock::
 Gäller bara egen klocka (PREVIEW/ingen värd som spelar). När DAW:en styr är etiketterna låsta med tipset "styrs av DAW" – en VST3 kan inte ändra värdens tempo eller transport.
 Inte byggt: global LOOP-knapp (bara loop per rad och loopområde finns; en global knapp är nytt arbete) – projektledaren avgör om den behövs.
 Prova i FL: scrubba takten under PREVIEW; skriv 150 BPM i PREVIEW; kolla att etiketterna är låsta när FL spelar.
+
+## A4-resten (staplade toner under en glide-ton) – Debug grönt, ej provad i FL
+Gjort (Arbetare 1): `InstrumentProcessor.cpp:1044` – när grundtonen är en glide-ton som glider görs inte längre `return` direkt; staplade vanliga toner (`note.extra`, ej glide) slår ändå an (de tappades förut). Staplade glide-toner ger samma glide som grundtonen och hoppas över. Hela ackordet glider redan lika långt (`InstrumentVoices::glideTo`).
+Prova i FL: glide-ton med en stapel på samma tick – stapeltonen ska höras.
+
+## D1 (glidestreck) – väntar
+`Source/Ui/PianoRoll.cpp:1887`: högerklick på tomt rutnät är redan en meny, så strecket ritas med Alt+drag i stället för högerdrag (ändring mot min rekommendation). Behöver svar från projektledaren om det är OK; bygger tills vidare vidare på Alt+drag.
