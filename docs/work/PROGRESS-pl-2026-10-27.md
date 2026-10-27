@@ -28,3 +28,4 @@
 - Tobias: säg alltid åt arbetarna att fortsätta efter varje rapport.
 - Tobias: efter varje release skriver PL en publik PDF (innehåll + FL-test/godkännande). Inlagt i Fas G.
 - Tobias: specialisten stängd; arbetarna jobbar långa pass och rapporterar bara när klara, blockerade eller på fråga.
+- Tobias: arbetarna ställer alla frågor via PL (inte direkt till honom).
