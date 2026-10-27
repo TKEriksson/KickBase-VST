@@ -75,3 +75,10 @@
 - Gamla filer: ingen versionshanterad fil använder gamla slicerformatet, inget `git rm`-ades (se spec).
 - Bilder: `docs/work/snapshots-w2/` (slices-pattern, slices-pattern20, slices-sample, slices-over16). Skissen (flikhierarki) har inga skivrader, så skivradernas utseende är inte jämfört mot den, bara flikarna/ramen oförändrade.
 - Ej provat i FL. Redigering av Slice-rader i pianorullen/stegsekvenserna är inte testad separat.
+
+## H5: fas F-grenarna byggda och testade (27 okt, Arbetare 2)
+- `content-s2` (ad768d0, 4dad3e2 m.fl.): `build.bat Debug all` gick igenom (enhetstesterna gröna), persisttest och blocksizetest gröna.
+- `fix-slicer-test` (d254e2d): bygge gick igenom, persisttest grön ("Sparandetestet gick igenom").
+- undotest finns inte på de gamla grenarna (verktyget saknas), så exit 1 där är inte ett fel.
+- OBS till projektledaren: båda grenarna ligger på en gammal main. Slicertesterna i 4dad3e2/d254e2d gäller den gamla MAP TO-slicern som E2 steg 2 tog bort i w2, så de krockar med eller ersätts av E2 vid merge. Merga E2 först och släng/skriv om de två slicertesterna.
+- w2 ombyggd efteråt behövs innan nästa w2-test (build\Debug höll fix-slicer-test-bygget).
