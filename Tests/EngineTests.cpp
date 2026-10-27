@@ -1,6 +1,7 @@
 // Tester för ljudmotorerna och mönstret.
 
 #include "../Source/Core/InstrumentSynth.h"
+#include "../Source/Core/InstrumentVoices.h"
 #include "../Source/Core/Ducker.h"
 #include "../Source/Core/KickEngine.h"
 #include "../Source/Core/Modulation.h"
@@ -8,6 +9,7 @@
 #include "../Source/Core/Pattern.h"
 #include "../Source/Core/RollFiles.h"
 #include "../Source/Core/StepGate.h"
+#include "../Source/Core/StepScheduler.h"
 #include "../Source/Core/WavetableEdit.h"
 #include "TestUtils.h"
 #include <cmath>
@@ -349,6 +351,21 @@ namespace
         check (std::abs (before - 55.0) < 1.0, "frekvens före glidet", before);
         check (std::abs (after - 110.0) < 2.0, "tonen blir kvar på målet efter glidet", after);
         check (peakOf (audio, (size_t) step, (size_t) step + 2000) > 0.5f, "ingen dipp: inget nytt anslag");
+
+        // A4: med flera röster glider alla klingande toner lika långt (ett ackord glider som ett ackord)
+        InstrumentVoices chord;
+        chord.prepare (rate);
+        chord.setParams (p);
+        chord.setNumVoices (4);
+        chord.noteOn (0, 1.0f, step * 5, true);
+        chord.noteOn (4, 1.0f, step * 5, true);
+        chord.noteOn (7, 1.0f, step * 5); // grundtonen, senast spelad
+        check (chord.countSounding() == 3, "A4: tre toner klingar");
+        check (chord.glideTo (12, step / 2), "A4: glide hittar ackordet");
+        auto targets = std::vector<int>();
+        for (int k = 0; k < 3; ++k)
+            targets.push_back (chord.getVoiceTarget (k));
+        check (targets == std::vector<int> { 5, 9, 12 }, "A4: alla toner flyttas +5 halvtoner");
     }
 
     void testInstrumentRetriggerWithoutClick()
@@ -741,7 +758,54 @@ namespace
         lengths.rows = { 0, 99, 0, 0 };
         check (lengths.barsOf (1) == 8, "en rad kan inte vara längre än mönstret");
 
-        check (Params::barsFromChoice (6) == 64 && Params::barsFromChoice (0) == 1 && Params::barsFromChoice (99) == 64, "mönsterlängder 1 ... 64");
+        // A2 (T13): förhandsspelningens loop går i mönstertid; en kortare rad loopar sig själv inom den (tick = loopTick % radens längd).
+        {
+            const auto B = Pattern::ticksPerBar;
+            auto tickAt = [B] (int loopStartBar, int loopEndBar, int fromTick, int rowBars, int totalBars, int bar, int step)
+            {
+                StepScheduler scheduler;
+                StepScheduler::Window window;
+                window.row = 0;
+                window.from = fromTick;
+                window.loopStart = loopStartBar * B;
+                window.loopEnd = loopEndBar * B;
+                scheduler.setWindow (window);
+                StepPosition position;
+                position.bar = bar;
+                position.stepInBar = step;
+                return scheduler.windowTick (rowBars * B, totalBars * B, position);
+            };
+            // Loop 1-2, rad på 1 takt: loopar sig själv. Rad på 2 takter: följer loopen.
+            check (tickAt (0, 2, 0, 1, 4, 0, 50) == 50 && tickAt (0, 2, 0, 1, 4, 1, 50) == 50 && tickAt (0, 2, 0, 1, 4, 5, 50) == 50, "Loop 1-2, rad 1 takt");
+            check (tickAt (0, 2, 0, 2, 4, 1, 50) == B + 50 && tickAt (0, 2, 0, 2, 4, 2, 50) == 50, "Loop 1-2, rad 2 takter", tickAt (0, 2, 0, 2, 4, 2, 50));
+            // Loop 1-3, rad på 2 takter: loopen är inte en multipel av radens längd, men följer ändå mönstertiden
+            check (tickAt (0, 3, 0, 2, 4, 2, 50) == 50 && tickAt (0, 3, 0, 2, 4, 3, 50) == 50 && tickAt (0, 3, 0, 2, 4, 4, 50) == B + 50, "Loop 1-3, rad 2 takter", tickAt (0, 3, 0, 2, 4, 4, 50));
+            // Loop 2-3, rad på 1 takt: loopStart ligger efter radens längd, raden loopar ändå
+            check (tickAt (1, 3, B, 1, 4, 0, 10) == 10 && tickAt (1, 3, B, 1, 4, 1, 10) == 10, "Loop 2-3, rad 1 takt", tickAt (1, 3, B, 1, 4, 1, 10));
+            // Start mitt i loopen (from = takt 2 i Loop 1-2): börjar där och rullar runt
+            check (tickAt (0, 2, B, 2, 4, 0, 0) == B && tickAt (0, 2, B, 2, 4, 1, 0) == 0, "start mitt i loopen", tickAt (0, 2, B, 2, 4, 1, 0));
+            // Loopen klipps mot mönstret (4 takter), inte mot raden
+            check (tickAt (3, 9, 0, 4, 4, 1, 0) == 3 * B, "loopEnd klipps mot mönstret", tickAt (3, 9, 0, 4, 4, 1, 0));
+        }
+
+        // T13: kick med toner i takt 1-3 (två slag i takt 3) ger längd 3 överallt; indikatorn (contentBars/lengthBars) och schedulern (rows/total) ser samma tal.
+        {
+            Pattern kickPattern;
+            const auto B = Pattern::ticksPerBar;
+            kickPattern.addNote (Pattern::kickLayer, 0, 24);
+            kickPattern.addNote (Pattern::kickLayer, B, 24);
+            kickPattern.addNote (Pattern::kickLayer, 2 * B, 24);
+            kickPattern.addNote (Pattern::kickLayer, 2 * B + Pattern::ticksPerQuarter, 24);
+            kickPattern.refreshLengths();
+            check (kickPattern.contentBars (Pattern::kickLayer) == 3 && kickPattern.lengthBars (Pattern::kickLayer) == 3, "kick med toner i takt 3 är 3 takter (AUTO)", kickPattern.contentBars (Pattern::kickLayer));
+            PatternLengths lengths;
+            lengths.total = 3;
+            lengths.rows = { 3, 0, 0, 0 };
+            lengths.loops.fill (true);
+            check (lengths.barInRow (0, 2) == 2 && lengths.barInRow (0, 3) == 0, "takt 3 i kickraden är rad-takt 3");
+        }
+
+        check (Params::barsFromChoice (6) == 64&& Params::barsFromChoice (0) == 1 && Params::barsFromChoice (99) == 64, "mönsterlängder 1 ... 64");
         check (Params::rowBarsFromChoice (0) == 0 && Params::rowBarsFromChoice (1) == 1 && Params::rowBarsFromChoice (7) == 64, "radlängder");
 
         Pattern pattern;
@@ -867,7 +931,7 @@ namespace
         sub.clearNotes (0);
         sub.addNote (0, 0, 24, 0, 0.8f);
         const auto sampleRow = sub.rows.add (0, RowRegistry::Kind::sample);
-        const auto slicerRow = sub.rows.add (0, RowRegistry::Kind::slicer);
+        const auto slicerRow = sub.rows.add (0, RowRegistry::Kind::slice, 0);
         const auto otherRow = sub.rows.add (1, RowRegistry::Kind::sample);
         sub.addNote (sampleRow, 0, 24, 5, 0.7f);
         sub.addNote (otherRow, 0, 24, 3, 0.7f);

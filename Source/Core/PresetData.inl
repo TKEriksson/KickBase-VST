@@ -113,8 +113,27 @@ namespace
                  { { 0.0f, 0.0f, 0.0f }, { 0.0004f, 1.0f, 0.0f }, { 0.025f, 1.0f, 0.0f }, { 0.070f, 0.85f, 0.1f }, { 0.170f, 0.0f, 0.4f } } };
     }
 
+    // D7: rena psytrance-kickar (svans ~45 Hz via tune, lite mättnad). Envelopen byggs av svepstart (halvtoner), svepets längd och totallängd (s).
+    KickSound cleanKick (float tune, float harmonics, float click, float clickTone, float drive, float clipMode, float sweep, float sweepTime, float length)
+    {
+        return { { { kickTune, tune }, { kickHarmonics, harmonics }, { kickHarmDecay, 40.0f }, { kickClick, click }, { kickClickLength, 4.5f },
+                   { kickClickTone, clickTone }, { kickDrive, drive }, { kickClipMode, clipMode }, { kickLevel, 0.85f } },
+                 { { 0.0f, sweep, -0.65f }, { sweepTime * 0.15f, sweep * 0.45f, -0.45f }, { sweepTime * 0.4f, sweep * 0.1f, -0.3f }, { sweepTime, 0.0f, 0.0f } },
+                 { { 0.0f, 0.0f, 0.0f }, { 0.0005f, 1.0f, 0.0f }, { length * 0.16f, 1.0f, 0.0f }, { length * 0.4f, 0.78f, 0.15f }, { length, 0.0f, 0.35f } } };
+    }
+
     //==========================================================================================
     // Basar (för lager `l`; bas-presets skrivs för lager 0 och flyttas dit de laddas).
+
+    // D7: rullande bas-varianter. Såg (eller annan tabell) på OSC A, valfri OSC B, snabb filterenvelope och omedelbar amp.
+    std::vector<Value> rollBass (int l, float tableA, float tableB, float levelB, float sub, float cutoff, float resonance, float envAmount,
+                                 float envDecay, float sustain, float drive, float level)
+    {
+        return { osc (l, 0, F::aTable, tableA), osc (l, 0, F::aLevel, 1.0f), osc (l, 1, F::aTable, tableB), osc (l, 1, F::aLevel, levelB),
+                 b (l, F::sub, sub), b (l, F::filterType, 0), b (l, F::cutoff, cutoff), b (l, F::resonance, resonance), b (l, F::envAmount, envAmount),
+                 b (l, F::envDecay, envDecay), b (l, F::velToEnv, 0.5f), b (l, F::attack, 0.5f), b (l, F::decay, 120.0f), b (l, F::sustain, sustain),
+                 b (l, F::release, 12.0f), b (l, F::drive, drive), b (l, F::level, level) };
+    }
 
     // A. Klassisk full-on-roll: såg, omedelbar amp, snabb filterenvelope (receptkort A).
     std::vector<Value> bassRolling (int l)
@@ -249,6 +268,132 @@ namespace
     }
 
     Preset bassPreset (const char* name, std::vector<Value> values) { return { name, std::move (values) }; }
+
+    //==========================================================================================
+    // "newest 1-10": hela huvudpresets (kick + bas + FX + mönster). Kicken kommer från mallen (en kick på varje fjärdedel),
+    // basens mönster skrivs här. Lager över det första ligger en oktav upp. FX-kanal A/B används som SEND (torrt orört).
+
+    std::vector<Value> sendTo (int l, int channelChoice, float amount)
+    {
+        return { b (l, F::fxChannel, (float) channelChoice), b (l, F::fxSend, 1), b (l, F::fxAmount, amount) };
+    }
+
+    using Line = Presets::Extras::PatternLine;
+
+    Preset newest (const char* name, const KickSound& kick, std::vector<Value> layers, std::vector<Value> fxValues,
+                   std::vector<Line> lines, int instruments, int bars)
+    {
+        Preset p { name, join ({ kick.values, layers, fxValues,
+                                 { { ParamID::instrumentCount, (float) instruments }, { "patternBars", (float) bars } } }) };
+        p.extras.pitchEnv = kick.pitch;
+        p.extras.ampEnv = kick.amp;
+        p.extras.pattern = std::move (lines);
+        return p;
+    }
+
+    // Rullande figur: tre sextondelar efter varje kick.
+    constexpr const char* rollBar = ". x x x . x x x . x x x . x x x";
+
+    // 1. Full-on: klassisk rullande såg, parallell mjuk distorsion.
+    Preset newest1()
+    {
+        return newest ("newest 1", kickFullOn(),
+                       join ({ rollBass (0, 12, 12, 0.0f, 0.15f, 200.0f, 0.18f, 2.6f, 35.0f, 0.80f, 0.18f, 0.72f), sendTo (0, 1, 0.20f) }),
+                       join ({ fx (0, 0, EffectType::distortion, { 0, 0.30f, 5000.0f, 1.0f }), { ch (0, "Duck", 0.8f), ch (0, "EqHp", 120.0f) } }),
+                       { { 0, InstrumentGrid::sixteenth, { ". x x x . x x x . x x x . x x X" }, 0.7f } }, 1, 1);
+    }
+
+    // 2. Dark forest: lång skogskick, mörk bas med brus och ett mörkt rum.
+    Preset newest2()
+    {
+        return newest ("newest 2", kickForest(),
+                       join ({ bassForest (0), sendTo (0, 1, 0.18f) }),
+                       join ({ fx (0, 0, EffectType::reverb, { 0.7f, 0.7f, 1.0f, 400.0f, 1.0f, 20.0f }), { ch (0, "Duck", 0.9f), ch (0, "EqHp", 250.0f) } }),
+                       { { 0, InstrumentGrid::sixteenth, { ". x x m . x x x . m x . . x x x", ". x x x . x m x . x x+3 . . x x-2 x" }, 0.7f } }, 1, 2);
+    }
+
+    // 3. Progressive: rund kick, bred reese på offbeat-åttondelar, eko på sidan.
+    Preset newest3()
+    {
+        return newest ("newest 3", kickProgressive(),
+                       join ({ bassReese (0), sendTo (0, 1, 0.22f) }),
+                       join ({ fx (0, 0, EffectType::echo, { 5, 0, 0, 0.5f, 2, 0.35f, 4500.0f, 0.0f, 0, 0.6f }), { ch (0, "Duck", 0.85f), ch (0, "EqHp", 200.0f) } }),
+                       { { 0, InstrumentGrid::sixteenth, { ". . x:180 . . . x:180 . . . x:180 . . . x:180 ." }, 0.7f } }, 1, 1);
+    }
+
+    // 4. Hi-tech: kort snabb kick, FM-zap med oktavhopp, phaser.
+    Preset newest4()
+    {
+        return newest ("newest 4", kickHiTech(),
+                       join ({ bassZap (0), { b (0, F::cutoff, 380.0f), b (0, F::level, 0.50f) }, sendTo (0, 1, 0.25f) }),
+                       join ({ fx (0, 0, EffectType::phaser, { 0.3f, 0.6f, 900.0f, 0.4f, 0.4f }), { ch (0, "Duck", 0.85f), ch (0, "EqHp", 180.0f) } }),
+                       { { 0, InstrumentGrid::sixteenth, { ". x x x . x x+12 x . x x x . x+12 x x" }, 0.6f } }, 1, 1);
+    }
+
+    // 5. Zenonesque: punch i mellanregistret, hård distorsion med högpassad parallell.
+    Preset newest5()
+    {
+        return newest ("newest 5", kickZenon(),
+                       join ({ bassPluck (0), sendTo (0, 1, 0.25f) }),
+                       join ({ fx (0, 0, EffectType::distortion, { 1, 0.45f, 5000.0f, 1.0f }), { ch (0, "Duck", 0.85f), ch (0, "EqHp", 150.0f) } }),
+                       { { 0, InstrumentGrid::sixteenth, { ". x x x . x x x . x x+12 x . x+7 x x" }, 0.7f } }, 1, 1);
+    }
+
+    // 6. Hårt och mörkt: hård kick, tung klippt bas, vikt distorsion.
+    Preset newest6()
+    {
+        return newest ("newest 6", kickHardPsy(),
+                       join ({ rollBass (0, 12, 13, 0.30f, 0.10f, 260.0f, 0.30f, 3.5f, 30.0f, 0.75f, 0.50f, 0.64f), sendTo (0, 1, 0.20f) }),
+                       join ({ fx (0, 0, EffectType::distortion, { 2, 0.50f, 3500.0f, 0.8f }), { ch (0, "Duck", 0.9f), ch (0, "EqHp", 200.0f) } }),
+                       { { 0, InstrumentGrid::sixteenth, { ". X x x . X x x . X x x . X x x", ". X x x . X x x . X x-5 x . X x x" }, 0.7f } }, 1, 2);
+    }
+
+    // 7. Acid goa: ren kick, resonant acid med glid, LFO 1 på filtret, eko.
+    Preset newest7()
+    {
+        Preset p = newest ("newest 7", cleanKick (0.5f, 0.12f, 0.30f, 5000.0f, 0.16f, 0, 38.0f, 0.10f, 0.18f),
+                           join ({ bassAcid (0), sendTo (0, 1, 0.20f),
+                                   std::vector<Value> { { "lfo1On", 1 }, { "lfo1Shape", 0 }, { "lfo1Rate", 8 } } }),
+                           join ({ fx (0, 0, EffectType::echo, { 5, 0, 0, 0.5f, 2, 0.30f, 5000.0f, 0.0f, 0, 0.5f }), { ch (0, "Duck", 0.85f), ch (0, "EqHp", 220.0f) } }),
+                           { { 0, InstrumentGrid::sixteenth, { "x . m x+3~ . x . m+7 . x . X+12 . x+10 .", "x . . m x . x+7~ . m . x+3 . x . X+5 x" }, 0.7f } }, 1, 2);
+        p.extras.routes = { { 0, "bass1Cutoff", 0.25f } };
+        return p;
+    }
+
+    // 8. Deep reese: lång sub på offbeat plus bred reese som rullar, chorus på reesen.
+    Preset newest8()
+    {
+        return newest ("newest 8", cleanKick (-1.0f, 0.10f, 0.18f, 3500.0f, 0.10f, 0, 30.0f, 0.14f, 0.23f),
+                       join ({ initSub (0), bassReese (1), { b (1, F::octave, 1), b (1, F::level, 0.40f) }, sendTo (1, 1, 0.30f) }),
+                       join ({ fx (0, 0, EffectType::chorus, { 0.4f, 0.5f, 10.0f, 0.0f, 0.4f }), { ch (0, "Duck", 0.8f), ch (0, "EqHp", 250.0f) } }),
+                       { { 0, InstrumentGrid::sixteenth, { ". . x:190 . . . x:190 . . . x:190 . . . x:190 ." }, 0.7f },
+                         { 1, InstrumentGrid::sixteenth, { ". m x x . m x x . m x x . m x X" }, 0.7f } }, 2, 1);
+    }
+
+    // 9. Minimal natt: gles figur, djup bas, litet rum.
+    Preset newest9()
+    {
+        return newest ("newest 9", cleanKick (-0.5f, 0.06f, 0.10f, 3000.0f, 0.08f, 0, 28.0f, 0.15f, 0.22f),
+                       join ({ rollBass (0, 12, 10, 0.0f, 0.30f, 170.0f, 0.20f, 2.4f, 50.0f, 0.88f, 0.20f, 0.72f), sendTo (0, 1, 0.12f) }),
+                       join ({ fx (0, 0, EffectType::reverb, { 0.4f, 0.8f, 0.8f, 500.0f, 1.0f, 10.0f }), { ch (0, "Duck", 0.9f), ch (0, "EqHp", 300.0f) } }),
+                       { { 0, InstrumentGrid::sixteenth, { ". . x . . . . x . . x . . . x .", ". . x . . . x . . . . x . . x x+7" }, 0.7f } }, 1, 2);
+    }
+
+    // 10. Skymning: tre lager (sub, rullande mellanbas, acid) och LFO 1 på acidens filter.
+    Preset newest10()
+    {
+        Preset p = newest ("newest 10", cleanKick (0.0f, 0.10f, 0.30f, 6000.0f, 0.12f, 0, 36.0f, 0.11f, 0.19f),
+                           join ({ bassSub (0), rollBass (1, 12, 12, 0.0f, 0.0f, 420.0f, 0.24f, 3.0f, 85.0f, 0.70f, 0.28f, 0.50f),
+                                   { b (1, F::octave, 1), b (1, F::duck, 0.8f) },
+                                   initAcid (2), { b (2, F::level, 0.40f) }, sendTo (2, 1, 0.20f),
+                                   std::vector<Value> { { "lfo1On", 1 }, { "lfo1Shape", 0 }, { "lfo1Rate", 8 } } }),
+                           join ({ fx (0, 0, EffectType::echo, { 5, 0, 0, 0.5f, 2, 0.30f, 5000.0f, 0.0f, 0, 0.5f }), { ch (0, "Duck", 0.85f), ch (0, "EqHp", 250.0f) } }),
+                           { { 0, InstrumentGrid::sixteenth, { ". . x:190 . . . x:190 . . . x:190 . . . x:190 ." }, 0.7f },
+                             { 1, InstrumentGrid::sixteenth, { ". m x x . m x x . m x x . m x X" }, 0.7f },
+                             { 2, InstrumentGrid::sixteenth, { "x . m . x+3 . x . m+7 . x . X+12 . x+10 ." }, 0.7f } }, 3, 1);
+        p.extras.routes = { { 0, "bass3Cutoff", 0.30f } };
+        return p;
+    }
 }
 
 namespace
@@ -257,8 +402,29 @@ namespace
     {
         // Empty ligger sist: rendersig-index och hashar för de andra är oförändrade.
         static const std::vector<Preset> presets { initPreset(), basicMorphPreset(),
-                                                   { "Empty", { { ParamID::instrumentCount, 1 }, { "patternBars", 1 } }, PatternTemplate::clear } };
+                                                   { "Empty", { { ParamID::instrumentCount, 1 }, { "patternBars", 1 } }, PatternTemplate::clear },
+                                                   // "newest 1-10" sist (efter Empty) så att äldre index och hashar är oförändrade.
+                                                   newest1(), newest2(), newest3(), newest4(), newest5(),
+                                                   newest6(), newest7(), newest8(), newest9(), newest10() };
         return presets;
+    }
+
+    // Arbetare 2: kickar i stil med TK_Kick Psy140 Clean G. Ren sinus (inga övertoner, klick, drive), brant svep (70 halvtoner på ~120 ms,
+    // hårt framtungt) och nästan platt volym till strax före slutet. Tonen är Fixed (C1 + tune), så tailHz = 32.7 * 2^(tune/12) oberoende av tangent.
+    // Kategorin hålls här på ett ställe; fabrikspresets får kategori via Arbetare 1:s namn-till-kategori-tabell.
+    constexpr const char* psyCleanCategory = "PSY CLEAN";
+
+    // tone: halvtoner över C1. sweepScale/timeScale skalar Psy140:s svep, length är totallängd (s), attack är stigtiden (s).
+    KickSound psyCleanKick (float tone, float sweepScale, float timeScale, float length, float attack, float level, float click, float drive)
+    {
+        const float s = sweepScale, t = timeScale;
+        return { { { kickKeyFollow, 0 }, { kickTune, tone }, { kickHarmonics, 0.0f }, { kickClick, click }, { kickClickLength, 3.0f },
+                   { kickClickTone, 5000.0f }, { kickDrive, drive }, { kickClipMode, 0 }, { kickLevel, level } },
+                 { { 0.0f, 70.0f * s, 0.0f }, { 0.002f * t, 50.1f * s, 0.0f }, { 0.004f * t, 42.3f * s, 0.0f }, { 0.006f * t, 38.8f * s, 0.0f },
+                   { 0.010f * t, 33.5f * s, 0.0f }, { 0.015f * t, 26.3f * s, 0.0f }, { 0.020f * t, 21.1f * s, 0.0f }, { 0.030f * t, 17.1f * s, 0.0f },
+                   { 0.040f * t, 14.1f * s, 0.0f }, { 0.050f * t, 11.4f * s, 0.0f }, { 0.070f * t, 6.8f * s, 0.0f }, { 0.090f * t, 3.1f * s, 0.0f },
+                   { 0.120f * t, 0.0f, 0.0f }, { 0.150f * t, 0.0f, 0.0f } },
+                 { { 0.0f, 0.0f, 0.0f }, { attack, 1.0f, 0.0f }, { length - 0.03f, 0.9f, 0.0f }, { length, 0.0f, 0.3f } } };
     }
 
     const std::vector<Preset>& kickPresets()
@@ -270,6 +436,26 @@ namespace
             kickPreset ("Hi-Tech Click", kickHiTech()),
             kickPreset ("Zenonesque Punch", kickZenon()),
             kickPreset ("Hard Psy", kickHardPsy()),
+            // D7: rena psytrance-kickar, sist så att äldre index och hashar är oförändrade.
+            kickPreset ("Clean Full-On", cleanKick (0.0f, 0.10f, 0.30f, 6000.0f, 0.12f, 0, 36.0f, 0.11f, 0.19f)),
+            kickPreset ("Clean Tight", cleanKick (1.0f, 0.08f, 0.35f, 7000.0f, 0.10f, 0, 40.0f, 0.08f, 0.15f)),
+            kickPreset ("Clean Deep", cleanKick (-1.0f, 0.10f, 0.18f, 3500.0f, 0.10f, 0, 30.0f, 0.14f, 0.23f)),
+            kickPreset ("Clean Round", cleanKick (0.0f, 0.06f, 0.12f, 3000.0f, 0.08f, 0, 28.0f, 0.15f, 0.21f)),
+            kickPreset ("Clean Punchy", cleanKick (0.5f, 0.15f, 0.45f, 5500.0f, 0.18f, 0, 40.0f, 0.10f, 0.17f)),
+            kickPreset ("Clean Long", cleanKick (-0.5f, 0.08f, 0.20f, 4000.0f, 0.10f, 0, 32.0f, 0.14f, 0.26f)),
+            kickPreset ("Clean Snappy", cleanKick (1.5f, 0.12f, 0.55f, 8000.0f, 0.15f, 1, 46.0f, 0.07f, 0.13f)),
+            kickPreset ("Clean Warm", cleanKick (0.0f, 0.20f, 0.15f, 3000.0f, 0.20f, 2, 30.0f, 0.12f, 0.20f)),
+            kickPreset ("Clean Sub", cleanKick (-1.5f, 0.04f, 0.10f, 2500.0f, 0.05f, 0, 26.0f, 0.16f, 0.24f)),
+            kickPreset ("Clean Modern", cleanKick (0.5f, 0.14f, 0.40f, 6500.0f, 0.14f, 0, 42.0f, 0.09f, 0.16f)),
+            // Arbetare 2, kategori psyCleanCategory. Argument: ton (halvtoner över C1), svep, svepets tid, längd, attack, nivå, klick, drive.
+            kickPreset ("Psy Clean C", psyCleanKick (0.0f, 1.0f, 1.0f, 0.20f, 0.0005f, 0.85f, 0.0f, 0.0f)),
+            kickPreset ("Psy Clean C Tight", psyCleanKick (0.0f, 1.0f, 0.75f, 0.15f, 0.0005f, 0.85f, 0.0f, 0.0f)),
+            kickPreset ("Psy Clean D", psyCleanKick (2.0f, 1.0f, 1.0f, 0.20f, 0.0005f, 0.85f, 0.0f, 0.0f)),
+            kickPreset ("Psy Clean D Long", psyCleanKick (2.0f, 1.0f, 1.1f, 0.205f, 0.0005f, 0.85f, 0.0f, 0.0f)),
+            kickPreset ("Psy Clean F Soft", psyCleanKick (5.0f, 0.8f, 1.2f, 0.20f, 0.003f, 0.85f, 0.0f, 0.0f)),
+            kickPreset ("Psy Clean F Sub", psyCleanKick (5.0f, 0.9f, 1.4f, 0.20f, 0.001f, 0.88f, 0.0f, 0.0f)),
+            kickPreset ("Psy Clean A Punch", psyCleanKick (9.0f, 1.0f, 0.85f, 0.17f, 0.0005f, 0.85f, 0.10f, 0.05f)),
+            kickPreset ("Psy Clean G", psyCleanKick (7.0f, 1.0f, 1.0f, 0.20f, 0.0005f, 0.85f, 0.0f, 0.0f)),
         };
         return presets;
     }
@@ -284,6 +470,13 @@ namespace
             bassPreset ("Acid Squelch", bassAcid (0)),
             bassPreset ("Wide Reese", bassReese (0)),
             bassPreset ("Sub Sine", bassSub (0)),
+            // D7: rullande psytrance-basar, sist så att äldre index och hashar är oförändrade.
+            bassPreset ("Rolling Tight", rollBass (0, 12, 12, 0.0f, 0.15f, 200.0f, 0.18f, 2.6f, 35.0f, 0.80f, 0.18f, 0.72f)),
+            bassPreset ("Rolling Deep", rollBass (0, 12, 10, 0.0f, 0.30f, 170.0f, 0.20f, 2.4f, 50.0f, 0.88f, 0.20f, 0.72f)),
+            bassPreset ("Rolling Bright", rollBass (0, 12, 13, 0.30f, 0.12f, 320.0f, 0.26f, 3.4f, 40.0f, 0.80f, 0.28f, 0.68f)),
+            bassPreset ("Rolling Fat", rollBass (0, 12, 12, 0.50f, 0.20f, 230.0f, 0.22f, 3.0f, 55.0f, 0.85f, 0.35f, 0.66f)),
+            bassPreset ("Rolling Soft", rollBass (0, 0, 10, 0.40f, 0.20f, 190.0f, 0.15f, 2.0f, 60.0f, 0.90f, 0.12f, 0.74f)),
+            bassPreset ("Rolling Snap", rollBass (0, 12, 13, 0.20f, 0.10f, 280.0f, 0.30f, 4.0f, 28.0f, 0.70f, 0.30f, 0.70f)),
         };
         return presets;
     }

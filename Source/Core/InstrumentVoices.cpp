@@ -108,24 +108,24 @@ int InstrumentVoices::chooseVictim() const
 }
 
 // En röst som aktiveras får fönstrets parametrar och tempo och börjar från noll, som en ny röst.
-void InstrumentVoices::startNote (int voice, int semitones, float velocity, int gateSamples)
+void InstrumentVoices::startNote (int voice, int semitones, float velocity, int gateSamples, int slice)
 {
     auto& synth = voices[(size_t) voice];
     synth.setTempo (bpm);
     synth.setParams (params);
     synth.reset();
-    synth.noteOn (semitones, velocity, gateSamples);
+    synth.noteOn (semitones, velocity, gateSamples, slice);
     slots[(size_t) voice].order = ++noteCounter;
 }
 
-void InstrumentVoices::noteOn (int semitones, float velocity, int gateSamples, bool chordNote)
+void InstrumentVoices::noteOn (int semitones, float velocity, int gateSamples, bool chordNote, int slice)
 {
     if (numVoices == 1)
     {
         if (chordNote)
             return;
         // Monofoniskt som förut: samma röst, attacken börjar från nuvarande nivå.
-        voices[(size_t) lastVoice].noteOn (semitones, velocity, gateSamples);
+        voices[(size_t) lastVoice].noteOn (semitones, velocity, gateSamples, slice);
         slots[(size_t) lastVoice].order = ++noteCounter;
         lastNotePoly = false;
         return;
@@ -145,7 +145,7 @@ void InstrumentVoices::noteOn (int semitones, float velocity, int gateSamples, b
     {
         if (! voices[(size_t) k].isActive() && ! slots[(size_t) k].fading && ! slots[(size_t) k].pending)
         {
-            startNote (k, semitones, velocity, gateSamples);
+            startNote (k, semitones, velocity, gateSamples, slice);
             if (! chordNote)
                 lastVoice = k;
             return;
@@ -170,15 +170,22 @@ void InstrumentVoices::noteOn (int semitones, float velocity, int gateSamples, b
     slot.pendingSemitones = semitones;
     slot.pendingVelocity = velocity;
     slot.pendingGate = gateSamples;
+    slot.pendingSlice = slice;
     if (! chordNote)
         lastVoice = target;
 }
 
 bool InstrumentVoices::glideTo (int semitones, int samples)
 {
-    if (slots[(size_t) lastVoice].fading)
+    if (slots[(size_t) lastVoice].fading || ! voices[(size_t) lastVoice].isSounding())
         return false;
-    return voices[(size_t) lastVoice].glideTo (semitones, samples);
+
+    // Alla klingande toner flyttas lika långt som den senast spelade, så att ett ackord glider som ett ackord.
+    const auto shift = semitones - voices[(size_t) lastVoice].getTargetSemitones();
+    for (int k = 0; k < maxVoices; ++k)
+        if (! slots[(size_t) k].fading && voices[(size_t) k].isSounding())
+            voices[(size_t) k].glideTo (voices[(size_t) k].getTargetSemitones() + shift, samples);
+    return true;
 }
 
 void InstrumentVoices::release()
@@ -228,7 +235,7 @@ InstrumentVoices::Output InstrumentVoices::next()
                 if (slot.pending)
                 {
                     slot.pending = false;
-                    startNote (k, slot.pendingSemitones, slot.pendingVelocity, slot.pendingGate);
+                    startNote (k, slot.pendingSemitones, slot.pendingVelocity, slot.pendingGate, slot.pendingSlice);
                 }
             }
             else

@@ -6,12 +6,13 @@
 
 struct StepEvent
 {
-    enum class Type { kick, bass };
+    enum class Type { kick, bass, slice }; // slice: en not i raden "Slice N" (spelar skivan `slice` hos instrumentet `layer`)
 
     int offset;     // sample i blocket
     Type type;
     int step;       // tonens tick i mönstret (kick och bas)
-    int layer = 0;  // baslager (bara för bas)
+    int layer = 0;  // baslager (bas och slice)
+    int slice = -1; // skivindex, 0-baserat (bara slice)
     juce::uint32 sequence = 0; // i vilken ordning händelserna schemalades: avgör ordningen när två hamnar på samma sample (oberoende av blockens delning)
 };
 
@@ -42,6 +43,9 @@ public:
     };
     void setWindow (const Window& newWindow) { window = newWindow; }
 
+    // Radens tick under förhandsspelningen (publik så att testerna kan nå den).
+    int windowTick (int rowTicks, int totalTicks, StepPosition position) const;
+
     const StepEvent* begin() const { return events.data(); }
     const StepEvent* end() const   { return events.data() + numEvents; }
 
@@ -53,7 +57,6 @@ private:
     void addKick (const Pattern& pattern, const PatternLengths& lengths, int offset, StepPosition position);
     void addBass (int layer, const Pattern& pattern, const PatternLengths& lengths, int offset, StepPosition position);
     void add (StepEvent event);
-    int windowTick (int rowTicks, StepPosition position) const;
 
     Window window;
     int numLayers = Pattern::numLayers;

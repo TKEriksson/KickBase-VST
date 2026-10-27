@@ -9,7 +9,8 @@
 enum class InstrumentFilterType { lowpass24, lowpass12, bandpass, highpass };
 
 // Hur fasen förvrängs innan wavetablen läses (Serums "warp"). AM är ingen fasförvrängning utan amplitudmodulerar vågen.
-enum class WarpMode { off, sync, bend, pwm, mirror, fm, flip, quantize, am };
+// RING (B): OSC 1 multipliceras med OSC 2, OSC 3 eller båda (OscParams::ringSource); sist i enumen så gamla projekt är orörda.
+enum class WarpMode { off, sync, bend, pwm, mirror, fm, flip, quantize, am, ring };
 
 // En wavetable-oscillator.
 struct OscParams
@@ -25,6 +26,7 @@ struct OscParams
     float blend = 0.5f;       // sidostämmornas nivå
     WarpMode warp = WarpMode::off;
     float warpAmount = 0.0f;  // 0..1
+    int ringSource = 0;       // bara OSC 1 med warp RING (B): 0 = OSC 2, 1 = OSC 3, 2 = OSC 2 x OSC 3
     float phase = 0.0f;       // startfas 0..1
     float randomPhase = 0.0f; // 0 = samma fas varje ton (tight), 1 = slumpad
     float pan = 0.0f;         // -1 (vänster) ... 1 (höger)
@@ -114,8 +116,6 @@ struct InstrumentParams
     bool sampleOn = false;       // samplingen hörs bara när den är på
     bool sampleKeyTrack = false; // av = spelas med sin egen tonhöjd och hastighet
     float sampleStart = 0.0f;    // 0..1: var i samplingen varje ton börjar
-    bool slicerOn = false;       // noten väljer en skiva (ClickSample::slices) i stället för hela samplingen; originalhastighet, ingen loop
-    int slicerMapTo = 0;         // halvtonen (från tonarten) som spelar skiva 1; n..n+7 spelar skiva 1..8
     bool slicerReverse = false;  // alla skivor spelas baklänges
     float allpassFreq = 200.0f;  // 4 allpass i serie efter filtren (mitten och sida var för sig); AMOUNT 0 = av
     float allpassAmount = 0.0f;  // 0..1: blandning torr -> allpass (1 = ren fasrotation)
@@ -148,11 +148,14 @@ public:
     void setTempo (double newBpm) { if (newBpm != bpm) { bpm = newBpm; refreshEnvTimes(); } }
 
     // Spelar en ton `semitones` från grundtonen i `gateSamples` samples.
-    void noteOn (int semitones, float velocity, int gateSamples);
+    // slice >= 0: en not i raden "Slice N" (0-baserat); spelar den skivan i ClickSample::slices, originalhastighet, ingen loop. -1: vanlig ton.
+    void noteOn (int semitones, float velocity, int gateSamples, int slice = -1);
 
     // En glide-ton (som en "slide note" i FL Studio): ingen ny ton slås an, utan den som klingar glider till
     // `semitones` på `samples` samples och blir kvar där tills den slutar. Ger false om ingenting klingar.
     bool glideTo (int semitones, int samples);
+    bool isSounding() const { return stage != Stage::idle; }
+    int getTargetSemitones() const { return targetSemitones; } // tonen (eller glidemålet) rösten är på väg mot
     void release();
     // Tonar ut tonen på `milliseconds` oavsett RELEASE: när ett steg spelats strax innan en "ton av" som slutar mönstret. Nästa ton börjar som vanligt.
     void fadeOutQuickly (double milliseconds);
@@ -253,10 +256,12 @@ private:
     double fmCarrierPhase = 0.0, fmModPhase = 0.0; // FM-källans faser (0..1)
     float fmEnvLevel = 0.0f;                        // 1 vid anslaget, faller mot 0 (FM ENV)
     double samplePosition = 0.0; // i samplingens samples
+    bool sliceNote = false;      // tonen kom från en slice-rad (satt i noteOn)
     bool sliceVoice = false;     // tonen spelar en skiva (satt i noteOn)
     int sliceBegin = 0, sliceEnd = 0;
     double logFrequency = 0.0, targetLogFrequency = 0.0; // log2(Hz), så att glide låter jämnt
     int glideSamplesLeft = 0;
+    int targetSemitones = 0;
     double glideStep = 0.0;  // ändring i log-frekvens per sample under ett glide
 
     struct ModEnv

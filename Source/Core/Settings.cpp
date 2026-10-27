@@ -160,12 +160,59 @@ namespace Settings
 
     juce::String chatProvider()
     {
-        return get ("chatProvider") == "gemini" ? "gemini" : "anthropic";
+        const auto provider = get ("chatProvider");
+        return provider == "gemini" || provider == "openai" || provider == "ollama" ? provider : juce::String ("anthropic");
     }
 
     void setChatProvider (const juce::String& provider)
     {
-        set ("chatProvider", provider == "gemini" ? juce::String ("gemini") : juce::String());
+        set ("chatProvider", provider == "gemini" || provider == "openai" || provider == "ollama" ? provider : juce::String());
+    }
+
+    juce::String openaiApiKey()
+    {
+        const auto stored = get ("openaiApiKey");
+        return stored.isEmpty() ? juce::String() : unprotect (stored).trim();
+    }
+
+    void setOpenaiApiKey (const juce::String& key)
+    {
+        set ("openaiApiKey", key.trim().isEmpty() ? juce::String() : protect (key.trim()));
+    }
+
+    juce::String openaiModel()
+    {
+        const auto model = get ("openaiModel").trim();
+        return model.isEmpty() ? juce::String ("gpt-5-mini") : model;
+    }
+
+    void setOpenaiModel (const juce::String& model)
+    {
+        set ("openaiModel", model.trim() == "gpt-5-mini" ? juce::String() : model.trim());
+    }
+
+    juce::String ollamaBaseUrl()
+    {
+        auto url = get ("ollamaBaseUrl").trim();
+        while (url.endsWithChar ('/'))
+            url = url.dropLastCharacters (1);
+        return url.isEmpty() ? juce::String ("http://localhost:11434") : url;
+    }
+
+    void setOllamaBaseUrl (const juce::String& url)
+    {
+        const auto trimmed = url.trim();
+        set ("ollamaBaseUrl", trimmed == "http://localhost:11434" ? juce::String() : trimmed);
+    }
+
+    juce::String ollamaModel()
+    {
+        return get ("ollamaModel").trim(); // ingen standard: det beror på vad användaren har hämtat (ollama pull)
+    }
+
+    void setOllamaModel (const juce::String& model)
+    {
+        set ("ollamaModel", model.trim());
     }
 
     juce::String geminiApiKey()

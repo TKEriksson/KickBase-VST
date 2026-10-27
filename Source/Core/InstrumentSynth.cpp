@@ -29,6 +29,7 @@ void InstrumentSynth::reset()
     glideSamplesLeft = 0;
     samplePosition = 0.0;
     sliceVoice = false;
+    sliceNote = false;
     env2.reset();
     env3.reset();
     pitchEnv = 0.0f;
@@ -75,6 +76,7 @@ double InstrumentSynth::warpPhase (WarpMode mode, float amount, double phase, fl
             return std::floor (phase * steps) / steps;
         }
         case WarpMode::am:
+        case WarpMode::ring:
         case WarpMode::off:    break;
     }
     return phase;
@@ -124,6 +126,12 @@ InstrumentSynth::Stereo InstrumentSynth::Oscillator::next (const OscParams& p, d
             const auto depth = juce::jlimit (0.0f, 1.0f, warpAmount);
             voice *= 1.0f - depth + depth * (0.5f + 0.5f * (float) std::sin (juce::MathConstants<double>::twoPi * 2.0 * phase));
         }
+        else if (p.warp == WarpMode::ring && warpAmount > 0.0f)
+        {
+            // RING (B): vågen multipliceras med OSC 2 och/eller OSC 3 (fmInput = faktorn, -1..1). Warp = blandning torr -> ren ringmodulation.
+            const auto depth = juce::jlimit (0.0f, 1.0f, warpAmount);
+            voice *= 1.0f - depth + depth * fmInput;
+        }
 
         // Stämmorna sprids över stereobilden (balans: mitten oförändrad, ytterkanten tystnar åt andra sidan).
         const auto voicePan = voices > 1 ? (float) spread * p.stereo : 0.0f;
@@ -138,9 +146,10 @@ InstrumentSynth::Stereo InstrumentSynth::Oscillator::next (const OscParams& p, d
     return { sumLeft * normal * (pan > 0.0f ? 1.0f - pan : 1.0f), sumRight * normal * (pan < 0.0f ? 1.0f + pan : 1.0f) };
 }
 
-void InstrumentSynth::noteOn (int semitones, float newVelocity, int gateSamples)
+void InstrumentSynth::noteOn (int semitones, float newVelocity, int gateSamples, int slice)
 {
     forcedReleaseMs = 0.0; // en ny ton släpps med sin vanliga RELEASE
+    targetSemitones = semitones;
     const auto frequency = params.rootHz * std::exp2 (semitones / 12.0f);
     targetLogFrequency = std::log2 ((double) frequency);
     logFrequency = targetLogFrequency;
@@ -168,12 +177,13 @@ void InstrumentSynth::noteOn (int semitones, float newVelocity, int gateSamples)
     randomValue = modRandom.nextFloat();
     samplePosition = params.sampleData != nullptr ? (double) params.sampleStart * (double) params.sampleData->audio.getNumSamples() : 0.0;
     sliceVoice = false;
-    if (params.slicerOn && params.sampleData != nullptr)
+    sliceNote = slice >= 0;
+    if (sliceNote && params.sampleData != nullptr)
     {
-        // Noten väljer skivan; utanför skivorna (eller över max 128) är det tyst, ingen wrap.
+        // En not i raden "Slice N" väljer skivan; saknas skivan är det tyst, ingen wrap.
         const auto& slices = params.sampleData->slices;
-        const auto index = semitones - params.slicerMapTo;
-        if (index >= 0 && (size_t) index < slices.size())
+        const auto index = slice;
+        if ((size_t) index < slices.size())
         {
             sliceBegin = slices[(size_t) index];
             sliceEnd = (size_t) index + 1 < slices.size() ? slices[(size_t) index + 1] : params.sampleData->audio.getNumSamples();
@@ -191,6 +201,7 @@ bool InstrumentSynth::glideTo (int semitones, int samples)
     if (stage == Stage::idle)
         return false;
 
+    targetSemitones = semitones;
     targetLogFrequency = std::log2 ((double) (params.rootHz * std::exp2 (semitones / 12.0f)));
     glideSamplesLeft = std::max (1, samples);
     glideStep = (targetLogFrequency - logFrequency) / (double) glideSamplesLeft;
@@ -377,7 +388,9 @@ InstrumentSynth::Output InstrumentSynth::next()
     const auto levelA = params.oscA.on ? params.oscA.level : 0.0f;
     const auto levelB = params.oscB.on ? params.oscB.level : 0.0f;
     const auto levelC = params.oscC.on ? params.oscC.level : 0.0f;
-    const auto bNeeded = params.oscB.on && (params.oscB.level > 0.0f || params.oscA.warp == WarpMode::fm);
+    const auto ringOn = params.oscA.warp == WarpMode::ring;
+    const auto bNeeded = params.oscB.on && (params.oscB.level > 0.0f || params.oscA.warp == WarpMode::fm || (ringOn && params.oscA.ringSource != 1));
+    const auto cNeeded = params.oscC.on && (params.oscC.level > 0.0f || (ringOn && params.oscA.ringSource != 0));
     const auto bRaw = bNeeded ? oscB.next (params.oscB, frequency, sampleRate, params.oscB.warpAmount, 0.0f) : Stereo {};
     const auto bSide = 0.5f * (bRaw.left - bRaw.right) * params.bWidth;
     const auto b = params.bWidth == 1.0f ? bRaw : Stereo { bRaw.mid() + bSide, bRaw.mid() - bSide };
@@ -400,8 +413,11 @@ InstrumentSynth::Output InstrumentSynth::next()
         const auto centre = s.mid(), side = 0.5f * (s.left - s.right) * width;
         return Stereo { centre + side, centre - side };
     };
-    const auto a = widen (levelA > 0.0f ? oscA.next (params.oscA, frequency, sampleRate, warpA, b.mid()) : Stereo {}, params.aWidth);
-    const auto c = widen (levelC > 0.0f ? oscC.next (params.oscC, frequency, sampleRate, params.oscC.warpAmount, 0.0f) : Stereo {}, params.cWidth);
+    // OSC C före A, eftersom RING (B) kan multiplicera A med C. Av/tyst källa ger faktor 0 (inget hörs vid full RING).
+    const auto c = widen (cNeeded ? oscC.next (params.oscC, frequency, sampleRate, params.oscC.warpAmount, 0.0f) : Stereo {}, params.cWidth);
+    const auto bMid = params.oscB.on ? b.mid() : 0.0f, cMid = params.oscC.on ? c.mid() : 0.0f;
+    const auto modInput = ringOn ? (params.oscA.ringSource == 0 ? bMid : params.oscA.ringSource == 1 ? cMid : bMid * cMid) : b.mid();
+    const auto a = widen (levelA > 0.0f ? oscA.next (params.oscA, frequency, sampleRate, warpA, modInput) : Stereo {}, params.aWidth);
 
     // Sub och brus ligger i mitten. Mitten och sidan filtreras var för sig (samma filter), och
     // blir sedan vänster och höger igen.
@@ -439,9 +455,9 @@ InstrumentSynth::Output InstrumentSynth::next()
     widthDelayPos = (widthDelayPos + 1) & 63;
     auto addMonoWide = [&] (bool filtered, float x, float pan, float width, float* line)
     {
+        line[widthDelayPos] = x; // skrivs alltid, så att fördröjningslinjen är fylld när WIDTH dras upp från 1 (annars klick)
         if (width <= 1.0f)
             return addMono (filtered, x, pan);
-        line[widthDelayPos] = x;
         const auto delayed = line[(widthDelayPos + 64 - 17) & 63];
         const auto angle = juce::jmin (1.0f, width - 1.0f) * juce::MathConstants<float>::pi * 0.25f;
         addPanned (filtered, x * std::cos (angle) + delayed * std::sin (angle), x * std::cos (angle) - delayed * std::sin (angle), pan);
@@ -517,7 +533,7 @@ InstrumentSynth::Output InstrumentSynth::next()
     {
         const auto& audio = params.sampleData->audio;
         const auto length = audio.getNumSamples();
-        if (params.slicerOn)
+        if (sliceNote)
         {
             // Skiva: originalhastighet framåt eller bakåt, stannar vid skivans kant; 64 samples fade mot kanterna mot klick.
             if (sliceVoice && length > 1 && samplePosition >= (double) sliceBegin && samplePosition < (double) sliceEnd)

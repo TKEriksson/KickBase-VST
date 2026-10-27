@@ -63,7 +63,7 @@ namespace Effects
     StringArray typeNames()
     {
         return { "Off", "Filter", "Distortion", "EQ", "Chorus", "Phaser", "Echo", "Reverb",
-                 "Compressor", "Trance Gate", "Comb", "Ring Mod", "Bitcrusher", "Auto Filter", "Maximizer", "Sidechain", "Disperser", "Widener", "Flanger", "Transient", "Dynamic EQ", "Octaver", "Band Ducker", "Shimmer", "Low Multiplier" };
+                 "Compressor", "Trance Gate", "Comb", "Ring Mod", "Bitcrusher", "Auto Filter", "Maximizer", "Sidechain", "Disperser", "Widener", "Flanger", "Transient", "Dynamic EQ", "Octaver", "Band Ducker", "Shimmer", "Low Multiplier", "Sidechain Curve", "Sidechain 2-Band", "Phase Rotation" };
     }
 
     String name (EffectType type)
@@ -74,7 +74,7 @@ namespace Effects
     String shortName (EffectType type)
     {
         const char* names[] { "-", "FILT", "DIST", "EQ", "CHOR", "PHAS", "ECHO", "VERB",
-                              "COMP", "GATE", "COMB", "RING", "CRSH", "AUTO", "MAX", "SIDE", "DISP", "WIDE", "FLNG", "TRAN", "DEQ", "OCT", "BDUC" };
+                              "COMP", "GATE", "COMB", "RING", "CRSH", "AUTO", "MAX", "SIDE", "DISP", "WIDE", "FLNG", "TRAN", "DEQ", "OCT", "BDUC", "SHIM", "LMUL", "SCRV", "SC2B", "ROT" };
         return names[jlimit (0, numEffectTypes - 1, (int) type)];
     }
 
@@ -131,6 +131,7 @@ namespace Effects
             case Unit::bits:    return String (v, 1) + " bit";
             case Unit::times:   return String (roundToInt (v)) + "x";
             case Unit::octaves: return String (v, 1) + " oct";
+            case Unit::degrees: return String (roundToInt (v)) + " deg";
             case Unit::plain:   break;
         }
         return String (v, 2);
@@ -303,6 +304,24 @@ namespace Effects
                 value ("DRIVE", 0.0f, 1.0f, 0.0f, 0.5f, Unit::percent),
                 value ("MONO", 0.0f, 1.0f, 0.0f, 1.0f, Unit::percent),
                 mixKnob (0.5f) };
+            // Riktiga sidechainen (samma signal som SIDECHAIN-fliken: kickens envelope eller kurvan) i en plats.
+            table[(size_t) EffectType::sidechainCurve] = {
+                value ("DEPTH", 0.0f, 1.0f, 0.8f, 0.8f, Unit::percent),
+                value ("SMOOTH", 0.2f, 30.0f, 1.0f, 1.0f, Unit::ms),
+                mixKnob (1.0f) };
+            // Samma i två band: LOW (basen, kickens svans) och MID-HI (kickens punch) med var sitt djup och sin release.
+            table[(size_t) EffectType::sidechainBands] = {
+                value ("SPLIT", 60.0f, 400.0f, 150.0f, 150.0f, Unit::hz),
+                value ("LOW DEPTH", 0.0f, 1.0f, 0.9f, 0.9f, Unit::percent),
+                value ("HIGH DEPTH", 0.0f, 1.0f, 0.3f, 0.3f, Unit::percent),
+                value ("LOW REL", 1.0f, 800.0f, 1.0f, 1.0f, Unit::ms),
+                value ("HIGH REL", 1.0f, 800.0f, 1.0f, 1.0f, Unit::ms),
+                mixKnob (1.0f) };
+            // PHASE ROTATION (som Voxengo PHA-979): vrider fasen vid FREQ (kickens/basens grundton) utan att ändra nivån. Samma vridning på L och R.
+            table[(size_t) EffectType::phaseRotation] = {
+                value ("FREQ", 20.0f, 300.0f, 60.0f, 60.0f, Unit::hz),
+                value ("ROTATION", 0.0f, 360.0f, 0.0f, 180.0f, Unit::degrees),
+                mixKnob (1.0f) };
             return table;
         }();
         return all[(size_t) jlimit (0, numEffectTypes - 1, (int) type)];
@@ -513,7 +532,8 @@ namespace Effects
 
     void migrateLegacyKnobs (ValueTree& state)
     {
-        if ((int) state.getProperty ("fxKnobsV", 0) >= knobsVersion)
+        const auto oldVersion = (int) state.getProperty ("fxKnobsV", 0);
+        if (oldVersion >= knobsVersion)
             return;
         state.setProperty ("fxKnobsV", knobsVersion, nullptr);
 
@@ -540,6 +560,10 @@ namespace Effects
                 if (! isPositiveAndBelow (typeIndex, numEffectTypes))
                     continue;
                 const auto type = (EffectType) typeIndex;
+                // Maximizerns MODE (ratt 6) tillkom i version 3: äldre projekt sparade den oanvända rattens värde (ofta 0.5/1.0 = Smooth), som ska nollas.
+                if (type == EffectType::maximizer && oldVersion < 3)
+                    if (auto stale = state.getChildWithProperty ("id", knobParamID (channel, slot, 5)); stale.isValid())
+                        state.removeChild (stale, nullptr);
                 float value = 0.0f;
                 for (int k = 0; k < knobsPerSlot; ++k)
                     if (newKnobDefault (type, k, value))
@@ -586,6 +610,7 @@ namespace
         double bpm = 140.0;
         double ppq = 0.0; // position i fjärdedelar vid buffertens första sample
         int controlPhase = 0; // hur långt in i sitt kontrollfönster (Modulation::controlInterval) buffertens första sample ligger
+        const float* duck = nullptr; // duckningssignalen (SIDECHAIN-fliken), 0..1
         const SourceSignals* sources = nullptr; // kickens och instrumentens ljud (för SIDECHAIN)
 
         double samplesPerQuarter() const { return sampleRate * 60.0 / std::max (1.0, bpm); }
@@ -1569,6 +1594,91 @@ namespace
         }
     };
 
+    // SIDECHAIN CURVE: den riktiga sidechainen i en plats. Duckningssignalen är densamma som styr baslagren (kickens envelope eller
+    // SIDECHAIN-flikens kurva); förstärkningen 1 - DEPTH * signal glider mot målet på SMOOTH ms, som Ducker.
+    struct SidechainCurveFx
+    {
+        float gain = 1.0f;
+
+        void prepare (const dsp::ProcessSpec&) { reset(); }
+        void reset() { gain = 1.0f; }
+
+        void process (AudioBuffer<float>& buffer, int numSamples, const Values& k, const Context& context)
+        {
+            if (context.duck == nullptr)
+                return;
+            const auto depth = k[0], wet = k[2];
+            const auto coefficient = 1.0f - std::exp (-1.0f / (std::max (0.2f, k[1]) * 0.001f * (float) context.sampleRate));
+            const auto channels = std::min (2, buffer.getNumChannels());
+            for (int i = 0; i < numSamples; ++i)
+            {
+                gain += (1.0f - depth * context.duck[i] - gain) * coefficient;
+                const auto g = 1.0f + (gain - 1.0f) * wet;
+                for (int ch = 0; ch < channels; ++ch)
+                    buffer.setSample (ch, i, buffer.getSample (ch, i) * g);
+            }
+        }
+    };
+
+    // SIDECHAIN 2-BAND: som SIDECHAIN CURVE men ljudet delas först (LR4 vid SPLIT) i LOW och MID-HI som får var sitt djup och sin release
+    // (snabb sänkning, släpp på REL ms), så att kickens svans kan duckas länge mot basen och punchen kort mot mid/hi.
+    struct SidechainBandsFx
+    {
+        std::array<std::array<Biquad, 2>, 2> low, high;
+        float lowGain = 1.0f, highGain = 1.0f, lastSplit = 0.0f;
+
+        void prepare (const dsp::ProcessSpec&) { reset(); }
+        void reset()
+        {
+            for (auto& channel : low) for (auto& f : channel) f.reset();
+            for (auto& channel : high) for (auto& f : channel) f.reset();
+            lowGain = highGain = 1.0f;
+            lastSplit = 0.0f;
+        }
+
+        void process (AudioBuffer<float>& buffer, int numSamples, const Values& k, const Context& context)
+        {
+            if (context.duck == nullptr)
+                return;
+            using Array = dsp::IIR::ArrayCoefficients<float>;
+            const auto split = k[0], lowDepth = k[1], highDepth = k[2], wet = k[5];
+            if (std::abs (split - lastSplit) > 0.01f)
+            {
+                lastSplit = split;
+                const auto lowCoefficients = Array::makeLowPass (context.sampleRate, split, 0.70710678f);
+                const auto highCoefficients = Array::makeHighPass (context.sampleRate, split, 0.70710678f);
+                for (int ch = 0; ch < 2; ++ch)
+                    for (int s = 0; s < 2; ++s)
+                    {
+                        low[(size_t) ch][(size_t) s].setCoefficients (lowCoefficients);
+                        high[(size_t) ch][(size_t) s].setCoefficients (highCoefficients);
+                    }
+            }
+            const auto fast = 1.0f - std::exp (-1.0f / (0.001f * (float) context.sampleRate));
+            const auto lowRelease = 1.0f - std::exp (-1.0f / (std::max (1.0f, k[3]) * 0.001f * (float) context.sampleRate));
+            const auto highRelease = 1.0f - std::exp (-1.0f / (std::max (1.0f, k[4]) * 0.001f * (float) context.sampleRate));
+            const auto channels = std::min (2, buffer.getNumChannels());
+
+            for (int i = 0; i < numSamples; ++i)
+            {
+                const auto lowTarget = 1.0f - lowDepth * context.duck[i];
+                const auto highTarget = 1.0f - highDepth * context.duck[i];
+                lowGain += (lowTarget - lowGain) * (lowTarget < lowGain ? fast : lowRelease);
+                highGain += (highTarget - highGain) * (highTarget < highGain ? fast : highRelease);
+                for (int ch = 0; ch < channels; ++ch)
+                {
+                    const auto x = buffer.getSample (ch, i);
+                    auto& l = low[(size_t) ch];
+                    auto& h = high[(size_t) ch];
+                    const auto lowPart = l[1].process (l[0].process (x));
+                    const auto highPart = h[1].process (h[0].process (x));
+                    const auto ducked = lowPart * lowGain + highPart * highGain;
+                    buffer.setSample (ch, i, x + (ducked - x) * wet);
+                }
+            }
+        }
+    };
+
     // DISPERSER: en kedja av all-pass-filter (2:a ordningen, STAGES st) som bara vrider fasen och sprider gruppfördröjningen runt FREQ,
     // så att en kick får "chirp" och sin transient utsmetad utan att tonen ändras. SPREAD sprider filtrens frekvenser (0 = alla på FREQ,
     // 100 % = +-2 oktaver); MIX 100 % är ren fasvridning. Koefficienterna räknas om en gång per block.
@@ -1604,6 +1714,43 @@ namespace
                     auto x = dry;
                     for (int s = 0; s < stages; ++s)
                         x = chain[(size_t) s].process (x);
+                    data[i] = dry + (x - dry) * wet;
+                }
+            }
+        }
+    };
+
+    // PHASE ROTATION: två första ordningens allpass i serie. Vid FREQ ger varje steg halva vridningen (fasen -2*atan(f/fc) per steg), så
+    // fc = f / tan(ROTATION/4). Nivån är oförändrad; fasen vrids mjukt över frekvensen (0 deg = förbi, 360 deg = lika med 0 vid FREQ).
+    struct PhaseRotationFx
+    {
+        struct Stage
+        {
+            float x1 = 0.0f, y1 = 0.0f;
+            float process (float x, float a) { const auto y = a * x + x1 - a * y1; x1 = x; y1 = y; return y; }
+        };
+        std::array<std::array<Stage, 2>, 2> stages;
+
+        void prepare (const dsp::ProcessSpec&) { reset(); }
+        void reset() { for (auto& channel : stages) for (auto& s : channel) s = {}; }
+
+        void process (AudioBuffer<float>& buffer, int numSamples, const Values& k, const Context& context)
+        {
+            const auto freq = k[0], rotation = k[1], wet = k[2];
+            if (rotation < 0.5f)
+                return;
+            const auto quarter = (double) jlimit (0.1f, 359.9f, rotation) * MathConstants<double>::pi / 720.0; // ROTATION/4 i radianer
+            const auto fc = jlimit (1.0, context.sampleRate * 0.45, (double) freq / std::tan (quarter));
+            const auto t = std::tan (MathConstants<double>::pi * fc / context.sampleRate);
+            const auto a = (float) ((t - 1.0) / (t + 1.0));
+            for (int ch = 0; ch < std::min (2, buffer.getNumChannels()); ++ch)
+            {
+                auto* data = buffer.getWritePointer (ch);
+                auto& chain = stages[(size_t) ch];
+                for (int i = 0; i < numSamples; ++i)
+                {
+                    const auto dry = data[i];
+                    const auto x = chain[1].process (chain[0].process (dry, a), a);
                     data[i] = dry + (x - dry) * wet;
                 }
             }
@@ -1875,6 +2022,9 @@ struct EffectChain::Impl
         BandDuckerFx bandDucker;
         ShimmerFx shimmer;
         LowMultiplierFx lowMultiplier;
+        SidechainCurveFx sidechainCurve;
+        SidechainBandsFx sidechainBands;
+        PhaseRotationFx phaseRotation;
 
         template <typename Function>
         void forEachEffect (Function&& function)
@@ -1882,7 +2032,7 @@ struct EffectChain::Impl
             function (filter); function (distortion); function (eq); function (chorus); function (phaser);
             function (echo); function (reverb); function (compressor); function (gate); function (comb);
             function (ringMod); function (bitcrusher); function (autoFilter); function (maximizer); function (ducker); function (disperser);
-            function (widener); function (flanger); function (transient); function (dynamicEq); function (octaver); function (bandDucker); function (shimmer); function (lowMultiplier);
+            function (widener); function (flanger); function (transient); function (dynamicEq); function (octaver); function (bandDucker); function (shimmer); function (lowMultiplier); function (sidechainCurve); function (sidechainBands); function (phaseRotation);
         }
 
         void resetCurrent()
@@ -1913,6 +2063,9 @@ struct EffectChain::Impl
                 case EffectType::bandDucker: bandDucker.reset(); break;
                 case EffectType::shimmer:    shimmer.reset(); break;
                 case EffectType::lowMultiplier: lowMultiplier.reset(); break;
+                case EffectType::sidechainCurve: sidechainCurve.reset(); break;
+                case EffectType::sidechainBands: sidechainBands.reset(); break;
+                case EffectType::phaseRotation: phaseRotation.reset(); break;
                 case EffectType::off:
                 case EffectType::count:      break;
             }
@@ -1946,6 +2099,9 @@ struct EffectChain::Impl
                 case EffectType::bandDucker: bandDucker.process (buffer, numSamples, values, context); break;
                 case EffectType::shimmer:    shimmer.process (buffer, numSamples, values, context); break;
                 case EffectType::lowMultiplier: lowMultiplier.process (buffer, numSamples, values, context); break;
+                case EffectType::sidechainCurve: sidechainCurve.process (buffer, numSamples, values, context); break;
+                case EffectType::sidechainBands: sidechainBands.process (buffer, numSamples, values, context); break;
+                case EffectType::phaseRotation: phaseRotation.process (buffer, numSamples, values, context); break;
                 case EffectType::off:
                 case EffectType::count:      break;
             }
@@ -1999,6 +2155,11 @@ void EffectChain::setModulator (const Modulator* modulator)
 void EffectChain::setSources (const SourceSignals* sources)
 {
     impl->context.sources = sources;
+}
+
+void EffectChain::setDuck (const float* duck)
+{
+    impl->context.duck = duck;
 }
 
 void EffectChain::update (double bpm, double ppq, int controlPhase)
@@ -2282,6 +2443,7 @@ void EffectRack::process (int numSamples, const float* kickEnvelope, AudioBuffer
         if (impl->idle[(size_t) ch])
             continue;
 
+        impl->chains[(size_t) ch]->setDuck (kickEnvelope);
         impl->chains[(size_t) ch]->process (buffer, numSamples);
 
         // EQ och kompressor (alltid med, neutrala som standard). Taparna visar vad som når dem.

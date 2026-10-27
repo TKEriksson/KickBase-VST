@@ -76,6 +76,13 @@ namespace ParamID
 
     // Master
     inline constexpr auto gain = "gain";
+
+    // JOG (D3b): hastighet för den egna klockan i förhandsspelning, 1 = normalt, 0 = står still, 4 = fyra gånger snabbare.
+    inline constexpr auto jogSpeed = "jogSpeed";
+
+    // Kickens SYNTH och SAMPLE på/av (båda på = som förut). Sist i layouten, så att gamla projekt är orörda.
+    inline constexpr auto kickSynthOn  = "kickSynthOn";
+    inline constexpr auto kickSampleOn = "kickSampleOn";
 }
 
 // Varje baslagers parametrar. ID:t är "bass" + lagrets nummer + fältets namn, t.ex. "bass2Cutoff".
@@ -113,11 +120,12 @@ enum class InstrumentField
     warpEnvSource, warpEnvDecay,                                  // fas S: WARP ENV-källa (Filter Env = som förut, Direct, ENV 2, ENV 3) och Directs egen decay i ms
     polarity, phaseDeg, nudgeMs,                                  // fas PH: polaritet (vänd), startfas 0..360 grader för OSC 1-3 och sub, nudge -2..+2 ms (tillägg till DELAY; negativt tar bort av DELAY)
     fmOn, fmLevel, fmRatio, fmIndex, fmEnvAmount, fmEnvTime, fmSemis, fmPreset, fmFilter, // fas S2: FM-källa (av som standard); fmPreset 0 = Custom (läses inte av DSP, bara av UI)
-    slicerOn, slicerMapTo, slicerReverse, // fas F2: slicer i samplerösten (av som standard); MAP TO = halvtonen som spelar skiva 1
+    slicerOn, slicerMapTo, slicerReverse, // fas F2; slicerOn och slicerMapTo är oanvända (ID kvar, E2: skivor spelas via raderna "Slice N")
     fxSend,                                                       // FX-kanalen som SEND (av som standard = som förut: amount delar ljudet torrt/blött)
     sampleMode,                                                   // fas R9b: lagrets SAMPLE-rad: 0 BLEND (blandas med syntrösten, som förut), 1 INDEPENDENT (egen rad), 2 OFF; sist, så gamla projekt är orörda
     allpassFreq, allpassAmount,                                   // allpass efter filtren: 4 första ordningens allpass vid FREQ (20..2000 Hz); AMOUNT 0 (standard) = av och ljudet oförändrat
-    samplePan, noisePan, fmPan, noiseWidth, subPhaseDeg, fmPhaseDeg, aWidth, bWidth, cWidth, sampleWidth, fmWidth, // bredd per källa: 100 % = som förut (OSC 0..200 %: 0 = mono; SAMPLE och FM 100..200 %: okorrelerat).                    // INSTR-MIX: pan för SAMPLE, NOISE och FM (0 = mitten = som förut) och brusets bredd (100 % = mono som förut, upp till 200 %); sub är alltid mono i mitten
+    samplePan, noisePan, fmPan, noiseWidth, subPhaseDeg, fmPhaseDeg, aWidth, bWidth, cWidth, sampleWidth, fmWidth, // bredd per källa: 100 % = som förut (OSC 0..200 %: 0 = mono; SAMPLE och FM 100..200 %: okorrelerat); INSTR-MIX: pan för SAMPLE, NOISE och FM (0 = mitten = som förut) och brusets bredd (100 % = mono som förut, upp till 200 %); sub är alltid mono i mitten
+    ringSource,                                                  // RING (B) på OSC 1: vad OSC 1 multipliceras med (0 = OSC 2, 1 = OSC 3, 2 = OSC 2 x OSC 3)
     count
 };
 
@@ -153,6 +161,7 @@ namespace Params
     void addInstrumentSynthParams (Layout& layout, int layer);
     void addFxParams (Layout& layout);
     void addMasterParams (Layout& layout);
+    void addJogParams (Layout& layout); // D3b: sist i layouten
 
     juce::StringArray keyNames();
     float midiToHz (float midiNote);
@@ -184,7 +193,7 @@ namespace Params
             if (row <= activeInstruments)
                 lengths.total = std::max (lengths.total, lengths.rows[(size_t) row]);
         }
-        // R9b: underraderna (SAMPLE, SLICER) räknas med när deras instrument är aktivt; längd och loop ur mönstret, inte ur parametrar. Tom pool = ingen skillnad.
+        // R9b: underraderna (SAMPLE, "Slice N") räknas med när deras instrument är aktivt; längd och loop ur mönstret, inte ur parametrar. Tom pool = ingen skillnad.
         for (int id = RowRegistry::firstSubRow; id < RowRegistry::maxRows; ++id)
         {
             if (! pattern.rows.isActive (id))
@@ -230,6 +239,7 @@ public:
 
     // Ett baslagers parameter, utan namnuppslag (index räknade i konstruktorn).
     float bass (int layer, InstrumentField field) const;
+    bool hasBass (int layer, InstrumentField field) const { return instrumentEntries[(size_t) layer][(size_t) field] >= 0; } // FX-pluginet saknar t.ex. fxSend
 
     // Antal använda instrument (1-10).
     int instruments() const { return juce::jlimit (1, ParamID::numInstrumentLayers, (int) std::lround (get (ParamID::instrumentCount))); }

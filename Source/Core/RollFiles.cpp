@@ -150,6 +150,13 @@ namespace RollFiles
         return track;
     }
 
+    int countSlideNotes (const Pattern& pattern, int layer)
+    {
+        auto count = 0;
+        pattern.forEachNote (layer, [&count] (int, const Pattern::Note& n) { count += n.slide.load() ? 1 : 0; });
+        return count;
+    }
+
     bool exportMidi (const Pattern& pattern, int layer, int bars, double bpm, int rootMidiNote, const juce::File& file)
     {
         juce::MidiFile midi;
@@ -168,7 +175,7 @@ namespace RollFiles
                 pattern.forEachNote (id, [&notes] (int, const Pattern::Note&) { ++notes; });
                 if (notes == 0)
                     continue;
-                const auto name = "Bass " + juce::String (layer + 1) + " - " + (kind == RowRegistry::Kind::slicer ? "SLICER" : "SAMPLE");
+                const auto name = "Bass " + juce::String (layer + 1) + " - " + (kind == RowRegistry::Kind::slice ? "Slice " + juce::String (pattern.rows.sliceOf (id) + 1) : juce::String ("SAMPLE"));
                 midi.addTrack (buildTrack (pattern, id, std::max (bars, pattern.lengthBars (id)), bpm, rootMidiNote, name));
             }
 

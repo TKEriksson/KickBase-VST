@@ -116,6 +116,41 @@ modProto.env = function (param, attackMs, decayMs, depth) {
   return addMod(this, { param: param, kind: 'env', attack: modNum('attack', attackMs), decay: modNum('decay', decayMs), depth: modNum('djup', depth === undefined ? 1 : depth) });
 };
 
+// .chord(CHORD, BASETONE, START, LENGTH): staplar ackordtonerna (intervall från grundtonen) som egna händelser.
+// Tonhöjd i C++-skalan (C2 = 0, som LiveCode::pitchFrom). START och LENGTH är andelar av en cykel: ett tal (0.25) eller "1/4".
+// LENGTH kan vara en lista; ton k får längd k (lista kortare än ackordet börjar om). Utan LENGTH är varje ton 1/4.
+var chordTypes = {
+  major: [0, 4, 7], minor: [0, 3, 7], dim: [0, 3, 6], aug: [0, 4, 8], sus2: [0, 2, 7], sus4: [0, 5, 7], power: [0, 7],
+  major7: [0, 4, 7, 11], minor7: [0, 3, 7, 10], dom7: [0, 4, 7, 10], dim7: [0, 3, 6, 9], minor7b5: [0, 3, 6, 10],
+  major9: [0, 4, 7, 11, 14], minor9: [0, 3, 7, 10, 14], dom9: [0, 4, 7, 10, 14], add9: [0, 4, 7, 14], six: [0, 4, 7, 9], minor6: [0, 3, 7, 9]
+};
+function chordFraction(name, v) {
+  if (typeof v === 'number' && isFinite(v)) return v;
+  var m = typeof v === 'string' ? /^\s*(-?\d+(?:\.\d+)?)\s*(?:\/\s*(\d+(?:\.\d+)?))?\s*$/.exec(v) : null;
+  if (!m || (m[2] !== undefined && +m[2] === 0)) throw new Error('chord: ' + name + ' är ett tal eller en bråkdel som "1/4"');
+  return m[2] === undefined ? +m[1] : +m[1] / +m[2];
+}
+function chordPitch(v) {
+  if (v === undefined) return 0;
+  if (typeof v === 'number' && isFinite(v)) return Math.round(v);
+  var m = typeof v === 'string' ? /^\s*([a-gA-G])([#sbf]*)(-?\d*)\s*$/.exec(v) : null;
+  if (!m) throw new Error('chord: grundtonen är ett tonnamn som "c2" eller ett tal');
+  var semi = { a: 9, b: 11, c: 0, d: 2, e: 4, f: 5, g: 7 }[m[1].toLowerCase()];
+  for (var i = 0; i < m[2].length; i++) semi += (m[2][i] === '#' || m[2][i] === 's') ? 1 : -1;
+  return ((m[3] === '' ? 3 : parseInt(m[3], 10)) + 1) * 12 + semi - 36;
+}
+modProto.chord = function (chord, base, start, length) {
+  var intervals = Array.isArray(chord) ? chord : chordTypes[chord];
+  if (!intervals) throw new Error('chord: ackordet är en av ' + Object.keys(chordTypes).join(', '));
+  var root = chordPitch(base), st = start === undefined ? 0 : chordFraction('START', start);
+  var lens = (length === undefined ? ['1/4'] : Array.isArray(length) ? length : [length]).map(function (l) { return chordFraction('LENGTH', l); });
+  if (!lens.length) lens = [0.25];
+  var self = this;
+  return S.stack.apply(null, intervals.map(function (iv, k) {
+    return self.note(root + iv).late(st).clip(lens[k % lens.length]);
+  }));
+};
+
 // Parameterträd (F1): instr1.Cutoff.set(v) / .get(). Namnen kommer ur parameter-id (bass1Cutoff -> bass1 + Cutoff, bass1 även som instr1).
 // .set noteras bara (host.paramSet) och skrivs av C++ efter körningen; .get() ger värdet från före körningen. Grupper som krockar med
 // Strudels egna namn (s, n, note ...) hoppas över. Ger tillbaka listan över hoppade id:n.

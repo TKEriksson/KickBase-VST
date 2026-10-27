@@ -66,6 +66,8 @@ namespace Modulation
         if (dynamic_cast<const juce::AudioParameterFloat*> (&parameter) == nullptr)
             return false;
         const auto id = parameter.getParameterID();
+        if (id == "jogSpeed")
+            return true; // JOG (D3b): LFO/automation på klockans hastighet
         return id.startsWith ("kick") || id.startsWith ("bass") || id.startsWith ("fx") || id.startsWith ("gate");
     }
 

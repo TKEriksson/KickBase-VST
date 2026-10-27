@@ -298,6 +298,93 @@ int renderSignaturesTb303()
     return 0;
 }
 
+// Fas I: RING (B). AMOUNT 0 ändrar inget; full ring med vald källa ändrar ljudet även när källans LEVEL är 0; en avstängd källa ger tystnad.
+int ringTest()
+{
+    juce::ScopedJuceInitialiser_GUI gui;
+    auto failed = false;
+    auto check = [&failed] (bool ok, const juce::String& what) { std::printf ("%s: %s\n", ok ? "ok" : "FEL", what.toRawUTF8()); failed |= ! ok; };
+    const auto keep = make (false);
+    keep->ensureTablesInUse();
+
+    constexpr double rate = 48000.0;
+    auto render = [] (const InstrumentParams& params)
+    {
+        InstrumentVoices v;
+        v.prepare (rate);
+        v.setNumVoices (1);
+        v.setSeed (7);
+        v.setTempo (145.0);
+        v.setParams (params);
+        v.reset();
+        v.noteOn (0, 0.8f, (int) (rate * 10.0));
+        std::vector<float> out;
+        for (int i = 0; i < (int) (rate * 0.3); ++i)
+        {
+            const auto o = v.next();
+            out.push_back (o.left * o.amplitude);
+        }
+        return out;
+    };
+    auto rms = [] (const std::vector<float>& x)
+    {
+        auto sum = 0.0;
+        for (const auto s : x)
+            sum += (double) s * s;
+        return std::sqrt (sum / (double) std::max<size_t> (1, x.size()));
+    };
+    auto finite = [] (const std::vector<float>& x)
+    {
+        for (const auto s : x)
+            if (! std::isfinite (s))
+                return false;
+        return true;
+    };
+
+    InstrumentParams base;
+    base.sub = 0.0f;
+    base.cutoffHz = 18000.0f;
+    base.sustain = 0.8f;
+    base.oscB.on = false;
+    base.oscC.on = false;
+    base.oscB.level = 0.0f; // källan hörs inte själv, bara som multiplikator
+    base.oscC.level = 0.0f;
+    base.oscB.semis = 7.0f;
+    base.oscC.semis = 12.0f;
+    const auto plain = render (base);
+    check (rms (plain) > 0.01, "OSC 1 ensam ger ljud");
+
+    auto ring = base;
+    ring.oscA.warp = WarpMode::ring;
+
+    ring.oscA.warpAmount = 0.0f;
+    ring.oscB.on = true;
+    check (render (ring) == plain, "RING AMOUNT 0 ger exakt samma ljud som utan ring");
+
+    ring.oscA.warpAmount = 1.0f;
+    for (int source = 0; source < 3; ++source)
+    {
+        auto p = ring;
+        p.oscA.ringSource = source;
+        p.oscB.on = source != 1;
+        p.oscC.on = source != 0;
+        const auto out = render (p);
+        check (finite (out) && out != plain && rms (out) > 0.001, "RING full, källa " + juce::String (source) + " ändrar ljudet och ger ljud");
+    }
+
+    for (int source = 0; source < 3; ++source)
+    {
+        auto p = ring;
+        p.oscA.ringSource = source;
+        p.oscB.on = source == 1;  // den valda källan (eller en av dem) är av
+        p.oscC.on = source == 0;
+        check (rms (render (p)) < 1.0e-4, "RING full, källa " + juce::String (source) + " avstängd ger tystnad");
+    }
+
+    std::printf (failed ? "ringtest: FEL\n" : "ringtest: ok\n");
+    return failed ? 1 : 0;
+}
+
 // Fas P: flera röster per instrument. Klick när en röst stjäls (mot samma toner utan stöld), att en röst som legat oanvänd medan
 // rattarna ändrats låter som en ny röst, att VOICES ned tonar ut i stället för att klippa, att seed och ackordens timing är
 // deterministiska, och minnet och prepareToPlay-tiden per instans (10 instrument x 8 röster = 80 röster) vid 48 och 192 kHz.
@@ -1257,7 +1344,7 @@ int audioThreadTest()
         for (int t = 0; t < std::min (numTraces.load(), maxTraces); ++t)
         {
             juce::String key;
-            for (int d = 0; d < 7 && traces[t][d] != nullptr; ++d)
+            for (int d = 0; d < traceDepth && traces[t][d] != nullptr; ++d)
                 key << describe (traces[t][d]) << "\n      ";
             ++counts[key];
         }

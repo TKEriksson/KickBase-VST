@@ -72,8 +72,12 @@ private:
     void showSetup (bool show);
     void saveKey();
     bool needsKey() const;
+    juce::String currentModel() const;
+    bool anthropic() const { return Settings::chatProvider() == "anthropic"; }
     bool gemini() const { return Settings::chatProvider() == "gemini"; }
-    void setProvider (bool useGemini);
+    bool openai() const { return Settings::chatProvider() == "openai"; }
+    bool ollama() const { return Settings::chatProvider() == "ollama"; } // lokal server: ingen nyckel, fältet håller adressen
+    void setProvider (const juce::String& provider);
     void populateModels();
     void checkModel (bool fetchList); // Gemini: hämtar modelllistan (valfritt) och provar att vald modell kan verktyg (bakgrundstråd)
     void updateModelNote();
@@ -97,7 +101,7 @@ private:
     juce::TextButton keyButton { "KEY" }, newChatButton { "NEW CHAT" }, chatsButton { "CHATS" }, memoryButton { "MEM" }, undoButton { "UNDO" }, sendButton { "SEND" };
     StopButton stopButton { "STOP" };
     juce::TextButton saveKeyButton { "SAVE KEY" }, cancelKeyButton { "CANCEL" }, removeKeyButton { "REMOVE KEY" };
-    juce::TextButton anthropicButton { "ANTHROPIC (paid key)" }, geminiButton { "GEMINI (free option)" }, guideButton { "GET A FREE KEY (GUIDE)" };
+    juce::TextButton anthropicButton { "ANTHROPIC (paid key)" }, geminiButton { "GEMINI (free option)" }, openaiButton { "OPENAI (paid key)" }, ollamaButton { "OLLAMA (local, free)" }, guideButton { "GET A FREE KEY (GUIDE)" };
     std::array<juce::TextButton, 3> suggestions;
     juce::TextEditor keyEditor;
     InputBox input;

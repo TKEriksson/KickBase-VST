@@ -43,3 +43,36 @@ namespace GeminiApi
     struct KeyTest { bool ok = false; juce::String message; };
     KeyTest testKey (const juce::String& key);
 }
+
+// OpenAI:s Chat Completions med function calling, och Ollama (som talar samma protokoll på /v1/chat/completions). Samma upplägg som
+// GeminiApi: samtalet ligger kvar i Anthropics format och översätts hit och tillbaka, så verktygsloopen i AiChat::run() är gemensam.
+// ollama = true: ingen nyckel, adressen är användarens egen (standard http://localhost:11434) och inga bilder skickas (många lokala
+// modeller ser inte bilder). Allt är rena funktioner utom fetchModels() och testKey() som blockerar (bakgrundstråd).
+// Dokumentation: https://platform.openai.com/docs/guides/function-calling och https://github.com/ollama/ollama/blob/main/docs/openai.md
+namespace OpenAiApi
+{
+    juce::String defaultBase (bool ollama);                       // https://api.openai.com resp. Ollamas adress ur inställningarna
+    juce::String endpoint (const juce::String& baseUrl);          // <bas>/v1/chat/completions
+    juce::String modelsEndpoint (const juce::String& baseUrl);    // <bas>/v1/models
+
+    juce::StringArray models (bool ollama);                       // hämtade listan, annars fallbackModels
+    juce::StringArray fallbackModels (bool ollama);               // OpenAI: några kända namn; Ollama: tom (det beror på vad som är nerladdat)
+    void setFetchedModels (bool ollama, const juce::StringArray& list);
+
+    // GET /v1/models: { data: [{ id }] }. OpenAI: bara chattmodeller (gpt-*, o1/o3/...); Ollama: allt utom inbäddningsmodeller.
+    juce::StringArray parseModelList (const juce::var& response, bool ollama);
+    juce::StringArray fetchModels (const juce::String& baseUrl, const juce::String& key, bool ollama); // sparar listan för models()
+
+    // Hela anropet. messages är chattens samtal (Anthropics format).
+    juce::var buildRequest (const juce::String& model, const juce::String& system, const std::vector<ToolLayer::ToolInfo>& tools,
+                            const juce::Array<juce::var>& messages, int maxOutputTokens, bool ollama);
+
+    // choices[0] som {content:[text|tool_use], stop_reason, usage:{input_tokens, output_tokens}}. Void vid fel (error fylls i).
+    juce::var parseResponse (const juce::var& response, juce::String& error, bool ollama);
+
+    juce::String errorMessage (int httpStatus, const juce::String& body, bool ollama);
+
+    // OpenAI: ett litet anrop med nyckeln. Ollama: hämtar modelllistan (finns servern, och finns modellen?). Blockerar.
+    struct KeyTest { bool ok = false; juce::String message; };
+    KeyTest testKey (const juce::String& baseUrl, const juce::String& key, const juce::String& model, bool ollama);
+}

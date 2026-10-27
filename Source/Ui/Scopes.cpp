@@ -45,8 +45,7 @@ void ScopeView::timerCallback()
 void ScopeView::paint (juce::Graphics& g)
 {
     const auto bounds = getLocalBounds().toFloat();
-    g.setColour (Theme::knobBodyDark.withAlpha (0.85f));
-    g.fillRoundedRectangle (bounds, 6.0f);
+    Theme::paintChartBackground (g, bounds, 8.0f);
 
     const auto area = bounds.reduced (6.0f, 8.0f);
 
@@ -268,8 +267,7 @@ float SpectrumView::xFor (float hz, juce::Rectangle<float> area) const
 void SpectrumView::paint (juce::Graphics& g)
 {
     const auto bounds = getLocalBounds().toFloat();
-    g.setColour (Theme::knobBodyDark.withAlpha (0.85f));
-    g.fillRoundedRectangle (bounds, 6.0f);
+    Theme::paintChartBackground (g, bounds, 8.0f);
 
     const auto area = bounds.reduced (8.0f, 10.0f).withTrimmedBottom (10.0f);
     constexpr float dbTop = 0.0f, dbBottom = -90.0f;
@@ -378,14 +376,24 @@ void StereoView::timerCallback()
     const auto target = (ll > 1.0e-9 && rr > 1.0e-9) ? (float) (lr / std::sqrt (ll * rr)) : correlation;
     correlation += (target - correlation) * 0.2f;
     widthShare = (mm + ss > 1.0e-9) ? (float) (std::sqrt (ss) / (std::sqrt (mm) + std::sqrt (ss))) : widthShare;
+
+    // Spara bildrutans punkter till efterglöden (ingen efterglöd med REDUCE ANIMATIONS).
+    trailHead = (trailHead + 1) % trailFrames;
+    auto& frame = trail[(size_t) trailHead];
+    frame.clear();
+    for (size_t i = 0; i < left.size(); i += 2)
+    {
+        frame.push_back (left[i]);
+        frame.push_back (right[i]);
+    }
+    trailCount = std::min (trailCount + 1, trailFrames);
     repaint();
 }
 
 void StereoView::paint (juce::Graphics& g)
 {
     const auto bounds = getLocalBounds().toFloat();
-    g.setColour (Theme::knobBodyDark.withAlpha (0.85f));
-    g.fillRoundedRectangle (bounds, 6.0f);
+    Theme::paintChartBackground (g, bounds, 8.0f);
 
     auto area = bounds.reduced (8.0f);
     auto meter = area.removeFromBottom (22.0f);
@@ -408,15 +416,30 @@ void StereoView::paint (juce::Graphics& g)
     g.drawText ("L", juce::Rectangle<float> (square.getX() - 2.0f, square.getY() - 2.0f, 12.0f, 10.0f), juce::Justification::left);
     g.drawText ("R", juce::Rectangle<float> (square.getRight() - 10.0f, square.getY() - 2.0f, 12.0f, 10.0f), juce::Justification::right);
 
-    // Punkterna: mitten uppåt, sidan åt sidorna; nyare punkter är ljusare.
-    const auto n = (int) left.size();
-    for (int i = 0; i < n; ++i)
+    // Punkterna: mitten uppåt, sidan åt sidorna. Skalan 0.5 håller full utstyrning (L/R = ±1) precis innanför cirkeln;
+    // överstyrda signaler begränsas radiellt. Nyare punkter är ljusare, äldre bildrutor bleknar (efterglöd) och färgen går
+    // från blå vid låg nivå mot rött vid hög.
+    const auto calm = Settings::reduceAnimations();
+    const auto frames = calm ? 1 : trailCount;
+    const auto low = juce::Colour (0xff3a8fff), high = juce::Colour (0xffff3030);
+    for (int age = frames - 1; age >= 0; --age)
     {
-        const auto l = left[(size_t) i], r = right[(size_t) i];
-        const auto x = centre.x + (l - r) * 0.7071f * radius;
-        const auto y = centre.y - (l + r) * 0.7071f * radius;
-        g.setColour (Theme::bass.withAlpha (0.08f + 0.5f * (float) i / (float) n));
-        g.fillRect (x - 0.8f, y - 0.8f, 1.6f, 1.6f);
+        const auto& points = trail[(size_t) ((trailHead - age + trailFrames) % trailFrames)];
+        const auto count = (int) points.size() / 2;
+        const auto fade = std::pow (0.5f, (float) age);
+        for (int i = 0; i < count; ++i)
+        {
+            const auto l = points[(size_t) (2 * i)], r = points[(size_t) (2 * i + 1)];
+            auto dx = (l - r) * 0.5f, dy = (l + r) * 0.5f;
+            if (const auto d = std::sqrt (dx * dx + dy * dy); d > 0.97f)
+            {
+                dx *= 0.97f / d;
+                dy *= 0.97f / d;
+            }
+            const auto level = juce::jlimit (0.0f, 1.0f, std::max (std::abs (l), std::abs (r)));
+            g.setColour (low.interpolatedWith (high, level * level).withAlpha (fade * (0.08f + 0.5f * (float) i / (float) count)));
+            g.fillRect (centre.x + dx * radius - 0.8f, centre.y - dy * radius - 0.8f, 1.6f, 1.6f);
+        }
     }
 
     // Korrelation: -1 till +1 med en markör.

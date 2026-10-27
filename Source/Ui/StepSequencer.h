@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include "VisualTimer.h"
 
 #include "../Core/PluginBase.h"
@@ -36,6 +37,8 @@ public:
     void renameLayer (int layer); // dialog för att döpa om ett baslager (instrumentet)
     int getSelectedLayer() const { return selectedLayer; }
     std::function<void (int)> onLayerSelected;
+    std::function<void (int)> onEditInstrument; // EDIT på raden: öppna ljudfliken för lagret (Pattern::kickLayer = kicken)
+    std::function<void()> onAddInstrument;
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -73,9 +76,12 @@ private:
 
     // Radens egna längd i steg (kortare än mönstret när raden har en egen längd): efter den loopar eller tystnar raden.
     // Lager 0-9 är instrumenten och lager 10 (Pattern::kickLayer) är kicken. Radens nummer för längderna: kick 0, instrument 1-10.
-    // Underrader (SAMPLE/SLICER, R9b) har id från RowRegistry::firstSubRow och en egen längdplats; de visas efter sitt instrument.
+    // Underrader (SAMPLE och "Slice N", R9b) har id från RowRegistry::firstSubRow och en egen längdplats; de visas efter sitt instrument.
     static int rowOf (int layer) { return Pattern::lengthRowOf (layer); }
     static bool isSubRow (int layer) { return layer >= RowRegistry::firstSubRow; }
+    // Instrumentet en rad hör till: lagret självt, eller underradens instrument (rutnät, på/av, solo och markör kommer därifrån).
+    int ownerOf (int layer) const { return isSubRow (layer) ? juce::jlimit (0, Pattern::numLayers - 1, processor.pattern.rows.instrumentOf (layer)) : layer; }
+    bool isSliceRow (int layer) const { return isSubRow (layer) && processor.pattern.rows.sliceOf (layer) >= 0; }
     std::vector<int> makeDisplayOrder() const; // lager-id i visningsordning: kicken, sedan varje instrument följt av sina underrader
     int instrumentOwnSteps (const PatternLengths& l, int layer) const { return l.barsOf (rowOf (layer)) * Pattern::instrumentStepsPerBar (grid (layer)); }
     int gateOwnSteps (const PatternLengths& l, int layer) const { return l.barsOf (rowOf (layer)) * Pattern::instrumentStepsPerBar (gateGrid (layer)); }
@@ -149,6 +155,8 @@ private:
     juce::TextButton previousPageButton { "<" }, nextPageButton { ">" }, followButton { "FOLLOW" };
     std::vector<std::unique_ptr<juce::TextButton>> lengthButtons; // radens längd (AUTO n / valt antal), klick öppnar menyn: [0] kick, sedan baslagren
     std::vector<std::unique_ptr<ListenButton>> listenButtons; // högtalare: spelar raden
+    std::vector<std::unique_ptr<juce::TextButton>> editButtons; // EDIT per rad, samma index som listenButtons
+    juce::TextButton addInstrumentButton { "+ ADD INSTRUMENT" };
     std::vector<std::unique_ptr<LoopToggle>> loopToggles;     // loopar raden?
     // M (mute: samma som instrumentets på/av) och S (solo: bara de soloade spelar), för kicken och varje instrument. Samma index som listenButtons.
     struct RowSwitches
@@ -197,6 +205,7 @@ private:
     bool paintOn = true;        // vad ett drag över av/på-steg sätter
     int dragStartPitch = 0, dragStartY = 0, dragPitch = 0;
     bool edited = false;
+    std::optional<PluginBase::EditScope> dragUndo; // ett klick eller drag är ett ångrasteg, från mouseDown till mouseUp
     int hoverStep = -1;
 
     int lastSwitchBits = -1;

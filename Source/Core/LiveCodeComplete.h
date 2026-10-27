@@ -23,41 +23,42 @@ namespace LiveCodeComplete
     inline const std::vector<Item>& methods()
     {
         static const std::vector<Item> list {
-            { "s", "s(\"\")", "s(\"i1\") väljer instrument: bd/kick = kickraden, i1..i10 = instrument 1-10" },
-            { "note", "note(\"\")", "note(\"c2 eb2 g1\") toner; C2 = 0, heltal = halvtoner" },
-            { "n", "n(\"\")", "n(\"0 3 5\") toner som tal (halvtoner över C2)" },
+            { "s", "s(\"\")", "s(\"i1\") picks the instrument: bd/kick = kick row, i1..i10 = instrument 1-10" },
+            { "note", "note(\"\")", "note(\"c2 eb2 g1\") notes; C2 = 0, integers = semitones" },
+            { "n", "n(\"\")", "n(\"0 3 5\") notes as numbers (semitones above C2)" },
             { "gain", "gain()", "gain(0.8) velocity 0.05-1" },
             { "velocity", "velocity()", "velocity(0.8) som gain" },
-            { "lfo", "lfo(\"bass1Cutoff\", 1, 0.5, \"sine\")", "lfo(id, hz, djup -1..1, form sine|tri|saw|isaw|square|rand)" },
-            { "env", "env(\"bass1Cutoff\", 10, 200, 0.5)", "env(id, attackMs, decayMs, djup -1..1)" },
-            { "cutoff", "cutoff()", "cutoff(0.5) filterfrekvens (genväg till instr.Cutoff, värde som parametern)" },
-            { "lpf", "lpf()", "lpf(0.5) samma som cutoff" },
-            { "resonance", "resonance()", "resonance(0.3) filterresonans" },
-            { "lpq", "lpq()", "lpq(0.3) samma som resonance" },
-            { "attack", "attack()", "attack(0.01) sekunder" },
-            { "decay", "decay()", "decay(0.2) sekunder" },
-            { "sustain", "sustain()", "sustain(0.7) nivå 0..1" },
-            { "release", "release()", "release(0.1) sekunder" },
+            { "chord", "chord(\"major\", \"c2\", 0, \"1/4\")", "chord(CHORD, BASETONE, START, LENGTH) stacks the chord tones, e.g. .chord(\"major7\", \"c2\", \"0\", [\"1/4\",\"4/4\",\"2/4\"]). START and LENGTH are fractions of a cycle; a LENGTH array gives each tone its own length; default LENGTH 1/4" },
+            { "lfo", "lfo(\"bass1Cutoff\", 1, 0.5, \"sine\")", "lfo(id, hz, depth -1..1, shape sine|tri|saw|isaw|square|rand)" },
+            { "env", "env(\"bass1Cutoff\", 10, 200, 0.5)", "env(id, attackMs, decayMs, depth -1..1)" },
+            { "cutoff", "cutoff()", "cutoff(0.5) filter cutoff (shortcut to instr.Cutoff, same value range as the parameter)" },
+            { "lpf", "lpf()", "lpf(0.5) same as cutoff" },
+            { "resonance", "resonance()", "resonance(0.3) filter resonance" },
+            { "lpq", "lpq()", "lpq(0.3) same as resonance" },
+            { "attack", "attack()", "attack(0.01) seconds" },
+            { "decay", "decay()", "decay(0.2) seconds" },
+            { "sustain", "sustain()", "sustain(0.7) level 0..1" },
+            { "release", "release()", "release(0.1) seconds" },
             { "distort", "distort()", "distort(0.4) drive" },
             { "shape", "shape()", "shape(0.4) drive" },
-            { "pan", "pan()", "pan(0.5) 0 = vänster, 1 = höger" },
-            { "fast", "fast(2)", "fast(2) dubbelt tempo" },
-            { "slow", "slow(2)", "slow(2) halvt tempo" },
-            { "rev", "rev()", "spelar mönstret baklänges" },
-            { "every", "every(4, x => x.rev())", "every(n, fn) tillämpa fn var n:e cykel" },
-            { "off", "off(0.125, x => x.add(7))", "off(tid, fn) lägg en förskjuten kopia" },
-            { "add", "add()", "add(7) lägg till halvtoner" },
-            { "sub", "sub()", "sub(12) dra ifrån" },
-            { "mul", "mul()", "mul(2) multiplicera" },
-            { "segment", "segment(16)", "segment(n) n steg per cykel" },
-            { "euclid", "euclid(3, 8)", "euclid(pulser, steg)" },
-            { "struct", "struct(\"x ~ x x\")", "struct(mönster) rytm från x/~" },
-            { "late", "late(0.125)", "late(cykler) skjut framåt" },
-            { "early", "early(0.125)", "early(cykler) skjut bakåt" },
-            { "stack", "stack()", "stack(a, b) spela samtidigt" },
-            { "hurry", "hurry(2)", "hurry(2) snabbare" },
-            { "degradeBy", "degradeBy(0.3)", "degradeBy(p) slumpa bort toner" },
-            { "sometimes", "sometimes(x => x.add(12))", "sometimes(fn) ibland" }
+            { "pan", "pan()", "pan(0.5) 0 = left, 1 = right" },
+            { "fast", "fast(2)", "fast(2) double speed" },
+            { "slow", "slow(2)", "slow(2) half speed" },
+            { "rev", "rev()", "plays the pattern backwards" },
+            { "every", "every(4, x => x.rev())", "every(n, fn) apply fn every nth cycle" },
+            { "off", "off(0.125, x => x.add(7))", "off(time, fn) adds a shifted copy" },
+            { "add", "add()", "add(7) add semitones" },
+            { "sub", "sub()", "sub(12) subtract" },
+            { "mul", "mul()", "mul(2) multiply" },
+            { "segment", "segment(16)", "segment(n) n steps per cycle" },
+            { "euclid", "euclid(3, 8)", "euclid(pulses, steps)" },
+            { "struct", "struct(\"x ~ x x\")", "struct(pattern) rhythm from x/~" },
+            { "late", "late(0.125)", "late(cykler) shift later" },
+            { "early", "early(0.125)", "early(cykler) shift earlier" },
+            { "stack", "stack()", "stack(a, b) play together" },
+            { "hurry", "hurry(2)", "hurry(2) faster" },
+            { "degradeBy", "degradeBy(0.3)", "degradeBy(p) randomly drops notes" },
+            { "sometimes", "sometimes(x => x.add(12))", "sometimes(fn) now and then" }
         };
         return list;
     }
@@ -65,17 +66,18 @@ namespace LiveCodeComplete
     inline const std::vector<Item>& globals()
     {
         static const std::vector<Item> list {
-            { "s", "s(\"\")", "s(\"i1\") instrument eller bd = kick" },
-            { "note", "note(\"\")", "note(\"c2 eb2\") toner" },
-            { "n", "n(\"\")", "n(\"0 3\") toner som tal" },
-            { "stack", "stack()", "stack(a, b) samtidigt" },
-            { "cat", "cat()", "cat(a, b) efter varandra" },
-            { "slider", "slider(0.5, 0, 1)", "slider(värde, min, max) reglage i koden" },
-            { "silence", "silence", "tyst mönster" },
-            { "kick", "kick", "kickens parametrar: kick.Param.set(v)" },
-            { "meter", "meter", "mätare: meter.outputPeak.get()" },
-            { "console", "console.log()", "console.log(x) skriver i fliken KONSOL" },
-            { "$:", "$: ", "nytt block (spelas samtidigt med de andra)" }
+            { "$:", "$: ", "new block (plays together with the others)" },
+            { "$: s(\"i1\")", "$: s(\"i1\").note(\"c2*4\")", "template: a block for instrument 1 with a note pattern" },
+            { "s", "s(\"\")", "s(\"i1\") instrument, or bd = kick" },
+            { "note", "note(\"\")", "note(\"c2 eb2\") notes" },
+            { "n", "n(\"\")", "n(\"0 3\") notes as numbers" },
+            { "stack", "stack()", "stack(a, b) together" },
+            { "cat", "cat()", "cat(a, b) one after another" },
+            { "slider", "slider(0.5, 0, 1)", "slider(value, min, max) slider in the code" },
+            { "silence", "silence", "silent pattern" },
+            { "kick", "kick", "kick parameters: kick.Param.set(v)" },
+            { "meter", "meter", "meter: meter.outputPeak.get()" },
+            { "console", "console.log()", "console.log(x) writes to the CONSOLE tab" },
         };
         return list;
     }
@@ -96,20 +98,20 @@ namespace LiveCodeComplete
             if (head.isEmpty() || rest.isEmpty() || ! juce::CharacterFunctions::isUpperCase (rest[0])) continue;
             const auto detail = "parameter " + id + ": " + rest + ".set(v) / .get()";
             add (head, rest, detail);
-            add (head + "." + rest, "set", "set(v) skriver " + id + " efter körningen");
-            add (head + "." + rest, "get", "get() värdet från före körningen");
+            add (head + "." + rest, "set", "set(v) writes " + id + " after the run");
+            add (head + "." + rest, "get", "get() the value from before the run");
             if (head.startsWith ("bass") && head.substring (4).isNotEmpty() && head.substring (4).containsOnly ("0123456789"))
-                { add ("instr" + head.substring (4), rest, detail); add ("instr" + head.substring (4) + "." + rest, "set", "set(v) skriver " + id + " efter körningen"); add ("instr" + head.substring (4) + "." + rest, "get", "get() värdet från före körningen"); }
+                { add ("instr" + head.substring (4), rest, detail); add ("instr" + head.substring (4) + "." + rest, "set", "set(v) writes " + id + " after the run"); add ("instr" + head.substring (4) + "." + rest, "get", "get() the value from before the run"); }
         }
         for (int g = 1; g <= 10; ++g)
         {
             const auto name = "instr" + juce::String (g);
-            add (name, "lock", "lock() låser instrumentet mot handpåläggning");
+            add (name, "lock", "lock() locks the instrument against manual changes");
         }
         for (const auto* m : { "outputPeak", "gainReduction", "solo" })
-            add ("meter", m, juce::String ("meter.") + m + ".get() läser värdet (bara läsning)");
+            add ("meter", m, juce::String ("meter.") + m + ".get() reads the value (read-only)");
         for (int d = 1; d <= 10; ++d)
-            add ("meter", "duck" + juce::String (d), "meter.duck" + juce::String (d) + ".get() ducking i dB");
+            add ("meter", "duck" + juce::String (d), "meter.duck" + juce::String (d) + ".get() ducking in dB");
         if (const auto* slots = src.effectCatalog["slots"].getArray())
         {
             for (int c = 0; c < slots->size(); ++c)
@@ -119,17 +121,61 @@ namespace LiveCodeComplete
                 const auto count = row != nullptr ? row->size() : 0;
                 for (int s = 0; s < count; ++s)
                 {
-                    add (fx, "slot" + juce::String (s + 1), "effektplats " + juce::String (s + 1) + " i " + fx.toUpperCase());
+                    add (fx, "slot" + juce::String (s + 1), "effect slot " + juce::String (s + 1) + " in " + fx.toUpperCase());
                     const auto slot = fx + ".slot" + juce::String (s + 1);
-                    add (slot, "setEffect", "setEffect(\"reverb\") byter effekt på platsen (off tömmer)");
+                    add (slot, "setEffect", "setEffect(\"reverb\") swaps the effect in the slot (off clears it)");
                     if (const auto* names = src.effectCatalog["knobs"].getProperty ((*row)[s].toString(), juce::var()).getArray())
                         for (const auto& k : *names)
                             if (key (k.toString()) != "seteffect")
-                                add (slot, key (k.toString()), "ratten " + k.toString() + ": " + key (k.toString()) + ".set(v)");
+                                add (slot, key (k.toString()), "knob " + k.toString() + ": " + key (k.toString()) + ".set(v)");
                 }
             }
         }
         return t;
+    }
+
+    // Inuti en öppen sträng: returnerar funktionsnamnet före strängen (s, note, n, notes) eller tomt.
+    inline juce::String stringContext (const juce::String& text, int caret)
+    {
+        auto lineStart = caret;
+        while (lineStart > 0 && text[lineStart - 1] != '\n') --lineStart;
+        int open = -1;
+        juce::juce_wchar quote = 0;
+        for (int i = lineStart; i < caret; ++i)
+        {
+            const auto c = text[i];
+            if (quote == 0 && (c == '"' || c == '\'')) { quote = c; open = i; }
+            else if (quote != 0 && c == quote) quote = 0;
+        }
+        if (quote == 0 || open < 1 || text[open - 1] != '(') return {};
+        auto b = open - 1;
+        while (b > 0 && (juce::CharacterFunctions::isLetterOrDigit (text[b - 1]) || text[b - 1] == '_')) --b;
+        return text.substring (b, open - 1);
+    }
+
+    inline std::vector<Item> sampleNames()
+    {
+        std::vector<Item> list { { "bd", "bd", "kick row (same as kick)" }, { "kick", "kick", "kick row" } };
+        for (int i = 1; i <= 10; ++i)
+            list.push_back ({ "i" + juce::String (i), "i" + juce::String (i), "instrument " + juce::String (i) });
+        return list;
+    }
+
+    inline std::vector<Item> noteNames()
+    {
+        std::vector<Item> list {
+            { "c2 eb2 g2", "c2 eb2 g2", "several notes after each other, one step each" },
+            { "[c2,e2,g2]", "[c2,e2,g2]", "notes at the same time (chord)" },
+            { "c2*4", "c2*4", "repeat 4 times per cycle" },
+            { "c2 ~ c2", "c2 ~ c2", "~ is a rest" },
+            { "<c2 g1>", "<c2 g1>", "one note per cycle, alternating" },
+            { "c2@3 g1", "c2@3 g1", "@3 makes the note 3 times as long" },
+            { "[c2 g1]*2", "[c2 g1]*2", "[ ] squeezes steps into one step; *2 repeats" }
+        };
+        for (const auto* n : { "c", "d", "e", "f", "g", "a", "b", "eb", "bb", "ab", "db", "gb" })
+            for (int o = 1; o <= 3; ++o)
+                list.push_back ({ juce::String (n) + juce::String (o), juce::String (n) + juce::String (o), "note " + juce::String (n).toUpperCase() + juce::String (o) });
+        return list;
     }
 
     inline Result complete (const juce::String& text, int caret, const Source& src)
@@ -143,7 +189,22 @@ namespace LiveCodeComplete
         const auto prefix = text.substring (start, caret).toLowerCase();
 
         std::vector<Item> pool;
-        if (start > 0 && text[start - 1] == '.')
+        const auto inString = stringContext (text, caret);
+        if (inString.isNotEmpty())
+        {
+            if (inString == "s")
+                pool = sampleNames();
+            else if (inString == "note" || inString == "n" || inString == "notes")
+                pool = noteNames();
+            else if (inString == "chord")
+                for (const char* name : { "major", "minor", "dim", "aug", "sus2", "sus4", "power", "major7", "minor7", "dom7", "dim7",
+                                          "minor7b5", "major9", "minor9", "dom9", "add9", "six", "minor6" })
+                    pool.push_back ({ name, name, juce::String ("chord ") + name });
+            else if (inString == "lfo" || inString == "env")
+                for (const auto& id : src.paramIds)
+                    pool.push_back ({ id, id, "parameter " + id + " (modulation target)" });
+        }
+        else if (start > 0 && text[start - 1] == '.')
         {
             auto end = start - 1, b = end;
             if (end > 0 && text[end - 1] == ')')
@@ -166,7 +227,7 @@ namespace LiveCodeComplete
             for (const auto& [group, kids] : t)
             {
                 if (group.contains (".") || kids.empty()) continue;
-                pool.push_back ({ group, group, group.startsWith ("fx") ? "effektkedja: " + group + ".slot1.setEffect(...)" : "objekt med " + juce::String ((int) kids.size()) + " medlemmar, skriv . efter" });
+                pool.push_back ({ group, group, group.startsWith ("fx") ? "effect chain: " + group + ".slot1.setEffect(...)" : "object with " + juce::String ((int) kids.size()) + " members, type . after it" });
             }
         }
         for (auto& i : pool)

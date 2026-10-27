@@ -93,6 +93,7 @@ void FxProcessor::processChunk (juce::AudioBuffer<float>& buffer)
     if (kickSoloSamplesLeft > 0 && getActiveClickSample() != nullptr)
     {
         kickParams.sampleMode = 2; // provlyssning av bara samplingen
+        kickParams.sampleOn = true;
         kickParams.sampleLevel = 1.0f;
     }
     kickSoloSamplesLeft = std::max (0, kickSoloSamplesLeft - numSamples);
@@ -146,7 +147,7 @@ void FxProcessor::processChunk (juce::AudioBuffer<float>& buffer)
     if (routed)
     {
         effects.send (channel, synthBuffer.getReadPointer (0), synthBuffer.getReadPointer (1), numSamples, amountToChannel);
-        if (params.bass (0, InstrumentField::fxSend) < 0.5f)
+        if (! params.hasBass (0, InstrumentField::fxSend) || params.bass (0, InstrumentField::fxSend) < 0.5f) // saknad = av (som förut)
             synthBuffer.applyGain (1.0f - amountToChannel);
     }
 
@@ -209,6 +210,7 @@ void FxProcessor::processChunk (juce::AudioBuffer<float>& buffer)
 
     transportStatus.publish (clock);
     transportStatus.patternBar = (int) (((clock.getBarIndex() % lengths.total) + lengths.total) % lengths.total) + 1;
+    transportStatus.patternProgress = ((float) (transportStatus.patternBar.load() - 1) + (float) juce::jlimit (0.0, 1.0, (clock.getPpqAt (0) - clock.getBarStartPpq()) / std::max (1.0e-6, clock.getBarLengthPpq()))) / (float) lengths.total;
     transportStatus.keyNote = 60 + key;
     transportStatus.patternActive = active;
     transportStatus.kickPlayTime = kick.getPlayTime();
@@ -244,6 +246,9 @@ void FxProcessor::handleEvent (const StepEvent& event)
         }
         return;
     }
+
+    if (event.type == StepEvent::Type::slice)
+        return; // skivrader ("Slice N") är bara ljud i samplerösten
 
     const auto& note = pattern.note (0, event.step);
     if (note.slide.load())

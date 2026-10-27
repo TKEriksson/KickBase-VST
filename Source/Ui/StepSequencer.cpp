@@ -6,6 +6,7 @@ namespace
 {
     constexpr int headerHeight = 16;
     constexpr int pixelsPerSemitone = 5;
+    constexpr int editColumn = 38; // EDIT-knappen längst till höger i radkortet
 }
 
 StepSequencer::StepSequencer (PluginBase& p, juce::StringArray names, std::vector<juce::Colour> colours)
@@ -15,6 +16,18 @@ StepSequencer::StepSequencer (PluginBase& p, juce::StringArray names, std::vecto
                 "the selected row's grid, length, FILL and piano roll show on the left and its "
                 "velocity, length or pitch in the lane below. A layer edited in the piano roll shows a small piano roll instead of steps: "
                 "click it to open the piano roll, right-click to delete it. GATE mode edits the on/off rhythm that chops the sound.");
+    addInstrumentButton.setTooltip ("ADD INSTRUMENT - Adds another instrument under the last one (max 10). It starts with default settings and an empty pattern.");
+    addInstrumentButton.onClick = [this] { if (onAddInstrument) onAddInstrument(); };
+    addChildComponent (addInstrumentButton);
+    for (int row = 0; row <= totalLayers(); ++row)
+    {
+        const auto rowLayer = row == 0 ? Pattern::kickLayer : row - 1;
+        auto edit = std::make_unique<juce::TextButton> ("EDIT");
+        edit->setTooltip ("EDIT INSTRUMENT - Opens the sound tab (KICK or INSTRUMENT) for this instrument. Also in the right-click menu.");
+        edit->onClick = [this, rowLayer] { if (onEditInstrument) onEditInstrument (rowLayer); };
+        addChildComponent (*edit);
+        editButtons.push_back (std::move (edit));
+    }
     addRowKnobs ("KICK", ParamID::kickLevel, ParamID::kickFxAmount, Theme::kick);
     for (int layer = 0; layer < totalLayers(); ++layer)
         addRowKnobs (layerNames[layer], ParamID::bass (layer, InstrumentField::level), ParamID::bass (layer, InstrumentField::fxAmount), layerColours[(size_t) layer]);
@@ -254,6 +267,7 @@ int StepSequencer::bars() const
 
 InstrumentGrid StepSequencer::grid (int layer) const
 {
+    layer = ownerOf (layer);
     const auto id = layer == Pattern::kickLayer ? juce::String (ParamID::rowGridKick) : ParamID::bass (layer, InstrumentField::grid);
     return (InstrumentGrid) juce::jlimit (0, Pattern::numGrids - 1, (int) processor.apvts.getRawParameterValue (id)->load());
 }
@@ -314,6 +328,7 @@ Pattern::Note* StepSequencer::noteAt (int layer, int step) const
 
 bool StepSequencer::rowSilent (int layer) const
 {
+    layer = ownerOf (layer);
     const auto solo = processor.soloMask.load();
     const auto isOn = processor.apvts.getRawParameterValue (layer == Pattern::kickLayer ? juce::String (ParamID::kickOn) : ParamID::bass (layer, InstrumentField::on))->load() >= 0.5f;
     const auto soloed = (solo & (layer == Pattern::kickLayer ? PluginBase::kickSoloBit : 1ull << layer)) != 0;
@@ -467,7 +482,14 @@ void StepSequencer::timerCallback()
         repaint();
     else
         for (int i = 0; i < numMoved; ++i)
-            repaintMarker (movedMarkers[(size_t) i].first, movedMarkers[(size_t) i].second, lastMarkers[(size_t) movedMarkers[(size_t) i].first]);
+        {
+            const auto moved = movedMarkers[(size_t) i].first;
+            repaintMarker (moved, movedMarkers[(size_t) i].second, lastMarkers[(size_t) moved]);
+            if (moved != Pattern::kickLayer) // Slice-raderna följer instrumentets markör
+                for (const auto id : displayOrder)
+                    if (isSliceRow (id) && ownerOf (id) == moved)
+                        repaint (rowBounds (id).expanded (2));
+        }
 }
 
 int StepSequencer::markerStep (int layer) const
@@ -518,15 +540,17 @@ void StepSequencer::resized()
     // Radhöjden: automatisk (så många rader som får plats) eller vald med zoomhörnet. Låga rader blir kompakta.
     const auto rows = (int) displayOrder.size();
     constexpr int gap = 5, laneHeight = 76, normalMinHeight = 50;
+    constexpr int addRowHeight = 24;
+    const auto canAdd = ! processor.isEffectVersion() && processor.activeInstruments() < totalLayers();
     const auto manual = processor.sequencerRowHeight > 0;
-    const auto freeHeight = area.getHeight() - headerHeight - 5 - (laneShown() ? laneHeight + 3 : 0);
+    const auto freeHeight = area.getHeight() - headerHeight - 5 - (laneShown() ? laneHeight + 3 : 0) - (canAdd ? addRowHeight + 3 : 0);
     int rowHeight;
     if (manual)
         rowHeight = processor.sequencerRowHeight;
     else
         rowHeight = juce::jlimit (normalMinHeight, 56, (freeHeight - gap * rows) / std::max (1, rows));
     compactRows = rowHeight < normalMinHeight - 3;
-    labelWidthNow = compactRows ? 246 : 162;
+    labelWidthNow = (compactRows ? 246 : 162) + editColumn;
     knobPx = compactRows ? std::min (24, rowHeight - 4) : 28;
     effectiveRowHeight = rowHeight;
     const auto fits = std::max (1, freeHeight / (rowHeight + gap));
@@ -604,6 +628,8 @@ void StepSequencer::resized()
         area.removeFromTop (gap);
     }
     rowsBottom = std::max (rowRects[(size_t) rowOf (displayOrder[(size_t) (rowScroll + visibleRows - 1)])].getBottom(), laneArea.getBottom());
+    addInstrumentButton.setVisible (canAdd && rowScroll + visibleRows >= rows);
+    addInstrumentButton.setBounds (labelColumn.getX(), area.getY(), labelWidthNow, addRowHeight);
 
     // Varje rad: rattarna (volym och FX) längst till vänster med radens längd under, och till höger om dem namnet med
     // högtalaren (lyssna) och loop-knappen under. Låga rader lägger allt på en rad (radens längd döljs).
@@ -624,6 +650,8 @@ void StepSequencer::resized()
             rowSwitches[i]->mute.setVisible (shown && ! processor.isEffectVersion());
             rowSwitches[i]->solo.setVisible (shown && ! processor.isEffectVersion());
         }
+        if (i < editButtons.size())
+            editButtons[i]->setVisible (shown && ! processor.isEffectVersion());
         if (! shown)
             continue;
 
@@ -639,6 +667,11 @@ void StepSequencer::resized()
             const auto buttonsX = labelColumn.getX() + (compactRows ? 2 * (knobPx + 2) + 4 : 66);
             listenButtons[i]->setBounds (buttonsX, buttonsY, 30, buttonHeight);
             loopToggles[i]->setBounds (buttonsX + 34, buttonsY, 28, buttonHeight);
+        if (i < editButtons.size())
+        {
+            const auto height = std::min (24, rowHeight - 4);
+            editButtons[i]->setBounds (labelColumn.getRight() - editColumn + 2, row.getY() + (rowHeight - height) / 2, editColumn - 4, height);
+        }
         }
         if (i < rowSwitches.size())
         {
@@ -667,9 +700,9 @@ juce::Rectangle<int> StepSequencer::selectorBounds (juce::Rectangle<int> row) co
     if (compactRows)
     {
         const auto x = labelColumn.getX() + 2 * (knobPx + 2) + 4 + 68 + 52;
-        return juce::Rectangle<int>::leftTopRightBottom (x, row.getCentreY() - 9, labelColumn.getRight() - 2, row.getCentreY() + 9);
+        return juce::Rectangle<int>::leftTopRightBottom (x, row.getCentreY() - 9, labelColumn.getRight() - 2 - editColumn, row.getCentreY() + 9);
     }
-    return labelColumn.withTrimmedLeft (66).withTrimmedRight (30).withY (row.getY()).withHeight (18);
+    return labelColumn.withTrimmedLeft (66).withTrimmedRight (30 + editColumn).withY (row.getY()).withHeight (18);
 }
 
 juce::Rectangle<float> StepSequencer::stepBounds (juce::Rectangle<int> row, int step, int numSteps) const
@@ -709,7 +742,11 @@ StepSequencer::Target StepSequencer::targetAt (juce::Point<int> point, int& laye
         if (! rect.isEmpty() && point.y < rect.getBottom() + 2)
         {
             if (isSubRow (id))
-                return Target::none; // underraderna kan inte väljas eller redigeras ännu
+            {
+                // Slice-raderna har egna steg (men ingen väljare); SAMPLE-raden redigeras i sampler-fliken.
+                layer = id;
+                return isSliceRow (id) && ! inLabels ? Target::bass : Target::none;
+            }
             layer = id;
             return inLabels ? Target::label : Target::bass;
         }
@@ -972,6 +1009,7 @@ void StepSequencer::showCustomMenu (int layer)
             {
                 if (safeThis == nullptr || choice != 1)
                     return;
+                PluginBase::EditScope undo (safeThis->processor, "Delete piano roll");
                 safeThis->processor.pattern.clearNotes (layer); // nollställer också pianorullsmarkeringen
                 safeThis->processor.patternChanged();
             });
@@ -998,10 +1036,16 @@ void StepSequencer::paint (juce::Graphics& g)
             return;
         const auto colour = colourOf (layer);
         const auto isKick = layer == Pattern::kickLayer;
-        const auto playTick = isKick ? processor.transportStatus.kickStep.load() : processor.transportStatus.instrumentSteps[(size_t) layer].load();
-        const auto dimmedRow = isKick ? mode == Mode::gate : layer != selectedLayer; // kicken är en vanlig rad, men har ingen gate
+        const auto playTick = isKick ? processor.transportStatus.kickStep.load() : processor.transportStatus.instrumentSteps[(size_t) ownerOf (layer)].load();
+        const auto dimmedRow = isKick ? mode == Mode::gate : ownerOf (layer) != selectedLayer || (isSubRow (layer) && mode == Mode::gate); // kicken är en vanlig rad, men har ingen gate
 
-        if (mode == Mode::gate && ! isKick)
+        if (isSubRow (layer))
+        {
+            // Slice-raden: egna steg, men ingen pianorulle eller gate (GATE-läget dämpar den).
+            paintToggleRow (g, row, instrumentSteps (layer), pageOffset (instrumentSteps (layer)), instrumentOwnSteps (lengthsNow, layer), lengthsNow.loops[(size_t) rowOf (layer)], colour, stepOfTick (layer, playTick),
+                            [this, layer] (int step) { return noteTickAt (layer, step) >= 0; }, dimmedRow);
+        }
+        else if (mode == Mode::gate && ! isKick)
         {
             // GATE: en egen av/på-rytm med eget rutnät. Raden dämpas när lagrets gate är avstängd.
             const auto gateTicks = Pattern::ticksPerStep (gateGrid (layer));
@@ -1019,6 +1063,9 @@ void StepSequencer::paint (juce::Graphics& g)
     paintLayerRow (Pattern::kickLayer);
     for (int layer = 0; layer < numLayers(); ++layer)
         paintLayerRow (layer);
+    for (const auto id : displayOrder)
+        if (isSliceRow (id))
+            paintLayerRow (id);
     if (! processor.isEffectVersion())
     {
         // En rad som inte hörs (avstängd, eller något annat är soloat) tonas ner.
@@ -1034,6 +1081,9 @@ void StepSequencer::paint (juce::Graphics& g)
         dimRow (Pattern::kickLayer);
         for (int layer = 0; layer < numLayers(); ++layer)
             dimRow (layer);
+        for (const auto id : displayOrder)
+            if (isSliceRow (id))
+                dimRow (id);
     }
     if (laneShown())
         paintLane (g);
@@ -1056,15 +1106,18 @@ void StepSequencer::paint (juce::Graphics& g)
         const auto colour = colourOf (layer);
         if (isSubRow (layer))
         {
-            // Underrad: en dämpad remsa med sort och instrument, utan rattar. Stegen visas i sampler-fliken tills raden får egna steg.
+            // Underrad: etikett med sort och instrument, utan rattar. SAMPLE-raden är en dämpad remsa (stegen finns i sampler-fliken); Slice-raden har egna steg.
             int instrument = 0;
             RowRegistry::Kind kind {};
             if (processor.pattern.rows.get (layer, instrument, kind))
             {
-                g.setColour (colour.withAlpha (0.07f));
-                g.fillRoundedRectangle (juce::Rectangle<int>::leftTopRightBottom (stepsColumn.getX(), bounds.getY(), stepsColumn.getRight(), bounds.getBottom()).toFloat(), 3.0f);
+                if (kind != RowRegistry::Kind::slice)
+                {
+                    g.setColour (colour.withAlpha (0.07f));
+                    g.fillRoundedRectangle (juce::Rectangle<int>::leftTopRightBottom (stepsColumn.getX(), bounds.getY(), stepsColumn.getRight(), bounds.getBottom()).toFloat(), 3.0f);
+                }
                 g.setColour (colour.withAlpha (0.6f));
-                g.drawFittedText (nameOf (instrument) + (kind == RowRegistry::Kind::slicer ? " SLICER" : " SAMPLE"), row.withTrimmedLeft (18), juce::Justification::centredLeft, 1, 0.8f);
+                g.drawFittedText (kind == RowRegistry::Kind::slice ? "Slice " + juce::String (processor.pattern.rows.sliceOf (layer) + 1) : nameOf (instrument) + " SAMPLE", row.withTrimmedLeft (18), juce::Justification::centredLeft, 1, 0.8f);
             }
             continue;
         }
@@ -1187,8 +1240,8 @@ void StepSequencer::editAt (juce::Point<int> point, bool firstEvent)
         {
             if (mode == Mode::gate)
             {
-                if (dragLayer == Pattern::kickLayer)
-                    return; // kicken har ingen gate
+                if (dragLayer == Pattern::kickLayer || isSubRow (dragLayer))
+                    return; // kicken och skivraderna har ingen gate
                 const auto gateIndex = stepAt (point.x, dragLayer, gateSteps (dragLayer), gateOwnSteps (lengths(), dragLayer));
                 if (gateIndex < 0)
                     return;
@@ -1281,13 +1334,13 @@ void StepSequencer::mouseDown (const juce::MouseEvent& event)
     edited = false;
 
     // Ett lagers namn eller steg väljer lagret för lanet.
-    if (dragTarget == Target::label || dragTarget == Target::bass)
+    if ((dragTarget == Target::label || dragTarget == Target::bass) && ! isSubRow (dragLayer))
         selectLayer (dragLayer);
     if (dragTarget == Target::label)
     {
         dragTarget = Target::none;
         if (event.mods.isPopupMenu() && dragLayer != Pattern::kickLayer)
-            InstrumentMenu::show (processor, dragLayer, *this, juce::Rectangle<int> (event.getPosition(), event.getPosition()).expanded (1)); // högerklick på radkortet: instrumentmenyn (L4)
+            InstrumentMenu::show (processor, dragLayer, *this, juce::Rectangle<int> (event.getPosition(), event.getPosition()).expanded (1), [this, layer = dragLayer] { if (onEditInstrument) onEditInstrument (layer); }); // högerklick på radkortet: instrumentmenyn (L4)
         else if (event.mods.isPopupMenu() && (size_t) rowOf (dragLayer) < lengthButtons.size())
             LengthMenu::show (processor, dragLayer, *lengthButtons[(size_t) rowOf (dragLayer)]); // högerklick på radkortet: AUTO / Lock length / antal takter
         return;
@@ -1309,6 +1362,9 @@ void StepSequencer::mouseDown (const juce::MouseEvent& event)
         return;
     }
 
+    dragUndo.reset();
+    dragUndo.emplace (processor, dragTarget == Target::lane ? "Edit step lane" : mode == Mode::gate ? "Edit gate steps" : "Edit steps");
+
     // Högerklick i lanet återställer steget.
     if (event.mods.isPopupMenu() && dragTarget == Target::lane)
     {
@@ -1321,6 +1377,7 @@ void StepSequencer::mouseDown (const juce::MouseEvent& event)
         }
         processor.patternChanged();
         dragTarget = Target::none;
+        dragUndo.reset();
         repaint();
         return;
     }
@@ -1356,6 +1413,7 @@ void StepSequencer::mouseUp (const juce::MouseEvent&)
     }
     if (edited)
         processor.patternChanged();
+    dragUndo.reset();
 
     dragTarget = Target::none;
 }

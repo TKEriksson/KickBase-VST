@@ -166,12 +166,29 @@ int persistTest()
         check (other->getActiveInstrumentSample (0) != nullptr && other->getActiveInstrumentSample (0)->slices == processor->getActiveInstrumentSample (0)->slices
                && other->instrumentSampleSlot (0).sliceMode() == SampleSlicing::manual, "Slicer: skivinställningarna följer med projektet");
 
-        processor->clearInstrumentSample (0);
-        check (processor->getActiveInstrumentSample (0) == nullptr, "Slicer: tom sampling är tyst (ingen sampling, inga skivor)");
+        // syncSliceRows: en rad "Slice N" per skiva, tak 16, ett undosteg per ändring, noter i borttagna rader följer med bort.
+        const auto sliceRows = [&] (const InstrumentProcessor& p)
+        {
+            int n = 0;
+            for (int id = RowRegistry::firstSubRow; id < RowRegistry::maxRows; ++id)
+                n += p.pattern.rows.isSubRow (id) && p.pattern.rows.instrumentOf (id) == 0 && p.pattern.rows.sliceOf (id) >= 0 ? 1 : 0;
+            return n;
+        };
+        check (sliceRows (*processor) == 3, "Slice-rader: manuella markörer (3 skivor) ger 3 rader, fick " + juce::String (sliceRows (*processor)));
+        processor->setInstrumentSlicing (0, SampleSlicing::grid, 0.5f, 8);
+        check (sliceRows (*processor) == 8, "Slice-rader: Grid 8 ger 8 rader, fick " + juce::String (sliceRows (*processor)));
+        processor->setInstrumentSlicing (0, SampleSlicing::grid, 0.5f, 100);
+        check (sliceRows (*processor) == RowRegistry::maxSliceRows, "Slice-rader: 100 skivor ger högst " + juce::String (RowRegistry::maxSliceRows) + " rader, fick " + juce::String (sliceRows (*processor)));
+        processor->undoManager.undo();
+        check (sliceRows (*processor) == 8, "Slice-rader: ett undo tar tillbaka hela ändringen (8 rader), fick " + juce::String (sliceRows (*processor)));
+        processor->undoManager.redo();
+        check (sliceRows (*processor) == RowRegistry::maxSliceRows, "Slice-rader: redo ger 16 rader igen, fick " + juce::String (sliceRows (*processor)));
+        processor->setInstrumentSlicing (0, SampleSlicing::grid, 0.5f, 4);
+        check (sliceRows (*processor) == 4, "Slice-rader: färre skivor tar bort överskjutande rader, fick " + juce::String (sliceRows (*processor)));
     }
 
-    // 4a2. Slicer i ljudet: Grid 8 och MAP TO 2 ger tonerna 2..9 var sin skiva, tonerna utanför är tysta, REVERSE låter annorlunda
-    //      och med slicern av spelas hela samplingen som förut.
+    // 4a2. Skivor i ljudet: raderna "Slice 1..8" (Grid 8) spelar var sin skiva, takterna utan skivton är tysta, REVERSE låter annorlunda
+    //      och NOTE-raden spelar hela samplingen.
     {
         auto processor = std::make_unique<InstrumentProcessor>();
         using F = InstrumentField;
@@ -217,9 +234,18 @@ int persistTest()
             return false;
         };
 
-        const auto whole = render(); // slicern av: hela samplingen i varje takt
-        Scenarios::setInstrument (*processor, 0, F::slicerOn, 1.0f);
-        Scenarios::setInstrument (*processor, 0, F::slicerMapTo, 2.0f);
+        const auto whole = render(); // vanliga NOTE-radens toner: hela samplingen i varje takt
+
+        // Skivraderna "Slice 1..8": en ton i takt k+1 på rad k, takt 0 och 9 tomma.
+        processor->pattern.clearNotes (0);
+        for (int slice = 0; slice < 8; ++slice)
+        {
+            const auto row = processor->pattern.rows.add (0, RowRegistry::Kind::slice, slice);
+            processor->pattern.setManualBars (row, (int) pitches.size());
+            processor->pattern.addNote (row, (slice + 1) * Pattern::ticksPerBar, Pattern::ticksPerBar - 12, 0);
+        }
+        processor->patternChanged();
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (600);
         const auto sliced = render();
 
         // Diagnos: peak per takt (fönstret är 70 ms) så att loggen visar varför ett krav faller.
@@ -234,21 +260,45 @@ int persistTest()
         check (audible, "Slicer: tonerna 2..9 spelar var sin skiva (hörbara)");
         check (peakOf (sliced, 0) < 1.0e-4f && peakOf (sliced, 9) < 1.0e-4f, "Slicer: tonen före och efter skivorna är tyst (ingen wrap)");
         check (differs (sliced, 1, sliced, 2) && differs (sliced, 2, sliced, 5) && peakOf (sliced, 1) > peakOf (sliced, 8), "Slicer: skivorna har olika innehåll (decay-tonen sjunker)");
-        check (differs (whole, 1, sliced, 2) && peakOf (whole, 0) > 0.001f, "Slicer av: hela samplingen spelas (tonen 1 hörs), skivljudet är annat");
+        check (differs (whole, 1, sliced, 2) && peakOf (whole, 0) > 0.001f, "NOTE-raden spelar hela samplingen (tonen i takt 0 hörs), skivljudet är annat");
+
+        // Slice 3-ekvivalens: en not i raden "Slice 3" (takt 3) låter som skivan spelad direkt på skivindex 2 (samma väg som provlyssningen i skivvyn).
+        {
+            constexpr int block = 512;
+            processor->setPlayConfigDetails (0, 2, rate, block);
+            processor->prepareToPlay (rate, block);
+            juce::MidiBuffer noMidi;
+            const auto slice3Start = (int) std::lround (3 * rate * 60.0 / bpm * 4.0); // takt 3 exakt (barSamples är avrundad nedåt)
+            processor->postNoteAudition (0, 60, 102, true, 2); // 102/127 = 0,803 mot mönsternotens 0,8: skillnaden är ~0,4 % av peak, därför 1 % tolerans
+            juce::AudioBuffer<float> live (2, block);
+            auto worst = 0.0f, livePeak = 0.0f;
+            for (int start = 0; start < window; start += block)
+            {
+                live.clear();
+                processor->processBlock (live, noMidi);
+                for (int i = 0; i < std::min (block, window - start); ++i)
+                {
+                    worst = std::max (worst, std::abs (live.getSample (0, i) - sliced.getSample (0, slice3Start + start + i)));
+                    livePeak = std::max (livePeak, std::abs (live.getSample (0, i)));
+                }
+            }
+            processor->postNoteAudition (0, 60, 0, false, 2);
+            std::printf ("  Slice 3 mot direkt skivindex 2: peak %.5f, största skillnad %.6f\n", livePeak, worst);
+            check (livePeak > 0.001f && worst < 0.01f * livePeak, "Slice 3-raden låter som skivindex 2 spelat direkt (skillnad " + juce::String (worst, 6) + ")");
+        }
 
         Scenarios::setInstrument (*processor, 0, F::slicerReverse, 1.0f);
         const auto reversed = render();
         std::printf ("  REVERSE takt 1: peak framåt %.5f, bakåt %.5f\n", peakOf (sliced, 1), peakOf (reversed, 1));
         check (differs (sliced, 1, reversed, 1), "Slicer: REVERSE låter annorlunda än framåt");
 
-        Scenarios::setInstrument (*processor, 0, F::slicerOn, 0.0f);
         Scenarios::setInstrument (*processor, 0, F::slicerReverse, 0.0f);
         const auto again = render();
-        auto same = whole.getNumSamples() == again.getNumSamples();
-        for (int i = 0; same && i < whole.getNumSamples(); ++i)
-            same = whole.getSample (0, i) == again.getSample (0, i);
-        std::printf ("  slicer av igen: längd %d mot %d\n", again.getNumSamples(), whole.getNumSamples());
-        check (same, "Slicer av igen: samma ljud som före (bit för bit)");
+        auto same = sliced.getNumSamples() == again.getNumSamples();
+        for (int i = 0; same && i < sliced.getNumSamples(); ++i)
+            same = sliced.getSample (0, i) == again.getSample (0, i);
+        std::printf ("  REVERSE av igen: längd %d mot %d\n", again.getNumSamples(), sliced.getNumSamples());
+        check (same, "Slicer: REVERSE av igen ger samma ljud som före (bit för bit)");
     }
 
     // 4b. Morph av: en WAV med fyra cykler ger fyra steg, och Morph av + antalet steg följer med projektet, Full- och instrument-presets (annars låter
@@ -317,7 +367,7 @@ int persistTest()
         modArgs->setProperty ("overwrite", true);
         ToolLayer tools (*processor);
         const auto modResult = tools.call ("live_code_create", juce::var (modArgs));
-        check ((bool) modResult["ok"] && ! processor->codeMods.empty(), "testläge: CODE-modulering är aktiv före sparning");
+        check ((bool) modResult["ok"] && ! processor->codeMods.empty(), "testläge: CODE-modulering är aktiv före sparning: " + juce::JSON::toString (modResult).substring (0, 300));
         processor->liveCodeCodeLocks = 1 << 3; // F2: lås från koden sparas aldrig
         processor->liveCodeCodeNoteLocks = 1 << 4;
         juce::MemoryBlock saved;
@@ -740,6 +790,32 @@ int persistTest()
         file.deleteFile();
     }
 
+    // Autospara: orörd instans ger ingen fil, en ändring ger en som går att öppna, oförändrat ger ingen ny, mappen rensas till keepFiles.
+    {
+        auto processor = std::make_unique<InstrumentProcessor>();
+        const auto folder = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("persist_autosave");
+        folder.deleteRecursively();
+        ProjectFile::AutoSaver saver (*processor, folder);
+        check (! saver.tick() && ! folder.exists(), "autospara: första tick sparar bara utgångsläget (ingen fil)");
+        check (! saver.tick(), "autospara: oförändrat tillstånd ger ingen fil");
+        processor->pattern.clearNotes (1);
+        processor->pattern.addNote (1, 0, 48, 2);
+        check (saver.tick() && saver.lastFile().existsAsFile(), "autospara: ändring ger en fil");
+        check (! saver.tick(), "autospara: samma ändring skrivs inte två gånger");
+        auto loaded = std::make_unique<InstrumentProcessor>();
+        juce::String error;
+        check (ProjectFile::load (*loaded, loaded->apvts.state.getType(), saver.lastFile(), error) && loaded->pattern.note (1, 0).length == 48,
+               "autospara: filen öppnas som ett projekt med ändringen");
+        for (int i = 0; i < 20; ++i)
+        {
+            processor->pattern.addNote (1, 4 + i, 12, 2);
+            saver.tick();
+        }
+        check (folder.findChildFiles (juce::File::findFiles, false, "autosave-*.kbproj").size() <= ProjectFile::AutoSaver::keepFiles,
+               "autospara: mappen rensas till keepFiles");
+        folder.deleteRecursively();
+    }
+
     std::puts (failed ? "FEL: sparandetestet misslyckades" : "Sparandetestet gick igenom");
     return failed ? 1 : 0;
 }
@@ -917,6 +993,110 @@ int fullStateTest()
     }
 
     std::puts (failed ? "FEL: allt-på-testet misslyckades" : "Allt-på-testet gick igenom (kända luckor är avstängda, se raderna med LUCKA)");
+    return failed ? 1 : 0;
+}
+
+// `tool undotest` (fas C): ångra/gör om. (a) en parametergest är ett steg, (b) radredigering, (c) huvudpreset tömmer historiken, (d) delpreset är ett steg.
+int undoTest()
+{
+    juce::ScopedJuceInitialiser_GUI gui;
+    Scenarios::TemporaryUserFolders folders;
+    auto failed = false;
+    auto check = [&failed] (bool ok, const juce::String& what) { std::printf ("%s: %s\n", ok ? "ok" : "FEL", what.toRawUTF8()); failed |= ! ok; };
+
+    { // (a) tre setValue i en gest = ett steg
+        auto holder = std::make_unique<InstrumentProcessor>();
+        auto& p = *holder; // (stor: på heapen, som i de andra testerna)
+        juce::RangedAudioParameter* prm = nullptr;
+        for (auto* q : p.getParameters())
+            if (prm == nullptr)
+                if (auto* r = dynamic_cast<juce::RangedAudioParameter*> (q))
+                    if (r->getNumSteps() > 1000) // en vanlig flyttalsknapp, inte ett heltal som processorn styr
+                        prm = r;
+        p.clearHistory ({});
+        const auto start = prm->getValue();
+        const auto target = start < 0.5f ? 0.9f : 0.1f;
+        p.undoManager.beginNewTransaction();
+        for (auto v : { 0.3f, 0.6f, target })
+            prm->setValueNotifyingHost (v);
+        p.nameParameterGesture ("Test");
+        check (p.undoManager.getUndoDescriptions().size() == 1, "a: en gest är ett steg");
+        p.undoManager.undo();
+        check (std::abs (prm->getValue() - start) < 1.0e-3f, "a: ångra ger startvärdet");
+        p.undoManager.redo();
+        check (std::abs (prm->getValue() - target) < 1.0e-3f, "a: gör om ger slutvärdet");
+    }
+
+    { // (b) radredigering med tre toner
+        auto holder = std::make_unique<InstrumentProcessor>();
+        auto& p = *holder; // (stor: på heapen, som i de andra testerna)
+        p.clearHistory ({});
+        const auto before = p.snapshotRow (0);
+        p.pattern.addNote (0, 0, 24, 0);
+        p.pattern.addNote (0, 96, 24, 3);
+        p.pattern.addNote (0, 192, 24, 5);
+        const auto after = p.pattern.rowToValueTree (0);
+        p.recordRowEdit (0, before, "Edit notes");
+        check (p.undoManager.canUndo(), "b: kan ångra");
+        p.undoManager.undo();
+        check (p.pattern.rowToValueTree (0).isEquivalentTo (before), "b: ångra ger raden före");
+        p.undoManager.redo();
+        check (p.pattern.rowToValueTree (0).isEquivalentTo (after), "b: gör om ger raden efter");
+        const auto steps = p.undoManager.getUndoDescriptions().size();
+        p.recordRowEdit (0, p.snapshotRow (0), "Edit notes");
+        check (p.undoManager.getUndoDescriptions().size() == steps, "b: oförändrad gest lägger inget");
+    }
+
+    { // (c) huvudpreset tömmer historiken
+        auto holder = std::make_unique<InstrumentProcessor>();
+        auto& p = *holder; // (stor: på heapen, som i de andra testerna)
+        const auto before = p.snapshotRow (0);
+        p.pattern.addNote (0, 48, 24, 2);
+        p.recordRowEdit (0, before, "Edit notes");
+        check (p.undoManager.canUndo(), "c: steg finns före laddning");
+        p.loadFactoryPreset (Presets::Section::full, 0);
+        check (! p.undoManager.canUndo(), "c: ingen historik efter huvudpreset");
+    }
+
+    { // (d) delpreset = ett steg som återställer både parametrar och mönster
+        auto holder = std::make_unique<InstrumentProcessor>();
+        auto& p = *holder; // (stor: på heapen, som i de andra testerna)
+        p.loadFactoryPreset (Presets::Section::full, 0);
+        if (Presets::factoryCount (Presets::Section::bass, false) < 2)
+            check (false, "d: bas-fabrikspreset saknas");
+        else
+        {
+            p.clearHistory ({});
+            std::vector<float> values;
+            for (auto* prm : p.getParameters())
+                values.push_back (prm->getValue());
+            const auto patternBefore = p.pattern.toValueTree();
+            p.loadFactoryPreset (Presets::Section::bass, 1, 0);
+            check (p.undoManager.getUndoDescriptions().size() == 1, "d: ett steg");
+            p.undoManager.undo();
+            auto same = true;
+            for (size_t i = 0; i < values.size(); ++i)
+                same = same && std::abs (p.getParameters()[(int) i]->getValue() - values[i]) < 1.0e-3f;
+            check (same, "d: parametrarna är tillbaka");
+            check (p.pattern.toValueTree().isEquivalentTo (patternBefore), "d: mönstret är tillbaka");
+        }
+    }
+
+    {
+        // Mätning: storlek och tid för en snapshot (före/efter) med en tät pianorulle på 64 takter.
+        auto processor = std::make_unique<InstrumentProcessor>();
+        auto& p = *processor;
+        for (int bar = 0; bar < 64; ++bar)
+            for (int step = 0; step < 16; ++step)
+                p.pattern.addNote (0, bar * Pattern::ticksPerBar + step * 24, 12, step % 12);
+        const auto t0 = juce::Time::getMillisecondCounterHiRes();
+        const auto snap = p.snapshotAux();
+        const auto t1 = juce::Time::getMillisecondCounterHiRes();
+        const auto bytes = snap.createXml()->toString (juce::XmlElement::TextFormat().singleLine()).length();
+        std::printf ("mått: 1024 toner -> snapshot %d byte, %.2f ms\n", (int) bytes, t1 - t0);
+    }
+
+    std::puts (failed ? "FEL: ångra-testet misslyckades" : "Ångra-testet gick igenom");
     return failed ? 1 : 0;
 }
 

@@ -101,7 +101,7 @@ namespace ParamID
                                      "Polarity", "PhaseDeg", "NudgeMs",
                                      "FmOn", "FmLevel", "FmRatio", "FmIndex", "FmEnvAmount", "FmEnvTime", "FmSemis", "FmPreset", "FmFilter",
                                      "SlicerOn", "SlicerMapTo", "SlicerReverse",
-                                     "FxSend", "SampleMode", "AllpassFreq", "AllpassAmount", "SamplePan", "NoisePan", "FmPan", "NoiseWidth", "SubPhaseDeg", "FmPhaseDeg", "AWidth", "BWidth", "CWidth", "SampleWidth", "FmWidth" };
+                                     "FxSend", "SampleMode", "AllpassFreq", "AllpassAmount", "SamplePan", "NoisePan", "FmPan", "NoiseWidth", "SubPhaseDeg", "FmPhaseDeg", "AWidth", "BWidth", "CWidth", "SampleWidth", "FmWidth", "RingSource" };
         static_assert (std::size (names) == (size_t) InstrumentField::count);
         return names[(size_t) field];
     }
@@ -114,28 +114,27 @@ namespace ParamID
     namespace
     {
         // ID:n byggs en gång och lever hela programmet ut (funktionerna returnerar const char*).
-        const std::array<std::string, numPatternRows>& rowNames (const char* prefix, const char* kick)
+        // Anropas från ljudtråden varje block: inget uppslag med std::string-nyckel (det allokerar i Debug), bara en färdig tabell per prefix.
+        std::array<std::string, numPatternRows> buildRowNames (const char* prefix)
         {
-            static std::map<std::string, std::array<std::string, numPatternRows>> cache;
-            auto& names = cache[prefix];
-            if (names[0].empty())
-            {
-                names[0] = std::string (prefix) + kick;
-                for (int row = 1; row < numPatternRows; ++row)
-                    names[(size_t) row] = std::string (prefix) + "Bass" + std::to_string (row);
-            }
+            std::array<std::string, numPatternRows> names;
+            names[0] = std::string (prefix) + "Kick";
+            for (int row = 1; row < numPatternRows; ++row)
+                names[(size_t) row] = std::string (prefix) + "Bass" + std::to_string (row);
             return names;
         }
     }
 
     const char* rowLoop (int row)
     {
-        return rowNames ("rowLoop", "Kick")[(size_t) juce::jlimit (0, numPatternRows - 1, row)].c_str();
+        static const auto names = buildRowNames ("rowLoop");
+        return names[(size_t) juce::jlimit (0, numPatternRows - 1, row)].c_str();
     }
 
     const char* rowBars (int row)
     {
-        return rowNames ("rowBars", "Kick")[(size_t) juce::jlimit (0, numPatternRows - 1, row)].c_str();
+        static const auto names = buildRowNames ("rowBars");
+        return names[(size_t) juce::jlimit (0, numPatternRows - 1, row)].c_str();
     }
 }
 
@@ -268,7 +267,7 @@ namespace Params
                                     [] (float v) { return String (v, 1) + " ct"; }));
             layout.add (percent (oid (F::aBlend), oscTitle + "Blend", 0.5f));
             layout.add (std::make_unique<AudioParameterChoice> (ParameterID { oid (F::aWarp), 1 }, oscTitle + "Warp",
-                                                                osc == 0 ? StringArray { "Off", "Sync", "Bend", "PWM", "Mirror", "FM (B)", "Flip", "Quantize", "AM" }
+                                                                osc == 0 ? StringArray { "Off", "Sync", "Bend", "PWM", "Mirror", "FM (B)", "Flip", "Quantize", "AM", "RING (B)" }
                                                                          : StringArray { "Off", "Sync", "Bend", "PWM", "Mirror", "Flip", "Quantize", "AM" }, 0));
             layout.add (percent (oid (F::aWarpAmount), oscTitle + "Warp Amount", 0.0f));
             layout.add (percent (oid (F::aPhase), oscTitle + "Phase", 0.0f));
@@ -418,8 +417,8 @@ namespace Params
         layout.add (std::make_unique<AudioParameterBool> (ParameterID { id (F::fxSend), 1 }, title + "FX Send", false)); // sist: SEND-läge för FX-kanalen (av = som förut)
         // fas R9b: SAMPLE-radens läge (BLEND = som förut, standard)
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::sampleMode), 1 }, title + "Sample Mode", StringArray { "Blend", "Independent", "Off" }, 0));
-                layout.add (floatParam (id (F::allpassFreq), title + "Allpass Freq", NormalisableRange<float> (20.0f, 2000.0f, 0.1f, 0.4f), 200.0f, [] (float v) { return String (juce::roundToInt (v)) + " Hz"; }));
-                layout.add (floatParam (id (F::allpassAmount), title + "Allpass Amount", NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.0f, [] (float v) { return String (juce::roundToInt (v * 100.0f)) + " %"; }));
+        layout.add (floatParam (id (F::allpassFreq), title + "Allpass Freq", NormalisableRange<float> (20.0f, 2000.0f, 0.1f, 0.4f), 200.0f, [] (float v) { return String (juce::roundToInt (v)) + " Hz"; }));
+        layout.add (floatParam (id (F::allpassAmount), title + "Allpass Amount", NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.0f, [] (float v) { return String (juce::roundToInt (v * 100.0f)) + " %"; }));
         const auto panText = [] (float v) { return juce::roundToInt (v * 100.0f) == 0 ? String ("C") : String (juce::roundToInt (std::abs (v) * 100.0f)) + (v < 0.0f ? " L" : " R"); };
         layout.add (floatParam (id (F::samplePan), title + "Sample Pan", NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f, panText));
         layout.add (floatParam (id (F::noisePan), title + "Noise Pan", NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f, panText));
@@ -434,7 +433,9 @@ namespace Params
         layout.add (floatParam (id (F::cWidth), title + "OSC 3 Width", NormalisableRange<float> (0.0f, 2.0f, 0.01f), 1.0f, widthText));
         layout.add (floatParam (id (F::sampleWidth), title + "Sample Width", NormalisableRange<float> (1.0f, 2.0f, 0.01f), 1.0f, widthText));
         layout.add (floatParam (id (F::fmWidth), title + "FM Width", NormalisableRange<float> (1.0f, 2.0f, 0.01f), 1.0f, widthText));
-            }
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::ringSource), 1 }, title + "OSC 1 Ring Source",
+                                                            StringArray { "OSC 2", "OSC 3", "OSC 2 x OSC 3" }, 0));
+    }
 
     void addFxParams (Layout& layout)
     {
@@ -446,6 +447,14 @@ namespace Params
     void addMasterParams (Layout& layout)
     {
         layout.add (percent (ParamID::gain, "Master", 0.8f));
+    }
+
+    void addJogParams (Layout& layout)
+    {
+        layout.add (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { ParamID::jogSpeed, 1 }, "Jog Speed",
+                                                                 juce::NormalisableRange<float> (0.0f, 4.0f, 0.001f), 1.0f));
+        layout.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { ParamID::kickSynthOn, 1 }, "Kick Synth On", true));
+        layout.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { ParamID::kickSampleOn, 1 }, "Kick Sample On", true));
     }
 
     juce::StringArray keyNames()
@@ -588,6 +597,8 @@ KickParams ParamRefs::readKick (int keyPitchClass) const
     p.velPitch      = get (ParamID::kickVelPitch);
     p.sampleMode    = getChoice (ParamID::kickSampleMode);
     p.sampleLevel   = get (ParamID::kickSampleLevel);
+    p.synthOn       = get (ParamID::kickSynthOn) >= 0.5f;
+    p.sampleOn      = get (ParamID::kickSampleOn) >= 0.5f;
     p.sampleTuneSemis = get (ParamID::kickSampleTune);
     p.sampleOffsetMs = get (ParamID::kickSampleOffset);
     p.drive         = get (ParamID::kickDrive);
@@ -711,8 +722,6 @@ InstrumentParams ParamRefs::readInstrument (int layer, int rootMidiNote) const
     p.fmEnvMs = get (F::fmEnvTime);
     p.fmSemis = get (F::fmSemis);
     p.fmFilter = get (F::fmFilter) >= 0.5f;
-    p.slicerOn = get (F::slicerOn) >= 0.5f;
-    p.slicerMapTo = juce::roundToInt (get (F::slicerMapTo));
     p.slicerReverse = get (F::slicerReverse) >= 0.5f;
     p.allpassFreq = get (F::allpassFreq);
     p.allpassAmount = get (F::allpassAmount);
@@ -727,5 +736,6 @@ InstrumentParams ParamRefs::readInstrument (int layer, int rootMidiNote) const
     p.cWidth = get (F::cWidth);
     p.sampleWidth = get (F::sampleWidth);
     p.fmWidth = get (F::fmWidth);
+    p.oscA.ringSource = (int) get (F::ringSource);
     return p;
 }

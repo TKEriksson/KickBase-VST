@@ -146,7 +146,7 @@ float KickEngine::nextSample()
 
     const auto& current = voices[currentVoice];
     // Duckningen följer kicken: syntesens envelope (inte vid ersättning) eller samplingens nivå, den som är högst.
-    const auto synthEnvelope = params.sampleMode == 2 && clickSample != nullptr ? 0.0f : amplitudeAt (params, current.time);
+    const auto synthEnvelope = effectiveSampleMode (params, clickSample) == 2 || ! params.synthOn ? 0.0f : amplitudeAt (params, current.time);
     envelope = current.active ? std::max (synthEnvelope, current.sampleFollower) * current.fade : 0.0f;
 
     auto y = clip (out, params.drive, params.clipMode);
@@ -202,9 +202,10 @@ float KickEngine::nextSample()
 float KickEngine::renderVoice (Voice& voice)
 {
     const auto t = voice.time;
-    const auto hasSample = clickSample != nullptr && clickSample->audio.getNumSamples() > 0;
-    const auto replace = hasSample && params.sampleMode == 2;
-    const auto layered = hasSample && params.sampleMode >= 1;
+    const auto mode = effectiveSampleMode (params, clickSample);
+    const auto hasSample = mode >= 0;
+    const auto replace = mode == 2;
+    const auto layered = mode >= 1;
 
     if (t > totalSeconds (params, clickSample, sampleRate) || voice.fade <= 0.0f)
     {
@@ -217,7 +218,7 @@ float KickEngine::renderVoice (Voice& voice)
     auto top = 0.0f;
     auto click = 0.0f;
 
-    if (! replace)
+    if (! replace && params.synthOn)
     {
         const auto amplitude = amplitudeAt (params, t);
 
@@ -303,7 +304,7 @@ float KickEngine::renderVoice (Voice& voice)
         voice.sampleFollower = std::max (std::abs (sampled) * (layered ? params.sampleLevel : params.clickLevel),
                                          voice.sampleFollower * (float) std::exp (-1.0 / (0.012 * sampleRate)));
     }
-    else
+    else if (params.synthOn)
     {
         const auto clickSeconds = params.clickLengthMs * 0.001;
         if (t < clickSeconds)
@@ -332,12 +333,13 @@ float KickEngine::renderVoice (Voice& voice)
 double KickEngine::totalSeconds (const KickParams& p, const ClickSample* sample, double sampleRate)
 {
     const auto synth = lengthSeconds (p);
-    if (sample == nullptr || sample->audio.getNumSamples() <= 0 || p.sampleMode == 0)
+    const auto mode = effectiveSampleMode (p, sample);
+    if (mode <= 0)
         return synth;
 
     const auto sampleSeconds = (double) sample->audio.getNumSamples() / sampleRate / std::exp2 ((double) p.sampleTuneSemis / 12.0)
                              + std::max (0.0, (double) p.sampleOffsetMs * 0.001);
-    return p.sampleMode == 2 ? sampleSeconds : std::max (synth, sampleSeconds);
+    return mode == 2 ? sampleSeconds : std::max (synth, sampleSeconds);
 }
 
 float KickEngine::amplitudeAt (const KickParams& p, double seconds)

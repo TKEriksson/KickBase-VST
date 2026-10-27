@@ -75,7 +75,7 @@ private:
     juce::Label routingNote;
     // fas S: FILTER av/på för hela instrumentet (en knapp) och per källa (en flervalsmeny: låter t.ex. SAMPLE eller NOISE gå förbi båda filtren).
     // Samma parametrar finns som en knapp i varje källas egen flik.
-    void showSourcesMenu();
+    void showSourcesMenu (int initiallySelected = 0);
     void updateSourcesText();
     static constexpr int numSources = 5; // OSC 1, OSC 2, OSC 3, SAMPLE, NOISE (i ordning med InstrumentField::filterOsc1 ...)
     juce::ToggleButton filterOnButton { "FILTER ON" };

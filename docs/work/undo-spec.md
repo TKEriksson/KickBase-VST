@@ -31,7 +31,7 @@ Ingen ny datamodell. Använd befintligt API.
 
 ## Live Code, AI och mallar
 - **Live Code-körning** (kör-knappen): `begin` före, `commit` efter ⇒ EN transaktion oavsett hur många lager/parametrar koden rör. Parametrar den sätter fångas av APVTS-undo, mönsterlager av `PatternEdit` (alla lager som koden berör; enklast: alla `numRowSlots`-rader, hoppa över oförändrade).
-- **AI-chattens verktyg** som ändrar mönster/preset/parametrar: en transaktion per AI-svar (alla verktygsanrop i svaret ihop). Namn "AI edit".
+- **AI-chattens verktyg**: ingen ångring i historiken (Tobias beslut 27 okt: chatten har sitt eget "undo"-verktyg och tokens är redan använda, så en ångring blir förvirrande). Ursprunglig plan var en transaktion "AI edit" per svar.
 - `applyTemplate` / `applyLayerTemplate` / `setKickSteps` från UI: en transaktion.
 
 ## Presets

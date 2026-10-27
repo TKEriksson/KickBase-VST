@@ -392,8 +392,7 @@ juce::String KickDisplay::describe (const NodeEnvelope::Point& point) const
 void KickDisplay::paint (juce::Graphics& g)
 {
     const auto bounds = getLocalBounds().toFloat();
-    g.setColour (Theme::knobBodyDark.withAlpha (0.85f));
-    g.fillRoundedRectangle (bounds, 6.0f);
+    Theme::paintChartBackground (g, bounds, 8.0f);
 
     const auto area = plotArea();
     const auto colour = amp ? Theme::kick : Theme::text;

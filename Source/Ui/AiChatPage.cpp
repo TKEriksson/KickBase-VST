@@ -235,12 +235,16 @@ AiChatPage::AiChatPage (PluginBase& p) : processor (p), chat (p.getAiChat())
         const auto model = modelBox.getText().trim();
         if (model.isEmpty())
             return;
-        const auto previous = gemini() ? Settings::geminiModel() : Settings::chatModel();
+        const auto previous = currentModel();
         if (gemini())
         {
             Settings::setGeminiModel (model);
             checkModel (false);
         }
+        else if (openai())
+            Settings::setOpenaiModel (model);
+        else if (ollama())
+            Settings::setOllamaModel (model);
         else
             Settings::setChatModel (model);
 
@@ -350,10 +354,14 @@ AiChatPage::AiChatPage (PluginBase& p) : processor (p), chat (p.getAiChat())
 
     // Leverantören: två knappar, den valda lyser.
     anthropicButton.setClickingTogglesState (false);
-    anthropicButton.onClick = [this] { setProvider (false); };
+    anthropicButton.onClick = [this] { setProvider ("anthropic"); };
     addChildComponent (anthropicButton);
-    geminiButton.onClick = [this] { setProvider (true); };
+    geminiButton.onClick = [this] { setProvider ("gemini"); };
     addChildComponent (geminiButton);
+    openaiButton.onClick = [this] { setProvider ("openai"); };
+    addChildComponent (openaiButton);
+    ollamaButton.onClick = [this] { setProvider ("ollama"); };
+    addChildComponent (ollamaButton);
     guideButton.setTooltip ("Opens Google AI Studio in your browser, where you create a Gemini API key. Paste it here afterwards.");
     guideButton.onClick = [this]
     {
@@ -381,6 +389,10 @@ AiChatPage::AiChatPage (PluginBase& p) : processor (p), chat (p.getAiChat())
     {
         if (gemini())
             Settings::setGeminiApiKey ({});
+        else if (openai())
+            Settings::setOpenaiApiKey ({});
+        else if (ollama())
+            Settings::setOllamaModel ({}); // frånkopplad: nästa CONNECT väljer modell på nytt
         else
             Settings::setChatApiKey ({});
         keyEditor.setText ({}, false);
@@ -398,7 +410,14 @@ AiChatPage::~AiChatPage() = default;
 
 bool AiChatPage::needsKey() const
 {
-    return (gemini() ? Settings::geminiApiKey() : Settings::chatApiKey()).isEmpty();
+    if (ollama())
+        return Settings::ollamaModel().isEmpty(); // inte ansluten än: ingen modell vald
+    return (gemini() ? Settings::geminiApiKey() : openai() ? Settings::openaiApiKey() : Settings::chatApiKey()).isEmpty();
+}
+
+juce::String AiChatPage::currentModel() const
+{
+    return gemini() ? Settings::geminiModel() : openai() ? Settings::openaiModel() : ollama() ? Settings::ollamaModel() : Settings::chatModel();
 }
 
 void AiChatPage::populateModels()
@@ -407,13 +426,23 @@ void AiChatPage::populateModels()
     const auto models = AiChat::models();
     for (const auto& model : models)
         modelBox.addItem (model, modelBox.getNumItems() + 1);
-    const auto current = gemini() ? Settings::geminiModel() : Settings::chatModel();
+    const auto current = currentModel();
     if (models.contains (current))
         modelBox.setSelectedId (models.indexOf (current) + 1, juce::dontSendNotification);
     else
         modelBox.setText (current, juce::dontSendNotification);
 
-    if (gemini())
+    if (openai())
+    {
+        modelBox.setTooltip ("MODEL - Which OpenAI model answers. The list comes from your account; you can also type a model name. Usage is billed to your own OpenAI account.");
+        keyButton.setTooltip ("KEY - Your own OpenAI API key (from platform.openai.com). It is stored encrypted on this computer and only sent to api.openai.com.");
+    }
+    else if (ollama())
+    {
+        modelBox.setTooltip ("MODEL - Which model on your Ollama server answers (the ones you have pulled). Pick one that supports tools.");
+        keyButton.setTooltip ("SERVER - The address of your Ollama server (standard http://localhost:11434). Nothing is sent anywhere else.");
+    }
+    else if (gemini())
     {
         updateModelNote();
         modelBox.setTooltip ("MODEL - Which Gemini model answers. Flash is the everyday choice and works on the free tier, Flash-Lite is the fastest, Pro the most capable "
@@ -432,13 +461,29 @@ void AiChatPage::populateModels()
 void AiChatPage::updateSetupTexts()
 {
     const auto useGemini = gemini();
-    anthropicButton.setColour (juce::TextButton::buttonColourId, useGemini ? Theme::knobBodyDark : Theme::bass.withAlpha (0.55f));
-    geminiButton.setColour (juce::TextButton::buttonColourId, useGemini ? Theme::bass.withAlpha (0.55f) : Theme::knobBodyDark);
-    keyEditor.setTextToShowWhenEmpty (useGemini ? "AIza..." : "sk-ant-...", Theme::textDim);
-    saveKeyButton.setButtonText (useGemini ? "TEST & SAVE" : "SAVE KEY");
+    const auto lit = Theme::bass.withAlpha (0.55f);
+    anthropicButton.setColour (juce::TextButton::buttonColourId, anthropic() ? lit : Theme::knobBodyDark);
+    geminiButton.setColour (juce::TextButton::buttonColourId, useGemini ? lit : Theme::knobBodyDark);
+    openaiButton.setColour (juce::TextButton::buttonColourId, openai() ? lit : Theme::knobBodyDark);
+    ollamaButton.setColour (juce::TextButton::buttonColourId, ollama() ? lit : Theme::knobBodyDark);
+    keyEditor.setPasswordCharacter (ollama() ? 0 : (juce::juce_wchar) 0x2022); // Ollama: fältet håller en adress, den visas
+    keyEditor.setTextToShowWhenEmpty (useGemini ? "AIza..." : openai() ? "sk-..." : ollama() ? "http://localhost:11434" : "sk-ant-...", Theme::textDim);
+    saveKeyButton.setButtonText (ollama() ? "CONNECT" : useGemini || openai() ? "TEST & SAVE" : "SAVE KEY");
     guideButton.setVisible (setupOpen && useGemini);
 
-    if (useGemini)
+    if (openai())
+        setupText.setText ("Chat with an AI that designs the sound for you, right here in the synth. It needs your own OpenAI API key (create one at platform.openai.com/api-keys).\n\n"
+                           "The key is stored encrypted on this computer and is only ever sent to api.openai.com. Usage is billed to your OpenAI account, "
+                           "and a conversation uses some thousand tokens per step (the NEW CHAT button starts over).",
+                           juce::dontSendNotification);
+    else if (ollama())
+        setupText.setText ("Chat with an AI that runs on your own computer through Ollama (ollama.com). No key, no account, and nothing leaves your machine.\n\n"
+                           "1. Install Ollama and start it.\n"
+                           "2. Download a model that can use tools, for example \"ollama pull qwen3\" or \"ollama pull llama3.1\".\n"
+                           "3. Leave the field below empty (it uses http://localhost:11434) or type the address of your Ollama server, then click CONNECT.\n\n"
+                           "Small models are often worse at designing sounds than the cloud ones, and a model without tool support cannot change the synth. Images are not sent.",
+                           juce::dontSendNotification);
+    else if (useGemini)
         setupText.setText ("Chat with an AI that designs the sound for you, right here in the synth. Google's Gemini has a free tier, so you do not need a paid account.\n\n"
                            "1. Click GET A FREE KEY: Google AI Studio opens in your browser. Sign in with a Google account.\n"
                            "2. Click \"Create API key\" and copy the key (it starts with AIza).\n"
@@ -473,15 +518,22 @@ void AiChatPage::checkModel (bool fetchList)
         if (! fetchList)
             return;
         checking = true;
-        juce::Thread::launch ([safe = juce::Component::SafePointer<AiChatPage> (this), key = Settings::chatApiKey()]
+        const auto provider = Settings::chatProvider();
+        juce::Thread::launch ([safe = juce::Component::SafePointer<AiChatPage> (this), provider]
         {
-            const auto list = AiChat::fetchAnthropicModels (key);
-            juce::MessageManager::callAsync ([safe, list]
+            juce::StringArray list;
+            if (provider == "ollama")
+                list = OpenAiApi::fetchModels (Settings::ollamaBaseUrl(), {}, true);
+            else if (provider == "openai")
+                list = OpenAiApi::fetchModels (OpenAiApi::defaultBase (false), Settings::openaiApiKey(), false);
+            else
+                list = AiChat::fetchAnthropicModels (Settings::chatApiKey());
+            juce::MessageManager::callAsync ([safe, list, provider]
             {
                 if (safe == nullptr)
                     return;
                 safe->checking = false;
-                if (! list.isEmpty() && ! safe->gemini())
+                if (! list.isEmpty() && Settings::chatProvider() == provider)
                     safe->populateModels();
             });
         });
@@ -512,11 +564,11 @@ void AiChatPage::checkModel (bool fetchList)
     });
 }
 
-void AiChatPage::setProvider (bool useGemini)
+void AiChatPage::setProvider (const juce::String& provider)
 {
-    if (chat.isBusy() || useGemini == gemini())
+    if (chat.isBusy() || provider == Settings::chatProvider())
         return;
-    Settings::setChatProvider (useGemini ? "gemini" : "anthropic");
+    Settings::setChatProvider (provider);
     chat.newChat(); // samtalet hör till leverantören: det börjar om
     populateModels();
     checkModel (true);
@@ -536,7 +588,7 @@ void AiChatPage::showSetup (bool show)
     setupOpen = show;
     keyEditor.setText ({}, false);
     testResult.setText ({}, juce::dontSendNotification);
-    for (auto* component : std::initializer_list<juce::Component*> { &setupTitle, &setupText, &keyEditor, &saveKeyButton, &cancelKeyButton, &removeKeyButton, &anthropicButton, &geminiButton })
+    for (auto* component : std::initializer_list<juce::Component*> { &setupTitle, &setupText, &keyEditor, &saveKeyButton, &cancelKeyButton, &removeKeyButton, &anthropicButton, &geminiButton, &openaiButton, &ollamaButton })
         component->setVisible (show);
     testResult.setVisible (false);
     cancelKeyButton.setVisible (show && ! needsKey());
@@ -552,37 +604,89 @@ void AiChatPage::showSetup (bool show)
 void AiChatPage::saveKey()
 {
     const auto key = keyEditor.getText().trim();
-    if (key.isEmpty() || testing)
+    if (testing)
         return;
 
-    if (! gemini())
+    // Ollama: fältet håller serveradressen (tomt = standard). Anslutningen provas, och modellen väljs ur serverns lista.
+    if (ollama())
+    {
+        const auto url = key.isEmpty() ? juce::String ("http://localhost:11434") : key;
+        testing = true;
+        saveKeyButton.setEnabled (false);
+        showTestResult ("Connecting to " + url + " ...", true);
+        juce::Thread::launch ([safe = juce::Component::SafePointer<AiChatPage> (this), url]
+        {
+            const auto list = OpenAiApi::fetchModels (url, {}, true);
+            const auto result = OpenAiApi::testKey (url, {}, Settings::ollamaModel(), true);
+            juce::MessageManager::callAsync ([safe, url, list, result]
+            {
+                if (safe == nullptr)
+                    return;
+                safe->testing = false;
+                safe->saveKeyButton.setEnabled (true);
+                if (list.isEmpty() || ! safe->ollama())
+                {
+                    safe->showTestResult (result.message.isNotEmpty() ? result.message : "Found no models on " + url + ". Run \"ollama pull <model>\" first.", false);
+                    return;
+                }
+                Settings::setOllamaBaseUrl (url);
+                if (! list.contains (Settings::ollamaModel()))
+                    Settings::setOllamaModel (list[0]);
+                safe->populateModels();
+                safe->showSetup (false);
+            });
+        });
+        return;
+    }
+
+    if (key.isEmpty())
+        return;
+
+    if (anthropic())
     {
         Settings::setChatApiKey (key);
         showSetup (false);
         return;
     }
 
-    // Gemini: nyckeln provas med ett litet anrop på en bakgrundstråd (det kan ta några sekunder), och sparas bara om den fungerar.
+    // Gemini och OpenAI: nyckeln provas med ett litet anrop på en bakgrundstråd (det kan ta några sekunder), och sparas bara om den fungerar.
     testing = true;
     saveKeyButton.setEnabled (false);
     showTestResult ("Testing the key ...", true);
-    juce::Thread::launch ([safe = juce::Component::SafePointer<AiChatPage> (this), key]
+    const auto forOpenai = openai();
+    juce::Thread::launch ([safe = juce::Component::SafePointer<AiChatPage> (this), key, forOpenai]
     {
-        const auto result = GeminiApi::testKey (key);
-        juce::MessageManager::callAsync ([safe, key, result]
+        bool ok = false;
+        juce::String message;
+        if (forOpenai)
+        {
+            const auto result = OpenAiApi::testKey (OpenAiApi::defaultBase (false), key, Settings::openaiModel(), false);
+            ok = result.ok;
+            message = result.message;
+        }
+        else
+        {
+            const auto result = GeminiApi::testKey (key);
+            ok = result.ok;
+            message = result.message;
+        }
+        juce::MessageManager::callAsync ([safe, key, forOpenai, ok, message]
         {
             if (safe == nullptr)
                 return;
             safe->testing = false;
             safe->saveKeyButton.setEnabled (true);
-            if (result.ok && safe->gemini())
+            if (ok && (forOpenai ? safe->openai() : safe->gemini()))
             {
-                Settings::setGeminiApiKey (key);
+                if (forOpenai)
+                    Settings::setOpenaiApiKey (key);
+                else
+                    Settings::setGeminiApiKey (key);
                 safe->showSetup (false);
                 safe->checkModel (true); // nytt nyckeltest: modelllistan hämtas och modellen provas om (cachen gäller per nyckel)
             }
             else
-                safe->showTestResult (result.message, false);
+                safe->showTestResult (message, false);
         });
     });
 }
@@ -1000,14 +1104,16 @@ void AiChatPage::resized()
     layoutSuggestions();
 
     // Nyckelsidan, mitt i ytan.
-    auto setup = getLocalBounds().withTrimmedTop (34).withSizeKeepingCentre (640, gemini() ? 400 : 270);
+    auto setup = getLocalBounds().withTrimmedTop (34).withSizeKeepingCentre (650, gemini() ? 400 : ollama() ? 330 : 270);
     setupTitle.setBounds (setup.removeFromTop (28));
     auto providers = setup.removeFromTop (28);
-    anthropicButton.setBounds (providers.removeFromLeft (200));
-    providers.removeFromLeft (6);
-    geminiButton.setBounds (providers.removeFromLeft (200));
+    for (auto* button : { &anthropicButton, &geminiButton, &openaiButton, &ollamaButton })
+    {
+        button->setBounds (providers.removeFromLeft (158));
+        providers.removeFromLeft (6);
+    }
     setup.removeFromTop (6);
-    setupText.setBounds (setup.removeFromTop (gemini() ? 220 : 110));
+    setupText.setBounds (setup.removeFromTop (gemini() ? 220 : ollama() ? 160 : 110));
     setup.removeFromTop (8);
     keyEditor.setBounds (setup.removeFromTop (28));
     setup.removeFromTop (8);

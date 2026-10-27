@@ -1,5 +1,8 @@
 // Tester för sidechain-kurvan och mastersektionens limiter.
 
+#include "../Source/Core/Effects.h"
+#include "../Source/Core/LiveCodeComplete.h"
+#include "../Source/Core/LiveCodeFormat.h"
 #include "../Source/Core/Master.h"
 #include "../Source/Core/Sidechain.h"
 #include "TestUtils.h"
@@ -127,11 +130,78 @@ namespace
         check (peak > ceiling * 0.9f, "men inte onödigt mycket lägre", peak);
         check (master.gainReductionDb.load() < -4.0f, "mätaren visar förstärkningsminskning", master.gainReductionDb.load());
     }
+
+    // H1: ett gammalt projekt (före Maximizerns MODE) har ett oanvänt sparat värde på ratt 6; det ska bli Classic, inte Smooth.
+    void testMaximizerModeMigration()
+    {
+        std::puts ("H1: gammalt Maximizer-projekt får MODE = Classic");
+        juce::ValueTree state ("Parameters");
+        auto add = [&] (const juce::String& id, float v)
+        {
+            juce::ValueTree p ("PARAM");
+            p.setProperty ("id", id, nullptr);
+            p.setProperty ("value", v, nullptr);
+            state.appendChild (p, nullptr);
+        };
+        add (Effects::slotParamID (0, 0, "Type"), (float) (int) EffectType::maximizer);
+        add (Effects::knobParamID (0, 0, 5), 1.0f);
+        state.setProperty ("fxKnobsV", 2, nullptr);
+        Effects::migrateLegacyKnobs (state);
+        const auto knob = state.getChildWithProperty ("id", Effects::knobParamID (0, 0, 5));
+        check (knob.isValid() && (float) (double) knob.getProperty ("value") == 0.0f, "ratt 6 nollad till Classic", knob.isValid() ? (double) knob.getProperty ("value") : -1.0);
+    }
+
+    // D4: autokomplettering inuti strängar och på tom rad
+    void testLiveCodeStringComplete()
+    {
+        std::puts ("D4: Live Code-förslag i strängar");
+        const LiveCodeComplete::Source src;
+        auto has = [] (const LiveCodeComplete::Result& r, const char* label)
+        {
+            for (auto& i : r.items) if (i.label == label) return true;
+            return false;
+        };
+        const juce::String a = "$: s(\"";
+        const auto s = LiveCodeComplete::complete (a, a.length(), src);
+        check (has (s, "i1") && has (s, "bd") && ! has (s, "c2"), "s(\" ger instrumentnamn", (int) s.items.size());
+        const juce::String b = "$: s(\"i1\").note(\"c2 e";
+        const auto n = LiveCodeComplete::complete (b, b.length(), src);
+        check (has (n, "eb1") && ! has (n, "i1") && n.replaceFrom == b.length() - 1, "note(\" ger tonnamn från senaste ordet", n.replaceFrom);
+        const auto empty = LiveCodeComplete::complete ("", 0, src);
+        check (! empty.items.empty() && empty.items.front().label == "$:", "tom rad börjar med $:");
+        const juce::String c = "s(\"i1\").";
+        check (has (LiveCodeComplete::complete (c, c.length(), src), "note"), "efter stängd sträng ger metoder");
+        const juce::String ch = "$: s(\"i1\").chord(\"maj";
+        check (has (LiveCodeComplete::complete (ch, ch.length(), src), "major7"), "chord(\" ger ackordnamn");
+        LiveCodeComplete::Source withParams;
+        withParams.paramIds = { "bass1Cutoff" };
+        const juce::String d = "$: s(\"i1\").lfo(\"bass1C";
+        check (has (LiveCodeComplete::complete (d, d.length(), withParams), "bass1Cutoff"), "lfo(\" ger parameternamn");
+    }
+
+    // D4 steg 3: autoformat
+    void testLiveCodeFormat()
+    {
+        std::puts ("D4: Live Code autoformat");
+        const auto one = LiveCodeFormat::format ("$: note(\"c2 g1\").s(\"i1\").gain(0.5)");
+        check (one == "$: s(\"i1\")\n  .note(\"c2 g1\")\n  .gain(0.5)", "s() först, en kedja per rad", one.length());
+        const auto again = LiveCodeFormat::format (one);
+        check (again == one, "formatering är idempotent", again.length());
+        const juce::String note = "$: s(\"i1\").note(\"a.b\") // kommentar";
+        check (LiveCodeFormat::format (note) == note, "satser med kommentar lämnas orörda");
+        const juce::String lone = "// bara kommentar\n\n$: s(\"bd\")";
+        check (LiveCodeFormat::format (lone) == lone, "kommentarer, tomrader och korta satser behålls", LiveCodeFormat::format (lone).length());
+        const auto two = LiveCodeFormat::format ("$: s(\"i1\").note(\"c2\")\n$: s(\"i2\").note(\"e2\")");
+        check (two.contains ("\n$: s(\"i2\")\n  .note"), "flera block formateras var för sig", two.length());
+    }
 }
 
 void runMasterTests()
 {
+    testLiveCodeStringComplete();
+    testLiveCodeFormat();
     testCurveShapeAndTable();
     testCurvePlayer();
     testLimiter();
+    testMaximizerModeMigration();
 }

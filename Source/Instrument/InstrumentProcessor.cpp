@@ -31,6 +31,7 @@ namespace
         Mixer::addParameters (layout);
         Params::addMasterParams (layout);
         Modulation::addExtraLfoParameters (layout); // LFO 4-10 (fas M): nya parametrar sist
+        Params::addJogParams (layout); // JOG (D3b)
         return layout;
     }
 
@@ -138,11 +139,23 @@ void InstrumentProcessor::processChunk (juce::AudioBuffer<float>& buffer, juce::
     ensureScratchSize (numSamples);
     keyboardState.processNextMidiBuffer (midi, 0, numSamples, true);
     {
-        int auditionRow = 0, auditionNote = 0, auditionVelocity = 0;
+        int auditionRow = 0, auditionNote = 0, auditionVelocity = 0, auditionSlice = -1;
         bool auditionOn = false;
-        while (popNoteAudition (auditionRow, auditionNote, auditionVelocity, auditionOn)) // enskilda toner från pianorullen
-            handleLiveMidi (auditionOn ? juce::MidiMessage::noteOn (1, auditionNote, (juce::uint8) auditionVelocity) : juce::MidiMessage::noteOff (1, auditionNote), auditionRow);
-    }    clock.beginBlock (getHostPosition(), numSamples);
+        while (popNoteAudition (auditionRow, auditionNote, auditionVelocity, auditionOn, auditionSlice)) // enskilda toner från pianorullen
+            handleLiveMidi (auditionOn ? juce::MidiMessage::noteOn (1, auditionNote, (juce::uint8) auditionVelocity) : juce::MidiMessage::noteOff (1, auditionNote), auditionRow, auditionSlice);
+        if (const auto allOffRows = takeAuditionAllOffRows(); allOffRows != 0)
+            for (int row = 0; row < 16; ++row)
+                if ((allOffRows >> row) & 1)
+                    handleLiveMidi (juce::MidiMessage::allNotesOff (1), row);
+    }
+    clock.setForceFreeRun (previewLayer >= 0);
+    clock.setFreeRunBpm (freeRunBpm.load());
+    clock.setHold (transportHold.load());
+    clock.setJogRate (jogManual.load() >= 0.0f ? (double) jogManual.load() : (double) params.get (ParamID::jogSpeed));
+    clock.setLoop (globalLoop.load(), globalLoopStartBar.load(), globalLoopEndBar.load());
+    clock.beginBlock (getHostPosition(), numSamples);
+    if (const auto seekBar = seekBarRequest.exchange (-1); seekBar >= 0)
+        clock.seekFreeRunToBar (seekBar);
     for (int layer = 0; layer < numLayers; ++layer)
         basses[(size_t) layer].setTempo (clock.getBpm()); // ENV 2 och ENV 3 i läget Sync
     // Moduleringen uppdateras bara på 32-rutnätet. En bit som börjar mitt i ett fönster (när DAW-blocket slutade där) behåller
@@ -320,6 +333,7 @@ void InstrumentProcessor::processChunk (juce::AudioBuffer<float>& buffer, juce::
 
     transportStatus.publish (clock);
     transportStatus.patternBar = (int) (((clock.getBarIndex() % lengths.total) + lengths.total) % lengths.total) + 1;
+    transportStatus.patternProgress = ((float) (transportStatus.patternBar.load() - 1) + (float) juce::jlimit (0.0, 1.0, (clock.getPpqAt (0) - clock.getBarStartPpq()) / std::max (1.0e-6, clock.getBarLengthPpq()))) / (float) lengths.total;
     transportStatus.keyNote = currentNote;
     transportStatus.patternActive = patternActive;
     previewingLayer = patternActive ? previewLayer : -1;
@@ -425,6 +439,7 @@ void InstrumentProcessor::refreshEngineParams()
     if (kickSoloSamplesLeft > 0 && getActiveClickSample() != nullptr)
     {
         kickParams.sampleMode = 2; // bara samplingen, i full nivå
+        kickParams.sampleOn = true;
         kickParams.sampleLevel = 1.0f;
     }
     kick.setParams (kickParams);
@@ -453,13 +468,11 @@ void InstrumentProcessor::refreshEngineParams()
 
 void InstrumentProcessor::handlePreviewRequest (int row)
 {
-    if (numHeldNotes > 0)
-        return; // en riktig ton spelar redan: mönstret hörs ändå
     if (previewLayer >= 0)
         stopPreview(); // ett nytt tryck börjar om från början
 
-    if (! clock.isFollowingHost())
-        clock.restartFreeRunAt (0);
+    clock.setForceFreeRun (true);
+    clock.restartFreeRunAt (0);
     currentNote = previewNote.load(); // tonarten för förhandsspelningen, som om tonen hölls
     refreshEngineParams();
     previewLayer = row;
@@ -537,7 +550,7 @@ bool InstrumentProcessor::noteOffEndsPattern (const juce::MidiMessage& message) 
     return message.isAllNotesOff() || message.isAllSoundOff();
 }
 
-bool InstrumentProcessor::handleLiveMidi (const juce::MidiMessage& message, int rowOverride)
+bool InstrumentProcessor::handleLiveMidi (const juce::MidiMessage& message, int rowOverride, int slice)
 {
     // MIDI IN: INSTRUMENT i pianorullen: tonerna spelas på radens ljud, utan att mönstret startar. Tonhöjd 0 är radens grundton (som i pianorullen).
     const auto row = rowOverride >= 0 ? rowOverride : midiInLayer.load();
@@ -562,6 +575,9 @@ bool InstrumentProcessor::handleLiveMidi (const juce::MidiMessage& message, int 
 
     if (message.isNoteOn())
     {
+        // Spelar värden startar värdens toner alltid mönstret; MIDI IN gäller bara när värden står still (pianorullens egen provlyssning, rowOverride, gäller alltid).
+        if (rowOverride < 0 && clock.isHostPlaying())
+            return false;
         if (row < 0 || row > Pattern::kickLayer)
             return false;
         if (rowOverride < 0)
@@ -576,7 +592,7 @@ bool InstrumentProcessor::handleLiveMidi (const juce::MidiMessage& message, int 
         else if (row < numLayers && layerOn[(size_t) row])
         {
             liveVoiceLayer = row;
-            basses[(size_t) row].noteOn (pitch, message.getFloatVelocity(), std::numeric_limits<int>::max() / 2);
+            basses[(size_t) row].noteOn (slice >= 0 ? 0 : pitch, message.getFloatVelocity(), std::numeric_limits<int>::max() / 2, false, slice);
         }
         setBit (note, true);
         publish();
@@ -604,9 +620,18 @@ void InstrumentProcessor::handleMidi (const juce::MidiMessage& message, int samp
     if (handleLiveMidi (message))
         return;
 
+    // PREVIEW har företräde (Tobias): värdens toner avbryter inte förhandsspelningen och startar inget nytt mönster.
+    // Stängs PREVIEW tar värdens toner över igen.
+    if (previewLayer >= 0)
+    {
+        if (message.isNoteOff() && heldNotes[(size_t) message.getNoteNumber()] > 0
+            && --heldNotes[(size_t) message.getNoteNumber()] == 0)
+            --numHeldNotes; // en ton som hölls före förhandsspelningen; stoppar inte den
+        return;
+    }
+
     if (message.isNoteOn())
     {
-        previewLayer = -1; // en riktig ton tar över från förhandsspelningen
         const auto note = message.getNoteNumber();
         const auto wasSilent = numHeldNotes == 0;
 
@@ -762,7 +787,7 @@ void InstrumentProcessor::renderSegment (int startSample, int endSample, int ste
         for (auto event : scheduler)
         {
             event.sequence = ++eventSequence;
-            if (event.type == StepEvent::Type::bass)
+            if (event.type != StepEvent::Type::kick)
                 if (const auto delay = delaySamplesFor (event); delay > 0)
                 {
                     const auto target = event.offset + delay;
@@ -835,13 +860,11 @@ void InstrumentProcessor::finishBlock (int numSamples)
     kickEq.process (kickBuffer.getWritePointer (0), nullptr, numSamples);
     const auto* duckData = duckBuffer.getReadPointer (0);
     mixer.beginBlock();
+    // clear (startSample, numSamples) rensar alla kanaler; ett andra anrop med 1 som första argument började på sample 1 (jassert vid block på 1 sample).
     maxBus.clear (0, numSamples);
-    maxBus.clear (1, numSamples);
     bypassBus.clear (0, numSamples);
-    bypassBus.clear (1, numSamples);
     effects.beginBlock (numSamples, clock.getBpm(), clock.getPpqAt (0), controlPhase);
     tapBuffer.clear (0, numSamples);
-    tapBuffer.clear (1, numSamples);
 
     for (int layer = 0; layer < activeLayers; ++layer)
     {
@@ -993,9 +1016,16 @@ void InstrumentProcessor::ensureScratchSize (int numSamples)
 void InstrumentProcessor::handleEvent (const StepEvent& event)
 {
     // Förhandsspelning av en enskild rad: de andra raderna är tysta. Samma sak för tangentbordet/MIDI när pianorullen valt en rad (midiInLayer).
-    const auto onlyRow = previewLayer >= 0 ? previewLayer : midiInLayer.load();
+    // Spelar värden gäller midiInLayer inte (värdens toner startar hela mönstret).
+    const auto onlyRow = previewLayer >= 0 ? previewLayer : (clock.isHostPlaying() ? -1 : midiInLayer.load());
+    // En skivrad ("Slice N") har ett eget radid; förhandsspelas hon spelar bara hon, annars gäller instrumentets rad.
+    const auto sliceRow = event.type == StepEvent::Type::slice ? pattern.rows.find (event.layer, RowRegistry::Kind::slice, event.slice) : -1;
+    if (event.type == StepEvent::Type::slice && sliceRow < 0)
+        return;
     if (onlyRow >= 0 && onlyRow != PluginBase::previewAllRows
-        && (event.type == StepEvent::Type::kick ? onlyRow != Pattern::kickLayer : event.layer != onlyRow))
+        && (event.type == StepEvent::Type::kick ? onlyRow != Pattern::kickLayer
+            : event.type == StepEvent::Type::slice ? (onlyRow != sliceRow && onlyRow != event.layer)
+                                                   : event.layer != onlyRow))
         return;
 
     if (event.type == StepEvent::Type::kick)
@@ -1015,13 +1045,32 @@ void InstrumentProcessor::handleEvent (const StepEvent& event)
     if (layer >= activeLayers || ! layerOn[(size_t) layer])
         return;
 
-    const auto& note = pattern.note (layer, event.step);
     const auto samplesPerTick = clock.getSamplesPerQuarter() / Pattern::ticksPerQuarter;
+
+    if (event.type == StepEvent::Type::slice)
+    {
+        // Raden "Slice N": en egen ton som spelar skiva N från början, med radens egen längd som gate.
+        const auto& sliceNote = pattern.note (sliceRow, event.step);
+        const auto rowTicks = lengths.barsOf (Pattern::lengthRowOf (sliceRow)) * Pattern::ticksPerBar;
+        const auto hold = pattern.holdTicks (sliceRow, event.step, rowTicks, gateScales[(size_t) layer]);
+        basses[(size_t) layer].noteOn (0, sliceNote.velocity.load(), std::max (1, (int) (hold * samplesPerTick)), false, event.slice);
+        lastInstrumentStartPpq[(size_t) layer] = clock.getPpqAt (event.offset);
+        return;
+    }
+
+    const auto& note = pattern.note (layer, event.step);
 
     // En glide-ton slår inte an: den glider tonen som klingar till sin tonhöjd under sin egen längd. Klingar inget
     // spelas den som en vanlig ton.
     if (note.slide.load() && basses[(size_t) layer].glideTo (note.pitch.load(), std::max (1, (int) (note.length.load() * samplesPerTick))))
+    {
+        // Staplade vanliga toner på samma tick ska ändå slå an (de tappades förut); staplade glide-toner ger samma glide och hoppas över.
+        for (const auto& e : note.extra)
+            if (e.on.load() && ! e.slide.load())
+                basses[(size_t) layer].noteOn (e.pitch.load(), e.velocity.load(),
+                                               std::max (1, (int) (std::max (1.0, e.length.load() * (double) gateScales[(size_t) layer]) * samplesPerTick)), true);
         return;
+    }
 
     const auto holdTicks = pattern.holdTicks (layer, event.step, lengths.total * Pattern::ticksPerBar, gateScales[(size_t) layer]);
     const auto gateSamples = std::max (1, (int) (holdTicks * samplesPerTick));
