@@ -2,6 +2,7 @@
 
 #include "../Source/Core/Effects.h"
 #include "../Source/Core/LiveCodeComplete.h"
+#include "../Source/Core/LiveCodeFormat.h"
 #include "../Source/Core/Master.h"
 #include "../Source/Core/Sidechain.h"
 #include "TestUtils.h"
@@ -170,12 +171,33 @@ namespace
         check (! empty.items.empty() && empty.items.front().label == "$:", "tom rad börjar med $:");
         const juce::String c = "s(\"i1\").";
         check (has (LiveCodeComplete::complete (c, c.length(), src), "note"), "efter stängd sträng ger metoder");
+        LiveCodeComplete::Source withParams;
+        withParams.paramIds = { "bass1Cutoff" };
+        const juce::String d = "$: s(\"i1\").lfo(\"bass1C";
+        check (has (LiveCodeComplete::complete (d, d.length(), withParams), "bass1Cutoff"), "lfo(\" ger parameternamn");
+    }
+
+    // D4 steg 3: autoformat
+    void testLiveCodeFormat()
+    {
+        std::puts ("D4: Live Code autoformat");
+        const auto one = LiveCodeFormat::format ("$: note(\"c2 g1\").s(\"i1\").gain(0.5)");
+        check (one == "$: s(\"i1\")\n  .note(\"c2 g1\")\n  .gain(0.5)", "s() först, en kedja per rad", one.length());
+        const auto again = LiveCodeFormat::format (one);
+        check (again == one, "formatering är idempotent", again.length());
+        const juce::String note = "$: s(\"i1\").note(\"a.b\") // kommentar";
+        check (LiveCodeFormat::format (note) == note, "satser med kommentar lämnas orörda");
+        const juce::String lone = "// bara kommentar\n\n$: s(\"bd\")";
+        check (LiveCodeFormat::format (lone) == lone, "kommentarer, tomrader och korta satser behålls", LiveCodeFormat::format (lone).length());
+        const auto two = LiveCodeFormat::format ("$: s(\"i1\").note(\"c2\")\n$: s(\"i2\").note(\"e2\")");
+        check (two.contains ("\n$: s(\"i2\")\n  .note"), "flera block formateras var för sig", two.length());
     }
 }
 
 void runMasterTests()
 {
     testLiveCodeStringComplete();
+    testLiveCodeFormat();
     testCurveShapeAndTable();
     testCurvePlayer();
     testLimiter();

@@ -195,6 +195,9 @@ namespace LiveCodeComplete
                 pool = sampleNames();
             else if (inString == "note" || inString == "n" || inString == "notes")
                 pool = noteNames();
+            else if (inString == "lfo" || inString == "env")
+                for (const auto& id : src.paramIds)
+                    pool.push_back ({ id, id, "parameter " + id + " (modulation target)" });
         }
         else if (start > 0 && text[start - 1] == '.')
         {

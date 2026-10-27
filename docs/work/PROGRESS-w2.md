@@ -25,3 +25,10 @@
 - `Source/Core/LiveCodeComplete.h`: `stringContext()` hittar funktionen före en öppen sträng; `s("` ger bd/kick och i1..i10, `note("`/`n("` ger tonnamn och minnotation-exempel (ackord, `*4`, `~`, `<>`, `@3`). `$:` kommer först på tom rad, plus en mall. Alla detaljtexter är nu engelska utan åäö.
 - `Source/Ui/LiveCodePage.cpp:165`: komplettering öppnas också när `"` skrivs.
 - Test: `testLiveCodeStringComplete` i `Tests/MasterTests.cpp`. Debug-bygget och alla tester gick igenom.
+
+## D4 steg 2–3 (Arbetare 2)
+- Förslag i `lfo("`/`env("` ger parameternamn (`LiveCodeComplete.h`).
+- Autoformat: `Source/Core/LiveCodeFormat.h` (ren funktion, test i `Tests/MasterTests.cpp`), FORMAT-knapp i `LiveCodePage.cpp` (en kedja per rad, `s("..")` först, satser med `//` rörs inte, ångra fungerar).
+- Mörkt editortema (Atom One Dark-färger) via `setColourScheme` i `LiveCodePage.cpp`.
+- Kvar: `.chord(...)` (väntar på svar via projektledaren), färg per aktivt instrument, flera röster via arrayer i `.notes()`. Flytande fönstret har inte nya temat/FORMAT än.
+- Debug-bygget: alla tester gick igenom.

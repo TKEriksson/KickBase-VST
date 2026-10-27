@@ -2,6 +2,7 @@
 
 #include "../Core/LiveCodeRunner.h"
 #include "../Core/LiveCodeComplete.h"
+#include "../Core/LiveCodeFormat.h"
 #include "../Core/ToolLayer.h"
 #include "Theme.h"
 #include <juce_gui_extra/juce_gui_extra.h>
@@ -104,6 +105,7 @@ private:
     };
     std::unique_ptr<FloatWindow> floatWindow;
     juce::TextButton floatButton { "FLOAT" };
+    juce::TextButton formatButton { "FORMAT" };
     juce::CodeDocument document;
     juce::CPlusPlusCodeTokeniser tokeniser; // räcker för färg på strängar, siffror, kommentarer
     juce::CodeEditorComponent editor { document, &tokeniser };
