@@ -15,3 +15,8 @@
 - **H3**: fördröjningslinjen skrivs alltid (InstrumentSynth.cpp addMonoWide), annars klick när WIDTH dras upp från 1.
 - **H4**: Params.h:120 kommentar, Params.cpp indrag + avslutande klammer, `}` / `clock.beginBlock` på två rader (Instrument/InstrumentProcessor.cpp:145).
 - Debug-bygge och alla tester gick igenom.
+
+## D2 – kombinerad vågform (Arbetare 2, Claude Sonnet 5.5)
+- `Source/Ui/InstrMixPanel.*`: panorering (mittknapp-drag + rullningslist), zoom runt musen (0.1–32x), tidsaxel i ms, knappen WIDE/NARROW ger vågen hela bredden (ratter göms), dubbelklick återställer.
+- Byggt i Debug, alla tester gick igenom. Ej visuellt testat i FL (Tobias vid release).
+- Kvar: växel i Pattern-fliken för projektets sammanlagda våg (kräver mönsterrender, samordnas med Arbetare 1).
