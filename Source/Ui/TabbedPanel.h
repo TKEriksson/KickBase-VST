@@ -73,12 +73,16 @@ public:
     explicit TabbedPanel (int* rememberedTab = nullptr)
         : remembered (rememberedTab), initialTab (rememberedTab != nullptr ? *rememberedTab : 0) {}
 
+    // E1: underflikar ritas som en segmenterad rad (egenskapen "subtab" läses av KickbaseLookAndFeel), huvudflikar som pills. Anropas före addTab.
+    void setSubTabs() { subTabs = true; }
+
     // `headerExtras` (t.ex. sidans på/av-knapp och presetknapp) visas till höger i flikraden
     // när fliken är vald, så att sidan inte behöver en egen rubrikrad.
     void addTab (const juce::String& name, juce::Colour accent, juce::Component& page, juce::Component* headerExtras = nullptr, int extrasWidth = 380)
     {
         auto button = std::make_unique<TabButton> (name);
         button->setColour (juce::TextButton::buttonOnColourId, accent);
+        button->getProperties().set ("subtab", subTabs);
         const auto index = (int) tabs.size();
         button->onClick = [this, index] { setCurrentTab (index); };
         button->onDragHover = [this, index] { setCurrentTab (index); };
@@ -202,6 +206,7 @@ private:
 
     std::vector<Tab> tabs;
     int current = 0;
+    bool subTabs = false;
     int* remembered;
     int initialTab;
 };

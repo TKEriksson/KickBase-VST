@@ -38,3 +38,8 @@
 - Tolkningar: START och LENGTH är bråkdelar av en cykel (tal eller "a/b"); standard LENGTH = 1/4; en LENGTH-array som är kortare än ackordet upprepas; BASETONE är notnamn eller tal (C2 = 0), standard c2; CHORD kan också vara en array med intervall.
 - Ackordnamn (autokomplettering i första strängen): major, minor, dim, aug, sus2, sus4, power, major7, minor7, dom7, dim7, minor7b5, major9, minor9, dom9, add9, six, minor6.
 - Test: `chord("maj` -> `major7` i `Tests/MasterTests.cpp`. Debug-bygget går igenom.
+
+## E1 steg 1: flikar (Arbetare 2)
+- Underflikar (verktygsraden EFFECTS/SIDECHAIN/LFO/…, `tools.setSubTabs()` i InstrumentEditor/FxEditor) ritas nu som segment: rundad rektangel, accentstreck under den valda, ingen LED. Huvudflikar är oförändrade pills. `TabbedPanel.h:77`, `KickbaseLookAndFeel.cpp` (drawButtonBackground/drawButtonText, egenskapen "subtab").
+- Debug-bygge och tester gick igenom. Ingen skärmdump tagen än; Tobias ser det i FL vid release.
+- Kvar i E1: rattar, kontroller, diagram.

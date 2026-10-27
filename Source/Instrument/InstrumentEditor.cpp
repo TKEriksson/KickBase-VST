@@ -26,6 +26,7 @@ InstrumentEditor::InstrumentEditor (InstrumentProcessor& p)
     // På/av direkt på kickens flik (instrumenten har sin på/av i flikraden, bredvid väljaren).
     synths.addPower (1, processor.apvts, ParamID::kickOn);
 
+    tools.setSubTabs();
     tools.addTab ("EFFECTS", Theme::effects, effects);
     tools.addTab ("SIDECHAIN", Theme::mix, sidechain);
     tools.addTab ("LFO", Theme::lfo, lfo);

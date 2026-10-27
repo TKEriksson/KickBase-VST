@@ -216,6 +216,29 @@ void KickbaseLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button&
     const auto on = button.getToggleState();
     const auto corner = bounds.getHeight() * 0.5f; // Kapsel/pill-form som i Bild 3
 
+    // E1: underflik = segment i en nedsänkt rad (mindre rundning, accentstreck under den valda), så att den skiljs från huvudflikens pill.
+    if ((bool) button.getProperties().getWithDefault ("subtab", false))
+    {
+        const auto segment = bounds.reduced (0.0f, 1.0f);
+        if (on)
+        {
+            g.setColour (juce::Colour (0xff161f2e));
+            g.fillRoundedRectangle (segment, 6.0f);
+            g.setColour (accent.withAlpha (0.5f));
+            g.drawRoundedRectangle (segment, 6.0f, 1.0f);
+            g.setColour (accent);
+            g.fillRoundedRectangle (segment.getX() + 8.0f, segment.getBottom() - 3.0f, segment.getWidth() - 16.0f, 2.0f, 1.0f);
+        }
+        else
+        {
+            g.setColour (juce::Colour (0xff0d1017).brighter (highlighted || down ? 0.12f : 0.0f));
+            g.fillRoundedRectangle (segment, 6.0f);
+            g.setColour (juce::Colour (0xff1e2636));
+            g.drawRoundedRectangle (segment, 6.0f, 1.0f);
+        }
+        return;
+    }
+
     if (on)
     {
         // Aktiv pill: djup mörk metallkropp med lysande accentkant och mjuk yttre glöd
@@ -260,7 +283,7 @@ void KickbaseLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& b
     auto bounds = button.getLocalBounds().reduced (4, 0);
 
     // En pill som kan lysa (på/av) har alltid plats för LED:en till vänster, hur smal knappen än är: texten får det som blir kvar.
-    if (on || button.getClickingTogglesState())
+    if ((on || button.getClickingTogglesState()) && ! (bool) button.getProperties().getWithDefault ("subtab", false))
         bounds.removeFromLeft (15);
 
     // Texten krymper först (ner till 7.5 pt) om knappen är smal, och förkortas med ... bara om den ändå inte ryms.
