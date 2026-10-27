@@ -17,3 +17,4 @@
 - Tobias: separata VST:er (VS) struket ur plan-v2 tills allt är klart; han lägger in det själv när det är dags. installRel.* lagt i .gitignore (ej committat).
 - Masterplanen: lade in Fas I (resten av plan-v2), uppdaterade Städning, Beslut, Frågor. Inga öppna frågor.
 - Arbetare 1 rapporterar: A1 och A2 fixade i worktree, testsvit grön (Debug), ej provat i FL. Fortsätter med T13 (total != rows), sedan A3-diff till specialisten.
+- Tobias: releaser bara när stora sektioner klara; första = hela testlistan T1-T15 (fas A-E, H). Fas G uppdaterad.

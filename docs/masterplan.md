@@ -108,7 +108,7 @@ Kvar, i grov ordning (projektledaren bedömer före varje fas; Opus bara efter h
 - Separata VST:er (VS) är struket. Tobias lägger in det själv när allt är klart.
 
 ## Fas G: Release
-Ny release först när fas A-B är testade i FL och Tobias godkänt. Projektledaren mergar till main.
+Releaser görs bara när stora sektioner är klara, för att hålla nere test och tokens (Tobias 27 okt). Första releasen: när allt från Tobias testlista (`Testar appen 2027-10-23.txt`, T1-T15, fas A-E och H) är fixat och testat i FL. Projektledaren mergar till main först då.
 Tobias kör `installRel.bat` (lokalt, i `.gitignore`) för att ersätta VST3-filerna och KickbaseMcp.exe efter ett Release-bygge. Hörtest i FL som fortfarande saknas: MIX-fliken, AP/START, HALFTIME, KEEP/COMPARE, shimmer, Maximizer MODE, Low Multiplier, autocomplete.
 
 ## Städning
