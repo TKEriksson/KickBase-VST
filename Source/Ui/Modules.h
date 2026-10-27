@@ -199,6 +199,7 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> slicerAttachment, reverseAttachment, filterSendAttachment;
     std::unique_ptr<KnobComponent> mapToKnob;
     juce::ComboBox sliceModeBox;
+    juce::TextButton createButton { "CREATE" }; // E2 steg 4: gör Grid/Auto-resultatet till egna gränser (Manual) som kan flyttas
     juce::Label showLabel { {}, "SHOW" };
     juce::TextButton showSampleButton { "SAMPLE" }, showSlicesButton { "SLICES" };
     juce::Slider gridAmount, sensitivityAmount; // en per läge, så att inget område byts under användaren

@@ -53,3 +53,8 @@
 - MANUAL + SLICES: dra en gräns flyttar den (`mouseDrag`), högerklick tar bort, **dubbelklick** lägger till (avviker från specens "klick": ett enkelklick provlyssnar skivan). Skift/Alt-klick fungerar som förut.
 - Steg 2 (OWN PIANO ROLL) uppskjutet: rör PianoRoll (Arbetare 1) och kärnan, kräver beslut/samordning.
 - Debug-bygge och tester OK. Ej provat i FL.
+
+## E2 steg 4: CREATE (Arbetare 2)
+- `SamplePage` (Modules.cpp ~1372): knappen CREATE (syns i Grid/Auto) gör de beräknade skivgränserna till manuella markörer, byter till Manual och visar SLICES, så att man kan dra/lägga till/ta bort dem. Etiketter och tooltips uppdaterade.
+- Slidrarna verkställer fortfarande direkt (live), CREATE är "frys och redigera". Avvikelse från specens dialog: ingen separat dialog, allt ryms på raden.
+- Debug-bygge och tester OK. Ej provat i FL.

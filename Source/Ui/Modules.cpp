@@ -1366,9 +1366,26 @@ SamplePage::SamplePage (PluginBase& p, int layerIn, juce::Colour accent)
     addAndMakeVisible (*mapToKnob);
     sliceModeBox.addItemList ({ "Grid", "Auto", "Manual" }, 1);
     sliceModeBox.setTooltip ("Where the slices are: Grid = equal parts (the slider sets how many, max 128), Auto = cut at the hits (the slider sets how sensitive), "
-                             "Manual = Shift-click the waveform to add a marker, Alt-click to remove the nearest.");
+                             "Manual = your own markers (press CREATE to start from the Grid/Auto result; Shift-click adds a marker, Alt-click removes the nearest).");
     sliceModeBox.onChange = [this] { applySlicing(); };
     addAndMakeVisible (sliceModeBox);
+    createButton.setTooltip ("CREATE - Turns the slices from Grid or Auto into your own markers (Manual mode), so you can then drag, add and remove them: "
+                             "drag a boundary to move it, double-click to add one, right-click a boundary to remove it (zoom with the mouse wheel).");
+    createButton.onClick = [this]
+    {
+        const auto* sample = processor.getActiveInstrumentSample (layer);
+        if (sample == nullptr || sample->slices.size() < 2)
+            return;
+        std::vector<float> markers;
+        for (size_t i = 1; i < sample->slices.size(); ++i)
+            markers.push_back ((float) sample->slices[i] / (float) sample->audio.getNumSamples());
+        processor.setInstrumentSliceMarkers (layer, std::move (markers));
+        processor.setInstrumentSlicing (layer, SampleSlicing::manual, (float) sensitivityAmount.getValue(), juce::roundToInt (gridAmount.getValue()));
+        syncSlicerControls();
+        showSlicesButton.setToggleState (true, juce::dontSendNotification);
+        view.setShowSlices (true);
+    };
+    addAndMakeVisible (createButton);
     gridAmount.setRange (1.0, (double) SampleSlicing::maxSlices, 1.0);
     gridAmount.setTooltip ("How many equal slices (max 128).");
     sensitivityAmount.setRange (0.0, 1.0, 0.01);
@@ -1456,6 +1473,7 @@ void SamplePage::syncSlicerControls()
     sensitivityAmount.setValue (slot.sliceSensitivity(), juce::dontSendNotification);
     gridAmount.setVisible (mode == SampleSlicing::grid);
     sensitivityAmount.setVisible (mode == SampleSlicing::automatic);
+    createButton.setVisible (mode != SampleSlicing::manual);
 }
 
 void SamplePage::updateLabel()
@@ -1520,6 +1538,8 @@ void SamplePage::resized()
     auto modeRow = right.removeFromTop (22);
     sliceModeBox.setBounds (modeRow.removeFromLeft (80));
     modeRow.removeFromLeft (4);
+    createButton.setBounds (modeRow.removeFromRight (64));
+    modeRow.removeFromRight (4);
     gridAmount.setBounds (modeRow);
     sensitivityAmount.setBounds (modeRow);
     right.removeFromTop (3);
