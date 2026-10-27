@@ -925,6 +925,7 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
     noiseFilterAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, ParamID::bass (layer, F::filterNoise), noiseFilterButton);
 
     // Flikarna: INSTR (envelopen och rattarna), OSC 1-3 och SAMPLE med en på/av-knapp på fliken, och FILTER.
+    sources.setSubTabs();
     sources.addTab ("INSTR", layerAccent, instrPage);
     for (int osc = 0; osc < ParamID::oscsPerLayer; ++osc)
         oscs[(size_t) osc] = std::make_unique<OscPanel> (p, layer, osc, layerAccent);

@@ -45,8 +45,7 @@ void WavetableView::timerCallback()
 void WavetableView::paint (juce::Graphics& g)
 {
     const auto bounds = getLocalBounds().toFloat();
-    g.setColour (Theme::knobBodyDark.withAlpha (0.85f));
-    g.fillRoundedRectangle (bounds, 6.0f);
+    Theme::paintChartBackground (g, bounds, 8.0f);
 
     const Wavetable* userTable = lastTable == Wavetables::userIndex() ? processor.userTable (layer, osc) : nullptr;
     const auto& table = userTable != nullptr ? *userTable : Wavetables::get (lastTable < 0 || lastTable == Wavetables::userIndex() ? 0 : lastTable);

@@ -1,6 +1,7 @@
 #include "Components.h"
 #include "../Core/PluginBase.h"
 #include "Help.h"
+#include "KickbaseLookAndFeel.h"
 
 namespace
 {
@@ -61,14 +62,21 @@ KnobComponent::KnobComponent (juce::AudioProcessorValueTreeState& apvts, const j
     slider.setName (nameIn);
     addAndMakeVisible (slider);
 
-    label.setText (name, juce::dontSendNotification);
+    label.setText (name.toUpperCase(), juce::dontSendNotification);
     label.setJustificationType (juce::Justification::centred);
-    label.setFont (Theme::font (9.5f, true));
-    label.setColour (juce::Label::textColourId, Theme::textDim);
+    label.setFont (Theme::font (10.0f, true));
+    label.setColour (juce::Label::textColourId, Theme::slate400);
     label.setInterceptsMouseClicks (false, false);
     addAndMakeVisible (label);
 
+    valueLabel.setJustificationType (juce::Justification::centred);
+    valueLabel.setFont (Theme::monoFont (10.5f));
+    valueLabel.setColour (juce::Label::textColourId, (KickbaseLookAndFeel::isPitchKnob (slider) ? Theme::fuchsia : Theme::cyan).withAlpha (0.8f));
+    valueLabel.setInterceptsMouseClicks (false, false);
+    addAndMakeVisible (valueLabel);
+
     attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (apvts, paramID, slider);
+    valueLabel.setText (slider.getTextFromValue (slider.getValue()), juce::dontSendNotification);
 
     parameter = apvts.getParameter (paramID);
     if (parameter != nullptr)
@@ -94,6 +102,7 @@ void KnobComponent::setDescription (const juce::String& text)
 void KnobComponent::resized()
 {
     auto area = getLocalBounds();
+    valueLabel.setBounds (area.removeFromBottom (12));
     label.setBounds (labelAbove ? area.removeFromTop (14) : area.removeFromBottom (14));
     slider.setBounds (area);
 }
@@ -163,6 +172,8 @@ int KnobComponent::ringAt (juce::Point<float> position) const
 void KnobComponent::timerCallback()
 {
     followVisualRate();
+    if (const auto text = slider.getTextFromValue (slider.getValue()); text != valueLabel.getText())
+        valueLabel.setText (text, juce::dontSendNotification);
     auto* processor = findProcessor (*this);
     if (processor == nullptr)
         return;

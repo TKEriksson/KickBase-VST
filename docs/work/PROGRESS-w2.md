@@ -58,3 +58,9 @@
 - `SamplePage` (Modules.cpp ~1372): knappen CREATE (syns i Grid/Auto) gör de beräknade skivgränserna till manuella markörer, byter till Manual och visar SLICES, så att man kan dra/lägga till/ta bort dem. Etiketter och tooltips uppdaterade.
 - Slidrarna verkställer fortfarande direkt (live), CREATE är "frys och redigera". Avvikelse från specens dialog: ingen separat dialog, allt ryms på raden.
 - Debug-bygge och tester OK. Ej provat i FL.
+
+## E1 omgjord som synligt designpass (27 okt, Arbetare 2)
+- Efter skissen `research/TEST2026-10-23/kickbase_tab_navigation_hierarchy_skiss.html`: platta mörka rattar med mono-avläsning, huvudflikar som piller med glöd och stamtriangel, underflikar som platt remsa med etikett, chip-flikar (FX1–FX11, EQ/COMP/FX), arbetsytans rubrikpanel med brödsmula, diagram med prickraster på #07090e, platt combobox.
+- Ändrat: Theme.h, TabbedPanel.h, Components.h/.cpp, KickbaseLookAndFeel.cpp, EffectsPage.cpp, Modules.cpp:928 plus diagrambakgrunder.
+- Ej omgjort: toggle-knappen (neonring) och linjära reglage (metallhandtag).
+- Bilder: build\snap-e1b\ (kick, pattern, tab20, tab21, fx, ai). Bygge + tester gröna.

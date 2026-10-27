@@ -118,8 +118,7 @@ void FilterResponseView::recompute (const InstrumentParams& p)
 void FilterResponseView::paint (juce::Graphics& g)
 {
     const auto bounds = getLocalBounds().toFloat();
-    g.setColour (juce::Colour (0xff10121c));
-    g.fillRoundedRectangle (bounds, 6.0f);
+    Theme::paintChartBackground (g, bounds, 8.0f);
     g.setColour (juce::Colour (0xff24283c));
     g.drawRoundedRectangle (bounds.reduced (0.5f), 6.0f, 1.0f);
 
