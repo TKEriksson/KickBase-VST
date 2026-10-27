@@ -1579,8 +1579,9 @@ int multiSampleTest()
         auto keyHz = [] (int key) { return 440.0 * std::pow (2.0, (key - 69) / 12.0); };
 
         MultiSampleSet set;
-        set.addZone (scaled (sine (rate, keyHz (48), 2.0), 0.2f), rate, "quiet_C3", { 48, 0, 127, 1, 127, 0.0f });
-        set.addZone (scaled (sine (rate, keyHz (72), 2.0), 0.8f), rate, "loud_C5", { 72, 0, 127, 1, 127, 0.0f });
+        // Låga nivåer så att motorns mjuka begränsare inte komprimerar den höga zonen (annars blir kvoten mindre än gainkvoten).
+        set.addZone (scaled (sine (rate, keyHz (48), 2.0), 0.05f), rate, "quiet_C3", { 48, 0, 127, 1, 127, 0.0f });
+        set.addZone (scaled (sine (rate, keyHz (72), 2.0), 0.4f), rate, "loud_C5", { 72, 0, 127, 1, 127, 0.0f });
         set.autoMapKeyRanges();
         set.prepare (rate);
 
