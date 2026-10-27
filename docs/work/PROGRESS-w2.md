@@ -137,3 +137,7 @@ Läst i koden (inget ändrat): bas-preset laddar bara valt lager (`Presets.cpp:2
 - GLIDE BASE (Tobias fil): glide-tonerna var 12 ticks (~80 ms) och hördes knappt → förlängda till 60; backup `.mofp.bak`.
 - Byggt: `glideBass1..3` (Glide Sub, Glide Acid, Glide Dive), kategori `glideBassesCategory`, sist i `fullPresets()`. Mätt: peak −0,3..−2,0 (Glide Sub sänkt till bas-nivå 0,50), RMS ca −11, DC 0. Bygg grönt. Ej lyssnat.
 - Nästa: New Init 1–5 (utgår från fabriks-Init; rendersig 94f0a1b6bd8a3c7f ändras ej). Max 3 presets per ny genre (Tobias).
+
+## Kvar (presets pausade efter rel-0.2, beslut Tobias 27 okt)
+Tas efter nästa release, max 3 presets per ny kategori: New Init 1–5 (utgår från fabriks-Init, rendersig 94f0a1b6bd8a3c7f ändras ej), MINIMAL, GOA, DARK PSY, DANCE, TRANCE, TECHNO, EMPIRIKAL, SYNTH, MID BASS, HI BASS, samt presets för S3 Unison/Reese när funktionen finns. Utredningsdokument per genre (`docs/school/*.md`) skrivs vid behov före bygge.
+Nu: programmet, rel-0.3 motornära punkter: 1) S3 Unison/Reese, 2) multisampling (Arbetare 1 har UI).
