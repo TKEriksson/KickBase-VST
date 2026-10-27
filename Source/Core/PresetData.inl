@@ -491,10 +491,10 @@ namespace
             bassPreset ("Rolling Soft", rollBass (0, 0, 10, 0.40f, 0.20f, 190.0f, 0.15f, 2.0f, 60.0f, 0.90f, 0.12f, 0.74f)),
             bassPreset ("Rolling Snap", rollBass (0, 12, 13, 0.20f, 0.10f, 280.0f, 0.30f, 4.0f, 28.0f, 0.70f, 0.30f, 0.70f)),
             // Arbetare 2, kategori psyRollingBassCategory. Argument: se psyRollBass.
-            bassPreset ("Full-On Roll", psyRollBass (0, 0.85f, 94, 0.60f, 1.00f, 12.0f, 0.10f, 900.0f, 0.20f, 3.0f, 45.0f, 0.40f, 90.0f, 25.0f, 0.50f, 0.55f, 0)),
-            bassPreset ("Dekel Groove", psyRollBass (0, 0.60f, 95, 0.80f, 1.00f, 0.0f, 0.10f, 600.0f, 0.15f, 2.4f, 60.0f, 0.35f, 100.0f, 25.0f, 0.45f, 0.58f, 0)),
-            bassPreset ("Forest 1/32", psyRollBass (0, 0.50f, 99, 0.60f, 1.00f, 0.0f, 0.10f, 1100.0f, 0.30f, 3.0f, 30.0f, 0.30f, 50.0f, 20.0f, 0.55f, 0.55f, 1)),
-            bassPreset ("Wide Mid", psyRollBass (0, 1.00f, 94, 1.00f, 1.00f, 12.0f, 0.10f, 1400.0f, 0.18f, 2.0f, 70.0f, 0.40f, 100.0f, 25.0f, 0.50f, 0.52f, 0)),
+            bassPreset ("Full-On Roll", psyRollBass (0, 0.95f, 94, 0.60f, 1.00f, 12.0f, 0.10f, 1200.0f, 0.20f, 3.0f, 45.0f, 0.40f, 90.0f, 25.0f, 0.15f, 0.55f, 0)),
+            bassPreset ("Dekel Groove", psyRollBass (0, 1.00f, 94, 0.80f, 1.00f, 0.0f, 0.10f, 1500.0f, 0.15f, 3.0f, 60.0f, 0.35f, 100.0f, 25.0f, 0.10f, 0.58f, 0)),
+            bassPreset ("Forest 1/32", psyRollBass (0, 1.00f, 99, 0.90f, 1.00f, 0.0f, 0.10f, 2200.0f, 0.45f, 3.0f, 30.0f, 0.30f, 50.0f, 20.0f, 0.15f, 0.50f, 1)),
+            bassPreset ("Wide Mid", psyRollBass (0, 1.00f, 94, 1.00f, 1.00f, 12.0f, 0.10f, 1500.0f, 0.18f, 2.0f, 70.0f, 0.40f, 100.0f, 25.0f, 0.05f, 0.52f, 0)),
         };
         return presets;
     }

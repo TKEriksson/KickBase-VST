@@ -122,3 +122,6 @@
 - Mätt (`audit bass`, E1 41 Hz): centroid 112–122 (gamla 81–97), 250–1k −12,0..−12,8 dB (gamla −13,3..−14,5), <60 −6..−8,5. Målet (centroid 150–300, 250–1k −6..−9) **nåddes inte**.
 - Fynd: audit-siffrorna rör sig knappt när cutoff ändras 120→1400 Hz, envAmount 0→3 och OSC A pos 0.2→1.0. Gamla Rolling-varianter är också identiska. Misstanke: audit-spelningen (`Tools/PresetAudit.inl:79`) eller filterkedjan/band-måttet är okänsligt. Behöver utredas innan fler basar kan ställas in mot siffror.
 - Wide Mid saknar fortfarande unison/bredd. Inget kategorinamn i huvudpreset än.
+
+## Lager 1-2 och bas-preset (27 okt, Arbetare 2)
+Läst i koden (inget ändrat): bas-preset laddar bara valt lager (`Presets.cpp:267`); lager 1-2 har default på/0.7 (`Params.cpp:227`) men inga toner i standardmönstret (`Pattern.cpp:426-428`), så de är troligen tysta i pluginet. Audit spelade en MIDI-ton i alla lager: därför dränktes skillnaderna där. Audit fixad (`Tools/PresetAudit.inl:74-76`); gamla basmått ogiltiga. Förslag: ingen ändring av laddningen. Verifiering i DAW av Tobias: ladda ny instans + bas-preset, kolla att bara rad 1 ljuder.
