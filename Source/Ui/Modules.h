@@ -46,7 +46,7 @@ private:
     void showProjectMenu();
     void showHistory();
     void saveProject();
-    void openProject();
+    void openProject (const juce::File& startFolder = {});
     void chooseExportTarget (int part, int bars); // part: 0-2 = full, kick, alla instrument; 3 = tre filer; 4 + n = instrument n
     bool exportWithoutEffects = false;            // rutan "Without effects" i EXPORT-menyn (gränssnittets val, sparas inte)
 

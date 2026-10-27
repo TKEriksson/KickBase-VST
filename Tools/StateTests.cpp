@@ -740,6 +740,32 @@ int persistTest()
         file.deleteFile();
     }
 
+    // Autospara: orörd instans ger ingen fil, en ändring ger en som går att öppna, oförändrat ger ingen ny, mappen rensas till keepFiles.
+    {
+        auto processor = std::make_unique<InstrumentProcessor>();
+        const auto folder = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("persist_autosave");
+        folder.deleteRecursively();
+        ProjectFile::AutoSaver saver (*processor, folder);
+        check (! saver.tick() && ! folder.exists(), "autospara: första tick sparar bara utgångsläget (ingen fil)");
+        check (! saver.tick(), "autospara: oförändrat tillstånd ger ingen fil");
+        processor->pattern.clearNotes (1);
+        processor->pattern.addNote (1, 0, 48, 2);
+        check (saver.tick() && saver.lastFile().existsAsFile(), "autospara: ändring ger en fil");
+        check (! saver.tick(), "autospara: samma ändring skrivs inte två gånger");
+        auto loaded = std::make_unique<InstrumentProcessor>();
+        juce::String error;
+        check (ProjectFile::load (*loaded, loaded->apvts.state.getType(), saver.lastFile(), error) && loaded->pattern.note (1, 0).length == 48,
+               "autospara: filen öppnas som ett projekt med ändringen");
+        for (int i = 0; i < 20; ++i)
+        {
+            processor->pattern.addNote (1, 4 + i, 12, 2);
+            saver.tick();
+        }
+        check (folder.findChildFiles (juce::File::findFiles, false, "autosave-*.kbproj").size() <= ProjectFile::AutoSaver::keepFiles,
+               "autospara: mappen rensas till keepFiles");
+        folder.deleteRecursively();
+    }
+
     std::puts (failed ? "FEL: sparandetestet misslyckades" : "Sparandetestet gick igenom");
     return failed ? 1 : 0;
 }

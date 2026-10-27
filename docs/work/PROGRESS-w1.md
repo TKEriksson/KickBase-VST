@@ -134,3 +134,11 @@ MIDI-export (D1): slide/glide-flaggan exporteras inte (`RollFiles.cpp:98-179`); 
 OSC 1 multipliceras med OSC 2, OSC 3 eller båda (ny parameter `ringSource`, sist i `InstrumentField`; WARP-valet `RING (B)` sist i listan, inga ID:n ändrade). Syntes: `InstrumentSynth.cpp` (`Oscillator::next`, ring-grenen efter AM; renderdelen räknar `modInput` från B/C:s råa våg). WARP AMOUNT blandar torrt (0) till ren ring (1). Källan måste vara PÅ (av = faktor 0 = tystnad vid full ring); dess LEVEL spelar ingen roll.
 UI (Tobias tillägg): när warp = RING (B) ersätter `ringBox` formknapparna i OSC 1 med "RING: OSC 1 x OSC 2" / "x OSC 3" / "x OSC 2 x OSC 3" (`OscPanel.cpp`), med tooltip. Hjälp: `Help.cpp` (bassAWarp, `bassRingSource`), `docs/AGENT_GUIDE.md:61`.
 Test: `KickbaseTool.exe ringtest` (`Tools/AudioTests.cpp`): AMOUNT 0 = oförändrat, full ring ändrar ljudet för alla tre källor, avstängd källa = tystnad.
+
+## Fas I 2) LC-rester – redan klara (27 okt, Arbetare 1)
+Allt fanns redan: `.lfo/.env` glue.js:93-114, MCP `live_code_run`/`stop` ToolLayer.cpp:302-304/571-572, AGPL-banner LiveCodePage.cpp:96/152, `THIRD-PARTY.md`. `livetest` och `helpcheck` gröna. Ingen kod ändrad.
+"RING på OSC 2/3" återkallades av Tobias; inget gjort.
+
+## Fas I 3) IO – autospara (27 okt, Arbetare 1)
+`.kbproj` spara/öppna fanns redan (ProjectFile, Modules.cpp:212-236). Nytt: `ProjectFile::AutoSaver` (ProjectFile.h/.cpp), ägd av PluginBase (timer 3 min, meddelandetråden). Skriver bara när tillståndet ändrats (bytejämförelse), 3 roterande filer per instans i `Dokument\Kickbase\Autosave`, max 12 filer i mappen. PROJECT-menyn: "Autosave every 3 min" (av/på, inställning `autosave`) och "Open autosave..." (läggs sist efter History, Arbetare 2:s rader orörda). Test: persisttest (6 nya checks) grön.
+Kvar i IO: ZIP/import-export-center, arrangemang (ingen spec finns; kbproj-spec säger "inte i v1").

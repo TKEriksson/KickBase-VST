@@ -11,6 +11,7 @@
 #include "Params.h"
 #include "Pattern.h"
 #include "Presets.h"
+#include "ProjectFile.h"
 #include "Sidechain.h"
 #include "SignalTap.h"
 #include "TransportStatus.h"
@@ -481,6 +482,7 @@ public:
         PluginBase& owner;
     };
     CodeSweeper codeSweeper { *this };
+    ProjectFile::AutoSaver autoSaver { *this, Settings::rootFolder().getChildFile ("Autosave") }; // se ProjectFile.h; startas i konstruktorn
     int selectedTab = 0;                  // gränssnittets valda flikar (nedre och övre panelen), så att de
     int selectedSynthTab = 0;              // finns kvar när fönstret öppnas igen
     int selectedPatternMode = 0;           // PATTERN-flikens läge: 0 PATTERN (toner), 1 GATE

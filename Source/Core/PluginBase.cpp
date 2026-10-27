@@ -47,6 +47,8 @@ PluginBase::PluginBase (const BusesProperties& buses, juce::AudioProcessorValueT
     rowPresetNames.fill ({});
     fxPresetNames.fill ({});
     presetNames[(size_t) Presets::Section::full] = "Init";
+    if (juce::MessageManager::getInstanceWithoutCreating() != nullptr)
+        autoSaver.start (3 * 60 * 1000);
 }
 
 PluginBase::~PluginBase() = default;

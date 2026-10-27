@@ -172,6 +172,8 @@ void HeaderBar::showProjectMenu()
     menu.addSeparator();
     menu.addItem (4, "AI server (MCP)", true, processor.isBridgeEnabled());
     menu.addItem (5, "History...");
+    menu.addItem (6, "Autosave every 3 min", true, Settings::get ("autosave") != "0");
+    menu.addItem (7, "Open autosave...");
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&projectButton), [this, safe = juce::Component::SafePointer<HeaderBar> (this)] (int result)
     {
         if (safe == nullptr)
@@ -186,6 +188,10 @@ void HeaderBar::showProjectMenu()
         }
         else if (result == 5)
             showHistory();
+        else if (result == 6)
+            Settings::set ("autosave", Settings::get ("autosave") == "0" ? juce::String() : juce::String ("0"));
+        else if (result == 7)
+            openProject (Settings::rootFolder().getChildFile ("Autosave"));
     });
 }
 
@@ -223,9 +229,9 @@ void HeaderBar::saveProject()
     });
 }
 
-void HeaderBar::openProject()
+void HeaderBar::openProject (const juce::File& startFolder)
 {
-    chooser = std::make_unique<juce::FileChooser> ("Open project", Settings::exportsFolder(), "*.kbproj");
+    chooser = std::make_unique<juce::FileChooser> ("Open project", startFolder != juce::File() ? startFolder : Settings::exportsFolder(), "*.kbproj");
     chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
                           [this, safe = juce::Component::SafePointer<HeaderBar> (this)] (const juce::FileChooser& fc)
     {
