@@ -6,6 +6,7 @@ namespace
 {
     constexpr int headerHeight = 16;
     constexpr int pixelsPerSemitone = 5;
+    constexpr int editColumn = 38; // EDIT-knappen längst till höger i radkortet
 }
 
 StepSequencer::StepSequencer (PluginBase& p, juce::StringArray names, std::vector<juce::Colour> colours)
@@ -15,6 +16,18 @@ StepSequencer::StepSequencer (PluginBase& p, juce::StringArray names, std::vecto
                 "the selected row's grid, length, FILL and piano roll show on the left and its "
                 "velocity, length or pitch in the lane below. A layer edited in the piano roll shows a small piano roll instead of steps: "
                 "click it to open the piano roll, right-click to delete it. GATE mode edits the on/off rhythm that chops the sound.");
+    addInstrumentButton.setTooltip ("ADD INSTRUMENT - Adds another instrument under the last one (max 10). It starts with default settings and an empty pattern.");
+    addInstrumentButton.onClick = [this] { if (onAddInstrument) onAddInstrument(); };
+    addChildComponent (addInstrumentButton);
+    for (int row = 0; row <= totalLayers(); ++row)
+    {
+        const auto rowLayer = row == 0 ? Pattern::kickLayer : row - 1;
+        auto edit = std::make_unique<juce::TextButton> ("EDIT");
+        edit->setTooltip ("EDIT INSTRUMENT - Opens the sound tab (KICK or INSTRUMENT) for this instrument. Also in the right-click menu.");
+        edit->onClick = [this, rowLayer] { if (onEditInstrument) onEditInstrument (rowLayer); };
+        addChildComponent (*edit);
+        editButtons.push_back (std::move (edit));
+    }
     addRowKnobs ("KICK", ParamID::kickLevel, ParamID::kickFxAmount, Theme::kick);
     for (int layer = 0; layer < totalLayers(); ++layer)
         addRowKnobs (layerNames[layer], ParamID::bass (layer, InstrumentField::level), ParamID::bass (layer, InstrumentField::fxAmount), layerColours[(size_t) layer]);
@@ -527,15 +540,17 @@ void StepSequencer::resized()
     // Radhöjden: automatisk (så många rader som får plats) eller vald med zoomhörnet. Låga rader blir kompakta.
     const auto rows = (int) displayOrder.size();
     constexpr int gap = 5, laneHeight = 76, normalMinHeight = 50;
+    constexpr int addRowHeight = 24;
+    const auto canAdd = ! processor.isEffectVersion() && processor.activeInstruments() < totalLayers();
     const auto manual = processor.sequencerRowHeight > 0;
-    const auto freeHeight = area.getHeight() - headerHeight - 5 - (laneShown() ? laneHeight + 3 : 0);
+    const auto freeHeight = area.getHeight() - headerHeight - 5 - (laneShown() ? laneHeight + 3 : 0) - (canAdd ? addRowHeight + 3 : 0);
     int rowHeight;
     if (manual)
         rowHeight = processor.sequencerRowHeight;
     else
         rowHeight = juce::jlimit (normalMinHeight, 56, (freeHeight - gap * rows) / std::max (1, rows));
     compactRows = rowHeight < normalMinHeight - 3;
-    labelWidthNow = compactRows ? 246 : 162;
+    labelWidthNow = (compactRows ? 246 : 162) + editColumn;
     knobPx = compactRows ? std::min (24, rowHeight - 4) : 28;
     effectiveRowHeight = rowHeight;
     const auto fits = std::max (1, freeHeight / (rowHeight + gap));
@@ -613,6 +628,8 @@ void StepSequencer::resized()
         area.removeFromTop (gap);
     }
     rowsBottom = std::max (rowRects[(size_t) rowOf (displayOrder[(size_t) (rowScroll + visibleRows - 1)])].getBottom(), laneArea.getBottom());
+    addInstrumentButton.setVisible (canAdd && rowScroll + visibleRows >= rows);
+    addInstrumentButton.setBounds (labelColumn.getX(), area.getY(), labelWidthNow, addRowHeight);
 
     // Varje rad: rattarna (volym och FX) längst till vänster med radens längd under, och till höger om dem namnet med
     // högtalaren (lyssna) och loop-knappen under. Låga rader lägger allt på en rad (radens längd döljs).
@@ -633,6 +650,8 @@ void StepSequencer::resized()
             rowSwitches[i]->mute.setVisible (shown && ! processor.isEffectVersion());
             rowSwitches[i]->solo.setVisible (shown && ! processor.isEffectVersion());
         }
+        if (i < editButtons.size())
+            editButtons[i]->setVisible (shown && ! processor.isEffectVersion());
         if (! shown)
             continue;
 
@@ -648,6 +667,11 @@ void StepSequencer::resized()
             const auto buttonsX = labelColumn.getX() + (compactRows ? 2 * (knobPx + 2) + 4 : 66);
             listenButtons[i]->setBounds (buttonsX, buttonsY, 30, buttonHeight);
             loopToggles[i]->setBounds (buttonsX + 34, buttonsY, 28, buttonHeight);
+        if (i < editButtons.size())
+        {
+            const auto height = std::min (24, rowHeight - 4);
+            editButtons[i]->setBounds (labelColumn.getRight() - editColumn + 2, row.getY() + (rowHeight - height) / 2, editColumn - 4, height);
+        }
         }
         if (i < rowSwitches.size())
         {
@@ -676,9 +700,9 @@ juce::Rectangle<int> StepSequencer::selectorBounds (juce::Rectangle<int> row) co
     if (compactRows)
     {
         const auto x = labelColumn.getX() + 2 * (knobPx + 2) + 4 + 68 + 52;
-        return juce::Rectangle<int>::leftTopRightBottom (x, row.getCentreY() - 9, labelColumn.getRight() - 2, row.getCentreY() + 9);
+        return juce::Rectangle<int>::leftTopRightBottom (x, row.getCentreY() - 9, labelColumn.getRight() - 2 - editColumn, row.getCentreY() + 9);
     }
-    return labelColumn.withTrimmedLeft (66).withTrimmedRight (30).withY (row.getY()).withHeight (18);
+    return labelColumn.withTrimmedLeft (66).withTrimmedRight (30 + editColumn).withY (row.getY()).withHeight (18);
 }
 
 juce::Rectangle<float> StepSequencer::stepBounds (juce::Rectangle<int> row, int step, int numSteps) const
@@ -1316,7 +1340,7 @@ void StepSequencer::mouseDown (const juce::MouseEvent& event)
     {
         dragTarget = Target::none;
         if (event.mods.isPopupMenu() && dragLayer != Pattern::kickLayer)
-            InstrumentMenu::show (processor, dragLayer, *this, juce::Rectangle<int> (event.getPosition(), event.getPosition()).expanded (1)); // högerklick på radkortet: instrumentmenyn (L4)
+            InstrumentMenu::show (processor, dragLayer, *this, juce::Rectangle<int> (event.getPosition(), event.getPosition()).expanded (1), [this, layer = dragLayer] { if (onEditInstrument) onEditInstrument (layer); }); // högerklick på radkortet: instrumentmenyn (L4)
         else if (event.mods.isPopupMenu() && (size_t) rowOf (dragLayer) < lengthButtons.size())
             LengthMenu::show (processor, dragLayer, *lengthButtons[(size_t) rowOf (dragLayer)]); // högerklick på radkortet: AUTO / Lock length / antal takter
         return;

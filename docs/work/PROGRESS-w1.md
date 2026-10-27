@@ -209,3 +209,21 @@ FL/handtest: klistra in en OpenAI-nyckel (eller starta Ollama med en verktygsmod
 - dB-mätaren ligger längst till höger, med en MASTER-knob (`masterKnob`) bredvid. Knoben är en `SliderAttachment` på `ParamID::gain` (samma parameter som OUTPUT-faderns i mixern, `MixerPage.cpp:184`). Ingen ny parameter, inga ändrade ID:n.
 - Funktionellt oförändrat. Debug-bygget och KickbaseTests gröna. Ej visuellt kontrollerat i FL (Tobias ser layouten först i nästa release).
 - Kvar från PL:s andra UI-lista: Add instrument-knapp, EDIT INSTRUMENT-knapp + högerklick, kickens SYNTH/SAMPLE på/av.
+
+## ADD INSTRUMENT + EDIT INSTRUMENT (Arbetare 1, 27 okt)
+- **ADD INSTRUMENT**: knappen "+ ADD INSTRUMENT" under sista raden i mönstrets instrumentlista, syns när det finns lediga platser (< 10) och alla rader är synliga. Höjden (24+3 px) dras av radernas utrymme (`StepSequencer.cpp` `resized`, `canAdd`). Kopplad till `InstrumentHost::addInstrument()` (nu publik) i `InstrumentEditor.cpp`.
+- **EDIT**: knapp längst till höger i varje radkort (kicken + instrument) och "Edit instrument" överst i högerklicksmenyn (`InstrumentMenu::show`, nytt valfritt `onEdit`). Kicken -> flik KICK, instrument -> flik INSTRUMENT med just det instrumentet valt. Radkortet är 38 px bredare (`editColumn`), stegen blir lika mycket smalare.
+- Påverkar det Tobias testar: mönstrets radkort (bredare, ny knapp), ny knapp under listan, ny menypunkt.
+- Status: byggd i Debug, se nedan för testresultat. Ej pushad/mergad.
+
+## Kö (från PL, 27 okt)
+- Efter graf-pop-out: pianorullens glide. Plus-ikon vid glide-tonen som startar en glide-linje och snappar till målnoten; linjer från notens mitt; plus under tonen om musen är under, ovanför om över. Förklara först hur glide ritas idag (i rapporten).
+- (PL, 27 okt) Pianorullen, före glide-plus: (1) FOLLOW stängs av automatiskt när man drar i sidoscrollbars (knappen visar det); (2) GHOST NOTES saknas i koden (bara klistra-in-"ghost" i PianoRoll.cpp:1583 finns): bygg multiselect-dropdown i verktygsraden, synlig även i POP OUT; instrumentets färg, halvgenomskinligt/konturer, endast visning (PROGRESS-copilot-2026-10-22.md punkt 7).
+- (PL rättelse, 27 okt) Spöktoner finns redan (`PianoRoll.cpp:1476-1503`, "spökton", alltid på). Bygg BARA valet: GHOST NOTES-dropdown med multiselect (vilka instrument + av/på), standard alla på, sparas i projektet om enkelt, synlig i verktygsraden även i POP OUT. Ritningen ändras inte.
+- (PL, 27 okt, efter glide-plus) SOUNDSTAGE: (1) multiselect-dropdown för vad som går genom soundstage (kick, varje instrument, FX/övrigt), standard = dagens beteende; (2) "above Hz"-val: undersök först hur MONO BELOW fungerar (görs redan på hela signalen?) och föreslå i rapporten WIDEN ABOVE-knob eller bara tydligare namn/tooltip. Nya parametrar sist, rendersig oförändrad, full testrutin Debug+Release. PL ska flyttas om Arbetare 2 äger soundstage-koden.
+- (PL, 27 okt) Färg per instrument ihop med GHOST-dropdownen. OBS: finns delvis redan: `PluginBase::getLayerColour/setLayerColour`, `InstrumentMenu` undermeny "Color" (palett om 10), `Theme::layerColourOverrides`. Att göra: kolla att färgen används överallt (pianorullens toner/spöktoner, kanalrack, dropdownens färgprick) och lägg färgväljare i instrumentets inställningar.
+
+## Vektorskop (StereoView, Arbetare 1, 27 okt) – ej byggt/testat än
+`Scopes.cpp` StereoView: skala 0.5 + radiell begränsning vid 0.97 (kurvan stannar i cirkeln), efterglöd via 4 bildrutor (halverad alfa per ruta, varannan sampel), färg blå→röd efter nivå (`max(|L|,|R|)²`). REDUCE ANIMATIONS: bara senaste rutan ritas. Takten följer redan `VisualTimer` (soundstage). Ren visning, ingen parameter. Obs: Debug-bygget för Add/EDIT startades först från fel mapp och startades om; det kan ha plockat upp detta också.
+
+Testresultat (27 okt): Debug `build.bat Debug all` byggde och "Alla tester gick igenom" (Add/EDIT instrument + vektorskop). Ej provat i FL; UI-punkter att prova: ADD INSTRUMENT-knappen, EDIT per rad, högerklick > Edit instrument, vektorskopets cirkel/efterglöd/färg.

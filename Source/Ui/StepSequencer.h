@@ -37,6 +37,8 @@ public:
     void renameLayer (int layer); // dialog för att döpa om ett baslager (instrumentet)
     int getSelectedLayer() const { return selectedLayer; }
     std::function<void (int)> onLayerSelected;
+    std::function<void (int)> onEditInstrument; // EDIT på raden: öppna ljudfliken för lagret (Pattern::kickLayer = kicken)
+    std::function<void()> onAddInstrument;
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -153,6 +155,8 @@ private:
     juce::TextButton previousPageButton { "<" }, nextPageButton { ">" }, followButton { "FOLLOW" };
     std::vector<std::unique_ptr<juce::TextButton>> lengthButtons; // radens längd (AUTO n / valt antal), klick öppnar menyn: [0] kick, sedan baslagren
     std::vector<std::unique_ptr<ListenButton>> listenButtons; // högtalare: spelar raden
+    std::vector<std::unique_ptr<juce::TextButton>> editButtons; // EDIT per rad, samma index som listenButtons
+    juce::TextButton addInstrumentButton { "+ ADD INSTRUMENT" };
     std::vector<std::unique_ptr<LoopToggle>> loopToggles;     // loopar raden?
     // M (mute: samma som instrumentets på/av) och S (solo: bara de soloade spelar), för kicken och varje instrument. Samma index som listenButtons.
     struct RowSwitches

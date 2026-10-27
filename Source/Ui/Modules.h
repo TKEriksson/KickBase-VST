@@ -325,6 +325,7 @@ public:
     void resized() override;
     void select (int layer);
     int getCurrent() const { return current; }
+    void addInstrument(); // ADD INSTRUMENT i mönstret: lägger till och väljer det nya
     void mouseDown (const juce::MouseEvent& event) override;
 
 private:
@@ -338,7 +339,6 @@ private:
     void timerCallback() override;
     void showSelector();
     void rename (int layer);
-    void addInstrument();
     void removeInstrument();
     void refresh();
     void resetPanels(); // river alla paneler (färg/klistra in/ta bort): de byggs om när instrumentet visas
@@ -400,6 +400,7 @@ public:
     void resized() override;
     void paint (juce::Graphics&) override;
     juce::Component* getGrooveBar() { return grooveBar.get(); } // till flikraden (nullptr i kickpluginet)
+    StepSequencer& getSequencer() { return sequencer; } // EDIT/ADD INSTRUMENT kopplas av editorn (flikbyte hör inte hit)
 
 private:
     void timerCallback() override;

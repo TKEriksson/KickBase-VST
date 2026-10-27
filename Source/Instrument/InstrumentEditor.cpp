@@ -24,6 +24,19 @@ InstrumentEditor::InstrumentEditor (InstrumentProcessor& p)
     synths.addTab ("AI CHAT", Theme::gate, aiPage);
     synths.addTab ("LIVE CODE", Theme::gate, livePage);
 
+    // EDIT på en rad i mönstret: till ljudfliken för just det instrumentet (kicken = KICK, annars INSTRUMENT med instrumentet valt).
+    pattern.getSequencer().onEditInstrument = [this] (int layer)
+    {
+        if (layer == Pattern::kickLayer)
+        {
+            synths.setCurrentTab (1);
+            return;
+        }
+        instruments.select (layer);
+        synths.setCurrentTab (2);
+    };
+    pattern.getSequencer().onAddInstrument = [this] { instruments.addInstrument(); };
+
     // På/av direkt på kickens flik (instrumenten har sin på/av i flikraden, bredvid väljaren).
     synths.addPower (1, processor.apvts, ParamID::kickOn);
 
