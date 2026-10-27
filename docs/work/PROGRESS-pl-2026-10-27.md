@@ -24,3 +24,4 @@
 - Arbetare 1: T13 kärnan korrekt (kick takt 0/1/2: contentBars=3, lengthBars=3). 'AUTO 2 takter' misstänks vara UI utan patternChanged()/refreshLengths(); behöver FL-test. A3 klar i play-pack (Debug, ocommittat), skickad till specialisten. Fortsätter A4, B1.
 - Tobias: alla FL-tester görs när releasen är byggd, inte löpande. Arbetarna väntar inte på FL.
 - Specialisten godkände A1-A3. Tobias beslut: PREVIEW har företräde över värdens noter. Skickat till Arbetare 1.
+- Arbetare 1: 7d9c736 i play-pack: A1-A3 + PREVIEW-företräde (InstrumentProcessor.cpp ~612, utan enhetstest, processorn saknar testsele) + A4 (InstrumentVoices.cpp:177, alla röster glider; test ackord). Debug grönt. Kvar i A4: stackade extra-glidetoner kan glida förra tonen. FL-testlista i PROGRESS-w1.md. Fortsätter B1.
