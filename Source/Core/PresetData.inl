@@ -113,8 +113,27 @@ namespace
                  { { 0.0f, 0.0f, 0.0f }, { 0.0004f, 1.0f, 0.0f }, { 0.025f, 1.0f, 0.0f }, { 0.070f, 0.85f, 0.1f }, { 0.170f, 0.0f, 0.4f } } };
     }
 
+    // D7: rena psytrance-kickar (svans ~45 Hz via tune, lite mättnad). Envelopen byggs av svepstart (halvtoner), svepets längd och totallängd (s).
+    KickSound cleanKick (float tune, float harmonics, float click, float clickTone, float drive, float clipMode, float sweep, float sweepTime, float length)
+    {
+        return { { { kickTune, tune }, { kickHarmonics, harmonics }, { kickHarmDecay, 40.0f }, { kickClick, click }, { kickClickLength, 4.5f },
+                   { kickClickTone, clickTone }, { kickDrive, drive }, { kickClipMode, clipMode }, { kickLevel, 0.85f } },
+                 { { 0.0f, sweep, -0.65f }, { sweepTime * 0.15f, sweep * 0.45f, -0.45f }, { sweepTime * 0.4f, sweep * 0.1f, -0.3f }, { sweepTime, 0.0f, 0.0f } },
+                 { { 0.0f, 0.0f, 0.0f }, { 0.0005f, 1.0f, 0.0f }, { length * 0.16f, 1.0f, 0.0f }, { length * 0.4f, 0.78f, 0.15f }, { length, 0.0f, 0.35f } } };
+    }
+
     //==========================================================================================
     // Basar (för lager `l`; bas-presets skrivs för lager 0 och flyttas dit de laddas).
+
+    // D7: rullande bas-varianter. Såg (eller annan tabell) på OSC A, valfri OSC B, snabb filterenvelope och omedelbar amp.
+    std::vector<Value> rollBass (int l, float tableA, float tableB, float levelB, float sub, float cutoff, float resonance, float envAmount,
+                                 float envDecay, float sustain, float drive, float level)
+    {
+        return { osc (l, 0, F::aTable, tableA), osc (l, 0, F::aLevel, 1.0f), osc (l, 1, F::aTable, tableB), osc (l, 1, F::aLevel, levelB),
+                 b (l, F::sub, sub), b (l, F::filterType, 0), b (l, F::cutoff, cutoff), b (l, F::resonance, resonance), b (l, F::envAmount, envAmount),
+                 b (l, F::envDecay, envDecay), b (l, F::velToEnv, 0.5f), b (l, F::attack, 0.5f), b (l, F::decay, 120.0f), b (l, F::sustain, sustain),
+                 b (l, F::release, 12.0f), b (l, F::drive, drive), b (l, F::level, level) };
+    }
 
     // A. Klassisk full-on-roll: såg, omedelbar amp, snabb filterenvelope (receptkort A).
     std::vector<Value> bassRolling (int l)
@@ -270,6 +289,17 @@ namespace
             kickPreset ("Hi-Tech Click", kickHiTech()),
             kickPreset ("Zenonesque Punch", kickZenon()),
             kickPreset ("Hard Psy", kickHardPsy()),
+            // D7: rena psytrance-kickar, sist så att äldre index och hashar är oförändrade.
+            kickPreset ("Clean Full-On", cleanKick (0.0f, 0.10f, 0.30f, 6000.0f, 0.12f, 0, 36.0f, 0.11f, 0.19f)),
+            kickPreset ("Clean Tight", cleanKick (1.0f, 0.08f, 0.35f, 7000.0f, 0.10f, 0, 40.0f, 0.08f, 0.15f)),
+            kickPreset ("Clean Deep", cleanKick (-1.0f, 0.10f, 0.18f, 3500.0f, 0.10f, 0, 30.0f, 0.14f, 0.23f)),
+            kickPreset ("Clean Round", cleanKick (0.0f, 0.06f, 0.12f, 3000.0f, 0.08f, 0, 28.0f, 0.15f, 0.21f)),
+            kickPreset ("Clean Punchy", cleanKick (0.5f, 0.15f, 0.45f, 5500.0f, 0.18f, 0, 40.0f, 0.10f, 0.17f)),
+            kickPreset ("Clean Long", cleanKick (-0.5f, 0.08f, 0.20f, 4000.0f, 0.10f, 0, 32.0f, 0.14f, 0.26f)),
+            kickPreset ("Clean Snappy", cleanKick (1.5f, 0.12f, 0.55f, 8000.0f, 0.15f, 1, 46.0f, 0.07f, 0.13f)),
+            kickPreset ("Clean Warm", cleanKick (0.0f, 0.20f, 0.15f, 3000.0f, 0.20f, 2, 30.0f, 0.12f, 0.20f)),
+            kickPreset ("Clean Sub", cleanKick (-1.5f, 0.04f, 0.10f, 2500.0f, 0.05f, 0, 26.0f, 0.16f, 0.24f)),
+            kickPreset ("Clean Modern", cleanKick (0.5f, 0.14f, 0.40f, 6500.0f, 0.14f, 0, 42.0f, 0.09f, 0.16f)),
         };
         return presets;
     }
@@ -284,6 +314,13 @@ namespace
             bassPreset ("Acid Squelch", bassAcid (0)),
             bassPreset ("Wide Reese", bassReese (0)),
             bassPreset ("Sub Sine", bassSub (0)),
+            // D7: rullande psytrance-basar, sist så att äldre index och hashar är oförändrade.
+            bassPreset ("Rolling Tight", rollBass (0, 12, 12, 0.0f, 0.15f, 200.0f, 0.18f, 2.6f, 35.0f, 0.80f, 0.18f, 0.72f)),
+            bassPreset ("Rolling Deep", rollBass (0, 12, 10, 0.0f, 0.30f, 170.0f, 0.20f, 2.4f, 50.0f, 0.88f, 0.20f, 0.72f)),
+            bassPreset ("Rolling Bright", rollBass (0, 12, 13, 0.30f, 0.12f, 320.0f, 0.26f, 3.4f, 40.0f, 0.80f, 0.28f, 0.68f)),
+            bassPreset ("Rolling Fat", rollBass (0, 12, 12, 0.50f, 0.20f, 230.0f, 0.22f, 3.0f, 55.0f, 0.85f, 0.35f, 0.66f)),
+            bassPreset ("Rolling Soft", rollBass (0, 0, 10, 0.40f, 0.20f, 190.0f, 0.15f, 2.0f, 60.0f, 0.90f, 0.12f, 0.74f)),
+            bassPreset ("Rolling Snap", rollBass (0, 12, 13, 0.20f, 0.10f, 280.0f, 0.30f, 4.0f, 28.0f, 0.70f, 0.30f, 0.70f)),
         };
         return presets;
     }
