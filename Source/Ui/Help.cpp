@@ -361,6 +361,8 @@ namespace Help
             if (name == "DELAY")    return "The centre of the short delay. Shorter = higher, more metallic sweep.";
             if (name == "DEPTH")    return "How far the delay swings around DELAY.";
             if (name == "FEEDBACK") return "How much of the delayed sound is fed back in. Negative values give a hollow, inverted sound.";
+            if (name == "SHAPE")    return "The wave of the sweep: Sine (smooth) or Triangle (steady, more mechanical).";
+            if (name == "SPREAD")   return "How far the right channel sweep is behind the left one. 25 % is the classic wide sound, 0 % is the same in both ears.";
         }
         if (typeName == "Transient")
         {
@@ -452,6 +454,7 @@ namespace Help
             { "LOW DRIVE", "Drive for the low band in 3-band distortion. Keep it low for a tight bass." },
             { "HIGH DRIVE", "Drive for the high band in 3-band distortion." },
             { "SYNC", "Echo timing: Straight, Dotted (1.5 times longer) or Triplet (2/3 as long)." },
+            { "TIME MS", "Echo: a fixed delay time in milliseconds (up to 3.3 s). 0 = off, the echo follows TIME and SYNC instead." },
             { "PRE-DELAY", "Reverb: delay before the reverb starts, so the sound stays clear in front of the tail. 0 = off." },
             { "DET HPF", "Compressor: the detector ignores everything below this frequency, so the bass does not pump the compressor. 20 Hz = off." },
             { "HIGH CUT", "Removes highs from the effect for a darker sound." },

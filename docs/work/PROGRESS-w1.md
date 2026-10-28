@@ -471,3 +471,10 @@ Bygge Debug all: grönt, "Alla tester gick igenom" (rendersig oförändrad).
 - `PluginBase.cpp:613` sparar `brakeCurve` som state-property (som `jogKind`, inget host-parameter-ID, så ID/preset-index/hash rörs inte); `PluginBase.cpp:727` läser med standard 0 (VINYL = dagens beteende, gamla projekt låter lika).
 - Test: `Tools/StateTests.cpp:952,970` (spara -> ladda ger samma kurva). Debug all grön utom wavetable-tidtestet (lastkänsligt, orelaterat); persisttest OK vid ensam körning.
 - DAW (Lemon): välj TAPE, spara projektet, öppna det igen: kurvan ska vara TAPE.
+
+## Merge w2 + FX-UI: Echo TIME MS, Flanger SHAPE/SPREAD (Arbetare 1, 28 okt)
+- Mergade w2 (a601d2e, Echo-kärnan; 69f1ab0, Flanger) in i play-pack (dc4e972).
+- Raderna i FX-slotten byggs av `Effects::knobs` (EffectsPage.cpp:221, stoppar på knobsPerSlot = 11), så elfte ratten TIME MS och Flanger SHAPE/SPREAD dyker upp utan layoutändring; bredden delas av antalet rattar (EffectsPage.cpp ~262).
+- Hjälptexter: `Help.cpp:364-365` (Flanger SHAPE, SPREAD), `Help.cpp:457` (TIME MS).
+- Debug all grön, alla tester gick igenom.
+- DAW (Lemon): Echo i en FX-plats, TIME MS 0 låter som förut, 500 ger fast 500 ms; Flanger SHAPE Triangle och SPREAD 0/25/100 %; kolla att elva rattar ryms i FX-raden.
