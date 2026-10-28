@@ -1,6 +1,6 @@
-# FX send-matris och 12 FX-kanaler (plan, efter rel-0.3)
+# FX send-matris och 12 FX-kanaler (plan, ingår i rel-0.3)
 
-Status: plan, ingen kod. Beslutad av Tobias 28 okt: 12 kanaler som tak, send per kanal med eget belopp. Byggs efter rel-0.3.
+Status: plan. Beslutad av Tobias 28 okt: 12 kanaler som tak, send per kanal med eget belopp. Ingår i rel-0.3 (Tobias 28 okt: allt från 0.4 flyttas in).
 
 ## Mål
 - Varje ljudkälla (kick + instrument 1-10 = 11 st) kan skicka till flera FX-kanaler samtidigt, med eget belopp per kanal. 0 = av.
@@ -35,4 +35,4 @@ Status: plan, ingen kod. Beslutad av Tobias 28 okt: 12 kanaler som tak, send per
 - På/av per rad är bara en UI-genväg, inga extra parametrar: av = beloppet 0 och slidern disabled; på = slidern går att dra. Senaste värdet kommer ihåg medan fönstret är öppet, inte i presetet.
 - Kanalantal är globalt: `+ add FX channel` i popupen lägger till en kanal överallt (nya kanalen har send 0). Ta bort görs bara på FX-sidan, med fråga om effekter/sends finns.
 - Senare: mixer-lik matris som översikt (samma parametrar), M-knapp per kanal på mixersidan.
-- Beslutat (Tobias 28 okt): M-knapp (mute) per FX-kanal i mixern, tystar hela kanalen för alla källor, sends ligger kvar. 12 nya parametrar (fxMute1..12, standard av), sist i layouten, hjälptexter, automatiserbara. Steg 3 eller senare, inte rel-0.3. Tester: muteat = tyst, ej muteat = oförändrat (rendersig), ingen klick vid mute (ramp, blocksizetest).
+- Beslutat (Tobias 28 okt): M-knapp (mute) per FX-kanal i mixern, tystar hela kanalen för alla källor, sends ligger kvar. 12 nya parametrar (fxMute1..12, standard av), sist i layouten, hjälptexter, automatiserbara. Steg 3, ingår i rel-0.3. Tester: muteat = tyst, ej muteat = oförändrat (rendersig), ingen klick vid mute (ramp, blocksizetest).

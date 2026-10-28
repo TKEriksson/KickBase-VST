@@ -41,3 +41,4 @@ Arbetare 2 rör inte UI. Arbetare 1 rör inte `PresetData.inl` och KickbaseTool 
 - Huvudpreset-kategorier ("Gamla" factory + user, egna kategorier vid spara, kategori lagras separat, preset-index/hash oförändrade): projektledaren, i `KickBase-VST-pl`.
 - TIMING-fliken per motor (DELAY MODE, LENGTH SYNC, ×-antal 1-8, TO BEAT), kick-UI, semiton-snap, glasdisplay, glide-bugg, DETUNE-standard 0, JOG-förenkling (ETT läge, STEP 1/4-1/64, loop i 1/64 takt, TEST BPM): Arbetare 1.
 - Rendersig-jämförelse mot main behövs inte (Tobias bygger nya presets).
+- USER är en egen kategori i alla presetväljare (Tobias 28 okt), vid sidan av factory-kategorier och "Gamla".
