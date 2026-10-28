@@ -656,3 +656,4 @@ Utvidgning av (z): gäller alla menyer i pluginet. Tre nivåer (huvudmeny, under
 - Glöd: standard nu Av (Settings.cpp glowLevel), kod kvar. PREVIEWS glasdisplay, OUT-ratt upp till 64 px.
 - Menyluft: Theme::Space::menuPadY=5, menuGapX=12, menuButtonH=26 (Theme.h); används i TabbedPanel.h (headerHeight, extrasRowHeight, resized, tabGap). Debug all grön.
 - PL: inga fler bilder; (t) tagen av PL, (r)/(u) av A2.
+- (x) klar: SWING/HUMAN/DELAY en ratt per rad, Modules.cpp:2941-2951 (knobRowHeight 74). Kvar: SAMPLE/FILTER-ratt, (y) kick SYNTH-flik, steg 2-3, brödsmula, flikordning, HELP, (w) a/c/e.

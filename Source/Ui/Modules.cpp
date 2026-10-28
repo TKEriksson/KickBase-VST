@@ -2938,14 +2938,15 @@ void PatternModule::resized()
     // Instrumentets egen groove: SWING, HUMAN och DELAY (kickens rad ligger alltid på rutnätet).
     if (shownLayer >= 0 && shownLayer < (int) delays.size())
     {
-        auto groove = notesColumn.removeFromTop (50);
-        const auto third = groove.getWidth() / 3;
-        const auto swingBounds = groove.removeFromLeft (third), humanizeBounds = groove.removeFromLeft (third);
+        // (x) En ratt per rad med riktigt rattshuvud (knobRowHeight = 74 px med etiketter), inte tre i en rad.
+        const auto swingBounds = notesColumn.removeFromTop (knobRowHeight);
+        const auto humanizeBounds = notesColumn.removeFromTop (knobRowHeight);
+        const auto delayBounds = notesColumn.removeFromTop (knobRowHeight);
         for (size_t i = 0; i < delays.size(); ++i)
         {
             swings[i]->setBounds (swingBounds);
             humanizes[i]->setBounds (humanizeBounds);
-            delays[i]->setBounds (groove);
+            delays[i]->setBounds (delayBounds);
         }
         notesColumn.removeFromTop (2);
     }
