@@ -179,7 +179,7 @@ private:
     void setLiveVelocity (NoteKey key, float velocity);
     void setLiveSlide (NoteKey key, bool slide);
     static void normalise (NoteMap& notes, std::map<NoteKey, NoteKey>* remap = nullptr);  // en stapel utan huvudton: lägsta staplade tonen blir huvudton
-    static Relocated relocate (const NoteMap& source, const KeySet& moving, int deltaTicks, int deltaPitch); // full målstack eller samma tonhöjd på målticken avbryter hela flytten
+    static Relocated relocate (const NoteMap& source, const KeySet& moving, int deltaTicks, int deltaPitch, int lowest = Pattern::minPitch, int highest = Pattern::maxPitch); // full målstack eller samma tonhöjd på målticken avbryter hela flytten
     void removeKeys (const KeySet& keys);
     int voices() const;                              // lagrets VOICES (ackord hörs bara med 2 eller fler)
     void setChordOnSelection (const Pattern::Chord& chord);
@@ -242,7 +242,12 @@ private:
     std::vector<juce::Colour> layerColours;
     int lastColourVersion = 0; // processor.layerStructureVersion
     std::pair<uint64_t, uint64_t> liveNow { 0, 0 }; // tonerna som spelas live (MIDI IN: INSTRUMENT): MIDI-ton 0..63 och 64..127
-    int layer = 0;
+    int layer = 0;      // radens id i mönstret (NOTE-rad, kick eller skivraden): alla notanrop
+    int baseLayer = 0;  // instrumentet/kicken som raden hör till (ljud, rutnät, namn, röster, färg)
+    bool sliceMode = false; // skivraden: tangenterna är skivor ("Slice N"), pitch = skivindex - 64
+    int sliceCount() const; // skivor i instrumentets sample (skivläge)
+    int lowPitch() const { return sliceMode ? RowRegistry::pitchOfSlice (0) : Pattern::minPitch; }
+    int highPitch() const { return sliceMode ? RowRegistry::pitchOfSlice (std::max (1, sliceCount()) - 1) : Pattern::maxPitch; }
 
     juce::Rectangle<float> toolbarArea, keyArea, rulerArea, gridArea, velocityArea;
 

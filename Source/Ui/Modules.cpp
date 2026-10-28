@@ -2711,7 +2711,8 @@ void PatternModule::selectLane (StepSequencer::Lane lane)
 void PatternModule::showLayer (int layer)
 {
     shownLayer = layer;
-    presets.setLayer (layer, layer == Pattern::kickLayer ? Theme::kick : instrument ? Theme::layerColour (layer) : Theme::gate);
+    const auto baseOfRow = layer >= RowRegistry::firstSubRow ? juce::jlimit (0, Pattern::numNoteLayers - 1, processor.pattern.rows.instrumentOf (layer)) : layer;
+    presets.setLayer (baseOfRow, baseOfRow == Pattern::kickLayer ? Theme::kick : instrument ? Theme::layerColour (baseOfRow) : Theme::gate);
     processor.selectedPatternLayer = layer;
     pianoRoll.setLayer (layer);
     updateVisibility();

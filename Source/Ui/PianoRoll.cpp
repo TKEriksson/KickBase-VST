@@ -89,7 +89,7 @@ PianoRoll::PianoRoll (PluginBase& p, std::vector<juce::Colour> colours) : proces
     pasteCancelButton.onClick = [this] { cancelPaste(); grabKeyboardFocus(); };
     listenButton.setTooltip ("LISTEN - Hold to hear just this piano roll on the preview note (the PREVIEWS note at the top, C5 by default), looping while you hold. "
                              "Press again to start over; double-click to let it play until you click again.");
-    listenButton.onStart = [this] { syncPreviewWindow(); processor.requestAudition (PluginBase::previewRequest (layer)); };
+    listenButton.onStart = [this] { syncPreviewWindow(); processor.requestAudition (PluginBase::previewRequest (baseLayer)); };
     listenButton.onStop = [this] { processor.requestAudition (PluginBase::previewStop); };
     midiInBox.addItem ("MIDI IN: ALL", 1);
     midiInBox.addItem ("MIDI IN: INSTRUMENT", 2);
@@ -146,7 +146,7 @@ PianoRoll::PianoRoll (PluginBase& p, std::vector<juce::Colour> colours) : proces
     vBar.onZoom = [this] (double start, double size)
     {
         rowH = juce::jlimit (7.0f, 60.0f, (float) (gridArea.getHeight() / std::max (1.0, size)));
-        topPitch = (float) (Pattern::maxPitch - start);
+        topPitch = (float) (highPitch() - start);
         clampView();
         repaint();
     };
@@ -198,10 +198,21 @@ void PianoRoll::attachGridBox()
 
 void PianoRoll::setLayer (int newLayer)
 {
-    newLayer = juce::jlimit (0, Pattern::numNoteLayers - 1, newLayer);
-    if (newLayer != layer)
+    // Ett rad-id: en vanlig NOTE-rad/kicken (0..10) eller skivraden Kind::slices (id från 11). Annat blir rad 0.
+    auto instrument = 0;
+    auto kind = RowRegistry::Kind::note;
+    const auto isSliceRow = newLayer >= RowRegistry::firstSubRow && processor.pattern.rows.get (newLayer, instrument, kind)
+                            && kind == RowRegistry::Kind::slices;
+    if (! isSliceRow)
+        newLayer = juce::jlimit (0, Pattern::numNoteLayers - 1, newLayer);
+    if (newLayer != layer || isSliceRow != sliceMode)
     {
+        const auto wasSliceMode = sliceMode;
         layer = newLayer;
+        sliceMode = isSliceRow;
+        baseLayer = isSliceRow ? instrument : newLayer;
+        if (sliceMode || wasSliceMode)
+            topPitch = sliceMode ? (float) (lowPitch() + visibleRows() - 1) : (float) visibleRows() * 0.5f; // skivor: Slice 1 längst ner; annars grundtonen i mitten
         askedVoicesNeed = 0;
         selection.clear();
         justCreated = {};
@@ -215,7 +226,7 @@ void PianoRoll::setLayer (int newLayer)
         loopStart = loopEnd = -1;
         if (isShowing())
         {
-            processor.openRollLayer = layer;
+            processor.openRollLayer = baseLayer;
             syncPreviewWindow();
         }
     }
@@ -224,19 +235,19 @@ void PianoRoll::setLayer (int newLayer)
 
 void PianoRoll::applyMidiIn()
 {
-    processor.midiInLayer = isShowing() && midiInBox.getSelectedId() == 2 ? layer : -1;
+    processor.midiInLayer = isShowing() && midiInBox.getSelectedId() == 2 ? baseLayer : -1;
 }
 
 void PianoRoll::visibilityChanged()
 {
     applyMidiIn();
-    processor.openRollLayer = isShowing() ? layer : -1;
+    processor.openRollLayer = isShowing() ? baseLayer : -1;
     if (isShowing())
         syncPreviewWindow();
     else
     {
         auditionStop (0);
-        processor.postAuditionAllOff (layer); // H2: ingen ton får hänga kvar när rullen stängs
+        processor.postAuditionAllOff (baseLayer); // H2: ingen ton får hänga kvar när rullen stängs
         clearPreviewWindow();
     }
 }
@@ -244,7 +255,7 @@ void PianoRoll::visibilityChanged()
 PianoRoll::~PianoRoll()
 {
     auditionStop (0);
-    processor.postAuditionAllOff (layer);
+    processor.postAuditionAllOff (baseLayer);
     clearPreviewWindow();
     processor.openRollLayer = -1;
     processor.midiInLayer = -1;
@@ -266,7 +277,7 @@ void PianoRoll::clearPreviewWindow()
 void PianoRoll::playThisRow()
 {
     syncPreviewWindow();
-    processor.requestAudition (processor.previewingLayer.load() == layer ? PluginBase::previewStop : PluginBase::previewRequest (layer));
+    processor.requestAudition (processor.previewingLayer.load() == baseLayer ? PluginBase::previewStop : PluginBase::previewRequest (baseLayer));
 }
 
 void PianoRoll::clearLoop()
@@ -280,14 +291,15 @@ void PianoRoll::clearLoop()
 
 void PianoRoll::auditionStart (int pitch, float velocity)
 {
-    const auto midi = juce::jlimit (0, 127, rootNote() + pitch);
+    // Skivor: skivans index är "MIDI-tonen" (unik per skiva, så att noteOff hittar rätt) och skickas även som skiva.
+    const auto midi = sliceMode ? juce::jlimit (0, 127, RowRegistry::sliceOfPitch (pitch)) : juce::jlimit (0, 127, rootNote() + pitch);
     if (auditionPitch == midi)
         return;
     if (auditionPitch >= 0)
-        processor.postNoteAudition (layer, auditionPitch, 64, false);
+        processor.postNoteAudition (baseLayer, auditionPitch, 64, false);
     auditionPitch = midi;
     auditionStartedAt = juce::Time::getMillisecondCounterHiRes();
-    processor.postNoteAudition (layer, midi, (int) (velocity * 127.0f), true);
+    processor.postNoteAudition (baseLayer, midi, (int) (velocity * 127.0f), true, sliceMode ? midi : -1);
 }
 
 // Tonen klingar så länge musen hålls, och minst minimumTicks (tonens längd).
@@ -301,16 +313,22 @@ void PianoRoll::auditionStop (int minimumTicks)
     const auto leftMs = juce::jlimit (0.0, 4000.0, noteMs - (juce::Time::getMillisecondCounterHiRes() - auditionStartedAt));
     if (leftMs < 20.0)
     {
-        processor.postNoteAudition (layer, note, 64, false);
+        processor.postNoteAudition (baseLayer, note, 64, false);
         return;
     }
     juce::Component::SafePointer<PianoRoll> safeThis (this);
-    const auto row = layer;
+    const auto row = baseLayer;
     juce::Timer::callAfterDelay ((int) leftMs, [safeThis, note, row]
     {
         if (safeThis != nullptr && safeThis->auditionPitch != note)
             safeThis->processor.postNoteAudition (row, note, 64, false);
     });
+}
+
+int PianoRoll::sliceCount() const
+{
+    const auto* sample = processor.instrumentSampleSlot (baseLayer).active();
+    return sample != nullptr ? (int) sample->slices.size() : 0;
 }
 
 int PianoRoll::bars() const
@@ -320,17 +338,17 @@ int PianoRoll::bars() const
 
 juce::String PianoRoll::gridParameterId() const
 {
-    return layer == Pattern::kickLayer ? juce::String (ParamID::rowGridKick) : ParamID::bass (layer, InstrumentField::grid);
+    return baseLayer == Pattern::kickLayer ? juce::String (ParamID::rowGridKick) : ParamID::bass (baseLayer, InstrumentField::grid);
 }
 
 int PianoRoll::playTickNow() const
 {
-    return layer == Pattern::kickLayer ? processor.transportStatus.kickStep.load() : processor.transportStatus.instrumentSteps[(size_t) layer].load();
+    return baseLayer == Pattern::kickLayer ? processor.transportStatus.kickStep.load() : processor.transportStatus.instrumentSteps[(size_t) baseLayer].load();
 }
 
 juce::String PianoRoll::layerName() const
 {
-    return layer == Pattern::kickLayer ? juce::String ("KICK") : processor.getLayerName (layer);
+    return baseLayer == Pattern::kickLayer ? juce::String ("KICK") : processor.getLayerName (baseLayer);
 }
 
 InstrumentGrid PianoRoll::grid() const
@@ -348,7 +366,7 @@ int PianoRoll::snapped (float tick) const
 
 int PianoRoll::rootNote() const
 {
-    return processor.rowRootNote (layer);
+    return processor.rowRootNote (baseLayer);
 }
 
 int PianoRoll::rootPitchClass() const { return rootNote() % 12; }
@@ -376,9 +394,9 @@ void PianoRoll::clampView()
 
     // Raderna: hela tonhöjdsområdet ska gå att nå, men inte mer.
     const auto rows = (float) visibleRows();
-    topPitch = juce::jlimit ((float) Pattern::minPitch + rows - 1.0f, (float) Pattern::maxPitch, topPitch);
-    if (rows > (float) (Pattern::maxPitch - Pattern::minPitch + 1))
-        topPitch = (float) Pattern::maxPitch;
+    topPitch = juce::jlimit ((float) lowPitch() + rows - 1.0f, (float) highPitch(), topPitch);
+    if (rows > (float) (highPitch() - lowPitch() + 1))
+        topPitch = (float) highPitch();
 
     updateScrollBars();
 }
@@ -388,8 +406,8 @@ void PianoRoll::updateScrollBars()
     hBar.setRangeLimits (0.0, (double) std::max (1, viewTicks()), juce::dontSendNotification);
     hBar.setCurrentRange (scrollTicks, (double) (gridArea.getWidth() / std::max (0.01f, pixelsPerTick)), juce::dontSendNotification);
 
-    vBar.setRangeLimits (0.0, (double) (Pattern::maxPitch - Pattern::minPitch + 1), juce::dontSendNotification);
-    vBar.setCurrentRange ((double) (Pattern::maxPitch - topPitch), (double) visibleRows(), juce::dontSendNotification);
+    vBar.setRangeLimits (0.0, (double) (highPitch() - lowPitch() + 1), juce::dontSendNotification);
+    vBar.setCurrentRange ((double) (highPitch() - topPitch), (double) visibleRows(), juce::dontSendNotification);
 }
 
 void PianoRoll::scrollBarMoved (juce::ScrollBar* bar, double newRangeStart)
@@ -400,7 +418,7 @@ void PianoRoll::scrollBarMoved (juce::ScrollBar* bar, double newRangeStart)
         processor.followPlayhead = false; // en hand på sidoscrollbaren: FOLLOW stängs av (knappen visar det i nästa timertick)
     }
     else
-        topPitch = (float) Pattern::maxPitch - (float) newRangeStart;
+        topPitch = (float) highPitch() - (float) newRangeStart;
     clampView();
     repaint();
 }
@@ -421,7 +439,7 @@ void PianoRoll::showGhostMenu()
         item.itemID = 100 + row;
         item.isTicked = (mask & (1u << row)) != 0;
         item.colour = layerColours[(size_t) juce::jlimit (0, (int) layerColours.size() - 1, row)];
-        item.isEnabled = row != layer; // den egna raden är ingen spökrad
+        item.isEnabled = row != baseLayer; // den egna raden är ingen spökrad
         menu.addItem (item);
     }
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&ghostButton), [this, safe = juce::Component::SafePointer<PianoRoll> (this)] (int result)
@@ -440,9 +458,9 @@ void PianoRoll::showGhostMenu()
 
 int PianoRoll::soundingRoot() const
 {
-    if (layer == Pattern::kickLayer)
+    if (baseLayer == Pattern::kickLayer)
         return rootNote();
-    return rootNote() + 12 * (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, InstrumentField::octave))->load();
+    return rootNote() + 12 * (int) processor.apvts.getRawParameterValue (ParamID::bass (baseLayer, InstrumentField::octave))->load();
 }
 
 void PianoRoll::afterLoad (InstrumentGrid newGrid)
@@ -710,13 +728,13 @@ void PianoRoll::movePasteTo (juce::Point<float> position)
     pasteStart = clampSafe (snapped (xToTicks (position.x) - pasteGrabTicks), 0, std::max (0, editTicks() - 1));
 
     // Dra uppåt eller nedåt flyttar också tonhöjden, men inte så att något hamnar utanför.
-    auto lowest = Pattern::maxPitch, highest = Pattern::minPitch;
+    auto lowest = highPitch(), highest = lowPitch();
     for (const auto& n : processor.noteClipboard.notes)
     {
         lowest = std::min (lowest, n.pitch);
         highest = std::max (highest, n.pitch);
     }
-    pasteShift = clampSafe (pasteGrabShift + (yToPitch (position.y) - pasteGrabRow), Pattern::minPitch - lowest, Pattern::maxPitch - highest);
+    pasteShift = clampSafe (pasteGrabShift + (yToPitch (position.y) - pasteGrabRow), lowPitch() - lowest, highPitch() - highest);
     repaint();
 }
 
@@ -727,7 +745,7 @@ juce::Rectangle<float> PianoRoll::ghostBounds() const
     for (const auto& n : processor.noteClipboard.notes)
     {
         const auto tick = pasteStart + n.dt;
-        const auto rect = juce::Rectangle<float> (ticksToX ((float) tick), pitchToY (juce::jlimit (Pattern::minPitch, Pattern::maxPitch, n.pitch + pasteShift)),
+        const auto rect = juce::Rectangle<float> (ticksToX ((float) tick), pitchToY (juce::jlimit (lowPitch(), highPitch(), n.pitch + pasteShift)),
                                                   std::max (3.0f, ticksToX ((float) (tick + n.length)) - ticksToX ((float) tick)), rowHeight());
         bounds = first ? rect : bounds.getUnion (rect);
         first = false;
@@ -755,7 +773,7 @@ void PianoRoll::commitPaste()
             continue;
         }
         const auto length = std::min (n.length, Pattern::maxTicks - tick);
-        const auto pitch = juce::jlimit (Pattern::minPitch, Pattern::maxPitch, n.pitch + pasteShift);
+        const auto pitch = juce::jlimit (lowPitch(), highPitch(), n.pitch + pasteShift);
         // Inklistring skriver aldrig över: upptagen tick => ny stapel (samma tonhöjd som en ton där hoppas över).
         const auto occupied = processor.pattern.stackSize (layer, tick) > 0;
         auto samePitch = false;
@@ -901,7 +919,7 @@ void PianoRoll::resized()
     bottom.removeFromLeft (4);
     extendButton.setBounds (bottom.removeFromLeft (52));
     bottom.removeFromLeft (12);
-    const auto showVoices = layer != Pattern::kickLayer;
+    const auto showVoices = baseLayer != Pattern::kickLayer;
     voicesDownButton.setVisible (showVoices);
     voicesUpButton.setVisible (showVoices);
     voicesLabel.setVisible (showVoices);
@@ -932,7 +950,7 @@ void PianoRoll::timerCallback()
 {
     followVisualRate();
     pruneSelection(); // ångra/gör om från historiken eller menyn kan ha tagit bort valda toner
-    if (layer != Pattern::kickLayer)
+    if (baseLayer != Pattern::kickLayer)
     {
         const auto text = "VOICES " + juce::String (voices());
         if (voicesLabel.getText() != text)
@@ -962,7 +980,7 @@ void PianoRoll::timerCallback()
     }
     updateToolButtons();
     updateToolbarVisibility();
-    listenButton.setActive (processor.previewingLayer.load() == layer);
+    listenButton.setActive (processor.previewingLayer.load() == baseLayer);
     if (flashText.isNotEmpty() && juce::Time::getMillisecondCounterHiRes() > flashUntil)
     {
         flashText = {};
@@ -1088,7 +1106,7 @@ void PianoRoll::normalise (NoteMap& notes, std::map<NoteKey, NoteKey>* remap)
     }
 }
 
-PianoRoll::Relocated PianoRoll::relocate (const NoteMap& source, const KeySet& moving, int deltaTicks, int deltaPitch)
+PianoRoll::Relocated PianoRoll::relocate (const NoteMap& source, const KeySet& moving, int deltaTicks, int deltaPitch, int lowest, int highest)
 {
     Relocated result;
     if (deltaTicks == 0 && deltaPitch == 0)
@@ -1110,7 +1128,7 @@ PianoRoll::Relocated PianoRoll::relocate (const NoteMap& source, const KeySet& m
         if (found == source.end())
             continue;
         auto data = found->second;
-        data.pitch = juce::jlimit (Pattern::minPitch, Pattern::maxPitch, data.pitch + deltaPitch);
+        data.pitch = juce::jlimit (lowest, highest, data.pitch + deltaPitch);
         const auto tick = key.tick + deltaTicks;
 
         // Samma tonhöjd på samma tick är samma ton (pennan vägrar också): flytten avbryts (full), ingen ton skrivs över.
@@ -1259,7 +1277,7 @@ void PianoRoll::moveSelected (int deltaTicks, int deltaPitch)
 
     // Flytta alla markerade så långt det går utan att något hamnar utanför.
     const auto notes = readNotes();
-    auto minTick = editTicks(), maxTick = 0, minPitch = Pattern::maxPitch, maxPitch = Pattern::minPitch;
+    auto minTick = editTicks(), maxTick = 0, minPitch = highPitch(), maxPitch = lowPitch();
     for (const auto& key : selection)
         if (const auto found = notes.find (key); found != notes.end())
         {
@@ -1269,9 +1287,9 @@ void PianoRoll::moveSelected (int deltaTicks, int deltaPitch)
             maxPitch = std::max (maxPitch, found->second.pitch);
         }
     deltaTicks = clampSafe (deltaTicks, -minTick, editTicks() - 1 - maxTick);
-    deltaPitch = clampSafe (deltaPitch, Pattern::minPitch - minPitch, Pattern::maxPitch - maxPitch);
+    deltaPitch = clampSafe (deltaPitch, lowPitch() - minPitch, highPitch() - maxPitch);
 
-    const auto moved = relocate (notes, selection, deltaTicks, deltaPitch);
+    const auto moved = relocate (notes, selection, deltaTicks, deltaPitch, lowPitch(), highPitch());
     if (moved.full)
     {
         flash ("Blocked: that tick is full, or already has a note with that pitch");
@@ -1369,14 +1387,14 @@ juce::String PianoRoll::describe (NoteKey key) const
 
 int PianoRoll::voices() const
 {
-    if (layer == Pattern::kickLayer)
+    if (baseLayer == Pattern::kickLayer)
         return 1;
-    return (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, InstrumentField::voices))->load();
+    return (int) processor.apvts.getRawParameterValue (ParamID::bass (baseLayer, InstrumentField::voices))->load();
 }
 
 void PianoRoll::setVoices (int count)
 {
-    if (auto* param = processor.apvts.getParameter (ParamID::bass (layer, InstrumentField::voices)))
+    if (auto* param = processor.apvts.getParameter (ParamID::bass (baseLayer, InstrumentField::voices)))
     {
         param->beginChangeGesture();
         param->setValueNotifyingHost (param->convertTo0to1 ((float) count));
@@ -1387,7 +1405,7 @@ void PianoRoll::setVoices (int count)
 
 void PianoRoll::changeVoices (int delta)
 {
-    if (layer == Pattern::kickLayer)
+    if (baseLayer == Pattern::kickLayer)
         return;
     const auto target = juce::jlimit (1, 8, voices() + delta); // 8 = InstrumentVoices::maxVoices
     if (target == voices())
@@ -1415,7 +1433,7 @@ void PianoRoll::changeVoices (int delta)
 
 void PianoRoll::checkVoicesNeeded()
 {
-    if (layer == Pattern::kickLayer)
+    if (baseLayer == Pattern::kickLayer)
         return;
     const auto needed = processor.pattern.maxSimultaneous (layer);
     if (needed <= voices())
@@ -1440,7 +1458,7 @@ void PianoRoll::checkVoicesNeeded()
 
 void PianoRoll::setChordOnSelection (const Pattern::Chord& chord)
 {
-    if (selection.empty() || layer == Pattern::kickLayer)
+    if (selection.empty() || baseLayer == Pattern::kickLayer)
         return;
     auto target = readNotes();
     for (const auto& key : selection)
@@ -1455,7 +1473,7 @@ void PianoRoll::setChordOnSelection (const Pattern::Chord& chord)
 void PianoRoll::paint (juce::Graphics& g)
 {
     const auto bounds = getLocalBounds().toFloat();
-    const auto colour = layerColours[(size_t) juce::jlimit (0, (int) layerColours.size() - 1, layer)];
+    const auto colour = layerColours[(size_t) juce::jlimit (0, (int) layerColours.size() - 1, baseLayer)];
 
     g.setColour (Theme::knobBodyDark.withAlpha (0.85f));
     g.fillRoundedRectangle (bounds, 6.0f);
@@ -1468,11 +1486,11 @@ void PianoRoll::paint (juce::Graphics& g)
         for (int row = 0; row <= visibleRows() + 1; ++row)
         {
             const auto pitch = (int) std::floor (topPitch) - row;
-            if (pitch < Pattern::minPitch || pitch > Pattern::maxPitch)
+            if (pitch < lowPitch() || pitch > highPitch())
                 continue;
             const auto y = pitchToY (pitch);
             const auto pc = ((rootPc + pitch) % 12 + 12) % 12;
-            g.setColour (isBlackKey (pc) ? juce::Colours::black.withAlpha (0.28f) : juce::Colours::white.withAlpha (0.03f));
+            g.setColour ((sliceMode ? pitch % 2 != 0 : isBlackKey (pc)) ? juce::Colours::black.withAlpha (0.28f) : juce::Colours::white.withAlpha (0.03f));
             g.fillRect (juce::Rectangle<float> (gridArea.getX(), y, gridArea.getWidth(), rowHeight()));
             if (pitch == 0)
             {
@@ -1517,7 +1535,7 @@ void PianoRoll::paint (juce::Graphics& g)
             const auto gLast = std::min (editTicks() - 1, (int) xToTicks (gridArea.getRight()) + 1);
             for (int other = 0; other < Pattern::numNoteLayers; ++other)
             {
-                if (other == layer || (processor.ghostMask.load() & (1u << other)) == 0)
+                if (sliceMode || other == baseLayer || (processor.ghostMask.load() & (1u << other)) == 0)
                     continue;
                 const auto shift = processor.rowRootNote (other) - rootNote();
                 const auto otherColour = layerColours[(size_t) juce::jlimit (0, (int) layerColours.size() - 1, other)];
@@ -1574,7 +1592,7 @@ void PianoRoll::paint (juce::Graphics& g)
                 c = c.brighter (0.45f).interpolatedWith (juce::Colours::white, 0.25f);
             if (key.index == 0)
                 for (const auto interval : note.chord)
-                    if (const auto p = note.pitch + interval; interval != 0 && p >= Pattern::minPitch && p <= Pattern::maxPitch)
+                    if (const auto p = note.pitch + interval; interval != 0 && p >= lowPitch() && p <= highPitch())
                     {
                         const auto cb = b.withY (pitchToY (p) + 0.5f);
                         g.setColour (c.withAlpha (0.22f * chordAlpha));
@@ -1636,7 +1654,7 @@ void PianoRoll::paint (juce::Graphics& g)
                 if (tick >= editTicks())
                     continue;
                 const auto x0 = ticksToX ((float) tick), x1 = ticksToX ((float) (tick + n.length));
-                const auto b = juce::Rectangle<float> (x0, pitchToY (juce::jlimit (Pattern::minPitch, Pattern::maxPitch, n.pitch + pasteShift)),
+                const auto b = juce::Rectangle<float> (x0, pitchToY (juce::jlimit (lowPitch(), highPitch(), n.pitch + pasteShift)),
                                                        std::max (3.0f, x1 - x0), rowHeight()).reduced (0.0f, 0.5f);
                 g.setColour (ghostFill.withAlpha (0.8f));
                 g.fillRoundedRectangle (b, 2.5f);
@@ -1663,7 +1681,7 @@ void PianoRoll::paint (juce::Graphics& g)
             if (drag == Drag::none && ! hoverKey.valid())
             {
                 const auto start = snapped (xToTicks (hoverPoint.x));
-                const auto pitch = juce::jlimit (Pattern::minPitch, Pattern::maxPitch, yToPitch (hoverPoint.y));
+                const auto pitch = juce::jlimit (lowPitch(), highPitch(), yToPitch (hoverPoint.y));
                 const auto length = ! glideButton.getToggleState() && lastLength > 0 ? lastLength : Pattern::ticksPerStep (grid());
                 const auto x0 = ticksToX ((float) start), x1 = ticksToX ((float) std::min (start + length, editTicks()));
                 const auto preview = juce::Rectangle<float> (x0, pitchToY (pitch), std::max (3.0f, x1 - x0), rowHeight()).reduced (0.0f, 0.5f);
@@ -1716,13 +1734,19 @@ void PianoRoll::paint (juce::Graphics& g)
         for (int row = 0; row <= visibleRows() + 1; ++row)
         {
             const auto pitch = (int) std::floor (topPitch) - row;
-            if (pitch < Pattern::minPitch || pitch > Pattern::maxPitch)
+            if (pitch < lowPitch() || pitch > highPitch())
                 continue;
             const auto y = pitchToY (pitch);
-            const auto black = isBlackKey (((rootPc + pitch) % 12 + 12) % 12);
+            const auto black = sliceMode ? pitch % 2 != 0 : isBlackKey (((rootPc + pitch) % 12 + 12) % 12); // skivor: varannan tangent mörk
             const auto key = juce::Rectangle<float> (keyArea.getX(), y, keyArea.getWidth() - 2.0f, rowHeight()).reduced (0.0f, 0.5f);
             g.setColour (black ? juce::Colour (0xff23263a) : juce::Colour (0xffc4c8de));
             g.fillRoundedRectangle (key, 2.0f);
+            if (sliceMode)
+            {
+                g.setColour (black ? Theme::textDim : juce::Colour (0xff23263a));
+                g.drawText ("Slice " + juce::String (RowRegistry::sliceOfPitch (pitch) + 1), key.reduced (7.0f, 0.0f), juce::Justification::centredLeft);
+                continue;
+            }
             // Tangenten som spelas live (MIDI IN: INSTRUMENT) lyser i radens färg.
             const auto midiNote = rootNote() + pitch;
             const auto liveBits = midiNote < 64 ? liveNow.first : liveNow.second;
@@ -2011,7 +2035,7 @@ void PianoRoll::mouseDown (const juce::MouseEvent& event)
             menu.addItem (1, "Select all", true);
             menu.addItem (2, "Clear selection", ! selection.empty());
             menu.addItem (3, "Delete selected", ! selection.empty());
-            if (layer != Pattern::kickLayer)
+            if (baseLayer != Pattern::kickLayer && ! sliceMode) // skivor har inga ackord
             {
                 // Samma ackord på alla markerade bockas för.
                 const auto hasChordTargets = std::any_of (selection.begin(), selection.end(), [] (const auto& selectedKey) { return selectedKey.index == 0; });
@@ -2133,7 +2157,7 @@ void PianoRoll::mouseDown (const juce::MouseEvent& event)
 
     // Tom plats: en ny ton på steget under musen, i raden under musen.
     const auto start = snapped (xToTicks (event.position.x));
-    const auto pitch = juce::jlimit (Pattern::minPitch, Pattern::maxPitch, yToPitch (event.position.y));
+    const auto pitch = juce::jlimit (lowPitch(), highPitch(), yToPitch (event.position.y));
     if (! processor.pattern.acceptsTick (layer, start))
         return; // låst rad: klick efter slutet gör ingenting
     const auto glide = glideButton.getToggleState();
@@ -2291,10 +2315,10 @@ void PianoRoll::mouseDrag (const juce::MouseEvent& event)
 
     // Flytta: ny starttid (snap) och ny rad för den grepna tonen; resten av markeringen följer med.
     const auto newTick = snapped (xToTicks (event.position.x) - grabOffsetTicks);
-    const auto newPitch = juce::jlimit (Pattern::minPitch, Pattern::maxPitch, yToPitch (event.position.y));
+    const auto newPitch = juce::jlimit (lowPitch(), highPitch(), yToPitch (event.position.y));
     auto deltaTicks = newTick - dragStartKey.tick, deltaPitch = newPitch - dragStartPitch;
 
-    auto minTick = editTicks(), maxTick = 0, minPitch = Pattern::maxPitch, maxPitch = Pattern::minPitch;
+    auto minTick = editTicks(), maxTick = 0, minPitch = highPitch(), maxPitch = lowPitch();
     for (const auto& key : dragSelection)
     {
         minTick = std::min (minTick, key.tick);
@@ -2303,9 +2327,9 @@ void PianoRoll::mouseDrag (const juce::MouseEvent& event)
         maxPitch = std::max (maxPitch, dragSnapshot[key].pitch);
     }
     deltaTicks = clampSafe (deltaTicks, -minTick, editTicks() - 1 - maxTick);
-    deltaPitch = clampSafe (deltaPitch, Pattern::minPitch - minPitch, Pattern::maxPitch - maxPitch);
+    deltaPitch = clampSafe (deltaPitch, lowPitch() - minPitch, highPitch() - maxPitch);
 
-    const auto moved = relocate (dragSnapshot, dragSelection, deltaTicks, deltaPitch);
+    const auto moved = relocate (dragSnapshot, dragSelection, deltaTicks, deltaPitch, lowPitch(), highPitch());
     if (moved.full)
     {
         flash ("Blocked: that tick is full, or already has a note with that pitch");
@@ -2334,7 +2358,7 @@ void PianoRoll::addStroke (const juce::Point<float>& from, const juce::Point<flo
     const auto& b = from.x <= to.x ? to : from;
     const auto start = juce::jlimit (0, std::max (0, totalTicks() - 1), snapped (xToTicks (a.x)));
     auto end = std::max (start + snapTicks(), snapped (xToTicks (b.x)));
-    auto pitch = juce::jlimit (Pattern::minPitch, Pattern::maxPitch, yToPitch (b.y));
+    auto pitch = juce::jlimit (lowPitch(), highPitch(), yToPitch (b.y));
 
     // Strecket fastnar på en ton som börjar vid slutet: glidemålet blir tonens tonhöjd.
     if (const auto& target = processor.pattern.note (layer, end); end < totalTicks() && target.on.load())
@@ -2402,8 +2426,8 @@ void PianoRoll::mouseUp (const juce::MouseEvent& event)
         cursorTick = rulerAnchor;
         loopStart = loopEnd = -1;
         syncPreviewWindow();
-        if (processor.previewingLayer.load() == layer)
-            processor.requestAudition (PluginBase::previewRequest (layer));
+        if (processor.previewingLayer.load() == baseLayer)
+            processor.requestAudition (PluginBase::previewRequest (baseLayer));
     }
     auditionStop (drag == Drag::keys || lastLength <= 0 ? Pattern::ticksPerQuarter / 2 : lastLength);
     if (edited)
