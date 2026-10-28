@@ -104,7 +104,7 @@ namespace ParamID
                                      "FxSend", "SampleMode", "AllpassFreq", "AllpassAmount", "SamplePan", "NoisePan", "FmPan", "NoiseWidth", "SubPhaseDeg", "FmPhaseDeg", "AWidth", "BWidth", "CWidth", "SampleWidth", "FmWidth", "RingSource",
                                      "FundamentalDuckMode", "FundamentalDuckDepth", "FundamentalDuckWindow", "FundamentalDuckSource",
                                      "SampleSource",
-                                     "SampleAmpOn", "SampleAmpMs", "SampleAmpShape", "SamplePitchOn", "SamplePitchSemis", "SamplePitchMs", "SamplePitchShape" };
+                                     "SampleAmpOn", "SampleAmpMs", "SampleAmpShape", "SamplePitchOn", "SamplePitchSemis", "SamplePitchMs", "SamplePitchShape", "SampleReverse" };
         static_assert (std::size (names) == (size_t) InstrumentField::count);
         return names[(size_t) field];
     }
@@ -449,6 +449,7 @@ namespace Params
                                 [] (float v) { return String (v, 1) + " st"; }));
         layout.add (ms (5.0f, 2000.0f, 150.0f, 100.0f, id (F::samplePitchMs), title + "Sample Pitch Time"));
         layout.add (floatParam (id (F::samplePitchShape), title + "Sample Pitch Shape", NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f, shapeText));
+        layout.add (std::make_unique<AudioParameterBool> (ParameterID { id (F::sampleReverse), 1 }, title + "Sample Reverse", false));
     }
 
     void addFxParams (Layout& layout)
@@ -792,5 +793,6 @@ InstrumentParams ParamRefs::readInstrument (int layer, int rootMidiNote) const
     p.samplePitchSemis = get (F::samplePitchSemis);
     p.samplePitchMs = get (F::samplePitchMs);
     p.samplePitchShape = get (F::samplePitchShape);
+    p.sampleReverse = get (F::sampleReverse) > 0.5f;
     return p;
 }

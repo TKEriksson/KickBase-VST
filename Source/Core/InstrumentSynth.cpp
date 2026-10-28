@@ -195,6 +195,8 @@ void InstrumentSynth::noteOn (int semitones, float newVelocity, int gateSamples,
     sampleAge = 0.0;
     const auto* startSample = activeSample();
     samplePosition = startSample != nullptr ? (double) params.sampleStart * (double) startSample->audio.getNumSamples() : 0.0;
+    if (startSample != nullptr && params.sampleReverse)
+        samplePosition = std::max (0.0, (double) startSample->audio.getNumSamples() - 1.0 - samplePosition);
     sliceVoice = false;
     sliceNote = slice >= 0 && ! params.sampleMulti; // multisampling har inga skivor
     if (sliceNote && params.sampleData != nullptr)
@@ -587,10 +589,16 @@ InstrumentSynth::Output InstrumentSynth::next()
                 const auto fraction = (float) (samplePosition - (double) index);
                 const auto following = index + 1 < length ? data[index + 1] : (params.sampleLoop ? data[0] : 0.0f);
                 addMonoWide (fOn && params.filterSrc[3], editorGain * params.sampleLevel * (data[index] + fraction * (following - data[index])), params.samplePan, params.sampleWidth, sampleDelay);
-                if (params.sampleMulti)
-                    samplePosition += editorSpeed * frequency / (double) std::max (1.0f, params.sampleBank->zone (multiZone)->rootHz);
+                auto step = params.sampleMulti ? editorSpeed * frequency / (double) std::max (1.0f, params.sampleBank->zone (multiZone)->rootHz)
+                                               : editorSpeed * (params.sampleKeyTrack ? frequency / (double) std::max (1.0f, params.sampleRootHz) : 1.0);
+                if (params.sampleReverse)
+                {
+                    samplePosition -= step;
+                    if (samplePosition < 0.0) // förbi början: loopa från slutet eller sluta (positionen = längden är "färdig")
+                        samplePosition = params.sampleLoop ? std::fmod (samplePosition, (double) length) + (double) length : (double) length;
+                }
                 else
-                    samplePosition += editorSpeed * (params.sampleKeyTrack ? frequency / (double) std::max (1.0f, params.sampleRootHz) : 1.0);
+                    samplePosition += step;
             }
         }
     }

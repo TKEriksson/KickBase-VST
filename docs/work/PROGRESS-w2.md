@@ -233,3 +233,7 @@ Nu: programmet, rel-0.3 motornära punkter: 1) S3 Unison/Reese, 2) multisampling
 - Motor: `sampleAge` + `InstrumentSynth::sampleCurve` i sample-grenen (`InstrumentSynth.cpp`). AMP gäller alla röster, PITCH inte slice-röster.
 - Test: `testSampleEditor` (`Tests/EngineTests.cpp`): av = identiskt, AMP tyst efter ms, PITCH högre i början och tillbaka efteråt. `Debug all` grönt.
 - Arbetare 1: lägg DELAY/LENGTH/CURVE efter denna kärna; `samplePosition` ska stå still under DELAY.
+
+## 2026-10-28 – Reverse per not (Arbetare 2)
+- Plan: `docs/work/plan-sample-reverse.md`. Ny sista parameter `sampleReverse` (av = gamla ljudet). Motor: speglad startposition i `noteOn` och bakåtsteg i sample-grenen (`InstrumentSynth.cpp`); LOOP loopar från slutet. Slicer har kvar sin `slicerReverse`.
+- Test: `testSampleReverse` (`Tests/EngineTests.cpp`). `Debug all` grönt.
