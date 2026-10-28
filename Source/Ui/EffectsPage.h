@@ -76,6 +76,7 @@ private:
     int channel = 0, slot = 0;
     View view = View::fx;
     PresetButton presets;
+    juce::TextButton helpButton;
     std::array<juce::TextButton, numEffectChannels> channelButtons;
     std::array<juce::TextButton, 3> viewButtons; // EQ, COMP, FX
     std::vector<std::unique_ptr<KnobComponent>> levels, ducks; // en per kanal, bara vald syns

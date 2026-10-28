@@ -1,5 +1,7 @@
 #include "MasterPage.h"
 
+#include "HelpDialog.h"
+
 LevelMeter::LevelMeter (std::function<float()> readIn, float minIn, float maxIn, bool fromTopIn, juce::Colour colourIn, juce::String labelIn)
     : read (std::move (readIn)), minDb (minIn), maxDb (maxIn), fromTop (fromTopIn), colour (colourIn), label (std::move (labelIn))
 {
@@ -60,6 +62,8 @@ MasterPage::MasterPage (PluginBase& p)
     addAndMakeVisible (scope);
     addAndMakeVisible (gainScope);
     addAndMakeVisible (presets);
+    HelpDialog::setupButton (helpButton, *this, HelpDialog::Topic::master, "the MASTER tab (mixer and maximizer)");
+    addAndMakeVisible (helpButton);
 
     power.setColour (juce::ToggleButton::tickColourId, Theme::master);
     power.setTooltip ("Master on/off");
@@ -139,6 +143,8 @@ void MasterPage::resized()
 
     auto header = area.removeFromTop (24);
     power.setBounds (header.removeFromLeft (26));
+    helpButton.setBounds (header.removeFromRight (44));
+    header.removeFromRight (6);
     presets.setBounds (header.removeFromRight (160));
     if (mixerView != nullptr)
     {

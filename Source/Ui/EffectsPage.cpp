@@ -1,5 +1,6 @@
 #include "EffectsPage.h"
 #include "Help.h"
+#include "HelpDialog.h"
 
 namespace
 {
@@ -271,6 +272,8 @@ EffectsPage::EffectsPage (PluginBase& p)
     presets.setTooltip ("FX PRESET - Saves or loads the selected effect channel (FX1-FX11): its five effects with their settings, its EQ and compressor, level and duck. "
                         "The other channels are not touched, and who sends to the channel is not part of it.");
     addAndMakeVisible (presets);
+    HelpDialog::setupButton (helpButton, *this, HelpDialog::Topic::effects, "the EFFECTS tab (channels, slots, EQ, compressor, duck)");
+    addAndMakeVisible (helpButton);
 
     const char* viewNames[] { "EQ", "COMP", "FX" };
     const char* viewHelp[] { "CHANNEL EQ - A parametric equalizer on this channel, with a live view of the sound reaching it. Flat (neutral) by default.",
@@ -389,6 +392,8 @@ void EffectsPage::resized()
 
     auto top = area.removeFromTop (30);
     presets.setBounds (top.removeFromRight (150).withTrimmedBottom (4));
+    top.removeFromRight (8);
+    helpButton.setBounds (top.removeFromRight (44).withTrimmedBottom (4));
     top.removeFromRight (8);
     strip.setBounds (top);
     area.removeFromTop (6);

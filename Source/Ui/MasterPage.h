@@ -39,6 +39,7 @@ private:
     void showView (bool mixer);
 
     PresetButton presets;
+    juce::TextButton helpButton;
     juce::TextButton mixerTab { "MIXER" }, maximizerTab { "MAXIMIZER" };
     std::unique_ptr<MixerView> mixerView;
     std::unique_ptr<SourceToggles> maxSources; // vilka källor som går genom maximizern

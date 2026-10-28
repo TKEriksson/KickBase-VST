@@ -1,4 +1,5 @@
 #include "SettingsPage.h"
+#include "HelpDialog.h"
 
 namespace
 {
@@ -48,6 +49,8 @@ SettingsPage::SettingsPage (PluginBase& p) : processor (p), optimizations (p, [t
     aboutButton.setTooltip ("ABOUT - The version, the licence Kickbase is released under (AGPL-3.0), where the source code is, and the licences of the software it is built with.");
     aboutButton.onClick = [this] { showPanel (&about); };
     addAndMakeVisible (aboutButton);
+    HelpDialog::setupButton (helpButton, *this, HelpDialog::Topic::settings, "the settings");
+    addAndMakeVisible (helpButton);
     addChildComponent (optimizations);
     addChildComponent (about);
     styleLabel (windowHint, 10.5f, Theme::textDim);
@@ -397,6 +400,8 @@ void SettingsPage::resized()
             button.setBounds (buttons.removeFromLeft (width).reduced (2, 0));
         box.removeFromTop (8);
         auto panelButtons = box.removeFromTop (24);
+        helpButton.setBounds (panelButtons.removeFromRight (44));
+        panelButtons.removeFromRight (4);
         aboutButton.setBounds (panelButtons.removeFromRight (64));
         panelButtons.removeFromRight (4);
         optimizationsButton.setBounds (panelButtons);

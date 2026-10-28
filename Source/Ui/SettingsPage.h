@@ -47,6 +47,7 @@ private:
     // FÖNSTER
     juce::Label scaleLabel, windowHint;
     juce::TextButton optimizationsButton { "OPTIMIZATIONS..." }, aboutButton { "ABOUT" };
+    juce::TextButton helpButton;
     OptimizationsPanel optimizations;
     AboutPanel about;
     std::vector<juce::Component::SafePointer<juce::Component>> hiddenByPanel; // det som var synligt när en panel öppnades

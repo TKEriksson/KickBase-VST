@@ -121,6 +121,7 @@ private:
     PluginBase& processor;
     int lastActive = -1;
     PresetButton presets;
+    juce::TextButton helpButton;
     ChoiceComponent mode, length;
     juce::Viewport depthViewport;                       // instrumentens rader rullar lodrätt när de är många
     juce::Component depthContent;

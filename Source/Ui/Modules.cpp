@@ -906,6 +906,8 @@ KickModule::KickModule (PluginBase& p)
     balanceHint.setColour (juce::Label::textColourId, Theme::textDim);
     balanceHint.setTooltip ("Both on: the synth kick plus the sample, balanced with LEVEL. Click = only the sample's first moments, Layer = the whole sample on top, Replace = the sample alone.");
     addAndMakeVisible (balanceHint);
+    HelpDialog::setupButton (helpButton, *this, HelpDialog::Topic::kick, "the kick (SYNTH and SAMPLE views)");
+    addAndMakeVisible (helpButton);
 
     sampleLabel.setFont (Theme::font (11.0f));
     sampleLabel.setColour (juce::Label::textColourId, Theme::textDim);
@@ -1044,6 +1046,8 @@ void KickModule::resized()
     auto sourceRow = area.removeFromBottom (22);
     synthToggle.setBounds (sourceRow.removeFromLeft (80));
     sampleToggle.setBounds (sourceRow.removeFromLeft (90));
+    helpButton.setBounds (sourceRow.removeFromRight (44));
+    sourceRow.removeFromRight (4);
     sourceRow.removeFromLeft (8);
     balanceHint.setBounds (sourceRow);
     area.removeFromBottom (4);
@@ -1123,6 +1127,8 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
     envelopeListen.onStart = [this] { hold.start (PluginBase::heldLayerAudition (layer)); };
     envelopeListen.onStop = [this] { hold.stop(); };
     instrPage.addAndMakeVisible (envelopeListen);
+    HelpDialog::setupButton (instrHelpButton, *this, HelpDialog::Topic::instr, "the INSTR tab (envelopes, pitch, sub, noise, drive, phase)");
+    instrPage.addAndMakeVisible (instrHelpButton);
     instrPage.addAndMakeVisible (subScope);
     noiseFilterButton.setTooltip ("NOISE THROUGH FILTER - On: the noise goes through Filter 1 and Filter 2 (set on the FILTER tab). Off: it bypasses both filters.");
     noiseFilterButton.getProperties().set ("labelled", true);
@@ -1879,6 +1885,7 @@ void InstrumentModule::layoutInstrPage()
     auto leftColumn = area.removeFromLeft (juce::jlimit (220, 340, area.getWidth() / 4));
     envelope.setBounds (leftColumn.reduced (0, 2));
     envelopeListen.setBounds (envelope.getRight() - 40, envelope.getY() + 4, 36, 24); // högtalaren i grafens övre högra hörn
+    instrHelpButton.setBounds (envelopeListen.getX() - 4 - 40, envelope.getY() + 8, 40, 16);
     area.removeFromLeft (6);
     const auto rowHeight = juce::jlimit (40, 100, area.getHeight() / groups.numRows() - ControlGroups::titleHeight - 3);
     groups.layout (area, rowHeight);

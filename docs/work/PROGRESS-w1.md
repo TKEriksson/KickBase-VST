@@ -419,3 +419,68 @@ Bygge Debug all: grönt, "Alla tester gick igenom" (rendersig oförändrad).
 - SAMPLE-fliken: HELP-knapp uppe till höger (Modules.cpp, SamplePage::resized, vänster om FILTER-rutan), ämnet SAMPLE (HelpDialog.cpp sampleText). Projektledaren godkände ändringen i Modules.h/.cpp (bara knapp och ämne).
 - Bygge grönt, alla tester gick igenom.
 - DAW-test (Lemon): öppna SAMPLE-fliken, klicka HELP, kontrollera att SAMPLE-fliken visas och att knappen inte täcker FILTER-rutan eller etiketten.
+
+## HELP för ENV (Arbetare 1, 2026-10-28)
+- ENV-sidan: HELP-knapp bredvid instrumentväljaren (EnvPage.cpp, resized), ämnet ENV (HelpDialog.cpp envText).
+- Bygge grönt, alla tester gick igenom.
+- DAW-test (Lemon): öppna ENV, klicka HELP, kontrollera att ENV-fliken visas och att knappen inte täcker väljaren.
+
+## HELP för LFO (Arbetare 1, 2026-10-28)
+- LFO-sidan: HELP-knapp bredvid SHOW ONLY SELECTED (LfoPage.cpp, resized), ämnet LFO (HelpDialog.cpp lfoText).
+- Bygge grönt, alla tester gick igenom.
+- DAW-test (Lemon): öppna LFO, klicka HELP, kontrollera att LFO-fliken visas och att knappen inte täcker SHOW ONLY SELECTED.
+
+## HELP för MATRIX (Arbetare 1, 2026-10-28)
+- MATRIX-sidan: HELP-knapp efter CLEAR ALL (MatrixPage.cpp, resized), ämnet MATRIX (HelpDialog.cpp matrixText).
+- Bygge grönt, alla tester gick igenom.
+- DAW-test (Lemon): öppna MATRIX, klicka HELP, kontrollera att MATRIX-fliken visas och att knappen inte täcker CLEAR ALL eller räknaren.
+
+## HELP för EFFECTS (Arbetare 1, 2026-10-28)
+- EFFECTS-sidan: HELP-knapp till vänster om FX Preset (EffectsPage.cpp, resized), ämnet EFFECTS (HelpDialog.cpp effectsText).
+- Bygge grönt, alla tester gick igenom.
+- DAW-test (Lemon): öppna EFFECTS, klicka HELP, kontrollera att EFFECTS-fliken visas och att platsraden fortfarande får plats.
+
+## HELP för MASTER (Arbetare 1, 2026-10-28)
+- MasterPage.cpp (resized): HELP-knapp till vänster om Master Preset i headern; ämnet MASTER (HelpDialog.cpp masterText) täcker MIXER och MAXIMIZER.
+- Bygge grönt, alla tester gick igenom.
+- DAW-test (Lemon): öppna MASTER i både MIXER- och MAXIMIZER-vyn, klicka HELP, kontrollera att knappen syns och inte täcker flikarna.
+
+## HELP för SIDECHAIN (Arbetare 1, 2026-10-28)
+- SidechainPage.cpp (resized): HELP-knapp till höger om Preset i vänsterkolumnen (preset blir 82 px bred); ämnet SIDECHAIN (HelpDialog.cpp sidechainText) täcker MODE, LENGTH, kurva, HALFTIME, DUCK/DEPTH, scope, FUNDAMENTAL DUCK och SIDECHAIN AFFECTS.
+- Bygge grönt, alla tester gick igenom.
+- DAW-test (Lemon): öppna SIDECHAIN, klicka HELP, kontrollera att knappen syns och att preset-namnet fortfarande går att läsa.
+
+## HELP för SETTINGS (Arbetare 1, 2026-10-28)
+- SettingsPage.cpp (resized): HELP-knapp (44 px) längst till höger i raden med OPTIMIZATIONS/ABOUT; ämnet SETTINGS (HelpDialog.cpp settingsText) täcker WINDOW SIZE, OPTIMIZATIONS, ABOUT, AI LINK, FOLDERS, WAVETABLE PACK och FX-versionen.
+- Bygge grönt, alla tester gick igenom.
+- DAW-test (Lemon): öppna SETTINGS (instrument och FX), klicka HELP, kontrollera att knappen syns och att OPTIMIZATIONS-knappen fortfarande går att läsa.
+
+## HELP för KICK (Arbetare 1, 2026-10-28)
+- Modules.cpp (KickModule, resized): HELP-knapp (44 px) till höger i källraden (SYNTH/SAMPLE-reglagen), syns i båda vyerna. Bara knapp + include i Modules.h/.cpp; projektledaren informerad. Ämnet KICK (HelpDialog.cpp kickText) täcker SYNTH-vyn, SAMPLE-vyn (bibliotek, LOAD, MODE, OFFSET) och källorna.
+- Bygge grönt, alla tester gick igenom.
+- DAW-test (Lemon): öppna KICK i SYNTH- och SAMPLE-vyn, klicka HELP, kontrollera att knappen syns och att balans-texten fortfarande får plats.
+
+## TOP DECAY (kickNoiseDecay 5–2000 ms)
+- `Params.cpp:196`: intervall 5–400 → 5–2000 ms, mittpunkt 60 → 100 ms, default oförändrad (60 ms). Inget nytt parameter-ID. Värdet lagras som riktig ms, så gamla presets/projekt låter lika.
+- Rösten slutar vid kickens LENGTH (`KickEngine.cpp:210`, `lengthSeconds`), så en lång topp-svans kapas av LENGTH. Texten i `Help.cpp:166` säger det.
+- Test: build Debug all grön, presettest, paramtest, helpcheck OK; rendersig körd (inga lagrade referenshashar i repot att jämföra mot; ändringen rör bara reglagets mappning, inte lagrade ms-värden).
+- DAW (Lemon): vrid TOP DECAY, lågt läge ska vara lika lätt att ställa som förr; höga värden ger lång luft om LENGTH är lång.
+
+## Broms A: BRAKE-kurvan sparas med projektet (Arbetare 1, 28 okt)
+- Broms A (cherry-pick av 1193cc9 från pl-presets, konflikten med LOOP-koden löst genom att bara ta rullistan): VINYL/TAPE/HARD/SLOW.
+- `PluginBase.cpp:613` sparar `brakeCurve` som state-property (som `jogKind`, inget host-parameter-ID, så ID/preset-index/hash rörs inte); `PluginBase.cpp:727` läser med standard 0 (VINYL = dagens beteende, gamla projekt låter lika).
+- Test: `Tools/StateTests.cpp:952,970` (spara -> ladda ger samma kurva). Debug all grön utom wavetable-tidtestet (lastkänsligt, orelaterat); persisttest OK vid ensam körning.
+- DAW (Lemon): välj TAPE, spara projektet, öppna det igen: kurvan ska vara TAPE.
+
+## Merge w2 + FX-UI: Echo TIME MS, Flanger SHAPE/SPREAD (Arbetare 1, 28 okt)
+- Mergade w2 (a601d2e, Echo-kärnan; 69f1ab0, Flanger) in i play-pack (dc4e972).
+- Raderna i FX-slotten byggs av `Effects::knobs` (EffectsPage.cpp:221, stoppar på knobsPerSlot = 11), så elfte ratten TIME MS och Flanger SHAPE/SPREAD dyker upp utan layoutändring; bredden delas av antalet rattar (EffectsPage.cpp ~262).
+- Hjälptexter: `Help.cpp:364-365` (Flanger SHAPE, SPREAD), `Help.cpp:457` (TIME MS).
+- Debug all grön, alla tester gick igenom.
+- DAW (Lemon): Echo i en FX-plats, TIME MS 0 låter som förut, 500 ger fast 500 ms; Flanger SHAPE Triangle och SPREAD 0/25/100 %; kolla att elva rattar ryms i FX-raden.
+
+## HELP för INSTR, ANALYZER och AI CHAT (Arbetare 1, 28 okt)
+- Nya ämnen `instr`, `analyzer`, `aiChat` i HelpDialog.h/.cpp. HELP-knappar: INSTR vid LISTEN i grafens hörn (Modules.cpp `layoutInstrPage`), ANALYZER längst till höger i underflikraden (AnalyzerPage.h), AI CHAT i huvudraden efter MEM (AiChatPage.cpp).
+- Texterna bygger på sidornas egna tooltips.
+- Kvar utan HELP: GATE (FxEditor), KickLibraryPanel, HistoryPanel, AboutPanel, OptimizationsPanel (små/ytliga, tas om Tobias vill).
+- DAW (Lemon) att kolla: att INSTR-knappen inte täcker grafens handtag, och att ANALYZER/AI CHAT-knapparna får plats vid smal bredd.

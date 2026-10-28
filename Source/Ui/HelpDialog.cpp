@@ -199,6 +199,220 @@ Cut the sample into pieces. Each slice gets its own "Slice N" row in the pattern
 - Only the first 16 slices get a row in the pattern.
 )";
 
+    const char* envText = R"(# ENV
+Four envelopes for the selected instrument. Drag the white handles in a graph to change the shape.
+
+## The four graphs
+- **ENV 1 VOLUME**: the loudness of every note: attack, decay, sustain level and release. Off = every note plays at full level while it is held.
+- **FILTER ENVELOPE**: opens the filter at the start of each note and lets it close again (AMOUNT, ATTACK, DECAY). Off = the filter stays at CUTOFF.
+- **ENV 2 and ENV 3**: extra envelopes that make no sound themselves. They move other knobs.
+
+## Buttons on each graph
+- **ON**: turns the envelope on or off.
+- **SYNC**: attack, decay and release become note lengths (1/16 ... 4 bars) that follow the tempo. Off = milliseconds.
+- **LISTEN**: hold to hear the instrument on the preview note while you drag. Double-click to keep it playing.
+- **DURATION**: how many seconds the graph shows. Only the view, not the sound.
+- **DRAG**: drag the handle onto any knob (or set it in the MATRIX tab) to let that envelope move the knob.
+
+## More sources
+**VELOCITY** (how hard the note is played) and **RANDOM** (a new random value per note) work the same way: drag them onto a knob.
+)";
+
+    const char* lfoText = R"(# LFO
+An LFO is a slow wave that moves a knob up and down by itself. Each LFO is a card; **+ ADD LFO** adds the next free one.
+
+## Connecting
+- Drag the **DRAG** handle of a card onto any knob (kick, instrument or effects). The knob now follows the LFO.
+- Connections are listed on the card. Right-click one to remove it.
+
+## The card
+- **ON**: turns the LFO on or off. Its connections stay.
+- **SHAPE**: the wave form. **EDIT POINTS** turns it into your own curve: drag points, double-click for a new one, right-click to remove one.
+- **RATE MODE**: Sync = note values of the tempo (RATE). Hz = its own speed (FREE RATE).
+- **SNAP** (Hz mode): when the free rate comes close to a note value it locks to it, so the LFO sits on the beat. **RANGE** sets how close.
+
+## Cards
+- The arrow folds a card to one line. The X or right-click removes it (you are asked first if it moves a knob).
+- **SHOW ONLY SELECTED** shows just the selected card. The preset button saves and loads LFO setups.
+)";
+
+    const char* matrixText = R"(# MATRIX
+Every connection between a modulation source and a knob, in one list. A route says: this source moves that knob by this much.
+
+## Sources
+- **LFO**: a slow wave (LFO tab).
+- **MACRO 1-4**: a knob of your own, here on the left. Turn it by hand or automate it from the DAW. One macro can move many knobs.
+- **ENV 2 / ENV 3**, **VELOCITY** and **RANDOM** of an instrument.
+
+## Making a route
+- Drag a **DRAG** handle onto any knob, or press **+ ADD ROUTE** and pick a knob (an LFO is used as the source; change it in the list).
+- **SOURCE**: click to pick another source.
+- **AMOUNT**: how far the source moves the knob, as a share of the knob's travel. Negative = the other way. Double-click for 25 %.
+- **DESTINATION**: click to pick another knob.
+- The X on a row removes the route. **CLEAR ALL** removes every route (it asks first).
+)";
+
+    const char* effectsText = R"(# EFFECTS
+Effects live on **FX channels** (FX1-FX11), like mixer sends. An instrument sends part of its sound to a channel with its FX SEND knob; the channel runs five effects in a row.
+
+## The page
+- **FX1-FX11** (left): pick the channel to edit. Each instrument chooses its channel and how much goes through it.
+- **EQ / COMP / FX**: three views of the selected channel.
+- **FX**: the five slots in a row. Click a slot, then pick its effect type in the box and turn its knobs. Slots run left to right.
+- **EQ**: a parametric equalizer with a live view of the sound reaching the channel. Flat by default.
+- **COMP**: a compressor that evens out the channel level. Off (1:1) by default.
+- **LEVEL**: volume of the channel's effect output.
+- **DUCK**: how deeply the kick pushes the channel down, tails included, so reverb and echo don't blur the kick. 0 % = no ducking.
+
+## Presets
+**FX Preset** saves or loads the selected channel: its five effects, EQ, compressor, level and duck. Other channels are not touched, and who sends to the channel is not part of it.
+)";
+
+    const char* masterText = R"(# MASTER
+The last stage before the output. Two views: **MIXER** and **MAXIMIZER**.
+
+## MIXER
+One strip per sound source: the kick, the instruments and the FX channels.
+- **Fader**: gain of the source.
+- **Pan**: left/right position.
+- **Meter**: level of the source.
+- **SC**: whether the kick's sidechain ducks this source. On by default.
+- **MAX**: whether the source goes through the maximizer. On by default.
+
+## MAXIMIZER
+Drive, clip and a limiter on the whole mix.
+- **DRIVE**: pushes more level into the clipper and limiter. Louder and denser.
+- **CLIP**: how much the soft clipper rounds off the peaks.
+- **CEILING**: the loudest level that gets out. The limiter never lets peaks pass it.
+- **RELEASE**: how fast the limiter lets go after a peak.
+- **OUTPUT**: final volume after everything.
+- **OUT / GR meters**: output level and how much the limiter turns down.
+- **Scopes**: white = the signal into the limiter, red = what comes out. Where white sticks out above red, the limiter is working.
+- **THROUGH THE MAXIMIZER** (bottom): pick which sources go through it.
+- The power switch (top left) turns the maximizer on and off. **Master Preset** saves its settings.
+)";
+
+    const char* sidechainText = R"(# SIDECHAIN
+The kick pushes the other sounds down for a moment, so the kick and the bass don't fight for the same space.
+
+## The controls
+- **MODE**: *Kick envelope* = the sounds duck exactly as loud as the kick is. *Curve* = you draw the ducking shape yourself.
+- **LENGTH**: how long the drawn curve lasts after each kick (Kick = as long as the kick). Only used in Curve mode.
+- **Curve editor**: draw the volume after each kick. Low = ducked, high = full volume.
+- **HALFTIME**: the scope shows 8 beats instead of 4. Only changes the view, not the sound.
+- **DUCK / DEPTH**: how deeply the kick pushes each instrument down. 0 % = no ducking, 100 % = all the way down. One row per active instrument.
+- **Scope**: orange = the kick, white outline = instruments before the sidechain, blue = after it. The blue is what gets through.
+
+## FUNDAMENTAL DUCK
+Dips only the fundamental of each engine while the kick sounds, so the kick's low end and the bass fundamental don't fight, while the rest of the bass stays.
+- **DEPTH**: how many dB the fundamental is cut.
+- **WINDOW**: how close (in cents) the kick's pitch must be to the engine's fundamental for the dip to apply fully.
+- **SOURCE**: what makes it dip: the kick, another instrument, or any of them.
+- Per engine, **INHERIT** follows the common values, **OFF** never dips, **OWN** uses its own depth, window and source.
+
+## SIDECHAIN AFFECTS
+At the bottom: which sources get ducked. The same SC switches exist in the MASTER mixer. All on is the default.
+)";
+
+    const char* settingsText = R"(# SETTINGS
+Window size, drawing speed, the AI link and where Kickbase keeps its files.
+
+## WINDOW SIZE
+- **Slider**: scales the whole plugin window from 50 % to 160 %. Use a small value on a small screen. Dragging the corner of the window does the same.
+- **SMALL / MEDIUM / LARGE / HUGE**: quick sizes. The size applies to every Kickbase window and is remembered.
+- **OPTIMIZATIONS**: how often each view (spectrum, scopes, meters, playhead) is redrawn, whether filled areas are drawn, and REDUCE ANIMATIONS. Lower rates use less CPU.
+- **ABOUT**: the version, the licence (AGPL-3.0), where the source code is, and the licences of the software Kickbase is built with.
+
+## AI LINK
+Lets an AI assistant that you run yourself control Kickbase. It is off until you switch it on.
+- The **access key** is what the assistant needs to connect. **SHOW** reveals it, **COPY** puts it on the clipboard, **CLEAR** removes it.
+- Never share the key with anyone you don't trust: whoever has it can change your sounds.
+
+## FOLDERS
+Where Kickbase looks for and saves things: PRESETS, EXPORTS, WAVETABLES and LIBRARY.
+- **CHANGE** picks another folder, **RESET** goes back to the default, **OPEN** shows the folder in your file browser.
+- Changing the library folder rescans it, so new sounds show up in the kick and sample lists.
+
+## WAVETABLE PACK
+Optional free wavetables (AKWF). Nothing is downloaded until you press the install button (about 20 MB).
+
+## Kickbase FX
+The effect version has no oscillators, so the wavetable and pack parts are hidden there.
+)";
+
+    const char* kickText = R"(# KICK
+The kick has two sources you can use alone or together: a **SYNTH** kick (a sine body with a pitch drop) and a **SAMPLE** kick (a WAV from the library or your own file). The SYNTH / SAMPLE tabs in the header switch the view.
+
+## SYNTH view
+- **TUNING / TUNE**: the pitch the kick settles on.
+- **ENVELOPES**: **PITCH AMT** = how far the pitch drops at the start, **LENGTH** = how long the kick lasts. The two envelopes are drawn in the display.
+- **BODY**: **PHASE** = where the wave starts, **HARMONICS** = overtones added to the body, **H. DECAY** = how fast they fade, **H. TILT** = low or high overtones first.
+- **CLICK**: the short transient at the start. **LEVEL**, **LENGTH** and **TONE**.
+- **DRIVE**: **MODE** = the kind of clipping, **AMOUNT** = how hard.
+- **OUT**: **HIGH CUT** removes top end, **LEVEL** is the kick's volume.
+- **SHAPE**: **WAVE** is the body waveform, **SUB** adds a sine one octave down, **FM** / **RATIO** / **FM DECAY** bend the phase at the start (punchier, more metallic).
+- **TOP**: a noisy layer on top. **NOISE** = amount, **DECAY** = how long it rings, **TONE** = its high-pass.
+- **CRUSH**: bit reduction. **COMP**: a compressor after drive and crush, 0 = off. **FILTER**: **LOW CUT**, and **VEL>PITCH** (harder hits start higher).
+- **KEY**: whether the kick follows the played note.
+
+## SAMPLE view
+- **Library** (left): click a kick to load it. Type in the search box to filter, **RESCAN** reads the library folder again. The folder is set in SETTINGS.
+- **LOAD** picks a WAV/AIFF/FLAC file, or drop a file on the kick module. **X** goes back to the synth click. **HEAR SAMPLE** plays just the sample.
+- **MODE**: *Click* = only the first moments of the sample, *Layer* = the whole sample on top of the synth kick, *Replace* = the sample is the kick.
+- **LEVEL** and **TUNE** apply to Layer and Replace. **OFFSET** moves the sample against the synth kick (plus = later, minus = starts a few ms into the sample), so the two don't cancel in phase.
+
+## Sources
+The **SYNTH** and **SAMPLE** switches under the controls turn each source on or off. With both on, LEVEL (SAMPLE view) balances them.
+)";
+
+    const char* instrText = R"(# INSTRUMENT (INSTR tab)
+The INSTR tab is the main page of an instrument layer: the envelope graph on the left and the knobs that are not part of one source on the right. The other tabs (OSC 1-3, SAMPLE, FILTER, FM, MIX) hold the sources and the filters.
+
+## Envelope graph
+Drag the handles. White = the **volume envelope** (ATTACK, DECAY, SUSTAIN, RELEASE), the layer colour = the **filter envelope**, yellow = the **pitch envelope**. The vertical line is where the note ends. The speaker button (**LISTEN**) plays the instrument on the preview note while you hold it; double-click to keep it playing.
+
+## Knob groups
+- **PITCH**: **OCTAVE** and **TUNE** move the whole instrument. **ENV AMT** is how far the pitch envelope bends the start (up or down), **ENV DEC** how fast it settles.
+- **SUB**: a plain oscillator under the sources. **LEVEL**, **WAVE** and **OCTAVE**. The little scope glows while the instrument sounds.
+- **NOISE**: **LEVEL**, **TONE** and **TYPE**. The **FILTER** switch sends the noise through the filters on the FILTER tab.
+- **FILTER ENVELOPE**: **AMOUNT** is how much the envelope opens the filters, **ATTACK** and **DECAY** its shape, **VEL** how much note velocity changes the amount.
+- **VOLUME ENVELOPE**: the same four stages as the white curve.
+- **WARP ENV**: moves the WARP of OSC 1 over time (needs a WARP mode on OSC 1). **SOURCE** picks what drives it, **DIRECT DEC** how fast it falls.
+- **DRIVE**: **AMOUNT** and **MODE** (the kind of clipping).
+- **LAYER OUT**: **LEVEL** is the layer volume, **DUCK** how much the sidechain lowers it, **LENGTH** the note length (how much of the pattern step the note holds) and **VOICES** how many notes can play at once.
+- **PHASE**: **POLARITY** flips the wave, **START** is where each note's wave begins, **NUDGE** shifts the layer a few ms in time. Use them to make the kick and the bass add up instead of cancelling.
+
+## Warnings
+A yellow mark on **VOICES** or **WARP ENV** means the setting is heavy on the CPU or does nothing; hover it to read why.
+)";
+
+    const char* analyzerText = R"(# ANALYZER
+The ANALYZER tab listens to your sound and shows where it works and where it does not. Pick a view with the buttons at the top.
+
+## Views
+- **KICK+BASS**: how the kick and the bass add up. Waveform, phase and correlation per 16th note, focused on 20-300 Hz. If they cancel each other, try POLARITY, START or NUDGE on the instrument (INSTR tab).
+- **COLLISIONS**: a list of places where sounds collide or cancel each other, including phase problems between kick and bass. The band and the bars are marked so you can find them.
+- **SPECTRUM**: the live spectrum of the kick, the instruments and the master, with harmonics and the EQ.
+- **REPORT**: analyses the whole pattern and writes a report: what to look at, and what an AI suggests or has fixed.
+)";
+
+    const char* aiChatText = R"(# AI CHAT
+Talk to an AI that can read and change your sound. It uses your own API key, which is stored encrypted on this computer and only sent to the provider you picked.
+
+## Getting started
+Press **KEY**, choose a provider (Gemini has a free tier, OpenAI, Claude, or Ollama on your own computer), paste the key and save it. Then pick a **MODEL**.
+
+## Header
+- **COST**: how many tokens the chat may use. *Frugal* = short answers and few steps, *Normal* = the everyday balance, *Rich* = long answers and most of the history kept.
+- **UNDO** undoes the AI's last change to the sound.
+- **NEW CHAT** starts a fresh conversation (the sound stays as it is).
+- **CHATS** saves this chat, opens a saved one or exports it to a text file. API keys are never written to these files.
+- **MEM** sets what the AI may remember: local feedback and work lessons, what it may load, and storage limits.
+
+## While it works
+**STOP** ends the run after the step that is running. If the AI stops early, **CONTINUE** (or Enter in an empty field) tells it to go on. Some steps ask you to confirm before they run.
+)";
+
     struct TopicInfo { HelpDialog::Topic topic; const char* tab; const char* text; };
     const TopicInfo topics[] = {
         { HelpDialog::Topic::pianoRoll, "PIANO ROLL", pianoRollText },
@@ -209,6 +423,17 @@ Cut the sample into pieces. Each slice gets its own "Slice N" row in the pattern
         { HelpDialog::Topic::fm, "FM", fmText },
         { HelpDialog::Topic::mix, "MIX", mixText },
         { HelpDialog::Topic::sample, "SAMPLE", sampleText },
+        { HelpDialog::Topic::env, "ENV", envText },
+        { HelpDialog::Topic::lfo, "LFO", lfoText },
+        { HelpDialog::Topic::matrix, "MATRIX", matrixText },
+        { HelpDialog::Topic::effects, "EFFECTS", effectsText },
+        { HelpDialog::Topic::master, "MASTER", masterText },
+        { HelpDialog::Topic::sidechain, "SIDECHAIN", sidechainText },
+        { HelpDialog::Topic::settings, "SETTINGS", settingsText },
+        { HelpDialog::Topic::kick, "KICK", kickText },
+        { HelpDialog::Topic::instr, "INSTR", instrText },
+        { HelpDialog::Topic::analyzer, "ANALYZER", analyzerText },
+        { HelpDialog::Topic::aiChat, "AI CHAT", aiChatText },
     };
 
     // ---- Rendering ----

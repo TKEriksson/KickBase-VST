@@ -28,7 +28,7 @@ private:
 
     std::vector<std::unique_ptr<KnobComponent>> macroKnobs;
     std::vector<std::unique_ptr<LfoDragHandle>> macroHandles;
-    juce::TextButton addButton { "+ ADD ROUTE" }, clearButton { "CLEAR ALL" };
+    juce::TextButton addButton { "+ ADD ROUTE" }, clearButton { "CLEAR ALL" }, helpButton;
     juce::Label countLabel, emptyLabel;
     juce::Rectangle<int> macroTitleArea;
 

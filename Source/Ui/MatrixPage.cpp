@@ -1,4 +1,5 @@
 #include "MatrixPage.h"
+#include "HelpDialog.h"
 
 namespace
 {
@@ -317,6 +318,8 @@ MatrixPage::MatrixPage (PluginBase& p) : processor (p)
         });
     };
     addAndMakeVisible (clearButton);
+    HelpDialog::setupButton (helpButton, *this, HelpDialog::Topic::matrix, "the MATRIX tab (routes, sources, macros)");
+    addAndMakeVisible (helpButton);
 
     countLabel.setFont (Theme::font (11.0f, true));
     countLabel.setColour (juce::Label::textColourId, Theme::textDim);
@@ -426,6 +429,8 @@ void MatrixPage::resized()
     addButton.setBounds (top.removeFromLeft (120));
     top.removeFromLeft (6);
     clearButton.setBounds (top.removeFromLeft (90));
+    top.removeFromLeft (6);
+    helpButton.setBounds (top.removeFromLeft (44));
     countLabel.setBounds (top);
     area.removeFromTop (4);
 

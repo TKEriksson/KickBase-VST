@@ -949,6 +949,7 @@ int fullStateTest()
             p.setLayerColour (layer, 0xff102030u + (juce::uint32) layer * 0x010101u);
         }
         p.previewNote = 67;
+        p.brakeCurve = 2;
     }
 
     // 1. Projektet: det sparade tillståndet är identiskt efter spara och ladda.
@@ -966,6 +967,7 @@ int fullStateTest()
             check (copy->getLayerName (layer) == original->getLayerName (layer) && copy->getLayerColour (layer) == original->getLayerColour (layer),
                    "projekt: namn och färg på instrument " + juce::String (layer + 1));
         check (copy->previewNote.load() == 67, "projekt: previewNote");
+        check (copy->brakeCurve.load() == 2, "projekt: BRAKE-kurvan");
         check (copy->userTable (0, 0) != nullptr && copy->userTable (3, 2) != nullptr && copy->userTable (9, 1) != nullptr && copy->userTable (1, 0) == nullptr, "projekt: egna wavetables på rätt plats");
         check (copy->getClickSampleName() == original->getClickSampleName() && copy->getInstrumentSampleName (1) == original->getInstrumentSampleName (1)
                    && ! copy->getClickSampleName().isEmpty() && ! copy->getInstrumentSampleName (1).isEmpty(),

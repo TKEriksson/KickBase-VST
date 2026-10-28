@@ -44,6 +44,7 @@ private:
     InstrumentParams current;
     int layer = -1, lastActive = -1, lastNamesVersion = -1;
     juce::ComboBox instrumentBox;
+    juce::TextButton helpButton;
     juce::Label instrumentLabel, moreLabel;
     std::unique_ptr<LfoDragHandle> velocityHandle, randomHandle; // fas L: flyttade hit från INSTRUMENT-sidans modulationsrad
     std::vector<Tile> tiles;
