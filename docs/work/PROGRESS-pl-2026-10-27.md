@@ -40,3 +40,11 @@
 - 27 okt eftermiddag/kväll: RING (B) bara på OSC 1 (OSC 2/3 avstås). Arbetare 1 (play-pack): FX 6f485d6, D3b JOG/LP + REC-läge + LP-design/handikon/nål 394b5f7, audiotest-fix (clear-argument, InstrumentProcessor.cpp:862) → 0 allokeringar, OSC-startpresets 45a1b0e; jobbar nu med AI-leverantörer (Anthropic/OpenAI/Ollama, inga nycklar i repot, mock-sele). Arbetare 2 (w2): E2 steg 2 slice-rader f613eaa, H5 klar 47d191b (content-d1 bara rapport, content-ph/fix-matrix redan i w2, slicertester slängda; ta E2:s StateTests vid merge), E1 pågår: metallrattar + stam på underflikar (inga nya bilder, Tobias tittar i Release).
 - Beslut Tobias: JOG-mål/flera JOGS efter första releasen (masterplan Fas I, 031e66d).
 - Kvar före Release: AI-leverantörer (Arbetare 1), E1-rest (Arbetare 2), merge-ordning (E2 först). Därefter Release-build, samlad FL-testlista (PROGRESS-w1/w2), publik PDF i docs/releases/, påminn Tobias och fråga före merge till main. Inget pushat. Tobias paus vid session-limit ca 30 min.
+
+## 28 okt (projektledaren)
+- En enda release (rel-0.4 inlagd i rel-0.3); arbetsfördelning i `plan-arbetsfordelning-rel03.md`, köordning för Arbetare 1 uppdaterad (färgväljare/TOP DECAY, autocomplete, SOUNDSTAGE, MD-hjälpdialog).
+- Branch `pl-presets` (lokal, ej pushad): 2b5986b LOOP flyttad in i JogPanel (PLAY-menyn borttagen), 1193cc9 BRAKE-kurvor VINYL/TAPE/HARD/SLOW (broms A; valet sparas inte med projektet, `PluginBase.h` brakeCurve). Debug all grön, alla tester gick igenom.
+- Docs på main (lokalt): testlistan har DAW-rader för LOOP i JOG-panelen och BRAKE-kurvorna; masterplanen har 28 okt-besluten och SAMPLE → SYNTH som senare idé.
+- Arbetare 1: SOUNDSTAGE klar (e47666c, 16 mix*Stage-parametrar sist), fortsätter TOP DECAY, sedan MD-hjälpdialog. Arbetare 2: fick "fortsätt" 28 okt 08:10.
+- Egna misstag loggade i `LESSONS.md` (28 okt). Tobias 28 okt: logga alltid misstag och uppdatera progressfilen.
+- Kvar för PL: rel-0.3-build, testlistans PDF i `docs/releases/` med hörtestsektion, Tobias testar i DAW, merge först efter ja.
