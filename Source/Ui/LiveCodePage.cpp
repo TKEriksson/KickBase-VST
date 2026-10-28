@@ -186,16 +186,45 @@ void LiveCodePage::codeDocumentTextInserted (const juce::String& text, int)
     marks.clear();
     codeChanged();
     if (ownEdit) return;
-    if ((text == "." || text == "\"") && completionEditor == nullptr)
-        juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<LiveCodePage> (this)]
+    // Öppnas av '.', av ett öppnande citationstecken och när man skrivit två tecken av ett namn (förr bara Ctrl+Space).
+    // Stängs av alla andra tecken än namn och '.', så att Enter/mellanslag efter t.ex. ')' inte fångas av listan.
+    const auto typed = text.length() == 1 ? text[0] : (juce::juce_wchar) 0;
+    const auto isName = juce::CharacterFunctions::isLetterOrDigit (typed) || typed == '_' || typed == '$';
+    if (completionEditor == nullptr)
+    {
+        if (typed == '.' || typed == '"' || isName)
+            juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<LiveCodePage> (this), typed, isName]
+            {
+                if (safe == nullptr) return;
+                juce::CodeEditorComponent* target = nullptr;
+                if (safe->editor.hasKeyboardFocus (true)) target = &safe->editor;
+                else if (auto* floating = safe->floatEditor(); floating != nullptr && floating->hasKeyboardFocus (true)) target = floating;
+                if (target == nullptr) return;
+                const auto content = safe->document.getAllContent();
+                const auto caret = target->getCaretPos().getPosition();
+                if (typed == '"' && LiveCodeComplete::stringContext (content, caret).isEmpty()) return;
+                if (isName)
+                {
+                    auto start = caret;
+                    while (start > 0 && (juce::CharacterFunctions::isLetterOrDigit (content[start - 1]) || content[start - 1] == '_' || content[start - 1] == '$')) --start;
+                    if (caret - start < 2) return;
+                }
+                safe->openCompletion (*target);
+            });
+    }
+    else
+    {
+        const auto keepOpen = isName || typed == '.' || typed == '"';
+        juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<LiveCodePage> (this), keepOpen, typed]
         {
-            if (safe != nullptr && safe->editor.hasKeyboardFocus (true)) safe->openCompletion (safe->editor);
-            else if (safe != nullptr)
-                if (auto* floating = safe->floatEditor())
-                    if (floating->hasKeyboardFocus (true)) safe->openCompletion (*floating);
+            if (safe == nullptr || safe->completionEditor == nullptr) return;
+            const auto caret = safe->completionEditor->getCaretPos().getPosition();
+            if (! keepOpen || (typed == '"' && LiveCodeComplete::stringContext (safe->document.getAllContent(), caret).isEmpty()))
+                safe->closeCompletion();
+            else
+                safe->refreshCompletion();
         });
-    else if (completionEditor != nullptr)
-        juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<LiveCodePage> (this)] { if (safe != nullptr) safe->refreshCompletion(); });
+    }
 }
 
 void LiveCodePage::codeDocumentTextDeleted (int, int)

@@ -380,3 +380,15 @@ Bygge Debug all: grönt, "Alla tester gick igenom" (rendersig oförändrad).
 - Instrumentmenyn > Color > "Custom colour...": fri färgväljare i en CallOutBox (`InstrumentMenu.h`, klassen `ColourPicker`). Varje ändring sparas direkt i projektet som palettvalen (`setLayerColour`), inga nya parametrar.
 - Bygge `Debug all` grönt, alla tester gick igenom.
 - DAW-test (Lemon): högerklicka ett instrument > Color > Custom colour..., dra i färgen. Kolla att pianorullens noter och spöknoter, radkortet och instrumentväljaren byter färg medan du drar, och att färgen finns kvar efter att projektet sparats och öppnats.
+
+## SOUNDSTAGE: bussuppdelning + flerval av källor (Arbetare 1, 2026-10-28) – PLAN
+- Idag: WIDTH / MONO BELOW / ENHANCE gäller hela summan (`Master.cpp:116-155`, efter master-EQ). Alla källor (kick, instrument 1-10, FX A-E = 16, `Mixer.h:15`) summeras i `maxBus` av `Mixer::mix` (`Mixer.cpp:108`).
+- Uppdelning: en ny parameter `masterStageMask` (heltal, 16 bitar, en per källa, SIST i `Master::addParameters`, standard = alla på = dagens ljud). Källor med bit av går i en ny `stageSkipBus` i stället för `maxBus` (samma gain/pan/send, bara annan mål-buss). Mastern kör EQ på båda (en andra `SourceEq` med samma parametrar, linjär så EQ(a)+EQ(b)=EQ(a+b)), kör stereoblocket bara på summan av de valda, lägger sedan tillbaka skip-bussen före DC/drive/limiter.
+- Ljudtråden: ingen allokering (bussen förallokeras som `maxBus`). När alla bitar är på (standard) körs ingen skip-väg alls: samma kod och samma ljud som idag, rendersig oförändrad. Merkostnad annars: en EQ + en buss-addition per block.
+- Inga ID:n, preset-index eller hash ändras. Bypass-bussen (förbi maximizern) berörs inte.
+- UI: SOUNDSTAGE-sidan får en rad källknappar (flerval, färgprickar som GHOST) och tydligare namn/tips: MONO BELOW -> "BASS MONO", WIDTH -> "WIDTH (sides)". Hjälptexter i Help.cpp.
+
+## LIVE CODE autocomplete (Arbetare 1, 2026-10-28)
+- `LiveCodeComplete.h`: fler metoder/globaler (ply, iter, scale, arp, mask, range m.fl.), `sine.`/`saw.` m.fl. ger metodlistan. `LiveCodePage.cpp` codeDocumentTextInserted: öppnas automatiskt vid '.', '"' och efter 2 bokstäver; stängs vid andra tecken så Enter inte sväljs efter ')' eller mellanslag. Ctrl+Space som förut. Inga parametrar.
+- Build Debug all grön, alla tester gick igenom.
+- DAW-test (Lemon): LIVE CODE: skriv `no` -> lista öppnas; `s("bd").` -> metoder; Enter efter `)` ger ny rad; `sine.` ger metoder; Ctrl+Space öppnar manuellt.
