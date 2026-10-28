@@ -136,6 +136,7 @@ AUTO FIX (Arbetare 1, troligen rel-0.4, plan först): välj instrument (multisel
 FUNDAMENTAL DUCK (Tobias 27 okt): när den är byggd och testad i DAW ska den slås på i de nya presets som redan byggts och i de som byggs (basar som krockar med kicken). Gäller även PSY ROLLING BASS och GLIDE BASSES. Arbetare 2 gör genomgången efter rel-0.3-testet; rendersig för presets räknas om med avsikt.
 Uppskjutet: multiband och sidechain i två band som FX-slot, AI-leverantörer, Fas J (preset-skola, AI-byggare), resterande presets.
 OBS: omfattningen är stor; releasen kan delas om testrundan blir för tung.
+Beslut 28 okt: releasen delas. rel-0.3: multisampling, FUNDAMENTAL DUCK (motor, visning, presets), ANALYZER, broms B/JOG, nav-punkter, pågående presets, New Init 1-5, saknade hörtester. rel-0.4: övertonsredigerare, sample-editor, klick-lager, reverse, parameterlanes, AUTO FIX, resterande presets, Fas J. RING, Echo/Flanger, autosave/IO ej beslutade. Se `docs/work/plan-arbetsfordelning-rel03.md`.
 
 ## Fas J: Preset-skola och AI-presetbyggare (efter första releasen, Tobias 27 okt)
 Arbetare 2 samlar genrekunskap och synthrecept i `docs/school/` (kick, rollbas, wavetables, MINIMAL, GOA, DARK PSY, DANCE, TRANCE, TECHNO, EMPIRIKAL; kategorier i presetmenyerna, GAMLA för äldre). När ett par genrer är klara: skill som läser `docs/school/` och bygger preset via render/`analyse_mix`-loopen (fas 2-3 i `docs/sound-design-roadmap.md`). Tobias öra i FL är facit; hans omdömen sparas som träningsdata.
