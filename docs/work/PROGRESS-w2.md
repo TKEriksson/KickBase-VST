@@ -287,3 +287,9 @@ Underlag: `docs/work/plan-fx-send-matrix.md` (main). Radnummer nedan är main (`
 - Summerande sends kan låta för högt om flera ligger på 1.0 (inget auto-gain, medvetet).
 - Kanal 12 + `ParamID`-ordning: lägg sist.
 - `fxAmount` vs matris för samma kanal: förslaget är summa; alternativ är "matrisen vinner", men det kräver migrering av gamla presets.
+
+### Svar på de öppna frågorna (kodkoll, 2026-10-28)
+- **Presetindex och hash: ordning i preset-listan, inte parameterordning.** Indexet är platsen i `PresetData.inl` (kommentarerna "sist så att äldre index och hashar är oförändrade", rad 443/446/638/680). Rendersig (`Tools/Tool.cpp:1574-1605`) hashar renderade samples per presetindex. Parametrar sparas och laddas på **ID** (APVTS), så nya 132 ID:n sist ändrar inte index. Parameterordningen spelar bara roll för värdens automationslista, och där hamnar de nya sist. Rendersig förblir oförändrad så länge alla sends är 0 (inga extra `send`-anrop).
+- **Helpcheck: på ID med regler, inte en nyckel per parameter.** `Tools/StateTests.cpp:43-57` går igenom alla parametrar och hoppar över lager >0 (`Presets::instrumentLayerOf`), effektkanaler utom `A`, `mixBass` utom `mixBass1` och `mixFx` utom `mixFxA`. `Help::forParameter` (`Help.cpp:10-11`) strippar `bass<lager>`-prefixet. Alltså: basmatrisen behöver **12 texter** (ett per `bassFxSendTo<N>`-fält, lager 1), kicken 12 egna ID:n = **24 texter**. Kanalerna är bara ett suffix; en gemensam regel i `forParameter` (t.ex. `contains("FxSendTo")`) kan ge alla 24 samma mall-text med kanalens bokstav.
+- **Kanal 12 i helpcheck:** nytt ID `fxL…` hoppas över av regeln `id[2] != 'A'`, och `mixFxL…` av `mixFx`-regeln, så inga fler texter behövs där.
+- **Beslut (PL):** matris + gamla `fxAmount` på samma kanal = **summa (additivt)**. **FX-pluginet får ingen matris nu.** Ingen kod i rel-0.3.
