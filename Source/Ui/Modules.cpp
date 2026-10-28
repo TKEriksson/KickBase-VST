@@ -979,6 +979,8 @@ KickModule::KickModule (PluginBase& p)
     balanceHint.setColour (juce::Label::textColourId, Theme::textDim);
     balanceHint.setTooltip ("Both on: the synth kick plus the sample, balanced with LEVEL. Click = only the sample's first moments, Layer = the whole sample on top, Replace = the sample alone.");
     addAndMakeVisible (balanceHint);
+    HelpDialog::setupButton (helpButton, *this, HelpDialog::Topic::kick, "the kick (SYNTH and SAMPLE views)");
+    addAndMakeVisible (helpButton);
 
     sampleLabel.setFont (Theme::font (11.0f));
     sampleLabel.setColour (juce::Label::textColourId, Theme::textDim);
@@ -1117,6 +1119,8 @@ void KickModule::resized()
     auto sourceRow = area.removeFromBottom (22);
     synthToggle.setBounds (sourceRow.removeFromLeft (80));
     sampleToggle.setBounds (sourceRow.removeFromLeft (90));
+    helpButton.setBounds (sourceRow.removeFromRight (44));
+    sourceRow.removeFromRight (4);
     sourceRow.removeFromLeft (8);
     balanceHint.setBounds (sourceRow);
     area.removeFromBottom (4);

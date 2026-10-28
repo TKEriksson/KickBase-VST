@@ -159,6 +159,7 @@ private:
     juce::ToggleButton synthToggle { "SYNTH" }, sampleToggle { "SAMPLE" }; // på/av för de två källorna; LEVEL i SAMPLE-vyn är balansen
     std::unique_ptr<juce::ButtonParameterAttachment> synthToggleAttachment, sampleToggleAttachment;
     juce::Label balanceHint;
+    juce::TextButton helpButton;
 
     juce::Label sampleLabel;
     juce::TextButton loadButton { "LOAD" }, clearButton { "X" }, listenSampleButton { "HEAR SAMPLE" };

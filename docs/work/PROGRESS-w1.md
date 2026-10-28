@@ -454,3 +454,8 @@ Bygge Debug all: grönt, "Alla tester gick igenom" (rendersig oförändrad).
 - SettingsPage.cpp (resized): HELP-knapp (44 px) längst till höger i raden med OPTIMIZATIONS/ABOUT; ämnet SETTINGS (HelpDialog.cpp settingsText) täcker WINDOW SIZE, OPTIMIZATIONS, ABOUT, AI LINK, FOLDERS, WAVETABLE PACK och FX-versionen.
 - Bygge grönt, alla tester gick igenom.
 - DAW-test (Lemon): öppna SETTINGS (instrument och FX), klicka HELP, kontrollera att knappen syns och att OPTIMIZATIONS-knappen fortfarande går att läsa.
+
+## HELP för KICK (Arbetare 1, 2026-10-28)
+- Modules.cpp (KickModule, resized): HELP-knapp (44 px) till höger i källraden (SYNTH/SAMPLE-reglagen), syns i båda vyerna. Bara knapp + include i Modules.h/.cpp; projektledaren informerad. Ämnet KICK (HelpDialog.cpp kickText) täcker SYNTH-vyn, SAMPLE-vyn (bibliotek, LOAD, MODE, OFFSET) och källorna.
+- Bygge grönt, alla tester gick igenom.
+- DAW-test (Lemon): öppna KICK i SYNTH- och SAMPLE-vyn, klicka HELP, kontrollera att knappen syns och att balans-texten fortfarande får plats.

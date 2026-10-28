@@ -340,6 +340,31 @@ Optional free wavetables (AKWF). Nothing is downloaded until you press the insta
 The effect version has no oscillators, so the wavetable and pack parts are hidden there.
 )";
 
+    const char* kickText = R"(# KICK
+The kick has two sources you can use alone or together: a **SYNTH** kick (a sine body with a pitch drop) and a **SAMPLE** kick (a WAV from the library or your own file). The SYNTH / SAMPLE tabs in the header switch the view.
+
+## SYNTH view
+- **TUNING / TUNE**: the pitch the kick settles on.
+- **ENVELOPES**: **PITCH AMT** = how far the pitch drops at the start, **LENGTH** = how long the kick lasts. The two envelopes are drawn in the display.
+- **BODY**: **PHASE** = where the wave starts, **HARMONICS** = overtones added to the body, **H. DECAY** = how fast they fade, **H. TILT** = low or high overtones first.
+- **CLICK**: the short transient at the start. **LEVEL**, **LENGTH** and **TONE**.
+- **DRIVE**: **MODE** = the kind of clipping, **AMOUNT** = how hard.
+- **OUT**: **HIGH CUT** removes top end, **LEVEL** is the kick's volume.
+- **SHAPE**: **WAVE** is the body waveform, **SUB** adds a sine one octave down, **FM** / **RATIO** / **FM DECAY** bend the phase at the start (punchier, more metallic).
+- **TOP**: a noisy layer on top. **NOISE** = amount, **DECAY** = how long it rings, **TONE** = its high-pass.
+- **CRUSH**: bit reduction. **COMP**: a compressor after drive and crush, 0 = off. **FILTER**: **LOW CUT**, and **VEL>PITCH** (harder hits start higher).
+- **KEY**: whether the kick follows the played note.
+
+## SAMPLE view
+- **Library** (left): click a kick to load it. Type in the search box to filter, **RESCAN** reads the library folder again. The folder is set in SETTINGS.
+- **LOAD** picks a WAV/AIFF/FLAC file, or drop a file on the kick module. **X** goes back to the synth click. **HEAR SAMPLE** plays just the sample.
+- **MODE**: *Click* = only the first moments of the sample, *Layer* = the whole sample on top of the synth kick, *Replace* = the sample is the kick.
+- **LEVEL** and **TUNE** apply to Layer and Replace. **OFFSET** moves the sample against the synth kick (plus = later, minus = starts a few ms into the sample), so the two don't cancel in phase.
+
+## Sources
+The **SYNTH** and **SAMPLE** switches under the controls turn each source on or off. With both on, LEVEL (SAMPLE view) balances them.
+)";
+
     struct TopicInfo { HelpDialog::Topic topic; const char* tab; const char* text; };
     const TopicInfo topics[] = {
         { HelpDialog::Topic::pianoRoll, "PIANO ROLL", pianoRollText },
@@ -357,6 +382,7 @@ The effect version has no oscillators, so the wavetable and pack parts are hidde
         { HelpDialog::Topic::master, "MASTER", masterText },
         { HelpDialog::Topic::sidechain, "SIDECHAIN", sidechainText },
         { HelpDialog::Topic::settings, "SETTINGS", settingsText },
+        { HelpDialog::Topic::kick, "KICK", kickText },
     };
 
     // ---- Rendering ----
