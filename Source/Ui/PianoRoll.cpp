@@ -5,7 +5,7 @@
 
 namespace
 {
-    constexpr float keyWidth = 46.0f, toolbarHeight = 46.0f, rulerHeight = 28.0f, edgeGrab = 6.0f, barSize = 11.0f, hintHeight = 16.0f;
+    constexpr float keyWidth = 46.0f, toolbarHeight = 46.0f, rulerHeight = 28.0f, edgeGrab = 12.0f, barSize = 11.0f, hintHeight = 16.0f;
     constexpr float maxPixelsPerTick = 3.0f;
 
     // jlimit kräver lägsta <= högsta; här kan intervallet vara tomt (då vinner det lägsta).
@@ -1365,10 +1365,12 @@ PianoRoll::NoteKey PianoRoll::noteAtPoint (juce::Point<float> p, bool& onRightEd
             if (! liveNote ({ tick, index }, probe))
                 continue;
             auto bounds = noteBounds ({ tick, index });
-            bounds.setWidth (std::max (bounds.getWidth(), edgeGrab * 1.5f)); // en kort ton får ett grepp som räcker utanför dess högerkant
+            const auto noteWidth = std::max (bounds.getWidth(), edgeGrab * 1.5f); // en kort ton får ett grepp som räcker utanför dess högerkant
+            bounds.setWidth (noteWidth + edgeGrab * 0.5f);                          // och greppet når en bit utanför kanten även på långa toner
             if (bounds.contains (p))
             {
-                onRightEdge = p.x > bounds.getRight() - edgeGrab;
+                const auto grab = std::min (edgeGrab, noteWidth * 0.5f) + edgeGrab * 0.5f; // en lång ton behåller mitten för flytt
+                onRightEdge = p.x > bounds.getRight() - grab;
                 return { tick, index };
             }
         }
@@ -1661,12 +1663,19 @@ void PianoRoll::paint (juce::Graphics& g)
         // Glide-plus: plusset vid glide-tonen.
         if (plusKey.valid() && drag == Drag::none)
         {
-            const auto p = plusRect().reduced (1.0f);
-            g.setColour (Theme::pattern);
+            const auto hot = hoverPointValid && plusRect().expanded (2.0f).contains (hoverPoint);
+            const auto p = plusRect().reduced (hot ? 0.0f : 1.0f);
+            if (hot) // hover: ljus ring runt plusset och ljusare fyllning
+            {
+                g.setColour (Theme::pattern.withAlpha (0.35f));
+                g.fillEllipse (p.expanded (3.0f));
+            }
+            g.setColour (hot ? Theme::pattern.brighter (0.5f) : Theme::pattern);
             g.fillEllipse (p);
             g.setColour (juce::Colours::black.withAlpha (0.85f));
-            g.drawLine (p.getCentreX() - 3.5f, p.getCentreY(), p.getCentreX() + 3.5f, p.getCentreY(), 1.6f);
-            g.drawLine (p.getCentreX(), p.getCentreY() - 3.5f, p.getCentreX(), p.getCentreY() + 3.5f, 1.6f);
+            const auto arm = p.getWidth() * 0.25f;
+            g.drawLine (p.getCentreX() - arm, p.getCentreY(), p.getCentreX() + arm, p.getCentreY(), 2.2f);
+            g.drawLine (p.getCentreX(), p.getCentreY() - arm, p.getCentreX(), p.getCentreY() + arm, 2.2f);
         }
 
         // Markeringsrutan.
@@ -2043,8 +2052,8 @@ juce::Rectangle<float> PianoRoll::plusRect() const
     if (! plusKey.valid())
         return {};
     const auto b = noteBounds (plusKey);
-    const auto y = plusBelow ? b.getBottom() + 8.0f : b.getY() - 8.0f;
-    return juce::Rectangle<float> (14.0f, 14.0f).withCentre ({ b.getRight(), y });
+    const auto y = plusBelow ? b.getBottom() + 12.0f : b.getY() - 12.0f;
+    return juce::Rectangle<float> (22.0f, 22.0f).withCentre ({ b.getRight(), y });
 }
 
 void PianoRoll::updatePlus (juce::Point<float> position, NoteKey hovered)
@@ -2058,7 +2067,7 @@ void PianoRoll::updatePlus (juce::Point<float> position, NoteKey hovered)
     }
     else if (plusKey.valid() && (! liveNote (plusKey, note) || ! (plusRect().expanded (4.0f).contains (position) || noteBounds (plusKey).expanded (16.0f).contains (position))))
         plusKey = {};
-    if (plusKey != before)
+    if (plusKey != before || plusKey.valid()) // medan plusset visas följer hover-effekten musen
         repaint();
 }
 
