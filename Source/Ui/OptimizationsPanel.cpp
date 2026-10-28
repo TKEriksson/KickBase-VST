@@ -30,6 +30,9 @@ OptimizationsPanel::OptimizationsPanel (PluginBase& processor, std::function<voi
     backButton.onClick = std::move (onBack);
     addAndMakeVisible (backButton);
 
+    HelpDialog::setupButton (helpButton, *this, HelpDialog::Topic::optimizations, "the OPTIMIZATIONS page");
+    addAndMakeVisible (helpButton);
+
     styleLabel (globalLabel, 11.0f, Theme::text, true);
     globalLabel.setText ("GLOBAL", juce::dontSendNotification);
     addAndMakeVisible (globalLabel);
@@ -164,6 +167,8 @@ void OptimizationsPanel::resized()
 
     auto top = area.removeFromTop (24);
     backButton.setBounds (top.removeFromRight (70));
+    top.removeFromRight (gap);
+    helpButton.setBounds (top.removeFromRight (44));
     top.removeFromRight (gap);
     globalLabel.setBounds (top.removeFromLeft (60));
     reduceAnimationsToggle.setBounds (top.removeFromLeft (150));

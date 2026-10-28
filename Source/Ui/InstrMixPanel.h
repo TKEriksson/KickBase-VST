@@ -23,6 +23,8 @@ private:
     {
         juce::String name;
         std::unique_ptr<KnobComponent> level, pan, width, phase; // pan, width och phase kan saknas
+        std::unique_ptr<KnobComponent> delay, length, curve;     // 5b: TIMING-vyn (POS DELAY, LENGTH, CURVE)
+        std::unique_ptr<ChoiceComponent> sync;                   // 5b: POS DELAY i notvärden
         juce::Rectangle<int> frame, meter;
     };
 
@@ -31,6 +33,7 @@ private:
     double samplesPerColumn() const { return 5.2 / zoomX; }
     void updateScrollBar();
     void setWide (bool on);
+    void setTiming (bool on); // TIMING: ratterna byter till POS DELAY / SYNC / LENGTH / CURVE per motor
     void paintTimeAxis (juce::Graphics&, juce::Rectangle<float> wave) const;
     void addStrip (const char* name, InstrumentField level, const InstrumentField* pan, const InstrumentField* width, int colourIndex, const InstrumentField* phase = nullptr);
     void renderWave();
@@ -47,7 +50,8 @@ private:
     int panSamples = 0, panAtDragStart = 0;  // vågens startpunkt (samples efter den startade tonen): mittknapp-drag eller rullningslist
     static constexpr int maxPanSamples = 96000;
     bool wide = false;                      // WIDE: vågen får hela panelens bredd, ratterna göms
-    juce::TextButton wideButton { "WIDE" }, helpButton;
+    bool timing = false;
+    juce::TextButton wideButton { "WIDE" }, timingButton { "TIMING" }, helpButton;
     juce::ScrollBar scrollBar { false };
     std::array<float, 7> peakDb {};       // varje källas toppnivå (dB) ensam, efter pan och bredd
     juce::Rectangle<int> waveArea;

@@ -135,6 +135,9 @@ struct InstrumentParams
     float aWidth = 1.0f, bWidth = 1.0f, cWidth = 1.0f; // OSC 1-3: 0 = mono, 1 = som förut, 2 = dubbel sida
     float sampleWidth = 1.0f, fmWidth = 1.0f;          // 1 = mono (som förut), upp till 2 = okorrelerat
     float noiseWidth = 1.0f;     // 1 = mono (som förut), upp till 2 = okorrelerat brus i L och R
+    // 5b: tid per motor (OSC 1, OSC 2, OSC 3, SAMPLE, NOISE, SUB, FM): POS DELAY (ms, eller SYNC = notvärde 1..7 från tempot), LENGTH (0 = hela tonen), CURVE -1..1. Alla 0 = som förut.
+    std::array<float, 7> delayMs {}, lengthMs {}, curve {};
+    std::array<int, 7> delaySync {};
     InstrumentParams() { oscB.level = 0.0f; oscC.level = 0.0f; oscC.on = false; }
 
     // Samma inställningar med alla envelope-tider i ms (Sync räknat från tempot) och, om applyOnOff, ENV 1/FILTER ENV av inbakade:
@@ -301,6 +304,10 @@ private:
     };
     ModEnv env2, env3;
     double bpm = 120.0;
+    // 5b: POS DELAY per motor (sekunder), låst i noteOn (SYNC räknas då från tempot); resetPending = motorns fas nollställs när fördröjningen passerats.
+    std::array<double, 7> delaySeconds {};
+    std::array<bool, 7> resetPending {};
+    float engineGate (int engine) const noexcept; // 0 före POS DELAY, sedan LENGTH/CURVE; exakt 1.0f när motorns tid är av
     ModEnvParams envTimes2, envTimes3; // ENV 2 och ENV 3 med tiderna i ms (ur params och tempot)
     void refreshEnvTimes();
     float pitchEnv = 0.0f;       // 1 vid anslaget, faller mot 0 (tonhöjdsenvelopen)

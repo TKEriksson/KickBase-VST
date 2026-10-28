@@ -22,6 +22,9 @@ AboutPanel::AboutPanel (PluginBase& processor, std::function<void()> onBack)
     backButton.onClick = std::move (onBack);
     addAndMakeVisible (backButton);
 
+    HelpDialog::setupButton (helpButton, *this, HelpDialog::Topic::about, "the ABOUT page");
+    addAndMakeVisible (helpButton);
+
     styleLabel (title, 13.0f, Theme::text, true);
     title.setText (juce::String (processor.isEffectVersion() ? "KICKBASE FX" : "KICKBASE") + "   version " + versionText(), juce::dontSendNotification);
     addAndMakeVisible (title);
@@ -89,6 +92,8 @@ void AboutPanel::resized()
     // Allt i en rad överst (Kickbase FX har ett lågt fönster, och textrutan ska få så mycket plats som möjligt).
     auto top = area.removeFromTop (24);
     backButton.setBounds (top.removeFromRight (70));
+    top.removeFromRight (6);
+    helpButton.setBounds (top.removeFromRight (44));
     top.removeFromRight (10);
     licenseButton.setBounds (top.removeFromRight (90));
     top.removeFromRight (6);

@@ -376,6 +376,7 @@ private:
     std::vector<std::unique_ptr<KnobComponent>> knobs;
     PresetButton presets;
     juce::Label help;
+    juce::TextButton helpButton;
 };
 
 // Mönstret (en egen flik). Två lägen per lager, som man väljer med PATTERN | GATE:

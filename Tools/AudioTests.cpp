@@ -1444,6 +1444,85 @@ int reeseTest()
     return failed ? 1 : 0;
 }
 
+// 5b POS DELAY / SYNC / LENGTH / CURVE per motor (`tool delaytest`): OSC 1 ensam, RMS per fönster.
+int delayTest()
+{
+    juce::ScopedJuceInitialiser_GUI gui;
+    auto failed = false;
+    constexpr double rate = 48000.0;
+    constexpr int blockSize = 512;
+    using F = InstrumentField;
+
+    // Renderar 1,2 s med en not och returnerar RMS per 50 ms-fönster.
+    auto windows = [&] (float delayMs, float sync, float lenMs, float curve)
+    {
+        const auto owner = std::make_unique<InstrumentProcessor>();
+        auto& processor = *owner;
+        processor.setPlayConfigDetails (0, 2, rate, blockSize);
+        processor.prepareToPlay (rate, blockSize);
+        Scenarios::setPlain (processor, ParamID::kickOn, 0.0f);
+        for (int layer = 1; layer < ParamID::numInstrumentLayers; ++layer)
+            Scenarios::setInstrument (processor, layer, F::on, 0.0f);
+        Scenarios::setInstrument (processor, 0, F::sub, 0.0f);
+        Scenarios::setInstrument (processor, 0, F::noise, 0.0f);
+        for (const auto off : { F::bOn, F::cOn, F::sampleOn, F::fmOn })   // OSC 1 ensam
+            Scenarios::setInstrument (processor, 0, off, 0.0f);
+        Scenarios::setInstrument (processor, 0, F::aDelayMs, delayMs);
+        Scenarios::setInstrument (processor, 0, F::aDelaySync, sync);
+        Scenarios::setInstrument (processor, 0, F::aLenMs, lenMs);
+        Scenarios::setInstrument (processor, 0, F::aCurve, curve);
+        Scenarios::setInstrument (processor, 0, F::aTable, (float) Wavetables::classicIndex (2)); // sågtand
+        Scenarios::setInstrument (processor, 0, F::envAmount, 0.0f);
+        processor.ensureTablesInUse();
+        OfflineRender::Settings settings;
+        settings.sampleRate = rate;
+        settings.blockSize = blockSize;
+        settings.bpm = 120.0;
+        settings.bars = 1;
+        settings.notes = { 52 };
+        const auto all = OfflineRender::render (processor, settings);
+        std::vector<float> rms;
+        const int win = (int) (rate * 0.05);
+        for (int start = 0; start + win <= all.getNumSamples(); start += win)
+        {
+            double sum = 0.0;
+            for (int i = 0; i < win; ++i)
+                sum += (double) all.getSample (0, start + i) * all.getSample (0, start + i);
+            rms.push_back ((float) std::sqrt (sum / win));
+        }
+        return rms;
+    };
+    auto check = [&] (bool ok, const char* what)
+    {
+        std::printf ("%-60s %s\n", what, ok ? "ok" : "FEL");
+        failed |= ! ok;
+    };
+
+    const auto base = windows (0.0f, 0.0f, 0.0f, 0.0f);
+    // Standardmönstret slår an första tonen vid 250 ms (fönster 5) och håller 250 ms; fönster n = n*50 ms, så notens tid är (n-5)*50 ms.
+    constexpr size_t n0 = 5;
+    check (base[n0] > 1.0e-3f, "utan POS DELAY låter notens första 50 ms");
+
+    const auto delayed = windows (100.0f, 0.0f, 0.0f, 0.0f);
+    check (delayed[n0] < 1.0e-4f && delayed[n0 + 1] < 1.0e-4f, "POS DELAY 100 ms: notens första 100 ms är tysta");
+    check (delayed[n0 + 3] > 1.0e-3f, "POS DELAY 100 ms: ljud efter 150 ms");
+
+    const auto synced = windows (0.0f, 1.0f, 0.0f, 0.0f);      // SYNC 1/16 vid 120 BPM = 125 ms (1/4 = 500 ms är längre än mönstrets not)
+    check (synced[n0] < 1.0e-4f && synced[n0 + 1] < 1.0e-4f, "SYNC 1/16 vid 120 BPM: tyst de första 100 ms");
+    check (synced[n0 + 3] > 1.0e-3f, "SYNC 1/16 vid 120 BPM: ljud efter 150 ms");
+
+    const auto gated = windows (0.0f, 0.0f, 100.0f, 0.0f);     // LENGTH 100 ms, linjär
+    check (gated[n0] > gated[n0 + 1] && gated[n0 + 1] > 1.0e-4f, "LENGTH 100 ms: nivån avtar");
+    check (gated[n0 + 3] < 1.0e-4f, "LENGTH 100 ms: tyst efter 150 ms");
+
+    const auto curved = windows (0.0f, 0.0f, 200.0f, 1.0f);   // CURVE +1: snabbare fall än linjärt
+    const auto linear = windows (0.0f, 0.0f, 200.0f, 0.0f);
+    check (curved[n0 + 2] < linear[n0 + 2], "CURVE +1 faller snabbare än linjärt");
+
+    std::puts (failed ? "FEL: delaytestet misslyckades" : "Delaytestet gick igenom");
+    return failed ? 1 : 0;
+}
+
 // Multisampling etapp 1: datamodell, zonval, omsampling, utbyte och persistens. Inga ljudtrådsberoenden utöver select(), som ska vara allokeringsfri.
 int multiSampleTest()
 {
