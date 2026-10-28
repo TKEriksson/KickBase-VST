@@ -49,3 +49,7 @@ Arbetare 2 rör inte UI. Arbetare 1 rör inte `PresetData.inl` och KickbaseTool 
 - Parameterlås: data (Arbetare 2, 807486b), ljud (Arbetare 2, 94ce1f6), UI och test (Arbetare 1, 42b093f, 096abb9). Klart.
 - Grenkedja: jog-simple → fx-echo-steps → slice-roll (innehåller fx-matrix). Slås ihop med `pl-presets` och Arbetare 2:s fix före release.
 - Blockerar rel-0.3: blocksizetest slumpfel (fanns före dessa ändringar, även på 57ddb1a). Orsak ej funnen; Arbetare 2 och 1 kör 20 körningar vardera. Opus bara efter besked från Tobias.
+
+## Till 0.4 (Tobias 28 okt kväll, efter test av rel-0.3 i Lemon)
+- **Gammal FX-länk i send-matrisen:** preset med den gamla länken (kanal + belopp + INS/SEND) visar en extra "FX1"-rad längst ner, och FX1 får ljud via två vägar (`Components.cpp:609-646`). Tobias valde lösningen att flytta den gamla länken till matrisens rad vid laddning (ingen dubblettrad). Försiktigt: rör presetladdning, IDn och hash får inte ändras, och INS-läget (torrt minskar) har ingen motsvarighet i matrisen, så avgör först vad som händer med INS.
+- **Lättare att ta bort en FX-kanal:** idag går det bara på FX-sidan (`EffectsPage.cpp:353`, bara sista kanalen). Ska också gå från send-popupen, med bekräftelse när kanalen har effekter eller sends (finns redan), och **ångra** efter borttagning (kanalens effekter, EQ, kompressor, nivå och sends ska kunna återställas).
