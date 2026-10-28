@@ -375,3 +375,8 @@ Bygge Debug all: grönt, "Alla tester gick igenom" (rendersig oförändrad).
 - Nytt: plus-ikon vid glide-tonens slut (`plusRect`/`updatePlus`), under tonen om musen är under notens mitt, annars ovanför. Drag från plusset startar ett glidestreck från notens mitt/slut och snappar till tonen under pekaren (mouseDrag). Klick utan drag gör inget. Ingen ny parameter, ingen ljudtrådskod.
 - Build Debug all grön.
 - DAW-test (Lemon): skapa en glide-ton (GLIDE på, rita), för musen över den: plus syns ovanför/under efter musens sida. Dra från plusset till en annan ton: strecket snappar till tonens början och en ny glide-ton skapas.
+
+## Egen färgväljare för instrument (Arbetare 1, 2026-10-28)
+- Instrumentmenyn > Color > "Custom colour...": fri färgväljare i en CallOutBox (`InstrumentMenu.h`, klassen `ColourPicker`). Varje ändring sparas direkt i projektet som palettvalen (`setLayerColour`), inga nya parametrar.
+- Bygge `Debug all` grönt, alla tester gick igenom.
+- DAW-test (Lemon): högerklicka ett instrument > Color > Custom colour..., dra i färgen. Kolla att pianorullens noter och spöknoter, radkortet och instrumentväljaren byter färg medan du drar, och att färgen finns kvar efter att projektet sparats och öppnats.
