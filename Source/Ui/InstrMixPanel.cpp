@@ -15,6 +15,38 @@ InstrMixPanel::InstrMixPanel (PluginBase& p, int layerIn, juce::Colour accentIn)
     addStrip ("NOISE", F::noise, &panNoise, &widthNoise, 0);
     addStrip ("SUB", F::sub, nullptr, nullptr, 0, &subPhase);
     addStrip ("FM", F::fmLevel, &panFm, &widthFm, 0, &fmPhase);
+    timingButton.setClickingTogglesState (false);
+    timingButton.setTooltip ("Show the timing of each engine instead of its levels: POS DELAY (or SYNC), LENGTH and CURVE. Click again to go back to LEVEL / PAN / WIDTH.");
+    timingButton.onClick = [this] { setTiming (! timing); };
+    addAndMakeVisible (timingButton);
+    for (size_t e = 0; e < strips.size(); ++e)
+    {
+        auto& strip = *strips[e];
+        const auto make = [&] (int which, const char* label)
+        {
+            auto knob = std::make_unique<KnobComponent> (processor.apvts, ParamID::bass (layer, ParamID::timingField ((int) e, which)), label, accent);
+            knob->setVisible (false);
+            addChildComponent (*knob);
+            return knob;
+        };
+        strip.delay = make (0, "POS DELAY");
+        strip.length = make (2, "LENGTH");
+        strip.curve = make (3, "CURVE");
+        strip.sync = std::make_unique<ChoiceComponent> (processor.apvts, ParamID::bass (layer, ParamID::timingField ((int) e, 1)), "SYNC");
+        strip.sync->setVisible (false);
+        addChildComponent (*strip.sync);
+        const auto layerIndex = layer;
+        auto& apvts = processor.apvts;
+        const auto engine = (int) e;
+        strip.delay->setWarning ([&apvts, layerIndex, engine]() -> juce::String
+        {
+            const auto read = [&] (InstrumentField f) { auto* raw = apvts.getRawParameterValue (ParamID::bass (layerIndex, f)); return raw != nullptr ? raw->load() : 0.0f; };
+            if ((int) read (ParamID::timingField (engine, 1)) > 0 || read (InstrumentField::sustain) > 0.001f)
+                return {}; // SYNC-längden och en hållen ton kan vi inte bedöma här
+            const auto noteMs = read (InstrumentField::attack) + read (InstrumentField::decay) + read (InstrumentField::release);
+            return read (ParamID::timingField (engine, 0)) > noteMs ? "POS DELAY is longer than the note" : juce::String();
+        });
+    }
     wideButton.setTooltip ("Give the combined waveform the full width of the panel (hides the knobs). Click again to bring them back.");
     wideButton.onClick = [this] { setWide (! wide); };
     scrollBar.setAutoHide (false);
@@ -26,14 +58,27 @@ InstrMixPanel::InstrMixPanel (PluginBase& p, int layerIn, juce::Colour accentIn)
     startTimerHz (4);
 }
 
+void InstrMixPanel::setTiming (bool on)
+{
+    timing = on;
+    timingButton.setButtonText (timing ? "LEVELS" : "TIMING");
+    setWide (wide); // sätter om synligheten
+}
+
 void InstrMixPanel::setWide (bool on)
 {
     wide = on;
     wideButton.setButtonText (wide ? "NARROW" : "WIDE");
     for (auto& strip : strips)
+    {
         for (auto* knob : { strip->level.get(), strip->pan.get(), strip->width.get(), strip->phase.get() })
             if (knob != nullptr)
-                knob->setVisible (! wide);
+                knob->setVisible (! wide && ! timing);
+        for (auto* knob : { strip->delay.get(), strip->length.get(), strip->curve.get() })
+            knob->setVisible (! wide && timing);
+        strip->sync->setVisible (! wide && timing);
+    }
+    timingButton.setVisible (! wide);
     resized();
     renderWave();
     repaint();
@@ -78,6 +123,7 @@ void InstrMixPanel::resized()
     waveArea = wide ? area : area.removeFromLeft (juce::jmin (260, area.getWidth() / 3));
     wideButton.setBounds (waveArea.getRight() - 56, waveArea.getY(), 56, 14);
     helpButton.setBounds (waveArea.getRight() - 56 - 4 - 40, waveArea.getY(), 40, 14);
+    timingButton.setBounds (helpButton.getX() - 4 - 56, waveArea.getY(), 56, 14);
     scrollBar.setBounds (waveArea.getX(), waveArea.getBottom() - 28, waveArea.getWidth(), 12);
     if (wide)
         return;
@@ -91,6 +137,16 @@ void InstrMixPanel::resized()
         strip.frame = cell.reduced (2);
         auto inner = strip.frame.withTrimmedTop (14).reduced (2, 0);
         strip.meter = inner.removeFromRight (10).withTrimmedBottom (4);
+        if (strip.delay->isVisible() || strip.sync->isVisible())
+        {
+            // TIMING: POS DELAY, SYNC (valruta), LENGTH, CURVE
+            const auto cell = inner.getWidth() / 4;
+            strip.delay->setBounds (inner.removeFromLeft (cell));
+            strip.sync->setBounds (inner.removeFromLeft (cell).reduced (2, 0).withSizeKeepingCentre (cell - 4, juce::jmin (inner.getHeight(), 44)));
+            strip.length->setBounds (inner.removeFromLeft (cell));
+            strip.curve->setBounds (inner);
+            return;
+        }
         const auto count = 1 + (strip.pan != nullptr ? 1 : 0) + (strip.width != nullptr ? 1 : 0) + (strip.phase != nullptr ? 1 : 0);
         const auto knobWidth = inner.getWidth() / count;
         strip.level->setBounds (inner.removeFromLeft (knobWidth));

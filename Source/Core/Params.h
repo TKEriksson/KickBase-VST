@@ -134,6 +134,10 @@ enum class InstrumentField
     ringSource,                                                  // RING (B) på OSC 1: vad OSC 1 multipliceras med (0 = OSC 2, 1 = OSC 3, 2 = OSC 2 x OSC 3)
     fundamentalDuckMode, fundamentalDuckDepth, fundamentalDuckWindow, fundamentalDuckSource, // FUNDAMENTAL DUCK per motor: 0 ÄRV (instrumentets värden, standard), 1 AV, 2 EGEN; registreras sist (addFundamentalDuckParams)
     sampleSource,                                                // multisampling: 0 = Enkel (lagrets en sampling, som förut), 1 = Multi (zoner på tangenter och anslag)
+    // 5b: tid per motor (POS DELAY, SYNC, LENGTH, CURVE), motorerna i ordningen OSC 1, OSC 2, OSC 3, SAMPLE, NOISE, SUB, FM; timingField (motor, vilken). Registreras sist (addEngineTimingParams).
+    aDelayMs, aDelaySync, aLenMs, aCurve, bDelayMs, bDelaySync, bLenMs, bCurve, cDelayMs, cDelaySync, cLenMs, cCurve,
+    sampleDelayMs, sampleDelaySync, sampleLenMs, sampleCurve, noiseDelayMs, noiseDelaySync, noiseLenMs, noiseCurve,
+    subDelayMs, subDelaySync, subLenMs, subCurve, fmDelayMs, fmDelaySync, fmLenMs, fmCurve,
     count
 };
 
@@ -153,6 +157,9 @@ namespace ParamID
     // ENV-flikens fyra rutor (0 = ENV 1, 1 = FILTER ENV, 2 = ENV 2, 3 = ENV 3): ON/OFF och tidsläget ms/Sync.
     inline InstrumentField envOnField (int tile) { return (InstrumentField) ((int) InstrumentField::env1On + tile); }
     inline InstrumentField envTileModeField (int tile) { return tile == 0 ? InstrumentField::env1Mode : tile == 1 ? InstrumentField::filterEnvMode : envModeField (tile - 2); }
+    // 5b: motorernas tid. engine 0..6 = OSC 1, OSC 2, OSC 3, SAMPLE, NOISE, SUB, FM; which 0 = DelayMs, 1 = DelaySync, 2 = LenMs, 3 = Curve.
+    constexpr int numTimingEngines = 7;
+    inline InstrumentField timingField (int engine, int which) { return (InstrumentField) ((int) InstrumentField::aDelayMs + engine * 4 + which); }
     juce::String bass (int layer, InstrumentField field);   // "bass1Cutoff" ...
     const char* instrumentFieldName (InstrumentField field);      // "Cutoff" ...
 }
@@ -171,6 +178,7 @@ namespace Params
     void addMasterParams (Layout& layout);
     void addJogParams (Layout& layout); // D3b: sist i layouten
     void addFundamentalDuckParams (Layout& layout); // FUNDAMENTAL DUCK (instrument + per motor): allra sist i instrumentets layout
+    void addEngineTimingParams (Layout& layout); // 5b: POS DELAY / SYNC / LENGTH / CURVE per motor och lager; sist i instrumentets layout
     void addKickToggleParams (Layout& layout); // kickens SYNTH/SAMPLE på/av; läses av readKick, så FX-pluginet behöver dem också
 
     juce::StringArray keyNames();

@@ -168,6 +168,14 @@ The balance of one bass layer: one strip per source, and the combined waveform o
 - **START** (SUB and FM): the phase the source starts at on each note.
 - **The meter** in each strip shows that source alone, after the filters, envelope, pan and width. Red = above -3 dB.
 
+## TIMING
+The **TIMING** button swaps the knobs of every strip to the timing of that source. **LEVELS** brings the levels back.
+- **POS DELAY**: the source is silent this long (0-4000 ms) after each note starts, then begins from its start phase. A yellow warning appears when it is longer than the note's volume envelope.
+- **SYNC**: POS DELAY in note values at the project tempo (1/16 to 4 bars) instead of milliseconds. OFF = use the POS DELAY knob. It is fixed when the note starts.
+- **LENGTH**: how long the source sounds after its POS DELAY before it has faded out. 0 = the whole note.
+- **CURVE**: the shape of that fade: 0 % = straight, above = fast first, below = slow first.
+- Everything is off by default, so existing sounds are unchanged. SAMPLE gets its timing in a later version.
+
 ## The combined waveform
 Everything this layer plays, a few cycles after the note starts (110 Hz).
 - **Mouse wheel**: zoom in time. **Shift + wheel**: zoom the height.

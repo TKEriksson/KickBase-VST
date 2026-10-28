@@ -34,6 +34,7 @@ namespace
         Params::addJogParams (layout); // JOG (D3b)
         Params::addFundamentalDuckParams (layout); // FUNDAMENTAL DUCK: allra sist
         Mixer::addStageParameters (layout); // SOUNDSTAGE-val per källa: nya parametrar sist
+        Params::addEngineTimingParams (layout); // 5b: POS DELAY / LENGTH / CURVE per motor: nya parametrar sist
         return layout;
     }
 
