@@ -1,6 +1,7 @@
 // Tester för AUTO FIX-mätdelen (Source/Core/AutoFix.h) på påhittade data.
 
 #include "../Source/Core/AutoFix.h"
+#include "../Source/Core/AutoFixMix.h"
 #include "TestUtils.h"
 #include <cmath>
 #include <cstring>
@@ -144,6 +145,41 @@ namespace
         check (same, "samma indata ger samma lista");
         check (a.actions.size() > 0 && a.actions[0].instrument == 1, "instrumentordning inom samma allvar");
     }
+
+    void testFromPhaseMetrics()
+    {
+        std::puts ("AutoFix: fromPhaseMetrics");
+        MixAnalysis::PhaseMetrics p;
+        check (! AutoFix::fromPhaseMetrics (p).valid, "ogiltiga mått ger ogiltig PhaseInfo");
+
+        p.valid = true;
+        const int n = 8;
+        p.lowCorrelation = { -0.8f, -0.8f, -0.8f, 0.5f, -0.8f, 0.0f, 0.0f, 0.0f };
+        p.lowActive = { 1, 1, 1, 1, 1, 0, 0, 0 };
+        p.lowWeight.assign ((size_t) n, 1.0f);
+        p.lowKickDb.assign ((size_t) n, -20.0f);
+        p.lowBassDb = { -16.0f, -30.0f, -30.0f, -30.0f, -16.0f, 0.0f, 0.0f, 0.0f };
+        p.lowKickHit = { 1, 0, 0, 0, 1, 0, 0, 0 };
+        auto info = AutoFix::fromPhaseMetrics (p, 4.5f);
+        check (info.valid, "giltig");
+        check (std::abs (info.meanCorrelation - (-0.54f)) < 0.001f, "viktad medelkorrelation", info.meanCorrelation);
+        check (std::abs (info.negativeShare - 0.8f) < 0.001f, "andel negativa", info.negativeShare);
+        check (std::abs (info.bassMinusKickDb - 4.0f) < 0.001f, "nivå räknas på kickslagen", info.bassMinusKickDb);
+        check (info.excess200Db == 4.5f, "200 Hz-överskottet förs vidare");
+
+        p.lowActive = { 1, 1, 0, 0, 0, 0, 0, 0 };
+        check (! AutoFix::fromPhaseMetrics (p).valid, "för få aktiva 16-delar ger ogiltig");
+
+        // Hela kedjan: måtten leder till fas- och nivååtgärder.
+        p.lowActive = { 1, 1, 1, 1, 1, 0, 0, 0 };
+        AutoFix::Input in;
+        in.kickTailHz = 45.0f;
+        auto b = bass (45.0f);
+        b.phase = AutoFix::fromPhaseMetrics (p, 0.0f);
+        in.instruments = { b };
+        const auto r = AutoFix::analyse (in);
+        check (find (r, "phaseRotation") != nullptr && find (r, "noteVelocity") != nullptr, "kedjan ger åtgärder");
+    }
 }
 
 void runAutoFixTests()
@@ -154,4 +190,5 @@ void runAutoFixTests()
     testWindowWidening();
     testPhaseLevelExcess();
     testEdgesAndDeterminism();
+    testFromPhaseMetrics();
 }
