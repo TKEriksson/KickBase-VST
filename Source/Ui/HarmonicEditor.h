@@ -27,6 +27,7 @@ private:
     void setColumn (int column, float value);
     void applyBrush (int column, float value);
     void setZoom (int count);
+    void applyPreset (int id);
     float valueAt (juce::Point<float> position) const;
     void setFromMouse (juce::Point<float> position);
     void changed();
@@ -50,11 +51,12 @@ private:
 
     std::array<float, shown> gainDb {};   // 0 = oförändrad, -120 = borttagen
     std::array<float, shown> phaseDeg {}; // läggs till fasen
+    std::array<float, shown> baseAmp {}, basePhase {}; // utgångspunktens amplitud och fas i vald frame (för presets)
     std::array<float, shown> backdrop {}; // utgångspunktens amplitud i vald frame, 0..1 av största
     std::array<float, Wavetable::frameSize> before {}, after {}; // vald frame: utgångspunkt och med ändringen
 
     enum Brush { draw = 1, line, smooth, random };
-    juce::ComboBox frameBox, brushBox, zoomBox;
+    juce::ComboBox frameBox, brushBox, zoomBox, presetBox;
     int visible = shown;     // antal visade övertoner (16 / 32 / 64)
     int seed = 1;            // RANDOM: nytt frö för varje drag, samma frö ger samma värden
     int anchorColumn = 0;    // LINE: där draget började

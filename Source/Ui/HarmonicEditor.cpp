@@ -26,6 +26,18 @@ HarmonicEditor::HarmonicEditor (PluginBase& p, int layerIn, int oscIn, juce::Col
     brushBox.setTooltip ("Brush. DRAW: set bars under the mouse. LINE: drag a straight line from where you pressed. SMOOTH: average each bar with its neighbours. RANDOM: random values in a sensible range.");
     addAndMakeVisible (brushBox);
 
+    presetBox.addItem ("PRESET...", 1);
+    presetBox.addItem ("SAW", 2);
+    presetBox.addItem ("SQUARE", 3);
+    presetBox.addItem ("TRIANGLE", 4);
+    presetBox.addItem ("ODD", 5);
+    presetBox.addItem ("EVEN", 6);
+    presetBox.addItem ("BASS WARM", 7);
+    presetBox.setSelectedId (1, juce::dontSendNotification);
+    presetBox.onChange = [this] { applyPreset (presetBox.getSelectedId()); presetBox.setSelectedId (1, juce::dontSendNotification); };
+    presetBox.setTooltip ("Shape the harmonics into a classic spectrum (relative to the loudest harmonic of the table you opened). You can keep editing afterwards.");
+    addAndMakeVisible (presetBox);
+
     zoomBox.addItem ("16 harmonics", 16);
     zoomBox.addItem ("32 harmonics", 32);
     zoomBox.addItem ("64 harmonics", 64);
@@ -47,6 +59,48 @@ void HarmonicEditor::resized()
     zoomBox.setBounds (top.removeFromRight (120));
     top.removeFromRight (6);
     brushBox.setBounds (top.removeFromRight (90));
+    top.removeFromRight (6);
+    presetBox.setBounds (top.removeFromRight (110));
+}
+
+// Sätter gainDb/phaseDeg så att spektrumet i vald frame blir det valda (1/k osv.), mätt mot den starkaste övertonen. Fasen följer sin (kx + p).
+void HarmonicEditor::applyPreset (int id)
+{
+    if (! available || id < 2)
+        return;
+    const auto reference = *std::max_element (baseAmp.begin(), baseAmp.end());
+    if (reference < 1.0e-6f)
+        return;
+    for (int k = 1; k <= shown; ++k)
+    {
+        const auto odd = (k % 2) == 1;
+        float target = 0.0f, targetPhase = 0.0f;
+        switch (id)
+        {
+            case 2: target = 1.0f / (float) k; break;
+            case 3: target = odd ? 1.0f / (float) k : 0.0f; break;
+            case 4: target = odd ? 1.0f / (float) (k * k) : 0.0f; targetPhase = ((k / 2) % 2) == 1 ? juce::MathConstants<float>::pi : 0.0f; break;
+            case 5: target = odd ? 1.0f / std::sqrt ((float) k) : 0.0f; break;
+            case 6: target = (k == 1 || ! odd) ? 1.0f / (float) k : 0.0f; break;
+            default: target = k <= 4 ? 1.0f / (float) (1 << (k - 1)) : 0.0f; break;
+        }
+        const auto i = (size_t) k - 1;
+        if (target <= 0.0f)
+            gainDb[i] = -120.0f;
+        else if (baseAmp[i] < reference * 1.0e-4f)
+            gainDb[i] = 0.0f; // finns ingen energi att skala upp
+        else
+        {
+            const auto db = juce::Decibels::gainToDecibels (target * reference / baseAmp[i]);
+            gainDb[i] = std::abs (db) < 0.6f ? 0.0f : juce::jlimit (minDb + 2.0f, maxDb, db);
+        }
+        auto delta = juce::radiansToDegrees (targetPhase - basePhase[i]);
+        delta = std::fmod (delta + 540.0f, 360.0f) - 180.0f;
+        phaseDeg[i] = std::abs (delta) < 4.0f ? 0.0f : std::round (delta);
+    }
+    refreshPreview();
+    changed();
+    repaint();
 }
 
 void HarmonicEditor::setZoom (int count)
@@ -106,6 +160,8 @@ void HarmonicEditor::refreshBackdrop()
         return;
     std::vector<float> amp, phase;
     WavetableEdit::analyse (baseline.data() + (size_t) shownFrame() * Wavetable::frameSize, shown, amp, phase);
+    std::copy_n (amp.begin(), shown, baseAmp.begin());
+    std::copy_n (phase.begin(), shown, basePhase.begin());
     const auto biggest = *std::max_element (amp.begin(), amp.end());
     if (biggest > 1.0e-6f)
         for (int k = 0; k < shown; ++k)
