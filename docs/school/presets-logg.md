@@ -20,3 +20,8 @@ En rad per preset. Kolumner: namn | kategori | nyckelparametrar | mätt | ändra
 | Glide Dive | GLIDE BASSES | PSY CLEAN F Soft + Saw Soft/Psy Roll, oktavfall 200–300 %, chorus-send | peak −2,0, centroid 84 | commit följer | tydliga dyk |
 | Roll 1–4, Glide Sub/Acid/Dive | PSY ROLLING, GLIDE BASSES | + FUNDAMENTAL DUCK (Kick-källa): 9 dB/200 cent, Glide Sub 12 dB/250 cent | audit full före/efter: 60–250 Hz ≤0,1 dB, övrigt oförändrat (smalt filter) | commit följer | se fundamental-duck.md; effekten hörs bara i DAW |
 | Duck Demo | GLIDE BASSES (sist) | D-kick (36,7 Hz) + lång sub-bas på x±1/x+3 (±100 cent från kicken, dissonant), FUNDAMENTAL DUCK 12 dB/200 cent, ingen send | audit full: peak −0,9, RMS −11,4, centroid 87 (duck på; skillnaden på/av hörs i DAW) | commit följer | demo: grundtonerna krockar och sväver |
+| New Init 1 | (sist) | fabriks-Init + FUNDAMENTAL DUCK 9 dB/200 cent, duck-rattar som i Init | audit: som Init (peak −0,3, centroid 78) | commit följer | startpunkt med duck |
+| New Init 2 | (sist) | Sub + Acid, halftime över två takter, LFO 1 → acid-filter | peak −0,3, RMS −10,6, centroid 73 | commit följer | gles |
+| New Init 3 | (sist) | Bara sub, offbeat | peak −3,4, RMS −10,1, centroid 64 | commit följer | renast |
+| New Init 4 | (sist) | Sub + mellanbas, rullande | peak −1,6, RMS −9,2, centroid 74 | commit följer | |
+| New Init 5 | (sist) | Mellanbas + acid, LFO 1 → acid-filter, två takter | peak −1,0, RMS −11,3, centroid 118 | commit följer | ljusast |

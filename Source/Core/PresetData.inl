@@ -418,6 +418,11 @@ namespace
     Preset glideBass2();
     Preset glideBass3();
     Preset duckDemo();
+    Preset newInit1();
+    Preset newInit2();
+    Preset newInit3();
+    Preset newInit4();
+    Preset newInit5();
 
     const std::vector<Preset>& fullPresets()
     {
@@ -432,7 +437,9 @@ namespace
                                                    // Arbetare 2, kategori glideBassesCategory.
                                                    glideBass1(), glideBass2(), glideBass3(),
                                                    // Arbetare 2: demo av FUNDAMENTAL DUCK (basen krockar med kickens grundton).
-                                                   duckDemo() };
+                                                   duckDemo(),
+                                                   // Arbetare 2: New Init 1-5, varianter av fabriks-Init (samma lagerljud).
+                                                   newInit1(), newInit2(), newInit3(), newInit4(), newInit5() };
         return presets;
     }
 
@@ -550,6 +557,59 @@ namespace
                                sendTo (0, 1, 0.0f), fundDuck (12.0f, 200.0f) }),
                        join ({ fx (0, 0, EffectType::distortion, { 0, 0.10f, 5000.0f, 1.0f }), { ch (0, "Duck", 0.0f), ch (0, "EqHp", 20.0f) } }),
                        { { 0, InstrumentGrid::sixteenth, { "x+1 . . . . . . . x+3 . . . . . . .", "x-1 . . . . . . . x+1 . . . . . . ." }, 0.9f } }, 1, 2);
+    }
+
+    // New Init 1-5: startpunkter byggda på fabriks-Init (initSub, initMid, initAcid). Init själv är oförändrad.
+    // 1. Init med FUNDAMENTAL DUCK på: alla tre lager viker för kickens grundton.
+    Preset newInit1()
+    {
+        auto p = initPreset();
+        p.name = "New Init 1";
+        for (int layer = 0; layer < 3; ++layer)
+            p.values.push_back ({ ParamID::bass (layer, F::duck).toStdString(), layer == 0 ? 0.9f : 0.8f });
+        for (const auto& v : fundDuck (9.0f, 200.0f))
+            p.values.push_back (v);
+        return p;
+    }
+
+    // 2. Halftime: sub och acid i två lager, glesa mönster över två takter.
+    Preset newInit2()
+    {
+        Preset p { "New Init 2", join ({ initSub (0), initAcid (1), { { ParamID::instrumentCount, 2 }, { "patternBars", 2 }, { "lfo1On", 1 }, { "lfo1Shape", 0 }, { "lfo1Rate", 4 } } }) };
+        p.extras.pattern = {
+            { 0, InstrumentGrid::sixteenth, { ". . x:380 . . . . . . . x:380 . . . . .", ". . x:380 . . . . . . . x:190 . x:190 . ." }, 0.7f },
+            { 1, InstrumentGrid::sixteenth, { ". . . . x+3 . . . . . . . X+7 . . .", ". . . . x+5 . . . . . . . X+12 . x+10 ." }, 0.7f } };
+        p.extras.routes = { { 0, "bass2Cutoff", 0.35f } };
+        return p;
+    }
+
+    // 3. Bara sub: ett lager, offbeat, den renaste startpunkten.
+    Preset newInit3()
+    {
+        Preset p { "New Init 3", join ({ initSub (0), { { ParamID::instrumentCount, 1 }, { "patternBars", 1 } } }) };
+        p.extras.pattern = { { 0, InstrumentGrid::sixteenth, { ". . x:190 . . . x:190 . . . x:190 . . . x:190 ." }, 0.7f } };
+        return p;
+    }
+
+    // 4. Rullande: sub och mellanbas, mellanbasen fyller sextondelarna mellan kickarna.
+    Preset newInit4()
+    {
+        Preset p { "New Init 4", join ({ initSub (0), initMid (1), { { ParamID::instrumentCount, 2 }, { "patternBars", 1 } } }) };
+        p.extras.pattern = {
+            { 0, InstrumentGrid::sixteenth, { ". . x:190 . . . x:190 . . . x:190 . . . x:190 ." }, 0.7f },
+            { 1, InstrumentGrid::sixteenth, { ". x x x . x x x . x x x . x x X" }, 0.7f } };
+        return p;
+    }
+
+    // 5. Acid-duo: mellanbas och acid, LFO 1 sveper acidens filter över två takter.
+    Preset newInit5()
+    {
+        Preset p { "New Init 5", join ({ initMid (0), initAcid (1), { { ParamID::instrumentCount, 2 }, { "patternBars", 2 }, { "lfo1On", 1 }, { "lfo1Shape", 0 }, { "lfo1Rate", 4 } } }) };
+        p.extras.pattern = {
+            { 0, InstrumentGrid::sixteenth, { ". m x x . m x x . m x x . m x X", ". m x x . m x x . m x x . x m x" }, 0.7f },
+            { 1, InstrumentGrid::sixteenth, { "x . m . x+3 . x . m+7 . x . X+12 . x+10 .", "x . . m x . x+7 . m . x+3 . x . X+5 x" }, 0.7f } };
+        p.extras.routes = { { 0, "bass2Cutoff", 0.4f } };
+        return p;
     }
 
     const std::vector<Preset>& kickPresets()

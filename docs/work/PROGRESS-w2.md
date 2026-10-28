@@ -179,3 +179,7 @@ Nu: programmet, rel-0.3 motornära punkter: 1) S3 Unison/Reese, 2) multisampling
 ## Duck Demo (28 okt, Arbetare 2, på Tobias begäran)
 - `duckDemo()` i `PresetData.inl` (sist i fullPresets): D-kick (tone 2) och lång bas på x±1 / x+3, alltså ±100 cent från kickens grundton (inom fönstret 200 cent) och dissonant. Duck 12 dB, send 0.
 - Build grön. Audit visar bara duck-på-värden; på/av-skillnaden är inte mätt, den ska lyssnas fram i DAW (testrad tillagd).
+
+## New Init 1–5 (28 okt, Arbetare 2)
+- `newInit1–5` i `PresetData.inl`, sist i fullPresets, byggda av `initPreset()`/initSub/initMid/initAcid. Init oförändrad (rendersig 94f0a1b6bd8a3c7f). Build grön, audit utan clip.
+- Kvar: SYNTH, MID BASS, HI BASS, genrer (max 3 per kategori), Fas J (preset-skola).
