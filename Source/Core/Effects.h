@@ -126,6 +126,15 @@ namespace Effects
     void moveSlot (juce::AudioProcessorValueTreeState& apvts, int channel, int from, int to);
 
     EffectType slotType (const juce::AudioProcessorValueTreeState& apvts, int channel, int slot);
+
+    // Antalet effektkanaler som visas (gemensamt för alla väljare, FX-sidan och mixern). Sparas i state-trädet (egenskapen fxChannelCount), inte som
+    // parameter: det är en visningsinställning. Aldrig färre än den högsta kanal som används (send eller effekt), så gamla projekt visar allt.
+    int visibleChannels (const juce::AudioProcessorValueTreeState& apvts);
+    bool addChannel (juce::AudioProcessorValueTreeState& apvts); // visar en kanal till; falskt om alla redan visas
+    bool channelHasSends (const juce::AudioProcessorValueTreeState& apvts, int channel); // någon källa skickar hit (matris eller gamla kanal+belopp)
+    bool channelHasEffects (const juce::AudioProcessorValueTreeState& apvts, int channel); // någon effekt på, eller EQ ändrad
+    // Tar bort den sista synliga kanalen: nollställer dess sends, effekter och EQ och minskar antalet. Anroparen frågar användaren först.
+    bool removeLastChannel (juce::AudioProcessorValueTreeState& apvts);
 }
 
 // En effektkanal: platserna i ordning.

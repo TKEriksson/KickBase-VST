@@ -269,7 +269,7 @@ EffectsPage::EffectsPage (PluginBase& p)
     : processor (p), presets (p, Presets::Section::effects, Theme::effects), strip (p), editor (p), eq (p)
 {
     presets.setEmptyLabel ("FX Preset");
-    presets.setTooltip ("FX PRESET - Saves or loads the selected effect channel (FX1-FX11): its five effects with their settings, its EQ and compressor, level and duck. "
+    presets.setTooltip ("FX PRESET - Saves or loads the selected effect channel (FX1-FX12): its five effects with their settings, its EQ and compressor, level and duck. "
                         "The other channels are not touched, and who sends to the channel is not part of it.");
     addAndMakeVisible (presets);
     HelpDialog::setupButton (helpButton, *this, HelpDialog::Topic::effects, "the EFFECTS tab (channels, slots, EQ, compressor, duck)");
@@ -292,17 +292,23 @@ EffectsPage::EffectsPage (PluginBase& p)
     }
     addChildComponent (eq);
 
-    for (int ch = 0; ch < numLegacyEffectChannels; ++ch)
+    channelBox.setTooltip ("FX CHANNEL - Picks the effect channel to edit. A channel is a mixer channel for effects; each source sends to it with FX SEND "
+                           "(the FX button on the instrument page). Channels are added with + add FX channel in the send window.");
+    channelBox.onChange = [this]
     {
-        auto& button = channelButtons[(size_t) ch];
-        button.setButtonText (Effects::channelLabel (ch));
-        button.getProperties().set ("chip", true);
-        button.setColour (juce::TextButton::buttonOnColourId, Theme::effects.withAlpha (0.55f));
-        button.setTooltip ("FX CHANNEL " + Effects::channelLabel (ch) + " - A mixer channel for effects. Each instrument picks a channel "
-                           "and how much of its sound goes through it (FX SEND on the instrument page).");
-        button.onClick = [this, ch] { selectChannel (ch); };
-        addAndMakeVisible (button);
+        if (const int id = channelBox.getSelectedId(); id > 0 && id - 1 != channel)
+            selectChannel (id - 1);
+    };
+    addAndMakeVisible (channelBox);
 
+    removeButton.setButtonText ("Remove last");
+    removeButton.setTooltip ("REMOVE LAST FX CHANNEL - Removes the highest FX channel everywhere (all sources, the mixer and this page). "
+                             "If it has effects or sends you are asked first; they are reset to their defaults.");
+    removeButton.onClick = [this] { askRemoveLastChannel(); };
+    addAndMakeVisible (removeButton);
+
+    for (int ch = 0; ch < numEffectChannels; ++ch)
+    {
         levels.push_back (std::make_unique<KnobComponent> (p.apvts, Effects::channelParamID (ch, "Level"), "LEVEL", Theme::effects));
         ducks.push_back (std::make_unique<KnobComponent> (p.apvts, Effects::channelParamID (ch, "Duck"), "DUCK", Theme::effects));
         levels.back()->setDescription ("Volume of this channel's effect output.");
@@ -318,8 +324,61 @@ EffectsPage::EffectsPage (PluginBase& p)
     addAndMakeVisible (strip);
     addAndMakeVisible (editor);
 
+    refreshChannels();
     selectChannel (0);
     selectView ((View) juce::jlimit (0, 2, p.selectedFxView));
+    startTimerHz (4);
+}
+
+void EffectsPage::timerCallback()
+{
+    if (Effects::visibleChannels (processor.apvts) != shownChannels)
+        refreshChannels();
+}
+
+// Rullistan följer det globala kanalantalet (ändras av "+ add FX channel" och av borttagning).
+void EffectsPage::refreshChannels()
+{
+    shownChannels = Effects::visibleChannels (processor.apvts);
+    channelBox.clear (juce::dontSendNotification);
+    for (int ch = 0; ch < shownChannels; ++ch)
+        channelBox.addItem (Effects::channelLabel (ch), ch + 1);
+    removeButton.setEnabled (shownChannels > 1);
+    if (channel >= shownChannels)
+        selectChannel (shownChannels - 1);
+    else
+        channelBox.setSelectedId (channel + 1, juce::dontSendNotification);
+}
+
+void EffectsPage::askRemoveLastChannel()
+{
+    const auto last = Effects::visibleChannels (processor.apvts) - 1;
+    if (last < 1)
+        return;
+    const auto label = Effects::channelLabel (last);
+    auto remove = [this] { Effects::removeLastChannel (processor.apvts); refreshChannels(); };
+
+    if (! Effects::channelHasSends (processor.apvts, last) && ! Effects::channelHasEffects (processor.apvts, last))
+    {
+        remove();
+        return;
+    }
+    juce::AlertWindow::showAsync (juce::MessageBoxOptions()
+                                      .withIconType (juce::MessageBoxIconType::QuestionIcon)
+                                      .withTitle ("Remove " + label + "?")
+                                      .withMessage (label + " has effects or sends. Removing it resets its effects, EQ, compressor and level, "
+                                                    "and sets every send to it to 0.")
+                                      .withButton ("Remove")
+                                      .withButton ("Cancel")
+                                      .withAssociatedComponent (this),
+                                  [safe = juce::Component::SafePointer<EffectsPage> (this)] (int result)
+                                  {
+                                      if (result == 1 && safe != nullptr)
+                                      {
+                                          Effects::removeLastChannel (safe->processor.apvts);
+                                          safe->refreshChannels();
+                                      }
+                                  });
 }
 
 void EffectsPage::selectView (View newView)
@@ -332,23 +391,23 @@ void EffectsPage::selectView (View newView)
     strip.setVisible (view == View::fx);
     editor.setVisible (view == View::fx);
     eq.setVisible (view == View::eq);
-    for (int ch = 0; ch < numLegacyEffectChannels; ++ch)
+    for (int ch = 0; ch < numEffectChannels; ++ch)
         comps[(size_t) ch]->setVisible (view == View::comp && ch == channel);
 }
 
 void EffectsPage::selectChannel (int newChannel)
 {
     channel = newChannel;
-    for (int ch = 0; ch < numLegacyEffectChannels; ++ch)
+    channelBox.setSelectedId (channel + 1, juce::dontSendNotification);
+    for (int ch = 0; ch < numEffectChannels; ++ch)
     {
-        channelButtons[(size_t) ch].setToggleState (ch == channel, juce::dontSendNotification);
         levels[(size_t) ch]->setVisible (ch == channel);
         ducks[(size_t) ch]->setVisible (ch == channel);
     }
     strip.setChannel (channel);
     eq.setChannel (channel);
     presets.setLayer (channel, Theme::effects);
-    for (int ch = 0; ch < numLegacyEffectChannels; ++ch)
+    for (int ch = 0; ch < numEffectChannels; ++ch)
         comps[(size_t) ch]->setVisible (view == View::comp && ch == channel);
     selectSlot (slot);
 }
@@ -366,14 +425,11 @@ void EffectsPage::resized()
 {
     auto area = getLocalBounds();
 
-    // Elva kanaler i två kolumner (FX1-6 och FX7-11).
+    // Kanalvalet: en rullista och en knapp för att ta bort den sista kanalen.
     auto left = area.removeFromLeft (112);
-    const auto perColumn = (numLegacyEffectChannels + 1) / 2;
-    const auto buttonHeight = std::min (34, (left.getHeight() - 4 * perColumn) / perColumn);
-    const auto columnWidth = left.getWidth() / 2;
-    for (size_t i = 0; i < channelButtons.size(); ++i)
-        channelButtons[i].setBounds (left.getX() + ((int) i / perColumn) * columnWidth, left.getY() + ((int) i % perColumn) * (buttonHeight + 4),
-                                     columnWidth - 4, buttonHeight);
+    channelBox.setBounds (left.removeFromTop (30));
+    left.removeFromTop (6);
+    removeButton.setBounds (left.removeFromTop (26));
     area.removeFromLeft (10);
 
     auto knobs = area.removeFromLeft (170);
@@ -383,7 +439,7 @@ void EffectsPage::resized()
         button.setBounds (tabs.removeFromLeft (tabWidth).reduced (2, 0));
     knobs.removeFromTop (4);
     const auto half = knobs.getWidth() / 2;
-    for (int ch = 0; ch < numLegacyEffectChannels; ++ch)
+    for (int ch = 0; ch < numEffectChannels; ++ch)
     {
         levels[(size_t) ch]->setBounds (knobs.withWidth (half));
         ducks[(size_t) ch]->setBounds (knobs.withTrimmedLeft (half));

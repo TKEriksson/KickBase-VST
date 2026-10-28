@@ -1,6 +1,7 @@
 #include "Components.h"
 #include "../Core/PluginBase.h"
 #include "Help.h"
+#include "../Core/Effects.h"
 #include "KickbaseLookAndFeel.h"
 
 namespace
@@ -462,8 +463,192 @@ void ChoiceComponent::Box::mouseDown (const juce::MouseEvent& e)
 }
 
 //==============================================================================
-FxSendControl::FxSendControl (juce::AudioProcessorValueTreeState& apvts, const juce::String& channelID, const juce::String& amountID, const juce::String& modeID,
-                              const juce::String& name, juce::Colour accent)
+namespace
+{
+    // Innehållet i FX-send-popupen: en rad per effektkanal (FXn, på/av, reglage i %), den gamla INS/SEND-länken som en vanlig rad och "+ add FX channel".
+    // På/av är bara en genväg: av = beloppet 0 och reglaget låst, på = reglaget går att dra. Senaste värdet minns bara medan fönstret är öppet.
+    class FxSendPopup : public juce::Component, private juce::Timer
+    {
+    public:
+        FxSendPopup (juce::AudioProcessorValueTreeState& s, const juce::String& channelIDIn, const juce::String& amountIDIn, const juce::String& modeIDIn,
+                     const juce::StringArray& sendIDs, juce::Colour accentIn)
+            : apvts (s), channelID (channelIDIn), amountID (amountIDIn), modeID (modeIDIn), sendToIDs (sendIDs), accent (accentIn)
+        {
+            addButton.setButtonText ("+ add FX channel");
+            addButton.setTooltip ("Adds an FX channel everywhere (all sources, the mixer and the FX page). The new send is 0. Channels are removed on the FX page.");
+            addButton.onClick = [this]
+            {
+                if (Effects::addChannel (apvts))
+                    rebuild();
+            };
+            addAndMakeVisible (addButton);
+            rebuild();
+            startTimerHz (10);
+        }
+
+        void resized() override
+        {
+            auto area = getLocalBounds().reduced (6);
+            for (auto& row : rows)
+                row->setBounds (area.removeFromTop (rowHeight));
+            area.removeFromTop (2);
+            addButton.setBounds (area.removeFromTop (rowHeight));
+        }
+
+    private:
+        static constexpr int rowHeight = 24;
+        static constexpr int popupWidth = 320;
+
+        struct Row : public juce::Component
+        {
+            Row (juce::AudioProcessorValueTreeState& s, const juce::String& text, const juce::String& amountParam, const juce::String& help,
+                 juce::Colour accent)
+                : parameter (s.getParameter (amountParam))
+            {
+                label.setText (text, juce::dontSendNotification);
+                label.setFont (Theme::font (11.0f, true));
+                label.setColour (juce::Label::textColourId, Theme::text);
+                addAndMakeVisible (label);
+
+                onOff.setButtonText ("");
+                onOff.setColour (juce::ToggleButton::tickColourId, accent);
+                onOff.setTooltip ("On/off shortcut. Off sets the amount to 0 and locks the slider; on restores the last amount (kept only while this window is open).");
+                addAndMakeVisible (onOff);
+
+                slider.setSliderStyle (juce::Slider::LinearHorizontal);
+                slider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 44, 18);
+                slider.setColour (juce::Slider::trackColourId, accent);
+                slider.setColour (juce::Slider::thumbColourId, Theme::text);
+                slider.setTooltip (help);
+                slider.parameter = parameter;
+                addAndMakeVisible (slider);
+                attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (s, amountParam, slider);
+                slider.textFromValueFunction = [] (double v) { return juce::String (juce::roundToInt (v * 100.0)) + " %"; };
+                slider.valueFromTextFunction = [] (const juce::String& t) { return t.getDoubleValue() / 100.0; };
+                slider.updateText();
+
+                onOff.onClick = [this]
+                {
+                    if (parameter == nullptr)
+                        return;
+                    if (! onOff.getToggleState())
+                    {
+                        if (slider.getValue() > 0.0)
+                            remembered = slider.getValue();
+                        slider.setValue (0.0, juce::sendNotificationSync);
+                    }
+                    else
+                        slider.setValue (remembered, juce::sendNotificationSync);
+                    refresh();
+                };
+                refresh();
+            }
+
+            // Följer parametern (automation, återställning) så att knapp och reglage stämmer.
+            void refresh()
+            {
+                const bool on = slider.getValue() > 0.0;
+                if (on)
+                    remembered = slider.getValue();
+                if (onOff.getToggleState() != on)
+                    onOff.setToggleState (on, juce::dontSendNotification);
+                slider.setEnabled (on);
+            }
+
+            void resized() override
+            {
+                auto area = getLocalBounds();
+                label.setBounds (area.removeFromLeft (34));
+                onOff.setBounds (area.removeFromLeft (24));
+                if (extra != nullptr)
+                    extra->setBounds (area.removeFromRight (42));
+                slider.setBounds (area);
+            }
+
+            juce::Label label;
+            juce::ToggleButton onOff;
+            FxSendControl::AmountSlider slider;
+            juce::Component* extra = nullptr;
+            juce::RangedAudioParameter* parameter = nullptr;
+            double remembered = 0.5;
+            std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> attachment;
+        };
+
+        int legacyChannelNow() const
+        {
+            if (auto* channel = apvts.getParameter (channelID))
+                return juce::roundToInt (channel->convertFrom0to1 (channel->getValue()));
+            return 0;
+        }
+
+        void rebuild()
+        {
+            rows.clear();
+            legacyModeAttachment.reset();
+            legacyMode.reset();
+
+            const int visible = juce::jmin (Effects::visibleChannels (apvts), sendToIDs.size());
+            for (int i = 0; i < visible; ++i)
+            {
+                auto row = std::make_unique<Row> (apvts, "FX" + juce::String (i + 1), sendToIDs[i],
+                                                  "FX SEND TO FX" + juce::String (i + 1) + " - " + Help::forParameter (sendToIDs[i]), accent);
+                addAndMakeVisible (*row);
+                rows.push_back (std::move (row));
+            }
+            shownChannels = visible;
+
+            // Den gamla länken (en kanal + belopp, INS/SEND) som en vanlig rad, så länge den används.
+            legacyShownFor = legacyChannelNow();
+            if (legacyShownFor > 0)
+            {
+                auto row = std::make_unique<Row> (apvts, "FX" + juce::String (legacyShownFor), amountID,
+                                                  "FX SEND AMOUNT (old link) - " + Help::forParameter (amountID), accent);
+                legacyMode = std::make_unique<juce::TextButton>();
+                legacyMode->setClickingTogglesState (true);
+                legacyMode->setColour (juce::TextButton::buttonColourId, Theme::panel);
+                legacyMode->setColour (juce::TextButton::buttonOnColourId, accent);
+                legacyMode->setColour (juce::TextButton::textColourOffId, Theme::textDim);
+                legacyMode->setColour (juce::TextButton::textColourOnId, Theme::backgroundBottom);
+                legacyMode->setButtonText ("INS");
+                auto* modeButton = legacyMode.get();
+                legacyMode->onStateChange = [modeButton] { modeButton->setButtonText (modeButton->getToggleState() ? "SEND" : "INS"); };
+                legacyMode->setTooltip ("FX SEND MODE - " + Help::forParameter (modeID));
+                row->extra = legacyMode.get();
+                row->addAndMakeVisible (*legacyMode);
+                legacyModeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (apvts, modeID, *legacyMode);
+                addAndMakeVisible (*row);
+                rows.push_back (std::move (row));
+            }
+
+            setSize (popupWidth, 6 + (int) rows.size() * rowHeight + 2 + rowHeight + 6);
+            resized();
+        }
+
+        void timerCallback() override
+        {
+            if (legacyChannelNow() != legacyShownFor || juce::jmin (Effects::visibleChannels (apvts), sendToIDs.size()) != shownChannels)
+                rebuild();
+            else
+                for (auto& row : rows)
+                    row->refresh();
+        }
+
+        juce::AudioProcessorValueTreeState& apvts;
+        juce::String channelID, amountID, modeID;
+        juce::StringArray sendToIDs;
+        juce::Colour accent;
+        std::vector<std::unique_ptr<Row>> rows;
+        std::unique_ptr<juce::TextButton> legacyMode;
+        std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> legacyModeAttachment;
+        int legacyShownFor = 0, shownChannels = 0;
+        juce::TextButton addButton;
+    };
+}
+
+//==============================================================================
+FxSendControl::FxSendControl (juce::AudioProcessorValueTreeState& s, const juce::String& channelIDIn, const juce::String& amountIDIn, const juce::String& modeIDIn,
+                              const juce::StringArray& sendToIDsIn, const juce::String& nameIn, juce::Colour accentIn)
+    : apvts (s), channelID (channelIDIn), amountID (amountIDIn), modeID (modeIDIn), name (nameIn), sendToIDs (sendToIDsIn), accent (accentIn)
 {
     label.setText ("FX", juce::dontSendNotification);
     label.setFont (Theme::font (11.0f, true));
@@ -471,38 +656,59 @@ FxSendControl::FxSendControl (juce::AudioProcessorValueTreeState& apvts, const j
     label.setJustificationType (juce::Justification::centredRight);
     addAndMakeVisible (label);
 
-    channel.parameter = apvts.getParameter (channelID);
-    if (channel.parameter != nullptr)
+    button.setColour (juce::TextButton::buttonColourId, Theme::panel);
+    button.setColour (juce::TextButton::textColourOffId, Theme::text);
+    button.setTooltip ("FX SEND - " + Help::forParameter (sendToIDs.isEmpty() ? channelID : sendToIDs[0])
+                       + " Click to open the send matrix: one row per FX channel with on/off and amount, plus + add FX channel.");
+    button.onClick = [this] { showPopup(); };
+    addAndMakeVisible (button);
+
+    updateSummary();
+    startTimerHz (5);
+}
+
+FxSendControl::~FxSendControl()
+{
+    stopTimer();
+}
+
+void FxSendControl::timerCallback()
+{
+    updateSummary();
+}
+
+// "FX1 50%, FX3 30%" eller "None". Den gamla länken räknas med som en vanlig rad.
+void FxSendControl::updateSummary()
+{
+    juce::StringArray parts;
+    auto percentOf = [this] (const juce::String& id) -> int
     {
-        channel.addItemList (channel.parameter->getAllValueStrings(), 1);
-        channel.setTooltip ("FX SEND - " + Help::forParameter (channelID));
+        if (auto* p = apvts.getParameter (id))
+            return juce::roundToInt (p->convertFrom0to1 (p->getValue()) * 100.0f);
+        return 0;
+    };
+
+    for (int i = 0; i < sendToIDs.size(); ++i)
+        if (const int pct = percentOf (sendToIDs[i]); pct > 0)
+            parts.add ("FX" + juce::String (i + 1) + " " + juce::String (pct) + "%");
+
+    if (auto* channel = apvts.getParameter (channelID))
+        if (const int legacy = juce::roundToInt (channel->convertFrom0to1 (channel->getValue())); legacy > 0)
+            if (const int pct = percentOf (amountID); pct > 0)
+                parts.add ("FX" + juce::String (legacy) + " " + juce::String (pct) + "%");
+
+    const auto text = parts.isEmpty() ? juce::String ("None") : parts.joinIntoString (", ");
+    if (text != lastSummary)
+    {
+        lastSummary = text;
+        button.setButtonText (text);
     }
-    addAndMakeVisible (channel);
+}
 
-    amount.parameter = apvts.getParameter (amountID);
-    amount.setSliderStyle (juce::Slider::LinearHorizontal);
-    amount.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
-    amount.setColour (juce::Slider::trackColourId, accent);
-    amount.setColour (juce::Slider::thumbColourId, Theme::text);
-    amount.setPopupDisplayEnabled (true, true, nullptr);
-    amount.setTooltip ("FX SEND AMOUNT - " + Help::forParameter (amountID));
-    addAndMakeVisible (amount);
-
-    // INS = amount delar ljudet (resten torrt); SEND = torrt orört, amount läggs till kanalen (klassisk send/retur).
-    mode.setClickingTogglesState (true);
-    mode.setColour (juce::TextButton::buttonColourId, Theme::panel);
-    mode.setColour (juce::TextButton::buttonOnColourId, accent);
-    mode.setColour (juce::TextButton::textColourOffId, Theme::textDim);
-    mode.setColour (juce::TextButton::textColourOnId, Theme::backgroundBottom);
-    mode.setButtonText ("INS");
-    mode.onStateChange = [this] { mode.setButtonText (mode.getToggleState() ? "SEND" : "INS"); };
-    mode.setTooltip ("FX SEND MODE - " + Help::forParameter (modeID));
-    addAndMakeVisible (mode);
-
-    channelAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (apvts, channelID, channel);
-    amountAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (apvts, amountID, amount);
-    modeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (apvts, modeID, mode);
-    juce::ignoreUnused (name);
+void FxSendControl::showPopup()
+{
+    auto content = std::make_unique<FxSendPopup> (apvts, channelID, amountID, modeID, sendToIDs, accent);
+    juce::CallOutBox::launchAsynchronously (std::move (content), button.getScreenBounds(), nullptr);
 }
 
 void FxSendControl::resized()
@@ -510,11 +716,7 @@ void FxSendControl::resized()
     auto area = getLocalBounds();
     label.setBounds (area.removeFromLeft (22));
     area.removeFromLeft (4);
-    channel.setBounds (area.removeFromLeft (62));
-    area.removeFromLeft (4);
-    mode.setBounds (area.removeFromLeft (38));
-    area.removeFromLeft (4);
-    amount.setBounds (area);
+    button.setBounds (area);
 }
 
 void FxSendControl::AmountSlider::mouseDown (const juce::MouseEvent& e)

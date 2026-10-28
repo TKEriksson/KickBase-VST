@@ -364,3 +364,6 @@ Gren `fx-matrix` (från `pl-presets`), ingen UI, `numEffectChannels` = 11 tills 
 
 ## Steg 3 – klar (28 okt)
 Debug all grönt; fxmatrixtest, helpcheck, paramtest ok. Rendersig-jämförelse mot main avförd (Tobias bygger nya presets; rendersig varierar dessutom mellan körningar). Kvar: UI-turnOff, AI-namnkarta (~PluginBase.cpp:1318), rebase på fx12 + matris-ID:n i Presets.cpp:269-listan.
+
+## Steg 4 – popup-UI, klart (28 okt)
+Debug all grönt (inkl. helpcheck, fxmatrixtest). `Components.cpp/.h` `FxSendControl` + `FxSendPopup` (sammanfattning, rad per kanal, på/av, %, INS/SEND-rad, `+ add FX channel`). `Effects.cpp` `visibleChannels/addChannel/removeLastChannel` (global `fxChannelCount` på apvts.state, inte i preset). `EffectsPage` rullista + ta bort-fråga. `MixerPage` 12 kanaler + M-knapp (`fxMute1..12`). Matris-ID undantagna i `Presets.cpp`. Kvar: `PresetButton.cpp:369-378` loopar `numLegacyEffectChannels` (FX12 kan inte väljas; Arbetare 1:s kod). Plan för parameterrader: `docs/work/plan-pianoroll-param-lanes.md`.

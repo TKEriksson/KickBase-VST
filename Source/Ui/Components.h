@@ -136,13 +136,15 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> attachment;
 };
 
-// Kompakt FX-send i synthens flikrad: "FX", en kanalväljare (None/A/B/C) och en liten reglage för
-// hur mycket av ljudet som går genom kanalen. Högerklick visar menyn med DAW:ens val.
-class FxSendControl : public juce::Component
+// FX-send i synthens flikrad: "FX" och en knapp med ett sammandrag ("FX1 50%, FX3 30%" eller "None"). Knappen öppnar en popup med en rad per effektkanal
+// (FXn, på/av, reglage) för send-matrisen, raden för den gamla kanalen + beloppet (INS/SEND) och "+ add FX channel".
+class FxSendControl : public juce::Component, private juce::Timer
 {
 public:
+    // sendToIDs: matrisens belopp, ett per effektkanal (index = kanal).
     FxSendControl (juce::AudioProcessorValueTreeState& apvts, const juce::String& channelID, const juce::String& amountID, const juce::String& modeID,
-                   const juce::String& name, juce::Colour accent);
+                   const juce::StringArray& sendToIDs, const juce::String& name, juce::Colour accent);
+    ~FxSendControl() override;
 
     void resized() override;
 
@@ -154,13 +156,17 @@ public:
     };
 
 private:
+    void timerCallback() override;
+    void updateSummary();
+    void showPopup();
+
+    juce::AudioProcessorValueTreeState& apvts;
+    juce::String channelID, amountID, modeID, name;
+    juce::StringArray sendToIDs;
+    juce::Colour accent;
     juce::Label label;
-    ChoiceComponent::Box channel;
-    juce::TextButton mode;
-    AmountSlider amount;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> channelAttachment;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> amountAttachment;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> modeAttachment;
+    juce::TextButton button;
+    juce::String lastSummary;
 };
 
 // Raden längst ner som alltid förklarar det musen är över (tooltip-texten för kontrollen

@@ -430,6 +430,100 @@ namespace Effects
         return EffectType::off;
     }
 
+    namespace
+    {
+        constexpr int defaultVisibleChannels = 4;
+
+        void resetParameter (AudioProcessorValueTreeState& apvts, const String& id)
+        {
+            if (auto* parameter = apvts.getParameter (id))
+                if (parameter->getValue() != parameter->getDefaultValue())
+                {
+                    parameter->beginChangeGesture();
+                    parameter->setValueNotifyingHost (parameter->getDefaultValue());
+                    parameter->endChangeGesture();
+                }
+        }
+
+        // Alla källor: kicken och varje instrument, med sitt gamla kanalfält, beloppet och matrisens belopp för kanalen.
+        template <typename Visit>
+        void forEachSource (int channel, Visit&& visit)
+        {
+            visit (String (ParamID::kickFxChannel), String (ParamID::kickFxAmount), String (ParamID::kickFxSendToIds[channel]));
+            for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
+                visit (ParamID::bass (layer, InstrumentField::fxChannel), ParamID::bass (layer, InstrumentField::fxAmount),
+                       ParamID::bass (layer, ParamID::fxSendToField (channel)));
+        }
+    }
+
+    bool channelHasSends (const AudioProcessorValueTreeState& apvts, int channel)
+    {
+        auto found = false;
+        forEachSource (channel, [&] (const String& channelID, const String& amountID, const String& sendID)
+        {
+            const auto value = [&apvts] (const String& id) { auto* raw = apvts.getRawParameterValue (id); return raw != nullptr ? raw->load() : 0.0f; };
+            if (value (sendID) > 0.0f || ((int) value (channelID) - 1 == channel && value (amountID) > 0.0f))
+                found = true;
+        });
+        return found;
+    }
+
+    bool channelHasEffects (const AudioProcessorValueTreeState& apvts, int channel)
+    {
+        for (int slot = 0; slot < slotsPerChannel; ++slot)
+            if (slotType (apvts, channel, slot) != EffectType::off)
+                return true;
+        return ! readEq (apvts, channel).isNeutral();
+    }
+
+    int visibleChannels (const AudioProcessorValueTreeState& apvts)
+    {
+        auto count = jlimit (1, numEffectChannels, (int) apvts.state.getProperty ("fxChannelCount", defaultVisibleChannels));
+        for (int channel = numEffectChannels - 1; channel >= count; --channel)
+            if (channelHasSends (apvts, channel) || channelHasEffects (apvts, channel))
+            {
+                count = channel + 1;
+                break;
+            }
+        return count;
+    }
+
+    bool addChannel (AudioProcessorValueTreeState& apvts)
+    {
+        const auto count = visibleChannels (apvts);
+        if (count >= numEffectChannels)
+            return false;
+        apvts.state.setProperty ("fxChannelCount", count + 1, nullptr);
+        return true;
+    }
+
+    bool removeLastChannel (AudioProcessorValueTreeState& apvts)
+    {
+        const auto count = visibleChannels (apvts);
+        if (count <= 1)
+            return false;
+        const auto channel = count - 1;
+
+        forEachSource (channel, [&] (const String& channelID, const String& amountID, const String& sendID)
+        {
+            resetParameter (apvts, sendID);
+            if (auto* raw = apvts.getRawParameterValue (channelID); raw != nullptr && (int) raw->load() - 1 == channel)
+            {
+                resetParameter (apvts, channelID);
+                resetParameter (apvts, amountID);
+            }
+        });
+        const auto prefix = "fx" + channelName (channel);
+        for (auto* parameter : apvts.processor.getParameters())
+            if (auto* withID = dynamic_cast<AudioProcessorParameterWithID*> (parameter))
+                if (withID->paramID.startsWith (prefix) && isEffectParameter (withID->paramID))
+                    resetParameter (apvts, withID->paramID);
+        resetParameter (apvts, ParamID::fxMuteIds[channel]);
+
+        apvts.state.setProperty ("fxChannelCount", channel, nullptr);
+        return true;
+    }
+
     EqSettings readEq (const AudioProcessorValueTreeState& apvts, int channel)
     {
         auto get = [&] (const String& suffix, float fallback)
