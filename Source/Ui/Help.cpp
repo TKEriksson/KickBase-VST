@@ -260,7 +260,7 @@ namespace Help
             { "fundamentalDuckDepth", "How many dB the fundamental is dampened at full effect while the source sounds (instrument-wide; engines set to INHERIT use it)." },
             { "fundamentalDuckWindow", "How close in pitch the engine's fundamental must be to the source's, in cents. Inside the window the dip is full; at twice the window it is gone." },
             { "fundamentalDuckSource", "What triggers the dip: the kick (default), one of the instruments, or Any." },
-            { "bassFundamentalDuckMode", "FUNDAMENTAL DUCK for this engine. INHERIT: uses the instrument-wide values (shown dimmed, 'från instrument'). OFF: this engine is never dampened. OWN: uses its own depth, window and source. Follows the last played voice." },
+            { "bassFundamentalDuckMode", "FUNDAMENTAL DUCK for this engine. INHERIT: uses the instrument-wide values (shown dimmed, 'from instrument'). OFF: this engine is never dampened. OWN: uses its own depth, window and source. Follows the last played voice." },
             { "bassFundamentalDuckDepth", "OWN mode: how many dB this engine's fundamental is dampened at full effect." },
             { "bassFundamentalDuckWindow", "OWN mode: how close in pitch (cents) the fundamental must be to the source's for the full dip." },
             { "bassFundamentalDuckSource", "OWN mode: what triggers the dip for this engine: the kick, another instrument, or Any." },

@@ -46,7 +46,7 @@ LiveCodePage::LiveCodePage (PluginBase& processor) : processor (processor), tool
     errorLog.setColour (juce::TextEditor::backgroundColourId, Theme::panel);
     errorLog.setColour (juce::TextEditor::textColourId, Theme::text);
     errorLog.setColour (juce::TextEditor::outlineColourId, Theme::panelBorder);
-    errorLog.setText ("Konsolen är tom: fel och console.log från koden visas här.", false);
+    errorLog.setText ("The console is empty: errors and console.log from the code show up here.", false);
     addChildComponent (errorLog);
 
     codeTab.setClickingTogglesState (false);
@@ -614,7 +614,7 @@ struct LiveCodePage::FloatContent : juce::Component
     juce::TextEditor errorLog;
     std::array<juce::TextButton, 15> buttons;
     std::vector<std::pair<juce::TextButton*, juce::TextButton*>> pairs;
-    juce::TextButton codeTab { "KOD" }, errorTab { "KONSOL" };
+    juce::TextButton codeTab { "CODE" }, errorTab { "CONSOLE" };
     juce::Label lockLabel, lockSummary, errorLabel;
 };
 
@@ -1075,7 +1075,7 @@ void LiveCodePage::showError (const juce::String& text)
         auto lines = juce::StringArray::fromLines (text);
         lines.set (0, "FEL  " + lines[0]);
         appendLog (lines);
-        errorTab.setButtonText ("KONSOL (" + juce::String (errorCount) + ")");
+        errorTab.setButtonText ("CONSOLE (" + juce::String (errorCount) + ")");
         if (onError)
             onError (text);
     }

@@ -81,15 +81,15 @@ Each line starting with `$:` is one pattern that plays on its own.
 )";
 
     const char* soundstageText = R"(# SOUNDSTAGE
-Ljudbilden: stereobredd, bas i mitten och en live-vy av frekvenser och stereobild.
+The sound stage: stereo width, bass in the centre and a live view of frequencies and stereo image.
 
-## Så fungerar det
-På SOUNDSTAGE-sidan finns 16 knappar under "AFFECTS" (kick, instrument 1–10, FX A–E). En källa som är avstängd hoppar över WIDTH, BASS MONO och ENHANCE. Den får fortfarande master-EQ, drive och limiter. Alla på är standard och låter som förut.
+## How it works
+On the SOUNDSTAGE page there are 16 buttons under "AFFECTS" (kick, instruments 1-10, FX A-E). A source that is switched off skips WIDTH, BASS MONO and ENHANCE. It still gets the master EQ, drive and limiter. All on is the default and sounds as before.
 
-## Rattarna
-- **WIDTH**: 0 % = mono, 100 % = som det är, 200 % = extra bred.
-- **BASS MONO**: tar bort sidosignalen under den här frekvensen, så basen håller sig stram och i mitten.
-- **ENHANCE**: gör mono-ljud bredare, och är mono-kompatibel.
+## The knobs
+- **WIDTH**: 0 % = mono, 100 % = as it is, 200 % = extra wide.
+- **BASS MONO**: removes the side signal below this frequency, so the bass stays tight and in the centre.
+- **ENHANCE**: makes mono sound wider, and is mono compatible.
 )";
 
     const char* oscText = R"(# OSC 1 / 2 / 3
@@ -115,12 +115,35 @@ Click and hold on the picture to hear this oscillator alone. The small button in
 - **FILTER**: on = this oscillator goes through Filter 1 and 2 (set on the FILTER tab).
 )";
 
+    const char* filterText = R"(# FILTER
+Two filters per bass layer, with a curve that shows what they do to the sound.
+
+## The curve
+Low frequencies on the left, high on the right. The line in the middle is 0 dB.
+
+## The switches
+- **FILTER ON**: off = the whole instrument bypasses both filters (the amp envelope still works).
+- **Sources button**: tick which sources go through the filters (OSC 1-3, SAMPLE, NOISE). Unticked sources bypass both.
+
+## Filter 1 and Filter 2
+- **MODEL** and **TYPE**: the filter design and its shape (low-pass, high-pass and so on). The two knobs P1 and P2 change name with the model and are dimmed when a model does not use them.
+- **CUTOFF**, **RESONANCE**: where the filter acts and how much it emphasises that point.
+- **KEYTRK** (Filter 1): the cutoff follows the note. **MIX** (Filter 2): how much of Filter 2 you hear.
+- Filter 2 has its own on/off. Off, it costs no CPU and the sound is exactly as with Filter 1 alone.
+
+## Routing and allpass
+- **ROUTING**: SERIAL = filter 1, then filter 2. PARALLEL = both filter the same sound and MIX blends them.
+- **ALLPASS** (FREQ and AMOUNT): a phase-shifting stage after the filters. AMOUNT 0 = off.
+- Hover any knob for its own explanation.
+)";
+
     struct TopicInfo { HelpDialog::Topic topic; const char* tab; const char* text; };
     const TopicInfo topics[] = {
         { HelpDialog::Topic::pianoRoll, "PIANO ROLL", pianoRollText },
         { HelpDialog::Topic::liveCode, "LIVE CODE", liveCodeText },
         { HelpDialog::Topic::soundstage, "SOUNDSTAGE", soundstageText },
         { HelpDialog::Topic::osc, "OSC", oscText },
+        { HelpDialog::Topic::filter, "FILTER", filterText },
     };
 
     // ---- Rendering ----

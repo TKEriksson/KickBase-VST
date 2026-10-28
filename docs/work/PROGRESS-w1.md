@@ -403,3 +403,9 @@ Bygge Debug all: grönt, "Alla tester gick igenom" (rendersig oförändrad).
 - HELP-knappar: pianorullen (nedre raden, längst till höger; den långa notis-tooltipen kortad), LIVE CODE (efter FORMAT), SOUNDSTAGE (vid AFFECTS). Motorerna och övriga flikar kommer en i taget.
 - Build Debug all grön, helpcheck 0 utan förklaring.
 - DAW-test (Lemon): klicka HELP i pianorullen: dialogen öppnas på PIANO ROLL, rullningslisten fungerar, flikarna LIVE CODE/SOUNDSTAGE byter text. HELP på LIVE CODE och SOUNDSTAGE öppnar rätt flik; är dialogen redan öppen byter den flik. Hovra HELP: tooltip. Esc stänger.
+
+## HELP för FILTER + engelska UI-strängar (Arbetare 1, 2026-10-28)
+- FILTER-fliken har HELP-knapp (FilterPanel.cpp, switchRow) och ämnet FILTER i HelpDialog.cpp.
+- Engelska: SOUNDSTAGE-hjälpen, LiveCodePage flikar CODE/CONSOLE och tom-konsol-texten, Help.cpp 'from instrument'. Inga tester eller sparade layouter använde de gamla namnen.
+- Bygge grönt, alla tester gick igenom.
+- DAW-test (Lemon): öppna FILTER-fliken, klicka HELP, kontrollera att FILTER-fliken visas; LIVE CODE ska visa CODE/CONSOLE.
