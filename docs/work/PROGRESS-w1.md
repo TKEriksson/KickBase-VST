@@ -409,3 +409,8 @@ Bygge Debug all: grönt, "Alla tester gick igenom" (rendersig oförändrad).
 - Engelska: SOUNDSTAGE-hjälpen, LiveCodePage flikar CODE/CONSOLE och tom-konsol-texten, Help.cpp 'from instrument'. Inga tester eller sparade layouter använde de gamla namnen.
 - Bygge grönt, alla tester gick igenom.
 - DAW-test (Lemon): öppna FILTER-fliken, klicka HELP, kontrollera att FILTER-fliken visas; LIVE CODE ska visa CODE/CONSOLE.
+
+## HELP för FM och MIX (Arbetare 1, 2026-10-28)
+- FM-fliken: HELP-knapp uppe till höger (FmPanel.cpp, bredvid FILTER), ämnet FM. MIX-fliken: HELP-knapp bredvid WIDE (InstrMixPanel.cpp), ämnet MIX; rubriken kortad till "COMBINED WAVEFORM (110 Hz)" så knapparna får plats.
+- Bygge grönt, alla tester gick igenom.
+- DAW-test (Lemon): öppna FM- och MIX-flikerna, klicka HELP, kontrollera rätt flik och att knapparna inte täcker rubrik eller knappar.

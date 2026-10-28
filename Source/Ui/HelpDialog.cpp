@@ -137,6 +137,45 @@ Low frequencies on the left, high on the right. The line in the middle is 0 dB.
 - Hover any knob for its own explanation.
 )";
 
+    const char* fmText = R"(# FM
+A sine modulator bends the phase of a sine carrier. Few knobs, a lot of timbres.
+
+## How it works
+- The **carrier** is the tone you hear, at the note's pitch.
+- The **modulator** is a second sine that you do not hear directly. It wobbles the carrier's phase and adds overtones.
+
+## The knobs
+- **PRESET**: fills in the knobs (sometimes also the pitch envelope or Filter 2). Touch a knob afterwards and the menu jumps back to Custom.
+- **LEVEL**: how loud the FM engine is in the instrument.
+- **RATIO**: modulator frequency relative to the carrier. Whole numbers (1, 2, 3) sound harmonic, other values sound metallic or bell-like.
+- **INDEX**: how hard the modulator bends the carrier. Higher = brighter and rougher.
+- **ENV AMT**: how much extra INDEX each note starts with.
+- **ENV TIME**: how fast that extra brightness falls away after the note starts. Short = a click or pluck, long = a slow sweep.
+- **SEMIS**: transposes the engine in semitones.
+- **FILTER** (checkbox): send the FM engine through the filters, or let it bypass them.
+
+## Tip
+Start from a preset, then move INDEX and ENV TIME. For a deep bass keep RATIO at 1 or 2 and INDEX low.
+)";
+
+    const char* mixText = R"(# MIX
+The balance of one bass layer: one strip per source, and the combined waveform on the left.
+
+## The strips
+- **OSC 1-3, SAMPLE, NOISE, SUB, FM**: one strip each.
+- **LEVEL**: how loud that source is.
+- **PAN** and **WIDTH**: where it sits and how wide it is. SUB has neither: it is always mono, in the centre.
+- **START** (SUB and FM): the phase the source starts at on each note.
+- **The meter** in each strip shows that source alone, after the filters, envelope, pan and width. Red = above -3 dB.
+
+## The combined waveform
+Everything this layer plays, a few cycles after the note starts (110 Hz).
+- **Mouse wheel**: zoom in time. **Shift + wheel**: zoom the height.
+- **Middle button drag** or the **scroll bar**: move along the note.
+- **Double-click**: reset the view.
+- **WIDE**: give the waveform the full width (the knobs are hidden). **NARROW** brings them back.
+)";
+
     struct TopicInfo { HelpDialog::Topic topic; const char* tab; const char* text; };
     const TopicInfo topics[] = {
         { HelpDialog::Topic::pianoRoll, "PIANO ROLL", pianoRollText },
@@ -144,6 +183,8 @@ Low frequencies on the left, high on the right. The line in the middle is 0 dB.
         { HelpDialog::Topic::soundstage, "SOUNDSTAGE", soundstageText },
         { HelpDialog::Topic::osc, "OSC", oscText },
         { HelpDialog::Topic::filter, "FILTER", filterText },
+        { HelpDialog::Topic::fm, "FM", fmText },
+        { HelpDialog::Topic::mix, "MIX", mixText },
     };
 
     // ---- Rendering ----
