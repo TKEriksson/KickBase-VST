@@ -115,3 +115,4 @@ Obs: nya parametrar och modulationskällor sist (ENGINEERING.md). Stor punkt; Ar
 (x, förtydligande) Tobias: SWING, HUMAN och DELAY får en egen rad vardera i vänsterrutan (en ratt per rad, etikett vid sidan, värde under/intill), inte tre i rad. Flytta ned/anpassa rutan (GRID, PATTERN PRESET, FILL, pianoknappen) så att höjden räcker.
 (prioritet 28 okt) Tobias: bygg å (glöd), ä (glas-PREVIEWS) och z (menyer/hierarki/hover) först, före övriga rattstorlekar.
 (mellanrum) Tobias: mer margin och padding överallt (paneler, rader, rattgrupper, knappar). Sätts som gemensamma konstanter i mallen (g/z) så att det går att justera på ett ställe.
+(å, inställning) Tobias: glödstyrkan blir en användarinställning i SETTINGS: Av / Svag / Stark. Sparas som plugin-inställning (inte i projektets parametrar/preset, ingen ändring av parameter-ID/hash). Standard: Svag. Ändring ritar om hela GUI:t direkt.
