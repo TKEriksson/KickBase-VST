@@ -66,6 +66,8 @@ namespace ParamID
     inline constexpr auto kickFxAmount    = "kickFxAmount";
     inline constexpr auto kickComp        = "kickComp";        // kompressor efter drive: 0 = av, ju mer desto tätare kick (släpp = kickens längd, auto-makeup)
     inline constexpr auto kickFxSend      = "kickFxSend";      // FX-kanalen som SEND: av = som förut (amount delar ljudet torrt/blött), på = torrt orört + amount till kanalen
+    inline constexpr const char* kickFxSendToIds[] { "kickFxSendTo1", "kickFxSendTo2", "kickFxSendTo3", "kickFxSendTo4", "kickFxSendTo5", "kickFxSendTo6", "kickFxSendTo7", "kickFxSendTo8", "kickFxSendTo9", "kickFxSendTo10", "kickFxSendTo11", "kickFxSendTo12" }; // FX-matrisen (kickens send-belopp per kanal)
+    inline constexpr const char* fxMuteIds[] { "fxMute1", "fxMute2", "fxMute3", "fxMute4", "fxMute5", "fxMute6", "fxMute7", "fxMute8", "fxMute9", "fxMute10", "fxMute11", "fxMute12" }; // M-knapp per FX-kanal (tystar kanalens retur, sends ligger kvar)
 
     // Baslagren: se ParamID::bass (lager, fält) nedan.
 
@@ -156,6 +158,8 @@ enum class InstrumentField
     aDelayMs, aDelaySync, aLenMs, aCurve, bDelayMs, bDelaySync, bLenMs, bCurve, cDelayMs, cDelaySync, cLenMs, cCurve,
     sampleDelayMs, sampleDelaySync, sampleLenMs, sampleCurve, noiseDelayMs, noiseDelaySync, noiseLenMs, noiseCurve,
     subDelayMs, subDelaySync, subLenMs, subCurve, fmDelayMs, fmDelaySync, fmLenMs, fmCurve,
+    // FX-matrisen: instrumentets send-belopp (0..1) till FX1..FX12, utöver fxChannel/fxAmount (läggs ihop). Registreras allra sist (addFxMatrixParams); fxSendToField (kanal).
+    fxSendTo1, fxSendTo2, fxSendTo3, fxSendTo4, fxSendTo5, fxSendTo6, fxSendTo7, fxSendTo8, fxSendTo9, fxSendTo10, fxSendTo11, fxSendTo12,
     count
 };
 
@@ -178,6 +182,9 @@ namespace ParamID
     // 5b: motorernas tid. engine 0..6 = OSC 1, OSC 2, OSC 3, SAMPLE, NOISE, SUB, FM; which 0 = DelayMs, 1 = DelaySync, 2 = LenMs, 3 = Curve.
     constexpr int numTimingEngines = 7;
     inline InstrumentField timingField (int engine, int which) { return (InstrumentField) ((int) InstrumentField::aDelayMs + engine * 4 + which); }
+    // FX-matrisen: kanal 0..11 = FX1..FX12. Kickens motsvarighet är kickFxSendToIds (samma ordning).
+    constexpr int numFxSendTargets = 12;
+    inline InstrumentField fxSendToField (int channel) { return (InstrumentField) ((int) InstrumentField::fxSendTo1 + channel); }
     juce::String bass (int layer, InstrumentField field);   // "bass1Cutoff" ...
     const char* instrumentFieldName (InstrumentField field);      // "Cutoff" ...
 }
@@ -198,6 +205,7 @@ namespace Params
     void addFundamentalDuckParams (Layout& layout); // FUNDAMENTAL DUCK (instrument + per motor): allra sist i instrumentets layout
     void addEngineTimingParams (Layout& layout); // 5b: POS DELAY / SYNC / LENGTH / CURVE per motor och lager; sist i instrumentets layout
     void addKickToggleParams (Layout& layout); // kickens SYNTH/SAMPLE på/av; läses av readKick, så FX-pluginet behöver dem också
+    void addFxMatrixParams (Layout& layout); // FX-matrisen (instrument + kick) och fxMute1..12: allra sist i layouten
 
     juce::StringArray keyNames();
     float midiToHz (float midiNote);

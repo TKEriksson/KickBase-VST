@@ -353,3 +353,14 @@ Kicken: samma loop med `sourceIndex = Mixer::kickSource` och kickens ID:n; `send
 - **Presets.cpp:269:** Arbetare 1 tar raden i steg 1. Jag rebasar steg 3 på `fx12` efter hennes steg 1.
 - **Summa:** Tobias har inte bekräftat. Anta summa men håll det lätt att ändra (en enda plats: ordningen/anropet efter den gamla `send` i `InstrumentProcessor.cpp`).
 - **Start:** ingen kod i steg 3 före PL:s besked (steg 1 klart först). Ingen push.
+
+### Steg 3 – kod klar, byggs (2026-10-28, Arbetare 2)
+Gren `fx-matrix` (från `pl-presets`), ingen UI, `numEffectChannels` = 11 tills `fx12` rebasas in.
+- Params: `fxSendTo1..12` per lager (`Params.h`), `kickFxSendToIds[]`, `fxMuteIds[]`; registreras sist i `Params::addFxMatrixParams` (`Params.cpp`, anropas sist i `createLayout`).
+- Ljud: `InstrumentProcessor::sendMatrix` (efter den gamla sendet, summa på samma kanal – ändras på ett ställe), `EffectRack::sendRamped` (1 block), mute i `EffectRack::process` (~5 ms glidning, kanalen kör vidare).
+- `PluginBase.cpp`: `fxChannelUsageMask` räknar matrissends; `copyTrack`/spårpreset tar med `fxSendTo<N>`; "export utan effekter" nollar matrisen. `turnOff` i UI:t kommer med UI-steget (ingen UI nu).
+- `Help.cpp`: regel för `FxSendTo` (24 ID) och `fxMute` (12 ID).
+- Test: `KickbaseTool fxmatrixtest` (`Tools/AudioTests.cpp`). Rebase på `fx12` + exkluderingslistan i `Presets.cpp:269` återstår.
+
+## Steg 3 – klar (28 okt)
+Debug all grönt; fxmatrixtest, helpcheck, paramtest ok. Rendersig-jämförelse mot main avförd (Tobias bygger nya presets; rendersig varierar dessutom mellan körningar). Kvar: UI-turnOff, AI-namnkarta (~PluginBase.cpp:1318), rebase på fx12 + matris-ID:n i Presets.cpp:269-listan.

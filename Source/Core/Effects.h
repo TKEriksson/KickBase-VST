@@ -186,6 +186,8 @@ public:
 
     // Lägger `amount` av ljudet på kanalens ingång.
     void send (int channel, const float* left, const float* right, int numSamples, float amount);
+    // FX-matrisen: som send(), men beloppet glider från fromAmount till toAmount över blocket.
+    void sendRamped (int channel, const float* left, const float* right, int numSamples, float fromAmount, float toAmount);
 
     // Vad gränssnittet ritar per kanal: ljudet in i EQ:n, in i kompressorn, ut ur den, och
     // kompressorns förstärkning (i båda kanalerna).

@@ -3914,6 +3914,7 @@ int audioThreadTest();      // Tools/AudioTests.cpp
 int reeseTest();            // Tools/AudioTests.cpp
 int multiSampleTest();      // Tools/AudioTests.cpp
 int delayTest();            // Tools/AudioTests.cpp
+int fxMatrixTest();        // Tools/AudioTests.cpp
 int blockSizeTest();        // Tools/AudioTests.cpp
 int polyTest();             // Tools/AudioTests.cpp
 int ringTest();             // Tools/AudioTests.cpp
@@ -3952,7 +3953,7 @@ int toolMain (int argc, char* argv[])
     // Testerna som sparar presets eller rullar körs i en tillfällig mapp, aldrig i användarens Dokument\Kickbase.
     std::unique_ptr<Scenarios::TemporaryUserFolders> isolation;
     if (const juce::String command (argc > 1 ? argv[1] : ""); command == "presettest" || command == "rolltest" || command == "lengthtest"
-        || command == "instrumenttest" || command == "eqtest" || command == "listentest" || command == "auditiontest" || command == "audiotest" || command == "reesetest" || command == "multisampletest" || command == "delaytest"
+        || command == "instrumenttest" || command == "eqtest" || command == "listentest" || command == "auditiontest" || command == "audiotest" || command == "reesetest" || command == "multisampletest" || command == "delaytest" || command == "fxmatrixtest"
         || command == "analysetest" || command == "perftest" || command == "polytest" || command == "livetest" || command == "rendersig" || command == "rendersigwide" || command == "rendersigtb303")
         isolation = std::make_unique<Scenarios::TemporaryUserFolders>();
 
@@ -4062,6 +4063,8 @@ int toolMain (int argc, char* argv[])
         return reeseTest();
     if (argc == 2 && juce::String (argv[1]) == "multisampletest")
         return multiSampleTest();
+    if (argc == 2 && juce::String (argv[1]) == "fxmatrixtest")
+        return fxMatrixTest();
     if (argc == 2 && juce::String (argv[1]) == "delaytest")
         return delayTest();
     // sfz <fil.sfz>: skriver ut regionerna parseSfz hittar och hur många zoner addSfz kan läsa in (samma väg som UI:t).

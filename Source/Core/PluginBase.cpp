@@ -101,6 +101,15 @@ int PluginBase::fxChannelUsageMask()
     sentTo (ParamID::kickFxChannel, ParamID::kickFxAmount);
     for (int layer = 0; layer < activeInstruments(); ++layer)
         sentTo (ParamID::bass (layer, InstrumentField::fxChannel).toRawUTF8(), ParamID::bass (layer, InstrumentField::fxAmount).toRawUTF8());
+    // Matrissends (fxSendTo<N>) räknas som användning, vid sidan av den gamla kanalen + beloppet.
+    for (int channel = 0; channel < numEffectChannels; ++channel)
+    {
+        if (apvts.getRawParameterValue (ParamID::kickFxSendToIds[channel])->load() > 0.0f)
+            mask |= 1 << channel;
+        for (int layer = 0; layer < activeInstruments(); ++layer)
+            if (apvts.getRawParameterValue (ParamID::bass (layer, ParamID::fxSendToField (channel)).toRawUTF8())->load() > 0.0f)
+                mask |= 1 << channel;
+    }
 
     for (int channel = 0; channel < numEffectChannels; ++channel)
     {
@@ -1312,12 +1321,15 @@ namespace
     std::vector<std::pair<juce::String, juce::String>> trackExtraParameters (int layer)
     {
         const auto mixer = [layer] (const char* field) { return Mixer::paramID (Mixer::firstBassSource + layer, field); };
-        return { { "on", ParamID::bass (layer, InstrumentField::on) },
+        std::vector<std::pair<juce::String, juce::String>> extra { { "on", ParamID::bass (layer, InstrumentField::on) },
                  { "duck", ParamID::bass (layer, InstrumentField::duck) },
                  { "fxChannel", ParamID::bass (layer, InstrumentField::fxChannel) },
                  { "fxAmount", ParamID::bass (layer, InstrumentField::fxAmount) },
                  { "fxSend", ParamID::bass (layer, InstrumentField::fxSend) },
                  { "mixGain", mixer ("Gain") }, { "mixPan", mixer ("Pan") }, { "mixDuck", mixer ("Duck") }, { "mixMax", mixer ("Max") } };
+        for (int to = 0; to < ParamID::numFxSendTargets; ++to)
+            extra.push_back ({ "fxSendTo" + juce::String (to + 1), ParamID::bass (layer, ParamID::fxSendToField (to)) });
+        return extra;
     }
 
     // Instrumentets egna modulationskällor följer med spåret till ett annat instrument; LFO:er, makron och andras källor lämnas.
@@ -1845,6 +1857,13 @@ bool PluginBase::exportWav (const juce::File& file, ExportPart part, int bars, i
         turnOff (ParamID::kickFxAmount);
         for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
             turnOff (ParamID::bass (layer, InstrumentField::fxAmount).toRawUTF8());
+        // Matrissends hör också till effekterna.
+        for (int to = 0; to < ParamID::numFxSendTargets; ++to)
+        {
+            turnOff (ParamID::kickFxSendToIds[to]);
+            for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
+                turnOff (ParamID::bass (layer, ParamID::fxSendToField (to)).toRawUTF8());
+        }
     }
 
     copy->ensureTablesInUse();

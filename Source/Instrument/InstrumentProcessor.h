@@ -100,6 +100,9 @@ private:
     juce::AudioBuffer<float> stageSkipBus; // källor utanför SOUNDSTAGE-valet (hoppar över stereoblocket)
     bool stageSkipUsed = false;
     juce::AudioBuffer<float> sendBus; // källan efter mixerfadern, på väg till en effektkanal
+    // FX-matrisen: förra blockets send-belopp per källa (kick = 0, instrument 1..) och kanal; -1 = inte läst än (då glider inget).
+    std::array<std::array<float, ParamID::numFxSendTargets>, 1 + maxInstruments> lastSendTo {};
+    void sendMatrix (int source, int layer, int numSamples); // layer -1 = kicken; läser sendBus (källan efter mixerfadern)
 
     // När det senaste steget startade ljud (ppq), för kicken och varje instrument: se fadeOutStepsBefore.
     double lastKickStartPpq = -std::numeric_limits<double>::infinity();

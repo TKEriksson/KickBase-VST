@@ -1,4 +1,5 @@
 #include "Effects.h"
+#include "Params.h"
 #include "Biquad.h"
 
 namespace
@@ -2342,6 +2343,7 @@ struct EffectRack::Impl
             chains[(size_t) ch]->setSources (&sources);
             level[(size_t) ch] = apvts.getRawParameterValue (Effects::channelParamID (ch, "Level"));
             duck[(size_t) ch] = apvts.getRawParameterValue (Effects::channelParamID (ch, "Duck"));
+            mute[(size_t) ch] = apvts.getRawParameterValue (ParamID::fxMuteIds[ch]); // saknas i FX-pluginet (nullptr = aldrig mutad)
             eqRefs.emplace_back (apvts, ch);
         }
     }
@@ -2352,13 +2354,16 @@ struct EffectRack::Impl
     std::vector<Effects::EqRefs> eqRefs; // en per kanal (skapas i konstruktorn)
     std::array<std::array<std::atomic<float>*, 5>, numEffectChannels> comp {}; // thr, ratio, att, rel, makeup
     std::array<std::atomic<float>*, numEffectChannels> level {}, duck {};
+    std::array<std::atomic<float>*, numEffectChannels> mute {};
     std::array<AudioBuffer<float>, numEffectChannels> buffers;
     std::array<float, numEffectChannels> gains {}, duckAmounts {};
     std::array<bool, numEffectChannels> active {};
     std::array<bool, numEffectChannels> sent {};    // fick kanalen ljud från någon källa i det här blocket?
     std::array<bool, numEffectChannels> idle {};    // kanalen hade inget att göra i blocket (inget skickat, ingen effekt): hoppades över
     std::array<float, numEffectChannels> duckState {};
+    std::array<float, numEffectChannels> muteState {}; // 1 = hörs, 0 = mutad; glider mellan dem (inget klick)
     float duckCoefficient = 0.02f;
+    float muteCoefficient = 0.01f;
     const Modulator* modulator = nullptr;
 };
 
@@ -2373,8 +2378,10 @@ void EffectRack::prepare (double sampleRate, int maxBlockSize)
         impl->buffers[(size_t) ch].setSize (2, std::max (1, maxBlockSize), false, true, true);
         impl->strips[(size_t) ch].prepare (sampleRate);
         impl->duckState[(size_t) ch] = 1.0f;
+        impl->muteState[(size_t) ch] = 1.0f;
     }
     impl->duckCoefficient = (float) (1.0 - std::exp (-1.0 / (0.001 * sampleRate)));
+    impl->muteCoefficient = (float) (1.0 - std::exp (-1.0 / (0.005 * sampleRate))); // ca 5 ms
 }
 
 void EffectRack::reset()
@@ -2389,6 +2396,7 @@ void EffectRack::reset()
         strip.env = 0.0f;
         strip.gainState = 1.0f;
         impl->duckState[(size_t) ch] = 1.0f;
+        impl->muteState[(size_t) ch] = 1.0f;
         impl->buffers[(size_t) ch].clear();
     }
 }
@@ -2442,6 +2450,15 @@ void EffectRack::send (int channel, const float* left, const float* right, int n
     buffer.addFrom (1, 0, right != nullptr ? right : left, numSamples, amount);
 }
 
+void EffectRack::sendRamped (int channel, const float* left, const float* right, int numSamples, float fromAmount, float toAmount)
+{
+    // Som send(), men beloppet glider från förra blockets värde till det nya (ett automatiserat reglage ger inget klick).
+    impl->sent[(size_t) channel] = true;
+    auto& buffer = impl->buffers[(size_t) channel];
+    buffer.addFromWithRamp (0, 0, left, numSamples, fromAmount, toAmount);
+    buffer.addFromWithRamp (1, 0, right != nullptr ? right : left, numSamples, fromAmount, toAmount);
+}
+
 bool EffectRack::isIdle (int channel) const
 {
     return jlimit (0, numEffectChannels - 1, channel) == channel && impl->idle[(size_t) channel];
@@ -2492,12 +2509,16 @@ void EffectRack::process (int numSamples, const float* kickEnvelope, AudioBuffer
         auto& state = impl->duckState[(size_t) ch];
         const auto amount = duckEnabled == nullptr || duckEnabled[ch] ? impl->duckAmounts[(size_t) ch] : 0.0f;
         const auto gain = impl->gains[(size_t) ch];
+        auto& muteState = impl->muteState[(size_t) ch];
+        const auto muteTarget = impl->mute[(size_t) ch] != nullptr && impl->mute[(size_t) ch]->load() >= 0.5f ? 0.0f : 1.0f;
         auto* left = buffer.getWritePointer (0);
         auto* right = buffer.getWritePointer (1);
         for (int i = 0; i < numSamples; ++i)
         {
             state += (1.0f - amount * kickEnvelope[i] - state) * impl->duckCoefficient;
-            const auto g = gain * state;
+            muteState += (muteTarget - muteState) * impl->muteCoefficient;
+            if (muteTarget == 0.0f && muteState < 1.0e-4f) muteState = 0.0f; // under -80 dB: helt tyst i stället för en evig svans
+            const auto g = gain * state * muteState;
             left[i] *= g;
             right[i] *= g;
         }

@@ -107,7 +107,8 @@ namespace ParamID
                                      "SampleAmpOn", "SampleAmpMs", "SampleAmpShape", "SamplePitchOn", "SamplePitchSemis", "SamplePitchMs", "SamplePitchShape", "SampleReverse",
                                      "ADelayMs", "ADelaySync", "ALenMs", "ACurve", "BDelayMs", "BDelaySync", "BLenMs", "BCurve", "CDelayMs", "CDelaySync", "CLenMs", "CCurve",
                                      "SampleDelayMs", "SampleDelaySync", "SampleLenMs", "SampleCurve", "NoiseDelayMs", "NoiseDelaySync", "NoiseLenMs", "NoiseCurve",
-                                     "SubDelayMs", "SubDelaySync", "SubLenMs", "SubCurve", "FmDelayMs", "FmDelaySync", "FmLenMs", "FmCurve" };
+                                     "SubDelayMs", "SubDelaySync", "SubLenMs", "SubCurve", "FmDelayMs", "FmDelaySync", "FmLenMs", "FmCurve",
+                                     "FxSendTo1", "FxSendTo2", "FxSendTo3", "FxSendTo4", "FxSendTo5", "FxSendTo6", "FxSendTo7", "FxSendTo8", "FxSendTo9", "FxSendTo10", "FxSendTo11", "FxSendTo12" };
         static_assert (std::size (names) == (size_t) InstrumentField::count);
         return names[(size_t) field];
     }
@@ -525,6 +526,19 @@ namespace Params
                 layout.add (floatParam (id (3), name + "Curve", NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f, curveText));
             }
         }
+    }
+
+    void addFxMatrixParams (Layout& layout)
+    {
+        // Allra sist: ID, preset-index och render-hash för äldre ljud ändras inte. Alla 0 / av = som förut.
+        for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
+            for (int to = 0; to < ParamID::numFxSendTargets; ++to)
+                layout.add (percent (ParamID::bass (layer, ParamID::fxSendToField (to)),
+                                     "Instr " + juce::String (layer + 1) + " FX Send " + juce::String (to + 1), 0.0f));
+        for (int to = 0; to < ParamID::numFxSendTargets; ++to)
+            layout.add (percent (ParamID::kickFxSendToIds[to], "Kick FX Send " + juce::String (to + 1), 0.0f));
+        for (int ch = 0; ch < ParamID::numFxSendTargets; ++ch)
+            layout.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { ParamID::fxMuteIds[ch], 1 }, "FX " + juce::String (ch + 1) + " Mute", false));
     }
 
     void addKickToggleParams (Layout& layout)

@@ -1523,6 +1523,139 @@ int delayTest()
     return failed ? 1 : 0;
 }
 
+// FX-matrisen (steg 3): ett belopp per källa och FX-kanal, summa med den gamla fxChannel/fxAmount, och mute per kanal.
+int fxMatrixTest()
+{
+    juce::ScopedJuceInitialiser_GUI gui;
+    auto failed = false;
+    constexpr double rate = 48000.0;
+    using F = InstrumentField;
+    struct Setup
+    {
+        int matrixChannel = -1;      // 0-baserad kanal som får matrissend
+        float matrixAmount = 0.0f;
+        int legacyChannel = 0;       // 1-baserad, 0 = None
+        float legacyAmount = 0.0f;
+        bool kickMatrix = false;     // matrissend från kicken i stället för instrumentet
+        int muteChannel = -1;
+        int muteAtBlock = -1;        // -1: mutad från start; annars slås muten på före detta block
+    };
+    auto render = [&] (const Setup& s, int blockSize)
+    {
+        const auto owner = std::make_unique<InstrumentProcessor>();
+        auto& processor = *owner;
+        processor.setPlayConfigDetails (0, 2, rate, blockSize);
+        processor.prepareToPlay (rate, blockSize);
+        Scenarios::setPlain (processor, ParamID::kickOn, s.kickMatrix ? 1.0f : 0.0f);
+        for (int layer = 1; layer < ParamID::numInstrumentLayers; ++layer)
+            Scenarios::setInstrument (processor, layer, F::on, 0.0f);
+        Scenarios::setInstrument (processor, 0, F::on, s.kickMatrix ? 0.0f : 1.0f);
+        Scenarios::setInstrument (processor, 0, F::aTable, (float) Wavetables::classicIndex (2)); // sågtand
+        Scenarios::setInstrument (processor, 0, F::envAmount, 0.0f);
+        if (s.legacyChannel > 0)
+        {
+            Scenarios::setInstrument (processor, 0, F::fxChannel, (float) s.legacyChannel);
+            Scenarios::setInstrument (processor, 0, F::fxAmount, s.legacyAmount);
+            Scenarios::setInstrument (processor, 0, F::fxSend, 1.0f);
+        }
+        if (s.matrixChannel >= 0)
+        {
+            if (s.kickMatrix)
+                Scenarios::setPlain (processor, ParamID::kickFxSendToIds[s.matrixChannel], s.matrixAmount);
+            else
+                Scenarios::setInstrument (processor, 0, ParamID::fxSendToField (s.matrixChannel), s.matrixAmount);
+        }
+        const auto muteID = s.muteChannel >= 0 ? ParamID::fxMuteIds[s.muteChannel] : nullptr;
+        if (muteID != nullptr && s.muteAtBlock < 0)
+            Scenarios::setPlain (processor, muteID, 1.0f);
+        processor.ensureTablesInUse();
+        OfflineRender::Settings settings;
+        settings.sampleRate = rate;
+        settings.blockSize = blockSize;
+        settings.bpm = 120.0;
+        settings.bars = 2;
+        settings.notes = { 52 };
+        settings.extraBars = 1;
+        auto count = 0;
+        settings.onBlock = [&] (const juce::AudioBuffer<float>&, int, int)
+        {
+            // onBlock kommer efter blocket; slår på muten så att nästa block är det första som är mutat.
+            ++count;
+            if (muteID != nullptr && s.muteAtBlock >= 0 && count == s.muteAtBlock)
+                Scenarios::setPlain (processor, muteID, 1.0f);
+        };
+        return OfflineRender::render (processor, settings);
+    };
+    auto maxDiff = [] (const juce::AudioBuffer<float>& a, const juce::AudioBuffer<float>& b, int from = 0, int to = -1)
+    {
+        auto peak = 0.0f;
+        const auto end = to < 0 ? std::min (a.getNumSamples(), b.getNumSamples()) : to;
+        for (int ch = 0; ch < 2; ++ch)
+            for (int i = from; i < end; ++i)
+                peak = std::max (peak, std::abs (a.getSample (ch, i) - b.getSample (ch, i)));
+        return peak;
+    };
+    auto check = [&] (bool ok, const char* what)
+    {
+        std::printf ("%-66s %s\n", what, ok ? "ok" : "FEL");
+        failed |= ! ok;
+    };
+
+    const auto dry = render ({}, 512);
+    const auto peak = dry.getMagnitude (0, dry.getNumSamples());
+    check (peak > 0.01f, "instrumentet låter utan sends");
+
+    // En matrissend ger samma ljud som den gamla vägen i SEND-läge.
+    const auto legacy = render ({ -1, 0.0f, 1, 0.3f }, 512);
+    const auto matrix = render ({ 0, 0.3f }, 512);
+    check (maxDiff (legacy, dry) > 1.0e-3f, "FX1 med send 30 % hörs");
+    check (maxDiff (matrix, legacy) < 1.0e-4f * peak + 1.0e-6f, "matrissend 30 % = gamla kanalen i SEND-läge");
+
+    // Summa: gamla 15 % + matris 15 % på samma kanal = 30 %.
+    const auto summed = render ({ 0, 0.15f, 1, 0.15f }, 512);
+    check (maxDiff (summed, matrix) < 1.0e-4f * peak + 1.0e-6f, "gamla 15 % + matris 15 % på samma kanal = 30 %");
+
+    // En annan kanal är en annan send (utan effekter låter alla kanaler likadant).
+    const auto other = render ({ 5, 0.3f }, 512);
+    check (maxDiff (other, matrix) < 1.0e-4f * peak + 1.0e-6f, "send till FX6 låter som send till FX1 (båda utan effekter)");
+
+    // Kicken har egna matrissends.
+    const auto kickDry = render ({ -1, 0.0f, 0, 0.0f, true }, 512);
+    const auto kickSend = render ({ 2, 0.5f, 0, 0.0f, true }, 512);
+    check (maxDiff (kickSend, kickDry) > 1.0e-3f, "kickens matrissend till FX3 hörs");
+
+    // Blockstorleken ändrar inte sendet: matrissend = gamla vägen även vid små block (instrumentet självt är inte blockoberoende, så jämför mot gamla vägen).
+    for (const int blockSize : { 32, 64 })
+    {
+        const auto legacyB = render ({ -1, 0.0f, 1, 0.3f }, blockSize);
+        const auto matrixB = render ({ 0, 0.3f }, blockSize);
+        const auto name = blockSize == 32 ? "matrissend = gamla vägen vid block 32" : "matrissend = gamla vägen vid block 64";
+        check (maxDiff (matrixB, legacyB) < 1.0e-4f * peak + 1.0e-6f, name);
+    }
+
+    // Mute: mutad kanal är tyst, sendet ligger kvar; andra kanaler påverkas inte.
+    const auto muted = render ({ 0, 0.3f, 0, 0.0f, false, 0 }, 512);
+    const auto skip = (int) (rate * 0.05);
+    check (maxDiff (muted, dry, skip) < 1.0e-5f, "FX1 mutad: sendet hörs inte");
+    const auto mutedOther = render ({ 0, 0.3f, 0, 0.0f, false, 3 }, 512);
+    check (maxDiff (mutedOther, matrix) == 0.0f, "mute av en annan kanal ändrar ingenting");
+
+    // Mute mitt i en ton: inget hopp (glidning ca 5 ms), full tystnad efter 50 ms.
+    constexpr int toggleBlock = 30;
+    const auto toggled = render ({ 0, 0.3f, 0, 0.0f, false, 0, toggleBlock }, 512);
+    const auto toggleSample = toggleBlock * 512;
+    const auto fxPeak = maxDiff (matrix, dry, toggleSample, toggleSample + 2048);
+    check (fxPeak > 1.0e-3f, "FX-delen är hörbar där muten slås på");
+    check (maxDiff (toggled, matrix, 0, toggleSample) == 0.0f, "före muten är ljudet oförändrat");
+    check (maxDiff (toggled, matrix, toggleSample, toggleSample + 4) < 0.2f * fxPeak, "muten börjar mjukt (inget hopp vid första samplen)");
+    // Mastern (maximizern) släpper långsamt när FX-ljudet försvinner, så tystnaden mäts i två steg.
+    check (maxDiff (toggled, dry, toggleSample + skip, toggleSample + 2 * skip) < 0.02f * fxPeak, "efter 50 ms är kanalen nästan tyst (< 2 % av FX-toppen)");
+    check (maxDiff (toggled, dry, toggleSample + 5 * skip) < 1.0e-4f * fxPeak, "efter 250 ms är kanalen tyst (< 0,01 % av FX-toppen)");
+
+    std::puts (failed ? "FEL: FX-matristestet misslyckades" : "FX-matristestet gick igenom");
+    return failed ? 1 : 0;
+}
+
 // Multisampling etapp 1: datamodell, zonval, omsampling, utbyte och persistens. Inga ljudtrådsberoenden utöver select(), som ska vara allokeringsfri.
 int multiSampleTest()
 {

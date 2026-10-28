@@ -37,6 +37,7 @@ namespace
         Params::addEngineTimingParams (layout); // 5b: POS DELAY / LENGTH / CURVE per motor: nya parametrar sist
         Effects::addExtraChannelParameters (layout); // FX12: nya parametrar sist
         Mixer::addExtraSourceParameters (layout); // FX12:s fader, pan, duck, max och stage
+        Params::addFxMatrixParams (layout); // FX-matrisen och FX-mute: allra sist
         return layout;
     }
 
@@ -86,6 +87,8 @@ InstrumentProcessor::InstrumentProcessor()
 void InstrumentProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     prepareBase (sampleRate);
+    for (auto& row : lastSendTo)
+        row.fill (-1.0f);
     modulator.setSampleRate (sampleRate);
     kick.prepare (sampleRate);
     kick.setSeed (1000);
@@ -1002,6 +1005,7 @@ void InstrumentProcessor::finishBlock (int numSamples)
                    sendBus.getWritePointer (0), sendBus.getWritePointer (1), &stageSkipBus);
         if (routed)
             effects.send (channel, sendBus.getReadPointer (0), sendBus.getReadPointer (1), numSamples, amountToChannel);
+        sendMatrix (Mixer::firstBassSource + layer, layer, numSamples);
         for (int i = 0; i < numSamples; ++i)
             layerOuts[(size_t) layer].add (i, data[i], dataRight[i]);
     }
@@ -1017,6 +1021,7 @@ void InstrumentProcessor::finishBlock (int numSamples)
                sendBus.getWritePointer (0), sendBus.getWritePointer (1), &stageSkipBus);
     if (kickRouted)
         effects.send (kickChannel, sendBus.getReadPointer (0), sendBus.getReadPointer (1), numSamples, kickAmount);
+    sendMatrix (Mixer::kickSource, -1, numSamples);
 
     std::array<bool, numEffectChannels> channelDuck {};
     for (int ch = 0; ch < numEffectChannels; ++ch)
@@ -1058,6 +1063,23 @@ void InstrumentProcessor::finishBlock (int numSamples)
     {
         mainOut.add (i, left[i], right[i]);
         kickOut.add (i, kickData[i], kickData[i]);
+    }
+}
+
+void InstrumentProcessor::sendMatrix (int source, int layer, int numSamples)
+{
+    // Utöver den gamla fxChannel/fxAmount (kör före): ett belopp per FX-kanal. Sends är linjära, så två sends = summan,
+    // och en kanal som både den gamla vägen och matrisen pekar på får summan (ändras här om det ska bli max i stället).
+    auto& last = lastSendTo[(size_t) source];
+    for (int c = 0; c < numEffectChannels; ++c)
+    {
+        const auto to = layer >= 0 ? params.bass (layer, ParamID::fxSendToField (c)) : params.get (ParamID::kickFxSendToIds[c]);
+        auto& from = last[(size_t) c];
+        if (from < 0.0f)
+            from = to; // första blocket: ingen glidning
+        if (to > 0.0f || from > 0.0f)
+            effects.sendRamped (c, sendBus.getReadPointer (0), sendBus.getReadPointer (1), numSamples, from, to);
+        from = to;
     }
 }
 

@@ -18,6 +18,14 @@ namespace Help
             return "On: this instrument's row repeats if it is shorter than the pattern. Off: it plays once and is then silent until the pattern starts over.";
         if (rawID.startsWith ("macro"))
             return "A macro: a knob of your own. Turn it by hand (or automate it) and let it move other knobs: drag its handle in the MATRIX tab onto a knob, or set it up in the route list.";
+        // FX-matrisen: varje källa kan skicka till flera effektkanaler, ett belopp per kanal.
+        if (rawID.contains ("FxSendTo"))
+        {
+            const auto channel = rawID.fromLastOccurrenceOf ("FxSendTo", false, false);
+            return "How much of this sound is sent to effect channel " + channel + " (0 = nothing). It adds to the other sends and to the channel chosen with FX CHANNEL, so one sound can feed several effect channels at once. The dry sound stays untouched.";
+        }
+        if (rawID.startsWith ("fxMute"))
+            return "Mutes the whole effect channel " + rawID.substring (6) + " for every source: you hear nothing from it. The sends stay as they are, so un-muting brings it back, and the effects keep running so tails are not cut.";
 
         // EQ:n (kicken, instrumenten, mastern och effektkanalerna har samma): högpass, fyra band, lågpass. Redigeras i diagrammet.
         if (rawID.contains ("Eq"))
