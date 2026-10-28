@@ -2,7 +2,7 @@
 
 namespace
 {
-    constexpr float minDb = -48.0f, maxDb = 12.0f, topPad = 22.0f, gap = 14.0f;
+    constexpr float minDb = -48.0f, maxDb = 12.0f, topPad = 22.0f, gap = 14.0f, waveHeight = 190.0f;
 }
 
 HarmonicEditor::HarmonicEditor (PluginBase& p, int layerIn, int oscIn, juce::Colour accentIn)
@@ -14,41 +14,37 @@ HarmonicEditor::HarmonicEditor (PluginBase& p, int layerIn, int oscIn, juce::Col
     for (int f = 0; f < Wavetable::numFrames; ++f)
         frameBox.addItem ("Frame " + juce::String (f + 1), f + 2);
     frameBox.setSelectedId (1, juce::dontSendNotification);
-    frameBox.onChange = [this] { refreshBackdrop(); changed(); repaint(); };
-    frameBox.setTooltip ("Which wave of the table the edit applies to.");
+    frameBox.onChange = [this] { refreshBackdrop(); refreshPreview(); changed(); repaint(); };
+    frameBox.setTooltip ("Which wave of the table the edit applies to. The waveform above shows this wave (the first one for All frames).");
     addAndMakeVisible (frameBox);
 
-    zeroFundamental.setTooltip ("Removes harmonic 1 (the fundamental). Useful for a bass that fights the kick.");
-    zeroFundamental.onClick = [this] { gainDb[0] = -120.0f; changed(); repaint(); };
-    reset.setTooltip ("Back to the table as it was when this window opened.");
-    reset.onClick = [this]
-    {
-        gainDb.fill (0.0f);
-        phaseDeg.fill (0.0f);
-        changed();
-        repaint();
-    };
-    addAndMakeVisible (zeroFundamental);
-    addAndMakeVisible (reset);
-
     refreshBackdrop();
-    setSize (680, 330);
+    refreshPreview();
+    setSize (900, 580);
 }
 
 void HarmonicEditor::resized()
 {
     auto top = getLocalBounds().reduced (8, 4).removeFromTop (18);
-    reset.setBounds (top.removeFromRight (60));
-    top.removeFromRight (6);
-    zeroFundamental.setBounds (top.removeFromRight (110));
-    top.removeFromRight (6);
-    frameBox.setBounds (top.removeFromRight (110));
+    frameBox.setBounds (top.removeFromRight (120));
+}
+
+int HarmonicEditor::shownFrame() const
+{
+    return frameBox.getSelectedId() <= 1 ? 0 : frameBox.getSelectedId() - 2;
+}
+
+juce::Rectangle<float> HarmonicEditor::waveArea() const
+{
+    auto area = getLocalBounds().toFloat().reduced (8.0f, 0.0f);
+    area.removeFromTop (topPad + 4.0f);
+    return area.removeFromTop (waveHeight);
 }
 
 juce::Rectangle<float> HarmonicEditor::ampLane() const
 {
     auto area = getLocalBounds().toFloat().reduced (8.0f, 0.0f);
-    area.removeFromTop (topPad + 8.0f);
+    area.removeFromTop (topPad + 4.0f + waveHeight + 8.0f);
     area.removeFromBottom (14.0f);
     return area.removeFromTop ((area.getHeight() - gap) * 0.62f);
 }
@@ -56,7 +52,7 @@ juce::Rectangle<float> HarmonicEditor::ampLane() const
 juce::Rectangle<float> HarmonicEditor::phaseLane() const
 {
     auto area = getLocalBounds().toFloat().reduced (8.0f, 0.0f);
-    area.removeFromTop (topPad + 8.0f);
+    area.removeFromTop (topPad + 4.0f + waveHeight + 8.0f);
     area.removeFromBottom (14.0f);
     area.removeFromTop ((area.getHeight() - gap) * 0.62f + gap);
     return area;
@@ -73,13 +69,34 @@ void HarmonicEditor::refreshBackdrop()
     backdrop.fill (0.0f);
     if (! available)
         return;
-    const auto frame = frameBox.getSelectedId() <= 1 ? 0 : frameBox.getSelectedId() - 2;
     std::vector<float> amp, phase;
-    WavetableEdit::analyse (baseline.data() + (size_t) frame * Wavetable::frameSize, shown, amp, phase);
+    WavetableEdit::analyse (baseline.data() + (size_t) shownFrame() * Wavetable::frameSize, shown, amp, phase);
     const auto biggest = *std::max_element (amp.begin(), amp.end());
     if (biggest > 1.0e-6f)
         for (int k = 0; k < shown; ++k)
             backdrop[(size_t) k] = amp[(size_t) k] / biggest;
+}
+
+std::vector<WavetableEdit::Edit> HarmonicEditor::currentEdits() const
+{
+    std::vector<WavetableEdit::Edit> edits;
+    for (int k = 0; k < shown; ++k)
+        if (gainDb[(size_t) k] != 0.0f || phaseDeg[(size_t) k] != 0.0f)
+            edits.push_back ({ k + 1, gainDb[(size_t) k] <= -119.0f ? 0.0f : juce::Decibels::decibelsToGain (gainDb[(size_t) k]),
+                               juce::degreesToRadians (phaseDeg[(size_t) k]) });
+    return edits;
+}
+
+// Vågformsvyn: en FFT på en frame, billigt nog att köras vid varje musrörelse (tabellbygget väntar på timern).
+void HarmonicEditor::refreshPreview()
+{
+    if (! available)
+        return;
+    const auto frame = shownFrame();
+    auto frames = baseline;
+    WavetableEdit::apply (frames, frame, currentEdits(), true);
+    std::copy_n (baseline.begin() + (size_t) frame * Wavetable::frameSize, Wavetable::frameSize, before.begin());
+    std::copy_n (frames.begin() + (size_t) frame * Wavetable::frameSize, Wavetable::frameSize, after.begin());
 }
 
 void HarmonicEditor::paint (juce::Graphics& g)
@@ -89,6 +106,34 @@ void HarmonicEditor::paint (juce::Graphics& g)
     g.setFont (Theme::font (11.0f, true));
     g.drawText (available ? "HARMONICS  " + tableName : juce::String ("HARMONICS  (nothing to edit here)"),
                 8, 4, 330, 18, juce::Justification::centredLeft);
+
+    // Vågformen: utgångspunkten svag, med ändringen i oscillatorns färg.
+    const auto wave = waveArea();
+    g.setColour (Theme::track);
+    g.fillRect (wave);
+    g.setColour (Theme::textDim.withAlpha (0.5f));
+    g.drawHorizontalLine ((int) wave.getCentreY(), wave.getX(), wave.getRight());
+    if (available)
+    {
+        auto path = [&] (const std::array<float, Wavetable::frameSize>& data)
+        {
+            juce::Path p;
+            for (int i = 0; i < Wavetable::frameSize; ++i)
+            {
+                const auto x = wave.getX() + wave.getWidth() * (float) i / (float) (Wavetable::frameSize - 1);
+                const auto y = wave.getCentreY() - wave.getHeight() * 0.45f * juce::jlimit (-1.2f, 1.2f, data[(size_t) i]);
+                if (i == 0) p.startNewSubPath (x, y); else p.lineTo (x, y);
+            }
+            return p;
+        };
+        g.setColour (Theme::textDim.withAlpha (0.4f));
+        g.strokePath (path (before), juce::PathStrokeType (1.0f));
+        g.setColour (accent);
+        g.strokePath (path (after), juce::PathStrokeType (2.0f));
+    }
+    g.setColour (Theme::textDim);
+    g.setFont (Theme::font (10.0f));
+    g.drawText ("WAVEFORM  (grey = when this window opened)", wave.toNearestInt().reduced (4, 2), juce::Justification::topLeft);
 
     const auto amp = ampLane(), phase = phaseLane();
     const auto columnWidth = amp.getWidth() / (float) shown;
@@ -156,6 +201,7 @@ void HarmonicEditor::mouseDown (const juce::MouseEvent& e)
         lane = 0;
     else
         return;
+    lastColumn = -1;
     setFromMouse (e.position);
 }
 
@@ -163,34 +209,65 @@ void HarmonicEditor::mouseDrag (const juce::MouseEvent& e) { setFromMouse (e.pos
 
 void HarmonicEditor::mouseDoubleClick (const juce::MouseEvent& e)
 {
-    const auto k = (size_t) columnAt (e.position.x);
-    if (phaseLane().contains (e.position))
-        phaseDeg[k] = 0.0f;
-    else if (ampLane().contains (e.position))
-        gainDb[k] = 0.0f;
+    if (waveArea().contains (e.position)) // hela ändringen tillbaka
+    {
+        gainDb.fill (0.0f);
+        phaseDeg.fill (0.0f);
+    }
     else
-        return;
+    {
+        const auto k = (size_t) columnAt (e.position.x);
+        if (phaseLane().contains (e.position))
+            phaseDeg[k] = 0.0f;
+        else if (ampLane().contains (e.position))
+            gainDb[k] = 0.0f;
+        else
+            return;
+    }
+    refreshPreview();
     changed();
     repaint();
+}
+
+// Värdet under musen för den bana som drogs igång: dB eller grader, ännu inte avrundat.
+float HarmonicEditor::valueAt (juce::Point<float> position) const
+{
+    if (lane == 0)
+    {
+        const auto area = ampLane();
+        return minDb + (maxDb - minDb) * juce::jlimit (0.0f, 1.0f, (area.getBottom() - position.y) / area.getHeight());
+    }
+    const auto area = phaseLane();
+    return juce::jlimit (-180.0f, 180.0f, (area.getCentreY() - position.y) / (area.getHeight() * 0.5f) * 180.0f);
+}
+
+void HarmonicEditor::setColumn (int column, float value)
+{
+    if (lane == 0)
+        gainDb[(size_t) column] = value <= minDb + 1.0f ? -120.0f : (std::abs (value) < 0.6f ? 0.0f : value); // nederst = borttagen, nära noll fastnar vid noll
+    else
+        phaseDeg[(size_t) column] = std::abs (value) < 4.0f ? 0.0f : std::round (value);
 }
 
 void HarmonicEditor::setFromMouse (juce::Point<float> position)
 {
     if (! available)
         return;
-    const auto k = (size_t) columnAt (position.x);
-    if (lane == 0)
+    const auto column = columnAt (position.x);
+    const auto value = valueAt (position);
+
+    // Snabb dragning hoppar över kolumner: fyll i staplarna mellan förra och den här med en rak linje.
+    if (lastColumn >= 0 && std::abs (column - lastColumn) > 1)
     {
-        const auto area = ampLane();
-        const auto db = minDb + (maxDb - minDb) * juce::jlimit (0.0f, 1.0f, (area.getBottom() - position.y) / area.getHeight());
-        gainDb[k] = db <= minDb + 1.0f ? -120.0f : (std::abs (db) < 0.6f ? 0.0f : db); // nederst = borttagen, nära noll fastnar vid noll
+        const auto step = column > lastColumn ? 1 : -1;
+        for (int c = lastColumn + step; c != column; c += step)
+            setColumn (c, lastValue + (value - lastValue) * (float) (c - lastColumn) / (float) (column - lastColumn));
     }
-    else
-    {
-        const auto area = phaseLane();
-        const auto deg = juce::jlimit (-180.0f, 180.0f, (area.getCentreY() - position.y) / (area.getHeight() * 0.5f) * 180.0f);
-        phaseDeg[k] = std::abs (deg) < 4.0f ? 0.0f : std::round (deg);
-    }
+    setColumn (column, value);
+    lastColumn = column;
+    lastValue = value;
+
+    refreshPreview();
     changed();
     repaint();
 }
@@ -206,13 +283,7 @@ void HarmonicEditor::timerCallback()
     if (! available)
         return;
 
-    std::vector<WavetableEdit::Edit> edits;
-    for (int k = 0; k < shown; ++k)
-        if (gainDb[(size_t) k] != 0.0f || phaseDeg[(size_t) k] != 0.0f)
-            edits.push_back ({ k + 1, gainDb[(size_t) k] <= -119.0f ? 0.0f : juce::Decibels::decibelsToGain (gainDb[(size_t) k]),
-                               juce::degreesToRadians (phaseDeg[(size_t) k]) });
-
     auto frames = baseline;
-    WavetableEdit::apply (frames, frameBox.getSelectedId() <= 1 ? -1 : frameBox.getSelectedId() - 2, edits, true);
+    WavetableEdit::apply (frames, frameBox.getSelectedId() <= 1 ? -1 : frameBox.getSelectedId() - 2, currentEdits(), true);
     processor.installWavetable (layer, osc, std::move (frames), steps, tableName);
 }
