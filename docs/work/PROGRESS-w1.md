@@ -369,3 +369,9 @@ Bygge Debug all: grönt, "Alla tester gick igenom" (rendersig oförändrad).
 - FOLLOW slås av när man drar den horisontella rullningslisten (`scrollBarMoved`).
 - Ingen ny parameter. Build Debug all grön ("Alla tester gick igenom").
 - DAW-test (Lemon): öppna pianorullen, GHOST, bocka av en instrument: dess spöktoner försvinner; menyn stannar öppen. Spela med FOLLOW på och dra rullningslisten: FOLLOW släcks.
+
+## Glide-plus i pianorullen (Arbetare 1, 28 okt)
+- Så ritas glide idag: en glide-ton (`note.slide`, rosa) har en ramp från tonhöjden som klingar (`pitchBefore`) till notens mitt vid dess slut (`PianoRoll.cpp` paint, "Rampen"); högerdrag på tomt rutnät ritar ett glidestreck (`addStroke`) som blir en glide-ton och fastnar på en ton som börjar vid strecket slut.
+- Nytt: plus-ikon vid glide-tonens slut (`plusRect`/`updatePlus`), under tonen om musen är under notens mitt, annars ovanför. Drag från plusset startar ett glidestreck från notens mitt/slut och snappar till tonen under pekaren (mouseDrag). Klick utan drag gör inget. Ingen ny parameter, ingen ljudtrådskod.
+- Build Debug all grön.
+- DAW-test (Lemon): skapa en glide-ton (GLIDE på, rita), för musen över den: plus syns ovanför/under efter musens sida. Dra från plusset till en annan ton: strecket snappar till tonens början och en ny glide-ton skapas.

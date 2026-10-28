@@ -1600,6 +1600,17 @@ void PianoRoll::paint (juce::Graphics& g)
 
         }
 
+        // Glide-plus: plusset vid glide-tonen.
+        if (plusKey.valid() && drag == Drag::none)
+        {
+            const auto p = plusRect().reduced (1.0f);
+            g.setColour (Theme::pattern);
+            g.fillEllipse (p);
+            g.setColour (juce::Colours::black.withAlpha (0.85f));
+            g.drawLine (p.getCentreX() - 3.5f, p.getCentreY(), p.getCentreX() + 3.5f, p.getCentreY(), 1.6f);
+            g.drawLine (p.getCentreX(), p.getCentreY() - 3.5f, p.getCentreX(), p.getCentreY() + 3.5f, 1.6f);
+        }
+
         // Markeringsrutan.
         if (drag == Drag::box)
         {
@@ -1852,12 +1863,39 @@ void PianoRoll::mouseMove (const juce::MouseEvent& event)
     shiftHeld = event.mods.isShiftDown();
     altHeld = event.mods.isAltDown();
     setHover (key);
+    updatePlus (event.position, key);
     updateCursor (event.position, edge);
+}
+
+juce::Rectangle<float> PianoRoll::plusRect() const
+{
+    if (! plusKey.valid())
+        return {};
+    const auto b = noteBounds (plusKey);
+    const auto y = plusBelow ? b.getBottom() + 8.0f : b.getY() - 8.0f;
+    return juce::Rectangle<float> (14.0f, 14.0f).withCentre ({ b.getRight(), y });
+}
+
+void PianoRoll::updatePlus (juce::Point<float> position, NoteKey hovered)
+{
+    const auto before = plusKey;
+    NoteData note;
+    if (hovered.valid() && liveNote (hovered, note) && note.slide)
+    {
+        plusKey = hovered;
+        plusBelow = position.y >= noteBounds (hovered).getCentreY(); // plusset ligger på musens sida av tonen
+    }
+    else if (plusKey.valid() && (! liveNote (plusKey, note) || ! (plusRect().expanded (4.0f).contains (position) || noteBounds (plusKey).expanded (16.0f).contains (position))))
+        plusKey = {};
+    if (plusKey != before)
+        repaint();
 }
 
 void PianoRoll::mouseExit (const juce::MouseEvent&)
 {
     hoverPointValid = false;
+    if (drag != Drag::stroke)
+        plusKey = {};
     setHover ({});
     repaint();
 }
@@ -1936,6 +1974,16 @@ void PianoRoll::mouseDown (const juce::MouseEvent& event)
     {
         drag = Drag::keys;
         auditionStart (yToPitch (event.position.y), Pattern::defaultVelocity (layer));
+        return;
+    }
+    // Glide-plus: ett klick på plusset börjar ett glidestreck från glide-tonens mitt (höjd) och slut (tid).
+    if (! event.mods.isPopupMenu() && plusKey.valid() && plusRect().expanded (2.0f).contains (event.position))
+    {
+        const auto b = noteBounds (plusKey);
+        drag = Drag::stroke;
+        strokeFromPlus = true;
+        strokeStart = { b.getRight(), b.getCentreY() };
+        strokeEnd = event.position;
         return;
     }
     if (! gridArea.contains (event.position))
@@ -2154,6 +2202,15 @@ void PianoRoll::mouseDrag (const juce::MouseEvent& event)
     if (drag == Drag::stroke)
     {
         strokeEnd = event.position;
+        if (strokeFromPlus)
+        {
+            // Snappa till en ton som börjar efter strecket startar: målet blir dess början och mitt.
+            bool edge = false;
+            const auto target = gridArea.contains (event.position) ? noteAtPoint (event.position, edge) : NoteKey {};
+            if (target.valid() && target != plusKey)
+                if (const auto tb = noteBounds (target); tb.getX() > strokeStart.x)
+                    strokeEnd = { tb.getX(), tb.getCentreY() };
+        }
         repaint();
         return;
     }
@@ -2314,6 +2371,13 @@ void PianoRoll::mouseUp (const juce::MouseEvent& event)
     if (drag == Drag::stroke)
     {
         drag = Drag::none;
+        const auto fromPlus = strokeFromPlus;
+        strokeFromPlus = false;
+        if (fromPlus && strokeStart.getDistanceFrom (strokeEnd) < 6.0f)
+        {
+            repaint(); // ett klick utan drag på plusset gör inget
+            return;
+        }
         if (strokeStart.getDistanceFrom (strokeEnd) < 6.0f)
         {
             strokeMenuNow = true;

@@ -287,6 +287,12 @@ private:
     // Glidestreck (D1): högerdrag på tomt rutnät. Ett högerklick utan drag visar menyn som förut.
     juce::Point<float> strokeStart, strokeEnd;
     bool strokeMenuNow = false;
+    // Glide-plus: plus-ikon vid en glide-ton som startar ett glidestreck från notens slut; strecket fastnar på en ton under pekaren.
+    NoteKey plusKey;
+    bool plusBelow = true;
+    bool strokeFromPlus = false;
+    juce::Rectangle<float> plusRect() const;
+    void updatePlus (juce::Point<float> position, NoteKey hovered);
     void addStroke (const juce::Point<float>& from, const juce::Point<float>& to);
     float topPitch = 12.0f;     // översta synliga raden (halvtoner från tonarten)
     NoteKey justCreated;        // tonen som det första klicket i ett dubbelklick skapade
