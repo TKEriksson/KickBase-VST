@@ -364,7 +364,7 @@ namespace Settings
         if (level < 0)
         {
             const auto forced = juce::SystemStats::getEnvironmentVariable ("KB_GLOW", {}); // för bildverktyget
-            level = juce::jlimit (0, 2, forced.isNotEmpty() ? forced.getIntValue() : get ("glowLevel").isEmpty() ? 1 : get ("glowLevel").getIntValue());
+            level = juce::jlimit (0, 2, forced.isNotEmpty() ? forced.getIntValue() : get ("glowLevel").isEmpty() ? 0 : get ("glowLevel").getIntValue());
             glowState = level;
         }
         return level;

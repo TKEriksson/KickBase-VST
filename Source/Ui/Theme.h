@@ -97,6 +97,9 @@ namespace Theme
         inline constexpr int md = 10;       // mellan rattgrupper och rutor
         inline constexpr int lg = 14;       // mellan paneler/avdelningar
         inline constexpr int panelPad = 14; // inre marginal i en panel
+        inline constexpr int menuPadY = 5;  // luft over och under knapparna i alla menyrader
+        inline constexpr int menuGapX = 12; // avstand i sidled mellan menyknappar
+        inline constexpr int menuButtonH = 26; // knapphojd i menyrader
         inline constexpr int rowGap = 8;    // mellan menyrader (nivå 1-3)
     }
 
@@ -220,19 +223,20 @@ namespace Theme
 
     // Gemensam kantglöd (å): tre tunna inre linjer med fallande styrka, inget blur. Billigt nog att ritas varje gång.
     // Glödstyrka från SETTINGS (Av / Svag / Stark): samma skala för kantglöd och avdelare.
-    inline float glowStrength() { static constexpr float scale[3] = { 0.0f, 1.0f, 1.8f }; return scale[Settings::glowLevel()]; }
+    inline float glowStrength() { static constexpr float scale[3] = { 0.0f, 1.0f, 3.0f }; return scale[Settings::glowLevel()]; }
 
     // Används av alla paneler, kort och avdelare så att glöden ser likadan ut överallt. Inåt, så att grannar inte klipper den.
     inline void paintEdgeGlow (juce::Graphics& g, juce::Rectangle<float> area, float corner, juce::Colour colour = juce::Colour (0xff38bdf8),
                                float strength = 1.0f)
     {
-        static constexpr float alphas[3] = { 0.24f, 0.13f, 0.06f };
+        static constexpr float alphas[5] = { 0.24f, 0.13f, 0.06f, 0.04f, 0.02f };
         strength *= glowStrength();
         if (strength <= 0.0f)
             return;
-        for (int i = 0; i < 3; ++i)
+        const auto rings = strength > 1.5f ? 5 : 3; // Stark: bredare glöd, inte bara starkare
+        for (int i = 0; i < rings; ++i)
         {
-            g.setColour (colour.withAlpha (alphas[i] * strength));
+            g.setColour (colour.withAlpha (juce::jmin (1.0f, alphas[i] * strength)));
             g.drawRoundedRectangle (area.reduced (1.5f + (float) i * 1.5f), juce::jmax (1.0f, corner - (float) i), 1.5f);
         }
     }

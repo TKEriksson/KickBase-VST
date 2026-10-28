@@ -471,7 +471,8 @@ void HeaderBar::resized()
     // Till höger: mätare och lyssnarvolym längst ut, sedan tonart, sedan (instrumentet) en gemensam ruta för
     // PREVIEWS, LOOP, tempo/takt och JOG. Sätts först, så att vänstra delen kan krympa vid smal bredd.
     auto right = getLocalBounds().reduced (14, 0);
-    masterKnob.setBounds (right.removeFromRight (46).withSizeKeepingCentre (46, 46)); // stor OUT-ratt (ä)
+    const auto outSize = std::min (height - 4, 64);
+    masterKnob.setBounds (right.removeFromRight (outSize).withSizeKeepingCentre (outSize, outSize)); // stor OUT-ratt (ä)
     right.removeFromRight (4);
     meterRect = right.removeFromRight (meterWidth).withSizeKeepingCentre (meterWidth, 28);
     right.removeFromRight (10);
@@ -768,11 +769,7 @@ void HeaderBar::paint (juce::Graphics& g)
         const auto group = transportGroup.toFloat();
         // Glasdisplay (ä): mörkt glas med ljusreflex, tunn kant i mönsterfärgen och gemensam kantglöd (å).
         Theme::paintGlassDisplay (g, group, 9.0f);
-        g.setColour (Theme::pattern.withAlpha (0.07f));
-        g.fillRoundedRectangle (group, 9.0f);
-        g.setColour (Theme::pattern.withAlpha (0.55f));
-        g.drawRoundedRectangle (group.reduced (0.5f), 9.0f, 1.0f);
-        Theme::paintEdgeGlow (g, group, 9.0f, Theme::pattern, 1.6f);
+        Theme::paintEdgeGlow (g, group, 9.0f, Theme::pattern, 0.8f); // svag färgad glöd i stället för röd ram
         g.setFont (Theme::font (8.5f, true));
         g.setColour (Theme::pattern);
         g.drawText ("PREVIEWS", previewGroup.toFloat().withHeight (12.0f), juce::Justification::centredLeft);

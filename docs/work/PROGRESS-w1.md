@@ -651,3 +651,8 @@ Utvidgning av (z): gäller alla menyer i pluginet. Tre nivåer (huvudmeny, under
 ## 2026-10-28 glöd/menyer/glasknappar (A1)
 - Glöd starkare (Theme.h paintEdgeGlow/paintDividerGlow), menynivå 2 blåtonad, nivå 3 lägre+mörkare, avdelare under varje nivå; ListenButton som glasknapp (Theme::paintGlassButton); OUT-ratt 46 px; spacing-skala `Theme::Space` (TabbedPanel använder den; resten av GUI:t byts steg för steg).
 - SETTINGS: GLOW Av/Svag/Stark (Settings::glowLevel, användarinställning "glowLevel", standard Svag, env KB_GLOW för bildverktyget). Bilder: glod-glas-menyer-2.png, glod-svag.png, glod-stark.png.
+
+## 2026-10-28 kväll (A1)
+- Glöd: standard nu Av (Settings.cpp glowLevel), kod kvar. PREVIEWS glasdisplay, OUT-ratt upp till 64 px.
+- Menyluft: Theme::Space::menuPadY=5, menuGapX=12, menuButtonH=26 (Theme.h); används i TabbedPanel.h (headerHeight, extrasRowHeight, resized, tabGap). Debug all grön.
+- PL: inga fler bilder; (t) tagen av PL, (r)/(u) av A2.

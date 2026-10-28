@@ -67,8 +67,8 @@ private:
 class TabbedPanel : public juce::Component, private juce::Timer
 {
 public:
-    static constexpr int headerHeight = 36;
-    static constexpr int extrasRowHeight = 30; // rad 2: sidans kontroller (väljare, på/av, preset) i remsa-stil
+    static constexpr int headerHeight = 3 + Theme::Space::menuButtonH + 2 * Theme::Space::menuPadY + 3;
+    static constexpr int extrasRowHeight = Theme::Space::menuButtonH + 2 * Theme::Space::menuPadY; // rad 2: sidans kontroller (väljare, på/av, preset) i remsa-stil
 
     // `rememberedTab` pekar på var den valda fliken sparas (t.ex. i processorn), så att
     // samma flik visas när fönstret öppnas igen.
@@ -256,7 +256,7 @@ public:
 
     void resized() override
     {
-        auto header = getLocalBounds().removeFromTop (headerHeight).reduced (10, 4).withTrimmedTop (2);
+        auto header = juce::Rectangle<int> (10, 3 + Theme::Space::menuPadY, std::max (0, getWidth() - 20), Theme::Space::menuButtonH);
         if (previewButton != nullptr)
         {
             previewButton->setBounds (header.removeFromRight (previewWidth));
@@ -264,7 +264,7 @@ public:
         }
         // Knappens bredd = textbredd + 2 x 14 px (+ plats för LED/ström-knapp): texten krymper aldrig.
         const auto pillsLeft = header.getX();
-        const auto strip = header.expanded (4, 3);
+        const auto strip = header.expanded (4, Theme::Space::menuPadY);
         stripArea = strip;
         int usedWidth = 0;
         for (auto& tab : tabs)
@@ -286,10 +286,10 @@ public:
         extrasRow = juce::Rectangle<int> (10, headerHeight + 2, std::max (0, getWidth() - 20), extrasRowHeight);
         for (auto& tab : tabs)
         {
-            auto content = getLocalBounds().reduced (Theme::Space::panelPad).withTrimmedTop (headerHeight - 8);
+            auto content = getLocalBounds().reduced (Theme::Space::panelPad).withTrimmedTop (headerHeight - 12);
             if (tab.headerExtras != nullptr)
             {
-                tab.headerExtras->setBounds (extrasRow.reduced (8, 2));
+                tab.headerExtras->setBounds (extrasRow.reduced (8, Theme::Space::menuPadY));
                 content.setTop (extrasRow.getBottom() + Theme::Space::md);
             }
             tab.page->setBounds (content);
@@ -299,7 +299,7 @@ public:
 private:
     static constexpr int previewWidth = 30;
     static constexpr int powerSpace = 30; // plats för på/av-ikonen längst till höger på en flik
-    static constexpr int tabGap = 8;
+    static constexpr int tabGap = Theme::Space::menuGapX;
 
     void updatePreviewButton()
     {
