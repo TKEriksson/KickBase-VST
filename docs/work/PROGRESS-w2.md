@@ -430,3 +430,9 @@ Ordning: 1, 3, 2, sedan 4 efter svar från Arbetare 1. Ljudkod (InstrumentProces
 - TimelineChart.h: LENGTH 0 betyder öppen (ingen slutkant, `gateAt`), så klick till höger om vänsterkanten väljer nu Edge::length; POS DELAY-draget drar av NUDGE (delaySeconds räknar in den, fältet inte); `mouseDrag` skyddad mot bredd 0.
 - OscRender.h: `warpPhase` får den begränsade `depth`; gainSum-normaliseringen stämmer med `InstrumentSynth.cpp:112-144`.
 - Lemon-testlistan: (h) steg 5 ersatt (OSC av var overifierat), (l) steg 7-8 (NUDGE, LENGTH 0). Nytt: docs/work/release-0.4-utkast.md.
+
+## 0.4 (o) + (n) – Flikordning, avdelare och brödsmula (Arbetare 2, gren `tabs-crumb`)
+- `TabbedPanel.h`: ny `addSeparator()` (tunn avdelare + 12 px luft i underflikraden), `getCurrentTabName()`. Brödsmulan i huvudraden börjar nu med `>` (utan ordet KICKBASE). Avdelaren under huvudflikraden fanns redan (`paintDividerGlow`, rad 226).
+- Instrumentets flikar: `INSTR | OSC 1 OSC 2 OSC 3 SAMPLE FM | FILTER MIX TIMING` (`Modules.cpp` ~1176-1197). FM ligger nu före FILTER, så FM:s på/av-index blev `2 + oscsPerLayer`. Ingen sparad flik (underflikarna har ingen `rememberedTab`) och ingen hjälpsektion beror på ordningen; förhandsknappar (flik 1-8) och TIMING (8) oförändrade.
+- Brödsmulan för INSTRUMENT: `> INSTRUMENT > INSTR 3 > OSC 2` via `InstrumentHost::crumb()` (`Modules.h`), `InstrumentEditor.cpp:47`; `InstrumentHost::timerCallback` ritar om huvudpanelen när smulan ändras.
+- (n): `extrasRowHeight` 44, `extrasRow.reduced (8, 4)`.

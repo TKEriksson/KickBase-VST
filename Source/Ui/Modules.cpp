@@ -1171,9 +1171,10 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
     instrPage.addAndMakeVisible (noiseFilterButton);
     noiseFilterAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, ParamID::bass (layer, F::filterNoise), noiseFilterButton);
 
-    // Flikarna: INSTR (envelopen och rattarna), OSC 1-3 och SAMPLE med en på/av-knapp på fliken, och FILTER.
+    // Flikarna: INSTR | OSC 1-3, SAMPLE och FM med en på/av-knapp på fliken | FILTER, MIX och TIMING (avdelare efter INSTR och FM).
     sources.setSubTabs();
     sources.addTab ("INSTR", layerAccent, instrPage);
+    sources.addSeparator();
     for (int osc = 0; osc < ParamID::oscsPerLayer; ++osc)
         oscs[(size_t) osc] = std::make_unique<OscPanel> (p, layer, osc, layerAccent);
     samplePage = std::make_unique<SamplePage> (p, layer, layerAccent);
@@ -1185,12 +1186,13 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
     }
     sources.addTab ("SAMPLE", layerAccent, *samplePage);
     sources.addPower (1 + ParamID::oscsPerLayer, p.apvts, ParamID::bass (layer, F::sampleOn));
-    filterPage = std::make_unique<FilterPage> (p, layer, layerAccent);
-    sources.addTab ("FILTER", layerAccent, *filterPage);
     fmPanel = std::make_unique<FmPanel> (p, layer, layerAccent);
     sources.addTab ("FM", layerAccent, *fmPanel);
-    sources.addPower (3 + ParamID::oscsPerLayer, p.apvts, ParamID::bass (layer, F::fmOn),
-                      Help::forParameter (ParamID::bass (layer, F::fmOn))); // FM efter FILTER: fliknummer 3 + oscsPerLayer
+    sources.addPower (2 + ParamID::oscsPerLayer, p.apvts, ParamID::bass (layer, F::fmOn),
+                      Help::forParameter (ParamID::bass (layer, F::fmOn))); // FM efter SAMPLE: fliknummer 2 + oscsPerLayer
+    sources.addSeparator();
+    filterPage = std::make_unique<FilterPage> (p, layer, layerAccent);
+    sources.addTab ("FILTER", layerAccent, *filterPage);
     mixPanel = std::make_unique<InstrMixPanel> (p, layer, layerAccent);
     sources.addTab ("MIX", layerAccent, *mixPanel);
     timingPanel = std::make_unique<InstrTimingPanel> (p, layer, layerAccent);
@@ -2237,6 +2239,14 @@ void InstrumentHost::timerCallback()
 
     if (processor.activeInstruments() != lastCount || processor.layerNamesVersion.load() != lastNamesVersion)
         refresh();
+
+    // Brödsmulan i huvudflikraden ritas av TabbedPanel: be den rita om när instrument, namn eller underflik ändras.
+    if (const auto crumbNow = crumb(); crumbNow != lastCrumb)
+    {
+        lastCrumb = crumbNow;
+        if (auto* tabs = findParentComponentOfClass<TabbedPanel>())
+            tabs->repaint();
+    }
 }
 
 void InstrumentHost::showSelector()

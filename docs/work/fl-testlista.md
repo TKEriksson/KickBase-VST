@@ -171,3 +171,8 @@ Format: **Gör så** → *förväntat resultat*. Bocka av `[ ]` när det stämme
   2. Spela en not: spelhuvudet ska röra sig i det, i takt med TIMING-fliken.
   3. Försök dra i diagrammet: inget ska ändras (skrivskyddat).
   4. Klicka i diagrammet: TIMING-fliken ska öppnas.
+- (o) + (n) flikar och brödsmula (Lemon):
+  1. INSTRUMENT: underflikarna ska stå `INSTR | OSC 1 OSC 2 OSC 3 SAMPLE FM | FILTER MIX TIMING`, med ett tunt streck efter INSTR och efter FM.
+  2. FM-flikens på/av-ikon ska styra FM (inte FILTER): slå av/på den och kolla att FM-sidan svarar.
+  3. Brödsmulan uppe till höger i huvudraden ska visa `> INSTRUMENT > <instrumentnamn> > OSC 2` och följa med när du byter underflik eller instrument. Inget KICKBASE i den. Andra huvudflikar: `> KICK`, `> ANALYZER > SPECTRUM`.
+  4. Raden med väljare/PREVIEW över instrumentets flikar är högre med luft över och under knapparna; inget klipps.

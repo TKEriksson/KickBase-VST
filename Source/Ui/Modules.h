@@ -275,6 +275,7 @@ class InstrumentModule : public ModulePanel, public juce::FileDragAndDropTarget
 {
 public:
     InstrumentModule (PluginBase& processor, int layer);
+    juce::String currentTabName() const { return sources.getCurrentTabName(); } // för brödsmulan: INSTR, OSC 2 ...
     void resized() override;
     void paintOverChildren (juce::Graphics&) override;
 
@@ -340,6 +341,13 @@ public:
     void resized() override;
     void select (int layer);
     int getCurrent() const { return current; }
+    // Brödsmulans del under INSTRUMENT: instrumentets namn och den öppna underfliken ("INSTR 3 > OSC 2"). Tom om panelen inte är byggd än.
+    juce::String crumb() const
+    {
+        if (modules[(size_t) current] == nullptr)
+            return {};
+        return processor.getLayerName (current) + "  >  " + modules[(size_t) current]->currentTabName();
+    }
     void addInstrument(); // ADD INSTRUMENT i mönstret: lägger till och väljer det nya
     void mouseDown (const juce::MouseEvent& event) override;
 
@@ -366,6 +374,7 @@ private:
     std::array<juce::Component*, ParamID::numInstrumentLayers> extras {};
     std::array<juce::Component*, ParamID::numInstrumentLayers> powers {};
     int current = 0, lastCount = -1, lastNamesVersion = -1, lastStructureVersion = 0;
+    juce::String lastCrumb;
     bool confirmOpen = false;
     juce::Component::SafePointer<juce::AlertWindow> renameDialog;
 };
