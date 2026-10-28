@@ -80,7 +80,9 @@ namespace Help
             if (rawID.endsWith ("Duck"))
                 return "SC on: the sidechain ducks this source under the kick. Off: the kick leaves it alone.";
             if (rawID.endsWith ("Max"))
-                return "MAX on: this source goes through the maximizer (drive, clip, limiter, width). Off: it bypasses the maximizer and is added after it.";
+                return "MAX on: this source goes through the maximizer (drive, clip, limiter, and WIDTH/BASS MONO/ENHANCE unless left out on SOUNDSTAGE). Off: it bypasses the maximizer and is added after it.";
+            if (rawID.endsWith ("Stage"))
+                return "SOUNDSTAGE: on = this source goes through WIDTH, BASS MONO and ENHANCE. Off = it keeps its own stereo image (it still gets the master EQ, drive and limiter).";
         }
 
         static const std::map<juce::String, juce::String> texts {

@@ -383,7 +383,7 @@ Bygge Debug all: grönt, "Alla tester gick igenom" (rendersig oförändrad).
 
 ## SOUNDSTAGE: bussuppdelning + flerval av källor (Arbetare 1, 2026-10-28) – PLAN
 - Idag: WIDTH / MONO BELOW / ENHANCE gäller hela summan (`Master.cpp:116-155`, efter master-EQ). Alla källor (kick, instrument 1-10, FX A-E = 16, `Mixer.h:15`) summeras i `maxBus` av `Mixer::mix` (`Mixer.cpp:108`).
-- Uppdelning: en ny parameter `masterStageMask` (heltal, 16 bitar, en per källa, SIST i `Master::addParameters`, standard = alla på = dagens ljud). Källor med bit av går i en ny `stageSkipBus` i stället för `maxBus` (samma gain/pan/send, bara annan mål-buss). Mastern kör EQ på båda (en andra `SourceEq` med samma parametrar, linjär så EQ(a)+EQ(b)=EQ(a+b)), kör stereoblocket bara på summan av de valda, lägger sedan tillbaka skip-bussen före DC/drive/limiter.
+- Uppdelning: 16 bool-parametrar `mix<Källa>Stage` (en per källa, SIST i layouten via `Mixer::addStageParameters`, standard = på = dagens ljud; ändrat från masken). Källor med bit av går i en ny `stageSkipBus` i stället för `maxBus` (samma gain/pan/send, bara annan mål-buss). Mastern kör EQ på båda (en andra `SourceEq` med samma parametrar, linjär så EQ(a)+EQ(b)=EQ(a+b)), kör stereoblocket bara på summan av de valda, lägger sedan tillbaka skip-bussen före DC/drive/limiter.
 - Ljudtråden: ingen allokering (bussen förallokeras som `maxBus`). När alla bitar är på (standard) körs ingen skip-väg alls: samma kod och samma ljud som idag, rendersig oförändrad. Merkostnad annars: en EQ + en buss-addition per block.
 - Inga ID:n, preset-index eller hash ändras. Bypass-bussen (förbi maximizern) berörs inte.
 - UI: SOUNDSTAGE-sidan får en rad källknappar (flerval, färgprickar som GHOST) och tydligare namn/tips: MONO BELOW -> "BASS MONO", WIDTH -> "WIDTH (sides)". Hjälptexter i Help.cpp.
@@ -392,3 +392,8 @@ Bygge Debug all: grönt, "Alla tester gick igenom" (rendersig oförändrad).
 - `LiveCodeComplete.h`: fler metoder/globaler (ply, iter, scale, arp, mask, range m.fl.), `sine.`/`saw.` m.fl. ger metodlistan. `LiveCodePage.cpp` codeDocumentTextInserted: öppnas automatiskt vid '.', '"' och efter 2 bokstäver; stängs vid andra tecken så Enter inte sväljs efter ')' eller mellanslag. Ctrl+Space som förut. Inga parametrar.
 - Build Debug all grön, alla tester gick igenom.
 - DAW-test (Lemon): LIVE CODE: skriv `no` -> lista öppnas; `s("bd").` -> metoder; Enter efter `)` ger ny rad; `sine.` ger metoder; Ctrl+Space öppnar manuellt.
+
+## SOUNDSTAGE: genomfört (Arbetare 1, 2026-10-28)
+- Kod: `Mixer::addStageParameters`/`inStage`, `mix(..., skipBus)` (Mixer.cpp), `MasterSection::process(..., skip)` med egen `eqSkip` (Master.cpp), `stageSkipBus` i InstrumentProcessor (summas efter stereoblocket, före DC/drive/limiter; masterfadern gäller även den). UI: 16 knappar "AFFECTS" i `SoundstagePage.cpp`, WIDTH/BASS MONO med tydligare tips, Help.cpp-text för *Stage och MAX.
+- Build Debug all grön, alla tester igenom (LNK1163 på skadade .obj: raderade Modules/StepSequencer .obj och byggde om). paramtest 3048/961 ok.
+- DAW-test (Lemon): SOUNDSTAGE: alla knappar på = låter som förut. Stäng av KICK, höj WIDTH till 200 % och slå på BASS MONO: kicken ligger orörd, övriga breddas. Stäng av en instrumentknapp: den hoppar över bredd men får master-EQ/limiter. Spara/ladda projekt behåller valet.

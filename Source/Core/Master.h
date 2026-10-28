@@ -24,7 +24,8 @@ public:
     void reset();
     int getLatencySamples() const { return lookahead - 1; }
 
-    void process (juce::AudioBuffer<float>& buffer, int numSamples);
+    // skip (valfri): SOUNDSTAGE-källorna som inte ska genom stereoblocket (bredd, mono below, enhance). De får samma EQ och läggs till efter blocket.
+    void process (juce::AudioBuffer<float>& buffer, int numSamples, juce::AudioBuffer<float>* skip = nullptr);
 
     // Fördröjer en buffert lika mycket som process, utan att röra ljudet (för kick-/basutgångarna).
     void delayOnly (juce::AudioBuffer<float>& buffer, int numSamples, int delaySlot);
@@ -84,6 +85,7 @@ private:
 
     // Masterns EQ (ANALYZER-fliken), före bredd, drive och limiter.
     SourceEq eq;
+    SourceEq eqSkip; // samma parametrar, för SOUNDSTAGE-källorna utanför stereoblocket
 
     // Extra fördröjningar för andra utgångar (kick och bas).
     std::vector<std::vector<std::vector<float>>> extraDelays;
