@@ -47,7 +47,7 @@ private:
     int panSamples = 0, panAtDragStart = 0;  // vågens startpunkt (samples efter den startade tonen): mittknapp-drag eller rullningslist
     static constexpr int maxPanSamples = 96000;
     bool wide = false;                      // WIDE: vågen får hela panelens bredd, ratterna göms
-    juce::TextButton wideButton { "WIDE" };
+    juce::TextButton wideButton { "WIDE" }, helpButton;
     juce::ScrollBar scrollBar { false };
     std::array<float, 7> peakDb {};       // varje källas toppnivå (dB) ensam, efter pan och bredd
     juce::Rectangle<int> waveArea;

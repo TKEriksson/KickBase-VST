@@ -54,6 +54,11 @@ public:
         removeButton.onClick = [this] { resetSpeed(); };
         addAndMakeVisible (removeButton);
 
+        brakeButton.setTooltip ("BRAKE - One-shot record-player stop: the plugin's clock slows to a halt, rests a moment, then spins back up to the JOG SPEED you had. "
+                                "Touching the wheel cancels it. Only the plugin's own clock is affected.");
+        brakeButton.onClick = [this] { startBrake(); };
+        addAndMakeVisible (brakeButton);
+
         statusLabel.setFont (Theme::font (11.0f, false));
         statusLabel.setColour (juce::Label::textColourId, Theme::textDim);
         statusLabel.setJustificationType (juce::Justification::centredLeft);
@@ -160,6 +165,7 @@ public:
         const auto knobArea = top.withSizeKeepingCentre (70, juce::jmin (90, top.getHeight()));
         speedKnob.setBounds (knobArea);
         removeButton.setBounds (juce::Rectangle<int> (52, 24).withPosition (knobArea.getRight() + 6, knobArea.getCentreY() - 12));
+        brakeButton.setBounds (removeButton.getBounds().translated (0, 28));
         area.removeFromTop (4);
         statusLabel.setBounds (area.removeFromTop (34));
     }
@@ -199,6 +205,7 @@ public:
                 parameter->beginChangeGesture();
                 gestureOpen = true;
             }
+        braking = false; // en hand på skivan avbryter bromsen
         lastAngle = angleOf (e.position);
         lastTime = juce::Time::getMillisecondCounterHiRes();
         velocity = 0.0f;
@@ -296,6 +303,43 @@ private:
         gestureOpen = false;
     }
 
+    // BRAKE (broms B): engångsbroms i tre steg (stanna, vila, snurra upp) som skriver jogManual; grundhastigheten (JOG SPEED) rörs aldrig.
+    static constexpr double brakeStopMs = 1200.0, brakeRestMs = 300.0, brakeSpinMs = 900.0;
+
+    void startBrake()
+    {
+        if (touching)
+            return;
+        const auto manual = processor.jogManual.load();
+        brakeFromRate = manual >= 0.0f ? manual : processor.apvts.getRawParameterValue (ParamID::jogSpeed)->load();
+        brakeStart = juce::Time::getMillisecondCounterHiRes();
+        braking = true;
+    }
+
+    void stepBrake()
+    {
+        const auto t = juce::Time::getMillisecondCounterHiRes() - brakeStart;
+        const auto target = processor.apvts.getRawParameterValue (ParamID::jogSpeed)->load();
+        if (t >= brakeStopMs + brakeRestMs + brakeSpinMs)
+        {
+            braking = false;
+            processor.jogManual = -1.0f; // tillbaka till parametern
+            return;
+        }
+        float rate = 0.0f;
+        if (t < brakeStopMs)
+        {
+            const auto x = (float) (t / brakeStopMs);
+            rate = brakeFromRate * (1.0f - x * x); // mjuk inbromsning
+        }
+        else if (t >= brakeStopMs + brakeRestMs)
+        {
+            const auto x = (float) ((t - brakeStopMs - brakeRestMs) / brakeSpinMs);
+            rate = target * x * (2.0f - x); // snabb start som mattar av mot hastigheten
+        }
+        processor.jogManual = juce::jlimit (0.0f, 4.0f, rate);
+    }
+
     juce::Rectangle<int> wheelBounds() const { return { 10, 10, 140, 140 }; }
 
     float angleOf (juce::Point<float> p) const
@@ -347,6 +391,8 @@ private:
                 velocity *= 0.7f; // handen står still: hjulet också
             apply();
         }
+        else if (braking)
+            stepBrake();
 
         const auto manual = processor.jogManual.load();
         currentRate = manual >= 0.0f ? manual : processor.apvts.getRawParameterValue (ParamID::jogSpeed)->load(); // grundvärdet (LFO-påverkan visas inte här)
@@ -376,11 +422,13 @@ private:
     }
 
     PluginBase& processor;
-    juce::TextButton stopMode { "STOP" }, nudgeMode { "KEEP GOING" }, removeButton { "RESET" }, recMode { "REC" };
+    juce::TextButton stopMode { "STOP" }, nudgeMode { "KEEP GOING" }, removeButton { "RESET" }, recMode { "REC" }, brakeButton { "BRAKE" };
     juce::TextButton kindJog { "JOG" }, kindScrub { "SCRUB" }, kindSpeed { "SPEED" };
     KnobComponent speedKnob;
     juce::Label statusLabel;
-    bool touching = false, gestureOpen = false, speedGestureOpen = false;
+    bool touching = false, gestureOpen = false, speedGestureOpen = false, braking = false;
+    float brakeFromRate = 1.0f;
+    double brakeStart = 0.0;
     float lastAngle = 0.0f, shownAngle = 0.0f, velocity = 0.0f, currentRate = 1.0f, shownProgress = 0.0f;
     double lastTime = 0.0;
 };

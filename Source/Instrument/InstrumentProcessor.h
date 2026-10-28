@@ -97,6 +97,8 @@ private:
 
     // Mixerns två stereobussar: det som går genom maximizern, och det som går förbi den.
     juce::AudioBuffer<float> maxBus, bypassBus;
+    juce::AudioBuffer<float> stageSkipBus; // källor utanför SOUNDSTAGE-valet (hoppar över stereoblocket)
+    bool stageSkipUsed = false;
     juce::AudioBuffer<float> sendBus; // källan efter mixerfadern, på väg till en effektkanal
 
     // När det senaste steget startade ljud (ppq), för kicken och varje instrument: se fadeOutStepsBefore.

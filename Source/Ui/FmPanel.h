@@ -24,6 +24,7 @@ private:
     bool applyingPreset = false;
 
     juce::ToggleButton filterToggle;
+    juce::TextButton helpButton;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> filterAttachment;
     std::unique_ptr<ChoiceComponent> preset;
     std::unique_ptr<KnobComponent> level, ratio, index, envAmount, envTime, semis;

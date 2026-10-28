@@ -48,6 +48,12 @@ void Mixer::addParameters (AudioProcessorValueTreeState::ParameterLayout& layout
     }
 }
 
+void Mixer::addStageParameters (AudioProcessorValueTreeState::ParameterLayout& layout)
+{
+    for (int s = 0; s < numSources; ++s)
+        layout.add (std::make_unique<AudioParameterBool> (ParameterID { paramID (s, "Stage"), 1 }, "Soundstage " + sourceName (s), true));
+}
+
 Mixer::Mixer (AudioProcessorValueTreeState& apvts)
 {
     for (int s = 0; s < numSources; ++s)
@@ -56,6 +62,7 @@ Mixer::Mixer (AudioProcessorValueTreeState& apvts)
         panParam[(size_t) s]  = apvts.getRawParameterValue (paramID (s, "Pan"));
         duck[(size_t) s]      = hasDuck (s) ? apvts.getRawParameterValue (paramID (s, "Duck")) : nullptr;
         max[(size_t) s]       = apvts.getRawParameterValue (paramID (s, "Max"));
+        stage[(size_t) s]     = apvts.getRawParameterValue (paramID (s, "Stage"));
         for (auto& peak : peaks[(size_t) s])
             peak = 0.0f;
     }
@@ -106,10 +113,11 @@ void Mixer::beginBlock()
 }
 
 void Mixer::mix (int source, const float* left, const float* right, int numSamples, float level,
-                 AudioBuffer<float>& maxBus, AudioBuffer<float>& bypassBus, float* sendLeft, float* sendRight)
+                 AudioBuffer<float>& maxBus, AudioBuffer<float>& bypassBus, float* sendLeft, float* sendRight, AudioBuffer<float>* skipBus)
 {
     auto& strip = strips[(size_t) source];
-    auto& bus = max[(size_t) source]->load() >= 0.5f ? maxBus : bypassBus;
+    const auto toMax = max[(size_t) source]->load() >= 0.5f;
+    auto& bus = ! toMax ? bypassBus : (skipBus != nullptr && stage[(size_t) source]->load() < 0.5f ? *skipBus : maxBus);
     auto* outLeft = bus.getWritePointer (0);
     auto* outRight = bus.getWritePointer (1);
     float peakLeft = 0.0f, peakRight = 0.0f;

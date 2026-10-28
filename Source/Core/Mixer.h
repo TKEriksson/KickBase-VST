@@ -21,6 +21,8 @@ public:
     static bool hasDuck (int source) { return source != kickSource; }   // kicken ducker inte sig själv
 
     static void addParameters (juce::AudioProcessorValueTreeState::ParameterLayout& layout);
+    // SOUNDSTAGE-val per källa ("Stage" = med i stereobreddningen). Läggs sist i layouten.
+    static void addStageParameters (juce::AudioProcessorValueTreeState::ParameterLayout& layout);
 
     explicit Mixer (juce::AudioProcessorValueTreeState& apvts);
 
@@ -29,6 +31,7 @@ public:
     // Läser parametrarna. Anropas en gång per block.
     void beginBlock();
 
+    bool inStage (int source) const { return stage[(size_t) source] == nullptr || stage[(size_t) source]->load() >= 0.5f; }
     bool duckEnabled (int source) const { return duck[(size_t) source] == nullptr || duck[(size_t) source]->load() >= 0.5f; }
 
     // Lägger källan (mono om `right` är nullptr) på maximizerns buss eller förbi den, efter gain
@@ -37,7 +40,8 @@ public:
     // fader och panorering (utan `level`), så att det som skickas till en effektkanal följer fadern också.
     void mix (int source, const float* left, const float* right, int numSamples, float level,
               juce::AudioBuffer<float>& maxBus, juce::AudioBuffer<float>& bypassBus,
-              float* sendLeft = nullptr, float* sendRight = nullptr);
+              float* sendLeft = nullptr, float* sendRight = nullptr, juce::AudioBuffer<float>* skipBus = nullptr);
+    // skipBus: källor med SOUNDSTAGE-valet av (och Max på) läggs här i stället för på maxBus.
 
     // Högsta topp (dB) sedan förra anropet, per kanal (0 vänster, 1 höger). Anropas av gränssnittet.
     float takePeakDb (int source, int channel) const;
@@ -49,7 +53,7 @@ private:
         float lastDb = std::numeric_limits<float>::quiet_NaN(), lastGain = 0.0f; // senast omräknade gain-värdet
     };
 
-    std::array<std::atomic<float>*, numSources> gainParam {}, panParam {}, duck {}, max {};
+    std::array<std::atomic<float>*, numSources> gainParam {}, panParam {}, duck {}, max {}, stage {};
     std::array<Strip, numSources> strips;
     mutable std::array<std::array<std::atomic<float>, 2>, numSources> peaks {};
     double sampleRate = 44100.0;

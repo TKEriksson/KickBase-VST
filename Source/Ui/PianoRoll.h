@@ -248,9 +248,9 @@ private:
 
     // Verktygsraden.
     juce::TextButton snapButton { "SNAP" }, smallerButton { "-" }, biggerButton { "+" }, allButton { "SELECT ALL" }, deleteButton { "DEL" },
-                     glideButton { "GLIDE" }, followButton { "FOLLOW" }, presetButton { "PRESET" }, midiButton { "MIDI" },
+                     glideButton { "GLIDE" }, followButton { "FOLLOW" }, ghostButton { "GHOST" }, presetButton { "PRESET" }, midiButton { "MIDI" },
                      drawButton { "PENCIL" }, selectButton { "SELECT" }, eraseButton { "ERASER" }, copyButton { "COPY" },
-                     pasteButton { "PASTE" }, pasteOkButton { "OK" }, pasteCancelButton { "CANCEL" }, popOutButton { "POP OUT" };
+                     pasteButton { "PASTE" }, pasteOkButton { "OK" }, pasteCancelButton { "CANCEL" }, popOutButton { "POP OUT" }, helpButton;
     ListenButton listenButton; // högtalare: håll för att höra pianorullen (loopar), släpp för att sluta
     Tool tool = Tool::draw;
     bool shiftHeld = false, altHeld = false;
@@ -270,6 +270,7 @@ private:
     juce::ComboBox midiInBox;                               // MIDI in medan pianorullen är öppen: alla instrument eller bara den här raden
     juce::Rectangle<float> hintArea;                        // tipsraden längst ner
     void applyMidiIn();
+    void showGhostMenu();                                   // GHOST NOTES: multival över raderna (menyn öppnas igen efter varje val)
     juce::TextButton lengthButton, extendButton { "+ BAR" };  // radens längd (AUTO n / valt antal: klick öppnar menyn) och förläng med en takt
     juce::TextButton voicesDownButton { "-" }, voicesUpButton { "+" };
     juce::Label voicesLabel;                                // "VOICES n"
@@ -286,6 +287,12 @@ private:
     // Glidestreck (D1): högerdrag på tomt rutnät. Ett högerklick utan drag visar menyn som förut.
     juce::Point<float> strokeStart, strokeEnd;
     bool strokeMenuNow = false;
+    // Glide-plus: plus-ikon vid en glide-ton som startar ett glidestreck från notens slut; strecket fastnar på en ton under pekaren.
+    NoteKey plusKey;
+    bool plusBelow = true;
+    bool strokeFromPlus = false;
+    juce::Rectangle<float> plusRect() const;
+    void updatePlus (juce::Point<float> position, NoteKey hovered);
     void addStroke (const juce::Point<float>& from, const juce::Point<float>& to);
     float topPitch = 12.0f;     // översta synliga raden (halvtoner från tonarten)
     NoteKey justCreated;        // tonen som det första klicket i ett dubbelklick skapade

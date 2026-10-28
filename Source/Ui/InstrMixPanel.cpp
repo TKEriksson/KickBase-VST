@@ -1,5 +1,7 @@
 #include "InstrMixPanel.h"
 
+#include "HelpDialog.h"
+
 InstrMixPanel::InstrMixPanel (PluginBase& p, int layerIn, juce::Colour accentIn)
     : processor (p), layer (layerIn), accent (accentIn), refs (p.apvts)
 {
@@ -17,7 +19,9 @@ InstrMixPanel::InstrMixPanel (PluginBase& p, int layerIn, juce::Colour accentIn)
     wideButton.onClick = [this] { setWide (! wide); };
     scrollBar.setAutoHide (false);
     scrollBar.addListener (this);
+    HelpDialog::setupButton (helpButton, *this, HelpDialog::Topic::mix, "the MIX tab (levels, pan, width, meters, waveform zoom)");
     addAndMakeVisible (wideButton);
+    addAndMakeVisible (helpButton);
     addAndMakeVisible (scrollBar);
     startTimerHz (4);
 }
@@ -73,6 +77,7 @@ void InstrMixPanel::resized()
     auto area = getLocalBounds().reduced (6, 4);
     waveArea = wide ? area : area.removeFromLeft (juce::jmin (260, area.getWidth() / 3));
     wideButton.setBounds (waveArea.getRight() - 56, waveArea.getY(), 56, 14);
+    helpButton.setBounds (waveArea.getRight() - 56 - 4 - 40, waveArea.getY(), 40, 14);
     scrollBar.setBounds (waveArea.getX(), waveArea.getBottom() - 28, waveArea.getWidth(), 12);
     if (wide)
         return;
@@ -272,7 +277,7 @@ void InstrMixPanel::paint (juce::Graphics& g)
     auto wave = waveArea.toFloat();
     g.setColour (Theme::textDim);
     g.setFont (Theme::font (10.0f, true));
-    g.drawText ("COMBINED WAVEFORM (all sources, 110 Hz)", waveArea.withHeight (14), juce::Justification::centredLeft);
+    g.drawText ("COMBINED WAVEFORM (110 Hz)", waveArea.withHeight (14), juce::Justification::centredLeft);
     g.drawText ("ZOOM " + juce::String (zoomX, 2) + "x / " + juce::String (zoomY, 2) + "x  (wheel = time, Shift + wheel = height, middle button = pan)", waveArea.withTrimmedTop (waveArea.getHeight() - 14), juce::Justification::centredLeft);
     wave.removeFromTop (16.0f);
     wave.removeFromBottom (28.0f); // rullningslist och tidsaxel
