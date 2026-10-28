@@ -170,6 +170,7 @@ namespace Help
             { "kickVelPitch", "How much a note's velocity changes the pitch sweep: 0 = none, 100 % = a soft hit gets almost no sweep." },
             { "kickSampleMode", "How a loaded sample is used: Click = only the first moments (CLICK level), Layer = the whole sample on top of the synth kick, Replace = the sample is the kick." },
             { "kickSampleLevel", "Level of the sample in Layer and Replace mode. This is the balance between the synth kick and the sample." },
+            { "kickMix", "Balance between the synth kick and the loaded sample. Left = synth only, middle = both at full level (as before), right = sample only. With no sample, left to middle is the same." },
             { "kickSynthOn", "Kick synth on/off. Off = only the loaded sample is heard (like Replace); with no sample the kick is silent." },
             { "kickSampleOn", "Kick sample on/off. Off = the loaded sample is ignored (it stays loaded) and the synth kick plays alone." },
             { "kickSampleOffset", "Moves the sample against the synth kick, in milliseconds. Plus = the sample starts later; minus = it starts that far into the sample. Use it when the sample and the synth kick cancel each other (a thin or hollow kick)." },

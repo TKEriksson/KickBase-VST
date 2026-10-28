@@ -527,6 +527,11 @@ namespace Params
         }
     }
 
+    void addKickMixParam (Layout& layout)
+    {
+        layout.add (percent (ParamID::kickMix, "Kick Mix", 0.5f));
+    }
+
     void addKickToggleParams (Layout& layout)
     {
         layout.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { ParamID::kickSynthOn, 1 }, "Kick Synth On", true));
@@ -690,6 +695,7 @@ KickParams ParamRefs::readKick (int keyPitchClass) const
     p.sampleLevel   = get (ParamID::kickSampleLevel);
     p.synthOn       = get (ParamID::kickSynthOn) >= 0.5f;
     p.sampleOn      = get (ParamID::kickSampleOn) >= 0.5f;
+    p.mix           = get (ParamID::kickMix);
     p.sampleTuneSemis = get (ParamID::kickSampleTune);
     p.sampleOffsetMs = get (ParamID::kickSampleOffset);
     for (int i = 0; i < KickParams::numExtraClicks; ++i)

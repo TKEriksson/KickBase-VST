@@ -4,7 +4,7 @@
 //==============================================================================
 KickTabs::KickTabs (juce::Colour accent)
 {
-    for (auto* button : { &synthButton, &sampleButton })
+    for (auto* button : { &synthButton, &envelopeButton, &sampleButton })
     {
         button->setClickingTogglesState (false);
         button->setColour (juce::TextButton::buttonOnColourId, accent);
@@ -12,7 +12,9 @@ KickTabs::KickTabs (juce::Colour accent)
     }
     synthButton.setTooltip ("SYNTH - The synthesized kick: pitch and volume envelopes, body, click, drive and the rest. Changing view never changes the sound.");
     sampleButton.setTooltip ("SAMPLE - Use a sample as the kick or on top of it: pick one from your library or load a file. Changing view never changes the sound.");
+    envelopeButton.setTooltip ("ENVELOPE - The pitch and volume envelopes of the kick, drawn large. Changing view never changes the sound.");
     synthButton.onClick = [this] { select (0); if (onChange) onChange (0); };
+    envelopeButton.onClick = [this] { select (2); if (onChange) onChange (2); };
     sampleButton.onClick = [this] { select (1); if (onChange) onChange (1); };
     select (0);
 }
@@ -21,13 +23,16 @@ void KickTabs::select (int tab)
 {
     synthButton.setToggleState (tab == 0, juce::dontSendNotification);
     sampleButton.setToggleState (tab == 1, juce::dontSendNotification);
+    envelopeButton.setToggleState (tab == 2, juce::dontSendNotification);
 }
 
 void KickTabs::resized()
 {
-    auto area = getLocalBounds().reduced (0, 1);
-    const auto width = (area.getWidth() - 4) / 2;
+    auto area = getLocalBounds().reduced (0, 2); // luft över och under flikarna
+    const auto width = (area.getWidth() - 8) / 3;
     synthButton.setBounds (area.removeFromLeft (width));
+    area.removeFromLeft (4);
+    envelopeButton.setBounds (area.removeFromLeft (width));
     area.removeFromLeft (4);
     sampleButton.setBounds (area);
 }

@@ -845,7 +845,7 @@ KickModule::KickModule (PluginBase& p)
     setHeaderPreset (&presets);
     addAndMakeVisible (presets);
     viewTabs.onChange = [this] (int tab) { processor.kickTab = tab; applyTab(); };
-    setHeaderTabs (&viewTabs, 150);
+    setHeaderTabs (&viewTabs, 230);
     addAndMakeVisible (viewTabs);
     fxSend = std::make_unique<FxSendControl> (p.apvts, ParamID::kickFxChannel, ParamID::kickFxAmount, ParamID::kickFxSend, "FX SEND", Theme::kick);
     addAndMakeVisible (*fxSend);
@@ -875,7 +875,7 @@ KickModule::KickModule (PluginBase& p)
                      { "CLICK", { knob (ParamID::kickClick, "LEVEL"), knob (ParamID::kickClickLength, "LENGTH"),
                                   knob (ParamID::kickClickTone, "TONE") } },
                      { "DRIVE", { choice (ParamID::kickClipMode, "MODE"), knob (ParamID::kickDrive, "AMOUNT") } },
-                     { "OUT", { knob (ParamID::kickHighCut, "HIGH CUT"), knob (ParamID::kickLevel, "LEVEL") } } });
+                     { "OUT", { knob (ParamID::kickHighCut, "HIGH CUT"), knob (ParamID::kickMix, "MIX"), knob (ParamID::kickLevel, "LEVEL") } } });
 
     // SAMPLE-vyn: hur samplingen används (MODE, LEVEL, TUNE, OFFSET). Rattarna är desamma som förut, bara i en egen vy.
     sampleControls = { choice (ParamID::kickSampleMode, "MODE"), knob (ParamID::kickSampleLevel, "LEVEL"),
@@ -925,16 +925,16 @@ KickModule::KickModule (PluginBase& p)
                                  "Edit the loaded sample: START cuts off its first ms, FADE fades out its last ms, REVERSE plays it backwards. All off = the sample as loaded." } });
     }
 
-    synthToggle.setTooltip ("Kick SYNTH on/off. Off = only the loaded sample is heard (like Replace); with no sample the kick is silent.");
-    sampleToggle.setTooltip ("Kick SAMPLE on/off. Off = the loaded sample is ignored (it stays loaded) and the synth kick plays alone.");
+    synthToggle.setTooltip ("Kick SYNTH on/off. Off = only the loaded sample is heard (like Replace); with no sample the kick is silent. Normally leave on and use MIX.");
+    sampleToggle.setTooltip ("Kick SAMPLE on/off. Off = the loaded sample is ignored (it stays loaded) and the synth kick plays alone. Normally leave on and use MIX.");
     synthToggleAttachment = std::make_unique<juce::ButtonParameterAttachment> (*p.apvts.getParameter (ParamID::kickSynthOn), synthToggle);
     sampleToggleAttachment = std::make_unique<juce::ButtonParameterAttachment> (*p.apvts.getParameter (ParamID::kickSampleOn), sampleToggle);
     addAndMakeVisible (synthToggle);
     addAndMakeVisible (sampleToggle);
-    balanceHint.setText ("Balance = LEVEL (SAMPLE view).  MODE (Click/Layer/Replace) still decides how the sample is used.", juce::dontSendNotification);
+    balanceHint.setText ("MIX (SYNTH view) balances synth and sample: left = synth only, middle = both, right = sample only.  MODE (SAMPLE view) decides how the sample is used.", juce::dontSendNotification);
     balanceHint.setFont (Theme::font (10.5f));
     balanceHint.setColour (juce::Label::textColourId, Theme::textDim);
-    balanceHint.setTooltip ("Both on: the synth kick plus the sample, balanced with LEVEL. Click = only the sample's first moments, Layer = the whole sample on top, Replace = the sample alone.");
+    balanceHint.setTooltip ("MIX in the middle: the synth kick plus the sample at full level, as before. Click = only the sample's first moments, Layer = the whole sample on top, Replace = the sample alone.");
     addAndMakeVisible (balanceHint);
     HelpDialog::setupButton (helpButton, *this, HelpDialog::Topic::kick, "the kick (SYNTH and SAMPLE views)");
     addAndMakeVisible (helpButton);
@@ -983,8 +983,9 @@ KickModule::KickModule (PluginBase& p)
 void KickModule::applyTab()
 {
     const auto sample = sampleTabShown();
-    viewTabs.select (sample ? 1 : 0);
-    display.setVisible (! sample);
+    const auto envelope = envelopeTabShown();
+    viewTabs.select (processor.kickTab.load());
+    display.setVisible (envelope);
     sampleView.setVisible (sample);
     library.setVisible (sample);
     sampleHelp.setVisible (sample);
@@ -992,7 +993,7 @@ void KickModule::applyTab()
     clearButton.setVisible (sample);
     listenSampleButton.setVisible (sample);
     for (auto& control : controls)
-        control->setVisible (std::find (sampleControls.begin(), sampleControls.end(), control.get()) != sampleControls.end() ? sample : ! sample);
+        control->setVisible (std::find (sampleControls.begin(), sampleControls.end(), control.get()) != sampleControls.end() ? sample : ! (sample || envelope));
     resized();
     repaint();
 }
@@ -1055,7 +1056,7 @@ void KickModule::resized()
     if (! isEmbedded())
     {
         presets.setBounds (presetBounds (*this));
-        viewTabs.setBounds (presetBounds (*this).translated (-158, 0).withWidth (150));
+        viewTabs.setBounds (presetBounds (*this).translated (-246, 0).withWidth (230));
     }
     auto area = getContentBounds();
 
@@ -1074,8 +1075,8 @@ void KickModule::resized()
     area.removeFromBottom (4);
 
     auto sourceRow = area.removeFromBottom (22);
-    synthToggle.setBounds (sourceRow.removeFromLeft (80));
-    sampleToggle.setBounds (sourceRow.removeFromLeft (90));
+    synthToggle.setBounds (sourceRow.removeFromLeft (70));
+    sampleToggle.setBounds (sourceRow.removeFromLeft (80));
     helpButton.setBounds (sourceRow.removeFromRight (44));
     sourceRow.removeFromRight (4);
     sourceRow.removeFromLeft (8);
@@ -1098,12 +1099,16 @@ void KickModule::resized()
         return;
     }
 
-    // En rad rattar under displayen, som får resten av höjden.
+    if (envelopeTabShown())
+    {
+        display.setBounds (area); // ENVELOPE: kurvorna får hela ytan
+        return;
+    }
+
+    // SYNTH: bara kontrollerna.
     const auto rowHeight = juce::jlimit (60, 100, area.getHeight() / (groups.numRows() + 1) - ControlGroups::titleHeight - 3);
     const auto groupsHeight = groups.numRows() * (ControlGroups::titleHeight + rowHeight + 3);
     groups.layout (area.removeFromBottom (groupsHeight), rowHeight);
-    area.removeFromBottom (4);
-    display.setBounds (area);
 }
 
 //==============================================================================

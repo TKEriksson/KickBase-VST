@@ -498,3 +498,9 @@ Bygge Debug all: grönt, "Alla tester gick igenom" (rendersig oförändrad).
 
 ## snap-ticks (2026-10-28, Arbetare 1)
 - Rattar vars värdetext slutar på " st" (KnobComponent::semitones) fastnar vid ±12/±24 (±0,4 st, Shift = fri) via `ModSlider::snapValue`, och får små tickmärken utanför ringen (`paintOverChildren`). Ingen parameter ändrad. Bygge + tester gröna; ej provat för hand i Lemon.
+## kick-ui (2026-10-28, Arbetare 1)
+- MIX-knopp (`kickMix`, sist i layouten, 0.5 = som förut) ersätter SYNTH/SAMPLE-reglagen; synthOn/sampleOn finns kvar som parametrar. Motorn: `KickEngine.cpp` renderVoice.
+- Tre flikar SYNTH | ENVELOPE | SAMPLE (kickTab 2 = ENVELOPE, plotten har egen flik), smalare presetväljare (170 px), luft runt flikarna.
+- Hjälptext + ToolLayer uppdaterade. Bygge + alla tester + paramtest + helpcheck gröna.
+- Öppet: gamla presets med synthOn=false saknar reglage för att slå på det igen (MIX till höger ger nästan samma).
+- synthOn=false: mappas INTE till MIX, eftersom ljudet inte blir identiskt (synthOn=false tvingar Replace-läge, MIX=1 behåller valt sampleMode). Därför finns små SYNTH/SAMPLE-knappar kvar bredvid MIX (Modules.cpp, sourceRow). Inga ID/index ändrade.
