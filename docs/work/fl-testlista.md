@@ -116,3 +116,4 @@ Format: **Gör så** → *förväntat resultat*. Bocka av `[ ]` när det stämme
 - [ ] Ladda Glide Sub, Glide Acid, Glide Dive (GLIDE BASSES) i DAW → *basen glider mellan tonerna utan klick, ducker för kicken; säg om glidet är för kort eller för långt.*
 - [ ] Ladda Roll Full-On och Glide Sub i DAW, slå FUNDAMENTAL DUCK av och på → *på: kickens slag tydligare, basens mellanregister oförändrat; säg om basen hackar eller tunnas ut (se docs/school/fundamental-duck.md).*
 - [ ] Ladda Roll Wide, Roll Dekel, Roll Forest, Glide Acid, Glide Dive → *grundtonen sänks i kickens takt, inget klick; jämför med duck av.*
+- [ ] Ladda Duck Demo, slå FUNDAMENTAL DUCK av och på → *av: kick och bas sväver/tar ut varandra i sub-området; på: kicken står fram, basen dippar bara i kickens slag; säg om skillnaden hörs.*

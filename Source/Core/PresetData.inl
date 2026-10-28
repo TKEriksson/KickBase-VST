@@ -417,6 +417,7 @@ namespace
     Preset glideBass1();
     Preset glideBass2();
     Preset glideBass3();
+    Preset duckDemo();
 
     const std::vector<Preset>& fullPresets()
     {
@@ -429,7 +430,9 @@ namespace
                                                    // Arbetare 2, kategori psyRollingCategory.
                                                    psyRolling1(), psyRolling2(), psyRolling3(), psyRolling4(),
                                                    // Arbetare 2, kategori glideBassesCategory.
-                                                   glideBass1(), glideBass2(), glideBass3() };
+                                                   glideBass1(), glideBass2(), glideBass3(),
+                                                   // Arbetare 2: demo av FUNDAMENTAL DUCK (basen krockar med kickens grundton).
+                                                   duckDemo() };
         return presets;
     }
 
@@ -535,6 +538,18 @@ namespace
                                sendTo (0, 1, 0.20f), fundDuck (9.0f, 200.0f) }),
                        join ({ fx (0, 0, EffectType::chorus, { 0.4f, 0.5f, 10.0f, 0.0f, 0.4f }), { ch (0, "Duck", 0.85f), ch (0, "EqHp", 180.0f) } }),
                        { { 0, InstrumentGrid::sixteenth, { "X . . . x+12 . . . x+12~:200 . . . x~:300 . . .", "x . . x . . x+7 . x+7~:100 . x+12~:100 . x+0~:300 . . ." }, 0.8f } }, 1, 2);
+    }
+
+    // Duck Demo: visar varför FUNDAMENTAL DUCK finns. Kickens grundton är D1 (ton 2, ca 36,7 Hz). Basens långa toner ligger en halvton
+    // bredvid (x+1 = ±100 cent mot kicken, x+3, x-1): grundtonerna ligger nära varandra men inte i samklang, så de svävar och tar ut varandra.
+    // Duck står på med 12 dB och fönster 200 cent: grundtonen dippas bara när kicken ljuder. Stäng av FUNDAMENTAL DUCK och lyssna på skillnaden.
+    Preset duckDemo()
+    {
+        return newest ("Duck Demo", psyCleanKick (2.0f, 1.0f, 1.0f, 0.20f, 0.0005f, 0.85f, 0.0f, 0.0f),
+                       join ({ psyRollBass (0, 0.30f, 95, 0.50f, 0.60f, 0.0f, 0.25f, 700.0f, 0.15f, 2.0f, 120.0f, 0.90f, 600.0f, 40.0f, 0.10f, 0.55f, 0),
+                               sendTo (0, 1, 0.0f), fundDuck (12.0f, 200.0f) }),
+                       join ({ fx (0, 0, EffectType::distortion, { 0, 0.10f, 5000.0f, 1.0f }), { ch (0, "Duck", 0.0f), ch (0, "EqHp", 20.0f) } }),
+                       { { 0, InstrumentGrid::sixteenth, { "x+1 . . . . . . . x+3 . . . . . . .", "x-1 . . . . . . . x+1 . . . . . . ." }, 0.9f } }, 1, 2);
     }
 
     const std::vector<Preset>& kickPresets()

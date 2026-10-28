@@ -175,3 +175,7 @@ Nu: programmet, rel-0.3 motornära punkter: 1) S3 Unison/Reese, 2) multisampling
 - Audit före/efter: effekten under 0,1 dB i banden; render-signaturer för default-av oförändrade (Init 94f0a1b6bd8a3c7f).
 - Tidstestet flaky: Debug-gräns 120 s. Build grön efter merge av play-pack (SFZ-kärnan b9c9859).
 - Kvar: KickbaseTool-kommando för SFZ + parseSfz-tester, Init 1–5, alla övriga kategorier (max 3), Fas J.
+
+## Duck Demo (28 okt, Arbetare 2, på Tobias begäran)
+- `duckDemo()` i `PresetData.inl` (sist i fullPresets): D-kick (tone 2) och lång bas på x±1 / x+3, alltså ±100 cent från kickens grundton (inom fönstret 200 cent) och dissonant. Duck 12 dB, send 0.
+- Build grön. Audit visar bara duck-på-värden; på/av-skillnaden är inte mätt, den ska lyssnas fram i DAW (testrad tillagd).
