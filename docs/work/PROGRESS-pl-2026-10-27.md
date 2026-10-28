@@ -58,3 +58,4 @@
 - 28 okt: Tobias vill ha START (ms) per motor i MIX-fliken; langd osakert, forslag skevt 0-4000 ms. In i planen som punkt 8b for Arbetare 1.
 - 28 okt: Tobias: START per motor ska aven kunna synkas till takt (borja efter viss takt).
 - 28 okt: Tobias: aven langd och kurva pa envelope per motor (tillagg till 8b).
+- 28 okt: Arbetare 2 klar (af40b4e, slutaudit utan klippning, DC<=0,004; smaavvikelser peak -0,3 dB och svansar noterade i PROGRESS-w2). Standby tills Tobias lyssnat i Lemon.
