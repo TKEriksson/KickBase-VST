@@ -18,12 +18,15 @@ public:
     void mouseDown (const juce::MouseEvent&) override;
     void mouseDrag (const juce::MouseEvent&) override;
     void mouseDoubleClick (const juce::MouseEvent&) override;
+    void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 
-    static constexpr int shown = 64; // visade övertoner
+    static constexpr int shown = 64; // övertoner som går att ändra; zoomen visar 16, 32 eller 64 av dem
 
 private:
     void timerCallback() override;
     void setColumn (int column, float value);
+    void applyBrush (int column, float value);
+    void setZoom (int count);
     float valueAt (juce::Point<float> position) const;
     void setFromMouse (juce::Point<float> position);
     void changed();
@@ -50,7 +53,13 @@ private:
     std::array<float, shown> backdrop {}; // utgångspunktens amplitud i vald frame, 0..1 av största
     std::array<float, Wavetable::frameSize> before {}, after {}; // vald frame: utgångspunkt och med ändringen
 
-    juce::ComboBox frameBox;
+    enum Brush { draw = 1, line, smooth, random };
+    juce::ComboBox frameBox, brushBox, zoomBox;
+    int visible = shown;     // antal visade övertoner (16 / 32 / 64)
+    int seed = 1;            // RANDOM: nytt frö för varje drag, samma frö ger samma värden
+    int anchorColumn = 0;    // LINE: där draget började
+    float anchorValue = 0.0f;
+    std::array<float, shown> gainStart {}, phaseStart {}; // LINE: banorna när draget började
     int lane = 0;           // 0 = styrka, 1 = fas (den som drogs igång)
     int lastColumn = -1;    // förra kolumnen under en dragning, för att fylla i hoppade staplar
     float lastValue = 0.0f; // och dess värde (dB eller grader, ej avrundat)

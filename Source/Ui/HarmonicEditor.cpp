@@ -18,6 +18,22 @@ HarmonicEditor::HarmonicEditor (PluginBase& p, int layerIn, int oscIn, juce::Col
     frameBox.setTooltip ("Which wave of the table the edit applies to. The waveform above shows this wave (the first one for All frames).");
     addAndMakeVisible (frameBox);
 
+    brushBox.addItem ("DRAW", draw);
+    brushBox.addItem ("LINE", line);
+    brushBox.addItem ("SMOOTH", smooth);
+    brushBox.addItem ("RANDOM", random);
+    brushBox.setSelectedId (draw, juce::dontSendNotification);
+    brushBox.setTooltip ("Brush. DRAW: set bars under the mouse. LINE: drag a straight line from where you pressed. SMOOTH: average each bar with its neighbours. RANDOM: random values in a sensible range.");
+    addAndMakeVisible (brushBox);
+
+    zoomBox.addItem ("16 harmonics", 16);
+    zoomBox.addItem ("32 harmonics", 32);
+    zoomBox.addItem ("64 harmonics", 64);
+    zoomBox.setSelectedId (64, juce::dontSendNotification);
+    zoomBox.onChange = [this] { setZoom (zoomBox.getSelectedId()); };
+    zoomBox.setTooltip ("How many harmonics are shown (bars get wider). Ctrl + mouse wheel changes it too.");
+    addAndMakeVisible (zoomBox);
+
     refreshBackdrop();
     refreshPreview();
     setSize (900, 580);
@@ -27,6 +43,25 @@ void HarmonicEditor::resized()
 {
     auto top = getLocalBounds().reduced (8, 4).removeFromTop (18);
     frameBox.setBounds (top.removeFromRight (120));
+    top.removeFromRight (6);
+    zoomBox.setBounds (top.removeFromRight (120));
+    top.removeFromRight (6);
+    brushBox.setBounds (top.removeFromRight (90));
+}
+
+void HarmonicEditor::setZoom (int count)
+{
+    visible = count;
+    zoomBox.setSelectedId (count, juce::dontSendNotification);
+    lastColumn = -1;
+    repaint();
+}
+
+void HarmonicEditor::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel)
+{
+    if (! e.mods.isCtrlDown() || wheel.deltaY == 0.0f)
+        return;
+    setZoom (wheel.deltaY > 0.0f ? juce::jmax (16, visible / 2) : juce::jmin (shown, visible * 2));
 }
 
 int HarmonicEditor::shownFrame() const
@@ -61,7 +96,7 @@ juce::Rectangle<float> HarmonicEditor::phaseLane() const
 int HarmonicEditor::columnAt (float x) const
 {
     const auto lane0 = ampLane();
-    return juce::jlimit (0, shown - 1, (int) ((x - lane0.getX()) / (lane0.getWidth() / (float) shown)));
+    return juce::jlimit (0, visible - 1, (int) ((x - lane0.getX()) / (lane0.getWidth() / (float) visible)));
 }
 
 void HarmonicEditor::refreshBackdrop()
@@ -136,13 +171,14 @@ void HarmonicEditor::paint (juce::Graphics& g)
     g.drawText ("WAVEFORM  (grey = when this window opened)", wave.toNearestInt().reduced (4, 2), juce::Justification::topLeft);
 
     const auto amp = ampLane(), phase = phaseLane();
-    const auto columnWidth = amp.getWidth() / (float) shown;
+    const auto columnWidth = amp.getWidth() / (float) visible;
+    const auto gridStep = visible / 8;
     for (const auto& laneArea : { amp, phase })
     {
         g.setColour (Theme::track);
         g.fillRect (laneArea);
         g.setColour (Theme::grid);
-        for (int k = 0; k <= shown; k += 8)
+        for (int k = 0; k <= visible; k += gridStep)
             g.drawVerticalLine ((int) (laneArea.getX() + columnWidth * (float) k), laneArea.getY(), laneArea.getBottom());
     }
 
@@ -152,7 +188,7 @@ void HarmonicEditor::paint (juce::Graphics& g)
     g.drawHorizontalLine ((int) zeroY, amp.getX(), amp.getRight());
     g.drawHorizontalLine ((int) phase.getCentreY(), phase.getX(), phase.getRight());
 
-    for (int k = 0; k < shown; ++k)
+    for (int k = 0; k < visible; ++k)
     {
         const auto x = amp.getX() + columnWidth * (float) k;
         // Utgångspunktens amplitud (svag), så man ser var energin ligger.
@@ -189,7 +225,7 @@ void HarmonicEditor::paint (juce::Graphics& g)
     g.setFont (Theme::font (10.0f));
     g.drawText ("dB  (+12 / 0 / bottom = removed)", amp.toNearestInt().reduced (4, 2), juce::Justification::topLeft);
     g.drawText ("PHASE  (-180 .. +180 degrees)", phase.toNearestInt().reduced (4, 2), juce::Justification::topLeft);
-    for (int k = 0; k < shown; k += 8)
+    for (int k = 0; k < visible; k += gridStep)
         g.drawText (juce::String (k + 1), (int) (phase.getX() + columnWidth * (float) k), (int) phase.getBottom() + 1, 24, 12, juce::Justification::centredLeft);
 }
 
@@ -202,6 +238,11 @@ void HarmonicEditor::mouseDown (const juce::MouseEvent& e)
     else
         return;
     lastColumn = -1;
+    ++seed;
+    gainStart = gainDb;
+    phaseStart = phaseDeg;
+    anchorColumn = columnAt (e.position.x);
+    anchorValue = valueAt (e.position);
     setFromMouse (e.position);
 }
 
@@ -249,6 +290,26 @@ void HarmonicEditor::setColumn (int column, float value)
         phaseDeg[(size_t) column] = std::abs (value) < 4.0f ? 0.0f : std::round (value);
 }
 
+// DRAW sätter värdet, SMOOTH tar medelvärdet av stapeln och dess grannar, RANDOM slumpar (samma frö och kolumn ger samma värde).
+void HarmonicEditor::applyBrush (int column, float value)
+{
+    const auto brush = brushBox.getSelectedId();
+    if (brush == smooth)
+    {
+        auto& values = lane == 0 ? gainDb : phaseDeg;
+        auto at = [&] (int k) { return lane == 0 ? juce::jmax (minDb, values[(size_t) juce::jlimit (0, visible - 1, k)])
+                                                  : values[(size_t) juce::jlimit (0, visible - 1, k)]; };
+        setColumn (column, (at (column - 1) + at (column) + at (column + 1)) / 3.0f);
+    }
+    else if (brush == random)
+    {
+        juce::Random r (seed * 7919 + column * 31 + lane);
+        setColumn (column, lane == 0 ? -24.0f + 24.0f * r.nextFloat() : -180.0f + 360.0f * r.nextFloat());
+    }
+    else
+        setColumn (column, value);
+}
+
 void HarmonicEditor::setFromMouse (juce::Point<float> position)
 {
     if (! available)
@@ -256,14 +317,27 @@ void HarmonicEditor::setFromMouse (juce::Point<float> position)
     const auto column = columnAt (position.x);
     const auto value = valueAt (position);
 
-    // Snabb dragning hoppar över kolumner: fyll i staplarna mellan förra och den här med en rak linje.
-    if (lastColumn >= 0 && std::abs (column - lastColumn) > 1)
+    if (brushBox.getSelectedId() == line)
     {
-        const auto step = column > lastColumn ? 1 : -1;
-        for (int c = lastColumn + step; c != column; c += step)
-            setColumn (c, lastValue + (value - lastValue) * (float) (c - lastColumn) / (float) (column - lastColumn));
+        // Rak linje från där draget började: börja om från banorna som de var då.
+        gainDb = gainStart;
+        phaseDeg = phaseStart;
+        const auto from = juce::jmin (anchorColumn, column), to = juce::jmax (anchorColumn, column);
+        for (int c = from; c <= to; ++c)
+            setColumn (c, column == anchorColumn ? value
+                                                 : anchorValue + (value - anchorValue) * (float) (c - anchorColumn) / (float) (column - anchorColumn));
     }
-    setColumn (column, value);
+    else
+    {
+        // Snabb dragning hoppar över kolumner: gå igenom staplarna mellan förra och den här.
+        if (lastColumn >= 0 && std::abs (column - lastColumn) > 1)
+        {
+            const auto step = column > lastColumn ? 1 : -1;
+            for (int c = lastColumn + step; c != column; c += step)
+                applyBrush (c, lastValue + (value - lastValue) * (float) (c - lastColumn) / (float) (column - lastColumn));
+        }
+        applyBrush (column, value);
+    }
     lastColumn = column;
     lastValue = value;
 
