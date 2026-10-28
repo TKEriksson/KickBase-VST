@@ -193,7 +193,7 @@ namespace Params
         layout.add (floatParam (ParamID::kickFmRatio, "Kick FM Ratio", skewed (0.5f, 8.0f, 2.0f, 0.01f), 2.0f, [] (float v) { return String (v, 2) + "x"; }));
         layout.add (ms (2.0f, 300.0f, 40.0f, 40.0f, ParamID::kickFmDecay, "Kick FM Decay"));
         layout.add (percent (ParamID::kickNoise, "Kick Noise", 0.0f));
-        layout.add (ms (5.0f, 400.0f, 60.0f, 60.0f, ParamID::kickNoiseDecay, "Kick Noise Decay"));
+        layout.add (ms (5.0f, 2000.0f, 100.0f, 60.0f, ParamID::kickNoiseDecay, "Kick Noise Decay"));
         layout.add (floatParam (ParamID::kickNoiseTone, "Kick Noise Tone", skewed (500.0f, 16000.0f, 4000.0f, 1.0f), 6000.0f, formatHz));
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::kickClipMode, 1 }, "Kick Clip Mode",
                                                             StringArray { "Soft", "Hard", "Tube", "Fold" }, 0));

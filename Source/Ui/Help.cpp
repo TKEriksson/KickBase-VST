@@ -163,7 +163,7 @@ namespace Help
             { "kickFmRatio", "The pitch of the FM sine compared to the body (2x = an octave above). Whole numbers sound harmonic, others more metallic." },
             { "kickFmDecay", "How fast the FM fades away after the start of the kick." },
             { "kickNoise", "A noisy top layer on the kick: snap and air. Has its own decay and tone." },
-            { "kickNoiseDecay", "How long the noisy top layer rings." },
+            { "kickNoiseDecay", "How long the noisy top layer rings, 5 ms to 2 s. The kick LENGTH still ends it." },
             { "kickNoiseTone", "High-pass frequency of the noisy top layer: higher = airier, lower = fuller." },
             { "kickCrush", "Bit crushing after the drive: 0 = clean, up to 4-bit grit." },
             { "kickLowCut", "High-pass on the whole kick: removes rumble below the kick's tone (20 Hz = off)." },

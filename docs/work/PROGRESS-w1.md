@@ -459,3 +459,9 @@ Bygge Debug all: grönt, "Alla tester gick igenom" (rendersig oförändrad).
 - Modules.cpp (KickModule, resized): HELP-knapp (44 px) till höger i källraden (SYNTH/SAMPLE-reglagen), syns i båda vyerna. Bara knapp + include i Modules.h/.cpp; projektledaren informerad. Ämnet KICK (HelpDialog.cpp kickText) täcker SYNTH-vyn, SAMPLE-vyn (bibliotek, LOAD, MODE, OFFSET) och källorna.
 - Bygge grönt, alla tester gick igenom.
 - DAW-test (Lemon): öppna KICK i SYNTH- och SAMPLE-vyn, klicka HELP, kontrollera att knappen syns och att balans-texten fortfarande får plats.
+
+## TOP DECAY (kickNoiseDecay 5–2000 ms)
+- `Params.cpp:196`: intervall 5–400 → 5–2000 ms, mittpunkt 60 → 100 ms, default oförändrad (60 ms). Inget nytt parameter-ID. Värdet lagras som riktig ms, så gamla presets/projekt låter lika.
+- Rösten slutar vid kickens LENGTH (`KickEngine.cpp:210`, `lengthSeconds`), så en lång topp-svans kapas av LENGTH. Texten i `Help.cpp:166` säger det.
+- Test: build Debug all grön, presettest, paramtest, helpcheck OK; rendersig körd (inga lagrade referenshashar i repot att jämföra mot; ändringen rör bara reglagets mappning, inte lagrade ms-värden).
+- DAW (Lemon): vrid TOP DECAY, lågt läge ska vara lika lätt att ställa som förr; höga värden ger lång luft om LENGTH är lång.
