@@ -449,3 +449,8 @@ Bygge Debug all: grönt, "Alla tester gick igenom" (rendersig oförändrad).
 - SidechainPage.cpp (resized): HELP-knapp till höger om Preset i vänsterkolumnen (preset blir 82 px bred); ämnet SIDECHAIN (HelpDialog.cpp sidechainText) täcker MODE, LENGTH, kurva, HALFTIME, DUCK/DEPTH, scope, FUNDAMENTAL DUCK och SIDECHAIN AFFECTS.
 - Bygge grönt, alla tester gick igenom.
 - DAW-test (Lemon): öppna SIDECHAIN, klicka HELP, kontrollera att knappen syns och att preset-namnet fortfarande går att läsa.
+
+## HELP för SETTINGS (Arbetare 1, 2026-10-28)
+- SettingsPage.cpp (resized): HELP-knapp (44 px) längst till höger i raden med OPTIMIZATIONS/ABOUT; ämnet SETTINGS (HelpDialog.cpp settingsText) täcker WINDOW SIZE, OPTIMIZATIONS, ABOUT, AI LINK, FOLDERS, WAVETABLE PACK och FX-versionen.
+- Bygge grönt, alla tester gick igenom.
+- DAW-test (Lemon): öppna SETTINGS (instrument och FX), klicka HELP, kontrollera att knappen syns och att OPTIMIZATIONS-knappen fortfarande går att läsa.

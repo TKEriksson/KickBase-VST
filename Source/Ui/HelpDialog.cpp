@@ -314,6 +314,32 @@ Dips only the fundamental of each engine while the kick sounds, so the kick's lo
 At the bottom: which sources get ducked. The same SC switches exist in the MASTER mixer. All on is the default.
 )";
 
+    const char* settingsText = R"(# SETTINGS
+Window size, drawing speed, the AI link and where Kickbase keeps its files.
+
+## WINDOW SIZE
+- **Slider**: scales the whole plugin window from 50 % to 160 %. Use a small value on a small screen. Dragging the corner of the window does the same.
+- **SMALL / MEDIUM / LARGE / HUGE**: quick sizes. The size applies to every Kickbase window and is remembered.
+- **OPTIMIZATIONS**: how often each view (spectrum, scopes, meters, playhead) is redrawn, whether filled areas are drawn, and REDUCE ANIMATIONS. Lower rates use less CPU.
+- **ABOUT**: the version, the licence (AGPL-3.0), where the source code is, and the licences of the software Kickbase is built with.
+
+## AI LINK
+Lets an AI assistant that you run yourself control Kickbase. It is off until you switch it on.
+- The **access key** is what the assistant needs to connect. **SHOW** reveals it, **COPY** puts it on the clipboard, **CLEAR** removes it.
+- Never share the key with anyone you don't trust: whoever has it can change your sounds.
+
+## FOLDERS
+Where Kickbase looks for and saves things: PRESETS, EXPORTS, WAVETABLES and LIBRARY.
+- **CHANGE** picks another folder, **RESET** goes back to the default, **OPEN** shows the folder in your file browser.
+- Changing the library folder rescans it, so new sounds show up in the kick and sample lists.
+
+## WAVETABLE PACK
+Optional free wavetables (AKWF). Nothing is downloaded until you press the install button (about 20 MB).
+
+## Kickbase FX
+The effect version has no oscillators, so the wavetable and pack parts are hidden there.
+)";
+
     struct TopicInfo { HelpDialog::Topic topic; const char* tab; const char* text; };
     const TopicInfo topics[] = {
         { HelpDialog::Topic::pianoRoll, "PIANO ROLL", pianoRollText },
@@ -330,6 +356,7 @@ At the bottom: which sources get ducked. The same SC switches exist in the MASTE
         { HelpDialog::Topic::effects, "EFFECTS", effectsText },
         { HelpDialog::Topic::master, "MASTER", masterText },
         { HelpDialog::Topic::sidechain, "SIDECHAIN", sidechainText },
+        { HelpDialog::Topic::settings, "SETTINGS", settingsText },
     };
 
     // ---- Rendering ----
