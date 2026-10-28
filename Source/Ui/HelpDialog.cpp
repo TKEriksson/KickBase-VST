@@ -176,6 +176,29 @@ Everything this layer plays, a few cycles after the note starts (110 Hz).
 - **WIDE**: give the waveform the full width (the knobs are hidden). **NARROW** brings them back.
 )";
 
+    const char* sampleText = R"(# SAMPLE
+A recorded sound (WAV, AIFF or FLAC) as a source for this bass layer, next to the oscillators.
+
+## Loading
+- **LOAD**: choose a file. You can also drop a file on the page. The sample is turned on for you.
+- **X**: remove the sample. **HEAR**: play it.
+- **Single / Multi**: Single uses one sample for all notes. In Multi, LOAD takes many files as zones; name a file like Piano_C3 to set its root note.
+- Turn the oscillators off (the power buttons on the OSC tabs) to hear only the sample.
+
+## The knobs
+- **LEVEL**: how loud the sample is. **START**: where in the sample each note begins.
+- **ROOT**: the note at which the sample plays at its original pitch. **LOOP** and **KEY**: loop mode and whether the sample follows the keyboard.
+- **FILTER** (checkbox): send the sample through Filter 1 and 2. Off (default), it bypasses them and keeps its full sound.
+
+## Slices
+Cut the sample into pieces. Each slice gets its own "Slice N" row in the pattern; a note there plays that slice at its original speed.
+- **Grid**: equal parts (the slider sets how many, max 128). **Auto**: cut at the hits (the slider sets the sensitivity). **Manual**: your own markers.
+- **CREATE**: turn the Grid or Auto result into your own markers. Drag a boundary to move it, double-click to add one, right-click to remove one.
+- **REVERSE**: plays every slice backwards.
+- **SHOW SAMPLE / SLICES**: see the whole waveform, or every slice as its own box. Click a slice to hear it.
+- Only the first 16 slices get a row in the pattern.
+)";
+
     struct TopicInfo { HelpDialog::Topic topic; const char* tab; const char* text; };
     const TopicInfo topics[] = {
         { HelpDialog::Topic::pianoRoll, "PIANO ROLL", pianoRollText },
@@ -185,6 +208,7 @@ Everything this layer plays, a few cycles after the note starts (110 Hz).
         { HelpDialog::Topic::filter, "FILTER", filterText },
         { HelpDialog::Topic::fm, "FM", fmText },
         { HelpDialog::Topic::mix, "MIX", mixText },
+        { HelpDialog::Topic::sample, "SAMPLE", sampleText },
     };
 
     // ---- Rendering ----

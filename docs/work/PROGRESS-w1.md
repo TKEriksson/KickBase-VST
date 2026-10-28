@@ -414,3 +414,8 @@ Bygge Debug all: grönt, "Alla tester gick igenom" (rendersig oförändrad).
 - FM-fliken: HELP-knapp uppe till höger (FmPanel.cpp, bredvid FILTER), ämnet FM. MIX-fliken: HELP-knapp bredvid WIDE (InstrMixPanel.cpp), ämnet MIX; rubriken kortad till "COMBINED WAVEFORM (110 Hz)" så knapparna får plats.
 - Bygge grönt, alla tester gick igenom.
 - DAW-test (Lemon): öppna FM- och MIX-flikerna, klicka HELP, kontrollera rätt flik och att knapparna inte täcker rubrik eller knappar.
+
+## HELP för SAMPLE (Arbetare 1, 2026-10-28)
+- SAMPLE-fliken: HELP-knapp uppe till höger (Modules.cpp, SamplePage::resized, vänster om FILTER-rutan), ämnet SAMPLE (HelpDialog.cpp sampleText). Projektledaren godkände ändringen i Modules.h/.cpp (bara knapp och ämne).
+- Bygge grönt, alla tester gick igenom.
+- DAW-test (Lemon): öppna SAMPLE-fliken, klicka HELP, kontrollera att SAMPLE-fliken visas och att knappen inte täcker FILTER-rutan eller etiketten.
