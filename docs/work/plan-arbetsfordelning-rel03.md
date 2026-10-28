@@ -35,3 +35,9 @@ Arbetare 2 rör inte UI. Arbetare 1 rör inte `PresetData.inl` och KickbaseTool 
 ## Projektledaren
 - rel-0.3-build (allt ovan), testlista (PDF i `docs/releases/`) med egen sektion för hörtester som saknas i DAW: MIX-fliken, AP/START, HALFTIME, KEEP/COMPARE, shimmer, Maximizer MODE, Low Multiplier, autocomplete. Tobias testar i DAW, fixar, merge först efter ja.
 - Skjuts till senare: multiband och sidechain i två band som FX-slot, AI-leverantörer.
+
+## Tillägg 28 okt (Tobias: allt från 0.4 in i 0.3)
+- FX send-matris + 12 FX-kanaler + M-knapp per kanal: `docs/work/plan-fx-send-matrix.md`. Arbetare 2 bygger kärnan (steg 1-3, branch fx-matrix, ingen UI); popup-UI tas av Arbetare 1 när kärnan är mergad, eller av Arbetare 2 om Arbetare 1 är full.
+- Huvudpreset-kategorier ("Gamla" factory + user, egna kategorier vid spara, kategori lagras separat, preset-index/hash oförändrade): projektledaren, i `KickBase-VST-pl`.
+- TIMING-fliken per motor (DELAY MODE, LENGTH SYNC, ×-antal 1-8, TO BEAT), kick-UI, semiton-snap, glasdisplay, glide-bugg, DETUNE-standard 0, JOG-förenkling (ETT läge, STEP 1/4-1/64, loop i 1/64 takt, TEST BPM): Arbetare 1.
+- Rendersig-jämförelse mot main behövs inte (Tobias bygger nya presets).
