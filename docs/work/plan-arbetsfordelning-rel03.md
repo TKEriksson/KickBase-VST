@@ -14,6 +14,7 @@ En enda release (Tobias 28 okt): allt som tidigare låg i rel-0.4 ingår nu i re
 ### Därefter (planer först)
 6. Övertonsredigerare, Serum-stil, etapp 1-3.
 7. Sample-editor (AMP/PITCH, på/av), klick-lager (3) och sampleverktyg, reverse per not, parameterlanes under pianorollen (resizebar).
+8b. START per motor i MIX-fliken (Tobias 28 okt): tidsförskjutning i ms per motor (osc 1-3, sample, noise) så att lager kan komma in efter varandra. Skevt intervall 0-4000 ms, standard 0 (gamla presets oförändrade), nya parametrar sist. Plan först; fråga om max ska vara inställbart.
 8. RING, Echo/Flanger och autosave/IO (Tobias 28 okt: lägg in i planen): plan först, sedan bygge. Nya parametrar sist, standard av.
 9. AUTO FIX sist.
 
