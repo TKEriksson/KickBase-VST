@@ -49,6 +49,16 @@ SettingsPage::SettingsPage (PluginBase& p) : processor (p), optimizations (p, [t
     aboutButton.setTooltip ("ABOUT - The version, the licence Kickbase is released under (AGPL-3.0), where the source code is, and the licences of the software it is built with.");
     aboutButton.onClick = [this] { showPanel (&about); };
     addAndMakeVisible (aboutButton);
+    glowButton.setTooltip ("GLOW - How strongly panel edges and dividers glow: Off, Weak or Strong. Saved for you, not in the project. Click to change.");
+    glowButton.onClick = [this]
+    {
+        Settings::setGlowLevel ((Settings::glowLevel() + 1) % 3);
+        updateGlowButton();
+        if (auto* top = getTopLevelComponent())
+            top->repaint();
+    };
+    updateGlowButton();
+    addAndMakeVisible (glowButton);
     HelpDialog::setupButton (helpButton, *this, HelpDialog::Topic::settings, "the settings");
     addAndMakeVisible (helpButton);
     addChildComponent (optimizations);
@@ -246,6 +256,12 @@ void SettingsPage::chooseFolder (FolderRow& row)
                           });
 }
 
+void SettingsPage::updateGlowButton()
+{
+    static const char* names[3] = { "GLOW: OFF", "GLOW: WEAK", "GLOW: STRONG" };
+    glowButton.setButtonText (names[Settings::glowLevel()]);
+}
+
 void SettingsPage::updatePack()
 {
     const auto busy = pack.isBusy();
@@ -403,6 +419,8 @@ void SettingsPage::resized()
         helpButton.setBounds (panelButtons.removeFromRight (44));
         panelButtons.removeFromRight (4);
         aboutButton.setBounds (panelButtons.removeFromRight (64));
+        panelButtons.removeFromRight (4);
+        glowButton.setBounds (panelButtons.removeFromRight (118));
         panelButtons.removeFromRight (4);
         optimizationsButton.setBounds (panelButtons);
         box.removeFromTop (6);

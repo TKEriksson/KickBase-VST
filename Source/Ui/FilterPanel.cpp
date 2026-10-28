@@ -398,7 +398,8 @@ void FilterPage::resized()
     switchRow.removeFromLeft (6);
     helpButton.setBounds (switchRow.removeFromLeft (juce::jmin (50, switchRow.getWidth())));
 
-    auto bottom = area.removeFromBottom (58);
+    // 74 px rad ger ett rattshuvud på ca 48 px (etiketter tar 26 px), samma mall som övriga flikar.
+    auto bottom = area.removeFromBottom (74);
     area.removeFromBottom (4);
     view.setBounds (area);
     allpassAmount->setBounds (bottom.removeFromRight (74));

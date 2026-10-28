@@ -38,10 +38,7 @@ public:
     {
         const auto bounds = getLocalBounds().toFloat().reduced (1.0f);
         const auto lit = active || held || latched;
-        g.setColour (lit ? accent.withAlpha (0.55f) : juce::Colour (hover ? 0xff2c3148 : 0xff23263a));
-        g.fillRoundedRectangle (bounds, 5.0f);
-        g.setColour (lit ? accent : Theme::panelBorder.withAlpha (hover ? 1.0f : 0.8f));
-        g.drawRoundedRectangle (bounds, 5.0f, lit ? 1.6f : 1.0f);
+        Theme::paintGlassButton (g, bounds, lit, hover, accent, 7.0f);
 
         const auto c = bounds.getCentre();
         const auto s = std::min (bounds.getWidth(), bounds.getHeight()) / 26.0f;

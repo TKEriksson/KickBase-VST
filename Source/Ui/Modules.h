@@ -115,6 +115,19 @@ private:
     std::unique_ptr<juce::FileChooser> chooser;
 };
 
+// Synth/sample-balansen (kickMix) som en vågrät reglage med etikett, för flikraden i kicken.
+class KickMixControl : public juce::Component
+{
+public:
+    KickMixControl (juce::AudioProcessorValueTreeState& apvts, juce::Colour accent);
+    void resized() override;
+
+private:
+    juce::Label label;
+    FxSendControl::AmountSlider slider;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> attachment;
+};
+
 // Kicken: vågformen med pitch- och volymnoder, rattar för kroppen, klicket och drive, och plats för en klicksampling.
 class KickModule : public ModulePanel, public juce::FileDragAndDropTarget, private juce::Timer
 {
@@ -151,6 +164,7 @@ private:
     std::vector<juce::Component*> sampleControls;
     juce::Label sampleHelp;
     std::unique_ptr<FxSendControl> fxSend;
+    std::unique_ptr<KickMixControl> mixControl; // flikraden: Synth/Sample-mix
 
     juce::ToggleButton synthToggle { "SYNTH" }, sampleToggle { "SAMPLE" }; // små på/av för äldre presets; balansen är MIX
     std::unique_ptr<juce::ButtonParameterAttachment> synthToggleAttachment, sampleToggleAttachment, sampleReverseAttachment;
@@ -214,6 +228,7 @@ class SamplePage : public juce::Component, private juce::Timer
 {
 public:
     SamplePage (PluginBase& processor, int layer, juce::Colour accent);
+    void paint (juce::Graphics&) override;
     void resized() override;
     void loadSample (const juce::File& file);
 
@@ -233,6 +248,7 @@ private:
     juce::ToggleButton sampleReverseToggle { "REVERSE" }, ampToggle { "AMP" }, pitchToggle { "PITCH" };
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> sampleReverseAttachment, ampAttachment, pitchAttachment;
     std::vector<std::unique_ptr<juce::Component>> ampControls, pitchControls; // AMP: TIME, SHAPE; PITCH: SEMIS, TIME, SHAPE
+    std::array<juce::Rectangle<int>, 3> editBoxes; // rutorna PITCH, AMP, REVERSE under vågformen
     juce::Label sliceCapNotice; // "Only the first 16 slices have rows" när samplingen har fler skivor än skivrader
     juce::ComboBox sliceModeBox;
     juce::TextButton createButton { "CREATE" }; // E2 steg 4: gör Grid/Auto-resultatet till egna gränser (Manual) som kan flyttas

@@ -5,8 +5,8 @@ KickbaseLookAndFeel::KickbaseLookAndFeel()
 {
     setColour (juce::PopupMenu::backgroundColourId, Theme::knobBodyDark);
     setColour (juce::PopupMenu::textColourId, Theme::text);
-    setColour (juce::PopupMenu::highlightedBackgroundColourId, Theme::track);
-    setColour (juce::PopupMenu::highlightedTextColourId, Theme::text);
+    setColour (juce::PopupMenu::highlightedBackgroundColourId, Theme::cyan.withAlpha (0.22f)); // hover i popupmenyer: samma cyan som övriga menyer
+    setColour (juce::PopupMenu::highlightedTextColourId, Theme::cyanLight);
     setColour (juce::ComboBox::textColourId, Theme::text);
     setColour (juce::ComboBox::arrowColourId, Theme::textDim);
     setColour (juce::Label::textColourId, Theme::text);
@@ -226,9 +226,9 @@ void KickbaseLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button&
     // E1 form 3, kort/chip: kvadratiska kort (radie 3) för flik-i-flik (FX1-FX11, EQ/COMP/FX).
     if ((bool) button.getProperties().getWithDefault ("chip", false))
     {
-        g.setColour (on ? accent.withAlpha (0.16f) : Theme::panelAlt.brighter (highlighted || down ? 0.15f : 0.0f));
+        g.setColour (on ? accent.withAlpha (0.16f) : Theme::getHoverColour (Theme::panelAlt, highlighted || down));
         g.fillRoundedRectangle (bounds, 3.0f);
-        g.setColour (on ? Theme::cyan.withAlpha (0.8f) : Theme::panelBorder);
+        g.setColour (on ? Theme::cyan.withAlpha (0.8f) : (highlighted || down ? Theme::cyan.withAlpha (0.45f) : Theme::panelBorder));
         g.drawRoundedRectangle (bounds, 3.0f, on ? 1.4f : 1.0f);
         if (on)
         {
@@ -257,8 +257,10 @@ void KickbaseLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button&
         }
         else if (highlighted || down)
         {
-            g.setColour (juce::Colour (0xff1e293b).withAlpha (0.5f));
+            g.setColour (Theme::getHoverColour (juce::Colour (0xff1e293b), true).withAlpha (0.7f));
             g.fillRoundedRectangle (segment, 8.0f);
+            g.setColour (Theme::cyan.withAlpha (0.25f));
+            g.drawRoundedRectangle (segment, 8.0f, 1.0f);
         }
         return;
     }
@@ -290,14 +292,14 @@ void KickbaseLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button&
     }
     else
     {
-        g.setColour (juce::Colour (0xff1e293b).withAlpha (highlighted || down ? 0.6f : 0.4f));
+        g.setColour (Theme::getHoverColour (juce::Colour (0xff1e293b), highlighted || down).withAlpha (highlighted || down ? 0.6f : 0.4f));
         g.fillRoundedRectangle (bounds, corner);
-        g.setColour (juce::Colour (0xff334155).withAlpha (0.5f));
+        g.setColour (highlighted || down ? Theme::cyan.withAlpha (0.45f) : juce::Colour (0xff334155).withAlpha (0.5f));
         g.drawRoundedRectangle (bounds, corner, 1.0f);
     }
 }
 
-void KickbaseLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& button, bool, bool)
+void KickbaseLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& button, bool highlighted, bool)
 {
     const auto on = button.getToggleState();
     auto bounds = button.getLocalBounds().reduced (4, 0);
@@ -332,18 +334,19 @@ void KickbaseLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& b
         size -= 0.5f;
 
     g.setFont (font.withHeight (size));
-    g.setColour (on ? (sub ? Theme::cyanLight : Theme::text) : Theme::textDim);
+    g.setColour (on ? (sub ? Theme::cyanLight : Theme::text) : (highlighted ? Theme::text : Theme::textDim));
     g.drawText (text, bounds, juce::Justification::centred, true);
 }
 
-void KickbaseLookAndFeel::drawComboBox (juce::Graphics& g, int width, int height, bool, int, int, int, int, juce::ComboBox& box)
+void KickbaseLookAndFeel::drawComboBox (juce::Graphics& g, int width, int height, bool isButtonDown, int, int, int, int, juce::ComboBox& box)
 {
     const auto bounds = juce::Rectangle<int> (width, height).toFloat().reduced (0.5f);
+    const bool hover = box.isMouseOver (true) || isButtonDown;
 
-    // E1: platt mörk ruta med radie 8, tunn kant och cyan glöd vid fokus.
-    g.setColour (Theme::chartBackground);
+    // E1: platt mörk ruta med radie 8, tunn kant, hover som övriga menyknappar och cyan glöd vid fokus.
+    g.setColour (Theme::getHoverColour (Theme::chartBackground, hover));
     g.fillRoundedRectangle (bounds, 8.0f);
-    g.setColour (Theme::panelBorder);
+    g.setColour (hover ? Theme::cyan.withAlpha (0.45f) : Theme::panelBorder);
     g.drawRoundedRectangle (bounds, 8.0f, 1.0f);
     if (box.hasKeyboardFocus (true))
     {
@@ -359,6 +362,17 @@ void KickbaseLookAndFeel::drawComboBox (juce::Graphics& g, int width, int height
     path.addTriangle (arrow.getX(), arrow.getY(), arrow.getRight(), arrow.getY(), arrow.getCentreX(), arrow.getBottom());
     g.setColour (Theme::textDim);
     g.fillPath (path);
+}
+
+void KickbaseLookAndFeel::drawPopupMenuBackground (juce::Graphics& g, int width, int height)
+{
+    // Tredje nivån i hierarkin: mörkast bakgrund med tunn kant, avrundad som övriga menyer.
+    const auto bounds = juce::Rectangle<int> (width, height).toFloat().reduced (0.5f);
+    g.fillAll (juce::Colours::transparentBlack);
+    g.setColour (findColour (juce::PopupMenu::backgroundColourId));
+    g.fillRoundedRectangle (bounds, 6.0f);
+    g.setColour (Theme::panelBorder);
+    g.drawRoundedRectangle (bounds, 6.0f, 1.0f);
 }
 
 void KickbaseLookAndFeel::positionComboBoxText (juce::ComboBox& box, juce::Label& label)
