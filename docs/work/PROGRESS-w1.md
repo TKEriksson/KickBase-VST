@@ -434,3 +434,8 @@ Bygge Debug all: grönt, "Alla tester gick igenom" (rendersig oförändrad).
 - MATRIX-sidan: HELP-knapp efter CLEAR ALL (MatrixPage.cpp, resized), ämnet MATRIX (HelpDialog.cpp matrixText).
 - Bygge grönt, alla tester gick igenom.
 - DAW-test (Lemon): öppna MATRIX, klicka HELP, kontrollera att MATRIX-fliken visas och att knappen inte täcker CLEAR ALL eller räknaren.
+
+## HELP för EFFECTS (Arbetare 1, 2026-10-28)
+- EFFECTS-sidan: HELP-knapp till vänster om FX Preset (EffectsPage.cpp, resized), ämnet EFFECTS (HelpDialog.cpp effectsText).
+- Bygge grönt, alla tester gick igenom.
+- DAW-test (Lemon): öppna EFFECTS, klicka HELP, kontrollera att EFFECTS-fliken visas och att platsraden fortfarande får plats.

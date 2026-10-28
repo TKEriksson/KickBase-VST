@@ -252,6 +252,22 @@ Every connection between a modulation source and a knob, in one list. A route sa
 - The X on a row removes the route. **CLEAR ALL** removes every route (it asks first).
 )";
 
+    const char* effectsText = R"(# EFFECTS
+Effects live on **FX channels** (FX1-FX11), like mixer sends. An instrument sends part of its sound to a channel with its FX SEND knob; the channel runs five effects in a row.
+
+## The page
+- **FX1-FX11** (left): pick the channel to edit. Each instrument chooses its channel and how much goes through it.
+- **EQ / COMP / FX**: three views of the selected channel.
+- **FX**: the five slots in a row. Click a slot, then pick its effect type in the box and turn its knobs. Slots run left to right.
+- **EQ**: a parametric equalizer with a live view of the sound reaching the channel. Flat by default.
+- **COMP**: a compressor that evens out the channel level. Off (1:1) by default.
+- **LEVEL**: volume of the channel's effect output.
+- **DUCK**: how deeply the kick pushes the channel down, tails included, so reverb and echo don't blur the kick. 0 % = no ducking.
+
+## Presets
+**FX Preset** saves or loads the selected channel: its five effects, EQ, compressor, level and duck. Other channels are not touched, and who sends to the channel is not part of it.
+)";
+
     struct TopicInfo { HelpDialog::Topic topic; const char* tab; const char* text; };
     const TopicInfo topics[] = {
         { HelpDialog::Topic::pianoRoll, "PIANO ROLL", pianoRollText },
@@ -265,6 +281,7 @@ Every connection between a modulation source and a knob, in one list. A route sa
         { HelpDialog::Topic::env, "ENV", envText },
         { HelpDialog::Topic::lfo, "LFO", lfoText },
         { HelpDialog::Topic::matrix, "MATRIX", matrixText },
+        { HelpDialog::Topic::effects, "EFFECTS", effectsText },
     };
 
     // ---- Rendering ----
