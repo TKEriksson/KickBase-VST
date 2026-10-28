@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../Core/PluginBase.h"
+#include "HelpDialog.h"
 #include "Theme.h"
 
 // SETTINGS > OPTIMIZATIONS: hur ofta varje vy ritas om (fem steg, 5-40 bilder per sekund), om vyer med fyllda ytor fylls, hur ofta
@@ -25,7 +26,7 @@ private:
         std::unique_ptr<juce::ComboBox> analyses; // bara ANALYZER-spektrumet
     };
 
-    juce::TextButton backButton { "BACK" }, reduceAnimationsToggle { "REDUCE ANIMATIONS" }, collisionGradientToggle { "COLLISION GRADIENT" };
+    juce::TextButton backButton { "BACK" }, reduceAnimationsToggle { "REDUCE ANIMATIONS" }, collisionGradientToggle { "COLLISION GRADIENT" }, helpButton;
     juce::Label globalLabel, globalHint, viewsLabel;
     std::vector<std::unique_ptr<Row>> rows;
     int compact = -1; // smala kolumner (Kickbase FX): kortare texter i menyerna ("30/s"), -1 = inte bestämt än

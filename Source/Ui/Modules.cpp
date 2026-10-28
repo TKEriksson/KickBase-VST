@@ -2370,6 +2370,9 @@ GateModule::GateModule (PluginBase& p)
     help.setColour (juce::Label::textColourId, Theme::textDim);
     help.setJustificationType (juce::Justification::topLeft);
     addAndMakeVisible (help);
+
+    HelpDialog::setupButton (helpButton, *this, HelpDialog::Topic::gate, "the GATE tab");
+    addAndMakeVisible (helpButton);
 }
 
 void GateModule::resized()
@@ -2379,7 +2382,9 @@ void GateModule::resized()
         presets.setBounds (presetBounds (*this));
     auto area = getContentBounds();
 
-    help.setBounds (area.removeFromBottom (48));
+    auto helpRow = area.removeFromBottom (48);
+    helpButton.setBounds (helpRow.removeFromRight (44).removeFromTop (24));
+    help.setBounds (helpRow);
     auto row = area.removeFromBottom (knobRowHeight);
     area.removeFromBottom (6);
     envelope.setBounds (area);

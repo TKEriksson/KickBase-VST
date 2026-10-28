@@ -421,6 +421,61 @@ Press **KEY**, choose a provider (Gemini has a free tier, OpenAI, Claude, or Oll
 **STOP** ends the run after the step that is running. If the AI stops early, **CONTINUE** (or Enter in an empty field) tells it to go on. Some steps ask you to confirm before they run.
 )";
 
+    const char* gateText = R"(# GATE
+The GATE tab (Kickbase FX only) shapes the sound of the synth that Kickbase FX sits on. Put Kickbase FX on the mixer track of your instrument or bass synth.
+
+## How it works
+The synth is cut into pieces by the gate steps and ducked under the kick. When the DAW is stopped, audio passes through untouched.
+
+## Controls
+- **Picture**: one gate opening of 100 ms with its attack and release. Drag the two handles to change ATTACK and RELEASE.
+- **KEY**: what opens the gate.
+- **ATTACK**: how fast the gate opens, in milliseconds.
+- **RELEASE**: how fast it closes again.
+- **LEVEL**: the volume of the gated sound.
+)";
+
+    const char* historyText = R"(# HISTORY
+MENU > History lists everything you have done, newest at the top, so you can go back to any step.
+
+## Reading the list
+- The line **Now** is where you are. Steps below it are done.
+- Grey steps above **Now** are undone. They can be redone until you make a new change.
+
+## Buttons
+- **Undo** takes one step back (Ctrl+Z). **Redo** takes one step forward (Ctrl+Shift+Z or Ctrl+Y).
+- **Restore** goes to the selected step: everything between it and **Now** is undone or redone. Double-clicking a row does the same.
+
+The list is cleared when the plugin is reloaded, and a note at the bottom tells you when older steps were dropped.
+)";
+
+    const char* aboutText = R"(# ABOUT
+SETTINGS > ABOUT shows the version and the licences.
+
+## What is here
+- **Version**: the Kickbase version you are running.
+- **Licence**: Kickbase is free software under the GNU Affero General Public License 3.0 (AGPL-3.0). The AGPL gives you the right to the source code.
+- **THIRD-PARTY**: the software and content Kickbase is built with or can download, and their licences.
+- **LICENSE**: the full text of the AGPL-3.0.
+
+**BACK** returns to the other settings.
+)";
+
+    const char* optimizationsText = R"(# OPTIMIZATIONS
+SETTINGS > OPTIMIZATIONS lets you trade smooth pictures for less CPU. All settings are remembered and apply to every Kickbase window.
+
+## Global
+- **REDUCE ANIMATIONS**: halves every redraw rate and turns the logo's glow off. The quickest way to save CPU everywhere.
+- **COLLISION GRADIENT**: the colour field on ANALYZER > COLLISIONS. Off draws only the list and the markings, which is faster.
+
+## Per view
+Each row is one view. The menu sets how many times per second it is redrawn (5 to 40; the default is marked). Lower uses less CPU, higher moves more smoothly.
+- **FILLED**: fills the areas under curves and waves. Filled areas are the most expensive part of drawing, so turning it off saves the most.
+- **ANALYZER** also has an analyses-per-second menu: how often the sound is analysed. It is the same as SPEED on the ANALYZER tab.
+
+If Kickbase feels heavy, try REDUCE ANIMATIONS first, then lower the ANALYZER rate and turn FILLED off.
+)";
+
     struct TopicInfo { HelpDialog::Topic topic; const char* tab; const char* text; };
     const TopicInfo topics[] = {
         { HelpDialog::Topic::pianoRoll, "PIANO ROLL", pianoRollText },
@@ -442,6 +497,10 @@ Press **KEY**, choose a provider (Gemini has a free tier, OpenAI, Claude, or Oll
         { HelpDialog::Topic::instr, "INSTR", instrText },
         { HelpDialog::Topic::analyzer, "ANALYZER", analyzerText },
         { HelpDialog::Topic::aiChat, "AI CHAT", aiChatText },
+        { HelpDialog::Topic::gate, "GATE", gateText },
+        { HelpDialog::Topic::history, "HISTORY", historyText },
+        { HelpDialog::Topic::about, "ABOUT", aboutText },
+        { HelpDialog::Topic::optimizations, "OPTIMIZATIONS", optimizationsText },
     };
 
     // ---- Rendering ----

@@ -598,7 +598,7 @@ InstrumentSynth::Output InstrumentSynth::next()
         auto editorGain = engineGate (3);
         auto editorSpeed = 1.0;
         if (params.sampleAmpOn)
-            editorGain = InstrumentSynth::sampleCurve (1.0f - (float) (sampleAge / (0.001 * (double) params.sampleAmpMs * sampleRate)), params.sampleAmpShape);
+            editorGain *= InstrumentSynth::sampleCurve (1.0f - (float) (sampleAge / (0.001 * (double) params.sampleAmpMs * sampleRate)), params.sampleAmpShape);
         if (params.samplePitchOn)
             editorSpeed = std::exp2 ((double) params.samplePitchSemis / 12.0 * InstrumentSynth::sampleCurve (1.0f - (float) (sampleAge / (0.001 * (double) params.samplePitchMs * sampleRate)), params.samplePitchShape));
         sampleAge += 1.0;
