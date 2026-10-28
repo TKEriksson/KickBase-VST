@@ -57,3 +57,4 @@
 - 28 okt: Arbetare 2 genreutredning klar (09aff89, 7 genrefiler i docs/school/; Empirikal, Minimal-BPM, Dance, Goa-kick markerade obekrafta). Sista order: kallsok + full preset-audit, sedan vanta pa Tobias lyssning.
 - 28 okt: Tobias vill ha START (ms) per motor i MIX-fliken; langd osakert, forslag skevt 0-4000 ms. In i planen som punkt 8b for Arbetare 1.
 - 28 okt: Tobias: START per motor ska aven kunna synkas till takt (borja efter viss takt).
+- 28 okt: Tobias: aven langd och kurva pa envelope per motor (tillagg till 8b).
