@@ -168,3 +168,5 @@ Arbetare 2 samlar genrekunskap och synthrecept i `docs/school/` (kick, rollbas, 
 
 ## Öppna frågor till Tobias
 Inga just nu.
+
+Beslut 28 okt (AUTO FIX, rel-0.4): AUTO FIX-verktyget (mät, lista, APPLY) och en live-effekt "auto-fix" (alternativ B, dämpar basens grundton runt kickens tailHz styrd av kickens envelope) byggs båda; alternativ A (instrumentkopia utan grundton) kan vara en extra åtgärd. Effekten kan sättas dit för hand på en FX-kanal eller läggas dit av AUTO FIX som åtgärd vid grundtonskrock (ångra tar bort den). Rapporten/ANALYSE (`Source/Core/MixAnalysis.cpp`, grundtonsfynden vid ca rad 495-510 och 752-767) och AUTO FIX delar samma mätkod så att de aldrig ger olika svar; grundtonsfyndet i rapporten pekar på samma åtgärd (idag rekommenderar det `edit_wavetable_harmonics`).
