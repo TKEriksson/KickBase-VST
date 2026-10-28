@@ -54,3 +54,4 @@
 - 28 okt: Tobias: allt i appen ska vara pa engelska. Arbetare 1 far oversatta SOUNDSTAGE-hjalpen och soka efter svenska UI-strangar.
 - 28 okt: Arbetare 2 far genrerna (max 3/kategori) och sedan Fas J (docs/school finns som utredning).
 - 28 okt: Arbetare 2 klar med genrepresets (8d03b40: 7 kickar, 14 basar, nya kategorier) och Fas J (28e3657: docs/school/genrer.md, preset-builder-skill). Ej lyssnat. Fick order: genreutredning med kallor.
+- 28 okt: Arbetare 2 genreutredning klar (09aff89, 7 genrefiler i docs/school/; Empirikal, Minimal-BPM, Dance, Goa-kick markerade obekrafta). Sista order: kallsok + full preset-audit, sedan vanta pa Tobias lyssning.
