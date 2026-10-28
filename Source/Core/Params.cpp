@@ -706,15 +706,19 @@ KickParams ParamRefs::readKick (int keyPitchClass) const
     p.sampleOn      = get (ParamID::kickSampleOn) >= 0.5f;
     p.sampleTuneSemis = get (ParamID::kickSampleTune);
     p.sampleOffsetMs = get (ParamID::kickSampleOffset);
+    // Fasta ID:n (ingen sträng byggs på ljudtråden).
+    static constexpr const char* clickIds[2][5] = { { "kickClick2Level", "kickClick2Length", "kickClick2Tone", "kickClick2Delay", "kickClick2Mode" },
+                                                    { "kickClick3Level", "kickClick3Length", "kickClick3Tone", "kickClick3Delay", "kickClick3Mode" } };
+    static_assert (KickParams::numExtraClicks == 2, "clickIds needs one row per extra click");
     for (int i = 0; i < KickParams::numExtraClicks; ++i)
     {
-        const auto key = juce::String ("kickClick") + juce::String (i + 2);
+        const auto* id = clickIds[i];
         auto& c = p.extraClicks[i];
-        c.level    = get ((key + "Level").toRawUTF8());
-        c.lengthMs = get ((key + "Length").toRawUTF8());
-        c.toneHz   = get ((key + "Tone").toRawUTF8());
-        c.delayMs  = get ((key + "Delay").toRawUTF8());
-        c.mode     = getChoice ((key + "Mode").toRawUTF8());
+        c.level    = get (id[0]);
+        c.lengthMs = get (id[1]);
+        c.toneHz   = get (id[2]);
+        c.delayMs  = get (id[3]);
+        c.mode     = getChoice (id[4]);
     }
     p.sampleStartMs = get (ParamID::kickSampleStart);
     p.sampleReverse = get (ParamID::kickSampleReverse) >= 0.5f;
