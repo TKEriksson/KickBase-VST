@@ -389,3 +389,8 @@ Ordning: 1, 3, 2, sedan 4 efter svar från Arbetare 1. Ljudkod (InstrumentProces
 - `Effects::migrateSendLinks` (Effects.cpp) flyttar SEND-länkar till `fxSendToN` vid laddning (PluginBase.cpp:828). INS orörd, visas som "INS FXn" i popupen. Inga ID/hash ändrade (presets räknar inte fxChannel/Amount/Send).
 - Test: `testSendLinkMigration` (MasterTests.cpp). `Debug all` grönt.
 - Känt: FX-lås (`fxSendLock`) styr bara gamla länken; migrerade länkar tappar låset tills punkt 4 är klar.
+
+### 0.4 punkt 3 – klar (Arbetare 2)
+- FX-ratten borttagen från PATTERN-raderna (`StepSequencer.cpp` addRowKnobs, RowKnobs, rubriken "FX"); VOL-ratten större (34 px, 30 i låga rader), layouten i låga rader flyttad vänster (labelWidth 226).
+- FX-knappen visar "None", "FX" (en kanal) eller "N x FX"; tipset listar kanalerna med procent (`Components.cpp` FxSendControl::updateSummary).
+- Debug all grönt. Ingen ljudkod ändrad.

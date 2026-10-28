@@ -140,15 +140,15 @@ private:
     int markerStep (int layer) const;
     void repaintMarker (int layer, int oldStep, int newStep);
 
-    // Volym och FX-send för varje rad (kicken och varje lager), som i FL Studios kanalrack.
+    // Volymratten för varje rad (kicken och varje lager). FX-valet sitter i FX-knappen på instrumentets flik.
     struct RowKnobs
     {
-        juce::Slider level, fx;
-        std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> levelAttachment, fxAttachment;
+        juce::Slider level;
+        std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> levelAttachment;
     };
     void refreshColours(); // instrumentens färger ändrade (InstrumentMenu): ratt, LISTEN och LOOP får de nya
-    void addRowKnobs (const juce::String& name, const juce::String& levelID, const juce::String& fxID, juce::Colour colour);
-    juce::Rectangle<int> knobBounds (juce::Rectangle<int> row, int index) const;
+    void addRowKnobs (const juce::String& name, const juce::String& levelID, juce::Colour colour);
+    juce::Rectangle<int> knobBounds (juce::Rectangle<int> row) const;
 
     PluginBase& processor;
     std::vector<std::unique_ptr<RowKnobs>> rowKnobs; // [0] = kick, sedan ett per lager

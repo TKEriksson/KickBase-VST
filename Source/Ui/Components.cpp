@@ -703,7 +703,7 @@ void FxSendControl::timerCallback()
     updateSummary();
 }
 
-// "FX1 50%, FX3 30%" eller "None". Den gamla länken räknas med som en vanlig rad.
+// "None", "FX" eller "N x FX". Den gamla länken räknas med som en vanlig rad.
 void FxSendControl::updateSummary()
 {
     juce::StringArray parts;
@@ -723,11 +723,15 @@ void FxSendControl::updateSummary()
             if (const int pct = percentOf (amountID); pct > 0)
                 parts.add ((percentOf (modeID) > 0 ? "FX" : "INS FX") + juce::String (legacy) + " " + juce::String (pct) + "%");
 
-    const auto text = parts.isEmpty() ? juce::String ("None") : parts.joinIntoString (", ");
+    // Knappen är smal: bara antalet ("2 x FX"); vilka kanaler och hur mycket står i tipset.
+    const auto text = parts.isEmpty() ? juce::String ("None") : parts.size() == 1 ? juce::String ("FX") : juce::String (parts.size()) + " x FX";
     if (text != lastSummary)
     {
         lastSummary = text;
         button.setButtonText (text);
+        button.setTooltip ("FX SEND - " + (parts.isEmpty() ? juce::String ("no FX channel in use") : parts.joinIntoString (", ")) + ". "
+                           + Help::forParameter (sendToIDs.isEmpty() ? channelID : sendToIDs[0])
+                           + " Click to open the send matrix: one row per FX channel with on/off and amount, plus + add FX channel.");
     }
 }
 
