@@ -169,3 +169,9 @@ Nu: programmet, rel-0.3 motornära punkter: 1) S3 Unison/Reese, 2) multisampling
 - Spelartestet finns sist i `multisampletest` (`Tools/AudioTests.cpp`). Tonhöjdskontrollerna går igenom; kontrollen "tangent 76 väljer höga zonen" FALLERAR och är inte undersökt (misstänkt: nivå/sampleLevel eller zongränser i testuppsättningen, inte bekräftat). Bankbyte, tom bank och 0 allokeringar kom inte att köras före felet i resultatet, kolla utskriften.
 - Nästa: skriv ut lowRms/highRms i testet, hitta orsaken, rätta; sedan etapp 3 (persistens: eget träd "BassMultiSamples", gamla projekt oförändrade), testrad i `fl-testlista.md`, UI/TYPE-väljare med Arbetare 1.
 - Stoppad på PL:s order (sessionsgräns); S3 är klar (64bde98), etapp 1 klar (150fb30).
+
+## FUNDAMENTAL DUCK i presets + merge play-pack (28 okt, Arbetare 2)
+- `fundDuck` i `PresetData.inl` (före PSY ROLLING): på i Roll 1–4 och Glide 1–3 (9 dB/200 cent; Glide Sub 12/250). Bas-only-presets orörda.
+- Audit före/efter: effekten under 0,1 dB i banden; render-signaturer för default-av oförändrade (Init 94f0a1b6bd8a3c7f).
+- Tidstestet flaky: Debug-gräns 120 s. Build grön efter merge av play-pack (SFZ-kärnan b9c9859).
+- Kvar: KickbaseTool-kommando för SFZ + parseSfz-tester, Init 1–5, alla övriga kategorier (max 3), Fas J.

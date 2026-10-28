@@ -18,3 +18,4 @@ En rad per preset. Kolumner: namn | kategori | nyckelparametrar | mätt | ändra
 | Glide Sub | GLIDE BASSES | PSY CLEAN C-kick + Saw Soft/Sub Punch-bas, sub 0.25, glid rotton→kvint→oktav, eko ej | audit full: centroid 78, DC 0, peak ca −1,5 (efter nivåsänkning) | commit följer | mjuk sub; mät i DAW |
 | Glide Acid | GLIDE BASSES | PSY CLEAN D-kick + Psy Acid, TB-303, korta slides, eko-send | peak −1,2, RMS −11, centroid 84 | commit följer | acid-slides |
 | Glide Dive | GLIDE BASSES | PSY CLEAN F Soft + Saw Soft/Psy Roll, oktavfall 200–300 %, chorus-send | peak −2,0, centroid 84 | commit följer | tydliga dyk |
+| Roll 1–4, Glide Sub/Acid/Dive | PSY ROLLING, GLIDE BASSES | + FUNDAMENTAL DUCK (Kick-källa): 9 dB/200 cent, Glide Sub 12 dB/250 cent | audit full före/efter: 60–250 Hz ≤0,1 dB, övrigt oförändrat (smalt filter) | commit följer | se fundamental-duck.md; effekten hörs bara i DAW |

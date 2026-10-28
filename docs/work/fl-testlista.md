@@ -114,3 +114,5 @@ Format: **Gör så** → *förväntat resultat*. Bocka av `[ ]` när det stämme
 - [ ] Ladda huvudpreset Roll Full-On, Roll Wide, Roll Dekel, Roll Forest (PSY ROLLING) i DAW → *kick och bas rullar ihop, basen ducker för kicken, bara ett lager ljuder; säg vilken som är för tunn eller för mörk.*
 - [ ] Öppna din GLIDE BASE (Full Instrument) i DAW → *glide-tonerna är nu längre (60 ticks) och ska höras som ett tydligt glid; originalet finns som GLIDE BASE.mofp.bak.*
 - [ ] Ladda Glide Sub, Glide Acid, Glide Dive (GLIDE BASSES) i DAW → *basen glider mellan tonerna utan klick, ducker för kicken; säg om glidet är för kort eller för långt.*
+- [ ] Ladda Roll Full-On och Glide Sub i DAW, slå FUNDAMENTAL DUCK av och på → *på: kickens slag tydligare, basens mellanregister oförändrat; säg om basen hackar eller tunnas ut (se docs/school/fundamental-duck.md).*
+- [ ] Ladda Roll Wide, Roll Dekel, Roll Forest, Glide Acid, Glide Dive → *grundtonen sänks i kickens takt, inget klick; jämför med duck av.*
