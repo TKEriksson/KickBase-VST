@@ -76,3 +76,4 @@ Preciserat (i) (Tobias 28 okt kväll): lägg om SAMPLE-redigeringen som tre ruto
 
 (m) MIX-fliken kompaktare (Tobias 28 okt kväll): kombinerad våg som alltid är bred längst upp men lägre, knapparna under; ersätter WIDE/NARROW. Etiketterna ligger för långt under rattarna även här (samma mall som g).
 (n) Instrumentets översta rad (på/av, INSTR-väljare, +/-, Preset, FX, NONE): göres högre med luft över och under knapparna (padding/marginal i höjd), så att raden inte ser trång ut.
+(o) Avdelare under huvudflikraden (PATTERN | KICK | INSTRUMENT | ANALYZER | AI CHAT | LIVE CODE | brödsmula) (Tobias 28 okt kväll): en tydlig linje med lite luft under raden, så att toppmenyn skiljs från innehållet. Samma stil som avdelarna i instrumentets flikrad.
