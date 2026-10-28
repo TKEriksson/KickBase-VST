@@ -43,8 +43,13 @@ public:
     // fader och panorering (utan `level`), så att det som skickas till en effektkanal följer fadern också.
     void mix (int source, const float* left, const float* right, int numSamples, float level,
               juce::AudioBuffer<float>& maxBus, juce::AudioBuffer<float>& bypassBus,
-              float* sendLeft = nullptr, float* sendRight = nullptr, juce::AudioBuffer<float>* skipBus = nullptr);
+              float* sendLeft = nullptr, float* sendRight = nullptr, juce::AudioBuffer<float>* skipBus = nullptr, float levelFrom = -1.0f);
     // skipBus: källor med SOUNDSTAGE-valet av (och Max på) läggs här i stället för på maxBus.
+    // levelFrom >= 0: `level` glider linjärt från det värdet över blocket (ändrad torr andel utan klick); annars konstant.
+
+    // Parameterlås (pianorullen): panoreringen -1..1 som ersätter pan-parametern från nu tills nästa anrop; utanför -1..1 = inget lås.
+    // Bara ljudtråden. Går via samma 20 ms-ramp som panoreringen, så det klickar inte.
+    void setPanLock (int source, float pan);
 
     // Högsta topp (dB) sedan förra anropet, per kanal (0 vänster, 1 höger). Anropas av gränssnittet.
     float takePeakDb (int source, int channel) const;
@@ -56,7 +61,14 @@ private:
     {
         juce::SmoothedValue<float> gain, panLeft, panRight;
         float lastDb = std::numeric_limits<float>::quiet_NaN(), lastGain = 0.0f; // senast omräknade gain-värdet
+        float panLock = 2.0f; // utanför -1..1 = inget lås
     };
+    static void panGains (float pan, float& left, float& right)
+    {
+        // Balans: mitten ger oförändrad nivå, åt ena hållet tystnar den andra sidan.
+        left = pan > 0.0f ? 1.0f - pan : 1.0f;
+        right = pan < 0.0f ? 1.0f + pan : 1.0f;
+    }
 
     std::array<std::atomic<float>*, numSources> gainParam {}, panParam {}, duck {}, max {}, stage {};
     std::array<Strip, numSources> strips;

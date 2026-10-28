@@ -1656,6 +1656,124 @@ int fxMatrixTest()
     return failed ? 1 : 0;
 }
 
+// Parameterlås (pianorullen, fas 3): en ton med lås låter som samma värde satt som parameter, och låsen klickar inte.
+int lockTest()
+{
+    juce::ScopedJuceInitialiser_GUI gui;
+    auto failed = false;
+    constexpr double rate = 48000.0;
+    using F = InstrumentField;
+    auto check = [&] (bool ok, const juce::String& what)
+    {
+        std::printf ("%-72s %s\n", what.toRawUTF8(), ok ? "ok" : "FEL");
+        failed |= ! ok;
+    };
+    struct Setup
+    {
+        float cutoffParam = 3000.0f;  // Hz
+        float lockCutoff = Pattern::lockUnset, lockPan = Pattern::lockUnset, lockSend = Pattern::lockUnset;
+        int fxChannel = 0;            // 1-baserad, 0 = None
+        float fxAmount = 0.0f;
+        float mixPan = 0.0f;          // mixerns pan-parameter (-1..1) för instrument 1
+    };
+    auto render = [&] (const Setup& s)
+    {
+        const auto owner = std::make_unique<InstrumentProcessor>();
+        auto& processor = *owner;
+        processor.setPlayConfigDetails (0, 2, rate, 512);
+        processor.prepareToPlay (rate, 512);
+        Scenarios::setPlain (processor, ParamID::kickOn, 0.0f);
+        Scenarios::setPlain (processor, ParamID::kickLevel, 0.0f);
+        for (int layer = 1; layer < ParamID::numInstrumentLayers; ++layer)
+            Scenarios::setInstrument (processor, layer, F::on, 0.0f);
+        Scenarios::setInstrument (processor, 0, F::aTable, (float) Wavetables::classicIndex (2)); // sågtand: gott om övertoner att filtrera
+        Scenarios::setInstrument (processor, 0, F::envAmount, 0.0f);
+        Scenarios::setInstrument (processor, 0, F::keyTrack, 0.0f);
+        Scenarios::setInstrument (processor, 0, F::filterType, 1.0f);
+        Scenarios::setInstrument (processor, 0, F::cutoff, s.cutoffParam);
+        Scenarios::setPlain (processor, Mixer::paramID (Mixer::firstBassSource, "Pan"), s.mixPan);
+        if (s.fxChannel > 0)
+        {
+            Scenarios::setInstrument (processor, 0, F::fxChannel, (float) s.fxChannel);
+            Scenarios::setInstrument (processor, 0, F::fxAmount, s.fxAmount);
+            Scenarios::setInstrument (processor, 0, F::fxSend, 1.0f);
+        }
+        std::vector<int> ticks;
+        processor.pattern.forEachNote (0, [&ticks] (int tick, const Pattern::Note&) { ticks.push_back (tick); });
+        for (const auto tick : ticks)
+        {
+            if (s.lockCutoff >= 0.0f) processor.pattern.setLock (0, tick, Pattern::lockCutoff, s.lockCutoff);
+            if (s.lockPan >= 0.0f)    processor.pattern.setLock (0, tick, Pattern::lockPan, s.lockPan);
+            if (s.lockSend >= 0.0f)   processor.pattern.setLock (0, tick, Pattern::lockFxSend, s.lockSend);
+        }
+        processor.ensureTablesInUse();
+        OfflineRender::Settings settings;
+        settings.sampleRate = rate;
+        settings.blockSize = 512;
+        settings.bpm = 120.0;
+        settings.bars = 2;
+        settings.notes = { 52 };
+        settings.extraBars = 1;
+        return OfflineRender::render (processor, settings);
+    };
+    auto maxDiff = [] (const juce::AudioBuffer<float>& a, const juce::AudioBuffer<float>& b, int from = 0)
+    {
+        auto peak = 0.0f;
+        for (int ch = 0; ch < 2; ++ch)
+            for (int i = from; i < std::min (a.getNumSamples(), b.getNumSamples()); ++i)
+                peak = std::max (peak, std::abs (a.getSample (ch, i) - b.getSample (ch, i)));
+        return a.getNumSamples() == b.getNumSamples() ? peak : 1.0e9f;
+    };
+    auto maxStep = [] (const juce::AudioBuffer<float>& a)
+    {
+        auto step = 0.0f;
+        for (int ch = 0; ch < 2; ++ch)
+            for (int i = 1; i < a.getNumSamples(); ++i)
+                step = std::max (step, std::abs (a.getSample (ch, i) - a.getSample (ch, i - 1)));
+        return step;
+    };
+
+    // Cutoffens omfång: låsets 0..1 räknas om till Hz på samma sätt som parametern.
+    const auto range = std::make_unique<InstrumentProcessor>()->apvts.getParameterRange (ParamID::bass (0, F::cutoff)); // processorn är stor: på heapen, inte stacken
+    const auto lockedValue = range.convertTo0to1 (1200.0f);
+    const auto lockedHz = range.snapToLegalValue (range.convertFrom0to1 (lockedValue));
+
+    const auto plain = render ({ 300.0f });
+    check (plain.getRMSLevel (0, 0, plain.getNumSamples()) > 0.01f, "grundljudet hörs");
+
+    // Cutoff-lås = samma cutoff som parameter (samma samples).
+    const auto asParam = render ({ lockedHz });
+    const auto asLock = render ({ 300.0f, lockedValue });
+    check (maxDiff (asParam, plain) > 0.01f, "cutoff 1200 Hz låter annorlunda än 300 Hz (testet kan upptäcka skillnad)");
+    check (maxDiff (asLock, asParam) < 1.0e-5f, "cutoff-lås " + juce::String (lockedHz, 1) + " Hz = samma cutoff som parameter (största skillnad " + juce::String (maxDiff (asLock, asParam), 7) + ")");
+
+    // Pan-lås: helt vänster ger tystnad till höger efter rampen (20 ms), mitten (0,5) ändrar inget.
+    const auto left = render ({ 300.0f, Pattern::lockUnset, 0.0f });
+    const auto centre = render ({ 300.0f, Pattern::lockUnset, 0.5f });
+    const auto skip = (int) (rate * 0.1);
+    const auto leftParam = render ({ 300.0f, Pattern::lockUnset, Pattern::lockUnset, Pattern::lockUnset, 0, 0.0f, -1.0f });
+    check (maxDiff (leftParam, plain, skip) > 0.01f, "pan -1 som parameter låter annorlunda än mitten (testet kan upptäcka skillnad)");
+    // Låset rampar från mitten vid första tonen (20 ms) och master-dynamiken minns rampen en stund: jämför först 0,5 s efter första ljudet.
+    auto firstSound = 0;
+    while (firstSound < plain.getNumSamples() && std::abs (plain.getSample (0, firstSound)) < 1.0e-3f)
+        ++firstSound;
+    const auto afterRamp = firstSound + (int) (rate * 0.5);
+    check (maxDiff (left, leftParam, afterRamp) < 1.0e-5f, "pan-lås 0 (helt vänster) = pan -1 som parameter (största skillnad " + juce::String (maxDiff (left, leftParam, afterRamp), 7) + ")");
+    check (maxDiff (centre, plain, skip) < 1.0e-5f, "pan-lås 0,5 (mitten) = ingen panorering");
+    check (maxStep (left) < 2.0f * maxStep (plain) + 0.02f, "pan-lås: inget hopp i ljudet (största steg " + juce::String (maxStep (left), 4) + " mot " + juce::String (maxStep (plain), 4) + ")");
+
+    // FX-send-lås: FX1 i SEND-läge, lås 0,3 = fxAmount 0,3 (efter blockets glidning från 0).
+    const auto sendParam = render ({ 300.0f, Pattern::lockUnset, Pattern::lockUnset, Pattern::lockUnset, 1, 0.3f });
+    const auto sendLock = render ({ 300.0f, Pattern::lockUnset, Pattern::lockUnset, 0.3f, 1, 0.0f });
+    check (maxDiff (sendParam, plain) > 1.0e-3f, "FX1 med send 30 % hörs (förutsättning)");
+    check (maxDiff (sendLock, sendParam, skip) < 1.0e-3f * sendParam.getMagnitude (0, sendParam.getNumSamples()), "send-lås 0,3 = fxAmount 0,3 (största skillnad " + juce::String (maxDiff (sendLock, sendParam, skip), 7) + ")");
+    const auto dryLock = render ({ 300.0f, Pattern::lockUnset, Pattern::lockUnset, 1.0f, 1, 0.0f });
+    check (allFiniteIn (dryLock) && maxStep (dryLock) < 2.0f * maxStep (plain) + 0.02f, "send-lås 1,0: ändligt ljud och inget hopp");
+
+    std::puts (failed ? "FEL: låstestet misslyckades" : "Låstestet gick igenom");
+    return failed ? 1 : 0;
+}
+
 // Multisampling etapp 1: datamodell, zonval, omsampling, utbyte och persistens. Inga ljudtrådsberoenden utöver select(), som ska vara allokeringsfri.
 int multiSampleTest()
 {

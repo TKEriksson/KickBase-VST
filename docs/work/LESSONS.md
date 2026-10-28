@@ -69,3 +69,5 @@ Arbetare 2 (27 okt), följdfråga från PL: stannar lager 1-2 på standardljud i
 - Arbetare 2 (okt 28): testpremisser: instrumentet är inte blockstorleksoberoende (jämför mot gamla vägen vid samma blockstorlek), och master-maximizern har en svans efter mute (kräv inte omedelbar tystnad på huvudutgången).
 - Arbetare 2 (okt 28): skrev `Effects::numEffectChannels` fast konstanten ligger i global namnrymd (bygget föll); kolla deklarationen innan man kvalificerar namn. Körde också `find` över hela GitHub-mappen (timeout); använd Grep/Glob med smal sökväg.
 - Arbetare 2 (okt 28): använde `XmlElement::getLastChildElement` (finns inte) och `var[String]` (tvetydigt; ta `juce::Identifier`). Kolla JUCE-headern innan man antar ett API.
+- Arbetare 2 (okt 28): `InstrumentProcessor()` som temporär på stacken i ett test gav stackoverflow (0xC00000FD, exit 253/127) utan utskrift; processorn är stor, använd `std::make_unique`. Ett test som jämför pan-lås mot "höger tyst" missar soundstage/dynamik: jämför mot samma värde som parameter.
+- Arbetare 2 (okt 28): Edit före Read i samma parallella anrop ger "File has not been read yet"; läs filen först.

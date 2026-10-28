@@ -64,6 +64,7 @@ InstrumentProcessor::InstrumentProcessor()
                   createLayout(), false)
 {
     lastInstrumentStartPpq.fill (-std::numeric_limits<double>::infinity());
+    clearNoteLocks();
     // Ett nytt instrument börjar som Init: tre lager som låter bra ihop (ett sparat projekt skriver över det).
     for (int layer = 0; layer < numLayers; ++layer)
         layerEqs.emplace_back (apvts, SourceEq::prefixFor (1 + layer));
@@ -89,6 +90,9 @@ void InstrumentProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     prepareBase (sampleRate);
     for (auto& row : lastSendTo)
         row.fill (-1.0f);
+    for (int layer = 0; layer < numLayers; ++layer)
+        cutoffRanges[(size_t) layer] = apvts.getParameterRange (ParamID::bass (layer, InstrumentField::cutoff));
+    clearNoteLocks();
     modulator.setSampleRate (sampleRate);
     kick.prepare (sampleRate);
     kick.setSeed (1000);
@@ -995,16 +999,29 @@ void InstrumentProcessor::finishBlock (int numSamples)
 
         // Kanal A-C: INSERT (standard) = amount av ljudet går genom kanalen, resten torrt. SEND = torrt orört, amount läggs till kanalen.
         const auto channel = (int) params.bass (layer, InstrumentField::fxChannel) - 1;
-        const auto amountToChannel = params.bass (layer, InstrumentField::fxAmount);
+        const auto locked = fxSendLock[(size_t) layer] >= 0.0f;
+        const auto amountToChannel = locked ? fxSendLock[(size_t) layer] : params.bass (layer, InstrumentField::fxAmount);
         const auto routed = channel >= 0 && effects.isActive (channel);
         const auto sendMode = params.bass (layer, InstrumentField::fxSend) >= 0.5f;
         const auto dryGain = routed && ! sendMode ? 1.0f - amountToChannel : 1.0f;
 
+        // Ett FX-send-lås (och blocket efter det) glider från förra blockets belopp; utan lås är vägen oförändrad.
+        const auto glide = routed && (locked || sendWasLocked[(size_t) layer]) && lastLockedSend[(size_t) layer] >= 0.0f;
+        const auto sendFrom = lastLockedSend[(size_t) layer], dryFrom = lastLockedDry[(size_t) layer];
+        lastLockedSend[(size_t) layer] = routed ? amountToChannel : -1.0f;
+        lastLockedDry[(size_t) layer] = dryGain;
+        sendWasLocked[(size_t) layer] = locked;
+
         // Instrumentets fader och panorering gäller hela ljudet: både det torra och det som skickas till kanalen.
         mixer.mix (Mixer::firstBassSource + layer, data, dataRight, numSamples, dryGain, maxBus, bypassBus,
-                   sendBus.getWritePointer (0), sendBus.getWritePointer (1), &stageSkipBus);
+                   sendBus.getWritePointer (0), sendBus.getWritePointer (1), &stageSkipBus, glide ? dryFrom : -1.0f);
         if (routed)
-            effects.send (channel, sendBus.getReadPointer (0), sendBus.getReadPointer (1), numSamples, amountToChannel);
+        {
+            if (glide)
+                effects.sendRamped (channel, sendBus.getReadPointer (0), sendBus.getReadPointer (1), numSamples, sendFrom, amountToChannel);
+            else
+                effects.send (channel, sendBus.getReadPointer (0), sendBus.getReadPointer (1), numSamples, amountToChannel);
+        }
         sendMatrix (Mixer::firstBassSource + layer, layer, numSamples);
         for (int i = 0; i < numSamples; ++i)
             layerOuts[(size_t) layer].add (i, data[i], dataRight[i]);
@@ -1099,6 +1116,32 @@ void InstrumentProcessor::resetDspState()
         eq.reset();
     gateGain.fill (1.0f);
     numPending = 0;
+    clearNoteLocks();
+}
+
+void InstrumentProcessor::clearNoteLocks()
+{
+    fxSendLock.fill (-1.0f);
+    lastLockedSend.fill (-1.0f);
+    lastLockedDry.fill (1.0f);
+    sendWasLocked.fill (false);
+    for (int layer = 0; layer < numLayers; ++layer)
+    {
+        basses[(size_t) layer].setCutoffLock (0.0f);
+        mixer.setPanLock (Mixer::firstBassSource + layer, 2.0f);
+    }
+}
+
+void InstrumentProcessor::applyNoteLocks (int layer, const Pattern::Note& note)
+{
+    // En ton utan lås tar bort förra tonens lås, så att ett lås aldrig läcker till en ton som inte har det.
+    const auto cutoff = note.lock[Pattern::lockCutoff].load();
+    const auto pan = note.lock[Pattern::lockPan].load();
+    const auto send = note.lock[Pattern::lockFxSend].load();
+    const auto& range = cutoffRanges[(size_t) layer];
+    basses[(size_t) layer].setCutoffLock (cutoff >= 0.0f ? range.snapToLegalValue (range.convertFrom0to1 (juce::jlimit (0.0f, 1.0f, cutoff))) : 0.0f);
+    mixer.setPanLock (Mixer::firstBassSource + layer, pan >= 0.0f ? juce::jlimit (0.0f, 1.0f, pan) * 2.0f - 1.0f : 2.0f);
+    fxSendLock[(size_t) layer] = send >= 0.0f ? juce::jlimit (0.0f, 1.0f, send) : -1.0f;
 }
 
 void InstrumentProcessor::ensureScratchSize (int numSamples)
@@ -1160,12 +1203,14 @@ void InstrumentProcessor::handleEvent (const StepEvent& event)
         const auto& sliceNote = pattern.note (sliceRow, event.step);
         const auto rowTicks = lengths.barsOf (Pattern::lengthRowOf (sliceRow)) * Pattern::ticksPerBar;
         const auto hold = pattern.holdTicks (sliceRow, event.step, rowTicks, gateScales[(size_t) layer]);
+        applyNoteLocks (layer, sliceNote);
         basses[(size_t) layer].noteOn (0, sliceNote.velocity.load(), std::max (1, (int) (hold * samplesPerTick)), false, event.slice);
         lastInstrumentStartPpq[(size_t) layer] = clock.getPpqAt (event.offset);
         return;
     }
 
     const auto& note = pattern.note (layer, event.step);
+    applyNoteLocks (layer, note);
 
     // En glide-ton slår inte an: den glider tonen som klingar till sin tonhöjd under sin egen längd. Klingar inget
     // spelas den som en vanlig ton.

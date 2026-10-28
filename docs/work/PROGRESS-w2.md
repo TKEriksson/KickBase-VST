@@ -370,3 +370,6 @@ Debug all grönt (inkl. helpcheck, fxmatrixtest). `Components.cpp/.h` `FxSendCon
 
 ## Fas 2 – parameterrader, data (28 okt)
 Debug all grönt. `Pattern::Note::lock[3]` (cutoff, pan, fxsend; -1 = osatt) med `setLock/clearLock/getLock`; sparas som valfri `locks`-egenskap (Pattern version 8) och `lockN` i .roll (version 4); undo täcks via toValueTree. MCP: `set_pattern` tar `cutoff/pan/fxsend` per ton, `repeat_to` kopierar, `get_pattern` visar `locks [tick, parameter, value]`. Test: `testNoteLocks` (EngineTests.cpp). Även `PresetButton.cpp:369-378` rättad (`numEffectChannels`). Kvar: fas 1 (UI, efter Arbetare 1:s PianoRoll-commit), fas 3 (ljud).
+
+## Fas 3 – parameterrader, ljud (28 okt)
+Debug all grönt. Lås gäller från anslaget tills nästa ton ändrar dem: cutoff exakt vid anslaget (`InstrumentVoices::setCutoffLock`), pan via `Mixer::setPanLock` (20 ms-ramp, ingen klick), FX-send per block med glidning (`InstrumentProcessor.cpp` `applyNoteLocks` / `finishBlock`). Ljudtråden läser bara atomics; allt förberäknas i `prepareToPlay`. Nytt `locktest` (`Tools/AudioTests.cpp`): cutoff-lås = samma cutoff som parameter (skillnad 0), pan-lås 0 = pan -1 som parameter, send-lås 0,3 = fxAmount 0,3, inget hopp. Rendersig-trion (rendersig, wide, tb303), audiotest, fxmatrixtest oförändrade. Kvar: fas 1 (UI), blocksizetest-felet vid röststöld (PL-order).
