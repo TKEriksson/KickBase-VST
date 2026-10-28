@@ -60,3 +60,6 @@ Lägg till en rad direkt när ett fel upptäcks (av dig, Opus eller Tobias): vad
 
 ## 28 okt: felskickat meddelande
 Skickade ett tomt "placeholder"-meddelande till Arbetare 1 i stallet for att skriva det riktiga till Arbetare 2. Orsak: lade ett verktygsanrop for att "ladda" SendMessage som redan var laddat. Atgard: rattade direkt; skicka bara riktiga meddelanden med ratt mottagare.
+
+## 28 okt: ghost notes och pop-out "saknades" igen
+Projektledaren delade ut ghost notes och pop-out som nytt arbete efter en sökning som missade dem (sökte bara i Source/Ui med skiftlägeskänsligt mönster). De finns redan: ae4d2c0 (GHOST-flerval) och 514684b (POP OUT), i pianorullen (PianoRoll.h:103,273). Samma slarv som 28 okt tidigare. Regel: sök skiftlägesokänsligt i hela Source och läs `git log --grep` innan något kallas saknat.
