@@ -367,3 +367,6 @@ Debug all grönt; fxmatrixtest, helpcheck, paramtest ok. Rendersig-jämförelse 
 
 ## Steg 4 – popup-UI, klart (28 okt)
 Debug all grönt (inkl. helpcheck, fxmatrixtest). `Components.cpp/.h` `FxSendControl` + `FxSendPopup` (sammanfattning, rad per kanal, på/av, %, INS/SEND-rad, `+ add FX channel`). `Effects.cpp` `visibleChannels/addChannel/removeLastChannel` (global `fxChannelCount` på apvts.state, inte i preset). `EffectsPage` rullista + ta bort-fråga. `MixerPage` 12 kanaler + M-knapp (`fxMute1..12`). Matris-ID undantagna i `Presets.cpp`. Kvar: `PresetButton.cpp:369-378` loopar `numLegacyEffectChannels` (FX12 kan inte väljas; Arbetare 1:s kod). Plan för parameterrader: `docs/work/plan-pianoroll-param-lanes.md`.
+
+## Fas 2 – parameterrader, data (28 okt)
+Debug all grönt. `Pattern::Note::lock[3]` (cutoff, pan, fxsend; -1 = osatt) med `setLock/clearLock/getLock`; sparas som valfri `locks`-egenskap (Pattern version 8) och `lockN` i .roll (version 4); undo täcks via toValueTree. MCP: `set_pattern` tar `cutoff/pan/fxsend` per ton, `repeat_to` kopierar, `get_pattern` visar `locks [tick, parameter, value]`. Test: `testNoteLocks` (EngineTests.cpp). Även `PresetButton.cpp:369-378` rättad (`numEffectChannels`). Kvar: fas 1 (UI, efter Arbetare 1:s PianoRoll-commit), fas 3 (ljud).

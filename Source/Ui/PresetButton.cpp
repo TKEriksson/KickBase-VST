@@ -366,7 +366,7 @@ void PresetButton::askFxChannel (const juce::String& fxName, std::function<void 
     // Alla FX-kanaler används: välj vilken som ersätts, ladda utan effekten, eller avbryt (stäng menyn).
     juce::PopupMenu menu;
     menu.addSectionHeader ("No free FX channel for \"" + fxName + "\"");
-    for (int channel = 0; channel < numLegacyEffectChannels; ++channel)
+    for (int channel = 0; channel < numEffectChannels; ++channel)
     {
         const auto name = processor.getPresetName (Presets::Section::effects, channel);
         menu.addItem (1 + channel, "Replace " + Effects::channelLabel (channel) + (name.isEmpty() ? juce::String() : " (" + name + ")"));
@@ -375,7 +375,7 @@ void PresetButton::askFxChannel (const juce::String& fxName, std::function<void 
     menu.addItem (100, "Load without the effect");
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&button), [done] (int result)
     {
-        if (result >= 1 && result <= numLegacyEffectChannels)
+        if (result >= 1 && result <= numEffectChannels)
             done (result - 1);
         else if (result == 100)
             done (-1);

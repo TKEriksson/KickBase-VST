@@ -1095,6 +1095,55 @@ namespace
         folder.deleteRecursively();
     }
 
+    void testNoteLocks()
+    {
+        std::puts ("Mönster: värde per ton (lock) sparas, läses och rensas");
+        const auto folder = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                                .getChildFile ("Kickbase-lock-" + juce::Uuid().toString());
+        check (folder.createDirectory(), "skapa temporär testmapp");
+
+        Pattern pattern;
+        pattern.clearNotes (1);
+        pattern.addNote (1, 0, 24, 3);
+        pattern.addNote (1, 96, 24, 5);
+        check (! pattern.note (1, 0).hasAnyLock(), "en ny ton har inga lock");
+        check (! pattern.setLock (1, 48, Pattern::lockPan, 0.5f), "lock på en tick utan ton avvisas");
+        check (pattern.setLock (1, 0, Pattern::lockCutoff, 0.25f) && pattern.setLock (1, 0, Pattern::lockFxSend, 2.0f),
+               "lock sätts på en ton");
+        check (pattern.getLock (1, 0, Pattern::lockCutoff) == 0.25f && pattern.getLock (1, 0, Pattern::lockFxSend) == 1.0f
+                   && pattern.getLock (1, 0, Pattern::lockPan) == Pattern::lockUnset,
+               "lock klipps till 0..1 och oanvända är osatta");
+
+        Pattern loaded;
+        loaded.fromValueTree (pattern.toValueTree());
+        check (loaded.getLock (1, 0, Pattern::lockCutoff) == 0.25f && loaded.getLock (1, 0, Pattern::lockFxSend) == 1.0f
+                   && loaded.getLock (1, 0, Pattern::lockPan) == Pattern::lockUnset && ! loaded.note (1, 96).hasAnyLock(),
+               "lock överlever spara och läsa (undo använder samma väg)");
+
+        auto old = pattern.toValueTree();
+        old.getChildWithProperty ("layer", 1).removeProperty ("locks", nullptr);
+        Pattern legacy;
+        legacy.fromValueTree (old);
+        check (legacy.note (1, 0).pitch == 3 && ! legacy.note (1, 0).hasAnyLock(), "ett mönster utan locks läses som förut");
+
+        pattern.clearLock (1, 0, Pattern::lockCutoff);
+        check (pattern.getLock (1, 0, Pattern::lockCutoff) == Pattern::lockUnset && pattern.note (1, 0).hasLock (Pattern::lockFxSend),
+               "clearLock tar bara bort ett lock");
+
+        const auto rollFile = folder.getChildFile ("lock.roll");
+        check (RollFiles::save (pattern, 1, InstrumentGrid::sixteenth, rollFile), "spara lock i pianorullepreset");
+        Pattern fromRoll;
+        auto grid = InstrumentGrid::sixteenth;
+        check (RollFiles::load (fromRoll, 1, rollFile, grid) && fromRoll.getLock (1, 0, Pattern::lockFxSend) == 1.0f
+                   && ! fromRoll.note (1, 0).hasLock (Pattern::lockCutoff),
+               "lock följer med i pianorullepreset");
+
+        pattern.removeNote (1, 0);
+        pattern.addNote (1, 0, 24, 3);
+        check (! pattern.note (1, 0).hasAnyLock(), "en ny ton på en borttagen tons plats ärver inga lock");
+        folder.deleteRecursively();
+    }
+
     void testGateAndPianoRollFlag()
     {
         std::puts ("Mönster: gate-steg och pianorullsmarkering sparas per lager");
@@ -1232,4 +1281,5 @@ void runEngineTests()
     testRowLengths();
     testPolyphonyStacks();
     testPianoRollStackFiles();
+    testNoteLocks();
 }

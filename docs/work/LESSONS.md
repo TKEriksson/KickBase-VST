@@ -68,3 +68,4 @@ Arbetare 2 (27 okt), följdfråga från PL: stannar lager 1-2 på standardljud i
 - Arbetare 2 (okt 28): körde `blocksizetest` (över 10 min) i förgrunden; den låste KickbaseTool.exe och stoppade nästa bygge (kopieringssteget). Kör långsamma verktyg i bakgrunden, ensamma, och bygg inte under tiden.
 - Arbetare 2 (okt 28): testpremisser: instrumentet är inte blockstorleksoberoende (jämför mot gamla vägen vid samma blockstorlek), och master-maximizern har en svans efter mute (kräv inte omedelbar tystnad på huvudutgången).
 - Arbetare 2 (okt 28): skrev `Effects::numEffectChannels` fast konstanten ligger i global namnrymd (bygget föll); kolla deklarationen innan man kvalificerar namn. Körde också `find` över hela GitHub-mappen (timeout); använd Grep/Glob med smal sökväg.
+- Arbetare 2 (okt 28): använde `XmlElement::getLastChildElement` (finns inte) och `var[String]` (tvetydigt; ta `juce::Identifier`). Kolla JUCE-headern innan man antar ett API.
