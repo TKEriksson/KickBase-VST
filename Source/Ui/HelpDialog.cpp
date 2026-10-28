@@ -218,6 +218,24 @@ Four envelopes for the selected instrument. Drag the white handles in a graph to
 **VELOCITY** (how hard the note is played) and **RANDOM** (a new random value per note) work the same way: drag them onto a knob.
 )";
 
+    const char* lfoText = R"(# LFO
+An LFO is a slow wave that moves a knob up and down by itself. Each LFO is a card; **+ ADD LFO** adds the next free one.
+
+## Connecting
+- Drag the **DRAG** handle of a card onto any knob (kick, instrument or effects). The knob now follows the LFO.
+- Connections are listed on the card. Right-click one to remove it.
+
+## The card
+- **ON**: turns the LFO on or off. Its connections stay.
+- **SHAPE**: the wave form. **EDIT POINTS** turns it into your own curve: drag points, double-click for a new one, right-click to remove one.
+- **RATE MODE**: Sync = note values of the tempo (RATE). Hz = its own speed (FREE RATE).
+- **SNAP** (Hz mode): when the free rate comes close to a note value it locks to it, so the LFO sits on the beat. **RANGE** sets how close.
+
+## Cards
+- The arrow folds a card to one line. The X or right-click removes it (you are asked first if it moves a knob).
+- **SHOW ONLY SELECTED** shows just the selected card. The preset button saves and loads LFO setups.
+)";
+
     struct TopicInfo { HelpDialog::Topic topic; const char* tab; const char* text; };
     const TopicInfo topics[] = {
         { HelpDialog::Topic::pianoRoll, "PIANO ROLL", pianoRollText },
@@ -229,6 +247,7 @@ Four envelopes for the selected instrument. Drag the white handles in a graph to
         { HelpDialog::Topic::mix, "MIX", mixText },
         { HelpDialog::Topic::sample, "SAMPLE", sampleText },
         { HelpDialog::Topic::env, "ENV", envText },
+        { HelpDialog::Topic::lfo, "LFO", lfoText },
     };
 
     // ---- Rendering ----

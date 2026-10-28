@@ -424,3 +424,8 @@ Bygge Debug all: grönt, "Alla tester gick igenom" (rendersig oförändrad).
 - ENV-sidan: HELP-knapp bredvid instrumentväljaren (EnvPage.cpp, resized), ämnet ENV (HelpDialog.cpp envText).
 - Bygge grönt, alla tester gick igenom.
 - DAW-test (Lemon): öppna ENV, klicka HELP, kontrollera att ENV-fliken visas och att knappen inte täcker väljaren.
+
+## HELP för LFO (Arbetare 1, 2026-10-28)
+- LFO-sidan: HELP-knapp bredvid SHOW ONLY SELECTED (LfoPage.cpp, resized), ämnet LFO (HelpDialog.cpp lfoText).
+- Bygge grönt, alla tester gick igenom.
+- DAW-test (Lemon): öppna LFO, klicka HELP, kontrollera att LFO-fliken visas och att knappen inte täcker SHOW ONLY SELECTED.
