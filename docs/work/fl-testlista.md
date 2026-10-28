@@ -151,3 +151,4 @@ Format: **Gör så** → *förväntat resultat*. Bocka av `[ ]` när det stämme
 - [ ] 0.4 punkt 2 (Lemon): Öppna FX-popupen på en instrumentrad, tryck '- remove FXn' på sista kanalen. Med effekter/sends ska en bekräftelse visas. Ctrl+Z ska återställa effekter, EQ, kompressor, nivå och sends.
 - (r) Öppna harmoniska editorn (OSC > tabell): håll musen över vågformen, dB- och PHASE-fälten (tips ska bytas), klicka HELP (fliken HARMONICS öppnas).
 - (u) Lemon: starta PREVIEW, tryck sedan en högtalarknapp/LISTEN/tangent/slice/JOG: PREVIEW ska släckas och inget ljud hänga. Starta PREVIEW under hållen högtalare: den ska släppas.
+- (h) OSC-panelen: klicka MODE-etiketten till OUTPUT; vrid Phase, Unison, Detune, Blend och Warp: bilden ska följa. Unison 1 = två perioder, unison > 1 = många perioder med svävning. WAVE/SPECTRUM oförändrade. (Lemon)
