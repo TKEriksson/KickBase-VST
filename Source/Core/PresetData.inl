@@ -713,6 +713,10 @@ namespace
             bassPreset ("Techno Stab", registerBass (0, 2, 12, 99, 0.50f, 0.0f, 1, 0.0f, 1800.0f, 0.45f, 3.0f, 60.0f, 0.10f, 100.0f, 20.0f, 0.35f, 0.44f, 1)),
             bassPreset ("Empirikal Reese", registerBass (0, 1, 15, 15, 0.80f, 0.0f, 3, 16.0f, 900.0f, 0.25f, 2.0f, 150.0f, 0.80f, 260.0f, 50.0f, 0.30f, 0.46f, 1)),
             bassPreset ("Empirikal Growl", registerBass (0, 1, 12, 13, 0.50f, 0.0f, 2, 12.0f, 850.0f, 0.45f, 3.5f, 90.0f, 0.55f, 170.0f, 30.0f, 0.40f, 0.44f, 1)),
+            // Arbetare 2, kategorin UNISON (namn "Unison "): S3 Unison/Reese, två lätt förstämda sågor (OSC B finstämd) med unison. Se docs/school/reese.md.
+            bassPreset ("Unison Reese", registerBass (0, 0, 15, 15, 1.0f, 0.12f, 5, 18.0f, 1000.0f, 0.18f, 1.0f, 150.0f, 0.90f, 260.0f, 40.0f, 0.25f, 0.44f, 1)),
+            bassPreset ("Unison Wide", registerBass (0, 0, 15, 12, 0.90f, -0.12f, 7, 25.0f, 1400.0f, 0.15f, 1.5f, 180.0f, 0.90f, 280.0f, 60.0f, 0.20f, 0.40f, 0)),
+            bassPreset ("Unison Dark", registerBass (0, 0, 15, 15, 1.0f, 0.10f, 3, 12.0f, 650.0f, 0.30f, 1.5f, 120.0f, 0.85f, 240.0f, 30.0f, 0.35f, 0.46f, 1)),
         };
         return presets;
     }

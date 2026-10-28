@@ -5,7 +5,7 @@ namespace PresetCategories
     const juce::StringArray& names()
     {
         static const juce::StringArray list { "PSY CLEAN", "PSY ROLLING BASS", "PSY ROLLING", "MINIMAL", "GOA", "GLIDE BASSES",
-                                              "SYNTH", "MID BASS", "HI BASS", "DARK PSY", "DANCE", "TRANCE", "TECHNO", "EMPIRIKAL",
+                                              "SYNTH", "MID BASS", "HI BASS", "DARK PSY", "DANCE", "TRANCE", "TECHNO", "EMPIRIKAL", "UNISON",
                                               "GAMLA DEFAULT" };
         return list;
     }
@@ -33,7 +33,7 @@ namespace PresetCategories
         if (section == Presets::Section::kick || section == Presets::Section::bass)
         {
             static const char* const genres[][2] = { { "Minimal ", "MINIMAL" }, { "Goa ", "GOA" }, { "Dark Psy ", "DARK PSY" }, { "Dance ", "DANCE" },
-                                                     { "Trance ", "TRANCE" }, { "Techno ", "TECHNO" }, { "Empirikal ", "EMPIRIKAL" } };
+                                                     { "Trance ", "TRANCE" }, { "Techno ", "TECHNO" }, { "Empirikal ", "EMPIRIKAL" }, { "Unison ", "UNISON" } };
             for (const auto& genre : genres)
                 if (presetName.startsWith (genre[0]))
                     return genre[1];

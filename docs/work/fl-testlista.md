@@ -122,3 +122,5 @@ Format: **Gör så** → *förväntat resultat*. Bocka av `[ ]` när det stämme
 - [ ] (Lemon) Mid Growl/Pluck/Wide, Hi Zap/Acid/Lead, Synth Pad/Pluck/Stab: kategorierna MID BASS, HI BASS, SYNTH visar rätt, låter som namnet, ingen klippning.
 
 - [ ] (Lemon) Genrepresets, 7 genrer × (1 kick + 2 basar): kategorierna MINIMAL, GOA, DARK PSY, DANCE, TRANCE, TECHNO, EMPIRIKAL visas; kick+bas ihop låter som genren; Minimal/Dance/Techno-kickarnas svans (48–52 Hz) över psy-målet, lyssna om den krockar med basen.
+- [ ] (DAW) UNISON-kategorin: Unison Reese, Wide och Dark visas; mono under ca 150 Hz kan behövas (lowSide ca −25 dB, se docs/school/reese.md); lyssna om de slår fint mot kicken.
+- [ ] (DAW) Sample-editor AMP/PITCH per bas-lager (UI kommer av Arbetare 1): av låter som förut; AMP-kurvan tystar samplingen efter sin längd; PITCH +12 st glider ner till egna tonen.

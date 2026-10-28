@@ -134,6 +134,8 @@ enum class InstrumentField
     ringSource,                                                  // RING (B) på OSC 1: vad OSC 1 multipliceras med (0 = OSC 2, 1 = OSC 3, 2 = OSC 2 x OSC 3)
     fundamentalDuckMode, fundamentalDuckDepth, fundamentalDuckWindow, fundamentalDuckSource, // FUNDAMENTAL DUCK per motor: 0 ÄRV (instrumentets värden, standard), 1 AV, 2 EGEN; registreras sist (addFundamentalDuckParams)
     sampleSource,                                                // multisampling: 0 = Enkel (lagrets en sampling, som förut), 1 = Multi (zoner på tangenter och anslag)
+    sampleAmpOn, sampleAmpMs, sampleAmpShape,                    // sample-editor: AMP-kurva över tid (av = som förut)
+    samplePitchOn, samplePitchSemis, samplePitchMs, samplePitchShape, // sample-editor: PITCH-kurva (startavvikelse i halvtoner som glider mot 0)
     // 5b: tid per motor (POS DELAY, SYNC, LENGTH, CURVE), motorerna i ordningen OSC 1, OSC 2, OSC 3, SAMPLE, NOISE, SUB, FM; timingField (motor, vilken). Registreras sist (addEngineTimingParams).
     aDelayMs, aDelaySync, aLenMs, aCurve, bDelayMs, bDelaySync, bLenMs, bCurve, cDelayMs, cDelaySync, cLenMs, cCurve,
     sampleDelayMs, sampleDelaySync, sampleLenMs, sampleCurve, noiseDelayMs, noiseDelaySync, noiseLenMs, noiseCurve,
