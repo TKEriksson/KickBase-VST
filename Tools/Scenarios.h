@@ -153,7 +153,7 @@ namespace Scenarios
         }
 
         // Effektkanalerna: alla typer, två per kanal, plus EQ och kompressor.
-        for (int channel = 0; channel < numEffectChannels; ++channel)
+        for (int channel = 0; channel < numLegacyEffectChannels; ++channel)
         {
             for (int slot = 0; slot < 2; ++slot)
             {

@@ -27,9 +27,9 @@ String Mixer::paramID (int source, const String& field)
     return "mix" + name + field;
 }
 
-void Mixer::addParameters (AudioProcessorValueTreeState::ParameterLayout& layout)
+void Mixer::addSourceRange (AudioProcessorValueTreeState::ParameterLayout& layout, int firstSource, int endSource)
 {
-    for (int s = 0; s < numSources; ++s)
+    for (int s = firstSource; s < endSource; ++s)
     {
         const auto title = "Mixer " + (s == kickSource ? String ("Kick") : s < firstFxSource ? "Instr " + String (s - firstBassSource + 1) : sourceName (s)) + " ";
 
@@ -48,9 +48,21 @@ void Mixer::addParameters (AudioProcessorValueTreeState::ParameterLayout& layout
     }
 }
 
+void Mixer::addParameters (AudioProcessorValueTreeState::ParameterLayout& layout)
+{
+    addSourceRange (layout, 0, numLegacySources);
+}
+
 void Mixer::addStageParameters (AudioProcessorValueTreeState::ParameterLayout& layout)
 {
-    for (int s = 0; s < numSources; ++s)
+    for (int s = 0; s < numLegacySources; ++s)
+        layout.add (std::make_unique<AudioParameterBool> (ParameterID { paramID (s, "Stage"), 1 }, "Soundstage " + sourceName (s), true));
+}
+
+void Mixer::addExtraSourceParameters (AudioProcessorValueTreeState::ParameterLayout& layout)
+{
+    addSourceRange (layout, numLegacySources, numSources);
+    for (int s = numLegacySources; s < numSources; ++s)
         layout.add (std::make_unique<AudioParameterBool> (ParameterID { paramID (s, "Stage"), 1 }, "Soundstage " + sourceName (s), true));
 }
 

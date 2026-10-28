@@ -229,7 +229,7 @@ MixerView::MixerView (PluginBase& p) : processor (p), master (p)
     viewport.setScrollBarsShown (false, true);
     viewport.setScrollBarThickness (10);
     addAndMakeVisible (viewport);
-    for (int s = 0; s < Mixer::numSources; ++s)
+    for (int s = 0; s < Mixer::numLegacySources; ++s)
     {
         strips.push_back (std::make_unique<MixerStrip> (p, s));
         content.addAndMakeVisible (*strips.back());
@@ -285,7 +285,7 @@ void MixerView::resized()
     for (size_t i = 0; i < strips.size(); ++i)
         if (inUse (processor, (int) i, fxMask))
             ++count;
-    for (int i = Mixer::firstFxSource; i < Mixer::numSources; ++i)
+    for (int i = Mixer::firstFxSource; i < Mixer::numLegacySources; ++i)
         if (inUse (processor, i, fxMask))
         {
             gaps = 8;
@@ -344,7 +344,7 @@ int SourceToggles::onCount (bool instruments) const
 {
     auto count = 0;
     const auto first = instruments ? Mixer::firstBassSource : Mixer::firstFxSource;
-    const auto end = instruments ? Mixer::firstBassSource + processor.activeInstruments() : Mixer::numSources;
+    const auto end = instruments ? Mixer::firstBassSource + processor.activeInstruments() : Mixer::numLegacySources;
     for (int s = first; s < end; ++s)
         if (processor.apvts.getRawParameterValue (Mixer::paramID (s, field))->load() >= 0.5f)
             ++count;
@@ -355,14 +355,14 @@ void SourceToggles::updateTexts()
 {
     const auto arrow = juce::String (juce::CharPointer_UTF8 ("\xe2\x96\xbe"));
     instrumentsButton.setButtonText ("INSTRUMENTS  " + juce::String (lastInstrumentsOn) + "/" + juce::String (processor.activeInstruments()) + "  " + arrow);
-    fxButton.setButtonText ("FX CHANNELS  " + juce::String (lastFxOn) + "/" + juce::String (Mixer::numSources - Mixer::firstFxSource) + "  " + arrow);
+    fxButton.setButtonText ("FX CHANNELS  " + juce::String (lastFxOn) + "/" + juce::String (Mixer::numLegacySources - Mixer::firstFxSource) + "  " + arrow);
 }
 
 void SourceToggles::showMenu (bool instruments, int initiallySelected)
 {
     const auto mask = processor.fxChannelUsageMask();
     const auto first = instruments ? Mixer::firstBassSource : Mixer::firstFxSource;
-    const auto end = instruments ? Mixer::firstBassSource + processor.activeInstruments() : Mixer::numSources;
+    const auto end = instruments ? Mixer::firstBassSource + processor.activeInstruments() : Mixer::numLegacySources;
     juce::PopupMenu menu;
     for (int s = first; s < end; ++s)
     {

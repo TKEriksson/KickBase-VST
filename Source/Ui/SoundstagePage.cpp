@@ -23,7 +23,7 @@ SoundstagePage::SoundstagePage (PluginBase& p)
     addAndMakeVisible (stageLabel);
     HelpDialog::setupButton (helpButton, *this, HelpDialog::Topic::soundstage, "SOUNDSTAGE (how AFFECTS, WIDTH, BASS MONO and ENHANCE work)");
     addAndMakeVisible (helpButton);
-    for (int s = 0; s < Mixer::numSources; ++s)
+    for (int s = 0; s < Mixer::numLegacySources; ++s)
     {
         auto& button = stageButtons[(size_t) s];
         const auto colour = s == Mixer::kickSource ? Theme::kick : s < Mixer::firstFxSource ? Theme::layerColour (s - Mixer::firstBassSource) : Theme::master;
@@ -59,7 +59,7 @@ void SoundstagePage::resized()
     stageLabel.setBounds (labelRow);
     const auto columns = 4, rowHeight = 22;
     const auto cell = left.getWidth() / columns;
-    for (int s = 0; s < Mixer::numSources; ++s)
+    for (int s = 0; s < Mixer::numLegacySources; ++s)
         stageButtons[(size_t) s].setBounds (left.getX() + (s % columns) * cell, left.getY() + (s / columns) * (rowHeight + 2), cell - 2, rowHeight);
 
     stereo.setBounds (area.removeFromRight (std::min (220, area.getHeight() + 40)));

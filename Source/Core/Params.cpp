@@ -64,7 +64,7 @@ namespace
 
 namespace
 {
-    // "None", "FX1" ... "FX11": platsen är den gamla bokstaven A-E och sedan fler (sparade värden är index).
+    // "None", "FX1" ... "FX12": FX12 är sist så att sparade värden (index) behåller sin betydelse.
     juce::StringArray fxChannelChoices()
     {
         juce::StringArray choices { "None" };

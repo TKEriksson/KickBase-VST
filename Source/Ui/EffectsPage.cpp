@@ -292,7 +292,7 @@ EffectsPage::EffectsPage (PluginBase& p)
     }
     addChildComponent (eq);
 
-    for (int ch = 0; ch < numEffectChannels; ++ch)
+    for (int ch = 0; ch < numLegacyEffectChannels; ++ch)
     {
         auto& button = channelButtons[(size_t) ch];
         button.setButtonText (Effects::channelLabel (ch));
@@ -332,14 +332,14 @@ void EffectsPage::selectView (View newView)
     strip.setVisible (view == View::fx);
     editor.setVisible (view == View::fx);
     eq.setVisible (view == View::eq);
-    for (int ch = 0; ch < numEffectChannels; ++ch)
+    for (int ch = 0; ch < numLegacyEffectChannels; ++ch)
         comps[(size_t) ch]->setVisible (view == View::comp && ch == channel);
 }
 
 void EffectsPage::selectChannel (int newChannel)
 {
     channel = newChannel;
-    for (int ch = 0; ch < numEffectChannels; ++ch)
+    for (int ch = 0; ch < numLegacyEffectChannels; ++ch)
     {
         channelButtons[(size_t) ch].setToggleState (ch == channel, juce::dontSendNotification);
         levels[(size_t) ch]->setVisible (ch == channel);
@@ -348,7 +348,7 @@ void EffectsPage::selectChannel (int newChannel)
     strip.setChannel (channel);
     eq.setChannel (channel);
     presets.setLayer (channel, Theme::effects);
-    for (int ch = 0; ch < numEffectChannels; ++ch)
+    for (int ch = 0; ch < numLegacyEffectChannels; ++ch)
         comps[(size_t) ch]->setVisible (view == View::comp && ch == channel);
     selectSlot (slot);
 }
@@ -368,7 +368,7 @@ void EffectsPage::resized()
 
     // Elva kanaler i två kolumner (FX1-6 och FX7-11).
     auto left = area.removeFromLeft (112);
-    const auto perColumn = (numEffectChannels + 1) / 2;
+    const auto perColumn = (numLegacyEffectChannels + 1) / 2;
     const auto buttonHeight = std::min (34, (left.getHeight() - 4 * perColumn) / perColumn);
     const auto columnWidth = left.getWidth() / 2;
     for (size_t i = 0; i < channelButtons.size(); ++i)
@@ -383,7 +383,7 @@ void EffectsPage::resized()
         button.setBounds (tabs.removeFromLeft (tabWidth).reduced (2, 0));
     knobs.removeFromTop (4);
     const auto half = knobs.getWidth() / 2;
-    for (int ch = 0; ch < numEffectChannels; ++ch)
+    for (int ch = 0; ch < numLegacyEffectChannels; ++ch)
     {
         levels[(size_t) ch]->setBounds (knobs.withWidth (half));
         ducks[(size_t) ch]->setBounds (knobs.withTrimmedLeft (half));

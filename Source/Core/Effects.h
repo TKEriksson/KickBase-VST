@@ -20,7 +20,8 @@ enum class EffectType { off, filter, distortion, eq, chorus, phaser, echo, rever
                         compressor, gate, comb, ringMod, bitcrusher, autoFilter, maximizer, ducker, disperser,
                         widener, flanger, transient, dynamicEq, octaver, bandDucker, shimmer, lowMultiplier, sidechainCurve, sidechainBands, phaseRotation, count }; // FX2 (sist i listan: projekt sparar typens index)
 constexpr int numEffectTypes = (int) EffectType::count; // inklusive Off
-constexpr int numEffectChannels = 11; // FX1 ... FX11
+constexpr int numLegacyEffectChannels = 11; // FX1 ... FX11: kanalerna som fanns före FX12; deras parametrar registreras först i layouten (index får aldrig flyttas)
+constexpr int numEffectChannels = 12; // FX1 ... FX12 (FX12 registreras sist, se Effects::addExtraChannelParameters)
 constexpr int slotsPerChannel = 5;
 constexpr int knobsPerSlot = 11; // P1-P8 är de ursprungliga; P9-P10 tillkom i FX1 och P11 i rel-0.3 (Echo TIME MS); gamla projekt får dem satta till neutralt av migrateLegacyKnobs
 
@@ -76,7 +77,8 @@ namespace Effects
     juce::StringArray syncNames();
     double syncInQuarters (int index);
 
-    void addParameters (juce::AudioProcessorValueTreeState::ParameterLayout& layout);
+    void addParameters (juce::AudioProcessorValueTreeState::ParameterLayout& layout); // FX1-FX11
+    void addExtraChannelParameters (juce::AudioProcessorValueTreeState::ParameterLayout& layout); // FX12 (och senare): anropas SIST i layouten så att inget gammalt index flyttas
 
     // Kanalens EQ (högpass, fyra band, lågpass) och kompressor. Alltid med, men neutrala som
     // standard (inga gain, högpass av, ratio 1:1), och då körs ingen bearbetning alls.

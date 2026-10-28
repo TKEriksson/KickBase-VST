@@ -87,7 +87,7 @@ namespace Effects
 
     bool isEffectParameter (const String& paramID)
     {
-        // "fxA..", "fxB.." ... "fxK.." (inte FX-versionens "fxKey").
+        // "fxA..", "fxB.." ... "fxL.." (inte FX-versionens "fxKey").
         return paramID.startsWith ("fx") && paramID.length() > 2 && paramID[2] >= 'A' && paramID[2] <= 'A' + numEffectChannels - 1 && paramID != "fxKey";
     }
 
@@ -341,9 +341,9 @@ namespace Effects
         return quarters[jlimit (0, (int) std::size (quarters) - 1, index)];
     }
 
-    void addParameters (AudioProcessorValueTreeState::ParameterLayout& layout)
+    static void addChannelRange (AudioProcessorValueTreeState::ParameterLayout& layout, int firstChannel, int endChannel)
     {
-        for (int channel = 0; channel < numEffectChannels; ++channel)
+        for (int channel = firstChannel; channel < endChannel; ++channel)
         {
             const auto channelTitle = channelLabel (channel);
             layout.add (std::make_unique<AudioParameterFloat> (ParameterID { channelParamID (channel, "Level"), 1 }, channelTitle + " Level",
@@ -410,6 +410,16 @@ namespace Effects
                                                                        NormalisableRange<float> (0.0f, 1.0f), 0.5f));
             }
         }
+    }
+
+    void addParameters (AudioProcessorValueTreeState::ParameterLayout& layout)
+    {
+        addChannelRange (layout, 0, numLegacyEffectChannels);
+    }
+
+    void addExtraChannelParameters (AudioProcessorValueTreeState::ParameterLayout& layout)
+    {
+        addChannelRange (layout, numLegacyEffectChannels, numEffectChannels);
     }
 
     EffectType slotType (const AudioProcessorValueTreeState& apvts, int channel, int slot)

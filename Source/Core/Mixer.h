@@ -12,7 +12,8 @@
 class Mixer
 {
 public:
-    static constexpr int numSources = 1 + maxInstruments + numEffectChannels; // kick, instrument 1-10, FX A-E
+    static constexpr int numLegacySources = 1 + maxInstruments + numLegacyEffectChannels; // källorna som fanns före FX12 (registreras först i layouten)
+    static constexpr int numSources = 1 + maxInstruments + numEffectChannels; // kick, instrument 1-10, FX1-FX12
     static constexpr int kickSource = 0, firstBassSource = 1, firstFxSource = 1 + maxInstruments;
     static constexpr float minGainDb = -60.0f, maxGainDb = 12.0f;
 
@@ -23,6 +24,8 @@ public:
     static void addParameters (juce::AudioProcessorValueTreeState::ParameterLayout& layout);
     // SOUNDSTAGE-val per källa ("Stage" = med i stereobreddningen). Läggs sist i layouten.
     static void addStageParameters (juce::AudioProcessorValueTreeState::ParameterLayout& layout);
+    // Källor efter de gamla (FX12): fader, pan, duck, max och stage. Anropas SIST i layouten så att inga gamla index flyttas.
+    static void addExtraSourceParameters (juce::AudioProcessorValueTreeState::ParameterLayout& layout);
 
     explicit Mixer (juce::AudioProcessorValueTreeState& apvts);
 
@@ -47,6 +50,8 @@ public:
     float takePeakDb (int source, int channel) const;
 
 private:
+    static void addSourceRange (juce::AudioProcessorValueTreeState::ParameterLayout& layout, int firstSource, int endSource);
+
     struct Strip
     {
         juce::SmoothedValue<float> gain, panLeft, panRight;

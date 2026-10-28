@@ -569,3 +569,10 @@ Steg 3 lägger sedan de 132 sändningsparametrarna efter dessa, så ordningen bl
 - Hostens automation av FX-kanalens fältnamn: nya parametrar är nya ID, så inga gamla sparade automationer berörs.
 - Om indextestet visar att JUCE-layouten ändå skjutits: avbryt, ingen commit.
 - Kanal 12 syns inte i UI i steg 1, men går att nå via Matrix/automation; det är OK och testas bara via parametrar.
+
+### Steg 1 klart (Arbetare 1, 28 okt, gren fx12, lokal commit, ingen push)
+- ID-ordning: params-diff mot pl-presets (fb12037) visar bara FX12 sist i `fxChannel` samt nya `fxL*`/`mixFxL*` sist (86 instrument-, 81 fx-rader). Inga hostindex flyttade.
+- `build.bat Debug all` grön, "Alla tester gick igenom" (inkl. StateTests). `paramtest`: instrument 3562 och fx 1110, 0 fel. `helpcheck`: 0 utan förklaring.
+- `audit effects` startades men gav bara första raden inom 280 s (ej fullkörd).
+- Rendersig: verktyget är icke-deterministiskt mellan körningar av SAMMA exe (Debug och Release). Wavetable-bakgrundstråden (`Wavetable.cpp:757-776`) är en orsak, `Wavetables::ensureAll()` före rendersig (Tool.cpp) räckte inte. Jämförelsen är därför ej avgörande; PL har avstått från den.
+- Kanal 12 syns inte i UI förrän steg 2; `firstFreeFxChannel()` kan returnera kanal 12.

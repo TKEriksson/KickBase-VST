@@ -17,6 +17,7 @@ namespace
         MasterSection::addParameters (layout);
         Params::addMasterParams (layout);
         Params::addKickToggleParams (layout); // readKick läser dem
+        Effects::addExtraChannelParameters (layout); // FX12: nya parametrar sist
         return layout;
     }
 }

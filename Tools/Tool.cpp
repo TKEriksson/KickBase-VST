@@ -3976,6 +3976,9 @@ int toolMain (int argc, char* argv[])
         return liveCodeTest();
     if (argc == 3 && juce::String (argv[1]) == "logoimage")
         return logoImage (juce::File::getCurrentWorkingDirectory().getChildFile (argv[2]));
+    // Tabellerna byggs annars i en bakgrundstråd och Basic spelas tills de är klara: fingeravtrycken skulle bero på trådens tidsberoende.
+    if (argc == 2 && juce::String (argv[1]).startsWith ("rendersig"))
+        Wavetables::ensureAll();
     if (argc == 2 && (juce::String (argv[1]) == "rendersig" || juce::String (argv[1]) == "rendersigreal"))
         return renderSignatures();
     if (argc >= 2 && juce::String (argv[1]) == "repairpresets")
