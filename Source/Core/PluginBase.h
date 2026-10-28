@@ -375,6 +375,8 @@ public:
     // Global LOOP (D3): av/på och takterna (0-räknade, slutet exklusivt). På = egen klocka som går runt i loopen (DAW:ens transport ignoreras).
     std::atomic<bool> globalLoop { false };
     std::atomic<int> globalLoopStartBar { 0 }, globalLoopEndBar { 4 };
+    // BRAKE-kurva (broms A): 0 VINYL, 1 TAPE, 2 HARD, 3 SLOW. Läses av JogPanel (som byggs om vid varje öppning); sparas inte med projektet.
+    std::atomic<int> brakeCurve { 0 };
     std::atomic<int> previewingLayer { -1 };
 
     // MIDI in medan pianorullen är öppen: vilken rad som svarar på tangentbordet/MIDI (notlager som i previewRequest), -1 = alla rader.

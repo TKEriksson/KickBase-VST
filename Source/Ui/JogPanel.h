@@ -59,6 +59,12 @@ public:
         brakeButton.onClick = [this] { startBrake(); };
         addAndMakeVisible (brakeButton);
 
+        brakeCurveBox.addItemList ({ "VINYL", "TAPE", "HARD", "SLOW" }, 1);
+        brakeCurveBox.setSelectedItemIndex (juce::jlimit (0, 3, processor.brakeCurve.load()), juce::dontSendNotification);
+        brakeCurveBox.setTooltip ("BRAKE curve. VINYL: record player. TAPE: long, pitch sinks like a tape stop. HARD: short and straight. SLOW: slow stop and slow start.");
+        brakeCurveBox.onChange = [this] { processor.brakeCurve = brakeCurveBox.getSelectedItemIndex(); };
+        addAndMakeVisible (brakeCurveBox);
+
         // LOOP (flyttad hit från rutan i toppbaren): panelen byggs om vid varje öppning, så läget läses från processorn.
         loopButton.setClickingTogglesState (true);
         loopButton.setColour (juce::TextButton::buttonOnColourId, Theme::pattern);
@@ -198,6 +204,7 @@ public:
         speedKnob.setBounds (knobArea);
         removeButton.setBounds (juce::Rectangle<int> (52, 24).withPosition (knobArea.getRight() + 6, knobArea.getCentreY() - 12));
         brakeButton.setBounds (removeButton.getBounds().translated (0, 28));
+        brakeCurveBox.setBounds (brakeButton.getBounds().translated (0, 28).withWidth (72));
         area.removeFromTop (4);
         statusLabel.setBounds (area.removeFromTop (34));
         area.removeFromTop (6);
@@ -353,12 +360,32 @@ private:
     }
 
     // BRAKE (broms B): engångsbroms i tre steg (stanna, vila, snurra upp) som skriver jogManual; grundhastigheten (JOG SPEED) rörs aldrig.
-    static constexpr double brakeStopMs = 1200.0, brakeRestMs = 300.0, brakeSpinMs = 900.0;
+    // Kurvorna (broms A): tider i ms och form på inbromsning (1 -> 0) och uppstart (0 -> 1), båda över x = 0..1.
+    struct BrakeCurve
+    {
+        double stopMs, restMs, spinMs;
+        float (*stopShape) (float);
+        float (*spinShape) (float);
+    };
+
+    static const BrakeCurve& brakeCurveFor (int index)
+    {
+        static const BrakeCurve curves[] = {
+            { 1200.0, 300.0, 900.0, [] (float x) { return 1.0f - x * x; }, [] (float x) { return x * (2.0f - x); } },  // VINYL
+            { 2200.0, 150.0, 1400.0, [] (float x) { return (1.0f - x) * std::exp (-3.0f * x); },                          // TAPE
+              [] (float x) { return (1.0f - std::exp (-4.0f * x)) / (1.0f - std::exp (-4.0f)); } },
+            { 250.0, 80.0, 250.0, [] (float x) { return 1.0f - x; }, [] (float x) { return x; } },                        // HARD
+            { 2500.0, 500.0, 2000.0, [] (float x) { return 1.0f - x * x * (3.0f - 2.0f * x); },                            // SLOW
+              [] (float x) { return x * x * (3.0f - 2.0f * x); } }
+        };
+        return curves[juce::jlimit (0, 3, index)];
+    }
 
     void startBrake()
     {
         if (touching)
             return;
+        activeBrake = &brakeCurveFor (processor.brakeCurve.load());
         const auto manual = processor.jogManual.load();
         brakeFromRate = manual >= 0.0f ? manual : processor.apvts.getRawParameterValue (ParamID::jogSpeed)->load();
         brakeStart = juce::Time::getMillisecondCounterHiRes();
@@ -369,23 +396,18 @@ private:
     {
         const auto t = juce::Time::getMillisecondCounterHiRes() - brakeStart;
         const auto target = processor.apvts.getRawParameterValue (ParamID::jogSpeed)->load();
-        if (t >= brakeStopMs + brakeRestMs + brakeSpinMs)
+        const auto& c = *activeBrake;
+        if (t >= c.stopMs + c.restMs + c.spinMs)
         {
             braking = false;
             processor.jogManual = -1.0f; // tillbaka till parametern
             return;
         }
         float rate = 0.0f;
-        if (t < brakeStopMs)
-        {
-            const auto x = (float) (t / brakeStopMs);
-            rate = brakeFromRate * (1.0f - x * x); // mjuk inbromsning
-        }
-        else if (t >= brakeStopMs + brakeRestMs)
-        {
-            const auto x = (float) ((t - brakeStopMs - brakeRestMs) / brakeSpinMs);
-            rate = target * x * (2.0f - x); // snabb start som mattar av mot hastigheten
-        }
+        if (t < c.stopMs)
+            rate = brakeFromRate * c.stopShape ((float) (t / c.stopMs));
+        else if (t >= c.stopMs + c.restMs)
+            rate = target * c.spinShape ((float) ((t - c.stopMs - c.restMs) / c.spinMs));
         processor.jogManual = juce::jlimit (0.0f, 4.0f, rate);
     }
 
@@ -477,6 +499,8 @@ private:
     juce::Label statusLabel, loopFromLabel, loopToLabel;
     juce::TextButton loopButton { "LOOP" };
     bool touching = false, gestureOpen = false, speedGestureOpen = false, braking = false;
+    juce::ComboBox brakeCurveBox;
+    const BrakeCurve* activeBrake = &brakeCurveFor (0);
     float brakeFromRate = 1.0f;
     double brakeStart = 0.0;
     float lastAngle = 0.0f, shownAngle = 0.0f, velocity = 0.0f, currentRate = 1.0f, shownProgress = 0.0f;
