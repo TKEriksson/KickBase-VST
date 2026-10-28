@@ -419,3 +419,8 @@ Bygge Debug all: grönt, "Alla tester gick igenom" (rendersig oförändrad).
 - SAMPLE-fliken: HELP-knapp uppe till höger (Modules.cpp, SamplePage::resized, vänster om FILTER-rutan), ämnet SAMPLE (HelpDialog.cpp sampleText). Projektledaren godkände ändringen i Modules.h/.cpp (bara knapp och ämne).
 - Bygge grönt, alla tester gick igenom.
 - DAW-test (Lemon): öppna SAMPLE-fliken, klicka HELP, kontrollera att SAMPLE-fliken visas och att knappen inte täcker FILTER-rutan eller etiketten.
+
+## HELP för ENV (Arbetare 1, 2026-10-28)
+- ENV-sidan: HELP-knapp bredvid instrumentväljaren (EnvPage.cpp, resized), ämnet ENV (HelpDialog.cpp envText).
+- Bygge grönt, alla tester gick igenom.
+- DAW-test (Lemon): öppna ENV, klicka HELP, kontrollera att ENV-fliken visas och att knappen inte täcker väljaren.

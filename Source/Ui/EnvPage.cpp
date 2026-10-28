@@ -1,4 +1,5 @@
 #include "EnvPage.h"
+#include "HelpDialog.h"
 
 namespace
 {
@@ -51,6 +52,8 @@ EnvPage::EnvPage (PluginBase& p) : processor (p), refs (p.apvts)
     moreLabel.setColour (juce::Label::textColourId, Theme::textDim);
     moreLabel.setJustificationType (juce::Justification::centredRight);
     addAndMakeVisible (moreLabel);
+    HelpDialog::setupButton (helpButton, *this, HelpDialog::Topic::env, "the ENV tab (the four envelopes)");
+    addAndMakeVisible (helpButton);
 
     rebuild();
     startTimerHz (4);
@@ -255,6 +258,8 @@ void EnvPage::resized()
     auto top = area.removeFromTop (24);
     instrumentLabel.setBounds (top.removeFromLeft (90));
     instrumentBox.setBounds (top.removeFromLeft (170));
+    top.removeFromLeft (8);
+    helpButton.setBounds (top.removeFromLeft (44));
     if (randomHandle != nullptr)
     {
         randomHandle->setBounds (top.removeFromRight (84));

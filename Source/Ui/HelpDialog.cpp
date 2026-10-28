@@ -199,6 +199,25 @@ Cut the sample into pieces. Each slice gets its own "Slice N" row in the pattern
 - Only the first 16 slices get a row in the pattern.
 )";
 
+    const char* envText = R"(# ENV
+Four envelopes for the selected instrument. Drag the white handles in a graph to change the shape.
+
+## The four graphs
+- **ENV 1 VOLUME**: the loudness of every note: attack, decay, sustain level and release. Off = every note plays at full level while it is held.
+- **FILTER ENVELOPE**: opens the filter at the start of each note and lets it close again (AMOUNT, ATTACK, DECAY). Off = the filter stays at CUTOFF.
+- **ENV 2 and ENV 3**: extra envelopes that make no sound themselves. They move other knobs.
+
+## Buttons on each graph
+- **ON**: turns the envelope on or off.
+- **SYNC**: attack, decay and release become note lengths (1/16 ... 4 bars) that follow the tempo. Off = milliseconds.
+- **LISTEN**: hold to hear the instrument on the preview note while you drag. Double-click to keep it playing.
+- **DURATION**: how many seconds the graph shows. Only the view, not the sound.
+- **DRAG**: drag the handle onto any knob (or set it in the MATRIX tab) to let that envelope move the knob.
+
+## More sources
+**VELOCITY** (how hard the note is played) and **RANDOM** (a new random value per note) work the same way: drag them onto a knob.
+)";
+
     struct TopicInfo { HelpDialog::Topic topic; const char* tab; const char* text; };
     const TopicInfo topics[] = {
         { HelpDialog::Topic::pianoRoll, "PIANO ROLL", pianoRollText },
@@ -209,6 +228,7 @@ Cut the sample into pieces. Each slice gets its own "Slice N" row in the pattern
         { HelpDialog::Topic::fm, "FM", fmText },
         { HelpDialog::Topic::mix, "MIX", mixText },
         { HelpDialog::Topic::sample, "SAMPLE", sampleText },
+        { HelpDialog::Topic::env, "ENV", envText },
     };
 
     // ---- Rendering ----
