@@ -189,3 +189,6 @@ Nu: programmet, rel-0.3 motornära punkter: 1) S3 Unison/Reese, 2) multisampling
 
 ## 2026-10-28 Genrepresets
 - 7 kickar + 14 basar (namnprefix Minimal/Goa/Dark Psy/Dance/Trance/Techno/Empirikal), sist i `kickPresets()`/`bassPresets()`; genreregler och fem nya kategorier (DARK PSY, DANCE, TRANCE, TECHNO, EMPIRIKAL) i `PresetCategories.cpp`. Bygge grönt, audit utan klippning. Ej lyssnat. Återstår: Fas J, bygg vidare på `docs/school/` (a3c54e7), sedan skill.
+
+## 2026-10-28 Genreutredning med källor
+- Arbetare 2: `docs/school/` minimal, goa (omskrivna) plus nya dark-psy, dance, trance, techno, empirikal. Källor som länkar/titlar, kvalitet och "obekräftat" angivet. Tunt: minimal-psy (en BPM-källa), Dance (ingen egen källa), Empirikal (ingen specifik källa, Reese-underlag). Ingen kod ändrad. Finjustering väntar på Tobias lyssning i Lemon.

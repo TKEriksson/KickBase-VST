@@ -11,8 +11,13 @@ Samlat vad vi lär oss om att bygga presets, så arbetet kan fortsätta senare. 
 | [kick-bass-samspel.md](kick-bass-samspel.md) | Sidechain, notlängd, svans mot grundton |
 | [mixning-fx-sidechain.md](mixning-fx-sidechain.md) | FX-kedja, sidechain-inställning, MONO BELOW |
 | [genrer.md](genrer.md) | Genrepresets v1 (7 genrer × 1 kick + 2 basar): bygge, tabell, mätning |
-| [minimal.md](minimal.md) | MINIMAL (utredning ej gjord, v1-presets finns) |
-| [goa.md](goa.md) | GOA (utredning ej gjord, v1-presets finns) |
+| [minimal.md](minimal.md) | MINIMAL: utredning med källor |
+| [goa.md](goa.md) | GOA: utredning med källor |
+| [dark-psy.md](dark-psy.md) | DARK PSY: utredning med källor |
+| [dance.md](dance.md) | DANCE: utredning med källor (tunt underlag) |
+| [trance.md](trance.md) | TRANCE: utredning med källor |
+| [techno.md](techno.md) | TECHNO: utredning med källor |
+| [empirikal.md](empirikal.md) | EMPIRIKAL: ingen specifik källa hittad, Reese-underlag |
 | [presets-logg.md](presets-logg.md) | En rad per preset: kategori, nyckelparametrar, mätt, ändrat, höll inte |
 
 Äldre, flyttas inte (andra filer länkar dit): [../kick-bass-school.md](../kick-bass-school.md), [../psytrance-kick-bass-reference.md](../psytrance-kick-bass-reference.md), [../sound-design-roadmap.md](../sound-design-roadmap.md).

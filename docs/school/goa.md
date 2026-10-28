@@ -1,3 +1,20 @@
 # GOA
 
-Utredning ej gjord; första v1-presets finns, se [genrer.md](genrer.md). Samma upplägg som [minimal.md](minimal.md): utredning först (tempo, kick, bas, mixning, byggsätt, källor), visas för projektledaren före bygge.
+Genreutredning med källor. Presets: Goa Kick, Goa Roll, Goa Acid (se [genrer.md](genrer.md)).
+
+## Vad källorna säger
+- **Ursprung:** växte fram i Goa, Indien, i början av 1990-talet ur EBM, industrial och tidig acid house. Termen "Goa trance" blev standard runt 1994, och första albumet, *Project II Trance*, kom 1993 ([Wikipedia, Goa trance](https://en.wikipedia.org/wiki/Goa_trance), [Wikipedia, Psychedelic trance](https://en.wikipedia.org/wiki/Psychedelic_trance)).
+- **Tempo:** typiskt 130–150 BPM, enstaka spår 110–160 (samma artiklar).
+- **Bas:** Roland TB-303 och acid-ljud är centrala och ofta distade. Baslinjerna är ofta drönande, och Detroit-techno gav ett mer industriellt uttryck ([Wikipedia, Goa trance](https://en.wikipedia.org/wiki/Goa_trance)).
+- **Kick:** källorna säger lite. Närmaste stöd är beskrivningen av acid trance (stark kick, full bas, efterklingande slag). Svag indikation.
+
+## Vad vi tog med
+| Källa säger | Vi gjorde |
+|---|---|
+| Acid/303-karaktär | Goa Acid: såg + tabell, resonans, filterenvelop med tydlig svep |
+| Drönande rullande bas | Goa Roll: rullande 1/16-bas med lätt drive |
+| Äldre, rundare kick | Goa Kick: lång svans (35 Hz), lite click och drive |
+
+## Obekräftat
+- Kickens exakta form är gissning utifrån allmän psytrance. Jämför med riktiga Goa-spår.
+- 303-ljudet efterliknas, inte kopieras: motorn har ingen riktig 303-filterkurva.
