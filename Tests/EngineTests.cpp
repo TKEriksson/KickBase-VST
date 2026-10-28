@@ -1318,8 +1318,24 @@ void runEngineTests()
     testSampleReverse();
     testInstrumentPitchAndRelease();
     testInstrumentGlide();
+static void testKickSourceMigration()
+{
+    const auto run = [] (float synthOn, float sampleOn, std::map<std::string, float>& v)
+    {
+        v = { { ParamID::kickSynthOn, synthOn }, { ParamID::kickSampleOn, sampleOn }, { ParamID::kickMix, 0.3f }, { ParamID::kickSampleMode, 0.0f } };
+        return Params::migrateKickSources ([&] (const char* id, float fb) { return v.count (id) ? v[id] : fb; },
+                                           [&] (const char* id, float x) { v[id] = x; });
+    };
+    std::map<std::string, float> v;
+    check (! run (1.0f, 1.0f, v) && v[ParamID::kickMix] == 0.3f, "kickkällor: båda på lämnas orörda");
+    check (! run (0.0f, 0.0f, v) && v[ParamID::kickSynthOn] == 0.0f, "kickkällor: båda av lämnas orörda");
+    check (run (0.0f, 1.0f, v) && v[ParamID::kickMix] == 1.0f && v[ParamID::kickSampleMode] == 2.0f && v[ParamID::kickSynthOn] == 1.0f, "kickkällor: synth av blir MIX helt mot sample + Replace");
+    check (run (1.0f, 0.0f, v) && v[ParamID::kickMix] == 0.0f && v[ParamID::kickSampleOn] == 1.0f, "kickkällor: sample av blir MIX helt mot synth");
+}
+
     testInstrumentModulationSources();
     testInstrumentRetriggerWithoutClick();
+    testKickSourceMigration();
     testDuckerIsSmooth();
     testGate();
     testPatternTemplatesAndSaving();
