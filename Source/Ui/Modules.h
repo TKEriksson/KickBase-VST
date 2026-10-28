@@ -115,6 +115,19 @@ private:
     std::unique_ptr<juce::FileChooser> chooser;
 };
 
+// Synth/sample-balansen (kickMix) som en vågrät reglage med etikett, för flikraden i kicken.
+class KickMixControl : public juce::Component
+{
+public:
+    KickMixControl (juce::AudioProcessorValueTreeState& apvts, juce::Colour accent);
+    void resized() override;
+
+private:
+    juce::Label label;
+    FxSendControl::AmountSlider slider;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> attachment;
+};
+
 // Kicken: vågformen med pitch- och volymnoder, rattar för kroppen, klicket och drive, och plats för en klicksampling.
 class KickModule : public ModulePanel, public juce::FileDragAndDropTarget, private juce::Timer
 {
@@ -151,6 +164,7 @@ private:
     std::vector<juce::Component*> sampleControls;
     juce::Label sampleHelp;
     std::unique_ptr<FxSendControl> fxSend;
+    std::unique_ptr<KickMixControl> mixControl; // flikraden: Synth/Sample-mix
 
     juce::ToggleButton synthToggle { "SYNTH" }, sampleToggle { "SAMPLE" }; // små på/av för äldre presets; balansen är MIX
     std::unique_ptr<juce::ButtonParameterAttachment> synthToggleAttachment, sampleToggleAttachment, sampleReverseAttachment;

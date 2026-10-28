@@ -249,7 +249,7 @@ public:
     juce::Component* getPower() { return power.get(); }
     bool isEmbedded() const { return embedded; }
     // Bredden flikraden ska reservera för modulens kontroller i rubriken (på/av, vyflikar, preset, FX-send).
-    int headerExtrasWidth() const { return 380 + (headerTabs != nullptr ? headerTabsWidth + 8 : 0); }
+    int headerExtrasWidth() const { return 380 + (headerTabs != nullptr ? headerTabsWidth + 8 : 0) + (headerMix != nullptr ? headerMixWidth + 14 : 0); }
 
     // I en flikpanel: ingen egen rubrik (fliken heter likadant). På/av-knappen och presetknappen
     // flyttas till komponenten som returneras, som flikpanelen visar i flikraden.
@@ -265,6 +265,10 @@ public:
             headerControls.addAndMakeVisible (*headerPreset);
         if (headerFxSend != nullptr)
             headerControls.addAndMakeVisible (*headerFxSend);
+        if (headerMix != nullptr)
+            headerControls.addAndMakeVisible (*headerMix);
+        headerControls.mix = headerMix;
+        headerControls.mixWidth = headerMixWidth;
         headerControls.power = powerInControls ? power.get() : nullptr;
         headerControls.tabs = headerTabs;
         headerControls.tabsWidth = headerTabsWidth;
@@ -303,6 +307,9 @@ protected:
     // FX-send (kanal och mängd) som visas i flikraden, mellan på/av-knappen och presetknappen.
     void setHeaderFxSend (juce::Component* fxSend) { headerFxSend = fxSend; }
 
+    // Ett reglage (t.ex. kickens synth/sample-mix) längst till höger i flikraden, till vänster om FX-send.
+    void setHeaderMix (juce::Component* mix, int width) { headerMix = mix; headerMixWidth = width; }
+
     // Vyflikar (t.ex. SYNTH | SAMPLE) i flikraden, till vänster om presetknappen.
     void setHeaderTabs (juce::Component* tabs, int width) { headerTabs = tabs; headerTabsWidth = width; }
 
@@ -313,7 +320,9 @@ private:
         juce::Component* preset = nullptr;
         juce::Component* fxSend = nullptr;
         juce::Component* tabs = nullptr;
+        juce::Component* mix = nullptr;
         int tabsWidth = 0;
+        int mixWidth = 0;
 
         void resized() override
         {
@@ -333,6 +342,11 @@ private:
                 fxSend->setBounds (area.removeFromRight (206));
                 area.removeFromRight (14);
             }
+            if (mix != nullptr)
+            {
+                mix->setBounds (area.removeFromRight (mixWidth));
+                area.removeFromRight (14);
+            }
             if (preset != nullptr)
                 preset->setBounds (tabs != nullptr ? area.removeFromLeft (std::min (area.getWidth(), 170)) : area); // smalare väljare när det finns vyflikar
         }
@@ -342,7 +356,9 @@ private:
     juce::Component* headerPreset = nullptr;
     juce::Component* headerFxSend = nullptr;
     juce::Component* headerTabs = nullptr;
+    juce::Component* headerMix = nullptr;
     int headerTabsWidth = 0;
+    int headerMixWidth = 0;
     bool embedded = false;
     juce::String title;
     juce::Colour accent;

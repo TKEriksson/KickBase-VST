@@ -829,6 +829,33 @@ void HeaderBar::paint (juce::Graphics& g)
 }
 
 //==============================================================================
+KickMixControl::KickMixControl (juce::AudioProcessorValueTreeState& apvts, juce::Colour accent)
+{
+    label.setText ("SYNTH / SAMPLE", juce::dontSendNotification);
+    label.setFont (Theme::font (11.0f));
+    label.setColour (juce::Label::textColourId, Theme::textDim);
+    label.setInterceptsMouseClicks (false, false);
+    addAndMakeVisible (label);
+
+    slider.parameter = apvts.getParameter (ParamID::kickMix);
+    slider.setSliderStyle (juce::Slider::LinearHorizontal);
+    slider.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+    slider.setColour (juce::Slider::trackColourId, accent);
+    slider.setColour (juce::Slider::thumbColourId, Theme::text);
+    slider.setPopupDisplayEnabled (true, true, nullptr);
+    slider.setTooltip ("MIX - Balance between the synth kick and the loaded sample. Left = synth only, middle = both at full level, right = sample only. With no sample, left to middle is the same.");
+    addAndMakeVisible (slider);
+    attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (apvts, ParamID::kickMix, slider);
+}
+
+void KickMixControl::resized()
+{
+    auto area = getLocalBounds();
+    label.setBounds (area.removeFromLeft (90));
+    slider.setBounds (area);
+}
+
+//==============================================================================
 KickModule::KickModule (PluginBase& p)
     : ModulePanel ("KICK", Theme::kick, &p.apvts, ParamID::kickOn), processor (p),
       keyMode (p.apvts, ParamID::kickKeyFollow, "KEY"),
@@ -845,6 +872,9 @@ KickModule::KickModule (PluginBase& p)
     fxSend = std::make_unique<FxSendControl> (p.apvts, ParamID::kickFxChannel, ParamID::kickFxAmount, ParamID::kickFxSend, juce::StringArray (ParamID::kickFxSendToIds, numEffectChannels), "FX SEND", Theme::kick);
     addAndMakeVisible (*fxSend);
     setHeaderFxSend (fxSend.get());
+    mixControl = std::make_unique<KickMixControl> (p.apvts, Theme::kick);
+    addAndMakeVisible (*mixControl);
+    setHeaderMix (mixControl.get(), 220);
     addAndMakeVisible (keyMode);
     addAndMakeVisible (display);
 
@@ -863,14 +893,14 @@ KickModule::KickModule (PluginBase& p)
 
     // I signalens ordning: stämning och form (envelopena ritas i displayen), kroppens övertoner,
     // klicket, drive och utgång.
-    groups.addRow ({ { "TUNING", { knob (ParamID::kickTune, "TUNE") } },
+    groups.addRow ({ { "TUNING", { knob (ParamID::kickTune, "TUNE"), &keyMode } },
                      { "ENVELOPES", { knob (ParamID::kickPitchAmount, "PITCH AMT"), knob (ParamID::kickLength, "LENGTH") } },
                      { "BODY", { knob (ParamID::kickPhase, "PHASE"), knob (ParamID::kickHarmonics, "HARMONICS"),
                                  knob (ParamID::kickHarmDecay, "H. DECAY"), knob (ParamID::kickHarmTilt, "H. TILT") } },
                      { "CLICK", { knob (ParamID::kickClick, "LEVEL"), knob (ParamID::kickClickLength, "LENGTH"),
                                   knob (ParamID::kickClickTone, "TONE") } },
                      { "DRIVE", { choice (ParamID::kickClipMode, "MODE"), knob (ParamID::kickDrive, "AMOUNT") } },
-                     { "OUT", { knob (ParamID::kickHighCut, "HIGH CUT"), knob (ParamID::kickMix, "MIX"), knob (ParamID::kickLevel, "LEVEL") } } });
+                     { "OUT", { knob (ParamID::kickHighCut, "HIGH CUT"), knob (ParamID::kickLevel, "LEVEL") } } });
 
     // SAMPLE-vyn: hur samplingen används (MODE, LEVEL, TUNE, OFFSET). Rattarna är desamma som förut, bara i en egen vy.
     sampleControls = { choice (ParamID::kickSampleMode, "MODE"), knob (ParamID::kickSampleLevel, "LEVEL"),
@@ -924,13 +954,11 @@ KickModule::KickModule (PluginBase& p)
     sampleToggle.setTooltip ("Kick SAMPLE on/off. Off = the loaded sample is ignored (it stays loaded) and the synth kick plays alone. Normally leave on and use MIX.");
     synthToggleAttachment = std::make_unique<juce::ButtonParameterAttachment> (*p.apvts.getParameter (ParamID::kickSynthOn), synthToggle);
     sampleToggleAttachment = std::make_unique<juce::ButtonParameterAttachment> (*p.apvts.getParameter (ParamID::kickSampleOn), sampleToggle);
-    addAndMakeVisible (synthToggle);
-    addAndMakeVisible (sampleToggle);
+    // Växlarna och hinten visas inte längre (balansen är MIX i flikraden); parametrarna finns kvar för äldre presets.
     balanceHint.setText ("MIX (SYNTH view) balances synth and sample: left = synth only, middle = both, right = sample only.  MODE (SAMPLE view) decides how the sample is used.", juce::dontSendNotification);
     balanceHint.setFont (Theme::font (10.5f));
     balanceHint.setColour (juce::Label::textColourId, Theme::textDim);
     balanceHint.setTooltip ("MIX in the middle: the synth kick plus the sample at full level, as before. Click = only the sample's first moments, Layer = the whole sample on top, Replace = the sample alone.");
-    addAndMakeVisible (balanceHint);
     HelpDialog::setupButton (helpButton, *this, HelpDialog::Topic::kick, "the kick (SYNTH and SAMPLE views)");
     addAndMakeVisible (helpButton);
 
@@ -980,7 +1008,9 @@ void KickModule::applyTab()
     const auto sample = sampleTabShown();
     const auto envelope = envelopeTabShown();
     viewTabs.select (processor.kickTab.load());
-    display.setVisible (envelope);
+    display.setVisible (envelope || ! sample); // i SYNTH visas den bara om det finns plats (se resized)
+    keyMode.setVisible (! (sample || envelope));
+    sampleLabel.setVisible (sample);
     sampleView.setVisible (sample);
     library.setVisible (sample);
     sampleHelp.setVisible (sample);
@@ -1055,31 +1085,21 @@ void KickModule::resized()
     }
     auto area = getContentBounds();
 
-    // Nedersta raden: KEY-väljaren (etikett + ruta) och klicksamplingen bredvid.
-    auto bottom = area.removeFromBottom (40);
-    keyMode.setBounds (bottom.removeFromLeft (110));
-    bottom.removeFromLeft (10);
-    auto sampleRow = bottom.removeFromBottom (24);
-    clearButton.setBounds (sampleRow.removeFromRight (24));
-    sampleRow.removeFromRight (4);
-    loadButton.setBounds (sampleRow.removeFromRight (50));
-    sampleRow.removeFromRight (10);
-    listenSampleButton.setBounds (sampleRow.removeFromRight (96));
-    sampleRow.removeFromRight (10);
-    sampleLabel.setBounds (sampleRow);
-    area.removeFromBottom (4);
-
-    auto sourceRow = area.removeFromBottom (22);
-    synthToggle.setBounds (sourceRow.removeFromLeft (70));
-    sampleToggle.setBounds (sourceRow.removeFromLeft (80));
-    helpButton.setBounds (sourceRow.removeFromRight (44));
-    sourceRow.removeFromRight (4);
-    sourceRow.removeFromLeft (8);
-    balanceHint.setBounds (sourceRow);
-    area.removeFromBottom (4);
-
     if (sampleTabShown())
     {
+        // Nedersta raden: samplingens namn, HEAR SAMPLE, LOAD, X och hjälpknappen.
+        auto sampleRow = area.removeFromBottom (24);
+        helpButton.setBounds (sampleRow.removeFromRight (44));
+        sampleRow.removeFromRight (10);
+        clearButton.setBounds (sampleRow.removeFromRight (24));
+        sampleRow.removeFromRight (4);
+        loadButton.setBounds (sampleRow.removeFromRight (50));
+        sampleRow.removeFromRight (10);
+        listenSampleButton.setBounds (sampleRow.removeFromRight (96));
+        sampleRow.removeFromRight (10);
+        sampleLabel.setBounds (sampleRow);
+        area.removeFromBottom (4);
+
         // SAMPLE: vågformen överst, under den biblioteket till vänster och hur samplingen används till höger.
         sampleView.setBounds (area.removeFromTop (juce::jlimit (90, 150, area.getHeight() / 3)));
         area.removeFromTop (6);
@@ -1094,16 +1114,26 @@ void KickModule::resized()
         return;
     }
 
+    // Hjälpknappen ligger uppe till höger över kurvorna.
+    const auto helpArea = area;
+    helpButton.setBounds (helpArea.getRight() - 48, helpArea.getY() + 4, 44, 22);
+    helpButton.toFront (false);
+
     if (envelopeTabShown())
     {
         display.setBounds (area); // ENVELOPE: kurvorna får hela ytan
         return;
     }
 
-    // SYNTH: bara kontrollerna.
-    const auto rowHeight = juce::jlimit (60, 100, area.getHeight() / (groups.numRows() + 1) - ControlGroups::titleHeight - 3);
+    // SYNTH: kontrollerna längst ner (48 px-rattar), envelopekurvorna ovanför om det finns plats.
+    const auto rowHeight = 74;
     const auto groupsHeight = groups.numRows() * (ControlGroups::titleHeight + rowHeight + 3);
     groups.layout (area.removeFromBottom (groupsHeight), rowHeight);
+    area.removeFromBottom (6);
+    const auto showDisplay = area.getHeight() >= 100;
+    display.setVisible (showDisplay);
+    if (showDisplay)
+        display.setBounds (area);
 }
 
 //==============================================================================
