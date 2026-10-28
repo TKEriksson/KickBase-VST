@@ -125,3 +125,4 @@ Format: **Gör så** → *förväntat resultat*. Bocka av `[ ]` när det stämme
 - [ ] (DAW) UNISON-kategorin: Unison Reese, Wide och Dark visas; mono under ca 150 Hz kan behövas (lowSide ca −25 dB, se docs/school/reese.md); lyssna om de slår fint mot kicken.
 - [ ] (DAW) Sample-editor AMP/PITCH per bas-lager (UI kommer av Arbetare 1): av låter som förut; AMP-kurvan tystar samplingen efter sin längd; PITCH +12 st glider ner till egna tonen.
 - [ ] (DAW) Sample REVERSE per bas-lager (UI av Arbetare 1): samplingen spelas baklänges från slutet i varje ton; med LOOP loopar den; av låter som förut.
+- [ ] (DAW) Kick klick-lager 2/3 (UI av Arbetare 1): nivå 0 låter som förut; lager med fördröjning ger ett extra klick efter anslaget; BP/LP/HP låter olika. Sampleverktyg: START klipper bort början, REVERSE spelar baklänges, FADE tonar ut slutet.
