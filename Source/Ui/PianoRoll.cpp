@@ -60,6 +60,9 @@ PianoRoll::PianoRoll (PluginBase& p, std::vector<juce::Colour> colours) : proces
     followButton.setColour (juce::TextButton::buttonOnColourId, Theme::pattern);
     followButton.setTooltip ("FOLLOW - On: the view flips to the bars that play, so you follow the song. Off: stay where you are.");
     followButton.onClick = [this] { processor.followPlayhead = followButton.getToggleState(); };
+    ghostButton.setTooltip ("GHOST NOTES - Choose which other rows show their notes faintly behind this one (kick, each instrument). Display only; "
+                            "it does not change any sound. Default: all on.");
+    ghostButton.onClick = [this] { showGhostMenu(); };
 
     for (auto* button : { &drawButton, &selectButton, &eraseButton, &copyButton, &pasteButton, &pasteOkButton, &pasteCancelButton })
     {
@@ -129,7 +132,7 @@ PianoRoll::PianoRoll (PluginBase& p, std::vector<juce::Colour> colours) : proces
     deleteButton.setTooltip ("DELETE - Deletes the selected notes (Delete key).");
     deleteButton.onClick = [this] { deleteSelected(); };
 
-    for (auto* c : std::initializer_list<juce::Component*> { &snapButton, &gridBox, &smallerButton, &biggerButton, &allButton, &deleteButton, &glideButton, &followButton, &presetButton, &midiButton, &drawButton, &selectButton, &eraseButton,
+    for (auto* c : std::initializer_list<juce::Component*> { &snapButton, &gridBox, &smallerButton, &biggerButton, &allButton, &deleteButton, &glideButton, &followButton, &ghostButton, &presetButton, &midiButton, &drawButton, &selectButton, &eraseButton,
                                                                  &copyButton, &pasteButton, &pasteOkButton, &pasteCancelButton, &listenButton, &popOutButton, &hBar, &vBar })
         addAndMakeVisible (c);
     popOutButton.setTooltip ("POP OUT - Opens the piano roll in its own window that you can move and resize (for a second screen). Click DOCK, or close the window, to bring it back.");
@@ -397,11 +400,47 @@ void PianoRoll::updateScrollBars()
 void PianoRoll::scrollBarMoved (juce::ScrollBar* bar, double newRangeStart)
 {
     if (bar == &hBar)
+    {
         scrollTicks = (float) newRangeStart;
+        processor.followPlayhead = false; // en hand på sidoscrollbaren: FOLLOW stängs av (knappen visar det i nästa timertick)
+    }
     else
         topPitch = (float) Pattern::maxPitch - (float) newRangeStart;
     clampView();
     repaint();
+}
+
+void PianoRoll::showGhostMenu()
+{
+    const auto mask = processor.ghostMask.load();
+    juce::PopupMenu menu;
+    menu.addItem (1, "ALL ON");
+    menu.addItem (2, "ALL OFF");
+    menu.addSeparator();
+    std::vector<int> rows { Pattern::kickLayer };
+    for (int i = 0; i < processor.activeInstruments(); ++i)
+        rows.push_back (i);
+    for (auto row : rows)
+    {
+        juce::PopupMenu::Item item (row == Pattern::kickLayer ? juce::String ("KICK") : processor.getLayerName (row));
+        item.itemID = 100 + row;
+        item.isTicked = (mask & (1u << row)) != 0;
+        item.colour = layerColours[(size_t) juce::jlimit (0, (int) layerColours.size() - 1, row)];
+        item.isEnabled = row != layer; // den egna raden är ingen spökrad
+        menu.addItem (item);
+    }
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&ghostButton), [this, safe = juce::Component::SafePointer<PianoRoll> (this)] (int result)
+    {
+        if (safe == nullptr || result == 0)
+            return;
+        auto m = processor.ghostMask.load();
+        if (result == 1)       m = 0xffffffffu;
+        else if (result == 2)  m = 0u;
+        else                   m ^= 1u << (result - 100);
+        processor.ghostMask = m;
+        repaint();
+        showGhostMenu(); // flervalet: menyn står kvar tills man klickar utanför
+    });
 }
 
 int PianoRoll::soundingRoot() const
@@ -858,6 +897,8 @@ void PianoRoll::resized()
     glideButton.setBounds (bottom.removeFromLeft (56));
     bottom.removeFromLeft (4);
     followButton.setBounds (bottom.removeFromLeft (64));
+    bottom.removeFromLeft (4);
+    ghostButton.setBounds (bottom.removeFromLeft (62));
     bottom.removeFromLeft (12);
     lengthButton.setBounds (bottom.removeFromLeft (110));
     bottom.removeFromLeft (4);
@@ -1479,7 +1520,7 @@ void PianoRoll::paint (juce::Graphics& g)
             const auto gLast = std::min (editTicks() - 1, (int) xToTicks (gridArea.getRight()) + 1);
             for (int other = 0; other < Pattern::numNoteLayers; ++other)
             {
-                if (other == layer)
+                if (other == layer || (processor.ghostMask.load() & (1u << other)) == 0)
                     continue;
                 const auto shift = processor.rowRootNote (other) - rootNote();
                 const auto otherColour = layerColours[(size_t) juce::jlimit (0, (int) layerColours.size() - 1, other)];

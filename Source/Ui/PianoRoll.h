@@ -248,7 +248,7 @@ private:
 
     // Verktygsraden.
     juce::TextButton snapButton { "SNAP" }, smallerButton { "-" }, biggerButton { "+" }, allButton { "SELECT ALL" }, deleteButton { "DEL" },
-                     glideButton { "GLIDE" }, followButton { "FOLLOW" }, presetButton { "PRESET" }, midiButton { "MIDI" },
+                     glideButton { "GLIDE" }, followButton { "FOLLOW" }, ghostButton { "GHOST" }, presetButton { "PRESET" }, midiButton { "MIDI" },
                      drawButton { "PENCIL" }, selectButton { "SELECT" }, eraseButton { "ERASER" }, copyButton { "COPY" },
                      pasteButton { "PASTE" }, pasteOkButton { "OK" }, pasteCancelButton { "CANCEL" }, popOutButton { "POP OUT" };
     ListenButton listenButton; // högtalare: håll för att höra pianorullen (loopar), släpp för att sluta
@@ -270,6 +270,7 @@ private:
     juce::ComboBox midiInBox;                               // MIDI in medan pianorullen är öppen: alla instrument eller bara den här raden
     juce::Rectangle<float> hintArea;                        // tipsraden längst ner
     void applyMidiIn();
+    void showGhostMenu();                                   // GHOST NOTES: multival över raderna (menyn öppnas igen efter varje val)
     juce::TextButton lengthButton, extendButton { "+ BAR" };  // radens längd (AUTO n / valt antal: klick öppnar menyn) och förläng med en takt
     juce::TextButton voicesDownButton { "-" }, voicesUpButton { "+" };
     juce::Label voicesLabel;                                // "VOICES n"

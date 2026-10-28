@@ -363,3 +363,9 @@ Bygge Debug all: grönt, "Alla tester gick igenom" (rendersig oförändrad).
 - Build grön utom den lastkänsliga wavetable-tiden (41 s), orelaterad.
 - DAW-test: spela mönstret i DAW, öppna JOG, tryck BRAKE: tempot ska sakta in till stopp, vila, snurra upp igen; ta tag i hjulet under bromsen: bromsen avbryts.
 - Kvar i JOG-resten: LOOP in i JOG-panelen (ej gjort).
+
+## GHOST NOTES-rullgardin + FOLLOW av vid scroll (Arbetare 1, 28 okt)
+- GHOST-knapp i pianorullens knapprad (`PianoRoll.cpp` showGhostMenu): flerval över KICK och aktiva instrument (färgprick, ALL ON/ALL OFF), menyn står kvar öppen. Maskan `ghostMask` i `PluginBase.h` delas med POP OUT, sparas inte i projektet, standard alla på.
+- FOLLOW slås av när man drar den horisontella rullningslisten (`scrollBarMoved`).
+- Ingen ny parameter. Build Debug all grön ("Alla tester gick igenom").
+- DAW-test (Lemon): öppna pianorullen, GHOST, bocka av en instrument: dess spöktoner försvinner; menyn stannar öppen. Spela med FOLLOW på och dra rullningslisten: FOLLOW släcks.
