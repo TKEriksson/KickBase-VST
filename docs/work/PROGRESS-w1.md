@@ -529,3 +529,7 @@ Bygge Debug all: grönt, "Alla tester gick igenom" (rendersig oförändrad).
 - LOOP FROM/TO i ticks (1 tick = 1/64 takt, visas bar.beat.sixteenth.tick): `TickField` i `Source/Ui/JogPanel.h` (klick/Enter, skriv, Enter/Esc, Upp/Ned = STEP). STEP 1/4-1/64 (standard 1/16), TEST BPM + fält 60-220 (standard 140). Konstanter överst (`JogConfig`). `TransportClock::ticksToPpq` (TransportClock.cpp:71).
 - Test: tick-omvandling + visa/tolka-rundtur i `Tools/StateTests.cpp` (persisttest). Debug all grön, alla tester gick igenom. blocksizetest: se rapport (stealing-felet är äldre, på baslinjen).
 - DAW (Lemon): öppna JOG: ett hjul, LOOP på, FROM 1.1.1.0 / TO 5.1.1.0; skriv en ny tid + Enter, Esc avbryter; Upp/Ned flyttar ett STEP; TEST BPM 140 spelar utan att DAW:en rullar.
+
+## Echo tillbaka till taktsteg (Arbetare 1, 28 okt)
+- Tobias beslut 28 okt: Echo räcker med taktsteg, ingen ms-ratt, knobsPerSlot oförändrat (10). Backade a601d2e (Echo TIME MS) i Effects.cpp/.h, FxTests och Help.cpp. Flanger SHAPE/SPREAD ligger kvar (P6/P7, rörs inte). RING (B) finns redan med OSC2/OSC3/båda och tester.
+- Debug all grön. Gren: fx-echo-steps (efter jog-simple).

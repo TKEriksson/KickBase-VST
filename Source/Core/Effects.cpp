@@ -189,8 +189,7 @@ namespace Effects
                 value ("CUT", 1000.0f, 20000.0f, 5000.0f, 6000.0f, Unit::hz),
                 value ("DRY VOL", 0.0f, 1.0f, 0.0f, 1.0f, Unit::percent),
                 choice ("SYNC", { "Straight", "Dotted", "Triplet" }, 0), // FX1 (sist)
-                mixKnob (1.0f),                                           // ekots nivå (DRY VOL är ingången)
-                value ("TIME MS", 0.0f, 3300.0f, 500.0f, 0.0f, Unit::ms) }; // sist; 0 = följer TIME/SYNC (gamla ljudet), över 0 = fast tid i ms
+                mixKnob (1.0f) };                                         // ekots nivå (DRY VOL är ingången)
             table[(size_t) EffectType::reverb] = {
                 value ("SIZE", 0.0f, 1.0f, 0.0f, 0.5f, Unit::percent),
                 value ("DAMPING", 0.0f, 1.0f, 0.0f, 0.5f, Unit::percent),
@@ -943,8 +942,7 @@ namespace
         {
             const auto longest = context.sampleRate * (maxSeconds - 0.05);
             const auto syncFactor = (int) k[8] == 1 ? 1.5 : (int) k[8] == 2 ? 2.0 / 3.0 : 1.0; // punkterad / triol
-            const auto syncTime = Effects::syncInQuarters ((int) k[0]) * syncFactor * context.samplesPerQuarter();
-            const auto time = k[10] >= 1.0f ? (double) k[10] * 0.001 * context.sampleRate : syncTime; // TIME MS över 0 ersätter synken
+            const auto time = Effects::syncInQuarters ((int) k[0]) * syncFactor * context.samplesPerQuarter();
             const auto targetLeft = (float) jlimit (1.0, longest, time);
             const auto targetRight = (float) jlimit (1.0, longest, time * (1.0 + k[1]));
             if (fresh)
