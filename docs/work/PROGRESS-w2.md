@@ -248,3 +248,42 @@ Nu: programmet, rel-0.3 motornära punkter: 1) S3 Unison/Reese, 2) multisampling
 - Kick, `KickModule`: ny rad CLICK 2 / CLICK 3 (LEVEL/LENGTH/TONE/DELAY/MODE) i SYNTH-vyn; SAMPLE-vyn har raden TOOLS (START, REVERSE, FADE). Radhöjderna räknas från antalet rader, så gamla layouten är kvar.
 - SYNTH/SAMPLE-mixen i kicken fanns redan (`synthToggle`/`sampleToggle`, LEVEL = balans).
 - Hjälptexter: ett block i `Source/Ui/Help.cpp` (kickClick2/3*, kickSample*, bassSampleAmp*/Pitch*/Reverse). Arbetare 1:s tillfälliga rader för bassSampleAmp*/Pitch* finns bara i hennes gren: ta bort dubbletter vid merge.
+
+## 2026-10-28 – Undersökning: FX send-matris, ljudväg och 132 sendparametrar (Arbetare 2, ingen kod)
+Underlag: `docs/work/plan-fx-send-matrix.md` (main). Radnummer nedan är main (`InstrumentProcessor.cpp`), i w2 ligger samma kod ~76 rader tidigare.
+
+### Hur ljudvägen är idag
+- Per källa (`InstrumentProcessor.cpp:915-926`, kick `931-941`): `Mixer::mix` (`Mixer.cpp:108-135`) lägger `ljud × fader × pan × dryGain` på master-bussen och skriver **samma** `ljud × fader × pan` (utan `dryGain`) till `sendBus`. Sedan `effects.send(kanal, sendBus, amount)` (`Effects.cpp:2417`) som *adderar* `amount × sendBus` till kanalens ingång.
+- **INSERT** (standard): `dryGain = 1 - amount` på bara den valda kanalen. **SEND** (`fxSend`): `dryGain = 1`, torrt orört, wet läggs på. Alltså: INSERT = torrt/blött-delning, SEND = additiv.
+- Skickningen sker efter duckning, EQ, fader och pan, före kanalens effekter. Kanalen mixas tillbaka efter `effects.process` med nivå 1.0 (`:956-962`); kanalens egen nivå/duck ligger i `EffectRack::process` (`Effects.cpp:2473-2483`).
+- Flera källor till samma kanal summeras redan idag (addFrom). En kanal utan skick och utan aktiv effekt är `idle` och hoppas över (`Effects.cpp:2442`) = CPU-kravet är redan uppfyllt.
+- `EffectRack::isActive` är alltid `true` (`Effects.cpp:2399` sätter den, ingen sätter den falsk), så `routed` betyder i praktiken `kanal >= 0`.
+
+### Förslag: ljudväg med flera sends
+1. **Matrisen är alltid SEND (additiv).** De nya 132 beloppen `send[källa][kanal]` ändrar aldrig torrsignalen. Bara den gamla `fxChannel`/`fxAmount`/`fxSend` behåller INSERT-beteendet (`dryGain = 1 - fxAmount` på sin kanal). Skälet: med flera kanaler finns ingen entydig "1 - summan" att dra av, och gamla presets måste låta likadant.
+2. **Effektivt belopp per kanal:** `amount_c = (c == fxChannel-1 ? fxAmount : 0) + send[källa][c]`. Summan (inte "matrisen ersätter") gör att ett gammalt preset med matris = 0 är bit-identiskt och att man kan lägga till en andra kanal utan att den första ändras. UI: reglaget för den gamla kanalen binds till `fxAmount`, övriga till matrisparametrarna; då nollar användaren inget oväntat om hen byter kanal i dropdownen.
+3. **Implementation (en loop, `sendBus` återanvänds):** `Mixer::mix` skriver redan `sendBus` en gång per källa. Efter det: den gamla `effects.send(...)` oförändrad, sedan `for c in 0..numChannels: if (send[c] > 0) effects.send(c, sendBus, send[c])`. Inga extra buffertar, inga nya mix-anrop. `sent[c]` sätts bara av ett verkligt anrop, så kanaler utan skick och effekt förblir `idle`.
+4. **Ordning/bit-identitet:** addition av flyttal är inte associativ. Låt den gamla sendens `addFrom` komma först och matrisens efter, och källorna i samma ordning som idag (kick, instr 1-10). Då är "alla sends 0" exakt samma operationer som förut (inga extra anrop).
+5. **Gain-staging:** linjär 0..1, ingen normalisering (normalisering skulle ändra gammalt ljud). Det betyder att en källa med 1.0 till tre kanaler ger 3× signal in totalt; det är avsiktligt (SEND är en parallell väg) och regleras av kanalens egen nivå (`gains[ch]`, `Effects.cpp:2407`). Föreslå **hjälptext** "sends add up; lower the channel level if the return is too hot" och en mjuk markering i UI när en källas summa > 2. Ingen auto-gain.
+6. **Mjukning:** dagens `amount` rampas inte (konstant per block, `addFrom`). Matrisen är automatiserbar, så använd `addFromWithRamp` med förra blockets värde (132 flyttal i processorn) för matrisen. Gamla vägen lämnas ouppmjukad (bit-identisk).
+7. **Sidechain på kanal 12 / egen kanal:** inget ändras i sendvägen; kanalens `SIDECHAIN`-effekt läser `SourceSignals` (`:947-954`), som är oberoende av sends.
+
+### Förslag: 132 parametrar utan att ändra rendersig
+- Namn: `fxSend<Källa><Kanal>`, t.ex. via `ParamID`-hjälpare: kick + `bass(layer, InstrumentField::…)` kan inte användas rakt av (matrisen är 11×12, inte per fält). Enklast: ett fält-block i `InstrumentField` för bas-lagren (12 fält: `fxSendTo1..12`, **sist** i enum) + 12 `kickFxSendTo1..12` sist bland kick-parametrarna. 10×12 + 12 = 132, samma mönster som `fxSend` (`Params.cpp:417`, `hasBass`).
+- Standard 0, `NormalisableRange<float>(0, 1, 0.001)`, vanliga `AudioParameterFloat` (automatiserbara). Saknas parametern i ett gammalt preset gäller standard 0 = av.
+- **Lagt sist i layouten**, efter alla befintliga parametrar (efter `Params.cpp:417` för lagren; kicken sist i `addKickToggleParams`). Obs: mixer-/effektparametrar för FX-kanal 12 (nya `fxL…`, `Mixer FxL …`) måste *också* läggas sist i hela layouten, inte i sin kanalloop, annars flyttas ordningen för parametrar efter kanal 11. **Att kolla först:** om presetindex/hash räknas på ordning eller id; id-baserat räcker att ID:na är nya.
+- `Params` laddar bas-fälten per lager i en loop med `get(F::x)`; matrisen kan läsas som en array `sendAmount[12]` i samma `getBass`-struct (`Params.cpp:817-824`-mönstret) så ljudtråden inte slår upp strängar.
+- helpcheck: 132 hjälpnycklar. Bas: `bassFxSendTo<N>` ×12 (en nyckel per fält räcker om helpcheck matchar fältnamn, ej lager) + `kickFxSendTo<N>` ×12. Då blir det 24 rader, inte 132. **Att verifiera** hur helpcheck räknar lager.
+- Mixer/FX har hårt 11 på: `Effects.h:23`, `PluginBase.cpp:13` (static_assert fxA-fxK, 5 platser), `Mixer.h:15` (strips = 1 + 10 + kanaler, fx sist, så en 12:e strip hamnar sist = ofarligt), `PluginBase.cpp:97-104, 605, 715, 1507, 1684`, `PresetButton.cpp:259-268`, `EffectsPage.h:79`, `fxPresetNames`. Inget av det rör sendvägen.
+
+### Tester (förslag)
+- Alla sends 0: rendersig oförändrad (existerande testet).
+- Två sends från samma källa till kanal A och B = ljudet var för sig summerat (linjär, tolerans nära 0).
+- Gammalt preset (`fxChannel`+`fxAmount`, matris 0) bit-identiskt; INSERT-dry fortfarande `1 - amount`.
+- Matrissend på samma kanal som den gamla: effektivt belopp = summan.
+- Blocksizetest 1/64/512 med matris på; CPU: kanaler utan skick och effekt förblir `idle`.
+
+### Risker / beslut åt Tobias/PL
+- Summerande sends kan låta för högt om flera ligger på 1.0 (inget auto-gain, medvetet).
+- Kanal 12 + `ParamID`-ordning: lägg sist.
+- `fxAmount` vs matris för samma kanal: förslaget är summa; alternativ är "matrisen vinner", men det kräver migrering av gamla presets.
