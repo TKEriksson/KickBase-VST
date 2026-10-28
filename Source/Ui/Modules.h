@@ -214,6 +214,7 @@ class SamplePage : public juce::Component, private juce::Timer
 {
 public:
     SamplePage (PluginBase& processor, int layer, juce::Colour accent);
+    void paint (juce::Graphics&) override;
     void resized() override;
     void loadSample (const juce::File& file);
 
@@ -233,6 +234,7 @@ private:
     juce::ToggleButton sampleReverseToggle { "REVERSE" }, ampToggle { "AMP" }, pitchToggle { "PITCH" };
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> sampleReverseAttachment, ampAttachment, pitchAttachment;
     std::vector<std::unique_ptr<juce::Component>> ampControls, pitchControls; // AMP: TIME, SHAPE; PITCH: SEMIS, TIME, SHAPE
+    std::array<juce::Rectangle<int>, 3> editBoxes; // rutorna PITCH, AMP, REVERSE under vågformen
     juce::Label sliceCapNotice; // "Only the first 16 slices have rows" när samplingen har fler skivor än skivrader
     juce::ComboBox sliceModeBox;
     juce::TextButton createButton { "CREATE" }; // E2 steg 4: gör Grid/Auto-resultatet till egna gränser (Manual) som kan flyttas

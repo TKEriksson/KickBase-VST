@@ -1835,6 +1835,19 @@ void SamplePage::loadSample (const juce::File& file)
     updateLabel();
 }
 
+void SamplePage::paint (juce::Graphics& g)
+{
+    for (const auto& box : editBoxes)
+    {
+        if (box.isEmpty())
+            continue;
+        g.setColour (Theme::panelAlt);
+        g.fillRoundedRectangle (box.toFloat(), 5.0f);
+        g.setColour (Theme::panelBorder);
+        g.drawRoundedRectangle (box.toFloat().reduced (0.5f), 5.0f, 1.0f);
+    }
+}
+
 void SamplePage::resized()
 {
     auto area = getLocalBounds().reduced (4);
@@ -1856,18 +1869,31 @@ void SamplePage::resized()
 
     auto right = area.removeFromRight (juce::jlimit (240, 420, area.getWidth() * 2 / 5));
     area.removeFromRight (8);
-    // Sample-editorn under vågformen: REVERSE, sedan en rad för AMP och en för PITCH (växel + rattar).
-    auto editRow = [&] (juce::ToggleButton& toggle, std::vector<std::unique_ptr<juce::Component>>& knobs)
+    // Sample-editorn under vågformen: tre rutor PITCH, AMP och REVERSE. Varje ruta har sin växel överst och
+    // rattarna (~48 px) under, så de syns som en grupp.
     {
-        auto row = area.removeFromBottom (54);
-        toggle.setBounds (row.removeFromLeft (64).withSizeKeepingCentre (64, 22));
-        for (auto& knob : knobs)
-            knob->setBounds (row.removeFromLeft (70));
-    };
-    editRow (pitchToggle, pitchControls);
-    editRow (ampToggle, ampControls);
-    sampleReverseToggle.setBounds (area.removeFromBottom (22).removeFromLeft (110));
-    area.removeFromBottom (2);
+        auto band = area.removeFromBottom (juce::jlimit (96, 118, area.getHeight() / 3));
+        area.removeFromBottom (4);
+        const auto total = 3 + 2 + 1;
+        const auto unit = band.getWidth() / total;
+        const int widths[3] { unit * 3, unit * 2, band.getWidth() - unit * 5 };
+        juce::ToggleButton* toggles[3] { &pitchToggle, &ampToggle, &sampleReverseToggle };
+        std::vector<std::unique_ptr<juce::Component>>* knobSets[3] { &pitchControls, &ampControls, nullptr };
+        for (int i = 0; i < 3; ++i)
+        {
+            auto box = band.removeFromLeft (widths[i]);
+            band.removeFromLeft (i < 2 ? 4 : 0);
+            editBoxes[(size_t) i] = box;
+            auto inner = box.reduced (4, 3);
+            toggles[i]->setBounds (inner.removeFromTop (22));
+            if (knobSets[i] != nullptr)
+            {
+                const auto cell = inner.getWidth() / std::max (1, (int) knobSets[i]->size());
+                for (auto& knob : *knobSets[i])
+                    knob->setBounds (inner.removeFromLeft (cell));
+            }
+        }
+    }
     view.setBounds (area);
 
     auto knobsRow = right.removeFromTop (right.getHeight() * 2 / 5);
