@@ -16,6 +16,19 @@ namespace MultiSampling
 
     // Tonnamn (C4 = 60, A4 = 69) eller ett heltal 0..127 sist i namnet, t.ex. "Piano_C#3" eller "bass_048"; -1 om inget hittas.
     int parseRootKey (const juce::String& name);
+
+    // SFZ-import: en region per sample. Läser <control> default_path, och <global>/<master>/<group>/<region> med arv; stödda opcodes:
+    // sample, key, lokey, hikey, pitch_keycenter, lovel, hivel, tune (cent), transpose (halvtoner). Tonvärden som siffra eller namn (c4 = 60).
+    struct SfzRegion
+    {
+        juce::String samplePath; // som i filen, med default_path framför
+        struct Mapping
+        {
+            int rootKey = 60, keyLow = 0, keyHigh = 127, velocityLow = 1, velocityHigh = 127;
+            float tuneCents = 0.0f;
+        } mapping;
+    };
+    std::vector<SfzRegion> parseSfz (const juce::String& text);
 }
 
 // Zonens mappning: vilka toner och anslagsstyrkor den svarar på, och vilken ton samplingen själv har.
@@ -50,7 +63,8 @@ struct MultiSampleBank
 class MultiSampleSet
 {
 public:
-    bool addFile (const juce::File& file);                   // message thread; rotton tas ur filnamnet om möjligt
+    bool addFile (const juce::File& file, const MultiSampleMapping* explicitMapping = nullptr); // message thread; utan mappning tas rotton ur filnamnet om möjligt
+    int addSfz (const juce::File& sfzFile);                  // lägger regionerna som zoner med SFZ-filens mappning; returnerar antal som lästes
     bool addZone (juce::AudioBuffer<float> mono, double rate, const juce::String& name, const MultiSampleMapping& mapping);
     void removeZone (int index);
     void setMapping (int index, const MultiSampleMapping& mapping);
