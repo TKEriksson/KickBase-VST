@@ -242,3 +242,9 @@ Nu: programmet, rel-0.3 motornära punkter: 1) S3 Unison/Reese, 2) multisampling
 - Plan: `docs/work/plan-click-layer-sample-tools.md`. 13 nya kickparametrar sist (kickClick2/3 Level/Length/Tone/Delay/Mode, kickSampleStart/Reverse/Fade), alla av = gamla ljudet.
 - Motor: extra klick i `KickEngine.cpp` (bara om nivå > 0), sampleverktyg i sample-grenen. Test: `testKickClickLayersAndSampleTools`.
 - Arbetare 1: UI + hjälptexter behövs (se planen).
+
+## 2026-10-28 – UI + hjälptexter för mina tre kärnor (Arbetare 2)
+- Bas, `SamplePage` (`Source/Ui/Modules.cpp`, `Modules.h`): REVERSE-knapp, AMP (TIME/SHAPE) och PITCH (SEMIS/TIME/SHAPE) med på/av-knapp under vågformen. Slice-knappen heter nu SLICES REVERSE.
+- Kick, `KickModule`: ny rad CLICK 2 / CLICK 3 (LEVEL/LENGTH/TONE/DELAY/MODE) i SYNTH-vyn; SAMPLE-vyn har raden TOOLS (START, REVERSE, FADE). Radhöjderna räknas från antalet rader, så gamla layouten är kvar.
+- SYNTH/SAMPLE-mixen i kicken fanns redan (`synthToggle`/`sampleToggle`, LEVEL = balans).
+- Hjälptexter: ett block i `Source/Ui/Help.cpp` (kickClick2/3*, kickSample*, bassSampleAmp*/Pitch*/Reverse). Arbetare 1:s tillfälliga rader för bassSampleAmp*/Pitch* finns bara i hennes gren: ta bort dubbletter vid merge.

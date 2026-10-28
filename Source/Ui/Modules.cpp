@@ -895,6 +895,36 @@ KickModule::KickModule (PluginBase& p)
                      "Compressor after drive and crush: a fast attack and a release that follows the kick length, with automatic makeup gain. Tighter, denser kick; 0 = off." },
                      { "FILTER", { knob (ParamID::kickLowCut, "LOW CUT"), knob (ParamID::kickVelPitch, "VEL>PITCH") } } });
 
+    // Extra klick-lager (nivå 0 = av): brusklick med eget filterläge och fördröjning, ovanpå CLICK-gruppen.
+    groups.addRow ({ { "CLICK 2", { knob (ParamID::kickClick2Level, "LEVEL"), knob (ParamID::kickClick2Length, "LENGTH"), knob (ParamID::kickClick2Tone, "TONE"),
+                                    knob (ParamID::kickClick2Delay, "DELAY"), choice (ParamID::kickClick2Mode, "MODE") },
+                       "A second noise click layer. LEVEL 0 = off. DELAY starts it that many ms after the hit, LENGTH is how long it lasts, MODE picks the filter (Bandpass, Lowpass, Highpass) and TONE its frequency. Not heard in Replace mode or with the synth off." },
+                     { "CLICK 3", { knob (ParamID::kickClick3Level, "LEVEL"), knob (ParamID::kickClick3Length, "LENGTH"), knob (ParamID::kickClick3Tone, "TONE"),
+                                    knob (ParamID::kickClick3Delay, "DELAY"), choice (ParamID::kickClick3Mode, "MODE") },
+                       "A third noise click layer, set up like CLICK 2. LEVEL 0 = off." } });
+
+    // Sampleverktyg (av = som förut): klipp bort början, baklänges, utfasning. REVERSE är en växel i en cell som rattarna.
+    {
+        auto reverse = std::make_unique<juce::ToggleButton> ("REVERSE");
+        reverse->setTooltip ("REVERSE - Plays the loaded sample backwards (after START has cut off its beginning). Off (default): as before.");
+        reverse->getProperties().set ("labelled", true);
+        reverse->setColour (juce::ToggleButton::tickColourId, Theme::kick);
+        reverse->setColour (juce::ToggleButton::textColourId, Theme::textDim);
+        sampleReverseAttachment = std::make_unique<juce::ButtonParameterAttachment> (*p.apvts.getParameter (ParamID::kickSampleReverse), *reverse);
+        controls.push_back (std::move (reverse));
+        addAndMakeVisible (*controls.back());
+        sampleControls.push_back (controls.back().get());
+    }
+    {
+        auto* start = knob (ParamID::kickSampleStart, "START");
+        auto* fade = knob (ParamID::kickSampleFade, "FADE");
+        sampleControls.push_back (start);
+        sampleControls.push_back (fade);
+        // Reverse-växeln ligger sist i sampleControls; gruppen får ordningen START, FADE, REVERSE.
+        sampleGroups.addRow ({ { "TOOLS", { start, fade, sampleControls[sampleControls.size() - 3] },
+                                 "Edit the loaded sample: START cuts off its first ms, FADE fades out its last ms, REVERSE plays it backwards. All off = the sample as loaded." } });
+    }
+
     synthToggle.setTooltip ("Kick SYNTH on/off. Off = only the loaded sample is heard (like Replace); with no sample the kick is silent.");
     sampleToggle.setTooltip ("Kick SAMPLE on/off. Off = the loaded sample is ignored (it stays loaded) and the synth kick plays alone.");
     synthToggleAttachment = std::make_unique<juce::ButtonParameterAttachment> (*p.apvts.getParameter (ParamID::kickSynthOn), synthToggle);
@@ -1060,15 +1090,16 @@ void KickModule::resized()
         auto right = area.removeFromRight (340);
         area.removeFromRight (8);
         library.setBounds (area);
-        const auto rowHeight = juce::jlimit (60, 100, right.getHeight() / 2 - ControlGroups::titleHeight - 3);
-        sampleGroups.layout (right.removeFromTop (ControlGroups::titleHeight + rowHeight + 3), rowHeight);
+        const auto sampleRows = sampleGroups.numRows();
+        const auto rowHeight = juce::jlimit (60, 100, right.getHeight() / (sampleRows + 1) - ControlGroups::titleHeight - 3);
+        sampleGroups.layout (right.removeFromTop (sampleRows * (ControlGroups::titleHeight + rowHeight + 3)), rowHeight);
         right.removeFromTop (8);
         sampleHelp.setBounds (right);
         return;
     }
 
     // En rad rattar under displayen, som får resten av höjden.
-    const auto rowHeight = juce::jlimit (60, 100, area.getHeight() / 3 - ControlGroups::titleHeight - 3);
+    const auto rowHeight = juce::jlimit (60, 100, area.getHeight() / (groups.numRows() + 1) - ControlGroups::titleHeight - 3);
     const auto groupsHeight = groups.numRows() * (ControlGroups::titleHeight + rowHeight + 3);
     groups.layout (area.removeFromBottom (groupsHeight), rowHeight);
     area.removeFromBottom (4);
@@ -1562,8 +1593,33 @@ SamplePage::SamplePage (PluginBase& p, int layerIn, juce::Colour accent)
     choice (F::sampleKey, "KEY");
 
     // Skivor: varje skiva har en egen rad "Slice N" i mönstret (en not där spelar skivan i originalhastighet, utan loop).
-    reverseToggle.setButtonText ("REVERSE");
-    reverseToggle.setTooltip ("REVERSE - Plays every slice backwards.");
+    // Sample-editor: REVERSE per ton, AMP- och PITCH-kurvor (alla av som standard = som förut).
+    auto editKnob = [&] (std::vector<std::unique_ptr<juce::Component>>& list, F f, const char* name)
+    {
+        list.push_back (std::make_unique<KnobComponent> (p.apvts, id (f), name, accent));
+        addAndMakeVisible (*list.back());
+    };
+    auto editToggle = [&] (juce::ToggleButton& toggle, F f, const char* tip,
+                           std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment>& attachment)
+    {
+        toggle.setTooltip (tip);
+        toggle.getProperties().set ("labelled", true);
+        toggle.setColour (juce::ToggleButton::tickColourId, accent);
+        toggle.setColour (juce::ToggleButton::textColourId, Theme::textDim);
+        addAndMakeVisible (toggle);
+        attachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, id (f), toggle);
+    };
+    editToggle (sampleReverseToggle, F::sampleReverse, "REVERSE - Every note plays the sample backwards, from its end (START counts from the end). Off (default): as before.", sampleReverseAttachment);
+    editToggle (ampToggle, F::sampleAmpOn, "AMP - Fades the sample out over TIME with the SHAPE curve, so a long sample can be shortened. Off (default): as before.", ampAttachment);
+    editToggle (pitchToggle, F::samplePitchOn, "PITCH - The sample starts SEMIS higher or lower and glides to its own pitch over TIME. Off (default): as before.", pitchAttachment);
+    editKnob (ampControls, F::sampleAmpMs, "TIME");
+    editKnob (ampControls, F::sampleAmpShape, "SHAPE");
+    editKnob (pitchControls, F::samplePitchSemis, "SEMIS");
+    editKnob (pitchControls, F::samplePitchMs, "TIME");
+    editKnob (pitchControls, F::samplePitchShape, "SHAPE");
+
+    reverseToggle.setButtonText ("SLICES REVERSE");
+    reverseToggle.setTooltip ("SLICES REVERSE - Plays every slice backwards.");
     reverseToggle.getProperties().set ("labelled", true);
     reverseToggle.setColour (juce::ToggleButton::tickColourId, accent);
     reverseToggle.setColour (juce::ToggleButton::textColourId, Theme::textDim);
@@ -1799,6 +1855,18 @@ void SamplePage::resized()
 
     auto right = area.removeFromRight (juce::jlimit (240, 420, area.getWidth() * 2 / 5));
     area.removeFromRight (8);
+    // Sample-editorn under vågformen: REVERSE, sedan en rad för AMP och en för PITCH (växel + rattar).
+    auto editRow = [&] (juce::ToggleButton& toggle, std::vector<std::unique_ptr<juce::Component>>& knobs)
+    {
+        auto row = area.removeFromBottom (54);
+        toggle.setBounds (row.removeFromLeft (64).withSizeKeepingCentre (64, 22));
+        for (auto& knob : knobs)
+            knob->setBounds (row.removeFromLeft (70));
+    };
+    editRow (pitchToggle, pitchControls);
+    editRow (ampToggle, ampControls);
+    sampleReverseToggle.setBounds (area.removeFromBottom (22).removeFromLeft (110));
+    area.removeFromBottom (2);
     view.setBounds (area);
 
     auto knobsRow = right.removeFromTop (right.getHeight() * 2 / 5);
