@@ -697,7 +697,11 @@ namespace
         const auto seconds = (juce::Time::getMillisecondCounterHiRes() - start) / 1000.0;
         std::printf ("  %d tabeller byggda på %.2f s\n", Wavetables::builtInCount(), seconds);
         check (Wavetables::builtInCount() >= 100, "minst 100 inbyggda tabeller", (double) Wavetables::builtInCount());
+#if JUCE_DEBUG
+        check (seconds < 120.0, "alla tabeller byggs på rimlig tid", seconds); // Debug: 23 s ensam, 70 s under last (28 okt)
+#else
         check (seconds < 20.0, "alla tabeller byggs på rimlig tid", seconds);
+#endif
 
         juce::StringArray seen;
         auto bad = 0;

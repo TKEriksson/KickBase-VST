@@ -452,6 +452,12 @@ namespace
                  { { 0.0f, 0.0f, 0.0f }, { attack, 1.0f, 0.0f }, { length - 0.03f, 0.9f, 0.0f }, { length, 0.0f, 0.3f } } };
     }
 
+    // FUNDAMENTAL DUCK för hela instrumentet (källa Kick): basens grundton sänks medan kicken klingar. Se docs/school/fundamental-duck.md.
+    std::vector<Value> fundDuck (float depthDb, float windowCents)
+    {
+        return { { ParamID::fundamentalDuckOn, 1 }, { ParamID::fundamentalDuckDepth, depthDb }, { ParamID::fundamentalDuckWindow, windowCents } };
+    }
+
     // Arbetare 2, PSY ROLLING: huvudpresets med PSY CLEAN-kick + ny rollbas, sidechain (Duck) och en FX-send. Ett lager (instrumentCount 1),
     // så lager 1-2 är avstängda och ljudet är det som mäts.
     constexpr const char* psyRollingCategory = "PSY ROLLING";
@@ -461,7 +467,7 @@ namespace
     {
         return newest ("Roll Full-On", psyCleanKick (0.0f, 1.0f, 1.0f, 0.20f, 0.0005f, 0.85f, 0.0f, 0.0f),
                        join ({ psyRollBass (0, 0.95f, 94, 0.60f, 1.00f, 12.0f, 0.10f, 1200.0f, 0.20f, 3.0f, 45.0f, 0.40f, 90.0f, 25.0f, 0.15f, 0.55f, 0),
-                               sendTo (0, 1, 0.20f) }),
+                               sendTo (0, 1, 0.20f), fundDuck (9.0f, 200.0f) }),
                        join ({ fx (0, 0, EffectType::distortion, { 0, 0.30f, 5000.0f, 1.0f }), { ch (0, "Duck", 0.85f), ch (0, "EqHp", 150.0f) } }),
                        { { 0, InstrumentGrid::sixteenth, { ". x x x . x x x . x x x . x x X", ". x x x . x x x . x x+12 x . x x x",
                                                            ". x x x . x x x . x x x . x+3 x x", ". x x x . x x+12 x . x x x . x x X" }, 0.7f } }, 1, 4);
@@ -472,7 +478,7 @@ namespace
     {
         return newest ("Roll Wide", psyCleanKick (2.0f, 1.0f, 1.0f, 0.20f, 0.0005f, 0.85f, 0.0f, 0.0f),
                        join ({ psyRollBass (0, 1.00f, 94, 1.00f, 1.00f, 12.0f, 0.10f, 1500.0f, 0.18f, 2.0f, 70.0f, 0.40f, 100.0f, 25.0f, 0.05f, 0.52f, 0),
-                               sendTo (0, 1, 0.25f) }),
+                               sendTo (0, 1, 0.25f), fundDuck (9.0f, 200.0f) }),
                        join ({ fx (0, 0, EffectType::chorus, { 0.4f, 0.5f, 10.0f, 0.0f, 0.4f }), { ch (0, "Duck", 0.85f), ch (0, "EqHp", 200.0f) } }),
                        { { 0, InstrumentGrid::sixteenth, { ". x x x . x x x . x x x . x x X", ". x x x . x x x . x x-2 x . x x x" }, 0.7f } }, 1, 2);
     }
@@ -482,7 +488,7 @@ namespace
     {
         return newest ("Roll Dekel", psyCleanKick (5.0f, 0.8f, 1.2f, 0.20f, 0.003f, 0.85f, 0.0f, 0.0f),
                        join ({ psyRollBass (0, 1.00f, 94, 0.80f, 1.00f, 0.0f, 0.10f, 1500.0f, 0.15f, 3.0f, 60.0f, 0.35f, 100.0f, 25.0f, 0.10f, 0.58f, 0),
-                               sendTo (0, 1, 0.22f) }),
+                               sendTo (0, 1, 0.22f), fundDuck (9.0f, 200.0f) }),
                        join ({ fx (0, 0, EffectType::echo, { 5, 0, 0, 0.5f, 2, 0.30f, 4500.0f, 0.0f, 0, 0.5f }), { ch (0, "Duck", 0.85f), ch (0, "EqHp", 220.0f) } }),
                        { { 0, InstrumentGrid::sixteenth, { ". x x m . x x x . x m x . x x X", ". x x x . x m x . x x x . x+3 x x-2" }, 0.7f } }, 1, 2);
     }
@@ -492,7 +498,7 @@ namespace
     {
         return newest ("Roll Forest", psyCleanKick (9.0f, 1.0f, 0.85f, 0.17f, 0.0005f, 0.85f, 0.10f, 0.05f),
                        join ({ psyRollBass (0, 1.00f, 99, 0.90f, 1.00f, 0.0f, 0.10f, 2200.0f, 0.45f, 3.0f, 30.0f, 0.30f, 50.0f, 20.0f, 0.15f, 0.50f, 1),
-                               sendTo (0, 1, 0.18f) }),
+                               sendTo (0, 1, 0.18f), fundDuck (9.0f, 200.0f) }),
                        join ({ fx (0, 0, EffectType::reverb, { 0.5f, 0.7f, 1.0f, 400.0f, 1.0f, 20.0f }), { ch (0, "Duck", 0.9f), ch (0, "EqHp", 250.0f) } }),
                        { { 0, InstrumentGrid::sixteenth, { ". x x m . x x x . m x . . x x x", ". x x x . x m x . x x+3 . . x x-2 x" }, 0.7f } }, 1, 2);
     }
@@ -506,7 +512,7 @@ namespace
     {
         return newest ("Glide Sub", psyCleanKick (0.0f, 1.0f, 1.0f, 0.20f, 0.0005f, 0.85f, 0.0f, 0.0f),
                        join ({ psyRollBass (0, 0.30f, 95, 0.50f, 0.60f, 0.0f, 0.25f, 700.0f, 0.15f, 2.0f, 120.0f, 0.80f, 400.0f, 40.0f, 0.15f, 0.50f, 0),
-                               sendTo (0, 1, 0.15f) }),
+                               sendTo (0, 1, 0.15f), fundDuck (12.0f, 250.0f) }),
                        join ({ fx (0, 0, EffectType::distortion, { 0, 0.20f, 5000.0f, 1.0f }), { ch (0, "Duck", 0.85f), ch (0, "EqHp", 150.0f) } }),
                        { { 0, InstrumentGrid::sixteenth, { "X . . . . . x . x+7~:200 . . . x+12~:100 . . .", "x . . . . . x . x+5~:200 . . . x-5~:200 . . ." }, 0.9f } }, 1, 2);
     }
@@ -516,7 +522,7 @@ namespace
     {
         return newest ("Glide Acid", psyCleanKick (2.0f, 1.0f, 1.0f, 0.20f, 0.0005f, 0.85f, 0.0f, 0.0f),
                        join ({ psyRollBass (0, 1.00f, 99, 0.90f, 1.00f, 0.0f, 0.10f, 1800.0f, 0.40f, 3.0f, 90.0f, 0.60f, 200.0f, 25.0f, 0.15f, 0.52f, 1),
-                               sendTo (0, 1, 0.18f) }),
+                               sendTo (0, 1, 0.18f), fundDuck (9.0f, 200.0f) }),
                        join ({ fx (0, 0, EffectType::echo, { 5, 0, 0, 0.5f, 2, 0.30f, 4500.0f, 0.0f, 0, 0.5f }), { ch (0, "Duck", 0.85f), ch (0, "EqHp", 200.0f) } }),
                        { { 0, InstrumentGrid::sixteenth, { ". x x . x+3~ x . x . x+7~ . x x-2~ . x X", ". x x . x+5~ x . x . x+12~ . x x+7~ . x X" }, 0.7f } }, 1, 2);
     }
@@ -526,7 +532,7 @@ namespace
     {
         return newest ("Glide Dive", psyCleanKick (5.0f, 0.8f, 1.2f, 0.20f, 0.003f, 0.85f, 0.0f, 0.0f),
                        join ({ psyRollBass (0, 0.60f, 94, 0.70f, 0.80f, 0.0f, 0.15f, 1200.0f, 0.20f, 2.0f, 100.0f, 0.70f, 300.0f, 35.0f, 0.20f, 0.55f, 0),
-                               sendTo (0, 1, 0.20f) }),
+                               sendTo (0, 1, 0.20f), fundDuck (9.0f, 200.0f) }),
                        join ({ fx (0, 0, EffectType::chorus, { 0.4f, 0.5f, 10.0f, 0.0f, 0.4f }), { ch (0, "Duck", 0.85f), ch (0, "EqHp", 180.0f) } }),
                        { { 0, InstrumentGrid::sixteenth, { "X . . . x+12 . . . x+12~:200 . . . x~:300 . . .", "x . . x . . x+7 . x+7~:100 . x+12~:100 . x+0~:300 . . ." }, 0.8f } }, 1, 2);
     }
