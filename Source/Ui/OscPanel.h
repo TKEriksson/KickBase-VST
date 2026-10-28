@@ -69,6 +69,7 @@ private:
     void askForNameAndSave();
     juce::TextButton prevPresetButton { "<" }, nextPresetButton { ">" }, presetButton { "PRESET" }, savePresetButton { "SAVE" }, resetOscButton { "RESET" };
     juce::File currentPreset;
+    juce::TextButton helpButton;
     juce::Component::SafePointer<juce::AlertWindow> saveDialog;
 
     PluginBase& processor;

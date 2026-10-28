@@ -92,11 +92,35 @@ På SOUNDSTAGE-sidan finns 16 knappar under "AFFECTS" (kick, instrument 1–10, 
 - **ENHANCE**: gör mono-ljud bredare, och är mono-kompatibel.
 )";
 
+    const char* oscText = R"(# OSC 1 / 2 / 3
+One oscillator of the bass layer. It plays a wavetable: a row of waveforms that POS moves along.
+
+## Choosing the sound
+- **TABLE**: the wavetable. Click for categories, or load your own with **WAV** (2048-sample cycles become up to 16 waveforms).
+- **SIN / TRI / SAW / SQR**: the classic waveforms in one click (wavetables are in the TABLE list).
+- **MORPH**: on = POS fades smoothly between waveforms, off = it jumps between them.
+- **WARP** and **AMOUNT**: bends the waveform. With RING (B) on OSC 1 a menu picks what OSC 1 is multiplied by (OSC 2, OSC 3 or both).
+
+## The picture
+Click and hold on the picture to hear this oscillator alone. The small button in the corner switches between wave, scope and spectrum.
+
+## The knobs
+- **POS**, **LEVEL**, **SEMI**, **FINE** (pitch), **PHASE**.
+- **UNISON**, **DETUNE**, **BLEND**, **STEREO**, **PAN**: stacked voices, how far apart they are tuned, and how they are spread in the stereo image.
+- **RAND**: random start phase.
+- Hover any knob for its own explanation.
+
+## Presets and filter
+- **PRESET**, **<** **>**, **SAVE**, **RESET**: only this oscillator changes, not the rest of the sound.
+- **FILTER**: on = this oscillator goes through Filter 1 and 2 (set on the FILTER tab).
+)";
+
     struct TopicInfo { HelpDialog::Topic topic; const char* tab; const char* text; };
     const TopicInfo topics[] = {
         { HelpDialog::Topic::pianoRoll, "PIANO ROLL", pianoRollText },
         { HelpDialog::Topic::liveCode, "LIVE CODE", liveCodeText },
         { HelpDialog::Topic::soundstage, "SOUNDSTAGE", soundstageText },
+        { HelpDialog::Topic::osc, "OSC", oscText },
     };
 
     // ---- Rendering ----
@@ -245,10 +269,14 @@ På SOUNDSTAGE-sidan finns 16 knappar under "AFFECTS" (kick, instrument 1–10, 
         void resized() override
         {
             auto area = getLocalBounds().reduced (8);
-            auto row = area.removeFromTop (26);
-            const auto each = row.getWidth() / (int) std::size (topics);
-            for (auto& button : tabs)
-                button.setBounds (row.removeFromLeft (each).reduced (2, 0));
+            // Flikarna radbryts: högst sex per rad, så att många ämnen inte blir smala.
+            constexpr int perRow = 6;
+            const auto count = (int) std::size (topics);
+            const auto rows = (count + perRow - 1) / perRow;
+            const auto each = area.getWidth() / std::min (count, perRow);
+            for (int i = 0; i < count; ++i)
+                tabs[(size_t) i].setBounds (area.getX() + (i % perRow) * each, area.getY() + (i / perRow) * 26, each, 24);
+            area.removeFromTop (rows * 26);
             area.removeFromTop (6);
             viewport.setBounds (area);
             view.setSize (viewport.getMaximumVisibleWidth(), std::max (10, view.getHeight()));
