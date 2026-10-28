@@ -430,7 +430,7 @@ public:
     // (där de kopierade slutar, och efter en inklistring där den slutar).
     struct NoteClipboard
     {
-        struct Note { int dt = 0, length = 24, pitch = 0; float velocity = 0.8f; bool slide = false; Pattern::Chord chord {}; int index = 0; /* stackindex */ };
+        struct Note { int dt = 0, length = 24, pitch = 0; float velocity = 0.8f; bool slide = false; Pattern::Chord chord {}; int index = 0; /* stackindex */ std::array<float, Pattern::numLocks> lock { Pattern::lockUnset, Pattern::lockUnset, Pattern::lockUnset }; };
         std::vector<Note> notes;
         int span = 0;          // hela de kopierade tonernas längd i ticks
         int nextStart = -1;    // var nästa inklistring börjar, -1 = vid vyns början

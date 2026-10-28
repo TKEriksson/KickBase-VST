@@ -129,7 +129,8 @@ PianoRoll::PianoRoll (PluginBase& p, std::vector<juce::Colour> colours) : proces
     for (auto* c : std::initializer_list<juce::Component*> { &snapButton, &gridBox, &smallerButton, &biggerButton, &allButton, &deleteButton, &glideButton, &followButton, &ghostButton, &presetButton, &midiButton, &drawButton, &selectButton, &eraseButton,
                                                                  &copyButton, &pasteButton, &pasteOkButton, &pasteCancelButton, &listenButton, &popOutButton, &helpButton, &addLaneButton, &hBar, &vBar })
         addAndMakeVisible (c);
-    addLaneButton.setTooltip ("+ LANE - Adds a lane under the notes (up to four in all). Each lane shows one value per note, like the VEL lane; choose the value by clicking the lane's name. "
+    addLaneButton.setTooltip ("+ LANE - Adds a lane under the notes (up to four in all). Each lane shows one value per note, like the VEL lane; choose the value (CUTOFF, PAN or FX SEND) by clicking the lane's name. "
+                              "Click or drag in a lane to set that note's value (ALT + click removes it, so the note follows the knob again). "
                               "Drag the thin bar above a lane to make the lanes taller or lower.");
     addLaneButton.onClick = [this] { addLane(); };
     HelpDialog::setupButton (helpButton, *this, HelpDialog::Topic::pianoRoll, "the PIANO ROLL (tools, keys, chords, glide)");
@@ -689,7 +690,7 @@ void PianoRoll::copySelection (bool cut)
     clip.notes.clear();
     for (const auto& key : selection)
         if (const auto found = notes.find (key); found != notes.end())
-            clip.notes.push_back ({ key.tick - first, found->second.length, found->second.pitch, found->second.velocity, found->second.slide, found->second.chord, key.index });
+            clip.notes.push_back ({ key.tick - first, found->second.length, found->second.pitch, found->second.velocity, found->second.slide, found->second.chord, key.index, found->second.lock });
 
     // Nästa inklistring börjar där de kopierade slutar (avrundat uppåt till ett steg i rutnätet).
     const auto step = std::max (1, snapTicks());
@@ -791,6 +792,9 @@ void PianoRoll::commitPaste()
         if (! occupied)
         {
             processor.pattern.addNote (layer, tick, length, pitch, n.velocity, n.slide, n.chord);
+            for (int p = 0; p < Pattern::numLocks; ++p)
+                if (n.lock[(size_t) p] >= 0.0f)
+                    processor.pattern.setLock (layer, tick, p, n.lock[(size_t) p]);
             placed.insert ({ tick, 0 });
         }
         else
@@ -1078,6 +1082,8 @@ bool PianoRoll::liveNote (NoteKey key, NoteData& out) const
     if (key.index == 0)
     {
         out = { n.length.load(), n.pitch.load(), n.velocity.load(), n.slide.load(), n.getChord() };
+        for (int p = 0; p < Pattern::numLocks; ++p)
+            out.lock[(size_t) p] = n.lock[(size_t) p].load();
         return true;
     }
     const auto& e = n.extra[(size_t) key.index - 1];
@@ -1222,6 +1228,8 @@ void PianoRoll::applyNotes (const NoteMap& target)
             if (n.velocity.load() != d.velocity) n.velocity = d.velocity;
             if (n.slide.load() != d.slide) n.slide = d.slide;
             if (n.getChord() != d.chord) n.setChord (d.chord);
+            for (int p = 0; p < Pattern::numLocks; ++p)
+                if (n.lock[(size_t) p].load() != d.lock[(size_t) p]) n.lock[(size_t) p] = d.lock[(size_t) p];
             if (! n.on.load())
                 n.on = true;
         }
@@ -1245,6 +1253,7 @@ void PianoRoll::applyNotes (const NoteMap& target)
                     continue;
                 n->on = false;
                 n->clearExtras();
+                n->clearLocks();
             }
             else if (key.index < Pattern::maxStack)
                 n->extra[(size_t) key.index - 1].on = false;
@@ -1398,6 +1407,10 @@ juce::String PianoRoll::describe (NoteKey key) const
                       + "vel " + juce::String (juce::roundToInt (n.velocity * 100.0f)) + " %";
     if (n.slide)
         text << "  GLIDE";
+    if (key.index == 0)
+        for (int p = 0; p < Pattern::numLocks; ++p)
+            if (n.lock[(size_t) p] >= 0.0f)
+                text << "  " << laneName (p + 1) << " " << juce::roundToInt (n.lock[(size_t) p] * 100.0f) << " %";
     if (key.index > 0)
         text << "  STACK " << key.index + 1 << "/" << processor.pattern.stackSize (layer, key.tick);
     if (key.index == 0 && std::any_of (n.chord.begin(), n.chord.end(), [] (auto v) { return v != 0; }))
@@ -1874,8 +1887,7 @@ void PianoRoll::paint (juce::Graphics& g)
         }
         g.drawText (juce::String (laneName (lanes[i].param)) + " v", header.withTrimmedLeft (4.0f).withTrimmedRight (12.0f), juce::Justification::centredLeft);
         g.drawText ("x", header.removeFromRight (12.0f), juce::Justification::centred);
-        g.setFont (Theme::font (9.0f, false));
-        g.drawText ("per-note values for this parameter come later", area, juce::Justification::centred);
+        paintLockLane ((int) i, g);
     }
     {
         juce::Graphics::ScopedSaveState state (g);
@@ -1935,14 +1947,14 @@ void PianoRoll::mouseMove (const juce::MouseEvent& event)
 
 const char* PianoRoll::laneName (int param)
 {
-    static const char* names[] = { "VEL", "CUTOFF", "RESO", "PAN", "FX", "DRIVE" };
-    return names[juce::jlimit (0, 5, param)];
+    static const char* names[] = { "VEL", "CUTOFF", "PAN", "FX SEND" };
+    return names[juce::jlimit (0, numLaneParams - 1, param)];
 }
 
 const char* PianoRoll::laneTooltip (int param)
 {
-    static const char* tips[] = { "Velocity", "Filter cutoff", "Filter resonance", "Pan", "Effect send", "Drive" };
-    return tips[juce::jlimit (0, 5, param)];
+    static const char* tips[] = { "Velocity", "Filter cutoff", "Pan", "Effect send" };
+    return tips[juce::jlimit (0, numLaneParams - 1, param)];
 }
 
 int PianoRoll::splitterAt (juce::Point<float> p) const
@@ -1956,10 +1968,41 @@ int PianoRoll::splitterAt (juce::Point<float> p) const
     return -1;
 }
 
+void PianoRoll::paintLockLane (int index, juce::Graphics& g)
+{
+    juce::Graphics::ScopedSaveState state (g);
+    const auto area = laneArea[(size_t) index];
+    g.reduceClipRegion (area.toNearestInt());
+    const auto param = lanes[(size_t) index].param - 1;
+    const auto colour = layerColours[(size_t) juce::jlimit (0, (int) layerColours.size() - 1, baseLayer)];
+    NoteData note;
+    for (int tick = 0; tick < editTicks(); ++tick)
+    {
+        const NoteKey key { tick, 0 };
+        if (! liveNote (key, note))
+            continue;
+        const auto x = velocityX (key);
+        if (x < area.getX() - 4.0f || x > area.getRight())
+            continue;
+        const auto value = note.lock[(size_t) param];
+        const auto lit = selection.count (key) > 0 || (key == dragKey && drag == Drag::lane);
+        if (value < 0.0f)
+        {
+            g.setColour (Theme::textDim.withAlpha (0.4f));
+            g.fillRect (juce::Rectangle<float> (x, area.getBottom() - 4.0f, 3.0f, 1.5f)); // inget l�s: noten f�ljer ratten
+            continue;
+        }
+        const auto height = value * (area.getHeight() - 6.0f);
+        g.setColour (lit ? juce::Colour (0xffffe27a) : colour.withAlpha (0.85f));
+        g.fillRect (juce::Rectangle<float> (x, area.getBottom() - 3.0f - height, 3.0f, height));
+        g.fillEllipse (juce::Rectangle<float> (5.0f, 5.0f).withCentre ({ x + 1.5f, area.getBottom() - 3.0f - height }));
+    }
+}
+
 void PianoRoll::showLaneMenu (int index)
 {
     juce::PopupMenu menu;
-    for (int param = 1; param <= 5; ++param)
+    for (int param = 1; param < numLaneParams; ++param)
         menu.addItem (param, laneTooltip (param), true, lanes[(size_t) index].param == param);
     menu.addSeparator();
     menu.addItem (100, "Remove this lane");
@@ -2089,7 +2132,26 @@ void PianoRoll::mouseDown (const juce::MouseEvent& event)
         }
         if (laneArea[(size_t) i].contains (event.position))
         {
-            flash ("Per-note values for " + juce::String (laneName (lanes[(size_t) i].param)) + " are not in yet.");
+            const auto key = noteForVelocity (event.position.x);
+            if (key.valid() && key.index == 0)
+            {
+                dragLane = i;
+                dragKey = key;
+                if (event.mods.isAltDown())
+                {
+                    processor.pattern.clearLock (layer, key.tick, lanes[(size_t) i].param - 1);
+                    edited = true;
+                    flash (juce::String (laneName (lanes[(size_t) i].param)) + " lock removed (the note follows the knob again)");
+                    commit();
+                    dragKey = {};
+                    repaint();
+                    return;
+                }
+                drag = Drag::lane;
+                mouseDrag (event);
+            }
+            else if (key.valid())
+                flash ("Stacked notes follow their main note's " + juce::String (laneName (lanes[(size_t) i].param)) + " lock; edit the first note of the stack.");
             return;
         }
     }
@@ -2431,6 +2493,16 @@ void PianoRoll::mouseDrag (const juce::MouseEvent& event)
     if (drag == Drag::velocity)
     {
         setLiveVelocity (dragKey, juce::jlimit (0.02f, 1.0f, 1.0f - (event.position.y - laneArea[0].getY() - 3.0f) / (laneArea[0].getHeight() - 6.0f)));
+        edited = true;
+        repaint();
+        return;
+    }
+
+    if (drag == Drag::lane)
+    {
+        const auto& area = laneArea[(size_t) dragLane];
+        const auto value = juce::jlimit (0.0f, 1.0f, 1.0f - (event.position.y - area.getY() - 3.0f) / (area.getHeight() - 6.0f));
+        processor.pattern.setLock (layer, dragKey.tick, lanes[(size_t) dragLane].param - 1, value);
         edited = true;
         repaint();
         return;

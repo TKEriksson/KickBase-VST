@@ -624,3 +624,8 @@ Steg 3 lägger sedan de 132 sändningsparametrarna efter dessa, så ordningen bl
 - `audit effects` startades men gav bara första raden inom 280 s (ej fullkörd).
 - Rendersig: verktyget är icke-deterministiskt mellan körningar av SAMMA exe (Debug och Release). Wavetable-bakgrundstråden (`Wavetable.cpp:757-776`) är en orsak, `Wavetables::ensureAll()` före rendersig (Tool.cpp) räckte inte. Jämförelsen är därför ej avgörande; PL har avstått från den.
 - Kanal 12 syns inte i UI förrän steg 2; `firstFreeFxChannel()` kan returnera kanal 12.
+
+### Lane-UI mot parameterlås (Arbetare 1, 28 okt, gren slice-roll, lokal commit, ingen push)
+- Mergade fx-matrix i slice-roll (376348e). Kedja: jog-simple → fx-echo-steps → slice-roll (innehåller fx-matrix).
+- Lanes CUTOFF/PAN/FX SEND ritar och drar lås (`PianoRoll.cpp` `paintLockLane`, `Drag::lane` i mouseDrag), Alt+klick återställer, ett ångra-steg per drag, klippbordet (`PluginBase.h` NoteClipboard) och flytt bär låsen. Hjälptexten uppdaterad (`HelpDialog.cpp:9`).
+- Debug all grön, alla tester gick igenom. Inte visuellt verifierat; inga nya enhetstester för lanes. Inget ljud rört.
