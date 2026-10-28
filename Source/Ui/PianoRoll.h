@@ -119,7 +119,7 @@ public:
     void focusLost (FocusChangeType) override { repaint(); }
 
 private:
-    enum class Drag { none, move, resize, velocity, box, erase, paste, ruler, keys, pan, stroke };
+    enum class Drag { none, move, resize, velocity, box, erase, paste, ruler, keys, pan, stroke, splitter };
     enum class Tool { draw, select, erase };
 
     struct NoteData
@@ -249,7 +249,24 @@ private:
     int lowPitch() const { return sliceMode ? RowRegistry::pitchOfSlice (0) : Pattern::minPitch; }
     int highPitch() const { return sliceMode ? RowRegistry::pitchOfSlice (std::max (1, sliceCount()) - 1) : Pattern::maxPitch; }
 
-    juce::Rectangle<float> toolbarArea, keyArea, rulerArea, gridArea, velocityArea;
+    juce::Rectangle<float> toolbarArea, keyArea, rulerArea, gridArea;
+
+    // Parameterlanes under notgallret. Lane 0 är alltid velocity (kan inte tas bort); övriga väljer parameter (fas 1: bara ytan, inga värden än).
+    // Höjderna hör till vyn (som zoom och scroll), inte till presetet.
+    struct Lane { int param = 0; float height = 40.0f; };
+    static constexpr int maxLanes = 4;
+    static constexpr float minLaneHeight = 28.0f, laneGap = 4.0f;
+    static const char* laneName (int param);                  // kort namn i lanens huvud
+    static const char* laneTooltip (int param);
+    std::vector<Lane> lanes { Lane {} };
+    std::array<juce::Rectangle<float>, maxLanes> laneArea;
+    juce::Rectangle<float> laneHeader (int index) const { return { 0.0f, laneArea[(size_t) index].getY(), 46.0f, laneArea[(size_t) index].getHeight() }; }
+    int splitterAt (juce::Point<float> p) const;               // lanen vars överkant delaren är, eller -1
+    void showLaneMenu (int index);
+    void addLane();
+    juce::TextButton addLaneButton { "+ LANE" };
+    int splitterLane = -1;
+    float splitterStartY = 0.0f, splitterStartHeight = 0.0f;
 
     // Verktygsraden.
     juce::TextButton snapButton { "SNAP" }, smallerButton { "-" }, biggerButton { "+" }, allButton { "SELECT ALL" }, deleteButton { "DEL" },

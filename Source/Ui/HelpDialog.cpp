@@ -6,7 +6,7 @@ namespace
     // ---- Texterna (markdown-lik: "# " och "## " rubriker, "- " punkter, tomma rader mellan stycken) ----
 
     const char* pianoRollText = R"(# PIANO ROLL
-Here you write the notes of one row (the kick or an instrument). Notes are placed on a grid; the strip at the bottom is velocity.
+Here you write the notes of one row (the kick or an instrument). Notes are placed on a grid; the strip at the bottom is velocity (VEL). **+ LANE** (under the keys) adds more lanes below it, up to four; click a lane's name to pick its parameter or remove it, and drag the thin bar above a lane to change its height. The extra lanes are only the surface for now: per-note values come later.
 
 ## Drawing notes
 - **PENCIL**: click an empty spot to add a note, drag it to move it, drag its right edge to change its length.

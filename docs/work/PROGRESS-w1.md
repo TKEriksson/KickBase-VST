@@ -538,3 +538,9 @@ Bygge Debug all: grönt, "Alla tester gick igenom" (rendersig oförändrad).
 - Gren `slice-roll` (efter fx-echo-steps) har allt. Steg 1 f257306 (datamodell: en rad `Kind::slices`, pitch = skivindex - 64, gamla sliceN migreras vid laddning), steg 2 8f3fff3 (PianoRoll med skivor som tangenter, `PianoRoll.cpp` sliceCount/lowPitch/highPitch), steg 3 (denna commit): skivraden i StepSequencer ritas som miniatyr och öppnar rullen vid klick (`StepSequencer.cpp` usesRoll), taket på 16 skivrader borta, hjälptexter uppdaterade.
 - Debug all grön, alla tester gick igenom. Känd kantfall: klick på samma instruments etikett medan skivrullen visas växlar inte tillbaka (selectLayer returnerar tidigt).
 - DAW (Lemon): ladda en sampling, skär i fler än 16 skivor, klicka skivraden i mönstret: rullen visar "Slice 1..N" som tangenter; en not på Slice 20 spelar skiva 20.
+
+## Parameterlanes fas 1 (Arbetare 1, 28 okt)
+- Gren `slice-roll` (efter fx-echo-steps) har allt, inklusive kantfallet för etiketten (`StepSequencer.cpp` mouseDown anropar `onLayerSelected` även när lagret redan är valt).
+- Bara ytan, ingen ljudkod: `PianoRoll.h` `Lane`/`lanes` (max 4), `PianoRoll.cpp` resized/paint/mouseDown/mouseDrag (`Drag::splitter`), `showLaneMenu`, `addLane`. Lane 0 = VEL (alltid först, kan inte tas bort). Höjder är medlemmar (sparas inte i presetet). Övriga lanes visar bara en platshållare. Hjälptext i `HelpDialog.cpp:9`.
+- Debug all grön, alla tester gick igenom. Ej synligt verifierad i en snapshot.
+- DAW (Lemon): pianorullen: "+ LANE" under tangenterna lägger till en lane; klicka namnet för att byta/ta bort; dra den tunna listan ovanför en lane för att ändra höjd; VEL fungerar som förut.

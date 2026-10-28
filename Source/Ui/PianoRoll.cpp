@@ -5,7 +5,7 @@
 
 namespace
 {
-    constexpr float keyWidth = 46.0f, toolbarHeight = 46.0f, rulerHeight = 28.0f, velocityHeight = 40.0f, edgeGrab = 6.0f, barSize = 11.0f, hintHeight = 16.0f;
+    constexpr float keyWidth = 46.0f, toolbarHeight = 46.0f, rulerHeight = 28.0f, edgeGrab = 6.0f, barSize = 11.0f, hintHeight = 16.0f;
     constexpr float maxPixelsPerTick = 3.0f;
 
     // jlimit kräver lägsta <= högsta; här kan intervallet vara tomt (då vinner det lägsta).
@@ -127,8 +127,11 @@ PianoRoll::PianoRoll (PluginBase& p, std::vector<juce::Colour> colours) : proces
     deleteButton.onClick = [this] { deleteSelected(); };
 
     for (auto* c : std::initializer_list<juce::Component*> { &snapButton, &gridBox, &smallerButton, &biggerButton, &allButton, &deleteButton, &glideButton, &followButton, &ghostButton, &presetButton, &midiButton, &drawButton, &selectButton, &eraseButton,
-                                                                 &copyButton, &pasteButton, &pasteOkButton, &pasteCancelButton, &listenButton, &popOutButton, &helpButton, &hBar, &vBar })
+                                                                 &copyButton, &pasteButton, &pasteOkButton, &pasteCancelButton, &listenButton, &popOutButton, &helpButton, &addLaneButton, &hBar, &vBar })
         addAndMakeVisible (c);
+    addLaneButton.setTooltip ("+ LANE - Adds a lane under the notes (up to four in all). Each lane shows one value per note, like the VEL lane; choose the value by clicking the lane's name. "
+                              "Drag the thin bar above a lane to make the lanes taller or lower.");
+    addLaneButton.onClick = [this] { addLane(); };
     HelpDialog::setupButton (helpButton, *this, HelpDialog::Topic::pianoRoll, "the PIANO ROLL (tools, keys, chords, glide)");
     popOutButton.setTooltip ("POP OUT - Opens the piano roll in its own window that you can move and resize (for a second screen). Click DOCK, or close the window, to bring it back.");
     popOutButton.onClick = [this] { if (onPopOut) onPopOut(); };
@@ -858,10 +861,34 @@ void PianoRoll::resized()
     auto area = getLocalBounds().toFloat();
     toolbarArea = area.removeFromTop (toolbarHeight);
     hintArea = area.removeFromBottom (hintHeight);
-    keyArea = area.withWidth (keyWidth).withTrimmedTop (rulerHeight).withTrimmedBottom (velocityHeight + 4.0f + barSize);
+    // Lanerna: håll minst 120 px kvar till notgallret.
+    const auto gaps = laneGap * (float) (lanes.size() - 1);
+    const auto budget = std::max (minLaneHeight * (float) lanes.size(), area.getHeight() - rulerHeight - 120.0f - 4.0f - barSize - gaps);
+    auto heights = 0.0f;
+    for (auto& lane : lanes)
+    {
+        lane.height = juce::jlimit (minLaneHeight, 200.0f, lane.height);
+        heights += lane.height;
+    }
+    for (auto it = lanes.rbegin(); it != lanes.rend() && heights > budget; ++it) // för lite plats: de nedersta lanerna krymper först
+    {
+        const auto cut = std::min (heights - budget, it->height - minLaneHeight);
+        it->height -= cut;
+        heights -= cut;
+    }
+    const auto lanesTotal = heights + gaps;
+    auto laneY = area.getBottom() - lanesTotal;
+    for (size_t i = 0; i < lanes.size(); ++i)
+    {
+        laneArea[i] = juce::Rectangle<float> (keyWidth, laneY, std::max (0.0f, area.getWidth() - keyWidth - barSize), lanes[i].height);
+        laneY += lanes[i].height + laneGap;
+    }
+    const auto reserved = lanesTotal + 4.0f + barSize;
+    keyArea = area.withWidth (keyWidth).withTrimmedTop (rulerHeight).withTrimmedBottom (reserved);
     rulerArea = area.withTrimmedLeft (keyWidth).withTrimmedRight (barSize).withHeight (rulerHeight);
-    velocityArea = area.withTrimmedLeft (keyWidth).withTrimmedRight (barSize).removeFromBottom (velocityHeight);
-    gridArea = area.withTrimmedLeft (keyWidth).withTrimmedRight (barSize).withTrimmedTop (rulerHeight).withTrimmedBottom (velocityHeight + 4.0f + barSize);
+    gridArea = area.withTrimmedLeft (keyWidth).withTrimmedRight (barSize).withTrimmedTop (rulerHeight).withTrimmedBottom (reserved);
+    addLaneButton.setVisible (lanes.size() < (size_t) maxLanes);
+    addLaneButton.setBounds (juce::Rectangle<float> (0.0f, gridArea.getBottom() + 1.0f, keyWidth, barSize).toNearestInt());
     vBar.setBounds (juce::Rectangle<float> (gridArea.getRight(), gridArea.getY(), barSize, gridArea.getHeight()).toNearestInt());
     hBar.setBounds (juce::Rectangle<float> (gridArea.getX(), gridArea.getBottom() + 1.0f, gridArea.getWidth(), barSize).toNearestInt());
 
@@ -1829,14 +1856,30 @@ void PianoRoll::paint (juce::Graphics& g)
     g.drawText ("SPACE: play / stop   |   SHIFT + SPACE: play only this piano roll   |   RULER: click = start here, drag / double-click = loop (red), Esc = clear   |   CTRL + C / X / V: copy, cut, paste   |   DEL: delete   |   ARROWS: move notes",
                 hintArea.withTrimmedLeft (6.0f), juce::Justification::centredLeft);
 
-    // Velocity.
-    g.setColour (juce::Colours::black.withAlpha (0.3f));
-    g.fillRect (velocityArea);
-    g.setColour (Theme::textDim);
-    g.setFont (Theme::font (9.0f, true));
-    g.drawText ("VEL", juce::Rectangle<float> (4.0f, velocityArea.getY(), keyWidth - 6.0f, velocityArea.getHeight()), juce::Justification::centredLeft);
+    // Lanerna under notgallret: delarna (tunna streck), huvudet till vänster och lanens innehåll.
+    for (size_t i = 0; i < lanes.size(); ++i)
+    {
+        const auto area = laneArea[i];
+        g.setColour (Theme::textDim.withAlpha (splitterLane == (int) i && drag == Drag::splitter ? 0.9f : 0.35f));
+        g.fillRect (juce::Rectangle<float> (area.getX(), area.getY() - laneGap + 1.0f, area.getWidth(), 2.0f));
+        g.setColour (juce::Colours::black.withAlpha (0.3f));
+        g.fillRect (area);
+        g.setColour (Theme::textDim);
+        g.setFont (Theme::font (9.0f, true));
+        auto header = laneHeader ((int) i);
+        if (i == 0)
+        {
+            g.drawText ("VEL", header.withTrimmedLeft (4.0f), juce::Justification::centredLeft);
+            continue;
+        }
+        g.drawText (juce::String (laneName (lanes[i].param)) + " v", header.withTrimmedLeft (4.0f).withTrimmedRight (12.0f), juce::Justification::centredLeft);
+        g.drawText ("x", header.removeFromRight (12.0f), juce::Justification::centred);
+        g.setFont (Theme::font (9.0f, false));
+        g.drawText ("per-note values for this parameter come later", area, juce::Justification::centred);
+    }
     {
         juce::Graphics::ScopedSaveState state (g);
+        const auto velocityArea = laneArea[0];
         g.reduceClipRegion (velocityArea.toNearestInt());
         NoteData note;
         for (int tick = 0; tick < editTicks(); ++tick)
@@ -1886,6 +1929,67 @@ void PianoRoll::mouseMove (const juce::MouseEvent& event)
     setHover (key);
     updatePlus (event.position, key);
     updateCursor (event.position, edge);
+    if (splitterAt (event.position) >= 0)
+        setMouseCursor (juce::MouseCursor::UpDownResizeCursor);
+}
+
+const char* PianoRoll::laneName (int param)
+{
+    static const char* names[] = { "VEL", "CUTOFF", "RESO", "PAN", "FX", "DRIVE" };
+    return names[juce::jlimit (0, 5, param)];
+}
+
+const char* PianoRoll::laneTooltip (int param)
+{
+    static const char* tips[] = { "Velocity", "Filter cutoff", "Filter resonance", "Pan", "Effect send", "Drive" };
+    return tips[juce::jlimit (0, 5, param)];
+}
+
+int PianoRoll::splitterAt (juce::Point<float> p) const
+{
+    for (int i = 0; i < (int) lanes.size(); ++i)
+    {
+        const auto& area = laneArea[(size_t) i];
+        if (juce::Rectangle<float> (0.0f, area.getY() - laneGap - 1.0f, area.getRight(), laneGap + 2.0f).contains (p))
+            return i;
+    }
+    return -1;
+}
+
+void PianoRoll::showLaneMenu (int index)
+{
+    juce::PopupMenu menu;
+    for (int param = 1; param <= 5; ++param)
+        menu.addItem (param, laneTooltip (param), true, lanes[(size_t) index].param == param);
+    menu.addSeparator();
+    menu.addItem (100, "Remove this lane");
+    juce::Component::SafePointer<PianoRoll> safeThis (this);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetScreenArea (localAreaToGlobal (laneHeader (index).toNearestInt())), [safeThis, index] (int result)
+    {
+        if (safeThis == nullptr || result == 0 || index >= (int) safeThis->lanes.size())
+            return;
+        if (result == 100)
+            safeThis->lanes.erase (safeThis->lanes.begin() + index);
+        else
+            safeThis->lanes[(size_t) index].param = result;
+        safeThis->resized();
+        safeThis->clampView();
+        safeThis->updateScrollBars();
+        safeThis->repaint();
+    });
+}
+
+void PianoRoll::addLane()
+{
+    if (lanes.size() >= (size_t) maxLanes)
+        return;
+    Lane lane;
+    lane.param = 1;
+    lanes.push_back (lane);
+    resized();
+    clampView();
+    updateScrollBars();
+    repaint();
 }
 
 juce::Rectangle<float> PianoRoll::plusRect() const
@@ -1958,7 +2062,38 @@ void PianoRoll::mouseDown (const juce::MouseEvent& event)
         return;
     }
 
-    if (velocityArea.contains (event.position))
+    if (const auto split = splitterAt (event.position); split >= 0)
+    {
+        drag = Drag::splitter;
+        splitterLane = split;
+        splitterStartY = event.position.y;
+        splitterStartHeight = lanes[(size_t) split].height;
+        setMouseCursor (juce::MouseCursor::UpDownResizeCursor);
+        return;
+    }
+    for (int i = 1; i < (int) lanes.size(); ++i)
+    {
+        if (laneHeader (i).contains (event.position))
+        {
+            if (laneHeader (i).removeFromRight (12.0f).contains (event.position))
+            {
+                lanes.erase (lanes.begin() + i);
+                resized();
+                clampView();
+                updateScrollBars();
+                repaint();
+            }
+            else
+                showLaneMenu (i);
+            return;
+        }
+        if (laneArea[(size_t) i].contains (event.position))
+        {
+            flash ("Per-note values for " + juce::String (laneName (lanes[(size_t) i].param)) + " are not in yet.");
+            return;
+        }
+    }
+    if (laneArea[0].contains (event.position))
     {
         const auto key = noteForVelocity (event.position.x);
         if (key.valid())
@@ -2211,6 +2346,16 @@ void PianoRoll::mouseDrag (const juce::MouseEvent& event)
     if (drag == Drag::none)
         return;
 
+    if (drag == Drag::splitter)
+    {
+        lanes[(size_t) splitterLane].height = splitterStartHeight - (event.position.y - splitterStartY);
+        resized();
+        clampView();
+        updateScrollBars();
+        repaint();
+        return;
+    }
+
     if (drag == Drag::pan)
     {
         scrollTicks = panScrollTicks - (event.position.x - panStart.x) / std::max (0.05f, pixelsPerTick);
@@ -2285,7 +2430,7 @@ void PianoRoll::mouseDrag (const juce::MouseEvent& event)
 
     if (drag == Drag::velocity)
     {
-        setLiveVelocity (dragKey, juce::jlimit (0.02f, 1.0f, 1.0f - (event.position.y - velocityArea.getY() - 3.0f) / (velocityArea.getHeight() - 6.0f)));
+        setLiveVelocity (dragKey, juce::jlimit (0.02f, 1.0f, 1.0f - (event.position.y - laneArea[0].getY() - 3.0f) / (laneArea[0].getHeight() - 6.0f)));
         edited = true;
         repaint();
         return;
@@ -2413,10 +2558,12 @@ void PianoRoll::mouseUp (const juce::MouseEvent& event)
         return;
     }
 
-    if (drag == Drag::pan)
+    if (drag == Drag::pan || drag == Drag::splitter)
     {
         drag = Drag::none;
+        splitterLane = -1;
         setMouseCursor (juce::MouseCursor::NormalCursor);
+        repaint();
         return;
     }
 

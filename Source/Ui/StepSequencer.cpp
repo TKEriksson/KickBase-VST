@@ -1331,7 +1331,12 @@ void StepSequencer::mouseDown (const juce::MouseEvent& event)
 
     // Ett lagers namn eller steg väljer lagret för lanet.
     if ((dragTarget == Target::label || dragTarget == Target::bass) && ! isSubRow (dragLayer))
+    {
+        const auto already = dragLayer == selectedLayer;
         selectLayer (dragLayer);
+        if (already && onLayerSelected) // rullen kan visa instrumentets skivrad: etikettklicket ska ge tillbaka instrumentet
+            onLayerSelected (dragLayer);
+    }
     if (dragTarget == Target::label)
     {
         dragTarget = Target::none;
