@@ -17,3 +17,22 @@ Kickbase är en mörk VST3-synth för psytrance (kick + bas). Gränssnittet är 
 
 ## Så här kontrollerar vi
 Lägg in i en testbygge, titta i Lemon på normal och liten fönsterstorlek. Bilden ska inte göra text eller grafer svårare att läsa.
+
+## JOG-hjulet som LP-spelare (Tobias idé)
+Idag ritas hjulet i koden (JogPanel.h:234-290): en 140 x 140 px skiva med sockel och en nål. I koden roterar vi skivan när man drar i den, så bilden ska vara en platt, rak uppifrån-vy som kan snurras.
+
+Filer att be om:
+1. Skivan: PNG, kvadratisk, 560 x 560 px (4x), transparent bakgrund utanför skivan, helt rakt uppifrån, mittpunkten exakt i bildens mitt. Skivans kant går ända ut till bildens kant. Ingen skugga i bilden (vi lägger skuggan i koden, annars snurrar den med).
+2. Sockel/skivspelarplatta: PNG, 640 x 640 px, transparent bakgrund, med hål/plats i mitten där skivan läggs.
+3. Pickup-arm (tonarm): PNG, transparent bakgrund, rakt uppifrån, ligger rakt (0 grader), svängpunkten i bildens övre högra hörn, ca 400 x 120 px. Vi vinklar den i koden.
+
+Prompt att klistra in i Gemini (en bild i taget, byt ut det som står i hakparentes):
+
+> Skapa en platt bild rakt uppifrån av [en vinylskiva / en skivspelarplatta / en pickup-arm] för ett mörkt VST-plugin-gränssnitt. Stil: matt svart, diskret cyan (#22d3ee) detalj, fin ringstruktur i spåren, subtil glans, tekniskt och minimalistiskt. Ingen text, inga logotyper, inga skuggor, inget bakgrundsmönster. [Skivan: etikett i mitten med en enkel cyan ring och ett litet hål i exakt mitten, skivan fyller hela kvadraten.] Transparent bakgrund, PNG, [560 x 560 / 640 x 640 / 400 x 120] pixlar.
+
+## Filkrav (gäller alla bilder)
+- Format: PNG med alfakanal (transparens) för allt som ligger ovanpå något annat. SVG för enkla ikoner. Inte JPG (ingen transparens) och inte WebP.
+- Stora i förhållande till användning (2x–4x), vi skalar ner i koden så det blir skarpt.
+- Rakt uppifrån, inga skuggor eller reflektioner som beror på ljusriktning, eftersom bilden kan roteras.
+- Under 1 MB per bild om det går. Lägg filerna i en mapp och skicka sökvägen, så lägger vi in dem via BinaryData.
+- Gemini gör ibland "falsk" transparens (rutmönster). Kontrollera att bakgrunden verkligen är genomskinlig, annars be om "ren vit bakgrund" så tar vi bort den.
