@@ -118,3 +118,5 @@ Format: **Gör så** → *förväntat resultat*. Bocka av `[ ]` när det stämme
 - [ ] Ladda Roll Wide, Roll Dekel, Roll Forest, Glide Acid, Glide Dive → *grundtonen sänks i kickens takt, inget klick; jämför med duck av.*
 - [ ] Ladda Duck Demo, slå FUNDAMENTAL DUCK av och på → *av: kick och bas sväver/tar ut varandra i sub-området; på: kicken står fram, basen dippar bara i kickens slag; säg om skillnaden hörs.*
 - [ ] Ladda New Init 1–5 i DAW → *varje är en egen startpunkt av fabriks-Init: 1 med duck, 2 halftime, 3 bara sub, 4 rullande, 5 acid-duo; säg vilka som är användbara att bygga vidare på.*
+
+- [ ] (Lemon) Mid Growl/Pluck/Wide, Hi Zap/Acid/Lead, Synth Pad/Pluck/Stab: kategorierna MID BASS, HI BASS, SYNTH visar rätt, låter som namnet, ingen klippning.

@@ -25,3 +25,7 @@ En rad per preset. Kolumner: namn | kategori | nyckelparametrar | mätt | ändra
 | New Init 3 | (sist) | Bara sub, offbeat | peak −3,4, RMS −10,1, centroid 64 | commit följer | renast |
 | New Init 4 | (sist) | Sub + mellanbas, rullande | peak −1,6, RMS −9,2, centroid 74 | commit följer | |
 | New Init 5 | (sist) | Mellanbas + acid, LFO 1 → acid-filter, två takter | peak −1,0, RMS −11,3, centroid 118 | commit följer | ljusast |
+
+| Mid Growl, Mid Pluck, Mid Wide | MID BASS | 1 lager, oktav 1, såg + 2:a tabell; audit peak −10…−10,5 dB, ingen klippning | Arbetare 2 |
+| Hi Zap, Hi Acid, Hi Lead | HI BASS | oktav 2, högre filter; peak −11…−12 dB | Arbetare 2 |
+| Synth Pad, Synth Pluck, Synth Stab | SYNTH | unison/pluck/stab; peak −10…−12 dB | Arbetare 2 |

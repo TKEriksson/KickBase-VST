@@ -23,6 +23,12 @@ namespace PresetCategories
             return "PSY CLEAN";
         if (section == Presets::Section::bass && presetName.startsWith ("Rolling ") && presetName != "Rolling Classic")
             return "PSY ROLLING BASS";
+        if (section == Presets::Section::bass && presetName.startsWith ("Mid "))
+            return "MID BASS";
+        if (section == Presets::Section::bass && presetName.startsWith ("Hi "))
+            return "HI BASS";
+        if (section == Presets::Section::bass && presetName.startsWith ("Synth "))
+            return "SYNTH";
         return defaultName();
     }
 

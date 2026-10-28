@@ -147,6 +147,20 @@ namespace
                  b (l, F::decay, ampDecay), b (l, F::sustain, sustain), b (l, F::release, release), b (l, F::drive, drive), b (l, F::level, level) };
     }
 
+    // Arbetare 2, MID BASS / HI BASS / SYNTH: ett lager (bassPreset). Oktav över rotonen, såg (OSC A, tabell 15 Saw Soft eller 12 Saw) plus en andra tabell
+    // på OSC B, unison för bredd. Se docs/school/ för hur oktav, filter och envelope formar registret.
+    std::vector<Value> registerBass (int l, int octave, float tableA, float tableB, float levelB, float semiB, float unison, float detune, float cutoff,
+                                     float resonance, float envAmount, float envDecay, float sustain, float ampDecay, float release, float drive,
+                                     float level, float filterModel)
+    {
+        return { b (l, F::octave, (float) octave), osc (l, 0, F::aTable, tableA), osc (l, 0, F::aLevel, 1.0f), osc (l, 0, F::aUnison, unison),
+                 osc (l, 0, F::aDetune, detune), osc (l, 0, F::aStereo, 0.3f), osc (l, 1, F::aTable, tableB), osc (l, 1, F::aLevel, levelB),
+                 osc (l, 1, F::aSemi, semiB), b (l, F::sub, 0.0f), b (l, F::filterType, 0), b (l, F::filterModel, filterModel), b (l, F::cutoff, cutoff),
+                 b (l, F::resonance, resonance), b (l, F::envAmount, envAmount), b (l, F::envDecay, envDecay), b (l, F::velToEnv, 0.5f),
+                 b (l, F::attack, 0.5f), b (l, F::decay, ampDecay), b (l, F::sustain, sustain), b (l, F::release, release), b (l, F::drive, drive),
+                 b (l, F::level, level) };
+    }
+
     // A. Klassisk full-on-roll: såg, omedelbar amp, snabb filterenvelope (receptkort A).
     std::vector<Value> bassRolling (int l)
     {
@@ -667,6 +681,16 @@ namespace
             bassPreset ("Dekel Groove", psyRollBass (0, 1.00f, 94, 0.80f, 1.00f, 0.0f, 0.10f, 1500.0f, 0.15f, 3.0f, 60.0f, 0.35f, 100.0f, 25.0f, 0.10f, 0.58f, 0)),
             bassPreset ("Forest 1/32", psyRollBass (0, 1.00f, 99, 0.90f, 1.00f, 0.0f, 0.10f, 2200.0f, 0.45f, 3.0f, 30.0f, 0.30f, 50.0f, 20.0f, 0.15f, 0.50f, 1)),
             bassPreset ("Wide Mid", psyRollBass (0, 1.00f, 94, 1.00f, 1.00f, 12.0f, 0.10f, 1500.0f, 0.18f, 2.0f, 70.0f, 0.40f, 100.0f, 25.0f, 0.05f, 0.52f, 0)),
+            // Arbetare 2, kategorierna MID BASS (namn "Mid "), HI BASS ("Hi ") och SYNTH ("Synth "). Argument: se registerBass.
+            bassPreset ("Mid Growl", registerBass (0, 1, 15, 13, 0.35f, 0.0f, 2, 12.0f, 900.0f, 0.35f, 3.0f, 80.0f, 0.55f, 160.0f, 30.0f, 0.30f, 0.50f, 1)),
+            bassPreset ("Mid Pluck", registerBass (0, 1, 12, 94, 0.50f, 0.0f, 1, 0.0f, 700.0f, 0.20f, 3.5f, 45.0f, 0.20f, 90.0f, 15.0f, 0.20f, 0.52f, 0)),
+            bassPreset ("Mid Wide", registerBass (0, 1, 15, 12, 0.60f, 7.0f, 4, 18.0f, 1100.0f, 0.15f, 2.0f, 120.0f, 0.75f, 220.0f, 40.0f, 0.15f, 0.46f, 0)),
+            bassPreset ("Hi Zap", registerBass (0, 2, 13, 12, 0.40f, 12.0f, 1, 0.0f, 2200.0f, 0.30f, 3.5f, 40.0f, 0.15f, 70.0f, 12.0f, 0.25f, 0.42f, 0)),
+            bassPreset ("Hi Acid", registerBass (0, 2, 12, 99, 0.60f, 0.0f, 1, 0.0f, 1600.0f, 0.55f, 3.5f, 90.0f, 0.55f, 160.0f, 25.0f, 0.40f, 0.40f, 1)),
+            bassPreset ("Hi Lead", registerBass (0, 2, 15, 12, 0.45f, 0.0f, 3, 14.0f, 3000.0f, 0.20f, 1.5f, 150.0f, 0.80f, 250.0f, 60.0f, 0.15f, 0.40f, 0)),
+            bassPreset ("Synth Pad", registerBass (0, 1, 15, 15, 0.70f, 0.0f, 5, 20.0f, 1400.0f, 0.12f, 1.2f, 400.0f, 0.90f, 600.0f, 300.0f, 0.05f, 0.40f, 0)),
+            bassPreset ("Synth Pluck", registerBass (0, 1, 13, 12, 0.30f, 12.0f, 2, 8.0f, 1800.0f, 0.25f, 3.0f, 70.0f, 0.15f, 130.0f, 80.0f, 0.12f, 0.46f, 0)),
+            bassPreset ("Synth Stab", registerBass (0, 2, 12, 13, 0.50f, 7.0f, 3, 10.0f, 2400.0f, 0.30f, 2.5f, 90.0f, 0.10f, 110.0f, 60.0f, 0.18f, 0.42f, 0)),
         };
         return presets;
     }
