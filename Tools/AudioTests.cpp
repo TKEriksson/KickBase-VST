@@ -872,12 +872,29 @@ int blockSizeTest()
     const char* names[] { "Init", "tungt läge (LFO, ENV 2/3)", "Kickbase FX, tungt läge", "tungt läge med TB-303", "tungt läge med ENV Sync", "tungt läge: Ladder/Formant/Comb", "tungt läge med Filter 2",
                           "tungt läge med 2/4/8 röster (stealing)" };
     juce::AudioBuffer<float> monoReference;
+    // Felsökning: KB_BS_MODE=1,7 kör bara de lägena (läge 7 jämförs då inte mot läge 1 om 1 saknas).
+    const auto onlyMode = juce::SystemStats::getEnvironmentVariable ("KB_BS_MODE", {});
     for (const auto mode : { 0, 1, 2, 3, 4, 5, 6, 7 })
     {
+        if (onlyMode.isNotEmpty() && ! juce::StringArray::fromTokens (onlyMode, ",", {}).contains (juce::String (mode)))
+            continue;
         const auto reference = renderWith (mode, 32);
+        {
+            // Samma block två gånger: skiljer de sig är det inte blockstorleken utan renderingen som inte är deterministisk.
+            const auto again = renderWith (mode, 32);
+            auto firstDiff = -1;
+            for (int i = 0; i < std::min (again.getNumSamples(), reference.getNumSamples()) && firstDiff < 0; ++i)
+                if (again.getSample (0, i) != reference.getSample (0, i))
+                    firstDiff = i;
+            if (firstDiff >= 0 || again.getNumSamples() != reference.getNumSamples())
+            {
+                std::printf ("FEL: %s, block 32 två gånger ger olika ljud (första skillnaden vid sample %d)\n", names[mode], firstDiff);
+                failed = true;
+            }
+        }
         if (mode == 1)
             monoReference = reference;
-        if (mode == 7 && hashOf (reference) == hashOf (monoReference))
+        if (mode == 7 && monoReference.getNumSamples() > 0 && hashOf (reference) == hashOf (monoReference))
         {
             std::puts ("FEL: flera röster låter som en röst");
             failed = true;
