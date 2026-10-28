@@ -489,6 +489,6 @@ Bygge Debug all: grönt, "Alla tester gick igenom" (rendersig oförändrad).
 - Plan: `docs/work/plan-start-per-motor.md`. 28 nya parametrar sist i InstrumentField (`Params.h`, `aDelayMs` … `fmCurve`; `ParamID::timingField (engine, which)`), registrerade i `Params::addEngineTimingParams`.
 - DSP: `InstrumentSynth::engineGate` (InstrumentSynth.cpp) multiplicerar nivån för OSC 1–3, NOISE, SUB, FM. Exakt 1.0 när POS DELAY och LENGTH är 0, så rendersig är oförändrad. POS DELAY (ms eller SYNC från bpm) låses vid noteOn; oscillatorfasen nollas när fördröjningen passerat.
 - UI: TIMING-vy i MIX (`InstrMixPanel`): POS DELAY, SYNC, LENGTH, CURVE per motor; gul varning "POS DELAY is longer than the note". Hjälptexter i `Help.cpp` och MIX-hjälpen.
-- SAMPLE-faktorn (motor 3) saknas ännu: läggs efter Arbetare 2:s sample-editor-kärna (fb7dcbe i w2).
+- SAMPLE-faktorn (motor 3) klar efter merge av fb7dcbe: sample-grenen i InstrumentSynth.cpp hoppas över till noteTime >= POS DELAY (samplePosition och sampleAge står still), och engineGate (3) multiplicerar editorGain. Ingen egen test (kräver laddat sample); DAW (Lemon): ladda ett sample, POS DELAY 200 ms på SAMPLE, samplet ska börja från sin början efter 200 ms.
 - Nytt test `tool delaytest` (`Tools/AudioTests.cpp`): POS DELAY 100 ms och SYNC 1/16 vid 120 BPM tystar bara OSC 1 i notens första 100 ms, LENGTH avtar, CURVE faller snabbare.
 - DAW (Lemon) att kolla: TIMING-knappen i MIX, att alla standardvärden låter som förut, POS DELAY 100 ms på OSC 2 ensam, SYNC 1/4, LENGTH + CURVE.

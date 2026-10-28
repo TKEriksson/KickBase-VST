@@ -589,12 +589,13 @@ InstrumentSynth::Output InstrumentSynth::next()
 
     // Samplingen: linjär interpolation. Med KEY följer hastigheten noten (samplingens egen tonhöjd = sampleRootHz).
     const auto* playing = activeSample();
-    if (params.sampleOn && playing != nullptr && params.sampleLevel > 0.0f)
+    // 5b: POS DELAY för SAMPLE – positionen och editorkurvornas ålder står still tills fördröjningen gått, så samplet börjar från sitt eget start.
+    if (params.sampleOn && playing != nullptr && params.sampleLevel > 0.0f && noteTime >= delaySeconds[3])
     {
         const auto& audio = playing->audio;
         const auto length = audio.getNumSamples();
         // Sample-editor: AMP-kurvan (nivå) och PITCH-kurvan (hastighet); av = 1 och 1, ljudet som förut.
-        auto editorGain = 1.0f;
+        auto editorGain = engineGate (3);
         auto editorSpeed = 1.0;
         if (params.sampleAmpOn)
             editorGain = InstrumentSynth::sampleCurve (1.0f - (float) (sampleAge / (0.001 * (double) params.sampleAmpMs * sampleRate)), params.sampleAmpShape);
