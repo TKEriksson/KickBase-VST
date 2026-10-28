@@ -10,7 +10,7 @@ En enda release (Tobias 28 okt): allt som tidigare låg i rel-0.4 ingår nu i re
 2. ANALYZER-mätningarna (`plan-v2.md:258-271`): kontrollera vilka som finns, komplettera, test.
 3. FUNDAMENTAL DUCK-visning i motorns vågvisning och ANALYZER (ljudtråd till UI via atomics/FIFO).
 4. Broms B (BRAKE trigger, godkänd 27 okt): kontrollera om den redan är byggd, annars bygg. Sedan JOG-resten ur rel-0.3-listan.
-5. Kvarvarande nav/preset-punkter (kick SYNTH/SAMPLE MIX, TOP DECAY, FX multiselect, ghost notes, pop-out, glide-plus, SOUNDSTAGE).
+5. Kvarvarande nav/preset-punkter (kick SYNTH/SAMPLE MIX, TOP DECAY, FX multiselect, ghost notes, pop-out, glide-plus). Köordning (28 okt): färgväljare + TOP DECAY, LIVE CODE autocomplete (fungerar inte idag), SOUNDSTAGE med bussuppdelning och flerval av källor (Tobias vill ha det nu; plan först), gemensam MD-hjälpdialog (HJÄLP-knappar: pianorullen och LIVE CODE först, sedan en flik/motor i taget; färre notstips), resten.
 ### Därefter (planer först)
 6. Övertonsredigerare, Serum-stil, etapp 1-3.
 7. Sample-editor (AMP/PITCH, på/av), klick-lager (3) och sampleverktyg, reverse per not, parameterlanes under pianorollen (resizebar).

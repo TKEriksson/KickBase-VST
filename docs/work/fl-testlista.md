@@ -29,7 +29,8 @@ Format: **Gör så** → *förväntat resultat*. Bocka av `[ ]` när det stämme
 ## Transport, JOG och LOOP (verktygsraden)
 - [ ] Dubbelklicka på tempot, skriv 150 under PREVIEW → *tempot ändras. När FL spelar är tempot och takten låsta med tipset "styrs av DAW".*
 - [ ] Rulla musens hjul över takträknaren under PREVIEW → *uppspelningen hoppar till vald takt när hjulet vilat en stund.*
-- [ ] LOOP på med takt 1–2, ändra till 2–3 under gång, stäng av → *loopar strikt i intervallet; FL:s uppspelning måste stoppas för hand.*
+- [ ] LOOP finns nu i JOG-panelen (inte i toppbaren): öppna panelen, LOOP på med takt 1–2, ändra till 2–3 under gång, stäng av → *loopar strikt i intervallet; DAW:ens uppspelning måste stoppas för hand. Stäng och öppna panelen: LOOP-knappen och takterna visar rätt läge.*
+- [ ] BRAKE med kurvan VINYL, TAPE, HARD och SLOW i tur och ordning (rullistan under BRAKE) → *VINYL: skivspelarstopp; TAPE: lång, tonhöjden glider ner; HARD: kort och rak; SLOW: långsam broms och långsam start. Alla vilar en stund och går tillbaka till inställd JOG SPEED. Håll hjulet under bromsen: bromsen avbryts.*
 - [ ] Tryck LP-knappen bredvid restart → *JOG-panelen öppnas. Hjulet ritas som en vinylskiva, nålen vandrar inåt med mönstret och hoppar ut vid loopen, handen visas över skivan.*
 - [ ] Läge STOP: starta PREVIEW, håll hjulet → *musiken stannar; vrid framåt: den spelar i vridhastighet; släpp: normalt tempo.*
 - [ ] Läge KEEP GOING → *musiken fortsätter; framåt = snabbare, bakåt = långsammare (aldrig baklänges).*
