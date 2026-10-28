@@ -29,3 +29,6 @@ En rad per preset. Kolumner: namn | kategori | nyckelparametrar | mätt | ändra
 | Mid Growl, Mid Pluck, Mid Wide | MID BASS | 1 lager, oktav 1, såg + 2:a tabell; audit peak −10…−10,5 dB, ingen klippning | Arbetare 2 |
 | Hi Zap, Hi Acid, Hi Lead | HI BASS | oktav 2, högre filter; peak −11…−12 dB | Arbetare 2 |
 | Synth Pad, Synth Pluck, Synth Stab | SYNTH | unison/pluck/stab; peak −10…−12 dB | Arbetare 2 |
+
+| Minimal/Goa/Dark Psy/Dance/Trance/Techno/Empirikal Kick | MINIMAL, GOA, DARK PSY, DANCE, TRANCE, TECHNO, EMPIRIKAL | 1 kick per genre via psyCleanKick; svans 35 Hz (Goa, Dark Psy) till 52 Hz (Techno), peak −2,8…−3,4 dB | Arbetare 2 |
+| Minimal Sub/Pluck, Goa Roll/Acid, Dark Psy Growl/Sub, Dance Pump/Pluck, Trance Roll/Pluck, Techno Sub/Stab, Empirikal Reese/Growl | samma sju | 2 basar per genre via registerBass; peak −9…−12 dB, ingen klippning | Arbetare 2 |

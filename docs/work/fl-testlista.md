@@ -120,3 +120,5 @@ Format: **Gör så** → *förväntat resultat*. Bocka av `[ ]` när det stämme
 - [ ] Ladda New Init 1–5 i DAW → *varje är en egen startpunkt av fabriks-Init: 1 med duck, 2 halftime, 3 bara sub, 4 rullande, 5 acid-duo; säg vilka som är användbara att bygga vidare på.*
 
 - [ ] (Lemon) Mid Growl/Pluck/Wide, Hi Zap/Acid/Lead, Synth Pad/Pluck/Stab: kategorierna MID BASS, HI BASS, SYNTH visar rätt, låter som namnet, ingen klippning.
+
+- [ ] (Lemon) Genrepresets, 7 genrer × (1 kick + 2 basar): kategorierna MINIMAL, GOA, DARK PSY, DANCE, TRANCE, TECHNO, EMPIRIKAL visas; kick+bas ihop låter som genren; Minimal/Dance/Techno-kickarnas svans (48–52 Hz) över psy-målet, lyssna om den krockar med basen.

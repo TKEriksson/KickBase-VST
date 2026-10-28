@@ -186,3 +186,6 @@ Nu: programmet, rel-0.3 motornära punkter: 1) S3 Unison/Reese, 2) multisampling
 
 ## 2026-10-28 MID BASS / HI BASS / SYNTH
 - 9 nya baspresets (3 per kategori) via `registerBass` i `PresetData.inl`, sist i `bassPresets()`; namnprefixregler i `PresetCategories.cpp`. Bygge grönt, audit utan klippning. Återstår: genrer (MINIMAL, GOA, DARK PSY, DANCE, TRANCE, TECHNO, EMPIRIKAL), preset-skolan.
+
+## 2026-10-28 Genrepresets
+- 7 kickar + 14 basar (namnprefix Minimal/Goa/Dark Psy/Dance/Trance/Techno/Empirikal), sist i `kickPresets()`/`bassPresets()`; genreregler och fem nya kategorier (DARK PSY, DANCE, TRANCE, TECHNO, EMPIRIKAL) i `PresetCategories.cpp`. Bygge grönt, audit utan klippning. Ej lyssnat. Återstår: Fas J, bygg vidare på `docs/school/` (a3c54e7), sedan skill.

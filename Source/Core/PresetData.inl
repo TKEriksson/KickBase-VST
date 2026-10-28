@@ -655,6 +655,14 @@ namespace
             kickPreset ("Psy Clean F Sub", psyCleanKick (5.0f, 0.9f, 1.4f, 0.20f, 0.001f, 0.88f, 0.0f, 0.0f)),
             kickPreset ("Psy Clean A Punch", psyCleanKick (9.0f, 1.0f, 0.85f, 0.17f, 0.0005f, 0.85f, 0.10f, 0.05f)),
             kickPreset ("Psy Clean G", psyCleanKick (7.0f, 1.0f, 1.0f, 0.20f, 0.0005f, 0.85f, 0.0f, 0.0f)),
+            // Arbetare 2, genrer (1 kick + 2 basar per genre). Kick: se psyCleanKick; bas: se registerBass.
+            kickPreset ("Minimal Kick", psyCleanKick (4.0f, 0.8f, 1.3f, 0.18f, 0.002f, 0.85f, 0.05f, 0.0f)),
+            kickPreset ("Goa Kick", psyCleanKick (1.0f, 1.0f, 0.9f, 0.18f, 0.0005f, 0.85f, 0.08f, 0.05f)),
+            kickPreset ("Dark Psy Kick", psyCleanKick (1.0f, 1.1f, 1.2f, 0.22f, 0.0005f, 0.85f, 0.0f, 0.15f)),
+            kickPreset ("Dance Kick", psyCleanKick (7.0f, 0.9f, 0.8f, 0.15f, 0.001f, 0.85f, 0.15f, 0.10f)),
+            kickPreset ("Trance Kick", psyCleanKick (6.0f, 1.0f, 1.0f, 0.18f, 0.001f, 0.85f, 0.10f, 0.05f)),
+            kickPreset ("Techno Kick", psyCleanKick (8.0f, 1.2f, 0.7f, 0.16f, 0.0005f, 0.88f, 0.20f, 0.20f)),
+            kickPreset ("Empirikal Kick", psyCleanKick (3.0f, 1.0f, 1.1f, 0.20f, 0.0005f, 0.85f, 0.05f, 0.10f)),
         };
         return presets;
     }
@@ -691,6 +699,20 @@ namespace
             bassPreset ("Synth Pad", registerBass (0, 1, 15, 15, 0.70f, 0.0f, 5, 20.0f, 1400.0f, 0.12f, 1.2f, 400.0f, 0.90f, 600.0f, 300.0f, 0.05f, 0.40f, 0)),
             bassPreset ("Synth Pluck", registerBass (0, 1, 13, 12, 0.30f, 12.0f, 2, 8.0f, 1800.0f, 0.25f, 3.0f, 70.0f, 0.15f, 130.0f, 80.0f, 0.12f, 0.46f, 0)),
             bassPreset ("Synth Stab", registerBass (0, 2, 12, 13, 0.50f, 7.0f, 3, 10.0f, 2400.0f, 0.30f, 2.5f, 90.0f, 0.10f, 110.0f, 60.0f, 0.18f, 0.42f, 0)),
+            bassPreset ("Minimal Sub", registerBass (0, 1, 15, 12, 0.20f, 0.0f, 1, 0.0f, 500.0f, 0.15f, 1.5f, 200.0f, 0.85f, 400.0f, 60.0f, 0.10f, 0.52f, 0)),
+            bassPreset ("Minimal Pluck", registerBass (0, 1, 12, 15, 0.30f, 0.0f, 1, 0.0f, 600.0f, 0.25f, 2.5f, 60.0f, 0.25f, 120.0f, 20.0f, 0.15f, 0.50f, 0)),
+            bassPreset ("Goa Roll", registerBass (0, 1, 15, 12, 0.40f, 0.0f, 2, 8.0f, 800.0f, 0.30f, 3.0f, 70.0f, 0.50f, 150.0f, 25.0f, 0.25f, 0.50f, 1)),
+            bassPreset ("Goa Acid", registerBass (0, 1, 12, 99, 0.50f, 0.0f, 1, 0.0f, 1200.0f, 0.50f, 3.0f, 100.0f, 0.45f, 170.0f, 25.0f, 0.35f, 0.46f, 1)),
+            bassPreset ("Dark Psy Growl", registerBass (0, 1, 15, 13, 0.45f, 0.0f, 3, 14.0f, 700.0f, 0.40f, 3.5f, 110.0f, 0.60f, 200.0f, 35.0f, 0.40f, 0.46f, 1)),
+            bassPreset ("Dark Psy Sub", registerBass (0, 1, 15, 12, 0.25f, 0.0f, 1, 0.0f, 450.0f, 0.30f, 2.5f, 130.0f, 0.70f, 260.0f, 40.0f, 0.30f, 0.50f, 1)),
+            bassPreset ("Dance Pump", registerBass (0, 1, 15, 12, 0.50f, 0.0f, 2, 10.0f, 1000.0f, 0.20f, 2.5f, 90.0f, 0.65f, 180.0f, 30.0f, 0.15f, 0.50f, 0)),
+            bassPreset ("Dance Pluck", registerBass (0, 1, 13, 12, 0.40f, 12.0f, 2, 8.0f, 1500.0f, 0.25f, 3.0f, 60.0f, 0.20f, 110.0f, 20.0f, 0.15f, 0.46f, 0)),
+            bassPreset ("Trance Roll", registerBass (0, 1, 15, 15, 0.55f, 0.0f, 3, 12.0f, 1100.0f, 0.18f, 2.0f, 110.0f, 0.70f, 190.0f, 35.0f, 0.12f, 0.48f, 0)),
+            bassPreset ("Trance Pluck", registerBass (0, 2, 12, 13, 0.45f, 7.0f, 3, 10.0f, 2000.0f, 0.25f, 2.5f, 70.0f, 0.20f, 120.0f, 50.0f, 0.15f, 0.44f, 0)),
+            bassPreset ("Techno Sub", registerBass (0, 1, 15, 12, 0.20f, 0.0f, 1, 0.0f, 550.0f, 0.30f, 2.0f, 100.0f, 0.60f, 200.0f, 30.0f, 0.25f, 0.52f, 1)),
+            bassPreset ("Techno Stab", registerBass (0, 2, 12, 99, 0.50f, 0.0f, 1, 0.0f, 1800.0f, 0.45f, 3.0f, 60.0f, 0.10f, 100.0f, 20.0f, 0.35f, 0.44f, 1)),
+            bassPreset ("Empirikal Reese", registerBass (0, 1, 15, 15, 0.80f, 0.0f, 3, 16.0f, 900.0f, 0.25f, 2.0f, 150.0f, 0.80f, 260.0f, 50.0f, 0.30f, 0.46f, 1)),
+            bassPreset ("Empirikal Growl", registerBass (0, 1, 12, 13, 0.50f, 0.0f, 2, 12.0f, 850.0f, 0.45f, 3.5f, 90.0f, 0.55f, 170.0f, 30.0f, 0.40f, 0.44f, 1)),
         };
         return presets;
     }
