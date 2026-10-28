@@ -103,3 +103,4 @@ Preciserat (i) (Tobias 28 okt kväll): lägg om SAMPLE-redigeringen som tre ruto
 Obs: nya parametrar och modulationskällor sist (ENGINEERING.md). Stor punkt; Arbetare 1 delar upp: (a) val + ta bort, (b) FX-kanalval, (c) bezier, (d) OTHER + dataformat, (e) kopiera till DAW.
 (w, tillägg) Tobias: knappen "+ LANE" (längst ner till vänster i pianorullen, liten) måste bli betydligt större, i punkt 1 (val av lane).
 (w, rättelse) Tobias: "+ LANE"-knappen försvinner när lanen väljs direkt (punkt 1), så ingen större knapp behövs. Tillägget ovan gäller inte.
+(w, beslut) Tobias: lane-värde ERSÄTTER den generella FX-sändningen (inte multiplicera). Därför måste det vara enkelt att ta bort hela lanen och enskilda utsatta värden (punkt 3 prioriteras: ett tydligt val, t.ex. dubbelklick/Delete på ett värde och en synlig knapp för hela lanen).
