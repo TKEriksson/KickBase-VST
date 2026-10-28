@@ -828,6 +828,8 @@ int blockSizeTest()
 {
     auto failed = false;
     juce::ScopedJuceInitialiser_GUI gui;
+    // Alla tabeller byggs före första renderingen: annars kan TableBuilder-tråden (kallstart, belastning) lämna Basic kvar under en not.
+    Wavetables::ensureAll();
     // läge 0 = instrumentets Init, 1 = instrumentet i tungt läge, 2 = Kickbase FX i tungt läge (med en sågtand som insignal),
     // 3 = instrumentet i tungt läge med TB-303-modellen (fas D1), 4 = instrumentet i tungt läge med ENV 2/3 i läget Sync, 5 = tungt läge med Ladder, Formant och Comb (fas D2)
     auto renderWith = [] (int mode, int blockSize)
