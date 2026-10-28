@@ -32,6 +32,10 @@ namespace Theme
     inline const juce::Colour textDim          { 0xff868cae };
     inline const juce::Colour grid             { 0xff23273e };
 
+    // Visuell hierarki: dämpad etikettfärg för funktionsnamn, skarpare för värden
+    inline const juce::Colour labelText        { 0xff64748b };
+    inline const juce::Colour valueText        { 0xffe2e8f0 };
+
     inline const juce::Colour kick    { 0xffff9a3c };
     inline const juce::Colour bass    { 0xff3fd2ff };
     inline const juce::Colour pattern { 0xffff5fa8 };
@@ -84,6 +88,12 @@ namespace Theme
         if (kind >= Modulation::instrumentSources) // AMP ENV ljus (som ENV 1:s handtag), FILT ENV mellan lagrets färg och ljus
             return kind == Modulation::instrumentSources ? text : base.interpolatedWith (text, 0.5f);
         return kind == 0 ? base : kind == 1 ? base.brighter (0.35f) : kind == 2 ? base.withMultipliedSaturation (0.45f) : base.darker (0.35f);
+    }
+
+    // Subtil hover-effekt
+    inline juce::Colour getHoverColour (juce::Colour baseColour, bool isHovered)
+    {
+        return isHovered ? baseColour.brighter (0.2f) : baseColour;
     }
 
     // Marginal runt rattarna där LFO-ringarna ritas.
@@ -258,6 +268,19 @@ namespace Theme
         g.fillRect (line);
     }
 
+    // Container för underflikar: använder paintEdgeGlow (respekterar glowStrength(), ritas inåt).
+    inline void paintConnectedContainer (juce::Graphics& g, juce::Rectangle<float> area, juce::Colour glowColour, float corner = 8.0f)
+    {
+        g.setColour (insetStrip);
+        g.fillRoundedRectangle (area, corner);
+        g.setColour (juce::Colours::black.withAlpha (0.4f));
+        g.drawRoundedRectangle (area.reduced (0.5f), corner, 1.0f);
+        if (! glowColour.isTransparent())
+            paintEdgeGlow (g, area, corner, glowColour, 0.6f);
+        g.setColour (panelBorderDim);
+        g.drawRoundedRectangle (area.reduced (1.0f), corner - 0.5f, 1.0f);
+    }
+
     // Glasknapp (ä): mörkt glas med ljusreflex och tunn kant; tänd får färgad fyllning och glöd. Gemensam för PREVIEWS-knapparna m.fl.
     inline void paintGlassButton (juce::Graphics& g, juce::Rectangle<float> area, bool lit, bool hover, juce::Colour accent, float corner = 8.0f)
     {
@@ -275,7 +298,7 @@ namespace Theme
         g.setGradientFill (juce::ColourGradient (juce::Colours::white.withAlpha (0.14f), 0.0f, area.getY(),
                                                  juce::Colours::white.withAlpha (0.0f), 0.0f, area.getY() + area.getHeight() * 0.45f, false));
         g.fillPath (shine);
-        g.setColour (lit ? accent : (hover ? cyan.withAlpha (0.5f) : panelBorder));
+        g.setColour (lit ? accent : (hover ? cyan.withAlpha (0.6f) : panelBorder));
         g.drawRoundedRectangle (area.reduced (0.5f), corner, lit ? 1.4f : 1.0f);
         if (lit)
             paintEdgeGlow (g, area, corner, accent, 1.4f);
@@ -332,7 +355,7 @@ namespace Theme
     // Glasdisplay: mörk glasruta med ljusreflex i övre halvan och tunn kant. Texten ritas med drawGlowText.
     inline void paintGlassDisplay (juce::Graphics& g, juce::Rectangle<float> area, float corner = 7.0f)
     {
-        g.setColour (chartBackground);
+        g.setColour (chartBackground.brighter (0.04f));
         g.fillRoundedRectangle (area, corner);
         juce::Path shine;
         shine.addRoundedRectangle (area.getX() + 1.0f, area.getY() + 1.0f, area.getWidth() - 2.0f, area.getHeight() * 0.5f,
@@ -340,8 +363,10 @@ namespace Theme
         g.setGradientFill (juce::ColourGradient (juce::Colours::white.withAlpha (0.10f), 0.0f, area.getY(),
                                                  juce::Colours::white.withAlpha (0.0f), 0.0f, area.getCentreY(), false));
         g.fillPath (shine);
-        g.setColour (cyan.withAlpha (0.25f));
+        g.setColour (cyan.withAlpha (0.45f));
         g.drawRoundedRectangle (area.reduced (0.5f), corner, 1.0f);
+        g.setColour (juce::Colours::black.withAlpha (0.25f));
+        g.drawRoundedRectangle (area.reduced (1.5f), corner - 1.0f, 1.0f);
     }
 
     // Text med mjuk glöd: några svaga kopior runt själva texten, sedan den klara texten överst.
