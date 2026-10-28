@@ -268,6 +268,30 @@ Effects live on **FX channels** (FX1-FX11), like mixer sends. An instrument send
 **FX Preset** saves or loads the selected channel: its five effects, EQ, compressor, level and duck. Other channels are not touched, and who sends to the channel is not part of it.
 )";
 
+    const char* masterText = R"(# MASTER
+The last stage before the output. Two views: **MIXER** and **MAXIMIZER**.
+
+## MIXER
+One strip per sound source: the kick, the instruments and the FX channels.
+- **Fader**: gain of the source.
+- **Pan**: left/right position.
+- **Meter**: level of the source.
+- **SC**: whether the kick's sidechain ducks this source. On by default.
+- **MAX**: whether the source goes through the maximizer. On by default.
+
+## MAXIMIZER
+Drive, clip and a limiter on the whole mix.
+- **DRIVE**: pushes more level into the clipper and limiter. Louder and denser.
+- **CLIP**: how much the soft clipper rounds off the peaks.
+- **CEILING**: the loudest level that gets out. The limiter never lets peaks pass it.
+- **RELEASE**: how fast the limiter lets go after a peak.
+- **OUTPUT**: final volume after everything.
+- **OUT / GR meters**: output level and how much the limiter turns down.
+- **Scopes**: white = the signal into the limiter, red = what comes out. Where white sticks out above red, the limiter is working.
+- **THROUGH THE MAXIMIZER** (bottom): pick which sources go through it.
+- The power switch (top left) turns the maximizer on and off. **Master Preset** saves its settings.
+)";
+
     struct TopicInfo { HelpDialog::Topic topic; const char* tab; const char* text; };
     const TopicInfo topics[] = {
         { HelpDialog::Topic::pianoRoll, "PIANO ROLL", pianoRollText },
@@ -282,6 +306,7 @@ Effects live on **FX channels** (FX1-FX11), like mixer sends. An instrument send
         { HelpDialog::Topic::lfo, "LFO", lfoText },
         { HelpDialog::Topic::matrix, "MATRIX", matrixText },
         { HelpDialog::Topic::effects, "EFFECTS", effectsText },
+        { HelpDialog::Topic::master, "MASTER", masterText },
     };
 
     // ---- Rendering ----

@@ -439,3 +439,8 @@ Bygge Debug all: grönt, "Alla tester gick igenom" (rendersig oförändrad).
 - EFFECTS-sidan: HELP-knapp till vänster om FX Preset (EffectsPage.cpp, resized), ämnet EFFECTS (HelpDialog.cpp effectsText).
 - Bygge grönt, alla tester gick igenom.
 - DAW-test (Lemon): öppna EFFECTS, klicka HELP, kontrollera att EFFECTS-fliken visas och att platsraden fortfarande får plats.
+
+## HELP för MASTER (Arbetare 1, 2026-10-28)
+- MasterPage.cpp (resized): HELP-knapp till vänster om Master Preset i headern; ämnet MASTER (HelpDialog.cpp masterText) täcker MIXER och MAXIMIZER.
+- Bygge grönt, alla tester gick igenom.
+- DAW-test (Lemon): öppna MASTER i både MIXER- och MAXIMIZER-vyn, klicka HELP, kontrollera att knappen syns och inte täcker flikarna.
