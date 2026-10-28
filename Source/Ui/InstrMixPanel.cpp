@@ -60,7 +60,8 @@ void InstrMixPanel::resized()
 {
     auto area = getLocalBounds().reduced (6, 4);
     // Vågen är alltid full bredd överst men låg; ratterna ligger under.
-    waveArea = area.removeFromTop (juce::jlimit (90, 140, area.getHeight() * 3 / 10));
+    const auto waveHeight = juce::jlimit (90, 140, area.getHeight() * 3 / 10);
+    waveArea = area.removeFromTop (juce::jmin (waveHeight, juce::jmax (50, area.getHeight() - 100))); // på en låg panel krymper vågen först, så att remsorna får höjd
     helpButton.setBounds (waveArea.getRight() - 40, waveArea.getY(), 40, 14);
     scrollBar.setBounds (waveArea.getX(), waveArea.getBottom() - 28, waveArea.getWidth(), 12);
     area.removeFromTop (6);

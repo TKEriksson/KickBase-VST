@@ -74,7 +74,7 @@ public:
             }
             g.setColour (Theme::textDim);
             g.drawText ("0", getLocalBounds().reduced (6, 2).removeFromBottom (11), juce::Justification::bottomLeft);
-            g.drawText (juce::String (juce::roundToInt (ms)) + " ms", getLocalBounds().reduced (6, 2).removeFromBottom (11), juce::Justification::bottomRight);
+            g.drawText (juce::String (juce::roundToInt (ms * 1.25f)) + " ms", getLocalBounds().reduced (6, 2).removeFromBottom (11), juce::Justification::bottomRight);
         }
         g.setColour (accent);
         g.strokePath (path, juce::PathStrokeType (1.6f));
@@ -197,5 +197,10 @@ void FmPanel::resized()
         waveDiagram->setBounds (area.removeFromLeft (area.getWidth() / 2 - 3));
         area.removeFromLeft (6);
         envDiagram->setBounds (area);
+    }
+    else
+    {
+        waveDiagram->setBounds ({});
+        envDiagram->setBounds ({});
     }
 }
