@@ -444,3 +444,8 @@ Bygge Debug all: grönt, "Alla tester gick igenom" (rendersig oförändrad).
 - MasterPage.cpp (resized): HELP-knapp till vänster om Master Preset i headern; ämnet MASTER (HelpDialog.cpp masterText) täcker MIXER och MAXIMIZER.
 - Bygge grönt, alla tester gick igenom.
 - DAW-test (Lemon): öppna MASTER i både MIXER- och MAXIMIZER-vyn, klicka HELP, kontrollera att knappen syns och inte täcker flikarna.
+
+## HELP för SIDECHAIN (Arbetare 1, 2026-10-28)
+- SidechainPage.cpp (resized): HELP-knapp till höger om Preset i vänsterkolumnen (preset blir 82 px bred); ämnet SIDECHAIN (HelpDialog.cpp sidechainText) täcker MODE, LENGTH, kurva, HALFTIME, DUCK/DEPTH, scope, FUNDAMENTAL DUCK och SIDECHAIN AFFECTS.
+- Bygge grönt, alla tester gick igenom.
+- DAW-test (Lemon): öppna SIDECHAIN, klicka HELP, kontrollera att knappen syns och att preset-namnet fortfarande går att läsa.

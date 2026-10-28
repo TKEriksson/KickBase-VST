@@ -6,7 +6,7 @@
 // En flik per ämne; HELP-knappen på en flik öppnar dialogen på sitt ämne. Icke-modal, en enda instans.
 namespace HelpDialog
 {
-    enum class Topic { pianoRoll, liveCode, soundstage, osc, filter, fm, mix, sample, env, lfo, matrix, effects, master };
+    enum class Topic { pianoRoll, liveCode, soundstage, osc, filter, fm, mix, sample, env, lfo, matrix, effects, master, sidechain };
 
     // Öppnar dialogen på `topic` (eller byter flik om den redan är öppen).
     void show (juce::Component* centreAround, Topic topic);

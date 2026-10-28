@@ -1,5 +1,7 @@
 #include "SidechainPage.h"
 
+#include "HelpDialog.h"
+
 namespace
 {
     constexpr float grabDistance = 9.0f;
@@ -586,6 +588,8 @@ SidechainPage::SidechainPage (PluginBase& p)
                       "The coloured curves in from the top and bottom edges show how much each instrument is ducked.");
     for (auto* c : std::initializer_list<juce::Component*> { &presets, &mode, &length, &curve, &scope, &halftimeButton })
         addAndMakeVisible (c);
+    HelpDialog::setupButton (helpButton, *this, HelpDialog::Topic::sidechain, "the SIDECHAIN tab (ducking, curve, fundamental duck)");
+    addAndMakeVisible (helpButton);
     if (! p.isEffectVersion())
     {
         fundamentalDuck = std::make_unique<FundamentalDuckPanel> (p);
@@ -647,7 +651,10 @@ void SidechainPage::resized()
     auto depthColumn = area.removeFromLeft (depthRows.empty() ? 90 : 230);
     area.removeFromLeft (10);
 
-    presets.setBounds (column.removeFromTop (24));
+    auto presetRow = column.removeFromTop (24);
+    helpButton.setBounds (presetRow.removeFromRight (44));
+    presetRow.removeFromRight (4);
+    presets.setBounds (presetRow);
     column.removeFromTop (6);
     mode.setBounds (column.removeFromTop (40));
     column.removeFromTop (2);

@@ -292,6 +292,28 @@ Drive, clip and a limiter on the whole mix.
 - The power switch (top left) turns the maximizer on and off. **Master Preset** saves its settings.
 )";
 
+    const char* sidechainText = R"(# SIDECHAIN
+The kick pushes the other sounds down for a moment, so the kick and the bass don't fight for the same space.
+
+## The controls
+- **MODE**: *Kick envelope* = the sounds duck exactly as loud as the kick is. *Curve* = you draw the ducking shape yourself.
+- **LENGTH**: how long the drawn curve lasts after each kick (Kick = as long as the kick). Only used in Curve mode.
+- **Curve editor**: draw the volume after each kick. Low = ducked, high = full volume.
+- **HALFTIME**: the scope shows 8 beats instead of 4. Only changes the view, not the sound.
+- **DUCK / DEPTH**: how deeply the kick pushes each instrument down. 0 % = no ducking, 100 % = all the way down. One row per active instrument.
+- **Scope**: orange = the kick, white outline = instruments before the sidechain, blue = after it. The blue is what gets through.
+
+## FUNDAMENTAL DUCK
+Dips only the fundamental of each engine while the kick sounds, so the kick's low end and the bass fundamental don't fight, while the rest of the bass stays.
+- **DEPTH**: how many dB the fundamental is cut.
+- **WINDOW**: how close (in cents) the kick's pitch must be to the engine's fundamental for the dip to apply fully.
+- **SOURCE**: what makes it dip: the kick, another instrument, or any of them.
+- Per engine, **INHERIT** follows the common values, **OFF** never dips, **OWN** uses its own depth, window and source.
+
+## SIDECHAIN AFFECTS
+At the bottom: which sources get ducked. The same SC switches exist in the MASTER mixer. All on is the default.
+)";
+
     struct TopicInfo { HelpDialog::Topic topic; const char* tab; const char* text; };
     const TopicInfo topics[] = {
         { HelpDialog::Topic::pianoRoll, "PIANO ROLL", pianoRollText },
@@ -307,6 +329,7 @@ Drive, clip and a limiter on the whole mix.
         { HelpDialog::Topic::matrix, "MATRIX", matrixText },
         { HelpDialog::Topic::effects, "EFFECTS", effectsText },
         { HelpDialog::Topic::master, "MASTER", masterText },
+        { HelpDialog::Topic::sidechain, "SIDECHAIN", sidechainText },
     };
 
     // ---- Rendering ----
