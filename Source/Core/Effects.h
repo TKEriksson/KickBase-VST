@@ -22,7 +22,7 @@ enum class EffectType { off, filter, distortion, eq, chorus, phaser, echo, rever
 constexpr int numEffectTypes = (int) EffectType::count; // inklusive Off
 constexpr int numEffectChannels = 11; // FX1 ... FX11
 constexpr int slotsPerChannel = 5;
-constexpr int knobsPerSlot = 10; // P1-P8 är de ursprungliga; P9-P10 tillkom i FX1 (gamla projekt får dem satta till neutralt av migrateLegacyKnobs)
+constexpr int knobsPerSlot = 11; // P1-P8 är de ursprungliga; P9-P10 tillkom i FX1 och P11 i rel-0.3 (Echo TIME MS); gamla projekt får dem satta till neutralt av migrateLegacyKnobs
 
 // Ljudet från kicken och instrumenten som effekten SIDECHAIN lyssnar på (sida för sida, per block): 0 = kicken, 1-10 = instrumenten.
 // Pekarna gäller bara under det pågående blocket. Instrumentet fyller i dem; tomma pekare betyder att källan inte spelar.
@@ -46,7 +46,7 @@ namespace Effects
     juce::String knobParamID (int channel, int slot, int knob);
     // Gamla projekt (utan egenskapen fxKnobsV) saknar rattar som tillkommit sedan dess: sätter dem till sitt standardvärde (neutralt) i state-trädet.
     void migrateLegacyKnobs (juce::ValueTree& state);
-    constexpr int knobsVersion = 3;
+    constexpr int knobsVersion = 4; // 4: P11 (Echo TIME MS)
     // Rattar som tillkommit sedan FX1: sant och standardvärdet (0..1) om ratt k i typen är en sådan (saknas den i en fil ska den få detta, inte 0.5).
     bool newKnobDefault (EffectType type, int k, float& normalised);
     juce::String channelParamID (int channel, const juce::String& suffix);

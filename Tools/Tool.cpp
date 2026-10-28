@@ -4058,6 +4058,24 @@ int toolMain (int argc, char* argv[])
         return reeseTest();
     if (argc == 2 && juce::String (argv[1]) == "multisampletest")
         return multiSampleTest();
+    // sfz <fil.sfz>: skriver ut regionerna parseSfz hittar och hur många zoner addSfz kan läsa in (samma väg som UI:t).
+    if (argc == 3 && juce::String (argv[1]) == "sfz")
+    {
+        const auto file = juce::File::getCurrentWorkingDirectory().getChildFile (argv[2]);
+        if (! file.existsAsFile())
+        {
+            std::printf ("FEL: hittar inte %s\n", file.getFullPathName().toRawUTF8());
+            return 1;
+        }
+        const auto regions = MultiSampling::parseSfz (file.loadFileAsString());
+        for (const auto& r : regions)
+            std::printf ("%s  rot %d  toner %d-%d  anslag %d-%d  tune %.0f\n", r.samplePath.toRawUTF8(), r.mapping.rootKey, r.mapping.keyLow,
+                         r.mapping.keyHigh, r.mapping.velocityLow, r.mapping.velocityHigh, (double) r.mapping.tuneCents);
+        MultiSampleSet set;
+        const auto loaded = set.addSfz (file);
+        std::printf ("%d regioner i filen, %d zoner inlästa\n", (int) regions.size(), loaded);
+        return regions.empty() ? 1 : 0;
+    }
     // uiprofile <flik> <init|heavy> [instrument] [sekunder]: gränssnittets CPU och var meddelandetråden lägger tiden.
     if (argc >= 4 && juce::String (argv[1]) == "uiprofile")
         return uiProfileCommand (juce::String (argv[2]).getIntValue(), juce::String (argv[3]), argc > 4 ? juce::String (argv[4]).getIntValue() : 3,

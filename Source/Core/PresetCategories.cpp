@@ -5,7 +5,8 @@ namespace PresetCategories
     const juce::StringArray& names()
     {
         static const juce::StringArray list { "PSY CLEAN", "PSY ROLLING BASS", "PSY ROLLING", "MINIMAL", "GOA", "GLIDE BASSES",
-                                              "SYNTH", "MID BASS", "HI BASS", "GAMLA DEFAULT" };
+                                              "SYNTH", "MID BASS", "HI BASS", "DARK PSY", "DANCE", "TRANCE", "TECHNO", "EMPIRIKAL",
+                                              "GAMLA DEFAULT" };
         return list;
     }
 
@@ -23,6 +24,20 @@ namespace PresetCategories
             return "PSY CLEAN";
         if (section == Presets::Section::bass && presetName.startsWith ("Rolling ") && presetName != "Rolling Classic")
             return "PSY ROLLING BASS";
+        if (section == Presets::Section::bass && presetName.startsWith ("Mid "))
+            return "MID BASS";
+        if (section == Presets::Section::bass && presetName.startsWith ("Hi "))
+            return "HI BASS";
+        if (section == Presets::Section::bass && presetName.startsWith ("Synth "))
+            return "SYNTH";
+        if (section == Presets::Section::kick || section == Presets::Section::bass)
+        {
+            static const char* const genres[][2] = { { "Minimal ", "MINIMAL" }, { "Goa ", "GOA" }, { "Dark Psy ", "DARK PSY" }, { "Dance ", "DANCE" },
+                                                     { "Trance ", "TRANCE" }, { "Techno ", "TECHNO" }, { "Empirikal ", "EMPIRIKAL" } };
+            for (const auto& genre : genres)
+                if (presetName.startsWith (genre[0]))
+                    return genre[1];
+        }
         return defaultName();
     }
 

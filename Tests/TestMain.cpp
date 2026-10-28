@@ -8,6 +8,8 @@ int main()
     runModulationTests();
     runFmPresetTests();
     runPersistFmTests();
+    runAutoFixTests();
+    runFxTests();
 
     if (testFailures() > 0)
     {
