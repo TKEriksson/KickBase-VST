@@ -16,7 +16,7 @@ En enda release (Tobias 28 okt): allt som tidigare låg i rel-0.4 ingår nu i re
 6. Övertonsredigerare, Serum-stil, etapp 1-3.
 7. Sample-editor (AMP/PITCH, på/av), klick-lager (3) och sampleverktyg, reverse per not, parameterlanes under pianorollen (resizebar).
 8. RING, Echo/Flanger och autosave/IO (Tobias 28 okt: lägg in i planen): plan först, sedan bygge. Nya parametrar sist, standard av.
-9. AUTO FIX sist (28 okt: mätdelen i kärnan görs av Arbetare 2, Arbetare 1 tar bara UI och APPLY).
+9. AUTO FIX hör till rel-0.4 (Tobias 28 okt); görs inte nu. Mätkärnan som Arbetare 2 redan byggt får ligga kvar.
 
 ## Arbetare 2 (preset och verktyg, branch w2)
 ### Först
