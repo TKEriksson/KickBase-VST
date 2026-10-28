@@ -278,7 +278,7 @@ namespace Help
             { "bassBWidth", "Stereo width of OSC 2. 100 % = exactly as before, 0 % = mono, 200 % = twice the side signal. Only does something when the oscillator is stereo (UNISON above 1 or STEREO)." },
             { "bassCWidth", "Stereo width of OSC 3. 100 % = exactly as before, 0 % = mono, 200 % = twice the side signal. Only does something when the oscillator is stereo (UNISON above 1 or STEREO)." },
             { "bassSampleWidth", "Stereo width of the SAMPLE source: 100 % = mono as before, 200 % = a decorrelated copy in left and right. Keep the low end mono." },
-            { "jogSpeed", "Playback speed of the pattern relative to the tempo (the JOG wheel writes this while you hold it). 1x = normal." },
+            { "jogSpeed", "Not used any more. Kept so that old projects and DAW automation keep their parameter order." },
             { "fundamentalDuckOn", "FUNDAMENTAL DUCK for all engines: dampens the fundamental of every engine while the kick sounds (a narrow dip at the engine's own fundamental). Engines can inherit, switch it off or use their own values. Limits: it follows the last played voice of each engine, and the 2nd harmonic and glides are not followed." },
             { "fundamentalDuckDepth", "How many dB the fundamental is dampened at full effect while the source sounds (instrument-wide; engines set to INHERIT use it)." },
             { "fundamentalDuckWindow", "How close in pitch the engine's fundamental must be to the source's, in cents. Inside the window the dip is full; at twice the window it is gone." },

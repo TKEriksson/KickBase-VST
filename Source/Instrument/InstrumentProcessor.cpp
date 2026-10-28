@@ -158,8 +158,8 @@ void InstrumentProcessor::processChunk (juce::AudioBuffer<float>& buffer, juce::
     clock.setForceFreeRun (previewLayer >= 0);
     clock.setFreeRunBpm (freeRunBpm.load());
     clock.setHold (transportHold.load());
-    clock.setJogRate (jogManual.load() >= 0.0f ? (double) jogManual.load() : (double) params.get (ParamID::jogSpeed));
-    clock.setLoop (globalLoop.load(), globalLoopStartBar.load(), globalLoopEndBar.load());
+    clock.setJogRate (jogManual.load() >= 0.0f ? (double) jogManual.load() : 1.0); // parametern jogSpeed används inte längre (finns kvar för parameterordningen)
+    clock.setLoop (globalLoop.load(), globalLoopStartTick.load(), globalLoopEndTick.load());
     clock.setScrub (scrubActive.load());
     if (const auto nudge = scrubNudgePpq.exchange (0.0); nudge != 0.0)
         clock.nudge (nudge);

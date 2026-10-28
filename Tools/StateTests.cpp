@@ -7,6 +7,7 @@
 #include "../Source/Core/ToolLayer.h"
 #include "../Source/Core/ProjectFile.h"
 #include "../Source/Ui/Help.h"
+#include "../Source/Ui/JogPanel.h"
 
 namespace
 {
@@ -74,6 +75,18 @@ int persistTest()
     auto failed = false;
     auto check = [&failed] (bool ok, const juce::String& what) { std::printf ("%s: %s\n", ok ? "ok" : "FEL", what.toRawUTF8()); failed |= ! ok; };
     const auto tableFile = Scenarios::writeTestWav ("persist_table", 21.533, 0.2);
+
+    // 0. JOG-loopens tid: 1 tick = 1/64 takt, bar.beat.sixteenth.tick skrivs och tolkas åt båda hållen.
+    {
+        check (TransportClock::ticksToPpq (64, 4.0) == 4.0 && TransportClock::ticksToPpq (16, 4.0) == 1.0 && TransportClock::ticksToPpq (4, 4.0) == 0.25
+                   && TransportClock::ticksToPpq (1, 4.0) == 1.0 / 16.0, "1 tick = 1/64 takt (64 = en takt, 16 = en fjärdedel, 4 = en sextondel)");
+        check (JogTicks::format (0) == "1.1.1.0" && JogTicks::format (64 * 4) == "5.1.1.0" && JogTicks::format (64 + 16 * 2 + 4 * 3 + 1) == "2.3.4.1", "tid visas som bar.beat.sixteenth.tick");
+        auto roundTrip = true;
+        for (juce::int64 t = 0; t < 64 * 9; ++t)
+            roundTrip &= JogTicks::parse (JogTicks::format (t)) == t;
+        check (roundTrip, "visad tid tolkas tillbaka till samma tick");
+        check (JogTicks::parse ("3") == 128 && JogTicks::parse ("2.2") == 64 + 16 && JogTicks::parse ("") == 0 && JogTicks::parse ("1.9.9.9") == 16 * 3 + 4 * 3 + 3, "saknade delar blir 1/1/1/0 och för stora delar klipps");
+    }
 
     // 1. Egna wavetables på alla tre oscillatorerna följer med projektet (OSC 3 lästes inte tillbaka förut).
     {
@@ -949,7 +962,6 @@ int fullStateTest()
             p.setLayerColour (layer, 0xff102030u + (juce::uint32) layer * 0x010101u);
         }
         p.previewNote = 67;
-        p.brakeCurve = 2;
     }
 
     // 1. Projektet: det sparade tillståndet är identiskt efter spara och ladda.
@@ -967,7 +979,6 @@ int fullStateTest()
             check (copy->getLayerName (layer) == original->getLayerName (layer) && copy->getLayerColour (layer) == original->getLayerColour (layer),
                    "projekt: namn och färg på instrument " + juce::String (layer + 1));
         check (copy->previewNote.load() == 67, "projekt: previewNote");
-        check (copy->brakeCurve.load() == 2, "projekt: BRAKE-kurvan");
         check (copy->userTable (0, 0) != nullptr && copy->userTable (3, 2) != nullptr && copy->userTable (9, 1) != nullptr && copy->userTable (1, 0) == nullptr, "projekt: egna wavetables på rätt plats");
         check (copy->getClickSampleName() == original->getClickSampleName() && copy->getInstrumentSampleName (1) == original->getInstrumentSampleName (1)
                    && ! copy->getClickSampleName().isEmpty() && ! copy->getInstrumentSampleName (1).isEmpty(),

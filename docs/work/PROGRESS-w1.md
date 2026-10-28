@@ -523,3 +523,9 @@ Bygge Debug all: grönt, "Alla tester gick igenom" (rendersig oförändrad).
 - Gren `collisions` = timing-levels + detta (kedjad). COLLISIONS i `SpectrumPage.cpp`: styrka efter gap (starkaste minus näst starkaste): 0 dB = full, 18 dB eller mer = maskerad, ingen markering. Tröskel -50 dBFS (förut -66). Blå (svag) till röd (besvärlig), max alpha 0.5, fyra band som tonar ut nedåt, ingen allokering i paint. Konstanterna överst i filen. Engelsk text och tooltip uppdaterade. Nytt `KB_COLLISIONS=1` för skärmdump (flik 30).
 - OSC 1-3 DETUNE standard 12 ct -> 0 ct (Params.cpp:275). Bara standardvärdet; index och ID oförändrade.
 - blocksizetest (voice stealing) felar redan på baslinjen 57ddb1a och alla grenar ovanpå (timing-levels, collisions). Läggs på Arbetare 2 av projektledaren (InstrumentVoices).
+
+## JOG förenklad (Arbetare 1, 2026-10-28)
+- Gren `jog-simple` = collisions + detta (kedjad, innehåller allt). Ett hjul utan lägen: JOG SPEED, RESET, BRAKE och TAPE/VINYL borta (`jogSpeed` finns kvar som oanvänd parameter så ordningen är oförändrad; `Modulation.cpp:69`). Inget sparas, ingen migrering.
+- LOOP FROM/TO i ticks (1 tick = 1/64 takt, visas bar.beat.sixteenth.tick): `TickField` i `Source/Ui/JogPanel.h` (klick/Enter, skriv, Enter/Esc, Upp/Ned = STEP). STEP 1/4-1/64 (standard 1/16), TEST BPM + fält 60-220 (standard 140). Konstanter överst (`JogConfig`). `TransportClock::ticksToPpq` (TransportClock.cpp:71).
+- Test: tick-omvandling + visa/tolka-rundtur i `Tools/StateTests.cpp` (persisttest). Debug all grön, alla tester gick igenom. blocksizetest: se rapport (stealing-felet är äldre, på baslinjen).
+- DAW (Lemon): öppna JOG: ett hjul, LOOP på, FROM 1.1.1.0 / TO 5.1.1.0; skriv en ny tid + Enter, Esc avbryter; Upp/Ned flyttar ett STEP; TEST BPM 140 spelar utan att DAW:en rullar.

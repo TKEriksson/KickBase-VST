@@ -83,8 +83,8 @@ HeaderBar::HeaderBar (PluginBase& p, const juce::String& subtitleIn)
         restartButton.onClick = [this] { processor.requestRestart(); };
         addAndMakeVisible (restartButton);
 
-        jogButton.setTooltip ("JOG - A turntable wheel for the plugin's own clock: scratch the music or change its speed (also automatable and LFO-modulatable). "
-                              "It never touches the DAW. Lit when the speed is not 1x or has an LFO.");
+        jogButton.setTooltip ("JOG - A turntable wheel for the plugin's own clock (scratch the music), a LOOP between two positions and a test tempo. "
+                              "It never touches the DAW. Lit when LOOP is on.");
         jogButton.onClick = [this] { showJogPanel(); };
         addAndMakeVisible (jogButton);
 
@@ -454,14 +454,9 @@ void HeaderBar::paintOverChildren (juce::Graphics& g)
     if (! jogButton.isVisible())
         return;
 
-    // LP-ikonen på JOG-knappen: en skiva med hål och tonarm. Lyser när hastigheten inte är 1x eller en LFO styr den.
+    // LP-ikonen på JOG-knappen: en skiva med hål och tonarm. Lyser när LOOP är på.
     const auto jogCentre = jogButton.getBounds().toFloat().getCentre();
-    auto* jogParam = processor.apvts.getParameter (ParamID::jogSpeed);
-    const auto jogIndex = processor.getParameters().indexOf (jogParam);
-    auto active = jogParam != nullptr && std::abs (jogParam->convertFrom0to1 (jogParam->getValue()) - 1.0f) > 0.001f;
-    for (int r = 0; r < Modulation::maxRoutes && ! active; ++r)
-        active = processor.modRoutes.routes[(size_t) r].source.load() >= 0 && processor.modRoutes.routes[(size_t) r].target.load() == jogIndex;
-    const auto jogColour = active ? Theme::pattern : Theme::text;
+    const auto jogColour = processor.globalLoop.load() ? Theme::pattern : Theme::text;
     g.setColour (jogColour);
     g.drawEllipse (juce::Rectangle<float> (14.0f, 14.0f).withCentre (jogCentre), 1.6f);
     g.fillEllipse (juce::Rectangle<float> (3.5f, 3.5f).withCentre (jogCentre));

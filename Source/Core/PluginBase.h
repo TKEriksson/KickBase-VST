@@ -365,20 +365,16 @@ public:
     std::atomic<double> freeRunBpm { 0.0 };
     std::atomic<bool> transportHold { false };
     std::atomic<int> seekBarRequest { -1 };
-    // JOG (D3b): hjulets handpåläggning (<0 = ingen, annars hastighet 0..4 som ersätter parametern) och läget (0 = stannar medan man rör, 1 = fortsätter).
+    // JOG: hjulet har ett enda läge (SCRUB). `jogManual` = hjulets handpåläggning (<0 = ingen, annars hastighet 0..4).
+    // `scrubActive` = hjulet hålls (klockan lämnar värden); `scrubNudgePpq` = hjulets flytt sedan förra blocket (fjärdedelar, negativt = bakåt).
     std::atomic<float> jogManual { -1.0f };
-    std::atomic<int> jogMode { 0 };
-    // Hjulets art, sparas i projektet: 0 = JOG (gamla projekt, lägena ovan), 1 = SCRUB (nya projekt), 2 = SPEED (hjulet styr bara hastigheten).
-    // `scrubActive` = hjulet hålls i SCRUB (klockan lämnar värden); `scrubNudgePpq` = hjulets flytt sedan förra blocket (fjärdedelar, negativt = bakåt).
-    static constexpr int jogKindJog = 0, jogKindScrub = 1, jogKindSpeed = 2;
-    std::atomic<int> jogKind { jogKindScrub };
     std::atomic<bool> scrubActive { false };
     std::atomic<double> scrubNudgePpq { 0.0 };
-    // Global LOOP (D3): av/på och takterna (0-räknade, slutet exklusivt). På = egen klocka som går runt i loopen (DAW:ens transport ignoreras).
+    // Global LOOP (D3): av/på och tick (0-räknade, slutet exklusivt, 1 tick = 1/64 takt). På = egen klocka som går runt i loopen (DAW:ens transport ignoreras).
+    // `globalLoopStepTicks` = hur mycket FROM/TO flyttas per piltryck (körtillstånd, sparas inte).
     std::atomic<bool> globalLoop { false };
-    std::atomic<int> globalLoopStartBar { 0 }, globalLoopEndBar { 4 };
-    // BRAKE-kurva (broms A): 0 VINYL, 1 TAPE, 2 HARD, 3 SLOW. Läses av JogPanel (som byggs om vid varje öppning); sparas inte med projektet.
-    std::atomic<int> brakeCurve { 0 };
+    std::atomic<int> globalLoopStartTick { 0 }, globalLoopEndTick { 4 * 64 };
+    std::atomic<int> globalLoopStepTicks { 4 };
     std::atomic<int> previewingLayer { -1 };
 
     // MIDI in medan pianorullen är öppen: vilken rad som svarar på tangentbordet/MIDI (notlager som i previewRequest), -1 = alla rader.
