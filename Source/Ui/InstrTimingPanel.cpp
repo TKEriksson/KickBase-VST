@@ -8,6 +8,7 @@ namespace
     constexpr int columns = 4, rows = 2, gap = 6;
     constexpr int headerHeight = 14, choiceHeight = 38;
     constexpr double maxSpanSeconds = 8.0;
+    bool focusView = true; // senast valda vy, kvar tills programmet stängs (UI-läge, ingen parameter)
     const char* const engineNames[] = { "OSC 1", "OSC 2", "OSC 3", "SAMPLE", "NOISE", "SUB", "FM" };
 
     juce::String formatSeconds (double s)
@@ -17,7 +18,7 @@ namespace
 }
 
 InstrTimingPanel::InstrTimingPanel (PluginBase& p, int layerIn, juce::Colour accentIn)
-    : processor (p), layer (layerIn), accent (accentIn), refs (p.apvts)
+    : processor (p), layer (layerIn), accent (accentIn), refs (p.apvts), timeline (p, layerIn, accentIn, true)
 {
     auto& apvts = processor.apvts;
     for (int e = 0; e < ParamID::numTimingEngines; ++e)
@@ -55,10 +56,31 @@ InstrTimingPanel::InstrTimingPanel (PluginBase& p, int layerIn, juce::Colour acc
     }
     HelpDialog::setupButton (helpButton, *this, HelpDialog::Topic::timing, "the TIMING tab (POS DELAY, LENGTH, SYNC, MODE, CURVE)");
     addAndMakeVisible (helpButton);
+    addAndMakeVisible (timeline);
+    timeline.onSelect = [this] (int engine) { selectedEngine = engine; applyViewMode(); resized(); repaint(); };
+    viewButton.setTooltip ("Switch between the time diagram with one engine (FOCUS) and all engines at once (OVERVIEW).");
+    viewButton.onClick = [this] { focusView = ! focusView; applyViewMode(); resized(); repaint(); };
+    addAndMakeVisible (viewButton);
     refreshParams();
     for (size_t e = 0; e < cells.size(); ++e)
         updateVisibility (*cells[e], e);
+    applyViewMode();
     startTimerHz (30);
+}
+
+void InstrTimingPanel::applyViewMode()
+{
+    viewButton.setButtonText (focusView ? "OVERVIEW" : "FOCUS");
+    timeline.setVisible (focusView);
+    timeline.setSelected (selectedEngine);
+    for (size_t e = 0; e < cells.size(); ++e)
+    {
+        const auto show = ! focusView || (int) e == selectedEngine;
+        for (juce::Component* c : { (juce::Component*) cells[e]->mode.get(), (juce::Component*) cells[e]->delaySync.get(), (juce::Component*) cells[e]->lengthSync.get(),
+                                    (juce::Component*) cells[e]->curve.get() })
+            c->setVisible (show);
+        updateVisibility (*cells[e], e);
+    }
 }
 
 void InstrTimingPanel::setupCount (juce::Slider& slider, std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>& attachment, const juce::String& paramID)
@@ -94,10 +116,11 @@ void InstrTimingPanel::updateVisibility (Cell& cell, size_t engine)
 {
     cell.delayIsSync = params.delaySync[engine] > 0;
     cell.lengthIsSync = params.lengthSync[engine] > 0;
-    cell.delay->setVisible (! cell.delayIsSync);
-    cell.delayCount.setVisible (cell.delayIsSync);
-    cell.length->setVisible (! cell.lengthIsSync);
-    cell.lengthCount.setVisible (cell.lengthIsSync);
+    const auto show = ! focusView || (int) engine == selectedEngine;
+    cell.delay->setVisible (show && ! cell.delayIsSync);
+    cell.delayCount.setVisible (show && cell.delayIsSync);
+    cell.length->setVisible (show && ! cell.lengthIsSync);
+    cell.lengthCount.setVisible (show && cell.lengthIsSync);
 }
 
 void InstrTimingPanel::timerCallback()
@@ -115,15 +138,16 @@ void InstrTimingPanel::timerCallback()
                 resized();
         }
     }
-    for (auto& cell : cells)
-        repaint (cell->plot);
+    if (! focusView)
+        for (auto& cell : cells)
+            repaint (cell->plot);
 }
 
-void InstrTimingPanel::layoutCell (Cell& cell)
+void InstrTimingPanel::layoutCell (Cell& cell, bool withPlot)
 {
     auto area = cell.frame.reduced (4);
     area.removeFromTop (headerHeight);
-    cell.plot = area.removeFromTop (juce::jmax (30, (int) (area.getHeight() * 0.34f)));
+    cell.plot = withPlot ? area.removeFromTop (juce::jmax (30, (int) (area.getHeight() * 0.34f))) : juce::Rectangle<int>();
     area.removeFromTop (2);
     cell.mode->setBounds (area.removeFromTop (choiceHeight).withWidth (juce::jmin (area.getWidth(), 110)));
     // tre kolumner: DELAY, LENGTH, CURVE; valrutan för SYNC sitter under ratten
@@ -145,6 +169,23 @@ void InstrTimingPanel::layoutCell (Cell& cell)
 void InstrTimingPanel::resized()
 {
     auto area = getLocalBounds().reduced (4);
+    if (focusView)
+    {
+        // Överst knappar, sedan tidsdiagrammet, och under det den valda motorns reglage.
+        auto strip = area.removeFromTop (22);
+        viewButton.setBounds (strip.removeFromLeft (90));
+        helpButton.setBounds (strip.removeFromRight (70));
+        area.removeFromTop (gap);
+        timeline.setBounds (area.removeFromTop ((int) (area.getHeight() * 0.55f)));
+        area.removeFromTop (gap);
+        for (size_t e = 0; e < cells.size(); ++e)
+        {
+            cells[e]->frame = (int) e == selectedEngine ? area : juce::Rectangle<int>();
+            layoutCell (*cells[e], false);
+        }
+        legendArea = {};
+        return;
+    }
     const auto cellWidth = (area.getWidth() - gap * (columns - 1)) / columns;
     const auto cellHeight = (area.getHeight() - gap * (rows - 1)) / rows;
     const auto cellBounds = [&] (int index)
@@ -157,7 +198,10 @@ void InstrTimingPanel::resized()
         layoutCell (*cells[e]);
     }
     legendArea = cellBounds ((int) cells.size());
-    helpButton.setBounds (legendArea.reduced (8).removeFromBottom (24).removeFromLeft (70));
+    auto buttons = legendArea.reduced (8).removeFromBottom (24);
+    helpButton.setBounds (buttons.removeFromLeft (70));
+    buttons.removeFromLeft (6);
+    viewButton.setBounds (buttons.removeFromLeft (90));
 }
 
 void InstrTimingPanel::paintPlot (juce::Graphics& g, const Cell& cell, size_t engine) const
@@ -212,6 +256,8 @@ void InstrTimingPanel::paint (juce::Graphics& g)
     for (size_t e = 0; e < cells.size(); ++e)
     {
         const auto& cell = *cells[e];
+        if (focusView && (int) e != selectedEngine)
+            continue;
         g.setColour (Theme::insetStrip);
         g.fillRoundedRectangle (cell.frame.toFloat(), 4.0f);
         g.setColour (Theme::panelBorderDim);
@@ -219,8 +265,11 @@ void InstrTimingPanel::paint (juce::Graphics& g)
         g.setColour (Theme::text);
         g.setFont (Theme::font (11.0f, true));
         g.drawText (cell.name, cell.frame.reduced (6, 4).withHeight (headerHeight), juce::Justification::centredLeft);
-        paintPlot (g, cell, e);
+        if (! focusView)
+            paintPlot (g, cell, e);
     }
+    if (focusView)
+        return;
     auto legend = legendArea.reduced (8);
     g.setColour (Theme::textDim);
     g.setFont (Theme::font (10.0f));

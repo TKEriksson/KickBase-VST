@@ -152,3 +152,4 @@ Format: **Gör så** → *förväntat resultat*. Bocka av `[ ]` när det stämme
 - (r) Öppna harmoniska editorn (OSC > tabell): håll musen över vågformen, dB- och PHASE-fälten (tips ska bytas), klicka HELP (fliken HARMONICS öppnas).
 - (u) Lemon: starta PREVIEW, tryck sedan en högtalarknapp/LISTEN/tangent/slice/JOG: PREVIEW ska släckas och inget ljud hänga. Starta PREVIEW under hållen högtalare: den ska släppas.
 - (h) OSC-panelen: klicka MODE-etiketten till OUTPUT; vrid Phase, Unison, Detune, Blend och Warp: bilden ska följa. Unison 1 = två perioder, unison > 1 = många perioder med svävning. WAVE/SPECTRUM oförändrade. (Lemon)
+- (l) Tidsdiagram: TIMING-fliken öppnas i FOCUS. Dra i vald banas kanter (POS DELAY/LENGTH), klicka en annan bana för att byta motor, ändra NUDGE/POLARITY och se banorna/konturen röra sig. OVERVIEW-knappen ger de sju rutorna.

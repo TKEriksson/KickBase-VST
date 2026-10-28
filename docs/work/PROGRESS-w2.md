@@ -414,3 +414,10 @@ Ordning: 1, 3, 2, sedan 4 efter svar från Arbetare 1. Ljudkod (InstrumentProces
 - Ny delad hjälp `Source/Ui/OscRender.h` (`OscRender::render`): motorns utsignal med warp, phase, unison, detune och blend. Återanvänds av INSTR-diagrammet (f steg 2).
 - `OscPanel.cpp` drawCurrent: SCOPE-läget heter nu OUTPUT och använder hjälpen (2 perioder, 24 vid unison > 1). Vyvalet är UI-läge (MODE-etiketten), ingen parameter, sparas inte. Modules.cpp orörd.
 - Debug all grönt.
+
+## 0.4 (l) – Tidsdiagrammet i TIMING-fliken (Arbetare 2)
+- Ny komponent `Source/Ui/TimelineChart.h`: en bana per motor på gemensam tidsaxel + gemensam kontur (volym-envelopen) längst ner. NUDGE flyttar banornas start, POLARITY vänder konturen. Spelhuvud/släpplinje som i de små diagrammen.
+- Vald bana är 3x högre och markerad; drag flyttar POS DELAY (vänsterkanten) eller LENGTH (högerkanten, närmast kanten), inte med SYNC på. Klick på annan bana väljer motor. `editable=false` ger skrivskyddat läge för INSTR (klick anropar bara `onSelect`).
+- `InstrTimingPanel`: knapp OVERVIEW/FOCUS (FOCUS först, valet kvar tills programmet stängs, UI-läge, ingen parameter). FOCUS = diagram + vald motors reglage.
+- INSTR-placeringen (f) är kvar: komponenten är klar att läggas in med `editable=false` (kräver små hunkar i Modules.cpp, Arbetare 1).
+- `Debug all` grön.
