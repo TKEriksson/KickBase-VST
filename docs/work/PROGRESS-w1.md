@@ -501,3 +501,4 @@ Bygge Debug all: grönt, "Alla tester gick igenom" (rendersig oförändrad).
 - Tre flikar SYNTH | ENVELOPE | SAMPLE (kickTab 2 = ENVELOPE, plotten har egen flik), smalare presetväljare (170 px), luft runt flikarna.
 - Hjälptext + ToolLayer uppdaterade. Bygge + alla tester + paramtest + helpcheck gröna.
 - Öppet: gamla presets med synthOn=false saknar reglage för att slå på det igen (MIX till höger ger nästan samma).
+- synthOn=false: mappas INTE till MIX, eftersom ljudet inte blir identiskt (synthOn=false tvingar Replace-läge, MIX=1 behåller valt sampleMode). Därför finns små SYNTH/SAMPLE-knappar kvar bredvid MIX (Modules.cpp, sourceRow). Inga ID/index ändrade.

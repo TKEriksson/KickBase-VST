@@ -925,6 +925,12 @@ KickModule::KickModule (PluginBase& p)
                                  "Edit the loaded sample: START cuts off its first ms, FADE fades out its last ms, REVERSE plays it backwards. All off = the sample as loaded." } });
     }
 
+    synthToggle.setTooltip ("Kick SYNTH on/off. Off = only the loaded sample is heard (like Replace); with no sample the kick is silent. Normally leave on and use MIX.");
+    sampleToggle.setTooltip ("Kick SAMPLE on/off. Off = the loaded sample is ignored (it stays loaded) and the synth kick plays alone. Normally leave on and use MIX.");
+    synthToggleAttachment = std::make_unique<juce::ButtonParameterAttachment> (*p.apvts.getParameter (ParamID::kickSynthOn), synthToggle);
+    sampleToggleAttachment = std::make_unique<juce::ButtonParameterAttachment> (*p.apvts.getParameter (ParamID::kickSampleOn), sampleToggle);
+    addAndMakeVisible (synthToggle);
+    addAndMakeVisible (sampleToggle);
     balanceHint.setText ("MIX (SYNTH view) balances synth and sample: left = synth only, middle = both, right = sample only.  MODE (SAMPLE view) decides how the sample is used.", juce::dontSendNotification);
     balanceHint.setFont (Theme::font (10.5f));
     balanceHint.setColour (juce::Label::textColourId, Theme::textDim);
@@ -1069,6 +1075,8 @@ void KickModule::resized()
     area.removeFromBottom (4);
 
     auto sourceRow = area.removeFromBottom (22);
+    synthToggle.setBounds (sourceRow.removeFromLeft (70));
+    sampleToggle.setBounds (sourceRow.removeFromLeft (80));
     helpButton.setBounds (sourceRow.removeFromRight (44));
     sourceRow.removeFromRight (4);
     sourceRow.removeFromLeft (8);

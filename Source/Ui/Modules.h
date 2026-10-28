@@ -151,7 +151,8 @@ private:
     juce::Label sampleHelp;
     std::unique_ptr<FxSendControl> fxSend;
 
-    std::unique_ptr<juce::ButtonParameterAttachment> sampleReverseAttachment;
+    juce::ToggleButton synthToggle { "SYNTH" }, sampleToggle { "SAMPLE" }; // små på/av för äldre presets; balansen är MIX
+    std::unique_ptr<juce::ButtonParameterAttachment> synthToggleAttachment, sampleToggleAttachment, sampleReverseAttachment;
     juce::Label balanceHint;
     juce::TextButton helpButton;
 
