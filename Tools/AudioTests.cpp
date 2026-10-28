@@ -1674,6 +1674,33 @@ int multiSampleTest()
         }
     }
 
+    // SFZ-tolken (MultiSampling::parseSfz): arv mellan nivåerna, tonnamn, default_path, kommentarer.
+    {
+        const auto regions = MultiSampling::parseSfz (
+            "// kommentar\n"
+            "<control> default_path=Samples\\\n"
+            "<global> lovel=10\n"
+            "<group> hivel=100 tune=-5\n"
+            "<region> sample=lo.wav key=c3\n"
+            "<region> sample=my hi.wav lokey=c4 hikey=e4 pitch_keycenter=d4 transpose=2\n"
+            "<group> lovel=1\n"
+            "<region> sample=x.wav key=61\n"
+            "<region> tune=7\n"); // utan sample: ska hoppas över
+        check (regions.size() == 3, "sfz: tre regioner med sample");
+        if (regions.size() == 3)
+        {
+            check (regions[0].samplePath == "Samples/lo.wav", "sfz: default_path framför sökvägen");
+            check (regions[0].mapping.rootKey == 48 && regions[0].mapping.keyLow == 48 && regions[0].mapping.keyHigh == 48, "sfz: key=c3 är 48");
+            check (regions[0].mapping.velocityLow == 10 && regions[0].mapping.velocityHigh == 100, "sfz: global och group ärvs");
+            check (regions[0].mapping.tuneCents == -5.0f, "sfz: tune i cent");
+            check (regions[1].samplePath == "Samples/my hi.wav", "sfz: blanksteg i sökvägen");
+            check (regions[1].mapping.keyLow == 60 && regions[1].mapping.keyHigh == 64, "sfz: lokey/hikey");
+            check (regions[1].mapping.rootKey == 60, "sfz: pitch_keycenter d4 (62) minus transpose 2");
+            check (regions[2].mapping.rootKey == 61 && regions[2].mapping.velocityLow == 1, "sfz: ny group nollställer group-arvet, global finns kvar");
+        }
+        check (MultiSampling::parseSfz ("").empty(), "sfz: tom text ger inga regioner");
+    }
+
     std::puts (failed ? "FEL: multisampletestet misslyckades" : "Multisampletestet gick igenom");
     return failed ? 1 : 0;
 }
