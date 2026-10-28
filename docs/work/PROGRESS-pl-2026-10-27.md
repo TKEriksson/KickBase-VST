@@ -64,3 +64,9 @@
 - 28 okt: Tobias: "du kan också hjälpa till". Testlista-utkast rel-0.3 skriven i docs/work/testlista-rel03-utkast.md (PDF gors vid bygget).
 - 28 okt: Arbetare 2 klar med AUTO FIX-matkarna (AutoFix.h/.cpp) och FX-karna (69f1ab0: Flanger SHAPE/SPREAD, FxTests). Echo ms-tid parkerad, fraga Tobias om knobsPerSlot. Arbetare 1 tar UI.
 - 28 okt: Tobias beslut: Echo racker med taktsteg, ingen ms-ratt, knobsPerSlot oforandrat.
+
+## 28 okt: tkdev.se uppdaterad (projektledaren)
+- Tobias bad om nya skärmbilder och ny text "överallt där plugget finns". Byggde `build.bat Debug all` i pl-worktreen (w2 mergad, grönt) och tog 9 bilder med `KickbaseTool snapshot` (flikkoder: PATTERN 1000, KICK 10, FILTER via KB_SOURCETAB=5/20, MIX KB_SOURCETAB=7/20, LFO 22 mod, MATRIX 24, SOUNDSTAGE 26, ANALYZER 30 + KB_SPECTRUM=1, AI 40 + KB_CHATDEMO=1).
+- tkdev (lokal commit, ej pushad): `kickbase/page.tsx` (9 bilder, ny text, alt utan "FL Studio"), nya jpg i `public/projekt/kickbase/`, migration `20261028000000_kickbase_projekt_uppdatering.sql` (uppdaterar body, cover och images). Migrationen är inte körd mot databasen.
+- Andra ställen: bara `oath2`-sidorna, robots och sitemap nämner Kickbase (inga funktionstexter). Statusen är fortfarande "inte släppt".
+- Ej gjort: push/deploy/migration (kräver Tobias). tkdev har andra ocommittade ändringar (cv, startsidan) som inte rörts.
