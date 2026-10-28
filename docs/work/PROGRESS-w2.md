@@ -199,3 +199,11 @@ Nu: programmet, rel-0.3 motornära punkter: 1) S3 Unison/Reese, 2) multisampling
 - **Avvikelser (full):** newest 2/5/6 och Init/New Init 1–2 peak −0,3 dB; newest 2 DC 0,004. Init och newest 1 har side −37 dB (stereo i lågt band), övriga −120.
 - **Basar:** alla peak −5…−12,4 dB, DC 0. Genrebasarna −9…−12 dB.
 - Inget ändrat; preset-index orörda. Finjustering efter Tobias lyssning i Lemon.
+
+## 2026-10-28 AUTO FIX, mätdelen (Arbetare 2)
+- Plan: `docs/work/autofix-matdel-plan.md` (alternativ B, FUNDAMENTAL DUCK; A förkastad). Godkänd av projektledaren.
+- Byggt: `Source/Core/AutoFix.h/.cpp` (ren funktion `AutoFix::analyse`, bara std): grundton mot kickens tailHz i cent per ton, fönster 100 cent, nivå bas-kick, korrelation, 200 Hz-överskott; åtgärdslista med före/efter (engelsk text), allvarligast först, deterministisk. Inga nya parametrar, inget UI.
+- Tester: `Tests/AutoFixTests.cpp` (cent, krock/fönsterkant, redan på, vidgat fönster, fas/nivå/200 Hz, tomt, determinism).
+- Slarv fångat av testet: fönsterkanten (100 cent) föll på flyttalsfel; fixat med 0,01 cent marginal.
+- För Arbetare 1: mappa `Action::param` till UI/APPLY; fyll `PhaseInfo` ur `MixAnalysis::PhaseMetrics` (hjälpare `fromPhaseMetrics` byggs när UI-kopplingen behöver den).
+- Build `Debug all` grönt.
