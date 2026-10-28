@@ -14,6 +14,9 @@ namespace PresetCategories
     // Kategorin för fabrikspresets som saknar egen regel och för egna presets utan attribut i filen.
     juce::String defaultName();
 
+    // Egna presets utan sparad kategori, och förvalet i spara-dialogen (Tobias 28 okt: USER är en egen kategori).
+    juce::String userName();
+
     // Har delen kategorier? (Kick och instrument; övriga delar har platta listor.)
     bool usedBy (Presets::Section section);
 

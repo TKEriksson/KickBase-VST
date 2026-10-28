@@ -6,11 +6,13 @@ namespace PresetCategories
     {
         static const juce::StringArray list { "PSY CLEAN", "PSY ROLLING BASS", "PSY ROLLING", "MINIMAL", "GOA", "GLIDE BASSES",
                                               "SYNTH", "MID BASS", "HI BASS", "DARK PSY", "DANCE", "TRANCE", "TECHNO", "EMPIRIKAL", "UNISON",
-                                              "GAMLA DEFAULT" };
+                                              "GAMLA DEFAULT", "USER" };
         return list;
     }
 
     juce::String defaultName() { return "GAMLA DEFAULT"; }
+
+    juce::String userName() { return "USER"; }
 
     bool usedBy (Presets::Section section)
     {

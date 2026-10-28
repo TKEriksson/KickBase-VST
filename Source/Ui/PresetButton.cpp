@@ -105,6 +105,8 @@ std::vector<PresetButton::Entry> PresetButton::buildEntries() const
         Entry entry;
         entry.name = file.getFileNameWithoutExtension();
         entry.category = categorised ? PluginBase::readPresetCategory (file) : juce::String();
+        if (categorised && entry.category.isEmpty())
+            entry.category = PresetCategories::userName();
         entry.file = file;
         user.push_back (entry);
     }
@@ -424,7 +426,7 @@ void PresetButton::askForNameAndSave()
     {
         window->addComboBox ("category", PresetCategories::names(), "Category:");
         if (auto* box = window->getComboBoxComponent ("category"))
-            box->setSelectedItemIndex (PresetCategories::names().indexOf (PresetCategories::defaultName()), juce::dontSendNotification);
+            box->setSelectedItemIndex (PresetCategories::names().indexOf (PresetCategories::userName()), juce::dontSendNotification);
     }
     window->addButton ("Save", 1, juce::KeyPress (juce::KeyPress::returnKey));
     window->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
