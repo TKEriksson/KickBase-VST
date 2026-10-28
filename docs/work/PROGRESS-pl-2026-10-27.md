@@ -50,3 +50,4 @@
 - Kvar för PL: rel-0.3-build, testlistans PDF i `docs/releases/` med hörtestsektion, Tobias testar i DAW, merge först efter ja.
 
 - 28 okt: Arbetare 1 klar med gemensam hjälpdialog (HelpDialog, flikar pianorulle/LIVE CODE/SOUNDSTAGE), lokal commit på play-pack. TOP DECAY oklart, Tobias tillfrågad, ligger sist i kön.
+- 28 okt: TOP DECAY definierat av Tobias = NOISE-decay på kicken (kickNoiseDecay, Params.cpp:194, tak 400 ms) utökas till kickens längd. Arbetare 1 fick uppgiften.
