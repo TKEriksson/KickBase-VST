@@ -826,6 +826,23 @@ void PluginBase::setStateInformation (const void* data, int sizeInBytes)
     state.removeProperty ("activeLfos", nullptr);
     Effects::migrateLegacyKnobs (state); // gamla projekt: nya effektrattar får sitt neutrala standardvärde
     Effects::migrateSendLinks (state);   // gamla SEND-länkar blir matrisrader
+    Params::migrateKickSources (         // kickens SYNTH/SAMPLE-knappar finns inte längre: av-läget blir MIX
+        [&state] (const char* id, float fallback)
+        {
+            const auto child = state.getChildWithProperty ("id", juce::String (id));
+            return child.isValid() ? (float) (double) child.getProperty ("value", fallback) : fallback;
+        },
+        [&state] (const char* id, float value)
+        {
+            auto child = state.getChildWithProperty ("id", juce::String (id));
+            if (! child.isValid())
+            {
+                child = juce::ValueTree ("PARAM");
+                child.setProperty ("id", juce::String (id), nullptr);
+                state.appendChild (child, nullptr);
+            }
+            child.setProperty ("value", value, nullptr);
+        });
     apvts.replaceState (state);
     applyLoadedLfos (lfoMask); // (efter replaceState: den återställer inte parametrar som saknas i projektet)
     if (legacyLengths)
@@ -1547,6 +1564,19 @@ bool PluginBase::loadPresetXml (const juce::XmlElement& xmlElement, Presets::Sec
                         if (const auto knob = indexOfId.find (Effects::knobParamID (channel, slot, k)); knob != indexOfId.end())
                             targets[knob->second] = neutral;
             }
+
+    // Kickens SYNTH/SAMPLE-knappar finns inte längre: ett äldre preset med en av dem av får MIX i stället (bara i delar som har kicken).
+    Params::migrateKickSources (
+        [&] (const char* id, float fallback)
+        {
+            const auto found = indexOfId.find (id);
+            return found != indexOfId.end() && fileIds.count (id) ? sectionParameters[found->second]->convertFrom0to1 (targets[found->second]) : fallback;
+        },
+        [&] (const char* id, float value)
+        {
+            if (const auto found = indexOfId.find (id); found != indexOfId.end())
+                targets[found->second] = sectionParameters[found->second]->convertTo0to1 (value);
+        });
 
     // Också parametrar som redan har rätt värde sätts: APVTS råa värde (det ljudtråden läser) avrundas till parameterns steg först när den
     // sätts, och dess startvärde är inte avrundat (t.ex. 59.9999962 i stället för 60).

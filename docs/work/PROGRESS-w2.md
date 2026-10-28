@@ -436,3 +436,9 @@ Ordning: 1, 3, 2, sedan 4 efter svar från Arbetare 1. Ljudkod (InstrumentProces
 - Instrumentets flikar: `INSTR | OSC 1 OSC 2 OSC 3 SAMPLE FM | FILTER MIX TIMING` (`Modules.cpp` ~1176-1197). FM ligger nu före FILTER, så FM:s på/av-index blev `2 + oscsPerLayer`. Ingen sparad flik (underflikarna har ingen `rememberedTab`) och ingen hjälpsektion beror på ordningen; förhandsknappar (flik 1-8) och TIMING (8) oförändrade.
 - Brödsmulan för INSTRUMENT: `> INSTRUMENT > INSTR 3 > OSC 2` via `InstrumentHost::crumb()` (`Modules.h`), `InstrumentEditor.cpp:47`; `InstrumentHost::timerCallback` ritar om huvudpanelen när smulan ändras.
 - (n): `extrasRowHeight` 44, `extrasRow.reduced (8, 4)`.
+
+## 0.4 – migrering av kickens SYNTH/SAMPLE-knappar (Arbetare 2, gren `tabs-crumb`)
+- Knapparna finns inte längre i UI:t, så ett gammalt state/preset med en källa avstängd får MIX i stället. Gemensam funktion `Params::migrateKickSources` (`Params.h` ~285), anropas vid state-laddning (`PluginBase.cpp` före `apvts.replaceState`) och i `loadPresetXml` (före sista `setParameter`-loopen).
+- synthOn=av → `kickMix`=1 och `kickSampleMode`=2 (Replace; motorn gör redan Replace när synth är av, `KickEngine.h` `effectiveSampleMode`), sedan synthOn=på. sampleOn=av → `kickMix`=0, sedan sampleOn=på. Båda på eller båda av: orört.
+- Känd liten avvikelse: ett gammalt preset med MIX≠0.5 och en källa av ljöd annorlunda än det nya (MIX kapar nivån via `min(1, 2*mix)`), godtaget. Inga nya parametrar, inga ändrade ParamID.
+- Test: `testKickSourceMigration` (`EngineTests.cpp`). `Debug all` grön.

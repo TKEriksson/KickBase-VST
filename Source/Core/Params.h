@@ -273,6 +273,34 @@ namespace Params
             rows[(size_t) row] = rowBarsFromChoice ((int) std::lround (apvts.getRawParameterValue (ParamID::rowBars (row))->load()));
         pattern.applyLegacyLengths (barsFromChoice ((int) std::lround (apvts.getRawParameterValue (ParamID::patternBars)->load())), rows, onlyLayer);
     }
+
+    // Gamla projekt och presets med kickens SYNTH- eller SAMPLE-knapp av: knapparna visas inte längre (MIX styr), så de översätts till MIX.
+    // Samma ljud som motorn gav (KickEngine::effectiveSampleMode, MIX-förstärkningarna i KickEngine.cpp):
+    //  - synten av = bara samplingen, i läget Replace  ->  MIX 1 (bara samplingen) och läge Replace
+    //  - samplingen av = som utan sampling  ->  MIX 0 (bara synten)
+    //  - båda av lämnas (tyst kick, som förut).
+    // get/set läser och skriver parametrarnas riktiga värden (bool 0/1, valindex, MIX 0-1); get ger andra argumentet när parametern saknas.
+    // Returnerar true om något ändrades.
+    inline bool migrateKickSources (const std::function<float (const char*, float)>& get, const std::function<void (const char*, float)>& set)
+    {
+        const auto synthOff = get (ParamID::kickSynthOn, 1.0f) < 0.5f;
+        const auto sampleOff = get (ParamID::kickSampleOn, 1.0f) < 0.5f;
+        if (synthOff == sampleOff)
+            return false;
+
+        if (synthOff)
+        {
+            set (ParamID::kickMix, 1.0f);
+            set (ParamID::kickSampleMode, 2.0f);
+            set (ParamID::kickSynthOn, 1.0f);
+        }
+        else
+        {
+            set (ParamID::kickMix, 0.0f);
+            set (ParamID::kickSampleOn, 1.0f);
+        }
+        return true;
+    }
 }
 
 // Cachade pekare till parametrarnas värden, så att ljudtråden kan läsa dem utan att
