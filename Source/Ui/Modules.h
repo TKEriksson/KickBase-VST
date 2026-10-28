@@ -157,7 +157,7 @@ private:
     std::unique_ptr<FxSendControl> fxSend;
 
     juce::ToggleButton synthToggle { "SYNTH" }, sampleToggle { "SAMPLE" }; // på/av för de två källorna; LEVEL i SAMPLE-vyn är balansen
-    std::unique_ptr<juce::ButtonParameterAttachment> synthToggleAttachment, sampleToggleAttachment;
+    std::unique_ptr<juce::ButtonParameterAttachment> synthToggleAttachment, sampleToggleAttachment, sampleReverseAttachment;
     juce::Label balanceHint;
 
     juce::Label sampleLabel;
@@ -232,6 +232,10 @@ private:
     juce::ToggleButton reverseToggle { "REVERSE" };
     juce::ToggleButton filterSendToggle { "SEND THROUGH FILTER" }; // samma parameter som i FILTER-fliken
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> reverseAttachment, filterSendAttachment;
+    // Sample-editor: baklänges per ton, AMP- och PITCH-kurvor (under vågformen)
+    juce::ToggleButton sampleReverseToggle { "REVERSE" }, ampToggle { "AMP" }, pitchToggle { "PITCH" };
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> sampleReverseAttachment, ampAttachment, pitchAttachment;
+    std::vector<std::unique_ptr<juce::Component>> ampControls, pitchControls; // AMP: TIME, SHAPE; PITCH: SEMIS, TIME, SHAPE
     juce::Label sliceCapNotice; // "Only the first 16 slices have rows" när samplingen har fler skivor än skivrader
     juce::ComboBox sliceModeBox;
     juce::TextButton createButton { "CREATE" }; // E2 steg 4: gör Grid/Auto-resultatet till egna gränser (Manual) som kan flyttas

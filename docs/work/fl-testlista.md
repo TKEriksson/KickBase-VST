@@ -126,3 +126,4 @@ Format: **Gör så** → *förväntat resultat*. Bocka av `[ ]` när det stämme
 - [ ] (DAW) Sample-editor AMP/PITCH per bas-lager (UI kommer av Arbetare 1): av låter som förut; AMP-kurvan tystar samplingen efter sin längd; PITCH +12 st glider ner till egna tonen.
 - [ ] (DAW) Sample REVERSE per bas-lager (UI av Arbetare 1): samplingen spelas baklänges från slutet i varje ton; med LOOP loopar den; av låter som förut.
 - [ ] (DAW) Kick klick-lager 2/3 (UI av Arbetare 1): nivå 0 låter som förut; lager med fördröjning ger ett extra klick efter anslaget; BP/LP/HP låter olika. Sampleverktyg: START klipper bort början, REVERSE spelar baklänges, FADE tonar ut slutet.
+- [ ] (DAW) UI för sample-editor, REVERSE och klick-lager (Arbetare 2): bas-samplingen har AMP/PITCH/REVERSE under vågformen; kicken har CLICK 2/3 och i SAMPLE-vyn START/REVERSE/FADE; reglagen hörs som i föregående rader och inget överlappar i fönstret.
