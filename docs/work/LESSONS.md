@@ -63,3 +63,6 @@ Skickade ett tomt "placeholder"-meddelande till Arbetare 1 i stallet for att skr
 
 ## 28 okt: ghost notes och pop-out "saknades" igen
 Projektledaren delade ut ghost notes och pop-out som nytt arbete efter en sökning som missade dem (sökte bara i Source/Ui med skiftlägeskänsligt mönster). De finns redan: ae4d2c0 (GHOST-flerval) och 514684b (POP OUT), i pianorullen (PianoRoll.h:103,273). Samma slarv som 28 okt tidigare. Regel: sök skiftlägesokänsligt i hela Source och läs `git log --grep` innan något kallas saknat.
+
+## 28 okt: arbetarna stod stilla efter rapporter
+Båda arbetarna blev stående och väntade efter sina rapporter, utan att ta nästa punkt, och Tobias fick själv fråga efter läget. Projektledaren hade inte gett någon uppföljande order efter rapporterna. Regel: svara på varje rapport med "fortsätt" och nästa konkreta uppgift; kontrollera med ListAgents att ingen arbetare är idle när en kö finns.

@@ -78,3 +78,9 @@
 ## 28 okt: beslut om omfattning
 - rel-0.3 får också (Arbetare 1): glide-länk-bugg (ny not skapas vid släpp), kick-UI (MIX-knob, diagram på egen flik, marginaler, smalare preset-dropdown), semiton-snap/oktavmarkering på alla st-knobbar, glasbreadcrumb och borttagen dubbelremsa, TIMING som egen flik med bred SYNC-dropdown, dold POS DELAY vid SYNC och kurvdiagram per motor.
 - Nästa release: preset-kategorier för huvudpresets (egna kategorier vid sparande, befintliga hamnar i "Gamla", factory och user). Kräver att presetindex/hash inte ändras och att kategorin lagras separat. Läs koden först.
+
+## 28 okt (senare): beslut om omfattning, allt i rel-0.3
+- Tobias: allt som var planerat till nästa release (0.4) läggs i rel-0.3: huvudpreset-kategorier ("Gamla" factory + user, egna kategorier vid spara), FX send-matris med 12 FX-kanaler och M-knapp per kanal, harmonics-editor, parameterlanes, AUTO FIX UI/APPLY. Alla arbetar, PL hjälper till.
+- Rendersig-jämförelse mot main behövs inte (Tobias bygger nya presets ändå). Regeln om nya parametrar sist och oförändrade ID:n/preset-index/hash gäller fortfarande. Releasenotes: äldre presets kan låta annorlunda.
+- Nya UI-/ljudbeställningar till Arbetare 1: DELAY MODE (GATE|SHIFT), LENGTH SYNC, ×-antal 1-8 (delayCount/lenCount), TO BEAT, DETUNE standard 0 ct, JOG-förenkling (ETT läge, STEP 1/4-1/64, loop i 1/64 takt med edit-läge, TEST BPM).
+- Slarv loggat i LESSONS.md: arbetarna stod stilla.
