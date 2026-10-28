@@ -195,9 +195,23 @@ public:
         {
             const auto value = juce::jlimit (JogConfig::minBpm, JogConfig::maxBpm, bpmField.getText().retainCharacters ("0123456789").getIntValue());
             bpmField.setText (juce::String (value), juce::dontSendNotification);
+            testBpmKnob.setValue (value, juce::dontSendNotification);
             applyTestBpm();
         };
         addAndMakeVisible (bpmField);
+
+        // Ratt för samma värde som rutan (freeRunBpm är inte en APVTS-parameter, så KnobComponent kan inte användas).
+        testBpmKnob.setRange (JogConfig::minBpm, JogConfig::maxBpm, 1.0);
+        testBpmKnob.setDoubleClickReturnValue (true, JogConfig::defaultBpm);
+        testBpmKnob.setValue (bpmField.getText().getIntValue(), juce::dontSendNotification);
+        testBpmKnob.setTooltip ("TEST BPM tempo, " + juce::String (JogConfig::minBpm) + "-" + juce::String (JogConfig::maxBpm)
+                                + " (double-click to reset to " + juce::String (JogConfig::defaultBpm) + ").");
+        testBpmKnob.onValueChange = [this]
+        {
+            bpmField.setText (juce::String (juce::roundToInt (testBpmKnob.getValue())), juce::dontSendNotification);
+            applyTestBpm();
+        };
+        addAndMakeVisible (testBpmKnob);
 
         statusLabel.setFont (Theme::font (11.0f, false));
         statusLabel.setColour (juce::Label::textColourId, Theme::textDim);
@@ -293,10 +307,12 @@ public:
         auto top = area.removeFromTop (150);
         top.removeFromLeft (160);
         top.removeFromTop (50);
-        auto bpmRow = top.removeFromTop (26);
-        testBpmButton.setBounds (bpmRow.removeFromLeft (110));
-        bpmRow.removeFromLeft (6);
-        bpmField.setBounds (bpmRow.removeFromLeft (46));
+        auto bpmRow = top.removeFromTop (36);
+        testBpmButton.setBounds (bpmRow.removeFromLeft (100).withSizeKeepingCentre (100, 26));
+        bpmRow.removeFromLeft (4);
+        testBpmKnob.setBounds (bpmRow.removeFromLeft (36));
+        bpmRow.removeFromLeft (4);
+        bpmField.setBounds (bpmRow.removeFromLeft (46).withSizeKeepingCentre (46, 26));
 
         area.removeFromTop (22); // plats för FROM/TO/STEP-texterna
         auto loopRow = area.removeFromTop (28);
@@ -455,6 +471,7 @@ private:
     juce::Label statusLabel, bpmField;
     juce::TextButton loopButton { "LOOP" };
     juce::ToggleButton testBpmButton { "TEST BPM" };
+    juce::Slider testBpmKnob { juce::Slider::RotaryHorizontalVerticalDrag, juce::Slider::NoTextBox };
     bool touching = false;
     float lastAngle = 0.0f, shownAngle = 0.0f, velocity = 0.0f, currentRate = 1.0f, shownProgress = 0.0f;
     double lastTime = 0.0;

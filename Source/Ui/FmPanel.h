@@ -16,6 +16,8 @@ public:
     void resized() override;
 
 private:
+    class Diagram; // vågform (två perioder) och index över tid, räknade ur ratterna
+
     void presetChanged (int index);
 
     PluginBase& processor;
@@ -28,6 +30,7 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> filterAttachment;
     std::unique_ptr<ChoiceComponent> preset;
     std::unique_ptr<KnobComponent> level, ratio, index, envAmount, envTime, semis;
+    std::unique_ptr<Diagram> waveDiagram, envDiagram;
     std::unique_ptr<UserChangeWatcher> presetWatcher;
     std::vector<std::unique_ptr<UserChangeWatcher>> knobWatchers; // en ratt som ändras av användaren: preset -> Custom
 };
