@@ -3818,6 +3818,14 @@ namespace
             processor->pattern.addNote (1, 96, 24, 7, 0.8f, true);
             processor->pattern.addNote (1, 192, 96, 0);
             processor->pattern.setCustom (1, true);
+            if (juce::SystemStats::getEnvironmentVariable ("KB_LOCKS", "0").getIntValue() != 0) // lås på tonerna, så att lanerna syns fyllda
+            {
+                processor->pattern.setLock (1, 0, Pattern::lockCutoff, 0.25f);
+                processor->pattern.setLock (1, 96, Pattern::lockCutoff, 0.8f);
+                processor->pattern.setLock (1, 0, Pattern::lockPan, 0.1f);
+                processor->pattern.setLock (1, 192, Pattern::lockPan, 0.9f);
+                processor->pattern.setLock (1, 96, Pattern::lockFxSend, 0.6f);
+            }
         }
         // KB_SLICES=<n>: instrument 1 får ett testsample i n lika skivor (rutnät) och några noter i de första Slice-raderna.
         if (const auto slices = juce::SystemStats::getEnvironmentVariable ("KB_SLICES", "0").getIntValue(); slices > 0)

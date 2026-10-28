@@ -128,7 +128,7 @@ private:
         float velocity = 0.8f;
         bool slide = false;
         Pattern::Chord chord {};
-        std::array<float, Pattern::numLocks> lock { Pattern::lockUnset, Pattern::lockUnset, Pattern::lockUnset }; // parameterl�s (bara huvudtonen)
+        std::array<float, Pattern::numLocks> lock { Pattern::lockUnset, Pattern::lockUnset, Pattern::lockUnset }; // parameterlås (bara huvudtonen)
     };
     // En ton i en stapel (polyfoni): starttick + index (0 = huvudtonen med ackordet, 1..3 = staplade toner; index kan ha hål).
     struct NoteKey
@@ -256,7 +256,7 @@ private:
     // Höjderna hör till vyn (som zoom och scroll), inte till presetet.
     struct Lane { int param = 0; float height = 40.0f; };
     static constexpr int maxLanes = 4;
-    static constexpr int numLaneParams = 1 + Pattern::numLocks; // lane-param 0 = velocity, p > 0 = parameterl�s p - 1
+    static constexpr int numLaneParams = 1 + Pattern::numLocks; // lane-param 0 = velocity, p > 0 = parameterlås p - 1
     static constexpr float minLaneHeight = 28.0f, laneGap = 4.0f;
     static const char* laneName (int param);                  // kort namn i lanens huvud
     static const char* laneTooltip (int param);
@@ -265,11 +265,11 @@ private:
     juce::Rectangle<float> laneHeader (int index) const { return { 0.0f, laneArea[(size_t) index].getY(), 46.0f, laneArea[(size_t) index].getHeight() }; }
     int splitterAt (juce::Point<float> p) const;               // lanen vars överkant delaren är, eller -1
     void showLaneMenu (int index);
-    void paintLockLane (int index, juce::Graphics& g); // staplar f�r lanens parameterl�s (en per huvudton; saknat l�s = svagt streck)
+    void paintLockLane (int index, juce::Graphics& g); // staplar för lanens parameterlås (en per huvudton; saknat lås = svagt streck)
     void addLane();
     juce::TextButton addLaneButton { "+ LANE" };
     int splitterLane = -1;
-    int dragLane = 0;                                          // lanen en lane-drag g�ller (index i lanes)
+    int dragLane = 0;                                          // lanen en lane-drag gäller (index i lanes)
     float splitterStartY = 0.0f, splitterStartHeight = 0.0f;
 
     // Verktygsraden.

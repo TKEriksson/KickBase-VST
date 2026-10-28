@@ -629,3 +629,4 @@ Steg 3 lägger sedan de 132 sändningsparametrarna efter dessa, så ordningen bl
 - Mergade fx-matrix i slice-roll (376348e). Kedja: jog-simple → fx-echo-steps → slice-roll (innehåller fx-matrix).
 - Lanes CUTOFF/PAN/FX SEND ritar och drar lås (`PianoRoll.cpp` `paintLockLane`, `Drag::lane` i mouseDrag), Alt+klick återställer, ett ångra-steg per drag, klippbordet (`PluginBase.h` NoteClipboard) och flytt bär låsen. Hjälptexten uppdaterad (`HelpDialog.cpp:9`).
 - Debug all grön, alla tester gick igenom. Inte visuellt verifierat; inga nya enhetstester för lanes. Inget ljud rört.
+- Visuell kontroll: snapshot `KB_LANES=123 KB_LOCKS=1 KickbaseTool snapshot instrument <png> 10101000` (nya env, bara för bilder). Staplarna hamnar rätt; lane-rubrikerna var trunkerade, kortade till CUT/PAN/FX (menyn har fulla namn). Dra/Alt/splitter går inte att köra i snapshot: kodgranskade, testas av Tobias i DAW.

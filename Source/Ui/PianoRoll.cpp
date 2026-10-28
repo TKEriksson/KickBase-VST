@@ -39,6 +39,9 @@ namespace
 PianoRoll::PianoRoll (PluginBase& p, std::vector<juce::Colour> colours) : processor (p), layerColours (std::move (colours))
 {
     setWantsKeyboardFocus (true);
+    for (const auto c : juce::SystemStats::getEnvironmentVariable ("KB_LANES", {})) // snapshot-verktyget: en siffra per extra lane (1 = CUTOFF, 2 = PAN, 3 = FX SEND)
+        if (c >= '1' && c < '1' + numLaneParams - 1 && lanes.size() < (size_t) maxLanes)
+            lanes.push_back (Lane { (int) (c - '0'), 40.0f });
     setTooltip ("PIANO ROLL - Click an empty spot to add a note, drag to move it, right-click a note to delete it. "
                 "Scroll = pitch, Ctrl + scroll = zoom, Shift + scroll = time. The strip at the bottom is velocity. "
                 "Click HELP (bottom right) for tools, keys, chords and glide.");
@@ -1947,7 +1950,7 @@ void PianoRoll::mouseMove (const juce::MouseEvent& event)
 
 const char* PianoRoll::laneName (int param)
 {
-    static const char* names[] = { "VEL", "CUTOFF", "PAN", "FX SEND" };
+    static const char* names[] = { "VEL", "CUT", "PAN", "FX" };
     return names[juce::jlimit (0, numLaneParams - 1, param)];
 }
 
@@ -1989,7 +1992,7 @@ void PianoRoll::paintLockLane (int index, juce::Graphics& g)
         if (value < 0.0f)
         {
             g.setColour (Theme::textDim.withAlpha (0.4f));
-            g.fillRect (juce::Rectangle<float> (x, area.getBottom() - 4.0f, 3.0f, 1.5f)); // inget lås: noten följer ratten
+            g.fillRect (juce::Rectangle<float> (x, area.getBottom() - 4.0f, 3.0f, 1.5f)); // inget lÃ¥s: noten fÃ¶ljer ratten
             continue;
         }
         const auto height = value * (area.getHeight() - 6.0f);
