@@ -1040,11 +1040,7 @@ void StepSequencer::paint (juce::Graphics& g)
         const auto dimmedRow = isKick ? mode == Mode::gate : ownerOf (layer) != selectedLayer || (isSubRow (layer) && mode == Mode::gate); // kicken är en vanlig rad, men har ingen gate
 
         if (isSubRow (layer))
-        {
-            // Slice-raden: egna steg, men ingen pianorulle eller gate (GATE-läget dämpar den).
-            paintToggleRow (g, row, instrumentSteps (layer), pageOffset (instrumentSteps (layer)), instrumentOwnSteps (lengthsNow, layer), lengthsNow.loops[(size_t) rowOf (layer)], colour, stepOfTick (layer, playTick),
-                            [this, layer] (int step) { return noteTickAt (layer, step) >= 0; }, dimmedRow);
-        }
+            paintMiniature (g, row, layer, colour, playTick, dimmedRow); // skivraden: en liten pianorulle, tangenterna är skivorna
         else if (mode == Mode::gate && ! isKick)
         {
             // GATE: en egen av/på-rytm med eget rutnät. Raden dämpas när lagrets gate är avstängd.
@@ -1250,7 +1246,7 @@ void StepSequencer::editAt (juce::Point<int> point, bool firstEvent)
                 processor.pattern.setGateStep (dragLayer, gateIndex, paintOn);
                 break;
             }
-            if (isCustom (dragLayer))
+            if (usesRoll (dragLayer))
                 return; // pianorulle: stegen redigeras inte här
 
             const auto step = stepAt (point.x, dragLayer, instrumentSteps (dragLayer), instrumentOwnSteps (lengths(), dragLayer));
@@ -1347,10 +1343,10 @@ void StepSequencer::mouseDown (const juce::MouseEvent& event)
     }
 
     // Ett lager med pianorulle: klicka för att öppna den, högerklicka för att öppna eller ta bort den.
-    if (dragTarget == Target::bass && mode == Mode::notes && isCustom (dragLayer))
+    if (dragTarget == Target::bass && mode == Mode::notes && usesRoll (dragLayer))
     {
         dragTarget = Target::none;
-        if (event.mods.isPopupMenu())
+        if (event.mods.isPopupMenu() && ! isSliceRow (dragLayer))
             showCustomMenu (dragLayer);
         else if (onOpenPianoRoll)
             onOpenPianoRoll (dragLayer);

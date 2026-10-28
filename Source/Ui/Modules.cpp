@@ -1356,7 +1356,7 @@ void SampleView::paint (juce::Graphics& g)
 
     if (shownSlicer && showSlices)
     {
-        // E2: varje skiva är en egen färgad ruta med rubrik "Slice N" (raden i mönstret). Skivor över taket har ingen rad och ritas dämpade.
+        // E2: varje skiva är en egen färgad ruta med rubrik "Slice N" (raden i mönstret).
         const auto count = (int) sample->slices.size();
         for (int i = 0; i < count; ++i)
         {
@@ -1365,7 +1365,7 @@ void SampleView::paint (juce::Graphics& g)
             const auto toX = normToX ((float) toSample / (float) length);
             const auto box = juce::Rectangle<float> (fromX, area.getY(), std::max (1.0f, toX - fromX), area.getHeight());
             const auto colour = juce::Colour::fromHSV (std::fmod ((float) i * 0.13f, 1.0f), 0.55f, 0.95f, 1.0f);
-            const auto hasRow = i < RowRegistry::maxSliceRows;
+            const auto hasRow = true; // alla skivor är tangenter i slicer-rullen
             g.setColour (colour.withAlpha (i == heldSlice ? 0.45f : hasRow ? 0.2f : 0.06f));
             g.fillRect (box);
             g.setColour (colour.withAlpha (hasRow ? 0.9f : 0.35f));
@@ -1628,8 +1628,6 @@ SamplePage::SamplePage (PluginBase& p, int layerIn, juce::Colour accent)
     addAndMakeVisible (reverseToggle);
     sliceCapNotice.setFont (Theme::font (10.0f));
     sliceCapNotice.setColour (juce::Label::textColourId, juce::Colour (0xffe0a040));
-    sliceCapNotice.setTooltip ("A sample can be cut into up to 128 slices, but only the first " + juce::String (RowRegistry::maxSliceRows)
-                               + " get a \"Slice N\" row in the pattern. The slices after that are not played by the pattern. Use fewer slices to get a row for each.");
     addChildComponent (sliceCapNotice);
     reverseAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, id (F::slicerReverse), reverseToggle);
     filterSendToggle.setTooltip ("SEND THROUGH FILTER - On: the sample goes through Filter 1 and Filter 2 (set on the FILTER tab). "
@@ -1788,10 +1786,8 @@ void SamplePage::syncSlicerControls()
     sensitivityAmount.setVisible (mode == SampleSlicing::automatic);
     createButton.setVisible (mode != SampleSlicing::manual);
     const auto* sample = processor.getActiveInstrumentSample (layer);
-    const auto count = sample != nullptr ? (int) sample->slices.size() : 0;
-    const auto text = count > RowRegistry::maxSliceRows ? "Only the first " + juce::String (RowRegistry::maxSliceRows) + " slices have rows" : juce::String();
-    sliceCapNotice.setText (text, juce::dontSendNotification);
-    sliceCapNotice.setVisible (text.isNotEmpty());
+    juce::ignoreUnused (sample); // inget tak längre: alla skivor spelas från slicer-rullen
+    sliceCapNotice.setVisible (false);
 }
 
 bool SamplePage::isMulti() const
@@ -2524,7 +2520,7 @@ PatternModule::PatternModule (PluginBase& p, bool isInstrument)
     addChildComponent (gateFillButton);
 
     sequencer.onLayerSelected = [this] (int layer) { showLayer (layer); };
-    sequencer.onOpenPianoRoll = [this] (int layer) { sequencer.selectLayer (layer); showLayer (layer); showPianoRoll (true); };
+    sequencer.onOpenPianoRoll = [this] (int layer) { if (layer < RowRegistry::firstSubRow) sequencer.selectLayer (layer); showLayer (layer); showPianoRoll (true); };
     pianoRoll.onDeleted = [this] { showPianoRoll (false); };
     pianoRoll.onPopOut = [this] { togglePopOut(); };
     addAndMakeVisible (sequencer);

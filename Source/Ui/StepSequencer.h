@@ -103,6 +103,7 @@ private:
 
     int laneStepAt (int x) const { const auto l = lengths(); return stepAt (x, selectedLayer, instrumentSteps (selectedLayer), instrumentOwnSteps (l, selectedLayer)); }
     bool isCustom (int layer) const { return processor.pattern.isCustom (layer); }
+    bool usesRoll (int layer) const { return isCustom (layer) || isSliceRow (layer); } // skivraden redigeras alltid i pianorullen
     // Lanet (velocity/längd/tonhöjd) under den valda raden visas bara i PATTERN-läget och inte när raden har pianorulle
     // (där sätts allt i pianorullen, så ytan och hjälptexten dolde bara andra rader).
     bool laneShown() const { return mode == Mode::notes && ! isCustom (selectedLayer); }

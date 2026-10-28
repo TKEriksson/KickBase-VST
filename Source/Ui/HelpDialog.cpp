@@ -201,12 +201,11 @@ A recorded sound (WAV, AIFF or FLAC) as a source for this bass layer, next to th
 - **FILTER** (checkbox): send the sample through Filter 1 and 2. Off (default), it bypasses them and keeps its full sound.
 
 ## Slices
-Cut the sample into pieces. Each slice gets its own "Slice N" row in the pattern; a note there plays that slice at its original speed.
+Cut the sample into pieces. The pattern gets one "Slices" row that opens as a piano roll where each key is a slice ("Slice N"); a note on a key plays that slice at its original speed.
 - **Grid**: equal parts (the slider sets how many, max 128). **Auto**: cut at the hits (the slider sets the sensitivity). **Manual**: your own markers.
 - **CREATE**: turn the Grid or Auto result into your own markers. Drag a boundary to move it, double-click to add one, right-click to remove one.
 - **REVERSE**: plays every slice backwards.
 - **SHOW SAMPLE / SLICES**: see the whole waveform, or every slice as its own box. Click a slice to hear it.
-- Only the first 16 slices get a row in the pattern.
 )";
 
     const char* envText = R"(# ENV

@@ -533,3 +533,8 @@ Bygge Debug all: grönt, "Alla tester gick igenom" (rendersig oförändrad).
 ## Echo tillbaka till taktsteg (Arbetare 1, 28 okt)
 - Tobias beslut 28 okt: Echo räcker med taktsteg, ingen ms-ratt, knobsPerSlot oförändrat (10). Backade a601d2e (Echo TIME MS) i Effects.cpp/.h, FxTests och Help.cpp. Flanger SHAPE/SPREAD ligger kvar (P6/P7, rörs inte). RING (B) finns redan med OSC2/OSC3/båda och tester.
 - Debug all grön. Gren: fx-echo-steps (efter jog-simple).
+
+## Slicer-pianorulle (Arbetare 1, 28 okt)
+- Gren `slice-roll` (efter fx-echo-steps) har allt. Steg 1 f257306 (datamodell: en rad `Kind::slices`, pitch = skivindex - 64, gamla sliceN migreras vid laddning), steg 2 8f3fff3 (PianoRoll med skivor som tangenter, `PianoRoll.cpp` sliceCount/lowPitch/highPitch), steg 3 (denna commit): skivraden i StepSequencer ritas som miniatyr och öppnar rullen vid klick (`StepSequencer.cpp` usesRoll), taket på 16 skivrader borta, hjälptexter uppdaterade.
+- Debug all grön, alla tester gick igenom. Känd kantfall: klick på samma instruments etikett medan skivrullen visas växlar inte tillbaka (selectLayer returnerar tidigt).
+- DAW (Lemon): ladda en sampling, skär i fler än 16 skivor, klicka skivraden i mönstret: rullen visar "Slice 1..N" som tangenter; en not på Slice 20 spelar skiva 20.

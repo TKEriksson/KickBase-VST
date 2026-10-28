@@ -268,7 +268,7 @@ namespace Help
             { "bassSamplePan", "Pan for the SAMPLE source (C = centre, exactly as before). Balance-style: the opposite side is turned down, the centre stays at full level." },
             { "bassNoisePan", "Pan for the NOISE source (C = centre, exactly as before)." },
             { "bassFmPan", "Pan for the FM source (C = centre, exactly as before)." },
-            { "bassSlicerOn", "Unused. Slices are played from the 'Slice N' rows in the pattern: a note on row 'Slice 3' plays slice 3. Only the first 16 slices have rows." },
+            { "bassSlicerOn", "Unused. Slices are played from the slices piano roll in the pattern: a note on key 'Slice 3' plays slice 3. Every slice has a key." },
             { "bassSlicerMapTo", "Unused (see the 'Slice N' rows)." },
             { "bassSlicerReverse", "Plays every slice backwards." },
             { "bassSampleMode", "How the sample layer works. Blend: the sample plays together with the synth voice, from the same notes. Independent: the sample has its own pattern row and its own notes. Off: no sample." },
