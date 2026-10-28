@@ -90,7 +90,9 @@ public:
         const auto time = timeArea();
         const auto x = [&] (double t) { return time.getX() + (float) juce::jlimit (0.0, 1.0, t / spanSeconds) * time.getWidth(); };
         const auto delay = delaySeconds (selected), end = delay + lengthSeconds (selected);
-        dragEdge = std::abs (e.position.x - x (delay)) <= std::abs (e.position.x - x (end)) ? Edge::delay : Edge::length;
+        // LENGTH 0 = ingen slutkant (öppen): då ligger båda kanterna på samma x, och ett klick till höger om den drar ut LENGTH.
+        const auto openEnded = lengthSeconds (selected) <= 0.0 && e.position.x > x (delay);
+        dragEdge = ! openEnded && std::abs (e.position.x - x (delay)) <= std::abs (e.position.x - x (end)) ? Edge::delay : Edge::length;
         const auto field = dragEdge == Edge::delay ? 0 : 2;
         const auto sync = dragEdge == Edge::delay ? params.delaySync[(size_t) selected] : params.lengthSync[(size_t) selected];
         if (sync > 0)
@@ -108,8 +110,11 @@ public:
         if (dragEdge == Edge::none || dragParam == nullptr)
             return;
         const auto time = timeArea();
+        if (time.getWidth() <= 0)
+            return;
         const auto t = juce::jlimit (0.0, spanSeconds, (double) (e.position.x - time.getX()) / (double) time.getWidth() * spanSeconds);
-        const auto seconds = dragEdge == Edge::delay ? t : juce::jmax (0.0, t - delaySeconds (selected));
+        // delaySeconds() räknar in NUDGE; fältet POS DELAY gör det inte, så NUDGE dras av.
+        const auto seconds = dragEdge == Edge::delay ? juce::jmax (0.0, t - nudgeMs / 1000.0) : juce::jmax (0.0, t - delaySeconds (selected));
         dragParam->setValueNotifyingHost (dragParam->convertTo0to1 ((float) (seconds * 1000.0)));
     }
 

@@ -425,3 +425,8 @@ Ordning: 1, 3, 2, sedan 4 efter svar från Arbetare 1. Ljudkod (InstrumentProces
 ## 0.4 (f) – Litet tidsdiagram på INSTR-sidan
 - `Modules.cpp` (`layoutInstrPage`, INSTR-sidans vänsterkolumn): nedersta tredjedelen är `TimelineChart (p, layer, accent, false)` (skrivskyddat), envelopegrafen ovanför. Klick på diagrammet hoppar till TIMING-fliken (flik 8, samma nummer som förhandsknappsloopen). Medlem `instrTimeline` i `Modules.h`.
 - `Debug all` grön efter att trasiga `.obj` raderats (LNK1163, se LESSONS.md).
+
+## 0.4 – genomgång av TimelineChart.h/OscRender.h (Arbetare 2)
+- TimelineChart.h: LENGTH 0 betyder öppen (ingen slutkant, `gateAt`), så klick till höger om vänsterkanten väljer nu Edge::length; POS DELAY-draget drar av NUDGE (delaySeconds räknar in den, fältet inte); `mouseDrag` skyddad mot bredd 0.
+- OscRender.h: `warpPhase` får den begränsade `depth`; gainSum-normaliseringen stämmer med `InstrumentSynth.cpp:112-144`.
+- Lemon-testlistan: (h) steg 5 ersatt (OSC av var overifierat), (l) steg 7-8 (NUDGE, LENGTH 0). Nytt: docs/work/release-0.4-utkast.md.

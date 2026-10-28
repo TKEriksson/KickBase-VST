@@ -151,6 +151,23 @@ Format: **Gör så** → *förväntat resultat*. Bocka av `[ ]` när det stämme
 - [ ] 0.4 punkt 2 (Lemon): Öppna FX-popupen på en instrumentrad, tryck '- remove FXn' på sista kanalen. Med effekter/sends ska en bekräftelse visas. Ctrl+Z ska återställa effekter, EQ, kompressor, nivå och sends.
 - (r) Öppna harmoniska editorn (OSC > tabell): håll musen över vågformen, dB- och PHASE-fälten (tips ska bytas), klicka HELP (fliken HARMONICS öppnas).
 - (u) Lemon: starta PREVIEW, tryck sedan en högtalarknapp/LISTEN/tangent/slice/JOG: PREVIEW ska släckas och inget ljud hänga. Starta PREVIEW under hållen högtalare: den ska släppas.
-- (h) OSC-panelen: klicka MODE-etiketten till OUTPUT; vrid Phase, Unison, Detune, Blend och Warp: bilden ska följa. Unison 1 = två perioder, unison > 1 = många perioder med svävning. WAVE/SPECTRUM oförändrade. (Lemon)
-- (l) Tidsdiagram: TIMING-fliken öppnas i FOCUS. Dra i vald banas kanter (POS DELAY/LENGTH), klicka en annan bana för att byta motor, ändra NUDGE/POLARITY och se banorna/konturen röra sig. OVERVIEW-knappen ger de sju rutorna.
-- (f) INSTR-sidan: under envelopegrafen syns ett litet tidsdiagram (skrivskyddat). Klicka på det: TIMING-fliken ska öppnas. Spela en not: spelhuvudet ska röra sig i båda.
+- (h) OSC OUTPUT-vyn (Lemon):
+  1. Öppna ett instrument, fliken OSC 1. Klicka MODE-etiketten ovanför diagrammet tills det står OUTPUT. WAVE och SPECTRUM ska se ut som förut.
+  2. Vrid Phase: vågen ska skjutas i sidled. Vrid Warp: formen ska ändras.
+  3. Unison 1: bilden visar två perioder. Sätt Unison till 3 eller mer: många perioder med svävning.
+  4. Vrid Detune och Blend med Unison > 1: svävningen ska bli snabbare respektive jämnare.
+  5. Dra Position, Warp och Phase till ytterlägena (0 och max) med Unison 1 och 8: bilden ska aldrig bli tom eller krascha.
+- (l) TIMING-diagrammet (Lemon):
+  1. Öppna fliken TIMING. Den ska starta i FOCUS: diagram överst, vald motors reglage under.
+  2. Dra i den höga (valda) banans vänsterkant: POS DELAY-ratten ska följa. Dra högerkanten: LENGTH ska följa.
+  3. Klicka en annan bana: den blir hög och reglagen byter motor. Slå på SYNC på den motorn: dragen ska inte göra något.
+  4. Spela en not: spelhuvud och släpplinje ska röra sig i banorna.
+  5. Ändra NUDGE och POLARITY (INSTR-sidan): banorna ska flytta sig respektive konturen vändas.
+  6. Klicka OVERVIEW: de sju rutorna visas; klicka FOCUS: tillbaka. Stäng och öppna fliken igen: valet ska vara kvar.
+  7. NUDGE != 0 (t.ex. +50 ms) plus drag i vänsterkanten: kanten ska följa musen utan hopp vid första draget (POS DELAY = musens tid minus NUDGE).
+  8. LENGTH 0 (ingen slutkant) på en motor utan SYNC: klicka och dra till höger om vänsterkanten ska dra ut LENGTH från 0; dra vid själva vänsterkanten ändrar POS DELAY.
+- (f) INSTR-diagrammet (Lemon):
+  1. Öppna fliken INSTR: under envelopegrafen (vänsterkolumnen) ligger ett litet tidsdiagram med alla sju banorna.
+  2. Spela en not: spelhuvudet ska röra sig i det, i takt med TIMING-fliken.
+  3. Försök dra i diagrammet: inget ska ändras (skrivskyddat).
+  4. Klicka i diagrammet: TIMING-fliken ska öppnas.

@@ -47,7 +47,7 @@ inline void render (const Wavetable& table, const Settings& s, std::vector<float
         {
             auto phase = s.startPhase + periods * ratio * (double) i / (double) n;
             phase -= std::floor (phase);
-            const auto warped = InstrumentSynth::warpPhase (warp, s.warpAmount, phase, 0.0f);
+            const auto warped = InstrumentSynth::warpPhase (warp, depth, phase, 0.0f);
             auto value = gain * table.sample (s.position, warped, maxHarmonics, s.morph);
             if (s.warp == WarpMode::am && depth > 0.0f)
                 value *= 1.0f - depth + depth * (0.5f + 0.5f * (float) std::sin (6.283185307179586 * 2.0 * phase));
