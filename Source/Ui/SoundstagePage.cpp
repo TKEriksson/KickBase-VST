@@ -1,4 +1,5 @@
 #include "SoundstagePage.h"
+#include "HelpDialog.h"
 
 SoundstagePage::SoundstagePage (PluginBase& p)
     : presets (p, Presets::Section::soundstage, Theme::master),
@@ -20,6 +21,8 @@ SoundstagePage::SoundstagePage (PluginBase& p)
     stageLabel.setTooltip ("Which sources go through WIDTH, BASS MONO and ENHANCE. A source that is off keeps its own stereo image "
                            "(it still gets the master EQ, drive and limiter). All on = the whole mix, as before.");
     addAndMakeVisible (stageLabel);
+    HelpDialog::setupButton (helpButton, *this, HelpDialog::Topic::soundstage, "SOUNDSTAGE (how AFFECTS, WIDTH, BASS MONO and ENHANCE work)");
+    addAndMakeVisible (helpButton);
     for (int s = 0; s < Mixer::numSources; ++s)
     {
         auto& button = stageButtons[(size_t) s];
@@ -51,7 +54,9 @@ void SoundstagePage::resized()
     enhance.setBounds (knobs);
 
     left.removeFromTop (6);
-    stageLabel.setBounds (left.removeFromTop (16));
+    auto labelRow = left.removeFromTop (16);
+    helpButton.setBounds (labelRow.removeFromRight (50));
+    stageLabel.setBounds (labelRow);
     const auto columns = 4, rowHeight = 22;
     const auto cell = left.getWidth() / columns;
     for (int s = 0; s < Mixer::numSources; ++s)

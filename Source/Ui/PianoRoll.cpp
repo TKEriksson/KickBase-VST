@@ -1,6 +1,7 @@
 #include "PianoRoll.h"
 #include "../Core/RollFiles.h"
 #include "LengthMenu.h"
+#include "HelpDialog.h"
 
 namespace
 {
@@ -38,16 +39,9 @@ namespace
 PianoRoll::PianoRoll (PluginBase& p, std::vector<juce::Colour> colours) : processor (p), layerColours (std::move (colours))
 {
     setWantsKeyboardFocus (true);
-    setTooltip ("PIANO ROLL - PENCIL: click in an empty spot to add a note (drag to move it); click another pitch at the same tick to stack a note (up to four). "
-                "SELECT: drag a box in an empty spot, like on the desktop (Shift + drag does this with any tool). ERASER: click or drag over notes to remove them. "
-                "Selected notes move, stretch and delete together; Ctrl + C copies them and Ctrl + V pastes (choose where, then Enter). "
-                "Keys: hold Alt = eraser, hold Shift = select box, Ctrl + A = select all, Ctrl + C / X / V = copy / cut / paste, Delete = delete selected, "
-                "arrow keys move the selected notes (Shift = octave), Esc = clear the selection. "
-                "Right-click a note to delete it. CHORD: select notes, then right-click an empty spot and pick a chord; the chord notes are shown "
-                "as outlines above or below the note (they play only with VOICES 2 or more, dimmed otherwise). With GLIDE on, the notes you draw are glide notes (pink): they glide the sounding note to their pitch "
-                "during their own length, then the pitch stays. Double-click a note to turn glide on/off for it. "
-                "STROKE: right-drag on an empty spot draws a glide stroke from left to right; it glides to the note it ends on (or to the pitch where it ends). A right-click without dragging opens the menu. "
-                "Scroll = pitch, Ctrl + scroll = zoom, Shift + scroll = move in time. The strip at the bottom is velocity.");
+    setTooltip ("PIANO ROLL - Click an empty spot to add a note, drag to move it, right-click a note to delete it. "
+                "Scroll = pitch, Ctrl + scroll = zoom, Shift + scroll = time. The strip at the bottom is velocity. "
+                "Click HELP (bottom right) for tools, keys, chords and glide.");
 
     presetButton.setTooltip ("PRESET - Save this layer's piano roll as a preset, or load a saved one into this layer. Saved piano rolls can be loaded into any layer.");
     presetButton.onClick = [this] { showPresetMenu(); };
@@ -133,8 +127,9 @@ PianoRoll::PianoRoll (PluginBase& p, std::vector<juce::Colour> colours) : proces
     deleteButton.onClick = [this] { deleteSelected(); };
 
     for (auto* c : std::initializer_list<juce::Component*> { &snapButton, &gridBox, &smallerButton, &biggerButton, &allButton, &deleteButton, &glideButton, &followButton, &ghostButton, &presetButton, &midiButton, &drawButton, &selectButton, &eraseButton,
-                                                                 &copyButton, &pasteButton, &pasteOkButton, &pasteCancelButton, &listenButton, &popOutButton, &hBar, &vBar })
+                                                                 &copyButton, &pasteButton, &pasteOkButton, &pasteCancelButton, &listenButton, &popOutButton, &helpButton, &hBar, &vBar })
         addAndMakeVisible (c);
+    HelpDialog::setupButton (helpButton, *this, HelpDialog::Topic::pianoRoll, "the PIANO ROLL (tools, keys, chords, glide)");
     popOutButton.setTooltip ("POP OUT - Opens the piano roll in its own window that you can move and resize (for a second screen). Click DOCK, or close the window, to bring it back.");
     popOutButton.onClick = [this] { if (onPopOut) onPopOut(); };
     hBar.addListener (this);
@@ -884,6 +879,8 @@ void PianoRoll::resized()
     presetButton.setBounds (bottom.removeFromRight (62));
     bottom.removeFromRight (4);
     midiButton.setBounds (bottom.removeFromRight (48));
+    bottom.removeFromRight (4);
+    helpButton.setBounds (bottom.removeFromRight (50));
     bottom.removeFromRight (4);
     popOutButton.setBounds (bottom.removeFromRight (64));
     snapButton.setBounds (bottom.removeFromLeft (50));

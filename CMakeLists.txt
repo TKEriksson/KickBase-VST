@@ -121,6 +121,7 @@ set(PLUGIN_SOURCES
     Source/Ui/LiveCodePage.cpp
     Source/Ui/Components.cpp
     Source/Ui/Help.cpp
+    Source/Ui/HelpDialog.cpp
     Source/Ui/FilterPanel.cpp
     Source/Ui/HarmonicEditor.cpp
     Source/Ui/OscPanel.cpp

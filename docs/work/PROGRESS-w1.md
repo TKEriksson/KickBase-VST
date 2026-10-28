@@ -397,3 +397,9 @@ Bygge Debug all: grönt, "Alla tester gick igenom" (rendersig oförändrad).
 - Kod: `Mixer::addStageParameters`/`inStage`, `mix(..., skipBus)` (Mixer.cpp), `MasterSection::process(..., skip)` med egen `eqSkip` (Master.cpp), `stageSkipBus` i InstrumentProcessor (summas efter stereoblocket, före DC/drive/limiter; masterfadern gäller även den). UI: 16 knappar "AFFECTS" i `SoundstagePage.cpp`, WIDTH/BASS MONO med tydligare tips, Help.cpp-text för *Stage och MAX.
 - Build Debug all grön, alla tester igenom (LNK1163 på skadade .obj: raderade Modules/StepSequencer .obj och byggde om). paramtest 3048/961 ok.
 - DAW-test (Lemon): SOUNDSTAGE: alla knappar på = låter som förut. Stäng av KICK, höj WIDTH till 200 % och slå på BASS MONO: kicken ligger orörd, övriga breddas. Stäng av en instrumentknapp: den hoppar över bredd men får master-EQ/limiter. Spara/ladda projekt behåller valet.
+
+## Gemensam hjälpdialog (Arbetare 1, 2026-10-28)
+- `Source/Ui/HelpDialog.h/.cpp`: markdown-lik vy (rubriker, punkter, **fet**, `kod`) i Viewport med rullningslist, icke-modal DialogWindow med en flik per ämne. Nytt ämne = en rad i `topics[]` + en text. `HelpDialog::setupButton` ger HELP-knapp med tooltip. Fliken SOUNDSTAGE har Tobias text ordagrant. Inga parametrar.
+- HELP-knappar: pianorullen (nedre raden, längst till höger; den långa notis-tooltipen kortad), LIVE CODE (efter FORMAT), SOUNDSTAGE (vid AFFECTS). Motorerna och övriga flikar kommer en i taget.
+- Build Debug all grön, helpcheck 0 utan förklaring.
+- DAW-test (Lemon): klicka HELP i pianorullen: dialogen öppnas på PIANO ROLL, rullningslisten fungerar, flikarna LIVE CODE/SOUNDSTAGE byter text. HELP på LIVE CODE och SOUNDSTAGE öppnar rätt flik; är dialogen redan öppen byter den flik. Hovra HELP: tooltip. Esc stänger.

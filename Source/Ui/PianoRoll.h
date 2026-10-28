@@ -250,7 +250,7 @@ private:
     juce::TextButton snapButton { "SNAP" }, smallerButton { "-" }, biggerButton { "+" }, allButton { "SELECT ALL" }, deleteButton { "DEL" },
                      glideButton { "GLIDE" }, followButton { "FOLLOW" }, ghostButton { "GHOST" }, presetButton { "PRESET" }, midiButton { "MIDI" },
                      drawButton { "PENCIL" }, selectButton { "SELECT" }, eraseButton { "ERASER" }, copyButton { "COPY" },
-                     pasteButton { "PASTE" }, pasteOkButton { "OK" }, pasteCancelButton { "CANCEL" }, popOutButton { "POP OUT" };
+                     pasteButton { "PASTE" }, pasteOkButton { "OK" }, pasteCancelButton { "CANCEL" }, popOutButton { "POP OUT" }, helpButton;
     ListenButton listenButton; // högtalare: håll för att höra pianorullen (loopar), släpp för att sluta
     Tool tool = Tool::draw;
     bool shiftHeld = false, altHeld = false;

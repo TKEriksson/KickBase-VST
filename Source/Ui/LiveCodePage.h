@@ -106,6 +106,7 @@ private:
     std::unique_ptr<FloatWindow> floatWindow;
     juce::TextButton floatButton { "FLOAT" };
     juce::TextButton formatButton { "FORMAT" };
+    juce::TextButton helpButton;
     juce::CodeDocument document;
     juce::CPlusPlusCodeTokeniser tokeniser; // räcker för färg på strängar, siffror, kommentarer
     juce::CodeEditorComponent editor { document, &tokeniser };

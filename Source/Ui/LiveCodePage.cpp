@@ -1,4 +1,5 @@
 #include "LiveCodePage.h"
+#include "HelpDialog.h"
 
 namespace
 {
@@ -66,7 +67,8 @@ LiveCodePage::LiveCodePage (PluginBase& processor) : processor (processor), tool
     codeOnlyButton.setColour (juce::TextButton::buttonOnColourId, Theme::mix.darker (0.2f));
     codeOnlyButton.setTooltip ("Hear only the rows Live Code has written (solo). Your own SOLO click wins.");
     codeOnlyButton.onClick = [this] { setCodeOnly (codeOnlyButton.getToggleState()); };
-    for (auto* b : { &playButton, &stopButton, &createButton, &codeOnlyButton, &floatButton, &formatButton })
+    HelpDialog::setupButton (helpButton, *this, HelpDialog::Topic::liveCode, "LIVE CODE (syntax, notes, effects, autocomplete)");
+    for (auto* b : { &playButton, &stopButton, &createButton, &codeOnlyButton, &floatButton, &formatButton, &helpButton })
         addAndMakeVisible (b);
     formatButton.setTooltip ("FORMAT: one call per line, s(\"...\") first. Blocks with // comments are left as they are. Undo (Ctrl+Z) works.");
     formatButton.onClick = [this]
@@ -154,6 +156,8 @@ void LiveCodePage::resized()
     floatButton.setBounds (top.removeFromLeft (70));
     top.removeFromLeft (6);
     formatButton.setBounds (top.removeFromLeft (80));
+    top.removeFromLeft (6);
+    helpButton.setBounds (top.removeFromLeft (60));
     area.removeFromTop (6);
     auto locks = area.removeFromTop (22);
     lockLabel.setBounds (locks.removeFromLeft (76));
