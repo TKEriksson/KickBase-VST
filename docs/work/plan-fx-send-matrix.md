@@ -28,3 +28,10 @@ Status: plan, ingen kod. Beslutad av Tobias 28 okt: 12 kanaler som tak, send per
 ## Tester
 - paramtest/helpcheck för de 132 nya parametrarna; rendersig oförändrad (alla sends 0); ny test: två sends från samma källa ger summan av var för sig; gammalt preset med en kanal låter likadant; blocksizetest.
 - Tobias testar i Lemon: sidechain på kanal 12, flera sends från kicken, gamla presets.
+
+## Beslut 28 okt (Tobias): UI och summa
+- Summa: effektivt belopp per kanal = gamla fxAmount (om kanalen matchar) + matrisen. Gamla presets blir bit-identiska när matrisen är 0.
+- Gamla matrisen i UI: popup från FX-väljaren per källa, en rad per kanal som finns: `FXn [på/av] slider %`. Överst/nederst en rad `+ add FX channel`. Knappen visar ett sammandrag (t.ex. "FX1 50%, FX3 30%" eller "None"). Gamla INS/SEND-kopplingen visas som en vanlig rad.
+- På/av per rad är bara en UI-genväg, inga extra parametrar: av = beloppet 0 och slidern disabled; på = slidern går att dra. Senaste värdet kommer ihåg medan fönstret är öppet, inte i presetet.
+- Kanalantal är globalt: `+ add FX channel` i popupen lägger till en kanal överallt (nya kanalen har send 0). Ta bort görs bara på FX-sidan, med fråga om effekter/sends finns.
+- Senare: mixer-lik matris som översikt (samma parametrar), M-knapp per kanal på mixersidan.
