@@ -504,6 +504,13 @@ namespace Effects
             return false;
         const auto channel = count - 1;
 
+        // Ett ångra-steg för hela borttagningen: sends, effekter, EQ, kompressor, nivå och kanalantalet (egenskapen skrivs med undo-hanteraren).
+        if (auto* undo = apvts.undoManager)
+        {
+            apvts.copyState(); // väntande rattändringar hör inte till steget
+            undo->beginNewTransaction (Time::getCurrentTime().formatted ("%H:%M:%S") + " Remove " + channelLabel (channel));
+        }
+
         forEachSource (channel, [&] (const String& channelID, const String& amountID, const String& sendID)
         {
             resetParameter (apvts, sendID);
@@ -520,7 +527,8 @@ namespace Effects
                     resetParameter (apvts, withID->paramID);
         resetParameter (apvts, ParamID::fxMuteIds[channel]);
 
-        apvts.state.setProperty ("fxChannelCount", channel, nullptr);
+        apvts.copyState(); // skriver de nollställda värdena till trädet (och därmed in i steget) nu
+        apvts.state.setProperty ("fxChannelCount", channel, apvts.undoManager);
         return true;
     }
 

@@ -394,3 +394,7 @@ Ordning: 1, 3, 2, sedan 4 efter svar från Arbetare 1. Ljudkod (InstrumentProces
 - FX-ratten borttagen från PATTERN-raderna (`StepSequencer.cpp` addRowKnobs, RowKnobs, rubriken "FX"); VOL-ratten större (34 px, 30 i låga rader), layouten i låga rader flyttad vänster (labelWidth 226).
 - FX-knappen visar "None", "FX" (en kanal) eller "N x FX"; tipset listar kanalerna med procent (`Components.cpp` FxSendControl::updateSummary).
 - Debug all grönt. Ingen ljudkod ändrad.
+
+## 0.4 punkt 2 – klar (Arbetare 2)
+- FX-popupen har knappen '- remove FXn' (Components.cpp, FxSendPopup::askRemoveLast). Bekräftelse om kanalen har effekter eller sends; Ctrl+Z återställer kanalen, effekter, EQ, kompressor, nivå och sends.
+- Effects.cpp removeLastChannel: egen undo-transaktion, fxChannelCount skrivs via undo-managern. Test: 'ta bort FX-kanal och ångra' (MasterTests.cpp). Debug all grönt.

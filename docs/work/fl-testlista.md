@@ -147,3 +147,5 @@ Format: **Gör så** → *förväntat resultat*. Bocka av `[ ]` när det stämme
 - [ ] (Lemon) Echo-FX: TIME MS finns inte längre → *10 rattar per slot; gamla projekt med Echo laddas och låter som förut*.
 - [0.4 p1, Lemon] Öppna ett gammalt projekt med FX-länk i SEND-läge: raden syns som vanlig FX-rad i popupen (ingen dubbelrad), ljudet är detsamma. INS-länk visas som "INS FXn".
 - [0.4 p3, Lemon] PATTERN-raderna har bara en (större) VOL-ratt, ingen FX-ratt; låga rader ser rätt ut. FX-knappen på fliken visar None / FX / "2 x FX"; hovra visar kanalerna.
+
+- [ ] 0.4 punkt 2 (Lemon): Öppna FX-popupen på en instrumentrad, tryck '- remove FXn' på sista kanalen. Med effekter/sends ska en bekräftelse visas. Ctrl+Z ska återställa effekter, EQ, kompressor, nivå och sends.

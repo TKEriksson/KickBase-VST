@@ -500,13 +500,16 @@ namespace
             : apvts (s), channelID (channelIDIn), amountID (amountIDIn), modeID (modeIDIn), sendToIDs (sendIDs), accent (accentIn)
         {
             addButton.setButtonText ("+ add FX channel");
-            addButton.setTooltip ("Adds an FX channel everywhere (all sources, the mixer and the FX page). The new send is 0. Channels are removed on the FX page.");
+            addButton.setTooltip ("Adds an FX channel everywhere (all sources, the mixer and the FX page). The new send is 0.");
+            removeButton.setTooltip ("Removes the last FX channel everywhere. Asks first if it has effects or sends; Ctrl+Z restores it.");
             addButton.onClick = [this]
             {
                 if (Effects::addChannel (apvts))
                     rebuild();
             };
             addAndMakeVisible (addButton);
+            removeButton.onClick = [this] { askRemoveLast(); };
+            addAndMakeVisible (removeButton);
             rebuild();
             startTimerHz (10);
         }
@@ -517,7 +520,10 @@ namespace
             for (auto& row : rows)
                 row->setBounds (area.removeFromTop (rowHeight));
             area.removeFromTop (2);
-            addButton.setBounds (area.removeFromTop (rowHeight));
+            auto buttons = area.removeFromTop (rowHeight);
+            removeButton.setBounds (buttons.removeFromRight (buttons.getWidth() / 2 - 2));
+            buttons.removeFromRight (4);
+            addButton.setBounds (buttons);
         }
 
     private:
@@ -606,8 +612,40 @@ namespace
             return 0;
         }
 
+        // Tar bort sista kanalen. Har den sends eller effekter frågar vi först; steget går att ångra med Ctrl+Z (Effects::removeLastChannel).
+        void askRemoveLast()
+        {
+            const auto last = Effects::visibleChannels (apvts) - 1;
+            if (last < 1)
+                return;
+            auto remove = [safe = juce::Component::SafePointer<FxSendPopup> (this)]
+            {
+                if (safe != nullptr)
+                {
+                    Effects::removeLastChannel (safe->apvts);
+                    safe->rebuild();
+                }
+            };
+            if (! Effects::channelHasSends (apvts, last) && ! Effects::channelHasEffects (apvts, last))
+            {
+                remove();
+                return;
+            }
+            const auto label = Effects::channelLabel (last);
+            juce::AlertWindow::showAsync (juce::MessageBoxOptions()
+                                              .withIconType (juce::MessageBoxIconType::QuestionIcon)
+                                              .withTitle ("Remove " + label + "?")
+                                              .withMessage (label + " has effects or sends. Removing it resets its effects, EQ, compressor and level, "
+                                                            "and sets every send to it to 0. Ctrl+Z restores all of it.")
+                                              .withButton ("Remove")
+                                              .withButton ("Cancel"),
+                                          [remove] (int result) { if (result == 1) remove(); });
+        }
+
         void rebuild()
         {
+            removeButton.setButtonText ("- remove FX" + juce::String (juce::jmax (1, Effects::visibleChannels (apvts))));
+            removeButton.setEnabled (Effects::visibleChannels (apvts) > 1);
             rows.clear();
             legacyModeAttachment.reset();
             legacyMode.reset();
@@ -667,7 +705,7 @@ namespace
         std::unique_ptr<juce::TextButton> legacyMode;
         std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> legacyModeAttachment;
         int legacyShownFor = 0, shownChannels = 0;
-        juce::TextButton addButton;
+        juce::TextButton addButton, removeButton;
     };
 }
 

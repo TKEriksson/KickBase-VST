@@ -45,6 +45,23 @@ namespace
         juce::AudioProcessorValueTreeState apvts;
     };
 
+    // Som DummyProcessor, men med effektkanalernas parametrar och en undo-hanterare (för borttagning av en FX-kanal).
+    struct DummyFxProcessor : DummyProcessor
+    {
+        DummyFxProcessor() : fxApvts (*this, &undo, "Parameters", createFxLayout()) {}
+
+        static juce::AudioProcessorValueTreeState::ParameterLayout createFxLayout()
+        {
+            juce::AudioProcessorValueTreeState::ParameterLayout layout;
+            Effects::addParameters (layout);
+            Effects::addExtraChannelParameters (layout);
+            return layout;
+        }
+
+        juce::UndoManager undo;
+        juce::AudioProcessorValueTreeState fxApvts;
+    };
+
     void testCurveShapeAndTable()
     {
         std::puts ("Sidechain: standardkurvan och tabellen");
@@ -188,6 +205,31 @@ namespace
         check (std::abs (value (ParamID::bass (0, ParamID::fxSendToField (2))) - 0.7f) < 1.0e-5f, "andra körningen ändrar inget");
     }
 
+    // 0.4 punkt 2: en borttagen FX-kanal kommer tillbaka med effekter och antal vid ångra.
+    void testRemoveChannelUndo()
+    {
+        std::puts ("0.4: ta bort FX-kanal och ångra");
+        DummyFxProcessor processor;
+        auto& apvts = processor.fxApvts;
+        const auto last = Effects::visibleChannels (apvts) - 1;
+        const auto count = last + 1;
+        auto* type = apvts.getParameter (Effects::slotParamID (last, 0, "Type"));
+        check (type != nullptr, "kanalens effektplats finns");
+        if (type == nullptr)
+            return;
+        type->setValueNotifyingHost (type->convertTo0to1 ((float) (int) EffectType::maximizer));
+        apvts.copyState();
+        check (Effects::slotType (apvts, last, 0) == EffectType::maximizer && Effects::channelHasEffects (apvts, last), "effekt satt");
+
+        check (Effects::removeLastChannel (apvts), "borttagningen lyckas");
+        check (Effects::visibleChannels (apvts) == count - 1, "antalet minskar", Effects::visibleChannels (apvts));
+        check (Effects::slotType (apvts, last, 0) == EffectType::off, "effekten nollad");
+
+        processor.undo.undo();
+        check (Effects::visibleChannels (apvts) == count, "ångra ger tillbaka antalet", Effects::visibleChannels (apvts));
+        check (Effects::slotType (apvts, last, 0) == EffectType::maximizer, "ångra ger tillbaka effekten");
+    }
+
     // D4: autokomplettering inuti strängar och på tom rad
     void testLiveCodeStringComplete()
     {
@@ -242,4 +284,5 @@ void runMasterTests()
     testLimiter();
     testMaximizerModeMigration();
     testSendLinkMigration();
+    testRemoveChannelUndo();
 }
