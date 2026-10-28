@@ -1195,6 +1195,9 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
     sources.addTab ("MIX", layerAccent, *mixPanel);
     timingPanel = std::make_unique<InstrTimingPanel> (p, layer, layerAccent);
     sources.addTab ("TIMING", layerAccent, *timingPanel);
+    instrTimeline = std::make_unique<TimelineChart> (p, layer, layerAccent, false); // skrivskyddad; klick hoppar till TIMING-fliken (nr 8)
+    instrTimeline->onSelect = [this] (int) { sources.setCurrentTab (8); };
+    instrPage.addAndMakeVisible (*instrTimeline);
 
     // B1: förhandsknapp i flikraden. OSC 1-3 och SAMPLE spelar bara sin källa, FILTER/FM/MIX hela instrumentet (INSTR har sin egen knapp i sidan).
     for (int tab = 1; tab <= 8; ++tab)
@@ -1978,6 +1981,7 @@ void InstrumentModule::layoutInstrPage()
     // Envelopegrafen till vänster, rattraderna till höger (två rader, högst 100 px rattar; resten är frigjord yta).
     auto area = instrPage.getLocalBounds().reduced (0, 4);
     auto leftColumn = area.removeFromLeft (juce::jlimit (220, 340, area.getWidth() / 4));
+    instrTimeline->setBounds (leftColumn.removeFromBottom (leftColumn.getHeight() / 3).reduced (0, 2));
     envelope.setBounds (leftColumn.reduced (0, 2));
     envelopeListen.setBounds (envelope.getRight() - 40, envelope.getY() + 4, 36, 24); // högtalaren i grafens övre högra hörn
     instrHelpButton.setBounds (envelopeListen.getX() - 4 - 40, envelope.getY() + 8, 40, 16);

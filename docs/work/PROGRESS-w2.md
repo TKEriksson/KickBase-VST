@@ -421,3 +421,7 @@ Ordning: 1, 3, 2, sedan 4 efter svar från Arbetare 1. Ljudkod (InstrumentProces
 - `InstrTimingPanel`: knapp OVERVIEW/FOCUS (FOCUS först, valet kvar tills programmet stängs, UI-läge, ingen parameter). FOCUS = diagram + vald motors reglage.
 - INSTR-placeringen (f) är kvar: komponenten är klar att läggas in med `editable=false` (kräver små hunkar i Modules.cpp, Arbetare 1).
 - `Debug all` grön.
+
+## 0.4 (f) – Litet tidsdiagram på INSTR-sidan
+- `Modules.cpp` (`layoutInstrPage`, INSTR-sidans vänsterkolumn): nedersta tredjedelen är `TimelineChart (p, layer, accent, false)` (skrivskyddat), envelopegrafen ovanför. Klick på diagrammet hoppar till TIMING-fliken (flik 8, samma nummer som förhandsknappsloopen). Medlem `instrTimeline` i `Modules.h`.
+- `Debug all` grön efter att trasiga `.obj` raderats (LNK1163, se LESSONS.md).
