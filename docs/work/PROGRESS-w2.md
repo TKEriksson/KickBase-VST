@@ -376,3 +376,63 @@ Debug all grönt. Lås gäller från anslaget tills nästa ton ändrar dem: cuto
 
 ## blocksizetest – röststöld (28 okt)
 Debug all grönt. 20/20 sekventiella körningar (lägen 2,7) utan fel. Fel syntes bara i parallella körningar, vid kallstart och en gång i build.bat. Orsak ej bevisad; misstänkt: `Wavetables::get` (Wavetable.cpp:631) lämnar Basic tills `TableBuilder` är klar. `Tools/AudioTests.cpp` `blockSizeTest`: filter `KB_BS_MODE`, determinismkontroll (block 32 två gånger), och `Wavetables::ensureAll()` före första renderingen (ab929cc). Fynd på vägen: `ParamRefs::readKick` allokerade på ljudtråden (186b570). Jämförelse mot main/57ddb1a avförd (PL). Kör blocksizetest sekventiellt.
+
+## 0.4 – plan (28 okt, main inmergad i fx-matrix)
+Punkter från PL: (1) gamla FX-länken, (2) ta bort FX-kanal från popupen med ångra, (3) PATTERN-raderna / "N x FX", (4) FX-lane väljer FX-kanal.
+1. Gamla länken. Motorn: INSERT är standard (`fxSend` av): torrt minskar med beloppet (`InstrumentProcessor.cpp:1010`). Matrisen är bara SEND (linjär summa, `:1092`). INS har ingen motsvarighet, så att flytta INS till en matrisrad skulle ändra ljudet. Beslut: vid laddning flyttas bara länkar i SEND-läge (kanal N, belopp a, fxSend på): `fxSendToN += a` (max 1), `fxChannel=0`, `fxAmount=0`, `fxSend=av`. INS-länkar lämnas orörda och visas i popupen som en egen rad "INS FXn" (inte som dubblett av matrisraden). Inga ID:n ändras; migreringen sker på värden i apvts efter laddning (en gemensam funktion, anropas från setStateInformation och preset-laddning), inget nytt i hash. Test: SEND-länk -> matrisrad, samma ljud (diff 0 mot gamla vägen); INS -> oförändrat.
+2. Ta bort kanal från popupen: `Effects::removeLastChannel` finns (bara sista). Lägg en knapp på sista raden i popupen med bekräftelse (finns på FX-sidan) och ångra: `Effects` tar en ögonblicksbild av kanalen (effektslots, EQ, kompressor, nivå, alla sends i alla källor) före borttagning och återställer vid ångra. Ångra som knapp "UNDO REMOVE" i popupen/FX-sidan så länge sessionen lever.
+3. PATTERN: ta bort FX-ratten (`StepSequencer.cpp:33,159`) efter kontroll att inget annat läser raden; VOL-ratten större. FX-knappen visar "N x FX" / "FX" / "None"; tooltip listar kanalerna (`Components.cpp:706`).
+4. FX-lane (steg b): lanen får ett kanalval; lane-värdet ersätter matrissenden för den kanalen. Kräver pianorullkod och lås-format: samordnas med Arbetare 1 (kickbase-vst-b6) innan jag rör något; jag rör inte PianoRoll.cpp.
+Ordning: 1, 3, 2, sedan 4 efter svar från Arbetare 1. Ljudkod (InstrumentProcessor) ändras bara för punkt 4; PL får veta först.
+
+### 0.4 punkt 1 – klar (28 okt, Arbetare 2)
+- `Effects::migrateSendLinks` (Effects.cpp) flyttar SEND-länkar till `fxSendToN` vid laddning (PluginBase.cpp:828). INS orörd, visas som "INS FXn" i popupen. Inga ID/hash ändrade (presets räknar inte fxChannel/Amount/Send).
+- Test: `testSendLinkMigration` (MasterTests.cpp). `Debug all` grönt.
+- Känt: FX-lås (`fxSendLock`) styr bara gamla länken; migrerade länkar tappar låset tills punkt 4 är klar.
+
+### 0.4 punkt 3 – klar (Arbetare 2)
+- FX-ratten borttagen från PATTERN-raderna (`StepSequencer.cpp` addRowKnobs, RowKnobs, rubriken "FX"); VOL-ratten större (34 px, 30 i låga rader), layouten i låga rader flyttad vänster (labelWidth 226).
+- FX-knappen visar "None", "FX" (en kanal) eller "N x FX"; tipset listar kanalerna med procent (`Components.cpp` FxSendControl::updateSummary).
+- Debug all grönt. Ingen ljudkod ändrad.
+
+## 0.4 punkt 2 – klar (Arbetare 2)
+- FX-popupen har knappen '- remove FXn' (Components.cpp, FxSendPopup::askRemoveLast). Bekräftelse om kanalen har effekter eller sends; Ctrl+Z återställer kanalen, effekter, EQ, kompressor, nivå och sends.
+- Effects.cpp removeLastChannel: egen undo-transaktion, fxChannelCount skrivs via undo-managern. Test: 'ta bort FX-kanal och ångra' (MasterTests.cpp). Debug all grönt.
+
+## 0.4 punkt 4 – PAUSAD (projektledaren, 28 okt)
+- Skriven men obyggd och ocommittad i worktree `KickBase-VST-w2`, gren `fx-matrix` (git status visar ändringarna): `Pattern.h` (lockFxChannel, fxChannelToLock/lockToFxChannel), `PianoRoll.h:131,259`, `PluginBase.h:433`, `InstrumentProcessor.h/.cpp` (fxSendLockChannel/Amount, applyNoteLocks, sendMatrix, static_assert), `ToolLayer.cpp`, `Tests/EngineTests.cpp` (FX-kanallås-test).
+- Kvar när den återupptas: bygg Debug all, kör rendersig/rendersigreal/rendersigwide mot baseline, meddela Arbetare 1 om API:t, commit.
+
+## 0.4 (r) – harmoniska editorn: förklaringar (Arbetare 2)
+- Tooltips per fält (WAVEFORM / dB / PHASE) via `HarmonicEditor::getTooltip` (HarmonicEditor.cpp:~71, juce::TooltipClient), HELP-knapp i fönstret, ny hjälpflik HARMONICS (HelpDialog.cpp `harmonicsText`, Topic::harmonics sist i enumen). Bara UI-text. Debug all grönt.
+
+## 0.4 (u) – en provlyssning i taget (Arbetare 2)
+- `InstrumentProcessor.cpp` (audition-dispatchen i processChunk + `handleLiveMidi`): lokal provlyssning (kick, källa, instrument 0/5/200–599) stoppar huvud-PREVIEW; ny PREVIEW släpper hållen/solo-provlyssning; en tangent/MIDI-ton stoppar PREVIEW via `stopPreview()` (släpper även basrösterna). Knapparna släcks via `previewingLayer`, inga UI-filer rörda.
+- `Debug all` grön. Ingen ny test; ingen render-ändring i vanlig uppspelning.
+
+## 0.4 (h) – OSC-diagrammet visar utsignalen (Arbetare 2)
+- Ny delad hjälp `Source/Ui/OscRender.h` (`OscRender::render`): motorns utsignal med warp, phase, unison, detune och blend. Återanvänds av INSTR-diagrammet (f steg 2).
+- `OscPanel.cpp` drawCurrent: SCOPE-läget heter nu OUTPUT och använder hjälpen (2 perioder, 24 vid unison > 1). Vyvalet är UI-läge (MODE-etiketten), ingen parameter, sparas inte. Modules.cpp orörd.
+- Debug all grönt.
+
+## 0.4 (l) – Tidsdiagrammet i TIMING-fliken (Arbetare 2)
+- Ny komponent `Source/Ui/TimelineChart.h`: en bana per motor på gemensam tidsaxel + gemensam kontur (volym-envelopen) längst ner. NUDGE flyttar banornas start, POLARITY vänder konturen. Spelhuvud/släpplinje som i de små diagrammen.
+- Vald bana är 3x högre och markerad; drag flyttar POS DELAY (vänsterkanten) eller LENGTH (högerkanten, närmast kanten), inte med SYNC på. Klick på annan bana väljer motor. `editable=false` ger skrivskyddat läge för INSTR (klick anropar bara `onSelect`).
+- `InstrTimingPanel`: knapp OVERVIEW/FOCUS (FOCUS först, valet kvar tills programmet stängs, UI-läge, ingen parameter). FOCUS = diagram + vald motors reglage.
+- INSTR-placeringen (f) är kvar: komponenten är klar att läggas in med `editable=false` (kräver små hunkar i Modules.cpp, Arbetare 1).
+- `Debug all` grön.
+
+## 0.4 (f) – Litet tidsdiagram på INSTR-sidan
+- `Modules.cpp` (`layoutInstrPage`, INSTR-sidans vänsterkolumn): nedersta tredjedelen är `TimelineChart (p, layer, accent, false)` (skrivskyddat), envelopegrafen ovanför. Klick på diagrammet hoppar till TIMING-fliken (flik 8, samma nummer som förhandsknappsloopen). Medlem `instrTimeline` i `Modules.h`.
+- `Debug all` grön efter att trasiga `.obj` raderats (LNK1163, se LESSONS.md).
+
+## 0.4 – genomgång av TimelineChart.h/OscRender.h (Arbetare 2)
+- TimelineChart.h: LENGTH 0 betyder öppen (ingen slutkant, `gateAt`), så klick till höger om vänsterkanten väljer nu Edge::length; POS DELAY-draget drar av NUDGE (delaySeconds räknar in den, fältet inte); `mouseDrag` skyddad mot bredd 0.
+- OscRender.h: `warpPhase` får den begränsade `depth`; gainSum-normaliseringen stämmer med `InstrumentSynth.cpp:112-144`.
+- Lemon-testlistan: (h) steg 5 ersatt (OSC av var overifierat), (l) steg 7-8 (NUDGE, LENGTH 0). Nytt: docs/work/release-0.4-utkast.md.
+
+## 0.4 (o) + (n) – Flikordning, avdelare och brödsmula (Arbetare 2, gren `tabs-crumb`)
+- `TabbedPanel.h`: ny `addSeparator()` (tunn avdelare + 12 px luft i underflikraden), `getCurrentTabName()`. Brödsmulan i huvudraden börjar nu med `>` (utan ordet KICKBASE). Avdelaren under huvudflikraden fanns redan (`paintDividerGlow`, rad 226).
+- Instrumentets flikar: `INSTR | OSC 1 OSC 2 OSC 3 SAMPLE FM | FILTER MIX TIMING` (`Modules.cpp` ~1176-1197). FM ligger nu före FILTER, så FM:s på/av-index blev `2 + oscsPerLayer`. Ingen sparad flik (underflikarna har ingen `rememberedTab`) och ingen hjälpsektion beror på ordningen; förhandsknappar (flik 1-8) och TIMING (8) oförändrade.
+- Brödsmulan för INSTRUMENT: `> INSTRUMENT > INSTR 3 > OSC 2` via `InstrumentHost::crumb()` (`Modules.h`), `InstrumentEditor.cpp:47`; `InstrumentHost::timerCallback` ritar om huvudpanelen när smulan ändras.
+- (n): `extrasRowHeight` 44, `extrasRow.reduced (8, 4)`.

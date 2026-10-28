@@ -825,6 +825,7 @@ void PluginBase::setStateInformation (const void* data, int sizeInBytes)
     const auto lfoMask = (std::uint32_t) (int) state.getProperty ("activeLfos", 7); // gamla projekt: LFO 1-3
     state.removeProperty ("activeLfos", nullptr);
     Effects::migrateLegacyKnobs (state); // gamla projekt: nya effektrattar får sitt neutrala standardvärde
+    Effects::migrateSendLinks (state);   // gamla SEND-länkar blir matrisrader
     apvts.replaceState (state);
     applyLoadedLfos (lfoMask); // (efter replaceState: den återställer inte parametrar som saknas i projektet)
     if (legacyLengths)

@@ -3,6 +3,7 @@
 #include "../Core/InstrumentSynth.h"
 #include "../Core/PluginBase.h"
 #include "Components.h"
+#include "TimelineChart.h"
 #include <array>
 
 // TIMING-fliken i källpanelen (bredvid MIX): en ruta per motor (OSC 1-3, SAMPLE, NOISE, SUB, FM) med ett diagram över motorns nivå i tiden
@@ -30,8 +31,9 @@ private:
     void timerCallback() override;
     void setupCount (juce::Slider&, std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>&, const juce::String& paramID);
     void updateVisibility (Cell&, size_t engine);
-    void layoutCell (Cell&);
+    void layoutCell (Cell&, bool withPlot = true);
     void refreshParams();
+    void applyViewMode();
     void paintPlot (juce::Graphics&, const Cell&, size_t engine) const;
 
     PluginBase& processor;
@@ -39,7 +41,9 @@ private:
     juce::Colour accent;
     ParamRefs refs;
     std::vector<std::unique_ptr<Cell>> cells;
-    juce::TextButton helpButton;
+    juce::TextButton helpButton, viewButton; // viewButton: växlar FOCUS (tidsdiagram + vald motor) och OVERVIEW (alla sju rutor)
+    TimelineChart timeline;
+    int selectedEngine = 0;
     juce::Rectangle<int> legendArea;
     InstrumentParams params;
     double bpm = 120.0;

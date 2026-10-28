@@ -289,6 +289,7 @@ class InstrumentModule : public ModulePanel, public juce::FileDragAndDropTarget
 {
 public:
     InstrumentModule (PluginBase& processor, int layer);
+    juce::String currentTabName() const { return sources.getCurrentTabName(); } // för brödsmulan: INSTR, OSC 2 ...
     void resized() override;
     void paintOverChildren (juce::Graphics&) override;
 
@@ -331,7 +332,8 @@ private:
     std::unique_ptr<SamplePage> samplePage;
     std::vector<std::unique_ptr<juce::Component>> controls;
     std::unique_ptr<FmPanel> fmPanel;                                     // FM-fliken (sist, så att fliknumren före den inte förskjuts)
-    std::unique_ptr<InstrTimingPanel> timingPanel;                        // TIMING-fliken: diagram + POS DELAY / LENGTH / SYNC / MODE per källa
+    std::unique_ptr<TimelineChart> instrTimeline;                         // INSTR-sidans lilla tidsdiagram (skrivskyddat)
+    std::unique_ptr<InstrTimingPanel> timingPanel;                       // TIMING-fliken: diagram + POS DELAY / LENGTH / SYNC / MODE per källa
     std::unique_ptr<InstrMixPanel> mixPanel;                              // MIX-fliken: nivå, pan och bredd per källa + sammanlagd vågform (efter FM av samma skäl)
     std::unique_ptr<FilterPage> filterPage;                             // FILTER-fliken: kurvan, Filter 1 och Filter 2
     ControlGroups groups; // PITCH, SUB, NOISE, FILTER ENV, VOLUME ENV, WARP ENV, DRIVE, OUT (ENV 2/3, VELOCITY, RANDOM: ENV-fliken)
@@ -353,6 +355,13 @@ public:
     void resized() override;
     void select (int layer);
     int getCurrent() const { return current; }
+    // Brödsmulans del under INSTRUMENT: instrumentets namn och den öppna underfliken ("INSTR 3 > OSC 2"). Tom om panelen inte är byggd än.
+    juce::String crumb() const
+    {
+        if (modules[(size_t) current] == nullptr)
+            return {};
+        return processor.getLayerName (current) + "  >  " + modules[(size_t) current]->currentTabName();
+    }
     void addInstrument(); // ADD INSTRUMENT i mönstret: lägger till och väljer det nya
     void mouseDown (const juce::MouseEvent& event) override;
 
@@ -379,6 +388,7 @@ private:
     std::array<juce::Component*, ParamID::numInstrumentLayers> extras {};
     std::array<juce::Component*, ParamID::numInstrumentLayers> powers {};
     int current = 0, lastCount = -1, lastNamesVersion = -1, lastStructureVersion = 0;
+    juce::String lastCrumb;
     bool confirmOpen = false;
     juce::Component::SafePointer<juce::AlertWindow> renameDialog;
 };

@@ -145,3 +145,34 @@ Format: **Gör så** → *förväntat resultat*. Bocka av `[ ]` när det stämme
 - [ ] (Lemon) Pianorulle, lane-menyn → *VEL, CUT, PAN, FX*. Dra i CUT/PAN/FX → *stapeln växer, tonbeskrivningen visar t.ex. "CUTOFF 62 %", hörs*. Alt+klick → *låset tas bort*. Ctrl+Z → *ett drag = ett steg*. Kopiera/klistra in och flytta en ton → *låset följer med*. Ny ton → *börjar utan lås*. Stapla toner → *ledtråd att låset gäller huvudtonen*.
 - [ ] (Lemon) Skivrulle: öppna PATTERN på en skivrad → *pianorullen visar en tangent per skiva; rita en ton → låter som den skivan*; fler än 16 skivor → *inget tak i rullen*.
 - [ ] (Lemon) Echo-FX: TIME MS finns inte längre → *10 rattar per slot; gamla projekt med Echo laddas och låter som förut*.
+- [0.4 p1, Lemon] Öppna ett gammalt projekt med FX-länk i SEND-läge: raden syns som vanlig FX-rad i popupen (ingen dubbelrad), ljudet är detsamma. INS-länk visas som "INS FXn".
+- [0.4 p3, Lemon] PATTERN-raderna har bara en (större) VOL-ratt, ingen FX-ratt; låga rader ser rätt ut. FX-knappen på fliken visar None / FX / "2 x FX"; hovra visar kanalerna.
+
+- [ ] 0.4 punkt 2 (Lemon): Öppna FX-popupen på en instrumentrad, tryck '- remove FXn' på sista kanalen. Med effekter/sends ska en bekräftelse visas. Ctrl+Z ska återställa effekter, EQ, kompressor, nivå och sends.
+- (r) Öppna harmoniska editorn (OSC > tabell): håll musen över vågformen, dB- och PHASE-fälten (tips ska bytas), klicka HELP (fliken HARMONICS öppnas).
+- (u) Lemon: starta PREVIEW, tryck sedan en högtalarknapp/LISTEN/tangent/slice/JOG: PREVIEW ska släckas och inget ljud hänga. Starta PREVIEW under hållen högtalare: den ska släppas.
+- (h) OSC OUTPUT-vyn (Lemon):
+  1. Öppna ett instrument, fliken OSC 1. Klicka MODE-etiketten ovanför diagrammet tills det står OUTPUT. WAVE och SPECTRUM ska se ut som förut.
+  2. Vrid Phase: vågen ska skjutas i sidled. Vrid Warp: formen ska ändras.
+  3. Unison 1: bilden visar två perioder. Sätt Unison till 3 eller mer: många perioder med svävning.
+  4. Vrid Detune och Blend med Unison > 1: svävningen ska bli snabbare respektive jämnare.
+  5. Dra Position, Warp och Phase till ytterlägena (0 och max) med Unison 1 och 8: bilden ska aldrig bli tom eller krascha.
+- (l) TIMING-diagrammet (Lemon):
+  1. Öppna fliken TIMING. Den ska starta i FOCUS: diagram överst, vald motors reglage under.
+  2. Dra i den höga (valda) banans vänsterkant: POS DELAY-ratten ska följa. Dra högerkanten: LENGTH ska följa.
+  3. Klicka en annan bana: den blir hög och reglagen byter motor. Slå på SYNC på den motorn: dragen ska inte göra något.
+  4. Spela en not: spelhuvud och släpplinje ska röra sig i banorna.
+  5. Ändra NUDGE och POLARITY (INSTR-sidan): banorna ska flytta sig respektive konturen vändas.
+  6. Klicka OVERVIEW: de sju rutorna visas; klicka FOCUS: tillbaka. Stäng och öppna fliken igen: valet ska vara kvar.
+  7. NUDGE != 0 (t.ex. +50 ms) plus drag i vänsterkanten: kanten ska följa musen utan hopp vid första draget (POS DELAY = musens tid minus NUDGE).
+  8. LENGTH 0 (ingen slutkant) på en motor utan SYNC: klicka och dra till höger om vänsterkanten ska dra ut LENGTH från 0; dra vid själva vänsterkanten ändrar POS DELAY.
+- (f) INSTR-diagrammet (Lemon):
+  1. Öppna fliken INSTR: under envelopegrafen (vänsterkolumnen) ligger ett litet tidsdiagram med alla sju banorna.
+  2. Spela en not: spelhuvudet ska röra sig i det, i takt med TIMING-fliken.
+  3. Försök dra i diagrammet: inget ska ändras (skrivskyddat).
+  4. Klicka i diagrammet: TIMING-fliken ska öppnas.
+- (o) + (n) flikar och brödsmula (Lemon):
+  1. INSTRUMENT: underflikarna ska stå `INSTR | OSC 1 OSC 2 OSC 3 SAMPLE FM | FILTER MIX TIMING`, med ett tunt streck efter INSTR och efter FM.
+  2. FM-flikens på/av-ikon ska styra FM (inte FILTER): slå av/på den och kolla att FM-sidan svarar.
+  3. Brödsmulan uppe till höger i huvudraden ska visa `> INSTRUMENT > <instrumentnamn> > OSC 2` och följa med när du byter underflik eller instrument. Inget KICKBASE i den. Andra huvudflikar: `> KICK`, `> ANALYZER > SPECTRUM`.
+  4. Raden med väljare/PREVIEW över instrumentets flikar är högre med luft över och under knapparna; inget klipps.

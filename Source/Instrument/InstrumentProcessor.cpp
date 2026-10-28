@@ -207,6 +207,19 @@ void InstrumentProcessor::processChunk (juce::AudioBuffer<float>& buffer, juce::
     const auto audition = auditionRequest.exchange (-1);
     if (audition >= 0 && numHeldNotes == 0)
         currentNote = previewNote.load(); // all provlyssning (kick, oscillatorer, sampling) spelas på den valda tonen
+    // En provlyssning i taget (0.4 u): en lokal provlyssning (kick, en källa, ett instrument) stoppar huvud-PREVIEW, och en ny
+    // förhandsspelning släpper en hållen lokal provlyssning. Knapparna följer previewingLayer, så huvudknappen släcks av sig själv.
+    const auto startsLocal = audition == 0 || audition == 5 || (audition >= 200 && audition < 600 && audition != PluginBase::auditionHoldStop);
+    const auto startsPreview = audition >= 100 && audition < 200 && audition != PluginBase::previewStop;
+    if (startsLocal && previewLayer >= 0)
+        stopPreview();
+    if (startsPreview && (heldLayer >= 0 || soloSamplesLeft > 0))
+    {
+        if (heldLayer >= 0)
+            basses[(size_t) heldLayer].release();
+        heldLayer = -1;
+        soloSamplesLeft = 0;
+    }
     if (audition == 5)
         kickSoloSamplesLeft = (int) (getSampleRate() * 2.0);
     // Provlyssning som hålls (håll ner musen på en graf): tonen klingar tills musen släpps och startar om om ljudet tar slut.
@@ -654,8 +667,8 @@ bool InstrumentProcessor::handleLiveMidi (const juce::MidiMessage& message, int 
             return false;
         if (row < 0 || row > Pattern::kickLayer)
             return false;
-        if (rowOverride < 0)
-            previewLayer = -1;
+        if (previewLayer >= 0)
+            stopPreview(); // en tangent stoppar huvud-PREVIEW (en provlyssning i taget)
         const auto note = message.getNoteNumber();
         const auto pitch = juce::jlimit (Pattern::minPitch, Pattern::maxPitch, note - rowRootNote (row));
         if (row == Pattern::kickLayer)

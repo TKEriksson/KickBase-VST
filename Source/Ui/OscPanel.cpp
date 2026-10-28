@@ -1,6 +1,7 @@
 #include "OscPanel.h"
 #include "HarmonicEditor.h"
 #include "HelpDialog.h"
+#include "OscRender.h"
 
 WavetableView::WavetableView (PluginBase& p, int layerIn, int oscIn, juce::Colour accentIn)
     : processor (p), layer (layerIn), osc (oscIn), accent (accentIn)
@@ -29,11 +30,13 @@ void WavetableView::timerCallback()
     const auto table = (int) raw (InstrumentField::aTable);
     const auto warpMode = (int) raw (InstrumentField::aWarp);
     const auto warp = raw (InstrumentField::aWarpAmount);
+    const auto phase = raw (InstrumentField::aPhase), detune = raw (InstrumentField::aDetune), blend = raw (InstrumentField::aBlend);
+    const auto unison = (int) raw (InstrumentField::aUnison);
     const auto ready = table == Wavetables::userIndex() || Wavetables::isReady (table);
     const auto morph = processor.apvts.getRawParameterValue (ParamID::bass (layer, ParamID::oscMorphField (osc)))->load() >= 0.5f;
     const auto duckDb = processor.fundamentalDuckDb[(size_t) layer].load (std::memory_order_relaxed);
     const auto duckChanged = std::abs (duckDb - lastDuckDb) > 0.1f || ((duckDb > 0.05f) != (lastDuckDb > 0.05f));
-    if (duckChanged || position != lastPosition || table != lastTable || warpMode != lastWarpMode || warp != lastWarp || ready != lastReady || morph != lastMorph)
+    if (duckChanged || position != lastPosition || table != lastTable || warpMode != lastWarpMode || warp != lastWarp || phase != lastPhase || detune != lastDetune || blend != lastBlend || unison != lastUnison || ready != lastReady || morph != lastMorph)
     {
         lastDuckDb = duckDb;
         lastMorph = morph;
@@ -41,6 +44,10 @@ void WavetableView::timerCallback()
         lastTable = table;
         lastWarpMode = warpMode;
         lastWarp = warp;
+        lastPhase = phase;
+        lastDetune = detune;
+        lastBlend = blend;
+        lastUnison = unison;
         lastReady = ready;
         repaint();
     }
@@ -78,7 +85,7 @@ void WavetableView::paint (juce::Graphics& g)
         g.setColour (accent.withAlpha (0.25f));
         g.fillRoundedRectangle (modeRect(), 3.0f);
         g.setColour (Theme::text);
-        g.drawText (display == Display::scope ? "SCOPE" : "SPECTRUM", modeRect(), juce::Justification::centred);
+        g.drawText (display == Display::scope ? "OUTPUT" : "SPECTRUM", modeRect(), juce::Justification::centred);
         if (hover)
         {
             g.setColour (accent.withAlpha (0.75f));
@@ -172,11 +179,23 @@ void WavetableView::drawCurrent (juce::Graphics& g, const Wavetable& table, juce
     juce::Path path;
     if (display == Display::scope)
     {
-        constexpr int points = 256;
-        for (int i = 0; i <= points; ++i) // två perioder, som en oscilloskopbild
+        // OUTPUT: motorns utsignal med warp, phase, unison och detune (OscRender). Två perioder; med unison fler, så att svävningen syns.
+        OscRender::Settings settings;
+        settings.position = position;
+        settings.morph = lastMorph;
+        settings.warp = mode;
+        settings.warpAmount = warpAmount;
+        settings.startPhase = std::max (0.0f, lastPhase);
+        settings.unison = std::max (1, lastUnison);
+        settings.detuneCents = std::max (0.0f, lastDetune);
+        settings.blend = std::max (0.0f, lastBlend);
+        std::vector<float> wave ((size_t) 512);
+        OscRender::render (table, settings, wave, settings.unison > 1 ? 24.0 : 2.0);
+        const auto points = (int) wave.size();
+        for (int i = 0; i < points; ++i)
         {
-            const auto x = area.getX() + area.getWidth() * (float) i / points;
-            const auto y = area.getCentreY() - current (std::fmod (2.0 * i / points, 1.0)) * area.getHeight() * 0.45f;
+            const auto x = area.getX() + area.getWidth() * (float) i / (points - 1);
+            const auto y = area.getCentreY() - wave[(size_t) i] * area.getHeight() * 0.45f;
             if (i == 0)
                 path.startNewSubPath (x, y);
             else

@@ -39,7 +39,8 @@ private:
     const int layer, osc;
     juce::Colour accent;
     int positionIndex = -1;
-    float lastPosition = -1.0f, lastWarp = -1.0f;
+    float lastPosition = -1.0f, lastWarp = -1.0f, lastPhase = -1.0f, lastDetune = -1.0f, lastBlend = -1.0f;
+    int lastUnison = -1;
     int lastTable = -1, lastWarpMode = -1;
     bool lastMorph = true;
     float lastDuckDb = 0.0f; // FUNDAMENTAL DUCK: hur många dB motorns grundton dämpas nu (0 = ingen dämpning)

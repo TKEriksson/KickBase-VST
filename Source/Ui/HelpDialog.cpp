@@ -476,12 +476,41 @@ Each row is one view. The menu sets how many times per second it is redrawn (5 t
 If Kickbase feels heavy, try REDUCE ANIMATIONS first, then lower the ANALYZER rate and turn FILLED off.
 )";
 
+    const char* harmonicsText = R"(# HARMONIC EDITOR
+Shapes the sound of one oscillator by its harmonics. Open it from the oscillator's table menu.
+
+## What is a wavetable?
+A wavetable is a row of waveforms, called **frames**. POS on the oscillator moves along the row. Each frame is one cycle of a wave, and every wave is a sum of harmonics: harmonic 1 is the fundamental (the pitch you hear), 2 is an octave up, and so on.
+
+## Frames
+- **All frames**: your edit is applied to every frame of the table.
+- **Frame 1..n**: only that frame changes. The picture shows this frame.
+
+## The bars
+- The **dB** area has one bar per harmonic. The middle line is 0 dB (unchanged), up is louder (+12 dB at most), and a bar dragged to the bottom is removed.
+- The **PHASE** area moves where each harmonic starts, from -180 to +180 degrees.
+- The grey part is how it looked when the window opened.
+- **Remove the fundamental**: drag bar 1 in the dB area to the bottom. Useful when a kick already supplies the low note.
+- Double-click a bar to reset it. Double-click the waveform to reset everything.
+
+## Tools
+- **DRAW**, **LINE**, **SMOOTH**, **RANDOM**: how the mouse changes the bars.
+- **PRESET**: shapes the bars into a classic spectrum (saw, square, ...). You can keep editing afterwards.
+- **16 / 32 / 64 harmonics**: how many bars are shown. Ctrl + mouse wheel changes it too.
+
+## The phase
+Phase changes the shape of the wave, but each harmonic keeps its level, so a single note sounds almost the same. It matters when waves are layered (for example kick and bass) or when the wave is bent by the filter or warp.
+
+The result becomes the oscillator's User table.
+)";
+
     struct TopicInfo { HelpDialog::Topic topic; const char* tab; const char* text; };
     const TopicInfo topics[] = {
         { HelpDialog::Topic::pianoRoll, "PIANO ROLL", pianoRollText },
         { HelpDialog::Topic::liveCode, "LIVE CODE", liveCodeText },
         { HelpDialog::Topic::soundstage, "SOUNDSTAGE", soundstageText },
         { HelpDialog::Topic::osc, "OSC", oscText },
+        { HelpDialog::Topic::harmonics, "HARMONICS", harmonicsText },
         { HelpDialog::Topic::filter, "FILTER", filterText },
         { HelpDialog::Topic::fm, "FM", fmText },
         { HelpDialog::Topic::mix, "MIX", mixText },

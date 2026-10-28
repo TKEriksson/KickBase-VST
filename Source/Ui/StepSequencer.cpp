@@ -28,9 +28,9 @@ StepSequencer::StepSequencer (PluginBase& p, juce::StringArray names, std::vecto
         addChildComponent (*edit);
         editButtons.push_back (std::move (edit));
     }
-    addRowKnobs ("KICK", ParamID::kickLevel, ParamID::kickFxAmount, Theme::kick);
+    addRowKnobs ("KICK", ParamID::kickLevel, Theme::kick);
     for (int layer = 0; layer < totalLayers(); ++layer)
-        addRowKnobs (layerNames[layer], ParamID::bass (layer, InstrumentField::level), ParamID::bass (layer, InstrumentField::fxAmount), layerColours[(size_t) layer]);
+        addRowKnobs (layerNames[layer], ParamID::bass (layer, InstrumentField::level), layerColours[(size_t) layer]);
 
     // Radens egen längd (kick och varje lager): Pattern = lika lång som hela mönstret.
     for (int row = 0; row <= totalLayers(); ++row)
@@ -140,7 +140,7 @@ void StepSequencer::setPage (int newPage)
     repaint();
 }
 
-void StepSequencer::addRowKnobs (const juce::String& name, const juce::String& levelID, const juce::String& fxID, juce::Colour colour)
+void StepSequencer::addRowKnobs (const juce::String& name, const juce::String& levelID, juce::Colour colour)
 {
     auto knobs = std::make_unique<RowKnobs>();
     auto setup = [&] (juce::Slider& slider, const juce::String& id, const juce::String& what, const juce::String& text)
@@ -156,15 +156,13 @@ void StepSequencer::addRowKnobs (const juce::String& name, const juce::String& l
             slider.setDoubleClickReturnValue (true, parameter->convertFrom0to1 (parameter->getDefaultValue()));
     };
     setup (knobs->level, levelID, "VOLUME", "The volume of this row (the same as LEVEL on its page). Double-click to reset.");
-    setup (knobs->fx, fxID, "FX SEND", "How much of this row goes through its effect channel (pick the channel in the top right corner of its tab). Double-click to reset.");
     knobs->levelAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (processor.apvts, levelID, knobs->level);
-    knobs->fxAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (processor.apvts, fxID, knobs->fx);
     rowKnobs.push_back (std::move (knobs));
 }
 
-juce::Rectangle<int> StepSequencer::knobBounds (juce::Rectangle<int> row, int index) const
+juce::Rectangle<int> StepSequencer::knobBounds (juce::Rectangle<int> row) const
 {
-    return juce::Rectangle<int> (knobPx, knobPx).withPosition (labelColumn.getX() + 1 + index * (knobPx + 2), compactRows ? row.getY() + (row.getHeight() - knobPx) / 2 : row.getY() + 1);
+    return juce::Rectangle<int> (knobPx, knobPx).withPosition (labelColumn.getX() + 1, compactRows ? row.getY() + (row.getHeight() - knobPx) / 2 : row.getY() + 1);
 }
 
 std::vector<int> StepSequencer::makeDisplayOrder() const
@@ -363,11 +361,8 @@ void StepSequencer::refreshColours()
     for (size_t row = 1; row < rowKnobs.size(); ++row)
     {
         const auto colour = layerColours[row - 1];
-        for (auto* slider : { &rowKnobs[row]->level, &rowKnobs[row]->fx })
-        {
-            slider->setColour (juce::Slider::rotarySliderFillColourId, colour);
-            slider->repaint();
-        }
+        rowKnobs[row]->level.setColour (juce::Slider::rotarySliderFillColourId, colour);
+        rowKnobs[row]->level.repaint();
         listenButtons[row]->setAccent (colour);
         loopToggles[row]->setAccent (colour);
     }
@@ -550,8 +545,8 @@ void StepSequencer::resized()
     else
         rowHeight = juce::jlimit (normalMinHeight, 56, (freeHeight - gap * rows) / std::max (1, rows));
     compactRows = rowHeight < normalMinHeight - 3;
-    labelWidthNow = (compactRows ? 246 : 162) + editColumn;
-    knobPx = compactRows ? std::min (24, rowHeight - 4) : 28;
+    labelWidthNow = (compactRows ? 226 : 162) + editColumn;
+    knobPx = compactRows ? std::min (30, rowHeight - 4) : 34;
     effectiveRowHeight = rowHeight;
     const auto fits = std::max (1, freeHeight / (rowHeight + gap));
     visibleRows = std::min (rows, fits);
@@ -637,7 +632,6 @@ void StepSequencer::resized()
     {
         const auto shown = ! rowRects[i].isEmpty();
         rowKnobs[i]->level.setVisible (shown);
-        rowKnobs[i]->fx.setVisible (shown);
         if (i < lengthButtons.size())
             lengthButtons[i]->setVisible (shown && ! compactRows);
         if (i < listenButtons.size())
@@ -656,15 +650,14 @@ void StepSequencer::resized()
             continue;
 
         const auto row = rowRects[i];
-        rowKnobs[i]->level.setBounds (knobBounds (row, 0));
-        rowKnobs[i]->fx.setBounds (knobBounds (row, 1));
+        rowKnobs[i]->level.setBounds (knobBounds (row));
         if (i < lengthButtons.size())
-            lengthButtons[i]->setBounds (labelColumn.getX() + 1, row.getY() + 1 + knobPx + 1, 60, 18);
+            lengthButtons[i]->setBounds (labelColumn.getX() + 1, row.getY() + 1 + knobPx + 1, 60, row.getHeight() - knobPx - 2);
         if (i < listenButtons.size())
         {
             const auto buttonHeight = compactRows ? std::min (24, rowHeight - 4) : 24;
             const auto buttonsY = compactRows ? row.getY() + (rowHeight - buttonHeight) / 2 : row.getY() + 18;
-            const auto buttonsX = labelColumn.getX() + (compactRows ? 2 * (knobPx + 2) + 4 : 66);
+            const auto buttonsX = labelColumn.getX() + (compactRows ? knobPx + 6 : 66);
             listenButtons[i]->setBounds (buttonsX, buttonsY, 30, buttonHeight);
             loopToggles[i]->setBounds (buttonsX + 34, buttonsY, 28, buttonHeight);
         if (i < editButtons.size())
@@ -679,7 +672,7 @@ void StepSequencer::resized()
             if (compactRows)
             {
                 const auto height = std::min (24, rowHeight - 4);
-                const auto x = labelColumn.getX() + 2 * (knobPx + 2) + 4 + 66;
+                const auto x = labelColumn.getX() + knobPx + 6 + 66;
                 rowSwitches[i]->mute.setBounds (x, row.getY() + (rowHeight - height) / 2, 24, height);
                 rowSwitches[i]->solo.setBounds (x + 26, row.getY() + (rowHeight - height) / 2, 24, height);
             }
@@ -699,7 +692,7 @@ juce::Rectangle<int> StepSequencer::selectorBounds (juce::Rectangle<int> row) co
     // Väljaren: namnet med en radioknapp. Ovanför högtalaren och loop-knappen, eller i en låg rad efter dem.
     if (compactRows)
     {
-        const auto x = labelColumn.getX() + 2 * (knobPx + 2) + 4 + 68 + 52;
+        const auto x = labelColumn.getX() + knobPx + 6 + 68 + 52;
         return juce::Rectangle<int>::leftTopRightBottom (x, row.getCentreY() - 9, labelColumn.getRight() - 2 - editColumn, row.getCentreY() + 9);
     }
     return labelColumn.withTrimmedLeft (66).withTrimmedRight (30 + editColumn).withY (row.getY()).withHeight (18);
@@ -1088,9 +1081,8 @@ void StepSequencer::paint (juce::Graphics& g)
     // Rubriker över kolumnerna: vad de små rattarna och rutan är.
     g.setColour (Theme::textDim);
     g.setFont (Theme::font (10.0f, true));
-    for (int index = 0; index < 2; ++index)
-        g.drawText (index == 0 ? "VOL" : "FX", juce::Rectangle<int> (knobPx + 2, headerLabels.getHeight()).withCentre ({ labelColumn.getX() + 1 + knobPx / 2 + index * (knobPx + 2), headerLabels.getCentreY() }),
-                    juce::Justification::centred);
+    g.drawText ("VOL", juce::Rectangle<int> (knobPx + 2, headerLabels.getHeight()).withCentre ({ labelColumn.getX() + 1 + knobPx / 2, headerLabels.getCentreY() }),
+                juce::Justification::centred);
 
     g.setFont (Theme::font (11.0f, true));
     for (const auto layer : displayOrder)
