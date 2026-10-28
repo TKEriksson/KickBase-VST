@@ -13,4 +13,4 @@ Sökningen gav **inget specifikt om Empirikal**. Tills vi hittar en källa (inte
 - Empirikal Kick: svans 40 Hz, medellång (0,20).
 
 ## Obekräftat och att göra
-Hitta en riktig Empirikal-källa innan finjustering. Drum and bass ligger kring 170 BPM mot psytrancens ~140, så kontrollera att kicken passar vår tempoaxel.
+Andra sökningen (2026-10-28, intervju/kick och bas) gav fortfarande ingen Empirikal-källa; närmast var [MusicRadar, Mandidextrous om kick/bas](https://musicradar.com/news/the-breakdown-mandidextrous-2) (hardtek, inte DnB). Hitta en riktig Empirikal-källa innan finjustering. Drum and bass ligger kring 170 BPM mot psytrancens ~140, så kontrollera att kicken passar vår tempoaxel.

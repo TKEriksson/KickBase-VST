@@ -16,5 +16,6 @@ Genreutredning med källor. Presets: Goa Kick, Goa Roll, Goa Acid (se [genrer.md
 | Äldre, rundare kick | Goa Kick: lång svans (35 Hz), lite click och drive |
 
 ## Obekräftat
+- Andra sökningen (2026-10-28, kick-tutorial/karaktär) gav bara Wikipedias "låg, tjock kick med framträdande sub" och säljsidor för sample packs (t.ex. JaraLuca på Gumroad, kicks "baserade på 909"; säljarpåstående, inte oberoende källa). Ingen 90-talsspecifik tutorial hittades.
 - Kickens exakta form är gissning utifrån allmän psytrance. Jämför med riktiga Goa-spår.
 - 303-ljudet efterliknas, inte kopieras: motorn har ingen riktig 303-filterkurva.
