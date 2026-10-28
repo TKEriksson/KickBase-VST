@@ -42,3 +42,10 @@ Arbetare 2 rör inte UI. Arbetare 1 rör inte `PresetData.inl` och KickbaseTool 
 - TIMING-fliken per motor (DELAY MODE, LENGTH SYNC, ×-antal 1-8, TO BEAT), kick-UI, semiton-snap, glasdisplay, glide-bugg, DETUNE-standard 0, JOG-förenkling (ETT läge, STEP 1/4-1/64, loop i 1/64 takt, TEST BPM): Arbetare 1.
 - Rendersig-jämförelse mot main behövs inte (Tobias bygger nya presets).
 - USER är en egen kategori i alla presetväljare (Tobias 28 okt), vid sidan av factory-kategorier och "Gamla".
+
+## Läge 28 okt kväll (projektledaren)
+- AUTO FIX stannar i rel-0.4 (Tobias). USER-kategori klar (42fd650 i `pl-presets`).
+- Harmonics-editorn v2, etapp 1-3 klara i `pl-presets` (b3ddf32, 675213c, 5557277): större fönster och levande vågform, zoom och penslar, presets.
+- Parameterlås: data (Arbetare 2, 807486b), ljud (Arbetare 2, 94ce1f6), UI och test (Arbetare 1, 42b093f, 096abb9). Klart.
+- Grenkedja: jog-simple → fx-echo-steps → slice-roll (innehåller fx-matrix). Slås ihop med `pl-presets` och Arbetare 2:s fix före release.
+- Blockerar rel-0.3: blocksizetest slumpfel (fanns före dessa ändringar, även på 57ddb1a). Orsak ej funnen; Arbetare 2 och 1 kör 20 körningar vardera. Opus bara efter besked från Tobias.

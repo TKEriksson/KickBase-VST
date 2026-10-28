@@ -110,3 +110,14 @@ Format: **Gör så** → *förväntat resultat*. Bocka av `[ ]` när det stämme
 - [ ] Starta Ollama med en modell som stöder verktyg (t.ex. qwen3), välj OLLAMA, SAVE → *modelllistan hämtas; samma uppmaning fungerar utan nyckel.*
 - [ ] ANTHROPIC och GEMINI → *fungerar som förut efter bytet av leverantör.*
 - [ ] Be AI:n läsa tillståndet → *kickens pitch-noder med ton och Hz finns med.*
+
+## Övertonsredigerare, USER-kategori, projektfiler
+- [ ] Högerklicka på en oscillators vågform > Edit harmonics → *ett stort fönster öppnas med vågformen överst och staplar för styrka och fas under.*
+- [ ] Dra i staplarna, snabbt och långsamt → *vågformen följer musen direkt, inga staplar hoppas över, ljudet ändras efter en kort stund.*
+- [ ] Dra stapel 1 längst ner → *grundtonen försvinner. Dubbelklick på en stapel nollställer den, dubbelklick i vågformen nollställer allt.*
+- [ ] Zoom 16 / 32 / 64 och Ctrl+hjul → *staplarna blir bredare respektive smalare.*
+- [ ] Penslarna DRAW, LINE, SMOOTH, RANDOM → *LINE ritar en rak linje, SMOOTH jämnar ut, RANDOM ger nya värden vid varje drag.*
+- [ ] Presets SAW, SQUARE, TRIANGLE, ODD, EVEN, BASS WARM → *spektrumet och vågformen ändras och låter som namnet.*
+- [ ] Stäng fönstret, spara projektet, öppna det igen → *den ändrade vågen är kvar.*
+- [ ] Spara en egen preset utan att välja kategori → *den hamnar i USER i presetlistan.*
+- [ ] Meny > Export MIDI efter att ha spelat in ett mönster → *filen går att öppna i DAW:en med rätt toner och längder.*

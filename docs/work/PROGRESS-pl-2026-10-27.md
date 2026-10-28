@@ -84,3 +84,11 @@
 - Rendersig-jämförelse mot main behövs inte (Tobias bygger nya presets ändå). Regeln om nya parametrar sist och oförändrade ID:n/preset-index/hash gäller fortfarande. Releasenotes: äldre presets kan låta annorlunda.
 - Nya UI-/ljudbeställningar till Arbetare 1: DELAY MODE (GATE|SHIFT), LENGTH SYNC, ×-antal 1-8 (delayCount/lenCount), TO BEAT, DETUNE standard 0 ct, JOG-förenkling (ETT läge, STEP 1/4-1/64, loop i 1/64 takt med edit-läge, TEST BPM).
 - Slarv loggat i LESSONS.md: arbetarna stod stilla.
+
+## 28 okt kväll (projektledaren)
+- Beslut: AUTO FIX stannar i rel-0.4. USER är egen presetkategori (42fd650).
+- Harmonics-editorn v2 etapp 1-3 klara i `pl-presets` (b3ddf32, 675213c, 5557277). Debug grönt.
+- Parameterlås klara (data, ljud, UI, test). Branch-kedja jog-simple → fx-echo-steps → slice-roll (med fx-matrix).
+- Autosave, .kbproj och MIDI-import/export: enhetstester finns (`Tools/StateTests.cpp:779-834`, `Tests/EngineTests.cpp:999-1064`); inget provat i DAW. Lemon-punkter tillagda i `fl-testlista.md`.
+- Blockerar: blocksizetest slumpfel, orsak ej funnen (Arbetare 2 misstänker tabellbyggartråden `Wavetable.cpp:631-643`; i felkörningarna var ljuddiffen 0, så felet kan vara antal samples eller kontrollen "två gånger"). 20 körningar pågår hos båda.
+- Slarv loggat: lås-ljudet beställdes två gånger (LESSONS.md).

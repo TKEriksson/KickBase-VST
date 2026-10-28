@@ -1,6 +1,6 @@
 # Harmonics-editorn v2 (Serum-stil, ingår i rel-0.3)
 
-Status: plan, projektledaren. Tobias 28 okt: projektledaren tar den (Arbetare 1 tar sample-editorn).
+Status: etapp 1-3 klara i `pl-presets` (b3ddf32, 675213c, 5557277), kvar: test i Lemon. Plan, projektledaren. Tobias 28 okt: projektledaren tar den (Arbetare 1 tar sample-editorn).
 Berör: `Source/Ui/HarmonicEditor.cpp/.h` (öppnas från `OscPanel.cpp:207`). Ingen ny parameter, ingen ändring i `WavetableEdit` eller ljudvägen: editorn bygger fortfarande om User-tabellen via `PluginBase::installWavetable`.
 
 ## Etapp 1: större editor och levande vågform

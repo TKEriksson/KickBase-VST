@@ -66,3 +66,6 @@ Projektledaren delade ut ghost notes och pop-out som nytt arbete efter en sökni
 
 ## 28 okt: arbetarna stod stilla efter rapporter
 Båda arbetarna blev stående och väntade efter sina rapporter, utan att ta nästa punkt, och Tobias fick själv fråga efter läget. Projektledaren hade inte gett någon uppföljande order efter rapporterna. Regel: svara på varje rapport med "fortsätt" och nästa konkreta uppgift; kontrollera med ListAgents att ingen arbetare är idle när en kö finns.
+
+## 28 okt: lås-ljudet beställdes två gånger
+Projektledaren bad Arbetare 1 bygga parameterlåsens ljud (fas 3) utan att först titta på Arbetare 2:s gren: de hade redan gjort det (94ce1f6 på fx-matrix). Båda fick styras om. Regel: innan en uppgift delas ut, läs `git log` och PROGRESS-filen för båda arbetarna och sök grenarna (`git log --all --grep`), inte bara den egna.
