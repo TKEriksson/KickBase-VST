@@ -104,3 +104,4 @@ Obs: nya parametrar och modulationskällor sist (ENGINEERING.md). Stor punkt; Ar
 (w, tillägg) Tobias: knappen "+ LANE" (längst ner till vänster i pianorullen, liten) måste bli betydligt större, i punkt 1 (val av lane).
 (w, rättelse) Tobias: "+ LANE"-knappen försvinner när lanen väljs direkt (punkt 1), så ingen större knapp behövs. Tillägget ovan gäller inte.
 (w, beslut) Tobias: lane-värde ERSÄTTER den generella FX-sändningen (inte multiplicera). Därför måste det vara enkelt att ta bort hela lanen och enskilda utsatta värden (punkt 3 prioriteras: ett tydligt val, t.ex. dubbelklick/Delete på ett värde och en synlig knapp för hela lanen).
+(x) Tobias: SWING, HUMAN och DELAY (Modules.cpp:2464-2467, 2838) är för små; större rattar, helst en per rad. Hör till den gemensamma ratt/etikett-mallen (g), Arbetare 1.
