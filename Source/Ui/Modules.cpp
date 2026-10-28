@@ -55,18 +55,6 @@ HeaderBar::HeaderBar (PluginBase& p, const juce::String& subtitleIn)
                               "Press again to start over. Double-click to let it keep playing until you click again.");
         listenAll.setPlayIcon (true); // play/stopp-ikon i toppbaren; högtalaren finns kvar på raderna
         listenRoll.setPlayIcon (true);
-        playExtras = Settings::get ("playExtras") != "0";
-        playMenuButton.setTooltip ("PLAY - Show or hide LOOP and JOG in this box. Hidden, only the previews and the tempo/bar stay.");
-        playMenuButton.onClick = [this]
-        {
-            playExtras = ! playExtras;
-            Settings::set ("playExtras", playExtras ? juce::String() : juce::String ("0"));
-            resized();
-            if (auto* parent = getParentComponent())
-                parent->resized(); // mätaren och väljaren sitter efter rutan
-            repaint();
-        };
-        addAndMakeVisible (playMenuButton);
         listenAll.onStart = [this] { processor.requestAudition (PluginBase::previewRequest (PluginBase::previewAllRows)); };
         listenAll.onStop = [this] { processor.requestAudition (PluginBase::previewStop); };
         addAndMakeVisible (listenAll);
@@ -124,31 +112,6 @@ HeaderBar::HeaderBar (PluginBase& p, const juce::String& subtitleIn)
                 processor.seekBarRequest = bar - 1;
             updateTransportLabels (processor.transportStatus.followingHost.load());
         };
-        loopButton.setClickingTogglesState (true);
-        loopButton.setColour (juce::TextButton::buttonOnColourId, Theme::pattern);
-        loopButton.setTooltip ("LOOP - The plugin loops the bars shown next to it on its own clock and ignores the DAW's position. "
-                               "A plugin cannot stop the DAW, so stop it yourself in the DAW.");
-        loopButton.onClick = [this]
-        {
-            applyLoopBars();
-            const auto on = loopButton.getToggleState();
-            processor.globalLoop = on;
-            if (on)
-                processor.seekBarRequest = processor.globalLoopStartBar.load();
-        };
-        addAndMakeVisible (loopButton);
-        for (auto* label : { &loopFromLabel, &loopToLabel })
-        {
-            setUpLabel (*label, 13.0f);
-            label->setEditable (false, true, false);
-            label->setColour (juce::Label::outlineColourId, Theme::text.withAlpha (0.25f));
-            label->onTextChange = [this] { applyLoopBars(); };
-        }
-        loopFromLabel.setText ("1", juce::dontSendNotification);
-        loopToLabel.setText ("4", juce::dontSendNotification);
-        loopFromLabel.setTooltip ("LOOP start bar (double-click to type).");
-        loopToLabel.setTooltip ("LOOP end bar, included (double-click to type).");
-
         scrubRelease.callback = [this]
         {
             if (scrubBar >= 0)
@@ -445,16 +408,6 @@ void HeaderBar::updateTransportLabels (bool following)
                                    : "BAR - Double-click to type a start bar, or scroll the mouse wheel here to scrub: the music pauses until you stop scrolling.");
 }
 
-void HeaderBar::applyLoopBars()
-{
-    const auto from = std::max (1, loopFromLabel.getText().retainCharacters ("0123456789").getIntValue());
-    const auto to = std::max (from, loopToLabel.getText().retainCharacters ("0123456789").getIntValue());
-    loopFromLabel.setText (juce::String (from), juce::dontSendNotification);
-    loopToLabel.setText (juce::String (to), juce::dontSendNotification);
-    processor.globalLoopStartBar = from - 1;
-    processor.globalLoopEndBar = to; // slutet exklusivt, 0-räknat = sista inräknade takten 1-räknad
-}
-
 void HeaderBar::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel)
 {
     if (processor.getKeyboardState() == nullptr || processor.transportStatus.followingHost.load()
@@ -497,15 +450,6 @@ void HeaderBar::paintOverChildren (juce::Graphics& g)
     head.addTriangle (centre.x - 8.0f, centre.y + 2.0f, centre.x - 3.0f, centre.y - 2.5f, centre.x - 3.0f, centre.y + 6.5f);
     g.fillPath (head);
 
-    // PLAY-menyn: tre streck, tända när LOOP och JOG visas.
-    if (playMenuButton.isVisible())
-    {
-        const auto m = playMenuButton.getBounds().toFloat().getCentre();
-        g.setColour (playExtras ? Theme::pattern : Theme::text.withAlpha (0.8f));
-        for (const auto dy : { -5.0f, 0.0f, 5.0f })
-            g.drawLine (m.x - 6.0f, m.y + dy, m.x + 6.0f, m.y + dy, 1.8f);
-    }
-
     if (! jogButton.isVisible())
         return;
 
@@ -537,34 +481,20 @@ void HeaderBar::resized()
     right.removeFromRight (10);
     keyBlock = right.removeFromRight (84).withSizeKeepingCentre (84, 40);
     right.removeFromRight (8);
-    const auto extras = hasPreviews && playExtras; // LOOP och JOG visas bara när PLAY-menyn är öppen
-    const auto pillWidth = hasPreviews ? (extras ? 244 : 216) : 214;
+    const auto pillWidth = hasPreviews ? 244 : 214; // JOG-knappen (med LOOP i panelen) sitter i pillen
     const auto pillHeight = 34;
     transportGroup = {};
     previewGroup = {};
     if (hasPreviews)
     {
         const auto previewsWidth = rollShown ? 148 : 112;
-        const auto playWidth = 24;
-        const auto groupHeight = extras ? 62 : 48;
-        const auto groupWidth = playWidth + previewsWidth + pillWidth + 22;
+        const auto groupHeight = 48;
+        const auto groupWidth = previewsWidth + pillWidth + 18;
         transportGroup = right.removeFromRight (groupWidth).withSizeKeepingCentre (groupWidth, groupHeight);
         auto inner = transportGroup.reduced (6, 0);
-        playMenuButton.setBounds (inner.removeFromLeft (playWidth).withSizeKeepingCentre (playWidth, 24));
-        inner.removeFromLeft (4);
         previewGroup = inner.removeFromLeft (previewsWidth).withTrimmedBottom (4).withTrimmedTop (3);
         inner.removeFromLeft (6);
         auto transport = inner;
-        // LOOP längst upp i rutan, tempo och takt med JOG och omstart under.
-        if (extras)
-        {
-            auto loopRow = transport.removeFromTop (groupHeight - pillHeight - 6).withTrimmedTop (4);
-            loopButton.setBounds (loopRow.removeFromLeft (52));
-            loopRow.removeFromLeft (6);
-            loopFromLabel.setBounds (loopRow.removeFromLeft (30));
-            loopRow.removeFromLeft (14);
-            loopToLabel.setBounds (loopRow.removeFromLeft (30));
-        }
         bpmPill = transport.removeFromBottom (pillHeight + 3).withTrimmedBottom (3);
     }
     else
@@ -576,9 +506,6 @@ void HeaderBar::resized()
         bpmLabel.setBounds (inner.removeFromLeft (100).reduced (0, 4));
         barLabel.setBounds (inner.removeFromLeft (58).reduced (0, 4));
     }
-    for (auto* c : std::initializer_list<juce::Component*> { &loopButton, &loopFromLabel, &loopToLabel })
-        c->setVisible (extras);
-    playMenuButton.setVisible (hasPreviews);
 
     projectButton.setBounds (14 + logo.getWidth() + 22, controlsY, 84, controlsHeight); // MENU först, till vänster om presetväljaren
     const auto presetsX = projectButton.getRight() + 10;
@@ -590,7 +517,7 @@ void HeaderBar::resized()
     listenAll.setVisible (hasPreviews);
     noteBox.setVisible (hasPreviews);
     restartButton.setVisible (hasPreviews);
-    jogButton.setVisible (extras);
+    jogButton.setVisible (hasPreviews);
     if (hasPreviews)
     {
         const auto y = previewGroup.getY() + 12, h = previewGroup.getHeight() - 14;
@@ -839,7 +766,7 @@ void HeaderBar::paint (juce::Graphics& g)
         g.drawText (following ? "DAW SYNC" : "FREE RUN", block.withTrimmedLeft (18.0f), juce::Justification::centredLeft);
     }
 
-    // Gemensam ruta (instrumentet): PREVIEWS (högtalare, tonväljare), LOOP, tempo/takt och JOG hör ihop.
+    // Gemensam ruta (instrumentet): PREVIEWS (högtalare, tonväljare), tempo/takt och JOG (med LOOP i panelen) hör ihop.
     if (! transportGroup.isEmpty())
     {
         const auto group = transportGroup.toFloat();

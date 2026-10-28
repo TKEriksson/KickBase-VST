@@ -88,8 +88,6 @@ private:
     juce::TextButton restartButton { "" };       // börjar om räknaren och mönstret vid 1.1 (egen klocka)
     juce::TextButton jogButton { "" };           // JOG / LP (D3b): öppnar hjulet för scratch av den egna klockan
     void showJogPanel();
-    juce::TextButton playMenuButton { "" };      // PLAY-menyn: visar/döljer LOOP och JOG i rutan (valet minns programmet, Settings "playExtras")
-    bool playExtras = true;
     juce::Rectangle<int> previewGroup, bpmPill, keyBlock, transportGroup, meterRect;
     // Lyssnarvolym längst till höger bredvid mätaren: samma parameter som OUTPUT-faderns i mixern (ParamID::gain), ingen egen parameter.
     juce::Slider masterKnob { juce::Slider::RotaryHorizontalVerticalDrag, juce::Slider::NoTextBox };
@@ -99,10 +97,6 @@ private:
     // Spelar värden är de låsta ("styrs av DAW").
     juce::Label bpmLabel, barLabel;
 
-    // Global LOOP (D3): egen klocka som går runt mellan två takter (1-räknade, båda inräknade). DAW:ens transport ignoreras medan den är på.
-    juce::TextButton loopButton { "LOOP" };
-    juce::Label loopFromLabel, loopToLabel;
-    void applyLoopBars();
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
     void updateTransportLabels (bool following);
     struct ReleaseTimer : juce::Timer

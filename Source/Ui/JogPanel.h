@@ -10,7 +10,7 @@ class JogPanel : public juce::Component, private juce::Timer
 public:
     explicit JogPanel (PluginBase& p) : processor (p), speedKnob (p.apvts, ParamID::jogSpeed, "JOG SPEED", Theme::pattern)
     {
-        setSize (380, 250);
+        setSize (380, 284);
 
         for (auto* b : { &stopMode, &nudgeMode, &recMode })
         {
@@ -58,6 +58,38 @@ public:
                                 "Touching the wheel cancels it. Only the plugin's own clock is affected.");
         brakeButton.onClick = [this] { startBrake(); };
         addAndMakeVisible (brakeButton);
+
+        // LOOP (flyttad hit från rutan i toppbaren): panelen byggs om vid varje öppning, så läget läses från processorn.
+        loopButton.setClickingTogglesState (true);
+        loopButton.setColour (juce::TextButton::buttonOnColourId, Theme::pattern);
+        loopButton.setToggleState (processor.globalLoop.load(), juce::dontSendNotification);
+        loopButton.setTooltip ("LOOP - The plugin loops the bars shown next to it on its own clock and ignores the DAW's position. "
+                               "A plugin cannot stop the DAW, so stop it yourself in the DAW.");
+        loopButton.onClick = [this]
+        {
+            applyLoopBars();
+            const auto on = loopButton.getToggleState();
+            processor.globalLoop = on;
+            if (on)
+                processor.seekBarRequest = processor.globalLoopStartBar.load();
+        };
+        addAndMakeVisible (loopButton);
+        for (auto* label : { &loopFromLabel, &loopToLabel })
+        {
+            label->setFont (Theme::font (13.0f, true));
+            label->setJustificationType (juce::Justification::centred);
+            label->setColour (juce::Label::textColourId, Theme::text);
+            label->setColour (juce::Label::backgroundWhenEditingColourId, juce::Colour (0xff0b0d18));
+            label->setColour (juce::Label::textWhenEditingColourId, Theme::text);
+            label->setColour (juce::Label::outlineColourId, Theme::text.withAlpha (0.25f));
+            label->setEditable (false, true, false);
+            label->onTextChange = [this] { applyLoopBars(); };
+            addAndMakeVisible (*label);
+        }
+        loopFromLabel.setText (juce::String (processor.globalLoopStartBar.load() + 1), juce::dontSendNotification);
+        loopToLabel.setText (juce::String (processor.globalLoopEndBar.load()), juce::dontSendNotification);
+        loopFromLabel.setTooltip ("LOOP start bar (double-click to type).");
+        loopToLabel.setTooltip ("LOOP end bar, included (double-click to type).");
 
         statusLabel.setFont (Theme::font (11.0f, false));
         statusLabel.setColour (juce::Label::textColourId, Theme::textDim);
@@ -168,6 +200,23 @@ public:
         brakeButton.setBounds (removeButton.getBounds().translated (0, 28));
         area.removeFromTop (4);
         statusLabel.setBounds (area.removeFromTop (34));
+        area.removeFromTop (6);
+        auto loopRow = area.removeFromTop (26);
+        loopButton.setBounds (loopRow.removeFromLeft (52));
+        loopRow.removeFromLeft (8);
+        loopFromLabel.setBounds (loopRow.removeFromLeft (34));
+        loopRow.removeFromLeft (14);
+        loopToLabel.setBounds (loopRow.removeFromLeft (34));
+    }
+
+    void applyLoopBars()
+    {
+        const auto from = std::max (1, loopFromLabel.getText().retainCharacters ("0123456789").getIntValue());
+        const auto to = std::max (from, loopToLabel.getText().retainCharacters ("0123456789").getIntValue());
+        loopFromLabel.setText (juce::String (from), juce::dontSendNotification);
+        loopToLabel.setText (juce::String (to), juce::dontSendNotification);
+        processor.globalLoopStartBar = from - 1;
+        processor.globalLoopEndBar = to; // slutet exklusivt, 0-räknat = sista inräknade takten 1-räknad
     }
 
     // Handen över skivan visar att den kan gripas (JUCE:s DraggingHandCursor, ingen separat sluten hand finns).
@@ -425,7 +474,8 @@ private:
     juce::TextButton stopMode { "STOP" }, nudgeMode { "KEEP GOING" }, removeButton { "RESET" }, recMode { "REC" }, brakeButton { "BRAKE" };
     juce::TextButton kindJog { "JOG" }, kindScrub { "SCRUB" }, kindSpeed { "SPEED" };
     KnobComponent speedKnob;
-    juce::Label statusLabel;
+    juce::Label statusLabel, loopFromLabel, loopToLabel;
+    juce::TextButton loopButton { "LOOP" };
     bool touching = false, gestureOpen = false, speedGestureOpen = false, braking = false;
     float brakeFromRate = 1.0f;
     double brakeStart = 0.0;
