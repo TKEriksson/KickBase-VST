@@ -59,3 +59,4 @@
 - 28 okt: Tobias: START per motor ska aven kunna synkas till takt (borja efter viss takt).
 - 28 okt: Tobias: aven langd och kurva pa envelope per motor (tillagg till 8b).
 - 28 okt: Arbetare 2 klar (af40b4e, slutaudit utan klippning, DC<=0,004; smaavvikelser peak -0,3 dB och svansar noterade i PROGRESS-w2). Standby tills Tobias lyssnat i Lemon.
+- 28 okt: Tobias: START/langd/kurva per motor (5b) ska vara med i rel-0.3. Flyttad fore overtonsredigeraren.

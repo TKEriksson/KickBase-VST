@@ -11,10 +11,10 @@ En enda release (Tobias 28 okt): allt som tidigare låg i rel-0.4 ingår nu i re
 3. FUNDAMENTAL DUCK-visning i motorns vågvisning och ANALYZER (ljudtråd till UI via atomics/FIFO).
 4. Broms B (BRAKE trigger, godkänd 27 okt): kontrollera om den redan är byggd, annars bygg. Sedan JOG-resten ur rel-0.3-listan.
 5. Kvarvarande nav/preset-punkter (kick SYNTH/SAMPLE MIX, TOP DECAY (= kickNoiseDecay, intervall 5–400 ms utökas), FX multiselect, ghost notes, pop-out, glide-plus). Köordning (28 okt): färgväljare + TOP DECAY, LIVE CODE autocomplete (fungerar inte idag), SOUNDSTAGE med bussuppdelning och flerval av källor (Tobias vill ha det nu; plan först), gemensam MD-hjälpdialog (HJÄLP-knappar: pianorullen och LIVE CODE först, sedan en flik/motor i taget; färre notstips), resten.
+5b. START per motor i MIX-fliken (Tobias 28 okt): tidsförskjutning i ms per motor (osc 1-3, sample, noise) så att lager kan komma in efter varandra. Skevt intervall 0-4000 ms, standard 0 (gamla presets oförändrade), nya parametrar sist. Ska även kunna synkas till takten (börja efter t.ex. 1 takt, steg i beats/takter). Plan först; fråga om max ska vara inställbart. Tillägg (Tobias 28 okt): varje motor ska även ha egen längd och kurva på sin envelope, så att start, längd och kurva för hela ljudet går att bestämma per motor (utred vad som redan finns i ENV-fliken och i kickens amp-env). MED I rel-0.3 (Tobias 28 okt).
 ### Därefter (planer först)
 6. Övertonsredigerare, Serum-stil, etapp 1-3.
 7. Sample-editor (AMP/PITCH, på/av), klick-lager (3) och sampleverktyg, reverse per not, parameterlanes under pianorollen (resizebar).
-8b. START per motor i MIX-fliken (Tobias 28 okt): tidsförskjutning i ms per motor (osc 1-3, sample, noise) så att lager kan komma in efter varandra. Skevt intervall 0-4000 ms, standard 0 (gamla presets oförändrade), nya parametrar sist. Ska även kunna synkas till takten (börja efter t.ex. 1 takt, steg i beats/takter). Plan först; fråga om max ska vara inställbart. Tillägg (Tobias 28 okt): varje motor ska även ha egen längd och kurva på sin envelope, så att start, längd och kurva för hela ljudet går att bestämma per motor (utred vad som redan finns i ENV-fliken och i kickens amp-env).
 8. RING, Echo/Flanger och autosave/IO (Tobias 28 okt: lägg in i planen): plan först, sedan bygge. Nya parametrar sist, standard av.
 9. AUTO FIX sist.
 
