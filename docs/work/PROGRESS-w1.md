@@ -647,3 +647,7 @@ Utvidgning av (z): gäller alla menyer i pluginet. Tre nivåer (huvudmeny, under
 (ä) PREVIEWS-delen (beat-räknaren) får glasdisplay-design enligt `docs/work/skisser/previews-glas.png` (nuläge `previews-nu.png`): alla knappar där (preview, tonväljare, klocka, retur) som glasknapparna intill BPM/takt-displayen, OUT-ratten stor, glödstilen från (å). Skissen är riktning, inte exakt mått. Görs efter steg 1 (rad-/glödmallen).
 
 29 okt (A1), prioritetsändring: (å) `Theme::paintEdgeGlow`/`paintDividerGlow` (Theme.h, billiga inre linjer, inget blur) används av paintMetal; (z) hover på alla tre menynivåer (KickbaseLookAndFeel.cpp:218-), glödande avdelare under huvudmenyn (TabbedPanel.h); (ä) PREVIEWS som glasruta med rosa kantglöd (Modules.cpp:~769). Kvar: knapparna i PREVIEWS som glasknappar, stor OUT-ratt, tre nivåers höjd/bakgrund fullt ut, SAMPLE/FILTER. Bild: docs/work/skisser/glod-glas-menyer.png
+
+## 2026-10-28 glöd/menyer/glasknappar (A1)
+- Glöd starkare (Theme.h paintEdgeGlow/paintDividerGlow), menynivå 2 blåtonad, nivå 3 lägre+mörkare, avdelare under varje nivå; ListenButton som glasknapp (Theme::paintGlassButton); OUT-ratt 46 px; spacing-skala `Theme::Space` (TabbedPanel använder den; resten av GUI:t byts steg för steg).
+- SETTINGS: GLOW Av/Svag/Stark (Settings::glowLevel, användarinställning "glowLevel", standard Svag, env KB_GLOW för bildverktyget). Bilder: glod-glas-menyer-2.png, glod-svag.png, glod-stark.png.

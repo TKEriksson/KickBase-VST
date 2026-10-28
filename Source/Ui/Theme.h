@@ -219,11 +219,17 @@ namespace Theme
     }
 
     // Gemensam kantglöd (å): tre tunna inre linjer med fallande styrka, inget blur. Billigt nog att ritas varje gång.
+    // Glödstyrka från SETTINGS (Av / Svag / Stark): samma skala för kantglöd och avdelare.
+    inline float glowStrength() { static constexpr float scale[3] = { 0.0f, 1.0f, 1.8f }; return scale[Settings::glowLevel()]; }
+
     // Används av alla paneler, kort och avdelare så att glöden ser likadan ut överallt. Inåt, så att grannar inte klipper den.
     inline void paintEdgeGlow (juce::Graphics& g, juce::Rectangle<float> area, float corner, juce::Colour colour = juce::Colour (0xff38bdf8),
                                float strength = 1.0f)
     {
         static constexpr float alphas[3] = { 0.24f, 0.13f, 0.06f };
+        strength *= glowStrength();
+        if (strength <= 0.0f)
+            return;
         for (int i = 0; i < 3; ++i)
         {
             g.setColour (colour.withAlpha (alphas[i] * strength));
@@ -236,11 +242,15 @@ namespace Theme
                                   juce::Colour colour = juce::Colour (0xff38bdf8))
     {
         const auto grow = [&] (float d) { return vertical ? line.expanded (d, 0.0f) : line.expanded (0.0f, d); };
-        g.setColour (colour.withAlpha (0.07f));
-        g.fillRect (grow (4.0f));
-        g.setColour (colour.withAlpha (0.14f));
-        g.fillRect (grow (2.0f));
-        g.setColour (colour.withAlpha (0.55f));
+        const auto s = glowStrength();
+        if (s > 0.0f)
+        {
+            g.setColour (colour.withAlpha (juce::jmin (1.0f, 0.07f * s)));
+            g.fillRect (grow (4.0f));
+            g.setColour (colour.withAlpha (juce::jmin (1.0f, 0.14f * s)));
+            g.fillRect (grow (2.0f));
+        }
+        g.setColour (colour.withAlpha (juce::jmin (1.0f, 0.22f + 0.33f * s)));
         g.fillRect (line);
     }
 
