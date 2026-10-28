@@ -48,3 +48,5 @@
 - Arbetare 1: SOUNDSTAGE klar (e47666c, 16 mix*Stage-parametrar sist), fortsätter TOP DECAY, sedan MD-hjälpdialog. Arbetare 2: fick "fortsätt" 28 okt 08:10.
 - Egna misstag loggade i `LESSONS.md` (28 okt). Tobias 28 okt: logga alltid misstag och uppdatera progressfilen.
 - Kvar för PL: rel-0.3-build, testlistans PDF i `docs/releases/` med hörtestsektion, Tobias testar i DAW, merge först efter ja.
+
+- 28 okt: Arbetare 1 klar med gemensam hjälpdialog (HelpDialog, flikar pianorulle/LIVE CODE/SOUNDSTAGE), lokal commit på play-pack. TOP DECAY oklart, Tobias tillfrågad, ligger sist i kön.
