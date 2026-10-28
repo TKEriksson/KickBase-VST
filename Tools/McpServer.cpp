@@ -24,7 +24,7 @@ using juce::var;
 
 namespace
 {
-    constexpr const char* serverVersion = "0.1.0";
+    constexpr const char* serverVersion = "0.3.0";
 
     var object() { return var (new juce::DynamicObject()); }
     void put (var& target, const juce::String& key, const var& value) { target.getDynamicObject()->setProperty (key, value); }

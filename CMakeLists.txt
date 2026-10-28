@@ -5,7 +5,7 @@ if (POLICY CMP0141)
     cmake_policy(SET CMP0141 NEW)
 endif()
 
-project(Kickbase VERSION 0.1.0)
+project(Kickbase VERSION 0.3.0)
 
 # Kompilatorcache: om sccache (eller ccache) finns används den automatiskt. Då går en ren ombyggnad eller ett byte av gren
 # mycket snabbare, eftersom oförändrade filer hämtas ur cachen. Installera med `choco install sccache` eller `winget install Mozilla.sccache`.
