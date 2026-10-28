@@ -465,3 +465,9 @@ Bygge Debug all: grönt, "Alla tester gick igenom" (rendersig oförändrad).
 - Rösten slutar vid kickens LENGTH (`KickEngine.cpp:210`, `lengthSeconds`), så en lång topp-svans kapas av LENGTH. Texten i `Help.cpp:166` säger det.
 - Test: build Debug all grön, presettest, paramtest, helpcheck OK; rendersig körd (inga lagrade referenshashar i repot att jämföra mot; ändringen rör bara reglagets mappning, inte lagrade ms-värden).
 - DAW (Lemon): vrid TOP DECAY, lågt läge ska vara lika lätt att ställa som förr; höga värden ger lång luft om LENGTH är lång.
+
+## Broms A: BRAKE-kurvan sparas med projektet (Arbetare 1, 28 okt)
+- Broms A (cherry-pick av 1193cc9 från pl-presets, konflikten med LOOP-koden löst genom att bara ta rullistan): VINYL/TAPE/HARD/SLOW.
+- `PluginBase.cpp:613` sparar `brakeCurve` som state-property (som `jogKind`, inget host-parameter-ID, så ID/preset-index/hash rörs inte); `PluginBase.cpp:727` läser med standard 0 (VINYL = dagens beteende, gamla projekt låter lika).
+- Test: `Tools/StateTests.cpp:952,970` (spara -> ladda ger samma kurva). Debug all grön utom wavetable-tidtestet (lastkänsligt, orelaterat); persisttest OK vid ensam körning.
+- DAW (Lemon): välj TAPE, spara projektet, öppna det igen: kurvan ska vara TAPE.
