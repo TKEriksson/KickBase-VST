@@ -53,3 +53,4 @@
 - 28 okt: TOP DECAY definierat av Tobias = NOISE-decay på kicken (kickNoiseDecay, Params.cpp:194, tak 400 ms) utökas till kickens längd. Arbetare 1 fick uppgiften.
 - 28 okt: Tobias: allt i appen ska vara pa engelska. Arbetare 1 far oversatta SOUNDSTAGE-hjalpen och soka efter svenska UI-strangar.
 - 28 okt: Arbetare 2 far genrerna (max 3/kategori) och sedan Fas J (docs/school finns som utredning).
+- 28 okt: Arbetare 2 klar med genrepresets (8d03b40: 7 kickar, 14 basar, nya kategorier) och Fas J (28e3657: docs/school/genrer.md, preset-builder-skill). Ej lyssnat. Fick order: genreutredning med kallor.
