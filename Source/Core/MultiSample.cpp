@@ -46,6 +46,157 @@ int MultiSampling::parseRootKey (const juce::String& name)
     return -1;
 }
 
+namespace
+{
+    // SFZ-tonvärde: heltal eller namn (c4 = 60, c#4, db3, a-1). -1 om det inte går att tolka.
+    int sfzNote (const juce::String& value)
+    {
+        const auto v = value.trim();
+        if (v.isEmpty())
+            return -1;
+        if (v.containsOnly ("0123456789"))
+            return juce::jlimit (0, 127, v.getIntValue());
+        const auto letter = juce::CharacterFunctions::toUpperCase (v[0]);
+        if (letter < 'A' || letter > 'G')
+            return -1;
+        static const int semitone[7] = { 9, 11, 0, 2, 4, 5, 7 };
+        int p = 1, accidental = 0;
+        if (v[p] == '#') { accidental = 1; ++p; }
+        else if (v[p] == 'b' || v[p] == 'B') { accidental = -1; ++p; }
+        const auto octave = v.substring (p);
+        if (octave.isEmpty() || ! octave.removeCharacters ("-").containsOnly ("0123456789"))
+            return -1;
+        return juce::jlimit (0, 127, 12 * (octave.getIntValue() + 1) + semitone[letter - 'A'] + accidental);
+    }
+
+    bool isOpcodeStart (const juce::String& text, int i)
+    {
+        // "namn=" där namnet är bokstäver, siffror och understreck
+        auto j = i;
+        while (j < text.length() && (juce::CharacterFunctions::isLetterOrDigit (text[j]) || text[j] == '_'))
+            ++j;
+        return j > i && j < text.length() && text[j] == '=';
+    }
+
+    using Opcodes = std::map<juce::String, juce::String>;
+
+    void applyOpcodes (MultiSampling::SfzRegion& region, const Opcodes& ops, juce::String defaultPath)
+    {
+        auto note = [&ops] (const char* key) { auto it = ops.find (key); return it != ops.end() ? sfzNote (it->second) : -1; };
+        auto integer = [&ops] (const char* key, int fallback) { auto it = ops.find (key); return it != ops.end() ? it->second.getIntValue() : fallback; };
+        auto& m = region.mapping;
+        if (auto it = ops.find ("sample"); it != ops.end())
+            region.samplePath = defaultPath + it->second.replaceCharacter ('\\', '/');
+        if (const auto k = note ("key"); k >= 0)
+            m.keyLow = m.keyHigh = m.rootKey = k;
+        if (const auto k = note ("lokey"); k >= 0) m.keyLow = k;
+        if (const auto k = note ("hikey"); k >= 0) m.keyHigh = k;
+        if (const auto k = note ("pitch_keycenter"); k >= 0) m.rootKey = k;
+        m.velocityLow = juce::jlimit (1, 127, integer ("lovel", 1));
+        m.velocityHigh = juce::jlimit (1, 127, integer ("hivel", 127));
+        m.tuneCents = (float) integer ("tune", 0);
+        m.rootKey = juce::jlimit (0, 127, m.rootKey - integer ("transpose", 0));
+    }
+}
+
+std::vector<MultiSampling::SfzRegion> MultiSampling::parseSfz (const juce::String& rawText)
+{
+    // Radkommentarer bort
+    juce::StringArray lines;
+    lines.addLines (rawText);
+    juce::String text;
+    for (auto line : lines)
+    {
+        if (const auto c = line.indexOf ("//"); c >= 0)
+            line = line.substring (0, c);
+        text << line << ' ';
+    }
+
+    std::vector<SfzRegion> regions;
+    Opcodes global, master, group, region, control;
+    Opcodes* current = nullptr;
+    enum class Level { none, control, global, master, group, region } level = Level::none;
+
+    auto flushRegion = [&]
+    {
+        if (level != Level::region)
+            return;
+        Opcodes merged = global;
+        for (const auto* layer : { &master, &group, &region })
+            for (const auto& [k, v] : *layer)
+                merged[k] = v;
+        SfzRegion r;
+        auto path = control.count ("default_path") ? control["default_path"].replaceCharacter ('\\', '/') : juce::String();
+        applyOpcodes (r, merged, path);
+        if (r.samplePath.isNotEmpty())
+            regions.push_back (std::move (r));
+    };
+
+    int i = 0;
+    const auto n = text.length();
+    while (i < n)
+    {
+        const auto c = text[i];
+        if (juce::CharacterFunctions::isWhitespace (c)) { ++i; continue; }
+        if (c == '<')
+        {
+            const auto close = text.indexOfChar (i, '>');
+            if (close < 0) break;
+            const auto header = text.substring (i + 1, close).trim().toLowerCase();
+            flushRegion();
+            if (header == "region")      { level = Level::region;  region.clear(); current = &region; }
+            else if (header == "group")  { level = Level::group;   group.clear(); region.clear(); current = &group; }
+            else if (header == "master") { level = Level::master;  master.clear(); group.clear(); region.clear(); current = &master; }
+            else if (header == "global") { level = Level::global;  global.clear(); master.clear(); group.clear(); region.clear(); current = &global; }
+            else if (header == "control"){ level = Level::control; current = &control; }
+            else                         { level = Level::none;    current = nullptr; }
+            i = close + 1;
+            continue;
+        }
+        if (! isOpcodeStart (text, i)) { ++i; continue; }
+        const auto eq = text.indexOfChar (i, '=');
+        const auto key = text.substring (i, eq).toLowerCase();
+        auto j = eq + 1;
+        // Värdet går fram till nästa "namn=" eller "<" (sample-sökvägar kan innehålla blanksteg)
+        auto end = j;
+        while (end < n)
+        {
+            if (text[end] == '<') break;
+            if (juce::CharacterFunctions::isWhitespace (text[end]) && end + 1 < n)
+            {
+                auto k = end + 1;
+                while (k < n && juce::CharacterFunctions::isWhitespace (text[k])) ++k;
+                if (k < n && (text[k] == '<' || isOpcodeStart (text, k))) break;
+            }
+            ++end;
+        }
+        if (current != nullptr)
+            (*current)[key] = text.substring (j, end).trim();
+        i = end;
+    }
+    flushRegion();
+    return regions;
+}
+
+int MultiSampleSet::addSfz (const juce::File& sfzFile)
+{
+    const auto regions = MultiSampling::parseSfz (sfzFile.loadFileAsString());
+    auto added = 0;
+    for (const auto& r : regions)
+    {
+        MultiSampleMapping m;
+        m.rootKey = r.mapping.rootKey;
+        m.keyLow = r.mapping.keyLow;
+        m.keyHigh = r.mapping.keyHigh;
+        m.velocityLow = r.mapping.velocityLow;
+        m.velocityHigh = r.mapping.velocityHigh;
+        m.tuneCents = r.mapping.tuneCents;
+        if (addFile (sfzFile.getParentDirectory().getChildFile (r.samplePath), &m))
+            ++added;
+    }
+    return added;
+}
+
 int MultiSampleBank::select (int key, int velocity) const noexcept
 {
     int best = -1;
@@ -65,7 +216,7 @@ int MultiSampleBank::select (int key, int velocity) const noexcept
     return best;
 }
 
-bool MultiSampleSet::addFile (const juce::File& file)
+bool MultiSampleSet::addFile (const juce::File& file, const MultiSampleMapping* explicitMapping)
 {
     juce::AudioFormatManager formats;
     formats.registerBasicFormats();
@@ -85,8 +236,9 @@ bool MultiSampleSet::addFile (const juce::File& file)
 
     MultiSampleMapping mapping;
     const auto name = file.getFileNameWithoutExtension();
-    const auto root = MultiSampling::parseRootKey (name);
-    if (root >= 0)
+    if (explicitMapping != nullptr)
+        mapping = *explicitMapping;
+    else if (const auto root = MultiSampling::parseRootKey (name); root >= 0)
         mapping.rootKey = root;
 
     return addZone (std::move (mono), reader->sampleRate, name, mapping);

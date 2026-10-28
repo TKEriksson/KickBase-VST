@@ -345,3 +345,9 @@ Bygge Debug all: grönt, "Alla tester gick igenom" (rendersig oförändrad).
 - PluginBase: `addInstrumentMultiSamples` / `clearInstrumentMultiSamples` (PluginBase.cpp, före `syncSliceRows`).
 - Inte gjort: zonredigering (tangentområde/anslag per zon i UI), SFZ-import (steg 4), zoner i preset-export.
 **Testrad DAW (Lemon):** SAMPLE-fliken på ett baslager, välj Multi, LOAD och markera 3 filer namngivna t.ex. Bass_C2, Bass_C3, Bass_C4: etiketten visar "3 zones"; spela C1, C3, C5 från pianorullen/MIDI: varje tangent låter från närmaste zon och tonhöjden följer tangenten; X tömmer; byt till Single: den vanliga samplingen låter som förut; spara och öppna projektet: zonerna finns kvar.
+
+## Multisampling – SFZ-kärnan (Arbetare 1, 28 okt)
+- `MultiSampling::parseSfz`, `MultiSampleSet::addSfz`, `addFile(file, explicitMapping)` i `Source/Core/MultiSample.cpp`. Stöd: `<control> default_path`, `<global>/<master>/<group>/<region>` med arv, opcodes sample/key/lokey/hikey/pitch_keycenter/lovel/hivel/tune/transpose, tonnamn (c4 = 60).
+- Ingen UI-koppling och inget KickbaseTool-kommando: Arbetare 2 tar dem plus testerna (projektledarens beslut).
+- Bygget grönt förutom ett tidstest (wavetable: 120 tabeller på 30,7 s i Debug, tröskeln gick över medan flera byggen kördes); multisampletest och helpcheck gröna. Ej verifierat mot en riktig .sfz-fil än.
+- DAW-test (Lemon): inget nytt att testa än, funktionen syns först när UI/verktyg kopplats.
