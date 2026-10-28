@@ -57,6 +57,7 @@ set(CORE_SOURCES
     Source/Core/WavetableEdit.cpp
     Source/Core/NodeEnvelope.cpp
     Source/Core/StepScheduler.cpp
+    Source/Core/AutoFix.cpp
     Source/Core/Sidechain.cpp
     Source/Core/Modulation.cpp
     Source/Core/Settings.cpp
@@ -121,6 +122,7 @@ set(PLUGIN_SOURCES
     Source/Ui/LiveCodePage.cpp
     Source/Ui/Components.cpp
     Source/Ui/Help.cpp
+    Source/Ui/HelpDialog.cpp
     Source/Ui/FilterPanel.cpp
     Source/Ui/HarmonicEditor.cpp
     Source/Ui/OscPanel.cpp
@@ -230,6 +232,8 @@ target_sources(KickbaseTests PRIVATE
     Tests/ModulationTests.cpp
     Tests/FmPresetTests.cpp
     Tests/PersistFmTests.cpp
+    Tests/AutoFixTests.cpp
+    Tests/FxTests.cpp
     Source/Ui/FmPresets.cpp
     Source/Core/Params.cpp
     Source/Core/Master.cpp

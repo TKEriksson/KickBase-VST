@@ -1,6 +1,7 @@
 #include "InstrumentMenu.h"
 #include "Modules.h"
 #include "Help.h"
+#include "HelpDialog.h"
 #include "HistoryPanel.h"
 #include "JogPanel.h"
 #include "../Core/ProjectFile.h"
@@ -1629,6 +1630,8 @@ SamplePage::SamplePage (PluginBase& p, int layerIn, juce::Colour accent)
     gridAmount.setTextValueSuffix (" slices");
     sensitivityAmount.setTextValueSuffix ("");
 
+    HelpDialog::setupButton (helpButton, *this, HelpDialog::Topic::sample, "the SAMPLE source (loading, root note, loop, slices)");
+    addAndMakeVisible (helpButton);
     addAndMakeVisible (view);
     label.setFont (Theme::font (11.0f));
     label.setColour (juce::Label::textColourId, Theme::textDim);
@@ -1773,6 +1776,8 @@ void SamplePage::resized()
 {
     auto area = getLocalBounds().reduced (4);
     auto top = area.removeFromTop (24);
+    helpButton.setBounds (top.removeFromRight (44).withTrimmedTop (2).withTrimmedBottom (2));
+    top.removeFromRight (6);
     filterSendToggle.setBounds (top.removeFromRight (84));
     top.removeFromRight (8);
     clearButton.setBounds (top.removeFromRight (24));

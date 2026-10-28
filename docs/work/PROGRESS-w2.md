@@ -169,3 +169,47 @@ Nu: programmet, rel-0.3 motornära punkter: 1) S3 Unison/Reese, 2) multisampling
 - Spelartestet finns sist i `multisampletest` (`Tools/AudioTests.cpp`). Tonhöjdskontrollerna går igenom; kontrollen "tangent 76 väljer höga zonen" FALLERAR och är inte undersökt (misstänkt: nivå/sampleLevel eller zongränser i testuppsättningen, inte bekräftat). Bankbyte, tom bank och 0 allokeringar kom inte att köras före felet i resultatet, kolla utskriften.
 - Nästa: skriv ut lowRms/highRms i testet, hitta orsaken, rätta; sedan etapp 3 (persistens: eget träd "BassMultiSamples", gamla projekt oförändrade), testrad i `fl-testlista.md`, UI/TYPE-väljare med Arbetare 1.
 - Stoppad på PL:s order (sessionsgräns); S3 är klar (64bde98), etapp 1 klar (150fb30).
+
+## FUNDAMENTAL DUCK i presets + merge play-pack (28 okt, Arbetare 2)
+- `fundDuck` i `PresetData.inl` (före PSY ROLLING): på i Roll 1–4 och Glide 1–3 (9 dB/200 cent; Glide Sub 12/250). Bas-only-presets orörda.
+- Audit före/efter: effekten under 0,1 dB i banden; render-signaturer för default-av oförändrade (Init 94f0a1b6bd8a3c7f).
+- Tidstestet flaky: Debug-gräns 120 s. Build grön efter merge av play-pack (SFZ-kärnan b9c9859).
+- Kvar: KickbaseTool-kommando för SFZ + parseSfz-tester, Init 1–5, alla övriga kategorier (max 3), Fas J.
+
+## Duck Demo (28 okt, Arbetare 2, på Tobias begäran)
+- `duckDemo()` i `PresetData.inl` (sist i fullPresets): D-kick (tone 2) och lång bas på x±1 / x+3, alltså ±100 cent från kickens grundton (inom fönstret 200 cent) och dissonant. Duck 12 dB, send 0.
+- Build grön. Audit visar bara duck-på-värden; på/av-skillnaden är inte mätt, den ska lyssnas fram i DAW (testrad tillagd).
+
+## New Init 1–5 (28 okt, Arbetare 2)
+- `newInit1–5` i `PresetData.inl`, sist i fullPresets, byggda av `initPreset()`/initSub/initMid/initAcid. Init oförändrad (rendersig 94f0a1b6bd8a3c7f). Build grön, audit utan clip.
+- Kvar: SYNTH, MID BASS, HI BASS, genrer (max 3 per kategori), Fas J (preset-skola).
+
+## 2026-10-28 MID BASS / HI BASS / SYNTH
+- 9 nya baspresets (3 per kategori) via `registerBass` i `PresetData.inl`, sist i `bassPresets()`; namnprefixregler i `PresetCategories.cpp`. Bygge grönt, audit utan klippning. Återstår: genrer (MINIMAL, GOA, DARK PSY, DANCE, TRANCE, TECHNO, EMPIRIKAL), preset-skolan.
+
+## 2026-10-28 Genrepresets
+- 7 kickar + 14 basar (namnprefix Minimal/Goa/Dark Psy/Dance/Trance/Techno/Empirikal), sist i `kickPresets()`/`bassPresets()`; genreregler och fem nya kategorier (DARK PSY, DANCE, TRANCE, TECHNO, EMPIRIKAL) i `PresetCategories.cpp`. Bygge grönt, audit utan klippning. Ej lyssnat. Återstår: Fas J, bygg vidare på `docs/school/` (a3c54e7), sedan skill.
+
+## 2026-10-28 Genreutredning med källor
+- Arbetare 2: `docs/school/` minimal, goa (omskrivna) plus nya dark-psy, dance, trance, techno, empirikal. Källor som länkar/titlar, kvalitet och "obekräftat" angivet. Tunt: minimal-psy (en BPM-källa), Dance (ingen egen källa), Empirikal (ingen specifik källa, Reese-underlag). Ingen kod ändrad. Finjustering väntar på Tobias lyssning i Lemon.
+
+## 2026-10-28 Slutaudit alla fabrikspresets (efter merge av play-pack, build grönt)
+- Arbetare 2: `audit kick|bass|full all` (30 kickar, 40 basar, 26 fulla). Ingen klippning (peak ≤ −0,3 dB), DC ≤ 0,004. Ej lyssnat.
+- **Avvikelser (kick):** Dark Forest Boom och Clean Warm peak −0,3 dB (nära tak); Dark Forest Boom DC 0,004 (högst). Svans utanför 35–50 Hz: Psy Clean C och C Tight 33 Hz, Psy Clean A Punch 56 Hz.
+- **Avvikelser (full):** newest 2/5/6 och Init/New Init 1–2 peak −0,3 dB; newest 2 DC 0,004. Init och newest 1 har side −37 dB (stereo i lågt band), övriga −120.
+- **Basar:** alla peak −5…−12,4 dB, DC 0. Genrebasarna −9…−12 dB.
+- Inget ändrat; preset-index orörda. Finjustering efter Tobias lyssning i Lemon.
+
+## 2026-10-28 AUTO FIX, mätdelen (Arbetare 2)
+- Plan: `docs/work/autofix-matdel-plan.md` (alternativ B, FUNDAMENTAL DUCK; A förkastad). Godkänd av projektledaren.
+- Byggt: `Source/Core/AutoFix.h/.cpp` (ren funktion `AutoFix::analyse`, bara std): grundton mot kickens tailHz i cent per ton, fönster 100 cent, nivå bas-kick, korrelation, 200 Hz-överskott; åtgärdslista med före/efter (engelsk text), allvarligast först, deterministisk. Inga nya parametrar, inget UI.
+- Tester: `Tests/AutoFixTests.cpp` (cent, krock/fönsterkant, redan på, vidgat fönster, fas/nivå/200 Hz, tomt, determinism).
+- Slarv fångat av testet: fönsterkanten (100 cent) föll på flyttalsfel; fixat med 0,01 cent marginal.
+- För Arbetare 1: mappa `Action::param` till UI/APPLY; fyll `PhaseInfo` ur `MixAnalysis::PhaseMetrics` (hjälpare `fromPhaseMetrics` byggs när UI-kopplingen behöver den).
+- Build `Debug all` grönt.
+
+## 2026-10-28 – fromPhaseMetrics och FX-kärnan (Arbetare 2)
+- `AutoFix::fromPhaseMetrics` (AutoFixMix.h) + test, commit 084cad0.
+- FX-kärnan RING/Echo/Flanger enligt `docs/work/fx-ring-echo-flanger-plan.md` (godkänd av PL): Flanger fick SHAPE (Sine/Triangle) och SPREAD (standard 0.25 = gamla ljudet) sist i tabellen, `newKnobDefault` legacyCount 5 (`Effects.cpp`). Nya `Tests/FxTests.cpp` (tabell, Flanger, Echo-tid, RING). Bygget grönt, alla tester gick igenom.
+- Echo ms-tid parkerad (alla 10 knobplatser används; PL frågar Tobias om knobsPerSlot).
+- Kvar för Arbetare 1: UI-etiketter SHAPE/SPREAD.

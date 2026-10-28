@@ -477,6 +477,7 @@ public:
     std::atomic<int> auditionRequest { -1 };
 
     std::atomic<bool> followPlayhead { true }; // pianorullen och stegvyn bläddrar med uppspelningen
+    std::atomic<juce::uint32> ghostMask { 0xffffffffu }; // GHOST NOTES i pianorullen: vilka rader som visas som spöktoner (bit = radindex, kicken = Pattern::kickLayer); standard alla på. Delas av pianorullen och dess POP OUT, sparas inte i projektet
     std::atomic<int> lfoActiveVersion { 0 }; // ökas när en LFO läggs till eller tas bort (fas M), så att gränssnittet ritar om
     std::atomic<int> patternVersion { 0 }; // ökas när mönstret ändras, så att gränssnittet ritar om
     std::atomic<juce::uint64> liveCodeLocks { 0 };  // Live Code: en bit per radid (0-9 = instrument, 10 = kicken, 11-63 underrader) som koden inte får skriva över; sparas som de 11 första bitarna

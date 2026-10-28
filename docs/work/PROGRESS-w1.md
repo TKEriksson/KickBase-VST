@@ -363,3 +363,59 @@ Bygge Debug all: grönt, "Alla tester gick igenom" (rendersig oförändrad).
 - Build grön utom den lastkänsliga wavetable-tiden (41 s), orelaterad.
 - DAW-test: spela mönstret i DAW, öppna JOG, tryck BRAKE: tempot ska sakta in till stopp, vila, snurra upp igen; ta tag i hjulet under bromsen: bromsen avbryts.
 - Kvar i JOG-resten: LOOP in i JOG-panelen (ej gjort).
+
+## GHOST NOTES-rullgardin + FOLLOW av vid scroll (Arbetare 1, 28 okt)
+- GHOST-knapp i pianorullens knapprad (`PianoRoll.cpp` showGhostMenu): flerval över KICK och aktiva instrument (färgprick, ALL ON/ALL OFF), menyn står kvar öppen. Maskan `ghostMask` i `PluginBase.h` delas med POP OUT, sparas inte i projektet, standard alla på.
+- FOLLOW slås av när man drar den horisontella rullningslisten (`scrollBarMoved`).
+- Ingen ny parameter. Build Debug all grön ("Alla tester gick igenom").
+- DAW-test (Lemon): öppna pianorullen, GHOST, bocka av en instrument: dess spöktoner försvinner; menyn stannar öppen. Spela med FOLLOW på och dra rullningslisten: FOLLOW släcks.
+
+## Glide-plus i pianorullen (Arbetare 1, 28 okt)
+- Så ritas glide idag: en glide-ton (`note.slide`, rosa) har en ramp från tonhöjden som klingar (`pitchBefore`) till notens mitt vid dess slut (`PianoRoll.cpp` paint, "Rampen"); högerdrag på tomt rutnät ritar ett glidestreck (`addStroke`) som blir en glide-ton och fastnar på en ton som börjar vid strecket slut.
+- Nytt: plus-ikon vid glide-tonens slut (`plusRect`/`updatePlus`), under tonen om musen är under notens mitt, annars ovanför. Drag från plusset startar ett glidestreck från notens mitt/slut och snappar till tonen under pekaren (mouseDrag). Klick utan drag gör inget. Ingen ny parameter, ingen ljudtrådskod.
+- Build Debug all grön.
+- DAW-test (Lemon): skapa en glide-ton (GLIDE på, rita), för musen över den: plus syns ovanför/under efter musens sida. Dra från plusset till en annan ton: strecket snappar till tonens början och en ny glide-ton skapas.
+
+## Egen färgväljare för instrument (Arbetare 1, 2026-10-28)
+- Instrumentmenyn > Color > "Custom colour...": fri färgväljare i en CallOutBox (`InstrumentMenu.h`, klassen `ColourPicker`). Varje ändring sparas direkt i projektet som palettvalen (`setLayerColour`), inga nya parametrar.
+- Bygge `Debug all` grönt, alla tester gick igenom.
+- DAW-test (Lemon): högerklicka ett instrument > Color > Custom colour..., dra i färgen. Kolla att pianorullens noter och spöknoter, radkortet och instrumentväljaren byter färg medan du drar, och att färgen finns kvar efter att projektet sparats och öppnats.
+
+## SOUNDSTAGE: bussuppdelning + flerval av källor (Arbetare 1, 2026-10-28) – PLAN
+- Idag: WIDTH / MONO BELOW / ENHANCE gäller hela summan (`Master.cpp:116-155`, efter master-EQ). Alla källor (kick, instrument 1-10, FX A-E = 16, `Mixer.h:15`) summeras i `maxBus` av `Mixer::mix` (`Mixer.cpp:108`).
+- Uppdelning: 16 bool-parametrar `mix<Källa>Stage` (en per källa, SIST i layouten via `Mixer::addStageParameters`, standard = på = dagens ljud; ändrat från masken). Källor med bit av går i en ny `stageSkipBus` i stället för `maxBus` (samma gain/pan/send, bara annan mål-buss). Mastern kör EQ på båda (en andra `SourceEq` med samma parametrar, linjär så EQ(a)+EQ(b)=EQ(a+b)), kör stereoblocket bara på summan av de valda, lägger sedan tillbaka skip-bussen före DC/drive/limiter.
+- Ljudtråden: ingen allokering (bussen förallokeras som `maxBus`). När alla bitar är på (standard) körs ingen skip-väg alls: samma kod och samma ljud som idag, rendersig oförändrad. Merkostnad annars: en EQ + en buss-addition per block.
+- Inga ID:n, preset-index eller hash ändras. Bypass-bussen (förbi maximizern) berörs inte.
+- UI: SOUNDSTAGE-sidan får en rad källknappar (flerval, färgprickar som GHOST) och tydligare namn/tips: MONO BELOW -> "BASS MONO", WIDTH -> "WIDTH (sides)". Hjälptexter i Help.cpp.
+
+## LIVE CODE autocomplete (Arbetare 1, 2026-10-28)
+- `LiveCodeComplete.h`: fler metoder/globaler (ply, iter, scale, arp, mask, range m.fl.), `sine.`/`saw.` m.fl. ger metodlistan. `LiveCodePage.cpp` codeDocumentTextInserted: öppnas automatiskt vid '.', '"' och efter 2 bokstäver; stängs vid andra tecken så Enter inte sväljs efter ')' eller mellanslag. Ctrl+Space som förut. Inga parametrar.
+- Build Debug all grön, alla tester gick igenom.
+- DAW-test (Lemon): LIVE CODE: skriv `no` -> lista öppnas; `s("bd").` -> metoder; Enter efter `)` ger ny rad; `sine.` ger metoder; Ctrl+Space öppnar manuellt.
+
+## SOUNDSTAGE: genomfört (Arbetare 1, 2026-10-28)
+- Kod: `Mixer::addStageParameters`/`inStage`, `mix(..., skipBus)` (Mixer.cpp), `MasterSection::process(..., skip)` med egen `eqSkip` (Master.cpp), `stageSkipBus` i InstrumentProcessor (summas efter stereoblocket, före DC/drive/limiter; masterfadern gäller även den). UI: 16 knappar "AFFECTS" i `SoundstagePage.cpp`, WIDTH/BASS MONO med tydligare tips, Help.cpp-text för *Stage och MAX.
+- Build Debug all grön, alla tester igenom (LNK1163 på skadade .obj: raderade Modules/StepSequencer .obj och byggde om). paramtest 3048/961 ok.
+- DAW-test (Lemon): SOUNDSTAGE: alla knappar på = låter som förut. Stäng av KICK, höj WIDTH till 200 % och slå på BASS MONO: kicken ligger orörd, övriga breddas. Stäng av en instrumentknapp: den hoppar över bredd men får master-EQ/limiter. Spara/ladda projekt behåller valet.
+
+## Gemensam hjälpdialog (Arbetare 1, 2026-10-28)
+- `Source/Ui/HelpDialog.h/.cpp`: markdown-lik vy (rubriker, punkter, **fet**, `kod`) i Viewport med rullningslist, icke-modal DialogWindow med en flik per ämne. Nytt ämne = en rad i `topics[]` + en text. `HelpDialog::setupButton` ger HELP-knapp med tooltip. Fliken SOUNDSTAGE har Tobias text ordagrant. Inga parametrar.
+- HELP-knappar: pianorullen (nedre raden, längst till höger; den långa notis-tooltipen kortad), LIVE CODE (efter FORMAT), SOUNDSTAGE (vid AFFECTS). Motorerna och övriga flikar kommer en i taget.
+- Build Debug all grön, helpcheck 0 utan förklaring.
+- DAW-test (Lemon): klicka HELP i pianorullen: dialogen öppnas på PIANO ROLL, rullningslisten fungerar, flikarna LIVE CODE/SOUNDSTAGE byter text. HELP på LIVE CODE och SOUNDSTAGE öppnar rätt flik; är dialogen redan öppen byter den flik. Hovra HELP: tooltip. Esc stänger.
+
+## HELP för FILTER + engelska UI-strängar (Arbetare 1, 2026-10-28)
+- FILTER-fliken har HELP-knapp (FilterPanel.cpp, switchRow) och ämnet FILTER i HelpDialog.cpp.
+- Engelska: SOUNDSTAGE-hjälpen, LiveCodePage flikar CODE/CONSOLE och tom-konsol-texten, Help.cpp 'from instrument'. Inga tester eller sparade layouter använde de gamla namnen.
+- Bygge grönt, alla tester gick igenom.
+- DAW-test (Lemon): öppna FILTER-fliken, klicka HELP, kontrollera att FILTER-fliken visas; LIVE CODE ska visa CODE/CONSOLE.
+
+## HELP för FM och MIX (Arbetare 1, 2026-10-28)
+- FM-fliken: HELP-knapp uppe till höger (FmPanel.cpp, bredvid FILTER), ämnet FM. MIX-fliken: HELP-knapp bredvid WIDE (InstrMixPanel.cpp), ämnet MIX; rubriken kortad till "COMBINED WAVEFORM (110 Hz)" så knapparna får plats.
+- Bygge grönt, alla tester gick igenom.
+- DAW-test (Lemon): öppna FM- och MIX-flikerna, klicka HELP, kontrollera rätt flik och att knapparna inte täcker rubrik eller knappar.
+
+## HELP för SAMPLE (Arbetare 1, 2026-10-28)
+- SAMPLE-fliken: HELP-knapp uppe till höger (Modules.cpp, SamplePage::resized, vänster om FILTER-rutan), ämnet SAMPLE (HelpDialog.cpp sampleText). Projektledaren godkände ändringen i Modules.h/.cpp (bara knapp och ämne).
+- Bygge grönt, alla tester gick igenom.
+- DAW-test (Lemon): öppna SAMPLE-fliken, klicka HELP, kontrollera att SAMPLE-fliken visas och att knappen inte täcker FILTER-rutan eller etiketten.

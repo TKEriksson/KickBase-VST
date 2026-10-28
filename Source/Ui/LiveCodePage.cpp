@@ -1,4 +1,5 @@
 #include "LiveCodePage.h"
+#include "HelpDialog.h"
 
 namespace
 {
@@ -45,7 +46,7 @@ LiveCodePage::LiveCodePage (PluginBase& processor) : processor (processor), tool
     errorLog.setColour (juce::TextEditor::backgroundColourId, Theme::panel);
     errorLog.setColour (juce::TextEditor::textColourId, Theme::text);
     errorLog.setColour (juce::TextEditor::outlineColourId, Theme::panelBorder);
-    errorLog.setText ("Konsolen är tom: fel och console.log från koden visas här.", false);
+    errorLog.setText ("The console is empty: errors and console.log from the code show up here.", false);
     addChildComponent (errorLog);
 
     codeTab.setClickingTogglesState (false);
@@ -66,7 +67,8 @@ LiveCodePage::LiveCodePage (PluginBase& processor) : processor (processor), tool
     codeOnlyButton.setColour (juce::TextButton::buttonOnColourId, Theme::mix.darker (0.2f));
     codeOnlyButton.setTooltip ("Hear only the rows Live Code has written (solo). Your own SOLO click wins.");
     codeOnlyButton.onClick = [this] { setCodeOnly (codeOnlyButton.getToggleState()); };
-    for (auto* b : { &playButton, &stopButton, &createButton, &codeOnlyButton, &floatButton, &formatButton })
+    HelpDialog::setupButton (helpButton, *this, HelpDialog::Topic::liveCode, "LIVE CODE (syntax, notes, effects, autocomplete)");
+    for (auto* b : { &playButton, &stopButton, &createButton, &codeOnlyButton, &floatButton, &formatButton, &helpButton })
         addAndMakeVisible (b);
     formatButton.setTooltip ("FORMAT: one call per line, s(\"...\") first. Blocks with // comments are left as they are. Undo (Ctrl+Z) works.");
     formatButton.onClick = [this]
@@ -154,6 +156,8 @@ void LiveCodePage::resized()
     floatButton.setBounds (top.removeFromLeft (70));
     top.removeFromLeft (6);
     formatButton.setBounds (top.removeFromLeft (80));
+    top.removeFromLeft (6);
+    helpButton.setBounds (top.removeFromLeft (60));
     area.removeFromTop (6);
     auto locks = area.removeFromTop (22);
     lockLabel.setBounds (locks.removeFromLeft (76));
@@ -186,16 +190,45 @@ void LiveCodePage::codeDocumentTextInserted (const juce::String& text, int)
     marks.clear();
     codeChanged();
     if (ownEdit) return;
-    if ((text == "." || text == "\"") && completionEditor == nullptr)
-        juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<LiveCodePage> (this)]
+    // Öppnas av '.', av ett öppnande citationstecken och när man skrivit två tecken av ett namn (förr bara Ctrl+Space).
+    // Stängs av alla andra tecken än namn och '.', så att Enter/mellanslag efter t.ex. ')' inte fångas av listan.
+    const auto typed = text.length() == 1 ? text[0] : (juce::juce_wchar) 0;
+    const auto isName = juce::CharacterFunctions::isLetterOrDigit (typed) || typed == '_' || typed == '$';
+    if (completionEditor == nullptr)
+    {
+        if (typed == '.' || typed == '"' || isName)
+            juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<LiveCodePage> (this), typed, isName]
+            {
+                if (safe == nullptr) return;
+                juce::CodeEditorComponent* target = nullptr;
+                if (safe->editor.hasKeyboardFocus (true)) target = &safe->editor;
+                else if (auto* floating = safe->floatEditor(); floating != nullptr && floating->hasKeyboardFocus (true)) target = floating;
+                if (target == nullptr) return;
+                const auto content = safe->document.getAllContent();
+                const auto caret = target->getCaretPos().getPosition();
+                if (typed == '"' && LiveCodeComplete::stringContext (content, caret).isEmpty()) return;
+                if (isName)
+                {
+                    auto start = caret;
+                    while (start > 0 && (juce::CharacterFunctions::isLetterOrDigit (content[start - 1]) || content[start - 1] == '_' || content[start - 1] == '$')) --start;
+                    if (caret - start < 2) return;
+                }
+                safe->openCompletion (*target);
+            });
+    }
+    else
+    {
+        const auto keepOpen = isName || typed == '.' || typed == '"';
+        juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<LiveCodePage> (this), keepOpen, typed]
         {
-            if (safe != nullptr && safe->editor.hasKeyboardFocus (true)) safe->openCompletion (safe->editor);
-            else if (safe != nullptr)
-                if (auto* floating = safe->floatEditor())
-                    if (floating->hasKeyboardFocus (true)) safe->openCompletion (*floating);
+            if (safe == nullptr || safe->completionEditor == nullptr) return;
+            const auto caret = safe->completionEditor->getCaretPos().getPosition();
+            if (! keepOpen || (typed == '"' && LiveCodeComplete::stringContext (safe->document.getAllContent(), caret).isEmpty()))
+                safe->closeCompletion();
+            else
+                safe->refreshCompletion();
         });
-    else if (completionEditor != nullptr)
-        juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<LiveCodePage> (this)] { if (safe != nullptr) safe->refreshCompletion(); });
+    }
 }
 
 void LiveCodePage::codeDocumentTextDeleted (int, int)
@@ -581,7 +614,7 @@ struct LiveCodePage::FloatContent : juce::Component
     juce::TextEditor errorLog;
     std::array<juce::TextButton, 15> buttons;
     std::vector<std::pair<juce::TextButton*, juce::TextButton*>> pairs;
-    juce::TextButton codeTab { "KOD" }, errorTab { "KONSOL" };
+    juce::TextButton codeTab { "CODE" }, errorTab { "CONSOLE" };
     juce::Label lockLabel, lockSummary, errorLabel;
 };
 
@@ -1042,7 +1075,7 @@ void LiveCodePage::showError (const juce::String& text)
         auto lines = juce::StringArray::fromLines (text);
         lines.set (0, "FEL  " + lines[0]);
         appendLog (lines);
-        errorTab.setButtonText ("KONSOL (" + juce::String (errorCount) + ")");
+        errorTab.setButtonText ("CONSOLE (" + juce::String (errorCount) + ")");
         if (onError)
             onError (text);
     }

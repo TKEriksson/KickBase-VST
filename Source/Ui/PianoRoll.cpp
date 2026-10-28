@@ -1,6 +1,7 @@
 #include "PianoRoll.h"
 #include "../Core/RollFiles.h"
 #include "LengthMenu.h"
+#include "HelpDialog.h"
 
 namespace
 {
@@ -38,16 +39,9 @@ namespace
 PianoRoll::PianoRoll (PluginBase& p, std::vector<juce::Colour> colours) : processor (p), layerColours (std::move (colours))
 {
     setWantsKeyboardFocus (true);
-    setTooltip ("PIANO ROLL - PENCIL: click in an empty spot to add a note (drag to move it); click another pitch at the same tick to stack a note (up to four). "
-                "SELECT: drag a box in an empty spot, like on the desktop (Shift + drag does this with any tool). ERASER: click or drag over notes to remove them. "
-                "Selected notes move, stretch and delete together; Ctrl + C copies them and Ctrl + V pastes (choose where, then Enter). "
-                "Keys: hold Alt = eraser, hold Shift = select box, Ctrl + A = select all, Ctrl + C / X / V = copy / cut / paste, Delete = delete selected, "
-                "arrow keys move the selected notes (Shift = octave), Esc = clear the selection. "
-                "Right-click a note to delete it. CHORD: select notes, then right-click an empty spot and pick a chord; the chord notes are shown "
-                "as outlines above or below the note (they play only with VOICES 2 or more, dimmed otherwise). With GLIDE on, the notes you draw are glide notes (pink): they glide the sounding note to their pitch "
-                "during their own length, then the pitch stays. Double-click a note to turn glide on/off for it. "
-                "STROKE: right-drag on an empty spot draws a glide stroke from left to right; it glides to the note it ends on (or to the pitch where it ends). A right-click without dragging opens the menu. "
-                "Scroll = pitch, Ctrl + scroll = zoom, Shift + scroll = move in time. The strip at the bottom is velocity.");
+    setTooltip ("PIANO ROLL - Click an empty spot to add a note, drag to move it, right-click a note to delete it. "
+                "Scroll = pitch, Ctrl + scroll = zoom, Shift + scroll = time. The strip at the bottom is velocity. "
+                "Click HELP (bottom right) for tools, keys, chords and glide.");
 
     presetButton.setTooltip ("PRESET - Save this layer's piano roll as a preset, or load a saved one into this layer. Saved piano rolls can be loaded into any layer.");
     presetButton.onClick = [this] { showPresetMenu(); };
@@ -60,6 +54,9 @@ PianoRoll::PianoRoll (PluginBase& p, std::vector<juce::Colour> colours) : proces
     followButton.setColour (juce::TextButton::buttonOnColourId, Theme::pattern);
     followButton.setTooltip ("FOLLOW - On: the view flips to the bars that play, so you follow the song. Off: stay where you are.");
     followButton.onClick = [this] { processor.followPlayhead = followButton.getToggleState(); };
+    ghostButton.setTooltip ("GHOST NOTES - Choose which other rows show their notes faintly behind this one (kick, each instrument). Display only; "
+                            "it does not change any sound. Default: all on.");
+    ghostButton.onClick = [this] { showGhostMenu(); };
 
     for (auto* button : { &drawButton, &selectButton, &eraseButton, &copyButton, &pasteButton, &pasteOkButton, &pasteCancelButton })
     {
@@ -129,9 +126,10 @@ PianoRoll::PianoRoll (PluginBase& p, std::vector<juce::Colour> colours) : proces
     deleteButton.setTooltip ("DELETE - Deletes the selected notes (Delete key).");
     deleteButton.onClick = [this] { deleteSelected(); };
 
-    for (auto* c : std::initializer_list<juce::Component*> { &snapButton, &gridBox, &smallerButton, &biggerButton, &allButton, &deleteButton, &glideButton, &followButton, &presetButton, &midiButton, &drawButton, &selectButton, &eraseButton,
-                                                                 &copyButton, &pasteButton, &pasteOkButton, &pasteCancelButton, &listenButton, &popOutButton, &hBar, &vBar })
+    for (auto* c : std::initializer_list<juce::Component*> { &snapButton, &gridBox, &smallerButton, &biggerButton, &allButton, &deleteButton, &glideButton, &followButton, &ghostButton, &presetButton, &midiButton, &drawButton, &selectButton, &eraseButton,
+                                                                 &copyButton, &pasteButton, &pasteOkButton, &pasteCancelButton, &listenButton, &popOutButton, &helpButton, &hBar, &vBar })
         addAndMakeVisible (c);
+    HelpDialog::setupButton (helpButton, *this, HelpDialog::Topic::pianoRoll, "the PIANO ROLL (tools, keys, chords, glide)");
     popOutButton.setTooltip ("POP OUT - Opens the piano roll in its own window that you can move and resize (for a second screen). Click DOCK, or close the window, to bring it back.");
     popOutButton.onClick = [this] { if (onPopOut) onPopOut(); };
     hBar.addListener (this);
@@ -397,11 +395,47 @@ void PianoRoll::updateScrollBars()
 void PianoRoll::scrollBarMoved (juce::ScrollBar* bar, double newRangeStart)
 {
     if (bar == &hBar)
+    {
         scrollTicks = (float) newRangeStart;
+        processor.followPlayhead = false; // en hand på sidoscrollbaren: FOLLOW stängs av (knappen visar det i nästa timertick)
+    }
     else
         topPitch = (float) Pattern::maxPitch - (float) newRangeStart;
     clampView();
     repaint();
+}
+
+void PianoRoll::showGhostMenu()
+{
+    const auto mask = processor.ghostMask.load();
+    juce::PopupMenu menu;
+    menu.addItem (1, "ALL ON");
+    menu.addItem (2, "ALL OFF");
+    menu.addSeparator();
+    std::vector<int> rows { Pattern::kickLayer };
+    for (int i = 0; i < processor.activeInstruments(); ++i)
+        rows.push_back (i);
+    for (auto row : rows)
+    {
+        juce::PopupMenu::Item item (row == Pattern::kickLayer ? juce::String ("KICK") : processor.getLayerName (row));
+        item.itemID = 100 + row;
+        item.isTicked = (mask & (1u << row)) != 0;
+        item.colour = layerColours[(size_t) juce::jlimit (0, (int) layerColours.size() - 1, row)];
+        item.isEnabled = row != layer; // den egna raden är ingen spökrad
+        menu.addItem (item);
+    }
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&ghostButton), [this, safe = juce::Component::SafePointer<PianoRoll> (this)] (int result)
+    {
+        if (safe == nullptr || result == 0)
+            return;
+        auto m = processor.ghostMask.load();
+        if (result == 1)       m = 0xffffffffu;
+        else if (result == 2)  m = 0u;
+        else                   m ^= 1u << (result - 100);
+        processor.ghostMask = m;
+        repaint();
+        showGhostMenu(); // flervalet: menyn står kvar tills man klickar utanför
+    });
 }
 
 int PianoRoll::soundingRoot() const
@@ -846,6 +880,8 @@ void PianoRoll::resized()
     bottom.removeFromRight (4);
     midiButton.setBounds (bottom.removeFromRight (48));
     bottom.removeFromRight (4);
+    helpButton.setBounds (bottom.removeFromRight (50));
+    bottom.removeFromRight (4);
     popOutButton.setBounds (bottom.removeFromRight (64));
     snapButton.setBounds (bottom.removeFromLeft (50));
     bottom.removeFromLeft (4);
@@ -858,6 +894,8 @@ void PianoRoll::resized()
     glideButton.setBounds (bottom.removeFromLeft (56));
     bottom.removeFromLeft (4);
     followButton.setBounds (bottom.removeFromLeft (64));
+    bottom.removeFromLeft (4);
+    ghostButton.setBounds (bottom.removeFromLeft (62));
     bottom.removeFromLeft (12);
     lengthButton.setBounds (bottom.removeFromLeft (110));
     bottom.removeFromLeft (4);
@@ -1479,7 +1517,7 @@ void PianoRoll::paint (juce::Graphics& g)
             const auto gLast = std::min (editTicks() - 1, (int) xToTicks (gridArea.getRight()) + 1);
             for (int other = 0; other < Pattern::numNoteLayers; ++other)
             {
-                if (other == layer)
+                if (other == layer || (processor.ghostMask.load() & (1u << other)) == 0)
                     continue;
                 const auto shift = processor.rowRootNote (other) - rootNote();
                 const auto otherColour = layerColours[(size_t) juce::jlimit (0, (int) layerColours.size() - 1, other)];
@@ -1557,6 +1595,17 @@ void PianoRoll::paint (juce::Graphics& g)
                             b.reduced (3.0f, 0.0f), juce::Justification::centredLeft);
             }
 
+        }
+
+        // Glide-plus: plusset vid glide-tonen.
+        if (plusKey.valid() && drag == Drag::none)
+        {
+            const auto p = plusRect().reduced (1.0f);
+            g.setColour (Theme::pattern);
+            g.fillEllipse (p);
+            g.setColour (juce::Colours::black.withAlpha (0.85f));
+            g.drawLine (p.getCentreX() - 3.5f, p.getCentreY(), p.getCentreX() + 3.5f, p.getCentreY(), 1.6f);
+            g.drawLine (p.getCentreX(), p.getCentreY() - 3.5f, p.getCentreX(), p.getCentreY() + 3.5f, 1.6f);
         }
 
         // Markeringsrutan.
@@ -1811,12 +1860,39 @@ void PianoRoll::mouseMove (const juce::MouseEvent& event)
     shiftHeld = event.mods.isShiftDown();
     altHeld = event.mods.isAltDown();
     setHover (key);
+    updatePlus (event.position, key);
     updateCursor (event.position, edge);
+}
+
+juce::Rectangle<float> PianoRoll::plusRect() const
+{
+    if (! plusKey.valid())
+        return {};
+    const auto b = noteBounds (plusKey);
+    const auto y = plusBelow ? b.getBottom() + 8.0f : b.getY() - 8.0f;
+    return juce::Rectangle<float> (14.0f, 14.0f).withCentre ({ b.getRight(), y });
+}
+
+void PianoRoll::updatePlus (juce::Point<float> position, NoteKey hovered)
+{
+    const auto before = plusKey;
+    NoteData note;
+    if (hovered.valid() && liveNote (hovered, note) && note.slide)
+    {
+        plusKey = hovered;
+        plusBelow = position.y >= noteBounds (hovered).getCentreY(); // plusset ligger på musens sida av tonen
+    }
+    else if (plusKey.valid() && (! liveNote (plusKey, note) || ! (plusRect().expanded (4.0f).contains (position) || noteBounds (plusKey).expanded (16.0f).contains (position))))
+        plusKey = {};
+    if (plusKey != before)
+        repaint();
 }
 
 void PianoRoll::mouseExit (const juce::MouseEvent&)
 {
     hoverPointValid = false;
+    if (drag != Drag::stroke)
+        plusKey = {};
     setHover ({});
     repaint();
 }
@@ -1895,6 +1971,16 @@ void PianoRoll::mouseDown (const juce::MouseEvent& event)
     {
         drag = Drag::keys;
         auditionStart (yToPitch (event.position.y), Pattern::defaultVelocity (layer));
+        return;
+    }
+    // Glide-plus: ett klick på plusset börjar ett glidestreck från glide-tonens mitt (höjd) och slut (tid).
+    if (! event.mods.isPopupMenu() && plusKey.valid() && plusRect().expanded (2.0f).contains (event.position))
+    {
+        const auto b = noteBounds (plusKey);
+        drag = Drag::stroke;
+        strokeFromPlus = true;
+        strokeStart = { b.getRight(), b.getCentreY() };
+        strokeEnd = event.position;
         return;
     }
     if (! gridArea.contains (event.position))
@@ -2113,6 +2199,15 @@ void PianoRoll::mouseDrag (const juce::MouseEvent& event)
     if (drag == Drag::stroke)
     {
         strokeEnd = event.position;
+        if (strokeFromPlus)
+        {
+            // Snappa till en ton som börjar efter strecket startar: målet blir dess början och mitt.
+            bool edge = false;
+            const auto target = gridArea.contains (event.position) ? noteAtPoint (event.position, edge) : NoteKey {};
+            if (target.valid() && target != plusKey)
+                if (const auto tb = noteBounds (target); tb.getX() > strokeStart.x)
+                    strokeEnd = { tb.getX(), tb.getCentreY() };
+        }
         repaint();
         return;
     }
@@ -2273,6 +2368,13 @@ void PianoRoll::mouseUp (const juce::MouseEvent& event)
     if (drag == Drag::stroke)
     {
         drag = Drag::none;
+        const auto fromPlus = strokeFromPlus;
+        strokeFromPlus = false;
+        if (fromPlus && strokeStart.getDistanceFrom (strokeEnd) < 6.0f)
+        {
+            repaint(); // ett klick utan drag på plusset gör inget
+            return;
+        }
         if (strokeStart.getDistanceFrom (strokeEnd) < 6.0f)
         {
             strokeMenuNow = true;

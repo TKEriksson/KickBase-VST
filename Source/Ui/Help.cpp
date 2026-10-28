@@ -80,7 +80,9 @@ namespace Help
             if (rawID.endsWith ("Duck"))
                 return "SC on: the sidechain ducks this source under the kick. Off: the kick leaves it alone.";
             if (rawID.endsWith ("Max"))
-                return "MAX on: this source goes through the maximizer (drive, clip, limiter, width). Off: it bypasses the maximizer and is added after it.";
+                return "MAX on: this source goes through the maximizer (drive, clip, limiter, and WIDTH/BASS MONO/ENHANCE unless left out on SOUNDSTAGE). Off: it bypasses the maximizer and is added after it.";
+            if (rawID.endsWith ("Stage"))
+                return "SOUNDSTAGE: on = this source goes through WIDTH, BASS MONO and ENHANCE. Off = it keeps its own stereo image (it still gets the master EQ, drive and limiter).";
         }
 
         static const std::map<juce::String, juce::String> texts {
@@ -258,7 +260,7 @@ namespace Help
             { "fundamentalDuckDepth", "How many dB the fundamental is dampened at full effect while the source sounds (instrument-wide; engines set to INHERIT use it)." },
             { "fundamentalDuckWindow", "How close in pitch the engine's fundamental must be to the source's, in cents. Inside the window the dip is full; at twice the window it is gone." },
             { "fundamentalDuckSource", "What triggers the dip: the kick (default), one of the instruments, or Any." },
-            { "bassFundamentalDuckMode", "FUNDAMENTAL DUCK for this engine. INHERIT: uses the instrument-wide values (shown dimmed, 'från instrument'). OFF: this engine is never dampened. OWN: uses its own depth, window and source. Follows the last played voice." },
+            { "bassFundamentalDuckMode", "FUNDAMENTAL DUCK for this engine. INHERIT: uses the instrument-wide values (shown dimmed, 'from instrument'). OFF: this engine is never dampened. OWN: uses its own depth, window and source. Follows the last played voice." },
             { "bassFundamentalDuckDepth", "OWN mode: how many dB this engine's fundamental is dampened at full effect." },
             { "bassFundamentalDuckWindow", "OWN mode: how close in pitch (cents) the fundamental must be to the source's for the full dip." },
             { "bassFundamentalDuckSource", "OWN mode: what triggers the dip for this engine: the kick, another instrument, or Any." },

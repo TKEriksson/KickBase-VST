@@ -234,7 +234,7 @@ private:
     juce::Slider gridAmount, sensitivityAmount; // en per läge, så att inget område byts under användaren
     bool syncing = false;
     juce::Label label;
-    juce::TextButton loadButton { "LOAD" }, clearButton { "X" }, hearButton { "HEAR" };
+    juce::TextButton loadButton { "LOAD" }, clearButton { "X" }, hearButton { "HEAR" }, helpButton;
     juce::ComboBox sourceBox; // Single / Multi (sampleSource); i Multi laddar LOAD flera filer som zoner
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> sourceAttachment;
     bool isMulti() const;

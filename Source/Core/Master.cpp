@@ -14,7 +14,8 @@ MasterSection::MasterSection (juce::AudioProcessorValueTreeState& apvts)
       width (apvts.getRawParameterValue ("masterWidth")),
       monoBelowHz (apvts.getRawParameterValue ("masterMonoBelow")),
       enhance (apvts.getRawParameterValue ("masterEnhance")),
-      eq (apvts, "master")
+      eq (apvts, "master"),
+      eqSkip (apvts, "master")
 {
     jassert (on != nullptr && driveDb != nullptr && clip != nullptr && ceilingDb != nullptr && releaseMs != nullptr);
 }
@@ -60,6 +61,7 @@ void MasterSection::prepare (double newSampleRate, int numChannels)
 {
     sampleRate = newSampleRate;
     eq.prepare (newSampleRate);
+    eqSkip.prepare (newSampleRate);
     channels = std::max (1, numChannels);
     lookahead = std::max (2, (int) std::round (lookaheadSeconds * sampleRate));
 
@@ -97,11 +99,15 @@ void MasterSection::reset()
         for (auto& line : lines)
             std::fill (line.begin(), line.end(), 0.0f);
     eq.reset();
+    eqSkip.reset();
 }
 
-void MasterSection::process (juce::AudioBuffer<float>& buffer, int numSamples)
+void MasterSection::process (juce::AudioBuffer<float>& buffer, int numSamples, juce::AudioBuffer<float>* skip)
 {
     eq.process (buffer.getWritePointer (0), buffer.getNumChannels() > 1 ? buffer.getWritePointer (1) : nullptr, numSamples);
+    // SOUNDSTAGE: källorna utanför stereoblocket har egen EQ-kopia (EQ:n är linjär, så summan blir densamma) och läggs till efter blocket.
+    if (skip != nullptr)
+        eqSkip.process (skip->getWritePointer (0), skip->getNumChannels() > 1 ? skip->getWritePointer (1) : nullptr, numSamples);
 
     const auto enabled = on->load() >= 0.5f;
     const auto driveGain = juce::Decibels::decibelsToGain (driveDb->load());
@@ -153,6 +159,9 @@ void MasterSection::process (juce::AudioBuffer<float>& buffer, int numSamples)
             buffer.setSample (0, i, mid + side);
             buffer.setSample (1, i, mid - side);
         }
+        if (skip != nullptr)
+            for (int ch = 0; ch < std::min (buffer.getNumChannels(), skip->getNumChannels()); ++ch)
+                buffer.addSample (ch, i, skip->getSample (ch, i));
 
         // 1. DC-filter, drive och soft clip (tanh, blandat med det rena ljudet efter clip-mängd).
         auto inputPeak = 0.0f;

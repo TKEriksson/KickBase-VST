@@ -1,6 +1,7 @@
 #include "FilterPanel.h"
 
 #include "Help.h"
+#include "HelpDialog.h"
 #include "../Core/Params.h"
 
 namespace
@@ -248,6 +249,8 @@ FilterPage::FilterPage (PluginBase& p, int layerIn, juce::Colour accentIn)
                               "The same switch is on each source's own tab (OSC 1-3, SAMPLE; NOISE on the INSTR tab).");
     sourcesButton.onClick = [this] { showSourcesMenu(); };
     addAndMakeVisible (sourcesButton);
+    HelpDialog::setupButton (helpButton, *this, HelpDialog::Topic::filter, "the FILTERS (models, types, routing, sources)");
+    addAndMakeVisible (helpButton);
     for (int i = 0; i < numSources; ++i)
     {
         auto* parameter = p.apvts.getParameter (ParamID::bass (layer, (F) ((int) F::filterOsc1 + i)));
@@ -392,6 +395,8 @@ void FilterPage::resized()
     switchRow.removeFromLeft (10);
     switchCaption = switchRow.removeFromLeft (100);
     sourcesButton.setBounds (switchRow.removeFromLeft (juce::jmin (300, switchRow.getWidth())));
+    switchRow.removeFromLeft (6);
+    helpButton.setBounds (switchRow.removeFromLeft (juce::jmin (50, switchRow.getWidth())));
 
     auto bottom = area.removeFromBottom (58);
     area.removeFromBottom (4);

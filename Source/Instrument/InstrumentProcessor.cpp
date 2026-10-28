@@ -33,6 +33,7 @@ namespace
         Modulation::addExtraLfoParameters (layout); // LFO 4-10 (fas M): nya parametrar sist
         Params::addJogParams (layout); // JOG (D3b)
         Params::addFundamentalDuckParams (layout); // FUNDAMENTAL DUCK: allra sist
+        Mixer::addStageParameters (layout); // SOUNDSTAGE-val per källa: nya parametrar sist
         return layout;
     }
 
@@ -305,12 +306,16 @@ void InstrumentProcessor::processChunk (juce::AudioBuffer<float>& buffer, juce::
     finishBlock (numSamples);
 
     masterGain.setTargetValue (params.get (ParamID::gain));
+    auto skipGain = masterGain; // SOUNDSTAGE-bussen följer samma fader
     masterGain.applyGain (buffer, numSamples);
+    const auto useSkip = stageSkipUsed;
+    if (useSkip)
+        skipGain.applyGain (stageSkipBus, numSamples);
 
     // Mastern (maximizer/limiter) på huvudutgången. Kick- och basutgångarna fördröjs lika
     // mycket som limiterns lookahead, så att de ligger i synk med huvudutgången.
     auto mainBus = getBusBuffer (buffer, false, 0);
-    master.process (mainBus, numSamples);
+    master.process (mainBus, numSamples, useSkip ? &stageSkipBus : nullptr);
 
     // Källor som mixern tagit förbi maximizern läggs på efteråt, lika fördröjda som resten.
     bypassBus.applyGain (0, numSamples, params.get (ParamID::gain));
@@ -921,6 +926,7 @@ void InstrumentProcessor::finishBlock (int numSamples)
     // clear (startSample, numSamples) rensar alla kanaler; ett andra anrop med 1 som första argument började på sample 1 (jassert vid block på 1 sample).
     maxBus.clear (0, numSamples);
     bypassBus.clear (0, numSamples);
+    stageSkipBus.clear (0, numSamples);
     effects.beginBlock (numSamples, clock.getBpm(), clock.getPpqAt (0), controlPhase);
     tapBuffer.clear (0, numSamples);
 
@@ -990,7 +996,7 @@ void InstrumentProcessor::finishBlock (int numSamples)
 
         // Instrumentets fader och panorering gäller hela ljudet: både det torra och det som skickas till kanalen.
         mixer.mix (Mixer::firstBassSource + layer, data, dataRight, numSamples, dryGain, maxBus, bypassBus,
-                   sendBus.getWritePointer (0), sendBus.getWritePointer (1));
+                   sendBus.getWritePointer (0), sendBus.getWritePointer (1), &stageSkipBus);
         if (routed)
             effects.send (channel, sendBus.getReadPointer (0), sendBus.getReadPointer (1), numSamples, amountToChannel);
         for (int i = 0; i < numSamples; ++i)
@@ -1005,7 +1011,7 @@ void InstrumentProcessor::finishBlock (int numSamples)
     const auto kickDry = kickRouted && ! kickSendMode ? 1.0f - kickAmount : 1.0f;
 
     mixer.mix (Mixer::kickSource, kickBuffer.getReadPointer (0), nullptr, numSamples, kickDry, maxBus, bypassBus,
-               sendBus.getWritePointer (0), sendBus.getWritePointer (1));
+               sendBus.getWritePointer (0), sendBus.getWritePointer (1), &stageSkipBus);
     if (kickRouted)
         effects.send (kickChannel, sendBus.getReadPointer (0), sendBus.getReadPointer (1), numSamples, kickAmount);
 
@@ -1027,8 +1033,12 @@ void InstrumentProcessor::finishBlock (int numSamples)
         if (effects.isIdle (ch))
             continue; // inget i kanalen: ingenting att mixa
         const auto& returned = effects.output (ch);
-        mixer.mix (Mixer::firstFxSource + ch, returned.getReadPointer (0), returned.getReadPointer (1), numSamples, 1.0f, maxBus, bypassBus);
+        mixer.mix (Mixer::firstFxSource + ch, returned.getReadPointer (0), returned.getReadPointer (1), numSamples, 1.0f, maxBus, bypassBus, nullptr, nullptr, &stageSkipBus);
     }
+    // Bara om någon källa valts bort från SOUNDSTAGE körs skip-vägen (annars exakt samma kod och ljud som förut).
+    stageSkipUsed = false;
+    for (int s = 0; s < Mixer::numSources && ! stageSkipUsed; ++s)
+        stageSkipUsed = ! mixer.inStage (s);
 
     for (int i = 0; i < numSamples; ++i)
     {
@@ -1081,6 +1091,7 @@ void InstrumentProcessor::ensureScratchSize (int numSamples)
     instrumentBuffer.setSize (2, numSamples, false, true, true);
     maxBus.setSize (2, numSamples, false, true, true);
     bypassBus.setSize (2, numSamples, false, true, true);
+    stageSkipBus.setSize (2, numSamples, false, true, true);
     sendBus.setSize (2, numSamples, false, true, true);
 }
 

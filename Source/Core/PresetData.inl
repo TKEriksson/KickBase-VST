@@ -147,6 +147,20 @@ namespace
                  b (l, F::decay, ampDecay), b (l, F::sustain, sustain), b (l, F::release, release), b (l, F::drive, drive), b (l, F::level, level) };
     }
 
+    // Arbetare 2, MID BASS / HI BASS / SYNTH: ett lager (bassPreset). Oktav över rotonen, såg (OSC A, tabell 15 Saw Soft eller 12 Saw) plus en andra tabell
+    // på OSC B, unison för bredd. Se docs/school/ för hur oktav, filter och envelope formar registret.
+    std::vector<Value> registerBass (int l, int octave, float tableA, float tableB, float levelB, float semiB, float unison, float detune, float cutoff,
+                                     float resonance, float envAmount, float envDecay, float sustain, float ampDecay, float release, float drive,
+                                     float level, float filterModel)
+    {
+        return { b (l, F::octave, (float) octave), osc (l, 0, F::aTable, tableA), osc (l, 0, F::aLevel, 1.0f), osc (l, 0, F::aUnison, unison),
+                 osc (l, 0, F::aDetune, detune), osc (l, 0, F::aStereo, 0.3f), osc (l, 1, F::aTable, tableB), osc (l, 1, F::aLevel, levelB),
+                 osc (l, 1, F::aSemi, semiB), b (l, F::sub, 0.0f), b (l, F::filterType, 0), b (l, F::filterModel, filterModel), b (l, F::cutoff, cutoff),
+                 b (l, F::resonance, resonance), b (l, F::envAmount, envAmount), b (l, F::envDecay, envDecay), b (l, F::velToEnv, 0.5f),
+                 b (l, F::attack, 0.5f), b (l, F::decay, ampDecay), b (l, F::sustain, sustain), b (l, F::release, release), b (l, F::drive, drive),
+                 b (l, F::level, level) };
+    }
+
     // A. Klassisk full-on-roll: såg, omedelbar amp, snabb filterenvelope (receptkort A).
     std::vector<Value> bassRolling (int l)
     {
@@ -417,6 +431,12 @@ namespace
     Preset glideBass1();
     Preset glideBass2();
     Preset glideBass3();
+    Preset duckDemo();
+    Preset newInit1();
+    Preset newInit2();
+    Preset newInit3();
+    Preset newInit4();
+    Preset newInit5();
 
     const std::vector<Preset>& fullPresets()
     {
@@ -429,7 +449,11 @@ namespace
                                                    // Arbetare 2, kategori psyRollingCategory.
                                                    psyRolling1(), psyRolling2(), psyRolling3(), psyRolling4(),
                                                    // Arbetare 2, kategori glideBassesCategory.
-                                                   glideBass1(), glideBass2(), glideBass3() };
+                                                   glideBass1(), glideBass2(), glideBass3(),
+                                                   // Arbetare 2: demo av FUNDAMENTAL DUCK (basen krockar med kickens grundton).
+                                                   duckDemo(),
+                                                   // Arbetare 2: New Init 1-5, varianter av fabriks-Init (samma lagerljud).
+                                                   newInit1(), newInit2(), newInit3(), newInit4(), newInit5() };
         return presets;
     }
 
@@ -452,6 +476,12 @@ namespace
                  { { 0.0f, 0.0f, 0.0f }, { attack, 1.0f, 0.0f }, { length - 0.03f, 0.9f, 0.0f }, { length, 0.0f, 0.3f } } };
     }
 
+    // FUNDAMENTAL DUCK för hela instrumentet (källa Kick): basens grundton sänks medan kicken klingar. Se docs/school/fundamental-duck.md.
+    std::vector<Value> fundDuck (float depthDb, float windowCents)
+    {
+        return { { ParamID::fundamentalDuckOn, 1 }, { ParamID::fundamentalDuckDepth, depthDb }, { ParamID::fundamentalDuckWindow, windowCents } };
+    }
+
     // Arbetare 2, PSY ROLLING: huvudpresets med PSY CLEAN-kick + ny rollbas, sidechain (Duck) och en FX-send. Ett lager (instrumentCount 1),
     // så lager 1-2 är avstängda och ljudet är det som mäts.
     constexpr const char* psyRollingCategory = "PSY ROLLING";
@@ -461,7 +491,7 @@ namespace
     {
         return newest ("Roll Full-On", psyCleanKick (0.0f, 1.0f, 1.0f, 0.20f, 0.0005f, 0.85f, 0.0f, 0.0f),
                        join ({ psyRollBass (0, 0.95f, 94, 0.60f, 1.00f, 12.0f, 0.10f, 1200.0f, 0.20f, 3.0f, 45.0f, 0.40f, 90.0f, 25.0f, 0.15f, 0.55f, 0),
-                               sendTo (0, 1, 0.20f) }),
+                               sendTo (0, 1, 0.20f), fundDuck (9.0f, 200.0f) }),
                        join ({ fx (0, 0, EffectType::distortion, { 0, 0.30f, 5000.0f, 1.0f }), { ch (0, "Duck", 0.85f), ch (0, "EqHp", 150.0f) } }),
                        { { 0, InstrumentGrid::sixteenth, { ". x x x . x x x . x x x . x x X", ". x x x . x x x . x x+12 x . x x x",
                                                            ". x x x . x x x . x x x . x+3 x x", ". x x x . x x+12 x . x x x . x x X" }, 0.7f } }, 1, 4);
@@ -472,7 +502,7 @@ namespace
     {
         return newest ("Roll Wide", psyCleanKick (2.0f, 1.0f, 1.0f, 0.20f, 0.0005f, 0.85f, 0.0f, 0.0f),
                        join ({ psyRollBass (0, 1.00f, 94, 1.00f, 1.00f, 12.0f, 0.10f, 1500.0f, 0.18f, 2.0f, 70.0f, 0.40f, 100.0f, 25.0f, 0.05f, 0.52f, 0),
-                               sendTo (0, 1, 0.25f) }),
+                               sendTo (0, 1, 0.25f), fundDuck (9.0f, 200.0f) }),
                        join ({ fx (0, 0, EffectType::chorus, { 0.4f, 0.5f, 10.0f, 0.0f, 0.4f }), { ch (0, "Duck", 0.85f), ch (0, "EqHp", 200.0f) } }),
                        { { 0, InstrumentGrid::sixteenth, { ". x x x . x x x . x x x . x x X", ". x x x . x x x . x x-2 x . x x x" }, 0.7f } }, 1, 2);
     }
@@ -482,7 +512,7 @@ namespace
     {
         return newest ("Roll Dekel", psyCleanKick (5.0f, 0.8f, 1.2f, 0.20f, 0.003f, 0.85f, 0.0f, 0.0f),
                        join ({ psyRollBass (0, 1.00f, 94, 0.80f, 1.00f, 0.0f, 0.10f, 1500.0f, 0.15f, 3.0f, 60.0f, 0.35f, 100.0f, 25.0f, 0.10f, 0.58f, 0),
-                               sendTo (0, 1, 0.22f) }),
+                               sendTo (0, 1, 0.22f), fundDuck (9.0f, 200.0f) }),
                        join ({ fx (0, 0, EffectType::echo, { 5, 0, 0, 0.5f, 2, 0.30f, 4500.0f, 0.0f, 0, 0.5f }), { ch (0, "Duck", 0.85f), ch (0, "EqHp", 220.0f) } }),
                        { { 0, InstrumentGrid::sixteenth, { ". x x m . x x x . x m x . x x X", ". x x x . x m x . x x x . x+3 x x-2" }, 0.7f } }, 1, 2);
     }
@@ -492,7 +522,7 @@ namespace
     {
         return newest ("Roll Forest", psyCleanKick (9.0f, 1.0f, 0.85f, 0.17f, 0.0005f, 0.85f, 0.10f, 0.05f),
                        join ({ psyRollBass (0, 1.00f, 99, 0.90f, 1.00f, 0.0f, 0.10f, 2200.0f, 0.45f, 3.0f, 30.0f, 0.30f, 50.0f, 20.0f, 0.15f, 0.50f, 1),
-                               sendTo (0, 1, 0.18f) }),
+                               sendTo (0, 1, 0.18f), fundDuck (9.0f, 200.0f) }),
                        join ({ fx (0, 0, EffectType::reverb, { 0.5f, 0.7f, 1.0f, 400.0f, 1.0f, 20.0f }), { ch (0, "Duck", 0.9f), ch (0, "EqHp", 250.0f) } }),
                        { { 0, InstrumentGrid::sixteenth, { ". x x m . x x x . m x . . x x x", ". x x x . x m x . x x+3 . . x x-2 x" }, 0.7f } }, 1, 2);
     }
@@ -506,7 +536,7 @@ namespace
     {
         return newest ("Glide Sub", psyCleanKick (0.0f, 1.0f, 1.0f, 0.20f, 0.0005f, 0.85f, 0.0f, 0.0f),
                        join ({ psyRollBass (0, 0.30f, 95, 0.50f, 0.60f, 0.0f, 0.25f, 700.0f, 0.15f, 2.0f, 120.0f, 0.80f, 400.0f, 40.0f, 0.15f, 0.50f, 0),
-                               sendTo (0, 1, 0.15f) }),
+                               sendTo (0, 1, 0.15f), fundDuck (12.0f, 250.0f) }),
                        join ({ fx (0, 0, EffectType::distortion, { 0, 0.20f, 5000.0f, 1.0f }), { ch (0, "Duck", 0.85f), ch (0, "EqHp", 150.0f) } }),
                        { { 0, InstrumentGrid::sixteenth, { "X . . . . . x . x+7~:200 . . . x+12~:100 . . .", "x . . . . . x . x+5~:200 . . . x-5~:200 . . ." }, 0.9f } }, 1, 2);
     }
@@ -516,7 +546,7 @@ namespace
     {
         return newest ("Glide Acid", psyCleanKick (2.0f, 1.0f, 1.0f, 0.20f, 0.0005f, 0.85f, 0.0f, 0.0f),
                        join ({ psyRollBass (0, 1.00f, 99, 0.90f, 1.00f, 0.0f, 0.10f, 1800.0f, 0.40f, 3.0f, 90.0f, 0.60f, 200.0f, 25.0f, 0.15f, 0.52f, 1),
-                               sendTo (0, 1, 0.18f) }),
+                               sendTo (0, 1, 0.18f), fundDuck (9.0f, 200.0f) }),
                        join ({ fx (0, 0, EffectType::echo, { 5, 0, 0, 0.5f, 2, 0.30f, 4500.0f, 0.0f, 0, 0.5f }), { ch (0, "Duck", 0.85f), ch (0, "EqHp", 200.0f) } }),
                        { { 0, InstrumentGrid::sixteenth, { ". x x . x+3~ x . x . x+7~ . x x-2~ . x X", ". x x . x+5~ x . x . x+12~ . x x+7~ . x X" }, 0.7f } }, 1, 2);
     }
@@ -526,9 +556,74 @@ namespace
     {
         return newest ("Glide Dive", psyCleanKick (5.0f, 0.8f, 1.2f, 0.20f, 0.003f, 0.85f, 0.0f, 0.0f),
                        join ({ psyRollBass (0, 0.60f, 94, 0.70f, 0.80f, 0.0f, 0.15f, 1200.0f, 0.20f, 2.0f, 100.0f, 0.70f, 300.0f, 35.0f, 0.20f, 0.55f, 0),
-                               sendTo (0, 1, 0.20f) }),
+                               sendTo (0, 1, 0.20f), fundDuck (9.0f, 200.0f) }),
                        join ({ fx (0, 0, EffectType::chorus, { 0.4f, 0.5f, 10.0f, 0.0f, 0.4f }), { ch (0, "Duck", 0.85f), ch (0, "EqHp", 180.0f) } }),
                        { { 0, InstrumentGrid::sixteenth, { "X . . . x+12 . . . x+12~:200 . . . x~:300 . . .", "x . . x . . x+7 . x+7~:100 . x+12~:100 . x+0~:300 . . ." }, 0.8f } }, 1, 2);
+    }
+
+    // Duck Demo: visar varför FUNDAMENTAL DUCK finns. Kickens grundton är D1 (ton 2, ca 36,7 Hz). Basens långa toner ligger en halvton
+    // bredvid (x+1 = ±100 cent mot kicken, x+3, x-1): grundtonerna ligger nära varandra men inte i samklang, så de svävar och tar ut varandra.
+    // Duck står på med 12 dB och fönster 200 cent: grundtonen dippas bara när kicken ljuder. Stäng av FUNDAMENTAL DUCK och lyssna på skillnaden.
+    Preset duckDemo()
+    {
+        return newest ("Duck Demo", psyCleanKick (2.0f, 1.0f, 1.0f, 0.20f, 0.0005f, 0.85f, 0.0f, 0.0f),
+                       join ({ psyRollBass (0, 0.30f, 95, 0.50f, 0.60f, 0.0f, 0.25f, 700.0f, 0.15f, 2.0f, 120.0f, 0.90f, 600.0f, 40.0f, 0.10f, 0.55f, 0),
+                               sendTo (0, 1, 0.0f), fundDuck (12.0f, 200.0f) }),
+                       join ({ fx (0, 0, EffectType::distortion, { 0, 0.10f, 5000.0f, 1.0f }), { ch (0, "Duck", 0.0f), ch (0, "EqHp", 20.0f) } }),
+                       { { 0, InstrumentGrid::sixteenth, { "x+1 . . . . . . . x+3 . . . . . . .", "x-1 . . . . . . . x+1 . . . . . . ." }, 0.9f } }, 1, 2);
+    }
+
+    // New Init 1-5: startpunkter byggda på fabriks-Init (initSub, initMid, initAcid). Init själv är oförändrad.
+    // 1. Init med FUNDAMENTAL DUCK på: alla tre lager viker för kickens grundton.
+    Preset newInit1()
+    {
+        auto p = initPreset();
+        p.name = "New Init 1";
+        for (int layer = 0; layer < 3; ++layer)
+            p.values.push_back ({ ParamID::bass (layer, F::duck).toStdString(), layer == 0 ? 0.9f : 0.8f });
+        for (const auto& v : fundDuck (9.0f, 200.0f))
+            p.values.push_back (v);
+        return p;
+    }
+
+    // 2. Halftime: sub och acid i två lager, glesa mönster över två takter.
+    Preset newInit2()
+    {
+        Preset p { "New Init 2", join ({ initSub (0), initAcid (1), { { ParamID::instrumentCount, 2 }, { "patternBars", 2 }, { "lfo1On", 1 }, { "lfo1Shape", 0 }, { "lfo1Rate", 4 } } }) };
+        p.extras.pattern = {
+            { 0, InstrumentGrid::sixteenth, { ". . x:380 . . . . . . . x:380 . . . . .", ". . x:380 . . . . . . . x:190 . x:190 . ." }, 0.7f },
+            { 1, InstrumentGrid::sixteenth, { ". . . . x+3 . . . . . . . X+7 . . .", ". . . . x+5 . . . . . . . X+12 . x+10 ." }, 0.7f } };
+        p.extras.routes = { { 0, "bass2Cutoff", 0.35f } };
+        return p;
+    }
+
+    // 3. Bara sub: ett lager, offbeat, den renaste startpunkten.
+    Preset newInit3()
+    {
+        Preset p { "New Init 3", join ({ initSub (0), { { ParamID::instrumentCount, 1 }, { "patternBars", 1 } } }) };
+        p.extras.pattern = { { 0, InstrumentGrid::sixteenth, { ". . x:190 . . . x:190 . . . x:190 . . . x:190 ." }, 0.7f } };
+        return p;
+    }
+
+    // 4. Rullande: sub och mellanbas, mellanbasen fyller sextondelarna mellan kickarna.
+    Preset newInit4()
+    {
+        Preset p { "New Init 4", join ({ initSub (0), initMid (1), { { ParamID::instrumentCount, 2 }, { "patternBars", 1 } } }) };
+        p.extras.pattern = {
+            { 0, InstrumentGrid::sixteenth, { ". . x:190 . . . x:190 . . . x:190 . . . x:190 ." }, 0.7f },
+            { 1, InstrumentGrid::sixteenth, { ". x x x . x x x . x x x . x x X" }, 0.7f } };
+        return p;
+    }
+
+    // 5. Acid-duo: mellanbas och acid, LFO 1 sveper acidens filter över två takter.
+    Preset newInit5()
+    {
+        Preset p { "New Init 5", join ({ initMid (0), initAcid (1), { { ParamID::instrumentCount, 2 }, { "patternBars", 2 }, { "lfo1On", 1 }, { "lfo1Shape", 0 }, { "lfo1Rate", 4 } } }) };
+        p.extras.pattern = {
+            { 0, InstrumentGrid::sixteenth, { ". m x x . m x x . m x x . m x X", ". m x x . m x x . m x x . x m x" }, 0.7f },
+            { 1, InstrumentGrid::sixteenth, { "x . m . x+3 . x . m+7 . x . X+12 . x+10 .", "x . . m x . x+7 . m . x+3 . x . X+5 x" }, 0.7f } };
+        p.extras.routes = { { 0, "bass2Cutoff", 0.4f } };
+        return p;
     }
 
     const std::vector<Preset>& kickPresets()
@@ -560,6 +655,14 @@ namespace
             kickPreset ("Psy Clean F Sub", psyCleanKick (5.0f, 0.9f, 1.4f, 0.20f, 0.001f, 0.88f, 0.0f, 0.0f)),
             kickPreset ("Psy Clean A Punch", psyCleanKick (9.0f, 1.0f, 0.85f, 0.17f, 0.0005f, 0.85f, 0.10f, 0.05f)),
             kickPreset ("Psy Clean G", psyCleanKick (7.0f, 1.0f, 1.0f, 0.20f, 0.0005f, 0.85f, 0.0f, 0.0f)),
+            // Arbetare 2, genrer (1 kick + 2 basar per genre). Kick: se psyCleanKick; bas: se registerBass.
+            kickPreset ("Minimal Kick", psyCleanKick (4.0f, 0.8f, 1.3f, 0.18f, 0.002f, 0.85f, 0.05f, 0.0f)),
+            kickPreset ("Goa Kick", psyCleanKick (1.0f, 1.0f, 0.9f, 0.18f, 0.0005f, 0.85f, 0.08f, 0.05f)),
+            kickPreset ("Dark Psy Kick", psyCleanKick (1.0f, 1.1f, 1.2f, 0.22f, 0.0005f, 0.85f, 0.0f, 0.15f)),
+            kickPreset ("Dance Kick", psyCleanKick (7.0f, 0.9f, 0.8f, 0.15f, 0.001f, 0.85f, 0.15f, 0.10f)),
+            kickPreset ("Trance Kick", psyCleanKick (6.0f, 1.0f, 1.0f, 0.18f, 0.001f, 0.85f, 0.10f, 0.05f)),
+            kickPreset ("Techno Kick", psyCleanKick (8.0f, 1.2f, 0.7f, 0.16f, 0.0005f, 0.88f, 0.20f, 0.20f)),
+            kickPreset ("Empirikal Kick", psyCleanKick (3.0f, 1.0f, 1.1f, 0.20f, 0.0005f, 0.85f, 0.05f, 0.10f)),
         };
         return presets;
     }
@@ -586,6 +689,30 @@ namespace
             bassPreset ("Dekel Groove", psyRollBass (0, 1.00f, 94, 0.80f, 1.00f, 0.0f, 0.10f, 1500.0f, 0.15f, 3.0f, 60.0f, 0.35f, 100.0f, 25.0f, 0.10f, 0.58f, 0)),
             bassPreset ("Forest 1/32", psyRollBass (0, 1.00f, 99, 0.90f, 1.00f, 0.0f, 0.10f, 2200.0f, 0.45f, 3.0f, 30.0f, 0.30f, 50.0f, 20.0f, 0.15f, 0.50f, 1)),
             bassPreset ("Wide Mid", psyRollBass (0, 1.00f, 94, 1.00f, 1.00f, 12.0f, 0.10f, 1500.0f, 0.18f, 2.0f, 70.0f, 0.40f, 100.0f, 25.0f, 0.05f, 0.52f, 0)),
+            // Arbetare 2, kategorierna MID BASS (namn "Mid "), HI BASS ("Hi ") och SYNTH ("Synth "). Argument: se registerBass.
+            bassPreset ("Mid Growl", registerBass (0, 1, 15, 13, 0.35f, 0.0f, 2, 12.0f, 900.0f, 0.35f, 3.0f, 80.0f, 0.55f, 160.0f, 30.0f, 0.30f, 0.50f, 1)),
+            bassPreset ("Mid Pluck", registerBass (0, 1, 12, 94, 0.50f, 0.0f, 1, 0.0f, 700.0f, 0.20f, 3.5f, 45.0f, 0.20f, 90.0f, 15.0f, 0.20f, 0.52f, 0)),
+            bassPreset ("Mid Wide", registerBass (0, 1, 15, 12, 0.60f, 7.0f, 4, 18.0f, 1100.0f, 0.15f, 2.0f, 120.0f, 0.75f, 220.0f, 40.0f, 0.15f, 0.46f, 0)),
+            bassPreset ("Hi Zap", registerBass (0, 2, 13, 12, 0.40f, 12.0f, 1, 0.0f, 2200.0f, 0.30f, 3.5f, 40.0f, 0.15f, 70.0f, 12.0f, 0.25f, 0.42f, 0)),
+            bassPreset ("Hi Acid", registerBass (0, 2, 12, 99, 0.60f, 0.0f, 1, 0.0f, 1600.0f, 0.55f, 3.5f, 90.0f, 0.55f, 160.0f, 25.0f, 0.40f, 0.40f, 1)),
+            bassPreset ("Hi Lead", registerBass (0, 2, 15, 12, 0.45f, 0.0f, 3, 14.0f, 3000.0f, 0.20f, 1.5f, 150.0f, 0.80f, 250.0f, 60.0f, 0.15f, 0.40f, 0)),
+            bassPreset ("Synth Pad", registerBass (0, 1, 15, 15, 0.70f, 0.0f, 5, 20.0f, 1400.0f, 0.12f, 1.2f, 400.0f, 0.90f, 600.0f, 300.0f, 0.05f, 0.40f, 0)),
+            bassPreset ("Synth Pluck", registerBass (0, 1, 13, 12, 0.30f, 12.0f, 2, 8.0f, 1800.0f, 0.25f, 3.0f, 70.0f, 0.15f, 130.0f, 80.0f, 0.12f, 0.46f, 0)),
+            bassPreset ("Synth Stab", registerBass (0, 2, 12, 13, 0.50f, 7.0f, 3, 10.0f, 2400.0f, 0.30f, 2.5f, 90.0f, 0.10f, 110.0f, 60.0f, 0.18f, 0.42f, 0)),
+            bassPreset ("Minimal Sub", registerBass (0, 1, 15, 12, 0.20f, 0.0f, 1, 0.0f, 500.0f, 0.15f, 1.5f, 200.0f, 0.85f, 400.0f, 60.0f, 0.10f, 0.52f, 0)),
+            bassPreset ("Minimal Pluck", registerBass (0, 1, 12, 15, 0.30f, 0.0f, 1, 0.0f, 600.0f, 0.25f, 2.5f, 60.0f, 0.25f, 120.0f, 20.0f, 0.15f, 0.50f, 0)),
+            bassPreset ("Goa Roll", registerBass (0, 1, 15, 12, 0.40f, 0.0f, 2, 8.0f, 800.0f, 0.30f, 3.0f, 70.0f, 0.50f, 150.0f, 25.0f, 0.25f, 0.50f, 1)),
+            bassPreset ("Goa Acid", registerBass (0, 1, 12, 99, 0.50f, 0.0f, 1, 0.0f, 1200.0f, 0.50f, 3.0f, 100.0f, 0.45f, 170.0f, 25.0f, 0.35f, 0.46f, 1)),
+            bassPreset ("Dark Psy Growl", registerBass (0, 1, 15, 13, 0.45f, 0.0f, 3, 14.0f, 700.0f, 0.40f, 3.5f, 110.0f, 0.60f, 200.0f, 35.0f, 0.40f, 0.46f, 1)),
+            bassPreset ("Dark Psy Sub", registerBass (0, 1, 15, 12, 0.25f, 0.0f, 1, 0.0f, 450.0f, 0.30f, 2.5f, 130.0f, 0.70f, 260.0f, 40.0f, 0.30f, 0.50f, 1)),
+            bassPreset ("Dance Pump", registerBass (0, 1, 15, 12, 0.50f, 0.0f, 2, 10.0f, 1000.0f, 0.20f, 2.5f, 90.0f, 0.65f, 180.0f, 30.0f, 0.15f, 0.50f, 0)),
+            bassPreset ("Dance Pluck", registerBass (0, 1, 13, 12, 0.40f, 12.0f, 2, 8.0f, 1500.0f, 0.25f, 3.0f, 60.0f, 0.20f, 110.0f, 20.0f, 0.15f, 0.46f, 0)),
+            bassPreset ("Trance Roll", registerBass (0, 1, 15, 15, 0.55f, 0.0f, 3, 12.0f, 1100.0f, 0.18f, 2.0f, 110.0f, 0.70f, 190.0f, 35.0f, 0.12f, 0.48f, 0)),
+            bassPreset ("Trance Pluck", registerBass (0, 2, 12, 13, 0.45f, 7.0f, 3, 10.0f, 2000.0f, 0.25f, 2.5f, 70.0f, 0.20f, 120.0f, 50.0f, 0.15f, 0.44f, 0)),
+            bassPreset ("Techno Sub", registerBass (0, 1, 15, 12, 0.20f, 0.0f, 1, 0.0f, 550.0f, 0.30f, 2.0f, 100.0f, 0.60f, 200.0f, 30.0f, 0.25f, 0.52f, 1)),
+            bassPreset ("Techno Stab", registerBass (0, 2, 12, 99, 0.50f, 0.0f, 1, 0.0f, 1800.0f, 0.45f, 3.0f, 60.0f, 0.10f, 100.0f, 20.0f, 0.35f, 0.44f, 1)),
+            bassPreset ("Empirikal Reese", registerBass (0, 1, 15, 15, 0.80f, 0.0f, 3, 16.0f, 900.0f, 0.25f, 2.0f, 150.0f, 0.80f, 260.0f, 50.0f, 0.30f, 0.46f, 1)),
+            bassPreset ("Empirikal Growl", registerBass (0, 1, 12, 13, 0.50f, 0.0f, 2, 12.0f, 850.0f, 0.45f, 3.5f, 90.0f, 0.55f, 170.0f, 30.0f, 0.40f, 0.44f, 1)),
         };
         return presets;
     }

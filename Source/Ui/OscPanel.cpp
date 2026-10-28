@@ -1,5 +1,6 @@
 #include "OscPanel.h"
 #include "HarmonicEditor.h"
+#include "HelpDialog.h"
 
 WavetableView::WavetableView (PluginBase& p, int layerIn, int oscIn, juce::Colour accentIn)
     : processor (p), layer (layerIn), osc (oscIn), accent (accentIn)
@@ -273,6 +274,8 @@ OscPanel::OscPanel (PluginBase& p, int layerIn, int oscIn, juce::Colour accentIn
     filterSendButton.setColour (juce::ToggleButton::tickColourId, accent);
     filterSendButton.setColour (juce::ToggleButton::textColourId, Theme::textDim);
     addAndMakeVisible (filterSendButton);
+    HelpDialog::setupButton (helpButton, *this, HelpDialog::Topic::osc, "the OSCILLATORS (table, warp, unison, presets)");
+    addAndMakeVisible (helpButton);
     filterSendAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
         p.apvts, ParamID::bass (layer, (InstrumentField) ((int) InstrumentField::filterOsc1 + osc)), filterSendButton);
 
@@ -607,6 +610,7 @@ void OscPanel::resized()
         auto strip = titleRow.withTrimmedLeft (area.getWidth() / 3);
         filterSendButton.setBounds (strip.removeFromRight (60));
         strip.removeFromRight (4);
+        helpButton.setBounds (strip.removeFromRight (40).reduced (1, 0));
         resetOscButton.setBounds (strip.removeFromRight (46).reduced (1, 0));
         savePresetButton.setBounds (strip.removeFromRight (42).reduced (1, 0));
         nextPresetButton.setBounds (strip.removeFromRight (22).reduced (1, 0));
