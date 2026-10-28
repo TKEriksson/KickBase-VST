@@ -102,3 +102,4 @@ Preciserat (i) (Tobias 28 okt kväll): lägg om SAMPLE-redigeringen som tre ruto
  6. FX-lane: välj vilken FX-kanal (FX 1, FX 2 ...) lanen styr, inte bara "Effect send". Per-not-värde eller kurva ersätter den generella sändningen för den noten/tiden (fungerar som automation); frågan om ersätta eller multiplicera ska Tobias svara på.
 Obs: nya parametrar och modulationskällor sist (ENGINEERING.md). Stor punkt; Arbetare 1 delar upp: (a) val + ta bort, (b) FX-kanalval, (c) bezier, (d) OTHER + dataformat, (e) kopiera till DAW.
 (w, tillägg) Tobias: knappen "+ LANE" (längst ner till vänster i pianorullen, liten) måste bli betydligt större, i punkt 1 (val av lane).
+(w, rättelse) Tobias: "+ LANE"-knappen försvinner när lanen väljs direkt (punkt 1), så ingen större knapp behövs. Tillägget ovan gäller inte.
