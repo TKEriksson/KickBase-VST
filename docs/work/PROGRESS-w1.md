@@ -356,3 +356,10 @@ Bygge Debug all: grönt, "Alla tester gick igenom" (rendersig oförändrad).
 - ANALYZER-mätningarna (kick vinner, svansen tar basen, RAND på bas, 200 Hz-lera) fanns redan: `MixAnalysis.cpp:782,795,856-899,1072` (cde9d61, e44fad8) med tester. Noten i PROGRESS-lc.md:115 är föråldrad. Inget att bygga.
 - FUNDAMENTAL DUCK i motorns vågvisning: markör "DUCK -x.x dB" nere till vänster i `WavetableView` (`OscPanel.cpp` paintDuck, timerCallback läser `fundamentalDuckDb`). Ingen ny parameter, ingen ny ljudtrådskod.
 - DAW-test (Lemon): slå på FUNDAMENTAL DUCK med en bas och en kick; spela, markören ska tändas i basens oscillatorbild medan kicken klingar och släckas efteråt.
+
+## Broms B: BRAKE-knapp i JOG (Arbetare 1, 28 okt)
+- Broms A (kurvpresets TAPE STOP/SPIN UP/SLOWDOWN) fanns inte i koden; byggde bara B enligt planen.
+- BRAKE i JogPanel (Source/Ui/JogPanel.h, startBrake/stepBrake): engångsbroms, stannar på 1,2 s, vilar 0,3 s, snurrar upp 0,9 s till JOG SPEED. Skriver bara jogManual (ingen ny parameter, inget sparas). Hand på hjulet avbryter.
+- Build grön utom den lastkänsliga wavetable-tiden (41 s), orelaterad.
+- DAW-test: spela mönstret i DAW, öppna JOG, tryck BRAKE: tempot ska sakta in till stopp, vila, snurra upp igen; ta tag i hjulet under bromsen: bromsen avbryts.
+- Kvar i JOG-resten: LOOP in i JOG-panelen (ej gjort).
