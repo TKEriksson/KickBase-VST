@@ -429,3 +429,8 @@ Bygge Debug all: grönt, "Alla tester gick igenom" (rendersig oförändrad).
 - LFO-sidan: HELP-knapp bredvid SHOW ONLY SELECTED (LfoPage.cpp, resized), ämnet LFO (HelpDialog.cpp lfoText).
 - Bygge grönt, alla tester gick igenom.
 - DAW-test (Lemon): öppna LFO, klicka HELP, kontrollera att LFO-fliken visas och att knappen inte täcker SHOW ONLY SELECTED.
+
+## HELP för MATRIX (Arbetare 1, 2026-10-28)
+- MATRIX-sidan: HELP-knapp efter CLEAR ALL (MatrixPage.cpp, resized), ämnet MATRIX (HelpDialog.cpp matrixText).
+- Bygge grönt, alla tester gick igenom.
+- DAW-test (Lemon): öppna MATRIX, klicka HELP, kontrollera att MATRIX-fliken visas och att knappen inte täcker CLEAR ALL eller räknaren.

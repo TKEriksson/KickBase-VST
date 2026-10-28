@@ -236,6 +236,22 @@ An LFO is a slow wave that moves a knob up and down by itself. Each LFO is a car
 - **SHOW ONLY SELECTED** shows just the selected card. The preset button saves and loads LFO setups.
 )";
 
+    const char* matrixText = R"(# MATRIX
+Every connection between a modulation source and a knob, in one list. A route says: this source moves that knob by this much.
+
+## Sources
+- **LFO**: a slow wave (LFO tab).
+- **MACRO 1-4**: a knob of your own, here on the left. Turn it by hand or automate it from the DAW. One macro can move many knobs.
+- **ENV 2 / ENV 3**, **VELOCITY** and **RANDOM** of an instrument.
+
+## Making a route
+- Drag a **DRAG** handle onto any knob, or press **+ ADD ROUTE** and pick a knob (an LFO is used as the source; change it in the list).
+- **SOURCE**: click to pick another source.
+- **AMOUNT**: how far the source moves the knob, as a share of the knob's travel. Negative = the other way. Double-click for 25 %.
+- **DESTINATION**: click to pick another knob.
+- The X on a row removes the route. **CLEAR ALL** removes every route (it asks first).
+)";
+
     struct TopicInfo { HelpDialog::Topic topic; const char* tab; const char* text; };
     const TopicInfo topics[] = {
         { HelpDialog::Topic::pianoRoll, "PIANO ROLL", pianoRollText },
@@ -248,6 +264,7 @@ An LFO is a slow wave that moves a knob up and down by itself. Each LFO is a car
         { HelpDialog::Topic::sample, "SAMPLE", sampleText },
         { HelpDialog::Topic::env, "ENV", envText },
         { HelpDialog::Topic::lfo, "LFO", lfoText },
+        { HelpDialog::Topic::matrix, "MATRIX", matrixText },
     };
 
     // ---- Rendering ----
