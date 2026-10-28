@@ -89,6 +89,17 @@ namespace Theme
     // Marginal runt rattarna där LFO-ringarna ritas.
     inline constexpr float knobRingMargin = 8.0f;
 
+    // Gemensam avståndsskala (px). Panelinnehåll, rader, rattgrupper och rutor ska använda dessa, så att luften kan justeras på ett ställe.
+    namespace Space
+    {
+        inline constexpr int xs = 3;        // tätt: mellan etikett och ratt
+        inline constexpr int sm = 6;        // mellan knappar/rader i samma grupp
+        inline constexpr int md = 10;       // mellan rattgrupper och rutor
+        inline constexpr int lg = 14;       // mellan paneler/avdelningar
+        inline constexpr int panelPad = 14; // inre marginal i en panel
+        inline constexpr int rowGap = 8;    // mellan menyrader (nivå 1-3)
+    }
+
     inline juce::Font font (float height, bool bold = false)
     {
         return juce::Font (juce::FontOptions (height, bold ? juce::Font::bold : juce::Font::plain));
@@ -212,7 +223,7 @@ namespace Theme
     inline void paintEdgeGlow (juce::Graphics& g, juce::Rectangle<float> area, float corner, juce::Colour colour = juce::Colour (0xff38bdf8),
                                float strength = 1.0f)
     {
-        static constexpr float alphas[3] = { 0.13f, 0.07f, 0.03f };
+        static constexpr float alphas[3] = { 0.24f, 0.13f, 0.06f };
         for (int i = 0; i < 3; ++i)
         {
             g.setColour (colour.withAlpha (alphas[i] * strength));
@@ -225,12 +236,35 @@ namespace Theme
                                   juce::Colour colour = juce::Colour (0xff38bdf8))
     {
         const auto grow = [&] (float d) { return vertical ? line.expanded (d, 0.0f) : line.expanded (0.0f, d); };
-        g.setColour (colour.withAlpha (0.04f));
-        g.fillRect (grow (3.0f));
         g.setColour (colour.withAlpha (0.07f));
-        g.fillRect (grow (1.5f));
-        g.setColour (colour.withAlpha (0.22f));
+        g.fillRect (grow (4.0f));
+        g.setColour (colour.withAlpha (0.14f));
+        g.fillRect (grow (2.0f));
+        g.setColour (colour.withAlpha (0.55f));
         g.fillRect (line);
+    }
+
+    // Glasknapp (ä): mörkt glas med ljusreflex och tunn kant; tänd får färgad fyllning och glöd. Gemensam för PREVIEWS-knapparna m.fl.
+    inline void paintGlassButton (juce::Graphics& g, juce::Rectangle<float> area, bool lit, bool hover, juce::Colour accent, float corner = 8.0f)
+    {
+        g.setGradientFill (juce::ColourGradient (juce::Colour (hover ? 0xff1d2233 : 0xff161a28), 0.0f, area.getY(),
+                                                 juce::Colour (0xff0d1019), 0.0f, area.getBottom(), false));
+        g.fillRoundedRectangle (area, corner);
+        if (lit)
+        {
+            g.setColour (accent.withAlpha (0.30f));
+            g.fillRoundedRectangle (area, corner);
+        }
+        juce::Path shine;
+        shine.addRoundedRectangle (area.getX() + 1.0f, area.getY() + 1.0f, area.getWidth() - 2.0f, area.getHeight() * 0.45f,
+                                   corner - 1.0f, corner - 1.0f, true, true, false, false);
+        g.setGradientFill (juce::ColourGradient (juce::Colours::white.withAlpha (0.14f), 0.0f, area.getY(),
+                                                 juce::Colours::white.withAlpha (0.0f), 0.0f, area.getY() + area.getHeight() * 0.45f, false));
+        g.fillPath (shine);
+        g.setColour (lit ? accent : (hover ? cyan.withAlpha (0.5f) : panelBorder));
+        g.drawRoundedRectangle (area.reduced (0.5f), corner, lit ? 1.4f : 1.0f);
+        if (lit)
+            paintEdgeGlow (g, area, corner, accent, 1.4f);
     }
 
     // En panel: mjuk skugga, subtil gradient och fasade kanter (ingen textur).

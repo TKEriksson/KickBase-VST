@@ -471,7 +471,7 @@ void HeaderBar::resized()
     // Till höger: mätare och lyssnarvolym längst ut, sedan tonart, sedan (instrumentet) en gemensam ruta för
     // PREVIEWS, LOOP, tempo/takt och JOG. Sätts först, så att vänstra delen kan krympa vid smal bredd.
     auto right = getLocalBounds().reduced (14, 0);
-    masterKnob.setBounds (right.removeFromRight (30).withSizeKeepingCentre (30, 30));
+    masterKnob.setBounds (right.removeFromRight (46).withSizeKeepingCentre (46, 46)); // stor OUT-ratt (ä)
     right.removeFromRight (4);
     meterRect = right.removeFromRight (meterWidth).withSizeKeepingCentre (meterWidth, 28);
     right.removeFromRight (10);

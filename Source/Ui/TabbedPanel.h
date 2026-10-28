@@ -68,7 +68,7 @@ class TabbedPanel : public juce::Component, private juce::Timer
 {
 public:
     static constexpr int headerHeight = 36;
-    static constexpr int extrasRowHeight = 36; // rad 2: sidans kontroller (väljare, på/av, preset) i remsa-stil
+    static constexpr int extrasRowHeight = 30; // rad 2: sidans kontroller (väljare, på/av, preset) i remsa-stil
 
     // `rememberedTab` pekar på var den valda fliken sparas (t.ex. i processorn), så att
     // samma flik visas när fönstret öppnas igen.
@@ -200,7 +200,7 @@ public:
         {
             // Mörk infälld remsa bakom underflikarna, med flikens namn som liten mono-etikett längst till höger.
             const auto strip = stripArea.toFloat();
-            g.setColour (Theme::insetStrip);
+            g.setColour (juce::Colour (0xff121b2e)); // nivå 2: blåtonad remsa
             g.fillRoundedRectangle (strip, 12.0f);
             g.setGradientFill (juce::ColourGradient (juce::Colours::black.withAlpha (0.6f), 0.0f, strip.getY(),
                                                      juce::Colours::transparentBlack, 0.0f, strip.getY() + 5.0f, false));
@@ -218,6 +218,7 @@ public:
             g.fillPath (stem);
             g.setColour (Theme::panelAlt);
             g.fillPath (stemInner);
+            Theme::paintDividerGlow (g, juce::Rectangle<float> (10.0f, strip.getBottom() + 5.0f, (float) getWidth() - 20.0f, 1.0f), false);
         }
         else
         {
@@ -241,10 +242,11 @@ public:
             if (currentTab.headerExtras != nullptr)
             {
                 const auto strip = extrasRow.toFloat();
-                g.setColour (Theme::insetStrip);
-                g.fillRoundedRectangle (strip, 12.0f);
+                g.setColour (juce::Colour (0xff06080d)); // nivå 3: mörkare, lägre remsa
+                g.fillRoundedRectangle (strip, 10.0f);
                 g.setColour (Theme::panelBorderDim);
-                g.drawRoundedRectangle (strip.reduced (0.5f), 12.0f, 1.0f);
+                g.drawRoundedRectangle (strip.reduced (0.5f), 10.0f, 1.0f);
+                Theme::paintDividerGlow (g, juce::Rectangle<float> (10.0f, strip.getBottom() + 3.0f, (float) getWidth() - 20.0f, 1.0f), false);
             }
         }
     }
@@ -284,11 +286,11 @@ public:
         extrasRow = juce::Rectangle<int> (10, headerHeight + 2, std::max (0, getWidth() - 20), extrasRowHeight);
         for (auto& tab : tabs)
         {
-            auto content = getLocalBounds().reduced (10).withTrimmedTop (headerHeight - 4);
+            auto content = getLocalBounds().reduced (Theme::Space::panelPad).withTrimmedTop (headerHeight - 8);
             if (tab.headerExtras != nullptr)
             {
                 tab.headerExtras->setBounds (extrasRow.reduced (8, 2));
-                content.setTop (extrasRow.getBottom() + 6);
+                content.setTop (extrasRow.getBottom() + Theme::Space::md);
             }
             tab.page->setBounds (content);
         }
