@@ -351,3 +351,8 @@ Bygge Debug all: grönt, "Alla tester gick igenom" (rendersig oförändrad).
 - Ingen UI-koppling och inget KickbaseTool-kommando: Arbetare 2 tar dem plus testerna (projektledarens beslut).
 - Bygget grönt förutom ett tidstest (wavetable: 120 tabeller på 30,7 s i Debug, tröskeln gick över medan flera byggen kördes); multisampletest och helpcheck gröna. Ej verifierat mot en riktig .sfz-fil än.
 - DAW-test (Lemon): inget nytt att testa än, funktionen syns först när UI/verktyg kopplats.
+
+## ANALYZER-mätningar + FUNDAMENTAL DUCK-visning (Arbetare 1, 28 okt)
+- ANALYZER-mätningarna (kick vinner, svansen tar basen, RAND på bas, 200 Hz-lera) fanns redan: `MixAnalysis.cpp:782,795,856-899,1072` (cde9d61, e44fad8) med tester. Noten i PROGRESS-lc.md:115 är föråldrad. Inget att bygga.
+- FUNDAMENTAL DUCK i motorns vågvisning: markör "DUCK -x.x dB" nere till vänster i `WavetableView` (`OscPanel.cpp` paintDuck, timerCallback läser `fundamentalDuckDb`). Ingen ny parameter, ingen ny ljudtrådskod.
+- DAW-test (Lemon): slå på FUNDAMENTAL DUCK med en bas och en kick; spela, markören ska tändas i basens oscillatorbild medan kicken klingar och släckas efteråt.

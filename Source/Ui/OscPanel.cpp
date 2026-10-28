@@ -30,8 +30,11 @@ void WavetableView::timerCallback()
     const auto warp = raw (InstrumentField::aWarpAmount);
     const auto ready = table == Wavetables::userIndex() || Wavetables::isReady (table);
     const auto morph = processor.apvts.getRawParameterValue (ParamID::bass (layer, ParamID::oscMorphField (osc)))->load() >= 0.5f;
-    if (position != lastPosition || table != lastTable || warpMode != lastWarpMode || warp != lastWarp || ready != lastReady || morph != lastMorph)
+    const auto duckDb = processor.fundamentalDuckDb[(size_t) layer].load (std::memory_order_relaxed);
+    const auto duckChanged = std::abs (duckDb - lastDuckDb) > 0.1f || ((duckDb > 0.05f) != (lastDuckDb > 0.05f));
+    if (duckChanged || position != lastPosition || table != lastTable || warpMode != lastWarpMode || warp != lastWarp || ready != lastReady || morph != lastMorph)
     {
+        lastDuckDb = duckDb;
         lastMorph = morph;
         lastPosition = position;
         lastTable = table;
@@ -51,8 +54,22 @@ void WavetableView::paint (juce::Graphics& g)
     const auto& table = userTable != nullptr ? *userTable : Wavetables::get (lastTable < 0 || lastTable == Wavetables::userIndex() ? 0 : lastTable);
     const auto area = bounds.reduced (8.0f, 10.0f);
 
+    // FUNDAMENTAL DUCK: markör nere till vänster medan motorns grundton dämpas (kicken tar botten).
+    auto paintDuck = [&]
+    {
+        if (lastDuckDb <= 0.05f)
+            return;
+        const auto badge = juce::Rectangle<float> (6.0f, bounds.getBottom() - 18.0f, 74.0f, 13.0f);
+        g.setColour (Theme::kick.withAlpha (0.35f));
+        g.fillRoundedRectangle (badge, 3.0f);
+        g.setFont (Theme::font (9.0f, true));
+        g.setColour (Theme::text);
+        g.drawText ("DUCK -" + juce::String (lastDuckDb, 1) + " dB", badge, juce::Justification::centred);
+    };
+
     if (display != Display::wave)
     {
+        paintDuck();
         drawCurrent (g, table, bounds.reduced (8.0f, 18.0f));
         g.setFont (Theme::font (9.5f, true));
         g.setColour (Theme::textDim);
@@ -128,6 +145,7 @@ void WavetableView::paint (juce::Graphics& g)
 
     g.setColour (Theme::textDim.withAlpha (0.7f));
     g.drawText ("WAVE", modeRect(), juce::Justification::centred);
+    paintDuck();
 
     // Glöd när musen är över bilden (klicka för att lyssna).
     if (hover)
