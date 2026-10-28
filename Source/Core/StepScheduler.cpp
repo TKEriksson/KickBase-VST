@@ -75,18 +75,20 @@ void StepScheduler::addBass (int layer, const Pattern& pattern, const PatternLen
     if (tick >= 0 && pattern.note (layer, tick).on.load())
         add ({ offset, StepEvent::Type::bass, tick, layer });
 
-    // Skivraderna ("Slice N") följer instrumentets markör men har egen längd/loop; en not i raden spelar skivan.
-    for (int id = RowRegistry::firstSubRow; id < RowRegistry::maxRows; ++id)
+    // Skivraden följer instrumentets markör men har egen längd/loop; varje not (och stapelnot) i raden spelar skivan som är notens pitch.
+    if (const auto id = pattern.rows.find (layer, RowRegistry::Kind::slices); id >= 0)
     {
-        const auto slice = pattern.rows.sliceOf (id);
-        if (slice < 0 || pattern.rows.instrumentOf (id) != layer)
-            continue;
         const auto rowBar = lengths.barInRow (Pattern::lengthRowOf (id), position.bar);
         auto rowTick = rowBar < 0 ? -1 : rowBar * Pattern::ticksPerBar + position.stepInBar;
         if (window.row == id || window.allRows)
             rowTick = windowTick (lengths.barsOf (Pattern::lengthRowOf (id)) * Pattern::ticksPerBar, lengths.total * Pattern::ticksPerBar, position);
-        if (rowTick >= 0 && pattern.note (id, rowTick).on.load())
-            add ({ offset, StepEvent::Type::slice, rowTick, layer, slice });
+        if (rowTick >= 0)
+            for (int index = 0; index < Pattern::maxStack; ++index)
+            {
+                Pattern::StackNote stacked;
+                if (pattern.getStack (id, rowTick, index, stacked))
+                    add ({ offset, StepEvent::Type::slice, rowTick, layer, RowRegistry::sliceOfPitch (stacked.pitch), index });
+            }
     }
 }
 

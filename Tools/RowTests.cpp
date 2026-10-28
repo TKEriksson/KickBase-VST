@@ -33,6 +33,16 @@ int rowKeyTest()
            "skivnycklar går från slice1 till slice16");
     rows.remove (rows.idOfKey ("i3.slice16"));
 
+    // Den enda skivraden: "i3.slices", skivan är notens pitch (inte radens index).
+    const auto slices = rows.idOfKeyCreate ("i3.slices");
+    check (slices >= 0 && rows.keyOf (slices) == "i3.slices" && rows.idOfKey ("I3.Slices") == slices && rows.sliceOf (slices) == -1 && rows.instrumentOf (slices) == 3,
+           "i3.slices: en rad per instrument, nyckel båda vägarna");
+    check (rows.add (3, Kind::slices) == slices && rows.add (3, Kind::slices, 2) == -1 && rows.find (3, Kind::slices) == slices, "slices-raden skapas bara en gång och har inget skivindex");
+    check (RowRegistry::sliceOfPitch (RowRegistry::pitchOfSlice (0)) == 0 && RowRegistry::sliceOfPitch (RowRegistry::pitchOfSlice (127)) == 127
+               && RowRegistry::pitchOfSlice (127) <= 96 && RowRegistry::pitchOfSlice (0) >= -96,
+           "skivindex 0-127 ryms i notens pitchområde och går att vända");
+    rows.remove (slices);
+
     for (auto bad : { "", "i", "i10", "i3.", "i3.foo", "kick.sample", "x3", "i-1", "i3.sample.x", "i 3" })
         check (rows.idOfKey (bad) == -1 && rows.idOfKeyCreate (bad) == -1, juce::String ("okänd nyckel ger -1: '") + bad + "'");
     check (rows.numActive() == RowRegistry::numBaseRows + 2, "okända nycklar skapade ingenting");

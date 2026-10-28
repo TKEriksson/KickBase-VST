@@ -1106,7 +1106,7 @@ void InstrumentProcessor::handleEvent (const StepEvent& event)
     // Spelar värden gäller midiInLayer inte (värdens toner startar hela mönstret).
     const auto onlyRow = previewLayer >= 0 ? previewLayer : (clock.isHostPlaying() ? -1 : midiInLayer.load());
     // En skivrad ("Slice N") har ett eget radid; förhandsspelas hon spelar bara hon, annars gäller instrumentets rad.
-    const auto sliceRow = event.type == StepEvent::Type::slice ? pattern.rows.find (event.layer, RowRegistry::Kind::slice, event.slice) : -1;
+    const auto sliceRow = event.type == StepEvent::Type::slice ? pattern.rows.find (event.layer, RowRegistry::Kind::slices) : -1;
     if (event.type == StepEvent::Type::slice && sliceRow < 0)
         return;
     if (onlyRow >= 0 && onlyRow != PluginBase::previewAllRows
@@ -1136,11 +1136,14 @@ void InstrumentProcessor::handleEvent (const StepEvent& event)
 
     if (event.type == StepEvent::Type::slice)
     {
-        // Raden "Slice N": en egen ton som spelar skiva N från början, med radens egen längd som gate.
-        const auto& sliceNote = pattern.note (sliceRow, event.step);
+        // Skivraden: varje (stapel)not spelar skivan som är dess pitch från början, med notens längd som gate.
+        Pattern::StackNote sliceNote;
+        if (! pattern.getStack (sliceRow, event.step, event.stack, sliceNote))
+            return;
         const auto rowTicks = lengths.barsOf (Pattern::lengthRowOf (sliceRow)) * Pattern::ticksPerBar;
-        const auto hold = pattern.holdTicks (sliceRow, event.step, rowTicks, gateScales[(size_t) layer]);
-        basses[(size_t) layer].noteOn (0, sliceNote.velocity.load(), std::max (1, (int) (hold * samplesPerTick)), false, event.slice);
+        const auto hold = event.stack == 0 ? pattern.holdTicks (sliceRow, event.step, rowTicks, gateScales[(size_t) layer])
+                                           : std::max (1.0, sliceNote.length * (double) gateScales[(size_t) layer]);
+        basses[(size_t) layer].noteOn (0, sliceNote.velocity, std::max (1, (int) (hold * samplesPerTick)), event.stack > 0, event.slice);
         lastInstrumentStartPpq[(size_t) layer] = clock.getPpqAt (event.offset);
         return;
     }

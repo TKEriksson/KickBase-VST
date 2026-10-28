@@ -1931,20 +1931,19 @@ int PluginBase::syncSliceRows (int layer)
         return 0;
     const auto* sample = instrumentSamples[(size_t) layer].active();
     const auto count = sample != nullptr && sample->slices.size() > 1 ? (int) sample->slices.size() : 0;
-    const auto wanted = juce::jmin (count, RowRegistry::maxSliceRows);
 
+    // Instrumentet har EN skivrad (noternas pitch är skivan); utan skivor tas raden bort med sina noter.
     auto missing = 0;
     {
-        EditScope scope (*this, "Slice rows");
-        for (int slice = RowRegistry::maxSliceRows - 1; slice >= wanted; --slice)
-            if (const auto id = pattern.rows.find (layer, RowRegistry::Kind::slice, slice); id >= 0)
-            {
-                pattern.clearNotes (id);
-                pattern.rows.remove (id);
-            }
-        for (int slice = 0; slice < wanted; ++slice)
-            if (pattern.rows.find (layer, RowRegistry::Kind::slice, slice) < 0 && pattern.rows.add (layer, RowRegistry::Kind::slice, slice) < 0)
-                ++missing;
+        EditScope scope (*this, "Slice row");
+        const auto id = pattern.rows.find (layer, RowRegistry::Kind::slices);
+        if (count == 0 && id >= 0)
+        {
+            pattern.clearNotes (id);
+            pattern.rows.remove (id);
+        }
+        else if (count > 0 && id < 0 && pattern.rows.add (layer, RowRegistry::Kind::slices) < 0)
+            ++missing;
     }
     return missing;
 }

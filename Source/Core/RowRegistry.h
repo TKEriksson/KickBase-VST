@@ -20,8 +20,13 @@ public:
     static constexpr int firstSubRow = numBaseRows;
 
     // slice: en rad per skiva ("Slice N"); skivans index (0-baserat) ligger i slotens höga bitar. Kind 2 var den gamla SLICER-raden (borttagen).
-    enum class Kind { note = 0, sample = 1, slice = 3 };
-    static constexpr int numKinds = 4;
+    // slices: EN rad per instrument för alla skivor (skivindex = notens pitch). `slice` (en rad per skiva) finns kvar bara för att läsa gamla projekt.
+    enum class Kind { note = 0, sample = 1, slice = 3, slices = 4 };
+    static constexpr int numKinds = 5;
+    // Raden Kind::slices lagrar skivindex 0..127 som pitch = skiva - 64 (Pattern klämmer pitch till -96..96, så 0..127 ryms inte rakt av).
+    static constexpr int slicePitchOffset = 64;
+    static constexpr int sliceOfPitch (int pitch) { return pitch + slicePitchOffset; }
+    static constexpr int pitchOfSlice (int slice) { return slice - slicePitchOffset; }
     static constexpr int maxSliceRows = 16; // tak: bara de första 16 skivorna får en rad (Tobias/PL 27 okt)
 
     RowRegistry()
@@ -143,6 +148,8 @@ public:
         if (! juce::isPositiveAndBelow (instrument, numInstruments))
             return {};
         const auto base = "i" + juce::String (instrument);
+        if (kind == Kind::slices)
+            return base + ".slices";
         return kind == Kind::sample ? base + ".sample" : kind == Kind::slice ? base + ".slice" + juce::String (slice + 1) : base;
     }
 
@@ -172,6 +179,8 @@ public:
             kind = Kind::note;
         else if (suffix == "sample")
             kind = Kind::sample;
+        else if (suffix == "slices")
+            kind = Kind::slices;
         else if (suffix.startsWith ("slice") && suffix.substring (5).containsOnly ("0123456789") && suffix.length() > 5 && suffix.length() <= 7)
         {
             const auto number1 = suffix.substring (5).getIntValue();

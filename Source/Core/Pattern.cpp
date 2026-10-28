@@ -639,9 +639,19 @@ void Pattern::fromValueTree (const juce::ValueTree& tree, bool clearUnmentionedL
         auto layer = (int) child.getProperty ("layer", 0);
         if (version <= 5 && child.hasType ("Notes") && layer == 3)
             layer = kickLayer; // före version 6 var kicken lager 3 (det fanns tre instrument)
+        auto migratedSlice = -1; // gamla projekt hade en rad per skiva ("i3.slice2"); noterna flyttas in i raden "i3.slices" med skivan som pitch
         if (child.hasProperty ("row")) // R9b: nyckeln gäller före indexet; en okänd nyckel eller full pool hoppas över
         {
-            layer = rows.idOfKeyCreate (child["row"].toString());
+            auto key = child["row"].toString();
+            auto instrument = 0;
+            RowRegistry::Kind kind;
+            auto slice = 0;
+            if (RowRegistry::parseKey (key, instrument, kind, &slice) && kind == RowRegistry::Kind::slice)
+            {
+                migratedSlice = slice;
+                key = RowRegistry::keyOf (instrument, RowRegistry::Kind::slices);
+            }
+            layer = rows.idOfKeyCreate (key);
             if (layer < 0)
                 continue;
         }
@@ -656,19 +666,40 @@ void Pattern::fromValueTree (const juce::ValueTree& tree, bool clearUnmentionedL
         }
         else if (child.hasType ("Notes"))
         {
+            const auto firstOfRow = ! cleared[(size_t) layer];
             clearOnce (layer);
-            setCustom (layer, (bool) child["custom"]);
-            if (layer >= numNoteLayers)
-                setLoopsRow (layer, ! child.hasProperty ("loop") || (bool) child["loop"]);
-            const auto lengthText = child["length"].toString(); // saknas i projekt före version 7 (då AUTO; gamla längder: applyLegacyLengths)
-            manualOf[(size_t) layer] = juce::jlimit (0, maxBars, lengthText.containsOnly ("0123456789") ? lengthText.getIntValue() : 0);
-            extraOf[(size_t) layer] = juce::jlimit (0, maxBars, (int) child["extra"]);
+            if (migratedSlice < 0 || firstOfRow) // vid flytt av gamla skivrader gäller längd och loop från den första
+            {
+                setCustom (layer, (bool) child["custom"]);
+                if (layer >= numNoteLayers)
+                    setLoopsRow (layer, ! child.hasProperty ("loop") || (bool) child["loop"]);
+                const auto lengthText = child["length"].toString(); // saknas i projekt före version 7 (då AUTO; gamla längder: applyLegacyLengths)
+                manualOf[(size_t) layer] = juce::jlimit (0, maxBars, lengthText.containsOnly ("0123456789") ? lengthText.getIntValue() : 0);
+                extraOf[(size_t) layer] = juce::jlimit (0, maxBars, (int) child["extra"]);
+            }
             for (const auto& entry : split (child["notes"], ";"))
             {
                 const auto parts = juce::StringArray::fromTokens (entry, "/", {});
                 const auto tick = parts[0].getIntValue();
                 if (parts.size() < 5 || ! juce::isPositiveAndBelow (tick, maxTicks))
                     continue;
+                if (migratedSlice >= 0)
+                {
+                    // Skivans ton: samma tick i flera gamla rader blir en stapel (högst maxStack, resten kasseras).
+                    const auto pitch = RowRegistry::pitchOfSlice (migratedSlice);
+                    if (stackSize (layer, tick) == 0)
+                        addNote (layer, tick, parts[1].getIntValue(), pitch, parts[4].getFloatValue(), parts[3].getIntValue() != 0);
+                    else
+                    {
+                        StackNote s;
+                        s.pitch = pitch;
+                        s.length = parts[1].getIntValue();
+                        s.velocity = parts[4].getFloatValue();
+                        s.slide = parts[3].getIntValue() != 0;
+                        addExtra (layer, tick, s);
+                    }
+                    continue;
+                }
                 auto& n = addNote (layer, tick, parts[1].getIntValue(), parts[2].getIntValue(), parts[4].getFloatValue(), parts[3].getIntValue() != 0);
                 // Fält 5-7 är ackordet (saknade blir 0) tills ett "e" börjar staplarna; ett trasigt eller avkapat /e hoppas över utan fel.
                 auto firstExtra = parts.size();

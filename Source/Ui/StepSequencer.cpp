@@ -1111,13 +1111,13 @@ void StepSequencer::paint (juce::Graphics& g)
             RowRegistry::Kind kind {};
             if (processor.pattern.rows.get (layer, instrument, kind))
             {
-                if (kind != RowRegistry::Kind::slice)
+                if (kind != RowRegistry::Kind::slice && kind != RowRegistry::Kind::slices)
                 {
                     g.setColour (colour.withAlpha (0.07f));
                     g.fillRoundedRectangle (juce::Rectangle<int>::leftTopRightBottom (stepsColumn.getX(), bounds.getY(), stepsColumn.getRight(), bounds.getBottom()).toFloat(), 3.0f);
                 }
                 g.setColour (colour.withAlpha (0.6f));
-                g.drawFittedText (kind == RowRegistry::Kind::slice ? "Slice " + juce::String (processor.pattern.rows.sliceOf (layer) + 1) : nameOf (instrument) + " SAMPLE", row.withTrimmedLeft (18), juce::Justification::centredLeft, 1, 0.8f);
+                g.drawFittedText (kind == RowRegistry::Kind::slices ? nameOf (instrument) + " SLICES" : kind == RowRegistry::Kind::slice ? "Slice " + juce::String (processor.pattern.rows.sliceOf (layer) + 1) : nameOf (instrument) + " SAMPLE", row.withTrimmedLeft (18), juce::Justification::centredLeft, 1, 0.8f);
             }
             continue;
         }
