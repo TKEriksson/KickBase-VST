@@ -309,6 +309,7 @@ private:
     EnvelopeView envelope { 0.5 };
     HoldAudition hold { processor };      // klick och håll på LISTEN: instrumentet spelas på förhandsvisningstonen
     ListenButton envelopeListen;          // högtalaren i hörnet av envelope-grafen
+    juce::TextButton instrHelpButton;     // HELP för INSTR-fliken, vid LISTEN i grafens hörn
     TabbedPanel sources;
     std::array<std::unique_ptr<OscPanel>, ParamID::oscsPerLayer> oscs;
     std::unique_ptr<SamplePage> samplePage;

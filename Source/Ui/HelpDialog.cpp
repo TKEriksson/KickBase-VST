@@ -365,6 +365,54 @@ The kick has two sources you can use alone or together: a **SYNTH** kick (a sine
 The **SYNTH** and **SAMPLE** switches under the controls turn each source on or off. With both on, LEVEL (SAMPLE view) balances them.
 )";
 
+    const char* instrText = R"(# INSTRUMENT (INSTR tab)
+The INSTR tab is the main page of an instrument layer: the envelope graph on the left and the knobs that are not part of one source on the right. The other tabs (OSC 1-3, SAMPLE, FILTER, FM, MIX) hold the sources and the filters.
+
+## Envelope graph
+Drag the handles. White = the **volume envelope** (ATTACK, DECAY, SUSTAIN, RELEASE), the layer colour = the **filter envelope**, yellow = the **pitch envelope**. The vertical line is where the note ends. The speaker button (**LISTEN**) plays the instrument on the preview note while you hold it; double-click to keep it playing.
+
+## Knob groups
+- **PITCH**: **OCTAVE** and **TUNE** move the whole instrument. **ENV AMT** is how far the pitch envelope bends the start (up or down), **ENV DEC** how fast it settles.
+- **SUB**: a plain oscillator under the sources. **LEVEL**, **WAVE** and **OCTAVE**. The little scope glows while the instrument sounds.
+- **NOISE**: **LEVEL**, **TONE** and **TYPE**. The **FILTER** switch sends the noise through the filters on the FILTER tab.
+- **FILTER ENVELOPE**: **AMOUNT** is how much the envelope opens the filters, **ATTACK** and **DECAY** its shape, **VEL** how much note velocity changes the amount.
+- **VOLUME ENVELOPE**: the same four stages as the white curve.
+- **WARP ENV**: moves the WARP of OSC 1 over time (needs a WARP mode on OSC 1). **SOURCE** picks what drives it, **DIRECT DEC** how fast it falls.
+- **DRIVE**: **AMOUNT** and **MODE** (the kind of clipping).
+- **LAYER OUT**: **LEVEL** is the layer volume, **DUCK** how much the sidechain lowers it, **LENGTH** the note length (how much of the pattern step the note holds) and **VOICES** how many notes can play at once.
+- **PHASE**: **POLARITY** flips the wave, **START** is where each note's wave begins, **NUDGE** shifts the layer a few ms in time. Use them to make the kick and the bass add up instead of cancelling.
+
+## Warnings
+A yellow mark on **VOICES** or **WARP ENV** means the setting is heavy on the CPU or does nothing; hover it to read why.
+)";
+
+    const char* analyzerText = R"(# ANALYZER
+The ANALYZER tab listens to your sound and shows where it works and where it does not. Pick a view with the buttons at the top.
+
+## Views
+- **KICK+BASS**: how the kick and the bass add up. Waveform, phase and correlation per 16th note, focused on 20-300 Hz. If they cancel each other, try POLARITY, START or NUDGE on the instrument (INSTR tab).
+- **COLLISIONS**: a list of places where sounds collide or cancel each other, including phase problems between kick and bass. The band and the bars are marked so you can find them.
+- **SPECTRUM**: the live spectrum of the kick, the instruments and the master, with harmonics and the EQ.
+- **REPORT**: analyses the whole pattern and writes a report: what to look at, and what an AI suggests or has fixed.
+)";
+
+    const char* aiChatText = R"(# AI CHAT
+Talk to an AI that can read and change your sound. It uses your own API key, which is stored encrypted on this computer and only sent to the provider you picked.
+
+## Getting started
+Press **KEY**, choose a provider (Gemini has a free tier, OpenAI, Claude, or Ollama on your own computer), paste the key and save it. Then pick a **MODEL**.
+
+## Header
+- **COST**: how many tokens the chat may use. *Frugal* = short answers and few steps, *Normal* = the everyday balance, *Rich* = long answers and most of the history kept.
+- **UNDO** undoes the AI's last change to the sound.
+- **NEW CHAT** starts a fresh conversation (the sound stays as it is).
+- **CHATS** saves this chat, opens a saved one or exports it to a text file. API keys are never written to these files.
+- **MEM** sets what the AI may remember: local feedback and work lessons, what it may load, and storage limits.
+
+## While it works
+**STOP** ends the run after the step that is running. If the AI stops early, **CONTINUE** (or Enter in an empty field) tells it to go on. Some steps ask you to confirm before they run.
+)";
+
     struct TopicInfo { HelpDialog::Topic topic; const char* tab; const char* text; };
     const TopicInfo topics[] = {
         { HelpDialog::Topic::pianoRoll, "PIANO ROLL", pianoRollText },
@@ -383,6 +431,9 @@ The **SYNTH** and **SAMPLE** switches under the controls turn each source on or 
         { HelpDialog::Topic::sidechain, "SIDECHAIN", sidechainText },
         { HelpDialog::Topic::settings, "SETTINGS", settingsText },
         { HelpDialog::Topic::kick, "KICK", kickText },
+        { HelpDialog::Topic::instr, "INSTR", instrText },
+        { HelpDialog::Topic::analyzer, "ANALYZER", analyzerText },
+        { HelpDialog::Topic::aiChat, "AI CHAT", aiChatText },
     };
 
     // ---- Rendering ----

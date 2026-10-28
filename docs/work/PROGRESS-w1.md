@@ -478,3 +478,9 @@ Bygge Debug all: grönt, "Alla tester gick igenom" (rendersig oförändrad).
 - Hjälptexter: `Help.cpp:364-365` (Flanger SHAPE, SPREAD), `Help.cpp:457` (TIME MS).
 - Debug all grön, alla tester gick igenom.
 - DAW (Lemon): Echo i en FX-plats, TIME MS 0 låter som förut, 500 ger fast 500 ms; Flanger SHAPE Triangle och SPREAD 0/25/100 %; kolla att elva rattar ryms i FX-raden.
+
+## HELP för INSTR, ANALYZER och AI CHAT (Arbetare 1, 28 okt)
+- Nya ämnen `instr`, `analyzer`, `aiChat` i HelpDialog.h/.cpp. HELP-knappar: INSTR vid LISTEN i grafens hörn (Modules.cpp `layoutInstrPage`), ANALYZER längst till höger i underflikraden (AnalyzerPage.h), AI CHAT i huvudraden efter MEM (AiChatPage.cpp).
+- Texterna bygger på sidornas egna tooltips.
+- Kvar utan HELP: GATE (FxEditor), KickLibraryPanel, HistoryPanel, AboutPanel, OptimizationsPanel (små/ytliga, tas om Tobias vill).
+- DAW (Lemon) att kolla: att INSTR-knappen inte täcker grafens handtag, och att ANALYZER/AI CHAT-knapparna får plats vid smal bredd.

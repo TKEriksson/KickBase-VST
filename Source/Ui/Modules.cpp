@@ -1200,6 +1200,8 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
     envelopeListen.onStart = [this] { hold.start (PluginBase::heldLayerAudition (layer)); };
     envelopeListen.onStop = [this] { hold.stop(); };
     instrPage.addAndMakeVisible (envelopeListen);
+    HelpDialog::setupButton (instrHelpButton, *this, HelpDialog::Topic::instr, "the INSTR tab (envelopes, pitch, sub, noise, drive, phase)");
+    instrPage.addAndMakeVisible (instrHelpButton);
     instrPage.addAndMakeVisible (subScope);
     noiseFilterButton.setTooltip ("NOISE THROUGH FILTER - On: the noise goes through Filter 1 and Filter 2 (set on the FILTER tab). Off: it bypasses both filters.");
     noiseFilterButton.getProperties().set ("labelled", true);
@@ -1956,6 +1958,7 @@ void InstrumentModule::layoutInstrPage()
     auto leftColumn = area.removeFromLeft (juce::jlimit (220, 340, area.getWidth() / 4));
     envelope.setBounds (leftColumn.reduced (0, 2));
     envelopeListen.setBounds (envelope.getRight() - 40, envelope.getY() + 4, 36, 24); // högtalaren i grafens övre högra hörn
+    instrHelpButton.setBounds (envelopeListen.getX() - 4 - 40, envelope.getY() + 8, 40, 16);
     area.removeFromLeft (6);
     const auto rowHeight = juce::jlimit (40, 100, area.getHeight() / groups.numRows() - ControlGroups::titleHeight - 3);
     groups.layout (area, rowHeight);
