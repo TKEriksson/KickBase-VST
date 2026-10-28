@@ -405,3 +405,7 @@ Ordning: 1, 3, 2, sedan 4 efter svar från Arbetare 1. Ljudkod (InstrumentProces
 
 ## 0.4 (r) – harmoniska editorn: förklaringar (Arbetare 2)
 - Tooltips per fält (WAVEFORM / dB / PHASE) via `HarmonicEditor::getTooltip` (HarmonicEditor.cpp:~71, juce::TooltipClient), HELP-knapp i fönstret, ny hjälpflik HARMONICS (HelpDialog.cpp `harmonicsText`, Topic::harmonics sist i enumen). Bara UI-text. Debug all grönt.
+
+## 0.4 (u) – en provlyssning i taget (Arbetare 2)
+- `InstrumentProcessor.cpp` (audition-dispatchen i processChunk + `handleLiveMidi`): lokal provlyssning (kick, källa, instrument 0/5/200–599) stoppar huvud-PREVIEW; ny PREVIEW släpper hållen/solo-provlyssning; en tangent/MIDI-ton stoppar PREVIEW via `stopPreview()` (släpper även basrösterna). Knapparna släcks via `previewingLayer`, inga UI-filer rörda.
+- `Debug all` grön. Ingen ny test; ingen render-ändring i vanlig uppspelning.
