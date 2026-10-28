@@ -92,3 +92,4 @@
 - Autosave, .kbproj och MIDI-import/export: enhetstester finns (`Tools/StateTests.cpp:779-834`, `Tests/EngineTests.cpp:999-1064`); inget provat i DAW. Lemon-punkter tillagda i `fl-testlista.md`.
 - Blockerar: blocksizetest slumpfel, orsak ej funnen (Arbetare 2 misstänker tabellbyggartråden `Wavetable.cpp:631-643`; i felkörningarna var ljuddiffen 0, så felet kan vara antal samples eller kontrollen "två gånger"). 20 körningar pågår hos båda.
 - Slarv loggat: lås-ljudet beställdes två gånger (LESSONS.md).
+- (28 okt, sen kväll) Theme: Gemini-varianten `Theme_Strict_Modifierad.h` granskad (diff mot Arbetare 1:s Theme.h) och skickad till Arbetare 1 att tillämpa som hunkar. JOG BPM-ratt (t) och FM-diagram (k) i pl-jog 3bfaaac, (m) MIX-fliken i c56eb89 (vågen full bredd överst, WIDE/NARROW borta). Alla bygger grönt i Debug, ej sedda i Lemon. Kvar: granska Arbetare 2:s TimelineChart.h, merga när Tobias testat.
