@@ -67,6 +67,6 @@
 
 ## 28 okt: tkdev.se uppdaterad (projektledaren)
 - Tobias bad om nya skärmbilder och ny text "överallt där plugget finns". Byggde `build.bat Debug all` i pl-worktreen (w2 mergad, grönt) och tog 9 bilder med `KickbaseTool snapshot` (flikkoder: PATTERN 1000, KICK 10, FILTER via KB_SOURCETAB=5/20, MIX KB_SOURCETAB=7/20, LFO 22 mod, MATRIX 24, SOUNDSTAGE 26, ANALYZER 30 + KB_SPECTRUM=1, AI 40 + KB_CHATDEMO=1).
-- tkdev (lokal commit, ej pushad): `kickbase/page.tsx` (9 bilder, ny text, alt utan "FL Studio"), nya jpg i `public/projekt/kickbase/`, migration `20261028000000_kickbase_projekt_uppdatering.sql` (uppdaterar body, cover och images). Migrationen är inte körd mot databasen.
+- tkdev (pushad, PR #9 mergad till main 28 okt efter Tobias ja): `kickbase/page.tsx` (9 bilder, ny text, alt utan "FL Studio"), nya jpg i `public/projekt/kickbase/`, migration `20261028000000_kickbase_projekt_uppdatering.sql` (uppdaterar body, cover och images). Migrationens update är körd mot raden 'kickbase' i portfolio_projects (via PostgREST, svar: 1 rad, 8 bilder).
 - Andra ställen: bara `oath2`-sidorna, robots och sitemap nämner Kickbase (inga funktionstexter). Statusen är fortfarande "inte släppt".
-- Ej gjort: push/deploy/migration (kräver Tobias). tkdev har andra ocommittade ändringar (cv, startsidan) som inte rörts.
+- tkdev har andra ocommittade ändringar (cv, startsidan) som inte rörts.
