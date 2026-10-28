@@ -221,6 +221,9 @@ public:
         }
         else
         {
+            // Nivå 1 (huvudmeny) avgränsas från innehållet med en glödande avdelare (o, z).
+            Theme::paintDividerGlow (g, juce::Rectangle<float> (10.0f, (float) headerHeight - 2.0f, (float) getWidth() - 20.0f, 1.0f), false);
+
             // Brödsmulan (KICKBASE > NAMN [> undersida]) som glasdisplay i rad 1 bredvid huvudmenyn ersätter den gamla 38 px-rubrikraden.
             if (crumbArea.getWidth() > 60)
             {

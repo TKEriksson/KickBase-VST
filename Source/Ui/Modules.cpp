@@ -766,10 +766,13 @@ void HeaderBar::paint (juce::Graphics& g)
     if (! transportGroup.isEmpty())
     {
         const auto group = transportGroup.toFloat();
+        // Glasdisplay (ä): mörkt glas med ljusreflex, tunn kant i mönsterfärgen och gemensam kantglöd (å).
+        Theme::paintGlassDisplay (g, group, 9.0f);
         g.setColour (Theme::pattern.withAlpha (0.07f));
-        g.fillRoundedRectangle (group, 6.0f);
-        g.setColour (Theme::pattern.withAlpha (0.75f));
-        g.drawRoundedRectangle (group.reduced (0.5f), 6.0f, 1.2f);
+        g.fillRoundedRectangle (group, 9.0f);
+        g.setColour (Theme::pattern.withAlpha (0.55f));
+        g.drawRoundedRectangle (group.reduced (0.5f), 9.0f, 1.0f);
+        Theme::paintEdgeGlow (g, group, 9.0f, Theme::pattern, 1.6f);
         g.setFont (Theme::font (8.5f, true));
         g.setColour (Theme::pattern);
         g.drawText ("PREVIEWS", previewGroup.toFloat().withHeight (12.0f), juce::Justification::centredLeft);

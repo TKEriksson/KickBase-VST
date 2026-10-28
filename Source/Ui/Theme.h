@@ -207,6 +207,32 @@ namespace Theme
         return cache[size];
     }
 
+    // Gemensam kantglöd (å): tre tunna inre linjer med fallande styrka, inget blur. Billigt nog att ritas varje gång.
+    // Används av alla paneler, kort och avdelare så att glöden ser likadan ut överallt. Inåt, så att grannar inte klipper den.
+    inline void paintEdgeGlow (juce::Graphics& g, juce::Rectangle<float> area, float corner, juce::Colour colour = juce::Colour (0xff38bdf8),
+                               float strength = 1.0f)
+    {
+        static constexpr float alphas[3] = { 0.13f, 0.07f, 0.03f };
+        for (int i = 0; i < 3; ++i)
+        {
+            g.setColour (colour.withAlpha (alphas[i] * strength));
+            g.drawRoundedRectangle (area.reduced (1.5f + (float) i * 1.5f), juce::jmax (1.0f, corner - (float) i), 1.5f);
+        }
+    }
+
+    // Glödande avdelare: tunn linje med svag glöd på båda sidor.
+    inline void paintDividerGlow (juce::Graphics& g, juce::Rectangle<float> line, bool vertical,
+                                  juce::Colour colour = juce::Colour (0xff38bdf8))
+    {
+        const auto grow = [&] (float d) { return vertical ? line.expanded (d, 0.0f) : line.expanded (0.0f, d); };
+        g.setColour (colour.withAlpha (0.04f));
+        g.fillRect (grow (3.0f));
+        g.setColour (colour.withAlpha (0.07f));
+        g.fillRect (grow (1.5f));
+        g.setColour (colour.withAlpha (0.22f));
+        g.fillRect (line);
+    }
+
     // En panel: mjuk skugga, subtil gradient och fasade kanter (ingen textur).
     inline void paintMetal (juce::Graphics& g, juce::Rectangle<float> area, float corner, juce::Colour top, juce::Colour bottom,
                             bool bevel = true)
@@ -221,6 +247,7 @@ namespace Theme
         {
             g.setColour (panelBorder);
             g.drawRoundedRectangle (area.reduced (0.5f), corner, 1.0f);
+            paintEdgeGlow (g, area, corner);
         }
     }
 
