@@ -1144,6 +1144,55 @@ namespace
         folder.deleteRecursively();
     }
 
+    void testLockEditing()
+    {
+        std::puts ("Mönster: lock följer med klippbord och flytt, och ångra återställer dem");
+        Pattern pattern;
+        pattern.clearNotes (1);
+        pattern.addNote (1, 0, 24, 3);
+        pattern.setLock (1, 0, Pattern::lockCutoff, 0.25f);
+        pattern.setLock (1, 0, Pattern::lockPan, 0.75f);
+        const auto undoBase = pattern.rowToValueTree (1); // som pianorullens snapshotRow före en ändring
+
+        // Klippbordet: låsen läses ut och sätts på den inklistrade tonen.
+        std::array<float, Pattern::numLocks> copied {};
+        for (int p = 0; p < Pattern::numLocks; ++p)
+            copied[(size_t) p] = pattern.getLock (1, 0, p);
+        pattern.addNote (1, 96, 24, 3);
+        for (int p = 0; p < Pattern::numLocks; ++p)
+            if (copied[(size_t) p] != Pattern::lockUnset)
+                pattern.setLock (1, 96, p, copied[(size_t) p]);
+        check (pattern.getLock (1, 96, Pattern::lockCutoff) == 0.25f && pattern.getLock (1, 96, Pattern::lockPan) == 0.75f
+                   && pattern.getLock (1, 96, Pattern::lockFxSend) == Pattern::lockUnset,
+               "inklistrad ton bär låsen");
+
+        // Flytt: läs låsen, ta bort tonen, lägg den på ny plats och sätt låsen igen.
+        std::array<float, Pattern::numLocks> moved {};
+        for (int p = 0; p < Pattern::numLocks; ++p)
+            moved[(size_t) p] = pattern.getLock (1, 96, p);
+        pattern.removeNote (1, 96);
+        pattern.addNote (1, 144, 24, 3);
+        for (int p = 0; p < Pattern::numLocks; ++p)
+            if (moved[(size_t) p] != Pattern::lockUnset)
+                pattern.setLock (1, 144, p, moved[(size_t) p]);
+        check (pattern.getLock (1, 144, Pattern::lockCutoff) == 0.25f && pattern.getLock (1, 144, Pattern::lockPan) == 0.75f
+                   && ! pattern.note (1, 96).hasAnyLock(),
+               "flyttad ton bär låsen och lämnar inga kvar");
+
+        // Ångra: raden tillbaka till läget före ändringarna, låsen på första tonen kvar och inga på de nya.
+        pattern.clearLock (1, 0, Pattern::lockCutoff);
+        pattern.rowFromValueTree (1, undoBase);
+        check (pattern.getLock (1, 0, Pattern::lockCutoff) == 0.25f && pattern.getLock (1, 0, Pattern::lockPan) == 0.75f
+                   && ! pattern.note (1, 96).hasAnyLock() && ! pattern.note (1, 144).hasAnyLock(),
+               "ångra återställer lock och toner");
+
+        // Spara/ladda av hela mönstret behåller låsen.
+        Pattern loaded;
+        loaded.fromValueTree (pattern.toValueTree());
+        check (loaded.getLock (1, 0, Pattern::lockCutoff) == 0.25f && loaded.getLock (1, 0, Pattern::lockPan) == 0.75f,
+               "spara och ladda behåller låsen efter ångra");
+    }
+
     void testGateAndPianoRollFlag()
     {
         std::puts ("Mönster: gate-steg och pianorullsmarkering sparas per lager");
@@ -1277,6 +1326,7 @@ void runEngineTests()
     testModEnvSync();
     testUserWavetable();
     testWavetableLibrary();
+    testLockEditing();
     testGateAndPianoRollFlag();
     testRowLengths();
     testPolyphonyStacks();
