@@ -157,6 +157,10 @@ enum class InstrumentField
     aDelayMs, aDelaySync, aLenMs, aCurve, bDelayMs, bDelaySync, bLenMs, bCurve, cDelayMs, cDelaySync, cLenMs, cCurve,
     sampleDelayMs, sampleDelaySync, sampleLenMs, sampleCurve, noiseDelayMs, noiseDelaySync, noiseLenMs, noiseCurve,
     subDelayMs, subDelaySync, subLenMs, subCurve, fmDelayMs, fmDelaySync, fmLenMs, fmCurve,
+    // TIMING/LEVELS: per motor DELAY MODE (GATE/SHIFT), LENGTH SYNC, DELAY COUNT, LENGTH COUNT; timingExtraField (motor, vilken). Registreras allra sist (addEngineTimingExtraParams).
+    aDelayMode, aLenSync, aDelayCount, aLenCount, bDelayMode, bLenSync, bDelayCount, bLenCount, cDelayMode, cLenSync, cDelayCount, cLenCount,
+    sampleDelayMode, sampleLenSync, sampleDelayCount, sampleLenCount, noiseDelayMode, noiseLenSync, noiseDelayCount, noiseLenCount,
+    subDelayMode, subLenSync, subDelayCount, subLenCount, fmDelayMode, fmLenSync, fmDelayCount, fmLenCount,
     count
 };
 
@@ -179,6 +183,8 @@ namespace ParamID
     // 5b: motorernas tid. engine 0..6 = OSC 1, OSC 2, OSC 3, SAMPLE, NOISE, SUB, FM; which 0 = DelayMs, 1 = DelaySync, 2 = LenMs, 3 = Curve.
     constexpr int numTimingEngines = 7;
     inline InstrumentField timingField (int engine, int which) { return (InstrumentField) ((int) InstrumentField::aDelayMs + engine * 4 + which); }
+    // which 0 = DelayMode, 1 = LenSync, 2 = DelayCount, 3 = LenCount.
+    inline InstrumentField timingExtraField (int engine, int which) { return (InstrumentField) ((int) InstrumentField::aDelayMode + engine * 4 + which); }
     juce::String bass (int layer, InstrumentField field);   // "bass1Cutoff" ...
     const char* instrumentFieldName (InstrumentField field);      // "Cutoff" ...
 }
@@ -198,6 +204,7 @@ namespace Params
     void addJogParams (Layout& layout); // D3b: sist i layouten
     void addFundamentalDuckParams (Layout& layout); // FUNDAMENTAL DUCK (instrument + per motor): allra sist i instrumentets layout
     void addEngineTimingParams (Layout& layout); // 5b: POS DELAY / SYNC / LENGTH / CURVE per motor och lager; sist i instrumentets layout
+    void addEngineTimingExtraParams (Layout& layout); // TIMING/LEVELS: DELAY MODE / LENGTH SYNC / antal per motor och lager; allra sist i instrumentets layout
     void addKickMixParam (Layout& layout); // kickens MIX (synt/sampling); allra sist i båda layouterna
     void addKickToggleParams (Layout& layout); // kickens SYNTH/SAMPLE på/av; läses av readKick, så FX-pluginet behöver dem också
 

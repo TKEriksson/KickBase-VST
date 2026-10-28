@@ -168,20 +168,22 @@ The balance of one bass layer: one strip per source, and the combined waveform o
 - **START** (SUB and FM): the phase the source starts at on each note.
 - **The meter** in each strip shows that source alone, after the filters, envelope, pan and width. Red = above -3 dB.
 
-## TIMING
-The **TIMING** button swaps the knobs of every strip to the timing of that source. **LEVELS** brings the levels back.
-- **POS DELAY**: the source is silent this long (0-4000 ms) after each note starts, then begins from its start phase. A yellow warning appears when it is longer than the note's volume envelope.
-- **SYNC**: POS DELAY in note values at the project tempo (1/16 to 4 bars) instead of milliseconds. OFF = use the POS DELAY knob. It is fixed when the note starts.
-- **LENGTH**: how long the source sounds after its POS DELAY before it has faded out. 0 = the whole note.
-- **CURVE**: the shape of that fade: 0 % = straight, above = fast first, below = slow first.
-- Everything is off by default, so existing sounds are unchanged. SAMPLE gets its timing in a later version.
-
 ## The combined waveform
 Everything this layer plays, a few cycles after the note starts (110 Hz).
 - **Mouse wheel**: zoom in time. **Shift + wheel**: zoom the height.
 - **Middle button drag** or the **scroll bar**: move along the note.
 - **Double-click**: reset the view.
 - **WIDE**: give the waveform the full width (the knobs are hidden). **NARROW** brings them back.
+)";
+
+    const char* timingText = R"(# TIMING
+The **TIMING** tab (next to MIX) shows the timing of every source in its own panel, with a plot of its level over time. The playhead follows the last note and a line marks when it was released.
+- **MODE**: GATE = the source runs silently and is let in after POS DELAY (as in earlier versions). SHIFT = the source also starts from scratch there (OSC 1-3 and FM restart their own envelopes too; the pitch envelope is shared and keeps running).
+- **POS DELAY**: the source is silent this long (0-4000 ms) after each note starts. A yellow warning appears when it is longer than the note's volume envelope.
+- **SYNC** (under POS DELAY): note values at the project tempo (1/16 to 4 bars) instead of milliseconds. With SYNC on, the knob is hidden and a **x** field sets how many note values (1-8). Fixed when the note starts.
+- **LENGTH**: how long the source sounds after its POS DELAY before it has faded out. 0 = the whole note. It has the same **SYNC** and **x** choices.
+- **CURVE**: the shape of that fade: 0 % = straight, above = fast first, below = slow first.
+- Everything is off by default, so existing sounds are unchanged.
 )";
 
     const char* sampleText = R"(# SAMPLE
@@ -485,6 +487,7 @@ If Kickbase feels heavy, try REDUCE ANIMATIONS first, then lower the ANALYZER ra
         { HelpDialog::Topic::filter, "FILTER", filterText },
         { HelpDialog::Topic::fm, "FM", fmText },
         { HelpDialog::Topic::mix, "MIX", mixText },
+        { HelpDialog::Topic::timing, "TIMING", timingText },
         { HelpDialog::Topic::sample, "SAMPLE", sampleText },
         { HelpDialog::Topic::env, "ENV", envText },
         { HelpDialog::Topic::lfo, "LFO", lfoText },

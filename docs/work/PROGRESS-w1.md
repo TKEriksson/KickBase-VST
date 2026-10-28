@@ -509,3 +509,12 @@ Bygge Debug all: grönt, "Alla tester gick igenom" (rendersig oförändrad).
 - Gren `glass-breadcrumb` = snap-ticks + kick-ui + detta (kedjad). Brödsmulan ritas som glasdisplay med glödtext: `Theme::paintGlassDisplay` / `Theme::drawGlowText` (Theme.h), anropas i `TabbedPanel.h` paint.
 - Dubbletten (flikens namn som etikett i underflikarnas remsa) borttagen; krymper inte layouten (labelArea oanvänd).
 - Build + alla tester gick igenom. Skärmdump: scratchpad `crumb-analyzer.png` (KickbaseTool snapshot).
+
+## timing-levels (Arbetare 1, 2026-10-28)
+- Gren `timing-levels` = glass-breadcrumb + TIMING/LEVELS (kedjad). Egen flik TIMING bredvid MIX (`Source/Ui/InstrTimingPanel.*`), all timing-UI borttagen ur MIX.
+- 28 nya parametrar sist i layouten (`addEngineTimingExtraParams`, Params.cpp): MODE (GATE/SHIFT), LENGTH SYNC, DELAY x, LENGTH x per motor. Standard = som förut. SYNC-tid = antal x notvärde x takt, låst vid note-on. Hjälptexter + helpcheck + paramtest gröna.
+- SHIFT: motorn startar om efter POS DELAY; FM-envelopen och OSC-warp-envelopen startar också om. Pitch-envelopen är gemensam och startas inte om.
+- Diagram per motor (`gateAt`) med spelhuvud och släpplinje (atomer `notePlayTime`/`noteOffTime`, skrivs av senast spelade rösten).
+- LENGTH SYNC "TO BEAT" hoppad över: synthen har ingen taktposition, bara `bpm`.
+- blocksizetest: "tungt läge med 2/4/8 röster (stealing)" FALLER, men också på baslinjen 57ddb1a (byggd i separat worktree) med samma symptom. Alltså äldre fel, inte från TIMING. Behöver utredas separat (röststöld beror på blockstorlek, första skillnaden vid sample ~71-360).
+- Skärmdump: `%TEMP%\timing2.png` (snapshot instrument 20, KB_SOURCETAB=8).

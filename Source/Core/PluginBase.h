@@ -298,6 +298,8 @@ public:
     // det senaste värdet som minskning 0..1 (för ringen runt DUCK-ratten).
     std::array<SignalTap, ParamID::numInstrumentLayers> duckGainTaps;
     std::array<std::atomic<float>, ParamID::numInstrumentLayers> duckReduction {};
+    // TIMING-diagrammen: lagrets tid sedan anslaget och tiden för tonens släpp i sekunder (-1 = tyst / hålls). Skrivs av ljudtråden, läses av gränssnittet.
+    std::array<std::atomic<float>, ParamID::numInstrumentLayers> notePlayTime {}, noteOffTime {};
 
     // FUNDAMENTAL DUCK: dämpningen i dB som är i bruk just nu per motor (0 = av), för lampan på SIDECHAIN-fliken.
     std::array<std::atomic<float>, ParamID::numInstrumentLayers> fundamentalDuckDb {};

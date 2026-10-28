@@ -1195,9 +1195,11 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
                       Help::forParameter (ParamID::bass (layer, F::fmOn))); // FM efter FILTER: fliknummer 3 + oscsPerLayer
     mixPanel = std::make_unique<InstrMixPanel> (p, layer, layerAccent);
     sources.addTab ("MIX", layerAccent, *mixPanel);
+    timingPanel = std::make_unique<InstrTimingPanel> (p, layer, layerAccent);
+    sources.addTab ("TIMING", layerAccent, *timingPanel);
 
     // B1: förhandsknapp i flikraden. OSC 1-3 och SAMPLE spelar bara sin källa, FILTER/FM/MIX hela instrumentet (INSTR har sin egen knapp i sidan).
-    for (int tab = 1; tab <= 7; ++tab)
+    for (int tab = 1; tab <= 8; ++tab)
     {
         const auto source = tab - 1; // fliknummer 1-3 = OSC 1-3, 4 = SAMPLE (källa 3)
         const auto solo = tab <= 1 + ParamID::oscsPerLayer;

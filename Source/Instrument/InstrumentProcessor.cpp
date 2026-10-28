@@ -36,6 +36,7 @@ namespace
         Mixer::addStageParameters (layout); // SOUNDSTAGE-val per källa: nya parametrar sist
         Params::addEngineTimingParams (layout); // 5b: POS DELAY / LENGTH / CURVE per motor: nya parametrar sist
         Params::addKickMixParam (layout); // kickens MIX: sist
+        Params::addEngineTimingExtraParams (layout); // TIMING/LEVELS: DELAY MODE / LENGTH SYNC / antal: nya parametrar allra sist
         return layout;
     }
 
@@ -914,6 +915,8 @@ void InstrumentProcessor::renderSamples (int startSample, int endSample)
             amplitudeData[i] = b.amplitude;
         }
         fdHz[(size_t) layer] = bass.getFundamentalHz();
+        notePlayTime[(size_t) layer].store ((float) bass.playTimeSeconds(), std::memory_order_relaxed);
+        noteOffTime[(size_t) layer].store ((float) bass.noteOffTimeSeconds(), std::memory_order_relaxed);
     }
 }
 

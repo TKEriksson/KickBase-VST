@@ -47,6 +47,9 @@ public:
     // Den senast spelade rösten grundton i Hz (0 när den inte klingar): det FUNDAMENTAL DUCK dämpar.
     float getFundamentalHz() const { return voices[(size_t) lastVoice].isActive() ? voices[(size_t) lastVoice].getFrequencyHz() : 0.0f; }
     float getSampleFraction() const { return voices[(size_t) lastVoice].getSampleFraction(); }
+    // TIMING-diagrammen: den senast spelade rösten tid sedan anslaget (-1 när den är tyst) och tiden för släppet (-1 medan tonen hålls).
+    double playTimeSeconds() const { return voices[(size_t) lastVoice].playTimeSeconds(); }
+    double noteOffTimeSeconds() const { return voices[(size_t) lastVoice].noteOffTimeSeconds(); }
     // Röster som klingar eller väntar på en ton (för test och gränssnitt).
     int countSounding() const;
     // Tonen (eller glidemålet) röst k är på väg mot (för test).

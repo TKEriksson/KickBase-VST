@@ -107,7 +107,10 @@ namespace ParamID
                                      "SampleAmpOn", "SampleAmpMs", "SampleAmpShape", "SamplePitchOn", "SamplePitchSemis", "SamplePitchMs", "SamplePitchShape", "SampleReverse",
                                      "ADelayMs", "ADelaySync", "ALenMs", "ACurve", "BDelayMs", "BDelaySync", "BLenMs", "BCurve", "CDelayMs", "CDelaySync", "CLenMs", "CCurve",
                                      "SampleDelayMs", "SampleDelaySync", "SampleLenMs", "SampleCurve", "NoiseDelayMs", "NoiseDelaySync", "NoiseLenMs", "NoiseCurve",
-                                     "SubDelayMs", "SubDelaySync", "SubLenMs", "SubCurve", "FmDelayMs", "FmDelaySync", "FmLenMs", "FmCurve" };
+                                     "SubDelayMs", "SubDelaySync", "SubLenMs", "SubCurve", "FmDelayMs", "FmDelaySync", "FmLenMs", "FmCurve",
+                                     "ADelayMode", "ALenSync", "ADelayCount", "ALenCount", "BDelayMode", "BLenSync", "BDelayCount", "BLenCount", "CDelayMode", "CLenSync", "CDelayCount", "CLenCount",
+                                     "SampleDelayMode", "SampleLenSync", "SampleDelayCount", "SampleLenCount", "NoiseDelayMode", "NoiseLenSync", "NoiseDelayCount", "NoiseLenCount",
+                                     "SubDelayMode", "SubLenSync", "SubDelayCount", "SubLenCount", "FmDelayMode", "FmLenSync", "FmDelayCount", "FmLenCount" };
         static_assert (std::size (names) == (size_t) InstrumentField::count);
         return names[(size_t) field];
     }
@@ -527,6 +530,26 @@ namespace Params
         }
     }
 
+    void addEngineTimingExtraParams (Layout& layout)
+    {
+        using namespace juce;
+        const char* engineNames[] { "OSC 1", "OSC 2", "OSC 3", "Sample", "Noise", "Sub", "FM" };
+        for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
+        {
+            const auto title = "Instr " + String (layer + 1) + " ";
+            for (int engine = 0; engine < ParamID::numTimingEngines; ++engine)
+            {
+                const auto name = title + engineNames[engine] + " ";
+                const auto id = [layer, engine] (int which) { return ParamID::bass (layer, ParamID::timingExtraField (engine, which)); };
+                layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (0), 1 }, name + "Delay Mode", StringArray { "Gate", "Shift" }, 0));
+                layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (1), 1 }, name + "Length Sync",
+                                                                    StringArray { "Off", "1/16", "1/8", "1/4", "1/2", "1 bar", "2 bars", "4 bars" }, 0));
+                layout.add (std::make_unique<AudioParameterInt> (ParameterID { id (2), 1 }, name + "Delay Count", 1, 8, 1));
+                layout.add (std::make_unique<AudioParameterInt> (ParameterID { id (3), 1 }, name + "Length Count", 1, 8, 1));
+            }
+        }
+    }
+
     void addKickMixParam (Layout& layout)
     {
         layout.add (percent (ParamID::kickMix, "Kick Mix", 0.5f));
@@ -862,6 +885,10 @@ InstrumentParams ParamRefs::readInstrument (int layer, int rootMidiNote) const
         p.delaySync[(size_t) engine] = (int) get (ParamID::timingField (engine, 1));
         p.lengthMs[(size_t) engine] = get (ParamID::timingField (engine, 2));
         p.curve[(size_t) engine] = get (ParamID::timingField (engine, 3));
+        p.delayShift[(size_t) engine] = get (ParamID::timingExtraField (engine, 0)) > 0.5f;
+        p.lengthSync[(size_t) engine] = (int) get (ParamID::timingExtraField (engine, 1));
+        p.delayCount[(size_t) engine] = juce::jlimit (1, 8, (int) get (ParamID::timingExtraField (engine, 2)));
+        p.lengthCount[(size_t) engine] = juce::jlimit (1, 8, (int) get (ParamID::timingExtraField (engine, 3)));
     }
     return p;
 }
