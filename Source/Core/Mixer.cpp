@@ -27,9 +27,9 @@ String Mixer::paramID (int source, const String& field)
     return "mix" + name + field;
 }
 
-void Mixer::addParameters (AudioProcessorValueTreeState::ParameterLayout& layout)
+void Mixer::addSourceRange (AudioProcessorValueTreeState::ParameterLayout& layout, int firstSource, int endSource)
 {
-    for (int s = 0; s < numSources; ++s)
+    for (int s = firstSource; s < endSource; ++s)
     {
         const auto title = "Mixer " + (s == kickSource ? String ("Kick") : s < firstFxSource ? "Instr " + String (s - firstBassSource + 1) : sourceName (s)) + " ";
 
@@ -48,9 +48,21 @@ void Mixer::addParameters (AudioProcessorValueTreeState::ParameterLayout& layout
     }
 }
 
+void Mixer::addParameters (AudioProcessorValueTreeState::ParameterLayout& layout)
+{
+    addSourceRange (layout, 0, numLegacySources);
+}
+
 void Mixer::addStageParameters (AudioProcessorValueTreeState::ParameterLayout& layout)
 {
-    for (int s = 0; s < numSources; ++s)
+    for (int s = 0; s < numLegacySources; ++s)
+        layout.add (std::make_unique<AudioParameterBool> (ParameterID { paramID (s, "Stage"), 1 }, "Soundstage " + sourceName (s), true));
+}
+
+void Mixer::addExtraSourceParameters (AudioProcessorValueTreeState::ParameterLayout& layout)
+{
+    addSourceRange (layout, numLegacySources, numSources);
+    for (int s = numLegacySources; s < numSources; ++s)
         layout.add (std::make_unique<AudioParameterBool> (ParameterID { paramID (s, "Stage"), 1 }, "Soundstage " + sourceName (s), true));
 }
 
@@ -92,9 +104,9 @@ void Mixer::beginBlock()
             strip.lastGain = db <= minGainDb + 0.05f ? 0.0f : Decibels::decibelsToGain (db);
         }
         const auto gain = strip.lastGain;
-        const auto pan = jlimit (-1.0f, 1.0f, panParam[(size_t) s]->load());
-        // Balans: mitten ger oförändrad nivå, åt ena hållet tystnar den andra sidan.
-        const auto left = pan > 0.0f ? 1.0f - pan : 1.0f, right = pan < 0.0f ? 1.0f + pan : 1.0f;
+        const auto pan = std::abs (strip.panLock) <= 1.0f ? strip.panLock : jlimit (-1.0f, 1.0f, panParam[(size_t) s]->load());
+        float left = 1.0f, right = 1.0f;
+        panGains (pan, left, right);
 
         if (fresh)
         {
@@ -112,8 +124,22 @@ void Mixer::beginBlock()
     fresh = false;
 }
 
+void Mixer::setPanLock (int source, float pan)
+{
+    auto& strip = strips[(size_t) source];
+    const auto wanted = std::abs (pan) <= 1.0f ? pan : 2.0f;
+    if (wanted == strip.panLock)
+        return;
+    strip.panLock = wanted;
+    const auto target = strip.panLock <= 1.0f ? strip.panLock : jlimit (-1.0f, 1.0f, panParam[(size_t) source]->load());
+    float left = 1.0f, right = 1.0f;
+    panGains (target, left, right);
+    strip.panLeft.setTargetValue (left); // rampen från nuvarande värde: ingen klick
+    strip.panRight.setTargetValue (right);
+}
+
 void Mixer::mix (int source, const float* left, const float* right, int numSamples, float level,
-                 AudioBuffer<float>& maxBus, AudioBuffer<float>& bypassBus, float* sendLeft, float* sendRight, AudioBuffer<float>* skipBus)
+                 AudioBuffer<float>& maxBus, AudioBuffer<float>& bypassBus, float* sendLeft, float* sendRight, AudioBuffer<float>* skipBus, float levelFrom)
 {
     auto& strip = strips[(size_t) source];
     const auto toMax = max[(size_t) source]->load() >= 0.5f;
@@ -121,14 +147,18 @@ void Mixer::mix (int source, const float* left, const float* right, int numSampl
     auto* outLeft = bus.getWritePointer (0);
     auto* outRight = bus.getWritePointer (1);
     float peakLeft = 0.0f, peakRight = 0.0f;
+    const auto ramped = levelFrom >= 0.0f && levelFrom != level;
+    const auto levelStep = ramped ? (level - levelFrom) / (float) std::max (1, numSamples) : 0.0f;
+    auto currentLevel = ramped ? levelFrom : level;
 
     for (int i = 0; i < numSamples; ++i)
     {
         const auto gain = strip.gain.getNextValue();
         const auto l = left[i] * gain * strip.panLeft.getNextValue();
         const auto r = (right != nullptr ? right[i] : left[i]) * gain * strip.panRight.getNextValue();
-        outLeft[i] += l * level;
-        outRight[i] += r * level;
+        outLeft[i] += l * currentLevel;
+        outRight[i] += r * currentLevel;
+        currentLevel += levelStep;
         if (sendLeft != nullptr)
             sendLeft[i] = l;
         if (sendRight != nullptr)

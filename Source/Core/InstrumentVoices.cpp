@@ -27,6 +27,21 @@ void InstrumentVoices::reset()
 void InstrumentVoices::setParams (const InstrumentParams& newParams)
 {
     params = newParams;
+    baseCutoffHz = newParams.cutoffHz;
+    if (cutoffLockHz > 0.0f)
+        params.cutoffHz = cutoffLockHz;
+    for (int k = 0; k < maxVoices; ++k)
+        if (k == lastVoice || voices[(size_t) k].isActive())
+            voices[(size_t) k].setParams (params);
+}
+
+void InstrumentVoices::setCutoffLock (float hz)
+{
+    const auto wanted = hz > 0.0f ? hz : 0.0f;
+    if (wanted == cutoffLockHz)
+        return;
+    cutoffLockHz = wanted;
+    params.cutoffHz = wanted > 0.0f ? wanted : baseCutoffHz;
     for (int k = 0; k < maxVoices; ++k)
         if (k == lastVoice || voices[(size_t) k].isActive())
             voices[(size_t) k].setParams (params);

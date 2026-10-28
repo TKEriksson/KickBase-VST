@@ -64,7 +64,7 @@ namespace
 
 namespace
 {
-    // "None", "FX1" ... "FX11": platsen är den gamla bokstaven A-E och sedan fler (sparade värden är index).
+    // "None", "FX1" ... "FX12": FX12 är sist så att sparade värden (index) behåller sin betydelse.
     juce::StringArray fxChannelChoices()
     {
         juce::StringArray choices { "None" };
@@ -110,7 +110,8 @@ namespace ParamID
                                      "SubDelayMs", "SubDelaySync", "SubLenMs", "SubCurve", "FmDelayMs", "FmDelaySync", "FmLenMs", "FmCurve",
                                      "ADelayMode", "ALenSync", "ADelayCount", "ALenCount", "BDelayMode", "BLenSync", "BDelayCount", "BLenCount", "CDelayMode", "CLenSync", "CDelayCount", "CLenCount",
                                      "SampleDelayMode", "SampleLenSync", "SampleDelayCount", "SampleLenCount", "NoiseDelayMode", "NoiseLenSync", "NoiseDelayCount", "NoiseLenCount",
-                                     "SubDelayMode", "SubLenSync", "SubDelayCount", "SubLenCount", "FmDelayMode", "FmLenSync", "FmDelayCount", "FmLenCount" };
+                                     "SubDelayMode", "SubLenSync", "SubDelayCount", "SubLenCount", "FmDelayMode", "FmLenSync", "FmDelayCount", "FmLenCount",
+                                     "FxSendTo1", "FxSendTo2", "FxSendTo3", "FxSendTo4", "FxSendTo5", "FxSendTo6", "FxSendTo7", "FxSendTo8", "FxSendTo9", "FxSendTo10", "FxSendTo11", "FxSendTo12" };
         static_assert (std::size (names) == (size_t) InstrumentField::count);
         return names[(size_t) field];
     }
@@ -555,6 +556,19 @@ namespace Params
         layout.add (percent (ParamID::kickMix, "Kick Mix", 0.5f));
     }
 
+    void addFxMatrixParams (Layout& layout)
+    {
+        // Allra sist: ID, preset-index och render-hash för äldre ljud ändras inte. Alla 0 / av = som förut.
+        for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
+            for (int to = 0; to < ParamID::numFxSendTargets; ++to)
+                layout.add (percent (ParamID::bass (layer, ParamID::fxSendToField (to)),
+                                     "Instr " + juce::String (layer + 1) + " FX Send " + juce::String (to + 1), 0.0f));
+        for (int to = 0; to < ParamID::numFxSendTargets; ++to)
+            layout.add (percent (ParamID::kickFxSendToIds[to], "Kick FX Send " + juce::String (to + 1), 0.0f));
+        for (int ch = 0; ch < ParamID::numFxSendTargets; ++ch)
+            layout.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { ParamID::fxMuteIds[ch], 1 }, "FX " + juce::String (ch + 1) + " Mute", false));
+    }
+
     void addKickToggleParams (Layout& layout)
     {
         layout.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { ParamID::kickSynthOn, 1 }, "Kick Synth On", true));
@@ -721,15 +735,19 @@ KickParams ParamRefs::readKick (int keyPitchClass) const
     p.mix           = get (ParamID::kickMix);
     p.sampleTuneSemis = get (ParamID::kickSampleTune);
     p.sampleOffsetMs = get (ParamID::kickSampleOffset);
+    // Fasta ID:n (ingen sträng byggs på ljudtråden).
+    static constexpr const char* clickIds[2][5] = { { "kickClick2Level", "kickClick2Length", "kickClick2Tone", "kickClick2Delay", "kickClick2Mode" },
+                                                    { "kickClick3Level", "kickClick3Length", "kickClick3Tone", "kickClick3Delay", "kickClick3Mode" } };
+    static_assert (KickParams::numExtraClicks == 2, "clickIds needs one row per extra click");
     for (int i = 0; i < KickParams::numExtraClicks; ++i)
     {
-        const auto key = juce::String ("kickClick") + juce::String (i + 2);
+        const auto* id = clickIds[i];
         auto& c = p.extraClicks[i];
-        c.level    = get ((key + "Level").toRawUTF8());
-        c.lengthMs = get ((key + "Length").toRawUTF8());
-        c.toneHz   = get ((key + "Tone").toRawUTF8());
-        c.delayMs  = get ((key + "Delay").toRawUTF8());
-        c.mode     = getChoice ((key + "Mode").toRawUTF8());
+        c.level    = get (id[0]);
+        c.lengthMs = get (id[1]);
+        c.toneHz   = get (id[2]);
+        c.delayMs  = get (id[3]);
+        c.mode     = getChoice (id[4]);
     }
     p.sampleStartMs = get (ParamID::kickSampleStart);
     p.sampleReverse = get (ParamID::kickSampleReverse) >= 0.5f;

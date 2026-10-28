@@ -24,6 +24,9 @@ public:
     // aktiveras får dem när tonen börjar; lediga röster kostar inget.
     void setParams (const InstrumentParams& newParams);
     void setTempo (double newBpm);
+    // Parameterlås (pianorullen): cutoff i Hz som ersätter parametern från och med nästa ton, tills ett nytt anrop. hz <= 0 = inget lås.
+    // Överlever setParams (som körs varje block); anropas i ljudtråden precis före noteOn, så filtret får värdet från första samplet.
+    void setCutoffLock (float hz);
     // 1..maxVoices. Röster över gränsen tonas ut på 3 ms (de äldsta först), de klipps inte.
     void setNumVoices (int count);
     int getNumVoices() const { return numVoices; }
@@ -74,6 +77,7 @@ private:
     std::array<InstrumentSynth, maxVoices> voices;
     std::array<Slot, maxVoices> slots;
     InstrumentParams params;
+    float baseCutoffHz = 300.0f, cutoffLockHz = 0.0f; // parametern som den lästes, och låset (0 = av)
     double bpm = 120.0;
     int numVoices = 1;
     int lastVoice = 0;

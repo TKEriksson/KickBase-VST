@@ -544,3 +544,83 @@ Bygge Debug all: grönt, "Alla tester gick igenom" (rendersig oförändrad).
 - Bara ytan, ingen ljudkod: `PianoRoll.h` `Lane`/`lanes` (max 4), `PianoRoll.cpp` resized/paint/mouseDown/mouseDrag (`Drag::splitter`), `showLaneMenu`, `addLane`. Lane 0 = VEL (alltid först, kan inte tas bort). Höjder är medlemmar (sparas inte i presetet). Övriga lanes visar bara en platshållare. Hjälptext i `HelpDialog.cpp:9`.
 - Debug all grön, alla tester gick igenom. Ej synligt verifierad i en snapshot.
 - DAW (Lemon): pianorullen: "+ LANE" under tangenterna lägger till en lane; klicka namnet för att byta/ta bort; dra den tunna listan ovanför en lane för att ändra höjd; VEL fungerar som förut.
+## Undersökning: 12 FX-kanaler + dynamiskt antal synliga (Arbetare 1, 28 okt, ingen kod)
+Underlag: `docs/work/plan-fx-send-matrix.md`. Slutsats: en konstant (`Effects.h:23`) styr nästan allt, så 12 är mest siffror och en static_assert; det svåra är att (a) kanal 12 får bokstaven L, (b) alla nya parametrar måste läggas SIST i layouten, (c) UI:t har fast layout för 11.
+
+### Hårdkodat (fil:rad)
+- `Effects.h:23-25` numEffectChannels/slotsPerChannel/knobsPerSlot; `:190-191` SignalTap-arrayer per kanal (följer konstanten).
+- `PluginBase.cpp:14` static_assert `numEffectChannels == 11` -> måste ändras till 12 (avsiktligt stopp).
+- `Effects.cpp:81-86` kanalbokstav `'A'+channel`: kanal 12 = "L", id `fxL1Type`, `fxLLevel`, `fxLDuck`.
+- `Effects.cpp:91` isEffectParameter: tillåter A..'A'+N-1 och undantar bara `fxKey`. Med L blir "fxL.." träff; kolla att inget annat id börjar på `fxL` (grep). `fxKey` (K) är redan undantaget.
+- `Effects.cpp:2326-2350` Impl: ~12 st `std::array<..., numEffectChannels>` (kedjor, strips, comp, level, duck, buffrar, active/sent/idle); loopar `:346, 560, 2360, 2372, 2400, 2447`; jlimit i accessorer `:2424, 2437, 2442`. Följer konstanten, inget att skriva om.
+- `Params.cpp:67-74` valen "None, FX1..FX11" byggs av konstanten; sparat värde är index, så "FX12" sist ändrar inga gamla värden. `:220,240` kickFxAmount/fxAmount oförändrade.
+- `Mixer.h:15` numSources = 1+10+N -> 23. Alla Mixer-arrayer `:56-58` och loopar `Mixer.cpp:32,53,59,85` följer. Id: `Mixer.cpp:22-27` ger `mixFxL<Gain|Pan|Duck|Max|Stage>`.
+- `InstrumentProcessor.cpp:992-1017` per-källa-sändning (en kanal + amount + SEND-läge); `:1019-1038` channelDuck-array och retur-loop; `:1041` stageSkip över numSources. Matrisen ersätter/utvidgar `:992-1002` och `:1008-1017`.
+- `PluginBase.cpp:92-113` fxChannelUsageMask (bitmask `1<<channel`, int räcker till 31); `:510,520` fxPresetNames jlimit; `:609,723` state spara/ladda `presetFx<n>`; `:1531,1699,1715,1766` användarpreset + firstFxChannel; `PluginBase.h:48,139-140,638`.
+- UI med fast 11: `EffectsPage.h:80` channelButtons-array; `EffectsPage.cpp:272` (tooltip "FX1-FX11"), `:295,335,342,351,371,386` (`perColumn=(N+1)/2`, två kolumner); `MixerPage.cpp:232,263,283,288,332,347,358,363,365` ("FX CHANNELS n/N"); `SoundstagePage.h:23-24`, `.cpp:26,62` (stageButtons per källa, 23 knappar); `PresetButton.cpp:259,359,369,378,402` (val av ledig kanal, `result <= numEffectChannels`); `Modules.cpp:1166` FxSendControl (en kanal) -> blir lista per kanal; `StepSequencer.cpp:33,161` använder fxAmount som radratt.
+- Verktyg/text: `ToolLayer.cpp:123-126,627,763` (kanalnamn A..N, siffror 1..N), `LiveCodeComplete.h:161`; hjälp/texter `Help.cpp:147,150,153-155`, `HelpDialog.cpp:87,264,267` (nämner FX1-FX11, fxA..fxK; `:87` säger t.o.m. FX A-E = redan föråldrat).
+- Inte berörda: `Modulation.h:37` (egen numSources), `MixAnalysis.h:30` (kick, instrument, master), `LiveCodePage.h:149` (lockButtons, annat 11).
+
+### Sidechain / in- och utgångar
+- Instrument har bara utgångar (Main, Kick, Instr 1-10: `InstrumentProcessor.cpp:48-60`), ingen extern sidechain-ingång; FX-versionen har en stereoingång (`FxProcessor.cpp:25-27`). Effektkanalerna får inga egna bussar, så 12:e kanalen kräver inga nya bussar.
+- SIDECHAIN-effekterna lyssnar på interna källor (`SourceSignals`, `InstrumentProcessor.cpp:1023-1030`: kick + instrument) och duckning är per kanal (`fxLDuck` + `channelDuck`). Kanal 12 följer med automatiskt.
+- FX-pluginet har egen sändlogik (`Fx/FxProcessor.cpp:88,146`, fxKey, fxAmount): matrisen behöver ett beslut där (troligen bara kanal 1 som idag).
+
+### Risker
+1. **Parameterordning**: JUCE-layouten är ordningsberoende för värdens automation. Kanal 12:s `fxL*`, `mixFxL*` och dess Stage-bool genereras i slingor över kanaler/källor, så de hamnar i MITTEN av layouten (efter K, före det som kommer sedan) och skjuter alla senare index. De måste läggas i egna funktioner SIST (efter alla 132 send-parametrar eller strax före, men efter allt befintligt) med oförändrade ID för resten. Samma för Mixer::addStageParameters. Kontrollera mot paramtest och preset-hash.
+2. **Rendersig**: 12:e kanalen får bara ljud om något skickas dit; `isIdle` hoppar över tomma kanaler (`InstrumentProcessor.cpp:1034`), så tom kanal 12 ger exakt samma ljud. Kontrollera ändå att summeringen i Effects inte ändrar flyttalsordning (ny kanal sist i summan).
+3. **132 nya send-parametrar** (11 källor x 12 kanaler) + Help-texter för helpcheck; paramtest/helpcheck-listor måste få dem. Kickens fxChannel/fxAmount/fxSend behålls som de är; gamla presets mappas vid laddning (amount>0 på vald kanal => motsvarande matriscell), utan att ändra gamla ID.
+4. **Två sändningar från en källa** summeras: `effects.send` (`InstrumentProcessor.cpp:1002`) gör `+=` i kanalens buffert? Verifiera (Effects.cpp send) så att insert-läget (torr = 1-amount) bara gäller den gamla enkanalsvägen.
+5. **Dynamiskt antal**: antalet sparas som state-property (som `jogKind`, `PluginBase.cpp:613`), inte parameter. Kanaler som används av ett laddat preset måste alltid synas (bitmask `fxChannelUsageMask` finns redan, `:92`). Ta bort kanal med effekter/sändningar: fråga först. Alla fasta arrayer i UI måste bli dynamiska (EffectsPage kolumnlayout, MixerPage räknare, SoundstagePage 23 knappar: bredd/höjd räcker inte troligen, behöver scroll eller två rader).
+6. **Mixer/Soundstage växer till 23 källor**: fler fält i MixerPage och SoundstagePage, MixerPage kan behöva scroll. Dolda kanaler bör dölja sina mixerremsor men behålla värden.
+7. **Hela FX-pluginet**: 12:e kanalen i FX-versionen har ingen särskild ingång, men fxKey/fxAmount-logiken (`FxProcessor.cpp:88,146`) måste få samma id-undantag som `Effects.cpp:91`.
+8. **CPU**: tomma kanaler är idle (`Effects.cpp:2348-2349`), så 12 kanaler kostar bara det som används. Kör blocksizetest före release.
+
+### Förslag på ordning
+1. Konstant 12 + static_assert + isEffectParameter-koll + parameter-ordning sist, rendersig oförändrad (litet steg, testa först).
+2. Dynamiskt antal synliga kanaler (state + +/− i EffectsPage/MixerPage/SoundstagePage), fortfarande gammal sändning.
+3. De 132 matrisparametrarna sist + `InstrumentProcessor`-sändningen + FxSendControl som lista + hjälptexter + tester ur planen.
+
+## Steg 1 – konkret plan (Arbetare 1, 2026-10-28): kanal 12, inget nytt beteende
+
+Mål: konstanten blir 12, kanal 12 ("L") finns som parametrar, men inget i ljud, ID eller hostindex för de gamla parametrarna ändras. Ingen UI-ändring (kanal 12 syns inte förrän steg 2).
+
+### Konstanter (`Effects.h:23`, `Mixer.h:15`)
+- Ny `numLegacyEffectChannels = 11` (de gamla slingorna) bredvid `numEffectChannels = 12`.
+- `Mixer.h:15` `numSources = 1 + maxInstruments + numEffectChannels` blir 23. Ny `numLegacySources = 22`.
+- `PluginBase.cpp:14` static_assert: `numEffectChannels == 12 && numLegacyEffectChannels == 11 && slotsPerChannel == 5`.
+
+### Parameterordning (det som skyddar hostindex)
+1. `Effects::addParameters` (`Effects.cpp:344`): slingan går `channel < numLegacyEffectChannels`; kroppen flyttas till `addChannelParameters (layout, channel)` (samma ID, samma ordning inuti kanalen, version 1).
+2. Ny `Effects::addExtraChannelParameters (layout)` = `addChannelParameters (layout, 11)`.
+3. `Mixer::addParameters` (`Mixer.cpp`): slingan går `s < numLegacySources`. `Mixer::addStageParameters` likadant. Ny `Mixer::addExtraSourceParameters (layout)` lägger `mixFxLGain/Pan/Duck/Max` och sedan `mixFxLStage` (bool, default true).
+4. `InstrumentProcessor.cpp:15-39` `createLayout`: de två nya anropen läggs efter `Params::addEngineTimingParams`, sist före `return`. `FxProcessor.cpp:7-20`: `addExtraChannelParameters` sist efter `addKickToggleParams` (Mixer finns inte i FX-versionen).
+5. `fxChannelChoices` (`Params.cpp:67-74`): "FX12" läggs sist, så sparade index 0..11 betyder samma som förut. Kickens `fxChannel` har redan versionstips 1, oförändrat.
+Steg 3 lägger sedan de 132 sändningsparametrarna efter dessa, så ordningen blir: gammalt, kanal 12, matris.
+
+### Resten av 11-beroenden som måste bli 12 eller förbli 11
+- `Effects.cpp:81-92`: `channelName`/`isEffectParameter` följer `numEffectChannels` (ger "fxL"). Grep visar att inget annat ID börjar på `fxL`; `fxKey` är redan undantaget. Samma undantag som `FxProcessor.cpp:88,146`.
+- **Hittat nu:** `MixAnalysis.cpp:1666` har ett hårdkodat `id[2] <= 'K'`; ska bli `'A' + numEffectChannels - 1`, annars räknas kanal 12 inte i analysen.
+- Impl-arrayerna `Effects.cpp:2326-2350` och slingorna `:346, 560, 2360, 2372, 2400, 2447` samt jlimit `:2424, 2437, 2442` följer `numEffectChannels` (12). Kanal 12 summeras SIST i return-summan, så flyttalsordningen för kanal 1-11 är densamma.
+- `InstrumentProcessor.cpp:1019-1041` (channelDuck, setSources, stageSkip) följer `numEffectChannels`/`numSources`; tom kanal är idle (`:1034`).
+- `PluginBase.cpp:92-113` bitmask (int räcker, 12 bitar), `:509-520` fxPresetNames, `:609` `presetFx<n>`-slingan (11 -> 12 fack; gamla states saknar fack 12 = tomt), `:1531/1699/1715/1766` fria kanaler. UI-filerna (`EffectsPage`, `MixerPage`, `SoundstagePage`, `PresetButton`, `Modules.cpp:1166`, `StepSequencer`, `ToolLayer`) rörs INTE i steg 1: de har egna fasta 11 och visar därför fortfarande 11 (det är steg 2). Måste kompilera: ändra bara de ställen där en 11-array indexeras med `numEffectChannels`.
+
+### Hur "rendersig oförändrad" bevisas (i ordning, alla på main före ändring = referens)
+1. **Före kodändring:** på main/min gren spara referensen: `paramtest`-lista (alla ID i layoutordning, både Instrument och FX) till `docs/work/layout-ids-before.txt`, samt rendersig/rendersigwide/rendersigtb303/rendersigreal-utdata.
+2. **Indextest (nytt, litet, i `Tool.cpp` nära `:1783`):** ny layout minus de 5+... nya ID (`fxL*`, `mixFxL*`) måste vara IDENTISK i ordning med `layout-ids-before.txt`, och de nya ID ligger efter sista gamla index. Det är det som bevisar att inget hostindex flyttats.
+3. **Rendersig x4** efter ändring: byte-identiska mot referensen (tom kanal 12 är idle och summeras sist).
+4. **StateTests**: gamla presets/state laddas (inga `presetFx11`/`mixFxL`-nycklar) och ger samma rendering; nytt state med kanal 12 round-trip.
+5. **paramtest + helpcheck**: de nya 5 mixer- och ca 80 kanalparametrarna behöver hjälptext om `helpcheck` kräver det (Help.cpp skrivs då i samma steg). `PresetAudit.inl:18` kontrolleras (rör inte `PresetData.inl`).
+6. `build.bat Debug all` grön; blocksizetest inte nu (bara före release).
+
+### Risk/öppet
+- Hostens automation av FX-kanalens fältnamn: nya parametrar är nya ID, så inga gamla sparade automationer berörs.
+- Om indextestet visar att JUCE-layouten ändå skjutits: avbryt, ingen commit.
+- Kanal 12 syns inte i UI i steg 1, men går att nå via Matrix/automation; det är OK och testas bara via parametrar.
+
+### Steg 1 klart (Arbetare 1, 28 okt, gren fx12, lokal commit, ingen push)
+- ID-ordning: params-diff mot pl-presets (fb12037) visar bara FX12 sist i `fxChannel` samt nya `fxL*`/`mixFxL*` sist (86 instrument-, 81 fx-rader). Inga hostindex flyttade.
+- `build.bat Debug all` grön, "Alla tester gick igenom" (inkl. StateTests). `paramtest`: instrument 3562 och fx 1110, 0 fel. `helpcheck`: 0 utan förklaring.
+- `audit effects` startades men gav bara första raden inom 280 s (ej fullkörd).
+- Rendersig: verktyget är icke-deterministiskt mellan körningar av SAMMA exe (Debug och Release). Wavetable-bakgrundstråden (`Wavetable.cpp:757-776`) är en orsak, `Wavetables::ensureAll()` före rendersig (Tool.cpp) räckte inte. Jämförelsen är därför ej avgörande; PL har avstått från den.
+- Kanal 12 syns inte i UI förrän steg 2; `firstFreeFxChannel()` kan returnera kanal 12.

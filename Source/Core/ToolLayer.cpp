@@ -791,9 +791,12 @@ var ToolLayer::getState (const var& args) const
     for (int layer = 0; layer < Pattern::numNoteLayers; ++layer)
     {
         const auto isKick = layer == Pattern::kickLayer;
-        juce::Array<var> notes, stacked;
+        juce::Array<var> notes, stacked, locks;
         processor.pattern.forEachNote (layer, [&] (int tick, const Pattern::Note& n)
         {
+            for (int param = 0; param < Pattern::numLocks; ++param)
+                if (n.hasLock (param))
+                    locks.add (var (juce::Array<var> { tick, Pattern::lockNames()[param], round4 (n.lock[(size_t) param].load()) }));
             for (int index = 1; index < Pattern::maxStack; ++index) // polyfoni: staplade toner på samma tick
                 if (Pattern::StackNote s; processor.pattern.getStack (layer, tick, index, s))
                     stacked.add (var (juce::Array<var> { tick, s.length, s.pitch, round4 (s.velocity), s.slide }));
@@ -817,6 +820,8 @@ var ToolLayer::getState (const var& args) const
         put (entry, "notes [tick, length, pitch, velocity, glide]", notes);
         if (! stacked.isEmpty())
             put (entry, "stacked_notes [tick, length, pitch, velocity, glide] (extra notes on the same tick as a note above)", stacked);
+        if (! locks.isEmpty())
+            put (entry, "locks [tick, parameter, value 0-1] (per-note value that overrides the knob; set with cutoff/pan/fxsend on a note)", locks);
         put (entry, "piano_roll_layer", processor.pattern.isCustom (layer));
         put (entry, "bars", processor.pattern.lengthBars (layer));
         put (entry, "length_mode", processor.pattern.isLengthAuto (layer) ? juce::var ("auto") : juce::var ("locked")); // auto: följer tonerna, locked: ett valt antal takter
@@ -1131,6 +1136,9 @@ var ToolLayer::setPattern (const var& args)
                     intervals[(size_t) i] = (int) (*chord)[i];
                 added.setChord (intervals);
             }
+            for (int param = 0; param < Pattern::numLocks; ++param) // värde per ton (0..1), se Pattern::lockNames
+                if (const juce::Identifier key (Pattern::lockNames()[param]); note.hasProperty (key))
+                    pattern.setLock (layer, tick, param, (float) (double) note[key]);
         }
         pattern.setCustom (layer, true);
     }
@@ -1164,11 +1172,13 @@ var ToolLayer::setPattern (const var& args)
     {
         pattern.refreshLengths();
         const auto sourceBars = std::max (1, pattern.contentBars (layer));
-        struct Copy { int tick, length, pitch; float velocity; bool slide; Pattern::Chord chord; std::vector<Pattern::StackNote> stack; };
+        struct Copy { int tick, length, pitch; float velocity; bool slide; Pattern::Chord chord; std::vector<Pattern::StackNote> stack; std::array<float, Pattern::numLocks> locks; };
         std::vector<Copy> copies;
         pattern.forEachNote (layer, [&] (int tick, const Pattern::Note& n)
         {
-            Copy c { tick, n.length.load(), n.pitch.load(), n.velocity.load(), n.slide.load(), n.getChord(), {} };
+            Copy c { tick, n.length.load(), n.pitch.load(), n.velocity.load(), n.slide.load(), n.getChord(), {}, {} };
+            for (int param = 0; param < Pattern::numLocks; ++param)
+                c.locks[(size_t) param] = n.lock[(size_t) param].load();
             for (int index = 1; index < Pattern::maxStack; ++index)
                 if (Pattern::StackNote s; pattern.getStack (layer, tick, index, s))
                     c.stack.push_back (s);
@@ -1181,6 +1191,9 @@ var ToolLayer::setPattern (const var& args)
                 if (tick < repeatTo * Pattern::ticksPerBar)
                 {
                     pattern.addNote (layer, tick, std::min (c.length, repeatTo * Pattern::ticksPerBar - tick), c.pitch, c.velocity, c.slide).setChord (c.chord);
+                    for (int param = 0; param < Pattern::numLocks; ++param)
+                        if (c.locks[(size_t) param] != Pattern::lockUnset)
+                            pattern.setLock (layer, tick, param, c.locks[(size_t) param]);
                     for (auto s : c.stack)
                     {
                         s.length = std::min (s.length, repeatTo * Pattern::ticksPerBar - tick);

@@ -58,7 +58,7 @@ private:
 };
 
 // Fliken EFFECTS: kanalvalet, kanalens nivå och duckning, platsraden och den valda platsens rattar.
-class EffectsPage : public juce::Component
+class EffectsPage : public juce::Component, private juce::Timer
 {
 public:
     explicit EffectsPage (PluginBase& processor);
@@ -71,13 +71,19 @@ private:
     void selectChannel (int channel);
     void selectSlot (int slot);
     void selectView (View view);
+    void timerCallback() override;
+    void refreshChannels();
+    void askRemoveLastChannel();
+
+    int shownChannels = 0;
 
     PluginBase& processor;
     int channel = 0, slot = 0;
     View view = View::fx;
     PresetButton presets;
     juce::TextButton helpButton;
-    std::array<juce::TextButton, numEffectChannels> channelButtons;
+    juce::ComboBox channelBox;
+    juce::TextButton removeButton;
     std::array<juce::TextButton, 3> viewButtons; // EQ, COMP, FX
     std::vector<std::unique_ptr<KnobComponent>> levels, ducks; // en per kanal, bara vald syns
     EffectSlotStrip strip;

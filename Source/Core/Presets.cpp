@@ -255,6 +255,14 @@ namespace Presets
             const auto l = instrumentLayerOf (id);
             return l >= 0 && id == ParamID::bass (l, field);
         };
+        // FX-matrisens send-belopp (kickens och lagrens) hör till routingen, inte till ljudet: de följer inte med ett kick- eller basljud.
+        auto isMatrixSend = [&id, &isLayerField]
+        {
+            for (int ch = 0; ch < numEffectChannels; ++ch)
+                if (id == ParamID::kickFxSendToIds[ch] || isLayerField (ParamID::fxSendToField (ch)))
+                    return true;
+            return false;
+        };
 
         switch (section)
         {
@@ -262,11 +270,11 @@ namespace Presets
                 return true;
             case Section::kick:
                 // (På/av är radens M-knapp i mönstret, som för instrumenten: ett kick-preset ska inte stänga av eller slå på kicken.)
-                return id.startsWith ("kick") && id != ParamID::kickFxChannel && id != ParamID::kickFxAmount && id != ParamID::kickFxSend && id != ParamID::kickOn;
+                return id.startsWith ("kick") && id != ParamID::kickFxChannel && id != ParamID::kickFxAmount && id != ParamID::kickFxSend && ! isMatrixSend() && id != ParamID::kickOn;
             case Section::bass:
                 return (instrumentLayerOf (id) == layer && ! isLayerField (InstrumentField::on) && ! isLayerField (InstrumentField::gate) && ! isLayerField (InstrumentField::delay) && ! isLayerField (InstrumentField::swing) && ! isLayerField (InstrumentField::humanize)
                         && ! isLayerField (InstrumentField::duck) && ! isLayerField (InstrumentField::grid)
-                        && ! isLayerField (InstrumentField::fxChannel) && ! isLayerField (InstrumentField::fxAmount) && ! isLayerField (InstrumentField::fxSend)
+                        && ! isLayerField (InstrumentField::fxChannel) && ! isLayerField (InstrumentField::fxAmount) && ! isLayerField (InstrumentField::fxSend) && ! isMatrixSend()
                         && ! isLayerField (InstrumentField::gateOn) && ! isLayerField (InstrumentField::gateGrid)
                         && ! isLayerField (InstrumentField::gateDepth) && ! isLayerField (InstrumentField::gateSmooth))
                     || id == ParamID::gateAttack || id == ParamID::gateRelease;

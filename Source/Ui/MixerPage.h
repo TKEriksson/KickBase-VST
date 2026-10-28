@@ -29,9 +29,9 @@ private:
     juce::Colour colour;
 
     juce::Slider pan, fader;
-    juce::TextButton duckButton { "SC" }, maxButton { "MAX" };
+    juce::TextButton duckButton { "SC" }, maxButton { "MAX" }, muteButton { "M" }; // M bara på effektkanaler (fxMute1..12)
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> panAttachment, faderAttachment;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> duckAttachment, maxAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> duckAttachment, maxAttachment, muteAttachment;
 
     std::array<float, 2> meterDb { -100.0f, -100.0f }, holdDb { -100.0f, -100.0f };
     juce::Rectangle<int> meterArea;
