@@ -658,3 +658,11 @@ Utvidgning av (z): gäller alla menyer i pluginet. Tre nivåer (huvudmeny, under
 - PL: inga fler bilder; (t) tagen av PL, (r)/(u) av A2.
 - (x) klar: SWING/HUMAN/DELAY en ratt per rad, Modules.cpp:2941-2951 (knobRowHeight 74). Kvar: SAMPLE/FILTER-ratt, (y) kick SYNTH-flik, steg 2-3, brödsmula, flikordning, HELP, (w) a/c/e.
 - Theme.h: Geminis hunkar inlagda (labelText/valueText, getHoverColour, paintConnectedContainer, glasdisplay ljusare/cyankant 0.45/inre skugga, glasknapp hover 0.6). Oanvända: labelText/valueText/getHoverColour/paintConnectedContainer.
+- FILTER klar (e2da265): FilterPanel.cpp:401 rattrad 74 px.
+- (y) klar (cc6a0ad): kick SYNTH/SAMPLE/ENVELOPE-flikar, SYNTH/SAMPLE-MIX i flikraden (Modules.cpp KickMixControl, Components.h HeaderControls), KEY i TUNING, kurvor ovanför.
+- (z) klar (50bc484): hover via Theme::getHoverColour på chip/subflik/pill/combobox (KickbaseLookAndFeel.cpp drawButtonBackground, drawComboBox), popupmeny med cyan hover och rundad bakgrund (drawPopupMenuBackground). Ingen ändring i TabbedPanel.h.
+- Granskningsfix (207a225): hjälpknappen på egen rad ovanför kurvorna (Modules.cpp ~1118), mixen krymper så att preset får minst 90 px (Components.h resized), mixetikett 100 px. applyTab anropar resized redan. Migrering av synthOn/sampleOn tas av Arbetare 2. Debug all grön.
+
+## 0.4-release-PDF (Arbetare 1, 2026-10-28)
+- `docs/releases/kickbase-0.4-testlista.pdf` (3 sidor, engelska, 0.3-upplägg): vad som ingår + Lemon-testlista. Underlag: release-0.4-utkast.md, fl-testlista.md, (y), (z).
+- Gjord av HTML via headless Edge. Inget från 0.5. Raden "gamla preset migreras" väntar på Arbetare 2:s migrering av kickSynthOn/kickSampleOn till MIX (finns inte i någon gren än).

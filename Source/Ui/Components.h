@@ -344,7 +344,10 @@ private:
             }
             if (mix != nullptr)
             {
-                mix->setBounds (area.removeFromRight (mixWidth));
+                // Mixen krymper först så att presetväljaren alltid får minst 90 px.
+                const auto minPreset = tabs != nullptr ? 90 : 0;
+                const auto width = std::max (0, std::min (mixWidth, area.getWidth() - minPreset - 14));
+                mix->setBounds (area.removeFromRight (width));
                 area.removeFromRight (14);
             }
             if (preset != nullptr)

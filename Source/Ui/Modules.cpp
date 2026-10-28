@@ -851,7 +851,7 @@ KickMixControl::KickMixControl (juce::AudioProcessorValueTreeState& apvts, juce:
 void KickMixControl::resized()
 {
     auto area = getLocalBounds();
-    label.setBounds (area.removeFromLeft (90));
+    label.setBounds (area.removeFromLeft (100));
     slider.setBounds (area);
 }
 
@@ -1114,10 +1114,9 @@ void KickModule::resized()
         return;
     }
 
-    // Hjälpknappen ligger uppe till höger över kurvorna.
-    const auto helpArea = area;
-    helpButton.setBounds (helpArea.getRight() - 48, helpArea.getY() + 4, 44, 22);
-    helpButton.toFront (false);
+    // Hjälpknappen får en egen smal rad överst, så att den inte täcker kurvornas övre högra hörn.
+    helpButton.setBounds (area.removeFromTop (24).removeFromRight (44));
+    area.removeFromTop (4);
 
     if (envelopeTabShown())
     {
