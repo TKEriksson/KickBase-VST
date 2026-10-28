@@ -52,3 +52,4 @@
 - 28 okt: Arbetare 1 klar med gemensam hjälpdialog (HelpDialog, flikar pianorulle/LIVE CODE/SOUNDSTAGE), lokal commit på play-pack. TOP DECAY oklart, Tobias tillfrågad, ligger sist i kön.
 - 28 okt: TOP DECAY definierat av Tobias = NOISE-decay på kicken (kickNoiseDecay, Params.cpp:194, tak 400 ms) utökas till kickens längd. Arbetare 1 fick uppgiften.
 - 28 okt: Tobias: allt i appen ska vara pa engelska. Arbetare 1 far oversatta SOUNDSTAGE-hjalpen och soka efter svenska UI-strangar.
+- 28 okt: Arbetare 2 far genrerna (max 3/kategori) och sedan Fas J (docs/school finns som utredning).
