@@ -398,3 +398,10 @@ Ordning: 1, 3, 2, sedan 4 efter svar från Arbetare 1. Ljudkod (InstrumentProces
 ## 0.4 punkt 2 – klar (Arbetare 2)
 - FX-popupen har knappen '- remove FXn' (Components.cpp, FxSendPopup::askRemoveLast). Bekräftelse om kanalen har effekter eller sends; Ctrl+Z återställer kanalen, effekter, EQ, kompressor, nivå och sends.
 - Effects.cpp removeLastChannel: egen undo-transaktion, fxChannelCount skrivs via undo-managern. Test: 'ta bort FX-kanal och ångra' (MasterTests.cpp). Debug all grönt.
+
+## 0.4 punkt 4 – PAUSAD (projektledaren, 28 okt)
+- Skriven men obyggd och ocommittad i worktree `KickBase-VST-w2`, gren `fx-matrix` (git status visar ändringarna): `Pattern.h` (lockFxChannel, fxChannelToLock/lockToFxChannel), `PianoRoll.h:131,259`, `PluginBase.h:433`, `InstrumentProcessor.h/.cpp` (fxSendLockChannel/Amount, applyNoteLocks, sendMatrix, static_assert), `ToolLayer.cpp`, `Tests/EngineTests.cpp` (FX-kanallås-test).
+- Kvar när den återupptas: bygg Debug all, kör rendersig/rendersigreal/rendersigwide mot baseline, meddela Arbetare 1 om API:t, commit.
+
+## 0.4 (r) – harmoniska editorn: förklaringar (Arbetare 2)
+- Tooltips per fält (WAVEFORM / dB / PHASE) via `HarmonicEditor::getTooltip` (HarmonicEditor.cpp:~71, juce::TooltipClient), HELP-knapp i fönstret, ny hjälpflik HARMONICS (HelpDialog.cpp `harmonicsText`, Topic::harmonics sist i enumen). Bara UI-text. Debug all grönt.

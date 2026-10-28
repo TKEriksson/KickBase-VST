@@ -149,3 +149,4 @@ Format: **Gör så** → *förväntat resultat*. Bocka av `[ ]` när det stämme
 - [0.4 p3, Lemon] PATTERN-raderna har bara en (större) VOL-ratt, ingen FX-ratt; låga rader ser rätt ut. FX-knappen på fliken visar None / FX / "2 x FX"; hovra visar kanalerna.
 
 - [ ] 0.4 punkt 2 (Lemon): Öppna FX-popupen på en instrumentrad, tryck '- remove FXn' på sista kanalen. Med effekter/sends ska en bekräftelse visas. Ctrl+Z ska återställa effekter, EQ, kompressor, nivå och sends.
+- (r) Öppna harmoniska editorn (OSC > tabell): håll musen över vågformen, dB- och PHASE-fälten (tips ska bytas), klicka HELP (fliken HARMONICS öppnas).
