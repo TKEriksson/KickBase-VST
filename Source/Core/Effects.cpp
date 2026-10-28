@@ -263,7 +263,9 @@ namespace Effects
                 value ("DEPTH", 0.0f, 1.0f, 0.0f, 0.7f, Unit::percent),
                 value ("DELAY", 0.1f, 10.0f, 2.0f, 1.5f, Unit::ms),
                 value ("FEEDBACK", -0.95f, 0.95f, 0.0f, 0.5f, Unit::percent),
-                mixKnob (0.5f) };
+                mixKnob (0.5f),
+                choice ("SHAPE", { "Sine", "Triangle" }, 0),
+                value ("SPREAD", 0.0f, 1.0f, 0.0f, 0.25f, Unit::percent) }; // right-channel LFO offset in cycles; 0.25 = the original sound
             table[(size_t) EffectType::transient] = {
                 value ("ATTACK", -1.0f, 1.0f, 0.0f, 0.0f, Unit::percent),
                 value ("SUSTAIN", -1.0f, 1.0f, 0.0f, 0.0f, Unit::percent),
@@ -522,7 +524,8 @@ namespace Effects
     {
         // Antal rattar före FX1: de nya rattarna (därefter) ska ha sitt standardvärde i stället för parameterns 0.5.
         const auto legacyCount = type == EffectType::distortion ? 4 : type == EffectType::echo ? 8 : type == EffectType::reverb ? 5
-                               : type == EffectType::maximizer ? 5 : type == EffectType::compressor ? 6 : knobsPerSlot;
+                               : type == EffectType::maximizer ? 5 : type == EffectType::compressor ? 6
+                               : type == EffectType::flanger ? 5 : knobsPerSlot;
         const auto& list = knobs (type);
         if (k < legacyCount || k >= (int) list.size() || k >= knobsPerSlot)
             return false;
@@ -1796,7 +1799,7 @@ namespace
     };
 
     // FLANGER: kort fördröjning (DELAY) som en sinus-LFO svänger med DEPTH, återkopplad (FEEDBACK, negativ ger ihåligt ljud).
-    // Höger kanals LFO ligger ett kvarts varv efter vänsters, så bilden blir bred.
+    // Höger kanals LFO ligger SPREAD varv efter vänsters (standard ett kvarts), så bilden blir bred. SHAPE: sinus eller triangel.
     struct FlangerFx
     {
         dsp::DelayLine<float, dsp::DelayLineInterpolationTypes::Linear> line;
@@ -1815,13 +1818,18 @@ namespace
         void process (AudioBuffer<float>& buffer, int numSamples, const Values& k, const Context& context)
         {
             const auto rate = k[0], depth = k[1], centre = k[2] * 0.001f * (float) context.sampleRate, feedback = k[3], wet = k[4];
+            const auto triangle = k[5] >= 0.5f;
+            const auto spread = (double) k[6];
             const auto increment = (double) rate / context.sampleRate;
             const auto channels = std::min (2, buffer.getNumChannels());
             for (int i = 0; i < numSamples; ++i)
             {
                 for (int ch = 0; ch < channels; ++ch)
                 {
-                    const auto lfo = (float) std::sin (MathConstants<double>::twoPi * (phase + 0.25 * ch));
+                    auto p = phase + spread * ch;
+                    p -= std::floor (p);
+                    const auto lfo = triangle ? (float) (p < 0.5 ? 4.0 * p - 1.0 : 3.0 - 4.0 * p)
+                                              : (float) std::sin (MathConstants<double>::twoPi * p);
                     const auto delay = jmax (1.0f, centre * (1.0f + depth * 0.9f * lfo));
                     auto* data = buffer.getWritePointer (ch);
                     const auto dry = data[i];

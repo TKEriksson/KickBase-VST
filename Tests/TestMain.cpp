@@ -9,6 +9,7 @@ int main()
     runFmPresetTests();
     runPersistFmTests();
     runAutoFixTests();
+    runFxTests();
 
     if (testFailures() > 0)
     {

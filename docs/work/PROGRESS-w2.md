@@ -207,3 +207,9 @@ Nu: programmet, rel-0.3 motornära punkter: 1) S3 Unison/Reese, 2) multisampling
 - Slarv fångat av testet: fönsterkanten (100 cent) föll på flyttalsfel; fixat med 0,01 cent marginal.
 - För Arbetare 1: mappa `Action::param` till UI/APPLY; fyll `PhaseInfo` ur `MixAnalysis::PhaseMetrics` (hjälpare `fromPhaseMetrics` byggs när UI-kopplingen behöver den).
 - Build `Debug all` grönt.
+
+## 2026-10-28 – fromPhaseMetrics och FX-kärnan (Arbetare 2)
+- `AutoFix::fromPhaseMetrics` (AutoFixMix.h) + test, commit 084cad0.
+- FX-kärnan RING/Echo/Flanger enligt `docs/work/fx-ring-echo-flanger-plan.md` (godkänd av PL): Flanger fick SHAPE (Sine/Triangle) och SPREAD (standard 0.25 = gamla ljudet) sist i tabellen, `newKnobDefault` legacyCount 5 (`Effects.cpp`). Nya `Tests/FxTests.cpp` (tabell, Flanger, Echo-tid, RING). Bygget grönt, alla tester gick igenom.
+- Echo ms-tid parkerad (alla 10 knobplatser används; PL frågar Tobias om knobsPerSlot).
+- Kvar för Arbetare 1: UI-etiketter SHAPE/SPREAD.
