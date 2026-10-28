@@ -59,6 +59,7 @@ public:
         void mouseMove (const juce::MouseEvent&) override;
         void mouseExit (const juce::MouseEvent&) override;
         void stoppedDragging() override; // döper undo-steget
+        double snapValue (double attempted, DragMode) override; // "st"-rattar fastnar vid ±12 och ±24
 
     private:
         KnobComponent& owner;
@@ -94,6 +95,7 @@ private:
     juce::String name, description;
     juce::Colour accent;
     bool modulatable = false;
+    bool semitones = false; // värdet visas i "st": snap och tickmärken vid ±12/±24
     bool dropHover = false;
     std::function<float()> liveMeter;
     juce::Colour liveColour;
@@ -136,13 +138,15 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> attachment;
 };
 
-// Kompakt FX-send i synthens flikrad: "FX", en kanalväljare (None/A/B/C) och en liten reglage för
-// hur mycket av ljudet som går genom kanalen. Högerklick visar menyn med DAW:ens val.
-class FxSendControl : public juce::Component
+// FX-send i synthens flikrad: "FX" och en knapp med ett sammandrag ("FX1 50%, FX3 30%" eller "None"). Knappen öppnar en popup med en rad per effektkanal
+// (FXn, på/av, reglage) för send-matrisen, raden för den gamla kanalen + beloppet (INS/SEND) och "+ add FX channel".
+class FxSendControl : public juce::Component, private juce::Timer
 {
 public:
+    // sendToIDs: matrisens belopp, ett per effektkanal (index = kanal).
     FxSendControl (juce::AudioProcessorValueTreeState& apvts, const juce::String& channelID, const juce::String& amountID, const juce::String& modeID,
-                   const juce::String& name, juce::Colour accent);
+                   const juce::StringArray& sendToIDs, const juce::String& name, juce::Colour accent);
+    ~FxSendControl() override;
 
     void resized() override;
 
@@ -154,13 +158,17 @@ public:
     };
 
 private:
+    void timerCallback() override;
+    void updateSummary();
+    void showPopup();
+
+    juce::AudioProcessorValueTreeState& apvts;
+    juce::String channelID, amountID, modeID, name;
+    juce::StringArray sendToIDs;
+    juce::Colour accent;
     juce::Label label;
-    ChoiceComponent::Box channel;
-    juce::TextButton mode;
-    AmountSlider amount;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> channelAttachment;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> amountAttachment;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> modeAttachment;
+    juce::TextButton button;
+    juce::String lastSummary;
 };
 
 // Raden längst ner som alltid förklarar det musen är över (tooltip-texten för kontrollen
@@ -326,7 +334,7 @@ private:
                 area.removeFromRight (14);
             }
             if (preset != nullptr)
-                preset->setBounds (area);
+                preset->setBounds (tabs != nullptr ? area.removeFromLeft (std::min (area.getWidth(), 170)) : area); // smalare väljare när det finns vyflikar
         }
     };
 

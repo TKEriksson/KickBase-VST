@@ -20,9 +20,10 @@ enum class EffectType { off, filter, distortion, eq, chorus, phaser, echo, rever
                         compressor, gate, comb, ringMod, bitcrusher, autoFilter, maximizer, ducker, disperser,
                         widener, flanger, transient, dynamicEq, octaver, bandDucker, shimmer, lowMultiplier, sidechainCurve, sidechainBands, phaseRotation, count }; // FX2 (sist i listan: projekt sparar typens index)
 constexpr int numEffectTypes = (int) EffectType::count; // inklusive Off
-constexpr int numEffectChannels = 11; // FX1 ... FX11
+constexpr int numLegacyEffectChannels = 11; // FX1 ... FX11: kanalerna som fanns före FX12; deras parametrar registreras först i layouten (index får aldrig flyttas)
+constexpr int numEffectChannels = 12; // FX1 ... FX12 (FX12 registreras sist, se Effects::addExtraChannelParameters)
 constexpr int slotsPerChannel = 5;
-constexpr int knobsPerSlot = 11; // P1-P8 är de ursprungliga; P9-P10 tillkom i FX1 och P11 i rel-0.3 (Echo TIME MS); gamla projekt får dem satta till neutralt av migrateLegacyKnobs
+constexpr int knobsPerSlot = 10; // P1-P8 är de ursprungliga; P9-P10 tillkom i FX1 (gamla projekt får dem satta till neutralt av migrateLegacyKnobs)
 
 // Ljudet från kicken och instrumenten som effekten SIDECHAIN lyssnar på (sida för sida, per block): 0 = kicken, 1-10 = instrumenten.
 // Pekarna gäller bara under det pågående blocket. Instrumentet fyller i dem; tomma pekare betyder att källan inte spelar.
@@ -46,7 +47,7 @@ namespace Effects
     juce::String knobParamID (int channel, int slot, int knob);
     // Gamla projekt (utan egenskapen fxKnobsV) saknar rattar som tillkommit sedan dess: sätter dem till sitt standardvärde (neutralt) i state-trädet.
     void migrateLegacyKnobs (juce::ValueTree& state);
-    constexpr int knobsVersion = 4; // 4: P11 (Echo TIME MS)
+    constexpr int knobsVersion = 3;
     // Rattar som tillkommit sedan FX1: sant och standardvärdet (0..1) om ratt k i typen är en sådan (saknas den i en fil ska den få detta, inte 0.5).
     bool newKnobDefault (EffectType type, int k, float& normalised);
     juce::String channelParamID (int channel, const juce::String& suffix);
@@ -76,7 +77,8 @@ namespace Effects
     juce::StringArray syncNames();
     double syncInQuarters (int index);
 
-    void addParameters (juce::AudioProcessorValueTreeState::ParameterLayout& layout);
+    void addParameters (juce::AudioProcessorValueTreeState::ParameterLayout& layout); // FX1-FX11
+    void addExtraChannelParameters (juce::AudioProcessorValueTreeState::ParameterLayout& layout); // FX12 (och senare): anropas SIST i layouten så att inget gammalt index flyttas
 
     // Kanalens EQ (högpass, fyra band, lågpass) och kompressor. Alltid med, men neutrala som
     // standard (inga gain, högpass av, ratio 1:1), och då körs ingen bearbetning alls.
@@ -124,6 +126,15 @@ namespace Effects
     void moveSlot (juce::AudioProcessorValueTreeState& apvts, int channel, int from, int to);
 
     EffectType slotType (const juce::AudioProcessorValueTreeState& apvts, int channel, int slot);
+
+    // Antalet effektkanaler som visas (gemensamt för alla väljare, FX-sidan och mixern). Sparas i state-trädet (egenskapen fxChannelCount), inte som
+    // parameter: det är en visningsinställning. Aldrig färre än den högsta kanal som används (send eller effekt), så gamla projekt visar allt.
+    int visibleChannels (const juce::AudioProcessorValueTreeState& apvts);
+    bool addChannel (juce::AudioProcessorValueTreeState& apvts); // visar en kanal till; falskt om alla redan visas
+    bool channelHasSends (const juce::AudioProcessorValueTreeState& apvts, int channel); // någon källa skickar hit (matris eller gamla kanal+belopp)
+    bool channelHasEffects (const juce::AudioProcessorValueTreeState& apvts, int channel); // någon effekt på, eller EQ ändrad
+    // Tar bort den sista synliga kanalen: nollställer dess sends, effekter och EQ och minskar antalet. Anroparen frågar användaren först.
+    bool removeLastChannel (juce::AudioProcessorValueTreeState& apvts);
 }
 
 // En effektkanal: platserna i ordning.
@@ -184,6 +195,8 @@ public:
 
     // Lägger `amount` av ljudet på kanalens ingång.
     void send (int channel, const float* left, const float* right, int numSamples, float amount);
+    // FX-matrisen: som send(), men beloppet glider från fromAmount till toAmount över blocket.
+    void sendRamped (int channel, const float* left, const float* right, int numSamples, float fromAmount, float toAmount);
 
     // Vad gränssnittet ritar per kanal: ljudet in i EQ:n, in i kompressorn, ut ur den, och
     // kompressorns förstärkning (i båda kanalerna).

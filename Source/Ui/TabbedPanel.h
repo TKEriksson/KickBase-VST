@@ -218,27 +218,20 @@ public:
             g.fillPath (stem);
             g.setColour (Theme::panelAlt);
             g.fillPath (stemInner);
-
-            if (labelArea.getWidth() > 50)
-            {
-                g.setColour (Theme::panelBorderDim);
-                g.drawVerticalLine (labelArea.getX(), (float) labelArea.getY() + 4.0f, (float) labelArea.getBottom() - 4.0f);
-                g.setColour (Theme::slate500);
-                Theme::drawTracked (g, stripLabel.isNotEmpty() ? stripLabel : currentTab.button->getButtonText(), labelArea.withTrimmedLeft (8).toFloat(), Theme::monoFont (10.0f, false),
-                                    0.14f, juce::Justification::centredLeft);
-            }
         }
         else
         {
-            // Brödsmulan (KICKBASE > NAMN [> undersida]) i rad 1 bredvid huvudmenyn ersätter den gamla 38 px-rubrikraden.
+            // Brödsmulan (KICKBASE > NAMN [> undersida]) som glasdisplay i rad 1 bredvid huvudmenyn ersätter den gamla 38 px-rubrikraden.
             if (crumbArea.getWidth() > 60)
             {
                 auto crumb = "KICKBASE  >  " + currentTab.button->getButtonText().toUpperCase();
                 if (crumbSuffix != nullptr)
                     if (const auto suffix = crumbSuffix(); suffix.isNotEmpty())
                         crumb << "  >  " << suffix.toUpperCase();
-                g.setColour (Theme::cyan.withAlpha (0.85f));
-                Theme::drawTracked (g, crumb, crumbArea.toFloat(), Theme::monoFont (9.5f, false), 0.14f, juce::Justification::centredLeft);
+                const auto glass = crumbArea.toFloat().reduced (0.0f, 1.0f);
+                Theme::paintGlassDisplay (g, glass);
+                Theme::drawGlowText (g, crumb, glass.reduced (10.0f, 0.0f), Theme::monoFont (9.5f, false), 0.14f,
+                                     juce::Justification::centredLeft, Theme::cyan.withAlpha (0.9f));
             }
 
             // Rad 2: sidans egna kontroller i en mörk remsa (samma stil som underflikarna).

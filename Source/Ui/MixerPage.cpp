@@ -121,6 +121,14 @@ MixerStrip::MixerStrip (PluginBase& p, int sourceIn)
     styleToggle (maxButton, colour, name + " MAX - " + Help::forParameter (Mixer::paramID (source, "Max")));
     addAndMakeVisible (maxButton);
     maxAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, Mixer::paramID (source, "Max"), maxButton);
+
+    if (source >= Mixer::firstFxSource)
+    {
+        const auto muteID = ParamID::fxMuteIds[source - Mixer::firstFxSource];
+        styleToggle (muteButton, colour, name + " MUTE - " + Help::forParameter (muteID));
+        addAndMakeVisible (muteButton);
+        muteAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, muteID, muteButton);
+    }
 }
 
 void MixerStrip::updateMeter()
@@ -138,6 +146,11 @@ void MixerStrip::resized()
 
     auto buttons = area.removeFromBottom (16);
     area.removeFromBottom (2);
+    if (source >= Mixer::firstFxSource)
+    {
+        muteButton.setBounds (area.removeFromBottom (16).reduced (1, 0));
+        area.removeFromBottom (2);
+    }
     if (Mixer::hasDuck (source))
     {
         duckButton.setBounds (buttons.removeFromLeft (buttons.getWidth() / 2).reduced (1, 0));
@@ -329,7 +342,7 @@ SourceToggles::SourceToggles (PluginBase& p, const juce::String& fieldIn, const 
     instrumentsButton.setColour (juce::TextButton::buttonColourId, Theme::layerColour (0).withAlpha (0.25f));
     instrumentsButton.setTooltip ("The instruments: click to choose which of them this applies to. The menu stays open so you can tick several.");
     fxButton.setColour (juce::TextButton::buttonColourId, Theme::effects.withAlpha (0.25f));
-    fxButton.setTooltip ("The effect channels (FX1-FX11): click to choose which of them this applies to. The menu stays open so you can tick several.");
+    fxButton.setTooltip ("The effect channels (FX1-FX12): click to choose which of them this applies to. The menu stays open so you can tick several.");
     for (auto* button : { &instrumentsButton, &fxButton })
     {
         button->setColour (juce::TextButton::textColourOffId, Theme::text);

@@ -138,6 +138,10 @@ struct InstrumentParams
     // 5b: tid per motor (OSC 1, OSC 2, OSC 3, SAMPLE, NOISE, SUB, FM): POS DELAY (ms, eller SYNC = notvärde 1..7 från tempot), LENGTH (0 = hela tonen), CURVE -1..1. Alla 0 = som förut.
     std::array<float, 7> delayMs {}, lengthMs {}, curve {};
     std::array<int, 7> delaySync {};
+    // TIMING/LEVELS: delayShift = SHIFT (motorn startar om helt efter POS DELAY), lengthSync 0 = ms, 1..7 = notvärde; delayCount/lengthCount = antal notvärden (1..8). Standard = som förut.
+    std::array<bool, 7> delayShift {};
+    std::array<int, 7> lengthSync {};
+    std::array<int, 7> delayCount { 1, 1, 1, 1, 1, 1, 1 }, lengthCount { 1, 1, 1, 1, 1, 1, 1 };
     InstrumentParams() { oscB.level = 0.0f; oscC.level = 0.0f; oscC.on = false; }
 
     // Samma inställningar med alla envelope-tider i ms (Sync räknat från tempot) och, om applyOnOff, ENV 1/FILTER ENV av inbakade:
@@ -188,6 +192,13 @@ public:
     // Rösten grundton i Hz just nu (glide och tonhöjdsmodulering inräknade); 0 före första tonen. Läses av FUNDAMENTAL DUCK.
     float getFrequencyHz() const { return (float) cachedFrequency; }
     bool isReleasing() const { return stage == Stage::release; }
+    // TIMING-diagrammen: tid sedan anslaget (-1 när rösten är tyst) och tiden då tonen släpptes (-1 medan den hålls).
+    double playTimeSeconds() const { return stage == Stage::idle ? -1.0 : noteTime; }
+    double noteOffTimeSeconds() const { return noteOffTime; }
+    // Motorns POS DELAY / LENGTH i sekunder för givna parametrar och tempo (SYNC räknas ur tempot; LENGTH 0 = av) och gaten vid tiden t: samma formler som rösten använder.
+    static double engineDelaySeconds (const InstrumentParams&, int engine, double bpm);
+    static double engineLengthSeconds (const InstrumentParams&, int engine, double bpm);
+    static float gateAt (double t, double delay, double length, float curve) noexcept;
 
     // Modulationskällorna: 0 = ENV 2, 1 = ENV 3, 2 = senaste tonens velocity, 3 = ett slumptal per ton, 4 = AMP ENV (ENV 1),
     // 5 = FILT ENV (filter-envelopens form, utan AMOUNT) (alla 0..1). AMP ENV och FILT ENV ger 0 när rutan är av.
@@ -307,6 +318,8 @@ private:
     // 5b: POS DELAY per motor (sekunder), låst i noteOn (SYNC räknas då från tempot); resetPending = motorns fas nollställs när fördröjningen passerats.
     std::array<double, 7> delaySeconds {};
     std::array<bool, 7> resetPending {};
+    std::array<double, 7> lengthSeconds {}; // LENGTH i sekunder när LENGTH SYNC är på: låst i noteOn (annars läses lengthMs live som förut)
+    std::array<bool, 7> lengthLocked {};
     float engineGate (int engine) const noexcept; // 0 före POS DELAY, sedan LENGTH/CURVE; exakt 1.0f när motorns tid är av
     ModEnvParams envTimes2, envTimes3; // ENV 2 och ENV 3 med tiderna i ms (ur params och tempot)
     void refreshEnvTimes();
@@ -324,6 +337,7 @@ private:
     int gateRemaining = 0;
     float velocity = 1.0f;
     double noteTime = 0.0;   // sekunder sedan senaste anslag (för filter-envelopen)
+    double noteOffTime = -1.0; // noteTime när tonen släpptes, -1 medan den hålls (bara för TIMING-diagrammen)
 
     // Filtret för mitten och sidan: samma inställning, så att det blir stereo utan att ljudet låter olika i vänster och höger. Modellbyte nollställer filtret som tar över.
     FilterUnit filterMid, filterSide;

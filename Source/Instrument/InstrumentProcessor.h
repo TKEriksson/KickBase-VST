@@ -100,6 +100,19 @@ private:
     juce::AudioBuffer<float> stageSkipBus; // källor utanför SOUNDSTAGE-valet (hoppar över stereoblocket)
     bool stageSkipUsed = false;
     juce::AudioBuffer<float> sendBus; // källan efter mixerfadern, på väg till en effektkanal
+    // FX-matrisen: förra blockets send-belopp per källa (kick = 0, instrument 1..) och kanal; -1 = inte läst än (då glider inget).
+    std::array<std::array<float, ParamID::numFxSendTargets>, 1 + maxInstruments> lastSendTo {};
+    void sendMatrix (int source, int layer, int numSamples); // layer -1 = kicken; läser sendBus (källan efter mixerfadern)
+
+    // Parameterlås (pianorullen): tonens lås gäller från anslaget tills nästa ton ändrar eller tar bort dem. Bara ljudtråden.
+    // Cutoff går via rösterna (exakt vid anslaget), pan via mixern (20 ms-ramp), FX-send per block (glider från förra blockets värde).
+    void applyNoteLocks (int layer, const Pattern::Note& note);
+    void clearNoteLocks();
+    std::array<juce::NormalisableRange<float>, numLayers> cutoffRanges; // cutoffparameterns omfång (låsets 0..1 -> Hz), läses i prepareToPlay
+    std::array<float, numLayers> fxSendLock;      // 0..1, < 0 = inget lås
+    std::array<float, numLayers> lastLockedSend;  // förra blockets send-belopp och torra andel (< 0 = inget att glida från)
+    std::array<float, numLayers> lastLockedDry;
+    std::array<bool, numLayers> sendWasLocked;
 
     // När det senaste steget startade ljud (ppq), för kicken och varje instrument: se fadeOutStepsBefore.
     double lastKickStartPpq = -std::numeric_limits<double>::infinity();

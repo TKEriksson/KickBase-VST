@@ -1663,7 +1663,7 @@ namespace MixAnalysis
                     sidechain->setProperty (id.substring (2), value);
                 else if (id.startsWith ("lfo") || id.startsWith ("macro"))
                     modulation->setProperty (id, value);
-                else if (id.startsWith ("fx") && id.length() > 3 && id[2] >= 'A' && id[2] <= 'K' && id != "fxKey")
+                else if (id.startsWith ("fx") && id.length() > 3 && id[2] >= 'A' && id[2] <= 'A' + numEffectChannels - 1 && id != "fxKey")
                 {
                     auto& channel = channels[(size_t) (id[2] - 'A')];
                     const auto rest = id.substring (3);

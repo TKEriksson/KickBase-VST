@@ -6,7 +6,14 @@ namespace
 {
     constexpr float lowHz = 20.0f, highHz = 20000.0f;
     constexpr float dbTop = 0.0f, dbBottom = -90.0f;
-    constexpr float collisionFloor = -66.0f; // under den nivån räknas en källa inte som "spelar"
+    // Krockar. Tröskeln -50 dBFS (förut -66): under den hörs en överton knappast över de starkare källorna, och de svaga svansarna gav brus av röda fläckar.
+    // Gapet 18 dB: en källa som är 18 dB starkare maskerar den andra (ungefär en faktor åtta i amplitud), så där markeras inget.
+    constexpr float collisionThreshold = -50.0f;
+    constexpr float collisionMaskGap = 18.0f;
+    constexpr int collisionSteps = 16;          // styrkan i steg, så att grannpixlar slås ihop till rutor
+    constexpr float collisionMaxAlpha = 0.5f;
+    constexpr float collisionBandHeight = 14.0f; // höjden på varje tonings-band under toppen
+    const juce::Colour collisionWeak { 0xff3a7bff }, collisionStrong { 0xffff2a3a };
     constexpr int stripHeight = 24;
     constexpr int panelWidth = 350;
 
@@ -248,8 +255,8 @@ SpectrumPage::SpectrumPage (PluginBase& p) : processor (p), analyser (p.getMixAn
                  "ANALYSER - Starts the live spectrum. It is off by default because it uses some CPU while it runs; it stops by itself when you leave this tab.");
     analyserButton.onClick = [this] { updateRunning(); };
     setUpToggle (collisionsButton, Theme::master, true,
-                 "COLLISIONS - Marks in red where two or more of the shown sources play the same frequency at the same time. "
-                 "The stronger the red, the louder they are and the more of them there are. Mixing: move, filter or retune one of them.");
+                 "COLLISIONS - Marks where two or more of the shown sources play the same frequency at about the same level, so one does not mask the other. "
+                 "Blue = a mild overlap, red = a problem; where one source is 18 dB or more above the rest, nothing is marked. Mixing: move, filter or retune one of them.");
     collisionsButton.onClick = [this] { repaint(); };
     setUpToggle (harmonicsButton, Theme::lfo, false,
                  "HARMONICS - Marks each shown source's fundamental and its overtones (2x, 3x, 4x ...) with ticks in its own colour, "
@@ -376,6 +383,7 @@ SpectrumPage::SpectrumPage (PluginBase& p) : processor (p), analyser (p.getMixAn
         analyserButton.setToggleState (true, juce::dontSendNotification);
         harmonicsButton.setToggleState (juce::SystemStats::getEnvironmentVariable ("KB_HARMONICS", "0").getIntValue() != 0, juce::dontSendNotification);
         eqButton.setToggleState (juce::SystemStats::getEnvironmentVariable ("KB_EQ", "0").getIntValue() != 0, juce::dontSendNotification);
+        collisionsButton.setToggleState (juce::SystemStats::getEnvironmentVariable ("KB_COLLISIONS", "0").getIntValue() != 0, juce::dontSendNotification);
         updateRunning();
         timerCallback();
         if (const auto mode = juce::SystemStats::getEnvironmentVariable ("KB_REPORT", "0").getIntValue(); mode > 0)
@@ -1441,30 +1449,43 @@ void SpectrumPage::paint (juce::Graphics& g)
             columns[(size_t) i].values = &source.column;
     }
 
-    // Krockar: under den näst starkaste källans nivå har minst två källor energi. Rött, starkare med nivå och antal.
+    // Krockar: två källor är nästan lika starka vid samma frekvens (gapet mellan den starkaste och den näst starkaste), så ingen maskerar den andra.
+    // Gap 0 dB = full styrka, collisionMaskGap dB eller mer = den starkaste maskerar den andra, ingen markering. Blått (svagt) till rött (besvärligt), tonas ut nedåt.
     auto shown = 0;
     for (int i = 0; i < numSources; ++i)
         shown += (i != masterSource && ! columns[(size_t) i].empty()) ? 1 : 0;
     if (collisionsButton.getToggleState() && shown >= 2)
     {
-        // Intilliggande bildpunkter med (nästan) samma rödhet och höjd ritas som en enda ruta.
-        auto runStart = -1, runAlpha = 0, runTop = 0;
+        // Intilliggande bildpunkter med samma styrka och höjd ritas som en enda ruta, i fyra band som tonar ut nedåt (ingen allokering, ingen gradient).
+        static constexpr float fade[] { 1.0f, 0.7f, 0.45f, 0.28f };
+        auto runStart = -1, runStep = 0, runTop = 0;
         auto flush = [&] (int end)
         {
-            if (runStart >= 0 && runAlpha > 0)
-                g.fillRect (juce::Rectangle<float> (area.getX() + (float) runStart, (float) runTop, (float) (end - runStart), area.getBottom() - (float) runTop));
+            if (runStart >= 0 && runStep > 0)
+            {
+                const auto strength = (float) runStep / (float) collisionSteps;
+                const auto colour = collisionWeak.interpolatedWith (collisionStrong, strength);
+                const auto alpha = collisionMaxAlpha * (0.4f + 0.6f * strength);
+                const auto x = area.getX() + (float) runStart, w = (float) (end - runStart);
+                auto y = (float) runTop;
+                for (size_t band = 0; band < std::size (fade) && y < area.getBottom(); ++band)
+                {
+                    const auto h = band + 1 == std::size (fade) ? area.getBottom() - y : juce::jmin (collisionBandHeight, area.getBottom() - y);
+                    g.setColour (colour.withAlpha (alpha * fade[band]));
+                    g.fillRect (juce::Rectangle<float> (x, y, w, h));
+                    y += h;
+                }
+            }
             runStart = -1;
         };
         for (int px = 0; px < width; ++px)
         {
             auto best = -120.0f, second = -120.0f;
-            auto count = 0;
             for (int i = 0; i < numSources; ++i)
             {
                 if (i == masterSource || columns[(size_t) i].empty())
                     continue;
                 const auto db = columns[(size_t) i][(size_t) px];
-                count += db > collisionFloor ? 1 : 0;
                 if (db > best)
                 {
                     second = best;
@@ -1475,21 +1496,19 @@ void SpectrumPage::paint (juce::Graphics& g)
                     second = db;
                 }
             }
-            auto alphaStep = 0, top = 0;
-            if (second > collisionFloor)
+            auto step = 0, top = 0;
+            if (second > collisionThreshold)
             {
-                const auto strength = juce::jlimit (0.0f, 1.0f, (second - collisionFloor) / 46.0f);
-                const auto alpha = juce::jlimit (0.0f, 0.95f, 0.12f + 0.6f * strength + 0.1f * (float) std::max (0, count - 2));
-                alphaStep = juce::roundToInt (alpha * 20.0f);
+                const auto strength = juce::jlimit (0.0f, 1.0f, 1.0f - (best - second) / collisionMaskGap);
+                step = juce::roundToInt (strength * (float) collisionSteps);
                 top = ((int) yFor (second) / 3) * 3;
             }
-            if (alphaStep != runAlpha || top != runTop)
+            if (step != runStep || top != runTop)
             {
                 flush (px);
-                runAlpha = alphaStep;
+                runStep = step;
                 runTop = top;
                 runStart = px;
-                g.setColour (juce::Colour (0xffff2a3a).withAlpha ((float) alphaStep / 20.0f));
             }
         }
         flush (width);
@@ -1695,9 +1714,9 @@ void SpectrumPage::paint (juce::Graphics& g)
 
     if (collisionsButton.getToggleState() && shown >= 2)
     {
-        g.setColour (juce::Colour (0xffff5060).withAlpha (0.9f));
+        g.setColour (collisionWeak.interpolatedWith (collisionStrong, 0.6f).brighter (0.3f).withAlpha (0.9f));
         g.setFont (Theme::font (9.5f, true));
-        g.drawText ("RED = SEVERAL SOURCES AT THE SAME FREQUENCY", area.withTrimmedLeft (area.getWidth() - 300.0f).withHeight (12.0f).translated (-4.0f, 14.0f),
+        g.drawText ("BLUE TO RED = SIMILAR LEVELS AT ONE FREQUENCY", area.withTrimmedLeft (area.getWidth() - 300.0f).withHeight (12.0f).translated (-4.0f, 14.0f),
                     juce::Justification::centredRight);
     }
 }

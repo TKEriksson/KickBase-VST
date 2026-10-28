@@ -64,7 +64,7 @@ namespace
 
 namespace
 {
-    // "None", "FX1" ... "FX11": platsen är den gamla bokstaven A-E och sedan fler (sparade värden är index).
+    // "None", "FX1" ... "FX12": FX12 är sist så att sparade värden (index) behåller sin betydelse.
     juce::StringArray fxChannelChoices()
     {
         juce::StringArray choices { "None" };
@@ -107,7 +107,11 @@ namespace ParamID
                                      "SampleAmpOn", "SampleAmpMs", "SampleAmpShape", "SamplePitchOn", "SamplePitchSemis", "SamplePitchMs", "SamplePitchShape", "SampleReverse",
                                      "ADelayMs", "ADelaySync", "ALenMs", "ACurve", "BDelayMs", "BDelaySync", "BLenMs", "BCurve", "CDelayMs", "CDelaySync", "CLenMs", "CCurve",
                                      "SampleDelayMs", "SampleDelaySync", "SampleLenMs", "SampleCurve", "NoiseDelayMs", "NoiseDelaySync", "NoiseLenMs", "NoiseCurve",
-                                     "SubDelayMs", "SubDelaySync", "SubLenMs", "SubCurve", "FmDelayMs", "FmDelaySync", "FmLenMs", "FmCurve" };
+                                     "SubDelayMs", "SubDelaySync", "SubLenMs", "SubCurve", "FmDelayMs", "FmDelaySync", "FmLenMs", "FmCurve",
+                                     "ADelayMode", "ALenSync", "ADelayCount", "ALenCount", "BDelayMode", "BLenSync", "BDelayCount", "BLenCount", "CDelayMode", "CLenSync", "CDelayCount", "CLenCount",
+                                     "SampleDelayMode", "SampleLenSync", "SampleDelayCount", "SampleLenCount", "NoiseDelayMode", "NoiseLenSync", "NoiseDelayCount", "NoiseLenCount",
+                                     "SubDelayMode", "SubLenSync", "SubDelayCount", "SubLenCount", "FmDelayMode", "FmLenSync", "FmDelayCount", "FmLenCount",
+                                     "FxSendTo1", "FxSendTo2", "FxSendTo3", "FxSendTo4", "FxSendTo5", "FxSendTo6", "FxSendTo7", "FxSendTo8", "FxSendTo9", "FxSendTo10", "FxSendTo11", "FxSendTo12" };
         static_assert (std::size (names) == (size_t) InstrumentField::count);
         return names[(size_t) field];
     }
@@ -269,7 +273,7 @@ namespace Params
             layout.add (floatParam (oid (F::aFine), oscTitle + "Fine", NormalisableRange<float> (-100.0f, 100.0f, 0.1f), 0.0f,
                                     [] (float v) { return (v > 0.0f ? "+" : "") + String (v, 1) + " ct"; }));
             layout.add (std::make_unique<AudioParameterInt> (ParameterID { oid (F::aUnison), 1 }, oscTitle + "Unison", 1, 7, 1));
-            layout.add (floatParam (oid (F::aDetune), oscTitle + "Detune", skewed (0.0f, 100.0f, 20.0f, 0.1f), 12.0f,
+            layout.add (floatParam (oid (F::aDetune), oscTitle + "Detune", skewed (0.0f, 100.0f, 20.0f, 0.1f), 0.0f,
                                     [] (float v) { return String (v, 1) + " ct"; }));
             layout.add (percent (oid (F::aBlend), oscTitle + "Blend", 0.5f));
             layout.add (std::make_unique<AudioParameterChoice> (ParameterID { oid (F::aWarp), 1 }, oscTitle + "Warp",
@@ -527,6 +531,44 @@ namespace Params
         }
     }
 
+    void addEngineTimingExtraParams (Layout& layout)
+    {
+        using namespace juce;
+        const char* engineNames[] { "OSC 1", "OSC 2", "OSC 3", "Sample", "Noise", "Sub", "FM" };
+        for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
+        {
+            const auto title = "Instr " + String (layer + 1) + " ";
+            for (int engine = 0; engine < ParamID::numTimingEngines; ++engine)
+            {
+                const auto name = title + engineNames[engine] + " ";
+                const auto id = [layer, engine] (int which) { return ParamID::bass (layer, ParamID::timingExtraField (engine, which)); };
+                layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (0), 1 }, name + "Delay Mode", StringArray { "Gate", "Shift" }, 0));
+                layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (1), 1 }, name + "Length Sync",
+                                                                    StringArray { "Off", "1/16", "1/8", "1/4", "1/2", "1 bar", "2 bars", "4 bars" }, 0));
+                layout.add (std::make_unique<AudioParameterInt> (ParameterID { id (2), 1 }, name + "Delay Count", 1, 8, 1));
+                layout.add (std::make_unique<AudioParameterInt> (ParameterID { id (3), 1 }, name + "Length Count", 1, 8, 1));
+            }
+        }
+    }
+
+    void addKickMixParam (Layout& layout)
+    {
+        layout.add (percent (ParamID::kickMix, "Kick Mix", 0.5f));
+    }
+
+    void addFxMatrixParams (Layout& layout)
+    {
+        // Allra sist: ID, preset-index och render-hash för äldre ljud ändras inte. Alla 0 / av = som förut.
+        for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
+            for (int to = 0; to < ParamID::numFxSendTargets; ++to)
+                layout.add (percent (ParamID::bass (layer, ParamID::fxSendToField (to)),
+                                     "Instr " + juce::String (layer + 1) + " FX Send " + juce::String (to + 1), 0.0f));
+        for (int to = 0; to < ParamID::numFxSendTargets; ++to)
+            layout.add (percent (ParamID::kickFxSendToIds[to], "Kick FX Send " + juce::String (to + 1), 0.0f));
+        for (int ch = 0; ch < ParamID::numFxSendTargets; ++ch)
+            layout.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { ParamID::fxMuteIds[ch], 1 }, "FX " + juce::String (ch + 1) + " Mute", false));
+    }
+
     void addKickToggleParams (Layout& layout)
     {
         layout.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { ParamID::kickSynthOn, 1 }, "Kick Synth On", true));
@@ -690,17 +732,22 @@ KickParams ParamRefs::readKick (int keyPitchClass) const
     p.sampleLevel   = get (ParamID::kickSampleLevel);
     p.synthOn       = get (ParamID::kickSynthOn) >= 0.5f;
     p.sampleOn      = get (ParamID::kickSampleOn) >= 0.5f;
+    p.mix           = get (ParamID::kickMix);
     p.sampleTuneSemis = get (ParamID::kickSampleTune);
     p.sampleOffsetMs = get (ParamID::kickSampleOffset);
+    // Fasta ID:n (ingen sträng byggs på ljudtråden).
+    static constexpr const char* clickIds[2][5] = { { "kickClick2Level", "kickClick2Length", "kickClick2Tone", "kickClick2Delay", "kickClick2Mode" },
+                                                    { "kickClick3Level", "kickClick3Length", "kickClick3Tone", "kickClick3Delay", "kickClick3Mode" } };
+    static_assert (KickParams::numExtraClicks == 2, "clickIds needs one row per extra click");
     for (int i = 0; i < KickParams::numExtraClicks; ++i)
     {
-        const auto key = juce::String ("kickClick") + juce::String (i + 2);
+        const auto* id = clickIds[i];
         auto& c = p.extraClicks[i];
-        c.level    = get ((key + "Level").toRawUTF8());
-        c.lengthMs = get ((key + "Length").toRawUTF8());
-        c.toneHz   = get ((key + "Tone").toRawUTF8());
-        c.delayMs  = get ((key + "Delay").toRawUTF8());
-        c.mode     = getChoice ((key + "Mode").toRawUTF8());
+        c.level    = get (id[0]);
+        c.lengthMs = get (id[1]);
+        c.toneHz   = get (id[2]);
+        c.delayMs  = get (id[3]);
+        c.mode     = getChoice (id[4]);
     }
     p.sampleStartMs = get (ParamID::kickSampleStart);
     p.sampleReverse = get (ParamID::kickSampleReverse) >= 0.5f;
@@ -856,6 +903,10 @@ InstrumentParams ParamRefs::readInstrument (int layer, int rootMidiNote) const
         p.delaySync[(size_t) engine] = (int) get (ParamID::timingField (engine, 1));
         p.lengthMs[(size_t) engine] = get (ParamID::timingField (engine, 2));
         p.curve[(size_t) engine] = get (ParamID::timingField (engine, 3));
+        p.delayShift[(size_t) engine] = get (ParamID::timingExtraField (engine, 0)) > 0.5f;
+        p.lengthSync[(size_t) engine] = (int) get (ParamID::timingExtraField (engine, 1));
+        p.delayCount[(size_t) engine] = juce::jlimit (1, 8, (int) get (ParamID::timingExtraField (engine, 2)));
+        p.lengthCount[(size_t) engine] = juce::jlimit (1, 8, (int) get (ParamID::timingExtraField (engine, 3)));
     }
     return p;
 }

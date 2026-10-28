@@ -68,7 +68,7 @@ void TransportClock::beginBlock (const juce::Optional<juce::AudioPlayHead::Posit
         // Global LOOP: över slutet hoppar klockan tillbaka till början och behåller överskottet. Klockan före loopens start släpps in (man kan ha scrubbat dit).
         if (loopOn && ! hold)
         {
-            const auto loopStartPpq = (double) loopStartBar * barLengthPpq, loopEndPpq = (double) loopEndBar * barLengthPpq;
+            const auto loopStartPpq = ticksToPpq (loopStartTick, barLengthPpq), loopEndPpq = ticksToPpq (loopEndTick, barLengthPpq);
             if (blockStartPpq >= loopEndPpq - epsilon)
             {
                 blockStartPpq = loopStartPpq + std::fmod (blockStartPpq - loopEndPpq, loopEndPpq - loopStartPpq);

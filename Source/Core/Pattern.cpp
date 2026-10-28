@@ -163,6 +163,7 @@ void Pattern::trimRow (int layer, int bars)
             {
                 n.on = false;
                 n.clearExtras();
+                n.clearLocks();
             }
             else
             {
@@ -233,6 +234,8 @@ double Pattern::holdTicks (int layer, int tick, int patternTicks, float gateScal
 Pattern::Note& Pattern::addNote (int layer, int tick, int length, int pitch, float velocity, bool slide, const Chord& chord)
 {
     auto& n = edit (layer, tick);
+    if (! n.on.load())
+        n.clearLocks(); // en ny ton ärver inga lås (en ändrad ton behåller sina)
     n.length = juce::jlimit (1, maxTicks, length);
     n.pitch = juce::jlimit (minPitch, maxPitch, pitch);
     n.velocity = juce::jlimit (0.0f, 1.0f, velocity);
@@ -241,6 +244,29 @@ Pattern::Note& Pattern::addNote (int layer, int tick, int length, int pitch, flo
     n.setChord (chord); // en ny ton ärver inte ett gammalt ackord (sätts före on, så att ljudtråden aldrig ser tonen utan sitt ackord)
     n.on = true;
     return n;
+}
+
+bool Pattern::setLock (int layer, int tick, int param, float value)
+{
+    auto* n = existing (layer, tick);
+    if (n == nullptr || ! n->on.load() || ! juce::isPositiveAndBelow (param, (int) numLocks))
+        return false;
+    n->lock[(size_t) param] = juce::jlimit (0.0f, 1.0f, value);
+    return true;
+}
+
+void Pattern::clearLock (int layer, int tick, int param)
+{
+    if (auto* n = existing (layer, tick); n != nullptr && juce::isPositiveAndBelow (param, (int) numLocks))
+        n->lock[(size_t) param] = lockUnset;
+}
+
+float Pattern::getLock (int layer, int tick, int param) const
+{
+    if (! juce::isPositiveAndBelow (param, (int) numLocks))
+        return lockUnset;
+    const auto& n = note (layer, tick);
+    return n.on.load() ? n.lock[(size_t) param].load() : lockUnset;
 }
 
 int Pattern::stackSize (int layer, int tick) const
@@ -490,7 +516,7 @@ juce::ValueTree Pattern::toValueTree() const
     {
         if (layer >= numNoteLayers && ! rows.isActive (layer))
             continue;
-        juce::StringArray entries;
+        juce::StringArray entries, lockEntries;
         for (int tick = 0; tick < maxTicks; ++tick)
         {
             if (! hasBar (layer, tick / ticksPerBar))
@@ -517,11 +543,17 @@ juce::ValueTree Pattern::toValueTree() const
                 if (e.on.load())
                     entry << "/e/" << e.pitch.load() << "/" << e.length.load() << "/" << juce::String (e.velocity.load(), 3) << "/" << (e.slide.load() ? 1 : 0);
             entries.add (entry);
+            if (n.hasAnyLock()) // parameterlås: tick/param/värde, bara satta (egenskapen saknas helt när inga lås finns)
+                for (int p = 0; p < numLocks; ++p)
+                    if (n.hasLock (p))
+                        lockEntries.add (juce::String (tick) + "/" + juce::String (p) + "/" + juce::String (n.lock[(size_t) p].load(), 4));
         }
 
         juce::ValueTree child ("Notes");
         child.setProperty ("layer", layer, nullptr);
         child.setProperty ("notes", entries.joinIntoString (";"), nullptr);
+        if (lockEntries.size() > 0)
+            child.setProperty ("locks", lockEntries.joinIntoString (";"), nullptr);
         child.setProperty ("custom", isCustom (layer), nullptr);
         if (layer >= numNoteLayers)
         {
@@ -639,9 +671,19 @@ void Pattern::fromValueTree (const juce::ValueTree& tree, bool clearUnmentionedL
         auto layer = (int) child.getProperty ("layer", 0);
         if (version <= 5 && child.hasType ("Notes") && layer == 3)
             layer = kickLayer; // före version 6 var kicken lager 3 (det fanns tre instrument)
+        auto migratedSlice = -1; // gamla projekt hade en rad per skiva ("i3.slice2"); noterna flyttas in i raden "i3.slices" med skivan som pitch
         if (child.hasProperty ("row")) // R9b: nyckeln gäller före indexet; en okänd nyckel eller full pool hoppas över
         {
-            layer = rows.idOfKeyCreate (child["row"].toString());
+            auto key = child["row"].toString();
+            auto instrument = 0;
+            RowRegistry::Kind kind;
+            auto slice = 0;
+            if (RowRegistry::parseKey (key, instrument, kind, &slice) && kind == RowRegistry::Kind::slice)
+            {
+                migratedSlice = slice;
+                key = RowRegistry::keyOf (instrument, RowRegistry::Kind::slices);
+            }
+            layer = rows.idOfKeyCreate (key);
             if (layer < 0)
                 continue;
         }
@@ -656,19 +698,40 @@ void Pattern::fromValueTree (const juce::ValueTree& tree, bool clearUnmentionedL
         }
         else if (child.hasType ("Notes"))
         {
+            const auto firstOfRow = ! cleared[(size_t) layer];
             clearOnce (layer);
-            setCustom (layer, (bool) child["custom"]);
-            if (layer >= numNoteLayers)
-                setLoopsRow (layer, ! child.hasProperty ("loop") || (bool) child["loop"]);
-            const auto lengthText = child["length"].toString(); // saknas i projekt före version 7 (då AUTO; gamla längder: applyLegacyLengths)
-            manualOf[(size_t) layer] = juce::jlimit (0, maxBars, lengthText.containsOnly ("0123456789") ? lengthText.getIntValue() : 0);
-            extraOf[(size_t) layer] = juce::jlimit (0, maxBars, (int) child["extra"]);
+            if (migratedSlice < 0 || firstOfRow) // vid flytt av gamla skivrader gäller längd och loop från den första
+            {
+                setCustom (layer, (bool) child["custom"]);
+                if (layer >= numNoteLayers)
+                    setLoopsRow (layer, ! child.hasProperty ("loop") || (bool) child["loop"]);
+                const auto lengthText = child["length"].toString(); // saknas i projekt före version 7 (då AUTO; gamla längder: applyLegacyLengths)
+                manualOf[(size_t) layer] = juce::jlimit (0, maxBars, lengthText.containsOnly ("0123456789") ? lengthText.getIntValue() : 0);
+                extraOf[(size_t) layer] = juce::jlimit (0, maxBars, (int) child["extra"]);
+            }
             for (const auto& entry : split (child["notes"], ";"))
             {
                 const auto parts = juce::StringArray::fromTokens (entry, "/", {});
                 const auto tick = parts[0].getIntValue();
                 if (parts.size() < 5 || ! juce::isPositiveAndBelow (tick, maxTicks))
                     continue;
+                if (migratedSlice >= 0)
+                {
+                    // Skivans ton: samma tick i flera gamla rader blir en stapel (högst maxStack, resten kasseras).
+                    const auto pitch = RowRegistry::pitchOfSlice (migratedSlice);
+                    if (stackSize (layer, tick) == 0)
+                        addNote (layer, tick, parts[1].getIntValue(), pitch, parts[4].getFloatValue(), parts[3].getIntValue() != 0);
+                    else
+                    {
+                        StackNote s;
+                        s.pitch = pitch;
+                        s.length = parts[1].getIntValue();
+                        s.velocity = parts[4].getFloatValue();
+                        s.slide = parts[3].getIntValue() != 0;
+                        addExtra (layer, tick, s);
+                    }
+                    continue;
+                }
                 auto& n = addNote (layer, tick, parts[1].getIntValue(), parts[2].getIntValue(), parts[4].getFloatValue(), parts[3].getIntValue() != 0);
                 // Fält 5-7 är ackordet (saknade blir 0) tills ett "e" börjar staplarna; ett trasigt eller avkapat /e hoppas över utan fel.
                 auto firstExtra = parts.size();
@@ -686,6 +749,12 @@ void Pattern::fromValueTree (const juce::ValueTree& tree, bool clearUnmentionedL
                     if (addExtra (layer, tick, s) >= 0)
                         ++slot;
                 }
+            }
+            for (const auto& entry : split (child["locks"], ";")) // version 8: tick/param/värde; ett trasigt eller okänt lås hoppas över
+            {
+                const auto parts = juce::StringArray::fromTokens (entry, "/", {});
+                if (parts.size() == 3 && juce::isPositiveAndBelow (parts[0].getIntValue(), maxTicks))
+                    setLock (layer, parts[0].getIntValue(), parts[1].getIntValue(), parts[2].getFloatValue());
             }
         }
         else if (child.hasType ("Bass") && layer < numLayers)

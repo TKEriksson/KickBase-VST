@@ -180,16 +180,14 @@ void InstrumentSynth::noteOn (int semitones, float newVelocity, int gateSamples,
     fmEnvLevel = 1.0f;
 
     noteTime = 0.0;
+    noteOffTime = -1.0;
     // 5b: SYNC-fördröjningen (takter ur tempot) låses nu; en tempoändring mitt i tonen rör den inte.
+    for (size_t e = 0; e < delaySeconds.size(); ++e)
     {
-        static constexpr double syncBars[] { 0.0, 0.0625, 0.125, 0.25, 0.5, 1.0, 2.0, 4.0 };
-        for (size_t e = 0; e < delaySeconds.size(); ++e)
-        {
-            const auto sync = juce::jlimit (0, 7, params.delaySync[e]);
-            const auto ms = sync > 0 ? syncBars[sync] * 4.0 * 60000.0 / juce::jlimit (20.0, 400.0, bpm) : (double) params.delayMs[e];
-            delaySeconds[e] = std::max (0.0, ms) * 0.001;
-            resetPending[e] = delaySeconds[e] > 0.0;
-        }
+        delaySeconds[e] = engineDelaySeconds (params, (int) e, bpm);
+        resetPending[e] = delaySeconds[e] > 0.0;
+        lengthLocked[e] = params.lengthSync[e] > 0;
+        lengthSeconds[e] = lengthLocked[e] ? engineLengthSeconds (params, (int) e, bpm) : 0.0;
     }
     env2.trigger();
     env3.trigger();
@@ -228,20 +226,45 @@ void InstrumentSynth::noteOn (int semitones, float newVelocity, int gateSamples,
     gateRemaining = gateSamples;
 }
 
-float InstrumentSynth::engineGate (int engine) const noexcept
+namespace
 {
-    const auto delay = delaySeconds[(size_t) engine];
-    const auto length = (double) params.lengthMs[(size_t) engine] * 0.001;
+constexpr double syncBars[] { 0.0, 0.0625, 0.125, 0.25, 0.5, 1.0, 2.0, 4.0 }; // SYNC-valen 1/16 ... 4 bars i takter
+double barSeconds (double bpm) { return 4.0 * 60.0 / juce::jlimit (20.0, 400.0, bpm); }
+}
+
+double InstrumentSynth::engineDelaySeconds (const InstrumentParams& p, int engine, double bpm)
+{
+    const auto e = (size_t) engine;
+    const auto sync = juce::jlimit (0, 7, p.delaySync[e]);
+    const auto seconds = sync > 0 ? (double) juce::jlimit (1, 8, p.delayCount[e]) * syncBars[sync] * barSeconds (bpm) : (double) p.delayMs[e] * 0.001;
+    return std::max (0.0, seconds);
+}
+
+double InstrumentSynth::engineLengthSeconds (const InstrumentParams& p, int engine, double bpm)
+{
+    const auto e = (size_t) engine;
+    const auto sync = juce::jlimit (0, 7, p.lengthSync[e]);
+    return std::max (0.0, sync > 0 ? (double) juce::jlimit (1, 8, p.lengthCount[e]) * syncBars[sync] * barSeconds (bpm) : (double) p.lengthMs[e] * 0.001);
+}
+
+float InstrumentSynth::gateAt (double t, double delay, double length, float curve) noexcept
+{
     if (delay <= 0.0 && length <= 0.0)
         return 1.0f;
-    if (noteTime < delay)
+    if (t < delay)
         return 0.0f;
     if (length <= 0.0)
         return 1.0f;
-    const auto u = (noteTime - delay) / length;
+    const auto u = (t - delay) / length;
     if (u >= 1.0)
         return 0.0f;
-    return (float) std::pow (1.0 - u, std::exp2 (2.0 * (double) params.curve[(size_t) engine])); // CURVE 0 = linjär, > 0 faller snabbt först, < 0 långsamt först
+    return (float) std::pow (1.0 - u, std::exp2 (2.0 * (double) curve)); // CURVE 0 = linjär, > 0 faller snabbt först, < 0 långsamt först
+}
+
+float InstrumentSynth::engineGate (int engine) const noexcept
+{
+    const auto length = lengthLocked[(size_t) engine] ? lengthSeconds[(size_t) engine] : (double) params.lengthMs[(size_t) engine] * 0.001;
+    return gateAt (noteTime, delaySeconds[(size_t) engine], length, params.curve[(size_t) engine]);
 }
 
 bool InstrumentSynth::glideTo (int semitones, int samples)
@@ -262,6 +285,8 @@ void InstrumentSynth::fadeOutQuickly (double milliseconds)
         return;
     forcedReleaseMs = milliseconds;
     gateRemaining = 0;
+    if (stage != Stage::release)
+        noteOffTime = noteTime;
     stage = Stage::release;
 }
 
@@ -269,6 +294,8 @@ void InstrumentSynth::release()
 {
     if (stage != Stage::idle)
     {
+        if (stage != Stage::release)
+            noteOffTime = noteTime;
         stage = Stage::release;
         env2.release();
         env3.release();
@@ -445,6 +472,11 @@ InstrumentSynth::Output InstrumentSynth::next()
         else if (e == 2) oscC.retrigger (params.oscC, random, extraPhase);
         else if (e == 5) subPhase = wrap (extraPhase + (double) params.subPhaseDeg / 360.0);
         else if (e == 6) { fmCarrierPhase = wrap (extraPhase + (double) params.fmPhaseDeg / 360.0); fmModPhase = 0.0; }
+        if (params.delayShift[e]) // SHIFT: motorns egna tidsförlopp börjar också om (FM-envelopen, warp-envelopen för OSC)
+        {
+            if (e == 6) fmEnvLevel = 1.0f;
+            else if (e <= 2) warpDirect = 1.0f;
+        }
     }
     const auto levelA = (params.oscA.on ? params.oscA.level : 0.0f) * engineGate (0);
     const auto levelB = (params.oscB.on ? params.oscB.level : 0.0f) * engineGate (1);

@@ -1033,7 +1033,7 @@ namespace
         sub.clearNotes (0);
         sub.addNote (0, 0, 24, 0, 0.8f);
         const auto sampleRow = sub.rows.add (0, RowRegistry::Kind::sample);
-        const auto slicerRow = sub.rows.add (0, RowRegistry::Kind::slice, 0);
+        const auto slicerRow = sub.rows.add (0, RowRegistry::Kind::slices, 0);
         const auto otherRow = sub.rows.add (1, RowRegistry::Kind::sample);
         sub.addNote (sampleRow, 0, 24, 5, 0.7f);
         sub.addNote (otherRow, 0, 24, 3, 0.7f);
@@ -1093,6 +1093,104 @@ namespace
                    && stacked.pitch == 4 && holes.getStack (0, 0, 3, stacked) && stacked.pitch == 9,
                "hål i stackindex och för många toner tas om hand");
         folder.deleteRecursively();
+    }
+
+    void testNoteLocks()
+    {
+        std::puts ("Mönster: värde per ton (lock) sparas, läses och rensas");
+        const auto folder = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                                .getChildFile ("Kickbase-lock-" + juce::Uuid().toString());
+        check (folder.createDirectory(), "skapa temporär testmapp");
+
+        Pattern pattern;
+        pattern.clearNotes (1);
+        pattern.addNote (1, 0, 24, 3);
+        pattern.addNote (1, 96, 24, 5);
+        check (! pattern.note (1, 0).hasAnyLock(), "en ny ton har inga lock");
+        check (! pattern.setLock (1, 48, Pattern::lockPan, 0.5f), "lock på en tick utan ton avvisas");
+        check (pattern.setLock (1, 0, Pattern::lockCutoff, 0.25f) && pattern.setLock (1, 0, Pattern::lockFxSend, 2.0f),
+               "lock sätts på en ton");
+        check (pattern.getLock (1, 0, Pattern::lockCutoff) == 0.25f && pattern.getLock (1, 0, Pattern::lockFxSend) == 1.0f
+                   && pattern.getLock (1, 0, Pattern::lockPan) == Pattern::lockUnset,
+               "lock klipps till 0..1 och oanvända är osatta");
+
+        Pattern loaded;
+        loaded.fromValueTree (pattern.toValueTree());
+        check (loaded.getLock (1, 0, Pattern::lockCutoff) == 0.25f && loaded.getLock (1, 0, Pattern::lockFxSend) == 1.0f
+                   && loaded.getLock (1, 0, Pattern::lockPan) == Pattern::lockUnset && ! loaded.note (1, 96).hasAnyLock(),
+               "lock överlever spara och läsa (undo använder samma väg)");
+
+        auto old = pattern.toValueTree();
+        old.getChildWithProperty ("layer", 1).removeProperty ("locks", nullptr);
+        Pattern legacy;
+        legacy.fromValueTree (old);
+        check (legacy.note (1, 0).pitch == 3 && ! legacy.note (1, 0).hasAnyLock(), "ett mönster utan locks läses som förut");
+
+        pattern.clearLock (1, 0, Pattern::lockCutoff);
+        check (pattern.getLock (1, 0, Pattern::lockCutoff) == Pattern::lockUnset && pattern.note (1, 0).hasLock (Pattern::lockFxSend),
+               "clearLock tar bara bort ett lock");
+
+        const auto rollFile = folder.getChildFile ("lock.roll");
+        check (RollFiles::save (pattern, 1, InstrumentGrid::sixteenth, rollFile), "spara lock i pianorullepreset");
+        Pattern fromRoll;
+        auto grid = InstrumentGrid::sixteenth;
+        check (RollFiles::load (fromRoll, 1, rollFile, grid) && fromRoll.getLock (1, 0, Pattern::lockFxSend) == 1.0f
+                   && ! fromRoll.note (1, 0).hasLock (Pattern::lockCutoff),
+               "lock följer med i pianorullepreset");
+
+        pattern.removeNote (1, 0);
+        pattern.addNote (1, 0, 24, 3);
+        check (! pattern.note (1, 0).hasAnyLock(), "en ny ton på en borttagen tons plats ärver inga lock");
+        folder.deleteRecursively();
+    }
+
+    void testLockEditing()
+    {
+        std::puts ("Mönster: lock följer med klippbord och flytt, och ångra återställer dem");
+        Pattern pattern;
+        pattern.clearNotes (1);
+        pattern.addNote (1, 0, 24, 3);
+        pattern.setLock (1, 0, Pattern::lockCutoff, 0.25f);
+        pattern.setLock (1, 0, Pattern::lockPan, 0.75f);
+        const auto undoBase = pattern.rowToValueTree (1); // som pianorullens snapshotRow före en ändring
+
+        // Klippbordet: låsen läses ut och sätts på den inklistrade tonen.
+        std::array<float, Pattern::numLocks> copied {};
+        for (int p = 0; p < Pattern::numLocks; ++p)
+            copied[(size_t) p] = pattern.getLock (1, 0, p);
+        pattern.addNote (1, 96, 24, 3);
+        for (int p = 0; p < Pattern::numLocks; ++p)
+            if (copied[(size_t) p] != Pattern::lockUnset)
+                pattern.setLock (1, 96, p, copied[(size_t) p]);
+        check (pattern.getLock (1, 96, Pattern::lockCutoff) == 0.25f && pattern.getLock (1, 96, Pattern::lockPan) == 0.75f
+                   && pattern.getLock (1, 96, Pattern::lockFxSend) == Pattern::lockUnset,
+               "inklistrad ton bär låsen");
+
+        // Flytt: läs låsen, ta bort tonen, lägg den på ny plats och sätt låsen igen.
+        std::array<float, Pattern::numLocks> moved {};
+        for (int p = 0; p < Pattern::numLocks; ++p)
+            moved[(size_t) p] = pattern.getLock (1, 96, p);
+        pattern.removeNote (1, 96);
+        pattern.addNote (1, 144, 24, 3);
+        for (int p = 0; p < Pattern::numLocks; ++p)
+            if (moved[(size_t) p] != Pattern::lockUnset)
+                pattern.setLock (1, 144, p, moved[(size_t) p]);
+        check (pattern.getLock (1, 144, Pattern::lockCutoff) == 0.25f && pattern.getLock (1, 144, Pattern::lockPan) == 0.75f
+                   && ! pattern.note (1, 96).hasAnyLock(),
+               "flyttad ton bär låsen och lämnar inga kvar");
+
+        // Ångra: raden tillbaka till läget före ändringarna, låsen på första tonen kvar och inga på de nya.
+        pattern.clearLock (1, 0, Pattern::lockCutoff);
+        pattern.rowFromValueTree (1, undoBase);
+        check (pattern.getLock (1, 0, Pattern::lockCutoff) == 0.25f && pattern.getLock (1, 0, Pattern::lockPan) == 0.75f
+                   && ! pattern.note (1, 96).hasAnyLock() && ! pattern.note (1, 144).hasAnyLock(),
+               "ångra återställer lock och toner");
+
+        // Spara/ladda av hela mönstret behåller låsen.
+        Pattern loaded;
+        loaded.fromValueTree (pattern.toValueTree());
+        check (loaded.getLock (1, 0, Pattern::lockCutoff) == 0.25f && loaded.getLock (1, 0, Pattern::lockPan) == 0.75f,
+               "spara och ladda behåller låsen efter ångra");
     }
 
     void testGateAndPianoRollFlag()
@@ -1228,8 +1326,10 @@ void runEngineTests()
     testModEnvSync();
     testUserWavetable();
     testWavetableLibrary();
+    testLockEditing();
     testGateAndPianoRollFlag();
     testRowLengths();
     testPolyphonyStacks();
     testPianoRollStackFiles();
+    testNoteLocks();
 }

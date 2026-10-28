@@ -13,12 +13,12 @@ class KickTabs : public juce::Component
 public:
     KickTabs (juce::Colour accent);
     void resized() override;
-    void select (int tab); // 0 SYNTH, 1 SAMPLE (utan återanrop)
+    void select (int tab); // 0 SYNTH, 1 SAMPLE, 2 ENVELOPE (utan återanrop)
 
     std::function<void (int)> onChange;
 
 private:
-    juce::TextButton synthButton { "SYNTH" }, sampleButton { "SAMPLE" };
+    juce::TextButton synthButton { "SYNTH" }, envelopeButton { "ENVELOPE" }, sampleButton { "SAMPLE" };
 };
 
 // Den valda samplingens vågform (statisk: ritas om bara när samplingen byts, ingen timer). Ett klick spelar bara samplingen.

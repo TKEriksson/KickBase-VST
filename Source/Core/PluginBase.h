@@ -298,6 +298,8 @@ public:
     // det senaste värdet som minskning 0..1 (för ringen runt DUCK-ratten).
     std::array<SignalTap, ParamID::numInstrumentLayers> duckGainTaps;
     std::array<std::atomic<float>, ParamID::numInstrumentLayers> duckReduction {};
+    // TIMING-diagrammen: lagrets tid sedan anslaget och tiden för tonens släpp i sekunder (-1 = tyst / hålls). Skrivs av ljudtråden, läses av gränssnittet.
+    std::array<std::atomic<float>, ParamID::numInstrumentLayers> notePlayTime {}, noteOffTime {};
 
     // FUNDAMENTAL DUCK: dämpningen i dB som är i bruk just nu per motor (0 = av), för lampan på SIDECHAIN-fliken.
     std::array<std::atomic<float>, ParamID::numInstrumentLayers> fundamentalDuckDb {};
@@ -363,20 +365,16 @@ public:
     std::atomic<double> freeRunBpm { 0.0 };
     std::atomic<bool> transportHold { false };
     std::atomic<int> seekBarRequest { -1 };
-    // JOG (D3b): hjulets handpåläggning (<0 = ingen, annars hastighet 0..4 som ersätter parametern) och läget (0 = stannar medan man rör, 1 = fortsätter).
+    // JOG: hjulet har ett enda läge (SCRUB). `jogManual` = hjulets handpåläggning (<0 = ingen, annars hastighet 0..4).
+    // `scrubActive` = hjulet hålls (klockan lämnar värden); `scrubNudgePpq` = hjulets flytt sedan förra blocket (fjärdedelar, negativt = bakåt).
     std::atomic<float> jogManual { -1.0f };
-    std::atomic<int> jogMode { 0 };
-    // Hjulets art, sparas i projektet: 0 = JOG (gamla projekt, lägena ovan), 1 = SCRUB (nya projekt), 2 = SPEED (hjulet styr bara hastigheten).
-    // `scrubActive` = hjulet hålls i SCRUB (klockan lämnar värden); `scrubNudgePpq` = hjulets flytt sedan förra blocket (fjärdedelar, negativt = bakåt).
-    static constexpr int jogKindJog = 0, jogKindScrub = 1, jogKindSpeed = 2;
-    std::atomic<int> jogKind { jogKindScrub };
     std::atomic<bool> scrubActive { false };
     std::atomic<double> scrubNudgePpq { 0.0 };
-    // Global LOOP (D3): av/på och takterna (0-räknade, slutet exklusivt). På = egen klocka som går runt i loopen (DAW:ens transport ignoreras).
+    // Global LOOP (D3): av/på och tick (0-räknade, slutet exklusivt, 1 tick = 1/64 takt). På = egen klocka som går runt i loopen (DAW:ens transport ignoreras).
+    // `globalLoopStepTicks` = hur mycket FROM/TO flyttas per piltryck (körtillstånd, sparas inte).
     std::atomic<bool> globalLoop { false };
-    std::atomic<int> globalLoopStartBar { 0 }, globalLoopEndBar { 4 };
-    // BRAKE-kurva (broms A): 0 VINYL, 1 TAPE, 2 HARD, 3 SLOW. Läses av JogPanel (som byggs om vid varje öppning); sparas inte med projektet.
-    std::atomic<int> brakeCurve { 0 };
+    std::atomic<int> globalLoopStartTick { 0 }, globalLoopEndTick { 4 * 64 };
+    std::atomic<int> globalLoopStepTicks { 4 };
     std::atomic<int> previewingLayer { -1 };
 
     // MIDI in medan pianorullen är öppen: vilken rad som svarar på tangentbordet/MIDI (notlager som i previewRequest), -1 = alla rader.
@@ -432,7 +430,7 @@ public:
     // (där de kopierade slutar, och efter en inklistring där den slutar).
     struct NoteClipboard
     {
-        struct Note { int dt = 0, length = 24, pitch = 0; float velocity = 0.8f; bool slide = false; Pattern::Chord chord {}; int index = 0; /* stackindex */ };
+        struct Note { int dt = 0, length = 24, pitch = 0; float velocity = 0.8f; bool slide = false; Pattern::Chord chord {}; int index = 0; /* stackindex */ std::array<float, Pattern::numLocks> lock { Pattern::lockUnset, Pattern::lockUnset, Pattern::lockUnset }; };
         std::vector<Note> notes;
         int span = 0;          // hela de kopierade tonernas längd i ticks
         int nextStart = -1;    // var nästa inklistring börjar, -1 = vid vyns början
@@ -515,7 +513,7 @@ public:
     int selectedPatternMode = 0;           // PATTERN-flikens läge: 0 PATTERN (toner), 1 GATE
     std::array<int, ParamID::numInstrumentLayers> selectedInstrumentSource {}; // instrumentets valda flik: INSTR, OSC 1-3, SAMPLE eller FILTER
     juce::File currentProjectFile;                 // projektfilen som senast sparats/öppnats (bara gränssnittet, sparas inte): Ctrl+S sparar hit, namnet visas i rubriken
-    std::atomic<int> kickTab { 0 };              // kickens vyflik: 0 SYNTH, 1 SAMPLE (bara gränssnittet, sparas inte och ändrar inget ljud)
+    std::atomic<int> kickTab { 0 };              // kickens vyflik: 0 SYNTH, 1 SAMPLE, 2 ENVELOPE (bara gränssnittet, sparas inte och ändrar inget ljud)
     int selectedPatternLayer = 0;          // PATTERN-flikens valda lager: 0-9 instrument, 10 kick
     int selectedInstrument = 0;            // INSTRUMENT-flikens valda instrument (0-9)
     int lfoFolded = -1;                    // LFO-flikens fällda kort (en bit per LFO); -1 = inte bestämt ännu (se LfoPage)

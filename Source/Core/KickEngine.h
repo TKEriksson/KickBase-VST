@@ -41,6 +41,7 @@ struct KickParams
     int sampleMode = 0;         // inladdad sampling: 0 klick (de första millisekunderna), 1 lager (hela, ovanpå kicken), 2 ersätter (bara sampling)
     float sampleLevel = 1.0f;   // nivå för sampling i läge lager/ersätt (klicket använder clickLevel)
     bool synthOn = true;        // synten på/av (av: bara samplingen, som vid ersätt; utan sampling blir kicken tyst)
+    float mix = 0.5f;           // 0..1: 0 = bara synten, 0.5 = båda på full nivå (som förut), 1 = bara samplingen
     bool sampleOn = true;       // samplingen på/av (av: som om ingen sampling var inladdad)
     float sampleTuneSemis = 0.0f; // samplingens uppspelningshastighet i halvtoner
     float sampleOffsetMs = 0.0f;  // plus: samplingen startar senare än kicken, minus: den startar inne i samplingen (så att faserna inte tar ut varandra)

@@ -108,6 +108,11 @@ struct Pattern
     // Polyfoni steg 1: en stapel = huvudtonen (index 0) + upp till maxExtraNotes staplade toner (index 1..) på samma tick.
     static constexpr int maxExtraNotes = 3;
     static constexpr int maxStack = 1 + maxExtraNotes;
+    // Parameterlås per ton (nya sist). Värdena är normaliserade 0..1; cutoff och pan mappas på parameterns eget intervall i ljudet.
+    enum LockParam { lockCutoff = 0, lockPan, lockFxSend, numLocks };
+    static constexpr float lockUnset = -1.0f;
+    static juce::StringArray lockNames() { return { "cutoff", "pan", "fxsend" }; }
+
     struct StackNote { int length = 24; int pitch = 0; float velocity = 0.8f; bool slide = false; }; // värdetyp för API:t
     struct ExtraNote
     {
@@ -132,6 +137,13 @@ struct Pattern
         // Polyfoni: staplade toner på samma starttick (index 1..maxExtraNotes i API:t, 0 = huvudtonen). Gäller bara när huvudtonen är på.
         std::array<ExtraNote, maxExtraNotes> extra {};
         void clearExtras() { for (auto& e : extra) e.on = false; }
+
+        // Parameterlås (pianorullens parameterrader): ett värde 0..1 per parameter som gäller just den här tonen, `lockUnset` = inget lås.
+        std::array<std::atomic<float>, numLocks> lock;
+        Note() { clearLocks(); }
+        void clearLocks() { for (auto& l : lock) l = lockUnset; }
+        bool hasLock (int param) const { return lock[(size_t) param].load() >= 0.0f; }
+        bool hasAnyLock() const { for (const auto& l : lock) if (l.load() >= 0.0f) return true; return false; }
 
         Chord getChord() const { return { chord[0].load(), chord[1].load(), chord[2].load() }; }
         bool hasChord() const { return chord[0].load() != 0; }
@@ -246,8 +258,14 @@ struct Pattern
         {
             n->on = false;
             n->clearExtras();
+            n->clearLocks();
         }
     }
+
+    // PARAMETERLÅS (bara meddelandetråden skriver): kräver att tonen är på. Värdet begränsas till 0..1. clearLock: tillbaka till "inget lås".
+    bool setLock (int layer, int tick, int param, float value);
+    void clearLock (int layer, int tick, int param);
+    float getLock (int layer, int tick, int param) const; // lockUnset om inget lås (eller ingen ton)
 
     // POLYFONI: staplar (se maxStack). Skriv bara från meddelandetråden; läs (const) går bra i ljudtråden.
     int stackSize (int layer, int tick) const;                              // 0 = ingen ton, 1 = bara huvudtonen, upp till maxStack
@@ -276,7 +294,7 @@ struct Pattern
     void fromValueTree (const juce::ValueTree& tree, bool clearUnmentionedLayers = true); // false: lager som trädet inte nämner lämnas orörda (en enskild rad)
 
     static inline const juce::Identifier treeType { "Pattern" };
-    static constexpr int currentVersion = 7; // 7: radens längd (length/extra på Notes) följer innehållet, mönstret har inga längdparametrar; 6: upp till 10 instrument, kicken är lager 10 (före det lager 3); 5: kicken som notlager; 4: fria toner (ticks); 3: baslager med steg per rutnät
+    static constexpr int currentVersion = 8; // 8: valfri egenskap "locks" på Notes (parameterlås per ton; äldre läsare hoppar över den); 7: radens längd (length/extra på Notes) följer innehållet, mönstret har inga längdparametrar; 6: upp till 10 instrument, kicken är lager 10 (före det lager 3); 5: kicken som notlager; 4: fria toner (ticks); 3: baslager med steg per rutnät
 
     static constexpr int gateBlockSteps = 64; // GATE-stegen i block om 64 (högst ett rutnät 1/64 per takt)
 

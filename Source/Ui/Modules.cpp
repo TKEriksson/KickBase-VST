@@ -83,8 +83,8 @@ HeaderBar::HeaderBar (PluginBase& p, const juce::String& subtitleIn)
         restartButton.onClick = [this] { processor.requestRestart(); };
         addAndMakeVisible (restartButton);
 
-        jogButton.setTooltip ("JOG - A turntable wheel for the plugin's own clock: scratch the music or change its speed (also automatable and LFO-modulatable). "
-                              "It never touches the DAW. Lit when the speed is not 1x or has an LFO.");
+        jogButton.setTooltip ("JOG - A turntable wheel for the plugin's own clock (scratch the music), a LOOP between two positions and a test tempo. "
+                              "It never touches the DAW. Lit when LOOP is on.");
         jogButton.onClick = [this] { showJogPanel(); };
         addAndMakeVisible (jogButton);
 
@@ -454,14 +454,9 @@ void HeaderBar::paintOverChildren (juce::Graphics& g)
     if (! jogButton.isVisible())
         return;
 
-    // LP-ikonen på JOG-knappen: en skiva med hål och tonarm. Lyser när hastigheten inte är 1x eller en LFO styr den.
+    // LP-ikonen på JOG-knappen: en skiva med hål och tonarm. Lyser när LOOP är på.
     const auto jogCentre = jogButton.getBounds().toFloat().getCentre();
-    auto* jogParam = processor.apvts.getParameter (ParamID::jogSpeed);
-    const auto jogIndex = processor.getParameters().indexOf (jogParam);
-    auto active = jogParam != nullptr && std::abs (jogParam->convertFrom0to1 (jogParam->getValue()) - 1.0f) > 0.001f;
-    for (int r = 0; r < Modulation::maxRoutes && ! active; ++r)
-        active = processor.modRoutes.routes[(size_t) r].source.load() >= 0 && processor.modRoutes.routes[(size_t) r].target.load() == jogIndex;
-    const auto jogColour = active ? Theme::pattern : Theme::text;
+    const auto jogColour = processor.globalLoop.load() ? Theme::pattern : Theme::text;
     g.setColour (jogColour);
     g.drawEllipse (juce::Rectangle<float> (14.0f, 14.0f).withCentre (jogCentre), 1.6f);
     g.fillEllipse (juce::Rectangle<float> (3.5f, 3.5f).withCentre (jogCentre));
@@ -845,9 +840,9 @@ KickModule::KickModule (PluginBase& p)
     setHeaderPreset (&presets);
     addAndMakeVisible (presets);
     viewTabs.onChange = [this] (int tab) { processor.kickTab = tab; applyTab(); };
-    setHeaderTabs (&viewTabs, 150);
+    setHeaderTabs (&viewTabs, 230);
     addAndMakeVisible (viewTabs);
-    fxSend = std::make_unique<FxSendControl> (p.apvts, ParamID::kickFxChannel, ParamID::kickFxAmount, ParamID::kickFxSend, "FX SEND", Theme::kick);
+    fxSend = std::make_unique<FxSendControl> (p.apvts, ParamID::kickFxChannel, ParamID::kickFxAmount, ParamID::kickFxSend, juce::StringArray (ParamID::kickFxSendToIds, numEffectChannels), "FX SEND", Theme::kick);
     addAndMakeVisible (*fxSend);
     setHeaderFxSend (fxSend.get());
     addAndMakeVisible (keyMode);
@@ -875,7 +870,7 @@ KickModule::KickModule (PluginBase& p)
                      { "CLICK", { knob (ParamID::kickClick, "LEVEL"), knob (ParamID::kickClickLength, "LENGTH"),
                                   knob (ParamID::kickClickTone, "TONE") } },
                      { "DRIVE", { choice (ParamID::kickClipMode, "MODE"), knob (ParamID::kickDrive, "AMOUNT") } },
-                     { "OUT", { knob (ParamID::kickHighCut, "HIGH CUT"), knob (ParamID::kickLevel, "LEVEL") } } });
+                     { "OUT", { knob (ParamID::kickHighCut, "HIGH CUT"), knob (ParamID::kickMix, "MIX"), knob (ParamID::kickLevel, "LEVEL") } } });
 
     // SAMPLE-vyn: hur samplingen används (MODE, LEVEL, TUNE, OFFSET). Rattarna är desamma som förut, bara i en egen vy.
     sampleControls = { choice (ParamID::kickSampleMode, "MODE"), knob (ParamID::kickSampleLevel, "LEVEL"),
@@ -925,16 +920,16 @@ KickModule::KickModule (PluginBase& p)
                                  "Edit the loaded sample: START cuts off its first ms, FADE fades out its last ms, REVERSE plays it backwards. All off = the sample as loaded." } });
     }
 
-    synthToggle.setTooltip ("Kick SYNTH on/off. Off = only the loaded sample is heard (like Replace); with no sample the kick is silent.");
-    sampleToggle.setTooltip ("Kick SAMPLE on/off. Off = the loaded sample is ignored (it stays loaded) and the synth kick plays alone.");
+    synthToggle.setTooltip ("Kick SYNTH on/off. Off = only the loaded sample is heard (like Replace); with no sample the kick is silent. Normally leave on and use MIX.");
+    sampleToggle.setTooltip ("Kick SAMPLE on/off. Off = the loaded sample is ignored (it stays loaded) and the synth kick plays alone. Normally leave on and use MIX.");
     synthToggleAttachment = std::make_unique<juce::ButtonParameterAttachment> (*p.apvts.getParameter (ParamID::kickSynthOn), synthToggle);
     sampleToggleAttachment = std::make_unique<juce::ButtonParameterAttachment> (*p.apvts.getParameter (ParamID::kickSampleOn), sampleToggle);
     addAndMakeVisible (synthToggle);
     addAndMakeVisible (sampleToggle);
-    balanceHint.setText ("Balance = LEVEL (SAMPLE view).  MODE (Click/Layer/Replace) still decides how the sample is used.", juce::dontSendNotification);
+    balanceHint.setText ("MIX (SYNTH view) balances synth and sample: left = synth only, middle = both, right = sample only.  MODE (SAMPLE view) decides how the sample is used.", juce::dontSendNotification);
     balanceHint.setFont (Theme::font (10.5f));
     balanceHint.setColour (juce::Label::textColourId, Theme::textDim);
-    balanceHint.setTooltip ("Both on: the synth kick plus the sample, balanced with LEVEL. Click = only the sample's first moments, Layer = the whole sample on top, Replace = the sample alone.");
+    balanceHint.setTooltip ("MIX in the middle: the synth kick plus the sample at full level, as before. Click = only the sample's first moments, Layer = the whole sample on top, Replace = the sample alone.");
     addAndMakeVisible (balanceHint);
     HelpDialog::setupButton (helpButton, *this, HelpDialog::Topic::kick, "the kick (SYNTH and SAMPLE views)");
     addAndMakeVisible (helpButton);
@@ -983,8 +978,9 @@ KickModule::KickModule (PluginBase& p)
 void KickModule::applyTab()
 {
     const auto sample = sampleTabShown();
-    viewTabs.select (sample ? 1 : 0);
-    display.setVisible (! sample);
+    const auto envelope = envelopeTabShown();
+    viewTabs.select (processor.kickTab.load());
+    display.setVisible (envelope);
     sampleView.setVisible (sample);
     library.setVisible (sample);
     sampleHelp.setVisible (sample);
@@ -992,7 +988,7 @@ void KickModule::applyTab()
     clearButton.setVisible (sample);
     listenSampleButton.setVisible (sample);
     for (auto& control : controls)
-        control->setVisible (std::find (sampleControls.begin(), sampleControls.end(), control.get()) != sampleControls.end() ? sample : ! sample);
+        control->setVisible (std::find (sampleControls.begin(), sampleControls.end(), control.get()) != sampleControls.end() ? sample : ! (sample || envelope));
     resized();
     repaint();
 }
@@ -1055,7 +1051,7 @@ void KickModule::resized()
     if (! isEmbedded())
     {
         presets.setBounds (presetBounds (*this));
-        viewTabs.setBounds (presetBounds (*this).translated (-158, 0).withWidth (150));
+        viewTabs.setBounds (presetBounds (*this).translated (-246, 0).withWidth (230));
     }
     auto area = getContentBounds();
 
@@ -1074,8 +1070,8 @@ void KickModule::resized()
     area.removeFromBottom (4);
 
     auto sourceRow = area.removeFromBottom (22);
-    synthToggle.setBounds (sourceRow.removeFromLeft (80));
-    sampleToggle.setBounds (sourceRow.removeFromLeft (90));
+    synthToggle.setBounds (sourceRow.removeFromLeft (70));
+    sampleToggle.setBounds (sourceRow.removeFromLeft (80));
     helpButton.setBounds (sourceRow.removeFromRight (44));
     sourceRow.removeFromRight (4);
     sourceRow.removeFromLeft (8);
@@ -1098,12 +1094,16 @@ void KickModule::resized()
         return;
     }
 
-    // En rad rattar under displayen, som får resten av höjden.
+    if (envelopeTabShown())
+    {
+        display.setBounds (area); // ENVELOPE: kurvorna får hela ytan
+        return;
+    }
+
+    // SYNTH: bara kontrollerna.
     const auto rowHeight = juce::jlimit (60, 100, area.getHeight() / (groups.numRows() + 1) - ControlGroups::titleHeight - 3);
     const auto groupsHeight = groups.numRows() * (ControlGroups::titleHeight + rowHeight + 3);
     groups.layout (area.removeFromBottom (groupsHeight), rowHeight);
-    area.removeFromBottom (4);
-    display.setBounds (area);
 }
 
 //==============================================================================
@@ -1121,7 +1121,10 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
 
     setHeaderPreset (&presets);
     addAndMakeVisible (presets);
-    fxSend = std::make_unique<FxSendControl> (p.apvts, id (F::fxChannel), id (F::fxAmount), id (F::fxSend), "FX SEND", layerAccent);
+    juce::StringArray sendToIDs;
+    for (int ch = 0; ch < numEffectChannels; ++ch)
+        sendToIDs.add (id (ParamID::fxSendToField (ch)));
+    fxSend = std::make_unique<FxSendControl> (p.apvts, id (F::fxChannel), id (F::fxAmount), id (F::fxSend), sendToIDs, "FX SEND", layerAccent);
     addAndMakeVisible (*fxSend);
     setHeaderFxSend (fxSend.get());
     envelope.onBeforePaint = [this] { current = refs.readInstrument (layer, 36).withTempo (processor.transportStatus.bpm.load(), false); };
@@ -1190,9 +1193,11 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
                       Help::forParameter (ParamID::bass (layer, F::fmOn))); // FM efter FILTER: fliknummer 3 + oscsPerLayer
     mixPanel = std::make_unique<InstrMixPanel> (p, layer, layerAccent);
     sources.addTab ("MIX", layerAccent, *mixPanel);
+    timingPanel = std::make_unique<InstrTimingPanel> (p, layer, layerAccent);
+    sources.addTab ("TIMING", layerAccent, *timingPanel);
 
     // B1: förhandsknapp i flikraden. OSC 1-3 och SAMPLE spelar bara sin källa, FILTER/FM/MIX hela instrumentet (INSTR har sin egen knapp i sidan).
-    for (int tab = 1; tab <= 7; ++tab)
+    for (int tab = 1; tab <= 8; ++tab)
     {
         const auto source = tab - 1; // fliknummer 1-3 = OSC 1-3, 4 = SAMPLE (källa 3)
         const auto solo = tab <= 1 + ParamID::oscsPerLayer;
@@ -1354,7 +1359,7 @@ void SampleView::paint (juce::Graphics& g)
 
     if (shownSlicer && showSlices)
     {
-        // E2: varje skiva är en egen färgad ruta med rubrik "Slice N" (raden i mönstret). Skivor över taket har ingen rad och ritas dämpade.
+        // E2: varje skiva är en egen färgad ruta med rubrik "Slice N" (raden i mönstret).
         const auto count = (int) sample->slices.size();
         for (int i = 0; i < count; ++i)
         {
@@ -1363,7 +1368,7 @@ void SampleView::paint (juce::Graphics& g)
             const auto toX = normToX ((float) toSample / (float) length);
             const auto box = juce::Rectangle<float> (fromX, area.getY(), std::max (1.0f, toX - fromX), area.getHeight());
             const auto colour = juce::Colour::fromHSV (std::fmod ((float) i * 0.13f, 1.0f), 0.55f, 0.95f, 1.0f);
-            const auto hasRow = i < RowRegistry::maxSliceRows;
+            const auto hasRow = true; // alla skivor är tangenter i slicer-rullen
             g.setColour (colour.withAlpha (i == heldSlice ? 0.45f : hasRow ? 0.2f : 0.06f));
             g.fillRect (box);
             g.setColour (colour.withAlpha (hasRow ? 0.9f : 0.35f));
@@ -1626,8 +1631,6 @@ SamplePage::SamplePage (PluginBase& p, int layerIn, juce::Colour accent)
     addAndMakeVisible (reverseToggle);
     sliceCapNotice.setFont (Theme::font (10.0f));
     sliceCapNotice.setColour (juce::Label::textColourId, juce::Colour (0xffe0a040));
-    sliceCapNotice.setTooltip ("A sample can be cut into up to 128 slices, but only the first " + juce::String (RowRegistry::maxSliceRows)
-                               + " get a \"Slice N\" row in the pattern. The slices after that are not played by the pattern. Use fewer slices to get a row for each.");
     addChildComponent (sliceCapNotice);
     reverseAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, id (F::slicerReverse), reverseToggle);
     filterSendToggle.setTooltip ("SEND THROUGH FILTER - On: the sample goes through Filter 1 and Filter 2 (set on the FILTER tab). "
@@ -1786,10 +1789,8 @@ void SamplePage::syncSlicerControls()
     sensitivityAmount.setVisible (mode == SampleSlicing::automatic);
     createButton.setVisible (mode != SampleSlicing::manual);
     const auto* sample = processor.getActiveInstrumentSample (layer);
-    const auto count = sample != nullptr ? (int) sample->slices.size() : 0;
-    const auto text = count > RowRegistry::maxSliceRows ? "Only the first " + juce::String (RowRegistry::maxSliceRows) + " slices have rows" : juce::String();
-    sliceCapNotice.setText (text, juce::dontSendNotification);
-    sliceCapNotice.setVisible (text.isNotEmpty());
+    juce::ignoreUnused (sample); // inget tak längre: alla skivor spelas från slicer-rullen
+    sliceCapNotice.setVisible (false);
 }
 
 bool SamplePage::isMulti() const
@@ -2522,7 +2523,7 @@ PatternModule::PatternModule (PluginBase& p, bool isInstrument)
     addChildComponent (gateFillButton);
 
     sequencer.onLayerSelected = [this] (int layer) { showLayer (layer); };
-    sequencer.onOpenPianoRoll = [this] (int layer) { sequencer.selectLayer (layer); showLayer (layer); showPianoRoll (true); };
+    sequencer.onOpenPianoRoll = [this] (int layer) { if (layer < RowRegistry::firstSubRow) sequencer.selectLayer (layer); showLayer (layer); showPianoRoll (true); };
     pianoRoll.onDeleted = [this] { showPianoRoll (false); };
     pianoRoll.onPopOut = [this] { togglePopOut(); };
     addAndMakeVisible (sequencer);
@@ -2709,7 +2710,8 @@ void PatternModule::selectLane (StepSequencer::Lane lane)
 void PatternModule::showLayer (int layer)
 {
     shownLayer = layer;
-    presets.setLayer (layer, layer == Pattern::kickLayer ? Theme::kick : instrument ? Theme::layerColour (layer) : Theme::gate);
+    const auto baseOfRow = layer >= RowRegistry::firstSubRow ? juce::jlimit (0, Pattern::numNoteLayers - 1, processor.pattern.rows.instrumentOf (layer)) : layer;
+    presets.setLayer (baseOfRow, baseOfRow == Pattern::kickLayer ? Theme::kick : instrument ? Theme::layerColour (baseOfRow) : Theme::gate);
     processor.selectedPatternLayer = layer;
     pianoRoll.setLayer (layer);
     updateVisibility();

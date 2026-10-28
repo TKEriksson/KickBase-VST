@@ -11,7 +11,7 @@
 
 // Tal som sparade projekt och presets bygger på: ändras de läses gamla filer fel (eller måste migreras).
 static_assert (Pattern::numLayers == 10 && Pattern::kickLayer == 10, "mönstrets lager sparas med index; kicken är lager 10 sedan version 6");
-static_assert (numEffectChannels == 11 && slotsPerChannel == 5, "FX-kanalernas id:n är fxA-fxK med fem platser");
+static_assert (numEffectChannels == 12 && numLegacyEffectChannels == 11 && slotsPerChannel == 5, "FX-kanalernas id:n är fxA-fxL med fem platser (fxA-fxK är de gamla)");
 static_assert (Modulation::numLfos == 3 && Modulation::numMacros == 4 && Modulation::firstInstrumentSource == 7
                    && Modulation::instrumentSources == 4 && Modulation::maxLfos == 10 && Modulation::firstExtraLfoSource == 47
                    && Modulation::firstEnvSource == 54 && Modulation::envSources == 2 && Modulation::firstCodeSource == 74
@@ -101,6 +101,15 @@ int PluginBase::fxChannelUsageMask()
     sentTo (ParamID::kickFxChannel, ParamID::kickFxAmount);
     for (int layer = 0; layer < activeInstruments(); ++layer)
         sentTo (ParamID::bass (layer, InstrumentField::fxChannel).toRawUTF8(), ParamID::bass (layer, InstrumentField::fxAmount).toRawUTF8());
+    // Matrissends (fxSendTo<N>) räknas som användning, vid sidan av den gamla kanalen + beloppet.
+    for (int channel = 0; channel < numEffectChannels; ++channel)
+    {
+        if (apvts.getRawParameterValue (ParamID::kickFxSendToIds[channel])->load() > 0.0f)
+            mask |= 1 << channel;
+        for (int layer = 0; layer < activeInstruments(); ++layer)
+            if (apvts.getRawParameterValue (ParamID::bass (layer, ParamID::fxSendToField (channel)).toRawUTF8())->load() > 0.0f)
+                mask |= 1 << channel;
+    }
 
     for (int channel = 0; channel < numEffectChannels; ++channel)
     {
@@ -609,8 +618,6 @@ void PluginBase::getStateInformation (juce::MemoryBlock& destData)
     for (int channel = 0; channel < numEffectChannels; ++channel)
         state.setProperty ("presetFx" + juce::String (channel + 1), fxPresetNames[(size_t) channel], nullptr);
     state.setProperty ("previewNote", previewNote.load(), nullptr);
-    state.setProperty ("jogKind", jogKind.load(), nullptr);
-    state.setProperty ("brakeCurve", brakeCurve.load(), nullptr);
     state.setProperty ("fxKnobsV", Effects::knobsVersion, nullptr);
     for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
         state.setProperty ("layerName" + juce::String (layer + 1), layerNames[(size_t) layer], nullptr);
@@ -723,8 +730,6 @@ void PluginBase::setStateInformation (const void* data, int sizeInBytes)
     for (int channel = 0; channel < numEffectChannels; ++channel)
         fxPresetNames[(size_t) channel] = state.getProperty ("presetFx" + juce::String (channel + 1), fxPresetNames[(size_t) channel]).toString();
     previewNote = juce::jlimit (0, 127, (int) state.getProperty ("previewNote", 60));
-    jogKind = juce::jlimit (0, 2, (int) state.getProperty ("jogKind", jogKindJog)); // saknas i gamla projekt: de behåller JOG
-    brakeCurve = juce::jlimit (0, 3, (int) state.getProperty ("brakeCurve", 0)); // saknas i gamla projekt: VINYL, dagens beteende
     for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
         layerNames[(size_t) layer] = state.getProperty ("layerName" + juce::String (layer + 1), juce::String()).toString();
     for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
@@ -1312,12 +1317,15 @@ namespace
     std::vector<std::pair<juce::String, juce::String>> trackExtraParameters (int layer)
     {
         const auto mixer = [layer] (const char* field) { return Mixer::paramID (Mixer::firstBassSource + layer, field); };
-        return { { "on", ParamID::bass (layer, InstrumentField::on) },
+        std::vector<std::pair<juce::String, juce::String>> extra { { "on", ParamID::bass (layer, InstrumentField::on) },
                  { "duck", ParamID::bass (layer, InstrumentField::duck) },
                  { "fxChannel", ParamID::bass (layer, InstrumentField::fxChannel) },
                  { "fxAmount", ParamID::bass (layer, InstrumentField::fxAmount) },
                  { "fxSend", ParamID::bass (layer, InstrumentField::fxSend) },
                  { "mixGain", mixer ("Gain") }, { "mixPan", mixer ("Pan") }, { "mixDuck", mixer ("Duck") }, { "mixMax", mixer ("Max") } };
+        for (int to = 0; to < ParamID::numFxSendTargets; ++to)
+            extra.push_back ({ "fxSendTo" + juce::String (to + 1), ParamID::bass (layer, ParamID::fxSendToField (to)) });
+        return extra;
     }
 
     // Instrumentets egna modulationskällor följer med spåret till ett annat instrument; LFO:er, makron och andras källor lämnas.
@@ -1845,6 +1853,13 @@ bool PluginBase::exportWav (const juce::File& file, ExportPart part, int bars, i
         turnOff (ParamID::kickFxAmount);
         for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
             turnOff (ParamID::bass (layer, InstrumentField::fxAmount).toRawUTF8());
+        // Matrissends hör också till effekterna.
+        for (int to = 0; to < ParamID::numFxSendTargets; ++to)
+        {
+            turnOff (ParamID::kickFxSendToIds[to]);
+            for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
+                turnOff (ParamID::bass (layer, ParamID::fxSendToField (to)).toRawUTF8());
+        }
     }
 
     copy->ensureTablesInUse();
@@ -1935,20 +1950,19 @@ int PluginBase::syncSliceRows (int layer)
         return 0;
     const auto* sample = instrumentSamples[(size_t) layer].active();
     const auto count = sample != nullptr && sample->slices.size() > 1 ? (int) sample->slices.size() : 0;
-    const auto wanted = juce::jmin (count, RowRegistry::maxSliceRows);
 
+    // Instrumentet har EN skivrad (noternas pitch är skivan); utan skivor tas raden bort med sina noter.
     auto missing = 0;
     {
-        EditScope scope (*this, "Slice rows");
-        for (int slice = RowRegistry::maxSliceRows - 1; slice >= wanted; --slice)
-            if (const auto id = pattern.rows.find (layer, RowRegistry::Kind::slice, slice); id >= 0)
-            {
-                pattern.clearNotes (id);
-                pattern.rows.remove (id);
-            }
-        for (int slice = 0; slice < wanted; ++slice)
-            if (pattern.rows.find (layer, RowRegistry::Kind::slice, slice) < 0 && pattern.rows.add (layer, RowRegistry::Kind::slice, slice) < 0)
-                ++missing;
+        EditScope scope (*this, "Slice row");
+        const auto id = pattern.rows.find (layer, RowRegistry::Kind::slices);
+        if (count == 0 && id >= 0)
+        {
+            pattern.clearNotes (id);
+            pattern.rows.remove (id);
+        }
+        else if (count > 0 && id < 0 && pattern.rows.add (layer, RowRegistry::Kind::slices) < 0)
+            ++missing;
     }
     return missing;
 }

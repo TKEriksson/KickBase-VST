@@ -128,6 +128,7 @@ set(PLUGIN_SOURCES
     Source/Ui/OscPanel.cpp
     Source/Ui/FmPanel.cpp
     Source/Ui/InstrMixPanel.cpp
+    Source/Ui/InstrTimingPanel.cpp
     Source/Ui/FmPresets.cpp
     Source/Ui/KickDisplay.cpp
     Source/Ui/Scopes.cpp

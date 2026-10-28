@@ -248,3 +248,128 @@ Nu: programmet, rel-0.3 motornära punkter: 1) S3 Unison/Reese, 2) multisampling
 - Kick, `KickModule`: ny rad CLICK 2 / CLICK 3 (LEVEL/LENGTH/TONE/DELAY/MODE) i SYNTH-vyn; SAMPLE-vyn har raden TOOLS (START, REVERSE, FADE). Radhöjderna räknas från antalet rader, så gamla layouten är kvar.
 - SYNTH/SAMPLE-mixen i kicken fanns redan (`synthToggle`/`sampleToggle`, LEVEL = balans).
 - Hjälptexter: ett block i `Source/Ui/Help.cpp` (kickClick2/3*, kickSample*, bassSampleAmp*/Pitch*/Reverse). Arbetare 1:s tillfälliga rader för bassSampleAmp*/Pitch* finns bara i hennes gren: ta bort dubbletter vid merge.
+
+## 2026-10-28 – Undersökning: FX send-matris, ljudväg och 132 sendparametrar (Arbetare 2, ingen kod)
+Underlag: `docs/work/plan-fx-send-matrix.md` (main). Radnummer nedan är main (`InstrumentProcessor.cpp`), i w2 ligger samma kod ~76 rader tidigare.
+
+### Hur ljudvägen är idag
+- Per källa (`InstrumentProcessor.cpp:915-926`, kick `931-941`): `Mixer::mix` (`Mixer.cpp:108-135`) lägger `ljud × fader × pan × dryGain` på master-bussen och skriver **samma** `ljud × fader × pan` (utan `dryGain`) till `sendBus`. Sedan `effects.send(kanal, sendBus, amount)` (`Effects.cpp:2417`) som *adderar* `amount × sendBus` till kanalens ingång.
+- **INSERT** (standard): `dryGain = 1 - amount` på bara den valda kanalen. **SEND** (`fxSend`): `dryGain = 1`, torrt orört, wet läggs på. Alltså: INSERT = torrt/blött-delning, SEND = additiv.
+- Skickningen sker efter duckning, EQ, fader och pan, före kanalens effekter. Kanalen mixas tillbaka efter `effects.process` med nivå 1.0 (`:956-962`); kanalens egen nivå/duck ligger i `EffectRack::process` (`Effects.cpp:2473-2483`).
+- Flera källor till samma kanal summeras redan idag (addFrom). En kanal utan skick och utan aktiv effekt är `idle` och hoppas över (`Effects.cpp:2442`) = CPU-kravet är redan uppfyllt.
+- `EffectRack::isActive` är alltid `true` (`Effects.cpp:2399` sätter den, ingen sätter den falsk), så `routed` betyder i praktiken `kanal >= 0`.
+
+### Förslag: ljudväg med flera sends
+1. **Matrisen är alltid SEND (additiv).** De nya 132 beloppen `send[källa][kanal]` ändrar aldrig torrsignalen. Bara den gamla `fxChannel`/`fxAmount`/`fxSend` behåller INSERT-beteendet (`dryGain = 1 - fxAmount` på sin kanal). Skälet: med flera kanaler finns ingen entydig "1 - summan" att dra av, och gamla presets måste låta likadant.
+2. **Effektivt belopp per kanal:** `amount_c = (c == fxChannel-1 ? fxAmount : 0) + send[källa][c]`. Summan (inte "matrisen ersätter") gör att ett gammalt preset med matris = 0 är bit-identiskt och att man kan lägga till en andra kanal utan att den första ändras. UI: reglaget för den gamla kanalen binds till `fxAmount`, övriga till matrisparametrarna; då nollar användaren inget oväntat om hen byter kanal i dropdownen.
+3. **Implementation (en loop, `sendBus` återanvänds):** `Mixer::mix` skriver redan `sendBus` en gång per källa. Efter det: den gamla `effects.send(...)` oförändrad, sedan `for c in 0..numChannels: if (send[c] > 0) effects.send(c, sendBus, send[c])`. Inga extra buffertar, inga nya mix-anrop. `sent[c]` sätts bara av ett verkligt anrop, så kanaler utan skick och effekt förblir `idle`.
+4. **Ordning/bit-identitet:** addition av flyttal är inte associativ. Låt den gamla sendens `addFrom` komma först och matrisens efter, och källorna i samma ordning som idag (kick, instr 1-10). Då är "alla sends 0" exakt samma operationer som förut (inga extra anrop).
+5. **Gain-staging:** linjär 0..1, ingen normalisering (normalisering skulle ändra gammalt ljud). Det betyder att en källa med 1.0 till tre kanaler ger 3× signal in totalt; det är avsiktligt (SEND är en parallell väg) och regleras av kanalens egen nivå (`gains[ch]`, `Effects.cpp:2407`). Föreslå **hjälptext** "sends add up; lower the channel level if the return is too hot" och en mjuk markering i UI när en källas summa > 2. Ingen auto-gain.
+6. **Mjukning:** dagens `amount` rampas inte (konstant per block, `addFrom`). Matrisen är automatiserbar, så använd `addFromWithRamp` med förra blockets värde (132 flyttal i processorn) för matrisen. Gamla vägen lämnas ouppmjukad (bit-identisk).
+7. **Sidechain på kanal 12 / egen kanal:** inget ändras i sendvägen; kanalens `SIDECHAIN`-effekt läser `SourceSignals` (`:947-954`), som är oberoende av sends.
+
+### Förslag: 132 parametrar utan att ändra rendersig
+- Namn: `fxSend<Källa><Kanal>`, t.ex. via `ParamID`-hjälpare: kick + `bass(layer, InstrumentField::…)` kan inte användas rakt av (matrisen är 11×12, inte per fält). Enklast: ett fält-block i `InstrumentField` för bas-lagren (12 fält: `fxSendTo1..12`, **sist** i enum) + 12 `kickFxSendTo1..12` sist bland kick-parametrarna. 10×12 + 12 = 132, samma mönster som `fxSend` (`Params.cpp:417`, `hasBass`).
+- Standard 0, `NormalisableRange<float>(0, 1, 0.001)`, vanliga `AudioParameterFloat` (automatiserbara). Saknas parametern i ett gammalt preset gäller standard 0 = av.
+- **Lagt sist i layouten**, efter alla befintliga parametrar (efter `Params.cpp:417` för lagren; kicken sist i `addKickToggleParams`). Obs: mixer-/effektparametrar för FX-kanal 12 (nya `fxL…`, `Mixer FxL …`) måste *också* läggas sist i hela layouten, inte i sin kanalloop, annars flyttas ordningen för parametrar efter kanal 11. **Att kolla först:** om presetindex/hash räknas på ordning eller id; id-baserat räcker att ID:na är nya.
+- `Params` laddar bas-fälten per lager i en loop med `get(F::x)`; matrisen kan läsas som en array `sendAmount[12]` i samma `getBass`-struct (`Params.cpp:817-824`-mönstret) så ljudtråden inte slår upp strängar.
+- helpcheck: 132 hjälpnycklar. Bas: `bassFxSendTo<N>` ×12 (en nyckel per fält räcker om helpcheck matchar fältnamn, ej lager) + `kickFxSendTo<N>` ×12. Då blir det 24 rader, inte 132. **Att verifiera** hur helpcheck räknar lager.
+- Mixer/FX har hårt 11 på: `Effects.h:23`, `PluginBase.cpp:13` (static_assert fxA-fxK, 5 platser), `Mixer.h:15` (strips = 1 + 10 + kanaler, fx sist, så en 12:e strip hamnar sist = ofarligt), `PluginBase.cpp:97-104, 605, 715, 1507, 1684`, `PresetButton.cpp:259-268`, `EffectsPage.h:79`, `fxPresetNames`. Inget av det rör sendvägen.
+
+### Tester (förslag)
+- Alla sends 0: rendersig oförändrad (existerande testet).
+- Två sends från samma källa till kanal A och B = ljudet var för sig summerat (linjär, tolerans nära 0).
+- Gammalt preset (`fxChannel`+`fxAmount`, matris 0) bit-identiskt; INSERT-dry fortfarande `1 - amount`.
+- Matrissend på samma kanal som den gamla: effektivt belopp = summan.
+- Blocksizetest 1/64/512 med matris på; CPU: kanaler utan skick och effekt förblir `idle`.
+
+### Risker / beslut åt Tobias/PL
+- Summerande sends kan låta för högt om flera ligger på 1.0 (inget auto-gain, medvetet).
+- Kanal 12 + `ParamID`-ordning: lägg sist.
+- `fxAmount` vs matris för samma kanal: förslaget är summa; alternativ är "matrisen vinner", men det kräver migrering av gamla presets.
+
+### Svar på de öppna frågorna (kodkoll, 2026-10-28)
+- **Presetindex och hash: ordning i preset-listan, inte parameterordning.** Indexet är platsen i `PresetData.inl` (kommentarerna "sist så att äldre index och hashar är oförändrade", rad 443/446/638/680). Rendersig (`Tools/Tool.cpp:1574-1605`) hashar renderade samples per presetindex. Parametrar sparas och laddas på **ID** (APVTS), så nya 132 ID:n sist ändrar inte index. Parameterordningen spelar bara roll för värdens automationslista, och där hamnar de nya sist. Rendersig förblir oförändrad så länge alla sends är 0 (inga extra `send`-anrop).
+- **Helpcheck: på ID med regler, inte en nyckel per parameter.** `Tools/StateTests.cpp:43-57` går igenom alla parametrar och hoppar över lager >0 (`Presets::instrumentLayerOf`), effektkanaler utom `A`, `mixBass` utom `mixBass1` och `mixFx` utom `mixFxA`. `Help::forParameter` (`Help.cpp:10-11`) strippar `bass<lager>`-prefixet. Alltså: basmatrisen behöver **12 texter** (ett per `bassFxSendTo<N>`-fält, lager 1), kicken 12 egna ID:n = **24 texter**. Kanalerna är bara ett suffix; en gemensam regel i `forParameter` (t.ex. `contains("FxSendTo")`) kan ge alla 24 samma mall-text med kanalens bokstav.
+- **Kanal 12 i helpcheck:** nytt ID `fxL…` hoppas över av regeln `id[2] != 'A'`, och `mixFxL…` av `mixFx`-regeln, så inga fler texter behövs där.
+- **Beslut (PL):** matris + gamla `fxAmount` på samma kanal = **summa (additivt)**. **FX-pluginet får ingen matris nu.** Ingen kod i rel-0.3.
+
+## Steg 3: send-matrisen – skriven plan (2026-10-28, Arbetare 2, ingen kod)
+**Rättelse:** `addFromWithRamp` ovan (rad 268) är en JUCE-metod på `AudioBuffer`, inte en egen funktion i `Source/Core`. Ingen wrapper finns i `EffectRack`; den görs i steg 3 (se Ramp). Radnummer här är w2.
+
+### Filer och funktioner (i ordning)
+1. `Source/Core/Params.h:145` – nya `InstrumentField::fxSendTo1..fxSendTo12` direkt efter `fxSend` (före `sampleMode`, annars flyttas inget: enumen är bara index, ID:n styr sparning). Kick: 12 nya ID:n `kickFxSendTo1..12` bredvid `kickFxSend` (`Params.h:68`). Hjälpfunktion `fxSendToField (int channel)` så loopen slipper switch.
+2. `Source/Core/Params.cpp` – `bassFxSendTo<N>` registreras efter `fxSend` (l.420) men *i lagerloopen, så sist av instrumentfälten som ID*; kickens i `addKickToggleParams` sist. `floatParam` 0..1 steg 0.001, standard 0, text "%". **Obs:** parameterordningen i layouten påverkar bara värdens automationslista, aldrig preset/hash (se svaren ovan).
+3. `Source/Core/Params.h:270` `hasBass` – FX-pluginet saknar fälten (ingen matris där), loopen måste gå via `hasBass` eller läsas in i `InstrumentParams` bara för processorn.
+4. `Source/Instrument/InstrumentProcessor.cpp:990-1016` – send-looparna (nedan).
+5. `Source/Core/Effects.h/.cpp` – ny `EffectRack::sendRamped (channel, L, R, n, fromAmount, toAmount)` bredvid `send` (`Effects.cpp:2427`).
+6. `Source/Core/Presets.cpp:269` – lägg `fxSendTo*` i undantagslistan (`isLayerField`), så instrumentpresets inte skriver över routingen.
+7. `Source/Core/PluginBase.cpp:92-104` `fxChannelUsageMask` – kanal räknas som använd om `fxSendTo<c> > 0`. `:1315` AI-namnkartan. `:1694-1730` `loadInstrumentPreset` (länkning) – kolla att matrisen inte rörs. `:1845` `turnOff` – ingen ändring (matrisen berörs inte av fxAmount-avstängning), men besluta med PL om "ta bort FX" ska nolla matrisen.
+8. `Source/Ui/Help.cpp:10` – en regel `contains("FxSendTo")` med mall-text per kanal (24 ID:n, 1 regel). `Components.cpp:478-499` tooltips, `Modules.cpp:923` (kick) och `:1193` (bas): `FxSendControl` blir en lista med ett reglage per synlig kanal (UI sist, efter att ljudet är testat).
+
+### Loopen (InstrumentProcessor)
+Den gamla `effects.send (channel, sendBus…, amountToChannel)` ligger kvar **först och orörd** (bit-identitet). Direkt efter, per källa:
+```cpp
+for (int c = 0; c < Effects::numEffectChannels; ++c)   // aldrig hårdkodad 11/12
+{
+    const auto to   = params.bass (layer, fxSendToField (c));
+    auto&      from = lastSendTo[(size_t) sourceIndex][(size_t) c];
+    if (to > 0.0f || from > 0.0f)                      // båda 0 = inga anrop = rendersig oförändrad
+        effects.sendRamped (c, sendBus.getReadPointer (0), sendBus.getReadPointer (1), numSamples, from, to);
+    from = to;
+}
+```
+Kicken: samma loop med `sourceIndex = Mixer::kickSource` och kickens ID:n; `sendBus` är kickens (mono kopieras till båda i `mix`, som idag; null höger återanvänder vänster i `send`).
+- `sendBus` fylls av `mixer.mix` en gång per källa → flera sends delar samma buffer (ingen extra mixning). Summa av A+B = A + B eftersom `addFrom` är linjär.
+- Gamla vägen + matris på samma kanal = **summa**: två `addFrom` efter varandra. Flyttalsordning fast (gamla först), så det är deterministiskt.
+- INSERT-läget (`dryGain = 1 - amount`) gäller bara gamla kanalen. Matrisen är alltid SEND (torrt orört). Beslut att skriva i hjälptexten.
+- `isActive (c)`-kollen behålls: kanaler utan effekter och utan sends kostar inget (`process` hoppar `idle`).
+
+### Ramp
+`sendRamped`: `sent[channel] = true; buffer.addFromWithRamp (ch, 0, src, n, from, to)` (JUCE, linjär ramp över blocket), höger via samma pekare om null. `lastSendTo[11][numEffectChannels]` är en medlem i processorn (`std::array<std::array<float,12>,11>`, 132 flyttal), nollas i `prepare`/reset. Första blocket efter laddning: `from = 0` ger en mjuk start, inget klick. Gamla vägen rampas inte (oförändrad). Stor blockstorlek 1: ramp över 1 sample = `to`; ok.
+
+### Tester
+- `testFxSendMatrix` (ny, `Tools/AudioTests.cpp`): (a) A=0.5 och B=0.3 samtidigt = render(A ensam) + render(B ensam) inom 1e-6 på respektive kanals `fxL`/bus; (b) matris på samma kanal som gamla `fxAmount` = summa; (c) blocksize 1/64/512 ger samma resultat inom 1e-5 (rampen ändrar bara över blockgräns, jämför med konstant belopp); (d) kick (mono) och instrument.
+- Gammalt preset bit-identiskt: `rendersigwide`/`rendersig` oförändrade (alla nya 0 → inga `sendRamped`-anrop); kör före och efter och jämför hashar.
+- Idle-CPU: kanal utan effekter och utan sends ger 0 extra anrop (räknare i testbygget eller `process` idle-flagga).
+- `paramtest` (alla 132 nya går att sätta/läsa, standard 0) och `helpcheck` (24 texter via regeln).
+- `Debug all` grön före commit. DAW-test i `docs/work/fl-testlista.md`: flera sends från kicken, kanal 12 sidechain, gamla presets, automation av ett sendbelopp utan klick.
+
+### Samordning med Arbetare 1 (steg 1, `fx12`)
+| Arbetare 1 (`fx12`) | Arbetare 2 (steg 3) |
+|---|---|
+| `Effects.h:23` `numEffectChannels`, `PluginBase.cpp:13` static_assert, `Mixer.h:15`, `EffectsPage.h:79`, `PluginBase.h:616`, `fxChannelChoices` (`Params.cpp:68`), `MixerPage`, `fxL`-ID:n, `FxProcessor.cpp:144-150` | `Params.h:145`+`:68`, `Params.cpp` (efter l.420 och i kickens funktion), `InstrumentProcessor.cpp:990-1016`, `Effects.cpp:2427` (ny `sendRamped`), `Presets.cpp:269`, `PluginBase.cpp:92-104/1315`, `Help.cpp`, `Components.cpp`/`Modules.cpp` |
+- Enda gemensamma yta: `Params.cpp`/`Params.h` (båda lägger till sist) och `Presets.cpp:269` (hårdkodad 11, Arbetare 1 ändrar siffran, jag lägger till fält på samma rad → **konflikt troligt**; föreslår att Arbetare 1 tar den raden och jag rebasar).
+- Loopgränsen använder `numEffectChannels`, så koden fungerar med både 11 och 12. Steg 3 byggs ovanpå `fx12` (rebasa efter att den är mergad) eller mergas i ordning; PL beslutar.
+- `lastSendTo`-storleken följer `numEffectChannels` (ingen egen siffra).
+
+### Öppet (PL)
+1. Ska "ta bort FX"/`turnOff` också nolla matrisen? (förslag: ja för vald kanal, annars ligger sends kvar mot en tom kanal.)
+2. Rampen: 1 block (~10 ms) räcker; vill PL ha egen tid?
+
+### Besked från PL (2026-10-28) – beslut som läggs in i planen
+- **turnOff (`PluginBase.cpp:1845`):** nollar matrisen (`fxSendTo<c>`) för vald kanal och källa, men bara när användaren aktivt tar bort FX. Aldrig vid laddning av preset.
+- **Ramp:** ett block räcker om blocksizetestet (1/64/512) inte visar klick. Visar det något: förläng till 2-3 block.
+- **Presets.cpp:269:** Arbetare 1 tar raden i steg 1. Jag rebasar steg 3 på `fx12` efter hennes steg 1.
+- **Summa:** Tobias har inte bekräftat. Anta summa men håll det lätt att ändra (en enda plats: ordningen/anropet efter den gamla `send` i `InstrumentProcessor.cpp`).
+- **Start:** ingen kod i steg 3 före PL:s besked (steg 1 klart först). Ingen push.
+
+### Steg 3 – kod klar, byggs (2026-10-28, Arbetare 2)
+Gren `fx-matrix` (från `pl-presets`), ingen UI, `numEffectChannels` = 11 tills `fx12` rebasas in.
+- Params: `fxSendTo1..12` per lager (`Params.h`), `kickFxSendToIds[]`, `fxMuteIds[]`; registreras sist i `Params::addFxMatrixParams` (`Params.cpp`, anropas sist i `createLayout`).
+- Ljud: `InstrumentProcessor::sendMatrix` (efter den gamla sendet, summa på samma kanal – ändras på ett ställe), `EffectRack::sendRamped` (1 block), mute i `EffectRack::process` (~5 ms glidning, kanalen kör vidare).
+- `PluginBase.cpp`: `fxChannelUsageMask` räknar matrissends; `copyTrack`/spårpreset tar med `fxSendTo<N>`; "export utan effekter" nollar matrisen. `turnOff` i UI:t kommer med UI-steget (ingen UI nu).
+- `Help.cpp`: regel för `FxSendTo` (24 ID) och `fxMute` (12 ID).
+- Test: `KickbaseTool fxmatrixtest` (`Tools/AudioTests.cpp`). Rebase på `fx12` + exkluderingslistan i `Presets.cpp:269` återstår.
+
+## Steg 3 – klar (28 okt)
+Debug all grönt; fxmatrixtest, helpcheck, paramtest ok. Rendersig-jämförelse mot main avförd (Tobias bygger nya presets; rendersig varierar dessutom mellan körningar). Kvar: UI-turnOff, AI-namnkarta (~PluginBase.cpp:1318), rebase på fx12 + matris-ID:n i Presets.cpp:269-listan.
+
+## Steg 4 – popup-UI, klart (28 okt)
+Debug all grönt (inkl. helpcheck, fxmatrixtest). `Components.cpp/.h` `FxSendControl` + `FxSendPopup` (sammanfattning, rad per kanal, på/av, %, INS/SEND-rad, `+ add FX channel`). `Effects.cpp` `visibleChannels/addChannel/removeLastChannel` (global `fxChannelCount` på apvts.state, inte i preset). `EffectsPage` rullista + ta bort-fråga. `MixerPage` 12 kanaler + M-knapp (`fxMute1..12`). Matris-ID undantagna i `Presets.cpp`. Kvar: `PresetButton.cpp:369-378` loopar `numLegacyEffectChannels` (FX12 kan inte väljas; Arbetare 1:s kod). Plan för parameterrader: `docs/work/plan-pianoroll-param-lanes.md`.
+
+## Fas 2 – parameterrader, data (28 okt)
+Debug all grönt. `Pattern::Note::lock[3]` (cutoff, pan, fxsend; -1 = osatt) med `setLock/clearLock/getLock`; sparas som valfri `locks`-egenskap (Pattern version 8) och `lockN` i .roll (version 4); undo täcks via toValueTree. MCP: `set_pattern` tar `cutoff/pan/fxsend` per ton, `repeat_to` kopierar, `get_pattern` visar `locks [tick, parameter, value]`. Test: `testNoteLocks` (EngineTests.cpp). Även `PresetButton.cpp:369-378` rättad (`numEffectChannels`). Kvar: fas 1 (UI, efter Arbetare 1:s PianoRoll-commit), fas 3 (ljud).
+
+## Fas 3 – parameterrader, ljud (28 okt)
+Debug all grönt. Lås gäller från anslaget tills nästa ton ändrar dem: cutoff exakt vid anslaget (`InstrumentVoices::setCutoffLock`), pan via `Mixer::setPanLock` (20 ms-ramp, ingen klick), FX-send per block med glidning (`InstrumentProcessor.cpp` `applyNoteLocks` / `finishBlock`). Ljudtråden läser bara atomics; allt förberäknas i `prepareToPlay`. Nytt `locktest` (`Tools/AudioTests.cpp`): cutoff-lås = samma cutoff som parameter (skillnad 0), pan-lås 0 = pan -1 som parameter, send-lås 0,3 = fxAmount 0,3, inget hopp. Rendersig-trion (rendersig, wide, tb303), audiotest, fxmatrixtest oförändrade. Kvar: fas 1 (UI), blocksizetest-felet vid röststöld (PL-order).
