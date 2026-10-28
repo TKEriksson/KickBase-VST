@@ -14,12 +14,22 @@ public:
     {
         if (shouldBeActive != active)
         {
+            // Motorn har en enda aktiv källa: tar en annan över (eller ljudet stoppas) släpps den lokala fastlåsningen/hållningen,
+            // annars lyser knappen kvar och nästa mouseUp skulle stoppa den nya källan.
+            if (active && ! shouldBeActive)
+                latched = held = false;
             active = shouldBeActive;
             repaint();
         }
     }
 
     void setAccent (juce::Colour colour) { accent = colour; repaint(); }
+
+    // Knappen har själv startat ljudet (hållen eller fastlåst), till skillnad från att den bara lyser för att motorn spelar.
+    bool isHeldOrLatched() const { return held || latched; }
+
+    // Släpper den lokala hållningen/fastlåsningen utan att anropa onStop (den som släpper stoppar ljudet själv).
+    void release() { if (held || latched) { held = latched = false; repaint(); } }
 
     // Spela/stopp-ikon (triangel i vila, kvadrat medan det spelar) i stället för högtalaren; högtalaren behålls för mute/lyssna på raderna.
     void setPlayIcon (bool shouldUsePlayIcon) { playIcon = shouldUsePlayIcon; repaint(); }

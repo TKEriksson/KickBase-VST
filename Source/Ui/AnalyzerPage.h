@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CollisionsView.h"
+#include "HelpDialog.h"
 #include "KickBassView.h"
 #include "SpectrumPage.h"
 
@@ -28,6 +29,8 @@ public:
             b.onClick = [this, i] { setCurrentView (i); };
             addAndMakeVisible (b);
         }
+        HelpDialog::setupButton (helpButton, *this, HelpDialog::Topic::analyzer, "the ANALYZER tab");
+        addAndMakeVisible (helpButton);
         addChildComponent (kickBass);
         addChildComponent (collisions);
         spectrum.setEmbedded();
@@ -55,6 +58,7 @@ public:
         auto area = getLocalBounds();
         stripArea = area.removeFromTop (36);
         auto strip = stripArea.reduced (6, 3);
+        helpButton.setBounds (strip.removeFromRight (48));
         for (auto& b : buttons)
         {
             auto font = getLookAndFeel().getTextButtonFont (b, 30).boldened().withHeight (11.0f);
@@ -85,6 +89,7 @@ private:
     juce::Rectangle<int> stripArea;
     static constexpr int numViews = 4;
     std::array<juce::TextButton, numViews> buttons;
+    juce::TextButton helpButton;
     KickBassView kickBass;
     CollisionsView collisions;
     SpectrumPage spectrum;

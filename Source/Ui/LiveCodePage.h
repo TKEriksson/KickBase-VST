@@ -93,7 +93,7 @@ private:
     void showTab (bool errors);
     void toggleFloat(); // G1: ett flytande fönster med samma kod (samma dokument), så att den syns medan man arbetar i andra flikar
 
-    struct FloatContent; // fönstrets innehåll: samma kod och samma knappar som fliken (AUTO, STOP, CREATE, CODE ONLY, LOCK, KOD/KONSOL)
+    struct FloatContent; // fönstrets innehåll: samma kod och samma knappar som fliken (AUTO, STOP, CREATE, CODE ONLY, LOCK, CODE/CONSOLE)
     void syncFloat();
     juce::CodeEditorComponent* floatEditor(); // nullptr när FLOAT är stängd
     juce::String lockSummary() const;
@@ -106,6 +106,7 @@ private:
     std::unique_ptr<FloatWindow> floatWindow;
     juce::TextButton floatButton { "FLOAT" };
     juce::TextButton formatButton { "FORMAT" };
+    juce::TextButton helpButton;
     juce::CodeDocument document;
     juce::CPlusPlusCodeTokeniser tokeniser; // räcker för färg på strängar, siffror, kommentarer
     juce::CodeEditorComponent editor { document, &tokeniser };
@@ -142,7 +143,7 @@ private:
     juce::TextEditor errorLog; // fliken KONSOL: fel och console.log, senaste överst
     int errorCount = 0, logLines = 0;
     static constexpr int maxLogLines = 500;
-    juce::TextButton codeTab { "KOD" }, errorTab { "KONSOL" };
+    juce::TextButton codeTab { "CODE" }, errorTab { "CONSOLE" };
     juce::TextButton playButton { "AUTO" }, stopButton { "STOP" }, createButton { "CREATE" }, codeOnlyButton { "CODE ONLY" }; // AUTO är av/på
     juce::Label lockLabel, lockSummaryLabel; // LÅS: 1-10 = instrument, K = kicken; en låst rad rör Live Code aldrig
     std::array<juce::TextButton, 11> lockButtons;

@@ -65,6 +65,12 @@ void KickEngine::prepare (double newSampleRate)
         voice.noiseFilter.setType (juce::dsp::StateVariableTPTFilterType::highpass);
         voice.noiseFilter.setResonance (0.7071f);
         voice.clickToneSet = voice.noiseToneSet = -1.0f;
+        for (int i = 0; i < KickParams::numExtraClicks; ++i)
+        {
+            voice.extraClickFilter[i].prepare ({ sampleRate, 512, 1 });
+            voice.extraClickFilter[i].setResonance (0.8f);
+            voice.extraToneSet[i] = -1.0f;
+        }
     }
     highCut.prepare ({ sampleRate, 512, 1 });
     highCut.setType (juce::dsp::StateVariableTPTFilterType::lowpass);
@@ -84,6 +90,8 @@ void KickEngine::reset()
         voice.active = false;
         voice.clickFilter.reset();
         voice.noiseFilter.reset();
+        for (auto& filter : voice.extraClickFilter)
+            filter.reset();
     }
     highCut.reset();
     lowCut.reset();
@@ -117,6 +125,8 @@ void KickEngine::trigger (float velocity, int transposeSemitones)
     voice.samplePosition = -(double) params.sampleOffsetMs * 0.001 * sampleRate * std::exp2 ((double) params.sampleTuneSemis / 12.0); // plus = väntar, minus = hoppar in
     voice.clickFilter.reset();
     voice.noiseFilter.reset();
+    for (auto& filter : voice.extraClickFilter)
+        filter.reset();
 }
 
 void KickEngine::cancelCurrent (double fadeSeconds)
@@ -146,7 +156,7 @@ float KickEngine::nextSample()
 
     const auto& current = voices[currentVoice];
     // Duckningen följer kicken: syntesens envelope (inte vid ersättning) eller samplingens nivå, den som är högst.
-    const auto synthEnvelope = effectiveSampleMode (params, clickSample) == 2 || ! params.synthOn ? 0.0f : amplitudeAt (params, current.time);
+    const auto synthEnvelope = effectiveSampleMode (params, clickSample) == 2 || ! params.synthOn ? 0.0f : amplitudeAt (params, current.time) * std::min (1.0f, 2.0f * (1.0f - params.mix));
     envelope = current.active ? std::max (synthEnvelope, current.sampleFollower) * current.fade : 0.0f;
 
     auto y = clip (out, params.drive, params.clipMode);
@@ -290,18 +300,37 @@ float KickEngine::renderVoice (Voice& voice)
     {
         const auto& audio = clickSample->audio;
         const auto length = audio.getNumSamples();
-        if (voice.samplePosition < (double) length - 1.0)
+        // Sampleverktyg: klippet tar bort början (startSamples), regionen är det som är kvar. Utan klipp är regionen hela samplingen.
+        const auto startSamples = params.sampleStartMs > 0.0f ? juce::jlimit (0, std::max (0, length - 2), (int) (params.sampleStartMs * 0.001 * sampleRate)) : 0;
+        const auto region = length - startSamples;
+        if (voice.samplePosition < (double) region - 1.0)
         {
             if (voice.samplePosition >= 0.0)
             {
                 const auto* data = audio.getReadPointer (0);
-                const auto index = (int) voice.samplePosition;
-                const auto fraction = (float) (voice.samplePosition - (double) index);
-                sampled = data[index] + fraction * (data[index + 1] - data[index]);
+                if (! params.sampleReverse)
+                {
+                    const auto position = voice.samplePosition + (double) startSamples;
+                    const auto index = (int) position;
+                    const auto fraction = (float) (position - (double) index);
+                    sampled = data[index] + fraction * (data[index + 1] - data[index]);
+                }
+                else
+                {
+                    const auto position = (double) (length - 1) - voice.samplePosition;
+                    const auto index = (int) position;
+                    const auto fraction = (float) (position - (double) index);
+                    sampled = index + 1 < length ? data[index] + fraction * (data[index + 1] - data[index]) : data[index];
+                }
+                if (params.sampleFadeMs > 0.0f)
+                {
+                    const auto fadeLength = std::max (1.0, (double) params.sampleFadeMs * 0.001 * sampleRate);
+                    sampled *= (float) juce::jlimit (0.0, 1.0, ((double) region - 1.0 - voice.samplePosition) / fadeLength);
+                }
             }
             voice.samplePosition += std::exp2 ((double) params.sampleTuneSemis / 12.0);
         }
-        voice.sampleFollower = std::max (std::abs (sampled) * (layered ? params.sampleLevel : params.clickLevel),
+        voice.sampleFollower = std::max (std::abs (sampled) * (layered ? params.sampleLevel : params.clickLevel) * std::min (1.0f, 2.0f * params.mix),
                                          voice.sampleFollower * (float) std::exp (-1.0 / (0.012 * sampleRate)));
     }
     else if (params.synthOn)
@@ -326,18 +355,52 @@ float KickEngine::renderVoice (Voice& voice)
     else if (voice.fadeUpStep > 0.0f && voice.fade < 1.0f)
         voice.fade = std::min (1.0f, voice.fade + voice.fadeUpStep);
 
-    const auto sampleOut = layered ? sampled * params.sampleLevel : sampled * params.clickLevel;
-    return (body + (hasSample ? sampleOut : click * params.clickLevel) + top) * voice.velocity * voice.fade;
+    // MIX: 0.5 = som förut (båda på full nivå), åt ena hållet tonas den andra sidan ut.
+    const auto synthGain = std::min (1.0f, 2.0f * (1.0f - params.mix));
+    const auto sampleGain = std::min (1.0f, 2.0f * params.mix);
+    const auto sampleOut = (layered ? sampled * params.sampleLevel : sampled * params.clickLevel) * sampleGain;
+    auto mixed = body * synthGain + (hasSample ? sampleOut : click * params.clickLevel * synthGain) + top * synthGain;
+
+    // Klick-lager 2 och 3: eget brus, filter, längd och fördröjning. Nivå 0 gör inget alls (inga slumptal dras).
+    if (! replace && params.synthOn)
+        for (int i = 0; i < KickParams::numExtraClicks; ++i)
+        {
+            const auto& layer = params.extraClicks[i];
+            if (layer.level <= 0.0f)
+                continue;
+            const auto local = t - layer.delayMs * 0.001;
+            const auto seconds = layer.lengthMs * 0.001;
+            if (local < 0.0 || local >= seconds)
+                continue;
+
+            auto& filter = voice.extraClickFilter[i];
+            filter.setType (layer.mode == 1 ? juce::dsp::StateVariableTPTFilterType::lowpass
+                            : layer.mode == 2 ? juce::dsp::StateVariableTPTFilterType::highpass
+                                              : juce::dsp::StateVariableTPTFilterType::bandpass);
+            if (const auto hz = juce::jlimit (100.0f, (float) sampleRate * 0.45f, layer.toneHz); hz != voice.extraToneSet[i])
+            {
+                filter.setCutoffFrequency (hz);
+                voice.extraToneSet[i] = hz;
+            }
+            const auto shape = (float) (1.0 - local / seconds);
+            mixed += filter.processSample (0, random.nextFloat() * 2.0f - 1.0f) * shape * shape * 2.0f * layer.level * synthGain;
+        }
+
+    return mixed * voice.velocity * voice.fade;
 }
 
 double KickEngine::totalSeconds (const KickParams& p, const ClickSample* sample, double sampleRate)
 {
-    const auto synth = lengthSeconds (p);
+    auto synth = lengthSeconds (p);
+    for (const auto& layer : p.extraClicks)
+        if (layer.level > 0.0f)
+            synth = std::max (synth, (layer.delayMs + layer.lengthMs) * 0.001);
     const auto mode = effectiveSampleMode (p, sample);
     if (mode <= 0)
         return synth;
 
-    const auto sampleSeconds = (double) sample->audio.getNumSamples() / sampleRate / std::exp2 ((double) p.sampleTuneSemis / 12.0)
+    const auto startSamples = p.sampleStartMs > 0.0f ? std::min ((double) p.sampleStartMs * 0.001 * sampleRate, (double) std::max (0, sample->audio.getNumSamples() - 2)) : 0.0;
+    const auto sampleSeconds = ((double) sample->audio.getNumSamples() - startSamples) / sampleRate / std::exp2 ((double) p.sampleTuneSemis / 12.0)
                              + std::max (0.0, (double) p.sampleOffsetMs * 0.001);
     return mode == 2 ? sampleSeconds : std::max (synth, sampleSeconds);
 }

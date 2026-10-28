@@ -120,6 +120,30 @@ namespace InstrumentMenu
                                       });
     }
 
+    // Fri färgväljare i en CallOutBox; varje ändring sparas direkt i projektet (som paletten).
+    class ColourPicker : public juce::ColourSelector, private juce::ChangeListener
+    {
+    public:
+        ColourPicker (PluginBase& p, int l, juce::Colour start)
+            : juce::ColourSelector (juce::ColourSelector::showColourspace | juce::ColourSelector::showSliders), processor (p), layer (l)
+        {
+            setCurrentColour (start);
+            setSize (260, 280);
+            addChangeListener (this);
+        }
+        ~ColourPicker() override { removeChangeListener (this); }
+
+    private:
+        void changeListenerCallback (juce::ChangeBroadcaster*) override
+        {
+            processor.setLayerColour (layer, getCurrentColour().withAlpha (1.0f).getARGB());
+            processor.markStateChanged();
+        }
+
+        PluginBase& processor;
+        int layer;
+    };
+
     // Visar menyn för ett instrument (0-9) vid `target`.
     inline void show (PluginBase& processor, int layer, juce::Component& target, juce::Rectangle<int> area = {}, std::function<void()> onEdit = {})
     {
@@ -129,6 +153,7 @@ namespace InstrumentMenu
 
         juce::PopupMenu colours;
         colours.addItem (50, "Default colour", true, processor.getLayerColour (layer) == 0);
+        colours.addItem (20, "Custom colour...");
         for (size_t i = 0; i < palette().size(); ++i)
             colours.addColouredItem (51 + (int) i, "Colour " + juce::String ((int) i + 1), juce::Colour (palette()[i]), true, processor.getLayerColour (layer) == palette()[i]);
 
@@ -177,6 +202,13 @@ namespace InstrumentMenu
                 case 8: exportMidi (processor, layer, safeTarget); break;
                 case 9: savePattern (processor, layer, safeTarget); break;
                 case 10: if (onEdit) onEdit(); break;
+                case 20:
+                {
+                    const auto current = processor.getLayerColour (layer);
+                    auto picker = std::make_unique<ColourPicker> (processor, layer, current != 0 ? juce::Colour (current) : Theme::layerColour (layer));
+                    juce::CallOutBox::launchAsynchronously (std::move (picker), safeTarget->getScreenBounds(), nullptr);
+                    break;
+                }
                 default: break;
             }
         });

@@ -5,7 +5,7 @@ if (POLICY CMP0141)
     cmake_policy(SET CMP0141 NEW)
 endif()
 
-project(Kickbase VERSION 0.1.0)
+project(Kickbase VERSION 0.3.0)
 
 # Kompilatorcache: om sccache (eller ccache) finns används den automatiskt. Då går en ren ombyggnad eller ett byte av gren
 # mycket snabbare, eftersom oförändrade filer hämtas ur cachen. Installera med `choco install sccache` eller `winget install Mozilla.sccache`.
@@ -51,11 +51,13 @@ set(CORE_SOURCES
     Source/Core/Pattern.cpp
     Source/Core/KickEngine.cpp
     Source/Core/InstrumentSynth.cpp
+    Source/Core/MultiSample.cpp
     Source/Core/InstrumentVoices.cpp
     Source/Core/Wavetable.cpp
     Source/Core/WavetableEdit.cpp
     Source/Core/NodeEnvelope.cpp
     Source/Core/StepScheduler.cpp
+    Source/Core/AutoFix.cpp
     Source/Core/Sidechain.cpp
     Source/Core/Modulation.cpp
     Source/Core/Settings.cpp
@@ -90,6 +92,7 @@ set(PLUGIN_SOURCES
     Source/Core/BridgeLink.cpp
     Source/Core/Params.cpp
     Source/Core/Presets.cpp
+    Source/Core/PresetCategories.cpp
     Source/Core/PluginBase.cpp
     Source/Ui/KickbaseLookAndFeel.cpp
     Source/Ui/KickLibraryPanel.cpp
@@ -119,11 +122,13 @@ set(PLUGIN_SOURCES
     Source/Ui/LiveCodePage.cpp
     Source/Ui/Components.cpp
     Source/Ui/Help.cpp
+    Source/Ui/HelpDialog.cpp
     Source/Ui/FilterPanel.cpp
     Source/Ui/HarmonicEditor.cpp
     Source/Ui/OscPanel.cpp
     Source/Ui/FmPanel.cpp
     Source/Ui/InstrMixPanel.cpp
+    Source/Ui/InstrTimingPanel.cpp
     Source/Ui/FmPresets.cpp
     Source/Ui/KickDisplay.cpp
     Source/Ui/Scopes.cpp
@@ -228,6 +233,8 @@ target_sources(KickbaseTests PRIVATE
     Tests/ModulationTests.cpp
     Tests/FmPresetTests.cpp
     Tests/PersistFmTests.cpp
+    Tests/AutoFixTests.cpp
+    Tests/FxTests.cpp
     Source/Ui/FmPresets.cpp
     Source/Core/Params.cpp
     Source/Core/Master.cpp

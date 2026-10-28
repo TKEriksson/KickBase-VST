@@ -67,7 +67,7 @@ namespace Modulation
             return false;
         const auto id = parameter.getParameterID();
         if (id == "jogSpeed")
-            return true; // JOG (D3b): LFO/automation på klockans hastighet
+            return false; // används inte längre; finns kvar bara för parameterordningen
         return id.startsWith ("kick") || id.startsWith ("bass") || id.startsWith ("fx") || id.startsWith ("gate");
     }
 

@@ -7,6 +7,7 @@
 #include "../Source/Core/ToolLayer.h"
 #include "../Source/Core/ProjectFile.h"
 #include "../Source/Ui/Help.h"
+#include "../Source/Ui/JogPanel.h"
 
 namespace
 {
@@ -74,6 +75,18 @@ int persistTest()
     auto failed = false;
     auto check = [&failed] (bool ok, const juce::String& what) { std::printf ("%s: %s\n", ok ? "ok" : "FEL", what.toRawUTF8()); failed |= ! ok; };
     const auto tableFile = Scenarios::writeTestWav ("persist_table", 21.533, 0.2);
+
+    // 0. JOG-loopens tid: 1 tick = 1/64 takt, bar.beat.sixteenth.tick skrivs och tolkas åt båda hållen.
+    {
+        check (TransportClock::ticksToPpq (64, 4.0) == 4.0 && TransportClock::ticksToPpq (16, 4.0) == 1.0 && TransportClock::ticksToPpq (4, 4.0) == 0.25
+                   && TransportClock::ticksToPpq (1, 4.0) == 1.0 / 16.0, "1 tick = 1/64 takt (64 = en takt, 16 = en fjärdedel, 4 = en sextondel)");
+        check (JogTicks::format (0) == "1.1.1.0" && JogTicks::format (64 * 4) == "5.1.1.0" && JogTicks::format (64 + 16 * 2 + 4 * 3 + 1) == "2.3.4.1", "tid visas som bar.beat.sixteenth.tick");
+        auto roundTrip = true;
+        for (juce::int64 t = 0; t < 64 * 9; ++t)
+            roundTrip &= JogTicks::parse (JogTicks::format (t)) == t;
+        check (roundTrip, "visad tid tolkas tillbaka till samma tick");
+        check (JogTicks::parse ("3") == 128 && JogTicks::parse ("2.2") == 64 + 16 && JogTicks::parse ("") == 0 && JogTicks::parse ("1.9.9.9") == 16 * 3 + 4 * 3 + 3, "saknade delar blir 1/1/1/0 och för stora delar klipps");
+    }
 
     // 1. Egna wavetables på alla tre oscillatorerna följer med projektet (OSC 3 lästes inte tillbaka förut).
     {
@@ -145,6 +158,26 @@ int persistTest()
         check (processor->retiredTableCount() >= 7, "tabellerna från borttagna instrument frigörs inte direkt (" + juce::String ((int) processor->retiredTableCount()) + " väntar)");
     }
 
+    // 3b. Multisampling: zonerna följer med projektet i ett eget barn; utan zoner skrivs inget (gamla projekt oförändrade).
+    {
+        auto processor = std::make_unique<InstrumentProcessor>();
+        check (processor->instrumentMultiSamplesToValueTree().getNumChildren() == 0, "Multi: utan zoner är trädet tomt");
+        juce::AudioBuffer<float> tone (1, 4410);
+        for (int i = 0; i < tone.getNumSamples(); ++i)
+            tone.setSample (0, i, std::sin (0.05f * (float) i));
+        processor->instrumentMultiSample (1).addZone (tone, 44100.0, "A_C3", { 48, 0, 60, 1, 127, 5.0f });
+        processor->instrumentMultiSample (1).addZone (tone, 44100.0, "A_C5", { 72, 61, 127, 1, 127, 0.0f });
+        auto tree = processor->instrumentMultiSamplesToValueTree();
+        check (tree.getNumChildren() == 1, "Multi: bara instrumentet med zoner skrivs");
+
+        auto other = std::make_unique<InstrumentProcessor>();
+        other->instrumentMultiSamplesFromValueTree (tree);
+        const auto& back = other->instrumentMultiSample (1);
+        check (back.zoneCount() == 2 && back.zoneName (1) == "A_C5" && back.mapping (0).keyHigh == 60 && back.mapping (0).tuneCents == 5.0f && back.mapping (1).rootKey == 72,
+               "Multi: zoner, namn och mappning följer med projektet");
+        check (other->instrumentMultiSample (0).zoneCount() == 0, "Multi: övriga instrument förblir tomma");
+    }
+
     // 4a. Slicer: Grid 8 ger 8 skivor (första 0, stigande), standardinställningar sparas som förut, och skivinställningarna följer med projektet.
     {
         auto processor = std::make_unique<InstrumentProcessor>();
@@ -166,25 +199,42 @@ int persistTest()
         check (other->getActiveInstrumentSample (0) != nullptr && other->getActiveInstrumentSample (0)->slices == processor->getActiveInstrumentSample (0)->slices
                && other->instrumentSampleSlot (0).sliceMode() == SampleSlicing::manual, "Slicer: skivinställningarna följer med projektet");
 
-        // syncSliceRows: en rad "Slice N" per skiva, tak 16, ett undosteg per ändring, noter i borttagna rader följer med bort.
-        const auto sliceRows = [&] (const InstrumentProcessor& p)
-        {
-            int n = 0;
-            for (int id = RowRegistry::firstSubRow; id < RowRegistry::maxRows; ++id)
-                n += p.pattern.rows.isSubRow (id) && p.pattern.rows.instrumentOf (id) == 0 && p.pattern.rows.sliceOf (id) >= 0 ? 1 : 0;
-            return n;
-        };
-        check (sliceRows (*processor) == 3, "Slice-rader: manuella markörer (3 skivor) ger 3 rader, fick " + juce::String (sliceRows (*processor)));
+        // syncSliceRows: en rad (Kind::slices) när det finns skivor, ingen utan; ett undosteg per ändring; noterna i raden behålls när antalet skivor ändras.
+        const auto sliceRowOf = [&] (const InstrumentProcessor& p) { return p.pattern.rows.find (0, RowRegistry::Kind::slices); };
+        check (sliceRowOf (*processor) >= 0, "Slice-raden finns när det finns skivor (manuella markörer)");
         processor->setInstrumentSlicing (0, SampleSlicing::grid, 0.5f, 8);
-        check (sliceRows (*processor) == 8, "Slice-rader: Grid 8 ger 8 rader, fick " + juce::String (sliceRows (*processor)));
+        const auto sliceRow = sliceRowOf (*processor);
+        check (sliceRow >= 0, "Slice-raden finns med Grid 8");
+        processor->pattern.addNote (sliceRow, 0, 24, RowRegistry::pitchOfSlice (5));
         processor->setInstrumentSlicing (0, SampleSlicing::grid, 0.5f, 100);
-        check (sliceRows (*processor) == RowRegistry::maxSliceRows, "Slice-rader: 100 skivor ger högst " + juce::String (RowRegistry::maxSliceRows) + " rader, fick " + juce::String (sliceRows (*processor)));
+        check (sliceRowOf (*processor) == sliceRow && processor->pattern.note (sliceRow, 0).on.load(), "Slice-raden och dess noter ligger kvar när antalet skivor ändras");
         processor->undoManager.undo();
-        check (sliceRows (*processor) == 8, "Slice-rader: ett undo tar tillbaka hela ändringen (8 rader), fick " + juce::String (sliceRows (*processor)));
+        check (sliceRowOf (*processor) == sliceRow, "Slice-raden: ett undo tar tillbaka hela ändringen");
         processor->undoManager.redo();
-        check (sliceRows (*processor) == RowRegistry::maxSliceRows, "Slice-rader: redo ger 16 rader igen, fick " + juce::String (sliceRows (*processor)));
-        processor->setInstrumentSlicing (0, SampleSlicing::grid, 0.5f, 4);
-        check (sliceRows (*processor) == 4, "Slice-rader: färre skivor tar bort överskjutande rader, fick " + juce::String (sliceRows (*processor)));
+        check (sliceRowOf (*processor) == sliceRow, "Slice-raden: redo ger samma rad");
+
+        // Migrering: en gammal sparad rad "i0.slice2" läses in i "i0.slices" med pitch = skivindex (tre = skiva 2 räknat från 0).
+        {
+            auto state = processor->pattern.toValueTree();
+            auto old = state.getChildWithProperty ("row", "i0.slices");
+            check (old.isValid(), "Slice-raden sparas med nyckeln i0.slices");
+            if (old.isValid())
+            {
+                state.removeChild (old, nullptr);
+                auto legacy = old.createCopy();
+                legacy.setProperty ("row", "i0.slice2", nullptr);
+                state.appendChild (legacy, nullptr);
+                Pattern loaded;
+                loaded.fromValueTree (state);
+                const auto id = loaded.rows.find (0, RowRegistry::Kind::slices);
+                check (id >= 0, "Gammal rad i0.slice2 läses in som raden i0.slices");
+                if (id >= 0)
+                {
+                    Pattern::StackNote got;
+                    check (loaded.getStack (id, 0, 0, got) && got.pitch == RowRegistry::pitchOfSlice (2), "Gammal slice-rad: noterna får skivans index som pitch");
+                }
+            }
+        }
     }
 
     // 4a2. Skivor i ljudet: raderna "Slice 1..8" (Grid 8) spelar var sin skiva, takterna utan skivton är tysta, REVERSE låter annorlunda
@@ -236,13 +286,15 @@ int persistTest()
 
         const auto whole = render(); // vanliga NOTE-radens toner: hela samplingen i varje takt
 
-        // Skivraderna "Slice 1..8": en ton i takt k+1 på rad k, takt 0 och 9 tomma.
+        // Skivraden: en ton med pitch = skiva k i takt k+1, takt 0 och 9 tomma.
         processor->pattern.clearNotes (0);
-        for (int slice = 0; slice < 8; ++slice)
         {
-            const auto row = processor->pattern.rows.add (0, RowRegistry::Kind::slice, slice);
+            auto row = processor->pattern.rows.find (0, RowRegistry::Kind::slices);
+            if (row < 0)
+                row = processor->pattern.rows.add (0, RowRegistry::Kind::slices, 0);
             processor->pattern.setManualBars (row, (int) pitches.size());
-            processor->pattern.addNote (row, (slice + 1) * Pattern::ticksPerBar, Pattern::ticksPerBar - 12, 0);
+            for (int slice = 0; slice < 8; ++slice)
+                processor->pattern.addNote (row, (slice + 1) * Pattern::ticksPerBar, Pattern::ticksPerBar - 12, RowRegistry::pitchOfSlice (slice));
         }
         processor->patternChanged();
         juce::MessageManager::getInstance()->runDispatchLoopUntil (600);

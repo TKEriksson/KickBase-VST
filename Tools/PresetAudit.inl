@@ -69,7 +69,12 @@ namespace
                 for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
                     set (ParamID::bass (layer, InstrumentField::on).toRawUTF8(), 0.0f);
             if (section == Section::bass)
+            {
                 set (ParamID::kickOn, 0.0f);
+                // Ett bas-preset laddar bara lager 0; lager 1-2 står kvar på standardljudet (på, nivå 0.7) och dränker annars skillnaderna.
+                for (int layer = 1; layer < ParamID::numInstrumentLayers; ++layer)
+                    set (ParamID::bass (layer, InstrumentField::on).toRawUTF8(), 0.0f);
+            }
 
             OfflineRender::Settings settings;
             settings.sampleRate = renderRate;

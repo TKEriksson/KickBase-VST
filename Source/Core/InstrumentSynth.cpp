@@ -146,6 +146,16 @@ InstrumentSynth::Stereo InstrumentSynth::Oscillator::next (const OscParams& p, d
     return { sumLeft * normal * (pan > 0.0f ? 1.0f - pan : 1.0f), sumRight * normal * (pan < 0.0f ? 1.0f + pan : 1.0f) };
 }
 
+const ClickSample* InstrumentSynth::activeSample() const noexcept
+{
+    if (params.sampleMulti)
+    {
+        const auto* zone = params.sampleBank != nullptr ? params.sampleBank->zone (multiZone) : nullptr;
+        return zone != nullptr ? &zone->sample : nullptr;
+    }
+    return params.sampleData;
+}
+
 void InstrumentSynth::noteOn (int semitones, float newVelocity, int gateSamples, int slice)
 {
     forcedReleaseMs = 0.0; // en ny ton släpps med sin vanliga RELEASE
@@ -170,14 +180,34 @@ void InstrumentSynth::noteOn (int semitones, float newVelocity, int gateSamples,
     fmEnvLevel = 1.0f;
 
     noteTime = 0.0;
+    noteOffTime = -1.0;
+    // 5b: SYNC-fördröjningen (takter ur tempot) låses nu; en tempoändring mitt i tonen rör den inte.
+    for (size_t e = 0; e < delaySeconds.size(); ++e)
+    {
+        delaySeconds[e] = engineDelaySeconds (params, (int) e, bpm);
+        resetPending[e] = delaySeconds[e] > 0.0;
+        lengthLocked[e] = params.lengthSync[e] > 0;
+        lengthSeconds[e] = lengthLocked[e] ? engineLengthSeconds (params, (int) e, bpm) : 0.0;
+    }
     env2.trigger();
     env3.trigger();
     pitchEnv = 1.0f;
     warpDirect = 1.0f;
     randomValue = modRandom.nextFloat();
-    samplePosition = params.sampleData != nullptr ? (double) params.sampleStart * (double) params.sampleData->audio.getNumSamples() : 0.0;
+    multiZone = -1;
+    if (params.sampleMulti && params.sampleBank != nullptr)
+    {
+        // Tonen ur frekvensen (A4 = 440 Hz = 69), anslaget 1..127; zonen slås upp igen per sample mot aktuell bank.
+        const auto key = juce::jlimit (0, 127, juce::roundToInt (69.0f + 12.0f * std::log2 (frequency / 440.0f)));
+        multiZone = params.sampleBank->select (key, juce::jlimit (1, 127, juce::roundToInt (newVelocity * 127.0f)));
+    }
+    sampleAge = 0.0;
+    const auto* startSample = activeSample();
+    samplePosition = startSample != nullptr ? (double) params.sampleStart * (double) startSample->audio.getNumSamples() : 0.0;
+    if (startSample != nullptr && params.sampleReverse)
+        samplePosition = std::max (0.0, (double) startSample->audio.getNumSamples() - 1.0 - samplePosition);
     sliceVoice = false;
-    sliceNote = slice >= 0;
+    sliceNote = slice >= 0 && ! params.sampleMulti; // multisampling har inga skivor
     if (sliceNote && params.sampleData != nullptr)
     {
         // En not i raden "Slice N" väljer skivan; saknas skivan är det tyst, ingen wrap.
@@ -194,6 +224,47 @@ void InstrumentSynth::noteOn (int semitones, float newVelocity, int gateSamples,
     velocity = newVelocity;
     stage = Stage::attack; // attacken börjar från nuvarande nivå, så inget knäpp
     gateRemaining = gateSamples;
+}
+
+namespace
+{
+constexpr double syncBars[] { 0.0, 0.0625, 0.125, 0.25, 0.5, 1.0, 2.0, 4.0 }; // SYNC-valen 1/16 ... 4 bars i takter
+double barSeconds (double bpm) { return 4.0 * 60.0 / juce::jlimit (20.0, 400.0, bpm); }
+}
+
+double InstrumentSynth::engineDelaySeconds (const InstrumentParams& p, int engine, double bpm)
+{
+    const auto e = (size_t) engine;
+    const auto sync = juce::jlimit (0, 7, p.delaySync[e]);
+    const auto seconds = sync > 0 ? (double) juce::jlimit (1, 8, p.delayCount[e]) * syncBars[sync] * barSeconds (bpm) : (double) p.delayMs[e] * 0.001;
+    return std::max (0.0, seconds);
+}
+
+double InstrumentSynth::engineLengthSeconds (const InstrumentParams& p, int engine, double bpm)
+{
+    const auto e = (size_t) engine;
+    const auto sync = juce::jlimit (0, 7, p.lengthSync[e]);
+    return std::max (0.0, sync > 0 ? (double) juce::jlimit (1, 8, p.lengthCount[e]) * syncBars[sync] * barSeconds (bpm) : (double) p.lengthMs[e] * 0.001);
+}
+
+float InstrumentSynth::gateAt (double t, double delay, double length, float curve) noexcept
+{
+    if (delay <= 0.0 && length <= 0.0)
+        return 1.0f;
+    if (t < delay)
+        return 0.0f;
+    if (length <= 0.0)
+        return 1.0f;
+    const auto u = (t - delay) / length;
+    if (u >= 1.0)
+        return 0.0f;
+    return (float) std::pow (1.0 - u, std::exp2 (2.0 * (double) curve)); // CURVE 0 = linjär, > 0 faller snabbt först, < 0 långsamt först
+}
+
+float InstrumentSynth::engineGate (int engine) const noexcept
+{
+    const auto length = lengthLocked[(size_t) engine] ? lengthSeconds[(size_t) engine] : (double) params.lengthMs[(size_t) engine] * 0.001;
+    return gateAt (noteTime, delaySeconds[(size_t) engine], length, params.curve[(size_t) engine]);
 }
 
 bool InstrumentSynth::glideTo (int semitones, int samples)
@@ -214,6 +285,8 @@ void InstrumentSynth::fadeOutQuickly (double milliseconds)
         return;
     forcedReleaseMs = milliseconds;
     gateRemaining = 0;
+    if (stage != Stage::release)
+        noteOffTime = noteTime;
     stage = Stage::release;
 }
 
@@ -221,6 +294,8 @@ void InstrumentSynth::release()
 {
     if (stage != Stage::idle)
     {
+        if (stage != Stage::release)
+            noteOffTime = noteTime;
         stage = Stage::release;
         env2.release();
         env3.release();
@@ -385,9 +460,27 @@ InstrumentSynth::Output InstrumentSynth::next()
 
     // OSC B först: den kan frekvensmodulera OSC A (warp FM). Warp env lägger till warp på A
     // i början av varje ton.
-    const auto levelA = params.oscA.on ? params.oscA.level : 0.0f;
-    const auto levelB = params.oscB.on ? params.oscB.level : 0.0f;
-    const auto levelC = params.oscC.on ? params.oscC.level : 0.0f;
+    // 5b: när POS DELAY passerats startar motorn om från sin startfas (tight anslag).
+    for (size_t e = 0; e < resetPending.size(); ++e)
+    {
+        if (! resetPending[e] || noteTime < delaySeconds[e])
+            continue;
+        resetPending[e] = false;
+        const auto extraPhase = (double) params.phaseDeg / 360.0;
+        if (e == 0) oscA.retrigger (params.oscA, random, extraPhase);
+        else if (e == 1) oscB.retrigger (params.oscB, random, extraPhase);
+        else if (e == 2) oscC.retrigger (params.oscC, random, extraPhase);
+        else if (e == 5) subPhase = wrap (extraPhase + (double) params.subPhaseDeg / 360.0);
+        else if (e == 6) { fmCarrierPhase = wrap (extraPhase + (double) params.fmPhaseDeg / 360.0); fmModPhase = 0.0; }
+        if (params.delayShift[e]) // SHIFT: motorns egna tidsförlopp börjar också om (FM-envelopen, warp-envelopen för OSC)
+        {
+            if (e == 6) fmEnvLevel = 1.0f;
+            else if (e <= 2) warpDirect = 1.0f;
+        }
+    }
+    const auto levelA = (params.oscA.on ? params.oscA.level : 0.0f) * engineGate (0);
+    const auto levelB = (params.oscB.on ? params.oscB.level : 0.0f) * engineGate (1);
+    const auto levelC = (params.oscC.on ? params.oscC.level : 0.0f) * engineGate (2);
     const auto ringOn = params.oscA.warp == WarpMode::ring;
     const auto bNeeded = params.oscB.on && (params.oscB.level > 0.0f || params.oscA.warp == WarpMode::fm || (ringOn && params.oscA.ringSource != 1));
     const auto cNeeded = params.oscC.on && (params.oscC.level > 0.0f || (ringOn && params.oscA.ringSource != 0));
@@ -462,7 +555,7 @@ InstrumentSynth::Output InstrumentSynth::next()
         const auto angle = juce::jmin (1.0f, width - 1.0f) * juce::MathConstants<float>::pi * 0.25f;
         addPanned (filtered, x * std::cos (angle) + delayed * std::sin (angle), x * std::cos (angle) - delayed * std::sin (angle), pan);
     };
-    (fOn ? centre : dryCentre) += params.sub * subShape;
+    (fOn ? centre : dryCentre) += params.sub * engineGate (5) * subShape;
     if (params.noise > 0.0f)
     {
         auto white = random.nextFloat() * 2.0f - 1.0f;
@@ -495,7 +588,7 @@ InstrumentSynth::Output InstrumentSynth::next()
             noiseState += coefficient * (white - noiseState);
             white = noiseState * (1.0f + 2.5f * (1.0f - params.noiseTone));
         }
-        const auto noiseOut = params.noise * white;
+        const auto noiseOut = params.noise * engineGate (4) * white;
         const auto filteredNoise = fOn && params.filterSrc[4];
         if (params.noiseWidth > 1.0f)
         {
@@ -522,17 +615,27 @@ InstrumentSynth::Output InstrumentSynth::next()
         const auto antiAlias = (float) std::min (1.0, 8000.0 / (carrierHz + modHz));
         const auto radians = 8.0f * index * index * antiAlias;
         const auto modulator = radians * (float) std::sin (juce::MathConstants<double>::twoPi * fmModPhase);
-        const auto fm = params.fmLevel * (float) std::sin (juce::MathConstants<double>::twoPi * fmCarrierPhase + (double) modulator);
+        const auto fm = params.fmLevel * engineGate (6) * (float) std::sin (juce::MathConstants<double>::twoPi * fmCarrierPhase + (double) modulator);
         addMonoWide (fOn && params.fmFilter, fm, params.fmPan, params.fmWidth, fmDelay);
         fmCarrierPhase = wrap (fmCarrierPhase + carrierHz / sampleRate);
         fmModPhase = wrap (fmModPhase + modHz / sampleRate);
     }
 
     // Samplingen: linjär interpolation. Med KEY följer hastigheten noten (samplingens egen tonhöjd = sampleRootHz).
-    if (params.sampleOn && params.sampleData != nullptr && params.sampleLevel > 0.0f)
+    const auto* playing = activeSample();
+    // 5b: POS DELAY för SAMPLE – positionen och editorkurvornas ålder står still tills fördröjningen gått, så samplet börjar från sitt eget start.
+    if (params.sampleOn && playing != nullptr && params.sampleLevel > 0.0f && noteTime >= delaySeconds[3])
     {
-        const auto& audio = params.sampleData->audio;
+        const auto& audio = playing->audio;
         const auto length = audio.getNumSamples();
+        // Sample-editor: AMP-kurvan (nivå) och PITCH-kurvan (hastighet); av = 1 och 1, ljudet som förut.
+        auto editorGain = engineGate (3);
+        auto editorSpeed = 1.0;
+        if (params.sampleAmpOn)
+            editorGain *= InstrumentSynth::sampleCurve (1.0f - (float) (sampleAge / (0.001 * (double) params.sampleAmpMs * sampleRate)), params.sampleAmpShape);
+        if (params.samplePitchOn)
+            editorSpeed = std::exp2 ((double) params.samplePitchSemis / 12.0 * InstrumentSynth::sampleCurve (1.0f - (float) (sampleAge / (0.001 * (double) params.samplePitchMs * sampleRate)), params.samplePitchShape));
+        sampleAge += 1.0;
         if (sliceNote)
         {
             // Skiva: originalhastighet framåt eller bakåt, stannar vid skivans kant; 64 samples fade mot kanterna mot klick.
@@ -544,7 +647,7 @@ InstrumentSynth::Output InstrumentSynth::next()
                 const auto following = index + 1 < sliceEnd ? data[index + 1] : 0.0f;
                 const auto edge = std::min (samplePosition - (double) sliceBegin + 1.0, (double) sliceEnd - samplePosition);
                 const auto fade = (float) std::min (1.0, edge / 64.0);
-                addMonoWide (fOn && params.filterSrc[3], fade * params.sampleLevel * (data[index] + fraction * (following - data[index])), params.samplePan, params.sampleWidth, sampleDelay);
+                addMonoWide (fOn && params.filterSrc[3], fade * editorGain * params.sampleLevel * (data[index] + fraction * (following - data[index])), params.samplePan, params.sampleWidth, sampleDelay);
                 samplePosition += params.slicerReverse ? -1.0 : 1.0;
             }
         }
@@ -558,8 +661,17 @@ InstrumentSynth::Output InstrumentSynth::next()
                 const auto index = (int) samplePosition;
                 const auto fraction = (float) (samplePosition - (double) index);
                 const auto following = index + 1 < length ? data[index + 1] : (params.sampleLoop ? data[0] : 0.0f);
-                addMonoWide (fOn && params.filterSrc[3], params.sampleLevel * (data[index] + fraction * (following - data[index])), params.samplePan, params.sampleWidth, sampleDelay);
-                samplePosition += params.sampleKeyTrack ? frequency / (double) std::max (1.0f, params.sampleRootHz) : 1.0;
+                addMonoWide (fOn && params.filterSrc[3], editorGain * params.sampleLevel * (data[index] + fraction * (following - data[index])), params.samplePan, params.sampleWidth, sampleDelay);
+                auto step = params.sampleMulti ? editorSpeed * frequency / (double) std::max (1.0f, params.sampleBank->zone (multiZone)->rootHz)
+                                               : editorSpeed * (params.sampleKeyTrack ? frequency / (double) std::max (1.0f, params.sampleRootHz) : 1.0);
+                if (params.sampleReverse)
+                {
+                    samplePosition -= step;
+                    if (samplePosition < 0.0) // förbi början: loopa från slutet eller sluta (positionen = längden är "färdig")
+                        samplePosition = params.sampleLoop ? std::fmod (samplePosition, (double) length) + (double) length : (double) length;
+                }
+                else
+                    samplePosition += step;
             }
         }
     }

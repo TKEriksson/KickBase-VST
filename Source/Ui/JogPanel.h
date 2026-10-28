@@ -2,53 +2,216 @@
 
 #include "Modules.h"
 
-// JOG / LP (D3b): ett skivspelarhjul som bara styr pluginets egna klocka (förhandsspelning, free run). Värdens uppspelning påverkas aldrig.
-// Hjulet skriver `jogManual` (0..4, hastighet relativt tempot) så länge man håller i det; annars gäller parametern jogSpeed (som kan
-// automatiseras i DAW:en eller modulas av en LFO, precis som vilken ratt som helst).
+// JOG / LP: ett skivspelarhjul som bara styr pluginets egna klocka (förhandsspelning, free run), plus LOOP och testtempo.
+// Värdens uppspelning påverkas aldrig. Inga parametrar: allt här är körtidsläge (loopen sparas inte).
+namespace JogConfig
+{
+    constexpr int panelWidth = 380, panelHeight = 262;
+    constexpr int minBpm = 60, maxBpm = 220, defaultBpm = 140;
+    constexpr int defaultStepIndex = 2; // 1/16
+    constexpr int stepTicks[] = { 16, 8, 4, 2, 1 }; // 1/4, 1/8, 1/16, 1/32, 1/64 (1 tick = 1/64 takt)
+    constexpr const char* stepNames[] = { "1/4", "1/8", "1/16", "1/32", "1/64" };
+    constexpr float revolutionsPerSecondAtNormalTempo = 0.75f; // ett varv på 1,33 s = normalt tempo
+    constexpr float maxRate = 4.0f;
+}
+
+// bar.beat.sixteenth.tick (1-räknat utom tick), 1 tick = 1/64 takt = 1/16 fjärdedel.
+namespace JogTicks
+{
+    inline juce::String format (juce::int64 t)
+    {
+        t = std::max ((juce::int64) 0, t);
+        return juce::String (t / TransportClock::ticksPerBar + 1) + "." + juce::String ((t % TransportClock::ticksPerBar) / TransportClock::ticksPerBeat + 1)
+             + "." + juce::String ((t % TransportClock::ticksPerBeat) / TransportClock::ticksPerSixteenth + 1) + "." + juce::String (t % TransportClock::ticksPerSixteenth);
+    }
+
+    // Delar som saknas blir 1/1/1/0. Delar utanför sina gränser klipps (beat 1-4, sixteenth 1-4, tick 0-3).
+    inline juce::int64 parse (const juce::String& text)
+    {
+        const auto parts = juce::StringArray::fromTokens (text, ".", "");
+        const auto part = [&] (int i, int fallback, int lo, int hi)
+        {
+            return i < parts.size() && parts[i].containsAnyOf ("0123456789") ? juce::jlimit (lo, hi, parts[i].getIntValue()) : fallback;
+        };
+        const auto bar = (juce::int64) std::max (1, part (0, 1, 1, 100000));
+        return (bar - 1) * TransportClock::ticksPerBar + (part (1, 1, 1, 4) - 1) * TransportClock::ticksPerBeat
+             + (part (2, 1, 1, 4) - 1) * TransportClock::ticksPerSixteenth + part (3, 0, 0, TransportClock::ticksPerSixteenth - 1);
+    }
+}
+
+// Glasdisplay där man skriver en tid: klick eller Enter börjar redigera, siffror och punkt skrivs, Enter bekräftar, Esc avbryter.
+// Upp/ned flyttar ett STEP.
+class TickField : public juce::Component, public juce::SettableTooltipClient
+{
+public:
+    std::function<void (int)> onCommit;   // ny tid i ticks
+    std::function<int()> stepTicks;       // aktuellt STEP i ticks
+
+    TickField() { setWantsKeyboardFocus (true); setMouseCursor (juce::MouseCursor::IBeamCursor); }
+
+    void setTicks (int t) { ticks = t; repaint(); }
+
+    void paint (juce::Graphics& g) override
+    {
+        const auto area = getLocalBounds().toFloat();
+        Theme::paintGlassDisplay (g, area);
+        const auto text = editing ? buffer + "_" : JogTicks::format (ticks);
+        Theme::drawGlowText (g, text, area.reduced (6.0f, 0.0f), Theme::monoFont (14.0f, true), 0.14f, juce::Justification::centred,
+                             editing ? Theme::text : Theme::pattern);
+        if (hasKeyboardFocus (false) && ! editing)
+        {
+            g.setColour (Theme::pattern.withAlpha (0.5f));
+            g.drawRoundedRectangle (area.reduced (1.0f), 6.0f, 1.0f);
+        }
+    }
+
+    void mouseDown (const juce::MouseEvent&) override { grabKeyboardFocus(); beginEdit(); }
+    void focusLost (FocusChangeType) override { cancelEdit(); }
+
+    bool keyPressed (const juce::KeyPress& key) override
+    {
+        if (key == juce::KeyPress::returnKey)
+        {
+            if (editing)
+                commit();
+            else
+                beginEdit();
+            return true;
+        }
+        if (key == juce::KeyPress::escapeKey)
+        {
+            if (! editing)
+                return false;
+            cancelEdit();
+            return true;
+        }
+        if (key == juce::KeyPress::upKey || key == juce::KeyPress::downKey)
+        {
+            if (editing)
+                commit();
+            const auto step = stepTicks ? stepTicks() : 1;
+            if (onCommit)
+                onCommit (std::max (0, ticks + (key == juce::KeyPress::upKey ? step : -step)));
+            return true;
+        }
+        if (key == juce::KeyPress::backspaceKey)
+        {
+            if (! editing)
+                return false;
+            buffer = buffer.dropLastCharacters (1);
+            repaint();
+            return true;
+        }
+        const auto c = key.getTextCharacter();
+        if (juce::CharacterFunctions::isDigit (c) || c == '.')
+        {
+            if (! editing)
+                beginEdit();
+            if (buffer.length() < 14)
+                buffer += juce::String::charToString (c);
+            repaint();
+            return true;
+        }
+        return false;
+    }
+
+private:
+    void beginEdit() { editing = true; buffer.clear(); repaint(); }
+    void cancelEdit() { if (editing) { editing = false; repaint(); } }
+
+    void commit()
+    {
+        editing = false;
+        if (onCommit && buffer.isNotEmpty())
+            onCommit ((int) std::min ((juce::int64) 1000000, JogTicks::parse (buffer)));
+        repaint();
+    }
+
+    int ticks = 0;
+    bool editing = false;
+    juce::String buffer;
+};
+
 class JogPanel : public juce::Component, private juce::Timer
 {
 public:
-    explicit JogPanel (PluginBase& p) : processor (p), speedKnob (p.apvts, ParamID::jogSpeed, "JOG SPEED", Theme::pattern)
+    explicit JogPanel (PluginBase& p) : processor (p)
     {
-        setSize (380, 250);
+        setSize (JogConfig::panelWidth, JogConfig::panelHeight);
 
-        for (auto* b : { &stopMode, &nudgeMode, &recMode })
+        // LOOP (panelen byggs om vid varje öppning, så läget läses från processorn).
+        loopButton.setClickingTogglesState (true);
+        loopButton.setColour (juce::TextButton::buttonOnColourId, Theme::pattern);
+        loopButton.setToggleState (processor.globalLoop.load(), juce::dontSendNotification);
+        loopButton.setTooltip ("LOOP - The plugin loops the part between FROM and TO on its own clock and ignores the DAW's position. "
+                               "A plugin cannot stop the DAW, so stop it yourself in the DAW.");
+        loopButton.onClick = [this]
         {
-            b->setRadioGroupId (4711);
-            b->setClickingTogglesState (true);
-            b->setColour (juce::TextButton::buttonOnColourId, Theme::pattern);
-            addAndMakeVisible (*b);
+            const auto on = loopButton.getToggleState();
+            processor.globalLoop = on;
+            if (on)
+                processor.seekBarRequest = processor.globalLoopStartTick.load() / TransportClock::ticksPerBar;
+        };
+        addAndMakeVisible (loopButton);
+
+        fromField.setTooltip ("LOOP start as bar.beat.sixteenth.tick (1 tick = 1/64 bar). Click or press Enter, type, Enter to accept, Esc to cancel. Up/Down move by STEP.");
+        toField.setTooltip ("LOOP end as bar.beat.sixteenth.tick, the first position that is NOT played. Click or press Enter, type, Enter to accept, Esc to cancel. Up/Down move by STEP.");
+        for (auto* f : { &fromField, &toField })
+        {
+            f->stepTicks = [this] { return processor.globalLoopStepTicks.load(); };
+            addAndMakeVisible (*f);
         }
-        stopMode.setTooltip ("STOP - Touching the wheel stops the music. Turn it forward to play at the speed you turn it; let go and it plays on at normal speed.");
-        nudgeMode.setTooltip ("KEEP GOING - The music plays on while you touch the wheel. Turn it forward to speed up, back to slow down (it never plays backwards).");
-        recMode.setTooltip ("REC - Like STOP, but the wheel writes JOG SPEED as a parameter gesture, so the DAW can record your scratch (Write/Touch/Latch). "
-                            "JOG SPEED springs back to 1x when you let go.");
-        (processor.jogMode.load() == 2 ? recMode : processor.jogMode.load() == 1 ? nudgeMode : stopMode).setToggleState (true, juce::dontSendNotification);
-        stopMode.onClick = [this] { processor.jogMode = 0; };
-        nudgeMode.onClick = [this] { processor.jogMode = 1; };
-        recMode.onClick = [this] { processor.jogMode = 2; };
+        fromField.onCommit = [this] (int t) { setLoopTicks (t, processor.globalLoopEndTick.load()); };
+        toField.onCommit = [this] (int t) { setLoopTicks (processor.globalLoopStartTick.load(), t); };
+        showLoopTicks();
 
-        speedKnob.setDescription ("JOG SPEED - Playback speed of the plugin's own clock, 1 = normal, 0 = stopped, 4 = four times as fast. "
-                                  "Right-click for DAW automation; drag an LFO here to modulate it.");
-        addAndMakeVisible (speedKnob);
+        for (int i = 0; i < (int) std::size (JogConfig::stepNames); ++i)
+            stepBox.addItem (JogConfig::stepNames[i], i + 1);
+        stepBox.setSelectedItemIndex (stepIndexOf (processor.globalLoopStepTicks.load()), juce::dontSendNotification);
+        stepBox.setTooltip ("STEP - How far Up/Down moves FROM and TO: a quarter note down to 1/64 of a bar.");
+        stepBox.onChange = [this] { processor.globalLoopStepTicks = JogConfig::stepTicks[std::max (0, stepBox.getSelectedItemIndex())]; };
+        addAndMakeVisible (stepBox);
 
-        removeButton.setTooltip ("Removes every LFO route to JOG SPEED and sets the speed back to 1. DAW automation is removed in the DAW.");
-        removeButton.onClick = [this] { removeAutomation(); };
-        addAndMakeVisible (removeButton);
+        // TEST BPM: eget tempo för den egna klockan (gäller bara när värden inte spelar).
+        const auto currentBpm = processor.freeRunBpm.load();
+        testBpmButton.setToggleState (currentBpm > 0.0, juce::dontSendNotification);
+        testBpmButton.setTooltip ("TEST BPM - Run the plugin's own clock at the tempo in the box, for testing without the DAW playing. "
+                                  "When the DAW plays, its tempo is used.");
+        testBpmButton.onClick = [this] { applyTestBpm(); };
+        addAndMakeVisible (testBpmButton);
+
+        bpmField.setText (juce::String (currentBpm > 0.0 ? juce::jlimit (JogConfig::minBpm, JogConfig::maxBpm, juce::roundToInt (currentBpm)) : JogConfig::defaultBpm),
+                          juce::dontSendNotification);
+        bpmField.setFont (Theme::font (13.0f, true));
+        bpmField.setJustificationType (juce::Justification::centred);
+        bpmField.setColour (juce::Label::textColourId, Theme::text);
+        bpmField.setColour (juce::Label::backgroundColourId, juce::Colour (0xff0b0d18));
+        bpmField.setColour (juce::Label::backgroundWhenEditingColourId, juce::Colour (0xff0b0d18));
+        bpmField.setColour (juce::Label::textWhenEditingColourId, Theme::text);
+        bpmField.setColour (juce::Label::outlineColourId, Theme::text.withAlpha (0.25f));
+        bpmField.setEditable (false, true, false);
+        bpmField.setTooltip ("TEST BPM tempo, " + juce::String (JogConfig::minBpm) + "-" + juce::String (JogConfig::maxBpm) + " (double-click to type).");
+        bpmField.onTextChange = [this]
+        {
+            const auto value = juce::jlimit (JogConfig::minBpm, JogConfig::maxBpm, bpmField.getText().retainCharacters ("0123456789").getIntValue());
+            bpmField.setText (juce::String (value), juce::dontSendNotification);
+            applyTestBpm();
+        };
+        addAndMakeVisible (bpmField);
 
         statusLabel.setFont (Theme::font (11.0f, false));
         statusLabel.setColour (juce::Label::textColourId, Theme::textDim);
-        statusLabel.setJustificationType (juce::Justification::centredLeft);
+        statusLabel.setJustificationType (juce::Justification::topLeft);
         addAndMakeVisible (statusLabel);
 
         startTimerHz (30);
         timerCallback();
     }
 
-    ~JogPanel() override // ett hjul som inte hunnit släppas får inte hålla fast tempot eller lämna en öppen gest
+    ~JogPanel() override // ett hjul som inte hunnit släppas får inte hålla fast tempot
     {
         processor.jogManual = -1.0f;
-        endGesture();
+        processor.scrubActive = false;
     }
 
     void paint (juce::Graphics& g) override
@@ -90,7 +253,7 @@ public:
         }
 
         // Etikett med hål och en markering som roterar med skivan (visar fart och riktning).
-        g.setColour (juce::Colour (0xff15161c)); // svart etikett som på förebilden, med en tunn färgring
+        g.setColour (juce::Colour (0xff15161c));
         g.fillEllipse (circle (r * 0.34f));
         g.setColour (Theme::pattern);
         g.drawEllipse (circle (r * 0.34f), 1.0f);
@@ -116,24 +279,36 @@ public:
         g.setColour (Theme::text);
         g.setFont (Theme::font (12.0f, true));
         g.drawText (juce::String (currentRate, 2) + "x", juce::Rectangle<float> (60.0f, 16.0f).withCentre ({ c.x, c.y + r * 0.62f }), juce::Justification::centred);
+
+        g.setColour (Theme::textDim);
+        g.setFont (Theme::font (10.0f, true));
+        g.drawText ("FROM", fromField.getX(), fromField.getY() - 13, fromField.getWidth(), 12, juce::Justification::centred);
+        g.drawText ("TO", toField.getX(), toField.getY() - 13, toField.getWidth(), 12, juce::Justification::centred);
+        g.drawText ("STEP", stepBox.getX(), stepBox.getY() - 13, stepBox.getWidth(), 12, juce::Justification::centred);
     }
 
     void resized() override
     {
         auto area = getLocalBounds().reduced (10);
         auto top = area.removeFromTop (150);
-        top.removeFromLeft (150);
-        auto modes = top.removeFromTop (28);
-        stopMode.setBounds (modes.removeFromLeft (56).reduced (0, 2));
-        modes.removeFromLeft (4);
-        nudgeMode.setBounds (modes.removeFromLeft (84).reduced (0, 2));
-        modes.removeFromLeft (4);
-        recMode.setBounds (modes.reduced (0, 2));
-        top.removeFromTop (6);
-        speedKnob.setBounds (top.withSizeKeepingCentre (70, 90));
-        area.removeFromTop (4);
-        statusLabel.setBounds (area.removeFromTop (34));
-        removeButton.setBounds (area.removeFromTop (26).removeFromLeft (170));
+        top.removeFromLeft (160);
+        top.removeFromTop (50);
+        auto bpmRow = top.removeFromTop (26);
+        testBpmButton.setBounds (bpmRow.removeFromLeft (110));
+        bpmRow.removeFromLeft (6);
+        bpmField.setBounds (bpmRow.removeFromLeft (46));
+
+        area.removeFromTop (22); // plats för FROM/TO/STEP-texterna
+        auto loopRow = area.removeFromTop (28);
+        loopButton.setBounds (loopRow.removeFromLeft (52));
+        loopRow.removeFromLeft (8);
+        fromField.setBounds (loopRow.removeFromLeft (110));
+        loopRow.removeFromLeft (8);
+        toField.setBounds (loopRow.removeFromLeft (110));
+        loopRow.removeFromLeft (8);
+        stepBox.setBounds (loopRow.removeFromLeft (62));
+        area.removeFromTop (8);
+        statusLabel.setBounds (area);
     }
 
     // Handen över skivan visar att den kan gripas (JUCE:s DraggingHandCursor, ingen separat sluten hand finns).
@@ -151,15 +326,13 @@ public:
     void mouseDown (const juce::MouseEvent& e) override
     {
         if (! wheelBounds().contains (e.getPosition()))
+        {
+            grabKeyboardFocus(); // klick utanför fälten avslutar en pågående redigering
             return;
+        }
         setMouseCursor (juce::MouseCursor::DraggingHandCursor);
         touching = true;
-        if (processor.jogMode.load() == 2)
-            if (auto* parameter = processor.apvts.getParameter (ParamID::jogSpeed))
-            {
-                parameter->beginChangeGesture();
-                gestureOpen = true;
-            }
+        processor.scrubActive = true;
         lastAngle = angleOf (e.position);
         lastTime = juce::Time::getMillisecondCounterHiRes();
         velocity = 0.0f;
@@ -178,13 +351,20 @@ public:
         const auto dt = (float) (now - lastTime) * 0.001f;
         if (dt > 0.0005f)
         {
-            // Ett varv på 1,33 s (0,75 varv/s) = normalt tempo.
-            const auto instant = delta / dt / (juce::MathConstants<float>::twoPi * 0.75f);
+            const auto instant = delta / dt / (juce::MathConstants<float>::twoPi * JogConfig::revolutionsPerSecondAtNormalTempo);
             velocity = 0.6f * velocity + 0.4f * instant;
             lastAngle = angle;
             lastTime = now;
         }
         shownAngle += delta;
+
+        if (delta < 0.0f)
+        {
+            // Bakåt: klockan flyttas bakåt, ett varv = en takt (4 fjärdedelar).
+            const auto ppq = (double) delta / juce::MathConstants<double>::twoPi * 4.0;
+            auto expected = processor.scrubNudgePpq.load();
+            while (! processor.scrubNudgePpq.compare_exchange_weak (expected, expected + ppq)) {}
+        }
         apply();
     }
 
@@ -194,23 +374,40 @@ public:
         setMouseCursor (wheelBounds().contains (e.getPosition()) ? juce::MouseCursor::DraggingHandCursor : juce::MouseCursor::NormalCursor);
         velocity = 0.0f;
         processor.jogManual = -1.0f;
-        endGesture();
+        processor.scrubActive = false;
         repaint();
     }
 
 private:
-    // REC-läget: hjulet skriver jogSpeed inom en gest. Vid släpp skrivs 1x (fjädring) innan gesten stängs, så att värdens inspelning får med återgången
-    // och inget skrivs över efteråt.
-    void endGesture()
+    static int stepIndexOf (int ticks)
     {
-        if (! gestureOpen)
-            return;
-        if (auto* parameter = processor.apvts.getParameter (ParamID::jogSpeed))
-        {
-            parameter->setValueNotifyingHost (parameter->getDefaultValue());
-            parameter->endChangeGesture();
-        }
-        gestureOpen = false;
+        for (int i = 0; i < (int) std::size (JogConfig::stepTicks); ++i)
+            if (JogConfig::stepTicks[i] == ticks)
+                return i;
+        return JogConfig::defaultStepIndex;
+    }
+
+    void showLoopTicks()
+    {
+        fromField.setTicks (processor.globalLoopStartTick.load());
+        toField.setTicks (processor.globalLoopEndTick.load());
+    }
+
+    // Slutet måste ligga efter början; annars flyttas slutet ett STEP efter början.
+    void setLoopTicks (int start, int end)
+    {
+        const auto step = std::max (1, processor.globalLoopStepTicks.load());
+        if (end <= start)
+            end = start + step;
+        processor.globalLoopStartTick = start;
+        processor.globalLoopEndTick = end;
+        showLoopTicks();
+    }
+
+    void applyTestBpm()
+    {
+        const auto value = juce::jlimit (JogConfig::minBpm, JogConfig::maxBpm, bpmField.getText().getIntValue());
+        processor.freeRunBpm = testBpmButton.getToggleState() ? (double) value : 0.0;
     }
 
     juce::Rectangle<int> wheelBounds() const { return { 10, 10, 140, 140 }; }
@@ -221,34 +418,8 @@ private:
         return std::atan2 (p.y - c.y, p.x - c.x);
     }
 
-    void apply()
-    {
-        const auto mode = processor.jogMode.load();
-        const auto rate = mode == 1 ? 1.0f + velocity : velocity;
-        if (mode == 2 && gestureOpen)
-        {
-            if (auto* parameter = processor.apvts.getParameter (ParamID::jogSpeed))
-                parameter->setValueNotifyingHost (parameter->convertTo0to1 (juce::jlimit (0.0f, 4.0f, rate)));
-            processor.jogManual = -1.0f; // parametern bär hastigheten, så att inspelning och uppspelning ger samma ljud
-            return;
-        }
-        processor.jogManual = juce::jlimit (0.0f, 4.0f, rate);
-    }
-
-    int speedIndex() const { return processor.getParameters().indexOf (processor.apvts.getParameter (ParamID::jogSpeed)); }
-
-    void removeAutomation()
-    {
-        const auto index = speedIndex();
-        const auto before = processor.snapshotMods();
-        for (int r = Modulation::maxRoutes - 1; r >= 0; --r)
-            if (processor.modRoutes.routes[(size_t) r].source.load() >= 0 && processor.modRoutes.routes[(size_t) r].target.load() == index)
-                processor.modRoutes.remove (r);
-        processor.markStateChanged();
-        processor.recordModEdit (before, "Remove JOG automation");
-        if (auto* parameter = processor.apvts.getParameter (ParamID::jogSpeed))
-            parameter->setValueNotifyingHost (parameter->getDefaultValue());
-    }
+    // Framåt: hjulets fart; stilla eller bakåt: klockan står still (bakåt flyttas den via scrubNudgePpq).
+    void apply() { processor.jogManual = juce::jlimit (0.0f, JogConfig::maxRate, velocity); }
 
     void timerCallback() override
     {
@@ -260,37 +431,31 @@ private:
         }
 
         const auto manual = processor.jogManual.load();
-        currentRate = manual >= 0.0f ? manual : processor.apvts.getRawParameterValue (ParamID::jogSpeed)->load(); // grundvärdet (LFO-påverkan visas inte här)
+        currentRate = manual >= 0.0f ? manual : 1.0f;
         if (! touching)
             shownAngle += currentRate * 0.12f;
         const auto progress = processor.transportStatus.patternProgress.load();
         shownProgress = progress < shownProgress - 0.5f ? progress : shownProgress + 0.35f * (progress - shownProgress); // hoppar tillbaka vid loopen, glider annars
 
-        const auto index = speedIndex();
-        juce::StringArray sources;
-        for (int r = 0; r < Modulation::maxRoutes; ++r)
-        {
-            const auto& route = processor.modRoutes.routes[(size_t) r];
-            if (route.source.load() >= 0 && route.target.load() == index)
-                sources.add (Modulation::sourceName (route.source.load()));
-        }
-        const auto* parameter = processor.apvts.getParameter (ParamID::jogSpeed);
-        const auto moved = parameter != nullptr && std::abs (parameter->convertFrom0to1 (parameter->getValue()) - 1.0f) > 0.001f;
-        juce::String text = sources.isEmpty() ? "No LFO on JOG SPEED." : "Automated by " + sources.joinIntoString (", ") + ".";
-        text += moved ? " Speed is not 1x." : "";
-        text += processor.transportStatus.followingHost.load() ? "\nThe DAW is playing: JOG only moves the plugin's own clock (previews, free run)."
-                                                                : "\nJOG moves the plugin's own clock only; the DAW is never touched.";
-        statusLabel.setText (text, juce::dontSendNotification);
-        removeButton.setEnabled (! sources.isEmpty() || moved);
-        removeButton.setColour (juce::TextButton::buttonColourId, ! sources.isEmpty() || moved ? juce::Colour (0xff6a2430) : juce::Colour (0xff2c3148));
+        if (! toField.hasKeyboardFocus (false) && ! fromField.hasKeyboardFocus (false))
+            showLoopTicks();
+        loopButton.setToggleState (processor.globalLoop.load(), juce::dontSendNotification);
+
+        const auto text = processor.transportStatus.followingHost.load()
+                              ? juce::String ("The DAW is playing: the wheel and the loop only move the plugin's own clock (previews, free run). The DAW is never touched.")
+                              : juce::String ("Grab the wheel: forward plays at the speed you turn, backward rewinds, standing still is silence. The DAW is never touched.");
+        if (statusLabel.getText() != text)
+            statusLabel.setText (text, juce::dontSendNotification);
         repaint();
     }
 
     PluginBase& processor;
-    juce::TextButton stopMode { "STOP" }, nudgeMode { "KEEP GOING" }, removeButton { "REMOVE AUTOMATION" }, recMode { "REC" };
-    KnobComponent speedKnob;
-    juce::Label statusLabel;
-    bool touching = false, gestureOpen = false;
+    TickField fromField, toField;
+    juce::ComboBox stepBox;
+    juce::Label statusLabel, bpmField;
+    juce::TextButton loopButton { "LOOP" };
+    juce::ToggleButton testBpmButton { "TEST BPM" };
+    bool touching = false;
     float lastAngle = 0.0f, shownAngle = 0.0f, velocity = 0.0f, currentRate = 1.0f, shownProgress = 0.0f;
     double lastTime = 0.0;
 };

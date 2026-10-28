@@ -2,6 +2,7 @@
 
 #include "FmPresets.h"
 #include "Help.h"
+#include "HelpDialog.h"
 #include "../Core/Params.h"
 #include "../Core/UserChangeWatcher.h"
 
@@ -45,6 +46,9 @@ FmPanel::FmPanel (PluginBase& p, int layerIn, juce::Colour accentIn)
     addAndMakeVisible (filterToggle);
     filterAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (processor.apvts, id (F::fmFilter), filterToggle);
 
+    HelpDialog::setupButton (helpButton, *this, HelpDialog::Topic::fm, "the FM engine (presets, ratio, index, envelope)");
+    addAndMakeVisible (helpButton);
+
     // Bara användarens menyval fyller i ratterna; laddning, undo och automation av fmPreset får inte skriva över andra parametrar.
     presetWatcher = std::make_unique<UserChangeWatcher> (*processor.apvts.getParameter (id (F::fmPreset)),
                                                          [this] (float value) { presetChanged ((int) std::lround (value)); });
@@ -74,7 +78,10 @@ void FmPanel::resized()
 {
     auto area = getLocalBounds().reduced (6, 4);
     area.removeFromBottom (40);
-    filterToggle.setBounds (area.removeFromTop (18).removeFromRight (60));
+    auto topRow = area.removeFromTop (18);
+    filterToggle.setBounds (topRow.removeFromRight (60));
+    topRow.removeFromRight (6);
+    helpButton.setBounds (topRow.removeFromRight (40));
     auto top = area.removeFromTop (juce::jmin (area.getHeight(), 110));
     preset->setBounds (top.removeFromLeft (150).withTrimmedBottom (juce::jmax (0, top.getHeight() - 40)));
     top.removeFromLeft (8);

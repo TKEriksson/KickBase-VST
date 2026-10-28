@@ -81,7 +81,12 @@ private:
     static bool isSubRow (int layer) { return layer >= RowRegistry::firstSubRow; }
     // Instrumentet en rad hör till: lagret självt, eller underradens instrument (rutnät, på/av, solo och markör kommer därifrån).
     int ownerOf (int layer) const { return isSubRow (layer) ? juce::jlimit (0, Pattern::numLayers - 1, processor.pattern.rows.instrumentOf (layer)) : layer; }
-    bool isSliceRow (int layer) const { return isSubRow (layer) && processor.pattern.rows.sliceOf (layer) >= 0; }
+    bool isSliceRow (int layer) const
+    {
+        int instrument = 0;
+        RowRegistry::Kind kind {};
+        return isSubRow (layer) && processor.pattern.rows.get (layer, instrument, kind) && (kind == RowRegistry::Kind::slices || kind == RowRegistry::Kind::slice);
+    }
     std::vector<int> makeDisplayOrder() const; // lager-id i visningsordning: kicken, sedan varje instrument följt av sina underrader
     int instrumentOwnSteps (const PatternLengths& l, int layer) const { return l.barsOf (rowOf (layer)) * Pattern::instrumentStepsPerBar (grid (layer)); }
     int gateOwnSteps (const PatternLengths& l, int layer) const { return l.barsOf (rowOf (layer)) * Pattern::instrumentStepsPerBar (gateGrid (layer)); }
@@ -98,6 +103,7 @@ private:
 
     int laneStepAt (int x) const { const auto l = lengths(); return stepAt (x, selectedLayer, instrumentSteps (selectedLayer), instrumentOwnSteps (l, selectedLayer)); }
     bool isCustom (int layer) const { return processor.pattern.isCustom (layer); }
+    bool usesRoll (int layer) const { return isCustom (layer) || isSliceRow (layer); } // skivraden redigeras alltid i pianorullen
     // Lanet (velocity/längd/tonhöjd) under den valda raden visas bara i PATTERN-läget och inte när raden har pianorulle
     // (där sätts allt i pianorullen, så ytan och hjälptexten dolde bara andra rader).
     bool laneShown() const { return mode == Mode::notes && ! isCustom (selectedLayer); }

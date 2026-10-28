@@ -3,6 +3,7 @@
 #include <juce_dsp/juce_dsp.h>
 #include <array>
 #include "SampleData.h"
+#include "MultiSample.h"
 #include "Wavetable.h"
 #include "FilterUnit.h"
 
@@ -113,10 +114,20 @@ struct InstrumentParams
     float sampleLevel = 0.0f;    // 0..1
     float sampleRootHz = 130.8f; // samplingens egen tonhöjd; med KEY spelas den så att den följer noten
     bool sampleLoop = false;
+    // Multisampling (sampleMulti): zonen väljs i noteOn ur sampleBank efter ton och anslag; spelas alltid med KEY mot zonens rotton, utan skivor.
+    // Rösten sparar bara zonindex och slår upp zonen mot den bank som gäller just nu, så ett bankbyte lämnar ingen hängande pekare.
+    const MultiSampleBank* sampleBank = nullptr;
+    bool sampleMulti = false;
     bool sampleOn = false;       // samplingen hörs bara när den är på
     bool sampleKeyTrack = false; // av = spelas med sin egen tonhöjd och hastighet
     float sampleStart = 0.0f;    // 0..1: var i samplingen varje ton börjar
     bool slicerReverse = false;  // alla skivor spelas baklänges
+    // Sample-editor: AMP-kurva (nivå faller till 0 på sampleAmpMs) och PITCH-kurva (sampleSemis glider mot 0 på samplePitchMs); av = som förut. Form -1..1: 0 linjär.
+    bool sampleAmpOn = false;
+    float sampleAmpMs = 300.0f, sampleAmpShape = 0.0f;
+    bool samplePitchOn = false;
+    float samplePitchSemis = 12.0f, samplePitchMs = 100.0f, samplePitchShape = 0.0f;
+    bool sampleReverse = false; // varje ton spelar samplingen baklänges (från slutet, START räknas från slutet); skivor har slicerReverse
     float allpassFreq = 200.0f;  // 4 allpass i serie efter filtren (mitten och sida var för sig); AMOUNT 0 = av
     float allpassAmount = 0.0f;  // 0..1: blandning torr -> allpass (1 = ren fasrotation)
     float samplePan = 0.0f, noisePan = 0.0f, fmPan = 0.0f; // INSTR-MIX: -1..1 (0 = mitten, ljudet som förut)
@@ -124,6 +135,13 @@ struct InstrumentParams
     float aWidth = 1.0f, bWidth = 1.0f, cWidth = 1.0f; // OSC 1-3: 0 = mono, 1 = som förut, 2 = dubbel sida
     float sampleWidth = 1.0f, fmWidth = 1.0f;          // 1 = mono (som förut), upp till 2 = okorrelerat
     float noiseWidth = 1.0f;     // 1 = mono (som förut), upp till 2 = okorrelerat brus i L och R
+    // 5b: tid per motor (OSC 1, OSC 2, OSC 3, SAMPLE, NOISE, SUB, FM): POS DELAY (ms, eller SYNC = notvärde 1..7 från tempot), LENGTH (0 = hela tonen), CURVE -1..1. Alla 0 = som förut.
+    std::array<float, 7> delayMs {}, lengthMs {}, curve {};
+    std::array<int, 7> delaySync {};
+    // TIMING/LEVELS: delayShift = SHIFT (motorn startar om helt efter POS DELAY), lengthSync 0 = ms, 1..7 = notvärde; delayCount/lengthCount = antal notvärden (1..8). Standard = som förut.
+    std::array<bool, 7> delayShift {};
+    std::array<int, 7> lengthSync {};
+    std::array<int, 7> delayCount { 1, 1, 1, 1, 1, 1, 1 }, lengthCount { 1, 1, 1, 1, 1, 1, 1 };
     InstrumentParams() { oscB.level = 0.0f; oscC.level = 0.0f; oscC.on = false; }
 
     // Samma inställningar med alla envelope-tider i ms (Sync räknat från tempot) och, om applyOnOff, ENV 1/FILTER ENV av inbakade:
@@ -171,7 +189,16 @@ public:
     Output next();
     float nextSample() { const auto o = next(); return 0.5f * (o.left + o.right) * o.amplitude; }
     bool isActive() const { return stage != Stage::idle; }
+    // Rösten grundton i Hz just nu (glide och tonhöjdsmodulering inräknade); 0 före första tonen. Läses av FUNDAMENTAL DUCK.
+    float getFrequencyHz() const { return (float) cachedFrequency; }
     bool isReleasing() const { return stage == Stage::release; }
+    // TIMING-diagrammen: tid sedan anslaget (-1 när rösten är tyst) och tiden då tonen släpptes (-1 medan den hålls).
+    double playTimeSeconds() const { return stage == Stage::idle ? -1.0 : noteTime; }
+    double noteOffTimeSeconds() const { return noteOffTime; }
+    // Motorns POS DELAY / LENGTH i sekunder för givna parametrar och tempo (SYNC räknas ur tempot; LENGTH 0 = av) och gaten vid tiden t: samma formler som rösten använder.
+    static double engineDelaySeconds (const InstrumentParams&, int engine, double bpm);
+    static double engineLengthSeconds (const InstrumentParams&, int engine, double bpm);
+    static float gateAt (double t, double delay, double length, float curve) noexcept;
 
     // Modulationskällorna: 0 = ENV 2, 1 = ENV 3, 2 = senaste tonens velocity, 3 = ett slumptal per ton, 4 = AMP ENV (ENV 1),
     // 5 = FILT ENV (filter-envelopens form, utan AMOUNT) (alla 0..1). AMP ENV och FILT ENV ger 0 när rutan är av.
@@ -191,9 +218,10 @@ public:
     // Var i samplingen den spelar (0..1), eller -1 när ingen sampling klingar. För gränssnittets markör.
     float getSampleFraction() const
     {
-        if (stage == Stage::idle || ! params.sampleOn || params.sampleData == nullptr || params.sampleLevel <= 0.0f)
+        const auto* data = activeSample();
+        if (stage == Stage::idle || ! params.sampleOn || data == nullptr || params.sampleLevel <= 0.0f)
             return -1.0f;
-        const auto length = (double) params.sampleData->audio.getNumSamples();
+        const auto length = (double) data->audio.getNumSamples();
         if (length < 2.0 || (samplePosition >= length && ! params.sampleLoop))
             return -1.0f;
         return (float) (std::fmod (samplePosition, length) / length);
@@ -201,6 +229,13 @@ public:
 
     // Filter-envelopens form (0..1) efter `seconds`. Används även av gränssnittet.
     static float filterEnvelopeAt (const InstrumentParams& p, double seconds);
+
+    // Sample-editorns kurvform: `remaining` 1 -> 0 (kvar av kurvan), `shape` -1..1; 0 = linjär, + = snabbt fall först, - = långsamt fall först. Används även av gränssnittet.
+    static float sampleCurve (float remaining, float shape) noexcept
+    {
+        remaining = juce::jlimit (0.0f, 1.0f, remaining);
+        return std::pow (remaining, std::exp2 (2.0f * shape));
+    }
 
     // Fasen efter warp (för gränssnittets bild och för oscillatorn). `fmInput` -1..1.
     static double warpPhase (WarpMode mode, float amount, double phase, float fmInput);
@@ -256,7 +291,10 @@ private:
     double fmCarrierPhase = 0.0, fmModPhase = 0.0; // FM-källans faser (0..1)
     float fmEnvLevel = 0.0f;                        // 1 vid anslaget, faller mot 0 (FM ENV)
     double samplePosition = 0.0; // i samplingens samples
+    double sampleAge = 0.0;      // samples sedan anslaget (sample-editorns AMP/PITCH)
     bool sliceNote = false;      // tonen kom från en slice-rad (satt i noteOn)
+    int multiZone = -1;          // zonen i params.sampleBank som tonen valde i noteOn (-1 = ingen)
+    const ClickSample* activeSample() const noexcept; // samplingen rösten spelar: lagrets egen eller multizonen (nullptr om ingen)
     bool sliceVoice = false;     // tonen spelar en skiva (satt i noteOn)
     int sliceBegin = 0, sliceEnd = 0;
     double logFrequency = 0.0, targetLogFrequency = 0.0; // log2(Hz), så att glide låter jämnt
@@ -277,6 +315,12 @@ private:
     };
     ModEnv env2, env3;
     double bpm = 120.0;
+    // 5b: POS DELAY per motor (sekunder), låst i noteOn (SYNC räknas då från tempot); resetPending = motorns fas nollställs när fördröjningen passerats.
+    std::array<double, 7> delaySeconds {};
+    std::array<bool, 7> resetPending {};
+    std::array<double, 7> lengthSeconds {}; // LENGTH i sekunder när LENGTH SYNC är på: låst i noteOn (annars läses lengthMs live som förut)
+    std::array<bool, 7> lengthLocked {};
+    float engineGate (int engine) const noexcept; // 0 före POS DELAY, sedan LENGTH/CURVE; exakt 1.0f när motorns tid är av
     ModEnvParams envTimes2, envTimes3; // ENV 2 och ENV 3 med tiderna i ms (ur params och tempot)
     void refreshEnvTimes();
     float pitchEnv = 0.0f;       // 1 vid anslaget, faller mot 0 (tonhöjdsenvelopen)
@@ -293,6 +337,7 @@ private:
     int gateRemaining = 0;
     float velocity = 1.0f;
     double noteTime = 0.0;   // sekunder sedan senaste anslag (för filter-envelopen)
+    double noteOffTime = -1.0; // noteTime när tonen släpptes, -1 medan den hålls (bara för TIMING-diagrammen)
 
     // Filtret för mitten och sidan: samma inställning, så att det blir stereo utan att ljudet låter olika i vänster och höger. Modellbyte nollställer filtret som tar över.
     FilterUnit filterMid, filterSide;

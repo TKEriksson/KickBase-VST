@@ -1,4 +1,5 @@
 #include "Effects.h"
+#include "Params.h"
 #include "Biquad.h"
 
 namespace
@@ -87,7 +88,7 @@ namespace Effects
 
     bool isEffectParameter (const String& paramID)
     {
-        // "fxA..", "fxB.." ... "fxK.." (inte FX-versionens "fxKey").
+        // "fxA..", "fxB.." ... "fxL.." (inte FX-versionens "fxKey").
         return paramID.startsWith ("fx") && paramID.length() > 2 && paramID[2] >= 'A' && paramID[2] <= 'A' + numEffectChannels - 1 && paramID != "fxKey";
     }
 
@@ -263,7 +264,9 @@ namespace Effects
                 value ("DEPTH", 0.0f, 1.0f, 0.0f, 0.7f, Unit::percent),
                 value ("DELAY", 0.1f, 10.0f, 2.0f, 1.5f, Unit::ms),
                 value ("FEEDBACK", -0.95f, 0.95f, 0.0f, 0.5f, Unit::percent),
-                mixKnob (0.5f) };
+                mixKnob (0.5f),
+                choice ("SHAPE", { "Sine", "Triangle" }, 0),
+                value ("SPREAD", 0.0f, 1.0f, 0.0f, 0.25f, Unit::percent) }; // right-channel LFO offset in cycles; 0.25 = the original sound
             table[(size_t) EffectType::transient] = {
                 value ("ATTACK", -1.0f, 1.0f, 0.0f, 0.0f, Unit::percent),
                 value ("SUSTAIN", -1.0f, 1.0f, 0.0f, 0.0f, Unit::percent),
@@ -338,9 +341,9 @@ namespace Effects
         return quarters[jlimit (0, (int) std::size (quarters) - 1, index)];
     }
 
-    void addParameters (AudioProcessorValueTreeState::ParameterLayout& layout)
+    static void addChannelRange (AudioProcessorValueTreeState::ParameterLayout& layout, int firstChannel, int endChannel)
     {
-        for (int channel = 0; channel < numEffectChannels; ++channel)
+        for (int channel = firstChannel; channel < endChannel; ++channel)
         {
             const auto channelTitle = channelLabel (channel);
             layout.add (std::make_unique<AudioParameterFloat> (ParameterID { channelParamID (channel, "Level"), 1 }, channelTitle + " Level",
@@ -409,11 +412,115 @@ namespace Effects
         }
     }
 
+    void addParameters (AudioProcessorValueTreeState::ParameterLayout& layout)
+    {
+        addChannelRange (layout, 0, numLegacyEffectChannels);
+    }
+
+    void addExtraChannelParameters (AudioProcessorValueTreeState::ParameterLayout& layout)
+    {
+        addChannelRange (layout, numLegacyEffectChannels, numEffectChannels);
+    }
+
     EffectType slotType (const AudioProcessorValueTreeState& apvts, int channel, int slot)
     {
         if (auto* value = apvts.getRawParameterValue (slotParamID (channel, slot, "Type")))
             return (EffectType) jlimit (0, numEffectTypes - 1, (int) value->load());
         return EffectType::off;
+    }
+
+    namespace
+    {
+        constexpr int defaultVisibleChannels = 4;
+
+        void resetParameter (AudioProcessorValueTreeState& apvts, const String& id)
+        {
+            if (auto* parameter = apvts.getParameter (id))
+                if (parameter->getValue() != parameter->getDefaultValue())
+                {
+                    parameter->beginChangeGesture();
+                    parameter->setValueNotifyingHost (parameter->getDefaultValue());
+                    parameter->endChangeGesture();
+                }
+        }
+
+        // Alla källor: kicken och varje instrument, med sitt gamla kanalfält, beloppet och matrisens belopp för kanalen.
+        template <typename Visit>
+        void forEachSource (int channel, Visit&& visit)
+        {
+            visit (String (ParamID::kickFxChannel), String (ParamID::kickFxAmount), String (ParamID::kickFxSendToIds[channel]));
+            for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
+                visit (ParamID::bass (layer, InstrumentField::fxChannel), ParamID::bass (layer, InstrumentField::fxAmount),
+                       ParamID::bass (layer, ParamID::fxSendToField (channel)));
+        }
+    }
+
+    bool channelHasSends (const AudioProcessorValueTreeState& apvts, int channel)
+    {
+        auto found = false;
+        forEachSource (channel, [&] (const String& channelID, const String& amountID, const String& sendID)
+        {
+            const auto value = [&apvts] (const String& id) { auto* raw = apvts.getRawParameterValue (id); return raw != nullptr ? raw->load() : 0.0f; };
+            if (value (sendID) > 0.0f || ((int) value (channelID) - 1 == channel && value (amountID) > 0.0f))
+                found = true;
+        });
+        return found;
+    }
+
+    bool channelHasEffects (const AudioProcessorValueTreeState& apvts, int channel)
+    {
+        for (int slot = 0; slot < slotsPerChannel; ++slot)
+            if (slotType (apvts, channel, slot) != EffectType::off)
+                return true;
+        return ! readEq (apvts, channel).isNeutral();
+    }
+
+    int visibleChannels (const AudioProcessorValueTreeState& apvts)
+    {
+        auto count = jlimit (1, numEffectChannels, (int) apvts.state.getProperty ("fxChannelCount", defaultVisibleChannels));
+        for (int channel = numEffectChannels - 1; channel >= count; --channel)
+            if (channelHasSends (apvts, channel) || channelHasEffects (apvts, channel))
+            {
+                count = channel + 1;
+                break;
+            }
+        return count;
+    }
+
+    bool addChannel (AudioProcessorValueTreeState& apvts)
+    {
+        const auto count = visibleChannels (apvts);
+        if (count >= numEffectChannels)
+            return false;
+        apvts.state.setProperty ("fxChannelCount", count + 1, nullptr);
+        return true;
+    }
+
+    bool removeLastChannel (AudioProcessorValueTreeState& apvts)
+    {
+        const auto count = visibleChannels (apvts);
+        if (count <= 1)
+            return false;
+        const auto channel = count - 1;
+
+        forEachSource (channel, [&] (const String& channelID, const String& amountID, const String& sendID)
+        {
+            resetParameter (apvts, sendID);
+            if (auto* raw = apvts.getRawParameterValue (channelID); raw != nullptr && (int) raw->load() - 1 == channel)
+            {
+                resetParameter (apvts, channelID);
+                resetParameter (apvts, amountID);
+            }
+        });
+        const auto prefix = "fx" + channelName (channel);
+        for (auto* parameter : apvts.processor.getParameters())
+            if (auto* withID = dynamic_cast<AudioProcessorParameterWithID*> (parameter))
+                if (withID->paramID.startsWith (prefix) && isEffectParameter (withID->paramID))
+                    resetParameter (apvts, withID->paramID);
+        resetParameter (apvts, ParamID::fxMuteIds[channel]);
+
+        apvts.state.setProperty ("fxChannelCount", channel, nullptr);
+        return true;
     }
 
     EqSettings readEq (const AudioProcessorValueTreeState& apvts, int channel)
@@ -522,7 +629,8 @@ namespace Effects
     {
         // Antal rattar före FX1: de nya rattarna (därefter) ska ha sitt standardvärde i stället för parameterns 0.5.
         const auto legacyCount = type == EffectType::distortion ? 4 : type == EffectType::echo ? 8 : type == EffectType::reverb ? 5
-                               : type == EffectType::maximizer ? 5 : type == EffectType::compressor ? 6 : knobsPerSlot;
+                               : type == EffectType::maximizer ? 5 : type == EffectType::compressor ? 6
+                               : type == EffectType::flanger ? 5 : knobsPerSlot;
         const auto& list = knobs (type);
         if (k < legacyCount || k >= (int) list.size() || k >= knobsPerSlot)
             return false;
@@ -1796,7 +1904,7 @@ namespace
     };
 
     // FLANGER: kort fördröjning (DELAY) som en sinus-LFO svänger med DEPTH, återkopplad (FEEDBACK, negativ ger ihåligt ljud).
-    // Höger kanals LFO ligger ett kvarts varv efter vänsters, så bilden blir bred.
+    // Höger kanals LFO ligger SPREAD varv efter vänsters (standard ett kvarts), så bilden blir bred. SHAPE: sinus eller triangel.
     struct FlangerFx
     {
         dsp::DelayLine<float, dsp::DelayLineInterpolationTypes::Linear> line;
@@ -1815,13 +1923,18 @@ namespace
         void process (AudioBuffer<float>& buffer, int numSamples, const Values& k, const Context& context)
         {
             const auto rate = k[0], depth = k[1], centre = k[2] * 0.001f * (float) context.sampleRate, feedback = k[3], wet = k[4];
+            const auto triangle = k[5] >= 0.5f;
+            const auto spread = (double) k[6];
             const auto increment = (double) rate / context.sampleRate;
             const auto channels = std::min (2, buffer.getNumChannels());
             for (int i = 0; i < numSamples; ++i)
             {
                 for (int ch = 0; ch < channels; ++ch)
                 {
-                    const auto lfo = (float) std::sin (MathConstants<double>::twoPi * (phase + 0.25 * ch));
+                    auto p = phase + spread * ch;
+                    p -= std::floor (p);
+                    const auto lfo = triangle ? (float) (p < 0.5 ? 4.0 * p - 1.0 : 3.0 - 4.0 * p)
+                                              : (float) std::sin (MathConstants<double>::twoPi * p);
                     const auto delay = jmax (1.0f, centre * (1.0f + depth * 0.9f * lfo));
                     auto* data = buffer.getWritePointer (ch);
                     const auto dry = data[i];
@@ -2322,6 +2435,7 @@ struct EffectRack::Impl
             chains[(size_t) ch]->setSources (&sources);
             level[(size_t) ch] = apvts.getRawParameterValue (Effects::channelParamID (ch, "Level"));
             duck[(size_t) ch] = apvts.getRawParameterValue (Effects::channelParamID (ch, "Duck"));
+            mute[(size_t) ch] = apvts.getRawParameterValue (ParamID::fxMuteIds[ch]); // saknas i FX-pluginet (nullptr = aldrig mutad)
             eqRefs.emplace_back (apvts, ch);
         }
     }
@@ -2332,13 +2446,16 @@ struct EffectRack::Impl
     std::vector<Effects::EqRefs> eqRefs; // en per kanal (skapas i konstruktorn)
     std::array<std::array<std::atomic<float>*, 5>, numEffectChannels> comp {}; // thr, ratio, att, rel, makeup
     std::array<std::atomic<float>*, numEffectChannels> level {}, duck {};
+    std::array<std::atomic<float>*, numEffectChannels> mute {};
     std::array<AudioBuffer<float>, numEffectChannels> buffers;
     std::array<float, numEffectChannels> gains {}, duckAmounts {};
     std::array<bool, numEffectChannels> active {};
     std::array<bool, numEffectChannels> sent {};    // fick kanalen ljud från någon källa i det här blocket?
     std::array<bool, numEffectChannels> idle {};    // kanalen hade inget att göra i blocket (inget skickat, ingen effekt): hoppades över
     std::array<float, numEffectChannels> duckState {};
+    std::array<float, numEffectChannels> muteState {}; // 1 = hörs, 0 = mutad; glider mellan dem (inget klick)
     float duckCoefficient = 0.02f;
+    float muteCoefficient = 0.01f;
     const Modulator* modulator = nullptr;
 };
 
@@ -2353,8 +2470,10 @@ void EffectRack::prepare (double sampleRate, int maxBlockSize)
         impl->buffers[(size_t) ch].setSize (2, std::max (1, maxBlockSize), false, true, true);
         impl->strips[(size_t) ch].prepare (sampleRate);
         impl->duckState[(size_t) ch] = 1.0f;
+        impl->muteState[(size_t) ch] = 1.0f;
     }
     impl->duckCoefficient = (float) (1.0 - std::exp (-1.0 / (0.001 * sampleRate)));
+    impl->muteCoefficient = (float) (1.0 - std::exp (-1.0 / (0.005 * sampleRate))); // ca 5 ms
 }
 
 void EffectRack::reset()
@@ -2369,6 +2488,7 @@ void EffectRack::reset()
         strip.env = 0.0f;
         strip.gainState = 1.0f;
         impl->duckState[(size_t) ch] = 1.0f;
+        impl->muteState[(size_t) ch] = 1.0f;
         impl->buffers[(size_t) ch].clear();
     }
 }
@@ -2422,6 +2542,15 @@ void EffectRack::send (int channel, const float* left, const float* right, int n
     buffer.addFrom (1, 0, right != nullptr ? right : left, numSamples, amount);
 }
 
+void EffectRack::sendRamped (int channel, const float* left, const float* right, int numSamples, float fromAmount, float toAmount)
+{
+    // Som send(), men beloppet glider från förra blockets värde till det nya (ett automatiserat reglage ger inget klick).
+    impl->sent[(size_t) channel] = true;
+    auto& buffer = impl->buffers[(size_t) channel];
+    buffer.addFromWithRamp (0, 0, left, numSamples, fromAmount, toAmount);
+    buffer.addFromWithRamp (1, 0, right != nullptr ? right : left, numSamples, fromAmount, toAmount);
+}
+
 bool EffectRack::isIdle (int channel) const
 {
     return jlimit (0, numEffectChannels - 1, channel) == channel && impl->idle[(size_t) channel];
@@ -2472,12 +2601,16 @@ void EffectRack::process (int numSamples, const float* kickEnvelope, AudioBuffer
         auto& state = impl->duckState[(size_t) ch];
         const auto amount = duckEnabled == nullptr || duckEnabled[ch] ? impl->duckAmounts[(size_t) ch] : 0.0f;
         const auto gain = impl->gains[(size_t) ch];
+        auto& muteState = impl->muteState[(size_t) ch];
+        const auto muteTarget = impl->mute[(size_t) ch] != nullptr && impl->mute[(size_t) ch]->load() >= 0.5f ? 0.0f : 1.0f;
         auto* left = buffer.getWritePointer (0);
         auto* right = buffer.getWritePointer (1);
         for (int i = 0; i < numSamples; ++i)
         {
             state += (1.0f - amount * kickEnvelope[i] - state) * impl->duckCoefficient;
-            const auto g = gain * state;
+            muteState += (muteTarget - muteState) * impl->muteCoefficient;
+            if (muteTarget == 0.0f && muteState < 1.0e-4f) muteState = 0.0f; // under -80 dB: helt tyst i stället för en evig svans
+            const auto g = gain * state * muteState;
             left[i] *= g;
             right[i] *= g;
         }

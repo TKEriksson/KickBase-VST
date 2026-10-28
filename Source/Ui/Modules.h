@@ -15,6 +15,7 @@
 #include "OscPanel.h"
 #include "FmPanel.h"
 #include "InstrMixPanel.h"
+#include "InstrTimingPanel.h"
 #include "EnvelopeView.h"
 #include "FilterPanel.h"
 #include "PianoRoll.h"
@@ -88,8 +89,6 @@ private:
     juce::TextButton restartButton { "" };       // börjar om räknaren och mönstret vid 1.1 (egen klocka)
     juce::TextButton jogButton { "" };           // JOG / LP (D3b): öppnar hjulet för scratch av den egna klockan
     void showJogPanel();
-    juce::TextButton playMenuButton { "" };      // PLAY-menyn: visar/döljer LOOP och JOG i rutan (valet minns programmet, Settings "playExtras")
-    bool playExtras = true;
     juce::Rectangle<int> previewGroup, bpmPill, keyBlock, transportGroup, meterRect;
     // Lyssnarvolym längst till höger bredvid mätaren: samma parameter som OUTPUT-faderns i mixern (ParamID::gain), ingen egen parameter.
     juce::Slider masterKnob { juce::Slider::RotaryHorizontalVerticalDrag, juce::Slider::NoTextBox };
@@ -99,10 +98,6 @@ private:
     // Spelar värden är de låsta ("styrs av DAW").
     juce::Label bpmLabel, barLabel;
 
-    // Global LOOP (D3): egen klocka som går runt mellan två takter (1-räknade, båda inräknade). DAW:ens transport ignoreras medan den är på.
-    juce::TextButton loopButton { "LOOP" };
-    juce::Label loopFromLabel, loopToLabel;
-    void applyLoopBars();
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
     void updateTransportLabels (bool following);
     struct ReleaseTimer : juce::Timer
@@ -140,6 +135,7 @@ private:
     void updateSampleLabel();
     void applyTab(); // SYNTH eller SAMPLE (processor.kickTab): visar och döljer vyernas delar
     bool sampleTabShown() const { return processor.kickTab.load() == 1; }
+    bool envelopeTabShown() const { return processor.kickTab.load() == 2; }
 
     PluginBase& processor;
 
@@ -156,9 +152,10 @@ private:
     juce::Label sampleHelp;
     std::unique_ptr<FxSendControl> fxSend;
 
-    juce::ToggleButton synthToggle { "SYNTH" }, sampleToggle { "SAMPLE" }; // på/av för de två källorna; LEVEL i SAMPLE-vyn är balansen
-    std::unique_ptr<juce::ButtonParameterAttachment> synthToggleAttachment, sampleToggleAttachment;
+    juce::ToggleButton synthToggle { "SYNTH" }, sampleToggle { "SAMPLE" }; // små på/av för äldre presets; balansen är MIX
+    std::unique_ptr<juce::ButtonParameterAttachment> synthToggleAttachment, sampleToggleAttachment, sampleReverseAttachment;
     juce::Label balanceHint;
+    juce::TextButton helpButton;
 
     juce::Label sampleLabel;
     juce::TextButton loadButton { "LOAD" }, clearButton { "X" }, listenSampleButton { "HEAR SAMPLE" };
@@ -232,6 +229,10 @@ private:
     juce::ToggleButton reverseToggle { "REVERSE" };
     juce::ToggleButton filterSendToggle { "SEND THROUGH FILTER" }; // samma parameter som i FILTER-fliken
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> reverseAttachment, filterSendAttachment;
+    // Sample-editor: baklänges per ton, AMP- och PITCH-kurvor (under vågformen)
+    juce::ToggleButton sampleReverseToggle { "REVERSE" }, ampToggle { "AMP" }, pitchToggle { "PITCH" };
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> sampleReverseAttachment, ampAttachment, pitchAttachment;
+    std::vector<std::unique_ptr<juce::Component>> ampControls, pitchControls; // AMP: TIME, SHAPE; PITCH: SEMIS, TIME, SHAPE
     juce::Label sliceCapNotice; // "Only the first 16 slices have rows" när samplingen har fler skivor än skivrader
     juce::ComboBox sliceModeBox;
     juce::TextButton createButton { "CREATE" }; // E2 steg 4: gör Grid/Auto-resultatet till egna gränser (Manual) som kan flyttas
@@ -240,7 +241,10 @@ private:
     juce::Slider gridAmount, sensitivityAmount; // en per läge, så att inget område byts under användaren
     bool syncing = false;
     juce::Label label;
-    juce::TextButton loadButton { "LOAD" }, clearButton { "X" }, hearButton { "HEAR" };
+    juce::TextButton loadButton { "LOAD" }, clearButton { "X" }, hearButton { "HEAR" }, helpButton;
+    juce::ComboBox sourceBox; // Single / Multi (sampleSource); i Multi laddar LOAD flera filer som zoner
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> sourceAttachment;
+    bool isMulti() const;
     std::unique_ptr<juce::FileChooser> chooser;
     std::vector<std::unique_ptr<juce::Component>> controls; // LEVEL, START, ROOT, LOOP, KEY
 };
@@ -305,11 +309,13 @@ private:
     EnvelopeView envelope { 0.5 };
     HoldAudition hold { processor };      // klick och håll på LISTEN: instrumentet spelas på förhandsvisningstonen
     ListenButton envelopeListen;          // högtalaren i hörnet av envelope-grafen
+    juce::TextButton instrHelpButton;     // HELP för INSTR-fliken, vid LISTEN i grafens hörn
     TabbedPanel sources;
     std::array<std::unique_ptr<OscPanel>, ParamID::oscsPerLayer> oscs;
     std::unique_ptr<SamplePage> samplePage;
     std::vector<std::unique_ptr<juce::Component>> controls;
     std::unique_ptr<FmPanel> fmPanel;                                     // FM-fliken (sist, så att fliknumren före den inte förskjuts)
+    std::unique_ptr<InstrTimingPanel> timingPanel;                        // TIMING-fliken: diagram + POS DELAY / LENGTH / SYNC / MODE per källa
     std::unique_ptr<InstrMixPanel> mixPanel;                              // MIX-fliken: nivå, pan och bredd per källa + sammanlagd vågform (efter FM av samma skäl)
     std::unique_ptr<FilterPage> filterPage;                             // FILTER-fliken: kurvan, Filter 1 och Filter 2
     ControlGroups groups; // PITCH, SUB, NOISE, FILTER ENV, VOLUME ENV, WARP ENV, DRIVE, OUT (ENV 2/3, VELOCITY, RANDOM: ENV-fliken)
@@ -377,6 +383,7 @@ private:
     std::vector<std::unique_ptr<KnobComponent>> knobs;
     PresetButton presets;
     juce::Label help;
+    juce::TextButton helpButton;
 };
 
 // Mönstret (en egen flik). Två lägen per lager, som man väljer med PATTERN | GATE:

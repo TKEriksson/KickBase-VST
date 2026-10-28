@@ -18,6 +18,14 @@ namespace Help
             return "On: this instrument's row repeats if it is shorter than the pattern. Off: it plays once and is then silent until the pattern starts over.";
         if (rawID.startsWith ("macro"))
             return "A macro: a knob of your own. Turn it by hand (or automate it) and let it move other knobs: drag its handle in the MATRIX tab onto a knob, or set it up in the route list.";
+        // FX-matrisen: varje källa kan skicka till flera effektkanaler, ett belopp per kanal.
+        if (rawID.contains ("FxSendTo"))
+        {
+            const auto channel = rawID.fromLastOccurrenceOf ("FxSendTo", false, false);
+            return "How much of this sound is sent to effect channel " + channel + " (0 = nothing). It adds to the other sends and to the channel chosen with FX CHANNEL, so one sound can feed several effect channels at once. The dry sound stays untouched.";
+        }
+        if (rawID.startsWith ("fxMute"))
+            return "Mutes the whole effect channel " + rawID.substring (6) + " for every source: you hear nothing from it. The sends stay as they are, so un-muting brings it back, and the effects keep running so tails are not cut.";
 
         // EQ:n (kicken, instrumenten, mastern och effektkanalerna har samma): högpass, fyra band, lågpass. Redigeras i diagrammet.
         if (rawID.contains ("Eq"))
@@ -80,7 +88,9 @@ namespace Help
             if (rawID.endsWith ("Duck"))
                 return "SC on: the sidechain ducks this source under the kick. Off: the kick leaves it alone.";
             if (rawID.endsWith ("Max"))
-                return "MAX on: this source goes through the maximizer (drive, clip, limiter, width). Off: it bypasses the maximizer and is added after it.";
+                return "MAX on: this source goes through the maximizer (drive, clip, limiter, and WIDTH/BASS MONO/ENHANCE unless left out on SOUNDSTAGE). Off: it bypasses the maximizer and is added after it.";
+            if (rawID.endsWith ("Stage"))
+                return "SOUNDSTAGE: on = this source goes through WIDTH, BASS MONO and ENHANCE. Off = it keeps its own stereo image (it still gets the master EQ, drive and limiter).";
         }
 
         static const std::map<juce::String, juce::String> texts {
@@ -161,17 +171,40 @@ namespace Help
             { "kickFmRatio", "The pitch of the FM sine compared to the body (2x = an octave above). Whole numbers sound harmonic, others more metallic." },
             { "kickFmDecay", "How fast the FM fades away after the start of the kick." },
             { "kickNoise", "A noisy top layer on the kick: snap and air. Has its own decay and tone." },
-            { "kickNoiseDecay", "How long the noisy top layer rings." },
+            { "kickNoiseDecay", "How long the noisy top layer rings, 5 ms to 2 s. The kick LENGTH still ends it." },
             { "kickNoiseTone", "High-pass frequency of the noisy top layer: higher = airier, lower = fuller." },
             { "kickCrush", "Bit crushing after the drive: 0 = clean, up to 4-bit grit." },
             { "kickLowCut", "High-pass on the whole kick: removes rumble below the kick's tone (20 Hz = off)." },
             { "kickVelPitch", "How much a note's velocity changes the pitch sweep: 0 = none, 100 % = a soft hit gets almost no sweep." },
             { "kickSampleMode", "How a loaded sample is used: Click = only the first moments (CLICK level), Layer = the whole sample on top of the synth kick, Replace = the sample is the kick." },
             { "kickSampleLevel", "Level of the sample in Layer and Replace mode. This is the balance between the synth kick and the sample." },
+            { "kickMix", "Balance between the synth kick and the loaded sample. Left = synth only, middle = both at full level (as before), right = sample only. With no sample, left to middle is the same." },
             { "kickSynthOn", "Kick synth on/off. Off = only the loaded sample is heard (like Replace); with no sample the kick is silent." },
             { "kickSampleOn", "Kick sample on/off. Off = the loaded sample is ignored (it stays loaded) and the synth kick plays alone." },
             { "kickSampleOffset", "Moves the sample against the synth kick, in milliseconds. Plus = the sample starts later; minus = it starts that far into the sample. Use it when the sample and the synth kick cancel each other (a thin or hollow kick)." },
             { "kickSampleTune", "Plays the sample faster or slower, in semitones (changes its pitch and length)." },
+            // Arbetare 2: klick-lager 2/3, kickens sampleverktyg och basens sample-editor (AMP, PITCH, REVERSE).
+            { "kickClick2Level", "Level of the second click layer, a short noise burst. 0 = off. Not heard in Replace mode or with the synth off." },
+            { "kickClick2Length", "How long the second click layer lasts." },
+            { "kickClick2Tone", "Filter frequency of the second click layer." },
+            { "kickClick2Delay", "Starts the second click layer this many milliseconds after the hit, e.g. for a second 'tick' right after the first." },
+            { "kickClick2Mode", "Filter of the second click layer: Bandpass (a focused tick), Lowpass (a dull thud) or Highpass (a bright hiss)." },
+            { "kickClick3Level", "Level of the third click layer, a short noise burst. 0 = off. Not heard in Replace mode or with the synth off." },
+            { "kickClick3Length", "How long the third click layer lasts." },
+            { "kickClick3Tone", "Filter frequency of the third click layer." },
+            { "kickClick3Delay", "Starts the third click layer this many milliseconds after the hit." },
+            { "kickClick3Mode", "Filter of the third click layer: Bandpass, Lowpass or Highpass." },
+            { "kickSampleStart", "Cuts off the first milliseconds of the loaded sample, so the kick starts at its punch. 0 = the whole sample." },
+            { "kickSampleReverse", "Plays the loaded sample backwards (after START has cut off its beginning): a reverse swell into the hit." },
+            { "kickSampleFade", "Fades out the last milliseconds of the loaded sample, to avoid a click at its end. 0 = no fade." },
+            { "bassSampleReverse", "Every note plays the sample backwards, from its end. START then counts from the end." },
+            { "bassSampleAmpOn", "On: the sample fades out over TIME with the SHAPE curve, so a long sample can be shortened into a pluck. Off: it plays as recorded." },
+            { "bassSampleAmpMs", "How long the AMP fade-out takes." },
+            { "bassSampleAmpShape", "Curve of the AMP fade-out: negative = drops fast then lingers, 0 = straight, positive = holds then drops late." },
+            { "bassSamplePitchOn", "On: the sample starts SEMIS higher or lower and glides to its own pitch over TIME: a kick-like pitch drop on any sample. Off: it plays at its own pitch." },
+            { "bassSamplePitchSemis", "How far from its own pitch the sample starts, in semitones. Positive = starts higher, negative = starts lower." },
+            { "bassSamplePitchMs", "How long the PITCH glide takes." },
+            { "bassSamplePitchShape", "Curve of the PITCH glide: negative = reaches the pitch fast then settles, 0 = straight, positive = glides late." },
             { "kickKeyFollow", "Follow: the kick's tail is tuned to the note you play. Fixed: it stays on C1 + TUNE whatever the note." },
             { "kickTune", "Tunes the kick's tail (its low 'boom') in semitones. Psy kicks often sit 1-3 semitones above the bass note." },
             { "kickPitchAmount", "Scales the whole pitch envelope you draw in the display: 100 % = as drawn, 0 % = no pitch drop at all." },
@@ -243,7 +276,7 @@ namespace Help
             { "bassSamplePan", "Pan for the SAMPLE source (C = centre, exactly as before). Balance-style: the opposite side is turned down, the centre stays at full level." },
             { "bassNoisePan", "Pan for the NOISE source (C = centre, exactly as before)." },
             { "bassFmPan", "Pan for the FM source (C = centre, exactly as before)." },
-            { "bassSlicerOn", "Unused. Slices are played from the 'Slice N' rows in the pattern: a note on row 'Slice 3' plays slice 3. Only the first 16 slices have rows." },
+            { "bassSlicerOn", "Unused. Slices are played from the slices piano roll in the pattern: a note on key 'Slice 3' plays slice 3. Every slice has a key." },
             { "bassSlicerMapTo", "Unused (see the 'Slice N' rows)." },
             { "bassSlicerReverse", "Plays every slice backwards." },
             { "bassSampleMode", "How the sample layer works. Blend: the sample plays together with the synth voice, from the same notes. Independent: the sample has its own pattern row and its own notes. Off: no sample." },
@@ -253,7 +286,16 @@ namespace Help
             { "bassBWidth", "Stereo width of OSC 2. 100 % = exactly as before, 0 % = mono, 200 % = twice the side signal. Only does something when the oscillator is stereo (UNISON above 1 or STEREO)." },
             { "bassCWidth", "Stereo width of OSC 3. 100 % = exactly as before, 0 % = mono, 200 % = twice the side signal. Only does something when the oscillator is stereo (UNISON above 1 or STEREO)." },
             { "bassSampleWidth", "Stereo width of the SAMPLE source: 100 % = mono as before, 200 % = a decorrelated copy in left and right. Keep the low end mono." },
-            { "bassRingSource", "RING (B) on OSC 1: what OSC 1 is multiplied by (ring modulation): OSC 2, OSC 3, or OSC 2 x OSC 3. WARP AMOUNT blends from plain OSC 1 to pure ring modulation. The chosen oscillator must be ON; its LEVEL does not matter for the ring." },
+            { "jogSpeed", "Not used any more. Kept so that old projects and DAW automation keep their parameter order." },
+            { "fundamentalDuckOn", "FUNDAMENTAL DUCK for all engines: dampens the fundamental of every engine while the kick sounds (a narrow dip at the engine's own fundamental). Engines can inherit, switch it off or use their own values. Limits: it follows the last played voice of each engine, and the 2nd harmonic and glides are not followed." },
+            { "fundamentalDuckDepth", "How many dB the fundamental is dampened at full effect while the source sounds (instrument-wide; engines set to INHERIT use it)." },
+            { "fundamentalDuckWindow", "How close in pitch the engine's fundamental must be to the source's, in cents. Inside the window the dip is full; at twice the window it is gone." },
+            { "fundamentalDuckSource", "What triggers the dip: the kick (default), one of the instruments, or Any." },
+            { "bassFundamentalDuckMode", "FUNDAMENTAL DUCK for this engine. INHERIT: uses the instrument-wide values (shown dimmed, 'from instrument'). OFF: this engine is never dampened. OWN: uses its own depth, window and source. Follows the last played voice." },
+            { "bassFundamentalDuckDepth", "OWN mode: how many dB this engine's fundamental is dampened at full effect." },
+            { "bassFundamentalDuckWindow", "OWN mode: how close in pitch (cents) the fundamental must be to the source's for the full dip." },
+            { "bassFundamentalDuckSource", "OWN mode: what triggers the dip for this engine: the kick, another instrument, or Any." },
+            { "bassRingSource","RING (B) on OSC 1: what OSC 1 is multiplied by (ring modulation): OSC 2, OSC 3, or OSC 2 x OSC 3. WARP AMOUNT blends from plain OSC 1 to pure ring modulation. The chosen oscillator must be ON; its LEVEL does not matter for the ring." },
             { "bassFmWidth","Stereo width of the FM source: 100 % = mono as before, 200 % = a decorrelated copy in left and right." },
             { "bassNoiseWidth", "How wide the noise is: 100 % = mono in the centre (as before), 200 % = different noise in left and right. The sub and the low end of a bass should stay mono, so only the noise gets a width control." },
             { "bassAllpassAmount", "How much of the allpass chain is mixed in (0 % = off, no CPU and the sound is exactly as before; 100 % = pure phase rotation). In between you get a phaser-like notch." },
@@ -263,7 +305,65 @@ namespace Help
             { "bassSampleLevel", "How loud this layer's sample is (the file you load with LOAD or drop on the page). It plays alongside the oscillators, through the filter and envelope." },
             { "bassSampleRoot", "The pitch the sample was recorded at. With KEY on, the sample is pitched so that this note becomes the note you play." },
             { "bassSampleLoop", "On: the sample repeats while the note is held. Off: it plays once." },
-            { "bassSampleKey", "On: the sample follows the note you play (set ROOT to the pitch it was recorded at). Off: it always plays at its own pitch and speed." },
+            { "bassSampleSource", "SINGLE: the layer plays one sample (with slices). MULTI: the layer plays several samples (zones) spread over the keyboard and velocity, e.g. a sampled piano. In Multi the zone is picked per note and always follows the key." },
+            // Tid per motor (5b)
+            { "bassADelayMs", "POS DELAY for OSC 1: the engine is silent for this long after each note starts, then begins from its start phase. 0 = starts with the note. Not used while SYNC is on." },
+            { "bassBDelayMs", "POS DELAY for OSC 2: the engine is silent for this long after each note starts, then begins from its start phase. 0 = starts with the note. Not used while SYNC is on." },
+            { "bassCDelayMs", "POS DELAY for OSC 3: the engine is silent for this long after each note starts, then begins from its start phase. 0 = starts with the note. Not used while SYNC is on." },
+            { "bassSampleDelayMs","POS DELAY for SAMPLE: the sample is silent for this long after each note starts. 0 = starts with the note. Not used while SYNC is on." },
+            { "bassNoiseDelayMs", "POS DELAY for NOISE: the noise is silent for this long after each note starts. 0 = starts with the note. Not used while SYNC is on." },
+            { "bassSubDelayMs", "POS DELAY for SUB: the sub is silent for this long after each note starts, then begins from its start phase. 0 = starts with the note. Not used while SYNC is on." },
+            { "bassFmDelayMs", "POS DELAY for FM: the FM source is silent for this long after each note starts, then begins from its start phase. 0 = starts with the note. Not used while SYNC is on." },
+            { "bassADelaySync", "POS DELAY for OSC 1 in note values at the project tempo (1/16 to 4 bars) instead of milliseconds. OFF = use the POS DELAY knob. Fixed when the note starts." },
+            { "bassBDelaySync", "POS DELAY for OSC 2 in note values at the project tempo (1/16 to 4 bars) instead of milliseconds. OFF = use the POS DELAY knob. Fixed when the note starts." },
+            { "bassCDelaySync", "POS DELAY for OSC 3 in note values at the project tempo (1/16 to 4 bars) instead of milliseconds. OFF = use the POS DELAY knob. Fixed when the note starts." },
+            { "bassSampleDelaySync", "POS DELAY for SAMPLE in note values at the project tempo (1/16 to 4 bars) instead of milliseconds. OFF = use the POS DELAY knob. Fixed when the note starts." },
+            { "bassNoiseDelaySync", "POS DELAY for NOISE in note values at the project tempo (1/16 to 4 bars) instead of milliseconds. OFF = use the POS DELAY knob. Fixed when the note starts." },
+            { "bassSubDelaySync", "POS DELAY for SUB in note values at the project tempo (1/16 to 4 bars) instead of milliseconds. OFF = use the POS DELAY knob. Fixed when the note starts." },
+            { "bassFmDelaySync", "POS DELAY for FM in note values at the project tempo (1/16 to 4 bars) instead of milliseconds. OFF = use the POS DELAY knob. Fixed when the note starts." },
+            { "bassALenMs", "LENGTH of OSC 1: how long the engine sounds after its POS DELAY before it has faded out. 0 = it sounds for the whole note." },
+            { "bassBLenMs", "LENGTH of OSC 2: how long the engine sounds after its POS DELAY before it has faded out. 0 = it sounds for the whole note." },
+            { "bassCLenMs", "LENGTH of OSC 3: how long the engine sounds after its POS DELAY before it has faded out. 0 = it sounds for the whole note." },
+            { "bassSampleLenMs", "LENGTH of SAMPLE: how long the sample sounds after its POS DELAY before it has faded out. 0 = it sounds for the whole note." },
+            { "bassNoiseLenMs", "LENGTH of NOISE: how long the noise sounds after its POS DELAY before it has faded out. 0 = it sounds for the whole note." },
+            { "bassSubLenMs", "LENGTH of SUB: how long the sub sounds after its POS DELAY before it has faded out. 0 = it sounds for the whole note." },
+            { "bassFmLenMs", "LENGTH of FM: how long the FM source sounds after its POS DELAY before it has faded out. 0 = it sounds for the whole note." },
+            { "bassACurve", "CURVE of OSC 1's LENGTH fade: 0 % = straight line, above = drops fast first and tails off, below = holds first and drops late. Only matters when LENGTH is above 0." },
+            { "bassBCurve", "CURVE of OSC 2's LENGTH fade: 0 % = straight line, above = drops fast first and tails off, below = holds first and drops late. Only matters when LENGTH is above 0." },
+            { "bassCCurve", "CURVE of OSC 3's LENGTH fade: 0 % = straight line, above = drops fast first and tails off, below = holds first and drops late. Only matters when LENGTH is above 0." },
+            { "bassSampleCurve", "CURVE of SAMPLE's LENGTH fade: 0 % = straight line, above = drops fast first and tails off, below = holds first and drops late. Only matters when LENGTH is above 0." },
+            { "bassNoiseCurve", "CURVE of NOISE's LENGTH fade: 0 % = straight line, above = drops fast first and tails off, below = holds first and drops late. Only matters when LENGTH is above 0." },
+            { "bassSubCurve", "CURVE of SUB's LENGTH fade: 0 % = straight line, above = drops fast first and tails off, below = holds first and drops late. Only matters when LENGTH is above 0." },
+            { "bassFmCurve", "CURVE of FM's LENGTH fade: 0 % = straight line, above = drops fast first and tails off, below = holds first and drops late. Only matters when LENGTH is above 0." },
+            { "bassADelayMode", "DELAY MODE for OSC 1: GATE = the engine runs silently from the note start and is let in after POS DELAY (as before). SHIFT = the engine starts from scratch after POS DELAY: oscillator phases, and for OSC 1-3 and FM also their own envelopes, restart there. The pitch envelope is shared and keeps running." },
+            { "bassALenSync", "LENGTH of OSC 1 in note values at the project tempo (1/16 to 4 bars) instead of milliseconds. OFF = use the LENGTH knob. Fixed when the note starts." },
+            { "bassADelayCount", "How many note values POS DELAY of OSC 1 lasts (1-8), when SYNC is on. 3 with 1/4 = three quarter notes. Fixed when the note starts." },
+            { "bassALenCount", "How many note values LENGTH of OSC 1 lasts (1-8), when LENGTH SYNC is on. 3 with 1/4 = three quarter notes. Fixed when the note starts." },
+            { "bassBDelayMode", "DELAY MODE for OSC 2: GATE = the engine runs silently from the note start and is let in after POS DELAY (as before). SHIFT = the engine starts from scratch after POS DELAY: oscillator phases, and for OSC 1-3 and FM also their own envelopes, restart there. The pitch envelope is shared and keeps running." },
+            { "bassBLenSync", "LENGTH of OSC 2 in note values at the project tempo (1/16 to 4 bars) instead of milliseconds. OFF = use the LENGTH knob. Fixed when the note starts." },
+            { "bassBDelayCount", "How many note values POS DELAY of OSC 2 lasts (1-8), when SYNC is on. 3 with 1/4 = three quarter notes. Fixed when the note starts." },
+            { "bassBLenCount", "How many note values LENGTH of OSC 2 lasts (1-8), when LENGTH SYNC is on. 3 with 1/4 = three quarter notes. Fixed when the note starts." },
+            { "bassCDelayMode", "DELAY MODE for OSC 3: GATE = the engine runs silently from the note start and is let in after POS DELAY (as before). SHIFT = the engine starts from scratch after POS DELAY: oscillator phases, and for OSC 1-3 and FM also their own envelopes, restart there. The pitch envelope is shared and keeps running." },
+            { "bassCLenSync", "LENGTH of OSC 3 in note values at the project tempo (1/16 to 4 bars) instead of milliseconds. OFF = use the LENGTH knob. Fixed when the note starts." },
+            { "bassCDelayCount", "How many note values POS DELAY of OSC 3 lasts (1-8), when SYNC is on. 3 with 1/4 = three quarter notes. Fixed when the note starts." },
+            { "bassCLenCount", "How many note values LENGTH of OSC 3 lasts (1-8), when LENGTH SYNC is on. 3 with 1/4 = three quarter notes. Fixed when the note starts." },
+            { "bassSampleDelayMode", "DELAY MODE for SAMPLE: GATE = the sample runs silently from the note start and is let in after POS DELAY (as before). SHIFT = the sample starts from scratch after POS DELAY: oscillator phases, and for OSC 1-3 and FM also their own envelopes, restart there. The pitch envelope is shared and keeps running." },
+            { "bassSampleLenSync", "LENGTH of SAMPLE in note values at the project tempo (1/16 to 4 bars) instead of milliseconds. OFF = use the LENGTH knob. Fixed when the note starts." },
+            { "bassSampleDelayCount", "How many note values POS DELAY of SAMPLE lasts (1-8), when SYNC is on. 3 with 1/4 = three quarter notes. Fixed when the note starts." },
+            { "bassSampleLenCount", "How many note values LENGTH of SAMPLE lasts (1-8), when LENGTH SYNC is on. 3 with 1/4 = three quarter notes. Fixed when the note starts." },
+            { "bassNoiseDelayMode", "DELAY MODE for NOISE: GATE = the noise runs silently from the note start and is let in after POS DELAY (as before). SHIFT = the noise starts from scratch after POS DELAY: oscillator phases, and for OSC 1-3 and FM also their own envelopes, restart there. The pitch envelope is shared and keeps running." },
+            { "bassNoiseLenSync", "LENGTH of NOISE in note values at the project tempo (1/16 to 4 bars) instead of milliseconds. OFF = use the LENGTH knob. Fixed when the note starts." },
+            { "bassNoiseDelayCount", "How many note values POS DELAY of NOISE lasts (1-8), when SYNC is on. 3 with 1/4 = three quarter notes. Fixed when the note starts." },
+            { "bassNoiseLenCount", "How many note values LENGTH of NOISE lasts (1-8), when LENGTH SYNC is on. 3 with 1/4 = three quarter notes. Fixed when the note starts." },
+            { "bassSubDelayMode", "DELAY MODE for SUB: GATE = the sub runs silently from the note start and is let in after POS DELAY (as before). SHIFT = the sub starts from scratch after POS DELAY: oscillator phases, and for OSC 1-3 and FM also their own envelopes, restart there. The pitch envelope is shared and keeps running." },
+            { "bassSubLenSync", "LENGTH of SUB in note values at the project tempo (1/16 to 4 bars) instead of milliseconds. OFF = use the LENGTH knob. Fixed when the note starts." },
+            { "bassSubDelayCount", "How many note values POS DELAY of SUB lasts (1-8), when SYNC is on. 3 with 1/4 = three quarter notes. Fixed when the note starts." },
+            { "bassSubLenCount", "How many note values LENGTH of SUB lasts (1-8), when LENGTH SYNC is on. 3 with 1/4 = three quarter notes. Fixed when the note starts." },
+            { "bassFmDelayMode", "DELAY MODE for FM: GATE = the FM source runs silently from the note start and is let in after POS DELAY (as before). SHIFT = the FM source starts from scratch after POS DELAY: oscillator phases, and for OSC 1-3 and FM also their own envelopes, restart there. The pitch envelope is shared and keeps running." },
+            { "bassFmLenSync", "LENGTH of FM in note values at the project tempo (1/16 to 4 bars) instead of milliseconds. OFF = use the LENGTH knob. Fixed when the note starts." },
+            { "bassFmDelayCount", "How many note values POS DELAY of FM lasts (1-8), when SYNC is on. 3 with 1/4 = three quarter notes. Fixed when the note starts." },
+            { "bassFmLenCount", "How many note values LENGTH of FM lasts (1-8), when LENGTH SYNC is on. 3 with 1/4 = three quarter notes. Fixed when the note starts." },
+            { "bassSampleKey","On: the sample follows the note you play (set ROOT to the pitch it was recorded at). Off: it always plays at its own pitch and speed." },
             { "bassSampleStart", "Where in the sample each note starts." },
             { "bassCutoff", "Where the filter starts cutting the highs. Lower = darker sound." },
             { "bassResonance", "Boost at the cutoff frequency. High values give the squelchy, acid sound." },
@@ -349,6 +449,8 @@ namespace Help
             if (name == "DELAY")    return "The centre of the short delay. Shorter = higher, more metallic sweep.";
             if (name == "DEPTH")    return "How far the delay swings around DELAY.";
             if (name == "FEEDBACK") return "How much of the delayed sound is fed back in. Negative values give a hollow, inverted sound.";
+            if (name == "SHAPE")    return "The wave of the sweep: Sine (smooth) or Triangle (steady, more mechanical).";
+            if (name == "SPREAD")   return "How far the right channel sweep is behind the left one. 25 % is the classic wide sound, 0 % is the same in both ears.";
         }
         if (typeName == "Transient")
         {
@@ -369,6 +471,16 @@ namespace Help
             if (name == "LOW DUCK")  return "How far the low part (below SPLIT) is pushed down when the source plays. High = room for the kick.";
             if (name == "HIGH DUCK") return "How far the high part is pushed down. Keep it low for a pump that does not dull the top.";
         }
+        if (typeName == "Sidechain 2-Band")
+        {
+            if (name == "SPLIT")      return "Where the sound is divided into a low and a high part (a Linkwitz-Riley split, so the parts add back to the original).";
+            if (name == "LOW DEPTH")  return "How far the low part (below SPLIT) is pushed down by the volume curve. 100 % = full curve depth.";
+            if (name == "HIGH DEPTH") return "How far the high part (above SPLIT) is pushed down by the volume curve. Keep it lower for a pump that does not dull the top.";
+            if (name == "LOW REL")    return "How fast the low part comes back after the kick. Longer = the sub stays out of the way for longer.";
+            if (name == "HIGH REL")   return "How fast the high part comes back after the kick.";
+        }
+        if (typeName == "Phase Rotation" && name == "ROTATION")
+            return "How far the phase is turned at FREQ, in degrees. The level does not change; only the timing of the low end against the kick does.";
         if (typeName == "Octaver")
         {
             if (name == "OCT DOWN")   return "Adds a copy one octave lower (a clean sub under the sound). Works best on single notes.";

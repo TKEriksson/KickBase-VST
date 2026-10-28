@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../Core/PluginBase.h"
+#include "HelpDialog.h"
 #include "Theme.h"
 
 // MENY > History...: ångra-historiken som en lista, nyast överst. Ångrade steg (redo-delen) är gråa ovanför raden "Now", utförda steg ligger under.
@@ -25,6 +26,9 @@ public:
         redoButton.setTooltip ("Redo the step just above NOW (Ctrl+Shift+Z or Ctrl+Y).");
         restoreButton.setTooltip ("Go to the selected step: undoes or redoes everything between it and NOW. Double-click a row does the same.");
 
+        HelpDialog::setupButton (helpButton, *this, HelpDialog::Topic::history, "the history list");
+        addAndMakeVisible (helpButton);
+
         processor.undoManager.addChangeListener (this);
         refresh();
         setSize (420, 360);
@@ -37,6 +41,7 @@ public:
         auto area = getLocalBounds().reduced (8);
         auto buttons = area.removeFromBottom (28);
         area.removeFromBottom (6);
+        helpButton.setBounds (buttons.removeFromRight (44));
         const auto w = buttons.getWidth() / 3;
         undoButton.setBounds (buttons.removeFromLeft (w).reduced (2, 0));
         redoButton.setBounds (buttons.removeFromLeft (w).reduced (2, 0));
@@ -118,7 +123,7 @@ private:
 
     PluginBase& processor;
     juce::ListBox list;
-    juce::TextButton undoButton { "Undo" }, redoButton { "Redo" }, restoreButton { "Restore" };
+    juce::TextButton undoButton { "Undo" }, redoButton { "Redo" }, restoreButton { "Restore" }, helpButton;
     std::vector<Row> rows;
     int redoCount = 0;
 };

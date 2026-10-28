@@ -12,6 +12,8 @@
 #include "../Source/Fx/FxProcessor.h"
 #include "../Source/Ui/FmPresets.h"
 #include "../Source/Core/MixAnalysis.h"
+#include "../Source/Core/AudioAnalysis.h"
+#include "../Source/Core/MultiSample.h"
 #include "Scenarios.h"
 #include <new>
 #include <cstdlib>
@@ -826,6 +828,8 @@ int blockSizeTest()
 {
     auto failed = false;
     juce::ScopedJuceInitialiser_GUI gui;
+    // Alla tabeller byggs före första renderingen: annars kan TableBuilder-tråden (kallstart, belastning) lämna Basic kvar under en not.
+    Wavetables::ensureAll();
     // läge 0 = instrumentets Init, 1 = instrumentet i tungt läge, 2 = Kickbase FX i tungt läge (med en sågtand som insignal),
     // 3 = instrumentet i tungt läge med TB-303-modellen (fas D1), 4 = instrumentet i tungt läge med ENV 2/3 i läget Sync, 5 = tungt läge med Ladder, Formant och Comb (fas D2)
     auto renderWith = [] (int mode, int blockSize)
@@ -870,12 +874,29 @@ int blockSizeTest()
     const char* names[] { "Init", "tungt läge (LFO, ENV 2/3)", "Kickbase FX, tungt läge", "tungt läge med TB-303", "tungt läge med ENV Sync", "tungt läge: Ladder/Formant/Comb", "tungt läge med Filter 2",
                           "tungt läge med 2/4/8 röster (stealing)" };
     juce::AudioBuffer<float> monoReference;
+    // Felsökning: KB_BS_MODE=1,7 kör bara de lägena (läge 7 jämförs då inte mot läge 1 om 1 saknas).
+    const auto onlyMode = juce::SystemStats::getEnvironmentVariable ("KB_BS_MODE", {});
     for (const auto mode : { 0, 1, 2, 3, 4, 5, 6, 7 })
     {
+        if (onlyMode.isNotEmpty() && ! juce::StringArray::fromTokens (onlyMode, ",", {}).contains (juce::String (mode)))
+            continue;
         const auto reference = renderWith (mode, 32);
+        {
+            // Samma block två gånger: skiljer de sig är det inte blockstorleken utan renderingen som inte är deterministisk.
+            const auto again = renderWith (mode, 32);
+            auto firstDiff = -1;
+            for (int i = 0; i < std::min (again.getNumSamples(), reference.getNumSamples()) && firstDiff < 0; ++i)
+                if (again.getSample (0, i) != reference.getSample (0, i))
+                    firstDiff = i;
+            if (firstDiff >= 0 || again.getNumSamples() != reference.getNumSamples())
+            {
+                std::printf ("FEL: %s, block 32 två gånger ger olika ljud (första skillnaden vid sample %d)\n", names[mode], firstDiff);
+                failed = true;
+            }
+        }
         if (mode == 1)
             monoReference = reference;
-        if (mode == 7 && hashOf (reference) == hashOf (monoReference))
+        if (mode == 7 && monoReference.getNumSamples() > 0 && hashOf (reference) == hashOf (monoReference))
         {
             std::puts ("FEL: flera röster låter som en röst");
             failed = true;
@@ -1359,5 +1380,676 @@ int audioThreadTest()
     }
    #endif
     std::puts (failed ? "FEL: ljudtrådstestet misslyckades" : "Ljudtrådstestet gick igenom");
+    return failed ? 1 : 0;
+}
+
+// S3 Unison/Reese (`tool reesetest`): mäter en Reese-bas (OSC 1 och 2 med unison) med 1, 3, 5 och 7 röster per oscillator.
+// CPU per sekund ljud, allokeringar på ljudtråden (mål 0), DC, toppnivå, stereo under 150 Hz (lowSide) och att allt är ändligt.
+// Siffrorna ska läsas av en människa (docs/school/reese.md); testet fäller bara på allokeringar, icke-ändligt ljud och DC.
+int reeseTest()
+{
+    juce::ScopedJuceInitialiser_GUI gui;
+    auto failed = false;
+    constexpr double rate = 48000.0;
+    constexpr int blockSize = 512;
+    std::printf ("%-28s %7s %6s %6s %6s %7s %6s %6s\n", "RECEPT", "CPU/s", "alloc", "peak", "dc", "lowSide", "side", "finit");
+
+    struct Recipe { const char* name; int unisonA, unisonB, unisonC, voices; float detune; };
+    const Recipe recipes[] = {
+        { "Reese 1+1 (ingen unison)", 1, 1, 1, 1, 20.0f },
+        { "Reese 3+3, detune 20", 3, 3, 1, 1, 20.0f },
+        { "Reese 5+5, detune 20", 5, 5, 1, 1, 20.0f },
+        { "Reese 7+7, detune 20", 7, 7, 1, 1, 20.0f },
+        { "Reese 7+7+7, detune 20", 7, 7, 7, 1, 20.0f },
+        { "Reese 7+7, VOICES 3", 7, 7, 1, 3, 20.0f },
+    };
+    for (const auto& recipe : recipes)
+    {
+        const auto owner = std::make_unique<InstrumentProcessor>();
+        auto& processor = *owner;
+        processor.setPlayConfigDetails (0, 2, rate, blockSize);
+        processor.prepareToPlay (rate, blockSize);
+        Scenarios::setPlain (processor, ParamID::kickOn, 0.0f);
+        for (int layer = 1; layer < ParamID::numInstrumentLayers; ++layer)
+            Scenarios::setInstrument (processor, layer, InstrumentField::on, 0.0f);
+        using F = InstrumentField;
+        Scenarios::setInstrument (processor, 0, F::sub, 0.0f);
+        Scenarios::setInstrument (processor, 0, F::noise, 0.0f);
+        Scenarios::setInstrument (processor, 0, F::aUnison, (float) recipe.unisonA);
+        Scenarios::setInstrument (processor, 0, F::aDetune, recipe.detune);
+        Scenarios::setInstrument (processor, 0, F::bOn, 1.0f);
+        Scenarios::setInstrument (processor, 0, F::bUnison, (float) recipe.unisonB);
+        Scenarios::setInstrument (processor, 0, F::bDetune, recipe.detune);
+        Scenarios::setInstrument (processor, 0, F::bFine, 12.0f);
+        Scenarios::setInstrument (processor, 0, F::cOn, recipe.unisonC > 1 ? 1.0f : 0.0f);
+        Scenarios::setInstrument (processor, 0, F::cUnison, (float) recipe.unisonC);
+        Scenarios::setInstrument (processor, 0, F::cDetune, recipe.detune);
+        Scenarios::setInstrument (processor, 0, F::cFine, -12.0f);
+        Scenarios::setInstrument (processor, 0, F::voices, (float) recipe.voices);
+
+        const auto blocks = (int) (rate * 4.0 / blockSize);
+        juce::AudioBuffer<float> all (2, blocks * blockSize), buffer (2, blockSize);
+        juce::MidiBuffer midi;
+        midi.ensureSize (64);
+        auto counted = 0;
+        auto total = 0.0;
+        for (int block = 0; block < blocks; ++block)
+        {
+            midi.clear();
+            if (block == 0)
+                midi.addEvent (juce::MidiMessage::noteOn (1, 52, (juce::uint8) 100), 0);
+            if (recipe.voices > 1 && block == 4)
+                midi.addEvent (juce::MidiMessage::noteOn (1, 56, (juce::uint8) 100), 0);
+            if (recipe.voices > 1 && block == 8)
+                midi.addEvent (juce::MidiMessage::noteOn (1, 59, (juce::uint8) 100), 0);
+            buffer.clear();
+            allocationCount = 0;
+            countingAllocations = block >= 8;
+            const auto start = juce::Time::getMillisecondCounterHiRes();
+            processor.processBlock (buffer, midi);
+            total += juce::Time::getMillisecondCounterHiRes() - start;
+            countingAllocations = false;
+            counted += allocationCount;
+            for (int ch = 0; ch < 2; ++ch)
+                all.copyFrom (ch, block * blockSize, buffer, ch, 0, blockSize);
+        }
+        const auto m = AudioAnalysis::measure (all, rate);
+        const auto ok = counted == 0 && m.finite && m.dc < 0.05;
+        failed |= ! ok;
+        std::printf ("%-28s %7.4f %6d %6.1f %6.3f %7.1f %6.1f %6s%s\n", recipe.name, total / 1000.0 / 4.0, counted, m.peakDb, m.dc, m.lowSideDb, m.sideDb,
+                     m.finite ? "ja" : "NEJ", ok ? "" : "  FEL");
+    }
+    std::puts (failed ? "FEL: reesetestet misslyckades" : "Reesetestet gick igenom");
+    return failed ? 1 : 0;
+}
+
+// 5b POS DELAY / SYNC / LENGTH / CURVE per motor (`tool delaytest`): OSC 1 ensam, RMS per fönster.
+int delayTest()
+{
+    juce::ScopedJuceInitialiser_GUI gui;
+    auto failed = false;
+    constexpr double rate = 48000.0;
+    constexpr int blockSize = 512;
+    using F = InstrumentField;
+
+    // Renderar 1,2 s med en not och returnerar RMS per 50 ms-fönster.
+    auto windows = [&] (float delayMs, float sync, float lenMs, float curve)
+    {
+        const auto owner = std::make_unique<InstrumentProcessor>();
+        auto& processor = *owner;
+        processor.setPlayConfigDetails (0, 2, rate, blockSize);
+        processor.prepareToPlay (rate, blockSize);
+        Scenarios::setPlain (processor, ParamID::kickOn, 0.0f);
+        for (int layer = 1; layer < ParamID::numInstrumentLayers; ++layer)
+            Scenarios::setInstrument (processor, layer, F::on, 0.0f);
+        Scenarios::setInstrument (processor, 0, F::sub, 0.0f);
+        Scenarios::setInstrument (processor, 0, F::noise, 0.0f);
+        for (const auto off : { F::bOn, F::cOn, F::sampleOn, F::fmOn })   // OSC 1 ensam
+            Scenarios::setInstrument (processor, 0, off, 0.0f);
+        Scenarios::setInstrument (processor, 0, F::aDelayMs, delayMs);
+        Scenarios::setInstrument (processor, 0, F::aDelaySync, sync);
+        Scenarios::setInstrument (processor, 0, F::aLenMs, lenMs);
+        Scenarios::setInstrument (processor, 0, F::aCurve, curve);
+        Scenarios::setInstrument (processor, 0, F::aTable, (float) Wavetables::classicIndex (2)); // sågtand
+        Scenarios::setInstrument (processor, 0, F::envAmount, 0.0f);
+        processor.ensureTablesInUse();
+        OfflineRender::Settings settings;
+        settings.sampleRate = rate;
+        settings.blockSize = blockSize;
+        settings.bpm = 120.0;
+        settings.bars = 1;
+        settings.notes = { 52 };
+        const auto all = OfflineRender::render (processor, settings);
+        std::vector<float> rms;
+        const int win = (int) (rate * 0.05);
+        for (int start = 0; start + win <= all.getNumSamples(); start += win)
+        {
+            double sum = 0.0;
+            for (int i = 0; i < win; ++i)
+                sum += (double) all.getSample (0, start + i) * all.getSample (0, start + i);
+            rms.push_back ((float) std::sqrt (sum / win));
+        }
+        return rms;
+    };
+    auto check = [&] (bool ok, const char* what)
+    {
+        std::printf ("%-60s %s\n", what, ok ? "ok" : "FEL");
+        failed |= ! ok;
+    };
+
+    const auto base = windows (0.0f, 0.0f, 0.0f, 0.0f);
+    // Standardmönstret slår an första tonen vid 250 ms (fönster 5) och håller 250 ms; fönster n = n*50 ms, så notens tid är (n-5)*50 ms.
+    constexpr size_t n0 = 5;
+    check (base[n0] > 1.0e-3f, "utan POS DELAY låter notens första 50 ms");
+
+    const auto delayed = windows (100.0f, 0.0f, 0.0f, 0.0f);
+    check (delayed[n0] < 1.0e-4f && delayed[n0 + 1] < 1.0e-4f, "POS DELAY 100 ms: notens första 100 ms är tysta");
+    check (delayed[n0 + 3] > 1.0e-3f, "POS DELAY 100 ms: ljud efter 150 ms");
+
+    const auto synced = windows (0.0f, 1.0f, 0.0f, 0.0f);      // SYNC 1/16 vid 120 BPM = 125 ms (1/4 = 500 ms är längre än mönstrets not)
+    check (synced[n0] < 1.0e-4f && synced[n0 + 1] < 1.0e-4f, "SYNC 1/16 vid 120 BPM: tyst de första 100 ms");
+    check (synced[n0 + 3] > 1.0e-3f, "SYNC 1/16 vid 120 BPM: ljud efter 150 ms");
+
+    const auto gated = windows (0.0f, 0.0f, 100.0f, 0.0f);     // LENGTH 100 ms, linjär
+    check (gated[n0] > gated[n0 + 1] && gated[n0 + 1] > 1.0e-4f, "LENGTH 100 ms: nivån avtar");
+    check (gated[n0 + 3] < 1.0e-4f, "LENGTH 100 ms: tyst efter 150 ms");
+
+    const auto curved = windows (0.0f, 0.0f, 200.0f, 1.0f);   // CURVE +1: snabbare fall än linjärt
+    const auto linear = windows (0.0f, 0.0f, 200.0f, 0.0f);
+    check (curved[n0 + 2] < linear[n0 + 2], "CURVE +1 faller snabbare än linjärt");
+
+    std::puts (failed ? "FEL: delaytestet misslyckades" : "Delaytestet gick igenom");
+    return failed ? 1 : 0;
+}
+
+// FX-matrisen (steg 3): ett belopp per källa och FX-kanal, summa med den gamla fxChannel/fxAmount, och mute per kanal.
+int fxMatrixTest()
+{
+    juce::ScopedJuceInitialiser_GUI gui;
+    auto failed = false;
+    constexpr double rate = 48000.0;
+    using F = InstrumentField;
+    struct Setup
+    {
+        int matrixChannel = -1;      // 0-baserad kanal som får matrissend
+        float matrixAmount = 0.0f;
+        int legacyChannel = 0;       // 1-baserad, 0 = None
+        float legacyAmount = 0.0f;
+        bool kickMatrix = false;     // matrissend från kicken i stället för instrumentet
+        int muteChannel = -1;
+        int muteAtBlock = -1;        // -1: mutad från start; annars slås muten på före detta block
+    };
+    auto render = [&] (const Setup& s, int blockSize)
+    {
+        const auto owner = std::make_unique<InstrumentProcessor>();
+        auto& processor = *owner;
+        processor.setPlayConfigDetails (0, 2, rate, blockSize);
+        processor.prepareToPlay (rate, blockSize);
+        Scenarios::setPlain (processor, ParamID::kickOn, s.kickMatrix ? 1.0f : 0.0f);
+        for (int layer = 1; layer < ParamID::numInstrumentLayers; ++layer)
+            Scenarios::setInstrument (processor, layer, F::on, 0.0f);
+        Scenarios::setInstrument (processor, 0, F::on, s.kickMatrix ? 0.0f : 1.0f);
+        Scenarios::setInstrument (processor, 0, F::aTable, (float) Wavetables::classicIndex (2)); // sågtand
+        Scenarios::setInstrument (processor, 0, F::envAmount, 0.0f);
+        if (s.legacyChannel > 0)
+        {
+            Scenarios::setInstrument (processor, 0, F::fxChannel, (float) s.legacyChannel);
+            Scenarios::setInstrument (processor, 0, F::fxAmount, s.legacyAmount);
+            Scenarios::setInstrument (processor, 0, F::fxSend, 1.0f);
+        }
+        if (s.matrixChannel >= 0)
+        {
+            if (s.kickMatrix)
+                Scenarios::setPlain (processor, ParamID::kickFxSendToIds[s.matrixChannel], s.matrixAmount);
+            else
+                Scenarios::setInstrument (processor, 0, ParamID::fxSendToField (s.matrixChannel), s.matrixAmount);
+        }
+        const auto muteID = s.muteChannel >= 0 ? ParamID::fxMuteIds[s.muteChannel] : nullptr;
+        if (muteID != nullptr && s.muteAtBlock < 0)
+            Scenarios::setPlain (processor, muteID, 1.0f);
+        processor.ensureTablesInUse();
+        OfflineRender::Settings settings;
+        settings.sampleRate = rate;
+        settings.blockSize = blockSize;
+        settings.bpm = 120.0;
+        settings.bars = 2;
+        settings.notes = { 52 };
+        settings.extraBars = 1;
+        auto count = 0;
+        settings.onBlock = [&] (const juce::AudioBuffer<float>&, int, int)
+        {
+            // onBlock kommer efter blocket; slår på muten så att nästa block är det första som är mutat.
+            ++count;
+            if (muteID != nullptr && s.muteAtBlock >= 0 && count == s.muteAtBlock)
+                Scenarios::setPlain (processor, muteID, 1.0f);
+        };
+        return OfflineRender::render (processor, settings);
+    };
+    auto maxDiff = [] (const juce::AudioBuffer<float>& a, const juce::AudioBuffer<float>& b, int from = 0, int to = -1)
+    {
+        auto peak = 0.0f;
+        const auto end = to < 0 ? std::min (a.getNumSamples(), b.getNumSamples()) : to;
+        for (int ch = 0; ch < 2; ++ch)
+            for (int i = from; i < end; ++i)
+                peak = std::max (peak, std::abs (a.getSample (ch, i) - b.getSample (ch, i)));
+        return peak;
+    };
+    auto check = [&] (bool ok, const char* what)
+    {
+        std::printf ("%-66s %s\n", what, ok ? "ok" : "FEL");
+        failed |= ! ok;
+    };
+
+    const auto dry = render ({}, 512);
+    const auto peak = dry.getMagnitude (0, dry.getNumSamples());
+    check (peak > 0.01f, "instrumentet låter utan sends");
+
+    // En matrissend ger samma ljud som den gamla vägen i SEND-läge.
+    const auto legacy = render ({ -1, 0.0f, 1, 0.3f }, 512);
+    const auto matrix = render ({ 0, 0.3f }, 512);
+    check (maxDiff (legacy, dry) > 1.0e-3f, "FX1 med send 30 % hörs");
+    check (maxDiff (matrix, legacy) < 1.0e-4f * peak + 1.0e-6f, "matrissend 30 % = gamla kanalen i SEND-läge");
+
+    // Summa: gamla 15 % + matris 15 % på samma kanal = 30 %.
+    const auto summed = render ({ 0, 0.15f, 1, 0.15f }, 512);
+    check (maxDiff (summed, matrix) < 1.0e-4f * peak + 1.0e-6f, "gamla 15 % + matris 15 % på samma kanal = 30 %");
+
+    // En annan kanal är en annan send (utan effekter låter alla kanaler likadant).
+    const auto other = render ({ 5, 0.3f }, 512);
+    check (maxDiff (other, matrix) < 1.0e-4f * peak + 1.0e-6f, "send till FX6 låter som send till FX1 (båda utan effekter)");
+
+    // Kicken har egna matrissends.
+    const auto kickDry = render ({ -1, 0.0f, 0, 0.0f, true }, 512);
+    const auto kickSend = render ({ 2, 0.5f, 0, 0.0f, true }, 512);
+    check (maxDiff (kickSend, kickDry) > 1.0e-3f, "kickens matrissend till FX3 hörs");
+
+    // Blockstorleken ändrar inte sendet: matrissend = gamla vägen även vid små block (instrumentet självt är inte blockoberoende, så jämför mot gamla vägen).
+    for (const int blockSize : { 32, 64 })
+    {
+        const auto legacyB = render ({ -1, 0.0f, 1, 0.3f }, blockSize);
+        const auto matrixB = render ({ 0, 0.3f }, blockSize);
+        const auto name = blockSize == 32 ? "matrissend = gamla vägen vid block 32" : "matrissend = gamla vägen vid block 64";
+        check (maxDiff (matrixB, legacyB) < 1.0e-4f * peak + 1.0e-6f, name);
+    }
+
+    // Mute: mutad kanal är tyst, sendet ligger kvar; andra kanaler påverkas inte.
+    const auto muted = render ({ 0, 0.3f, 0, 0.0f, false, 0 }, 512);
+    const auto skip = (int) (rate * 0.05);
+    check (maxDiff (muted, dry, skip) < 1.0e-5f, "FX1 mutad: sendet hörs inte");
+    const auto mutedOther = render ({ 0, 0.3f, 0, 0.0f, false, 3 }, 512);
+    check (maxDiff (mutedOther, matrix) == 0.0f, "mute av en annan kanal ändrar ingenting");
+
+    // Mute mitt i en ton: inget hopp (glidning ca 5 ms), full tystnad efter 50 ms.
+    constexpr int toggleBlock = 30;
+    const auto toggled = render ({ 0, 0.3f, 0, 0.0f, false, 0, toggleBlock }, 512);
+    const auto toggleSample = toggleBlock * 512;
+    const auto fxPeak = maxDiff (matrix, dry, toggleSample, toggleSample + 2048);
+    check (fxPeak > 1.0e-3f, "FX-delen är hörbar där muten slås på");
+    check (maxDiff (toggled, matrix, 0, toggleSample) == 0.0f, "före muten är ljudet oförändrat");
+    check (maxDiff (toggled, matrix, toggleSample, toggleSample + 4) < 0.2f * fxPeak, "muten börjar mjukt (inget hopp vid första samplen)");
+    // Mastern (maximizern) släpper långsamt när FX-ljudet försvinner, så tystnaden mäts i två steg.
+    check (maxDiff (toggled, dry, toggleSample + skip, toggleSample + 2 * skip) < 0.02f * fxPeak, "efter 50 ms är kanalen nästan tyst (< 2 % av FX-toppen)");
+    check (maxDiff (toggled, dry, toggleSample + 5 * skip) < 1.0e-4f * fxPeak, "efter 250 ms är kanalen tyst (< 0,01 % av FX-toppen)");
+
+    std::puts (failed ? "FEL: FX-matristestet misslyckades" : "FX-matristestet gick igenom");
+    return failed ? 1 : 0;
+}
+
+// Parameterlås (pianorullen, fas 3): en ton med lås låter som samma värde satt som parameter, och låsen klickar inte.
+int lockTest()
+{
+    juce::ScopedJuceInitialiser_GUI gui;
+    auto failed = false;
+    constexpr double rate = 48000.0;
+    using F = InstrumentField;
+    auto check = [&] (bool ok, const juce::String& what)
+    {
+        std::printf ("%-72s %s\n", what.toRawUTF8(), ok ? "ok" : "FEL");
+        failed |= ! ok;
+    };
+    struct Setup
+    {
+        float cutoffParam = 3000.0f;  // Hz
+        float lockCutoff = Pattern::lockUnset, lockPan = Pattern::lockUnset, lockSend = Pattern::lockUnset;
+        int fxChannel = 0;            // 1-baserad, 0 = None
+        float fxAmount = 0.0f;
+        float mixPan = 0.0f;          // mixerns pan-parameter (-1..1) för instrument 1
+    };
+    auto render = [&] (const Setup& s)
+    {
+        const auto owner = std::make_unique<InstrumentProcessor>();
+        auto& processor = *owner;
+        processor.setPlayConfigDetails (0, 2, rate, 512);
+        processor.prepareToPlay (rate, 512);
+        Scenarios::setPlain (processor, ParamID::kickOn, 0.0f);
+        Scenarios::setPlain (processor, ParamID::kickLevel, 0.0f);
+        for (int layer = 1; layer < ParamID::numInstrumentLayers; ++layer)
+            Scenarios::setInstrument (processor, layer, F::on, 0.0f);
+        Scenarios::setInstrument (processor, 0, F::aTable, (float) Wavetables::classicIndex (2)); // sågtand: gott om övertoner att filtrera
+        Scenarios::setInstrument (processor, 0, F::envAmount, 0.0f);
+        Scenarios::setInstrument (processor, 0, F::keyTrack, 0.0f);
+        Scenarios::setInstrument (processor, 0, F::filterType, 1.0f);
+        Scenarios::setInstrument (processor, 0, F::cutoff, s.cutoffParam);
+        Scenarios::setPlain (processor, Mixer::paramID (Mixer::firstBassSource, "Pan"), s.mixPan);
+        if (s.fxChannel > 0)
+        {
+            Scenarios::setInstrument (processor, 0, F::fxChannel, (float) s.fxChannel);
+            Scenarios::setInstrument (processor, 0, F::fxAmount, s.fxAmount);
+            Scenarios::setInstrument (processor, 0, F::fxSend, 1.0f);
+        }
+        std::vector<int> ticks;
+        processor.pattern.forEachNote (0, [&ticks] (int tick, const Pattern::Note&) { ticks.push_back (tick); });
+        for (const auto tick : ticks)
+        {
+            if (s.lockCutoff >= 0.0f) processor.pattern.setLock (0, tick, Pattern::lockCutoff, s.lockCutoff);
+            if (s.lockPan >= 0.0f)    processor.pattern.setLock (0, tick, Pattern::lockPan, s.lockPan);
+            if (s.lockSend >= 0.0f)   processor.pattern.setLock (0, tick, Pattern::lockFxSend, s.lockSend);
+        }
+        processor.ensureTablesInUse();
+        OfflineRender::Settings settings;
+        settings.sampleRate = rate;
+        settings.blockSize = 512;
+        settings.bpm = 120.0;
+        settings.bars = 2;
+        settings.notes = { 52 };
+        settings.extraBars = 1;
+        return OfflineRender::render (processor, settings);
+    };
+    auto maxDiff = [] (const juce::AudioBuffer<float>& a, const juce::AudioBuffer<float>& b, int from = 0)
+    {
+        auto peak = 0.0f;
+        for (int ch = 0; ch < 2; ++ch)
+            for (int i = from; i < std::min (a.getNumSamples(), b.getNumSamples()); ++i)
+                peak = std::max (peak, std::abs (a.getSample (ch, i) - b.getSample (ch, i)));
+        return a.getNumSamples() == b.getNumSamples() ? peak : 1.0e9f;
+    };
+    auto maxStep = [] (const juce::AudioBuffer<float>& a)
+    {
+        auto step = 0.0f;
+        for (int ch = 0; ch < 2; ++ch)
+            for (int i = 1; i < a.getNumSamples(); ++i)
+                step = std::max (step, std::abs (a.getSample (ch, i) - a.getSample (ch, i - 1)));
+        return step;
+    };
+
+    // Cutoffens omfång: låsets 0..1 räknas om till Hz på samma sätt som parametern.
+    const auto range = std::make_unique<InstrumentProcessor>()->apvts.getParameterRange (ParamID::bass (0, F::cutoff)); // processorn är stor: på heapen, inte stacken
+    const auto lockedValue = range.convertTo0to1 (1200.0f);
+    const auto lockedHz = range.snapToLegalValue (range.convertFrom0to1 (lockedValue));
+
+    const auto plain = render ({ 300.0f });
+    check (plain.getRMSLevel (0, 0, plain.getNumSamples()) > 0.01f, "grundljudet hörs");
+
+    // Cutoff-lås = samma cutoff som parameter (samma samples).
+    const auto asParam = render ({ lockedHz });
+    const auto asLock = render ({ 300.0f, lockedValue });
+    check (maxDiff (asParam, plain) > 0.01f, "cutoff 1200 Hz låter annorlunda än 300 Hz (testet kan upptäcka skillnad)");
+    check (maxDiff (asLock, asParam) < 1.0e-5f, "cutoff-lås " + juce::String (lockedHz, 1) + " Hz = samma cutoff som parameter (största skillnad " + juce::String (maxDiff (asLock, asParam), 7) + ")");
+
+    // Pan-lås: helt vänster ger tystnad till höger efter rampen (20 ms), mitten (0,5) ändrar inget.
+    const auto left = render ({ 300.0f, Pattern::lockUnset, 0.0f });
+    const auto centre = render ({ 300.0f, Pattern::lockUnset, 0.5f });
+    const auto skip = (int) (rate * 0.1);
+    const auto leftParam = render ({ 300.0f, Pattern::lockUnset, Pattern::lockUnset, Pattern::lockUnset, 0, 0.0f, -1.0f });
+    check (maxDiff (leftParam, plain, skip) > 0.01f, "pan -1 som parameter låter annorlunda än mitten (testet kan upptäcka skillnad)");
+    // Låset rampar från mitten vid första tonen (20 ms) och master-dynamiken minns rampen en stund: jämför först 0,5 s efter första ljudet.
+    auto firstSound = 0;
+    while (firstSound < plain.getNumSamples() && std::abs (plain.getSample (0, firstSound)) < 1.0e-3f)
+        ++firstSound;
+    const auto afterRamp = firstSound + (int) (rate * 0.5);
+    check (maxDiff (left, leftParam, afterRamp) < 1.0e-5f, "pan-lås 0 (helt vänster) = pan -1 som parameter (största skillnad " + juce::String (maxDiff (left, leftParam, afterRamp), 7) + ")");
+    check (maxDiff (centre, plain, skip) < 1.0e-5f, "pan-lås 0,5 (mitten) = ingen panorering");
+    check (maxStep (left) < 2.0f * maxStep (plain) + 0.02f, "pan-lås: inget hopp i ljudet (största steg " + juce::String (maxStep (left), 4) + " mot " + juce::String (maxStep (plain), 4) + ")");
+
+    // FX-send-lås: FX1 i SEND-läge, lås 0,3 = fxAmount 0,3 (efter blockets glidning från 0).
+    const auto sendParam = render ({ 300.0f, Pattern::lockUnset, Pattern::lockUnset, Pattern::lockUnset, 1, 0.3f });
+    const auto sendLock = render ({ 300.0f, Pattern::lockUnset, Pattern::lockUnset, 0.3f, 1, 0.0f });
+    check (maxDiff (sendParam, plain) > 1.0e-3f, "FX1 med send 30 % hörs (förutsättning)");
+    check (maxDiff (sendLock, sendParam, skip) < 1.0e-3f * sendParam.getMagnitude (0, sendParam.getNumSamples()), "send-lås 0,3 = fxAmount 0,3 (största skillnad " + juce::String (maxDiff (sendLock, sendParam, skip), 7) + ")");
+    const auto dryLock = render ({ 300.0f, Pattern::lockUnset, Pattern::lockUnset, 1.0f, 1, 0.0f });
+    check (allFiniteIn (dryLock) && maxStep (dryLock) < 2.0f * maxStep (plain) + 0.02f, "send-lås 1,0: ändligt ljud och inget hopp");
+
+    std::puts (failed ? "FEL: låstestet misslyckades" : "Låstestet gick igenom");
+    return failed ? 1 : 0;
+}
+
+// Multisampling etapp 1: datamodell, zonval, omsampling, utbyte och persistens. Inga ljudtrådsberoenden utöver select(), som ska vara allokeringsfri.
+int multiSampleTest()
+{
+    int failed = 0;
+    auto check = [&] (bool ok, const char* what)
+    {
+        if (! ok)
+        {
+            std::printf ("FEL: %s\n", what);
+            ++failed;
+        }
+    };
+    auto sine = [] (double rate, double hz, double seconds)
+    {
+        juce::AudioBuffer<float> b (1, (int) (rate * seconds));
+        for (int i = 0; i < b.getNumSamples(); ++i)
+            b.setSample (0, i, (float) std::sin (juce::MathConstants<double>::twoPi * hz * i / rate));
+        return b;
+    };
+
+    // Rotton ur filnamn.
+    check (MultiSampling::parseRootKey ("Piano_C4") == 60, "C4 = 60");
+    check (MultiSampling::parseRootKey ("Piano_A4") == 69, "A4 = 69");
+    check (MultiSampling::parseRootKey ("bass C#3") == 49, "C#3 = 49");
+    check (MultiSampling::parseRootKey ("Eb2") == 39, "Eb2 = 39");
+    check (MultiSampling::parseRootKey ("bass_048") == 48, "tal 048 = 48");
+    check (MultiSampling::parseRootKey ("Bass3") == 3, "Bass3 är inte en ton");
+    check (MultiSampling::parseRootKey ("kick") == -1, "inget tal = -1");
+    check (MultiSampling::parseRootKey ("sample999") == -1, "999 är utanför");
+
+    MultiSampleSet set;
+    set.prepare (48000.0);
+    check (! set.hasZones() && set.active() == nullptr, "tomt set");
+
+    MultiSampleMapping m;
+    for (const auto root : { 72, 48, 60 })
+    {
+        m.rootKey = root;
+        check (set.addZone (sine (44100.0, 100.0, 0.5), 44100.0, "z" + juce::String (root), m), "addZone");
+    }
+    check (set.zoneCount() == 3 && set.hasZones(), "tre zoner");
+
+    // Omsampling till 48 kHz och rotfrekvens.
+    {
+        const auto* bank = set.active();
+        check (bank != nullptr && bank->zones.size() == 3, "bank med tre zoner");
+        if (bank != nullptr)
+        {
+            const auto expected = (int) (22050 / (44100.0 / 48000.0));
+            check (std::abs (bank->zones[0].sample.audio.getNumSamples() - expected) <= 1, "omsamplad längd 48 kHz");
+            check (std::abs (bank->zones[1].rootHz - 130.81f) < 0.05f, "rotfrekvens C3 (48) = 130.81");
+        }
+    }
+
+    // Automatisk tangentfördelning: zonerna sorteras efter rotton i fördelningen men behåller sin plats i listan.
+    set.autoMapKeyRanges();
+    check (set.mapping (1).keyLow == 0 && set.mapping (1).keyHigh == 54, "rotton 48: 0..54");
+    check (set.mapping (2).keyLow == 55 && set.mapping (2).keyHigh == 66, "rotton 60: 55..66");
+    check (set.mapping (0).keyLow == 67 && set.mapping (0).keyHigh == 127, "rotton 72: 67..127");
+
+    // Zonval, utan allokering.
+    {
+        const auto* bank = set.active();
+        allocationCount = 0;
+        countingAllocations = true;
+        const auto a = bank->select (40, 100), b = bank->select (54, 100), c = bank->select (55, 1), d = bank->select (100, 127);
+        countingAllocations = false;
+        check (allocationCount == 0, "select allokerar inte");
+        check (a == 1 && b == 1 && c == 2 && d == 0, "zonval efter tangent");
+    }
+
+    // Anslagslager: två zoner på samma tangenter, mjuk (1..80) och hård (81..127).
+    {
+        MultiSampleSet layers;
+        layers.prepare (48000.0);
+        m = {};
+        m.rootKey = 60;
+        m.velocityLow = 1;  m.velocityHigh = 80;  layers.addZone (sine (48000.0, 261.6, 0.2), 48000.0, "soft", m);
+        m.velocityLow = 81; m.velocityHigh = 127; layers.addZone (sine (48000.0, 261.6, 0.2), 48000.0, "hard", m);
+        check (layers.active()->select (60, 40) == 0 && layers.active()->select (60, 81) == 1 && layers.active()->select (60, 127) == 1, "anslagslager");
+    }
+
+    // Tom bank, gränser.
+    {
+        MultiSampleBank empty;
+        check (empty.select (60, 100) == -1, "tom bank ger -1");
+        MultiSampleSet limited;
+        limited.prepare (48000.0);
+        int added = 0;
+        for (int i = 0; i < MultiSampling::maxZones + 5; ++i)
+            added += limited.addZone (sine (8000.0, 100.0, 0.1), 8000.0, "x", {}) ? 1 : 0;
+        check (added == MultiSampling::maxZones, "högst maxZones zoner");
+        check (! limited.addZone ({}, 48000.0, "tom", {}), "tom buffert avvisas");
+    }
+
+    // Persistens: omsampling vid annan frekvens, mappningen bevaras.
+    {
+        const auto tree = set.toValueTree ("BassMultiSample");
+        MultiSampleSet loaded;
+        loaded.prepare (96000.0);
+        loaded.fromValueTree (tree);
+        check (loaded.zoneCount() == 3, "tre zoner efter laddning");
+        check (loaded.mapping (2).keyLow == 55 && loaded.mapping (2).keyHigh == 66 && loaded.mapping (2).rootKey == 60, "mappning bevaras");
+        check (loaded.zoneName (0) == "z72", "namn bevaras");
+        const auto* bank = loaded.active();
+        check (bank != nullptr && std::abs (bank->zones[0].sample.audio.getNumSamples() - 48000) <= 2, "omsamplad till 96 kHz");
+
+        MultiSampleSet fromEmpty;
+        fromEmpty.fromValueTree (juce::ValueTree ("BassMultiSample"));
+        check (! fromEmpty.hasZones(), "tomt träd ger tomt set");
+        loaded.fromValueTree ({});
+        check (! loaded.hasZones(), "ogiltigt träd tömmer");
+    }
+
+    // Utbyte: en pekare ljudtråden redan har ska leva vidare.
+    {
+        const auto* oldBank = set.active();
+        const auto oldLength = oldBank->zones[0].sample.audio.getNumSamples();
+        set.removeZone (0);
+        set.setMapping (0, set.mapping (0));
+        check (set.active() != oldBank, "ny bank publicerad");
+        check (oldBank->zones.size() == 3 && oldBank->zones[0].sample.audio.getNumSamples() == oldLength, "gamla banken lever kvar");
+        check (set.retiredCount() >= 1, "gamla banken väntar på frigöring");
+        check (set.zoneCount() == 2, "zon borttagen");
+        set.clear();
+        check (! set.hasZones(), "clear");
+    }
+
+    // Spelaren: zon vid note-on efter tonen, hastighet mot zonens rotton, inga allokeringar, tyst utan bank.
+    {
+        constexpr double rate = 48000.0;
+        auto scaled = [] (juce::AudioBuffer<float> b, float gain) { b.applyGain (gain); return b; };
+        auto keyHz = [] (int key) { return 440.0 * std::pow (2.0, (key - 69) / 12.0); };
+
+        MultiSampleSet set;
+        // Låga nivåer så att motorns mjuka begränsare inte komprimerar den höga zonen (annars blir kvoten mindre än gainkvoten).
+        set.addZone (scaled (sine (rate, keyHz (48), 2.0), 0.05f), rate, "quiet_C3", { 48, 0, 127, 1, 127, 0.0f });
+        set.addZone (scaled (sine (rate, keyHz (72), 2.0), 0.4f), rate, "loud_C5", { 72, 0, 127, 1, 127, 0.0f });
+        set.autoMapKeyRanges();
+        set.prepare (rate);
+
+        InstrumentParams p;
+        p.oscA.on = p.oscB.on = p.oscC.on = false;
+        p.sub = 0.0f;
+        p.cutoffHz = 20000.0f;
+        p.attackMs = 1.0f;
+        p.sustain = 1.0f;
+        p.releaseMs = 50.0f;
+        p.sampleOn = true;
+        p.sampleLevel = 1.0f;
+        p.sampleMulti = true;
+        p.sampleBank = set.active();
+
+        // rootHz = 65.4 (C2 = 36): halvtoner 14 = tangent 50 (zon C3, tyst), 40 = tangent 76 (zon C5, hög).
+        auto play = [&] (const InstrumentParams& params, int semitones, double& hz)
+        {
+            InstrumentSynth s;
+            s.prepare (rate);
+            s.setSeed (3);
+            s.setParams (params);
+            s.reset();
+            s.noteOn (semitones, 1.0f, (int) (rate * 1.5));
+            std::vector<float> out;
+            for (int i = 0; i < (int) (rate * 0.6); ++i)
+                out.push_back (s.nextSample());
+            auto crossings = 0, from = (int) (rate * 0.1);
+            auto sum = 0.0;
+            for (int i = from + 1; i < (int) out.size(); ++i)
+            {
+                if (out[(size_t) i - 1] < 0.0f && out[(size_t) i] >= 0.0f)
+                    ++crossings;
+                sum += (double) out[(size_t) i] * out[(size_t) i];
+            }
+            hz = crossings / ((out.size() - (size_t) from) / rate);
+            return std::sqrt (sum / (double) (out.size() - (size_t) from));
+        };
+
+        double lowHz = 0.0, highHz = 0.0;
+        const auto lowRms = play (p, 14, lowHz), highRms = play (p, 40, highHz);
+        check (std::abs (lowHz - keyHz (50)) < 4.0, "multi: tangent 50 följer tonen");
+        check (std::abs (highHz - keyHz (76)) < 12.0, "multi: tangent 76 följer tonen");
+        check (highRms > 3.0 * lowRms, "multi: tangent 76 väljer den höga zonen, tangent 50 den tysta");
+
+        // Utan bank (eller med multi av och ingen enkel sampling) hörs ingenting.
+        auto empty = p;
+        empty.sampleBank = nullptr;
+        double ignored = 0.0;
+        check (play (empty, 14, ignored) < 1.0e-6, "multi utan bank är tyst");
+
+        // Bankbyte mitt i en ton: rösten slår upp zonen igen, ingen hängande pekare.
+        {
+            InstrumentSynth s;
+            s.prepare (rate);
+            s.setSeed (3);
+            s.setParams (p);
+            s.reset();
+            s.noteOn (40, 1.0f, (int) (rate * 1.5));
+            for (int i = 0; i < 1000; ++i)
+                s.nextSample();
+            MultiSampleSet other;
+            other.addZone (sine (rate, keyHz (60), 0.01), rate, "tiny_C4", { 60, 0, 127, 1, 127, 0.0f });
+            other.prepare (rate);
+            auto swapped = p;
+            swapped.sampleBank = other.active();
+            s.setParams (swapped); // zon 1 finns inte längre
+            auto finite = true;
+            for (int i = 0; i < 4000; ++i)
+                finite = finite && std::isfinite (s.nextSample());
+            check (finite, "multi: bankbyte ger ändliga värden");
+        }
+
+        // Inga allokeringar i ljudtråden.
+        {
+            InstrumentSynth s;
+            s.prepare (rate);
+            s.setParams (p);
+            s.reset();
+            countingAllocations = true;
+            allocationCount = 0;
+            s.noteOn (14, 0.9f, 20000);
+            for (int i = 0; i < 20000; ++i)
+                s.nextSample();
+            s.noteOn (40, 0.5f, 20000);
+            for (int i = 0; i < 20000; ++i)
+                s.nextSample();
+            countingAllocations = false;
+            check (allocationCount == 0, "multi: 0 allokeringar i ljudtråden");
+        }
+    }
+
+    // SFZ-tolken (MultiSampling::parseSfz): arv mellan nivåerna, tonnamn, default_path, kommentarer.
+    {
+        const auto regions = MultiSampling::parseSfz (
+            "// kommentar\n"
+            "<control> default_path=Samples\\\n"
+            "<global> lovel=10\n"
+            "<group> hivel=100 tune=-5\n"
+            "<region> sample=lo.wav key=c3\n"
+            "<region> sample=my hi.wav lokey=c4 hikey=e4 pitch_keycenter=d4 transpose=2\n"
+            "<group> lovel=1\n"
+            "<region> sample=x.wav key=61\n"
+            "<region> tune=7\n"); // utan sample: ska hoppas över
+        check (regions.size() == 3, "sfz: tre regioner med sample");
+        if (regions.size() == 3)
+        {
+            check (regions[0].samplePath == "Samples/lo.wav", "sfz: default_path framför sökvägen");
+            check (regions[0].mapping.rootKey == 48 && regions[0].mapping.keyLow == 48 && regions[0].mapping.keyHigh == 48, "sfz: key=c3 är 48");
+            check (regions[0].mapping.velocityLow == 10 && regions[0].mapping.velocityHigh == 100, "sfz: global och group ärvs");
+            check (regions[0].mapping.tuneCents == -5.0f, "sfz: tune i cent");
+            check (regions[1].samplePath == "Samples/my hi.wav", "sfz: blanksteg i sökvägen");
+            check (regions[1].mapping.keyLow == 60 && regions[1].mapping.keyHigh == 64, "sfz: lokey/hikey");
+            check (regions[1].mapping.rootKey == 60, "sfz: pitch_keycenter d4 (62) minus transpose 2");
+            check (regions[2].mapping.rootKey == 61 && regions[2].mapping.velocityLow == 1, "sfz: ny group nollställer group-arvet, global finns kvar");
+        }
+        check (MultiSampling::parseSfz ("").empty(), "sfz: tom text ger inga regioner");
+    }
+
+    std::puts (failed ? "FEL: multisampletestet misslyckades" : "Multisampletestet gick igenom");
     return failed ? 1 : 0;
 }

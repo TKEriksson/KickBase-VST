@@ -147,6 +147,7 @@ private:
     PluginBase& processor;
     PresetButton presets;
     juce::TextButton onlySelected { "SHOW ONLY SELECTED" };
+    juce::TextButton helpButton;
     juce::Viewport viewport;
     juce::Component list;
     std::vector<std::unique_ptr<LfoPanel>> panels; // en per möjlig LFO (dolda när de inte är aktiva)

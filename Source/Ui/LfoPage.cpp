@@ -1,4 +1,5 @@
 #include "LfoPage.h"
+#include "HelpDialog.h"
 
 LfoDisplay::LfoDisplay (PluginBase& p, int lfoIndex) : processor (p), index (lfoIndex)
 {
@@ -721,6 +722,8 @@ LfoPage::LfoPage (PluginBase& p) : processor (p), presets (p, Presets::Section::
     onlySelected.setTooltip ("SHOW ONLY SELECTED - Shows just the selected LFO (click a card to select it). Click again to show them all.");
     onlySelected.onClick = [this] { layoutCards(); };
     addAndMakeVisible (onlySelected);
+    HelpDialog::setupButton (helpButton, *this, HelpDialog::Topic::lfo, "the LFO tab (connecting, shapes, rate, snap)");
+    addAndMakeVisible (helpButton);
     viewport.setViewedComponent (&list, false);
     viewport.setScrollBarsShown (true, false);
     addAndMakeVisible (viewport);
@@ -756,6 +759,8 @@ void LfoPage::resized()
     auto top = area.removeFromTop (22);
     presets.setBounds (top.removeFromRight (160));
     onlySelected.setBounds (top.removeFromLeft (150));
+    top.removeFromLeft (8);
+    helpButton.setBounds (top.removeFromLeft (44));
     area.removeFromTop (4);
     viewport.setBounds (area);
     layoutCards();

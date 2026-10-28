@@ -3818,17 +3818,24 @@ namespace
             processor->pattern.addNote (1, 96, 24, 7, 0.8f, true);
             processor->pattern.addNote (1, 192, 96, 0);
             processor->pattern.setCustom (1, true);
+            if (juce::SystemStats::getEnvironmentVariable ("KB_LOCKS", "0").getIntValue() != 0) // lås på tonerna, så att lanerna syns fyllda
+            {
+                processor->pattern.setLock (1, 0, Pattern::lockCutoff, 0.25f);
+                processor->pattern.setLock (1, 96, Pattern::lockCutoff, 0.8f);
+                processor->pattern.setLock (1, 0, Pattern::lockPan, 0.1f);
+                processor->pattern.setLock (1, 192, Pattern::lockPan, 0.9f);
+                processor->pattern.setLock (1, 96, Pattern::lockFxSend, 0.6f);
+            }
         }
         // KB_SLICES=<n>: instrument 1 får ett testsample i n lika skivor (rutnät) och några noter i de första Slice-raderna.
         if (const auto slices = juce::SystemStats::getEnvironmentVariable ("KB_SLICES", "0").getIntValue(); slices > 0)
         {
             processor->loadInstrumentSample (0, Scenarios::writeTestWav ("snapshot_slices", 110.0, 0.8));
             processor->setInstrumentSlicing (0, SampleSlicing::grid, 0.5f, slices);
-            for (int index = 0; index < 4; ++index)
-                for (int id = RowRegistry::firstSubRow; id < RowRegistry::maxRows; ++id)
-                    if (processor->pattern.rows.sliceOf (id) == index)
-                        for (int step = index; step < 16; step += 4)
-                            processor->pattern.addNote (id, step * Pattern::ticksPerStep (InstrumentGrid::sixteenth), 24, 0);
+            if (const auto id = processor->pattern.rows.find (0, RowRegistry::Kind::slices); id >= 0)
+                for (int index = 0; index < 4; ++index)
+                    for (int step = index; step < 16; step += 4)
+                        processor->pattern.addNote (id, step * Pattern::ticksPerStep (InstrumentGrid::sixteenth), 24, RowRegistry::pitchOfSlice (index));
         }
         processor->setPlayConfigDetails (kind == "fx" ? 2 : 0, 2, renderRate, blockSize);
         processor->prepareToPlay (renderRate, blockSize);
@@ -3911,6 +3918,11 @@ int profileCommand (const juce::String& scenario, int instruments, double second
 int uiProfileCommand (int tab, const juce::String& scenario, int instruments, double seconds); // Tools/Profile.cpp
 int renderSignaturesWide(); // Tools/AudioTests.cpp
 int audioThreadTest();      // Tools/AudioTests.cpp
+int reeseTest();            // Tools/AudioTests.cpp
+int multiSampleTest();      // Tools/AudioTests.cpp
+int delayTest();            // Tools/AudioTests.cpp
+int fxMatrixTest();        // Tools/AudioTests.cpp
+int lockTest();            // Tools/AudioTests.cpp
 int blockSizeTest();        // Tools/AudioTests.cpp
 int polyTest();             // Tools/AudioTests.cpp
 int ringTest();             // Tools/AudioTests.cpp
@@ -3949,7 +3961,7 @@ int toolMain (int argc, char* argv[])
     // Testerna som sparar presets eller rullar körs i en tillfällig mapp, aldrig i användarens Dokument\Kickbase.
     std::unique_ptr<Scenarios::TemporaryUserFolders> isolation;
     if (const juce::String command (argc > 1 ? argv[1] : ""); command == "presettest" || command == "rolltest" || command == "lengthtest"
-        || command == "instrumenttest" || command == "eqtest" || command == "listentest" || command == "auditiontest" || command == "audiotest"
+        || command == "instrumenttest" || command == "eqtest" || command == "listentest" || command == "auditiontest" || command == "audiotest" || command == "reesetest" || command == "multisampletest" || command == "delaytest" || command == "fxmatrixtest" || command == "locktest"
         || command == "analysetest" || command == "perftest" || command == "polytest" || command == "livetest" || command == "rendersig" || command == "rendersigwide" || command == "rendersigtb303")
         isolation = std::make_unique<Scenarios::TemporaryUserFolders>();
 
@@ -3973,6 +3985,9 @@ int toolMain (int argc, char* argv[])
         return liveCodeTest();
     if (argc == 3 && juce::String (argv[1]) == "logoimage")
         return logoImage (juce::File::getCurrentWorkingDirectory().getChildFile (argv[2]));
+    // Tabellerna byggs annars i en bakgrundstråd och Basic spelas tills de är klara: fingeravtrycken skulle bero på trådens tidsberoende.
+    if (argc == 2 && juce::String (argv[1]).startsWith ("rendersig"))
+        Wavetables::ensureAll();
     if (argc == 2 && (juce::String (argv[1]) == "rendersig" || juce::String (argv[1]) == "rendersigreal"))
         return renderSignatures();
     if (argc >= 2 && juce::String (argv[1]) == "repairpresets")
@@ -4052,6 +4067,34 @@ int toolMain (int argc, char* argv[])
         return ringTest();
     if (argc == 2 && juce::String (argv[1]) == "audiotest")
         return audioThreadTest();
+    if (argc == 2 && juce::String (argv[1]) == "reesetest")
+        return reeseTest();
+    if (argc == 2 && juce::String (argv[1]) == "multisampletest")
+        return multiSampleTest();
+    if (argc == 2 && juce::String (argv[1]) == "fxmatrixtest")
+        return fxMatrixTest();
+    if (argc == 2 && juce::String (argv[1]) == "locktest")
+        return lockTest();
+    if (argc == 2 && juce::String (argv[1]) == "delaytest")
+        return delayTest();
+    // sfz <fil.sfz>: skriver ut regionerna parseSfz hittar och hur många zoner addSfz kan läsa in (samma väg som UI:t).
+    if (argc == 3 && juce::String (argv[1]) == "sfz")
+    {
+        const auto file = juce::File::getCurrentWorkingDirectory().getChildFile (argv[2]);
+        if (! file.existsAsFile())
+        {
+            std::printf ("FEL: hittar inte %s\n", file.getFullPathName().toRawUTF8());
+            return 1;
+        }
+        const auto regions = MultiSampling::parseSfz (file.loadFileAsString());
+        for (const auto& r : regions)
+            std::printf ("%s  rot %d  toner %d-%d  anslag %d-%d  tune %.0f\n", r.samplePath.toRawUTF8(), r.mapping.rootKey, r.mapping.keyLow,
+                         r.mapping.keyHigh, r.mapping.velocityLow, r.mapping.velocityHigh, (double) r.mapping.tuneCents);
+        MultiSampleSet set;
+        const auto loaded = set.addSfz (file);
+        std::printf ("%d regioner i filen, %d zoner inlästa\n", (int) regions.size(), loaded);
+        return regions.empty() ? 1 : 0;
+    }
     // uiprofile <flik> <init|heavy> [instrument] [sekunder]: gränssnittets CPU och var meddelandetråden lägger tiden.
     if (argc >= 4 && juce::String (argv[1]) == "uiprofile")
         return uiProfileCommand (juce::String (argv[2]).getIntValue(), juce::String (argv[3]), argc > 4 ? juce::String (argv[4]).getIntValue() : 3,
@@ -4063,6 +4106,46 @@ int toolMain (int argc, char* argv[])
     // params [instrument|fx]: parameterregistret.
     if (argc >= 2 && juce::String (argv[1]) == "params")
         return dumpParameters (argc > 2 ? juce::String (argv[2]) : juce::String ("instrument"));
+
+    // tablespectrum: övertoner 1-12 (dB mot grundtonen) och spektral tyngdpunkt (övertonsnummer) för varje inbyggd tabell vid
+    // position 0, 0.5 och 1 (frame 0, 8, 15). Underlag till docs/school/wavetables.md.
+    if (argc >= 2 && juce::String (argv[1]) == "tablespectrum")
+    {
+        juce::ScopedJuceInitialiser_GUI gui;
+        Wavetables::ensureAll();
+        const auto names = Wavetables::names();
+        constexpr int N = Wavetable::frameSize;
+        for (int choice = 0; choice < names.size(); ++choice)
+        {
+            if (choice == Wavetables::userIndex())
+                continue;
+            const auto& table = Wavetables::get (choice);
+            for (const int frame : { 0, 8, 15 })
+            {
+                const auto* x = table.displayFrame (frame);
+                double mag[65] {};
+                for (int h = 1; h <= 64; ++h)
+                {
+                    double re = 0.0, im = 0.0;
+                    for (int n = 0; n < N; ++n)
+                    {
+                        const auto a = juce::MathConstants<double>::twoPi * h * n / N;
+                        re += x[n] * std::cos (a);
+                        im += x[n] * std::sin (a);
+                    }
+                    mag[h] = std::sqrt (re * re + im * im);
+                }
+                double sum = 0.0, weighted = 0.0;
+                for (int h = 1; h <= 64; ++h) { sum += mag[h]; weighted += h * mag[h]; }
+                juce::String line = juce::String (choice).paddedLeft (' ', 3) + " " + names[choice].paddedRight (' ', 20)
+                                    + " f" + juce::String (frame).paddedLeft (' ', 2) + " c=" + juce::String (sum > 0 ? weighted / sum : 0.0, 1) + " |";
+                for (int h = 1; h <= 12; ++h)
+                    line << " " << juce::String (juce::roundToInt (20.0 * std::log10 (juce::jmax (1.0e-6, mag[h] / juce::jmax (1.0e-9, mag[1])))));
+                std::puts (line.toRawUTF8());
+            }
+        }
+        return 0;
+    }
 
     // audit <del> [nummer] [png-mapp] [bpm]: renderar och mäter fabrikspresets (full, kick, bass, effects).
     if (argc >= 3 && juce::String (argv[1]) == "audit")

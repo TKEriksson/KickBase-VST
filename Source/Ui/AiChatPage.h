@@ -98,7 +98,7 @@ private:
     juce::Label title, status, setupTitle, setupText, testResult, confirmLabel;
     juce::ComboBox modelBox, costBox;
     juce::TextButton runButton { "RUN" }, skipButton { "SKIP" }, runAlwaysButton { "RUN, DON'T ASK AGAIN" };
-    juce::TextButton keyButton { "KEY" }, newChatButton { "NEW CHAT" }, chatsButton { "CHATS" }, memoryButton { "MEM" }, undoButton { "UNDO" }, sendButton { "SEND" };
+    juce::TextButton keyButton { "KEY" }, newChatButton { "NEW CHAT" }, chatsButton { "CHATS" }, memoryButton { "MEM" }, helpButton, undoButton { "UNDO" }, sendButton { "SEND" };
     StopButton stopButton { "STOP" };
     juce::TextButton saveKeyButton { "SAVE KEY" }, cancelKeyButton { "CANCEL" }, removeKeyButton { "REMOVE KEY" };
     juce::TextButton anthropicButton { "ANTHROPIC (paid key)" }, geminiButton { "GEMINI (free option)" }, openaiButton { "OPENAI (paid key)" }, ollamaButton { "OLLAMA (local, free)" }, guideButton { "GET A FREE KEY (GUIDE)" };

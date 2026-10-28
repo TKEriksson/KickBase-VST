@@ -2,6 +2,7 @@
 
 #include <functional>
 #include "../Core/PluginBase.h"
+#include "../Core/PresetCategories.h"
 #include "Theme.h"
 
 // Knapp som visar delens nuvarande preset och öppnar en meny med fabrikspresets, egna
@@ -20,7 +21,23 @@ public:
     void setEmptyLabel (const juce::String& text) { emptyLabel = text; updateText(); }
     void setTooltip (const juce::String& text) { button.setTooltip (text); }
 
+    // Piltangenter bläddrar i presetlistan i den ordning menyn visar den (vänster/upp = föregående, höger/ned = nästa). Fungerar när knappen
+    // (eller något i den) har tangentbordsfokus; tangenter som knappen inte hanterar bubblar hit.
+    bool keyPressed (const juce::KeyPress& key) override;
+
 private:
+    // En rad i presetlistan, i menyns ordning (fabrik först, sedan egna; inom en kategori i den ordningen).
+    struct Entry
+    {
+        juce::String name, category;
+        int factoryIndex = -1; // -1 = eget preset
+        juce::File file;
+    };
+    std::vector<Entry> buildEntries() const;
+    void loadEntry (const Entry& entry);
+    void step (int direction);
+    bool usesCategories() const { return PresetCategories::usedBy (section) && ! processor.isEffectVersion(); }
+
     void timerCallback() override { updateText(); }
     void updateText();
     void showMenu();

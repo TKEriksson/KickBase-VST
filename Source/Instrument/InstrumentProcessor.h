@@ -3,6 +3,7 @@
 #include <array>
 #include "../Core/InstrumentVoices.h"
 #include "../Core/Ducker.h"
+#include "../Core/FundamentalDuck.h"
 #include "../Core/Effects.h"
 #include "../Core/KickEngine.h"
 #include "../Core/Master.h"
@@ -96,7 +97,22 @@ private:
 
     // Mixerns två stereobussar: det som går genom maximizern, och det som går förbi den.
     juce::AudioBuffer<float> maxBus, bypassBus;
+    juce::AudioBuffer<float> stageSkipBus; // källor utanför SOUNDSTAGE-valet (hoppar över stereoblocket)
+    bool stageSkipUsed = false;
     juce::AudioBuffer<float> sendBus; // källan efter mixerfadern, på väg till en effektkanal
+    // FX-matrisen: förra blockets send-belopp per källa (kick = 0, instrument 1..) och kanal; -1 = inte läst än (då glider inget).
+    std::array<std::array<float, ParamID::numFxSendTargets>, 1 + maxInstruments> lastSendTo {};
+    void sendMatrix (int source, int layer, int numSamples); // layer -1 = kicken; läser sendBus (källan efter mixerfadern)
+
+    // Parameterlås (pianorullen): tonens lås gäller från anslaget tills nästa ton ändrar eller tar bort dem. Bara ljudtråden.
+    // Cutoff går via rösterna (exakt vid anslaget), pan via mixern (20 ms-ramp), FX-send per block (glider från förra blockets värde).
+    void applyNoteLocks (int layer, const Pattern::Note& note);
+    void clearNoteLocks();
+    std::array<juce::NormalisableRange<float>, numLayers> cutoffRanges; // cutoffparameterns omfång (låsets 0..1 -> Hz), läses i prepareToPlay
+    std::array<float, numLayers> fxSendLock;      // 0..1, < 0 = inget lås
+    std::array<float, numLayers> lastLockedSend;  // förra blockets send-belopp och torra andel (< 0 = inget att glida från)
+    std::array<float, numLayers> lastLockedDry;
+    std::array<bool, numLayers> sendWasLocked;
 
     // När det senaste steget startade ljud (ppq), för kicken och varje instrument: se fadeOutStepsBefore.
     double lastKickStartPpq = -std::numeric_limits<double>::infinity();
@@ -143,6 +159,13 @@ private:
     std::array<int, numLayers> gateGrid = filledArray<int, numLayers> ((int) InstrumentGrid::sixteenth);
     std::array<float, numLayers> gateDepth = filledArray<float, numLayers> (1.0f), gateCoefficient = filledArray<float, numLayers> (0.01f),
                                  gateGain = filledArray<float, numLayers> (1.0f);
+    // FUNDAMENTAL DUCK per motor (effektivt värde efter ÄRV/AV/EGEN). Läses en gång per block; fdHz = motorns grundton (senast spelade rösten) i blockets slut.
+    std::array<FundamentalDuck, numLayers> fundamentalDucks;
+    std::array<bool, numLayers> fdOn = filledArray<bool, numLayers> (false);
+    std::array<float, numLayers> fdDepth = filledArray<float, numLayers> (0.0f), fdWindow = filledArray<float, numLayers> (200.0f), fdHz = filledArray<float, numLayers> (0.0f);
+    std::array<int, numLayers> fdSource = filledArray<int, numLayers> (0); // 0 kick, 1..numLayers instrument, numLayers + 1 Any
+    float kickTailHz = 55.0f;
+    float fundamentalDuckWeight (int layer, int i, const float* kickEnvelope) const;
     Sidechain::Mode sidechainMode = Sidechain::Mode::kickEnvelope;
     double duckLengthSamples = 1.0;
     NoteEnd noteEnd = NoteEnd::cut;

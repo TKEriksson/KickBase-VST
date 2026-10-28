@@ -58,7 +58,40 @@ namespace LiveCodeComplete
             { "stack", "stack()", "stack(a, b) play together" },
             { "hurry", "hurry(2)", "hurry(2) faster" },
             { "degradeBy", "degradeBy(0.3)", "degradeBy(p) randomly drops notes" },
-            { "sometimes", "sometimes(x => x.add(12))", "sometimes(fn) now and then" }
+            { "sometimes", "sometimes(x => x.add(12))", "sometimes(fn) now and then" },
+            { "often", "often(x => x.add(12))", "often(fn) applies fn most of the time" },
+            { "rarely", "rarely(x => x.add(12))", "rarely(fn) applies fn now and then, seldom" },
+            { "almostNever", "almostNever(x => x.add(12))", "almostNever(fn) applies fn very seldom" },
+            { "almostAlways", "almostAlways(x => x.add(12))", "almostAlways(fn) applies fn nearly always" },
+            { "always", "always(x => x.add(12))", "always(fn) applies fn every time" },
+            { "never", "never(x => x.add(12))", "never(fn) never applies fn" },
+            { "someCycles", "someCycles(x => x.rev())", "someCycles(fn) applies fn on random cycles" },
+            { "degrade", "degrade()", "degrade() randomly drops about half of the notes" },
+            { "undegradeBy", "undegradeBy(0.3)", "undegradeBy(p) keeps the notes degradeBy would drop" },
+            { "ply", "ply(2)", "ply(n) repeats each note n times inside its own step" },
+            { "iter", "iter(4)", "iter(n) shifts the start one step later each cycle" },
+            { "palindrome", "palindrome()", "plays forwards, then backwards, alternating each cycle" },
+            { "chunk", "chunk(4, x => x.add(7))", "chunk(n, fn) applies fn to one n:th of the cycle at a time" },
+            { "linger", "linger(0.25)", "linger(fraction) repeats the first part of the cycle" },
+            { "swingBy", "swingBy(1/3, 4)", "swingBy(amount, subdivision) delays every second step" },
+            { "press", "press()", "press() delays each note to the middle of its step" },
+            { "brak", "brak()", "brak() squeezes every second cycle into a break beat" },
+            { "inside", "inside(2, x => x.rev())", "inside(n, fn) applies fn as if the cycle were n times slower" },
+            { "outside", "outside(2, x => x.rev())", "outside(n, fn) like inside, but in the other direction" },
+            { "fastGap", "fastGap(2)", "fastGap(n) plays n times faster and then keeps silent" },
+            { "compress", "compress(0.25, 0.75)", "compress(start, end) squeezes the cycle into part of itself" },
+            { "zoom", "zoom(0.25, 0.75)", "zoom(start, end) plays only that part of the cycle" },
+            { "mask", "mask(\"1 1 0 1\")", "mask(pattern) mutes the steps where the pattern is 0" },
+            { "scale", "scale(\"C:minor\")", "scale(name) turns numbers into notes of the scale, e.g. n(\"0 2 4\").scale(\"C2:minor\")" },
+            { "arp", "arp(\"0 1 2\")", "arp(pattern) plays the chord notes one at a time in the order given" },
+            { "range", "range(0, 1)", "range(min, max) scales a signal such as sine to min..max" },
+            { "superimpose", "superimpose(x => x.add(12))", "superimpose(fn) adds a copy changed by fn" },
+            { "echo", "echo(3, 0.125, 0.5)", "echo(times, time, feedback) repeated copies with falling gain" },
+            { "apply", "apply(x => x.rev())", "apply(fn) applies a function to the pattern" },
+            { "ribbon", "ribbon(0, 2)", "ribbon(offset, cycles) loops a short part of the pattern" },
+            { "euclidRot", "euclidRot(3, 8, 2)", "euclidRot(pulses, steps, rotation) euclid with a shift" },
+            { "legato", "legato(1)", "legato(n) note length as a multiple of the step" },
+            { "clip", "clip(0.5)", "clip(n) note length as a multiple of the step" }
         };
         return list;
     }
@@ -75,6 +108,15 @@ namespace LiveCodeComplete
             { "cat", "cat()", "cat(a, b) one after another" },
             { "slider", "slider(0.5, 0, 1)", "slider(value, min, max) slider in the code" },
             { "silence", "silence", "silent pattern" },
+            { "seq", "seq()", "seq(a, b) steps after each other inside one cycle" },
+            { "sine", "sine", "signal: sine.range(0, 1).segment(8) gives 8 values per cycle" },
+            { "saw", "saw", "signal: ramp 0..1 each cycle" },
+            { "tri", "tri", "signal: triangle 0..1" },
+            { "square", "square", "signal: square 0/1" },
+            { "perlin", "perlin", "signal: smooth random 0..1" },
+            { "rand", "rand", "signal: random 0..1" },
+            { "irand", "irand(8)", "irand(n) random whole number 0..n-1" },
+            { "run", "run(8)", "run(n) the numbers 0..n-1 as steps, e.g. n(run(8))" },
             { "kick", "kick", "kick parameters: kick.Param.set(v)" },
             { "meter", "meter", "meter: meter.outputPeak.get()" },
             { "console", "console.log()", "console.log(x) writes to the CONSOLE tab" },
@@ -216,7 +258,8 @@ namespace LiveCodeComplete
                 const auto t = tree (src);
                 if (auto it = t.find (path); it != t.end())
                     pool = it->second;
-                else if (path.endsWithChar ('"') || path.isEmpty())
+                else if (path.endsWithChar ('"') || path.isEmpty()
+                         || path == "sine" || path == "saw" || path == "tri" || path == "square" || path == "perlin" || path == "rand")
                     pool = methods();
             }
         }

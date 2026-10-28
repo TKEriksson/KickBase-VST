@@ -1,5 +1,6 @@
 #include <set>
 #include "PluginBase.h"
+#include "PresetCategories.h"
 #include <BinaryData.h>
 #include "AiChat.h"
 #include "MixAnalysis.h"
@@ -10,7 +11,7 @@
 
 // Tal som sparade projekt och presets bygger på: ändras de läses gamla filer fel (eller måste migreras).
 static_assert (Pattern::numLayers == 10 && Pattern::kickLayer == 10, "mönstrets lager sparas med index; kicken är lager 10 sedan version 6");
-static_assert (numEffectChannels == 11 && slotsPerChannel == 5, "FX-kanalernas id:n är fxA-fxK med fem platser");
+static_assert (numEffectChannels == 12 && numLegacyEffectChannels == 11 && slotsPerChannel == 5, "FX-kanalernas id:n är fxA-fxL med fem platser (fxA-fxK är de gamla)");
 static_assert (Modulation::numLfos == 3 && Modulation::numMacros == 4 && Modulation::firstInstrumentSource == 7
                    && Modulation::instrumentSources == 4 && Modulation::maxLfos == 10 && Modulation::firstExtraLfoSource == 47
                    && Modulation::firstEnvSource == 54 && Modulation::envSources == 2 && Modulation::firstCodeSource == 74
@@ -100,6 +101,15 @@ int PluginBase::fxChannelUsageMask()
     sentTo (ParamID::kickFxChannel, ParamID::kickFxAmount);
     for (int layer = 0; layer < activeInstruments(); ++layer)
         sentTo (ParamID::bass (layer, InstrumentField::fxChannel).toRawUTF8(), ParamID::bass (layer, InstrumentField::fxAmount).toRawUTF8());
+    // Matrissends (fxSendTo<N>) räknas som användning, vid sidan av den gamla kanalen + beloppet.
+    for (int channel = 0; channel < numEffectChannels; ++channel)
+    {
+        if (apvts.getRawParameterValue (ParamID::kickFxSendToIds[channel])->load() > 0.0f)
+            mask |= 1 << channel;
+        for (int layer = 0; layer < activeInstruments(); ++layer)
+            if (apvts.getRawParameterValue (ParamID::bass (layer, ParamID::fxSendToField (channel)).toRawUTF8())->load() > 0.0f)
+                mask |= 1 << channel;
+    }
 
     for (int channel = 0; channel < numEffectChannels; ++channel)
     {
@@ -130,6 +140,8 @@ void PluginBase::prepareBase (double sampleRate)
     kickSample.prepare (sampleRate);
     for (auto& slot : instrumentSamples)
         slot.prepare (sampleRate);
+    for (auto& set : instrumentMultiSamples)
+        set.prepare (sampleRate);
 }
 
 // params läser med modulering (se konstruktorn), så kick och bas får LFO:erna härifrån.
@@ -155,6 +167,7 @@ InstrumentParams PluginBase::readModulatedInstrument (int layer, int rootMidiNot
     bass.oscB.user = userTable (layer, 1);
     bass.oscC.user = userTable (layer, 2);
     bass.sampleData = getActiveInstrumentSample (layer);
+    bass.sampleBank = getActiveInstrumentMultiSample (layer);
     return bass;
 }
 
@@ -614,6 +627,8 @@ void PluginBase::getStateInformation (juce::MemoryBlock& destData)
     state.appendChild (pattern.toValueTree(), nullptr);
     state.appendChild (kickSample.toValueTree (clickTreeType), nullptr);
     state.appendChild (instrumentSamplesToValueTree(), nullptr);
+    if (auto multi = instrumentMultiSamplesToValueTree(); multi.getNumChildren() > 0) // bara när zoner finns: gamla projekt får oförändrat tillstånd
+        state.appendChild (multi, nullptr);
     state.appendChild (userTablesToValueTree(), nullptr);
     state.appendChild (sidechainCurve.toValueTree(), nullptr);
     state.appendChild (modRoutes.toValueTree (getParameters()), nullptr);
@@ -753,6 +768,17 @@ void PluginBase::setStateInformation (const void* data, int sizeInBytes)
     {
         for (auto& slot : instrumentSamples)
             slot.clear();
+    }
+
+    if (auto multiTree = state.getChildWithName ("BassMultiSamples"); multiTree.isValid())
+    {
+        instrumentMultiSamplesFromValueTree (multiTree);
+        state.removeChild (multiTree, nullptr);
+    }
+    else
+    {
+        for (auto& set : instrumentMultiSamples)
+            set.clear();
     }
 
     if (auto userTree = state.getChildWithName ("UserTables"); userTree.isValid())
@@ -1266,7 +1292,7 @@ std::unique_ptr<juce::XmlElement> PluginBase::buildPresetXml (Presets::Section s
     return rootPtr;
 }
 
-bool PluginBase::saveUserPreset (Presets::Section section, const juce::String& name, int layer, const PresetLink* link)
+bool PluginBase::saveUserPreset (Presets::Section section, const juce::String& name, int layer, const PresetLink* link, const juce::String& category)
 {
     const auto fileName = juce::File::createLegalFileName (name.trim());
     const auto directory = Presets::folder (section, effectVersion);
@@ -1274,6 +1300,9 @@ bool PluginBase::saveUserPreset (Presets::Section section, const juce::String& n
         return false;
 
     const auto root = buildPresetXml (section, layer, link);
+    // Kategorin är bara ett valfritt attribut: filerna ligger kvar platta i mappen så att länkar (findUserPreset) fortsätter hitta dem.
+    if (const auto validCategory = PresetCategories::normalise (category); validCategory.isNotEmpty() && PresetCategories::usedBy (section))
+        root->setAttribute ("category", validCategory);
     if (! root->writeTo (directory.getChildFile (fileName + presetFileExtension)))
         return false;
 
@@ -1288,12 +1317,15 @@ namespace
     std::vector<std::pair<juce::String, juce::String>> trackExtraParameters (int layer)
     {
         const auto mixer = [layer] (const char* field) { return Mixer::paramID (Mixer::firstBassSource + layer, field); };
-        return { { "on", ParamID::bass (layer, InstrumentField::on) },
+        std::vector<std::pair<juce::String, juce::String>> extra { { "on", ParamID::bass (layer, InstrumentField::on) },
                  { "duck", ParamID::bass (layer, InstrumentField::duck) },
                  { "fxChannel", ParamID::bass (layer, InstrumentField::fxChannel) },
                  { "fxAmount", ParamID::bass (layer, InstrumentField::fxAmount) },
                  { "fxSend", ParamID::bass (layer, InstrumentField::fxSend) },
                  { "mixGain", mixer ("Gain") }, { "mixPan", mixer ("Pan") }, { "mixDuck", mixer ("Duck") }, { "mixMax", mixer ("Max") } };
+        for (int to = 0; to < ParamID::numFxSendTargets; ++to)
+            extra.push_back ({ "fxSendTo" + juce::String (to + 1), ParamID::bass (layer, ParamID::fxSendToField (to)) });
+        return extra;
     }
 
     // Instrumentets egna modulationskällor följer med spåret till ett annat instrument; LFO:er, makron och andras källor lämnas.
@@ -1652,6 +1684,13 @@ PluginBase::PresetLink PluginBase::readPresetLink (const juce::File& presetFile)
     return link;
 }
 
+juce::String PluginBase::readPresetCategory (const juce::File& presetFile)
+{
+    if (const auto xml = juce::XmlDocument::parse (presetFile))
+        return PresetCategories::normalise (xml->getStringAttribute ("category"));
+    return {};
+}
+
 juce::File PluginBase::findUserPreset (Presets::Section section, const juce::String& name) const
 {
     if (name.isEmpty())
@@ -1687,7 +1726,7 @@ int PluginBase::firstFreeFxChannel()
     return -1;
 }
 
-bool PluginBase::saveInstrumentPreset (Presets::Section section, int layer, const juce::String& name, const juce::String& fxName)
+bool PluginBase::saveInstrumentPreset (Presets::Section section, int layer, const juce::String& name, const juce::String& fxName, const juce::String& category)
 {
     PresetLink link;
     const auto channel = sendChannelOf (section, layer);
@@ -1700,16 +1739,16 @@ bool PluginBase::saveInstrumentPreset (Presets::Section section, int layer, cons
         link.amount = apvts.getRawParameterValue (section == Presets::Section::kick ? juce::String (ParamID::kickFxAmount)
                                                                                      : ParamID::bass (layer, InstrumentField::fxAmount))->load();
     }
-    return saveUserPreset (section, name, layer, link.valid() ? &link : nullptr);
+    return saveUserPreset (section, name, layer, link.valid() ? &link : nullptr, category);
 }
 
-bool PluginBase::savePatternPreset (int layer, const juce::String& name, const juce::String& instrumentName, const juce::String& fxName)
+bool PluginBase::savePatternPreset (int layer, const juce::String& name, const juce::String& instrumentName, const juce::String& fxName, const juce::String& category)
 {
     PresetLink link;
     if (instrumentName.trim().isNotEmpty())
     {
         const auto kick = layer == Pattern::kickLayer;
-        if (! saveInstrumentPreset (kick ? Presets::Section::kick : Presets::Section::bass, kick ? 0 : layer, instrumentName, fxName))
+        if (! saveInstrumentPreset (kick ? Presets::Section::kick : Presets::Section::bass, kick ? 0 : layer, instrumentName, fxName, category))
             return false;
         link.kind = kick ? "kick" : "instrument";
         link.name = juce::File::createLegalFileName (instrumentName.trim());
@@ -1814,6 +1853,13 @@ bool PluginBase::exportWav (const juce::File& file, ExportPart part, int bars, i
         turnOff (ParamID::kickFxAmount);
         for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
             turnOff (ParamID::bass (layer, InstrumentField::fxAmount).toRawUTF8());
+        // Matrissends hör också till effekterna.
+        for (int to = 0; to < ParamID::numFxSendTargets; ++to)
+        {
+            turnOff (ParamID::kickFxSendToIds[to]);
+            for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
+                turnOff (ParamID::bass (layer, ParamID::fxSendToField (to)).toRawUTF8());
+        }
     }
 
     copy->ensureTablesInUse();
@@ -1873,26 +1919,50 @@ void PluginBase::clearInstrumentSample (int layer, bool syncRows)
     patternChanged();
 }
 
+int PluginBase::addInstrumentMultiSamples (int layer, const juce::Array<juce::File>& files)
+{
+    if (! juce::isPositiveAndBelow (layer, ParamID::numInstrumentLayers))
+        return 0;
+    auto& set = instrumentMultiSamples[(size_t) layer];
+    auto added = 0;
+    for (const auto& file : files)
+        if (set.addFile (file))
+            ++added;
+    if (added > 0)
+    {
+        set.autoMapKeyRanges();
+        patternChanged();
+    }
+    return added;
+}
+
+void PluginBase::clearInstrumentMultiSamples (int layer)
+{
+    if (! juce::isPositiveAndBelow (layer, ParamID::numInstrumentLayers))
+        return;
+    instrumentMultiSamples[(size_t) layer].clear();
+    patternChanged();
+}
+
 int PluginBase::syncSliceRows (int layer)
 {
     if (! juce::isPositiveAndBelow (layer, ParamID::numInstrumentLayers))
         return 0;
     const auto* sample = instrumentSamples[(size_t) layer].active();
     const auto count = sample != nullptr && sample->slices.size() > 1 ? (int) sample->slices.size() : 0;
-    const auto wanted = juce::jmin (count, RowRegistry::maxSliceRows);
 
+    // Instrumentet har EN skivrad (noternas pitch är skivan); utan skivor tas raden bort med sina noter.
     auto missing = 0;
     {
-        EditScope scope (*this, "Slice rows");
-        for (int slice = RowRegistry::maxSliceRows - 1; slice >= wanted; --slice)
-            if (const auto id = pattern.rows.find (layer, RowRegistry::Kind::slice, slice); id >= 0)
-            {
-                pattern.clearNotes (id);
-                pattern.rows.remove (id);
-            }
-        for (int slice = 0; slice < wanted; ++slice)
-            if (pattern.rows.find (layer, RowRegistry::Kind::slice, slice) < 0 && pattern.rows.add (layer, RowRegistry::Kind::slice, slice) < 0)
-                ++missing;
+        EditScope scope (*this, "Slice row");
+        const auto id = pattern.rows.find (layer, RowRegistry::Kind::slices);
+        if (count == 0 && id >= 0)
+        {
+            pattern.clearNotes (id);
+            pattern.rows.remove (id);
+        }
+        else if (count > 0 && id < 0 && pattern.rows.add (layer, RowRegistry::Kind::slices) < 0)
+            ++missing;
     }
     return missing;
 }
@@ -1908,6 +1978,33 @@ juce::ValueTree PluginBase::instrumentSamplesToValueTree() const
             tree.appendChild (child, nullptr);
         }
     return tree;
+}
+
+juce::ValueTree PluginBase::instrumentMultiSamplesToValueTree() const
+{
+    juce::ValueTree tree ("BassMultiSamples");
+    for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
+        if (instrumentMultiSamples[(size_t) layer].zoneCount() > 0)
+        {
+            auto child = instrumentMultiSamples[(size_t) layer].toValueTree ("BassMultiSample");
+            child.setProperty ("layer", layer, nullptr);
+            tree.appendChild (child, nullptr);
+        }
+    return tree;
+}
+
+void PluginBase::instrumentMultiSamplesFromValueTree (const juce::ValueTree& tree)
+{
+    std::array<bool, ParamID::numInstrumentLayers> found {};
+    for (const auto& child : tree)
+        if (const auto layer = (int) child.getProperty ("layer", -1); juce::isPositiveAndBelow (layer, ParamID::numInstrumentLayers))
+        {
+            instrumentMultiSamples[(size_t) layer].fromValueTree (child);
+            found[(size_t) layer] = true;
+        }
+    for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
+        if (! found[(size_t) layer])
+            instrumentMultiSamples[(size_t) layer].clear();
 }
 
 void PluginBase::instrumentSamplesFromValueTree (const juce::ValueTree& tree)

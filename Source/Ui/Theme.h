@@ -254,6 +254,33 @@ namespace Theme
         g.strokePath (path, juce::PathStrokeType (width, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     }
 
+    // Glasdisplay: mörk glasruta med ljusreflex i övre halvan och tunn kant. Texten ritas med drawGlowText.
+    inline void paintGlassDisplay (juce::Graphics& g, juce::Rectangle<float> area, float corner = 7.0f)
+    {
+        g.setColour (chartBackground);
+        g.fillRoundedRectangle (area, corner);
+        juce::Path shine;
+        shine.addRoundedRectangle (area.getX() + 1.0f, area.getY() + 1.0f, area.getWidth() - 2.0f, area.getHeight() * 0.5f,
+                                   corner - 1.0f, corner - 1.0f, true, true, false, false);
+        g.setGradientFill (juce::ColourGradient (juce::Colours::white.withAlpha (0.10f), 0.0f, area.getY(),
+                                                 juce::Colours::white.withAlpha (0.0f), 0.0f, area.getCentreY(), false));
+        g.fillPath (shine);
+        g.setColour (cyan.withAlpha (0.25f));
+        g.drawRoundedRectangle (area.reduced (0.5f), corner, 1.0f);
+    }
+
+    // Text med mjuk glöd: några svaga kopior runt själva texten, sedan den klara texten överst.
+    inline void drawGlowText (juce::Graphics& g, const juce::String& text, juce::Rectangle<float> area, const juce::Font& font,
+                              float tracking, juce::Justification just, juce::Colour colour)
+    {
+        static constexpr float offsets[4][2] = { { -1.0f, 0.0f }, { 1.0f, 0.0f }, { 0.0f, -1.0f }, { 0.0f, 1.0f } };
+        g.setColour (colour.withAlpha (0.22f));
+        for (const auto& o : offsets)
+            drawTracked (g, text, area.translated (o[0], o[1]), font, tracking, just);
+        g.setColour (colour);
+        drawTracked (g, text, area, font, tracking, just);
+    }
+
     // Fönstrets bakgrund: djup skiffer- och marinblå bas med mjukt studioljus i mitten.
     inline void paintBackground (juce::Graphics& g, juce::Rectangle<int> area)
     {

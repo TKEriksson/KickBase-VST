@@ -247,3 +247,390 @@ FL-punkter: ikonerna på förhandsknapparna, PLAY-menyn döljer/visar LOOP+JOG, 
 En på/av per modul: kickens bara på KICK-fliken (`InstrumentEditor.cpp:21`, `embedInTab (false)`); instrumentets längst till vänster i rad 2 (`Modules.cpp` Header::resized, `powers[]`). Flikar med inbyggd på/av räknar bredden med ikonen + marginal (`TabbedPanel.h` pillWidth/powerSpace, LookAndFeel `powerWidth`). Rad 1/2 36 px (+6), mer luft (flikgap 8, padding 18), ANALYZER-remsan 36. `baseHeight` 1028, synths 534.
 Test: Debug `build.bat Debug all` + "Alla tester gick igenom". UI-only, ingen parameter, rendersig oförändrad.
 FL-punkter: bara en på/av per modul, instrumentets på/av längst till vänster, KICK-flikens text/ikon, högre knappar, inget klippt i rad 1-3.
+
+## JOG: SCRUB / SPEED / JOG (Arbetare 1, 27 okt)
+**Vad:** JogPanel har tre typer (`jogKind`): JOG (gamla STOP/KEEP GOING/REC), SCRUB (standard i nya projekt) och SPEED (hjulet styr `jogSpeed`, ingen återfjädring). Hjulet pausar bara vår egen pattern/ljud, DAW:en går vidare; vår PLAY återupptar. SCRUB framåt = jogManual-hastighet (0..4), bakåt = nudge (ett varv = 4 ppq).
+**Hur:** `TransportClock` (`setScrub`, `nudge`, `scrubRequested/scrubbing/pendingNudgePpq`, beginBlock), `PluginBase.h` (`jogKind`, `scrubActive`, `scrubNudgePpq`; atomics), `PluginBase.cpp` (egenskap "jogKind"; saknas den = JOG, alltså gamla projekt beter sig som förut), `InstrumentProcessor.cpp` (~155, `exchange` på nudge), `JogPanel.h`.
+**Begränsning:** global LOOP är hela takter (int `globalLoopStartBar/EndBar`); finare loop (~1/64T) stöds inte.
+**Bugg hittad av audiotest (min egen, från Kick SYNTH/SAMPLE):** `kickSynthOn/kickSampleOn` lades bara i instrumentets layout. FX-pluginets `readKick` (Params.cpp:600-601) slog upp okänt ID → `jassertfalse` (allokerar i Debug) och i Release 0.0 = synth+sample av, alltså tyst kick i FX-pluginet. Fix: `Params::addKickToggleParams` (Params.cpp, Params.h) anropas från både `addJogParams` (samma ordning som förut) och FxProcessor.cpp createLayout. Lärdom i LESSONS.md.
+**Test:** Debug `build.bat Debug all` + "Alla tester gick igenom"; audiotest "Ljudtrådstestet gick igenom" (0 allokeringar); rendersig oförändrad (Init 94f0a1b6bd8a3c7f, Empty 7d67e7bb66bb432b, instr 1 f7139084f716c127); persisttest ok. Release: `build.bat Release all` + "Alla tester gick igenom".
+**DAW-punkter (Lemon):** SCRUB är standard i nytt projekt, gammalt projekt = JOG; hjulet pausar bara vår pattern medan DAW går; vår PLAY återupptar; SPEED-hjulet ändrar JOG SPEED-knappen; kind sparas i projektet; kickens SYNTH/SAMPLE-knappar fungerar i FX-pluginet.
+
+## JOG RESET + lampfix för lyssna-knappar (Arbetare 1, 27 okt)
+- JogPanel: "REMOVE AUTOMATION" ersatt av liten RESET bredvid hastighetsratten (JogPanel.h, `resetSpeed`): jogSpeed=1 i en gest, rör inga LFO-rutter. Släckt när hastigheten redan är 1. Statustexten "No LFO on JOG SPEED." kvar.
+- Lampbugg (piano rollens PLAY låst, sedan mönstrets PLAY): motorn har redan EN källa (`previewingLayer`, InstrumentProcessor.cpp:342). Felet var ListenButtons lokala `latched`/`held` (ListenButton.h) som aldrig rensades när en annan källa tog över. Nu släpps de när motorn slutar rapportera knappen som aktiv (`setActive`).
+- Kvar i single-playback-mode: flikbyte ska stoppa bara enskilda preview-knappar (inte PLAY/piano roll-PLAY).
+- Build Debug + alla inbyggda tester gröna.
+- DAW-test (Lemon): (1) dubbelklicka piano rollens PLAY (fastlåst), tryck mönstrets PLAY: piano rollens lampa släcks och mönstret spelar. (2) JOG-panelen: vrid SPEED, tryck RESET: tillbaka till 1x, ett Ctrl+Z ångrar.
+
+## 3g/3g-2 Presetkategorier + piltangenter (Arbetare 1, 27 okt)
+- Kategori = attribut `category` i .mofp (kick/bass), mapp fortfarande platt (avvikelse från "undermapp + attribut": `findUserPreset` slår upp platt). Fabrikskategorier via namnmap i `PresetCategories.cpp` (PresetData.inl orörd, index/hashar oförändrade). Standard: GAMLA DEFAULT.
+- `PresetButton.cpp`: undermenyer per kategori, spara-dialog med Category-lista, `keyPressed` (vänster/upp = förra, höger/ned = nästa, samma ordning som menyn).
+- Ny trailing-parameter `category` på save-funktionerna (PluginBase.h/.cpp).
+- Test: Debug build + alla tester gröna; rendersig oförändrad (Init 94f0a1b6bd8a3c7f, Empty 7d67e7bb66bb432b, instr 1 f7139084f716c127).
+- DAW-test (Lemon): (1) klicka preset-knappen på Kick/Bass: kategorier som undermenyer. (2) Spara preset: välj kategori, syns under rätt rubrik. (3) Klicka knappen, tryck piltangenter: bläddrar. Om Lemon tar tangenterna: notera.
+
+## Kö-tillägg från projektledaren (27 okt)
+- Sist i rel-0.3/0.4: (1) HarmonicEditor (Source/Ui/HarmonicEditor.cpp, öppnas från OscPanel.cpp:207): genomgång + förslag (hitta, nollställ, förhandslyssning vid drag, undo, >64 övertoner, presets sågtand/fyrkant/udda). Kort plan hit först, skickas till PL före bygge. (2) ANALYZER-fliken mot docs/plan-v2.md:258-271: lista finns/saknas (energitopp där kick och bas möts, kickens svans som fångar basen, fasvarning slumpfas bas, för mycket 200 Hz), bygg det som saknas.
+- S3 Unison/Reese och multisampling flyttade till Arbetare 2.
+- Tillägg övertonsredigerare (Tobias, Serum-inspirerad, vi kopierar inget): syfte = ta bort basens grundton med ETT klick. Knappar REMOVE FUNDAMENTAL, REMOVE EVEN, ODD ONLY, RESET. Större fast editor i stället för CallOutBox: våg (tidsdomän) + styrke- och fasstaplar live-länkade, zoom på övertonsaxeln 1x/2x/4x. Penslar vid drag över flera staplar: linje, ramp upp/ner, kurva, slump. Presets SAW, SQUARE, ODD, EVEN, bara grundton. Senare: formelfält. Etapper: 1 knappar + större fönster, 2 live-våg, 3 penslar/formel. Ingår i planen som skickas till PL före bygge.
+- Tillägg AUTO FIX (Tobias, via PL) = etapp 4, EFTER ANALYZER-mätningarna och övertonsredigeraren. Välj ett eller flera instrument (multiselect) mot kicken, tryck AUTO FIX. Mätning deterministisk (ingen AI): tailHz mot basens grundton per not, nivåskillnad, fas/korrelation i krockögonblicket, överskott ~200 Hz. Åtgärder: ta bort grundton i wavetable (gäller ALLA toner i tabellen, passar när basen ligger på en ton eller under kickens Hz), sänka nivå/velocity på krockande toner, PHASE ROTATION, sidechain-djup. UI: före/efter, åtgärdslista med kryss, APPLY bara för valda, allt som EN undo-gest, ändra aldrig utan att visa. Återanvänd AI-verktygen analyse_wavetable/edit_wavetable_harmonics. Planen ska också säga vad som INTE går automatiskt (per-not-korrigering av grundton). Bygg inte förrän PL sagt ok.
+- Förtydligande AUTO FIX (Tobias): grundtonen tas bara bort på toner som krockar med kicken. Planen ska utreda två vägar och rekommendera en: A) kopia av instrumentet utan grundton, krockande noter flyttas dit (frågor: pianorulle, ghost notes, mix/FX, sidechain, håller kopian presetparametrar vid senare ändringar; kostar ett instrumentlager, defaultInstrumentCount 3 Params.h:25; ändrar mönstret). B) per-not-regel i motorn: grundtonsdämpning per oscillator som slås på när grundtonen ligger inom ett fönster kring kickens tailHz (på/av, fönster Hz/cent, nivå); ändrar inte mönstret; nya parametrar sist, ID/hash oförändrade; audiotrådssäkert, kort crossfade vid tabellbyte. Redovisa för/nackdelar, minne, risk. PLs gissning: B. Min bedömning görs efter genomgång av koden. Bygg inte förrän PL sagt ok.
+
+## PLAN: FUNDAMENTAL DUCK + AUTO FIX (väg B vald) (Arbetare 1, 27 okt) — ingen kod än
+**Rekommendation: B, som effekt som följer kickens envelope.** A (kopia av instrument) rör användarens mönster, kostar ett lager av tre (Params.h:25) och glider isär från originalet vid senare presetändringar. B ändrar inget i mönstret och ligger på ett ställe.
+**Var det sitter:** `InstrumentProcessor::finishBlock` (InstrumentProcessor.cpp ~860-900), per baslager, FÖRE ducker/effektkanal. `duckData` (kickens envelope, redan per sample, rad ~832) finns redan i blocket och driver redan ducking, så ingen ny signalväg behövs.
+**Hur:** en smal notch/peak-biquad per lager (stereo, två tillstånd) vars frekvens = lagrets nuvarande notgrundton (`bass.next()` måste exponera aktuell Hz; en float per lager skriven i `renderSamples`) och vars djup = `depth * duckData[i]`. Alltså dämpas grundtonen bara medan kicken klingar, och bara på toner som faktiskt ligger nära kickens svans: skalas med en vikt som är 1 när |grundton − tailHz| < fönstret (cent, mjuk kant) och 0 utanför. Då blir det per-not utan mönsterändring. Alternativ filter runt tailHz (fast frekvens) tas bort: kicken glider och basen kan ligga ovanför, så notens grundton är rätt mål.
+**Klick/crossfade:** djup och frekvens slätas med samma enpolsfilter som Ducker (Ducker.h:16); koefficienter räknas om per sample bara när frekvensen ändrats mer än ~1 cent. Inget tabellbyte, alltså ingen crossfade av tabellen behövs; det är gain-smoothing som tar bort klick.
+**Nya parametrar (sist i Params, ID/preset-index/hash oförändrade):** `fundamentalDuckOn` (bool, standard av), `fundamentalDuckDepth` (0-24 dB, standard 12), `fundamentalDuckWindow` (cent, standard 200), per lager 1-3 (6+ parametrar, en uppsättning per lager). Standard av ⇒ rendersig oförändrad (Init 94f0a1b6bd8a3c7f, Empty 7d67e7bb66bb432b, instr 1 f7139084f716c127).
+**Audiotråd:** inga allokeringar; fasta biquad-tillstånd i lagret, parametrar läses som atomics en gång per block. Samma lärdom som kickSynthOn: nya parametrar måste in i BÅDE instrument- och FX-layouten (annars jassertfalse i audiotest).
+**Risker:** (1) basen har egen sub/lågpass; notch före effektkedjan kan påverka effekter som är fas-känsliga, kontrolleras med rendersig + lyssning. (2) Notch ändrar fas runt grundtonen: PHASE ROTATION kan behöva justeras. (3) Aktuell Hz vid portamento/glide: använd glidande värdet, inte notens.
+**Minne:** noll utöver några floats per lager. A hade kostat en hel basmotor + wavetable per kopia.
+**AUTO FIX (etapp 4) på B:** väljer instrument (multiselect) mot kicken. Mäter deterministiskt (från ANALYZER-etappen): tailHz mot varje instruments noter i mönstret (vilka grundtoner ligger inom fönstret), nivå och korrelation i krockögonblicket, överskott runt 200 Hz. Förslagslista med kryss och före/efter-siffror: (a) slå på fundamentalDuck för lagret med fönster som täcker krockande noter, (b) sänk velocity/nivå på krockande noter, (c) PHASE ROTATION, (d) sidechain-djup. APPLY tillämpar bara valda rader som EN undogest (UndoManager-transaktion kring alla parameter/notändringar). Ändrar aldrig utan att visa listan. Grundtonsborttagning i wavetable (övertonsredigeraren) erbjuds bara när ALLA instrumentets noter krockar, eftersom den gäller alla toner i tabellen.
+**Går INTE automatiskt:** att avgöra "krockar hörbart" är en mätning, inte en dom; noter med glide, LFO-modulerad pitch eller flera samtidiga toner mäts bara på noternas nominella tonhöjd; grundton som ligger över kickens Hz men krockar via övertoner (2:a övertonen) hanteras inte i första versionen.
+**Etapper:** 1 ANALYZER-mätningarna, 2 fundamentalDuck (motor + parametrar + test), 3 övertonsredigeraren, 4 AUTO FIX. Bygg inget förrän PL sagt ok.
+
+## Tillägg till FUNDAMENTAL DUCK (från projektledaren, Tobias önskemål)
+1. **UI-sektion per baslager** (inte gömd): på/av, djup, fönster och en lampa som visar att den lyssnar på kicken.
+2. **Källväljare** (kick / instrument 1-3 / valfri): samma envelope-väg. `duckData` blir en envelope per källa (kick = `kick.getEnvelope()`, instrument = lagrets `amplitudeBuffer`-envelope, utjämnad som Ducker). Ny parameter sist per lager (`fundamentalDuckSource`, standard 0 = kick) så rendersig är oförändrad. Byggs först efter projektledarens ok på UI-sektionen.
+3. **Synlig verkan**: liten live-display i lagrets sektion (vågform/spektrum före/efter notchen + meter för aktuellt dämpningsdjup). Audiotråden skriver bara atomics/FIFO (djup, notch-Hz), inga allokeringar; UI läser i timer.
+4. **Riktiga diagrammet**: dämpningen ritas i ANALYZER-spektrumet/CollisionsView som en markör för notchens Hz och djup, så man ser grundtonen sjunka vid varje kick. Vilken vy som passar föreslås när motorn står (spektrumvyn är första val: notch-kurvan ovanpå spektrumet).
+5. Enkelspelarläge: flikbyte stoppar flikens egen LISTEN (TabbedPanel.h setCurrentTab, ListenButton::isHeldOrLatched).
+6. **Förtydligat av Tobias**: "det riktiga diagrammet" = motorns/oscillatorpanelens vågform/spektrum per motor (OscPanel), inte ANALYZER. Dämpningen ritas där: före/efter notchen live (vågen/spektrumet ändras vid varje kick och ser olika ut mellan kickarna). Audiotråden skriver ett litet block före/efter (FIFO/atomics, ingen allokering), OscPanel läser i timer. Punkt 4 ovan ersätts av detta; ANALYZER-markör bara som tillägg senare.
+7. **Tillägg av Tobias: även i ANALYZER** (gäller i tillägg till punkt 6). Samma atomics/FIFO-väg (notch-Hz, djup, aktiv-flagga per lager). Passar i `CollisionsView` (Source/Ui/CollisionsView.h:11): där kick och bas möts ritas en markör för notchens Hz som sjunker ned vid varje kick, plus spektrumets före/efter i `SpectrumView` (Scopes.h:57) som en andra kurva. Byggs efter motorn och OscPanel-visningen; rapporteras till projektledaren innan.
+
+## Enkelspelarläge (flikbyte stoppar flikens egen LISTEN)
+- Source/Ui/TabbedPanel.h `setCurrentTab`: byter man flik stoppas den gamla flikens förhandsspelning, men bara om flikens LISTEN-knapp själv startade den (`ListenButton::isHeldOrLatched`, ListenButton.h). Mönstrets PLAY och pianorullens PLAY rörs inte. Gäller alla TabbedPanel (huvudflikar och underflikar).
+- Debug-bygge + alla tester OK (rendersig oförändrad).
+- **Testrad DAW (Lemon):** fastlås LISTEN (dubbelklick) på INSTRUMENT, byt till KICK: ljudet tystnar. Starta mönstrets PLAY och byt flik: PLAY fortsätter.
+
+## Tillägg: FUNDAMENTAL DUCK för hela instrumentet (INSTR-nivå) — plan, ej byggd (Arbetare 1, 27 okt)
+Namn i UI: FUNDAMENTAL DUCK (kort FUND DUCK). Kod: `fundamentalDuck*`.
+**Utvärdering:** dämpningen sker redan per lager på notens egen grundton (`getFundamentalHz`, röst för röst), inte på summan, så instrumentnivå är en fråga om parametrar och arv, inte ny signalväg. Polyfoni: med VOICES > 1 följer jag i första versionen den senast spelade rösten (som glide); full per-röst-notch (ett biquad per röst, 8 per lager) är möjlig men kostar 24 filter och kräver att rösternas Hz exponeras. Rekommendation: per-lager nu, per-röst som etapp 2b om Tobias spelar ackord i basen.
+**Parametrar (sist, standard av, rendersig oförändrad):**
+- Instrument (ett set): `fundamentalDuckOn`, `Depth`, `Window`, `Source`.
+- Per lager 1-3: `fundamentalDuckMode` (Choice: ärv instrumentet / av / egen) i stället för bara på/av, plus egna `Depth`/`Window`/`Source` som gäller i läget "egen". Standard = ärv, och instrumentets On är av, alltså av överallt.
+- Samplespelaren: tonen är känd per not (samma `cachedFrequency`-väg), så den kan ärva instrumentets inställning med en egen av/på. Kräver att sampelrösten exponerar sin uppspelnings-Hz (rotton + pitch); tas i etapp 2c efter att jag läst sampelmotorn. Ej lovad förrän läst.
+**UI:** en INSTR-ruta (på/av, djup, fönster, källa) och per lager en liten väljare ÄRV / AV / EGEN som visar de egna rattarna först vid EGEN.
+**Fråga till projektledaren:** ok på tre-lägesväljaren (ärv/av/egen) i stället för bara bool per lager? Det ändrar parameteruppsättningen jag var på väg att bygga (`fundamentalDuckOn` per lager blir `Mode`). Per-lager-motorn är densamma i båda fallen.
+## FUNDAMENTAL DUCK – motor byggd, UI-skiss (Arbetare 1, 27 okt)
+**Motor (klar, Debug + alla tester OK, rendersig oförändrad: Init 94f0a1b6bd8a3c7f, Empty 7d67e7bb66bb432b):**
+- `Source/Core/FundamentalDuck.h`: RBJ peaking-biquad (Q 1,4, negativ förstärkning), stereo, per motor. Av = full förbigång + nollat tillstånd.
+- `InstrumentProcessor.cpp`: `readLayerFields` (config ÄRV/AV/EGEN), `fundamentalDuckWeight` (källans envelope × fönster), `finishBlock` (filter efter gaten, före ducker; "före"-tappen orörd), `fdHz` = motorns grundton (`getFundamentalHz`, senast spelade rösten) per block, koefficienter var 8:e sampel. `fundamentalDuckDb[layer]` (atomic) för lampa/mätare.
+- Parametrar sist i Params: globala `fundamentalDuckOn/Depth/Window/Source`, per motor `bassN FundamentalDuckMode/Depth/Window/Source`. Källa: Kick (standard), Instr 1-10, Any.
+- Hjälptexter skrivna (inkl. gränsen "följer senast spelade rösten") + de saknade: jogSpeed, SIDECHAIN 2-BAND (SPLIT, LOW/HIGH DEPTH, LOW/HIGH REL), PHASE ROTATION: ROTATION.
+- Ej gjort: 2b (per röst), 2c (samplespelaren) – bara om behov visar sig.
+
+**UI-skiss (byggs härnäst):**
+1. Instrumentruta märkt "FUNDAMENTAL DUCK – ALLA MOTORER": på/av, DEPTH, WINDOW, SOURCE. Tooltip: "Dämpar grundtonen i varje motor medan kicken klingar".
+2. Per motor en liten väljare ÄRV / AV / EGEN. ÄRV: instrumentets värden visas nedtonade med texten "från instrument". EGEN: egna rattar (depth/window/source) aktiva.
+3. Lampa per motor (läser `fundamentalDuckDb[layer]` i timer, tänd när > 0 dB) + dB-siffra.
+4. OscPanel: vågform/spektrum före/efter notchen. ANALYZER (CollisionsView notch-Hz-markör, SpectrumView andra kurva) som tillägg efteråt.
+
+**Testrad DAW (Lemon):** slå på FUNDAMENTAL DUCK på instrumentet (DEPTH 12 dB, källa Kick), spela ett mönster med bas på kickens ton: basens grundton ska sjunka vid varje kick och komma tillbaka; sätt en motor på AV: den motorn är oförändrad; sätt EGEN med DEPTH 0: ingen dämpning. (UI-delen testas efter att den byggts.)
+
+## FUNDAMENTAL DUCK – UI byggt (Arbetare 1, 27 okt)
+SIDECHAIN-fliken (bara instrumentet): ruta längst ned, `Source/Ui/SidechainPage.cpp` (FundamentalDuckPanel) + `.h:70`. Överst ON/DEPTH/WINDOW/SOURCE för instrumentet; en rad per aktiv motor med ÄRV/AV/EGEN, lampa + dB-siffra (`fundamentalDuckDb` i PluginBase.h), ärvda värden i grått ("from instrument"), egna reglage i EGEN. Tooltip innehåller "dämpar grundtonen i varje motor medan kicken klingar". UI-texter är engelska (som övriga fliken).
+Inte gjort: förhandsvisning i OscPanel och ANALYZER-markör (kräver ljudtråd→UI-väg), tas senare vid behov.
+Bygge Debug all: grönt, "Alla tester gick igenom" (rendersig oförändrad).
+**Testrad DAW (Lemon):** öppna SIDECHAIN, slå på FUNDAMENTAL DUCK (DEPTH 12 dB, källa Kick), spela bas på kickens ton: lampan på motorraden tänds vid varje kick och dB-siffran rör sig; ÄRV visar grå värden; AV släcker lampan; EGEN med DEPTH 0 ger ingen dämpning.
+
+## Multisampling – steg 3 persistens (Arbetare 1, 28 okt)
+- Testet "tangent 76 väljer höga zonen" var ett testfel, inte motorfel: motorns mjuka begränsare komprimerade zonen med gain 0,8. Nivåerna sänkta till 0,05/0,4 (AudioTests.cpp, spelartestet). Zonvalet var rätt.
+- Zonerna sparas i eget barn "BassMultiSamples" (PluginBase.cpp, instrumentMultiSamplesToValueTree/FromValueTree). Skrivs bara när zoner finns, så gamla projekt är byte för byte oförändrade. Rundturstest i StateTests.cpp ("Multi: …").
+- Kvar: TYPE-väljaren (sampleSource Single/Multi) i UI, testrad, SFZ-import.
+
+## Multisampling – TYPE-väljare i UI (Arbetare 1, 28 okt)
+- SAMPLE-fliken (`Source/Ui/Modules.cpp` SamplePage): ny ruta Single/Multi (`sourceBox`, kopplad till `sampleSource`) i översta raden. I Multi tar LOAD flera filer på en gång (zoner), rottonen läses ur filnamnet (Piano_C3, bass_048; annars C4), tangentområdena sprids automatiskt halvvägs mellan rottonerna. X rensar alla zoner, etiketten visar antal zoner. HEAR är av i Multi.
+- PluginBase: `addInstrumentMultiSamples` / `clearInstrumentMultiSamples` (PluginBase.cpp, före `syncSliceRows`).
+- Inte gjort: zonredigering (tangentområde/anslag per zon i UI), SFZ-import (steg 4), zoner i preset-export.
+**Testrad DAW (Lemon):** SAMPLE-fliken på ett baslager, välj Multi, LOAD och markera 3 filer namngivna t.ex. Bass_C2, Bass_C3, Bass_C4: etiketten visar "3 zones"; spela C1, C3, C5 från pianorullen/MIDI: varje tangent låter från närmaste zon och tonhöjden följer tangenten; X tömmer; byt till Single: den vanliga samplingen låter som förut; spara och öppna projektet: zonerna finns kvar.
+
+## Multisampling – SFZ-kärnan (Arbetare 1, 28 okt)
+- `MultiSampling::parseSfz`, `MultiSampleSet::addSfz`, `addFile(file, explicitMapping)` i `Source/Core/MultiSample.cpp`. Stöd: `<control> default_path`, `<global>/<master>/<group>/<region>` med arv, opcodes sample/key/lokey/hikey/pitch_keycenter/lovel/hivel/tune/transpose, tonnamn (c4 = 60).
+- Ingen UI-koppling och inget KickbaseTool-kommando: Arbetare 2 tar dem plus testerna (projektledarens beslut).
+- Bygget grönt förutom ett tidstest (wavetable: 120 tabeller på 30,7 s i Debug, tröskeln gick över medan flera byggen kördes); multisampletest och helpcheck gröna. Ej verifierat mot en riktig .sfz-fil än.
+- DAW-test (Lemon): inget nytt att testa än, funktionen syns först när UI/verktyg kopplats.
+
+## ANALYZER-mätningar + FUNDAMENTAL DUCK-visning (Arbetare 1, 28 okt)
+- ANALYZER-mätningarna (kick vinner, svansen tar basen, RAND på bas, 200 Hz-lera) fanns redan: `MixAnalysis.cpp:782,795,856-899,1072` (cde9d61, e44fad8) med tester. Noten i PROGRESS-lc.md:115 är föråldrad. Inget att bygga.
+- FUNDAMENTAL DUCK i motorns vågvisning: markör "DUCK -x.x dB" nere till vänster i `WavetableView` (`OscPanel.cpp` paintDuck, timerCallback läser `fundamentalDuckDb`). Ingen ny parameter, ingen ny ljudtrådskod.
+- DAW-test (Lemon): slå på FUNDAMENTAL DUCK med en bas och en kick; spela, markören ska tändas i basens oscillatorbild medan kicken klingar och släckas efteråt.
+
+## Broms B: BRAKE-knapp i JOG (Arbetare 1, 28 okt)
+- Broms A (kurvpresets TAPE STOP/SPIN UP/SLOWDOWN) fanns inte i koden; byggde bara B enligt planen.
+- BRAKE i JogPanel (Source/Ui/JogPanel.h, startBrake/stepBrake): engångsbroms, stannar på 1,2 s, vilar 0,3 s, snurrar upp 0,9 s till JOG SPEED. Skriver bara jogManual (ingen ny parameter, inget sparas). Hand på hjulet avbryter.
+- Build grön utom den lastkänsliga wavetable-tiden (41 s), orelaterad.
+- DAW-test: spela mönstret i DAW, öppna JOG, tryck BRAKE: tempot ska sakta in till stopp, vila, snurra upp igen; ta tag i hjulet under bromsen: bromsen avbryts.
+- Kvar i JOG-resten: LOOP in i JOG-panelen (ej gjort).
+
+## GHOST NOTES-rullgardin + FOLLOW av vid scroll (Arbetare 1, 28 okt)
+- GHOST-knapp i pianorullens knapprad (`PianoRoll.cpp` showGhostMenu): flerval över KICK och aktiva instrument (färgprick, ALL ON/ALL OFF), menyn står kvar öppen. Maskan `ghostMask` i `PluginBase.h` delas med POP OUT, sparas inte i projektet, standard alla på.
+- FOLLOW slås av när man drar den horisontella rullningslisten (`scrollBarMoved`).
+- Ingen ny parameter. Build Debug all grön ("Alla tester gick igenom").
+- DAW-test (Lemon): öppna pianorullen, GHOST, bocka av en instrument: dess spöktoner försvinner; menyn stannar öppen. Spela med FOLLOW på och dra rullningslisten: FOLLOW släcks.
+
+## Glide-plus i pianorullen (Arbetare 1, 28 okt)
+- Så ritas glide idag: en glide-ton (`note.slide`, rosa) har en ramp från tonhöjden som klingar (`pitchBefore`) till notens mitt vid dess slut (`PianoRoll.cpp` paint, "Rampen"); högerdrag på tomt rutnät ritar ett glidestreck (`addStroke`) som blir en glide-ton och fastnar på en ton som börjar vid strecket slut.
+- Nytt: plus-ikon vid glide-tonens slut (`plusRect`/`updatePlus`), under tonen om musen är under notens mitt, annars ovanför. Drag från plusset startar ett glidestreck från notens mitt/slut och snappar till tonen under pekaren (mouseDrag). Klick utan drag gör inget. Ingen ny parameter, ingen ljudtrådskod.
+- Build Debug all grön.
+- DAW-test (Lemon): skapa en glide-ton (GLIDE på, rita), för musen över den: plus syns ovanför/under efter musens sida. Dra från plusset till en annan ton: strecket snappar till tonens början och en ny glide-ton skapas.
+
+## Egen färgväljare för instrument (Arbetare 1, 2026-10-28)
+- Instrumentmenyn > Color > "Custom colour...": fri färgväljare i en CallOutBox (`InstrumentMenu.h`, klassen `ColourPicker`). Varje ändring sparas direkt i projektet som palettvalen (`setLayerColour`), inga nya parametrar.
+- Bygge `Debug all` grönt, alla tester gick igenom.
+- DAW-test (Lemon): högerklicka ett instrument > Color > Custom colour..., dra i färgen. Kolla att pianorullens noter och spöknoter, radkortet och instrumentväljaren byter färg medan du drar, och att färgen finns kvar efter att projektet sparats och öppnats.
+
+## SOUNDSTAGE: bussuppdelning + flerval av källor (Arbetare 1, 2026-10-28) – PLAN
+- Idag: WIDTH / MONO BELOW / ENHANCE gäller hela summan (`Master.cpp:116-155`, efter master-EQ). Alla källor (kick, instrument 1-10, FX A-E = 16, `Mixer.h:15`) summeras i `maxBus` av `Mixer::mix` (`Mixer.cpp:108`).
+- Uppdelning: 16 bool-parametrar `mix<Källa>Stage` (en per källa, SIST i layouten via `Mixer::addStageParameters`, standard = på = dagens ljud; ändrat från masken). Källor med bit av går i en ny `stageSkipBus` i stället för `maxBus` (samma gain/pan/send, bara annan mål-buss). Mastern kör EQ på båda (en andra `SourceEq` med samma parametrar, linjär så EQ(a)+EQ(b)=EQ(a+b)), kör stereoblocket bara på summan av de valda, lägger sedan tillbaka skip-bussen före DC/drive/limiter.
+- Ljudtråden: ingen allokering (bussen förallokeras som `maxBus`). När alla bitar är på (standard) körs ingen skip-väg alls: samma kod och samma ljud som idag, rendersig oförändrad. Merkostnad annars: en EQ + en buss-addition per block.
+- Inga ID:n, preset-index eller hash ändras. Bypass-bussen (förbi maximizern) berörs inte.
+- UI: SOUNDSTAGE-sidan får en rad källknappar (flerval, färgprickar som GHOST) och tydligare namn/tips: MONO BELOW -> "BASS MONO", WIDTH -> "WIDTH (sides)". Hjälptexter i Help.cpp.
+
+## LIVE CODE autocomplete (Arbetare 1, 2026-10-28)
+- `LiveCodeComplete.h`: fler metoder/globaler (ply, iter, scale, arp, mask, range m.fl.), `sine.`/`saw.` m.fl. ger metodlistan. `LiveCodePage.cpp` codeDocumentTextInserted: öppnas automatiskt vid '.', '"' och efter 2 bokstäver; stängs vid andra tecken så Enter inte sväljs efter ')' eller mellanslag. Ctrl+Space som förut. Inga parametrar.
+- Build Debug all grön, alla tester gick igenom.
+- DAW-test (Lemon): LIVE CODE: skriv `no` -> lista öppnas; `s("bd").` -> metoder; Enter efter `)` ger ny rad; `sine.` ger metoder; Ctrl+Space öppnar manuellt.
+
+## SOUNDSTAGE: genomfört (Arbetare 1, 2026-10-28)
+- Kod: `Mixer::addStageParameters`/`inStage`, `mix(..., skipBus)` (Mixer.cpp), `MasterSection::process(..., skip)` med egen `eqSkip` (Master.cpp), `stageSkipBus` i InstrumentProcessor (summas efter stereoblocket, före DC/drive/limiter; masterfadern gäller även den). UI: 16 knappar "AFFECTS" i `SoundstagePage.cpp`, WIDTH/BASS MONO med tydligare tips, Help.cpp-text för *Stage och MAX.
+- Build Debug all grön, alla tester igenom (LNK1163 på skadade .obj: raderade Modules/StepSequencer .obj och byggde om). paramtest 3048/961 ok.
+- DAW-test (Lemon): SOUNDSTAGE: alla knappar på = låter som förut. Stäng av KICK, höj WIDTH till 200 % och slå på BASS MONO: kicken ligger orörd, övriga breddas. Stäng av en instrumentknapp: den hoppar över bredd men får master-EQ/limiter. Spara/ladda projekt behåller valet.
+
+## Gemensam hjälpdialog (Arbetare 1, 2026-10-28)
+- `Source/Ui/HelpDialog.h/.cpp`: markdown-lik vy (rubriker, punkter, **fet**, `kod`) i Viewport med rullningslist, icke-modal DialogWindow med en flik per ämne. Nytt ämne = en rad i `topics[]` + en text. `HelpDialog::setupButton` ger HELP-knapp med tooltip. Fliken SOUNDSTAGE har Tobias text ordagrant. Inga parametrar.
+- HELP-knappar: pianorullen (nedre raden, längst till höger; den långa notis-tooltipen kortad), LIVE CODE (efter FORMAT), SOUNDSTAGE (vid AFFECTS). Motorerna och övriga flikar kommer en i taget.
+- Build Debug all grön, helpcheck 0 utan förklaring.
+- DAW-test (Lemon): klicka HELP i pianorullen: dialogen öppnas på PIANO ROLL, rullningslisten fungerar, flikarna LIVE CODE/SOUNDSTAGE byter text. HELP på LIVE CODE och SOUNDSTAGE öppnar rätt flik; är dialogen redan öppen byter den flik. Hovra HELP: tooltip. Esc stänger.
+
+## HELP för FILTER + engelska UI-strängar (Arbetare 1, 2026-10-28)
+- FILTER-fliken har HELP-knapp (FilterPanel.cpp, switchRow) och ämnet FILTER i HelpDialog.cpp.
+- Engelska: SOUNDSTAGE-hjälpen, LiveCodePage flikar CODE/CONSOLE och tom-konsol-texten, Help.cpp 'from instrument'. Inga tester eller sparade layouter använde de gamla namnen.
+- Bygge grönt, alla tester gick igenom.
+- DAW-test (Lemon): öppna FILTER-fliken, klicka HELP, kontrollera att FILTER-fliken visas; LIVE CODE ska visa CODE/CONSOLE.
+
+## HELP för FM och MIX (Arbetare 1, 2026-10-28)
+- FM-fliken: HELP-knapp uppe till höger (FmPanel.cpp, bredvid FILTER), ämnet FM. MIX-fliken: HELP-knapp bredvid WIDE (InstrMixPanel.cpp), ämnet MIX; rubriken kortad till "COMBINED WAVEFORM (110 Hz)" så knapparna får plats.
+- Bygge grönt, alla tester gick igenom.
+- DAW-test (Lemon): öppna FM- och MIX-flikerna, klicka HELP, kontrollera rätt flik och att knapparna inte täcker rubrik eller knappar.
+
+## HELP för SAMPLE (Arbetare 1, 2026-10-28)
+- SAMPLE-fliken: HELP-knapp uppe till höger (Modules.cpp, SamplePage::resized, vänster om FILTER-rutan), ämnet SAMPLE (HelpDialog.cpp sampleText). Projektledaren godkände ändringen i Modules.h/.cpp (bara knapp och ämne).
+- Bygge grönt, alla tester gick igenom.
+- DAW-test (Lemon): öppna SAMPLE-fliken, klicka HELP, kontrollera att SAMPLE-fliken visas och att knappen inte täcker FILTER-rutan eller etiketten.
+
+## HELP för ENV (Arbetare 1, 2026-10-28)
+- ENV-sidan: HELP-knapp bredvid instrumentväljaren (EnvPage.cpp, resized), ämnet ENV (HelpDialog.cpp envText).
+- Bygge grönt, alla tester gick igenom.
+- DAW-test (Lemon): öppna ENV, klicka HELP, kontrollera att ENV-fliken visas och att knappen inte täcker väljaren.
+
+## HELP för LFO (Arbetare 1, 2026-10-28)
+- LFO-sidan: HELP-knapp bredvid SHOW ONLY SELECTED (LfoPage.cpp, resized), ämnet LFO (HelpDialog.cpp lfoText).
+- Bygge grönt, alla tester gick igenom.
+- DAW-test (Lemon): öppna LFO, klicka HELP, kontrollera att LFO-fliken visas och att knappen inte täcker SHOW ONLY SELECTED.
+
+## HELP för MATRIX (Arbetare 1, 2026-10-28)
+- MATRIX-sidan: HELP-knapp efter CLEAR ALL (MatrixPage.cpp, resized), ämnet MATRIX (HelpDialog.cpp matrixText).
+- Bygge grönt, alla tester gick igenom.
+- DAW-test (Lemon): öppna MATRIX, klicka HELP, kontrollera att MATRIX-fliken visas och att knappen inte täcker CLEAR ALL eller räknaren.
+
+## HELP för EFFECTS (Arbetare 1, 2026-10-28)
+- EFFECTS-sidan: HELP-knapp till vänster om FX Preset (EffectsPage.cpp, resized), ämnet EFFECTS (HelpDialog.cpp effectsText).
+- Bygge grönt, alla tester gick igenom.
+- DAW-test (Lemon): öppna EFFECTS, klicka HELP, kontrollera att EFFECTS-fliken visas och att platsraden fortfarande får plats.
+
+## HELP för MASTER (Arbetare 1, 2026-10-28)
+- MasterPage.cpp (resized): HELP-knapp till vänster om Master Preset i headern; ämnet MASTER (HelpDialog.cpp masterText) täcker MIXER och MAXIMIZER.
+- Bygge grönt, alla tester gick igenom.
+- DAW-test (Lemon): öppna MASTER i både MIXER- och MAXIMIZER-vyn, klicka HELP, kontrollera att knappen syns och inte täcker flikarna.
+
+## HELP för SIDECHAIN (Arbetare 1, 2026-10-28)
+- SidechainPage.cpp (resized): HELP-knapp till höger om Preset i vänsterkolumnen (preset blir 82 px bred); ämnet SIDECHAIN (HelpDialog.cpp sidechainText) täcker MODE, LENGTH, kurva, HALFTIME, DUCK/DEPTH, scope, FUNDAMENTAL DUCK och SIDECHAIN AFFECTS.
+- Bygge grönt, alla tester gick igenom.
+- DAW-test (Lemon): öppna SIDECHAIN, klicka HELP, kontrollera att knappen syns och att preset-namnet fortfarande går att läsa.
+
+## HELP för SETTINGS (Arbetare 1, 2026-10-28)
+- SettingsPage.cpp (resized): HELP-knapp (44 px) längst till höger i raden med OPTIMIZATIONS/ABOUT; ämnet SETTINGS (HelpDialog.cpp settingsText) täcker WINDOW SIZE, OPTIMIZATIONS, ABOUT, AI LINK, FOLDERS, WAVETABLE PACK och FX-versionen.
+- Bygge grönt, alla tester gick igenom.
+- DAW-test (Lemon): öppna SETTINGS (instrument och FX), klicka HELP, kontrollera att knappen syns och att OPTIMIZATIONS-knappen fortfarande går att läsa.
+
+## HELP för KICK (Arbetare 1, 2026-10-28)
+- Modules.cpp (KickModule, resized): HELP-knapp (44 px) till höger i källraden (SYNTH/SAMPLE-reglagen), syns i båda vyerna. Bara knapp + include i Modules.h/.cpp; projektledaren informerad. Ämnet KICK (HelpDialog.cpp kickText) täcker SYNTH-vyn, SAMPLE-vyn (bibliotek, LOAD, MODE, OFFSET) och källorna.
+- Bygge grönt, alla tester gick igenom.
+- DAW-test (Lemon): öppna KICK i SYNTH- och SAMPLE-vyn, klicka HELP, kontrollera att knappen syns och att balans-texten fortfarande får plats.
+
+## TOP DECAY (kickNoiseDecay 5–2000 ms)
+- `Params.cpp:196`: intervall 5–400 → 5–2000 ms, mittpunkt 60 → 100 ms, default oförändrad (60 ms). Inget nytt parameter-ID. Värdet lagras som riktig ms, så gamla presets/projekt låter lika.
+- Rösten slutar vid kickens LENGTH (`KickEngine.cpp:210`, `lengthSeconds`), så en lång topp-svans kapas av LENGTH. Texten i `Help.cpp:166` säger det.
+- Test: build Debug all grön, presettest, paramtest, helpcheck OK; rendersig körd (inga lagrade referenshashar i repot att jämföra mot; ändringen rör bara reglagets mappning, inte lagrade ms-värden).
+- DAW (Lemon): vrid TOP DECAY, lågt läge ska vara lika lätt att ställa som förr; höga värden ger lång luft om LENGTH är lång.
+
+## Broms A: BRAKE-kurvan sparas med projektet (Arbetare 1, 28 okt)
+- Broms A (cherry-pick av 1193cc9 från pl-presets, konflikten med LOOP-koden löst genom att bara ta rullistan): VINYL/TAPE/HARD/SLOW.
+- `PluginBase.cpp:613` sparar `brakeCurve` som state-property (som `jogKind`, inget host-parameter-ID, så ID/preset-index/hash rörs inte); `PluginBase.cpp:727` läser med standard 0 (VINYL = dagens beteende, gamla projekt låter lika).
+- Test: `Tools/StateTests.cpp:952,970` (spara -> ladda ger samma kurva). Debug all grön utom wavetable-tidtestet (lastkänsligt, orelaterat); persisttest OK vid ensam körning.
+- DAW (Lemon): välj TAPE, spara projektet, öppna det igen: kurvan ska vara TAPE.
+
+## Merge w2 + FX-UI: Echo TIME MS, Flanger SHAPE/SPREAD (Arbetare 1, 28 okt)
+- Mergade w2 (a601d2e, Echo-kärnan; 69f1ab0, Flanger) in i play-pack (dc4e972).
+- Raderna i FX-slotten byggs av `Effects::knobs` (EffectsPage.cpp:221, stoppar på knobsPerSlot = 11), så elfte ratten TIME MS och Flanger SHAPE/SPREAD dyker upp utan layoutändring; bredden delas av antalet rattar (EffectsPage.cpp ~262).
+- Hjälptexter: `Help.cpp:364-365` (Flanger SHAPE, SPREAD), `Help.cpp:457` (TIME MS).
+- Debug all grön, alla tester gick igenom.
+- DAW (Lemon): Echo i en FX-plats, TIME MS 0 låter som förut, 500 ger fast 500 ms; Flanger SHAPE Triangle och SPREAD 0/25/100 %; kolla att elva rattar ryms i FX-raden.
+
+## HELP för INSTR, ANALYZER och AI CHAT (Arbetare 1, 28 okt)
+- Nya ämnen `instr`, `analyzer`, `aiChat` i HelpDialog.h/.cpp. HELP-knappar: INSTR vid LISTEN i grafens hörn (Modules.cpp `layoutInstrPage`), ANALYZER längst till höger i underflikraden (AnalyzerPage.h), AI CHAT i huvudraden efter MEM (AiChatPage.cpp).
+- Texterna bygger på sidornas egna tooltips.
+- Kvar utan HELP: GATE (FxEditor), KickLibraryPanel, HistoryPanel, AboutPanel, OptimizationsPanel (små/ytliga, tas om Tobias vill).
+- DAW (Lemon) att kolla: att INSTR-knappen inte täcker grafens handtag, och att ANALYZER/AI CHAT-knapparna får plats vid smal bredd.
+
+## 5b POS DELAY / LENGTH / CURVE per motor (Arbetare 1, 28 okt)
+- Plan: `docs/work/plan-start-per-motor.md`. 28 nya parametrar sist i InstrumentField (`Params.h`, `aDelayMs` … `fmCurve`; `ParamID::timingField (engine, which)`), registrerade i `Params::addEngineTimingParams`.
+- DSP: `InstrumentSynth::engineGate` (InstrumentSynth.cpp) multiplicerar nivån för OSC 1–3, NOISE, SUB, FM. Exakt 1.0 när POS DELAY och LENGTH är 0, så rendersig är oförändrad. POS DELAY (ms eller SYNC från bpm) låses vid noteOn; oscillatorfasen nollas när fördröjningen passerat.
+- UI: TIMING-vy i MIX (`InstrMixPanel`): POS DELAY, SYNC, LENGTH, CURVE per motor; gul varning "POS DELAY is longer than the note". Hjälptexter i `Help.cpp` och MIX-hjälpen.
+- SAMPLE-faktorn (motor 3) klar efter merge av fb7dcbe: sample-grenen i InstrumentSynth.cpp hoppas över till noteTime >= POS DELAY (samplePosition och sampleAge står still), och engineGate (3) multiplicerar editorGain. Ingen egen test (kräver laddat sample); DAW (Lemon): ladda ett sample, POS DELAY 200 ms på SAMPLE, samplet ska börja från sin början efter 200 ms.
+- Nytt test `tool delaytest` (`Tools/AudioTests.cpp`): POS DELAY 100 ms och SYNC 1/16 vid 120 BPM tystar bara OSC 1 i notens första 100 ms, LENGTH avtar, CURVE faller snabbare.
+- DAW (Lemon) att kolla: TIMING-knappen i MIX, att alla standardvärden låter som förut, POS DELAY 100 ms på OSC 2 ensam, SYNC 1/4, LENGTH + CURVE.
+- Fix: SAMPLE-motorns LENGTH/CURVE multiplicerar nu editorGain (InstrumentSynth.cpp:601) i stället för att skrivas över när AMP är på.
+- HELP-flikar: nya ämnen GATE, HISTORY, ABOUT, OPTIMIZATIONS (`HelpDialog.h`, texter i `HelpDialog.cpp`), HELP-knapp i GateModule (Modules.cpp), HistoryPanel.h, AboutPanel.cpp, OptimizationsPanel.cpp. KickLibraryPanel har ingen egen knapp: den ligger i kickens SAMPLE-vy som redan har kick-HELP. build Debug all grön, helpcheck 0, delaytest ok.
+- DAW (Lemon) att kolla: HELP-knappen syns och öppnar rätt flik på GATE (Kickbase FX), MENY > History, SETTINGS > ABOUT och OPTIMIZATIONS, även vid smalt fönster.
+
+## snap-ticks (2026-10-28, Arbetare 1)
+- Rattar vars värdetext slutar på " st" (KnobComponent::semitones) fastnar vid ±12/±24 (±0,4 st, Shift = fri) via `ModSlider::snapValue`, och får små tickmärken utanför ringen (`paintOverChildren`). Ingen parameter ändrad. Bygge + tester gröna; ej provat för hand i Lemon.
+## kick-ui (2026-10-28, Arbetare 1)
+- MIX-knopp (`kickMix`, sist i layouten, 0.5 = som förut) ersätter SYNTH/SAMPLE-reglagen; synthOn/sampleOn finns kvar som parametrar. Motorn: `KickEngine.cpp` renderVoice.
+- Tre flikar SYNTH | ENVELOPE | SAMPLE (kickTab 2 = ENVELOPE, plotten har egen flik), smalare presetväljare (170 px), luft runt flikarna.
+- Hjälptext + ToolLayer uppdaterade. Bygge + alla tester + paramtest + helpcheck gröna.
+- Öppet: gamla presets med synthOn=false saknar reglage för att slå på det igen (MIX till höger ger nästan samma).
+- synthOn=false: mappas INTE till MIX, eftersom ljudet inte blir identiskt (synthOn=false tvingar Replace-läge, MIX=1 behåller valt sampleMode). Därför finns små SYNTH/SAMPLE-knappar kvar bredvid MIX (Modules.cpp, sourceRow). Inga ID/index ändrade.
+
+## glass-breadcrumb (Arbetare 1, 2026-10-28)
+- Gren `glass-breadcrumb` = snap-ticks + kick-ui + detta (kedjad). Brödsmulan ritas som glasdisplay med glödtext: `Theme::paintGlassDisplay` / `Theme::drawGlowText` (Theme.h), anropas i `TabbedPanel.h` paint.
+- Dubbletten (flikens namn som etikett i underflikarnas remsa) borttagen; krymper inte layouten (labelArea oanvänd).
+- Build + alla tester gick igenom. Skärmdump: scratchpad `crumb-analyzer.png` (KickbaseTool snapshot).
+
+## timing-levels (Arbetare 1, 2026-10-28)
+- Gren `timing-levels` = glass-breadcrumb + TIMING/LEVELS (kedjad). Egen flik TIMING bredvid MIX (`Source/Ui/InstrTimingPanel.*`), all timing-UI borttagen ur MIX.
+- 28 nya parametrar sist i layouten (`addEngineTimingExtraParams`, Params.cpp): MODE (GATE/SHIFT), LENGTH SYNC, DELAY x, LENGTH x per motor. Standard = som förut. SYNC-tid = antal x notvärde x takt, låst vid note-on. Hjälptexter + helpcheck + paramtest gröna.
+- SHIFT: motorn startar om efter POS DELAY; FM-envelopen och OSC-warp-envelopen startar också om. Pitch-envelopen är gemensam och startas inte om.
+- Diagram per motor (`gateAt`) med spelhuvud och släpplinje (atomer `notePlayTime`/`noteOffTime`, skrivs av senast spelade rösten).
+- LENGTH SYNC "TO BEAT" hoppad över: synthen har ingen taktposition, bara `bpm`.
+- blocksizetest: "tungt läge med 2/4/8 röster (stealing)" FALLER, men också på baslinjen 57ddb1a (byggd i separat worktree) med samma symptom. Alltså äldre fel, inte från TIMING. Behöver utredas separat (röststöld beror på blockstorlek, första skillnaden vid sample ~71-360).
+- Skärmdump: `%TEMP%\timing2.png` (snapshot instrument 20, KB_SOURCETAB=8).
+
+## collisions + detune (Arbetare 1, 2026-10-28)
+- Gren `collisions` = timing-levels + detta (kedjad). COLLISIONS i `SpectrumPage.cpp`: styrka efter gap (starkaste minus näst starkaste): 0 dB = full, 18 dB eller mer = maskerad, ingen markering. Tröskel -50 dBFS (förut -66). Blå (svag) till röd (besvärlig), max alpha 0.5, fyra band som tonar ut nedåt, ingen allokering i paint. Konstanterna överst i filen. Engelsk text och tooltip uppdaterade. Nytt `KB_COLLISIONS=1` för skärmdump (flik 30).
+- OSC 1-3 DETUNE standard 12 ct -> 0 ct (Params.cpp:275). Bara standardvärdet; index och ID oförändrade.
+- blocksizetest (voice stealing) felar redan på baslinjen 57ddb1a och alla grenar ovanpå (timing-levels, collisions). Läggs på Arbetare 2 av projektledaren (InstrumentVoices).
+
+## JOG förenklad (Arbetare 1, 2026-10-28)
+- Gren `jog-simple` = collisions + detta (kedjad, innehåller allt). Ett hjul utan lägen: JOG SPEED, RESET, BRAKE och TAPE/VINYL borta (`jogSpeed` finns kvar som oanvänd parameter så ordningen är oförändrad; `Modulation.cpp:69`). Inget sparas, ingen migrering.
+- LOOP FROM/TO i ticks (1 tick = 1/64 takt, visas bar.beat.sixteenth.tick): `TickField` i `Source/Ui/JogPanel.h` (klick/Enter, skriv, Enter/Esc, Upp/Ned = STEP). STEP 1/4-1/64 (standard 1/16), TEST BPM + fält 60-220 (standard 140). Konstanter överst (`JogConfig`). `TransportClock::ticksToPpq` (TransportClock.cpp:71).
+- Test: tick-omvandling + visa/tolka-rundtur i `Tools/StateTests.cpp` (persisttest). Debug all grön, alla tester gick igenom. blocksizetest: se rapport (stealing-felet är äldre, på baslinjen).
+- DAW (Lemon): öppna JOG: ett hjul, LOOP på, FROM 1.1.1.0 / TO 5.1.1.0; skriv en ny tid + Enter, Esc avbryter; Upp/Ned flyttar ett STEP; TEST BPM 140 spelar utan att DAW:en rullar.
+
+## Echo tillbaka till taktsteg (Arbetare 1, 28 okt)
+- Tobias beslut 28 okt: Echo räcker med taktsteg, ingen ms-ratt, knobsPerSlot oförändrat (10). Backade a601d2e (Echo TIME MS) i Effects.cpp/.h, FxTests och Help.cpp. Flanger SHAPE/SPREAD ligger kvar (P6/P7, rörs inte). RING (B) finns redan med OSC2/OSC3/båda och tester.
+- Debug all grön. Gren: fx-echo-steps (efter jog-simple).
+
+## Slicer-pianorulle (Arbetare 1, 28 okt)
+- Gren `slice-roll` (efter fx-echo-steps) har allt. Steg 1 f257306 (datamodell: en rad `Kind::slices`, pitch = skivindex - 64, gamla sliceN migreras vid laddning), steg 2 8f3fff3 (PianoRoll med skivor som tangenter, `PianoRoll.cpp` sliceCount/lowPitch/highPitch), steg 3 (denna commit): skivraden i StepSequencer ritas som miniatyr och öppnar rullen vid klick (`StepSequencer.cpp` usesRoll), taket på 16 skivrader borta, hjälptexter uppdaterade.
+- Debug all grön, alla tester gick igenom. Känd kantfall: klick på samma instruments etikett medan skivrullen visas växlar inte tillbaka (selectLayer returnerar tidigt).
+- DAW (Lemon): ladda en sampling, skär i fler än 16 skivor, klicka skivraden i mönstret: rullen visar "Slice 1..N" som tangenter; en not på Slice 20 spelar skiva 20.
+
+## Parameterlanes fas 1 (Arbetare 1, 28 okt)
+- Gren `slice-roll` (efter fx-echo-steps) har allt, inklusive kantfallet för etiketten (`StepSequencer.cpp` mouseDown anropar `onLayerSelected` även när lagret redan är valt).
+- Bara ytan, ingen ljudkod: `PianoRoll.h` `Lane`/`lanes` (max 4), `PianoRoll.cpp` resized/paint/mouseDown/mouseDrag (`Drag::splitter`), `showLaneMenu`, `addLane`. Lane 0 = VEL (alltid först, kan inte tas bort). Höjder är medlemmar (sparas inte i presetet). Övriga lanes visar bara en platshållare. Hjälptext i `HelpDialog.cpp:9`.
+- Debug all grön, alla tester gick igenom. Ej synligt verifierad i en snapshot.
+- DAW (Lemon): pianorullen: "+ LANE" under tangenterna lägger till en lane; klicka namnet för att byta/ta bort; dra den tunna listan ovanför en lane för att ändra höjd; VEL fungerar som förut.
+## Undersökning: 12 FX-kanaler + dynamiskt antal synliga (Arbetare 1, 28 okt, ingen kod)
+Underlag: `docs/work/plan-fx-send-matrix.md`. Slutsats: en konstant (`Effects.h:23`) styr nästan allt, så 12 är mest siffror och en static_assert; det svåra är att (a) kanal 12 får bokstaven L, (b) alla nya parametrar måste läggas SIST i layouten, (c) UI:t har fast layout för 11.
+
+### Hårdkodat (fil:rad)
+- `Effects.h:23-25` numEffectChannels/slotsPerChannel/knobsPerSlot; `:190-191` SignalTap-arrayer per kanal (följer konstanten).
+- `PluginBase.cpp:14` static_assert `numEffectChannels == 11` -> måste ändras till 12 (avsiktligt stopp).
+- `Effects.cpp:81-86` kanalbokstav `'A'+channel`: kanal 12 = "L", id `fxL1Type`, `fxLLevel`, `fxLDuck`.
+- `Effects.cpp:91` isEffectParameter: tillåter A..'A'+N-1 och undantar bara `fxKey`. Med L blir "fxL.." träff; kolla att inget annat id börjar på `fxL` (grep). `fxKey` (K) är redan undantaget.
+- `Effects.cpp:2326-2350` Impl: ~12 st `std::array<..., numEffectChannels>` (kedjor, strips, comp, level, duck, buffrar, active/sent/idle); loopar `:346, 560, 2360, 2372, 2400, 2447`; jlimit i accessorer `:2424, 2437, 2442`. Följer konstanten, inget att skriva om.
+- `Params.cpp:67-74` valen "None, FX1..FX11" byggs av konstanten; sparat värde är index, så "FX12" sist ändrar inga gamla värden. `:220,240` kickFxAmount/fxAmount oförändrade.
+- `Mixer.h:15` numSources = 1+10+N -> 23. Alla Mixer-arrayer `:56-58` och loopar `Mixer.cpp:32,53,59,85` följer. Id: `Mixer.cpp:22-27` ger `mixFxL<Gain|Pan|Duck|Max|Stage>`.
+- `InstrumentProcessor.cpp:992-1017` per-källa-sändning (en kanal + amount + SEND-läge); `:1019-1038` channelDuck-array och retur-loop; `:1041` stageSkip över numSources. Matrisen ersätter/utvidgar `:992-1002` och `:1008-1017`.
+- `PluginBase.cpp:92-113` fxChannelUsageMask (bitmask `1<<channel`, int räcker till 31); `:510,520` fxPresetNames jlimit; `:609,723` state spara/ladda `presetFx<n>`; `:1531,1699,1715,1766` användarpreset + firstFxChannel; `PluginBase.h:48,139-140,638`.
+- UI med fast 11: `EffectsPage.h:80` channelButtons-array; `EffectsPage.cpp:272` (tooltip "FX1-FX11"), `:295,335,342,351,371,386` (`perColumn=(N+1)/2`, två kolumner); `MixerPage.cpp:232,263,283,288,332,347,358,363,365` ("FX CHANNELS n/N"); `SoundstagePage.h:23-24`, `.cpp:26,62` (stageButtons per källa, 23 knappar); `PresetButton.cpp:259,359,369,378,402` (val av ledig kanal, `result <= numEffectChannels`); `Modules.cpp:1166` FxSendControl (en kanal) -> blir lista per kanal; `StepSequencer.cpp:33,161` använder fxAmount som radratt.
+- Verktyg/text: `ToolLayer.cpp:123-126,627,763` (kanalnamn A..N, siffror 1..N), `LiveCodeComplete.h:161`; hjälp/texter `Help.cpp:147,150,153-155`, `HelpDialog.cpp:87,264,267` (nämner FX1-FX11, fxA..fxK; `:87` säger t.o.m. FX A-E = redan föråldrat).
+- Inte berörda: `Modulation.h:37` (egen numSources), `MixAnalysis.h:30` (kick, instrument, master), `LiveCodePage.h:149` (lockButtons, annat 11).
+
+### Sidechain / in- och utgångar
+- Instrument har bara utgångar (Main, Kick, Instr 1-10: `InstrumentProcessor.cpp:48-60`), ingen extern sidechain-ingång; FX-versionen har en stereoingång (`FxProcessor.cpp:25-27`). Effektkanalerna får inga egna bussar, så 12:e kanalen kräver inga nya bussar.
+- SIDECHAIN-effekterna lyssnar på interna källor (`SourceSignals`, `InstrumentProcessor.cpp:1023-1030`: kick + instrument) och duckning är per kanal (`fxLDuck` + `channelDuck`). Kanal 12 följer med automatiskt.
+- FX-pluginet har egen sändlogik (`Fx/FxProcessor.cpp:88,146`, fxKey, fxAmount): matrisen behöver ett beslut där (troligen bara kanal 1 som idag).
+
+### Risker
+1. **Parameterordning**: JUCE-layouten är ordningsberoende för värdens automation. Kanal 12:s `fxL*`, `mixFxL*` och dess Stage-bool genereras i slingor över kanaler/källor, så de hamnar i MITTEN av layouten (efter K, före det som kommer sedan) och skjuter alla senare index. De måste läggas i egna funktioner SIST (efter alla 132 send-parametrar eller strax före, men efter allt befintligt) med oförändrade ID för resten. Samma för Mixer::addStageParameters. Kontrollera mot paramtest och preset-hash.
+2. **Rendersig**: 12:e kanalen får bara ljud om något skickas dit; `isIdle` hoppar över tomma kanaler (`InstrumentProcessor.cpp:1034`), så tom kanal 12 ger exakt samma ljud. Kontrollera ändå att summeringen i Effects inte ändrar flyttalsordning (ny kanal sist i summan).
+3. **132 nya send-parametrar** (11 källor x 12 kanaler) + Help-texter för helpcheck; paramtest/helpcheck-listor måste få dem. Kickens fxChannel/fxAmount/fxSend behålls som de är; gamla presets mappas vid laddning (amount>0 på vald kanal => motsvarande matriscell), utan att ändra gamla ID.
+4. **Två sändningar från en källa** summeras: `effects.send` (`InstrumentProcessor.cpp:1002`) gör `+=` i kanalens buffert? Verifiera (Effects.cpp send) så att insert-läget (torr = 1-amount) bara gäller den gamla enkanalsvägen.
+5. **Dynamiskt antal**: antalet sparas som state-property (som `jogKind`, `PluginBase.cpp:613`), inte parameter. Kanaler som används av ett laddat preset måste alltid synas (bitmask `fxChannelUsageMask` finns redan, `:92`). Ta bort kanal med effekter/sändningar: fråga först. Alla fasta arrayer i UI måste bli dynamiska (EffectsPage kolumnlayout, MixerPage räknare, SoundstagePage 23 knappar: bredd/höjd räcker inte troligen, behöver scroll eller två rader).
+6. **Mixer/Soundstage växer till 23 källor**: fler fält i MixerPage och SoundstagePage, MixerPage kan behöva scroll. Dolda kanaler bör dölja sina mixerremsor men behålla värden.
+7. **Hela FX-pluginet**: 12:e kanalen i FX-versionen har ingen särskild ingång, men fxKey/fxAmount-logiken (`FxProcessor.cpp:88,146`) måste få samma id-undantag som `Effects.cpp:91`.
+8. **CPU**: tomma kanaler är idle (`Effects.cpp:2348-2349`), så 12 kanaler kostar bara det som används. Kör blocksizetest före release.
+
+### Förslag på ordning
+1. Konstant 12 + static_assert + isEffectParameter-koll + parameter-ordning sist, rendersig oförändrad (litet steg, testa först).
+2. Dynamiskt antal synliga kanaler (state + +/− i EffectsPage/MixerPage/SoundstagePage), fortfarande gammal sändning.
+3. De 132 matrisparametrarna sist + `InstrumentProcessor`-sändningen + FxSendControl som lista + hjälptexter + tester ur planen.
+
+## Steg 1 – konkret plan (Arbetare 1, 2026-10-28): kanal 12, inget nytt beteende
+
+Mål: konstanten blir 12, kanal 12 ("L") finns som parametrar, men inget i ljud, ID eller hostindex för de gamla parametrarna ändras. Ingen UI-ändring (kanal 12 syns inte förrän steg 2).
+
+### Konstanter (`Effects.h:23`, `Mixer.h:15`)
+- Ny `numLegacyEffectChannels = 11` (de gamla slingorna) bredvid `numEffectChannels = 12`.
+- `Mixer.h:15` `numSources = 1 + maxInstruments + numEffectChannels` blir 23. Ny `numLegacySources = 22`.
+- `PluginBase.cpp:14` static_assert: `numEffectChannels == 12 && numLegacyEffectChannels == 11 && slotsPerChannel == 5`.
+
+### Parameterordning (det som skyddar hostindex)
+1. `Effects::addParameters` (`Effects.cpp:344`): slingan går `channel < numLegacyEffectChannels`; kroppen flyttas till `addChannelParameters (layout, channel)` (samma ID, samma ordning inuti kanalen, version 1).
+2. Ny `Effects::addExtraChannelParameters (layout)` = `addChannelParameters (layout, 11)`.
+3. `Mixer::addParameters` (`Mixer.cpp`): slingan går `s < numLegacySources`. `Mixer::addStageParameters` likadant. Ny `Mixer::addExtraSourceParameters (layout)` lägger `mixFxLGain/Pan/Duck/Max` och sedan `mixFxLStage` (bool, default true).
+4. `InstrumentProcessor.cpp:15-39` `createLayout`: de två nya anropen läggs efter `Params::addEngineTimingParams`, sist före `return`. `FxProcessor.cpp:7-20`: `addExtraChannelParameters` sist efter `addKickToggleParams` (Mixer finns inte i FX-versionen).
+5. `fxChannelChoices` (`Params.cpp:67-74`): "FX12" läggs sist, så sparade index 0..11 betyder samma som förut. Kickens `fxChannel` har redan versionstips 1, oförändrat.
+Steg 3 lägger sedan de 132 sändningsparametrarna efter dessa, så ordningen blir: gammalt, kanal 12, matris.
+
+### Resten av 11-beroenden som måste bli 12 eller förbli 11
+- `Effects.cpp:81-92`: `channelName`/`isEffectParameter` följer `numEffectChannels` (ger "fxL"). Grep visar att inget annat ID börjar på `fxL`; `fxKey` är redan undantaget. Samma undantag som `FxProcessor.cpp:88,146`.
+- **Hittat nu:** `MixAnalysis.cpp:1666` har ett hårdkodat `id[2] <= 'K'`; ska bli `'A' + numEffectChannels - 1`, annars räknas kanal 12 inte i analysen.
+- Impl-arrayerna `Effects.cpp:2326-2350` och slingorna `:346, 560, 2360, 2372, 2400, 2447` samt jlimit `:2424, 2437, 2442` följer `numEffectChannels` (12). Kanal 12 summeras SIST i return-summan, så flyttalsordningen för kanal 1-11 är densamma.
+- `InstrumentProcessor.cpp:1019-1041` (channelDuck, setSources, stageSkip) följer `numEffectChannels`/`numSources`; tom kanal är idle (`:1034`).
+- `PluginBase.cpp:92-113` bitmask (int räcker, 12 bitar), `:509-520` fxPresetNames, `:609` `presetFx<n>`-slingan (11 -> 12 fack; gamla states saknar fack 12 = tomt), `:1531/1699/1715/1766` fria kanaler. UI-filerna (`EffectsPage`, `MixerPage`, `SoundstagePage`, `PresetButton`, `Modules.cpp:1166`, `StepSequencer`, `ToolLayer`) rörs INTE i steg 1: de har egna fasta 11 och visar därför fortfarande 11 (det är steg 2). Måste kompilera: ändra bara de ställen där en 11-array indexeras med `numEffectChannels`.
+
+### Hur "rendersig oförändrad" bevisas (i ordning, alla på main före ändring = referens)
+1. **Före kodändring:** på main/min gren spara referensen: `paramtest`-lista (alla ID i layoutordning, både Instrument och FX) till `docs/work/layout-ids-before.txt`, samt rendersig/rendersigwide/rendersigtb303/rendersigreal-utdata.
+2. **Indextest (nytt, litet, i `Tool.cpp` nära `:1783`):** ny layout minus de 5+... nya ID (`fxL*`, `mixFxL*`) måste vara IDENTISK i ordning med `layout-ids-before.txt`, och de nya ID ligger efter sista gamla index. Det är det som bevisar att inget hostindex flyttats.
+3. **Rendersig x4** efter ändring: byte-identiska mot referensen (tom kanal 12 är idle och summeras sist).
+4. **StateTests**: gamla presets/state laddas (inga `presetFx11`/`mixFxL`-nycklar) och ger samma rendering; nytt state med kanal 12 round-trip.
+5. **paramtest + helpcheck**: de nya 5 mixer- och ca 80 kanalparametrarna behöver hjälptext om `helpcheck` kräver det (Help.cpp skrivs då i samma steg). `PresetAudit.inl:18` kontrolleras (rör inte `PresetData.inl`).
+6. `build.bat Debug all` grön; blocksizetest inte nu (bara före release).
+
+### Risk/öppet
+- Hostens automation av FX-kanalens fältnamn: nya parametrar är nya ID, så inga gamla sparade automationer berörs.
+- Om indextestet visar att JUCE-layouten ändå skjutits: avbryt, ingen commit.
+- Kanal 12 syns inte i UI i steg 1, men går att nå via Matrix/automation; det är OK och testas bara via parametrar.
+
+### Steg 1 klart (Arbetare 1, 28 okt, gren fx12, lokal commit, ingen push)
+- ID-ordning: params-diff mot pl-presets (fb12037) visar bara FX12 sist i `fxChannel` samt nya `fxL*`/`mixFxL*` sist (86 instrument-, 81 fx-rader). Inga hostindex flyttade.
+- `build.bat Debug all` grön, "Alla tester gick igenom" (inkl. StateTests). `paramtest`: instrument 3562 och fx 1110, 0 fel. `helpcheck`: 0 utan förklaring.
+- `audit effects` startades men gav bara första raden inom 280 s (ej fullkörd).
+- Rendersig: verktyget är icke-deterministiskt mellan körningar av SAMMA exe (Debug och Release). Wavetable-bakgrundstråden (`Wavetable.cpp:757-776`) är en orsak, `Wavetables::ensureAll()` före rendersig (Tool.cpp) räckte inte. Jämförelsen är därför ej avgörande; PL har avstått från den.
+- Kanal 12 syns inte i UI förrän steg 2; `firstFreeFxChannel()` kan returnera kanal 12.
+
+### Lane-UI mot parameterlås (Arbetare 1, 28 okt, gren slice-roll, lokal commit, ingen push)
+- Mergade fx-matrix i slice-roll (376348e). Kedja: jog-simple → fx-echo-steps → slice-roll (innehåller fx-matrix).
+- Lanes CUTOFF/PAN/FX SEND ritar och drar lås (`PianoRoll.cpp` `paintLockLane`, `Drag::lane` i mouseDrag), Alt+klick återställer, ett ångra-steg per drag, klippbordet (`PluginBase.h` NoteClipboard) och flytt bär låsen. Hjälptexten uppdaterad (`HelpDialog.cpp:9`).
+- Debug all grön, alla tester gick igenom. Inte visuellt verifierat; inga nya enhetstester för lanes. Inget ljud rört.
+- Visuell kontroll: snapshot `KB_LANES=123 KB_LOCKS=1 KickbaseTool snapshot instrument <png> 10101000` (nya env, bara för bilder). Staplarna hamnar rätt; lane-rubrikerna var trunkerade, kortade till CUT/PAN/FX (menyn har fulla namn). Dra/Alt/splitter går inte att köra i snapshot: kodgranskade, testas av Tobias i DAW.
+
+## Låstest + FL-lista (28 okt, Arbetare 1, gren slice-roll)
+- `Tests/EngineTests.cpp` `testLockEditing`: klippbord, flytt, ångra (`rowFromValueTree`) och spara/ladda bär låsen. Debug all grön.
+- `docs/work/fl-testlista.md`: A1-raderna (sample AMP/PITCH, REVERSE, klick-lager, lane-UI) kortade till körbara Lemon-punkter; nya rader för skivrullen och Echo utan TIME MS.

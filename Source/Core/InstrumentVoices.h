@@ -24,6 +24,9 @@ public:
     // aktiveras får dem när tonen börjar; lediga röster kostar inget.
     void setParams (const InstrumentParams& newParams);
     void setTempo (double newBpm);
+    // Parameterlås (pianorullen): cutoff i Hz som ersätter parametern från och med nästa ton, tills ett nytt anrop. hz <= 0 = inget lås.
+    // Överlever setParams (som körs varje block); anropas i ljudtråden precis före noteOn, så filtret får värdet från första samplet.
+    void setCutoffLock (float hz);
     // 1..maxVoices. Röster över gränsen tonas ut på 3 ms (de äldsta först), de klipps inte.
     void setNumVoices (int count);
     int getNumVoices() const { return numVoices; }
@@ -44,7 +47,12 @@ public:
     bool isActive() const;
     float getModulationValue (int source) const;
     juce::uint64 getNoteCount() const { return noteCounter; } // antal startade toner (Live Code ENV startar på ändringen)
+    // Den senast spelade rösten grundton i Hz (0 när den inte klingar): det FUNDAMENTAL DUCK dämpar.
+    float getFundamentalHz() const { return voices[(size_t) lastVoice].isActive() ? voices[(size_t) lastVoice].getFrequencyHz() : 0.0f; }
     float getSampleFraction() const { return voices[(size_t) lastVoice].getSampleFraction(); }
+    // TIMING-diagrammen: den senast spelade rösten tid sedan anslaget (-1 när den är tyst) och tiden för släppet (-1 medan tonen hålls).
+    double playTimeSeconds() const { return voices[(size_t) lastVoice].playTimeSeconds(); }
+    double noteOffTimeSeconds() const { return voices[(size_t) lastVoice].noteOffTimeSeconds(); }
     // Röster som klingar eller väntar på en ton (för test och gränssnitt).
     int countSounding() const;
     // Tonen (eller glidemålet) röst k är på väg mot (för test).
@@ -69,6 +77,7 @@ private:
     std::array<InstrumentSynth, maxVoices> voices;
     std::array<Slot, maxVoices> slots;
     InstrumentParams params;
+    float baseCutoffHz = 300.0f, cutoffLockHz = 0.0f; // parametern som den lästes, och låset (0 = av)
     double bpm = 120.0;
     int numVoices = 1;
     int lastVoice = 0;

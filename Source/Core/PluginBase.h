@@ -16,6 +16,7 @@
 #include "SignalTap.h"
 #include "TransportStatus.h"
 #include "SampleSlot.h"
+#include "MultiSample.h"
 #include "BridgeLink.h"
 #include "Settings.h"
 #include "WavetableEdit.h"
@@ -132,15 +133,16 @@ public:
         bool valid() const { return name.isNotEmpty(); }
     };
     static PresetLink readPresetLink (const juce::File& presetFile);
+    static juce::String readPresetCategory (const juce::File& presetFile); // tom om filen saknar (giltig) kategori
     juce::File findUserPreset (Presets::Section section, const juce::String& name) const;
     int sendChannelOf (Presets::Section section, int layer) const;      // effektkanalen (0-10) som kicken (Section::kick) eller instrumentet skickar till, eller -1
     bool fxChannelHasEffects (int channel) const;                        // någon plats på kanalen har en effekt
     int firstFreeFxChannel();                                            // första kanalen utan sändningar, effekter eller EQ, eller -1
 
     // Sparar ett instrument-/kick-preset; med fxName också effektkanalen det skickar till som FX-preset med det namnet, och en länk dit.
-    bool saveInstrumentPreset (Presets::Section section, int layer, const juce::String& name, const juce::String& fxName = {});
+    bool saveInstrumentPreset (Presets::Section section, int layer, const juce::String& name, const juce::String& fxName = {}, const juce::String& category = {});
     // Sparar en rads mönster-preset; med instrumentName också instrumentet (kicken för kickraden) som eget preset, med sin effekt om fxName anges.
-    bool savePatternPreset (int layer, const juce::String& name, const juce::String& instrumentName = {}, const juce::String& fxName = {});
+    bool savePatternPreset (int layer, const juce::String& name, const juce::String& instrumentName = {}, const juce::String& fxName = {}, const juce::String& category = {});
 
     // fxChannel: kanalen den länkade effekten läggs på; -2 = första lediga (finns ingen hoppas effekten över), -1 = ingen effekt, annars den kanalen.
     struct LinkedLoad
@@ -153,7 +155,7 @@ public:
     LinkedLoad loadInstrumentPreset (Presets::Section section, int layer, const juce::File& file, int fxChannel = -2);
     LinkedLoad loadPatternPreset (int layer, const juce::File& file, bool withInstrument, int fxChannel = -2);
 
-    bool saveUserPreset (Presets::Section section, const juce::String& name, int layer = 0, const PresetLink* link = nullptr);
+    bool saveUserPreset (Presets::Section section, const juce::String& name, int layer = 0, const PresetLink* link = nullptr, const juce::String& category = {});
     std::unique_ptr<juce::XmlElement> buildPresetXml (Presets::Section section, int layer, const PresetLink* link = nullptr); // samma innehåll som filen
 
     // Spår = ett instrument och dess rad i mönstret. Instrumenten ligger på fasta platser (0-9), så ett spår flyttas, dupliceras och raderas genom
@@ -263,6 +265,8 @@ public:
 
     bool loadInstrumentSample (int layer, const juce::File& file);
     void clearInstrumentSample (int layer, bool syncRows = true); // syncRows: false när en förinställning laddas (raderna kommer från dess mönster)
+    int addInstrumentMultiSamples (int layer, const juce::Array<juce::File>& files); // multisampling: lägger till zoner, sprider tangentområdena; returnerar antal som lästes
+    void clearInstrumentMultiSamples (int layer);
     // Slicer: skivinställningarna hör till lagrets sampling (sparas med den). Message thread.
     SampleSlot& instrumentSampleSlot (int layer) { return instrumentSamples[(size_t) juce::jlimit (0, ParamID::numInstrumentLayers - 1, layer)]; }
     void setInstrumentSlicing (int layer, int mode, float sensitivity, int gridCount) { instrumentSampleSlot (layer).setSlicing (mode, sensitivity, gridCount); syncSliceRows (layer); patternChanged(); }
@@ -271,6 +275,9 @@ public:
     // Poolen av underrader är delad: är den full får de sista skivorna ingen rad (returnerar antalet skivor som saknar rad p.g.a. det).
     int syncSliceRows (int layer);
     juce::String getInstrumentSampleName (int layer) const { return instrumentSamples[(size_t) juce::jlimit (0, ParamID::numInstrumentLayers - 1, layer)].name(); }
+    // Multisampling: lagrets zoner (valet "Sample Source = Multi"). Message thread ändrar; ljudtråden läser bara banken.
+    MultiSampleSet& instrumentMultiSample (int layer) { return instrumentMultiSamples[(size_t) juce::jlimit (0, ParamID::numInstrumentLayers - 1, layer)]; }
+    const MultiSampleBank* getActiveInstrumentMultiSample (int layer) const { return instrumentMultiSamples[(size_t) juce::jlimit (0, ParamID::numInstrumentLayers - 1, layer)].active(); }
     const ClickSample* getActiveInstrumentSample (int layer) const { return instrumentSamples[(size_t) juce::jlimit (0, ParamID::numInstrumentLayers - 1, layer)].active(); }
 
     // Måste deklareras före apvts (som får en pekare till den). Bara meddelandetråden använder den.
@@ -291,6 +298,11 @@ public:
     // det senaste värdet som minskning 0..1 (för ringen runt DUCK-ratten).
     std::array<SignalTap, ParamID::numInstrumentLayers> duckGainTaps;
     std::array<std::atomic<float>, ParamID::numInstrumentLayers> duckReduction {};
+    // TIMING-diagrammen: lagrets tid sedan anslaget och tiden för tonens släpp i sekunder (-1 = tyst / hålls). Skrivs av ljudtråden, läses av gränssnittet.
+    std::array<std::atomic<float>, ParamID::numInstrumentLayers> notePlayTime {}, noteOffTime {};
+
+    // FUNDAMENTAL DUCK: dämpningen i dB som är i bruk just nu per motor (0 = av), för lampan på SIDECHAIN-fliken.
+    std::array<std::atomic<float>, ParamID::numInstrumentLayers> fundamentalDuckDb {};
 
     // Kickens pitch-envelope (halvtoner över svansen, upp till 0,5 s) och volym-envelope
     // (upp till 2 s), redigeras i KICK-fliken.
@@ -353,12 +365,16 @@ public:
     std::atomic<double> freeRunBpm { 0.0 };
     std::atomic<bool> transportHold { false };
     std::atomic<int> seekBarRequest { -1 };
-    // JOG (D3b): hjulets handpåläggning (<0 = ingen, annars hastighet 0..4 som ersätter parametern) och läget (0 = stannar medan man rör, 1 = fortsätter).
+    // JOG: hjulet har ett enda läge (SCRUB). `jogManual` = hjulets handpåläggning (<0 = ingen, annars hastighet 0..4).
+    // `scrubActive` = hjulet hålls (klockan lämnar värden); `scrubNudgePpq` = hjulets flytt sedan förra blocket (fjärdedelar, negativt = bakåt).
     std::atomic<float> jogManual { -1.0f };
-    std::atomic<int> jogMode { 0 };
-    // Global LOOP (D3): av/på och takterna (0-räknade, slutet exklusivt). På = egen klocka som går runt i loopen (DAW:ens transport ignoreras).
+    std::atomic<bool> scrubActive { false };
+    std::atomic<double> scrubNudgePpq { 0.0 };
+    // Global LOOP (D3): av/på och tick (0-räknade, slutet exklusivt, 1 tick = 1/64 takt). På = egen klocka som går runt i loopen (DAW:ens transport ignoreras).
+    // `globalLoopStepTicks` = hur mycket FROM/TO flyttas per piltryck (körtillstånd, sparas inte).
     std::atomic<bool> globalLoop { false };
-    std::atomic<int> globalLoopStartBar { 0 }, globalLoopEndBar { 4 };
+    std::atomic<int> globalLoopStartTick { 0 }, globalLoopEndTick { 4 * 64 };
+    std::atomic<int> globalLoopStepTicks { 4 };
     std::atomic<int> previewingLayer { -1 };
 
     // MIDI in medan pianorullen är öppen: vilken rad som svarar på tangentbordet/MIDI (notlager som i previewRequest), -1 = alla rader.
@@ -414,7 +430,7 @@ public:
     // (där de kopierade slutar, och efter en inklistring där den slutar).
     struct NoteClipboard
     {
-        struct Note { int dt = 0, length = 24, pitch = 0; float velocity = 0.8f; bool slide = false; Pattern::Chord chord {}; int index = 0; /* stackindex */ };
+        struct Note { int dt = 0, length = 24, pitch = 0; float velocity = 0.8f; bool slide = false; Pattern::Chord chord {}; int index = 0; /* stackindex */ std::array<float, Pattern::numLocks> lock { Pattern::lockUnset, Pattern::lockUnset, Pattern::lockUnset }; };
         std::vector<Note> notes;
         int span = 0;          // hela de kopierade tonernas längd i ticks
         int nextStart = -1;    // var nästa inklistring börjar, -1 = vid vyns början
@@ -459,6 +475,7 @@ public:
     std::atomic<int> auditionRequest { -1 };
 
     std::atomic<bool> followPlayhead { true }; // pianorullen och stegvyn bläddrar med uppspelningen
+    std::atomic<juce::uint32> ghostMask { 0xffffffffu }; // GHOST NOTES i pianorullen: vilka rader som visas som spöktoner (bit = radindex, kicken = Pattern::kickLayer); standard alla på. Delas av pianorullen och dess POP OUT, sparas inte i projektet
     std::atomic<int> lfoActiveVersion { 0 }; // ökas när en LFO läggs till eller tas bort (fas M), så att gränssnittet ritar om
     std::atomic<int> patternVersion { 0 }; // ökas när mönstret ändras, så att gränssnittet ritar om
     std::atomic<juce::uint64> liveCodeLocks { 0 };  // Live Code: en bit per radid (0-9 = instrument, 10 = kicken, 11-63 underrader) som koden inte får skriva över; sparas som de 11 första bitarna
@@ -496,7 +513,7 @@ public:
     int selectedPatternMode = 0;           // PATTERN-flikens läge: 0 PATTERN (toner), 1 GATE
     std::array<int, ParamID::numInstrumentLayers> selectedInstrumentSource {}; // instrumentets valda flik: INSTR, OSC 1-3, SAMPLE eller FILTER
     juce::File currentProjectFile;                 // projektfilen som senast sparats/öppnats (bara gränssnittet, sparas inte): Ctrl+S sparar hit, namnet visas i rubriken
-    std::atomic<int> kickTab { 0 };              // kickens vyflik: 0 SYNTH, 1 SAMPLE (bara gränssnittet, sparas inte och ändrar inget ljud)
+    std::atomic<int> kickTab { 0 };              // kickens vyflik: 0 SYNTH, 1 SAMPLE, 2 ENVELOPE (bara gränssnittet, sparas inte och ändrar inget ljud)
     int selectedPatternLayer = 0;          // PATTERN-flikens valda lager: 0-9 instrument, 10 kick
     int selectedInstrument = 0;            // INSTRUMENT-flikens valda instrument (0-9)
     int lfoFolded = -1;                    // LFO-flikens fällda kort (en bit per LFO); -1 = inte bestämt ännu (se LfoPage)
@@ -581,6 +598,8 @@ public:
     // Samplingarna som projektträd; publika så att StateTests kan provköra skivinställningarnas rundtur.
     juce::ValueTree instrumentSamplesToValueTree() const;
     void instrumentSamplesFromValueTree (const juce::ValueTree& tree);
+    juce::ValueTree instrumentMultiSamplesToValueTree() const; // "BassMultiSamples": eget barn, äldre projekt saknar det
+    void instrumentMultiSamplesFromValueTree (const juce::ValueTree& tree);
 
 protected:
     // Läser kickens och basens parametrar, med LFO-modulering.
@@ -606,6 +625,7 @@ private:
     std::unique_ptr<BridgeLink::Server> bridge;
 
     SampleSlot kickSample { 2.0 };
+    std::array<MultiSampleSet, ParamID::numInstrumentLayers> instrumentMultiSamples; // tomma tills zoner laddats
     std::array<SampleSlot, ParamID::numInstrumentLayers> instrumentSamples; // 12 s var (minne används först när en sampling laddats)
 
     juce::String& presetNameSlot (Presets::Section section, int layer);

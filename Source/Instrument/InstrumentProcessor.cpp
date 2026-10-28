@@ -32,6 +32,14 @@ namespace
         Params::addMasterParams (layout);
         Modulation::addExtraLfoParameters (layout); // LFO 4-10 (fas M): nya parametrar sist
         Params::addJogParams (layout); // JOG (D3b)
+        Params::addFundamentalDuckParams (layout); // FUNDAMENTAL DUCK: allra sist
+        Mixer::addStageParameters (layout); // SOUNDSTAGE-val per källa: nya parametrar sist
+        Params::addEngineTimingParams (layout); // 5b: POS DELAY / LENGTH / CURVE per motor: nya parametrar sist
+        Params::addKickMixParam (layout); // kickens MIX: sist
+        Params::addEngineTimingExtraParams (layout); // TIMING/LEVELS: DELAY MODE / LENGTH SYNC / antal: nya parametrar allra sist
+        Effects::addExtraChannelParameters (layout); // FX12: nya parametrar sist
+        Mixer::addExtraSourceParameters (layout); // FX12:s fader, pan, duck, max och stage
+        Params::addFxMatrixParams (layout); // FX-matrisen och FX-mute: allra sist
         return layout;
     }
 
@@ -58,6 +66,7 @@ InstrumentProcessor::InstrumentProcessor()
                   createLayout(), false)
 {
     lastInstrumentStartPpq.fill (-std::numeric_limits<double>::infinity());
+    clearNoteLocks();
     // Ett nytt instrument börjar som Init: tre lager som låter bra ihop (ett sparat projekt skriver över det).
     for (int layer = 0; layer < numLayers; ++layer)
         layerEqs.emplace_back (apvts, SourceEq::prefixFor (1 + layer));
@@ -81,6 +90,11 @@ InstrumentProcessor::InstrumentProcessor()
 void InstrumentProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     prepareBase (sampleRate);
+    for (auto& row : lastSendTo)
+        row.fill (-1.0f);
+    for (int layer = 0; layer < numLayers; ++layer)
+        cutoffRanges[(size_t) layer] = apvts.getParameterRange (ParamID::bass (layer, InstrumentField::cutoff));
+    clearNoteLocks();
     modulator.setSampleRate (sampleRate);
     kick.prepare (sampleRate);
     kick.setSeed (1000);
@@ -90,6 +104,8 @@ void InstrumentProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
         bass.prepare (sampleRate);
     for (auto& ducker : duckers)
         ducker.prepare (sampleRate);
+    for (auto& fd : fundamentalDucks)
+        fd.prepare (sampleRate);
     effects.prepare (sampleRate, samplesPerBlock);
     effects.setModulator (&modulator);
     master.prepare (sampleRate, 2);
@@ -151,8 +167,11 @@ void InstrumentProcessor::processChunk (juce::AudioBuffer<float>& buffer, juce::
     clock.setForceFreeRun (previewLayer >= 0);
     clock.setFreeRunBpm (freeRunBpm.load());
     clock.setHold (transportHold.load());
-    clock.setJogRate (jogManual.load() >= 0.0f ? (double) jogManual.load() : (double) params.get (ParamID::jogSpeed));
-    clock.setLoop (globalLoop.load(), globalLoopStartBar.load(), globalLoopEndBar.load());
+    clock.setJogRate (jogManual.load() >= 0.0f ? (double) jogManual.load() : 1.0); // parametern jogSpeed används inte längre (finns kvar för parameterordningen)
+    clock.setLoop (globalLoop.load(), globalLoopStartTick.load(), globalLoopEndTick.load());
+    clock.setScrub (scrubActive.load());
+    if (const auto nudge = scrubNudgePpq.exchange (0.0); nudge != 0.0)
+        clock.nudge (nudge);
     clock.beginBlock (getHostPosition(), numSamples);
     if (const auto seekBar = seekBarRequest.exchange (-1); seekBar >= 0)
         clock.seekFreeRunToBar (seekBar);
@@ -299,12 +318,16 @@ void InstrumentProcessor::processChunk (juce::AudioBuffer<float>& buffer, juce::
     finishBlock (numSamples);
 
     masterGain.setTargetValue (params.get (ParamID::gain));
+    auto skipGain = masterGain; // SOUNDSTAGE-bussen följer samma fader
     masterGain.applyGain (buffer, numSamples);
+    const auto useSkip = stageSkipUsed;
+    if (useSkip)
+        skipGain.applyGain (stageSkipBus, numSamples);
 
     // Mastern (maximizer/limiter) på huvudutgången. Kick- och basutgångarna fördröjs lika
     // mycket som limiterns lookahead, så att de ligger i synk med huvudutgången.
     auto mainBus = getBusBuffer (buffer, false, 0);
-    master.process (mainBus, numSamples);
+    master.process (mainBus, numSamples, useSkip ? &stageSkipBus : nullptr);
 
     // Källor som mixern tagit förbi maximizern läggs på efteråt, lika fördröjda som resten.
     bypassBus.applyGain (0, numSamples, params.get (ParamID::gain));
@@ -394,6 +417,56 @@ void InstrumentProcessor::readLayerFields (int layer, juce::uint64 solo)
     gateDepth[(size_t) layer] = params.bass (layer, InstrumentField::gateDepth);
     const auto smoothMs = std::max (0.5f, params.bass (layer, InstrumentField::gateSmooth));
     gateCoefficient[(size_t) layer] = (float) (1.0 - std::exp (-1.0 / (0.001 * smoothMs * getSampleRate())));
+
+    // FUNDAMENTAL DUCK: ÄRV (instrumentets värden), AV eller EGEN (motorns egna värden).
+    const auto mode = (int) params.bass (layer, InstrumentField::fundamentalDuckMode);
+    if (mode == 2)
+    {
+        fdDepth[(size_t) layer] = params.bass (layer, InstrumentField::fundamentalDuckDepth);
+        fdWindow[(size_t) layer] = params.bass (layer, InstrumentField::fundamentalDuckWindow);
+        fdSource[(size_t) layer] = (int) params.bass (layer, InstrumentField::fundamentalDuckSource);
+        fdOn[(size_t) layer] = fdDepth[(size_t) layer] > 0.0f;
+    }
+    else
+    {
+        fdDepth[(size_t) layer] = params.get (ParamID::fundamentalDuckDepth);
+        fdWindow[(size_t) layer] = params.get (ParamID::fundamentalDuckWindow);
+        fdSource[(size_t) layer] = (int) params.get (ParamID::fundamentalDuckSource);
+        fdOn[(size_t) layer] = mode == 0 && params.getBool (ParamID::fundamentalDuckOn) && fdDepth[(size_t) layer] > 0.0f;
+    }
+}
+
+// Hur mycket motorn dämpas just nu, 0..1 (1 = hela djupet): källans envelope gånger fönstret (grundtonen nära källans grundton).
+float InstrumentProcessor::fundamentalDuckWeight (int layer, int i, const float* kickEnvelope) const
+{
+    const auto fundamental = fdHz[(size_t) layer];
+    const auto source = fdSource[(size_t) layer];
+    const auto window = std::max (1.0f, fdWindow[(size_t) layer]);
+
+    const auto windowWeight = [&] (float referenceHz)
+    {
+        if (referenceHz <= 0.0f || fundamental <= 0.0f)
+            return 0.0f;
+        const auto cents = std::abs (1200.0f * std::log2 (fundamental / referenceHz));
+        return juce::jlimit (0.0f, 1.0f, 2.0f - cents / window);
+    };
+    const auto fromInstrument = [&] (int other)
+    {
+        if (other == layer || other >= activeLayers || ! layerOn[(size_t) other])
+            return 0.0f;
+        const auto amp = juce::jlimit (0.0f, 1.0f, std::abs (amplitudeBuffer.getReadPointer (other)[i]));
+        return amp * windowWeight (fdHz[(size_t) other]);
+    };
+
+    auto weight = 0.0f;
+    if (source == 0 || source == numLayers + 1)
+        weight = kickEnvelope[i] * windowWeight (kickTailHz);
+    if (source >= 1 && source <= numLayers)
+        weight = fromInstrument (source - 1);
+    else if (source == numLayers + 1)
+        for (int other = 0; other < activeLayers; ++other)
+            weight = std::max (weight, fromInstrument (other));
+    return juce::jlimit (0.0f, 1.0f, weight);
 }
 
 void InstrumentProcessor::readDuckLength()
@@ -443,6 +516,7 @@ void InstrumentProcessor::refreshEngineParams()
         kickParams.sampleLevel = 1.0f;
     }
     kick.setParams (kickParams);
+    kickTailHz = kickParams.tailHz;
     for (int layer = 0; layer < activeLayers; ++layer)
     {
         auto instrumentParams = readModulatedInstrument (layer, instrumentRootNote());
@@ -849,6 +923,9 @@ void InstrumentProcessor::renderSamples (int startSample, int endSample)
             sourceRight[i] = b.right;
             amplitudeData[i] = b.amplitude;
         }
+        fdHz[(size_t) layer] = bass.getFundamentalHz();
+        notePlayTime[(size_t) layer].store ((float) bass.playTimeSeconds(), std::memory_order_relaxed);
+        noteOffTime[(size_t) layer].store ((float) bass.noteOffTimeSeconds(), std::memory_order_relaxed);
     }
 }
 
@@ -863,6 +940,7 @@ void InstrumentProcessor::finishBlock (int numSamples)
     // clear (startSample, numSamples) rensar alla kanaler; ett andra anrop med 1 som första argument började på sample 1 (jassert vid block på 1 sample).
     maxBus.clear (0, numSamples);
     bypassBus.clear (0, numSamples);
+    stageSkipBus.clear (0, numSamples);
     effects.beginBlock (numSamples, clock.getBpm(), clock.getPpqAt (0), controlPhase);
     tapBuffer.clear (0, numSamples);
 
@@ -872,6 +950,8 @@ void InstrumentProcessor::finishBlock (int numSamples)
         auto* dataRight = layerBufferRight.getWritePointer (layer);
         const auto* amplitude = amplitudeBuffer.getReadPointer (layer);
         auto& ducker = duckers[(size_t) layer];
+        auto& fd = fundamentalDucks[(size_t) layer];
+        const auto fundamentalOn = fdOn[(size_t) layer];
         const auto amount = mixer.duckEnabled (Mixer::firstBassSource + layer) ? duckAmounts[(size_t) layer] : 0.0f;
 
         auto* before = tapBuffer.getWritePointer (0);
@@ -898,15 +978,24 @@ void InstrumentProcessor::finishBlock (int numSamples)
             gateGainRef += (gateTarget - gateGainRef) * gateCoefficient[(size_t) layer];
 
             const auto levelLeft = data[i] * amplitude[i] * gateGainRef, levelRight = dataRight[i] * amplitude[i] * gateGainRef;
+            auto outLeft = levelLeft, outRight = levelRight;
+            if (fundamentalOn || fd.isActive())
+            {
+                if ((i & 7) == 0)
+                    fd.setTarget (fundamentalOn ? fdHz[(size_t) layer] : 0.0f,
+                                  fundamentalOn ? fdDepth[(size_t) layer] * fundamentalDuckWeight (layer, i, duckData) : 0.0f);
+                fd.process (outLeft, outRight);
+            }
             const auto duckGain = ducker.next (duckData[i], amount);
-            data[i] = levelLeft * duckGain;
-            dataRight[i] = levelRight * duckGain;
+            data[i] = outLeft * duckGain;
+            dataRight[i] = outRight * duckGain;
             before[i] += 0.5f * (levelLeft + levelRight);
             after[i] += 0.5f * (data[i] + dataRight[i]);
             duckGainTaps[(size_t) layer].push (duckGain);
             lastDuckGain = duckGain;
         }
         duckReduction[(size_t) layer] = numSamples > 0 ? 1.0f - lastDuckGain : 0.0f;
+        fundamentalDuckDb[(size_t) layer].store (fd.getAttenuationDb(), std::memory_order_relaxed);
         layerEqs[(size_t) layer].process (data, dataRight, numSamples);
         if (instrumentTapsOn.load (std::memory_order_relaxed))
             for (int i = 0; i < numSamples; ++i)
@@ -914,16 +1003,30 @@ void InstrumentProcessor::finishBlock (int numSamples)
 
         // Kanal A-C: INSERT (standard) = amount av ljudet går genom kanalen, resten torrt. SEND = torrt orört, amount läggs till kanalen.
         const auto channel = (int) params.bass (layer, InstrumentField::fxChannel) - 1;
-        const auto amountToChannel = params.bass (layer, InstrumentField::fxAmount);
+        const auto locked = fxSendLock[(size_t) layer] >= 0.0f;
+        const auto amountToChannel = locked ? fxSendLock[(size_t) layer] : params.bass (layer, InstrumentField::fxAmount);
         const auto routed = channel >= 0 && effects.isActive (channel);
         const auto sendMode = params.bass (layer, InstrumentField::fxSend) >= 0.5f;
         const auto dryGain = routed && ! sendMode ? 1.0f - amountToChannel : 1.0f;
 
+        // Ett FX-send-lås (och blocket efter det) glider från förra blockets belopp; utan lås är vägen oförändrad.
+        const auto glide = routed && (locked || sendWasLocked[(size_t) layer]) && lastLockedSend[(size_t) layer] >= 0.0f;
+        const auto sendFrom = lastLockedSend[(size_t) layer], dryFrom = lastLockedDry[(size_t) layer];
+        lastLockedSend[(size_t) layer] = routed ? amountToChannel : -1.0f;
+        lastLockedDry[(size_t) layer] = dryGain;
+        sendWasLocked[(size_t) layer] = locked;
+
         // Instrumentets fader och panorering gäller hela ljudet: både det torra och det som skickas till kanalen.
         mixer.mix (Mixer::firstBassSource + layer, data, dataRight, numSamples, dryGain, maxBus, bypassBus,
-                   sendBus.getWritePointer (0), sendBus.getWritePointer (1));
+                   sendBus.getWritePointer (0), sendBus.getWritePointer (1), &stageSkipBus, glide ? dryFrom : -1.0f);
         if (routed)
-            effects.send (channel, sendBus.getReadPointer (0), sendBus.getReadPointer (1), numSamples, amountToChannel);
+        {
+            if (glide)
+                effects.sendRamped (channel, sendBus.getReadPointer (0), sendBus.getReadPointer (1), numSamples, sendFrom, amountToChannel);
+            else
+                effects.send (channel, sendBus.getReadPointer (0), sendBus.getReadPointer (1), numSamples, amountToChannel);
+        }
+        sendMatrix (Mixer::firstBassSource + layer, layer, numSamples);
         for (int i = 0; i < numSamples; ++i)
             layerOuts[(size_t) layer].add (i, data[i], dataRight[i]);
     }
@@ -936,9 +1039,10 @@ void InstrumentProcessor::finishBlock (int numSamples)
     const auto kickDry = kickRouted && ! kickSendMode ? 1.0f - kickAmount : 1.0f;
 
     mixer.mix (Mixer::kickSource, kickBuffer.getReadPointer (0), nullptr, numSamples, kickDry, maxBus, bypassBus,
-               sendBus.getWritePointer (0), sendBus.getWritePointer (1));
+               sendBus.getWritePointer (0), sendBus.getWritePointer (1), &stageSkipBus);
     if (kickRouted)
         effects.send (kickChannel, sendBus.getReadPointer (0), sendBus.getReadPointer (1), numSamples, kickAmount);
+    sendMatrix (Mixer::kickSource, -1, numSamples);
 
     std::array<bool, numEffectChannels> channelDuck {};
     for (int ch = 0; ch < numEffectChannels; ++ch)
@@ -958,8 +1062,12 @@ void InstrumentProcessor::finishBlock (int numSamples)
         if (effects.isIdle (ch))
             continue; // inget i kanalen: ingenting att mixa
         const auto& returned = effects.output (ch);
-        mixer.mix (Mixer::firstFxSource + ch, returned.getReadPointer (0), returned.getReadPointer (1), numSamples, 1.0f, maxBus, bypassBus);
+        mixer.mix (Mixer::firstFxSource + ch, returned.getReadPointer (0), returned.getReadPointer (1), numSamples, 1.0f, maxBus, bypassBus, nullptr, nullptr, &stageSkipBus);
     }
+    // Bara om någon källa valts bort från SOUNDSTAGE körs skip-vägen (annars exakt samma kod och ljud som förut).
+    stageSkipUsed = false;
+    for (int s = 0; s < Mixer::numSources && ! stageSkipUsed; ++s)
+        stageSkipUsed = ! mixer.inStage (s);
 
     for (int i = 0; i < numSamples; ++i)
     {
@@ -979,6 +1087,23 @@ void InstrumentProcessor::finishBlock (int numSamples)
     }
 }
 
+void InstrumentProcessor::sendMatrix (int source, int layer, int numSamples)
+{
+    // Utöver den gamla fxChannel/fxAmount (kör före): ett belopp per FX-kanal. Sends är linjära, så två sends = summan,
+    // och en kanal som både den gamla vägen och matrisen pekar på får summan (ändras här om det ska bli max i stället).
+    auto& last = lastSendTo[(size_t) source];
+    for (int c = 0; c < numEffectChannels; ++c)
+    {
+        const auto to = layer >= 0 ? params.bass (layer, ParamID::fxSendToField (c)) : params.get (ParamID::kickFxSendToIds[c]);
+        auto& from = last[(size_t) c];
+        if (from < 0.0f)
+            from = to; // första blocket: ingen glidning
+        if (to > 0.0f || from > 0.0f)
+            effects.sendRamped (c, sendBus.getReadPointer (0), sendBus.getReadPointer (1), numSamples, from, to);
+        from = to;
+    }
+}
+
 void InstrumentProcessor::resetDspState()
 {
     kick.reset();
@@ -986,6 +1111,8 @@ void InstrumentProcessor::resetDspState()
         bass.reset();
     for (auto& ducker : duckers)
         ducker.prepare (getSampleRate());
+    for (auto& fd : fundamentalDucks)
+        fd.prepare (getSampleRate());
     effects.reset();
     master.reset();
     kickEq.reset();
@@ -993,6 +1120,32 @@ void InstrumentProcessor::resetDspState()
         eq.reset();
     gateGain.fill (1.0f);
     numPending = 0;
+    clearNoteLocks();
+}
+
+void InstrumentProcessor::clearNoteLocks()
+{
+    fxSendLock.fill (-1.0f);
+    lastLockedSend.fill (-1.0f);
+    lastLockedDry.fill (1.0f);
+    sendWasLocked.fill (false);
+    for (int layer = 0; layer < numLayers; ++layer)
+    {
+        basses[(size_t) layer].setCutoffLock (0.0f);
+        mixer.setPanLock (Mixer::firstBassSource + layer, 2.0f);
+    }
+}
+
+void InstrumentProcessor::applyNoteLocks (int layer, const Pattern::Note& note)
+{
+    // En ton utan lås tar bort förra tonens lås, så att ett lås aldrig läcker till en ton som inte har det.
+    const auto cutoff = note.lock[Pattern::lockCutoff].load();
+    const auto pan = note.lock[Pattern::lockPan].load();
+    const auto send = note.lock[Pattern::lockFxSend].load();
+    const auto& range = cutoffRanges[(size_t) layer];
+    basses[(size_t) layer].setCutoffLock (cutoff >= 0.0f ? range.snapToLegalValue (range.convertFrom0to1 (juce::jlimit (0.0f, 1.0f, cutoff))) : 0.0f);
+    mixer.setPanLock (Mixer::firstBassSource + layer, pan >= 0.0f ? juce::jlimit (0.0f, 1.0f, pan) * 2.0f - 1.0f : 2.0f);
+    fxSendLock[(size_t) layer] = send >= 0.0f ? juce::jlimit (0.0f, 1.0f, send) : -1.0f;
 }
 
 void InstrumentProcessor::ensureScratchSize (int numSamples)
@@ -1010,6 +1163,7 @@ void InstrumentProcessor::ensureScratchSize (int numSamples)
     instrumentBuffer.setSize (2, numSamples, false, true, true);
     maxBus.setSize (2, numSamples, false, true, true);
     bypassBus.setSize (2, numSamples, false, true, true);
+    stageSkipBus.setSize (2, numSamples, false, true, true);
     sendBus.setSize (2, numSamples, false, true, true);
 }
 
@@ -1019,7 +1173,7 @@ void InstrumentProcessor::handleEvent (const StepEvent& event)
     // Spelar värden gäller midiInLayer inte (värdens toner startar hela mönstret).
     const auto onlyRow = previewLayer >= 0 ? previewLayer : (clock.isHostPlaying() ? -1 : midiInLayer.load());
     // En skivrad ("Slice N") har ett eget radid; förhandsspelas hon spelar bara hon, annars gäller instrumentets rad.
-    const auto sliceRow = event.type == StepEvent::Type::slice ? pattern.rows.find (event.layer, RowRegistry::Kind::slice, event.slice) : -1;
+    const auto sliceRow = event.type == StepEvent::Type::slice ? pattern.rows.find (event.layer, RowRegistry::Kind::slices) : -1;
     if (event.type == StepEvent::Type::slice && sliceRow < 0)
         return;
     if (onlyRow >= 0 && onlyRow != PluginBase::previewAllRows
@@ -1049,16 +1203,22 @@ void InstrumentProcessor::handleEvent (const StepEvent& event)
 
     if (event.type == StepEvent::Type::slice)
     {
-        // Raden "Slice N": en egen ton som spelar skiva N från början, med radens egen längd som gate.
-        const auto& sliceNote = pattern.note (sliceRow, event.step);
+        // Skivraden: varje (stapel)not spelar skivan som är dess pitch från början, med notens längd som gate.
+        Pattern::StackNote sliceNote;
+        if (! pattern.getStack (sliceRow, event.step, event.stack, sliceNote))
+            return;
         const auto rowTicks = lengths.barsOf (Pattern::lengthRowOf (sliceRow)) * Pattern::ticksPerBar;
-        const auto hold = pattern.holdTicks (sliceRow, event.step, rowTicks, gateScales[(size_t) layer]);
-        basses[(size_t) layer].noteOn (0, sliceNote.velocity.load(), std::max (1, (int) (hold * samplesPerTick)), false, event.slice);
+        const auto hold = event.stack == 0 ? pattern.holdTicks (sliceRow, event.step, rowTicks, gateScales[(size_t) layer])
+                                           : std::max (1.0, sliceNote.length * (double) gateScales[(size_t) layer]);
+        if (event.stack == 0)
+            applyNoteLocks (layer, pattern.note (sliceRow, event.step));
+        basses[(size_t) layer].noteOn (0, sliceNote.velocity, std::max (1, (int) (hold * samplesPerTick)), event.stack > 0, event.slice);
         lastInstrumentStartPpq[(size_t) layer] = clock.getPpqAt (event.offset);
         return;
     }
 
     const auto& note = pattern.note (layer, event.step);
+    applyNoteLocks (layer, note);
 
     // En glide-ton slår inte an: den glider tonen som klingar till sin tonhöjd under sin egen längd. Klingar inget
     // spelas den som en vanlig ton.

@@ -20,7 +20,7 @@ namespace RollFiles
     bool save (const Pattern& pattern, int layer, InstrumentGrid grid, const juce::File& file)
     {
         juce::XmlElement root ("KickbaseRoll");
-        root.setAttribute ("version", 3); // 3: staplade toner; 2: längd = auto eller valt antal takter
+        root.setAttribute ("version", 4); // 4: valfria lock0-lock2 på Note; 3: staplade toner; 2: längd = auto eller valt antal takter
         root.setAttribute ("bars", pattern.lengthBars (layer));
         root.setAttribute ("length", pattern.isLengthAuto (layer) ? juce::String ("auto") : juce::String (pattern.manualBars (layer)));
         root.setAttribute ("grid", Pattern::gridNames()[(int) grid]);
@@ -41,6 +41,9 @@ namespace RollFiles
         pattern.forEachNote (layer, [&] (int tick, const Pattern::Note& n)
         {
             writeNote (tick, 0, n.length.load(), n.pitch.load(), n.velocity.load(), n.slide.load(), n.getChord());
+            for (int p = 0; p < Pattern::numLocks; ++p) // parameterlås på huvudtonen (rörs som sista attribut på senast skrivna Note)
+                if (n.hasLock (p))
+                    root.getChildElement (root.getNumChildElements() - 1)->setAttribute ("lock" + juce::String (p), (double) n.lock[(size_t) p].load());
             for (int index = 1; index < Pattern::maxStack; ++index)
                 if (Pattern::StackNote stacked; pattern.getStack (layer, tick, index, stacked))
                     writeNote (tick, index, stacked.length, stacked.pitch, stacked.velocity, stacked.slide, {});
@@ -70,6 +73,9 @@ namespace RollFiles
             {
                 pattern.addNote (layer, tick, length, pitch, velocity, slide)
                     .setChord ({ note->getIntAttribute ("c1"), note->getIntAttribute ("c2"), note->getIntAttribute ("c3") });
+                for (int p = 0; p < Pattern::numLocks; ++p)
+                    if (note->hasAttribute ("lock" + juce::String (p)))
+                        pattern.setLock (layer, tick, p, (float) note->getDoubleAttribute ("lock" + juce::String (p)));
             }
             else
             {
@@ -175,7 +181,7 @@ namespace RollFiles
                 pattern.forEachNote (id, [&notes] (int, const Pattern::Note&) { ++notes; });
                 if (notes == 0)
                     continue;
-                const auto name = "Bass " + juce::String (layer + 1) + " - " + (kind == RowRegistry::Kind::slice ? "Slice " + juce::String (pattern.rows.sliceOf (id) + 1) : juce::String ("SAMPLE"));
+                const auto name = "Bass " + juce::String (layer + 1) + " - " + (kind == RowRegistry::Kind::slices ? juce::String ("SLICES") : kind == RowRegistry::Kind::slice ? "Slice " + juce::String (pattern.rows.sliceOf (id) + 1) : juce::String ("SAMPLE"));
                 midi.addTrack (buildTrack (pattern, id, std::max (bars, pattern.lengthBars (id)), bpm, rootMidiNote, name));
             }
 

@@ -1,4 +1,5 @@
 #include "AiChatPage.h"
+#include "HelpDialog.h"
 #include "../Core/AiProvider.h"
 #include "../Core/AiMemory.h"
 #include "../Core/Settings.h"
@@ -292,6 +293,8 @@ AiChatPage::AiChatPage (PluginBase& p) : processor (p), chat (p.getAiChat())
     memoryButton.setTooltip ("MEMORY - Configure local feedback and work lessons, what the AI may load, and storage limits.");
     memoryButton.onClick = [this] { showMemorySettings(); };
     addAndMakeVisible (memoryButton);
+    HelpDialog::setupButton (helpButton, *this, HelpDialog::Topic::aiChat, "the AI CHAT tab");
+    addAndMakeVisible (helpButton);
     undoButton.setTooltip ("UNDO - Undoes the AI's last change to the sound.");
     undoButton.onClick = [this] { chat.undo(); refresh(); };
     addAndMakeVisible (undoButton);
@@ -1070,6 +1073,8 @@ void AiChatPage::resized()
     chatsButton.setBounds (header.removeFromRight (52).reduced (0, 2));
     header.removeFromRight (4);
     memoryButton.setBounds (header.removeFromRight (44).reduced (0, 2));
+    header.removeFromRight (4);
+    helpButton.setBounds (header.removeFromRight (48).reduced (0, 2));
     header.removeFromRight (8);
     modelBox.setBounds (header.removeFromLeft (145).reduced (0, 2));
     header.removeFromLeft (4);

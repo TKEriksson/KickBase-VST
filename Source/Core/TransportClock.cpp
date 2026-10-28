@@ -17,7 +17,9 @@ void TransportClock::beginBlock (const juce::Optional<juce::AudioPlayHead::Posit
 
     const auto hostPpq = position.hasValue() ? position->getPpqPosition() : juce::nullopt;
     hostPlaying = position.hasValue() && position->getIsPlaying();
-    followingHost = ! forceFreeRun && hostPlaying && hostPpq.hasValue();
+    followingHost = ! forceFreeRun && ! scrubRequested && hostPlaying && hostPpq.hasValue();
+    const auto scrubStarts = scrubRequested && ! scrubbing;
+    scrubbing = scrubRequested;
 
     if (position.hasValue())
     {
@@ -51,10 +53,22 @@ void TransportClock::beginBlock (const juce::Optional<juce::AudioPlayHead::Posit
     {
         blockStartPpq = continuedPpq;
 
+        if (scrubStarts && hostPlaying && hostPpq.hasValue())
+        {
+            blockStartPpq = *hostPpq; // hjulet tas i medan värden spelar: scrubbningen börjar där värden är
+            ++generation;
+        }
+        if (pendingNudgePpq != 0.0)
+        {
+            blockStartPpq = std::max (0.0, blockStartPpq + pendingNudgePpq);
+            pendingNudgePpq = 0.0;
+            ++generation;
+        }
+
         // Global LOOP: över slutet hoppar klockan tillbaka till början och behåller överskottet. Klockan före loopens start släpps in (man kan ha scrubbat dit).
         if (loopOn && ! hold)
         {
-            const auto loopStartPpq = (double) loopStartBar * barLengthPpq, loopEndPpq = (double) loopEndBar * barLengthPpq;
+            const auto loopStartPpq = ticksToPpq (loopStartTick, barLengthPpq), loopEndPpq = ticksToPpq (loopEndTick, barLengthPpq);
             if (blockStartPpq >= loopEndPpq - epsilon)
             {
                 blockStartPpq = loopStartPpq + std::fmod (blockStartPpq - loopEndPpq, loopEndPpq - loopStartPpq);

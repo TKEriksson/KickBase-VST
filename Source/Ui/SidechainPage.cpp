@@ -1,5 +1,7 @@
 #include "SidechainPage.h"
 
+#include "HelpDialog.h"
+
 namespace
 {
     constexpr float grabDistance = 9.0f;
@@ -375,6 +377,203 @@ void DuckRow::paint (juce::Graphics& g)
 }
 
 //==============================================================================
+namespace
+{
+    void fillChoice (juce::AudioProcessorValueTreeState& apvts, const juce::String& id, juce::ComboBox& box)
+    {
+        if (auto* choice = dynamic_cast<juce::AudioParameterChoice*> (apvts.getParameter (id)))
+            box.addItemList (choice->choices, 1);
+    }
+
+    juce::String choiceName (juce::AudioProcessorValueTreeState& apvts, const juce::String& id)
+    {
+        if (auto* choice = dynamic_cast<juce::AudioParameterChoice*> (apvts.getParameter (id)))
+            return choice->getCurrentChoiceName();
+        return {};
+    }
+
+    void styleSlider (juce::Slider& s, juce::Colour colour)
+    {
+        s.setSliderStyle (juce::Slider::LinearHorizontal);
+        s.setTextBoxStyle (juce::Slider::TextBoxRight, false, 52, 16);
+        s.setColour (juce::Slider::trackColourId, colour);
+        s.setColour (juce::Slider::thumbColourId, Theme::text);
+        s.setColour (juce::Slider::textBoxTextColourId, Theme::text);
+        s.setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+    }
+}
+
+FundamentalDuckPanel::Row::Row (PluginBase& p, int layerIn) : processor (p), layer (layerIn)
+{
+    auto& apvts = p.apvts;
+    fillChoice (apvts, ParamID::bass (layer, InstrumentField::fundamentalDuckMode), modeBox);
+    fillChoice (apvts, ParamID::bass (layer, InstrumentField::fundamentalDuckSource), sourceBox);
+    modeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
+        apvts, ParamID::bass (layer, InstrumentField::fundamentalDuckMode), modeBox);
+    sourceAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
+        apvts, ParamID::bass (layer, InstrumentField::fundamentalDuckSource), sourceBox);
+    styleSlider (depthSlider, Theme::layerColour (layer));
+    styleSlider (windowSlider, Theme::layerColour (layer));
+    depthAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
+        apvts, ParamID::bass (layer, InstrumentField::fundamentalDuckDepth), depthSlider);
+    windowAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
+        apvts, ParamID::bass (layer, InstrumentField::fundamentalDuckWindow), windowSlider);
+
+    modeBox.setTooltip ("FUNDAMENTAL DUCK MODE - INHERIT: this engine follows the values in the FUNDAMENTAL DUCK box above (shown dimmed). "
+                        "OFF: this engine is never dipped. OWN: this engine has its own depth, window and source.");
+    sourceBox.setTooltip ("SOURCE - What makes this engine's fundamental dip: the kick, another instrument, or any of them.");
+    depthSlider.setTooltip ("DEPTH - How many dB this engine's fundamental is cut while the source sounds. It follows the last played voice.");
+    windowSlider.setTooltip ("WINDOW - How close (in cents) the source's pitch must be to this engine's fundamental for the dip to apply fully. "
+                             "It fades out to nothing at twice the window.");
+    for (auto* c : std::initializer_list<juce::Component*> { &modeBox, &sourceBox, &depthSlider, &windowSlider })
+        addAndMakeVisible (c);
+}
+
+void FundamentalDuckPanel::Row::update()
+{
+    auto& apvts = processor.apvts;
+    const auto newDb = processor.fundamentalDuckDb[(size_t) layer].load();
+    const auto newMode = (int) apvts.getRawParameterValue (ParamID::bass (layer, InstrumentField::fundamentalDuckMode))->load();
+    const auto newInherited = juce::String ("from instrument: ") + juce::String (apvts.getRawParameterValue (ParamID::fundamentalDuckDepth)->load(), 1)
+                              + " dB, " + juce::String (juce::roundToInt (apvts.getRawParameterValue (ParamID::fundamentalDuckWindow)->load()))
+                              + " cents, " + choiceName (apvts, ParamID::fundamentalDuckSource);
+    const auto name = processor.getLayerName (layer);
+    if (std::abs (newDb - db) > 0.05f || newMode != mode || newInherited != inherited || name != shownName)
+    {
+        db = newDb;
+        inherited = newInherited;
+        shownName = name;
+        if (newMode != mode)
+        {
+            mode = newMode;
+            resized();
+        }
+        repaint();
+    }
+}
+
+void FundamentalDuckPanel::Row::resized()
+{
+    auto area = getLocalBounds().reduced (0, 2);
+    modeBox.setBounds (70, 2, 70, getHeight() - 4);
+    area.removeFromLeft (216); // namn, ÄRV/AV/EGEN, lampa och dB-siffra (se paint)
+    const auto own = mode == 2;
+    for (auto* c : std::initializer_list<juce::Component*> { &depthSlider, &windowSlider, &sourceBox })
+        c->setVisible (own);
+    if (! own)
+        return;
+    sourceBox.setBounds (area.removeFromRight (80));
+    area.removeFromRight (6);
+    const auto half = area.getWidth() / 2;
+    depthSlider.setBounds (area.removeFromLeft (half));
+    windowSlider.setBounds (area);
+}
+
+void FundamentalDuckPanel::Row::paint (juce::Graphics& g)
+{
+    g.setFont (Theme::font (10.5f, true));
+    g.setColour (Theme::layerColour (layer));
+    g.drawFittedText (shownName, juce::Rectangle<int> (0, 0, 66, getHeight()), juce::Justification::centredLeft, 1, 0.75f);
+
+    // Lampan: tänd (i instrumentets färg) medan motorn dämpar grundtonen, och hur många dB.
+    const auto lit = db > 0.05f;
+    const auto lamp = juce::Rectangle<float> (148.0f, (float) getHeight() * 0.5f - 5.0f, 10.0f, 10.0f);
+    g.setColour (lit ? Theme::layerColour (layer) : Theme::knobBodyDark);
+    g.fillEllipse (lamp);
+    g.setColour (Theme::text.withAlpha (0.5f));
+    g.drawEllipse (lamp, 1.0f);
+    g.setFont (Theme::font (10.0f, false));
+    g.setColour (lit ? Theme::text : Theme::textDim);
+    g.drawText (lit ? juce::String (-db, 1) + " dB" : juce::String ("-"), juce::Rectangle<int> (162, 0, 48, getHeight()), juce::Justification::centredLeft);
+
+    if (mode == 0) // ÄRV: instrumentets värden i grått
+    {
+        g.setColour (Theme::textDim.withAlpha (0.55f));
+        g.drawText (inherited, juce::Rectangle<int> (216, 0, getWidth() - 216, getHeight()), juce::Justification::centredLeft);
+    }
+    else if (mode == 1)
+    {
+        g.setColour (Theme::textDim.withAlpha (0.55f));
+        g.drawText ("off for this engine", juce::Rectangle<int> (216, 0, getWidth() - 216, getHeight()), juce::Justification::centredLeft);
+    }
+}
+
+FundamentalDuckPanel::FundamentalDuckPanel (PluginBase& p) : processor (p)
+{
+    const juce::String help = "FUNDAMENTAL DUCK - Dips the fundamental of every engine while the kick sounds, so the kick's low end and the bass fundamental don't fight. "
+                              "It follows the last played voice of each engine.";
+    onButton.setClickingTogglesState (true);
+    onButton.setColour (juce::TextButton::buttonOnColourId, Theme::kick.withAlpha (0.7f));
+    onButton.setTooltip (help);
+    onAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, ParamID::fundamentalDuckOn, onButton);
+    depthKnob = std::make_unique<KnobComponent> (p.apvts, ParamID::fundamentalDuckDepth, "DEPTH", Theme::kick);
+    windowKnob = std::make_unique<KnobComponent> (p.apvts, ParamID::fundamentalDuckWindow, "WINDOW", Theme::kick);
+    sourceChoice = std::make_unique<ChoiceComponent> (p.apvts, ParamID::fundamentalDuckSource, "SOURCE");
+    depthKnob->setDescription ("DEPTH - How many dB the fundamental of each engine is cut while the source sounds (engines set to INHERIT use this).");
+    windowKnob->setDescription ("WINDOW - How close (in cents) the source's pitch must be to the engine's fundamental for the dip to apply fully. Fades out to nothing at twice the window.");
+    for (auto* c : std::initializer_list<juce::Component*> { &onButton, depthKnob.get(), windowKnob.get(), sourceChoice.get(), &viewport })
+        addAndMakeVisible (c);
+
+    viewport.setViewedComponent (&content, false);
+    viewport.setScrollBarsShown (true, false);
+    viewport.setScrollBarThickness (10);
+    for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
+    {
+        rows.push_back (std::make_unique<Row> (p, layer));
+        content.addChildComponent (*rows.back());
+    }
+    startVisualTimer (Settings::Visual::sidechain, 10);
+}
+
+void FundamentalDuckPanel::timerCallback()
+{
+    followVisualRate();
+    if (processor.activeInstruments() != lastActive)
+    {
+        lastActive = processor.activeInstruments();
+        resized();
+    }
+    for (int i = 0; i < lastActive && i < (int) rows.size(); ++i)
+        rows[(size_t) i]->update();
+}
+
+void FundamentalDuckPanel::paint (juce::Graphics& g)
+{
+    g.setColour (Theme::knobBodyDark.withAlpha (0.5f));
+    g.fillRoundedRectangle (getLocalBounds().toFloat(), 4.0f);
+    g.setFont (Theme::font (11.0f, true));
+    g.setColour (Theme::kick);
+    g.drawText ("FUNDAMENTAL DUCK - ALL ENGINES", 8, 4, 220, 16, juce::Justification::centredLeft);
+}
+
+void FundamentalDuckPanel::resized()
+{
+    auto area = getLocalBounds().reduced (6);
+    auto top = area.removeFromTop (82);
+    top.removeFromTop (18);
+    area.removeFromTop (4);
+    onButton.setBounds (top.removeFromLeft (44).withHeight (24));
+    top.removeFromLeft (6);
+    depthKnob->setBounds (top.removeFromLeft (66));
+    windowKnob->setBounds (top.removeFromLeft (66));
+    sourceChoice->setBounds (top.removeFromLeft (110));
+
+    viewport.setBounds (area);
+    constexpr int rowHeight = 28;
+    const auto active = std::max (processor.activeInstruments(), 0);
+    const auto scrolling = active * rowHeight > area.getHeight();
+    const auto width = area.getWidth() - (scrolling ? viewport.getScrollBarThickness() : 0);
+    content.setSize (width, std::max (active * rowHeight, area.getHeight()));
+    for (size_t i = 0; i < rows.size(); ++i)
+    {
+        const auto shown = (int) i < active;
+        rows[i]->setVisible (shown);
+        if (shown)
+            rows[i]->setBounds (0, (int) i * rowHeight, width, rowHeight);
+    }
+}
+
+//==============================================================================
 SidechainPage::SidechainPage (PluginBase& p)
     : processor (p),
       presets (p, Presets::Section::sidechain, Theme::mix),
@@ -389,6 +588,13 @@ SidechainPage::SidechainPage (PluginBase& p)
                       "The coloured curves in from the top and bottom edges show how much each instrument is ducked.");
     for (auto* c : std::initializer_list<juce::Component*> { &presets, &mode, &length, &curve, &scope, &halftimeButton })
         addAndMakeVisible (c);
+    HelpDialog::setupButton (helpButton, *this, HelpDialog::Topic::sidechain, "the SIDECHAIN tab (ducking, curve, fundamental duck)");
+    addAndMakeVisible (helpButton);
+    if (! p.isEffectVersion())
+    {
+        fundamentalDuck = std::make_unique<FundamentalDuckPanel> (p);
+        addAndMakeVisible (*fundamentalDuck);
+    }
 
     halftimeButton.setClickingTogglesState (true);
     halftimeButton.setTooltip ("HALFTIME - The scope shows 8 beats instead of 4, so a halftime or long pattern (kick every other beat) fits. Only changes the view.");
@@ -445,7 +651,10 @@ void SidechainPage::resized()
     auto depthColumn = area.removeFromLeft (depthRows.empty() ? 90 : 230);
     area.removeFromLeft (10);
 
-    presets.setBounds (column.removeFromTop (24));
+    auto presetRow = column.removeFromTop (24);
+    helpButton.setBounds (presetRow.removeFromRight (44));
+    presetRow.removeFromRight (4);
+    presets.setBounds (presetRow);
     column.removeFromTop (6);
     mode.setBounds (column.removeFromTop (40));
     column.removeFromTop (2);
@@ -471,6 +680,11 @@ void SidechainPage::resized()
             if (shown)
                 depthRows[i]->setBounds (0, (int) i * rowHeight, width, rowHeight);
         }
+    }
+    if (fundamentalDuck != nullptr)
+    {
+        fundamentalDuck->setBounds (area.removeFromBottom (std::min (area.getHeight() / 2, 190)));
+        area.removeFromBottom (6);
     }
     curve.setBounds (area.removeFromLeft (area.getWidth() * 4 / 10));
     area.removeFromLeft (8);

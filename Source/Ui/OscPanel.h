@@ -42,6 +42,7 @@ private:
     float lastPosition = -1.0f, lastWarp = -1.0f;
     int lastTable = -1, lastWarpMode = -1;
     bool lastMorph = true;
+    float lastDuckDb = 0.0f; // FUNDAMENTAL DUCK: hur många dB motorns grundton dämpas nu (0 = ingen dämpning)
     bool lastReady = false; // tabellen var byggd vid förra ritningen (byggs den i bakgrunden ritas vyn om när den blir klar)
 };
 
@@ -68,6 +69,7 @@ private:
     void askForNameAndSave();
     juce::TextButton prevPresetButton { "<" }, nextPresetButton { ">" }, presetButton { "PRESET" }, savePresetButton { "SAVE" }, resetOscButton { "RESET" };
     juce::File currentPreset;
+    juce::TextButton helpButton;
     juce::Component::SafePointer<juce::AlertWindow> saveDialog;
 
     PluginBase& processor;

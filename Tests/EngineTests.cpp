@@ -248,6 +248,104 @@ namespace
         check (peakOf (silent, 0, silent.size()) < 1.0e-4f, "nivå 0 ger tyst bas utan oscillatorer");
     }
 
+    void testSampleEditor()
+    {
+        std::puts ("Bas: sample-editor (AMP/PITCH, på/av)");
+        const auto sample = makeSine (100.0, 0.6);
+        InstrumentSynth bass;
+        bass.prepare (rate);
+
+        InstrumentParams p;
+        p.rootHz = 200.0f;
+        p.oscA.level = 0.0f;
+        p.oscB.level = 0.0f;
+        p.sub = 0.0f;
+        p.cutoffHz = 20000.0f;
+        p.envAmount = 0.0f;
+        p.drive = 0.0f;
+        p.sustain = 1.0f;
+        p.sampleData = &sample;
+        p.sampleLevel = 1.0f;
+        p.sampleOn = true;
+        p.sampleRootHz = 100.0f;
+
+        auto render = [&]
+        {
+            bass.setParams (p);
+            bass.reset();
+            bass.noteOn (0, 1.0f, (int) rate);
+            std::vector<float> audio ((size_t) (rate * 0.4));
+            for (auto& v : audio)
+                v = bass.nextSample();
+            return audio;
+        };
+
+        const auto original = render();
+        p.sampleAmpMs = 50.0f; // av: parametrarna ska inte höras
+        p.samplePitchSemis = 7.0f;
+        check (render() == original, "AMP och PITCH av ger exakt det gamla ljudet");
+
+        p.sampleAmpOn = true;
+        const auto amp = render();
+        check (peakOf (amp, (size_t) (rate * 0.06), amp.size()) < 1.0e-4f, "AMP: tyst efter kurvans längd");
+        check (peakOf (amp, 0, (size_t) (rate * 0.01)) > 0.1f, "AMP: hörs i början");
+        p.sampleAmpOn = false;
+
+        p.samplePitchOn = true;
+        p.samplePitchSemis = 12.0f;
+        p.samplePitchMs = 50.0f;
+        const auto pitch = render();
+        const auto early = estimateFrequency (pitch, 0, (size_t) (rate * 0.02));
+        const auto late = estimateFrequency (pitch, (size_t) (rate * 0.2), (size_t) (rate * 0.35));
+        check (early > 130.0, "PITCH: högre i början", early);
+        check (std::abs (late - 100.0) < 6.0, "PITCH: tillbaka till egna tonen efteråt", late);
+    }
+
+    void testSampleReverse()
+    {
+        std::puts ("Bas: sampling baklänges per ton");
+        auto sample = makeSine (100.0, 0.3);
+        for (int i = (int) (rate * 0.1); i < sample.audio.getNumSamples(); ++i)
+            sample.audio.setSample (0, i, 0.0f); // ljud bara de första 0,1 s
+        InstrumentSynth bass;
+        bass.prepare (rate);
+
+        InstrumentParams p;
+        p.rootHz = 200.0f;
+        p.oscA.level = 0.0f;
+        p.oscB.level = 0.0f;
+        p.sub = 0.0f;
+        p.cutoffHz = 20000.0f;
+        p.envAmount = 0.0f;
+        p.drive = 0.0f;
+        p.sustain = 1.0f;
+        p.sampleData = &sample;
+        p.sampleLevel = 1.0f;
+        p.sampleOn = true;
+        p.sampleRootHz = 100.0f;
+
+        auto render = [&]
+        {
+            bass.setParams (p);
+            bass.reset();
+            bass.noteOn (0, 1.0f, (int) rate);
+            std::vector<float> audio ((size_t) (rate * 0.5));
+            for (auto& v : audio)
+                v = bass.nextSample();
+            return audio;
+        };
+
+        const auto forward = render();
+        check (peakOf (forward, 0, (size_t) (rate * 0.08)) > 0.1f, "framåt: ljudet kommer först");
+        p.sampleReverse = true;
+        const auto reversed = render();
+        check (peakOf (reversed, 0, (size_t) (rate * 0.15)) < 1.0e-3f, "baklänges: tyst i början");
+        check (peakOf (reversed, (size_t) (rate * 0.2), (size_t) (rate * 0.29)) > 0.1f, "baklänges: ljudet kommer sist");
+        check (peakOf (reversed, (size_t) (rate * 0.32), reversed.size()) < 1.0e-3f, "baklänges: tyst när samplingen är slut");
+        p.sampleReverse = false;
+        check (render() == forward, "av ger exakt det gamla ljudet");
+    }
+
     void testInstrumentPitchAndRelease()
     {
         std::puts ("Bas: rätt ton och tystnar efter gate + release");
@@ -697,7 +795,11 @@ namespace
         const auto seconds = (juce::Time::getMillisecondCounterHiRes() - start) / 1000.0;
         std::printf ("  %d tabeller byggda på %.2f s\n", Wavetables::builtInCount(), seconds);
         check (Wavetables::builtInCount() >= 100, "minst 100 inbyggda tabeller", (double) Wavetables::builtInCount());
+#if JUCE_DEBUG
+        check (seconds < 120.0, "alla tabeller byggs på rimlig tid", seconds); // Debug: 23 s ensam, 70 s under last (28 okt)
+#else
         check (seconds < 20.0, "alla tabeller byggs på rimlig tid", seconds);
+#endif
 
         juce::StringArray seen;
         auto bad = 0;
@@ -931,7 +1033,7 @@ namespace
         sub.clearNotes (0);
         sub.addNote (0, 0, 24, 0, 0.8f);
         const auto sampleRow = sub.rows.add (0, RowRegistry::Kind::sample);
-        const auto slicerRow = sub.rows.add (0, RowRegistry::Kind::slice, 0);
+        const auto slicerRow = sub.rows.add (0, RowRegistry::Kind::slices, 0);
         const auto otherRow = sub.rows.add (1, RowRegistry::Kind::sample);
         sub.addNote (sampleRow, 0, 24, 5, 0.7f);
         sub.addNote (otherRow, 0, 24, 3, 0.7f);
@@ -993,6 +1095,104 @@ namespace
         folder.deleteRecursively();
     }
 
+    void testNoteLocks()
+    {
+        std::puts ("Mönster: värde per ton (lock) sparas, läses och rensas");
+        const auto folder = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                                .getChildFile ("Kickbase-lock-" + juce::Uuid().toString());
+        check (folder.createDirectory(), "skapa temporär testmapp");
+
+        Pattern pattern;
+        pattern.clearNotes (1);
+        pattern.addNote (1, 0, 24, 3);
+        pattern.addNote (1, 96, 24, 5);
+        check (! pattern.note (1, 0).hasAnyLock(), "en ny ton har inga lock");
+        check (! pattern.setLock (1, 48, Pattern::lockPan, 0.5f), "lock på en tick utan ton avvisas");
+        check (pattern.setLock (1, 0, Pattern::lockCutoff, 0.25f) && pattern.setLock (1, 0, Pattern::lockFxSend, 2.0f),
+               "lock sätts på en ton");
+        check (pattern.getLock (1, 0, Pattern::lockCutoff) == 0.25f && pattern.getLock (1, 0, Pattern::lockFxSend) == 1.0f
+                   && pattern.getLock (1, 0, Pattern::lockPan) == Pattern::lockUnset,
+               "lock klipps till 0..1 och oanvända är osatta");
+
+        Pattern loaded;
+        loaded.fromValueTree (pattern.toValueTree());
+        check (loaded.getLock (1, 0, Pattern::lockCutoff) == 0.25f && loaded.getLock (1, 0, Pattern::lockFxSend) == 1.0f
+                   && loaded.getLock (1, 0, Pattern::lockPan) == Pattern::lockUnset && ! loaded.note (1, 96).hasAnyLock(),
+               "lock överlever spara och läsa (undo använder samma väg)");
+
+        auto old = pattern.toValueTree();
+        old.getChildWithProperty ("layer", 1).removeProperty ("locks", nullptr);
+        Pattern legacy;
+        legacy.fromValueTree (old);
+        check (legacy.note (1, 0).pitch == 3 && ! legacy.note (1, 0).hasAnyLock(), "ett mönster utan locks läses som förut");
+
+        pattern.clearLock (1, 0, Pattern::lockCutoff);
+        check (pattern.getLock (1, 0, Pattern::lockCutoff) == Pattern::lockUnset && pattern.note (1, 0).hasLock (Pattern::lockFxSend),
+               "clearLock tar bara bort ett lock");
+
+        const auto rollFile = folder.getChildFile ("lock.roll");
+        check (RollFiles::save (pattern, 1, InstrumentGrid::sixteenth, rollFile), "spara lock i pianorullepreset");
+        Pattern fromRoll;
+        auto grid = InstrumentGrid::sixteenth;
+        check (RollFiles::load (fromRoll, 1, rollFile, grid) && fromRoll.getLock (1, 0, Pattern::lockFxSend) == 1.0f
+                   && ! fromRoll.note (1, 0).hasLock (Pattern::lockCutoff),
+               "lock följer med i pianorullepreset");
+
+        pattern.removeNote (1, 0);
+        pattern.addNote (1, 0, 24, 3);
+        check (! pattern.note (1, 0).hasAnyLock(), "en ny ton på en borttagen tons plats ärver inga lock");
+        folder.deleteRecursively();
+    }
+
+    void testLockEditing()
+    {
+        std::puts ("Mönster: lock följer med klippbord och flytt, och ångra återställer dem");
+        Pattern pattern;
+        pattern.clearNotes (1);
+        pattern.addNote (1, 0, 24, 3);
+        pattern.setLock (1, 0, Pattern::lockCutoff, 0.25f);
+        pattern.setLock (1, 0, Pattern::lockPan, 0.75f);
+        const auto undoBase = pattern.rowToValueTree (1); // som pianorullens snapshotRow före en ändring
+
+        // Klippbordet: låsen läses ut och sätts på den inklistrade tonen.
+        std::array<float, Pattern::numLocks> copied {};
+        for (int p = 0; p < Pattern::numLocks; ++p)
+            copied[(size_t) p] = pattern.getLock (1, 0, p);
+        pattern.addNote (1, 96, 24, 3);
+        for (int p = 0; p < Pattern::numLocks; ++p)
+            if (copied[(size_t) p] != Pattern::lockUnset)
+                pattern.setLock (1, 96, p, copied[(size_t) p]);
+        check (pattern.getLock (1, 96, Pattern::lockCutoff) == 0.25f && pattern.getLock (1, 96, Pattern::lockPan) == 0.75f
+                   && pattern.getLock (1, 96, Pattern::lockFxSend) == Pattern::lockUnset,
+               "inklistrad ton bär låsen");
+
+        // Flytt: läs låsen, ta bort tonen, lägg den på ny plats och sätt låsen igen.
+        std::array<float, Pattern::numLocks> moved {};
+        for (int p = 0; p < Pattern::numLocks; ++p)
+            moved[(size_t) p] = pattern.getLock (1, 96, p);
+        pattern.removeNote (1, 96);
+        pattern.addNote (1, 144, 24, 3);
+        for (int p = 0; p < Pattern::numLocks; ++p)
+            if (moved[(size_t) p] != Pattern::lockUnset)
+                pattern.setLock (1, 144, p, moved[(size_t) p]);
+        check (pattern.getLock (1, 144, Pattern::lockCutoff) == 0.25f && pattern.getLock (1, 144, Pattern::lockPan) == 0.75f
+                   && ! pattern.note (1, 96).hasAnyLock(),
+               "flyttad ton bär låsen och lämnar inga kvar");
+
+        // Ångra: raden tillbaka till läget före ändringarna, låsen på första tonen kvar och inga på de nya.
+        pattern.clearLock (1, 0, Pattern::lockCutoff);
+        pattern.rowFromValueTree (1, undoBase);
+        check (pattern.getLock (1, 0, Pattern::lockCutoff) == 0.25f && pattern.getLock (1, 0, Pattern::lockPan) == 0.75f
+                   && ! pattern.note (1, 96).hasAnyLock() && ! pattern.note (1, 144).hasAnyLock(),
+               "ångra återställer lock och toner");
+
+        // Spara/ladda av hela mönstret behåller låsen.
+        Pattern loaded;
+        loaded.fromValueTree (pattern.toValueTree());
+        check (loaded.getLock (1, 0, Pattern::lockCutoff) == 0.25f && loaded.getLock (1, 0, Pattern::lockPan) == 0.75f,
+               "spara och ladda behåller låsen efter ångra");
+    }
+
     void testGateAndPianoRollFlag()
     {
         std::puts ("Mönster: gate-steg och pianorullsmarkering sparas per lager");
@@ -1012,6 +1212,98 @@ namespace
         pattern.clearNotes (2);
         check (! pattern.isCustom (2), "när lagret rensas nollställs pianorullsmarkeringen");
     }
+
+    std::vector<float> renderKickWith (const KickParams& p, const ClickSample* sample, double seconds)
+    {
+        KickEngine kick;
+        kick.prepare (rate);
+        kick.setParams (p);
+        kick.setClickSample (sample);
+        kick.trigger (1.0f);
+        std::vector<float> audio ((size_t) (rate * seconds));
+        for (auto& v : audio)
+            v = kick.nextSample();
+        return audio;
+    }
+
+    void testKickClickLayersAndSampleTools()
+    {
+        std::puts("Kick: klick-lager 2 och 3 och sampleverktyg");
+
+        KickParams base;
+        base.drive = 0.0f;
+        const auto plain = renderKickWith (base, nullptr, 0.2);
+
+        // Nivå 0 = av: övriga fält ändrar ingenting, ljudet är bit för bit detsamma.
+        {
+            auto p = base;
+            p.extraClicks[0].delayMs = 20.0f;
+            p.extraClicks[0].lengthMs = 12.0f;
+            p.extraClicks[1].mode = 2;
+            const auto off = renderKickWith (p, nullptr, 0.2);
+            check (off == plain, "klick-lager på nivå 0 ändrar inte ljudet");
+        }
+
+        // Ett lager med fördröjning 20 ms: skillnaden är noll före, hörs inom fönstret och är noll efter.
+        for (int mode = 0; mode < 3; ++mode)
+        {
+            auto p = base;
+            p.extraClicks[1].level = 1.0f;
+            p.extraClicks[1].delayMs = 20.0f;
+            p.extraClicks[1].lengthMs = 8.0f;
+            p.extraClicks[1].mode = mode;
+            const auto with = renderKickWith (p, nullptr, 0.2);
+            check (allFinite (with), "klick-lager är ändligt", mode);
+            auto diffPeak = [&] (double fromMs, double toMs)
+            {
+                auto peak = 0.0f;
+                for (size_t i = (size_t) (rate * fromMs * 0.001); i < (size_t) (rate * toMs * 0.001); ++i)
+                    peak = std::max (peak, std::abs (with[i] - plain[i]));
+                return peak;
+            };
+            check (diffPeak (0.0, 19.9) == 0.0f, "klick-lager: tyst före fördröjningen", mode);
+            check (diffPeak (20.0, 28.0) > 0.02f, "klick-lager: hörs i sitt fönster", diffPeak (20.0, 28.0));
+            check (diffPeak (28.5, 200.0) == 0.0f, "klick-lager: tyst efter sin längd", mode);
+        }
+
+        // Sampleverktyg på en stigande ramp (ersätt-läge): klipp, baklänges och utfasning.
+        {
+            ClickSample ramp;
+            ramp.audio.setSize (1, (int) (rate * 0.1));
+            const auto n = ramp.audio.getNumSamples();
+            for (int i = 0; i < n; ++i)
+                ramp.audio.setSample (0, i, 0.8f * (float) i / (float) n);
+
+            auto p = base;
+            p.sampleMode = 2;
+            p.sampleLevel = 1.0f;
+            const auto normal = renderKickWith (p, &ramp, 0.15);
+            const auto at = [&] (const std::vector<float>& a, double ms) { return a[(size_t) (rate * ms * 0.001)]; };
+
+            auto trimmed = p;
+            trimmed.sampleStartMs = 50.0f;
+            const auto cut = renderKickWith (trimmed, &ramp, 0.15);
+            check (std::abs (at (cut, 1.0) - at (normal, 51.0)) < 0.02f, "klipp: början försvinner", at (cut, 1.0));
+
+            auto reversed = p;
+            reversed.sampleReverse = true;
+            const auto back = renderKickWith (reversed, &ramp, 0.15);
+            check (at (back, 1.0) > 0.6f && at (back, 90.0) < 0.2f, "baklänges: rampen faller", at (back, 1.0));
+
+            auto faded = p;
+            faded.sampleFadeMs = 40.0f;
+            const auto out = renderKickWith (faded, &ramp, 0.15);
+            check (std::abs (at (out, 10.0) - at (normal, 10.0)) < 0.001f, "utfasning: mitten orörd");
+            check (at (out, 98.0) < at (normal, 98.0) * 0.3f, "utfasning: slutet tonas ut", at (out, 98.0));
+
+            // Av = som förut.
+            auto off = p;
+            off.sampleStartMs = 0.0f;
+            off.sampleFadeMs = 0.0f;
+            off.sampleReverse = false;
+            check (renderKickWith (off, &ramp, 0.15) == normal, "sampleverktyg av ändrar inte ljudet");
+        }
+    }
 }
 
 void runEngineTests()
@@ -1020,7 +1312,10 @@ void runEngineTests()
     testKickLandsOnKey();
     testKickRetriggerFades();
     testKickShapesAndSamples();
+    testKickClickLayersAndSampleTools();
     testInstrumentSample();
+    testSampleEditor();
+    testSampleReverse();
     testInstrumentPitchAndRelease();
     testInstrumentGlide();
     testInstrumentModulationSources();
@@ -1031,8 +1326,10 @@ void runEngineTests()
     testModEnvSync();
     testUserWavetable();
     testWavetableLibrary();
+    testLockEditing();
     testGateAndPianoRollFlag();
     testRowLengths();
     testPolyphonyStacks();
     testPianoRollStackFiles();
+    testNoteLocks();
 }

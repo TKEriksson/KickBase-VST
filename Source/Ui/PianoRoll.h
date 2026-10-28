@@ -119,7 +119,7 @@ public:
     void focusLost (FocusChangeType) override { repaint(); }
 
 private:
-    enum class Drag { none, move, resize, velocity, box, erase, paste, ruler, keys, pan, stroke };
+    enum class Drag { none, move, resize, velocity, box, erase, paste, ruler, keys, pan, stroke, splitter, lane };
     enum class Tool { draw, select, erase };
 
     struct NoteData
@@ -128,6 +128,7 @@ private:
         float velocity = 0.8f;
         bool slide = false;
         Pattern::Chord chord {};
+        std::array<float, Pattern::numLocks> lock { Pattern::lockUnset, Pattern::lockUnset, Pattern::lockUnset }; // parameterlås (bara huvudtonen)
     };
     // En ton i en stapel (polyfoni): starttick + index (0 = huvudtonen med ackordet, 1..3 = staplade toner; index kan ha hål).
     struct NoteKey
@@ -179,7 +180,7 @@ private:
     void setLiveVelocity (NoteKey key, float velocity);
     void setLiveSlide (NoteKey key, bool slide);
     static void normalise (NoteMap& notes, std::map<NoteKey, NoteKey>* remap = nullptr);  // en stapel utan huvudton: lägsta staplade tonen blir huvudton
-    static Relocated relocate (const NoteMap& source, const KeySet& moving, int deltaTicks, int deltaPitch); // full målstack eller samma tonhöjd på målticken avbryter hela flytten
+    static Relocated relocate (const NoteMap& source, const KeySet& moving, int deltaTicks, int deltaPitch, int lowest = Pattern::minPitch, int highest = Pattern::maxPitch); // full målstack eller samma tonhöjd på målticken avbryter hela flytten
     void removeKeys (const KeySet& keys);
     int voices() const;                              // lagrets VOICES (ackord hörs bara med 2 eller fler)
     void setChordOnSelection (const Pattern::Chord& chord);
@@ -242,15 +243,40 @@ private:
     std::vector<juce::Colour> layerColours;
     int lastColourVersion = 0; // processor.layerStructureVersion
     std::pair<uint64_t, uint64_t> liveNow { 0, 0 }; // tonerna som spelas live (MIDI IN: INSTRUMENT): MIDI-ton 0..63 och 64..127
-    int layer = 0;
+    int layer = 0;      // radens id i mönstret (NOTE-rad, kick eller skivraden): alla notanrop
+    int baseLayer = 0;  // instrumentet/kicken som raden hör till (ljud, rutnät, namn, röster, färg)
+    bool sliceMode = false; // skivraden: tangenterna är skivor ("Slice N"), pitch = skivindex - 64
+    int sliceCount() const; // skivor i instrumentets sample (skivläge)
+    int lowPitch() const { return sliceMode ? RowRegistry::pitchOfSlice (0) : Pattern::minPitch; }
+    int highPitch() const { return sliceMode ? RowRegistry::pitchOfSlice (std::max (1, sliceCount()) - 1) : Pattern::maxPitch; }
 
-    juce::Rectangle<float> toolbarArea, keyArea, rulerArea, gridArea, velocityArea;
+    juce::Rectangle<float> toolbarArea, keyArea, rulerArea, gridArea;
+
+    // Parameterlanes under notgallret. Lane 0 är alltid velocity (kan inte tas bort); övriga väljer parameter (fas 1: bara ytan, inga värden än).
+    // Höjderna hör till vyn (som zoom och scroll), inte till presetet.
+    struct Lane { int param = 0; float height = 40.0f; };
+    static constexpr int maxLanes = 4;
+    static constexpr int numLaneParams = 1 + Pattern::numLocks; // lane-param 0 = velocity, p > 0 = parameterlås p - 1
+    static constexpr float minLaneHeight = 28.0f, laneGap = 4.0f;
+    static const char* laneName (int param);                  // kort namn i lanens huvud
+    static const char* laneTooltip (int param);
+    std::vector<Lane> lanes { Lane {} };
+    std::array<juce::Rectangle<float>, maxLanes> laneArea;
+    juce::Rectangle<float> laneHeader (int index) const { return { 0.0f, laneArea[(size_t) index].getY(), 46.0f, laneArea[(size_t) index].getHeight() }; }
+    int splitterAt (juce::Point<float> p) const;               // lanen vars överkant delaren är, eller -1
+    void showLaneMenu (int index);
+    void paintLockLane (int index, juce::Graphics& g); // staplar för lanens parameterlås (en per huvudton; saknat lås = svagt streck)
+    void addLane();
+    juce::TextButton addLaneButton { "+ LANE" };
+    int splitterLane = -1;
+    int dragLane = 0;                                          // lanen en lane-drag gäller (index i lanes)
+    float splitterStartY = 0.0f, splitterStartHeight = 0.0f;
 
     // Verktygsraden.
     juce::TextButton snapButton { "SNAP" }, smallerButton { "-" }, biggerButton { "+" }, allButton { "SELECT ALL" }, deleteButton { "DEL" },
-                     glideButton { "GLIDE" }, followButton { "FOLLOW" }, presetButton { "PRESET" }, midiButton { "MIDI" },
+                     glideButton { "GLIDE" }, followButton { "FOLLOW" }, ghostButton { "GHOST" }, presetButton { "PRESET" }, midiButton { "MIDI" },
                      drawButton { "PENCIL" }, selectButton { "SELECT" }, eraseButton { "ERASER" }, copyButton { "COPY" },
-                     pasteButton { "PASTE" }, pasteOkButton { "OK" }, pasteCancelButton { "CANCEL" }, popOutButton { "POP OUT" };
+                     pasteButton { "PASTE" }, pasteOkButton { "OK" }, pasteCancelButton { "CANCEL" }, popOutButton { "POP OUT" }, helpButton;
     ListenButton listenButton; // högtalare: håll för att höra pianorullen (loopar), släpp för att sluta
     Tool tool = Tool::draw;
     bool shiftHeld = false, altHeld = false;
@@ -270,6 +296,7 @@ private:
     juce::ComboBox midiInBox;                               // MIDI in medan pianorullen är öppen: alla instrument eller bara den här raden
     juce::Rectangle<float> hintArea;                        // tipsraden längst ner
     void applyMidiIn();
+    void showGhostMenu();                                   // GHOST NOTES: multival över raderna (menyn öppnas igen efter varje val)
     juce::TextButton lengthButton, extendButton { "+ BAR" };  // radens längd (AUTO n / valt antal: klick öppnar menyn) och förläng med en takt
     juce::TextButton voicesDownButton { "-" }, voicesUpButton { "+" };
     juce::Label voicesLabel;                                // "VOICES n"
@@ -286,6 +313,12 @@ private:
     // Glidestreck (D1): högerdrag på tomt rutnät. Ett högerklick utan drag visar menyn som förut.
     juce::Point<float> strokeStart, strokeEnd;
     bool strokeMenuNow = false;
+    // Glide-plus: plus-ikon vid en glide-ton som startar ett glidestreck från notens slut; strecket fastnar på en ton under pekaren.
+    NoteKey plusKey;
+    bool plusBelow = true;
+    bool strokeFromPlus = false;
+    juce::Rectangle<float> plusRect() const;
+    void updatePlus (juce::Point<float> position, NoteKey hovered);
     void addStroke (const juce::Point<float>& from, const juce::Point<float>& to);
     float topPitch = 12.0f;     // översta synliga raden (halvtoner från tonarten)
     NoteKey justCreated;        // tonen som det första klicket i ett dubbelklick skapade

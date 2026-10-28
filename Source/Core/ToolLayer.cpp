@@ -347,7 +347,7 @@ std::vector<ToolLayer::ToolInfo> ToolLayer::tools()
           R"({"type":"object","properties":{"file":{"type":"string"},"kind":{"type":"string","enum":["kick","music"]},"start":{"type":"number"},"seconds":{"type":"number"},"bpm":{"type":"number"}},"required":["file"]})" },
         { "load_bass_sample", "Loads a WAV/AIFF/FLAC file (max 12 s, mono-summed) as an instrument's sample source: it plays alongside the oscillators (through the filter and envelope), scaled by bassNSampleLevel (set here with 'level', default 1); it switches bassNSampleOn on. layer 0-9. key_track true makes it follow the notes (root_note = the MIDI note the sample was recorded at, C5 = 60), loop repeats it while the note is held, start 0..1. Slices (optional): the sample is cut into slices and each of the FIRST 16 slices gets its own pattern row 'iN.slice1' .. 'iN.slice16' (create them with write_notes; a note on a row plays that slice at original speed, no pitching or loop; slices beyond 16 have no row and stay silent; a normal note row plays the whole sample); slice_mode grid|auto|manual, grid = number of equal slices (default 8), sensitivity 0..1 (auto), markers = array of 0..1 positions (manual), reverse true plays slices backwards. Empty or missing file clears the sample. Turn the oscillators off (bassNAOn, bassNBOn, bassNCOn = false) and bassNSub/bassNNoise down to hear the sample alone.",
           R"({"type":"object","properties":{"layer":{"type":"integer"},"file":{"type":"string"},"level":{"type":"number"},"key_track":{"type":"boolean"},"root_note":{"type":"integer"},"loop":{"type":"boolean"},"start":{"type":"number"},"slice_mode":{"type":"string"},"grid":{"type":"integer"},"sensitivity":{"type":"number"},"markers":{"type":"array","items":{"type":"number"}},"reverse":{"type":"boolean"}},"required":["layer"]})" },
-        { "load_kick_sample", "Loads a WAV/AIFF/FLAC file (max 2 s, mono-summed) as the kick's sample. kickSampleMode (Click | Layer | Replace) decides how it is used: Click = the first moments of every kick on top of the synthesized body, scaled by kickClick; Layer = the whole sample on top of the synthesized kick (kickSampleLevel); Replace = the sample is the kick (the synthesized body is silent). kickSampleTune plays it faster or slower. kickSynthOn / kickSampleOn switch the synth kick and the sample on or off (off synth = only the sample is heard like Replace; off sample = the loaded sample is ignored). Empty or missing file clears it.",
+        { "load_kick_sample", "Loads a WAV/AIFF/FLAC file (max 2 s, mono-summed) as the kick's sample. kickSampleMode (Click | Layer | Replace) decides how it is used: Click = the first moments of every kick on top of the synthesized body, scaled by kickClick; Layer = the whole sample on top of the synthesized kick (kickSampleLevel); Replace = the sample is the kick (the synthesized body is silent). kickSampleTune plays it faster or slower. kickMix balances synth and sample (0 = synth only, 0.5 = both at full level, 1 = only the sample); kickSynthOn / kickSampleOn are legacy switches that still apply (off synth = only the sample is heard; off sample = the sample is ignored). Empty or missing file clears it.",
           R"({"type":"object","properties":{"file":{"type":"string"}}})" },
         { "list_library", "Lists the sounds in the user's library (Documents\\Kickbase\\Library: kicks, bass sounds, synth sounds, pads and loops from free packs and the user's own recordings). Each item has id, name, category, package, tags, license, author and, if known, bpm and root_note. PERSONAL items are the user's own sounds (personal: true): they may be used but are never included in anything that is shared. Filter with category (Kicks, Bass, Synth, Pads, BassLoops, SynthLoops, Multi) and search (all words must match name, package, tags, author or license). Packages with a broken manifest are not listed; their problems are returned.",
           R"({"type":"object","properties":{"category":{"type":"string"},"search":{"type":"string"},"limit":{"type":"integer"}}})" },
@@ -791,9 +791,12 @@ var ToolLayer::getState (const var& args) const
     for (int layer = 0; layer < Pattern::numNoteLayers; ++layer)
     {
         const auto isKick = layer == Pattern::kickLayer;
-        juce::Array<var> notes, stacked;
+        juce::Array<var> notes, stacked, locks;
         processor.pattern.forEachNote (layer, [&] (int tick, const Pattern::Note& n)
         {
+            for (int param = 0; param < Pattern::numLocks; ++param)
+                if (n.hasLock (param))
+                    locks.add (var (juce::Array<var> { tick, Pattern::lockNames()[param], round4 (n.lock[(size_t) param].load()) }));
             for (int index = 1; index < Pattern::maxStack; ++index) // polyfoni: staplade toner på samma tick
                 if (Pattern::StackNote s; processor.pattern.getStack (layer, tick, index, s))
                     stacked.add (var (juce::Array<var> { tick, s.length, s.pitch, round4 (s.velocity), s.slide }));
@@ -817,6 +820,8 @@ var ToolLayer::getState (const var& args) const
         put (entry, "notes [tick, length, pitch, velocity, glide]", notes);
         if (! stacked.isEmpty())
             put (entry, "stacked_notes [tick, length, pitch, velocity, glide] (extra notes on the same tick as a note above)", stacked);
+        if (! locks.isEmpty())
+            put (entry, "locks [tick, parameter, value 0-1] (per-note value that overrides the knob; set with cutoff/pan/fxsend on a note)", locks);
         put (entry, "piano_roll_layer", processor.pattern.isCustom (layer));
         put (entry, "bars", processor.pattern.lengthBars (layer));
         put (entry, "length_mode", processor.pattern.isLengthAuto (layer) ? juce::var ("auto") : juce::var ("locked")); // auto: följer tonerna, locked: ett valt antal takter
@@ -1131,6 +1136,9 @@ var ToolLayer::setPattern (const var& args)
                     intervals[(size_t) i] = (int) (*chord)[i];
                 added.setChord (intervals);
             }
+            for (int param = 0; param < Pattern::numLocks; ++param) // värde per ton (0..1), se Pattern::lockNames
+                if (const juce::Identifier key (Pattern::lockNames()[param]); note.hasProperty (key))
+                    pattern.setLock (layer, tick, param, (float) (double) note[key]);
         }
         pattern.setCustom (layer, true);
     }
@@ -1164,11 +1172,13 @@ var ToolLayer::setPattern (const var& args)
     {
         pattern.refreshLengths();
         const auto sourceBars = std::max (1, pattern.contentBars (layer));
-        struct Copy { int tick, length, pitch; float velocity; bool slide; Pattern::Chord chord; std::vector<Pattern::StackNote> stack; };
+        struct Copy { int tick, length, pitch; float velocity; bool slide; Pattern::Chord chord; std::vector<Pattern::StackNote> stack; std::array<float, Pattern::numLocks> locks; };
         std::vector<Copy> copies;
         pattern.forEachNote (layer, [&] (int tick, const Pattern::Note& n)
         {
-            Copy c { tick, n.length.load(), n.pitch.load(), n.velocity.load(), n.slide.load(), n.getChord(), {} };
+            Copy c { tick, n.length.load(), n.pitch.load(), n.velocity.load(), n.slide.load(), n.getChord(), {}, {} };
+            for (int param = 0; param < Pattern::numLocks; ++param)
+                c.locks[(size_t) param] = n.lock[(size_t) param].load();
             for (int index = 1; index < Pattern::maxStack; ++index)
                 if (Pattern::StackNote s; pattern.getStack (layer, tick, index, s))
                     c.stack.push_back (s);
@@ -1181,6 +1191,9 @@ var ToolLayer::setPattern (const var& args)
                 if (tick < repeatTo * Pattern::ticksPerBar)
                 {
                     pattern.addNote (layer, tick, std::min (c.length, repeatTo * Pattern::ticksPerBar - tick), c.pitch, c.velocity, c.slide).setChord (c.chord);
+                    for (int param = 0; param < Pattern::numLocks; ++param)
+                        if (c.locks[(size_t) param] != Pattern::lockUnset)
+                            pattern.setLock (layer, tick, param, c.locks[(size_t) param]);
                     for (auto s : c.stack)
                     {
                         s.length = std::min (s.length, repeatTo * Pattern::ticksPerBar - tick);

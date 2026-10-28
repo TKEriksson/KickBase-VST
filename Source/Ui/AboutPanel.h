@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../Core/PluginBase.h"
+#include "HelpDialog.h"
 #include "Theme.h"
 
 // SETTINGS > ABOUT: version, licensen (AGPL-3.0), var källkoden finns, och texterna LICENSE och THIRD-PARTY ur programmet självt
@@ -16,7 +17,7 @@ public:
 private:
     void showText (bool license); // THIRD-PARTY (false) eller LICENSE (true)
 
-    juce::TextButton backButton { "BACK" }, thirdPartyButton { "THIRD-PARTY" }, licenseButton { "LICENSE" };
+    juce::TextButton backButton { "BACK" }, thirdPartyButton { "THIRD-PARTY" }, licenseButton { "LICENSE" }, helpButton;
     juce::Label title, licenceLine;
     juce::TextEditor text;
     juce::String thirdPartyText, licenseText;

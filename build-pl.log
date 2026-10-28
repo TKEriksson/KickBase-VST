@@ -1,0 +1,465 @@
+﻿.\build.bat : 'vswhere.exe' is not recognized as an internal or external command,
+At line:1 char:364
++ ... GitHub\KickBase-VST-pl; .\build.bat Debug all *> build-pl.log; Get-Co ...
++                             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ('vswhere.exe' i...ternal command,:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+operable program or batch file.
+-- Configuring juceaide
+-- Building juceaide
+-- Exporting juceaide
+-- Testing juceaide
+-- Finished setting up juceaide
+-- Configuring done (38.5s)
+-- Generating done (4.5s)
+-- Build files have been written to: C:/Users/hunga/Documents/GitHub/KickBase-VST-pl/build/Debug
+[0/2] Re-checking globbed directories...
+[1/172] Building CXX object CMakeFiles\Kickbase.dir\Source\Core\SourceEq.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[2/172] Building CXX object CMakeFiles\Kickbase.dir\Source\Core\Mixer.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[3/172] Building CXX object CMakeFiles\Kickbase.dir\Source\Core\RollFiles.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[4/172] Building CXX object CMakeFiles\Kickbase.dir\Source\Core\BridgeLink.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[5/172] Building CXX object CMakeFiles\Kickbase.dir\Source\Core\Params.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[6/172] Building CXX object CMakeFiles\Kickbase.dir\Source\Core\Presets.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[7/172] Building CXX object CMakeFiles\Kickbase.dir\Source\Core\ToolLayer.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[8/172] Building CXX object CMakeFiles\Kickbase.dir\Source\Core\MixAnalysis.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+C:\Users\hunga\Documents\GitHub\KickBase-VST-pl\Source\Core\MixAnalysis.cpp(2486): warning C4459: declaration of 'fftSize' hides global declaration
+C:\Users\hunga\Documents\GitHub\KickBase-VST-pl\Source\Core\MixAnalysis.h(26): note: see declaration of 'MixAnalysis::fftSize'
+[9/172] Building CXX object CMakeFiles\Kickbase.dir\Source\Core\PresetCategories.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[10/172] Building CXX object CMakeFiles\Kickbase.dir\Source\Core\Master.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[11/172] Building CXX object CMakeFiles\Kickbase.dir\Source\Core\Effects.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[12/172] Building CXX object CMakeFiles\Kickbase.dir\Source\Ui\PresetButton.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[13/172] Building CXX object CMakeFiles\Kickbase.dir\Source\Ui\ChannelViews.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[14/172] Building CXX object CMakeFiles\Kickbase.dir\Source\Ui\StepSequencer.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[15/172] Building CXX object CMakeFiles\Kickbase.dir\Source\Ui\PianoRoll.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[16/172] Building CXX object CMakeFiles\Kickbase.dir\Source\Ui\KickLibraryPanel.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[17/172] Building CXX object CMakeFiles\Kickbase.dir\Source\Ui\EffectsPage.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[18/172] Building CXX object CMakeFiles\Kickbase.dir\Source\Ui\Modules.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+C:\Users\hunga\Documents\GitHub\KickBase-VST-pl\Source\Ui\Modules.cpp(1715): warning C4189: 'slot': local variable is initialized but not referenced
+[19/172] Building CXX object CMakeFiles\Kickbase.dir\Source\Ui\SidechainPage.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[20/172] Building CXX object CMakeFiles\Kickbase.dir\Source\Core\PluginBase.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+C:\Users\hunga\Documents\GitHub\KickBase-VST-pl\Source\Core\PluginBase.cpp(872): warning C4996: 'juce::XmlElement::createDocument': This has been deprecated in favour of the toString method.
+[21/172] Building CXX object CMakeFiles\Kickbase.dir\Source\Ui\MixerPage.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[22/172] Building CXX object CMakeFiles\Kickbase.dir\Source\Ui\EnvPage.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[23/172] Building CXX object CMakeFiles\Kickbase.dir\Source\Ui\MasterPage.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[24/172] Building CXX object CMakeFiles\Kickbase.dir\Source\Ui\AboutPanel.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[25/172] Building CXX object CMakeFiles\Kickbase.dir\Source\Ui\LfoPage.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[26/172] Building CXX object CMakeFiles\Kickbase.dir\Source\Ui\MatrixPage.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[27/172] Building CXX object CMakeFiles\Kickbase.dir\Source\Ui\OptimizationsPanel.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[28/172] Building CXX object CMakeFiles\Kickbase.dir\Source\Ui\SettingsPage.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[29/172] Building CXX object CMakeFiles\Kickbase.dir\Source\Ui\Help.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[30/172] Building CXX object CMakeFiles\Kickbase.dir\Source\Core\AiChat.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[31/172] Building CXX object CMakeFiles\Kickbase.dir\Source\Core\AiMemory.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+C:\Users\hunga\Documents\GitHub\KickBase-VST-pl\Source\Core\AiMemory.cpp(203): warning C4100: 'work': unreferenced parameter
+[32/172] Building CXX object CMakeFiles\Kickbase.dir\Source\Ui\HelpDialog.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[33/172] Building CXX object CMakeFiles\Kickbase.dir\Source\Core\AiProvider.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[34/172] Building CXX object CMakeFiles\Kickbase.dir\Source\Ui\HarmonicEditor.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[35/172] Building CXX object CMakeFiles\Kickbase.dir\Source\Ui\Components.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[36/172] Building CXX object CMakeFiles\Kickbase.dir\Source\Ui\FilterPanel.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[37/172] Building CXX object CMakeFiles\Kickbase.dir\Source\Ui\AiChatPage.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[38/172] Building CXX object CMakeFiles\Kickbase.dir\Source\Ui\SpectrumPage.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[39/172] Building CXX object CMakeFiles\Kickbase.dir\Source\Ui\OscPanel.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[40/172] Building CXX object CMakeFiles\Kickbase.dir\Source\Ui\InstrMixPanel.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[41/172] Building CXX object CMakeFiles\Kickbase.dir\Source\Ui\LiveCodePage.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+C:\Users\hunga\Documents\GitHub\KickBase-VST-pl\Source\Ui\LiveCodePage.cpp(809): warning C4244: '=': conversion from 'unsigned __int64' to 'double', possible loss of data
+[42/172] Building CXX object CMakeFiles\Kickbase.dir\Source\Ui\FmPanel.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+C:\Users\hunga\Documents\GitHub\KickBase-VST-pl\Source\Ui\FmPanel.cpp(59): warning C4458: declaration of 'index' hides class member
+C:\Users\hunga\Documents\GitHub\KickBase-VST-pl\Source\Ui\FmPanel.h(30): note: see declaration of 'FmPanel::index'
+[43/172] Building CXX object CMakeFiles\Kickbase.dir\Source\Ui\SoundstagePage.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[44/172] Building CXX object CMakeFiles\Kickbase.dir\Source\Instrument\InstrumentEntry.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[45/172] Building CXX object CMakeFiles\Kickbase.dir\Source\Ui\Scopes.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[46/172] Building CXX object CMakeFiles\Kickbase.dir\Source\Ui\KickDisplay.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[47/172] Building CXX object CMakeFiles\Kickbase.dir\Source\Instrument\InstrumentProcessor.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[48/172] Building CXX object CMakeFiles\Kickbase.dir\Source\Instrument\InstrumentEditor.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[49/172] Building CXX object CMakeFiles\KickbaseFX.dir\Source\Core\Mixer.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[50/172] Building CXX object CMakeFiles\KickbaseFX.dir\Source\Core\SourceEq.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[51/172] Building CXX object CMakeFiles\KickbaseFX.dir\Source\Core\RollFiles.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[52/172] Building CXX object CMakeFiles\KickbaseFX.dir\Source\Core\PresetCategories.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[53/172] Building CXX object CMakeFiles\KickbaseFX.dir\Source\Core\Master.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[54/172] Building CXX object CMakeFiles\KickbaseFX.dir\Source\Core\BridgeLink.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[55/172] Building CXX object CMakeFiles\KickbaseFX.dir\Source\Core\Presets.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[56/172] Building CXX object CMakeFiles\KickbaseFX.dir\Source\Core\Params.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[57/172] Building CXX object CMakeFiles\KickbaseFX.dir\Source\Core\ToolLayer.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[58/172] Building CXX object CMakeFiles\KickbaseFX.dir\Source\Core\MixAnalysis.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+C:\Users\hunga\Documents\GitHub\KickBase-VST-pl\Source\Core\MixAnalysis.cpp(2486): warning C4459: declaration of 'fftSize' hides global declaration
+C:\Users\hunga\Documents\GitHub\KickBase-VST-pl\Source\Core\MixAnalysis.h(26): note: see declaration of 'MixAnalysis::fftSize'
+[59/172] Building CXX object CMakeFiles\KickbaseFX.dir\Source\Ui\KickLibraryPanel.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[60/172] Building CXX object CMakeFiles\KickbaseFX.dir\Source\Core\Effects.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[61/172] Building CXX object CMakeFiles\KickbaseFX.dir\Source\Ui\StepSequencer.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[62/172] Building CXX object CMakeFiles\KickbaseFX.dir\Source\Ui\PresetButton.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[63/172] Building CXX object CMakeFiles\KickbaseFX.dir\Source\Ui\ChannelViews.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[64/172] Building CXX object CMakeFiles\KickbaseFX.dir\Source\Ui\SidechainPage.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[65/172] Building CXX object CMakeFiles\KickbaseFX.dir\Source\Ui\EffectsPage.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[66/172] Building CXX object CMakeFiles\KickbaseFX.dir\Source\Core\PluginBase.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+C:\Users\hunga\Documents\GitHub\KickBase-VST-pl\Source\Core\PluginBase.cpp(872): warning C4996: 'juce::XmlElement::createDocument': This has been deprecated in favour of the toString method.
+[67/172] Building CXX object CMakeFiles\KickbaseFX.dir\Source\Ui\PianoRoll.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[68/172] Building CXX object CMakeFiles\KickbaseFX.dir\Source\Ui\Modules.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+C:\Users\hunga\Documents\GitHub\KickBase-VST-pl\Source\Ui\Modules.cpp(1715): warning C4189: 'slot': local variable is initialized but not referenced
+[69/172] Building CXX object CMakeFiles\KickbaseFX.dir\Source\Ui\MixerPage.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[70/172] Building CXX object CMakeFiles\KickbaseFX.dir\Source\Ui\LfoPage.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[71/172] Building CXX object CMakeFiles\KickbaseFX.dir\Source\Ui\MatrixPage.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[72/172] Building CXX object CMakeFiles\KickbaseFX.dir\Source\Ui\MasterPage.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[73/172] Building CXX object CMakeFiles\KickbaseFX.dir\Source\Ui\SettingsPage.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[74/172] Building CXX object CMakeFiles\KickbaseFX.dir\Source\Ui\EnvPage.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[75/172] Building CXX object CMakeFiles\KickbaseFX.dir\Source\Ui\OptimizationsPanel.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[76/172] Building CXX object CMakeFiles\KickbaseFX.dir\Source\Ui\Help.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[77/172] Building CXX object CMakeFiles\KickbaseFX.dir\Source\Ui\AboutPanel.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[78/172] Building CXX object CMakeFiles\KickbaseFX.dir\Source\Ui\SpectrumPage.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[79/172] Building CXX object CMakeFiles\KickbaseFX.dir\Source\Core\AiMemory.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+C:\Users\hunga\Documents\GitHub\KickBase-VST-pl\Source\Core\AiMemory.cpp(203): warning C4100: 'work': unreferenced parameter
+[80/172] Building CXX object CMakeFiles\KickbaseFX.dir\Source\Ui\AiChatPage.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[81/172] Building CXX object CMakeFiles\KickbaseFX.dir\Source\Core\AiProvider.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[82/172] Building CXX object CMakeFiles\KickbaseFX.dir\Source\Core\AiChat.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[83/172] Building CXX object CMakeFiles\KickbaseFX.dir\Source\Ui\HarmonicEditor.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[84/172] Building CXX object CMakeFiles\KickbaseFX.dir\Source\Ui\Components.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[85/172] Building CXX object CMakeFiles\KickbaseFX.dir\Source\Ui\FilterPanel.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[86/172] Building CXX object CMakeFiles\KickbaseFX.dir\Source\Ui\OscPanel.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[87/172] Building CXX object CMakeFiles\KickbaseFX.dir\Source\Ui\HelpDialog.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[88/172] Building CXX object CMakeFiles\KickbaseFX.dir\Source\Ui\FmPanel.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+C:\Users\hunga\Documents\GitHub\KickBase-VST-pl\Source\Ui\FmPanel.cpp(59): warning C4458: declaration of 'index' hides class member
+C:\Users\hunga\Documents\GitHub\KickBase-VST-pl\Source\Ui\FmPanel.h(30): note: see declaration of 'FmPanel::index'
+[89/172] Building CXX object CMakeFiles\KickbaseFX.dir\Source\Ui\LiveCodePage.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+C:\Users\hunga\Documents\GitHub\KickBase-VST-pl\Source\Ui\LiveCodePage.cpp(809): warning C4244: '=': conversion from 'unsigned __int64' to 'double', possible loss of data
+[90/172] Building VST3 manifest helper for KickbaseFX
+-- Configuring done (1.1s)
+-- Generating done (0.9s)
+-- Build files have been written to: C:/Users/hunga/Documents/GitHub/KickBase-VST-pl/build/Debug/vst3_helpers/KickbaseFX
+ninja: no work to do.
+
+[91/172] Building VST3 manifest helper for Kickbase
+-- Configuring done (1.3s)
+-- Generating done (1.2s)
+-- Build files have been written to: C:/Users/hunga/Documents/GitHub/KickBase-VST-pl/build/Debug/vst3_helpers/Kickbase
+ninja: no work to do.
+
+[92/172] Building CXX object CMakeFiles\KickbaseFX.dir\Source\Ui\InstrMixPanel.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[93/172] Building CXX object CMakeFiles\KickbaseFX.dir\Source\Ui\Scopes.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[94/172] Linking CXX static library Kickbase_artefacts\Debug\Kickbase_SharedCode.lib
+[95/172] Building CXX object CMakeFiles\KickbaseFX.dir\Source\Ui\KickDisplay.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[96/172] Building CXX object CMakeFiles\KickbaseFX.dir\Source\Fx\FxEntry.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[97/172] Building CXX object CMakeFiles\KickbaseFX.dir\Source\Ui\SoundstagePage.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[98/172] Building CXX object CMakeFiles\KickbaseTests.dir\Tests\FxTests.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[99/172] Building CXX object CMakeFiles\KickbaseFX.dir\Source\Fx\FxProcessor.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[100/172] Building CXX object CMakeFiles\KickbaseTests.dir\Source\Core\Params.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[101/172] Building CXX object CMakeFiles\KickbaseFX.dir\Source\Fx\FxEditor.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[102/172] Building CXX object CMakeFiles\KickbaseTests.dir\Tests\MasterTests.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[103/172] Building CXX object CMakeFiles\KickbaseTests.dir\Source\Core\RollFiles.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[104/172] Building CXX object CMakeFiles\KickbaseTests.dir\Source\Core\SourceEq.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[105/172] Linking CXX static library "KickbaseFX_artefacts\Debug\Kickbase FX_SharedCode.lib"
+[106/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Source\Core\SourceEq.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[107/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Source\Core\Mixer.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[108/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Source\Core\RollFiles.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[109/172] Building CXX object CMakeFiles\KickbaseTests.dir\Source\Core\Master.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[110/172] Building CXX object CMakeFiles\KickbaseTests.dir\Source\Core\Effects.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[111/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Source\Core\MixAnalysis.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+C:\Users\hunga\Documents\GitHub\KickBase-VST-pl\Source\Core\MixAnalysis.cpp(2486): warning C4459: declaration of 'fftSize' hides global declaration
+C:\Users\hunga\Documents\GitHub\KickBase-VST-pl\Source\Core\MixAnalysis.h(26): note: see declaration of 'MixAnalysis::fftSize'
+[112/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Source\Core\BridgeLink.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[113/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Source\Core\ToolLayer.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[114/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Source\Core\PresetCategories.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[115/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Source\Core\Params.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[116/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Source\Core\Presets.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[117/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Source\Ui\KickLibraryPanel.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[118/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Source\Core\Effects.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[119/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Source\Core\Master.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[120/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Source\Ui\ChannelViews.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[121/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Source\Ui\StepSequencer.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[122/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Source\Ui\EffectsPage.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[123/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Source\Ui\PresetButton.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[124/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Source\Ui\PianoRoll.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[125/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Source\Ui\MasterPage.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[126/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Source\Ui\SidechainPage.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[127/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Source\Ui\LfoPage.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[128/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Source\Ui\Modules.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+C:\Users\hunga\Documents\GitHub\KickBase-VST-pl\Source\Ui\Modules.cpp(1715): warning C4189: 'slot': local variable is initialized but not referenced
+[129/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Source\Ui\MixerPage.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[130/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Source\Ui\SettingsPage.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[131/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Source\Ui\OptimizationsPanel.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[132/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Source\Ui\MatrixPage.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[133/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Source\Core\PluginBase.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+C:\Users\hunga\Documents\GitHub\KickBase-VST-pl\Source\Core\PluginBase.cpp(872): warning C4996: 'juce::XmlElement::createDocument': This has been deprecated in favour of the toString method.
+[134/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Source\Ui\AboutPanel.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[135/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Source\Ui\EnvPage.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[136/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Source\Ui\Help.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[137/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Source\Core\AiMemory.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+C:\Users\hunga\Documents\GitHub\KickBase-VST-pl\Source\Core\AiMemory.cpp(203): warning C4100: 'work': unreferenced parameter
+[138/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Source\Ui\SpectrumPage.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[139/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Source\Core\AiProvider.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[140/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Source\Core\AiChat.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[141/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Source\Ui\AiChatPage.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[142/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Source\Ui\HelpDialog.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[143/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Source\Ui\Components.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[144/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Source\Ui\HarmonicEditor.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[145/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Source\Ui\OscPanel.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[146/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Source\Ui\LiveCodePage.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+C:\Users\hunga\Documents\GitHub\KickBase-VST-pl\Source\Ui\LiveCodePage.cpp(809): warning C4244: '=': conversion from 'unsigned __int64' to 'double', possible loss of data
+[147/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Source\Ui\FilterPanel.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[148/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Source\Ui\InstrMixPanel.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[149/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Source\Ui\FmPanel.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+C:\Users\hunga\Documents\GitHub\KickBase-VST-pl\Source\Ui\FmPanel.cpp(59): warning C4458: declaration of 'index' hides class member
+C:\Users\hunga\Documents\GitHub\KickBase-VST-pl\Source\Ui\FmPanel.h(30): note: see declaration of 'FmPanel::index'
+[150/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Source\Ui\KickDisplay.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[151/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Source\Ui\Scopes.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[152/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Source\Ui\SoundstagePage.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[153/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Source\Instrument\InstrumentProcessor.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[154/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Source\Instrument\InstrumentEditor.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[155/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Tools\McpServer.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[156/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Tools\Profile.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[157/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Tools\AudioTests.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+C:\Users\hunga\Documents\GitHub\KickBase-VST-pl\Tools\AudioTests.cpp(1581): warning C4456: declaration of 'set' hides previous local declaration
+C:\Users\hunga\Documents\GitHub\KickBase-VST-pl\Tools\AudioTests.cpp(1477): note: see declaration of 'set'
+[158/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Source\Fx\FxEditor.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[159/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Source\Fx\FxProcessor.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[160/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Tools\ParamSweepTests.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[161/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Tools\StateTests.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[162/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Tools\Tool.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+C:\Users\hunga\Documents\GitHub\KickBase-VST-pl\Tools\Tool.cpp(648): warning C4456: declaration of 'cutoff' hides previous local declaration
+C:\Users\hunga\Documents\GitHub\KickBase-VST-pl\Tools\Tool.cpp(312): note: see declaration of 'cutoff'
+C:\Users\hunga\Documents\GitHub\KickBase-VST-pl\Tools\Tool.cpp(2046): warning C4456: declaration of 'state' hides previous local declaration
+C:\Users\hunga\Documents\GitHub\KickBase-VST-pl\Tools\Tool.cpp(1883): note: see declaration of 'state'
+C:\Users\hunga\Documents\GitHub\KickBase-VST-pl\Tools\Tool.cpp(3151): warning C4456: declaration of 'entries' hides previous local declaration
+C:\Users\hunga\Documents\GitHub\KickBase-VST-pl\Tools\Tool.cpp(2787): note: see declaration of 'entries'
+C:\Users\hunga\Documents\GitHub\KickBase-VST-pl\Tools\Tool.cpp(3697): warning C4456: declaration of 'file' hides previous local declaration
+C:\Users\hunga\Documents\GitHub\KickBase-VST-pl\Tools\Tool.cpp(3499): note: see declaration of 'file'
+[163/172] Linking CXX executable KickbaseTests_artefacts\Debug\KickbaseTests.exe
+[164/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Tools\LibraryTests.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[165/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Tools\PatternTests.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[166/172] Linking CXX executable Kickbase_artefacts\Debug\Standalone\Kickbase.exe
+[167/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Tools\Freesound.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[168/172] Building CXX object CMakeFiles\KickbaseMcp.dir\Tools\Tb303Tests.cpp.obj
+cl : Command line warning D9025 : overriding '/Z7' with '/Zi'
+[169/172] Linking CXX shared module "KickbaseFX_artefacts\Debug\VST3\Kickbase FX.vst3\Contents\x86_64-win\Kickbase FX.vst3"
+removing moduleinfo.json
+creating C:/Users/hunga/Documents/GitHub/KickBase-VST-pl/build/Debug/KickbaseFX_artefacts/Debug/VST3/Kickbase FX.vst3/Contents/Resources/moduleinfo.json
+[170/172] Linking CXX shared module Kickbase_artefacts\Debug\VST3\Kickbase.vst3\Contents\x86_64-win\Kickbase.vst3
+removing moduleinfo.json
+creating C:/Users/hunga/Documents/GitHub/KickBase-VST-pl/build/Debug/Kickbase_artefacts/Debug/VST3/Kickbase.vst3/Contents/Resources/moduleinfo.json
+[171/172] Linking CXX executable KickbaseMcp_artefacts\Debug\KickbaseMcp.exe
+
+Fjärdedelar i 120 BPM, block om 512
+Mönsterposition: 2 takters mönster loopar, start i takt 3
+Slag precis på blockgräns spelas en gång
+Start mitt i ett slag väntar till nästa
+Sextondelar: 16 per takt, börjar om på ettan
+Taktstreck mitt i ett block ger ettan
+Loop tillbaka spelar ettan igen
+Egen klocka: startar på tonens sample, 140 BPM utan tempo
+Ton strax efter slaget räknas som på slaget
+Tonart: basen följer tonens oktav, kicken håller sig i sitt register
+Kick: svansen landar på tonarten och klingar ut
+Kick: ny kick tonar ut den gamla utan hopp
+Kick: nya former, transponering och sampling som hel kick
+Bas: sampling som ljudkälla (egen ton och följer noten)
+Bas: rätt ton och tystnar efter gate + release
+Bas: en glide-ton glider den klingande tonen utan nytt anslag och blir kvar
+Bas: ENV 2, tonhöjdsenvelope och källor
+Bas: nytt slag medan det förra klingar ger inget hopp
+Ducking: glider ner på ungefär en millisekund
+Gate: öppnar, stänger och släpper igenom när DAW:en står
+Mönster: mallar och spara/läsa
+ENV 2/3: Sync följer tempot (1/4 vid 120 BPM = 500 ms), och ett tempobyte mitt i attacken ger en kontinuerlig kurva
+Wavetable: egen tabell av en WAV, och att den överlever spara/läsa
+Wavetable: alla inbyggda tabeller byggs, är rena och olika
+  120 tabeller byggda på 13.31 s
+  6 tabeller är lika i första och sista framen (enkla klassiska former är ok)
+Mönster: gate-steg och pianorullsmarkering sparas per lager
+Mönster: egen längd per rad, loop och 64 takter
+Mönster: staplade toner (polyfoni steg 1)
+Pianorulle: staplade toner i preset och MIDI
+D4: Live Code-förslag i strängar
+D4: Live Code autoformat
+Sidechain: standardkurvan och tabellen
+Sidechain: kurvan spelas från början vid varje kick
+Master: limitern håller taket och latensen stämmer
+H1: gammalt Maximizer-projekt får MODE = Classic
+LFO: formerna
+LFO: modulering i parameterns skala
+Modulering: makron och instrumentens källor
+LFO: egen kurva och fri hastighet
+LFO 4-10: källor, mask och parametrar
+LFO 4-10: LFO 1-3 orörda när 4-10 slås av och på
+CODE-källor: LFO, ENV, utfasning och idle
+BZ: Bézier-envelope (tension orörd, handtag, monoton, rundtur)
+FM-preset: bara användarens val fyller i, inte laddning eller automation
+BZ: Bézier-läge och handtag överlever spara/ladda (XML), gamla projekt läses som tension
+FM: av (eller nivå 0) ger samma ljud som utan FM-vägen
+FM: ytterlägen och blockstorlekar ger ändliga värden
+AutoFix: cent mellan frekvenser
+AutoFix: krock och ingen krock
+AutoFix: redan påslagen duck föreslås inte igen
+AutoFix: fönstret vidgas bara när det behövs
+AutoFix: fas, nivå och 200 Hz
+AutoFix: tomt och deterministiskt
+AutoFix: fromPhaseMetrics
+FX: Flanger knob table and legacy defaults
+FX: Flanger SHAPE and SPREAD
+FX: Echo repeats at the synced time
+FX: Echo TIME MS (knob 11) and knobsPerSlot
+FX: RING FX modulates and stays finite
+
+Alla tester gick igenom
+
+Klart! Instrument: build\Debug\Kickbase_artefacts\Debug\VST3\Kickbase.vst3
+       Effekt:     build\Debug\KickbaseFX_artefacts\Debug\VST3\Kickbase FX.vst3
+       App:        build\Debug\Kickbase_artefacts\Debug\Standalone\Kickbase.exe

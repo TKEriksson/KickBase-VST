@@ -121,3 +121,27 @@ Format: **Gör så** → *förväntat resultat*. Bocka av `[ ]` när det stämme
 - [ ] Stäng fönstret, spara projektet, öppna det igen → *den ändrade vågen är kvar.*
 - [ ] Spara en egen preset utan att välja kategori → *den hamnar i USER i presetlistan.*
 - [ ] Meny > Export MIDI efter att ha spelat in ett mönster → *filen går att öppna i DAW:en med rätt toner och längder.*
+- [ ] Ladda ny instans, välj bas-preset Full-On Roll (PSY ROLLING BASS) → *bara rad 1 ljuder; mellanregistret rullar mot PSY CLEAN-kicken utan att kicken försvinner.*
+- [ ] Jämför Wide Mid, Dekel Groove och Forest 1/32 i DAW → *Wide Mid ljusast, Dekel och Forest mörkare; säg vilken som är för tunn.*
+- [ ] Ladda huvudpreset Roll Full-On, Roll Wide, Roll Dekel, Roll Forest (PSY ROLLING) i DAW → *kick och bas rullar ihop, basen ducker för kicken, bara ett lager ljuder; säg vilken som är för tunn eller för mörk.*
+- [ ] Öppna din GLIDE BASE (Full Instrument) i DAW → *glide-tonerna är nu längre (60 ticks) och ska höras som ett tydligt glid; originalet finns som GLIDE BASE.mofp.bak.*
+- [ ] Ladda Glide Sub, Glide Acid, Glide Dive (GLIDE BASSES) i DAW → *basen glider mellan tonerna utan klick, ducker för kicken; säg om glidet är för kort eller för långt.*
+- [ ] Ladda Roll Full-On och Glide Sub i DAW, slå FUNDAMENTAL DUCK av och på → *på: kickens slag tydligare, basens mellanregister oförändrat; säg om basen hackar eller tunnas ut (se docs/school/fundamental-duck.md).*
+- [ ] Ladda Roll Wide, Roll Dekel, Roll Forest, Glide Acid, Glide Dive → *grundtonen sänks i kickens takt, inget klick; jämför med duck av.*
+- [ ] Ladda Duck Demo, slå FUNDAMENTAL DUCK av och på → *av: kick och bas sväver/tar ut varandra i sub-området; på: kicken står fram, basen dippar bara i kickens slag; säg om skillnaden hörs.*
+- [ ] Ladda New Init 1–5 i DAW → *varje är en egen startpunkt av fabriks-Init: 1 med duck, 2 halftime, 3 bara sub, 4 rullande, 5 acid-duo; säg vilka som är användbara att bygga vidare på.*
+
+- [ ] (Lemon) Mid Growl/Pluck/Wide, Hi Zap/Acid/Lead, Synth Pad/Pluck/Stab: kategorierna MID BASS, HI BASS, SYNTH visar rätt, låter som namnet, ingen klippning.
+
+- [ ] (Lemon) Genrepresets, 7 genrer × (1 kick + 2 basar): kategorierna MINIMAL, GOA, DARK PSY, DANCE, TRANCE, TECHNO, EMPIRIKAL visas; kick+bas ihop låter som genren; Minimal/Dance/Techno-kickarnas svans (48–52 Hz) över psy-målet, lyssna om den krockar med basen.
+- [ ] (DAW) UNISON-kategorin: Unison Reese, Wide och Dark visas; mono under ca 150 Hz kan behövas (lowSide ca −25 dB, se docs/school/reese.md); lyssna om de slår fint mot kicken.
+- [ ] (Lemon) Bas-sample, AMP/PITCH under vågformen: av → *som förut*; kurvan korta AMP → *samplingen tystnar efter kurvans längd*; PITCH +12 → *glider ner till egna tonen*.
+- [ ] (Lemon) Bas-sample REVERSE: på → *spelas baklänges i varje ton, med LOOP loopar den*; av → *som förut*.
+- [ ] (Lemon) Kick CLICK 2/3: nivå 0 → *som förut*; med fördröjning → *extra klick efter anslaget*; BP/LP/HP → *olika klang*. SAMPLE-vyn: START → *klipper början*, REVERSE → *baklänges*, FADE → *tonar ut slutet*.
+- [ ] (DAW) UI för sample-editor, REVERSE och klick-lager (Arbetare 2): bas-samplingen har AMP/PITCH/REVERSE under vågformen; kicken har CLICK 2/3 och i SAMPLE-vyn START/REVERSE/FADE; reglagen hörs som i föregående rader och inget överlappar i fönstret.
+- [ ] (DAW) FX-matris, bara parametrar än så länge (Arbetare 2, gren fx-matrix): automatisera "Instr 1 FX Send 1" och "Kick FX Send 3" – ljudet går till respektive FX-kanal utan klick; "FX 1 Mute" tystar kanalen mjukt (sends ligger kvar, svansen fortsätter när den slås av); gamla presets låter som förut.
+- [ ] (DAW) FX-matris-UI (Arbetare 2, gren fx-matrix): FX-väljaren på kick/instrument visar en sammanfattning ("FX1 50%, FX3 30%" eller "None"); klick öppnar en popup med en rad per kanal (på/av + reglage i %); av = 0 och reglaget låst, värdet minns bara medan fönstret är öppet; "+ add FX channel" lägger till en kanal överallt (ny send 0); gamla INS/SEND-länken är en vanlig rad; FX-sidan har FX1..N som rullista och kan ta bort sista kanalen (frågar om den har effekter/sends); M-knapp per FX-kanal i mixern tystar mjukt; gamla presets låter som förut.
+- [ ] (DAW) Parameterlås per ton, ljud (Arbetare 2, gren fx-matrix): sätt lås via MCP `set_pattern` (cutoff/pan/fxsend per ton): en ton med cutoff-lås låter som samma cutoff på rattten, pan-lås flyttar tonen mjukt utan klick, FX-send-lås skickar tonen till instrumentets FX-kanal; toner utan lås ärver inte det förra låset; mönster utan lås låter som förut.
+- [ ] (Lemon) Pianorulle, lane-menyn → *VEL, CUT, PAN, FX*. Dra i CUT/PAN/FX → *stapeln växer, tonbeskrivningen visar t.ex. "CUTOFF 62 %", hörs*. Alt+klick → *låset tas bort*. Ctrl+Z → *ett drag = ett steg*. Kopiera/klistra in och flytta en ton → *låset följer med*. Ny ton → *börjar utan lås*. Stapla toner → *ledtråd att låset gäller huvudtonen*.
+- [ ] (Lemon) Skivrulle: öppna PATTERN på en skivrad → *pianorullen visar en tangent per skiva; rita en ton → låter som den skivan*; fler än 16 skivor → *inget tak i rullen*.
+- [ ] (Lemon) Echo-FX: TIME MS finns inte längre → *10 rattar per slot; gamla projekt med Echo laddas och låter som förut*.
