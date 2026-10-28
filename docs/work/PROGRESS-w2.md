@@ -346,3 +346,10 @@ Kicken: samma loop med `sourceIndex = Mixer::kickSource` och kickens ID:n; `send
 ### Öppet (PL)
 1. Ska "ta bort FX"/`turnOff` också nolla matrisen? (förslag: ja för vald kanal, annars ligger sends kvar mot en tom kanal.)
 2. Rampen: 1 block (~10 ms) räcker; vill PL ha egen tid?
+
+### Besked från PL (2026-10-28) – beslut som läggs in i planen
+- **turnOff (`PluginBase.cpp:1845`):** nollar matrisen (`fxSendTo<c>`) för vald kanal och källa, men bara när användaren aktivt tar bort FX. Aldrig vid laddning av preset.
+- **Ramp:** ett block räcker om blocksizetestet (1/64/512) inte visar klick. Visar det något: förläng till 2-3 block.
+- **Presets.cpp:269:** Arbetare 1 tar raden i steg 1. Jag rebasar steg 3 på `fx12` efter hennes steg 1.
+- **Summa:** Tobias har inte bekräftat. Anta summa men håll det lätt att ändra (en enda plats: ordningen/anropet efter den gamla `send` i `InstrumentProcessor.cpp`).
+- **Start:** ingen kod i steg 3 före PL:s besked (steg 1 klart först). Ingen push.
