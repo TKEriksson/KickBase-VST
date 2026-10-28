@@ -213,3 +213,9 @@ Nu: programmet, rel-0.3 motornära punkter: 1) S3 Unison/Reese, 2) multisampling
 - FX-kärnan RING/Echo/Flanger enligt `docs/work/fx-ring-echo-flanger-plan.md` (godkänd av PL): Flanger fick SHAPE (Sine/Triangle) och SPREAD (standard 0.25 = gamla ljudet) sist i tabellen, `newKnobDefault` legacyCount 5 (`Effects.cpp`). Nya `Tests/FxTests.cpp` (tabell, Flanger, Echo-tid, RING). Bygget grönt, alla tester gick igenom.
 - Echo ms-tid parkerad (alla 10 knobplatser används; PL frågar Tobias om knobsPerSlot).
 - Kvar för Arbetare 1: UI-etiketter SHAPE/SPREAD.
+
+## 2026-10-28 – Echo TIME MS och knobsPerSlot 11 (Arbetare 2)
+- `knobsPerSlot` 10 → 11 (`Source/Core/Effects.h:25`), `knobsVersion` 3 → 4 så att gamla projekt får P11 satt. ID:n P1–P10, typindex och presetindex orörda.
+- Echo: ny sista ratt TIME MS (0–3300 ms, standard 0 = följer TIME/SYNC = gamla ljudet). Över 0 ersätter den synken (`EchoFx::process`).
+- Tester: `testEchoMs` i `Tests/FxTests.cpp` (layout har P11 men inte P12, legacy-standard 0, 0 ms behåller synk, 250 ms hamnar rätt). `Debug all` grönt.
+- Ekots ms-tid är därmed inte längre parkerad.

@@ -170,6 +170,56 @@ namespace
         check (std::abs (peakAt - expected) < 400, "echo lands on 1/4 note at 140 BPM", (double) (peakAt - expected));
     }
 
+    // Position of the loudest sample after the first 100 in the left channel.
+    int echoPeakIndex (const juce::AudioBuffer<float>& out)
+    {
+        auto peak = 0.0f;
+        auto index = 0;
+        for (int i = 100; i < out.getNumSamples(); ++i)
+            if (std::abs (out.getSample (0, i)) > peak)
+            {
+                peak = std::abs (out.getSample (0, i));
+                index = i;
+            }
+        return index;
+    }
+
+    void testEchoMs()
+    {
+        std::puts ("FX: Echo TIME MS (knob 11) and knobsPerSlot");
+        check (knobsPerSlot == 11, "knobsPerSlot is 11", knobsPerSlot);
+        const auto& list = Effects::knobs (EffectType::echo);
+        check (list.size() == 11 && list[10].name == "TIME MS" && list[10].defaultValue == 0.0f, "TIME MS is last and defaults to 0 (off)");
+
+        DummyProcessor p;
+        check (p.apvts.getParameter (Effects::knobParamID (0, 0, 10)) != nullptr, "layout has P11");
+        check (p.apvts.getParameter (Effects::knobParamID (0, 0, 11)) == nullptr, "layout has no P12");
+
+        float n = 0.0f;
+        check (Effects::newKnobDefault (EffectType::echo, 10, n) && n == 0.0f, "old files get TIME MS = 0", n);
+        check (! Effects::newKnobDefault (EffectType::distortion, 10, n), "other types have no new P11");
+
+        juce::AudioBuffer<float> in (2, 48000);
+        in.clear();
+        in.setSample (0, 0, 1.0f);
+        in.setSample (1, 0, 1.0f);
+
+        Effects::setSlotType (p.apvts, 0, 0, EffectType::echo);
+        setKnob (p, EffectType::echo, 0, 6.0f); // 1/4 note
+        setKnob (p, EffectType::echo, 4, 0.0f);
+        setKnob (p, EffectType::echo, 5, 0.0f);
+        setKnob (p, EffectType::echo, 3, 1.0f);
+        setKnob (p, EffectType::echo, 7, 0.0f);
+
+        const auto synced = echoPeakIndex (render (p, in));
+        const auto expectedSynced = (int) std::lround (Effects::syncInQuarters (6) * 60.0 / 140.0 * rate);
+        check (std::abs (synced - expectedSynced) < 400, "TIME MS 0 keeps the synced time", (double) (synced - expectedSynced));
+
+        setKnob (p, EffectType::echo, 10, 250.0f);
+        const auto ms = echoPeakIndex (render (p, in));
+        check (std::abs (ms - 12000) < 400, "TIME MS 250 puts the echo at 250 ms", (double) (ms - 12000));
+    }
+
     void testRingMod()
     {
         std::puts ("FX: RING FX modulates and stays finite");
@@ -188,5 +238,6 @@ void runFxTests()
     testFlangerTable();
     testFlanger();
     testEcho();
+    testEchoMs();
     testRingMod();
 }
