@@ -518,3 +518,8 @@ Bygge Debug all: grönt, "Alla tester gick igenom" (rendersig oförändrad).
 - LENGTH SYNC "TO BEAT" hoppad över: synthen har ingen taktposition, bara `bpm`.
 - blocksizetest: "tungt läge med 2/4/8 röster (stealing)" FALLER, men också på baslinjen 57ddb1a (byggd i separat worktree) med samma symptom. Alltså äldre fel, inte från TIMING. Behöver utredas separat (röststöld beror på blockstorlek, första skillnaden vid sample ~71-360).
 - Skärmdump: `%TEMP%\timing2.png` (snapshot instrument 20, KB_SOURCETAB=8).
+
+## collisions + detune (Arbetare 1, 2026-10-28)
+- Gren `collisions` = timing-levels + detta (kedjad). COLLISIONS i `SpectrumPage.cpp`: styrka efter gap (starkaste minus näst starkaste): 0 dB = full, 18 dB eller mer = maskerad, ingen markering. Tröskel -50 dBFS (förut -66). Blå (svag) till röd (besvärlig), max alpha 0.5, fyra band som tonar ut nedåt, ingen allokering i paint. Konstanterna överst i filen. Engelsk text och tooltip uppdaterade. Nytt `KB_COLLISIONS=1` för skärmdump (flik 30).
+- OSC 1-3 DETUNE standard 12 ct -> 0 ct (Params.cpp:275). Bara standardvärdet; index och ID oförändrade.
+- blocksizetest (voice stealing) felar redan på baslinjen 57ddb1a och alla grenar ovanpå (timing-levels, collisions). Läggs på Arbetare 2 av projektledaren (InstrumentVoices).
