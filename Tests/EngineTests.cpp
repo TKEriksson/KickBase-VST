@@ -1306,18 +1306,6 @@ namespace
     }
 }
 
-void runEngineTests()
-{
-    testKeyMapping();
-    testKickLandsOnKey();
-    testKickRetriggerFades();
-    testKickShapesAndSamples();
-    testKickClickLayersAndSampleTools();
-    testInstrumentSample();
-    testSampleEditor();
-    testSampleReverse();
-    testInstrumentPitchAndRelease();
-    testInstrumentGlide();
 static void testKickSourceMigration()
 {
     const auto run = [] (float synthOn, float sampleOn, std::map<std::string, float>& v)
@@ -1333,6 +1321,18 @@ static void testKickSourceMigration()
     check (run (1.0f, 0.0f, v) && v[ParamID::kickMix] == 0.0f && v[ParamID::kickSampleOn] == 1.0f, "kickkällor: sample av blir MIX helt mot synth");
 }
 
+void runEngineTests()
+{
+    testKeyMapping();
+    testKickLandsOnKey();
+    testKickRetriggerFades();
+    testKickShapesAndSamples();
+    testKickClickLayersAndSampleTools();
+    testInstrumentSample();
+    testSampleEditor();
+    testSampleReverse();
+    testInstrumentPitchAndRelease();
+    testInstrumentGlide();
     testInstrumentModulationSources();
     testInstrumentRetriggerWithoutClick();
     testKickSourceMigration();
