@@ -223,3 +223,7 @@ Nu: programmet, rel-0.3 motornära punkter: 1) S3 Unison/Reese, 2) multisampling
 ## 2026-10-28 – KickbaseTool sfz + parseSfz-tester (Arbetare 2)
 - Redan i w2 (14e31ea): `KickbaseTool sfz <fil.sfz>` (`Tools/Tool.cpp:4061`) skriver ut regionerna och hur många zoner `addSfz` kan läsa; `parseSfz`-tester i `Tools/AudioTests.cpp:1677` (arv mellan nivåerna, tonnamn, default_path, kommentarer, tom text). Ingen UI rörd.
 - `Debug all` grönt efter Echo TIME MS (a601d2e) inkluderar dessa. S3 Unison/Reese-presets väntar tills Tobias ber om dem.
+
+## 2026-10-28 – S3 Unison/Reese-presets (Arbetare 2)
+- Tre baspresets sist i `bassPreset`-listan (`PresetData.inl`, efter Empirikal Growl) och ny kategori UNISON (`PresetCategories.cpp`, prefix "Unison "). Inga nya parametrar, ID/index/hash orörda. `Debug all` grönt, audit utan klippning. Ej lyssnat.
+- Nästa: planer + kärnor. Arbetare 1 vill ha sample-editor-kärnan först (hon lägger DELAY/LENGTH/CURVE efter den i `InstrumentSynth.cpp` sample-grenen).

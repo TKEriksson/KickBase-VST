@@ -32,3 +32,4 @@ En rad per preset. Kolumner: namn | kategori | nyckelparametrar | mätt | ändra
 
 | Minimal/Goa/Dark Psy/Dance/Trance/Techno/Empirikal Kick | MINIMAL, GOA, DARK PSY, DANCE, TRANCE, TECHNO, EMPIRIKAL | 1 kick per genre via psyCleanKick; svans 35 Hz (Goa, Dark Psy) till 52 Hz (Techno), peak −2,8…−3,4 dB | Arbetare 2 |
 | Minimal Sub/Pluck, Goa Roll/Acid, Dark Psy Growl/Sub, Dance Pump/Pluck, Trance Roll/Pluck, Techno Sub/Stab, Empirikal Reese/Growl | samma sju | 2 basar per genre via registerBass; peak −9…−12 dB, ingen klippning | Arbetare 2 |
+| Unison Reese / Wide / Dark | UNISON | S3 Unison/Reese via registerBass: två sågor, OSC B finstämd ±10–12 cent, unison 3–7, detune 12–25 cent; peak −8,4…−9,7 dB, DC 0, ingen klippning (audit bass). Ej lyssnat | Arbetare 2 |
