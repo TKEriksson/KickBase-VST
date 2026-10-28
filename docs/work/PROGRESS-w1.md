@@ -634,3 +634,11 @@ Steg 3 lägger sedan de 132 sändningsparametrarna efter dessa, så ordningen bl
 ## Låstest + FL-lista (28 okt, Arbetare 1, gren slice-roll)
 - `Tests/EngineTests.cpp` `testLockEditing`: klippbord, flytt, ångra (`rowFromValueTree`) och spara/ladda bär låsen. Debug all grön.
 - `docs/work/fl-testlista.md`: A1-raderna (sample AMP/PITCH, REVERSE, klick-lager, lane-UI) kortade till körbara Lemon-punkter; nya rader för skivrullen och Echo utan TIME MS.
+
+## Plan 0.4 (29 okt, Arbetare 1, gren slice-roll, main inmergad)
+Blocksizetest-felet var en testmiljöartefakt: 20-körningarna/ASan avbrutna (3/3 gröna). Ordning enligt projektledaren; en commit per steg, Debug all grön före varje commit, ingen push, inga ändrade parameter-ID/hash.
+1. **Rattmall** (g, i, j, m, n, o, rattstorlek ~48 px): `KnobComponent::resized` (`Components.cpp:104-110`) gör ratt + etiketter till ett block på ett ställe; SAMPLE AMP/PITCH/REVERSE som tre rutor (i); FILTER: strömbrytare i flikknappen, lika stora rattar, Filter 2-knapp minst 22 px (j); MIX kompaktare (m); översta raden högre (n); avdelare under huvudflikarna (o). Snapshot-kontroll av varje flik.
+2. **Delad diagramkomponent med banor** (l, f steg 1): en bana per motor + kontur, linjal i ms/takt; TIMING får FOCUS (redigerbar) och OVERVIEW (valet är UI-läge), INSTR skrivskyddad. Brödsmula (hela vägen, flikar anmäler namn uppåt), flikordning (`INSTR | OSC 1-3 SAMPLE FM | FILTER MIX TIMING`, kolla sparade flikindex/hjälp), HELP-knappen flyttas ur etikettraden.
+3. **Delad renderhjälp** (f steg 2, h, k, q): verklig vågform (zoom 50/200 ms/hela), OSC TABLE|OUTPUT, FM-diagram, BAKE TO OSC (bekräfta + ett ångra-steg).
+4. **Övrigt:** (p) FM-harmonics (läser först FM-koden), (r) tooltips + HELP i övertonsredigeraren (rör inte `HarmonicEditor.*` om Arbetare 2 äger den, kolla först), (t) JOG: TEST BPM-etikett + ratt, (u) exklusiv preview (lista först alla ljudstartare, en preview-ägare i processorn), (w) a: välj lane direkt + ta bort värde/lane, c: bezier, d: OTHER + dataformat (sist, gamla projekt måste öppnas), e: kopiera till DAW. (s) och (w) b tar Arbetare 2.
+
