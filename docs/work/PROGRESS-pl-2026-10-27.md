@@ -62,3 +62,4 @@
 - 28 okt: Tobias: START/langd/kurva per motor (5b) ska vara med i rel-0.3. Flyttad fore overtonsredigeraren.
 - 28 okt: Arbetare 2 satt i arbete: AUTO FIX-matdel (karna, utan UI), plan forst. Tobias lyssnar efter att releasen ar byggd/slappt; flodet (test fore merge) galler tills han sager annat.
 - 28 okt: Tobias: "du kan också hjälpa till". Testlista-utkast rel-0.3 skriven i docs/work/testlista-rel03-utkast.md (PDF gors vid bygget).
+- 28 okt: Arbetare 2 klar med AUTO FIX-matkarna (AutoFix.h/.cpp) och FX-karna (69f1ab0: Flanger SHAPE/SPREAD, FxTests). Echo ms-tid parkerad, fraga Tobias om knobsPerSlot. Arbetare 1 tar UI.
