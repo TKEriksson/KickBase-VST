@@ -74,3 +74,7 @@
 ## 28 okt: omfattning rel-0.3 ändrad (Tobias)
 - Flyttas till nästa release: övertonsredigerare, parameterlanes, AUTO FIX UI/APPLY (mätdelen i kärnan finns kvar). Båda arbetarna informerade.
 - 5b godkänd: UI-etikett POS DELAY, LENGTH, CURVE per motor (OSC 1-3, SAMPLE, NOISE, SUB, FM), max 4000 ms, hörbar nivå, fas nollställs, DELAY/SYNC.
+
+## 28 okt: beslut om omfattning
+- rel-0.3 får också (Arbetare 1): glide-länk-bugg (ny not skapas vid släpp), kick-UI (MIX-knob, diagram på egen flik, marginaler, smalare preset-dropdown), semiton-snap/oktavmarkering på alla st-knobbar, glasbreadcrumb och borttagen dubbelremsa, TIMING som egen flik med bred SYNC-dropdown, dold POS DELAY vid SYNC och kurvdiagram per motor.
+- Nästa release: preset-kategorier för huvudpresets (egna kategorier vid sparande, befintliga hamnar i "Gamla", factory och user). Kräver att presetindex/hash inte ändras och att kategorin lagras separat. Läs koden först.
