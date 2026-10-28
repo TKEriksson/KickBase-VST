@@ -471,7 +471,8 @@ void HeaderBar::resized()
     // Till höger: mätare och lyssnarvolym längst ut, sedan tonart, sedan (instrumentet) en gemensam ruta för
     // PREVIEWS, LOOP, tempo/takt och JOG. Sätts först, så att vänstra delen kan krympa vid smal bredd.
     auto right = getLocalBounds().reduced (14, 0);
-    masterKnob.setBounds (right.removeFromRight (30).withSizeKeepingCentre (30, 30));
+    const auto outSize = std::min (height - 4, 64);
+    masterKnob.setBounds (right.removeFromRight (outSize).withSizeKeepingCentre (outSize, outSize)); // stor OUT-ratt (ä)
     right.removeFromRight (4);
     meterRect = right.removeFromRight (meterWidth).withSizeKeepingCentre (meterWidth, 28);
     right.removeFromRight (10);
@@ -766,10 +767,9 @@ void HeaderBar::paint (juce::Graphics& g)
     if (! transportGroup.isEmpty())
     {
         const auto group = transportGroup.toFloat();
-        g.setColour (Theme::pattern.withAlpha (0.07f));
-        g.fillRoundedRectangle (group, 6.0f);
-        g.setColour (Theme::pattern.withAlpha (0.75f));
-        g.drawRoundedRectangle (group.reduced (0.5f), 6.0f, 1.2f);
+        // Glasdisplay (ä): mörkt glas med ljusreflex, tunn kant i mönsterfärgen och gemensam kantglöd (å).
+        Theme::paintGlassDisplay (g, group, 9.0f);
+        Theme::paintEdgeGlow (g, group, 9.0f, Theme::pattern, 0.8f); // svag färgad glöd i stället för röd ram
         g.setFont (Theme::font (8.5f, true));
         g.setColour (Theme::pattern);
         g.drawText ("PREVIEWS", previewGroup.toFloat().withHeight (12.0f), juce::Justification::centredLeft);
@@ -1835,6 +1835,19 @@ void SamplePage::loadSample (const juce::File& file)
     updateLabel();
 }
 
+void SamplePage::paint (juce::Graphics& g)
+{
+    for (const auto& box : editBoxes)
+    {
+        if (box.isEmpty())
+            continue;
+        g.setColour (Theme::panelAlt);
+        g.fillRoundedRectangle (box.toFloat(), 5.0f);
+        g.setColour (Theme::panelBorder);
+        g.drawRoundedRectangle (box.toFloat().reduced (0.5f), 5.0f, 1.0f);
+    }
+}
+
 void SamplePage::resized()
 {
     auto area = getLocalBounds().reduced (4);
@@ -1856,18 +1869,31 @@ void SamplePage::resized()
 
     auto right = area.removeFromRight (juce::jlimit (240, 420, area.getWidth() * 2 / 5));
     area.removeFromRight (8);
-    // Sample-editorn under vågformen: REVERSE, sedan en rad för AMP och en för PITCH (växel + rattar).
-    auto editRow = [&] (juce::ToggleButton& toggle, std::vector<std::unique_ptr<juce::Component>>& knobs)
+    // Sample-editorn under vågformen: tre rutor PITCH, AMP och REVERSE. Varje ruta har sin växel överst och
+    // rattarna (~48 px) under, så de syns som en grupp.
     {
-        auto row = area.removeFromBottom (54);
-        toggle.setBounds (row.removeFromLeft (64).withSizeKeepingCentre (64, 22));
-        for (auto& knob : knobs)
-            knob->setBounds (row.removeFromLeft (70));
-    };
-    editRow (pitchToggle, pitchControls);
-    editRow (ampToggle, ampControls);
-    sampleReverseToggle.setBounds (area.removeFromBottom (22).removeFromLeft (110));
-    area.removeFromBottom (2);
+        auto band = area.removeFromBottom (juce::jlimit (96, 118, area.getHeight() / 3));
+        area.removeFromBottom (4);
+        const auto total = 3 + 2 + 1;
+        const auto unit = band.getWidth() / total;
+        const int widths[3] { unit * 3, unit * 2, band.getWidth() - unit * 5 };
+        juce::ToggleButton* toggles[3] { &pitchToggle, &ampToggle, &sampleReverseToggle };
+        std::vector<std::unique_ptr<juce::Component>>* knobSets[3] { &pitchControls, &ampControls, nullptr };
+        for (int i = 0; i < 3; ++i)
+        {
+            auto box = band.removeFromLeft (widths[i]);
+            band.removeFromLeft (i < 2 ? 4 : 0);
+            editBoxes[(size_t) i] = box;
+            auto inner = box.reduced (4, 3);
+            toggles[i]->setBounds (inner.removeFromTop (22));
+            if (knobSets[i] != nullptr)
+            {
+                const auto cell = inner.getWidth() / std::max (1, (int) knobSets[i]->size());
+                for (auto& knob : *knobSets[i])
+                    knob->setBounds (inner.removeFromLeft (cell));
+            }
+        }
+    }
     view.setBounds (area);
 
     auto knobsRow = right.removeFromTop (right.getHeight() * 2 / 5);
@@ -2912,14 +2938,15 @@ void PatternModule::resized()
     // Instrumentets egen groove: SWING, HUMAN och DELAY (kickens rad ligger alltid på rutnätet).
     if (shownLayer >= 0 && shownLayer < (int) delays.size())
     {
-        auto groove = notesColumn.removeFromTop (50);
-        const auto third = groove.getWidth() / 3;
-        const auto swingBounds = groove.removeFromLeft (third), humanizeBounds = groove.removeFromLeft (third);
+        // (x) En ratt per rad med riktigt rattshuvud (knobRowHeight = 74 px med etiketter), inte tre i en rad.
+        const auto swingBounds = notesColumn.removeFromTop (knobRowHeight);
+        const auto humanizeBounds = notesColumn.removeFromTop (knobRowHeight);
+        const auto delayBounds = notesColumn.removeFromTop (knobRowHeight);
         for (size_t i = 0; i < delays.size(); ++i)
         {
             swings[i]->setBounds (swingBounds);
             humanizes[i]->setBounds (humanizeBounds);
-            delays[i]->setBounds (groove);
+            delays[i]->setBounds (delayBounds);
         }
         notesColumn.removeFromTop (2);
     }

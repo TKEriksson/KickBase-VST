@@ -101,12 +101,16 @@ void KnobComponent::setDescription (const juce::String& text)
     updateTooltip (-1);
 }
 
+namespace { constexpr int labelOverlap = 4; }
+
 void KnobComponent::resized()
 {
     auto area = getLocalBounds();
     valueLabel.setBounds (area.removeFromBottom (12));
     label.setBounds (labelAbove ? area.removeFromTop (14) : area.removeFromBottom (14));
-    slider.setBounds (area);
+    // Ratten har en tom ringmarginal (Theme::knobRingMargin) runt sig. Etiketterna får täcka en del av den, så att
+    // ratt och text blir ett block utan glapp. Ändras här, så ändras alla rattar.
+    slider.setBounds (labelAbove ? area.withTrimmedTop (-labelOverlap) : area.withTrimmedBottom (-labelOverlap));
 }
 
 juce::Point<float> KnobComponent::knobCentre() const

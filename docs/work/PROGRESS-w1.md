@@ -634,3 +634,26 @@ Steg 3 lägger sedan de 132 sändningsparametrarna efter dessa, så ordningen bl
 ## Låstest + FL-lista (28 okt, Arbetare 1, gren slice-roll)
 - `Tests/EngineTests.cpp` `testLockEditing`: klippbord, flytt, ångra (`rowFromValueTree`) och spara/ladda bär låsen. Debug all grön.
 - `docs/work/fl-testlista.md`: A1-raderna (sample AMP/PITCH, REVERSE, klick-lager, lane-UI) kortade till körbara Lemon-punkter; nya rader för skivrullen och Echo utan TIME MS.
+
+## Plan 0.4 (29 okt, Arbetare 1, gren slice-roll, main inmergad)
+Blocksizetest-felet var en testmiljöartefakt: 20-körningarna/ASan avbrutna (3/3 gröna). Ordning enligt projektledaren; en commit per steg, Debug all grön före varje commit, ingen push, inga ändrade parameter-ID/hash.
+1. **Rattmall** (g, i, j, m, n, o, rattstorlek ~48 px): `KnobComponent::resized` (`Components.cpp:104-110`) gör ratt + etiketter till ett block på ett ställe; SAMPLE AMP/PITCH/REVERSE som tre rutor (i); FILTER: strömbrytare i flikknappen, lika stora rattar, Filter 2-knapp minst 22 px (j); MIX kompaktare (m); översta raden högre (n); avdelare under huvudflikarna (o). Snapshot-kontroll av varje flik.
+2. **Delad diagramkomponent med banor** (l, f steg 1): en bana per motor + kontur, linjal i ms/takt; TIMING får FOCUS (redigerbar) och OVERVIEW (valet är UI-läge), INSTR skrivskyddad. Brödsmula (hela vägen, flikar anmäler namn uppåt), flikordning (`INSTR | OSC 1-3 SAMPLE FM | FILTER MIX TIMING`, kolla sparade flikindex/hjälp), HELP-knappen flyttas ur etikettraden.
+3. **Delad renderhjälp** (f steg 2, h, k, q): verklig vågform (zoom 50/200 ms/hela), OSC TABLE|OUTPUT, FM-diagram, BAKE TO OSC (bekräfta + ett ångra-steg).
+4. **Övrigt:** (p) FM-harmonics (läser först FM-koden), (r) tooltips + HELP i övertonsredigeraren (rör inte `HarmonicEditor.*` om Arbetare 2 äger den, kolla först), (t) JOG: TEST BPM-etikett + ratt, (u) exklusiv preview (lista först alla ljudstartare, en preview-ägare i processorn), (w) a: välj lane direkt + ta bort värde/lane, c: bezier, d: OTHER + dataformat (sist, gamla projekt måste öppnas), e: kopiera till DAW. (s) och (w) b tar Arbetare 2.
+Tillägg från projektledaren: (x) större SWING/HUMAN/DELAY, helst en per rad (`Modules.cpp:2464-2467, 2838`), i steg 1. (y) kick SYNTH: ta bort de två på/av-knapparna, MIX-knapp "Synth/Sample-mix" i menyraden längst till höger, till vänster om FX (befintligt mix-värde, annars ny parameter sist); ENVELOPE alltid överst i synthfliken; paneler flyttas ned och rattarna blir större, KEY/SAMPLE-text/hjälp får ny plats (visas för Tobias). (z) gemensam rad-/flikradsmall (högre rader, y-marginal, avdelare mot innehållet) för hela pluginet, även kickens menyrader och underraden PITCH/AMP/BEZIER, i steg 1 tillsammans med (n) och (o). Arbetare 2 gör (w) b först (data/motor); jag bygger UI mot hennes/hans API, och rör inte `Note::lock` före (d).
+Utvidgning av (z): gäller alla menyer i pluginet. Tre nivåer (huvudmeny, undermeny, underunderrad) ska skilja sig i höjd, bakgrund, avdelare och aktivt läge, och alla menyobjekt (flikar, radknappar, popupmenyer) får en hover-effekt. Allt via en gemensam komponent/mall i steg 1.
+(å) Diskret glöd runt kanter på paneler/kort och på avdelare, som en gemensam glödstil i mallen (g/z) som alla paneler använder. Ritas billigt: ingen blur per frame, utan förrenderad/cachad bild (t.ex. `juce::Image` per storlek och färg) så att CPU och omritning inte påverkas. Mäts med `uiprofile` före/efter.
+(ä) PREVIEWS-delen (beat-räknaren) får glasdisplay-design enligt `docs/work/skisser/previews-glas.png` (nuläge `previews-nu.png`): alla knappar där (preview, tonväljare, klocka, retur) som glasknapparna intill BPM/takt-displayen, OUT-ratten stor, glödstilen från (å). Skissen är riktning, inte exakt mått. Görs efter steg 1 (rad-/glödmallen).
+
+29 okt (A1), prioritetsändring: (å) `Theme::paintEdgeGlow`/`paintDividerGlow` (Theme.h, billiga inre linjer, inget blur) används av paintMetal; (z) hover på alla tre menynivåer (KickbaseLookAndFeel.cpp:218-), glödande avdelare under huvudmenyn (TabbedPanel.h); (ä) PREVIEWS som glasruta med rosa kantglöd (Modules.cpp:~769). Kvar: knapparna i PREVIEWS som glasknappar, stor OUT-ratt, tre nivåers höjd/bakgrund fullt ut, SAMPLE/FILTER. Bild: docs/work/skisser/glod-glas-menyer.png
+
+## 2026-10-28 glöd/menyer/glasknappar (A1)
+- Glöd starkare (Theme.h paintEdgeGlow/paintDividerGlow), menynivå 2 blåtonad, nivå 3 lägre+mörkare, avdelare under varje nivå; ListenButton som glasknapp (Theme::paintGlassButton); OUT-ratt 46 px; spacing-skala `Theme::Space` (TabbedPanel använder den; resten av GUI:t byts steg för steg).
+- SETTINGS: GLOW Av/Svag/Stark (Settings::glowLevel, användarinställning "glowLevel", standard Svag, env KB_GLOW för bildverktyget). Bilder: glod-glas-menyer-2.png, glod-svag.png, glod-stark.png.
+
+## 2026-10-28 kväll (A1)
+- Glöd: standard nu Av (Settings.cpp glowLevel), kod kvar. PREVIEWS glasdisplay, OUT-ratt upp till 64 px.
+- Menyluft: Theme::Space::menuPadY=5, menuGapX=12, menuButtonH=26 (Theme.h); används i TabbedPanel.h (headerHeight, extrasRowHeight, resized, tabGap). Debug all grön.
+- PL: inga fler bilder; (t) tagen av PL, (r)/(u) av A2.
+- (x) klar: SWING/HUMAN/DELAY en ratt per rad, Modules.cpp:2941-2951 (knobRowHeight 74). Kvar: SAMPLE/FILTER-ratt, (y) kick SYNTH-flik, steg 2-3, brödsmula, flikordning, HELP, (w) a/c/e.

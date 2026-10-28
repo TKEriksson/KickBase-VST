@@ -228,7 +228,7 @@ void KickbaseLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button&
     {
         g.setColour (on ? accent.withAlpha (0.16f) : Theme::panelAlt.brighter (highlighted || down ? 0.15f : 0.0f));
         g.fillRoundedRectangle (bounds, 3.0f);
-        g.setColour (on ? Theme::cyan.withAlpha (0.8f) : Theme::panelBorder);
+        g.setColour (on ? Theme::cyan.withAlpha (0.8f) : (highlighted || down ? Theme::cyan.withAlpha (0.45f) : Theme::panelBorder));
         g.drawRoundedRectangle (bounds, 3.0f, on ? 1.4f : 1.0f);
         if (on)
         {
@@ -257,8 +257,10 @@ void KickbaseLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button&
         }
         else if (highlighted || down)
         {
-            g.setColour (juce::Colour (0xff1e293b).withAlpha (0.5f));
+            g.setColour (juce::Colour (0xff1e293b).withAlpha (0.7f));
             g.fillRoundedRectangle (segment, 8.0f);
+            g.setColour (Theme::cyan.withAlpha (0.25f));
+            g.drawRoundedRectangle (segment, 8.0f, 1.0f);
         }
         return;
     }
@@ -292,12 +294,12 @@ void KickbaseLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button&
     {
         g.setColour (juce::Colour (0xff1e293b).withAlpha (highlighted || down ? 0.6f : 0.4f));
         g.fillRoundedRectangle (bounds, corner);
-        g.setColour (juce::Colour (0xff334155).withAlpha (0.5f));
+        g.setColour (highlighted || down ? Theme::cyan.withAlpha (0.45f) : juce::Colour (0xff334155).withAlpha (0.5f));
         g.drawRoundedRectangle (bounds, corner, 1.0f);
     }
 }
 
-void KickbaseLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& button, bool, bool)
+void KickbaseLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& button, bool highlighted, bool)
 {
     const auto on = button.getToggleState();
     auto bounds = button.getLocalBounds().reduced (4, 0);
@@ -332,7 +334,7 @@ void KickbaseLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& b
         size -= 0.5f;
 
     g.setFont (font.withHeight (size));
-    g.setColour (on ? (sub ? Theme::cyanLight : Theme::text) : Theme::textDim);
+    g.setColour (on ? (sub ? Theme::cyanLight : Theme::text) : (highlighted ? Theme::text : Theme::textDim));
     g.drawText (text, bounds, juce::Justification::centred, true);
 }
 

@@ -89,6 +89,20 @@ namespace Theme
     // Marginal runt rattarna där LFO-ringarna ritas.
     inline constexpr float knobRingMargin = 8.0f;
 
+    // Gemensam avståndsskala (px). Panelinnehåll, rader, rattgrupper och rutor ska använda dessa, så att luften kan justeras på ett ställe.
+    namespace Space
+    {
+        inline constexpr int xs = 3;        // tätt: mellan etikett och ratt
+        inline constexpr int sm = 6;        // mellan knappar/rader i samma grupp
+        inline constexpr int md = 10;       // mellan rattgrupper och rutor
+        inline constexpr int lg = 14;       // mellan paneler/avdelningar
+        inline constexpr int panelPad = 14; // inre marginal i en panel
+        inline constexpr int menuPadY = 5;  // luft over och under knapparna i alla menyrader
+        inline constexpr int menuGapX = 12; // avstand i sidled mellan menyknappar
+        inline constexpr int menuButtonH = 26; // knapphojd i menyrader
+        inline constexpr int rowGap = 8;    // mellan menyrader (nivå 1-3)
+    }
+
     inline juce::Font font (float height, bool bold = false)
     {
         return juce::Font (juce::FontOptions (height, bold ? juce::Font::bold : juce::Font::plain));
@@ -207,6 +221,66 @@ namespace Theme
         return cache[size];
     }
 
+    // Gemensam kantglöd (å): tre tunna inre linjer med fallande styrka, inget blur. Billigt nog att ritas varje gång.
+    // Glödstyrka från SETTINGS (Av / Svag / Stark): samma skala för kantglöd och avdelare.
+    inline float glowStrength() { static constexpr float scale[3] = { 0.0f, 1.0f, 3.0f }; return scale[Settings::glowLevel()]; }
+
+    // Används av alla paneler, kort och avdelare så att glöden ser likadan ut överallt. Inåt, så att grannar inte klipper den.
+    inline void paintEdgeGlow (juce::Graphics& g, juce::Rectangle<float> area, float corner, juce::Colour colour = juce::Colour (0xff38bdf8),
+                               float strength = 1.0f)
+    {
+        static constexpr float alphas[5] = { 0.24f, 0.13f, 0.06f, 0.04f, 0.02f };
+        strength *= glowStrength();
+        if (strength <= 0.0f)
+            return;
+        const auto rings = strength > 1.5f ? 5 : 3; // Stark: bredare glöd, inte bara starkare
+        for (int i = 0; i < rings; ++i)
+        {
+            g.setColour (colour.withAlpha (juce::jmin (1.0f, alphas[i] * strength)));
+            g.drawRoundedRectangle (area.reduced (1.5f + (float) i * 1.5f), juce::jmax (1.0f, corner - (float) i), 1.5f);
+        }
+    }
+
+    // Glödande avdelare: tunn linje med svag glöd på båda sidor.
+    inline void paintDividerGlow (juce::Graphics& g, juce::Rectangle<float> line, bool vertical,
+                                  juce::Colour colour = juce::Colour (0xff38bdf8))
+    {
+        const auto grow = [&] (float d) { return vertical ? line.expanded (d, 0.0f) : line.expanded (0.0f, d); };
+        const auto s = glowStrength();
+        if (s > 0.0f)
+        {
+            g.setColour (colour.withAlpha (juce::jmin (1.0f, 0.07f * s)));
+            g.fillRect (grow (4.0f));
+            g.setColour (colour.withAlpha (juce::jmin (1.0f, 0.14f * s)));
+            g.fillRect (grow (2.0f));
+        }
+        g.setColour (colour.withAlpha (juce::jmin (1.0f, 0.22f + 0.33f * s)));
+        g.fillRect (line);
+    }
+
+    // Glasknapp (ä): mörkt glas med ljusreflex och tunn kant; tänd får färgad fyllning och glöd. Gemensam för PREVIEWS-knapparna m.fl.
+    inline void paintGlassButton (juce::Graphics& g, juce::Rectangle<float> area, bool lit, bool hover, juce::Colour accent, float corner = 8.0f)
+    {
+        g.setGradientFill (juce::ColourGradient (juce::Colour (hover ? 0xff1d2233 : 0xff161a28), 0.0f, area.getY(),
+                                                 juce::Colour (0xff0d1019), 0.0f, area.getBottom(), false));
+        g.fillRoundedRectangle (area, corner);
+        if (lit)
+        {
+            g.setColour (accent.withAlpha (0.30f));
+            g.fillRoundedRectangle (area, corner);
+        }
+        juce::Path shine;
+        shine.addRoundedRectangle (area.getX() + 1.0f, area.getY() + 1.0f, area.getWidth() - 2.0f, area.getHeight() * 0.45f,
+                                   corner - 1.0f, corner - 1.0f, true, true, false, false);
+        g.setGradientFill (juce::ColourGradient (juce::Colours::white.withAlpha (0.14f), 0.0f, area.getY(),
+                                                 juce::Colours::white.withAlpha (0.0f), 0.0f, area.getY() + area.getHeight() * 0.45f, false));
+        g.fillPath (shine);
+        g.setColour (lit ? accent : (hover ? cyan.withAlpha (0.5f) : panelBorder));
+        g.drawRoundedRectangle (area.reduced (0.5f), corner, lit ? 1.4f : 1.0f);
+        if (lit)
+            paintEdgeGlow (g, area, corner, accent, 1.4f);
+    }
+
     // En panel: mjuk skugga, subtil gradient och fasade kanter (ingen textur).
     inline void paintMetal (juce::Graphics& g, juce::Rectangle<float> area, float corner, juce::Colour top, juce::Colour bottom,
                             bool bevel = true)
@@ -221,6 +295,7 @@ namespace Theme
         {
             g.setColour (panelBorder);
             g.drawRoundedRectangle (area.reduced (0.5f), corner, 1.0f);
+            paintEdgeGlow (g, area, corner);
         }
     }
 
