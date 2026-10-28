@@ -127,6 +127,7 @@ struct InstrumentParams
     float sampleAmpMs = 300.0f, sampleAmpShape = 0.0f;
     bool samplePitchOn = false;
     float samplePitchSemis = 12.0f, samplePitchMs = 100.0f, samplePitchShape = 0.0f;
+    bool sampleReverse = false; // varje ton spelar samplingen baklänges (från slutet, START räknas från slutet); skivor har slicerReverse
     float allpassFreq = 200.0f;  // 4 allpass i serie efter filtren (mitten och sida var för sig); AMOUNT 0 = av
     float allpassAmount = 0.0f;  // 0..1: blandning torr -> allpass (1 = ren fasrotation)
     float samplePan = 0.0f, noisePan = 0.0f, fmPan = 0.0f; // INSTR-MIX: -1..1 (0 = mitten, ljudet som förut)

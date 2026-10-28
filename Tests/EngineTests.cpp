@@ -301,6 +301,51 @@ namespace
         check (std::abs (late - 100.0) < 6.0, "PITCH: tillbaka till egna tonen efteråt", late);
     }
 
+    void testSampleReverse()
+    {
+        std::puts ("Bas: sampling baklänges per ton");
+        auto sample = makeSine (100.0, 0.3);
+        for (int i = (int) (rate * 0.1); i < sample.audio.getNumSamples(); ++i)
+            sample.audio.setSample (0, i, 0.0f); // ljud bara de första 0,1 s
+        InstrumentSynth bass;
+        bass.prepare (rate);
+
+        InstrumentParams p;
+        p.rootHz = 200.0f;
+        p.oscA.level = 0.0f;
+        p.oscB.level = 0.0f;
+        p.sub = 0.0f;
+        p.cutoffHz = 20000.0f;
+        p.envAmount = 0.0f;
+        p.drive = 0.0f;
+        p.sustain = 1.0f;
+        p.sampleData = &sample;
+        p.sampleLevel = 1.0f;
+        p.sampleOn = true;
+        p.sampleRootHz = 100.0f;
+
+        auto render = [&]
+        {
+            bass.setParams (p);
+            bass.reset();
+            bass.noteOn (0, 1.0f, (int) rate);
+            std::vector<float> audio ((size_t) (rate * 0.5));
+            for (auto& v : audio)
+                v = bass.nextSample();
+            return audio;
+        };
+
+        const auto forward = render();
+        check (peakOf (forward, 0, (size_t) (rate * 0.08)) > 0.1f, "framåt: ljudet kommer först");
+        p.sampleReverse = true;
+        const auto reversed = render();
+        check (peakOf (reversed, 0, (size_t) (rate * 0.15)) < 1.0e-3f, "baklänges: tyst i början");
+        check (peakOf (reversed, (size_t) (rate * 0.2), (size_t) (rate * 0.29)) > 0.1f, "baklänges: ljudet kommer sist");
+        check (peakOf (reversed, (size_t) (rate * 0.32), reversed.size()) < 1.0e-3f, "baklänges: tyst när samplingen är slut");
+        p.sampleReverse = false;
+        check (render() == forward, "av ger exakt det gamla ljudet");
+    }
+
     void testInstrumentPitchAndRelease()
     {
         std::puts ("Bas: rätt ton och tystnar efter gate + release");
@@ -1079,6 +1124,7 @@ void runEngineTests()
     testKickShapesAndSamples();
     testInstrumentSample();
     testSampleEditor();
+    testSampleReverse();
     testInstrumentPitchAndRelease();
     testInstrumentGlide();
     testInstrumentModulationSources();

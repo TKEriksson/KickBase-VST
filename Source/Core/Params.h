@@ -135,7 +135,8 @@ enum class InstrumentField
     fundamentalDuckMode, fundamentalDuckDepth, fundamentalDuckWindow, fundamentalDuckSource, // FUNDAMENTAL DUCK per motor: 0 ÄRV (instrumentets värden, standard), 1 AV, 2 EGEN; registreras sist (addFundamentalDuckParams)
     sampleSource,                                                // multisampling: 0 = Enkel (lagrets en sampling, som förut), 1 = Multi (zoner på tangenter och anslag)
     sampleAmpOn, sampleAmpMs, sampleAmpShape,                    // sample-editor: AMP-kurva över tid (av = som förut)
-    samplePitchOn, samplePitchSemis, samplePitchMs, samplePitchShape, // sample-editor: PITCH-kurva (startavvikelse i halvtoner som glider mot 0)
+    samplePitchOn, samplePitchSemis, samplePitchMs, samplePitchShape,
+        sampleReverse, // sample-editor: PITCH-kurva (startavvikelse i halvtoner som glider mot 0)
     count
 };
 
