@@ -45,6 +45,23 @@ struct KickParams
     float sampleTuneSemis = 0.0f; // samplingens uppspelningshastighet i halvtoner
     float sampleOffsetMs = 0.0f;  // plus: samplingen startar senare än kicken, minus: den startar inne i samplingen (så att faserna inte tar ut varandra)
 
+    // Sampleverktyg (av = som förut): klipp bort början, spela baklänges, tona ut slutet.
+    float sampleStartMs = 0.0f;   // klipper bort de första ms av samplingen
+    bool sampleReverse = false;   // spelar samplingen baklänges (efter klippet)
+    float sampleFadeMs = 0.0f;    // utfasning i slutet av samplingen, 0 = av
+
+    // Klick-lager 2 och 3 (lager 1 är klicket ovan). Nivå 0 = av = exakt gamla ljudet.
+    struct ExtraClick
+    {
+        float level = 0.0f;
+        float lengthMs = 10.0f;
+        float toneHz = 2500.0f;
+        float delayMs = 0.0f;     // startar så här långt efter anslaget
+        int mode = 0;             // 0 bandpass, 1 lågpass, 2 högpass
+    };
+    static constexpr int numExtraClicks = 2;
+    ExtraClick extraClicks[numExtraClicks];
+
     // Den enkla modellen:
     float pitchSemis = 42.0f;   // hur högt över svansen svepet börjar
     float pitchTimeMs = 45.0f;  // hur lång tid svepet tar
@@ -128,6 +145,8 @@ private:
         float ownFadeStep = 0.0f; // > 0: egen utfasning per sampling (cancelCurrent), annars den vanliga
         float fadeUpStep = 0.0f;  // > 0: nivån tillbaka mot 1 per sampling (när en kick som tonade ut den avbröts)
         juce::dsp::StateVariableTPTFilter<float> clickFilter, noiseFilter;
+        juce::dsp::StateVariableTPTFilter<float> extraClickFilter[KickParams::numExtraClicks];
+        float extraToneSet[KickParams::numExtraClicks] { -1.0f, -1.0f };
         float clickToneSet = -1.0f, noiseToneSet = -1.0f; // vad filtren senast ställdes in på (set-funktionerna räknar om tan varje gång)
     };
 

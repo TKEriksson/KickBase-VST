@@ -237,3 +237,8 @@ Nu: programmet, rel-0.3 motornära punkter: 1) S3 Unison/Reese, 2) multisampling
 ## 2026-10-28 – Reverse per not (Arbetare 2)
 - Plan: `docs/work/plan-sample-reverse.md`. Ny sista parameter `sampleReverse` (av = gamla ljudet). Motor: speglad startposition i `noteOn` och bakåtsteg i sample-grenen (`InstrumentSynth.cpp`); LOOP loopar från slutet. Slicer har kvar sin `slicerReverse`.
 - Test: `testSampleReverse` (`Tests/EngineTests.cpp`). `Debug all` grönt.
+
+## 2026-10-28 – Klick-lager 2/3 + sampleverktyg (Arbetare 2)
+- Plan: `docs/work/plan-click-layer-sample-tools.md`. 13 nya kickparametrar sist (kickClick2/3 Level/Length/Tone/Delay/Mode, kickSampleStart/Reverse/Fade), alla av = gamla ljudet.
+- Motor: extra klick i `KickEngine.cpp` (bara om nivå > 0), sampleverktyg i sample-grenen. Test: `testKickClickLayersAndSampleTools`.
+- Arbetare 1: UI + hjälptexter behövs (se planen).

@@ -84,6 +84,21 @@ namespace ParamID
     inline constexpr auto kickSynthOn  = "kickSynthOn";
     inline constexpr auto kickSampleOn = "kickSampleOn";
 
+    // Klick-lager 2 och 3 (nivå 0 = av) och sampleverktyg (klipp, baklänges, utfasning). Allra sist i kickens block.
+    inline constexpr auto kickClick2Level = "kickClick2Level";
+    inline constexpr auto kickClick2Length = "kickClick2Length";
+    inline constexpr auto kickClick2Tone = "kickClick2Tone";
+    inline constexpr auto kickClick2Delay = "kickClick2Delay";
+    inline constexpr auto kickClick2Mode = "kickClick2Mode";
+    inline constexpr auto kickClick3Level = "kickClick3Level";
+    inline constexpr auto kickClick3Length = "kickClick3Length";
+    inline constexpr auto kickClick3Tone = "kickClick3Tone";
+    inline constexpr auto kickClick3Delay = "kickClick3Delay";
+    inline constexpr auto kickClick3Mode = "kickClick3Mode";
+    inline constexpr auto kickSampleStart = "kickSampleStart";
+    inline constexpr auto kickSampleReverse = "kickSampleReverse";
+    inline constexpr auto kickSampleFade = "kickSampleFade";
+
     // FUNDAMENTAL DUCK för hela instrumentet (alla motorer som ärver). Sist i layouten (addFundamentalDuckParams).
     inline constexpr auto fundamentalDuckOn     = "fundamentalDuckOn";
     inline constexpr auto fundamentalDuckDepth  = "fundamentalDuckDepth";

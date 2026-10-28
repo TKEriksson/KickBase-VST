@@ -503,6 +503,21 @@ namespace Params
     {
         layout.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { ParamID::kickSynthOn, 1 }, "Kick Synth On", true));
         layout.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { ParamID::kickSampleOn, 1 }, "Kick Sample On", true));
+
+        for (int n = 2; n <= 3; ++n)
+        {
+            const auto name = "Kick Click " + juce::String (n) + " ";
+            const auto key = juce::String ("kickClick") + juce::String (n);
+            layout.add (percent (key + "Level", name + "Level", 0.0f));
+            layout.add (ms (1.0f, 30.0f, 8.0f, 10.0f, key + "Length", name + "Length"));
+            layout.add (floatParam (key + "Tone", name + "Tone", skewed (200.0f, 16000.0f, 2500.0f, 1.0f), 2500.0f, formatHz));
+            layout.add (floatParam (key + "Delay", name + "Delay", juce::NormalisableRange<float> (0.0f, 100.0f, 0.1f), 0.0f, formatMs));
+            layout.add (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { key + "Mode", 1 }, name + "Mode",
+                                                                      juce::StringArray { "Bandpass", "Lowpass", "Highpass" }, 0));
+        }
+        layout.add (floatParam (ParamID::kickSampleStart, "Kick Sample Start", juce::NormalisableRange<float> (0.0f, 200.0f, 0.1f), 0.0f, formatMs));
+        layout.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { ParamID::kickSampleReverse, 1 }, "Kick Sample Reverse", false));
+        layout.add (floatParam (ParamID::kickSampleFade, "Kick Sample Fade", juce::NormalisableRange<float> (0.0f, 500.0f, 0.1f), 0.0f, formatMs));
     }
 
     juce::StringArray keyNames()
@@ -649,6 +664,19 @@ KickParams ParamRefs::readKick (int keyPitchClass) const
     p.sampleOn      = get (ParamID::kickSampleOn) >= 0.5f;
     p.sampleTuneSemis = get (ParamID::kickSampleTune);
     p.sampleOffsetMs = get (ParamID::kickSampleOffset);
+    for (int i = 0; i < KickParams::numExtraClicks; ++i)
+    {
+        const auto key = juce::String ("kickClick") + juce::String (i + 2);
+        auto& c = p.extraClicks[i];
+        c.level    = get ((key + "Level").toRawUTF8());
+        c.lengthMs = get ((key + "Length").toRawUTF8());
+        c.toneHz   = get ((key + "Tone").toRawUTF8());
+        c.delayMs  = get ((key + "Delay").toRawUTF8());
+        c.mode     = getChoice ((key + "Mode").toRawUTF8());
+    }
+    p.sampleStartMs = get (ParamID::kickSampleStart);
+    p.sampleReverse = get (ParamID::kickSampleReverse) >= 0.5f;
+    p.sampleFadeMs  = get (ParamID::kickSampleFade);
     p.drive         = get (ParamID::kickDrive);
     p.highCutHz     = get (ParamID::kickHighCut);
     p.level         = get (ParamID::kickLevel);

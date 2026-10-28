@@ -1114,6 +1114,98 @@ namespace
         pattern.clearNotes (2);
         check (! pattern.isCustom (2), "när lagret rensas nollställs pianorullsmarkeringen");
     }
+
+    std::vector<float> renderKickWith (const KickParams& p, const ClickSample* sample, double seconds)
+    {
+        KickEngine kick;
+        kick.prepare (rate);
+        kick.setParams (p);
+        kick.setClickSample (sample);
+        kick.trigger (1.0f);
+        std::vector<float> audio ((size_t) (rate * seconds));
+        for (auto& v : audio)
+            v = kick.nextSample();
+        return audio;
+    }
+
+    void testKickClickLayersAndSampleTools()
+    {
+        std::puts("Kick: klick-lager 2 och 3 och sampleverktyg");
+
+        KickParams base;
+        base.drive = 0.0f;
+        const auto plain = renderKickWith (base, nullptr, 0.2);
+
+        // Nivå 0 = av: övriga fält ändrar ingenting, ljudet är bit för bit detsamma.
+        {
+            auto p = base;
+            p.extraClicks[0].delayMs = 20.0f;
+            p.extraClicks[0].lengthMs = 12.0f;
+            p.extraClicks[1].mode = 2;
+            const auto off = renderKickWith (p, nullptr, 0.2);
+            check (off == plain, "klick-lager på nivå 0 ändrar inte ljudet");
+        }
+
+        // Ett lager med fördröjning 20 ms: skillnaden är noll före, hörs inom fönstret och är noll efter.
+        for (int mode = 0; mode < 3; ++mode)
+        {
+            auto p = base;
+            p.extraClicks[1].level = 1.0f;
+            p.extraClicks[1].delayMs = 20.0f;
+            p.extraClicks[1].lengthMs = 8.0f;
+            p.extraClicks[1].mode = mode;
+            const auto with = renderKickWith (p, nullptr, 0.2);
+            check (allFinite (with), "klick-lager är ändligt", mode);
+            auto diffPeak = [&] (double fromMs, double toMs)
+            {
+                auto peak = 0.0f;
+                for (size_t i = (size_t) (rate * fromMs * 0.001); i < (size_t) (rate * toMs * 0.001); ++i)
+                    peak = std::max (peak, std::abs (with[i] - plain[i]));
+                return peak;
+            };
+            check (diffPeak (0.0, 19.9) == 0.0f, "klick-lager: tyst före fördröjningen", mode);
+            check (diffPeak (20.0, 28.0) > 0.02f, "klick-lager: hörs i sitt fönster", diffPeak (20.0, 28.0));
+            check (diffPeak (28.5, 200.0) == 0.0f, "klick-lager: tyst efter sin längd", mode);
+        }
+
+        // Sampleverktyg på en stigande ramp (ersätt-läge): klipp, baklänges och utfasning.
+        {
+            ClickSample ramp;
+            ramp.audio.setSize (1, (int) (rate * 0.1));
+            const auto n = ramp.audio.getNumSamples();
+            for (int i = 0; i < n; ++i)
+                ramp.audio.setSample (0, i, 0.8f * (float) i / (float) n);
+
+            auto p = base;
+            p.sampleMode = 2;
+            p.sampleLevel = 1.0f;
+            const auto normal = renderKickWith (p, &ramp, 0.15);
+            const auto at = [&] (const std::vector<float>& a, double ms) { return a[(size_t) (rate * ms * 0.001)]; };
+
+            auto trimmed = p;
+            trimmed.sampleStartMs = 50.0f;
+            const auto cut = renderKickWith (trimmed, &ramp, 0.15);
+            check (std::abs (at (cut, 1.0) - at (normal, 51.0)) < 0.02f, "klipp: början försvinner", at (cut, 1.0));
+
+            auto reversed = p;
+            reversed.sampleReverse = true;
+            const auto back = renderKickWith (reversed, &ramp, 0.15);
+            check (at (back, 1.0) > 0.6f && at (back, 90.0) < 0.2f, "baklänges: rampen faller", at (back, 1.0));
+
+            auto faded = p;
+            faded.sampleFadeMs = 40.0f;
+            const auto out = renderKickWith (faded, &ramp, 0.15);
+            check (std::abs (at (out, 10.0) - at (normal, 10.0)) < 0.001f, "utfasning: mitten orörd");
+            check (at (out, 98.0) < at (normal, 98.0) * 0.3f, "utfasning: slutet tonas ut", at (out, 98.0));
+
+            // Av = som förut.
+            auto off = p;
+            off.sampleStartMs = 0.0f;
+            off.sampleFadeMs = 0.0f;
+            off.sampleReverse = false;
+            check (renderKickWith (off, &ramp, 0.15) == normal, "sampleverktyg av ändrar inte ljudet");
+        }
+    }
 }
 
 void runEngineTests()
@@ -1122,6 +1214,7 @@ void runEngineTests()
     testKickLandsOnKey();
     testKickRetriggerFades();
     testKickShapesAndSamples();
+    testKickClickLayersAndSampleTools();
     testInstrumentSample();
     testSampleEditor();
     testSampleReverse();
