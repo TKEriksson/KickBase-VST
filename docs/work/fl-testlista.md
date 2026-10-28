@@ -145,3 +145,4 @@ Format: **Gör så** → *förväntat resultat*. Bocka av `[ ]` när det stämme
 - [ ] (Lemon) Pianorulle, lane-menyn → *VEL, CUT, PAN, FX*. Dra i CUT/PAN/FX → *stapeln växer, tonbeskrivningen visar t.ex. "CUTOFF 62 %", hörs*. Alt+klick → *låset tas bort*. Ctrl+Z → *ett drag = ett steg*. Kopiera/klistra in och flytta en ton → *låset följer med*. Ny ton → *börjar utan lås*. Stapla toner → *ledtråd att låset gäller huvudtonen*.
 - [ ] (Lemon) Skivrulle: öppna PATTERN på en skivrad → *pianorullen visar en tangent per skiva; rita en ton → låter som den skivan*; fler än 16 skivor → *inget tak i rullen*.
 - [ ] (Lemon) Echo-FX: TIME MS finns inte längre → *10 rattar per slot; gamla projekt med Echo laddas och låter som förut*.
+- [0.4 p1, Lemon] Öppna ett gammalt projekt med FX-länk i SEND-läge: raden syns som vanlig FX-rad i popupen (ingen dubbelrad), ljudet är detsamma. INS-länk visas som "INS FXn".

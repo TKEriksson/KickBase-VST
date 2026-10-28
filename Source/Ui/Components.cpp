@@ -583,7 +583,7 @@ namespace
             void resized() override
             {
                 auto area = getLocalBounds();
-                label.setBounds (area.removeFromLeft (34));
+                label.setBounds (area.removeFromLeft (label.getText().startsWith ("INS") ? 58 : 34));
                 onOff.setBounds (area.removeFromLeft (24));
                 if (extra != nullptr)
                     extra->setBounds (area.removeFromRight (42));
@@ -626,8 +626,9 @@ namespace
             legacyShownFor = legacyChannelNow();
             if (legacyShownFor > 0)
             {
-                auto row = std::make_unique<Row> (apvts, "FX" + juce::String (legacyShownFor), amountID,
-                                                  "FX SEND AMOUNT (old link) - " + Help::forParameter (amountID), accent);
+                // Gamla SEND-länkar flyttas till matrisen vid laddning; det som är kvar här är INSERT-länken (finns inte i matrisen).
+                auto row = std::make_unique<Row> (apvts, "INS FX" + juce::String (legacyShownFor), amountID,
+                                                  "FX INSERT AMOUNT (old link) - " + Help::forParameter (amountID), accent);
                 legacyMode = std::make_unique<juce::TextButton>();
                 legacyMode->setClickingTogglesState (true);
                 legacyMode->setColour (juce::TextButton::buttonColourId, Theme::panel);
@@ -720,7 +721,7 @@ void FxSendControl::updateSummary()
     if (auto* channel = apvts.getParameter (channelID))
         if (const int legacy = juce::roundToInt (channel->convertFrom0to1 (channel->getValue())); legacy > 0)
             if (const int pct = percentOf (amountID); pct > 0)
-                parts.add ("FX" + juce::String (legacy) + " " + juce::String (pct) + "%");
+                parts.add ((percentOf (modeID) > 0 ? "FX" : "INS FX") + juce::String (legacy) + " " + juce::String (pct) + "%");
 
     const auto text = parts.isEmpty() ? juce::String ("None") : parts.joinIntoString (", ");
     if (text != lastSummary)

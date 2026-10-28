@@ -47,6 +47,8 @@ namespace Effects
     juce::String knobParamID (int channel, int slot, int knob);
     // Gamla projekt (utan egenskapen fxKnobsV) saknar rattar som tillkommit sedan dess: sätter dem till sitt standardvärde (neutralt) i state-trädet.
     void migrateLegacyKnobs (juce::ValueTree& state);
+    // Gamla länkar i SEND-läge (fxChannel + fxAmount + fxSend) flyttas till matrisraden fxSendTo<N>; INS-länkar lämnas orörda. Kan köras flera gånger.
+    void migrateSendLinks (juce::ValueTree& state);
     constexpr int knobsVersion = 3;
     // Rattar som tillkommit sedan FX1: sant och standardvärdet (0..1) om ratt k i typen är en sådan (saknas den i en fil ska den få detta, inte 0.5).
     bool newKnobDefault (EffectType type, int k, float& normalised);

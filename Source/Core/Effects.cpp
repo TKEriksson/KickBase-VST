@@ -1,5 +1,6 @@
 #include "Effects.h"
 #include "Params.h"
+#include "Pattern.h"
 #include "Biquad.h"
 
 namespace
@@ -636,6 +637,45 @@ namespace Effects
             return false;
         normalised = list[(size_t) k].toNormalised (list[(size_t) k].defaultValue);
         return true;
+    }
+
+    void migrateSendLinks (ValueTree& state)
+    {
+        const auto read = [&] (const String& id, float fallback)
+        {
+            const auto child = state.getChildWithProperty ("id", id);
+            return child.isValid() ? (float) (double) child.getProperty ("value", fallback) : fallback;
+        };
+        const auto write = [&] (const String& id, float v)
+        {
+            auto child = state.getChildWithProperty ("id", id);
+            if (! child.isValid())
+            {
+                child = ValueTree ("PARAM");
+                child.setProperty ("id", id, nullptr);
+                state.appendChild (child, nullptr);
+            }
+            child.setProperty ("value", v, nullptr);
+        };
+
+        // En SEND-länk (kanal N, belopp a, SEND) är samma ljud som matrisraden "till FX N" med belopp a: flytta den dit.
+        // INS-länkar finns inte i matrisen och lämnas orörda.
+        const auto move = [&] (const String& channelID, const String& amountID, const String& sendID, const std::function<String (int)>& matrixID)
+        {
+            const auto channel = roundToInt (read (channelID, 0.0f)) - 1;
+            if (! isPositiveAndBelow (channel, numEffectChannels) || read (sendID, 0.0f) < 0.5f)
+                return;
+            const auto matrix = matrixID (channel);
+            write (matrix, jlimit (0.0f, 1.0f, read (matrix, 0.0f) + read (amountID, 1.0f)));
+            write (channelID, 0.0f);
+            write (amountID, 0.0f);
+            write (sendID, 0.0f);
+        };
+
+        move (ParamID::kickFxChannel, ParamID::kickFxAmount, ParamID::kickFxSend, [] (int c) { return String (ParamID::kickFxSendToIds[c]); });
+        for (int layer = 0; layer < maxInstruments; ++layer)
+            move (ParamID::bass (layer, InstrumentField::fxChannel), ParamID::bass (layer, InstrumentField::fxAmount), ParamID::bass (layer, InstrumentField::fxSend),
+                  [layer] (int c) { return ParamID::bass (layer, ParamID::fxSendToField (c)); });
     }
 
     void migrateLegacyKnobs (ValueTree& state)

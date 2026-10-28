@@ -4,6 +4,7 @@
 #include "../Source/Core/LiveCodeComplete.h"
 #include "../Source/Core/LiveCodeFormat.h"
 #include "../Source/Core/Master.h"
+#include "../Source/Core/Params.h"
 #include "../Source/Core/Sidechain.h"
 #include "TestUtils.h"
 #include <cmath>
@@ -151,6 +152,42 @@ namespace
         check (knob.isValid() && (float) (double) knob.getProperty ("value") == 0.0f, "ratt 6 nollad till Classic", knob.isValid() ? (double) knob.getProperty ("value") : -1.0);
     }
 
+    // 0.4: en gammal SEND-länk blir en matrisrad (samma ljud), en INS-länk lämnas orörd.
+    void testSendLinkMigration()
+    {
+        std::puts ("0.4: SEND-länk flyttas till matrisen, INS orörd");
+        juce::ValueTree state ("Parameters");
+        auto add = [&] (const juce::String& id, float v)
+        {
+            juce::ValueTree p ("PARAM");
+            p.setProperty ("id", id, nullptr);
+            p.setProperty ("value", v, nullptr);
+            state.appendChild (p, nullptr);
+        };
+        auto value = [&] (const juce::String& id)
+        {
+            const auto c = state.getChildWithProperty ("id", id);
+            return c.isValid() ? (float) (double) c.getProperty ("value") : -1.0f;
+        };
+        using F = InstrumentField;
+        add (ParamID::bass (0, F::fxChannel), 3.0f);  // SEND på FX3, 40 %, matrisen redan 30 % på samma kanal
+        add (ParamID::bass (0, F::fxAmount), 0.4f);
+        add (ParamID::bass (0, F::fxSend), 1.0f);
+        add (ParamID::bass (0, ParamID::fxSendToField (2)), 0.3f);
+        add (ParamID::bass (1, F::fxChannel), 2.0f);  // INS på FX2
+        add (ParamID::bass (1, F::fxAmount), 0.5f);
+        add (ParamID::kickFxChannel, 1.0f);           // kickens SEND utan sparat belopp (standard 1.0)
+        add (ParamID::kickFxSend, 1.0f);
+
+        Effects::migrateSendLinks (state);
+        check (std::abs (value (ParamID::bass (0, ParamID::fxSendToField (2))) - 0.7f) < 1.0e-5f, "SEND adderas till matrisraden", value (ParamID::bass (0, ParamID::fxSendToField (2))));
+        check (value (ParamID::bass (0, F::fxChannel)) == 0.0f && value (ParamID::bass (0, F::fxAmount)) == 0.0f && value (ParamID::bass (0, F::fxSend)) == 0.0f, "den gamla länken nollas");
+        check (value (ParamID::bass (1, F::fxChannel)) == 2.0f && value (ParamID::bass (1, F::fxAmount)) == 0.5f, "INS lämnas orörd");
+        check (value (ParamID::kickFxSendToIds[0]) == 1.0f && value (ParamID::kickFxChannel) == 0.0f, "kickens SEND utan belopp blir 100 % på FX1");
+        Effects::migrateSendLinks (state);
+        check (std::abs (value (ParamID::bass (0, ParamID::fxSendToField (2))) - 0.7f) < 1.0e-5f, "andra körningen ändrar inget");
+    }
+
     // D4: autokomplettering inuti strängar och på tom rad
     void testLiveCodeStringComplete()
     {
@@ -204,4 +241,5 @@ void runMasterTests()
     testCurvePlayer();
     testLimiter();
     testMaximizerModeMigration();
+    testSendLinkMigration();
 }

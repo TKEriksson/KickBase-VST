@@ -384,3 +384,8 @@ Punkter från PL: (1) gamla FX-länken, (2) ta bort FX-kanal från popupen med �
 3. PATTERN: ta bort FX-ratten (`StepSequencer.cpp:33,159`) efter kontroll att inget annat läser raden; VOL-ratten större. FX-knappen visar "N x FX" / "FX" / "None"; tooltip listar kanalerna (`Components.cpp:706`).
 4. FX-lane (steg b): lanen får ett kanalval; lane-värdet ersätter matrissenden för den kanalen. Kräver pianorullkod och lås-format: samordnas med Arbetare 1 (kickbase-vst-b6) innan jag rör något; jag rör inte PianoRoll.cpp.
 Ordning: 1, 3, 2, sedan 4 efter svar från Arbetare 1. Ljudkod (InstrumentProcessor) ändras bara för punkt 4; PL får veta först.
+
+### 0.4 punkt 1 – klar (28 okt, Arbetare 2)
+- `Effects::migrateSendLinks` (Effects.cpp) flyttar SEND-länkar till `fxSendToN` vid laddning (PluginBase.cpp:828). INS orörd, visas som "INS FXn" i popupen. Inga ID/hash ändrade (presets räknar inte fxChannel/Amount/Send).
+- Test: `testSendLinkMigration` (MasterTests.cpp). `Debug all` grönt.
+- Känt: FX-lås (`fxSendLock`) styr bara gamla länken; migrerade länkar tappar låset tills punkt 4 är klar.
