@@ -14,7 +14,8 @@ Releasen delas (Tobias 28 okt): rel-0.3 byggs och testas först, resten går til
 ### rel-0.4 (planer först)
 6. Övertonsredigerare, Serum-stil, etapp 1-3.
 7. Sample-editor (AMP/PITCH, på/av), klick-lager (3) och sampleverktyg, reverse per not, parameterlanes under pianorollen (resizebar).
-8. AUTO FIX sist.
+8. RING, Echo/Flanger och autosave/IO (Tobias 28 okt: lägg in i planen): plan först, sedan bygge. Nya parametrar sist, standard av.
+9. AUTO FIX sist.
 
 ## Arbetare 2 (preset och verktyg, branch w2)
 ### rel-0.3
@@ -32,4 +33,4 @@ Arbetare 2 rör inte UI. Arbetare 1 rör inte `PresetData.inl` och KickbaseTool 
 
 ## Projektledaren
 - rel-0.3-build, testlista (PDF i `docs/releases/`) med egen sektion för hörtester som saknas i DAW: MIX-fliken, AP/START, HALFTIME, KEEP/COMPARE, shimmer, Maximizer MODE, Low Multiplier, autocomplete. Tobias testar i DAW, fixar, merge först efter ja.
-- Ej beslutat, skjuts till rel-0.4 eller senare: RING, Echo/Flanger, autosave/IO, multiband och sidechain i två band som FX-slot, AI-leverantörer.
+- Skjuts till senare: multiband och sidechain i två band som FX-slot, AI-leverantörer.
