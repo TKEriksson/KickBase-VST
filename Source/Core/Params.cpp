@@ -103,7 +103,8 @@ namespace ParamID
                                      "SlicerOn", "SlicerMapTo", "SlicerReverse",
                                      "FxSend", "SampleMode", "AllpassFreq", "AllpassAmount", "SamplePan", "NoisePan", "FmPan", "NoiseWidth", "SubPhaseDeg", "FmPhaseDeg", "AWidth", "BWidth", "CWidth", "SampleWidth", "FmWidth", "RingSource",
                                      "FundamentalDuckMode", "FundamentalDuckDepth", "FundamentalDuckWindow", "FundamentalDuckSource",
-                                     "SampleSource" };
+                                     "SampleSource",
+                                     "SampleAmpOn", "SampleAmpMs", "SampleAmpShape", "SamplePitchOn", "SamplePitchSemis", "SamplePitchMs", "SamplePitchShape" };
         static_assert (std::size (names) == (size_t) InstrumentField::count);
         return names[(size_t) field];
     }
@@ -439,6 +440,15 @@ namespace Params
                                                             StringArray { "OSC 2", "OSC 3", "OSC 2 x OSC 3" }, 0));
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::sampleSource), 1 }, title + "Sample Source",
                                                             StringArray { "Single", "Multi" }, 0));
+        const auto shapeText = [] (float v) { return String (juce::roundToInt (v * 100.0f)) + " %"; };
+        layout.add (std::make_unique<AudioParameterBool> (ParameterID { id (F::sampleAmpOn), 1 }, title + "Sample Amp On", false));
+        layout.add (ms (10.0f, 2000.0f, 300.0f, 300.0f, id (F::sampleAmpMs), title + "Sample Amp Time"));
+        layout.add (floatParam (id (F::sampleAmpShape), title + "Sample Amp Shape", NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f, shapeText));
+        layout.add (std::make_unique<AudioParameterBool> (ParameterID { id (F::samplePitchOn), 1 }, title + "Sample Pitch On", false));
+        layout.add (floatParam (id (F::samplePitchSemis), title + "Sample Pitch Semitones", NormalisableRange<float> (-48.0f, 48.0f, 0.1f), 12.0f,
+                                [] (float v) { return String (v, 1) + " st"; }));
+        layout.add (ms (5.0f, 2000.0f, 150.0f, 100.0f, id (F::samplePitchMs), title + "Sample Pitch Time"));
+        layout.add (floatParam (id (F::samplePitchShape), title + "Sample Pitch Shape", NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f, shapeText));
     }
 
     void addFxParams (Layout& layout)
@@ -775,5 +785,12 @@ InstrumentParams ParamRefs::readInstrument (int layer, int rootMidiNote) const
     p.fmWidth = get (F::fmWidth);
     p.oscA.ringSource = (int) get (F::ringSource);
     p.sampleMulti = (int) get (F::sampleSource) == 1;
+    p.sampleAmpOn = get (F::sampleAmpOn) > 0.5f;
+    p.sampleAmpMs = get (F::sampleAmpMs);
+    p.sampleAmpShape = get (F::sampleAmpShape);
+    p.samplePitchOn = get (F::samplePitchOn) > 0.5f;
+    p.samplePitchSemis = get (F::samplePitchSemis);
+    p.samplePitchMs = get (F::samplePitchMs);
+    p.samplePitchShape = get (F::samplePitchShape);
     return p;
 }

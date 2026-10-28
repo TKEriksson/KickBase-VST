@@ -122,6 +122,11 @@ struct InstrumentParams
     bool sampleKeyTrack = false; // av = spelas med sin egen tonhöjd och hastighet
     float sampleStart = 0.0f;    // 0..1: var i samplingen varje ton börjar
     bool slicerReverse = false;  // alla skivor spelas baklänges
+    // Sample-editor: AMP-kurva (nivå faller till 0 på sampleAmpMs) och PITCH-kurva (sampleSemis glider mot 0 på samplePitchMs); av = som förut. Form -1..1: 0 linjär.
+    bool sampleAmpOn = false;
+    float sampleAmpMs = 300.0f, sampleAmpShape = 0.0f;
+    bool samplePitchOn = false;
+    float samplePitchSemis = 12.0f, samplePitchMs = 100.0f, samplePitchShape = 0.0f;
     float allpassFreq = 200.0f;  // 4 allpass i serie efter filtren (mitten och sida var för sig); AMOUNT 0 = av
     float allpassAmount = 0.0f;  // 0..1: blandning torr -> allpass (1 = ren fasrotation)
     float samplePan = 0.0f, noisePan = 0.0f, fmPan = 0.0f; // INSTR-MIX: -1..1 (0 = mitten, ljudet som förut)
@@ -210,6 +215,13 @@ public:
     // Filter-envelopens form (0..1) efter `seconds`. Används även av gränssnittet.
     static float filterEnvelopeAt (const InstrumentParams& p, double seconds);
 
+    // Sample-editorns kurvform: `remaining` 1 -> 0 (kvar av kurvan), `shape` -1..1; 0 = linjär, + = snabbt fall först, - = långsamt fall först. Används även av gränssnittet.
+    static float sampleCurve (float remaining, float shape) noexcept
+    {
+        remaining = juce::jlimit (0.0f, 1.0f, remaining);
+        return std::pow (remaining, std::exp2 (2.0f * shape));
+    }
+
     // Fasen efter warp (för gränssnittets bild och för oscillatorn). `fmInput` -1..1.
     static double warpPhase (WarpMode mode, float amount, double phase, float fmInput);
 
@@ -264,6 +276,7 @@ private:
     double fmCarrierPhase = 0.0, fmModPhase = 0.0; // FM-källans faser (0..1)
     float fmEnvLevel = 0.0f;                        // 1 vid anslaget, faller mot 0 (FM ENV)
     double samplePosition = 0.0; // i samplingens samples
+    double sampleAge = 0.0;      // samples sedan anslaget (sample-editorns AMP/PITCH)
     bool sliceNote = false;      // tonen kom från en slice-rad (satt i noteOn)
     int multiZone = -1;          // zonen i params.sampleBank som tonen valde i noteOn (-1 = ingen)
     const ClickSample* activeSample() const noexcept; // samplingen rösten spelar: lagrets egen eller multizonen (nullptr om ingen)

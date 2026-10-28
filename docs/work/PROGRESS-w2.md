@@ -219,3 +219,17 @@ Nu: programmet, rel-0.3 motornära punkter: 1) S3 Unison/Reese, 2) multisampling
 - Echo: ny sista ratt TIME MS (0–3300 ms, standard 0 = följer TIME/SYNC = gamla ljudet). Över 0 ersätter den synken (`EchoFx::process`).
 - Tester: `testEchoMs` i `Tests/FxTests.cpp` (layout har P11 men inte P12, legacy-standard 0, 0 ms behåller synk, 250 ms hamnar rätt). `Debug all` grönt.
 - Ekots ms-tid är därmed inte längre parkerad.
+
+## 2026-10-28 – KickbaseTool sfz + parseSfz-tester (Arbetare 2)
+- Redan i w2 (14e31ea): `KickbaseTool sfz <fil.sfz>` (`Tools/Tool.cpp:4061`) skriver ut regionerna och hur många zoner `addSfz` kan läsa; `parseSfz`-tester i `Tools/AudioTests.cpp:1677` (arv mellan nivåerna, tonnamn, default_path, kommentarer, tom text). Ingen UI rörd.
+- `Debug all` grönt efter Echo TIME MS (a601d2e) inkluderar dessa. S3 Unison/Reese-presets väntar tills Tobias ber om dem.
+
+## 2026-10-28 – S3 Unison/Reese-presets (Arbetare 2)
+- Tre baspresets sist i `bassPreset`-listan (`PresetData.inl`, efter Empirikal Growl) och ny kategori UNISON (`PresetCategories.cpp`, prefix "Unison "). Inga nya parametrar, ID/index/hash orörda. `Debug all` grönt, audit utan klippning. Ej lyssnat.
+- Nästa: planer + kärnor. Arbetare 1 vill ha sample-editor-kärnan först (hon lägger DELAY/LENGTH/CURVE efter den i `InstrumentSynth.cpp` sample-grenen).
+
+## 2026-10-28 – Sample-editor-kärna (Arbetare 2)
+- Plan: `docs/work/plan-sample-editor.md`. Sju nya parametrar sist i `InstrumentField` (SampleAmpOn/Ms/Shape, SamplePitchOn/Semis/Ms/Shape), alla av som standard = bit-identiskt gamla ljudet.
+- Motor: `sampleAge` + `InstrumentSynth::sampleCurve` i sample-grenen (`InstrumentSynth.cpp`). AMP gäller alla röster, PITCH inte slice-röster.
+- Test: `testSampleEditor` (`Tests/EngineTests.cpp`): av = identiskt, AMP tyst efter ms, PITCH högre i början och tillbaka efteråt. `Debug all` grönt.
+- Arbetare 1: lägg DELAY/LENGTH/CURVE efter denna kärna; `samplePosition` ska stå still under DELAY.

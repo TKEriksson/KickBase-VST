@@ -192,6 +192,7 @@ void InstrumentSynth::noteOn (int semitones, float newVelocity, int gateSamples,
         const auto key = juce::jlimit (0, 127, juce::roundToInt (69.0f + 12.0f * std::log2 (frequency / 440.0f)));
         multiZone = params.sampleBank->select (key, juce::jlimit (1, 127, juce::roundToInt (newVelocity * 127.0f)));
     }
+    sampleAge = 0.0;
     const auto* startSample = activeSample();
     samplePosition = startSample != nullptr ? (double) params.sampleStart * (double) startSample->audio.getNumSamples() : 0.0;
     sliceVoice = false;
@@ -552,6 +553,14 @@ InstrumentSynth::Output InstrumentSynth::next()
     {
         const auto& audio = playing->audio;
         const auto length = audio.getNumSamples();
+        // Sample-editor: AMP-kurvan (nivå) och PITCH-kurvan (hastighet); av = 1 och 1, ljudet som förut.
+        auto editorGain = 1.0f;
+        auto editorSpeed = 1.0;
+        if (params.sampleAmpOn)
+            editorGain = InstrumentSynth::sampleCurve (1.0f - (float) (sampleAge / (0.001 * (double) params.sampleAmpMs * sampleRate)), params.sampleAmpShape);
+        if (params.samplePitchOn)
+            editorSpeed = std::exp2 ((double) params.samplePitchSemis / 12.0 * InstrumentSynth::sampleCurve (1.0f - (float) (sampleAge / (0.001 * (double) params.samplePitchMs * sampleRate)), params.samplePitchShape));
+        sampleAge += 1.0;
         if (sliceNote)
         {
             // Skiva: originalhastighet framåt eller bakåt, stannar vid skivans kant; 64 samples fade mot kanterna mot klick.
@@ -563,7 +572,7 @@ InstrumentSynth::Output InstrumentSynth::next()
                 const auto following = index + 1 < sliceEnd ? data[index + 1] : 0.0f;
                 const auto edge = std::min (samplePosition - (double) sliceBegin + 1.0, (double) sliceEnd - samplePosition);
                 const auto fade = (float) std::min (1.0, edge / 64.0);
-                addMonoWide (fOn && params.filterSrc[3], fade * params.sampleLevel * (data[index] + fraction * (following - data[index])), params.samplePan, params.sampleWidth, sampleDelay);
+                addMonoWide (fOn && params.filterSrc[3], fade * editorGain * params.sampleLevel * (data[index] + fraction * (following - data[index])), params.samplePan, params.sampleWidth, sampleDelay);
                 samplePosition += params.slicerReverse ? -1.0 : 1.0;
             }
         }
@@ -577,11 +586,11 @@ InstrumentSynth::Output InstrumentSynth::next()
                 const auto index = (int) samplePosition;
                 const auto fraction = (float) (samplePosition - (double) index);
                 const auto following = index + 1 < length ? data[index + 1] : (params.sampleLoop ? data[0] : 0.0f);
-                addMonoWide (fOn && params.filterSrc[3], params.sampleLevel * (data[index] + fraction * (following - data[index])), params.samplePan, params.sampleWidth, sampleDelay);
+                addMonoWide (fOn && params.filterSrc[3], editorGain * params.sampleLevel * (data[index] + fraction * (following - data[index])), params.samplePan, params.sampleWidth, sampleDelay);
                 if (params.sampleMulti)
-                    samplePosition += frequency / (double) std::max (1.0f, params.sampleBank->zone (multiZone)->rootHz);
+                    samplePosition += editorSpeed * frequency / (double) std::max (1.0f, params.sampleBank->zone (multiZone)->rootHz);
                 else
-                    samplePosition += params.sampleKeyTrack ? frequency / (double) std::max (1.0f, params.sampleRootHz) : 1.0;
+                    samplePosition += editorSpeed * (params.sampleKeyTrack ? frequency / (double) std::max (1.0f, params.sampleRootHz) : 1.0);
             }
         }
     }

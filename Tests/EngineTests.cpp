@@ -248,6 +248,59 @@ namespace
         check (peakOf (silent, 0, silent.size()) < 1.0e-4f, "nivå 0 ger tyst bas utan oscillatorer");
     }
 
+    void testSampleEditor()
+    {
+        std::puts ("Bas: sample-editor (AMP/PITCH, på/av)");
+        const auto sample = makeSine (100.0, 0.6);
+        InstrumentSynth bass;
+        bass.prepare (rate);
+
+        InstrumentParams p;
+        p.rootHz = 200.0f;
+        p.oscA.level = 0.0f;
+        p.oscB.level = 0.0f;
+        p.sub = 0.0f;
+        p.cutoffHz = 20000.0f;
+        p.envAmount = 0.0f;
+        p.drive = 0.0f;
+        p.sustain = 1.0f;
+        p.sampleData = &sample;
+        p.sampleLevel = 1.0f;
+        p.sampleOn = true;
+        p.sampleRootHz = 100.0f;
+
+        auto render = [&]
+        {
+            bass.setParams (p);
+            bass.reset();
+            bass.noteOn (0, 1.0f, (int) rate);
+            std::vector<float> audio ((size_t) (rate * 0.4));
+            for (auto& v : audio)
+                v = bass.nextSample();
+            return audio;
+        };
+
+        const auto original = render();
+        p.sampleAmpMs = 50.0f; // av: parametrarna ska inte höras
+        p.samplePitchSemis = 7.0f;
+        check (render() == original, "AMP och PITCH av ger exakt det gamla ljudet");
+
+        p.sampleAmpOn = true;
+        const auto amp = render();
+        check (peakOf (amp, (size_t) (rate * 0.06), amp.size()) < 1.0e-4f, "AMP: tyst efter kurvans längd");
+        check (peakOf (amp, 0, (size_t) (rate * 0.01)) > 0.1f, "AMP: hörs i början");
+        p.sampleAmpOn = false;
+
+        p.samplePitchOn = true;
+        p.samplePitchSemis = 12.0f;
+        p.samplePitchMs = 50.0f;
+        const auto pitch = render();
+        const auto early = estimateFrequency (pitch, 0, (size_t) (rate * 0.02));
+        const auto late = estimateFrequency (pitch, (size_t) (rate * 0.2), (size_t) (rate * 0.35));
+        check (early > 130.0, "PITCH: högre i början", early);
+        check (std::abs (late - 100.0) < 6.0, "PITCH: tillbaka till egna tonen efteråt", late);
+    }
+
     void testInstrumentPitchAndRelease()
     {
         std::puts ("Bas: rätt ton och tystnar efter gate + release");
@@ -1025,6 +1078,7 @@ void runEngineTests()
     testKickRetriggerFades();
     testKickShapesAndSamples();
     testInstrumentSample();
+    testSampleEditor();
     testInstrumentPitchAndRelease();
     testInstrumentGlide();
     testInstrumentModulationSources();
