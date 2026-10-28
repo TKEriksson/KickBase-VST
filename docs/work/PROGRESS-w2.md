@@ -192,3 +192,10 @@ Nu: programmet, rel-0.3 motornära punkter: 1) S3 Unison/Reese, 2) multisampling
 
 ## 2026-10-28 Genreutredning med källor
 - Arbetare 2: `docs/school/` minimal, goa (omskrivna) plus nya dark-psy, dance, trance, techno, empirikal. Källor som länkar/titlar, kvalitet och "obekräftat" angivet. Tunt: minimal-psy (en BPM-källa), Dance (ingen egen källa), Empirikal (ingen specifik källa, Reese-underlag). Ingen kod ändrad. Finjustering väntar på Tobias lyssning i Lemon.
+
+## 2026-10-28 Slutaudit alla fabrikspresets (efter merge av play-pack, build grönt)
+- Arbetare 2: `audit kick|bass|full all` (30 kickar, 40 basar, 26 fulla). Ingen klippning (peak ≤ −0,3 dB), DC ≤ 0,004. Ej lyssnat.
+- **Avvikelser (kick):** Dark Forest Boom och Clean Warm peak −0,3 dB (nära tak); Dark Forest Boom DC 0,004 (högst). Svans utanför 35–50 Hz: Psy Clean C och C Tight 33 Hz, Psy Clean A Punch 56 Hz.
+- **Avvikelser (full):** newest 2/5/6 och Init/New Init 1–2 peak −0,3 dB; newest 2 DC 0,004. Init och newest 1 har side −37 dB (stereo i lågt band), övriga −120.
+- **Basar:** alla peak −5…−12,4 dB, DC 0. Genrebasarna −9…−12 dB.
+- Inget ändrat; preset-index orörda. Finjustering efter Tobias lyssning i Lemon.
