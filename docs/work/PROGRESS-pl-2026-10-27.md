@@ -70,3 +70,7 @@
 - tkdev (pushad, PR #9 mergad till main 28 okt efter Tobias ja): `kickbase/page.tsx` (9 bilder, ny text, alt utan "FL Studio"), nya jpg i `public/projekt/kickbase/`, migration `20261028000000_kickbase_projekt_uppdatering.sql` (uppdaterar body, cover och images). Migrationens update är körd mot raden 'kickbase' i portfolio_projects (via PostgREST, svar: 1 rad, 8 bilder).
 - Andra ställen: bara `oath2`-sidorna, robots och sitemap nämner Kickbase (inga funktionstexter). Statusen är fortfarande "inte släppt".
 - tkdev har andra ocommittade ändringar (cv, startsidan) som inte rörts.
+
+## 28 okt: omfattning rel-0.3 ändrad (Tobias)
+- Flyttas till nästa release: övertonsredigerare, parameterlanes, AUTO FIX UI/APPLY (mätdelen i kärnan finns kvar). Båda arbetarna informerade.
+- 5b godkänd: UI-etikett POS DELAY, LENGTH, CURVE per motor (OSC 1-3, SAMPLE, NOISE, SUB, FM), max 4000 ms, hörbar nivå, fas nollställs, DELAY/SYNC.
