@@ -6,7 +6,7 @@
 #include <array>
 
 // MIX-fliken i källpanelen: en strip per källa (OSC 1-3, SAMPLE, NOISE, SUB, FM) med nivå och pan (NOISE också bredd; SUB är alltid mono i mitten),
-// dB-mätare per källa (källan ensam), zoom i vågformen (hjul = tid, Shift + hjul = höjd, mittknapp eller rullningslist = panorera, dubbelklick = återställ, WIDE = hela bredden, tidsaxel i ms) och till vänster den sammanlagda vågformen av det instrumentet spelar (alla källor genom filter och envelope, några cykler efter anslaget).
+// dB-mätare per källa (källan ensam), zoom i vågformen (hjul = tid, Shift + hjul = höjd, mittknapp eller rullningslist = panorera, dubbelklick = återställ, tidsaxel i ms) och överst, i full bredd, den sammanlagda vågformen av det instrumentet spelar (alla källor genom filter och envelope, några cykler efter anslaget).
 class InstrMixPanel : public juce::Component, private juce::Timer, private juce::ScrollBar::Listener
 {
 public:
@@ -30,7 +30,6 @@ private:
     void scrollBarMoved (juce::ScrollBar*, double newRangeStart) override;
     double samplesPerColumn() const { return 5.2 / zoomX; }
     void updateScrollBar();
-    void setWide (bool on);
     void paintTimeAxis (juce::Graphics&, juce::Rectangle<float> wave) const;
     void addStrip (const char* name, InstrumentField level, const InstrumentField* pan, const InstrumentField* width, int colourIndex, const InstrumentField* phase = nullptr);
     void renderWave();
@@ -46,8 +45,7 @@ private:
     float zoomX = 1.0f, zoomY = 1.0f;    // vågformens zoom: tid (hjul) och höjd (Shift + hjul)
     int panSamples = 0, panAtDragStart = 0;  // vågens startpunkt (samples efter den startade tonen): mittknapp-drag eller rullningslist
     static constexpr int maxPanSamples = 96000;
-    bool wide = false;                      // WIDE: vågen får hela panelens bredd, ratterna göms
-    juce::TextButton wideButton { "WIDE" }, helpButton;
+    juce::TextButton helpButton;
     juce::ScrollBar scrollBar { false };
     std::array<float, 7> peakDb {};       // varje källas toppnivå (dB) ensam, efter pan och bredd
     juce::Rectangle<int> waveArea;

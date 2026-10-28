@@ -173,7 +173,6 @@ Everything this layer plays, a few cycles after the note starts (110 Hz).
 - **Mouse wheel**: zoom in time. **Shift + wheel**: zoom the height.
 - **Middle button drag** or the **scroll bar**: move along the note.
 - **Double-click**: reset the view.
-- **WIDE**: give the waveform the full width (the knobs are hidden). **NARROW** brings them back.
 )";
 
     const char* timingText = R"(# TIMING
