@@ -83,6 +83,7 @@ KnobComponent::KnobComponent (juce::AudioProcessorValueTreeState& apvts, const j
     {
         slider.setDoubleClickReturnValue (true, parameter->convertFrom0to1 (parameter->getDefaultValue()));
         modulatable = Modulation::isModulatable (*parameter);
+        semitones = slider.getTextFromValue (slider.getMaximum()).endsWith (" st");
         description = Help::forParameter (paramID);
         if (description.isEmpty())
             description = parameter->getName (64);
@@ -236,6 +237,18 @@ void KnobComponent::paintOverChildren (juce::Graphics& g)
         g.strokePath (live, juce::PathStrokeType (6.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
         g.setColour (liveColour);
         g.strokePath (live, juce::PathStrokeType (3.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    }
+
+    if (semitones)
+    {
+        // Tickmärken utanför spårringen vid ±12 och ±24 st (de som ryms i ratten).
+        g.setColour (Theme::slate400.withAlpha (0.7f));
+        for (const auto st : { -24.0, -12.0, 12.0, 24.0 })
+            if (st > slider.getMinimum() && st < slider.getMaximum())
+            {
+                const auto a = angleAt ((float) slider.valueToProportionOfLength (st));
+                g.drawLine ({ centre.getPointOnCircumference (trackRadius() + 1.0f, a), centre.getPointOnCircumference (trackRadius() + 5.0f, a) }, 1.5f);
+            }
     }
 
     const auto list = rings();
@@ -399,6 +412,18 @@ void KnobComponent::ModSlider::mouseUp (const juce::MouseEvent& e)
         processor->recordModEdit (owner.modBefore, "Mod amount: " + owner.name);
     }
     owner.repaint();
+}
+
+double KnobComponent::ModSlider::snapValue (double attempted, DragMode)
+{
+    // Håller man Shift får man fri inställning.
+    if (! owner.semitones || juce::ModifierKeys::currentModifiers.isShiftDown())
+        return attempted;
+    constexpr auto snapDistance = 0.4; // st
+    for (const auto target : { -24.0, -12.0, 12.0, 24.0 })
+        if (std::abs (attempted - target) < snapDistance && target > getMinimum() && target < getMaximum())
+            return target;
+    return attempted;
 }
 
 void KnobComponent::ModSlider::stoppedDragging()

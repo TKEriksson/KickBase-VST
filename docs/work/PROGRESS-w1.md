@@ -495,3 +495,6 @@ Bygge Debug all: grönt, "Alla tester gick igenom" (rendersig oförändrad).
 - Fix: SAMPLE-motorns LENGTH/CURVE multiplicerar nu editorGain (InstrumentSynth.cpp:601) i stället för att skrivas över när AMP är på.
 - HELP-flikar: nya ämnen GATE, HISTORY, ABOUT, OPTIMIZATIONS (`HelpDialog.h`, texter i `HelpDialog.cpp`), HELP-knapp i GateModule (Modules.cpp), HistoryPanel.h, AboutPanel.cpp, OptimizationsPanel.cpp. KickLibraryPanel har ingen egen knapp: den ligger i kickens SAMPLE-vy som redan har kick-HELP. build Debug all grön, helpcheck 0, delaytest ok.
 - DAW (Lemon) att kolla: HELP-knappen syns och öppnar rätt flik på GATE (Kickbase FX), MENY > History, SETTINGS > ABOUT och OPTIMIZATIONS, även vid smalt fönster.
+
+## snap-ticks (2026-10-28, Arbetare 1)
+- Rattar vars värdetext slutar på " st" (KnobComponent::semitones) fastnar vid ±12/±24 (±0,4 st, Shift = fri) via `ModSlider::snapValue`, och får små tickmärken utanför ringen (`paintOverChildren`). Ingen parameter ändrad. Bygge + tester gröna; ej provat för hand i Lemon.

@@ -59,6 +59,7 @@ public:
         void mouseMove (const juce::MouseEvent&) override;
         void mouseExit (const juce::MouseEvent&) override;
         void stoppedDragging() override; // döper undo-steget
+        double snapValue (double attempted, DragMode) override; // "st"-rattar fastnar vid ±12 och ±24
 
     private:
         KnobComponent& owner;
@@ -94,6 +95,7 @@ private:
     juce::String name, description;
     juce::Colour accent;
     bool modulatable = false;
+    bool semitones = false; // värdet visas i "st": snap och tickmärken vid ±12/±24
     bool dropHover = false;
     std::function<float()> liveMeter;
     juce::Colour liveColour;
