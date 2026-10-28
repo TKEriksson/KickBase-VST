@@ -326,7 +326,7 @@ private:
                 area.removeFromRight (14);
             }
             if (preset != nullptr)
-                preset->setBounds (area);
+                preset->setBounds (tabs != nullptr ? area.removeFromLeft (std::min (area.getWidth(), 170)) : area); // smalare väljare när det finns vyflikar
         }
     };
 

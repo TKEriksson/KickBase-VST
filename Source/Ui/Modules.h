@@ -134,6 +134,7 @@ private:
     void updateSampleLabel();
     void applyTab(); // SYNTH eller SAMPLE (processor.kickTab): visar och döljer vyernas delar
     bool sampleTabShown() const { return processor.kickTab.load() == 1; }
+    bool envelopeTabShown() const { return processor.kickTab.load() == 2; }
 
     PluginBase& processor;
 
@@ -150,8 +151,7 @@ private:
     juce::Label sampleHelp;
     std::unique_ptr<FxSendControl> fxSend;
 
-    juce::ToggleButton synthToggle { "SYNTH" }, sampleToggle { "SAMPLE" }; // på/av för de två källorna; LEVEL i SAMPLE-vyn är balansen
-    std::unique_ptr<juce::ButtonParameterAttachment> synthToggleAttachment, sampleToggleAttachment, sampleReverseAttachment;
+    std::unique_ptr<juce::ButtonParameterAttachment> sampleReverseAttachment;
     juce::Label balanceHint;
     juce::TextButton helpButton;
 

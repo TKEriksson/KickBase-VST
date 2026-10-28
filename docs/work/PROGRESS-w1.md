@@ -495,3 +495,9 @@ Bygge Debug all: grönt, "Alla tester gick igenom" (rendersig oförändrad).
 - Fix: SAMPLE-motorns LENGTH/CURVE multiplicerar nu editorGain (InstrumentSynth.cpp:601) i stället för att skrivas över när AMP är på.
 - HELP-flikar: nya ämnen GATE, HISTORY, ABOUT, OPTIMIZATIONS (`HelpDialog.h`, texter i `HelpDialog.cpp`), HELP-knapp i GateModule (Modules.cpp), HistoryPanel.h, AboutPanel.cpp, OptimizationsPanel.cpp. KickLibraryPanel har ingen egen knapp: den ligger i kickens SAMPLE-vy som redan har kick-HELP. build Debug all grön, helpcheck 0, delaytest ok.
 - DAW (Lemon) att kolla: HELP-knappen syns och öppnar rätt flik på GATE (Kickbase FX), MENY > History, SETTINGS > ABOUT och OPTIMIZATIONS, även vid smalt fönster.
+
+## kick-ui (2026-10-28, Arbetare 1)
+- MIX-knopp (`kickMix`, sist i layouten, 0.5 = som förut) ersätter SYNTH/SAMPLE-reglagen; synthOn/sampleOn finns kvar som parametrar. Motorn: `KickEngine.cpp` renderVoice.
+- Tre flikar SYNTH | ENVELOPE | SAMPLE (kickTab 2 = ENVELOPE, plotten har egen flik), smalare presetväljare (170 px), luft runt flikarna.
+- Hjälptext + ToolLayer uppdaterade. Bygge + alla tester + paramtest + helpcheck gröna.
+- Öppet: gamla presets med synthOn=false saknar reglage för att slå på det igen (MIX till höger ger nästan samma).

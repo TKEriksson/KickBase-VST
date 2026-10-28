@@ -35,6 +35,7 @@ namespace
         Params::addFundamentalDuckParams (layout); // FUNDAMENTAL DUCK: allra sist
         Mixer::addStageParameters (layout); // SOUNDSTAGE-val per källa: nya parametrar sist
         Params::addEngineTimingParams (layout); // 5b: POS DELAY / LENGTH / CURVE per motor: nya parametrar sist
+        Params::addKickMixParam (layout); // kickens MIX: sist
         return layout;
     }
 

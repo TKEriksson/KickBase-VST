@@ -83,6 +83,7 @@ namespace ParamID
     // Kickens SYNTH och SAMPLE på/av (båda på = som förut). Sist i layouten, så att gamla projekt är orörda.
     inline constexpr auto kickSynthOn  = "kickSynthOn";
     inline constexpr auto kickSampleOn = "kickSampleOn";
+    inline constexpr auto kickMix = "kickMix"; // 0 = bara synten, 0.5 = båda (som förut), 1 = bara samplingen
 
     // Klick-lager 2 och 3 (nivå 0 = av) och sampleverktyg (klipp, baklänges, utfasning). Allra sist i kickens block.
     inline constexpr auto kickClick2Level = "kickClick2Level";
@@ -197,6 +198,7 @@ namespace Params
     void addJogParams (Layout& layout); // D3b: sist i layouten
     void addFundamentalDuckParams (Layout& layout); // FUNDAMENTAL DUCK (instrument + per motor): allra sist i instrumentets layout
     void addEngineTimingParams (Layout& layout); // 5b: POS DELAY / SYNC / LENGTH / CURVE per motor och lager; sist i instrumentets layout
+    void addKickMixParam (Layout& layout); // kickens MIX (synt/sampling); allra sist i båda layouterna
     void addKickToggleParams (Layout& layout); // kickens SYNTH/SAMPLE på/av; läses av readKick, så FX-pluginet behöver dem också
 
     juce::StringArray keyNames();

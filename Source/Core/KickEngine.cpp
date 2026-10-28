@@ -156,7 +156,7 @@ float KickEngine::nextSample()
 
     const auto& current = voices[currentVoice];
     // Duckningen följer kicken: syntesens envelope (inte vid ersättning) eller samplingens nivå, den som är högst.
-    const auto synthEnvelope = effectiveSampleMode (params, clickSample) == 2 || ! params.synthOn ? 0.0f : amplitudeAt (params, current.time);
+    const auto synthEnvelope = effectiveSampleMode (params, clickSample) == 2 || ! params.synthOn ? 0.0f : amplitudeAt (params, current.time) * std::min (1.0f, 2.0f * (1.0f - params.mix));
     envelope = current.active ? std::max (synthEnvelope, current.sampleFollower) * current.fade : 0.0f;
 
     auto y = clip (out, params.drive, params.clipMode);
@@ -330,7 +330,7 @@ float KickEngine::renderVoice (Voice& voice)
             }
             voice.samplePosition += std::exp2 ((double) params.sampleTuneSemis / 12.0);
         }
-        voice.sampleFollower = std::max (std::abs (sampled) * (layered ? params.sampleLevel : params.clickLevel),
+        voice.sampleFollower = std::max (std::abs (sampled) * (layered ? params.sampleLevel : params.clickLevel) * std::min (1.0f, 2.0f * params.mix),
                                          voice.sampleFollower * (float) std::exp (-1.0 / (0.012 * sampleRate)));
     }
     else if (params.synthOn)
@@ -355,8 +355,11 @@ float KickEngine::renderVoice (Voice& voice)
     else if (voice.fadeUpStep > 0.0f && voice.fade < 1.0f)
         voice.fade = std::min (1.0f, voice.fade + voice.fadeUpStep);
 
-    const auto sampleOut = layered ? sampled * params.sampleLevel : sampled * params.clickLevel;
-    auto mixed = body + (hasSample ? sampleOut : click * params.clickLevel) + top;
+    // MIX: 0.5 = som förut (båda på full nivå), åt ena hållet tonas den andra sidan ut.
+    const auto synthGain = std::min (1.0f, 2.0f * (1.0f - params.mix));
+    const auto sampleGain = std::min (1.0f, 2.0f * params.mix);
+    const auto sampleOut = (layered ? sampled * params.sampleLevel : sampled * params.clickLevel) * sampleGain;
+    auto mixed = body * synthGain + (hasSample ? sampleOut : click * params.clickLevel * synthGain) + top * synthGain;
 
     // Klick-lager 2 och 3: eget brus, filter, längd och fördröjning. Nivå 0 gör inget alls (inga slumptal dras).
     if (! replace && params.synthOn)
@@ -380,7 +383,7 @@ float KickEngine::renderVoice (Voice& voice)
                 voice.extraToneSet[i] = hz;
             }
             const auto shape = (float) (1.0 - local / seconds);
-            mixed += filter.processSample (0, random.nextFloat() * 2.0f - 1.0f) * shape * shape * 2.0f * layer.level;
+            mixed += filter.processSample (0, random.nextFloat() * 2.0f - 1.0f) * shape * shape * 2.0f * layer.level * synthGain;
         }
 
     return mixed * voice.velocity * voice.fade;

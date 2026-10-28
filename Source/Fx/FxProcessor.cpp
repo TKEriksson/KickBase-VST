@@ -17,6 +17,7 @@ namespace
         MasterSection::addParameters (layout);
         Params::addMasterParams (layout);
         Params::addKickToggleParams (layout); // readKick läser dem
+        Params::addKickMixParam (layout);
         return layout;
     }
 }
