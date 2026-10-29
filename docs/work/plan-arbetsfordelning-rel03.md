@@ -206,3 +206,6 @@ Obs: nya parametrar och modulationskällor sist (ENGINEERING.md). Stor punkt; Ar
 
 ### Gross Beat: TRIG SYNC och POS SYNC (29 okt)
 Båda rullistorna har samma val: Off, 1/4 beat, 1/2 beat, 1 beat, 2 beats, 4 beats (standard 4 beats, = hela mönstret). TRIG SYNC = när ett nytt mönsterlopp får starta efter en trigger (noten/MIDI); POS SYNC = hur ofta mönstrets position låses till DAW:ns takt. Off = ingen låsning. GATE-presets: `docs/work/grossbeat/gate-presets.json`.
+
+### Gross Beat: TNS = spänning på kurvsegmenten (29 okt)
+TNS-ratten är bipolär (tooltip "Volume envelope tension: -17%") och böjer alla kurvsegment i VOLUME-kurvan samtidigt, utan att flytta punkterna. Negativ = konvex (långsam start, snabb slut, som Sidechain/Fade Out In), positiv = konkav, 0 = rak linje. Så 'curve' i presetsen är en flagga, och själva böjen kommer från TNS (preset kan spara ett TNS-värde, t.ex. Fade Out In med TNS -17 %). ATT/REL jämnar ut kanterna på gaten (attack/release i ms).
