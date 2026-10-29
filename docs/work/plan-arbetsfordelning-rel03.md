@@ -312,3 +312,5 @@ Med i 0.5:
 4. **Baka (resample):** rendera en oscillator med warp/FM till en ny wavetable. Hör ihop med de två warp-platserna ovan.
 
 Ordning: 1 och 2 först, 3 och 4 när resten av 0.5 är klart.
+
+- Tobias 29 okt: letar själv upp wavetable-.wav-filer (Serum-format). Arbetare 1 testar importen mot filer han lämnar (t.ex. i en mapp `docs/work/wavetables-test/`, ej incheckade om licensen är oklar). Serum-presets (.fxp) stöds inte, bara .wav.
