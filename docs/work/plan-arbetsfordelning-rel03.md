@@ -147,3 +147,6 @@ Obs: nya parametrar och modulationskällor sist (ENGINEERING.md). Stor punkt; Ar
 
 ### AUTO FIX till 0.5 (Tobias 29 okt kväll)
 - Mätdelen (`AutoFix.cpp`) klar; UI, APPLY och koppling från analyskörning görs i 0.5 tillsammans med GATE FX. Arbetare 2:s oincheckade ändringar (FX punkt 4 m.m., worktree KickBase-VST-w2) följer med 0.5.
+
+### SIDECHAIN in i MASTER (Tobias 29 okt kväll, 0.5 om inte annat sägs)
+- SIDECHAIN blir en under-flik i MASTER, mellan MIXER och MAXIMIZER (MASTER har redan under-flikar). Huvudfliken SIDECHAIN tas bort i INSTR och FX (`InstrumentEditor.cpp:67`, `FxEditor.cpp:30`). Kolla hjälpavsnittet (`HelpDialog.cpp:524`), sparad flikstate och färg (Theme::mix → master).
