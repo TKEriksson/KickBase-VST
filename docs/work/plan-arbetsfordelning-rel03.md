@@ -300,3 +300,15 @@ Redan bestämt och Serum gör likadant: ENV med ATK/HOLD/DEC/SUS/REL, BPM/MS och
 Valfritt, inte med utan nytt besked: Chaos-LFO (Lorenz), två warp-platser per oscillator (Arbetare 1 jämför mot OSC/FM först), Voicing med Mono/Legato/Porta/Curve, LFO Host (följer DAW-positionen).
 
 Lämnas: Granular, Spectral, clip-sequencer, arpeggiator.
+
+## Wavetables från Serum-paket (Tobias 29 okt: "de ska in i 0.5")
+
+Underlag: bvker.com "100 Free Serum Wavetables" (PDF). Licensen står inte på sidan, läs https://bvker.com/user-agreement/ innan något av paketet bäddas in i delade preset.
+
+Med i 0.5:
+1. **Import av wavetable** från ljudfil (Serum-format, 2048 sampel per ram). Importlägen: konstant ramstorlek, FFT 256–2048 och pitch-följande. Ett kicksampel kan bli en wavetable. Arbetare 1 kollar först om dagens import klarar Serum-filer.
+2. **Process-verktyg:** Remove DC Offset och Normalize each (varje våg för sig). Gäller även sampel. Likspänning i en kick-våg ger klick och äter headroom.
+3. **Rita och morpha egna vågor:** ritverktyg, rutnät, formelfält, Morph (Crossfade / Spectral) mellan vågor. Stort bygge, tas sist i 0.5.
+4. **Baka (resample):** rendera en oscillator med warp/FM till en ny wavetable. Hör ihop med de två warp-platserna ovan.
+
+Ordning: 1 och 2 först, 3 och 4 när resten av 0.5 är klart.
