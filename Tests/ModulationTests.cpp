@@ -565,6 +565,17 @@ namespace
         const float expected[] = { 50.0f, 2000.0f, 300.0f, 1000.0f, 1000.0f, 400.0f }; // attack, decay, release, pitch-env decay, filter-env decay, FM env time
         for (int i = 0; i < ParamID::numTimeCaps; ++i)
             check (ParamID::timeCapMs (ParamID::timeCapSpec (i), ParamID::maxTimeDefault) == expected[i], "tidstaket vid standard = dagens max", ParamID::timeCapMs (ParamID::timeCapSpec (i), ParamID::maxTimeDefault));
+
+        // Gruppernas egna steg: 0 = som ENV 1 (gamla projekt och presets), annars steg + 1.
+        for (int group = 1; group < ParamID::numMaxTimeGroups; ++group)
+        {
+            auto* own = processor.apvts.getRawParameterValue (ParamID::bass (0, ParamID::maxTimeGroupField (group)));
+            check (own != nullptr && (int) own->load() == 0, "gruppens eget steg är som ENV 1 som standard");
+            check (ParamID::resolveMaxStep (group, 0.0f, 4.0f) == 4, "som ENV 1 följer maxTime");
+            check (ParamID::resolveMaxStep (group, 1.0f, 4.0f) == 0, "eget steg 1 = 250 ms");
+            check (ParamID::resolveMaxStep (group, 6.0f, 1.0f) == 5, "eget steg 6 = 10 s");
+        }
+        check (ParamID::resolveMaxStep (0, 3.0f, 2.0f) == 2, "ENV 1 ignorerar eget steg");
     }
 }
 

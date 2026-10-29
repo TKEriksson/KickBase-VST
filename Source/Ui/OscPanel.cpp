@@ -316,6 +316,13 @@ OscPanel::OscPanel (PluginBase& p, int layerIn, int oscIn, juce::Colour accentIn
     addAndMakeVisible (filterSendButton);
     HelpDialog::setupButton (helpButton, *this, HelpDialog::Topic::osc, "the OSCILLATORS (table, warp, unison, presets)");
     addAndMakeVisible (helpButton);
+    harmonicsButton.setTooltip ("EDIT HARMONICS - Opens the harmonics editor for this oscillator's table (same as right-clicking the wave view). "
+                                "Greyed out when there is nothing to edit, for example an empty User WAV slot.");
+    harmonicsButton.onClick = [this]
+    {
+        juce::CallOutBox::launchAsynchronously (std::make_unique<HarmonicEditor> (processor, layer, osc, accent), harmonicsButton.getScreenBounds(), nullptr);
+    };
+    addAndMakeVisible (harmonicsButton);
     filterSendAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
         p.apvts, ParamID::bass (layer, (InstrumentField) ((int) InstrumentField::filterOsc1 + osc)), filterSendButton);
 
@@ -411,6 +418,10 @@ void OscPanel::timerCallback()
         tableButton.setButtonText (name);
         for (size_t i = 0; i < shapeButtons.size(); ++i)
             shapeButtons[i].setToggleState (current == Wavetables::classicIndex ((int) i), juce::dontSendNotification);
+        std::vector<float> frames; // samma test som övertonsredigeraren: finns det en tabell att redigera?
+        auto steps = 0;
+        juce::String tableName;
+        harmonicsButton.setEnabled (processor.wavetableSource (layer, osc, frames, steps, tableName));
     }
     if (osc == 0)
     {
@@ -698,5 +709,7 @@ void OscPanel::resized()
         const auto width = rowArea.getWidth() / 6;
         for (int i = 0; i < 6 && (size_t) (row * 6 + i) < knobs.size(); ++i)
             knobs[(size_t) (row * 6 + i)]->setBounds (rowArea.removeFromLeft (width));
+        if (row == 1) // lediga cellen sist på rad 2 (11 rattar på 12 platser)
+            harmonicsButton.setBounds (rowArea.removeFromLeft (width).reduced (4, 6));
     }
 }

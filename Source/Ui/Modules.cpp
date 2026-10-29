@@ -1159,11 +1159,10 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
     envelope.onBeforePaint = [this]
     {
         current = refs.readInstrument (layer, 36).withTempo (processor.transportStatus.bpm.load(), false);
-        const auto maxMs = ParamID::maxTimeMs (current.maxTimeStep);
-        envelope.setDisplaySeconds (0.5 * maxMs / 1000.0); // MAX-knappen: tidsaxeln följer (1 s = som förut)
-        maxTimeLabel.setText ("MAX " + (maxMs >= 1000 ? juce::String (maxMs / 1000) + " s" : juce::String (maxMs) + " ms"), juce::dontSendNotification);
-        maxTimeDown.setEnabled (current.maxTimeStep > 0);
-        maxTimeUp.setEnabled (current.maxTimeStep < ParamID::numMaxTimeSteps - 1);
+        // Tidsaxeln följer den längsta av ENV 1, PITCH och FILTER ENV (1 s = som förut); FM har eget diagram.
+        const auto axisStep = std::max ({ current.maxTimeSteps[0], current.maxTimeSteps[1], current.maxTimeSteps[2] });
+        envelope.setDisplaySeconds (0.5 * ParamID::maxTimeMs (axisStep) / 1000.0);
+        updateMaxLengthBox();
     };
 
     envelope.addCurve ({ [this] (double t) { return InstrumentSynth::filterEnvelopeAt (current, t) * current.envAmount / 8.0f; },
@@ -1200,23 +1199,25 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
     instrPage.addAndMakeVisible (envelopeListen);
     maxTimeLabel.setJustificationType (juce::Justification::centred);
     maxTimeLabel.setFont (Theme::font (12.0f, true));
-    maxTimeLabel.setTooltip ("MAX - The longest time this instrument's time knobs and the ENV diagram cover (attack, decay, release, pitch and filter decay). 1 s matches older presets; "
-                             "a longer MAX gives long pads and tails, a shorter one gives finer control of short sounds. The sound does not change when you press - or +.");
+    maxTimeLabel.setTooltip ("MAX LENGTH - A multiplier of the time knobs' range (x1 = the old range, x10 = ten times longer). Pick the group in the list: ENV 1 (attack, decay, release), "
+                             "PITCH, FILTER ENV or FM. PITCH, FILTER ENV and FM follow ENV 1 until you step them. The sound does not change when you press - or +.");
+    maxResultLabel.setFont (Theme::font (11.0f));
+    maxResultLabel.setColour (juce::Label::textColourId, Theme::textDim);
+    maxResultLabel.setMinimumHorizontalScale (0.7f);
+    maxResultLabel.setTooltip ("The longest value each time knob in the chosen group can reach with this MAX LENGTH (A = attack, D = decay, R = release).");
+    maxGroupBox.addItemList ({ "ENV 1", "PITCH", "FILTER ENV", "FM" }, 1);
+    maxGroupBox.setSelectedId (1, juce::dontSendNotification);
+    maxGroupBox.setTooltip ("Which group's MAX LENGTH the - / + buttons change. ENV 1 = attack, decay, release. The other groups follow ENV 1 until you give them their own step.");
+    maxGroupBox.onChange = [this] { maxGroup = juce::jmax (0, maxGroupBox.getSelectedId() - 1); updateMaxLengthBox(); };
+    instrPage.addAndMakeVisible (maxGroupBox);
     for (auto* button : { &maxTimeDown, &maxTimeUp })
     {
-        const auto delta = button == &maxTimeDown ? -1 : 1;
-        button->setTooltip ("MAX time shorter (-) / longer (+).");
-        button->onClick = [this, delta]
-        {
-            auto* parameter = processor.apvts.getParameter (ParamID::bass (layer, F::maxTime));
-            const auto step = juce::jlimit (0, ParamID::numMaxTimeSteps - 1, (int) std::lround (parameter->convertFrom0to1 (parameter->getValue())) + delta);
-            parameter->beginChangeGesture();
-            parameter->setValueNotifyingHost (parameter->convertTo0to1 ((float) step));
-            parameter->endChangeGesture();
-        };
+        button->setTooltip ("MAX LENGTH shorter (-) / longer (+) for the chosen group. For PITCH, FILTER ENV and FM, one step below the shortest means 'as ENV 1'.");
+        button->onClick = [this, delta = button == &maxTimeDown ? -1 : 1] { stepMaxLength (delta); };
         instrPage.addAndMakeVisible (*button);
     }
     instrPage.addAndMakeVisible (maxTimeLabel);
+    instrPage.addAndMakeVisible (maxResultLabel);
     HelpDialog::setupButton (instrHelpButton, *this, HelpDialog::Topic::instr, "the INSTR tab (envelopes, pitch, sub, noise, drive, phase)");
     instrPage.addAndMakeVisible (instrHelpButton);
     instrPage.addAndMakeVisible (subScope);
@@ -1287,16 +1288,14 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
         return controls.back().get();
     };
 
-    constexpr auto phaseRowReserve = 0.7f; // andel av PHASE-radens bredd som lämnas åt tidsdiagrammet
+    constexpr auto phaseRowReserve = 0.42f; // andel av sista radens bredd som lämnas åt MAX LENGTH-rutan
     auto* warpEnvKnob = dynamic_cast<KnobComponent*> (knob (id (F::warpEnv), "AMOUNT"));
     auto* voicesKnob = dynamic_cast<KnobComponent*> (knob (id (F::voices), "VOICES"));
     // Under källorna, i signalens ordning: tonhöjd, sub/brus, filtrets envelope (själva filtren: FILTER-fliken) -> volym och utgång.
     groups.addRow ({ { "PITCH", { knob (id (F::octave), "OCTAVE"), knob (id (F::tune), "TUNE"),
                                   knob (id (F::pitchEnvAmount), "ENV AMT"), knob (id (F::pitchEnvDecay), "ENV DEC") } },
                      { "SUB", { knob (id (F::sub), "LEVEL"), choice (id (F::subWave), "WAVE"), choice (id (F::subOctave), "OCTAVE") } },
-                     { "NOISE", { knob (id (F::noise), "LEVEL"), knob (id (F::noiseTone), "TONE"), choice (id (F::noiseType), "TYPE") } },
-                     { "FILTER ENVELOPE", { knob (id (F::envAmount), "AMOUNT"), knob (id (F::envAttack), "ATTACK"), knob (id (F::envDecay), "DECAY"),
-                                            knob (id (F::velToEnv), "VEL") } } });
+                     { "NOISE", { knob (id (F::noise), "LEVEL"), knob (id (F::noiseTone), "TONE"), choice (id (F::noiseType), "TYPE") } } });
     groups.addRow ({ { "VOLUME ENVELOPE", { knob (id (F::attack), "ATTACK"), knob (id (F::decay), "DECAY"),
                                             knob (id (F::sustain), "SUSTAIN"), knob (id (F::release), "RELEASE") } },
                      { "WARP ENV", { warpEnvKnob, choice (id (F::warpEnvSource), "SOURCE"), knob (id (F::warpEnvDecay), "DIRECT DEC") } },
@@ -1305,7 +1304,10 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
                                       voicesKnob } } }); // (notlängden: GATE är hackrytmen; GLIDE har ingen ratt: parametern används inte)
     // Fas PH: polaritet, startfas och nudge (tidsförskjutning ±2 ms) för att få kick och bas att summera rätt.
     // PHASE är smal (resten av raden reserveras åt tidsdiagrammet, se layoutInstrPage).
-    groups.addRow ({ { "PHASE", { choice (id (F::polarity), "POLARITY"), knob (id (F::phaseDeg), "START"), knob (id (F::nudgeMs), "NUDGE") } } },
+    // FILTER ENVELOPE ligger här (flyttad från rad 1) så att MAX LENGTH-rutan får plats bredvid i den lediga ytan.
+    groups.addRow ({ { "PHASE", { choice (id (F::polarity), "POLARITY"), knob (id (F::phaseDeg), "START"), knob (id (F::nudgeMs), "NUDGE") } },
+                     { "FILTER ENVELOPE", { knob (id (F::envAmount), "AMOUNT"), knob (id (F::envAttack), "ATTACK"), knob (id (F::envDecay), "DECAY"),
+                                            knob (id (F::velToEnv), "VEL") } } },
                    phaseRowReserve);
     // Fas P: varning när VOICES x unison (summan av de påslagna oscillatorernas stämmor) blir stort, eftersom varje röst kostar lika mycket CPU.
     if (voicesKnob != nullptr)
@@ -2040,6 +2042,53 @@ void InstrumentModule::resized()
     sources.setBounds (area);
 }
 
+// Vald grupps parameter: ENV 1 = maxTime (steg 0-5); de andra har 0 = som ENV 1, annars steg + 1 (0-6).
+void InstrumentModule::stepMaxLength (int delta)
+{
+    auto* parameter = processor.apvts.getParameter (ParamID::bass (layer, ParamID::maxTimeGroupField (maxGroup)));
+    const auto top = maxGroup == 0 ? ParamID::numMaxTimeSteps - 1 : ParamID::numMaxTimeSteps;
+    const auto value = juce::jlimit (0, top, (int) std::lround (parameter->convertFrom0to1 (parameter->getValue())) + delta);
+    parameter->beginChangeGesture();
+    parameter->setValueNotifyingHost (parameter->convertTo0to1 ((float) value));
+    parameter->endChangeGesture();
+}
+
+void InstrumentModule::updateMaxLengthBox()
+{
+    auto timeText = [] (float ms)
+    {
+        if (ms < 1000.0f)
+            return juce::String (juce::roundToInt (ms)) + " ms";
+        auto s = juce::String (ms / 1000.0f, 2);
+        while (s.endsWithChar ('0')) s = s.dropLastCharacters (1);
+        if (s.endsWithChar ('.')) s = s.dropLastCharacters (1);
+        return s + " s";
+    };
+    auto multiplier = [] (int step)
+    {
+        auto s = juce::String (ParamID::maxTimeMs (step) / 1000.0, 2);
+        while (s.endsWithChar ('0')) s = s.dropLastCharacters (1);
+        if (s.endsWithChar ('.')) s = s.dropLastCharacters (1);
+        return "x" + s;
+    };
+
+    const auto step = current.maxTimeSteps[maxGroup];
+    const auto follows = maxGroup > 0 && processor.apvts.getRawParameterValue (ParamID::bass (layer, ParamID::maxTimeGroupField (maxGroup)))->load() < 0.5f;
+    maxTimeLabel.setText (follows ? "ENV 1" : multiplier (step), juce::dontSendNotification);
+
+    juce::String result = multiplier (step) + " = ";
+    if (maxGroup == 0)
+        result << "A " << timeText (ParamID::timeCapMs (ParamID::timeCapSpec (0), step)) << " · D " << timeText (ParamID::timeCapMs (ParamID::timeCapSpec (1), step))
+               << " · R " << timeText (ParamID::timeCapMs (ParamID::timeCapSpec (2), step));
+    else
+        result << timeText (ParamID::timeCapMs (ParamID::timeCapSpec (maxGroup + 2), step));
+    maxResultLabel.setText (result, juce::dontSendNotification);
+
+    const auto raw = (int) std::lround (processor.apvts.getRawParameterValue (ParamID::bass (layer, ParamID::maxTimeGroupField (maxGroup)))->load());
+    maxTimeDown.setEnabled (raw > 0);
+    maxTimeUp.setEnabled (raw < (maxGroup == 0 ? ParamID::numMaxTimeSteps - 1 : ParamID::numMaxTimeSteps));
+}
+
 void InstrumentModule::layoutInstrPage()
 {
     // Envelopegrafen till vänster, rattraderna till höger (två rader, högst 100 px rattar; resten är frigjord yta).
@@ -2050,20 +2099,26 @@ void InstrumentModule::layoutInstrPage()
     envelope.setBounds (leftColumn.removeFromTop (leftHalf).reduced (0, 2));
     instrTimeline->setBounds (leftColumn.reduced (0, 2));
     envelopeListen.setBounds (envelope.getRight() - 40, envelope.getY() + 4, 36, 24); // högtalaren i grafens övre högra hörn
-    // HELP nere till vänster: tidsetiketterna ligger överst (EnvelopeView.cpp:95) och kurvnamnen nere till höger.
-    instrHelpButton.setBounds (envelope.getX() + 10, envelope.getBottom() - 12 - 18, 40, 18);
+    // HELP bredvid högtalaren i grafens övre högra hörn (nere ligger den i vägen för kurvorna), lite större än förut.
+    instrHelpButton.setBounds (envelope.getRight() - 40 - 4 - 52, envelope.getY() + 4, 52, 24);
     area.removeFromLeft (6);
     const auto rowHeight = juce::jlimit (40, 100, area.getHeight() / (groups.numRows() + 1) - ControlGroups::titleHeight - 3);
     groups.layout (area, rowHeight);
 
-    // MAX-knappen ( - ) MAX 1 s ( + ) i PHASE-radens reserverade yta, till höger om PHASE.
-    const auto phase = groups.frameOf ("PHASE");
-    if (! phase.isEmpty())
+    // MAX LENGTH-rutan i sista radens lediga yta, till höger om FILTER ENVELOPE: grupplista, - xN +, och resulterande tider under.
+    const auto filterEnv = groups.frameOf ("FILTER ENVELOPE");
+    maxFrame = {};
+    if (! filterEnv.isEmpty())
     {
-        auto box = juce::Rectangle<int> (phase.getRight() + 8, phase.getY() + ControlGroups::titleHeight + 6, juce::jmin (150, area.getRight() - phase.getRight() - 8), 24);
-        maxTimeDown.setBounds (box.removeFromLeft (26));
-        maxTimeUp.setBounds (box.removeFromRight (26));
-        maxTimeLabel.setBounds (box);
+        maxFrame = juce::Rectangle<int> (filterEnv.getRight() + 6, filterEnv.getY(), juce::jmin (260, area.getRight() - filterEnv.getRight() - 6), filterEnv.getHeight());
+        auto inner = maxFrame.reduced (8, 0).withTrimmedTop (ControlGroups::titleHeight + 4).withTrimmedBottom (4);
+        auto line1 = inner.removeFromTop (24);
+        maxGroupBox.setBounds (line1.removeFromLeft (juce::jmin (96, line1.getWidth() / 2)));
+        line1.removeFromLeft (6);
+        maxTimeDown.setBounds (line1.removeFromLeft (24));
+        maxTimeUp.setBounds (line1.removeFromRight (24));
+        maxTimeLabel.setBounds (line1);
+        maxResultLabel.setBounds (inner.removeFromTop (20));
     }
 
     // Mini-oscilloskopen sitter i SUB-gruppens rubrikrad, till höger om rubriken.

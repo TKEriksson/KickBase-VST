@@ -118,7 +118,7 @@ namespace ParamID
                                      "SampleDelayMode", "SampleLenSync", "SampleDelayCount", "SampleLenCount", "NoiseDelayMode", "NoiseLenSync", "NoiseDelayCount", "NoiseLenCount",
                                      "SubDelayMode", "SubLenSync", "SubDelayCount", "SubLenCount", "FmDelayMode", "FmLenSync", "FmDelayCount", "FmLenCount",
                                      "FxSendTo1", "FxSendTo2", "FxSendTo3", "FxSendTo4", "FxSendTo5", "FxSendTo6", "FxSendTo7", "FxSendTo8", "FxSendTo9", "FxSendTo10", "FxSendTo11", "FxSendTo12",
-                                     "MaxTime", "FmSource" };
+                                     "MaxTime", "FmSource", "MaxTimePitch", "MaxTimeFilter", "MaxTimeFm" };
         static_assert (std::size (names) == (size_t) InstrumentField::count);
         return names[(size_t) field];
     }
@@ -588,6 +588,12 @@ namespace Params
             layout.add (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { ParamID::bass (layer, InstrumentField::fmSource), 1 },
                                                                       "Instr " + juce::String (layer + 1) + " OSC 1 FM Modulator",
                                                                       juce::StringArray { "OSC 2", "OSC 3" }, 0));
+        // MAX LENGTH per grupp (G1): 0 = följ ENV 1 (maxTime). Standard 0, så projekt och presets utan parametrarna låter som förut (ingen annan migrering behövs).
+        for (int group = 1; group < ParamID::numMaxTimeGroups; ++group)
+            for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
+                layout.add (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { ParamID::bass (layer, ParamID::maxTimeGroupField (group)), 1 },
+                                                                          "Instr " + juce::String (layer + 1) + " Max Length " + (group == 1 ? "Pitch" : group == 2 ? "Filter Env" : "FM"),
+                                                                          juce::StringArray { "as ENV 1", "250 ms", "500 ms", "1 s", "2 s", "5 s", "10 s" }, 0));
     }
 
     void addKickToggleParams (Layout& layout)
@@ -880,6 +886,8 @@ InstrumentParams ParamRefs::readInstrument (int layer, int rootMidiNote) const
     p.pitchEnvSemis = get (F::pitchEnvAmount);
     p.pitchEnvDecayMs = get (F::pitchEnvDecay);
     p.maxTimeStep = (int) get (F::maxTime);
+    for (int group = 0; group < ParamID::numMaxTimeGroups; ++group)
+        p.maxTimeSteps[group] = ParamID::resolveMaxStep (group, get (ParamID::maxTimeGroupField (group)), get (F::maxTime));
     p.level      = get (F::level);
     p.sampleLevel    = get (F::sampleLevel);
     p.sampleRootHz   = Params::midiToHz (get (F::sampleRoot));

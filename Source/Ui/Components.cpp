@@ -95,6 +95,9 @@ KnobComponent::KnobComponent (juce::AudioProcessorValueTreeState& apvts, const j
             {
                 timeCap = &ParamID::timeCapSpec (i);
                 maxTimeRaw = apvts.getRawParameterValue (ParamID::bass (layer, InstrumentField::maxTime));
+                timeGroup = ParamID::timeCapGroup (i);
+                if (timeGroup > 0)
+                    maxTimeOwnRaw = apvts.getRawParameterValue (ParamID::bass (layer, ParamID::maxTimeGroupField (timeGroup)));
                 break;
             }
     applyTimeCap (true);
@@ -106,7 +109,7 @@ void KnobComponent::applyTimeCap (bool force)
 {
     if (timeCap == nullptr || maxTimeRaw == nullptr)
         return;
-    const auto step = juce::roundToInt (maxTimeRaw->load());
+    const auto step = ParamID::resolveMaxStep (timeGroup, maxTimeOwnRaw != nullptr ? maxTimeOwnRaw->load() : 0.0f, maxTimeRaw->load());
     if (step == lastMaxStep && ! force)
         return;
     lastMaxStep = step;
@@ -995,6 +998,11 @@ void ControlGroups::layout (juce::Rectangle<int> area, int rowHeight)
 void ControlGroups::paint (juce::Graphics& g, juce::Colour accent) const
 {
     for (const auto& [bounds, title] : frames)
+        paintFrame (g, bounds, title, accent);
+}
+
+void ControlGroups::paintFrame (juce::Graphics& g, juce::Rectangle<int> bounds, const juce::String& title, juce::Colour accent)
+{
     {
         const auto frame = bounds.toFloat();
 

@@ -313,7 +313,12 @@ private:
     struct InstrPage : public juce::Component
     {
         explicit InstrPage (InstrumentModule& o) : owner (o) {}
-        void paint (juce::Graphics& g) override { owner.groups.paint (g, owner.getAccent()); }
+        void paint (juce::Graphics& g) override
+        {
+            owner.groups.paint (g, owner.getAccent());
+            if (! owner.maxFrame.isEmpty())
+                ControlGroups::paintFrame (g, owner.maxFrame, "MAX LENGTH", owner.getAccent());
+        }
         void resized() override { owner.layoutInstrPage(); }
         InstrumentModule& owner;
     };
@@ -326,8 +331,14 @@ private:
     EnvelopeView envelope { 0.5 };
     HoldAudition hold { processor };      // klick och håll på LISTEN: instrumentet spelas på förhandsvisningstonen
     ListenButton envelopeListen;          // högtalaren i hörnet av envelope-grafen
-    juce::TextButton maxTimeDown { "-" }, maxTimeUp { "+" };   // PHASE-radens MAX-knapp: instrumentets längsta tid (tidsaxel och tidsknobbarnas tak)
-    juce::Label maxTimeLabel;
+    // MAX LENGTH-rutan (G1) till höger om PHASE: vald grupp (ENV 1, PITCH, FILTER ENV, FM), - / + för gruppens steg, multiplikator (x0.25 ... x10) och resulterande tider.
+    juce::ComboBox maxGroupBox;
+    juce::TextButton maxTimeDown { "-" }, maxTimeUp { "+" };
+    juce::Label maxTimeLabel, maxResultLabel;
+    int maxGroup = 0;                    // vald grupp i rutan (bara UI)
+    juce::Rectangle<int> maxFrame;       // rutans ram, ritas av InstrPage::paint
+    void stepMaxLength (int delta);
+    void updateMaxLengthBox();
     juce::TextButton instrHelpButton;     // HELP för INSTR-fliken, vid LISTEN i grafens hörn
     TabbedPanel sources;
     std::array<std::unique_ptr<OscPanel>, ParamID::oscsPerLayer> oscs;
