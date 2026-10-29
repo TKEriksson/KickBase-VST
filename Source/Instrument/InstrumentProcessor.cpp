@@ -40,6 +40,7 @@ namespace
         Effects::addExtraChannelParameters (layout); // FX12: nya parametrar sist
         Mixer::addExtraSourceParameters (layout); // FX12:s fader, pan, duck, max och stage
         Params::addFxMatrixParams (layout); // FX-matrisen och FX-mute: allra sist
+        Params::addMaxTimeParam (layout); // MAX TIME: tidsknobbarnas tak: allra sist av allt
         return layout;
     }
 

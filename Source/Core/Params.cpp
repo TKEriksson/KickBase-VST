@@ -111,7 +111,8 @@ namespace ParamID
                                      "ADelayMode", "ALenSync", "ADelayCount", "ALenCount", "BDelayMode", "BLenSync", "BDelayCount", "BLenCount", "CDelayMode", "CLenSync", "CDelayCount", "CLenCount",
                                      "SampleDelayMode", "SampleLenSync", "SampleDelayCount", "SampleLenCount", "NoiseDelayMode", "NoiseLenSync", "NoiseDelayCount", "NoiseLenCount",
                                      "SubDelayMode", "SubLenSync", "SubDelayCount", "SubLenCount", "FmDelayMode", "FmLenSync", "FmDelayCount", "FmLenCount",
-                                     "FxSendTo1", "FxSendTo2", "FxSendTo3", "FxSendTo4", "FxSendTo5", "FxSendTo6", "FxSendTo7", "FxSendTo8", "FxSendTo9", "FxSendTo10", "FxSendTo11", "FxSendTo12" };
+                                     "FxSendTo1", "FxSendTo2", "FxSendTo3", "FxSendTo4", "FxSendTo5", "FxSendTo6", "FxSendTo7", "FxSendTo8", "FxSendTo9", "FxSendTo10", "FxSendTo11", "FxSendTo12",
+                                     "MaxTime", "FmSource" };
         static_assert (std::size (names) == (size_t) InstrumentField::count);
         return names[(size_t) field];
     }
@@ -289,27 +290,27 @@ namespace Params
             layout.add (std::make_unique<AudioParameterBool> (ParameterID { oid (F::aOn), 1 }, oscTitle + "On", osc < 2)); // OSC 3 är av som standard
         }
         layout.add (percent (id (F::warpEnv), title + "Warp Env", 0.0f));
-        layout.add (percent (id (F::sub), title + "Sub", 0.3f));
+        layout.add (percent (id (F::sub), title + "Sub", 0.0f));
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::subOctave), 1 }, title + "Sub Octave",
                                                             StringArray { "-1 oct", "0 oct" }, 1));
         layout.add (percent (id (F::noise), title + "Noise", 0.0f));
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::filterType), 1 }, title + "Filter Type",
                                                             StringArray { "LP 24", "LP 12", "Band", "High" }, 0));
         layout.add (percent (id (F::keyTrack), title + "Key Track", 0.0f));
-        layout.add (floatParam (id (F::cutoff), title + "Cutoff", skewed (20.0f, 20000.0f, 600.0f, 0.1f), 300.0f, formatHz));
+        layout.add (floatParam (id (F::cutoff), title + "Cutoff", skewed (20.0f, 20000.0f, 600.0f, 0.1f), 10000.0f, formatHz));
         layout.add (percent (id (F::resonance), title + "Resonance", 0.3f));
         layout.add (floatParam (id (F::envAmount), title + "Env Amount", NormalisableRange<float> (0.0f, 8.0f, 0.01f), 4.0f,
                                 [] (float v) { return String (v, 1) + " oct"; }));
-        layout.add (ms (5.0f, 1000.0f, 150.0f, 120.0f, id (F::envDecay), title + "Env Decay"));
+        layout.add (ms (5.0f, 10000.0f, 150.0f, 120.0f, id (F::envDecay), title + "Env Decay"));
         layout.add (ms (0.0f, 300.0f, 10.0f, 1.0f, id (F::envAttack), title + "Env Attack")); // 1 ms = som filtret alltid var före
         layout.add (ms (0.0f, 50.0f, 10.0f, 0.0f, id (F::delay), title + "Delay")); // fördröjer instrumentets toner (bara senare, aldrig tidigare)
         layout.add (percent (id (F::swing), title + "Swing", 0.0f));
         layout.add (percent (id (F::humanize), title + "Humanize", 0.0f));
         layout.add (percent (id (F::velToEnv), title + "Vel > Env", 0.5f));
-        layout.add (ms (0.0f, 50.0f, 5.0f, 1.0f, id (F::attack), title + "Attack"));
-        layout.add (ms (5.0f, 2000.0f, 200.0f, 200.0f, id (F::decay), title + "Decay"));
+        layout.add (ms (0.0f, 500.0f, 5.0f, 1.0f, id (F::attack), title + "Attack"));
+        layout.add (ms (5.0f, 20000.0f, 200.0f, 200.0f, id (F::decay), title + "Decay"));
         layout.add (percent (id (F::sustain), title + "Sustain", 0.6f));
-        layout.add (ms (1.0f, 300.0f, 30.0f, 15.0f, id (F::release), title + "Release"));
+        layout.add (ms (1.0f, 3000.0f, 30.0f, 15.0f, id (F::release), title + "Release"));
         // Används inte längre (en glide-ton glider under sin egen längd), men finns kvar så att gamla projekt och automation pekar rätt.
         layout.add (ms (1.0f, 500.0f, 80.0f, 60.0f, id (F::glide), title + "Glide (unused)"));
         layout.add (percent (id (F::drive), title + "Drive", 0.2f));
@@ -342,7 +343,7 @@ namespace Params
         layout.add (percent (id (F::noiseTone), title + "Noise Tone", 1.0f));
         layout.add (floatParam (id (F::pitchEnvAmount), title + "Pitch Env Amount", NormalisableRange<float> (-48.0f, 48.0f, 0.01f), 0.0f,
                                 [] (float v) { return formatSemis (v, 1); }));
-        layout.add (ms (5.0f, 1000.0f, 80.0f, 60.0f, id (F::pitchEnvDecay), title + "Pitch Env Decay"));
+        layout.add (ms (5.0f, 10000.0f, 80.0f, 60.0f, id (F::pitchEnvDecay), title + "Pitch Env Decay"));
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::driveMode), 1 }, title + "Drive Mode",
                                                             StringArray { "Soft", "Hard", "Fold", "Asym", "Crush" }, 0));
         // Ny parameter (filterType rörs inte): Kickbase = dagens SVF, TB-303 = Open303:s TeeBeeFilter. Standardvärdet ger dagens ljud.
@@ -416,7 +417,7 @@ namespace Params
         layout.add (floatParam (id (F::fmRatio), title + "FM Ratio", NormalisableRange<float> (0.25f, 8.0f, 0.25f), 1.0f, [] (float v) { return String (v, 2) + "x"; }));
         layout.add (floatParam (id (F::fmIndex), title + "FM Index", NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.3f, fmPercent));
         layout.add (floatParam (id (F::fmEnvAmount), title + "FM Env Amount", NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.0f, fmPercent));
-        layout.add (ms (1.0f, 400.0f, 60.0f, 60.0f, id (F::fmEnvTime), title + "FM Env Time"));
+        layout.add (ms (1.0f, 4000.0f, 60.0f, 60.0f, id (F::fmEnvTime), title + "FM Env Time"));
         layout.add (floatParam (id (F::fmSemis), title + "FM Semis", NormalisableRange<float> (-24.0f, 24.0f, 1.0f), 0.0f, [] (float v) { return String (juce::roundToInt (v)) + " st"; }));
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::fmPreset), 1 }, title + "FM Preset", StringArray { "Custom", "Zap", "Acid Squelch", "Metallic Lead", "FM Pluck" }, 0));
         layout.add (std::make_unique<AudioParameterBool> (ParameterID { id (F::fmFilter), 1 }, title + "FM Filter", true));
@@ -567,6 +568,20 @@ namespace Params
             layout.add (percent (ParamID::kickFxSendToIds[to], "Kick FX Send " + juce::String (to + 1), 0.0f));
         for (int ch = 0; ch < ParamID::numFxSendTargets; ++ch)
             layout.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { ParamID::fxMuteIds[ch], 1 }, "FX " + juce::String (ch + 1) + " Mute", false));
+    }
+
+    void addMaxTimeParam (Layout& layout)
+    {
+        // Allra sist. Standard 1 s: knobbarnas tak blir exakt dagens (50/2000/300/1000/1000 ms), så gamla projekt ser och låter likadana ut.
+        for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
+            layout.add (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { ParamID::bass (layer, InstrumentField::maxTime), 1 },
+                                                                      "Instr " + juce::String (layer + 1) + " Max Time",
+                                                                      juce::StringArray { "250 ms", "500 ms", "1 s", "2 s", "5 s", "10 s" }, ParamID::maxTimeDefault));
+        // WARP = FM (OSC 1): modulatorn. Standard OSC 2 = som före parametern fanns. Ingen "själv"-källa (återkopplad FM är instabil).
+        for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
+            layout.add (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { ParamID::bass (layer, InstrumentField::fmSource), 1 },
+                                                                      "Instr " + juce::String (layer + 1) + " OSC 1 FM Modulator",
+                                                                      juce::StringArray { "OSC 2", "OSC 3" }, 0));
     }
 
     void addKickToggleParams (Layout& layout)
@@ -858,6 +873,7 @@ InstrumentParams ParamRefs::readInstrument (int layer, int rootMidiNote) const
     p.noiseTone = get (F::noiseTone);
     p.pitchEnvSemis = get (F::pitchEnvAmount);
     p.pitchEnvDecayMs = get (F::pitchEnvDecay);
+    p.maxTimeStep = (int) get (F::maxTime);
     p.level      = get (F::level);
     p.sampleLevel    = get (F::sampleLevel);
     p.sampleRootHz   = Params::midiToHz (get (F::sampleRoot));
@@ -888,6 +904,7 @@ InstrumentParams ParamRefs::readInstrument (int layer, int rootMidiNote) const
     p.sampleWidth = get (F::sampleWidth);
     p.fmWidth = get (F::fmWidth);
     p.oscA.ringSource = (int) get (F::ringSource);
+    p.oscA.fmSource = (int) get (F::fmSource);
     p.sampleMulti = (int) get (F::sampleSource) == 1;
     p.sampleAmpOn = get (F::sampleAmpOn) > 0.5f;
     p.sampleAmpMs = get (F::sampleAmpMs);

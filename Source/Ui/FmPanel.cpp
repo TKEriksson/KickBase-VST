@@ -19,9 +19,10 @@ public:
         index = apvts.getRawParameterValue (ParamID::bass (layer, F::fmIndex));
         envAmount = apvts.getRawParameterValue (ParamID::bass (layer, F::fmEnvAmount));
         envMs = apvts.getRawParameterValue (ParamID::bass (layer, F::fmEnvTime));
+        maxTime = apvts.getRawParameterValue (ParamID::bass (layer, F::maxTime));
         ratio = apvts.getRawParameterValue (ParamID::bass (layer, F::fmRatio));
         setTooltip (kind == Kind::wave ? "FM output at the start of a note: two periods, with RATIO and INDEX applied."
-                                       : "INDEX over time: it starts at INDEX and falls toward INDEX x (1 - ENV AMT) over ENV TIME (to -60 dB).");
+                                       : "INDEX over time: it starts at INDEX and falls toward INDEX x (1 - ENV AMT) over ENV TIME (to -60 dB). The time axis is fixed (follows MAX), so the curve changes when ENV TIME is turned.");
         startTimerHz (15);
     }
 
@@ -63,9 +64,10 @@ public:
         else
         {
             const auto ms = juce::jmax (1.0f, envMs->load());
+            const auto axisMs = ParamID::timeCapMs (ParamID::timeCapSpec (5), juce::jlimit (0, ParamID::numMaxTimeSteps - 1, (int) (maxTime->load() + 0.5f))); // fast axel: 400 ms vid MAX 1 s
             for (int i = 0; i <= steps; ++i)
             {
-                const auto t = 1.25f * (float) i / (float) steps; // i enheter av ENV TIME
+                const auto t = axisMs * (float) i / (float) steps / ms; // i enheter av ENV TIME
                 const auto level = std::pow (0.001f, t);         // -60 dB vid t = 1, som motorns koefficient (InstrumentSynth.cpp:393)
                 const auto v = idx * (1.0f - amount + amount * level);
                 const auto x = plot.getX() + plot.getWidth() * (float) i / (float) steps;
@@ -74,7 +76,7 @@ public:
             }
             g.setColour (Theme::textDim);
             g.drawText ("0", getLocalBounds().reduced (6, 2).removeFromBottom (11), juce::Justification::bottomLeft);
-            g.drawText (juce::String (juce::roundToInt (ms * 1.25f)) + " ms", getLocalBounds().reduced (6, 2).removeFromBottom (11), juce::Justification::bottomRight);
+            g.drawText (juce::String (juce::roundToInt (axisMs)) + " ms", getLocalBounds().reduced (6, 2).removeFromBottom (11), juce::Justification::bottomRight);
         }
         g.setColour (accent);
         g.strokePath (path, juce::PathStrokeType (1.6f));
@@ -83,7 +85,7 @@ public:
 private:
     void timerCallback() override
     {
-        const std::array<float, 4> now { index->load(), envAmount->load(), envMs->load(), ratio->load() };
+        const std::array<float, 5> now { index->load(), envAmount->load(), envMs->load(), ratio->load(), maxTime->load() };
         if (now != last)
         {
             last = now;
@@ -98,8 +100,9 @@ private:
     std::atomic<float>* index = nullptr;
     std::atomic<float>* envAmount = nullptr;
     std::atomic<float>* envMs = nullptr;
+    std::atomic<float>* maxTime = nullptr;
     std::atomic<float>* ratio = nullptr;
-    std::array<float, 4> last {};
+    std::array<float, 5> last {};
 };
 
 FmPanel::FmPanel (PluginBase& p, int layerIn, juce::Colour accentIn)

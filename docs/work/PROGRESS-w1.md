@@ -666,3 +666,17 @@ Utvidgning av (z): gäller alla menyer i pluginet. Tre nivåer (huvudmeny, under
 ## 0.4-release-PDF (Arbetare 1, 2026-10-28)
 - `docs/releases/kickbase-0.4-testlista.pdf` (3 sidor, engelska, 0.3-upplägg): vad som ingår + Lemon-testlista. Underlag: release-0.4-utkast.md, fl-testlista.md, (y), (z).
 - Gjord av HTML via headless Edge. Inget från 0.5. Raden "gamla preset migreras" väntar på Arbetare 2:s migrering av kickSynthOn/kickSampleOn till MIX (finns inte i någon gren än).
+
+## instr-phase (INSTR: smal PHASE, NUDGE/START/POLARITY i tidsdiagrammet) – Debug + tester gröna, ej provad i Lemon
+Arbetare 1, branch `instr-phase` från release-0.4 (6e006a1).
+- `ControlGroups::addRow (row, reserveFraction)` (Components.h:199, Components.cpp:873): en rad kan lämna en andel tom till höger. PHASE reserverar 0.7 (Modules.cpp:1276) och är därmed ca 1/5 av bredden.
+- Tidsdiagrammet på INSTR flyttades från vänsterkolumnen till PHASE-radens reserverade yta + fri höjd under raden (Modules.cpp `layoutInstrPage`); envelopen fick hela vänsterkolumnen.
+- TimelineChart.h `paintPhaseMarks`: START som en period sinus med startpunkt i OSC 1-3 och SUB (vänds av POLARITY), NUDGE som pil + streckad nollinje (minst 14 px, förskjutningen är under en pixel), rubrikchips NUDGE/START/POLARITY (− inverted markerad). Gäller även TIMING-fliken (samma komponent).
+- Hittat fel: VOICES-varningen (Modules.cpp, `setWarning`) hamnade på NUDGE-ratten, eftersom `controls.back()` efter PHASE-raden är NUDGE. Nu hålls VOICES-ratten i en egen pekare.
+
+### instr-phase: MAX-tid, FM-modulator (Arbetare 1, 2026-10-29) – commits 94dc949, 39b3be5 + FM-commit; Debug + tester gröna, ej provad i Lemon
+- MAX-tid per instrument (`maxTime`, 250 ms..10 s, standard 1 s = dagens tak): tidsknobbarnas tak = legacyMax x MAX/1000 (Params.h `timeCapSpec`, Components.cpp `applyTimeCap`, Modulation.cpp `apply`). APVTS-intervallet är 10x; sparade värden orörda. Värdeläget vid värdautomation (normaliserat) flyttas: känd varning. Sänks MAX under ett sparat värde klipps knobbens visning, parametern kan ligga kvar över taket.
+- ENV- och tidsdiagram delar vänsterkolumnen 50/50; `( - ) MAX ms ( + )` i PHASE-raden. Tidslinjen: enkelklick väljer motor, dubbelklick öppnar TIMING.
+- Tillägg: FM ENV TIME följer MAX (tak 400 ms vid standard); WARP ENV oförändrad 2-150 ms (kort transient, skalning ger ingen nytta). FM INDEX OVER TIME har fast tidsaxel 400 ms x MAX/1000 (FmPanel.cpp). Blå filterhandtag göms när AMOUNT = 0 eller filtret är av (`Handle::visible`); knapparna AMOUNT/ATTACK/DECAY/VEL finns redan i FILTER ENVELOPE (Modules.cpp ~1296).
+- Nya standardvärden: cutoff 10 kHz (förut 300 Hz), SUB 0 % (förut 30 %). Bara nya instanser; sparade preset/projekt oförändrade. Inga tester byggde på de gamla. Resources/AGENT_GUIDE.md kan nämna de gamla standardvärdena (ej kontrollerat).
+- WARP FM-modulator (OSC 1): ny parameter `fmSource` sist (Params.h efter `maxTime`, registrerad i `addMaxTimeParam`), standard OSC 2 = som förut; OSC 3 valbar, ingen självkälla. Motorn: InstrumentSynth.cpp ~484-515 (`fmOn`, `fmFromC`; bNeeded/cNeeded/modInput; standardvägen oförändrad). UI: `fmBox` ersätter formknapparna när WARP = FM (OscPanel.cpp). Diagrammet ritar FM fortfarande torrt (OscRender.h) men visar text "FM: modulator OSC 2/3" och röd varning "OSC n is OFF - no FM" när modulatorn är av (OscPanel.cpp paintFm). Test: EngineTests `testFmModulatorSource`, ModulationTests `testFmSourceDefault`.

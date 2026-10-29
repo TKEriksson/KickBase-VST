@@ -1,6 +1,7 @@
 #pragma once
 
 #include "VisualTimer.h"
+#include "../Core/Params.h"
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "Theme.h"
@@ -79,6 +80,7 @@ private:
     };
 
     void timerCallback() override;
+    void applyTimeCap (bool force); // MAX TIME: ratten spänner min..tak (tak = legacyMax * MAX/1 s); samma mittpunkt som parametern
     std::vector<Ring> rings() const;
     int parameterIndex() const;
     int ringAt (juce::Point<float> position) const; // index i rings(), eller -1
@@ -92,6 +94,9 @@ private:
     juce::Label valueLabel; // E1: avläsning under ratten
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> attachment;
     juce::RangedAudioParameter* parameter = nullptr;
+    const ParamID::TimeCapSpec* timeCap = nullptr; // satt för de fem tidsknobbarna som följer MAX TIME
+    std::atomic<float>* maxTimeRaw = nullptr;
+    int lastMaxStep = -1;
     juce::String name, description;
     juce::Colour accent;
     bool modulatable = false;
@@ -196,7 +201,12 @@ public:
         juce::String description; // visas när musen är över rubriken (via ägarens tooltip)
     };
 
-    void addRow (std::vector<Group> row) { rows.push_back (std::move (row)); }
+    // reserveFraction: andel av bredden som lämnas tom längst till höger i raden (för något som ägaren lägger där, t.ex. ett diagram).
+    void addRow (std::vector<Group> row, float reserveFraction = 0.0f)
+    {
+        rows.push_back (std::move (row));
+        reserves.push_back (reserveFraction);
+    }
     int numRows() const { return (int) rows.size(); }
 
     // Gruppens ram efter senaste layout (tom om titeln saknas), för den som lägger en liten visning i rubrikraden.
@@ -216,6 +226,7 @@ public:
 
 private:
     std::vector<std::vector<Group>> rows;
+    std::vector<float> reserves; // en per rad: tom andel längst till höger
     std::vector<std::pair<juce::Rectangle<int>, juce::String>> frames; // beräknas i layout
 };
 

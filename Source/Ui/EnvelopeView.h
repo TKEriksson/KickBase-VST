@@ -5,6 +5,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <functional>
 #include "Theme.h"
+#include "../Core/Params.h"
 
 // Visar envelopes som kurvor med handtag man drar i direkt.
 //
@@ -29,7 +30,12 @@ public:
         bool invertY = false; // uppåt minskar parametern (t.ex. kurvform)
         juce::Colour colour;
         std::function<juce::RangedAudioParameter*()> xParamNow; // om satt: den parameter som styr x just nu (t.ex. ms eller Sync), går före xParam
+        std::function<float()> xMax; // om satt: högsta normaliserade x-värdet vid dragning (tidstaket från MAX-knappen)
+        std::function<bool()> visible; // om satt och false: handtaget ritas inte och kan inte tas (t.ex. filter-envelopen när AMOUNT är 0 eller filtret är av)
     };
+
+    /** Taket för en tidsparameter (attack, decay, release ...) som normaliserat värde, enligt instrumentets MAX-steg. */
+    static std::function<float()> timeCapOf (juce::AudioProcessorValueTreeState& apvts, int layer, InstrumentField field);
 
     explicit EnvelopeView (double displaySecondsIn);
 
@@ -38,7 +44,7 @@ public:
 
     void addCurve (Curve curve)    { curves.push_back (std::move (curve)); }
     // Hur många sekunder grafen visar (DURATION i ENV-fliken): bara vyn, inte ljudet.
-    void setDisplaySeconds (double seconds) { displaySeconds = seconds; lastSignature = -1.0f; repaint(); }
+    void setDisplaySeconds (double seconds) { if (seconds == displaySeconds) return; displaySeconds = seconds; lastSignature = -1.0f; repaint(); }
     void addHandle (Handle handle) { handles.push_back (std::move (handle)); }
 
     // Markerar när tonen släpps (note off): en streckad linje med texten NOTE OFF. `real` = från mönstret, annars ett exempel (inget mönster att läsa).

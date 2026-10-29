@@ -7,7 +7,7 @@
 // Tidsdiagrammet (l): en bana per motor (OSC 1-3, SAMPLE, NOISE, SUB, FM) på en gemensam tidsaxel och längst ner den gemensamma konturen
 // (volym-envelopen). Fasen syns som NUDGE (banornas start flyttas) och POLARITY (konturen vänds). Den valda motorns bana är högre och markerad;
 // i redigerbart läge flyttar drag i den banan POS DELAY (vänsterkanten) eller LENGTH (högerkanten), och ett klick på en annan bana väljer den motorn.
-// Skrivskyddat (INSTR): inga drag, klicket bara meddelar onSelect. Valet är UI-läge, ingen parameter.
+// Skrivskyddat (INSTR): inga drag; enkelklick väljer motor (visas störst), dubbelklick meddelar onOpen. Valet är UI-läge, ingen parameter.
 class TimelineChart : public juce::Component, private juce::Timer
 {
 public:
@@ -20,6 +20,7 @@ public:
 
     int selected = 0;                  // vald motor 0-6
     std::function<void (int)> onSelect; // anropas när användaren klickar på en bana
+    std::function<void (int)> onOpen;   // dubbelklick på en bana (INSTR: gå till TIMING)
 
     void setSelected (int engine)
     {
@@ -64,10 +65,14 @@ public:
                 g.drawVerticalLine ((int) xOf (noteOff), y, juce::jmin (y + 2.0f, bottom));
         }
 
-        // Fasen i klartext så att man ser vad NUDGE och POLARITY gör.
-        g.setColour (Theme::textDim);
-        g.drawText ("NUDGE " + juce::String (nudgeMs, 2) + " ms" + (params.invertPolarity ? "   POLARITY -" : ""),
-                    getLocalBounds().reduced (6, 2).withHeight (16), juce::Justification::topRight);
+        paintPhaseMarks (g, xOf);
+    }
+
+    void mouseDoubleClick (const juce::MouseEvent& e) override
+    {
+        const auto engine = engineAt (e.position);
+        if (engine >= 0 && onOpen)
+            onOpen (engine);
     }
 
     void mouseDown (const juce::MouseEvent& e) override
@@ -128,7 +133,7 @@ public:
 
 private:
     enum class Edge { none, delay, length };
-    static constexpr int rulerHeight = 16, contourHeight = 26, laneGap = 2;
+    static constexpr int rulerHeight = 16, contourHeight = 26, laneGap = 2, headerHeight = 22;
     static constexpr int labelWidth = 58;
 
     void timerCallback() override
@@ -157,7 +162,75 @@ private:
     double delaySeconds (int e) const { return juce::jmax (0.0, InstrumentSynth::engineDelaySeconds (params, e, bpm) + nudgeMs / 1000.0); }
     double lengthSeconds (int e) const { return InstrumentSynth::engineLengthSeconds (params, e, bpm); }
 
-    juce::Rectangle<int> timeArea() const { return getLocalBounds().reduced (4, 4).withTrimmedLeft (labelWidth).withTrimmedTop (10).withTrimmedBottom (rulerHeight); }
+    juce::Rectangle<int> timeArea() const { return getLocalBounds().reduced (4, 4).withTrimmedLeft (labelWidth).withTrimmedTop (headerHeight).withTrimmedBottom (rulerHeight); }
+
+    // Rubrikraden: NUDGE, START och POLARITY som små etiketter, och motsvarande markeringar i banorna.
+    // NUDGE är högst +-2 ms medan spannet är hundratals ms, så förskjutningen är under en pixel: pilen har därför en minsta längd och ms-värdet i klartext.
+    template <typename XOf>
+    void paintPhaseMarks (juce::Graphics& g, const XOf& xOf) const
+    {
+        const auto time = timeArea();
+        const auto inverted = params.invertPolarity;
+        const auto degrees = (double) params.phaseDeg;
+
+        // START: en period av vågen, förskjuten med startfasen (och vänd av POLARITY), i början av de banor som startfasen påverkar (OSC 1-3 och SUB).
+        for (const auto engine : { 0, 1, 2, 5 })
+        {
+            const auto lane = laneBounds (engine).toFloat();
+            const auto amp = juce::jlimit (2.0f, 7.0f, lane.getHeight() * 0.32f);
+            const auto width = 26.0f;
+            const auto x0 = xOf (delaySeconds (engine)) + 3.0f;
+            const auto midY = lane.getCentreY();
+            juce::Path wave;
+            const auto steps = 26;
+            for (int i = 0; i <= steps; ++i)
+            {
+                const auto phase = degrees / 360.0 + (double) i / (double) steps;
+                const auto s = (float) std::sin (juce::MathConstants<double>::twoPi * phase) * (inverted ? -1.0f : 1.0f);
+                const auto p = juce::Point<float> (x0 + width * (float) i / (float) steps, midY - amp * s);
+                i == 0 ? wave.startNewSubPath (p) : wave.lineTo (p);
+            }
+            g.setColour (Theme::text.withAlpha (0.9f));
+            g.strokePath (wave, juce::PathStrokeType (1.2f));
+            const auto startS = (float) std::sin (juce::MathConstants<double>::twoPi * degrees / 360.0) * (inverted ? -1.0f : 1.0f);
+            g.setColour (Theme::fuchsia);
+            g.fillEllipse (x0 - 2.0f, midY - amp * startS - 2.0f, 4.0f, 4.0f); // startpunkten
+        }
+
+        // NUDGE: nollpunkten som streckad linje och en pil åt det håll banorna flyttats.
+        const auto top = (float) time.getY(), bottom = (float) contourBounds().getBottom();
+        const auto zeroX = xOf (0.0);
+        if (std::abs (nudgeMs) >= 0.005f)
+        {
+            const auto dir = nudgeMs > 0.0f ? 1.0f : -1.0f;
+            const auto len = juce::jmax (14.0f, std::abs (xOf (nudgeMs / 1000.0) - zeroX));
+            const auto y = top - 4.0f;
+            g.setColour (Theme::fuchsia);
+            g.drawLine (zeroX, y, zeroX + dir * len, y, 1.6f);
+            juce::Path head;
+            head.addTriangle (zeroX + dir * len, y, zeroX + dir * (len - 5.0f), y - 3.0f, zeroX + dir * (len - 5.0f), y + 3.0f);
+            g.fillPath (head);
+            for (float yy = top; yy < bottom; yy += 4.0f)
+                g.drawVerticalLine ((int) zeroX, yy, juce::jmin (yy + 1.5f, bottom));
+        }
+
+        // Rubrikraden (höger): värdena i klartext.
+        auto header = getLocalBounds().reduced (6, 2).withHeight (headerHeight - 4);
+        g.setFont (Theme::font (12.0f, true));
+        const auto chip = [&] (const juce::String& text, bool active)
+        {
+            const auto w = juce::GlyphArrangement::getStringWidthInt (g.getCurrentFont(), text) + 12;
+            auto r = header.removeFromRight (w).toFloat().reduced (0.0f, 1.0f);
+            header.removeFromRight (4);
+            g.setColour (active ? Theme::fuchsia.withAlpha (0.28f) : Theme::insetStrip);
+            g.fillRoundedRectangle (r, 3.0f);
+            g.setColour (active ? Theme::text : Theme::textDim);
+            g.drawText (text, r.toNearestInt(), juce::Justification::centred);
+        };
+        chip (juce::String (juce::CharPointer_UTF8 ("POLARITY ")) + (inverted ? juce::String (juce::CharPointer_UTF8 ("\xe2\x88\x92 inverted")) : "+"), inverted);
+        chip ("START " + juce::String (degrees, 0) + juce::String (juce::CharPointer_UTF8 ("\xc2\xb0")), degrees > 0.05);
+        chip ("NUDGE " + juce::String (nudgeMs, 2) + " ms", std::abs (nudgeMs) >= 0.005f);
+    }
 
     // Den valda banan får tre gånger höjden.
     juce::Rectangle<int> laneBounds (int engine) const
