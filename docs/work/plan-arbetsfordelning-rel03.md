@@ -182,3 +182,7 @@ Obs: nya parametrar och modulationskällor sist (ENGINEERING.md). Stor punkt; Ar
 - Kandidater i samma kategori: TREMOLO, CHORUS, AUTO-PAN. Tobias väljer vilka som kommer med.
 - Varje modifier har ON och egna rattar med automation/LFO/makro som alla andra rattar. Nya parametrar sist (docs/ENGINEERING.md); default AV så gamla presets låter likadant.
 - Varning för bas: chorus/panorering kan förstöra monokompatibilitet och fas mellan kick och bas. Förslag: lågpass-skydd (wet filtreras bort under ca 150 Hz) och kollas i mix-rapporten.
+
+### 0.5: START-fasvågorna i tidsdiagrammet (Tobias 29 okt)
+- De små sinusvågorna (TimelineChart.h:175-200) behålls: de visar källans startfas (START + PHASE/SUB/FM-fas, vänd av POLARITY) med en fuchsiaprick vid startpunkten.
+- Gör dem begripliga: etikett "START PHASE" med gradvärdet bredvid vågen, och tooltip som förklarar vågen och pricken.
