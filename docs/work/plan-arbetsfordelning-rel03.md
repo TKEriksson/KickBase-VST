@@ -118,3 +118,5 @@ Obs: nya parametrar och modulationskällor sist (ENGINEERING.md). Stor punkt; Ar
 (å, inställning) Tobias: glödstyrkan blir en användarinställning i SETTINGS: Av / Svag / Stark. Sparas som plugin-inställning (inte i projektets parametrar/preset, ingen ändring av parameter-ID/hash). Standard: Svag. Ändring ritar om hela GUI:t direkt.
 
 (0.4-snittet, beslut Tobias 28 okt) 0.4 handlar om design och diagram. Med: allt ovan utom (p), (q) BAKE TO OSC och (w) pianorullens lanes. FX-punkt 2 (ta bort FX-kanal i send-popupen, f3b1df0) är med. FX-punkt 4 (lane-värde ersätter matris-send) och (w) skjuts till 0.5; Arbetare 2:s ocommittade ändringar för punkt 4 ligger kvar i KickBase-VST-w2 (se PROGRESS-w2.md).
+
+(Tobias 29 okt, till 0.5) Filterdiagrammet ska visa allpass-filtret: en tunn extra kurva för fas eller gruppfördröjning, så att AP FREQ och AP AMT syns som en puckel vid vald frekvens. Idag syns inget, eftersom diagrammet bara visar amplitud och allpass bara ändrar fas.
