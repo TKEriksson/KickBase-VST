@@ -203,3 +203,6 @@ Obs: nya parametrar och modulationskällor sist (ENGINEERING.md). Stor punkt; Ar
 ### Gross Beat: TIME-kurvan läses så här (rättelse, 29 okt)
 - Y-axeln är uppspelningsposition relativt nu (0 = nu, -1 = en beat bakåt i bufferten), X är 0..4 beats. Lutning k ger hastighet 1+k: platt = normal fart, lutning -1 (den diagonala hjälplinjen) = fryst, brantare = baklänges, svagare = tape stop. Lodrätt hopp bakåt = stutter. Det tidigare "platt = paus" stämde inte.
 - Tobias TIME-presets (Basic 1-3, Complex 1 och 3, Chaos 5, Chaos 8) är tolkade från skärmdumparna: `docs/work/grossbeat/time-presets.json`, bilder i `docs/work/grossbeat/bilder/`. Chaos 8 är ofullständig. GATE-presets kommer från Tobias.
+
+### Gross Beat: TRIG SYNC och POS SYNC (29 okt)
+Båda rullistorna har samma val: Off, 1/4 beat, 1/2 beat, 1 beat, 2 beats, 4 beats (standard 4 beats, = hela mönstret). TRIG SYNC = när ett nytt mönsterlopp får starta efter en trigger (noten/MIDI); POS SYNC = hur ofta mönstrets position låses till DAW:ns takt. Off = ingen låsning. GATE-presets: `docs/work/grossbeat/gate-presets.json`.
