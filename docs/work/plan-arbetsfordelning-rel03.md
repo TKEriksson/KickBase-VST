@@ -155,3 +155,6 @@ Obs: nya parametrar och modulationskällor sist (ENGINEERING.md). Stor punkt; Ar
 
 ### SIDECHAIN i MASTER flyttas till 0.4 (Tobias 29 okt kväll, task G7)
 - Gäller punkten ovan, nu 0.4. Brödsmulan (sökvägen i displayen) ska stämma: MASTER > SIDECHAIN (jfr bdda107). Kontrollera i både INSTR och FX.
+
+
+- (Tobias 29 okt, till 0.5) ENV-fliken ([EnvPage.cpp:102-241](Source/Ui/EnvPage.cpp)) ska vara samma envelopes som i INSTR-fliken och se likadana ut: samma knappar/parametrar inkl. HOLD (när den finns), och MAX LENGTH (dropdown + xN + = A/D/R) för alla fyra (ENV 1, FILTER, ENV 2, ENV 3), inte bara en visnings-DURATION-knapp (EnvPage.cpp:121-134, bara vyn). Klargör med Tobias om INSTR-fliken och ENV-fliken ska dela kod/komponent.
