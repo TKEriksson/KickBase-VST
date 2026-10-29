@@ -232,6 +232,8 @@ public:
 
     // Filter-envelopens form (0..1) efter `seconds`. Används även av gränssnittet.
     static float filterEnvelopeAt (const InstrumentParams& p, double seconds);
+    // WARP ENV-källans nivå (0..1) `seconds` efter tonstart, för vald källa (warpEnvSource). noteOffSeconds < 0 = tonen hålls. ENV 2/3 ska ha tiderna i ms (withTempo).
+    static float warpEnvSourceAt (const InstrumentParams& p, double seconds, double noteOffSeconds);
 
     // Sample-editorns kurvform: `remaining` 1 -> 0 (kvar av kurvan), `shape` -1..1; 0 = linjär, + = snabbt fall först, - = långsamt fall först. Används även av gränssnittet.
     static float sampleCurve (float remaining, float shape) noexcept
