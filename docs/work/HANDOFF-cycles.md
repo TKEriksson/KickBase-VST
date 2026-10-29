@@ -24,3 +24,4 @@ Dragbar modulationsring, lyssna-knapp per motor, 3D-vy med fler frames, EMPTY so
 ## Tobias önskemål (0.5)
 - CYCLES 1-32 behålls. Lägg till snap till hela steg (läge, så att kontinuerlig modulation fortfarande går).
 - Föreslå CYCLES automatiskt vid laddning av wavetable/WAV (återanvänd cykellängdsdetekteringen från 0.4.1; frame-längd / grundperiod). Idag sätts inget automatiskt.
+- Auto-förslag i detalj: kombinera autokorrelation och FFT per frame. Lika svar: ta det. Faktor 2 isär: bygg om framen som en period upprepad N gånger, välj N med minst rest. Annat: högst säkerhet, under ca 0,6 behåll 1. Median över frames, runda, användaren kan ändra. Kalibrera mot 5-6 av Tobias wavetables med känt rätt CYCLES (han noterar filerna vid test av 0.4.2). Full beskrivning i plan-arbetsfordelning-rel03.md (Uppspelningshastighet).
