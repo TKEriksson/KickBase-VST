@@ -331,3 +331,14 @@ Ordning: 1 och 2 först, 3 och 4 när resten av 0.5 är klart.
   - `serum-2048x64\` – tre riktiga Serum-tabeller (Additive_08, Analog_01, Analog_04). Format: 32-bit float, mono, 44,1 kHz, 131 072 samples = **64 frames × 2048**. **Ingen `clm `-chunk** (bara ett tomt `smpl`-block) → frame-storleken måste gissas ur längden, `clm ` kan inte vara enda vägen. Hela paketet (77 filer, 2048×64) finns även i PL:s scratchpad; Roikats större paket har även 256 frames.
   - `disting-mapp\` – två mappar (Disting-format): **en .wav per frame**, 16-bit mono, 512 samples, ~64 filer per mapp, ett litet `smpl`-block. Nuvarande import läser en fil i taget som en enda cykel, så detta testar en möjlig ny punkt: **"importera mapp som tabell"** (filerna sorterade efter namn blir frame 0, 1, 2 …; 512 samples resamplas till 1024).
   - Arbetare 1: kör importen på båda och rapportera: antal frames som hittas, vilka 16 som väljs, om DC/normalisering ger rimligt resultat, om 32-bit float läses rätt.
+
+## Gjort i 0.4.1 och 0.4.2 (PL, 29 okt)
+
+- **0.4.1:** wavetable-import gissar cykellängd (256–4096, 2048 som förval) och "Load folder of WAVs ..." i TABLE-menyn (en fil per frame, Disting).
+- **0.4.2:** wavetables med upp till 256 frames (en frame per cykel, `Wavetable::maxFrames`), mappimport upp till 256 filer. Inbyggda tabeller har kvar 16. Fler än 256 cykler: 256 jämnt spridda används, resten hoppas över utan varning. Testat med siffror, inte i Lemon än.
+
+## Nytt i 0.5 (Tobias 29 okt)
+
+- **Modulationsring som är lätt att dra (Massive-stil).** Idag försvinner träffytan när pricken visas, så LFO-mängden går bara att ändra på exakt rätt ställe en halv sekund. Ny: ringen dras med stor träffyta längs hela ringen, mushjul över ratten ändrar mängden (Shift = fint steg), dubbelklick som alternativ.
+- **Lyssna-knapp per motor.** Knappen längst till höger i flikraden spelar hela instrumentet. Lägg en extra knapp inuti varje motorflik (och Kick, Sample m.fl.), uppe till vänster eller höger, som bara spelar den motor man är inne i. Utgångspunkt: `HoldAudition` (`Source/Ui/OscPanel.h:38`, `HoldAudition.h`).
+- **LIBRARIES** (punkt 1b ovan) väntar på Tobias klartecken.
