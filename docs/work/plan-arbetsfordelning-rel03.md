@@ -186,3 +186,9 @@ Obs: nya parametrar och modulationskällor sist (ENGINEERING.md). Stor punkt; Ar
 ### 0.5: START-fasvågorna i tidsdiagrammet (Tobias 29 okt)
 - De små sinusvågorna (TimelineChart.h:175-200) behålls: de visar källans startfas (START + PHASE/SUB/FM-fas, vänd av POLARITY) med en fuchsiaprick vid startpunkten.
 - Gör dem begripliga: etikett "START PHASE" med gradvärdet bredvid vågen, och tooltip som förklarar vågen och pricken.
+
+### 0.5: TIME/GATE-effekt à la Gross Beat + 10 FX-slots (Tobias 29 okt)
+- Ersätter "GATE FX som egen rad": EN effekt (arbetsnamn TIME GATE) som öppnas i en egen ruta/fönster. Stor redigerbar kurva (volym över tid, punkter med linjer), TRIG SYNC / POS SYNC, ATT / REL / TNS, preset-rutnät (Basic, Gate, Trance Gate, Sidechain, Tremolo m.fl.). Alla rattar är vanliga parametrar (automation/LFO/makro).
+- Preset-byte med automation: en parameter "PATTERN" (val 1..N) som kan automatiseras; vid byte laddas mönstret på nästa taktgräns (inget klick). Mönstren sparas som data i preset/projekt, användarens egna med.
+- Utöka FX-kanalens effektkedja till 10 slots (idag: kolla antal i koden). Nya slots sist (docs/ENGINEERING.md), gamla presets oförändrade.
+- Ärva: Arbetare 2:s FX-punkt 4 och AUTO FIX hör ihop med FX-kedjan.
