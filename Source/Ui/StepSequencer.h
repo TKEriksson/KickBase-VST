@@ -63,7 +63,7 @@ private:
     // Ett mönster på mer än fyra takter visas en sida (fyra takter) i taget; sidknapparna byter sida.
     static constexpr int barsPerPage = 4;
     // Mönstret visas med en takt till efter slutet (skuggad): ett klick där lägger ett steg och förlänger raden (R9: längden följer innehållet).
-    int shownBars() const { return std::min (Pattern::maxBars, bars() + 1); }
+    int shownBars() const { return std::min (Pattern::maxBars, bars()); } // ingen extra takt: längden ökas för hand (LENGTH-rutan)
     int viewBars() const { return std::min (shownBars(), barsPerPage); }
     int numPages() const { return std::max (1, (shownBars() + barsPerPage - 1) / barsPerPage); }
     int pageOffset (int visibleSteps) const { return page * visibleSteps; } // första synliga stegets plats i mönstret
