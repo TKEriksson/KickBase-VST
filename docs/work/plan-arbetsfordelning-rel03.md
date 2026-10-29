@@ -249,3 +249,12 @@ Kurvredigeraren ska ha snap: punkter och handtag låser sig till valfri del av t
 - ATT / DEC / SUS / REL-knobbar under kurvan för snabb envelope utan att rita.
 - TEMPO-läge: envelopen följer takten i stället för sekunder.
 - Vi kopierar inte Sytrus flikrutnät (parameter × källa). Dra-och-släpp av källor på knobbar behålls.
+
+## Från Massive och Sytrus (29 okt, Tobias)
+
+- Mod-markör under varje kopplad knob: liten markör som visar källa och mängd.
+- Vel och KTR per envelope. Tooltip måste förklara dem: Vel = hur mycket anslagsstyrkan ändrar envelopens nivå, KTR = hur mycket tonhöjden ändrar den (höga toner kortare, låga längre).
+- 10 macros (idag 4, se MATRIX-fliken) i en egen flik, precis som LFO och ENV. Högerklick på varje kopplingsbar knob: CONNECT WITH MACRO 1-10. Dra-ut-sättet finns kvar. Macros visas också som routes i MATRIX.
+- MOD OSC (ringmod, fas, position, filter-FM från egen oscillator): eventuell egen flik bland motorflikarna. Arbetare 1 kollar först överlappet med befintliga FM-fliken.
+- Inte med: Performer/Step-källor (Gross Beat täcker), Global-flikens Randomize och Copy/Paste av sektion (kanske senare).
+- Preset-browser med taggar: senare, med bättre preset-system.
