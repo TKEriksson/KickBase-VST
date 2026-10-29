@@ -203,6 +203,40 @@ namespace
         }
     }
 
+    void testInstrumentSub()
+    {
+        std::puts("Bas: SUB ensam hörs (alla andra källor av), med och utan filter");
+        for (const auto filterOn : { true, false })
+            for (const auto wave : { 0, 1, 2, 3 })
+            {
+                InstrumentSynth bass;
+                bass.prepare (rate);
+                InstrumentParams p;
+                p.rootHz = 50.0f;
+                p.oscA.on = false;
+                p.oscB.on = false;
+                p.oscC.on = false;
+                p.oscA.level = p.oscB.level = p.oscC.level = 0.0f;
+                p.sampleOn = false;
+                p.fmOn = false;
+                p.noise = 0.0f;
+                p.sub = 0.9f;
+                p.subWave = wave;
+                p.filterOn = filterOn;
+                p.cutoffHz = 20000.0f;
+                p.envAmount = 0.0f;
+                p.drive = 0.0f;
+                p.sustain = 1.0f;
+                bass.setParams (p);
+                bass.reset();
+                bass.noteOn (0, 1.0f, (int) rate);
+                std::vector<float> audio ((size_t) (rate * 0.4));
+                for (auto& v : audio)
+                    v = bass.nextSample();
+                check (peakOf (audio, (size_t) (rate * 0.05), audio.size()) > 0.05f, "SUB ensam ger ljud", peakOf (audio, 0, audio.size()));
+            }
+    }
+
     void testInstrumentSample()
     {
         std::puts("Bas: sampling som ljudkälla (egen ton och följer noten)");
@@ -1365,6 +1399,7 @@ void runEngineTests()
     testKickRetriggerFades();
     testKickShapesAndSamples();
     testKickClickLayersAndSampleTools();
+    testInstrumentSub();
     testInstrumentSample();
     testSampleEditor();
     testSampleReverse();

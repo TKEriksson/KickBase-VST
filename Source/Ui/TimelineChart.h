@@ -171,11 +171,14 @@ private:
     {
         const auto time = timeArea();
         const auto inverted = params.invertPolarity;
-        const auto degrees = (double) params.phaseDeg;
 
-        // START: en period av vågen, förskjuten med startfasen (och vänd av POLARITY), i början av de banor som startfasen påverkar (OSC 1-3 och SUB).
-        for (const auto engine : { 0, 1, 2, 5 })
+        // START: en period av vågen, förskjuten med startfasen (och vänd av POLARITY), i början av de banor som startfasen påverkar (OSC 1-3, SUB och FM).
+        for (const auto engine : { 0, 1, 2, 5, 6 })
         {
+            // Källans egen startfas ligger ovanpå START (som i InstrumentSynth.cpp:170-177): OSC:ns PHASE (varv), SUB och FM i MIX (grader).
+            const auto own = engine == 0 ? (double) params.oscA.phase * 360.0 : engine == 1 ? (double) params.oscB.phase * 360.0
+                           : engine == 2 ? (double) params.oscC.phase * 360.0 : engine == 5 ? (double) params.subPhaseDeg : (double) params.fmPhaseDeg;
+            const auto degrees = (double) params.phaseDeg + own;
             const auto lane = laneBounds (engine).toFloat();
             const auto amp = juce::jlimit (2.0f, 7.0f, lane.getHeight() * 0.32f);
             const auto width = 26.0f;
@@ -228,7 +231,7 @@ private:
             g.drawText (text, r.toNearestInt(), juce::Justification::centred);
         };
         chip (juce::String (juce::CharPointer_UTF8 ("POLARITY ")) + (inverted ? juce::String (juce::CharPointer_UTF8 ("\xe2\x88\x92 inverted")) : "+"), inverted);
-        chip ("START " + juce::String (degrees, 0) + juce::String (juce::CharPointer_UTF8 ("\xc2\xb0")), degrees > 0.05);
+        chip ("START " + juce::String ((double) params.phaseDeg, 0) + juce::String (juce::CharPointer_UTF8 ("\xc2\xb0")), params.phaseDeg > 0.05f); // den gemensamma START
         chip ("NUDGE " + juce::String (nudgeMs, 2) + " ms", std::abs (nudgeMs) >= 0.005f);
     }
 

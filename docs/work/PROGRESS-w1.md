@@ -688,3 +688,8 @@ Arbetare 1, branch `instr-phase` från release-0.4 (6e006a1).
 
 ## Uppgift E (Arbetare 1, 29 okt)
 - Filter 2-strömknappen 22x22 px (FilterPanel.cpp:360-362); blocket 2 innehåll 6 px lägre. fxAmount läses fortfarande medvetet: InstrumentProcessor.cpp:1021/1050, UI Modules.cpp:1156; ingen bugg.
+
+## Uppgift F (Arbetare 1)
+- F1: `TimelineChart.h:170-201` paintPhaseMarks ritar nu START + källans egen fas (OSC 1-3 `phase`, SUB `subPhaseDeg`, FM `fmPhaseDeg`) på bana 0,1,2,5,6. Brus/sample ritar inget. Rubrikchippen visar fortfarande bara gemensamma START.
+- F2: SUB hörs i koden. Nivån i INSTR (`Modules.cpp:1296`) och MIX (`InstrMixPanel.cpp:16`) är samma parameter `F::sub`. Standard för DELAY/LENGTH är 0/0 = gate 1 (`InstrumentSynth.cpp:~250`, `engineGate` :264). Inget filter/engineGate dämpar den. Nytt test `testInstrumentSub` (EngineTests.cpp) renderar bara SUB (0,9) med alla fyra vågformer, filter på och av: ljud. Ingen kodändring i motorn.
+- Troliga orsaker hos Tobias: OCTAVE "-1 oct" (halva notens ton, `InstrumentSynth.cpp:683`), solo/lyssna-läge nollar sub (`InstrumentProcessor.cpp:547`), delay/length satt på bana SUB, eller ett lågt ton som högtalaren inte återger.
