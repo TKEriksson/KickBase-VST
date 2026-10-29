@@ -212,3 +212,6 @@ TNS-ratten är bipolär (tooltip "Volume envelope tension: -17%") och böjer all
 
 ### Gross Beat: markera flera punkter (29 okt, Tobias)
 I kurvredigeraren ska man kunna markera flera punkter: klick-och-dra-ruta (select) och markera alla (Ctrl+A). Markerade punkter flyttas och ändras tillsammans (dra en = alla följer; Shift för att lägga till/ta bort en punkt i markeringen; Delete tar bort markerade). Gäller både VOLUME- och TIME-kurvan, och bör gå att återanvända i ENV-redigeraren.
+
+### Gross Beat: Bezier-kurvor (29 okt, Tobias fråga)
+Gross Beats orangea handtag är ett handtag per segment (böjer linjen, som tension), inte riktig Bezier. Förslag: 0.5 gör som Gross Beat, ett handtag per segment plus TNS som global böj. Riktig Bezier (två handtag per punkt, S-kurvor, mjuka övergångar) som tillval per punkt ("smooth") i samma redigerare, lagras som kontrollpunkter i presetfilen. Beslut av Tobias: bara ett handtag nu, eller full Bezier direkt?
