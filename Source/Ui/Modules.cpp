@@ -3027,10 +3027,11 @@ void PatternModule::resized()
     {
         // (x) Riktiga rattshuvuden (knobRowHeight = 74 px med etiketter), men bara två rader så kolumnen inte blir för hög:
         // SWING och HUMAN bredvid varandra, DELAY under, centrerad.
-        auto swingHumanRow = notesColumn.removeFromTop (knobRowHeight);
+        constexpr int grooveKnobHeight = 62; // lite mindre än övriga rattar (Tobias 29 okt)
+        auto swingHumanRow = notesColumn.removeFromTop (grooveKnobHeight);
         const auto swingBounds = swingHumanRow.removeFromLeft (swingHumanRow.getWidth() / 2);
         const auto humanizeBounds = swingHumanRow;
-        const auto delayRow = notesColumn.removeFromTop (knobRowHeight);
+        const auto delayRow = notesColumn.removeFromTop (grooveKnobHeight);
         const auto delayBounds = delayRow.withSizeKeepingCentre (delayRow.getWidth() / 2, delayRow.getHeight());
         for (size_t i = 0; i < delays.size(); ++i)
         {
