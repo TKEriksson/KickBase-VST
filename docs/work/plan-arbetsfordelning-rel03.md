@@ -265,3 +265,16 @@ Kurvredigeraren ska ha snap: punkter och handtag låser sig till valfri del av t
 - Modulationer (LFO, ENV, macros) på sektionen följer med och kopplas till den nya platsen (bekräftat av Tobias 29 okt).
 - Randomize per sektion och för hela ljudet, med procentruta (30 % = liten ändring, 100 % = allt). Lås per sektion så att t.ex. kick och SUB skyddas. Ångra (undo) måste fungera.
 - Nya parametrar och källor sist (docs/ENGINEERING.md).
+
+## Från Massive XL (Tobias 29 okt: "allt låter bra")
+
+Med i 0.5:
+1. **Lås per sektion vid Randomize** (XL har hänglås över varje sektion) och en Divergence-liknande styrka (%-rutan vi redan har).
+2. **Mer i ENV-redigeraren**, men utan röra: Delay, Hold, Shape per segment, sustain-nivå som streckad linje, läget Gate/OneShot. Kravet från Tobias: varje reglage ska ha en tydlig tooltip. Hold (tid kvar på toppen efter attack, räknas i tid) är något annat än Note Off (när tangenten släpps startar REL). Förklara skillnaden i tooltipen. Visa avancerade reglage först när de behövs om det blir för fullt.
+3. **LFO:** formväljare som cirkelmeny med slumpruta, Bi/Uni, Delay och Fall/Rise (fade-in).
+4. **Historik:** hoppa tillbaka till valfri punkt i Undo-listan.
+5. **Sub-presets per modul på fler ställen**: FM, filter, OSC, SAMPLE m.m., inte bara effekter. Samma format som Copy/Paste av sektioner.
+6. **Tracker-kurvor** (tonhöjd styr något) som utveckling av KTR.
+7. **Fasmodulation mellan oscillatorer**: Arbetare 1 jämför mot FM-fliken innan en ny MOD OSC-flik byggs.
+
+Lämnas: Generate (sampel till preset), Morpher/Animator, öppen routing, Mutator som byter filtertyper, polyfonisk aftertouch.
