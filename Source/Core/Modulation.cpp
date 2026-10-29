@@ -273,7 +273,9 @@ Modulator::Modulator (juce::AudioProcessorValueTreeState& apvts, const ModRoutes
             if (index < 0)
                 continue;
             timeModSlot[(size_t) index] = (int) timeMods.size();
-            timeMods.push_back ({ index, spec.min, spec.centre, spec.legacyMax, apvts.getRawParameterValue (ParamID::bass (layer, InstrumentField::maxTime)) });
+            const auto group = ParamID::timeCapGroup (i);
+            timeMods.push_back ({ index, spec.min, spec.centre, spec.legacyMax, apvts.getRawParameterValue (ParamID::bass (layer, InstrumentField::maxTime)),
+                                  group > 0 ? apvts.getRawParameterValue (ParamID::bass (layer, ParamID::maxTimeGroupField (group))) : nullptr, group });
         }
     offsets.assign (parameters.size(), 0.0f);
     displayOffsets = std::make_unique<std::atomic<float>[]> (parameters.size());
@@ -480,7 +482,8 @@ float Modulator::apply (int index, float valueIn) const
     if (const auto slot = timeModSlot[(size_t) index]; slot >= 0)
     {
         const auto& t = timeMods[(size_t) slot];
-        const auto cap = t.legacyMax * ParamID::maxTimeMs (t.maxRaw != nullptr ? juce::roundToInt (t.maxRaw->load()) : ParamID::maxTimeDefault) / 1000.0f;
+        const auto step = t.maxRaw != nullptr ? ParamID::resolveMaxStep (t.group, t.ownRaw != nullptr ? t.ownRaw->load() : 0.0f, t.maxRaw->load()) : ParamID::maxTimeDefault;
+        const auto cap = t.legacyMax * ParamID::maxTimeMs (step) / 1000.0f;
         if (valueIn > cap)
             return valueIn; // värdet ligger ovanför taket (MAX sänkt): lämnas orört
         juce::NormalisableRange<float> range (t.min, cap, 0.01f);

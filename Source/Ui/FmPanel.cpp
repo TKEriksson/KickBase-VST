@@ -20,6 +20,7 @@ public:
         envAmount = apvts.getRawParameterValue (ParamID::bass (layer, F::fmEnvAmount));
         envMs = apvts.getRawParameterValue (ParamID::bass (layer, F::fmEnvTime));
         maxTime = apvts.getRawParameterValue (ParamID::bass (layer, F::maxTime));
+        maxTimeFm = apvts.getRawParameterValue (ParamID::bass (layer, F::maxTimeFm));
         ratio = apvts.getRawParameterValue (ParamID::bass (layer, F::fmRatio));
         setTooltip (kind == Kind::wave ? "FM output at the start of a note: two periods, with RATIO and INDEX applied."
                                        : "INDEX over time: it starts at INDEX and falls toward INDEX x (1 - ENV AMT) over ENV TIME (to -60 dB). The time axis is fixed (follows MAX), so the curve changes when ENV TIME is turned.");
@@ -64,7 +65,7 @@ public:
         else
         {
             const auto ms = juce::jmax (1.0f, envMs->load());
-            const auto axisMs = ParamID::timeCapMs (ParamID::timeCapSpec (5), juce::jlimit (0, ParamID::numMaxTimeSteps - 1, (int) (maxTime->load() + 0.5f))); // fast axel: 400 ms vid MAX 1 s
+            const auto axisMs = ParamID::timeCapMs (ParamID::timeCapSpec (5), ParamID::resolveMaxStep (3, maxTimeFm->load(), maxTime->load())); // fast axel: 400 ms vid MAX 1 s
             for (int i = 0; i <= steps; ++i)
             {
                 const auto t = axisMs * (float) i / (float) steps / ms; // i enheter av ENV TIME
@@ -85,7 +86,7 @@ public:
 private:
     void timerCallback() override
     {
-        const std::array<float, 5> now { index->load(), envAmount->load(), envMs->load(), ratio->load(), maxTime->load() };
+        const std::array<float, 6> now { index->load(), envAmount->load(), envMs->load(), ratio->load(), maxTime->load(), maxTimeFm->load() };
         if (now != last)
         {
             last = now;
@@ -101,8 +102,9 @@ private:
     std::atomic<float>* envAmount = nullptr;
     std::atomic<float>* envMs = nullptr;
     std::atomic<float>* maxTime = nullptr;
+    std::atomic<float>* maxTimeFm = nullptr;
     std::atomic<float>* ratio = nullptr;
-    std::array<float, 5> last {};
+    std::array<float, 6> last {};
 };
 
 FmPanel::FmPanel (PluginBase& p, int layerIn, juce::Colour accentIn)

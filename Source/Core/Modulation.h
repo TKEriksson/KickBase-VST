@@ -208,7 +208,7 @@ private:
     std::vector<const std::atomic<float>*> raws;
     // MAX TIME: de fem tidsparametrarna moduleras över knobbens synliga område (legacyMax * MAX/1 s), inte över hela APVTS-intervallet,
     // så att moduleringsdjupet i gamla projekt är oförändrat vid standard (1 s).
-    struct TimeMod { int index = -1; float min = 0.0f, centre = 1.0f, legacyMax = 1.0f; const std::atomic<float>* maxRaw = nullptr; };
+    struct TimeMod { int index = -1; float min = 0.0f, centre = 1.0f, legacyMax = 1.0f; const std::atomic<float>* maxRaw = nullptr; const std::atomic<float>* ownRaw = nullptr; int group = 0; };
     std::vector<TimeMod> timeMods;
     std::vector<int> timeModSlot;                        // per parameterindex: plats i timeMods eller -1
     std::vector<float> offsets;                          // ljudtråden

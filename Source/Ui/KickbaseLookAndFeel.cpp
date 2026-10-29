@@ -330,12 +330,17 @@ void KickbaseLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& b
         return glyphs.getBoundingBox (0, -1, true).getWidth();
     };
     auto size = font.getHeight();
-    while (! noShrink && size > 7.5f && textWidth (size) > (float) bounds.getWidth())
+    while (! noShrink && ! text.containsChar ('\n') && size > 7.5f && textWidth (size) > (float) bounds.getWidth())
         size -= 0.5f;
 
+    if (text.containsChar ('\n'))
+        size = 10.0f;
     g.setFont (font.withHeight (size));
     g.setColour (on ? (sub ? Theme::cyanLight : Theme::text) : (highlighted ? Theme::text : Theme::textDim));
-    g.drawText (text, bounds, juce::Justification::centred, true);
+    if (text.containsChar ('\n')) // knappar med två rader text (t.ex. EDIT / HARMONICS); drawText skulle klippa vid radbrytningen
+        g.drawFittedText (text, bounds, juce::Justification::centred, 2, 1.0f);
+    else
+        g.drawText (text, bounds, juce::Justification::centred, true);
 }
 
 void KickbaseLookAndFeel::drawComboBox (juce::Graphics& g, int width, int height, bool isButtonDown, int, int, int, int, juce::ComboBox& box)

@@ -169,6 +169,8 @@ enum class InstrumentField
     maxTime,
     // WARP = FM på OSC 1: vilken oscillator som är modulator (0 = OSC 2, standard = som förut, 1 = OSC 3). Registreras i addMaxTimeParam, allra sist.
     fmSource,
+    // MAX LENGTH per grupp (G1): eget steg för PITCH, FILTER ENV och FM (ENV 1 = maxTime). Val 0 = "as ENV 1" (följer maxTime; standard, så gamla projekt och presets låter som förut), 1-6 = stegen. Registreras i addMaxTimeParam, allra sist.
+    maxTimePitch, maxTimeFilter, maxTimeFm,
     count
 };
 
@@ -216,6 +218,21 @@ namespace ParamID
         return specs[i];
     }
     inline float timeCapMs (const TimeCapSpec& spec, int step) { return spec.legacyMax * maxTimeMs (step) / 1000.0f; }
+    // MAX LENGTH per grupp: 0 = ENV 1 (attack/decay/release), 1 = PITCH, 2 = FILTER ENV, 3 = FM. Post i i timeCapSpec hör till gruppen timeCapGroup (i).
+    constexpr int numMaxTimeGroups = 4;
+    inline int timeCapGroup (int i) { return i < 3 ? 0 : i - 2; }
+    inline InstrumentField maxTimeGroupField (int group)
+    {
+        return group == 1 ? InstrumentField::maxTimePitch : group == 2 ? InstrumentField::maxTimeFilter : group == 3 ? InstrumentField::maxTimeFm : InstrumentField::maxTime;
+    }
+    // Gruppens steg: ENV 1 är maxTime (0-5). De andra har 0 = följ ENV 1, annars steg + 1.
+    inline int resolveMaxStep (int group, float ownRaw, float env1Raw)
+    {
+        const auto env1 = (int) (env1Raw + 0.5f);
+        const auto own = (int) (ownRaw + 0.5f);
+        const auto step = group == 0 || own <= 0 ? env1 : own - 1;
+        return step < 0 ? 0 : step >= numMaxTimeSteps ? numMaxTimeSteps - 1 : step;
+    }
     inline const TimeCapSpec* timeCapFor (InstrumentField field)
     {
         for (int i = 0; i < numTimeCaps; ++i)

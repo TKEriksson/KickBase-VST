@@ -275,7 +275,16 @@ std::function<float()> EnvelopeView::timeCapOf (juce::AudioProcessorValueTreeSta
     if (parameter == nullptr || maxTime == nullptr || spec == nullptr)
         return {};
 
-    return [parameter, maxTime, spec] { return parameter->convertTo0to1 (ParamID::timeCapMs (*spec, (int) maxTime->load())); };
+    int group = 0;
+    for (int i = 0; i < ParamID::numTimeCaps; ++i)
+        if (&ParamID::timeCapSpec (i) == spec)
+            group = ParamID::timeCapGroup (i);
+    auto* own = group > 0 ? apvts.getRawParameterValue (ParamID::bass (layer, ParamID::maxTimeGroupField (group))) : nullptr;
+
+    return [parameter, maxTime, own, group, spec]
+    {
+        return parameter->convertTo0to1 (ParamID::timeCapMs (*spec, ParamID::resolveMaxStep (group, own != nullptr ? own->load() : 0.0f, maxTime->load())));
+    };
 }
 
 void EnvelopeView::mouseDrag (const juce::MouseEvent& event)

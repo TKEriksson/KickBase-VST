@@ -95,7 +95,9 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> attachment;
     juce::RangedAudioParameter* parameter = nullptr;
     const ParamID::TimeCapSpec* timeCap = nullptr; // satt för de fem tidsknobbarna som följer MAX TIME
-    std::atomic<float>* maxTimeRaw = nullptr;
+    std::atomic<float>* maxTimeRaw = nullptr;    // ENV 1:s MAX LENGTH
+    std::atomic<float>* maxTimeOwnRaw = nullptr; // gruppens egen (null för ENV 1); 0 = följ ENV 1
+    int timeGroup = 0;
     int lastMaxStep = -1;
     juce::String name, description;
     juce::Colour accent;
@@ -222,6 +224,7 @@ public:
     // Lägger ut raderna i `area` (uppifrån). Valrutor (ChoiceComponent) centreras på höjden.
     void layout (juce::Rectangle<int> area, int rowHeight);
     void paint (juce::Graphics& g, juce::Colour accent) const;
+    static void paintFrame (juce::Graphics& g, juce::Rectangle<int> bounds, const juce::String& title, juce::Colour accent); // en grupps ram och rubrik
 
     static constexpr int titleHeight = 12;
 
@@ -363,7 +366,7 @@ private:
                 area.removeFromRight (14);
             }
             if (preset != nullptr)
-                preset->setBounds (tabs != nullptr ? area.removeFromLeft (std::min (area.getWidth(), 170)) : area); // smalare väljare när det finns vyflikar
+                preset->setBounds (tabs != nullptr || fxSend != nullptr ? area.removeFromLeft (std::min (area.getWidth(), 170)) : area); // smalare väljare när det finns vyflikar eller FX-send
         }
     };
 

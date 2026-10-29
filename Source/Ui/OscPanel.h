@@ -71,6 +71,7 @@ private:
     juce::TextButton prevPresetButton { "<" }, nextPresetButton { ">" }, presetButton { "PRESET" }, savePresetButton { "SAVE" }, resetOscButton { "RESET" };
     juce::File currentPreset;
     juce::TextButton helpButton;
+    juce::TextButton harmonicsButton { "EDIT\nHARMONICS" }; // G6: alltid synlig i hörnet under rattarna; samma redigerare som högerklicksmenyn
     juce::Component::SafePointer<juce::AlertWindow> saveDialog;
 
     PluginBase& processor;
