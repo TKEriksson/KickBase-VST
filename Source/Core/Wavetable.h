@@ -14,7 +14,8 @@ class Wavetable
 {
 public:
     static constexpr int frameSize = 1024; // samples per vågform (upp till 512 övertoner)
-    static constexpr int numFrames = 16;
+    static constexpr int numFrames = 16;   // frames i de inbyggda tabellerna
+    static constexpr int maxFrames = 256;  // flest frames i en egen tabell (Serums 256-frame-filer)
     static constexpr int numLevels = 10;   // 512, 256, ... 1 övertoner
     static constexpr int maxHarmonics = 256; // högsta övertonen i en additiv tabell
 
@@ -25,7 +26,7 @@ public:
     // övertonerna k = 1..count. Går mycket fortare att bygga än en samplad form, och är redan band-begränsad.
     using Additive = std::function<void (double position, double* amp, double* phase, int count)>;
 
-    Wavetable (juce::String name, const Shape& shape, int analysisOrder = 13);
+    Wavetable (juce::String name, const Shape& shape, int analysisOrder = 13, int frameCount = numFrames);
     Wavetable (juce::String name, const Additive& additive, int harmonicCount);
 
     const juce::String& getName() const { return name; }
@@ -35,10 +36,11 @@ public:
     // frame läses direkt, utan interpolation mellan frames: ljudet hoppar mellan vågformerna i stället för att tona över.
     float sample (float position, double phase, double maxHarmonics, bool morph = true) const;
 
-    // Antal vågformer som Morph av hoppar mellan (1..numFrames): Basic 4 (sinus, triangel, såg, fyrkant), övriga inbyggda 16, en tabell av
+    // Antal vågformer som Morph av hoppar mellan (1..frameCount): Basic 4 (sinus, triangel, såg, fyrkant), övriga inbyggda 16, en tabell av
     // ljud så många cykler filen hade (en enkel cykel 1). Sparas med tabellen, så att ett projekt låter likadant när det laddas om.
     int getSteps() const { return steps; }
-    void setSteps (int count) { steps = juce::jlimit (1, numFrames, count); }
+    void setSteps (int count) { steps = juce::jlimit (1, frameCount, count); }
+    int getFrameCount() const { return frameCount; } // 16 för inbyggda tabeller, upp till maxFrames för egna
     int stepFrame (float position) const; // frame som Morph av spelar vid positionen
 
     // En frame utan band-begränsning (för gränssnittets bild), frameSize samples.
@@ -47,13 +49,14 @@ public:
 private:
     const float* frameData (int level, int frame) const
     {
-        return data.data() + ((size_t) level * numFrames + (size_t) frame) * (frameSize + 1);
+        return data.data() + ((size_t) level * frameCount + (size_t) frame) * (frameSize + 1);
     }
 
     // Skriver alla mip-nivåer för en frame ur ett spektrum (re/im-par, bin h på plats 2h och 2h+1).
     void storeFrame (int frame, std::vector<float>& spectrum);
 
     juce::String name;
+    int frameCount = numFrames;
     int steps = numFrames;
     std::vector<float> data; // [nivå][frame][frameSize + 1], sista sampelt = första (för interpolation)
 };
@@ -81,11 +84,11 @@ namespace Wavetables
     // Mappen med egna tabeller (WAV-filer, med undermappar som kategorier): Dokument\Kickbase\Wavetables.
     juce::File libraryFolder();
 
-    // En tabell av ljud (som i Serum): en fil med cykler om 2048 samples blir upp till 16 frames
-    // som POS sveper igenom; en kort fil räknas som en enda cykel. `framesOut` får de 16 frames
-    // (numFrames * frameSize) som tabellen byggdes av, så att den kan sparas i projektet.
+    // En tabell av ljud (som i Serum): en fil med cykler om 2048 samples blir upp till 256 frames
+    // (så många cykler filen har) som POS sveper igenom; en kort fil räknas som en enda cykel. `framesOut` får frames
+    // (antal * frameSize) som tabellen byggdes av, så att den kan sparas i projektet.
     std::unique_ptr<Wavetable> fromAudio (const std::vector<float>& mono, const juce::String& name, std::vector<float>& framesOut, int cycleHint = 0); // cycleHint 0 = gissa cykellängd (256-4096) ur skarvarna
-    std::unique_ptr<Wavetable> fromFrames (const juce::String& name, const std::vector<float>& frames, int steps = Wavetable::numFrames);
+    std::unique_ptr<Wavetable> fromFrames (const juce::String& name, const std::vector<float>& frames, int steps = Wavetable::maxFrames); // antal frames = frames.size() / frameSize (högst maxFrames)
 }
 
 // Bakgrundstråden som bygger tabeller som ljudtråden bett om men som inte är klara. Hålls av pluginets processor (delad, så att

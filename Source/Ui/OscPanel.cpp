@@ -142,9 +142,12 @@ void WavetableView::paint (juce::Graphics& g)
     };
 
     // Bakifrån och fram, så att de främre ritas över.
-    for (int f = Wavetable::numFrames - 1; f >= 0; --f)
+    const auto frameCount = table.getFrameCount();
+    const auto drawn = std::min (frameCount, Wavetable::numFrames); // 256 frames ritas som 16 jämnt utspridda
+    for (int k = drawn - 1; k >= 0; --k)
     {
-        const auto z = (float) f / (Wavetable::numFrames - 1);
+        const auto f = (int) std::lround ((double) k * (frameCount - 1) / (drawn - 1));
+        const auto z = (float) f / (frameCount - 1);
         const auto* data = table.displayFrame (f);
         auto wave = [data] (double phase) { return data[juce::jlimit (0, Wavetable::frameSize - 1, (int) (phase * Wavetable::frameSize))]; };
         g.setColour (accent.withAlpha (0.10f + 0.12f * (1.0f - z)));
@@ -160,7 +163,7 @@ void WavetableView::paint (juce::Graphics& g)
         const auto warped = InstrumentSynth::warpPhase (mode == WarpMode::fm ? WarpMode::off : mode, warpAmount, phase, 0.0f);
         return table.sample (position, warped, 512.0, lastMorph);
     };
-    const auto z = lastMorph ? position : (float) table.stepFrame (position) / (Wavetable::numFrames - 1); // utan Morph ligger kurvan på en av vågformerna
+    const auto z = lastMorph ? position : (float) table.stepFrame (position) / (frameCount - 1); // utan Morph ligger kurvan på en av vågformerna
     const auto path = pathFor (current, z, 1.0f);
     g.setColour (accent.withAlpha (0.3f));
     g.strokePath (path, juce::PathStrokeType (5.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));

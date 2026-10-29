@@ -9,9 +9,10 @@ namespace
 }
 
 //==============================================================================
-Wavetable::Wavetable (juce::String nameIn, const Shape& shape, int analysisOrder) : name (std::move (nameIn))
+Wavetable::Wavetable (juce::String nameIn, const Shape& shape, int analysisOrder, int frameCountIn)
+    : name (std::move (nameIn)), frameCount (juce::jlimit (2, maxFrames, frameCountIn)), steps (frameCount)
 {
-    data.assign ((size_t) numLevels * numFrames * (frameSize + 1), 0.0f);
+    data.assign ((size_t) numLevels * frameCount * (frameSize + 1), 0.0f);
 
     const int analysisSize = 1 << analysisOrder;
     juce::dsp::FFT analysis (analysisOrder);
@@ -19,9 +20,9 @@ Wavetable::Wavetable (juce::String nameIn, const Shape& shape, int analysisOrder
 
     std::vector<float> big ((size_t) analysisSize * 2), spectrum ((size_t) frameSize * 2);
 
-    for (int f = 0; f < numFrames; ++f)
+    for (int f = 0; f < frameCount; ++f)
     {
-        const auto position = (double) f / (numFrames - 1);
+        const auto position = (double) f / (frameCount - 1);
 
         // Spektrum av formen, utan DC.
         for (int i = 0; i < analysisSize; ++i)
@@ -89,7 +90,7 @@ void Wavetable::storeFrame (int f, std::vector<float>& full)
 
         // Samma skala på alla nivåer (toppen på den fulla vågformen blir 1).
         const auto scale = peak > 0.0f ? 1.0f / peak : 0.0f;
-        auto* out = data.data() + ((size_t) level * numFrames + (size_t) f) * (frameSize + 1);
+        auto* out = data.data() + ((size_t) level * frameCount + (size_t) f) * (frameSize + 1);
         for (int i = 0; i < frameSize; ++i)
             out[i] = small[(size_t) i] * scale;
         out[frameSize] = out[0];
@@ -101,7 +102,7 @@ int Wavetable::stepFrame (float position) const
     if (steps <= 1)
         return 0;
     const auto step = (int) std::lround (juce::jlimit (0.0f, 1.0f, position) * (float) (steps - 1));
-    return std::min (numFrames - 1, (int) std::lround ((double) step * (numFrames - 1) / (steps - 1)));
+    return std::min (frameCount - 1, (int) std::lround ((double) step * (frameCount - 1) / (steps - 1)));
 }
 
 float Wavetable::sample (float position, double phase, double maxHarmonicsNow, bool morph) const
@@ -124,8 +125,8 @@ float Wavetable::sample (float position, double phase, double maxHarmonicsNow, b
     if (! morph)
         return read (stepFrame (position));
 
-    const auto framePosition = juce::jlimit (0.0f, 1.0f, position) * (numFrames - 1);
-    const auto frame0 = std::min (numFrames - 2, (int) framePosition);
+    const auto framePosition = juce::jlimit (0.0f, 1.0f, position) * (frameCount - 1);
+    const auto frame0 = std::min (frameCount - 2, (int) framePosition);
     const auto frameMix = framePosition - (float) frame0;
 
     const auto a = read (frame0);
@@ -667,14 +668,15 @@ namespace Wavetables
 
     std::unique_ptr<Wavetable> fromFrames (const juce::String& name, const std::vector<float>& frames, int steps)
     {
-        constexpr int size = Wavetable::frameSize, numFrames = Wavetable::numFrames;
-        if (frames.size() < (size_t) (size * numFrames))
+        constexpr int size = Wavetable::frameSize;
+        const auto count = std::min (Wavetable::maxFrames, (int) (frames.size() / size));
+        if (count < 2)
             return nullptr;
 
-        auto table = std::make_unique<Wavetable> (name, [&frames] (double position, double phase)
+        auto table = std::make_unique<Wavetable> (name, [&frames, count] (double position, double phase)
         {
-            const auto framePosition = juce::jlimit (0.0, 1.0, position) * (numFrames - 1);
-            const auto f0 = std::min (numFrames - 2, (int) framePosition);
+            const auto framePosition = juce::jlimit (0.0, 1.0, position) * (count - 1);
+            const auto f0 = std::min (count - 2, (int) framePosition);
             const auto mix = framePosition - f0;
             const auto index = phase * size;
             const auto i0 = juce::jlimit (0, size - 1, (int) index), i1 = (i0 + 1) % size;
@@ -685,7 +687,7 @@ namespace Wavetables
                 return d[i0] + (d[i1] - d[i0]) * fraction;
             };
             return read (f0) * (1.0 - mix) + read (f0 + 1) * mix;
-        });
+        }, 13, count);
         table->setSteps (steps);
         return table;
     }
@@ -726,20 +728,22 @@ namespace Wavetables
 
     std::unique_ptr<Wavetable> fromAudio (const std::vector<float>& mono, const juce::String& name, std::vector<float>& framesOut, int cycleHint)
     {
-        constexpr int size = Wavetable::frameSize, numFrames = Wavetable::numFrames;
+        constexpr int size = Wavetable::frameSize;
         const auto length = (int) mono.size();
         if (length < 16)
             return nullptr;
         const auto cycle = cycleHint > 0 ? cycleHint : detectCycleLength (mono);
 
+        // En enda cykel fyller de 16 frames en inbyggd tabell har; annars blir det en frame per cykel (högst maxFrames).
+        const auto cycles = length / cycle;
+        const auto numFrames = length >= 2 * cycle ? std::min (Wavetable::maxFrames, cycles) : Wavetable::numFrames;
         framesOut.assign ((size_t) (size * numFrames), 0.0f);
         auto steps = 1; // en enda cykel: Morph av har bara en vågform att spela
 
         if (length >= 2 * cycle)
         {
             // Cykler om `cycle` samples (Serum: 2048): frames väljs jämnt över filen och görs om till 1024 samples.
-            const auto cycles = length / cycle;
-            steps = std::min (numFrames, cycles);
+            steps = numFrames;
             const auto ratio = (double) cycle / size;
             for (int f = 0; f < numFrames; ++f)
             {

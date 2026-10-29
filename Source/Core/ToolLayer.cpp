@@ -1508,7 +1508,7 @@ var ToolLayer::editWavetableHarmonics (const var& args)
         edits.push_back (edit);
     }
 
-    const auto frame = args["frame"].isInt() || args["frame"].isDouble() ? juce::jlimit (0, Wavetable::numFrames - 1, (int) args["frame"]) : -1;
+    const auto frame = args["frame"].isInt() || args["frame"].isDouble() ? juce::jlimit (0, Wavetable::maxFrames - 1, (int) args["frame"]) : -1;
     const auto normalise = args.hasProperty ("normalise") ? (bool) args["normalise"] : true;
     if (! processor.editWavetable (layer, osc, frame, edits, normalise))
         return fail ("Could not edit this oscillator's table (it has no wavetable to edit: a sample or an unavailable table).");
@@ -1533,7 +1533,7 @@ var ToolLayer::analyseWavetable (const var& args)
     if (! processor.wavetableSource (layer, osc, frames, steps, name))
         return fail ("This oscillator has no wavetable to read (a sample or an unavailable table).");
 
-    const auto frame = juce::jlimit (0, Wavetable::numFrames - 1, args.hasProperty ("frame") ? (int) args["frame"] : 0);
+    const auto frame = juce::jlimit (0, juce::jmax (1, (int) (frames.size() / Wavetable::frameSize)) - 1, args.hasProperty ("frame") ? (int) args["frame"] : 0);
     const auto count = juce::jlimit (1, 64, args.hasProperty ("count") ? (int) args["count"] : 16);
     std::vector<float> amp, phase;
     WavetableEdit::analyse (frames.data() + (size_t) frame * Wavetable::frameSize, count, amp, phase);

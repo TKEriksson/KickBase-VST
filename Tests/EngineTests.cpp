@@ -774,7 +774,7 @@ namespace
 
         std::vector<float> frames;
         auto table = Wavetables::fromAudio (mono, "test", frames, 2048); // fyrkanterna har inga släta skarvar att gissa längden ur
-        check (table != nullptr && frames.size() == (size_t) (Wavetable::frameSize * Wavetable::numFrames), "tabellen byggs av 4 cykler");
+        check (table != nullptr && frames.size() == (size_t) (Wavetable::frameSize * 4), "tabellen byggs av 4 cykler: en frame per cykel");
         if (table == nullptr)
             return;
 
@@ -842,13 +842,34 @@ namespace
             auto peakBefore = 0.0f, peakAfter = 0.0f;
             for (int i = 0; i < Wavetable::frameSize; ++i)
             {
-                peakBefore = std::max (peakBefore, std::abs (frames[(size_t) Wavetable::frameSize * 5 + (size_t) i]));
-                peakAfter = std::max (peakAfter, std::abs (edited[(size_t) Wavetable::frameSize * 5 + (size_t) i]));
+                peakBefore = std::max (peakBefore, std::abs (frames[(size_t) Wavetable::frameSize * 2 + (size_t) i]));
+                peakAfter = std::max (peakAfter, std::abs (edited[(size_t) Wavetable::frameSize * 2 + (size_t) i]));
             }
             check (peakAfter > 0.0f && std::abs (peakAfter - peakBefore) < 1.0e-3f || peakBefore < 1.0e-3f, "WavetableEdit: normalisering behåller toppvärdet", peakAfter);
         }
         auto fourSteps = Wavetables::fromFrames ("test", frames, 4);
-        check (fourSteps != nullptr && fourSteps->getSteps() == 4 && restored->getSteps() == Wavetable::numFrames, "fromFrames: antalet steg följer med, saknas det blir det 16");
+        check (fourSteps != nullptr && fourSteps->getSteps() == 4 && restored->getSteps() == 4 && restored->getFrameCount() == 4, "fromFrames: antalet steg följer med, saknas det blir det antalet frames");
+
+        // Fler än 16 frames (Serum: 64 och 256 cykler om 2048): en frame per cykel, högst 256, och längden gissas rätt.
+        for (const auto cycles : { 64, 256, 300 })
+        {
+            std::vector<float> many;
+            for (int c = 0; c < cycles; ++c)
+                for (int i = 0; i < 2048; ++i)
+                    many.push_back (std::sin (juce::MathConstants<float>::twoPi * (float) (1 + c % 7) * (float) i / 2048.0f));
+            std::vector<float> manyFrames;
+            auto big = Wavetables::fromAudio (many, "many", manyFrames);
+            const auto expected = std::min (cycles, Wavetable::maxFrames);
+            check (big != nullptr && big->getFrameCount() == expected && manyFrames.size() == (size_t) expected * Wavetable::frameSize
+                       && big->getSteps() == expected,
+                   "många cykler: en frame per cykel, högst 256", (float) cycles);
+            if (big != nullptr && cycles == 64)
+            {
+                // Frame 10 är den elfte cykeln (1 + 10 % 7 = 4 perioder per varv).
+                const auto at = big->sample (10.0f / 63.0f, 0.25 / 4.0, 512.0), zero = big->sample (10.0f / 63.0f, 0.0, 512.0);
+                check (at > 0.9f && std::abs (zero) < 0.05f, "många cykler: rätt frame vid rätt position", at);
+            }
+        }
 
         check (Wavetables::fromAudio ({ 0.0f, 0.0f, 0.0f }, "tom", singleFrames) == nullptr, "för kort eller tyst ljud ger ingen tabell");
         check (Wavetables::names().size() == Wavetables::listSize() && Wavetables::names()[Wavetables::userIndex()] == "User WAV"

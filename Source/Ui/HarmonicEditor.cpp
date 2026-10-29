@@ -12,7 +12,7 @@ HarmonicEditor::HarmonicEditor (PluginBase& p, int layerIn, int oscIn, juce::Col
     available = processor.wavetableSource (layer, osc, baseline, steps, tableName);
 
     frameBox.addItem ("All frames", 1);
-    for (int f = 0; f < Wavetable::numFrames; ++f)
+    for (int f = 0; f < (int) (baseline.size() / Wavetable::frameSize); ++f)
         frameBox.addItem ("Frame " + juce::String (f + 1), f + 2);
     frameBox.setSelectedId (1, juce::dontSendNotification);
     frameBox.onChange = [this] { refreshBackdrop(); refreshPreview(); changed(); repaint(); };

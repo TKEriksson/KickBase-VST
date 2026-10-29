@@ -210,13 +210,13 @@ bool PluginBase::loadUserTable (int layer, int osc, const juce::File& file)
     std::vector<float> mono;
     if (file.isDirectory())
     {
-        // En mapp med enkelcykel-filer (som AKWF): varje fil sträcks till en cykel om 2048 samples, och högst 16 av dem väljs jämnt.
+        // En mapp med enkelcykel-filer (som AKWF): varje fil sträcks till en cykel om 2048 samples, och högst 256 av dem väljs jämnt.
         auto files = file.findChildFiles (juce::File::findFiles, false, "*.wav;*.aif;*.aiff;*.flac");
         std::sort (files.begin(), files.end(), [] (const juce::File& a, const juce::File& b) { return a.getFileName().compareNatural (b.getFileName()) < 0; });
         if (files.size() < 2)
             return false;
 
-        const auto count = std::min (16, files.size());
+        const auto count = std::min (Wavetable::maxFrames, files.size());
         for (int i = 0; i < count; ++i)
         {
             std::vector<float> one;
@@ -231,7 +231,7 @@ bool PluginBase::loadUserTable (int layer, int osc, const juce::File& file)
             }
         }
     }
-    else if (! readMono (file, mono, 1 << 20)) // 1 Mi samples: 256 cykler om 4096 räcker för 16 frames
+    else if (! readMono (file, mono, 1 << 20)) // 1 Mi samples: 256 cykler om 4096 räcker för 256 frames
         return false;
 
     std::vector<float> frames;
@@ -265,7 +265,7 @@ bool PluginBase::wavetableSource (int layer, int osc, std::vector<float>& frames
     const auto choice = (int) std::lround (parameter->convertFrom0to1 (parameter->getValue()));
     if (choice == Wavetables::userIndex())
     {
-        if (userTable (layer, osc) == nullptr || userFrames[(size_t) slot].size() != (size_t) Wavetable::numFrames * Wavetable::frameSize)
+        if (userTable (layer, osc) == nullptr || userFrames[(size_t) slot].size() < (size_t) 2 * Wavetable::frameSize)
             return false;
         frames = userFrames[(size_t) slot];
         steps = userTable (layer, osc)->getSteps();
@@ -306,7 +306,7 @@ bool PluginBase::installWavetable (int layer, int osc, std::vector<float> frames
 bool PluginBase::editWavetable (int layer, int osc, int frame, const std::vector<WavetableEdit::Edit>& edits, bool normalise)
 {
     std::vector<float> frames;
-    auto steps = Wavetable::numFrames;
+    auto steps = Wavetable::maxFrames;
     juce::String name;
     if (edits.empty() || ! wavetableSource (layer, osc, frames, steps, name))
         return false;
@@ -499,7 +499,7 @@ void PluginBase::userTablesFromValueTree (const juce::ValueTree& tree, int intoL
             frames[i] = (float) in[i] / 32767.0f;
 
         const auto name = child["name"].toString();
-        if (auto table = Wavetables::fromFrames (name, frames, (int) child.getProperty ("steps", Wavetable::numFrames)))
+        if (auto table = Wavetables::fromFrames (name, frames, (int) child.getProperty ("steps", Wavetable::maxFrames)))
         {
             setUserTable (layer * ParamID::oscsPerLayer + osc, std::move (table), std::move (frames), name);
             found[(size_t) (layer * ParamID::oscsPerLayer + osc)] = true;
