@@ -144,3 +144,6 @@ Obs: nya parametrar och modulationskällor sist (ENGINEERING.md). Stor punkt; Ar
 ### MAX LENGTH visas som gånger (Tobias 29 okt kväll, ändrar G1)
 - Visa som multiplikator "x1" ... "x10" (max x10 räcker, 30 s utgår = ingen intervallrisk), plus resulterande längd bredvid/under med "=" (t.ex. "x2 = A 100 ms · D 4 s · R 0.6 s").
 - Dropdown per grupp kvarstår (ENV 1 standard).
+
+### AUTO FIX till 0.5 (Tobias 29 okt kväll)
+- Mätdelen (`AutoFix.cpp`) klar; UI, APPLY och koppling från analyskörning görs i 0.5 tillsammans med GATE FX. Arbetare 2:s oincheckade ändringar (FX punkt 4 m.m., worktree KickBase-VST-w2) följer med 0.5.
