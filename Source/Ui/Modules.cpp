@@ -1176,11 +1176,11 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
                           param (p, id (F::pitchEnvDecay)), nullptr, false, juce::Colour (0xffe6c23c), {}, EnvelopeView::timeCapOf (p.apvts, layer, F::pitchEnvDecay) });
 
     envelope.addHandle ({ [this] { return juce::Point<float> (std::max (0.0015f, current.envAttackMs * 0.001f), current.envAmount / 8.0f); },
-                          param (p, id (F::envAttack)), param (p, id (F::envAmount)), false, layerAccent });
+                          param (p, id (F::envAttack)), param (p, id (F::envAmount)), false, layerAccent , {}, {}, [this] { return current.filterOn && current.envAmount > 0.0f; } });
     envelope.addHandle ({ [this] {
                               const auto t = current.envAttackMs * 0.001 + current.envDecayMs * 0.001 / 3.0;
                               return juce::Point<float> ((float) t, InstrumentSynth::filterEnvelopeAt (current, t) * current.envAmount / 8.0f); },
-                          param (p, id (F::envDecay)), nullptr, false, layerAccent, {}, EnvelopeView::timeCapOf (p.apvts, layer, F::envDecay) });
+                          param (p, id (F::envDecay)), nullptr, false, layerAccent, {}, EnvelopeView::timeCapOf (p.apvts, layer, F::envDecay) , [this] { return current.filterOn && current.envAmount > 0.0f; } });
 
     envelope.addHandle ({ [this] { return juce::Point<float> (current.attackMs * 0.001f, 1.0f); },
                           param (p, id (F::attack)), nullptr, false, Theme::text, {}, EnvelopeView::timeCapOf (p.apvts, layer, F::attack) });

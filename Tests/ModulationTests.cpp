@@ -506,7 +506,7 @@ namespace
         auto* maxTime = processor.apvts.getRawParameterValue (ParamID::bass (0, InstrumentField::maxTime));
         check (maxTime != nullptr && (int) maxTime->load() == ParamID::maxTimeDefault, "maxTime har standardsteget");
         check (ParamID::maxTimeMs (ParamID::maxTimeDefault) == 1000, "standardsteget är 1 s", (float) ParamID::maxTimeMs (ParamID::maxTimeDefault));
-        const float expected[] = { 50.0f, 2000.0f, 300.0f, 1000.0f, 1000.0f }; // attack, decay, release, pitch-env decay, filter-env decay
+        const float expected[] = { 50.0f, 2000.0f, 300.0f, 1000.0f, 1000.0f, 400.0f }; // attack, decay, release, pitch-env decay, filter-env decay, FM env time
         for (int i = 0; i < ParamID::numTimeCaps; ++i)
             check (ParamID::timeCapMs (ParamID::timeCapSpec (i), ParamID::maxTimeDefault) == expected[i], "tidstaket vid standard = dagens max", ParamID::timeCapMs (ParamID::timeCapSpec (i), ParamID::maxTimeDefault));
     }

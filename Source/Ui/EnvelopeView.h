@@ -31,6 +31,7 @@ public:
         juce::Colour colour;
         std::function<juce::RangedAudioParameter*()> xParamNow; // om satt: den parameter som styr x just nu (t.ex. ms eller Sync), går före xParam
         std::function<float()> xMax; // om satt: högsta normaliserade x-värdet vid dragning (tidstaket från MAX-knappen)
+        std::function<bool()> visible; // om satt och false: handtaget ritas inte och kan inte tas (t.ex. filter-envelopen när AMOUNT är 0 eller filtret är av)
     };
 
     /** Taket för en tidsparameter (attack, decay, release ...) som normaliserat värde, enligt instrumentets MAX-steg. */

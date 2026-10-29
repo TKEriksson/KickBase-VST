@@ -203,13 +203,14 @@ namespace ParamID
         return steps[step < 0 ? 0 : step >= numMaxTimeSteps ? numMaxTimeSteps - 1 : step];
     }
     struct TimeCapSpec { InstrumentField field; float legacyMax, min, centre; };
-    constexpr int numTimeCaps = 5;
+    constexpr int numTimeCaps = 6;
     inline const TimeCapSpec& timeCapSpec (int i)
     {
         static const TimeCapSpec specs[numTimeCaps] {
             { InstrumentField::attack, 50.0f, 0.0f, 5.0f }, { InstrumentField::decay, 2000.0f, 5.0f, 200.0f },
             { InstrumentField::release, 300.0f, 1.0f, 30.0f }, { InstrumentField::pitchEnvDecay, 1000.0f, 5.0f, 80.0f },
-            { InstrumentField::envDecay, 1000.0f, 5.0f, 150.0f } };
+            { InstrumentField::envDecay, 1000.0f, 5.0f, 150.0f },
+            { InstrumentField::fmEnvTime, 400.0f, 1.0f, 60.0f } };
         return specs[i];
     }
     inline float timeCapMs (const TimeCapSpec& spec, int step) { return spec.legacyMax * maxTimeMs (step) / 1000.0f; }

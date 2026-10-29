@@ -194,12 +194,12 @@ void EnvPage::rebuild()
                               Modulation::instrumentSource (layer, Modulation::instrumentSources + 1));
         view->addCurve ({ [this] (double t) { return InstrumentSynth::filterEnvelopeAt (current, t) * current.envAmount / 8.0f; }, accent, true, "FILTER" });
         view->addHandle ({ [this] { return juce::Point<float> (std::max (0.0015f, current.envAttackMs * 0.001f), current.envAmount / 8.0f); }, param (processor, layer, F::envAttack), param (processor, layer, F::envAmount), false, accent,
-                           pick (1, F::envAttack, F::filterEnvAttackSync) });
+                           pick (1, F::envAttack, F::filterEnvAttackSync) , {}, [this] { return current.filterOn && current.envAmount > 0.0f; } });
         view->addHandle ({ [this]
                            {
                                const auto t = current.envAttackMs * 0.001 + current.envDecayMs * 0.001 / 3.0;
                                return juce::Point<float> ((float) t, InstrumentSynth::filterEnvelopeAt (current, t) * current.envAmount / 8.0f); },
-                           param (processor, layer, F::envDecay), nullptr, false, accent, pick (1, F::envDecay, F::filterEnvDecaySync), EnvelopeView::timeCapOf (processor.apvts, layer, F::envDecay) });
+                           param (processor, layer, F::envDecay), nullptr, false, accent, pick (1, F::envDecay, F::filterEnvDecaySync), EnvelopeView::timeCapOf (processor.apvts, layer, F::envDecay) , [this] { return current.filterOn && current.envAmount > 0.0f; } });
         addModeButton (1, "FILTER ENV TIME - On: attack and decay are note lengths (1/16, 1/4 ... 4 bars) that follow the tempo; off: milliseconds. The handles step through the note lengths.");
     }
 

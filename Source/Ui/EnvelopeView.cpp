@@ -34,6 +34,8 @@ float EnvelopeView::signature() const
     {
         const auto p = handle.position();
         sum += p.x * 7919.0f + p.y * 104729.0f;
+        if (handle.visible && ! handle.visible())
+            sum += 31337.0f;
     }
     if (noteOff)
         sum += (float) noteOff().seconds * 977.0f;
@@ -170,6 +172,8 @@ void EnvelopeView::paint (juce::Graphics& g)
     // Handtagen.
     for (int i = 0; i < (int) handles.size(); ++i)
     {
+        if (handles[(size_t) i].visible && ! handles[(size_t) i].visible())
+            continue;
         const auto point = handlePoint (handles[(size_t) i]);
         const auto active = i == hoveredHandle || i == draggedHandle;
         const auto radius = active ? handleRadius + 2.0f : handleRadius;
@@ -218,6 +222,8 @@ int EnvelopeView::handleAt (juce::Point<float> point) const
     auto bestDistance = grabDistance;
     for (int i = 0; i < (int) handles.size(); ++i)
     {
+        if (handles[(size_t) i].visible && ! handles[(size_t) i].visible())
+            continue;
         const auto distance = handlePoint (handles[(size_t) i]).getDistanceFrom (point);
         if (distance < bestDistance)
         {
