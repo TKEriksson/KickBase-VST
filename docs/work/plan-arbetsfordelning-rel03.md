@@ -158,3 +158,9 @@ Obs: nya parametrar och modulationskällor sist (ENGINEERING.md). Stor punkt; Ar
 
 
 - (Tobias 29 okt, till 0.5) ENV-fliken ([EnvPage.cpp:102-241](Source/Ui/EnvPage.cpp)) ska vara samma envelopes som i INSTR-fliken och se likadana ut: samma knappar/parametrar inkl. HOLD (när den finns), och MAX LENGTH (dropdown + xN + = A/D/R) för alla fyra (ENV 1, FILTER, ENV 2, ENV 3), inte bara en visnings-DURATION-knapp (EnvPage.cpp:121-134, bara vyn). Klargör med Tobias om INSTR-fliken och ENV-fliken ska dela kod/komponent.
+
+- (Tobias 29 okt, ALLT i 0.5) GLOBALA ENV: ENV-fliken blir 4 globala envelopes (ENV 1-4) som rader som LFO-fliken, inte kopplade till instrument. MAX LENGTH (xN, max x10) följer med envelopen.
+  - Högerklick på envelope-grafen i INSTR-fliken: kopiera till INSTR 2/3/4.., kopiera till GLOBAL ENV plats 1-4; GET FROM GLOBAL 1-4; GET TO PITCH / FILTER ENV / AMP ENV.
+  - Dra en global ENV till mål: pekaren grön om släpp går, röd annars; rattar/grupper som tar emot ENV får grön border under drag. Släpp på INSTR-graf frågar vilken (AMP/PITCH/FILTER). Dra även till knobbgrupper (Arbetare 1 listar vilka grupper som kan ta emot ENV).
+  - LFO/makro på ENV:ets egna rattar (automation), sist.
+  - Öppna frågor till Tobias: kopia (föreslaget) eller live-länk; gamla per-instrument ENV 2/3 konverteras till globala vid laddning, gamla params kvar (nya sist, ENGINEERING.md); varje ton startar sin egen kopia av den globala ENV.
