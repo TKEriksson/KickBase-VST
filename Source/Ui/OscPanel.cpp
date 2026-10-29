@@ -450,6 +450,18 @@ void OscPanel::chooseWavFile()
                           });
 }
 
+// En mapp med en WAV per frame (som Disting): hela mappen blir en tabell.
+void OscPanel::chooseWavFolder()
+{
+    chooser = std::make_unique<juce::FileChooser> ("Choose a folder of WAV files (one per frame)", Wavetables::libraryFolder());
+    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
+                          [this] (const juce::FileChooser& fc)
+                          {
+                              if (fc.getResult().isDirectory())
+                                  loadFromLibrary (fc.getResult());
+                          });
+}
+
 void OscPanel::loadFromLibrary (const juce::File& fileOrFolder)
 {
     if (processor.loadUserTable (layer, osc, fileOrFolder))
@@ -521,6 +533,7 @@ void OscPanel::showTableMenu()
         menu.addSubMenu ("LIBRARY (your waves)", libraryMenu);
     }
     menu.addItem (900, "Load WAV file ...");
+    menu.addItem (902, "Load folder of WAVs ...");
     menu.addItem (901, "Open the library folder");
     if (current == Wavetables::userIndex())
         menu.addItem (Wavetables::userIndex() + 1, currentTableName() + " (loaded)", true, true);
@@ -532,6 +545,8 @@ void OscPanel::showTableMenu()
                                 return;
                             if (result == 900)
                                 safe->chooseWavFile();
+                            else if (result == 902)
+                                safe->chooseWavFolder();
                             else if (result == 901)
                             {
                                 Wavetables::libraryFolder().createDirectory();

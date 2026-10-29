@@ -61,6 +61,7 @@ private:
     void showTableMenu();
     void loadFromLibrary (const juce::File& fileOrFolder);
     void chooseWavFile();
+    void chooseWavFolder();
     juce::String currentTableName() const;
     std::vector<juce::File> menuFiles; // biblioteksval i menyn (id 1000 +)
     // Fas S5: OSC-presets (.oscpreset) för just den här oscillatorn.
