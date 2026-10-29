@@ -174,3 +174,4 @@ Obs: nya parametrar och modulationskällor sist (ENGINEERING.md). Stor punkt; Ar
 - Förslag: plattan är ett andra handtag på de två valda rattarna (rattarna rör sig med), inte en separat modulering ovanpå.
 - Fyra kvadranter (olika saker under/bakom axlarna): senare, bara om det behövs; X/Y-tilldelning täcker det mesta.
 - Öppen fråga: ska plattan ligga bredvid rattarna eller ersätta filterdiagrammet när den visas?
+- Placering (Tobias): en knapp i övre högra hörnet på varje filterdel (FILTER 1 / FILTER 2) som öppnar XY-plattan. Svarar på frågan ovan: plattan öppnas via knappen, inte permanent bredvid rattarna.
