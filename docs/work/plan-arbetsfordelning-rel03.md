@@ -226,3 +226,11 @@ Beslut: full Bezier byggs som ett eget Bezier-läge. Standardläget är ett hand
 ### Gross Beat: snap till takten (29 okt, Tobias)
 Kurvredigeraren ska ha snap: punkter och handtag låser sig till valfri del av takten när man drar (av, 1/4, 1/8, 1/16, 1/3, 1/6 m.fl., som rutnätsknapparna vid Gross Beats kurva). Snap gäller x (tid) och bör finnas för y (volym) också, både i handtagsläget och Bezier-läget, och med flervals (hela markeringen flyttas i steg). Alt/Ctrl hållen tillfälligt stänger av snap. Alla Gross Beat-presets i `gate-presets.json` ligger på ett rutnät (1/8, 1/16 eller 1/4), så de kan byggas exakt med snap.
 - Y-axeln i bilderna är märkt 0 till -8; nivåerna i Trance Gt 4 och Saw Gate 2 ligger på -1/-3/-5 (0.875/0.625/0.375). Kolla skalan (dB eller linjär) när redigeraren byggs.
+
+## Envelope per lager (29 okt, Tobias)
+
+- Varje oscillator (OSC 1-3, Sample, FM) får en egen envelope, inspirerad av Toxic Biohazard (egen envelope per oscillator).
+- Knobbarna i OSC-fliken är redan fulla. Förslag: växlare WAVE | ENV i displayen till vänster (där wavetable visas nu), per oscillator. WAVE är standard.
+- ENV-vyn återanvänder kurvredigeraren från Gross Beat (punkter, mittpunkt, snap, flerval).
+- Senare, vid behov: en ENVELOPES-vy som visar alla lagers envelopes bredvid varandra.
+- Öppet: kolla hur det förhåller sig till ENV 2/3 och amp-envelopen på INSTR-fliken innan det byggs.
