@@ -356,9 +356,10 @@ void FilterPage::refresh (Block& block, bool isSecond)
 void FilterPage::layoutBlock (Block& block, juce::Rectangle<int> area)
 {
     block.frame = area;
-    auto content = area.withTrimmedTop (ControlGroups::titleHeight + 2).reduced (4, 0);
+    // Strömknappen (22 px) räcker 5 px under titelraden: innehållet börjar 6 px lägre när blocket har en.
+    auto content = area.withTrimmedTop (ControlGroups::titleHeight + 2 + (block.power != nullptr ? 6 : 0)).reduced (4, 0);
     if (block.power != nullptr)
-        block.power->setBounds (area.getX() + 6, area.getY() - 1, 16, ControlGroups::titleHeight + 3);
+        block.power->setBounds (area.getX() + 6, area.getY() - 5, 22, 22); // minst 22 px hög, som övriga växlar (plan j.4)
 
     auto choices = content.removeFromLeft (104);
     const auto choiceHeight = juce::jmin (38, choices.getHeight() / 2);

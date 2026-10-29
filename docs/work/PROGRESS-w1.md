@@ -685,3 +685,6 @@ Arbetare 1, branch `instr-phase` från release-0.4 (6e006a1).
 - D1: SYNC/rate-listor ner till 1/32 och 1/64, tillagda sist (index oförändrade), visas sorterade (Components.cpp displayOrder/ChoiceComponent). Params.cpp timingSyncNames, InstrumentSynth.cpp syncBars, Effects.cpp syncNames, Sidechain.cpp lengthNames, Modulation.cpp rateNames. Test: ModulationTests testSyncListsKeepOldIndexes.
 - D2: TIMING OVERVIEW: MODE i namnraden, DELAY/LENGTH/CURVE på en rad, diagrammet högre (InstrTimingPanel.cpp layoutCell). NUDGE/START/POLARITY ligger på INSTR (PHASE-gruppen), inte i TIMING.
 - D3: FILTER on/off flyttad in i flikknappen FILTER (Modules.cpp addPower, plan (j)(1)). Ej gjort: (j)(4) Filter 2 strömknapp 16x15 px (FilterPanel.cpp ~365), (j)(3) knobstorlek ej verifierad, (f) steg 2 riktig sammansatt våg med zoom på INSTR saknas. Oklart om fxAmount-knoppen läses någonstans (PluginBase.cpp:103, Effects.cpp:454).
+
+## Uppgift E (Arbetare 1, 29 okt)
+- Filter 2-strömknappen 22x22 px (FilterPanel.cpp:360-362); blocket 2 innehåll 6 px lägre. fxAmount läses fortfarande medvetet: InstrumentProcessor.cpp:1021/1050, UI Modules.cpp:1156; ingen bugg.
