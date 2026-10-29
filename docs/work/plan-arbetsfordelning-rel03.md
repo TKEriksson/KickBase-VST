@@ -165,3 +165,4 @@ Obs: nya parametrar och modulationskällor sist (ENGINEERING.md). Stor punkt; Ar
   - LFO/makro på ENV:ets egna rattar (automation), sist.
   - Öppna frågor till Tobias: kopia (föreslaget) eller live-länk; gamla per-instrument ENV 2/3 konverteras till globala vid laddning, gamla params kvar (nya sist, ENGINEERING.md); varje ton startar sin egen kopia av den globala ENV.
   - KRAV: MAX LENGTH-inställningen (källa + xN) är en del av envelopen och följer med vid ALLA kopieringar/hämtningar/drag (INSTR<->GLOBAL, mellan instrument, GET TO AMP/PITCH/FILTER). Testa: kopiera ENV med x10, målet ska visa x10 och samma A/D/R.
+  - KRAV: alla rattar i varje global ENV ska ha "Create automation clip" (högerklick, finns redan i Components.h:12) och "Link to controller", precis som övriga rattar. Gäller även MAX LENGTH-rattarna och multiplikatorn.
