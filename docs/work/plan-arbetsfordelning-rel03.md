@@ -140,3 +140,7 @@ Obs: nya parametrar och modulationskällor sist (ENGINEERING.md). Stor punkt; Ar
 
 ### EDIT HARMONICS-knapp (Tobias 29 okt kväll, 0.4, task G6)
 - Knappen "Edit harmonics..." ska alltid synas i OSC-flikarna, i det lediga hörnet nere (under PHASE/UNISON/RAND), högre knapp med EDIT på rad 1 och HARMONICS på rad 2.
+
+### MAX LENGTH visas som gånger (Tobias 29 okt kväll, ändrar G1)
+- Visa som multiplikator "x1" ... "x10" (max x10 räcker, 30 s utgår = ingen intervallrisk), plus resulterande längd bredvid/under med "=" (t.ex. "x2 = A 100 ms · D 4 s · R 0.6 s").
+- Dropdown per grupp kvarstår (ENV 1 standard).
