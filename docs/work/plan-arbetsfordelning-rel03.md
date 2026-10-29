@@ -262,6 +262,6 @@ Kurvredigeraren ska ha snap: punkter och handtag låser sig till valfri del av t
 ## Randomize och Copy/Paste av sektioner (29 okt, Tobias: ta med)
 
 - Sektion = en flik/del av samma sort: OSC 1-3, SAMPLE, FM, FILTER 1-2, FX-platser m.fl. Copy/Paste mellan lika delar (OSC 1 till OSC 2, FILTER 1 till FILTER 2) och mellan presets. Mellan olika sorter är Paste grå.
-- Modulationer (LFO, ENV, macros) på sektionen följer med och kopplas till den nya platsen (förslag, bekräfta).
+- Modulationer (LFO, ENV, macros) på sektionen följer med och kopplas till den nya platsen (bekräftat av Tobias 29 okt).
 - Randomize per sektion och för hela ljudet, med procentruta (30 % = liten ändring, 100 % = allt). Lås per sektion så att t.ex. kick och SUB skyddas. Ångra (undo) måste fungera.
 - Nya parametrar och källor sist (docs/ENGINEERING.md).
