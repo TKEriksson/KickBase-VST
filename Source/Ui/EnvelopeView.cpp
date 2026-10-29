@@ -261,6 +261,17 @@ void EnvelopeView::mouseDown (const juce::MouseEvent& event)
             parameter->beginChangeGesture();
 }
 
+std::function<float()> EnvelopeView::timeCapOf (juce::AudioProcessorValueTreeState& apvts, int layer, InstrumentField field)
+{
+    auto* parameter = apvts.getParameter (ParamID::bass (layer, field));
+    auto* maxTime = apvts.getRawParameterValue (ParamID::bass (layer, InstrumentField::maxTime));
+    const auto* spec = ParamID::timeCapFor (field);
+    if (parameter == nullptr || maxTime == nullptr || spec == nullptr)
+        return {};
+
+    return [parameter, maxTime, spec] { return parameter->convertTo0to1 (ParamID::timeCapMs (*spec, (int) maxTime->load())); };
+}
+
 void EnvelopeView::mouseDrag (const juce::MouseEvent& event)
 {
     if (draggedHandle < 0)
@@ -272,7 +283,8 @@ void EnvelopeView::mouseDrag (const juce::MouseEvent& event)
     const auto fine = event.mods.isShiftDown() ? 0.2f : 1.0f; // shift = finjustering
 
     if (xOf (handle) != nullptr)
-        xOf (handle)->setValueNotifyingHost (juce::jlimit (0.0f, 1.0f, startX + delta.x / area.getWidth() * dragSensitivity * fine));
+        xOf (handle)->setValueNotifyingHost (juce::jlimit (0.0f, handle.xMax != nullptr ? handle.xMax() : 1.0f,
+                                                           startX + delta.x / area.getWidth() * dragSensitivity * fine));
 
     if (handle.yParam != nullptr)
     {

@@ -177,13 +177,13 @@ void EnvPage::rebuild()
         const auto gate = [this, thisLayer] { return noteOffOf (thisLayer, 0.4).seconds; };
         view->setNoteOff ([this, thisLayer] { return noteOffOf (thisLayer, 0.4); });
         view->addCurve ({ [this, gate] (double t) { return adsrAt (t, current.attackMs, current.decayMs, current.sustain, current.releaseMs, gate()); }, accent, true, "VOLUME" });
-        view->addHandle ({ [this] { return juce::Point<float> (current.attackMs * 0.001f, 1.0f); }, param (processor, layer, F::attack), nullptr, false, Theme::text, pick (0, F::attack, F::env1AttackSync) });
+        view->addHandle ({ [this] { return juce::Point<float> (current.attackMs * 0.001f, 1.0f); }, param (processor, layer, F::attack), nullptr, false, Theme::text, pick (0, F::attack, F::env1AttackSync), EnvelopeView::timeCapOf (processor.apvts, layer, F::attack) });
         view->addHandle ({ [this, gate]
                            {
                                const auto t = (current.attackMs + current.decayMs * 0.5f) * 0.001;
                                return juce::Point<float> ((float) t, adsrAt (t, current.attackMs, current.decayMs, current.sustain, current.releaseMs, gate())); },
-                           param (processor, layer, F::decay), param (processor, layer, F::sustain), false, Theme::text, pick (0, F::decay, F::env1DecaySync) });
-        view->addHandle ({ [this, gate] { return juce::Point<float> ((float) gate() + current.releaseMs * 0.001f, 0.0f); }, param (processor, layer, F::release), nullptr, false, Theme::text, pick (0, F::release, F::env1ReleaseSync) });
+                           param (processor, layer, F::decay), param (processor, layer, F::sustain), false, Theme::text, pick (0, F::decay, F::env1DecaySync), EnvelopeView::timeCapOf (processor.apvts, layer, F::decay) });
+        view->addHandle ({ [this, gate] { return juce::Point<float> ((float) gate() + current.releaseMs * 0.001f, 0.0f); }, param (processor, layer, F::release), nullptr, false, Theme::text, pick (0, F::release, F::env1ReleaseSync), EnvelopeView::timeCapOf (processor.apvts, layer, F::release) });
         addModeButton (0, "ENV 1 TIME - On: attack, decay and release are note lengths (1/16, 1/4 ... 4 bars) that follow the tempo; off: milliseconds. The handles step through the note lengths.");
     }
 
@@ -199,7 +199,7 @@ void EnvPage::rebuild()
                            {
                                const auto t = current.envAttackMs * 0.001 + current.envDecayMs * 0.001 / 3.0;
                                return juce::Point<float> ((float) t, InstrumentSynth::filterEnvelopeAt (current, t) * current.envAmount / 8.0f); },
-                           param (processor, layer, F::envDecay), nullptr, false, accent, pick (1, F::envDecay, F::filterEnvDecaySync) });
+                           param (processor, layer, F::envDecay), nullptr, false, accent, pick (1, F::envDecay, F::filterEnvDecaySync), EnvelopeView::timeCapOf (processor.apvts, layer, F::envDecay) });
         addModeButton (1, "FILTER ENV TIME - On: attack and decay are note lengths (1/16, 1/4 ... 4 bars) that follow the tempo; off: milliseconds. The handles step through the note lengths.");
     }
 

@@ -165,6 +165,8 @@ enum class InstrumentField
     subDelayMode, subLenSync, subDelayCount, subLenCount, fmDelayMode, fmLenSync, fmDelayCount, fmLenCount,
     // FX-matrisen: instrumentets send-belopp (0..1) till FX1..FX12, utöver fxChannel/fxAmount (läggs ihop). Registreras allra sist (addFxMatrixParams); fxSendToField (kanal).
     fxSendTo1, fxSendTo2, fxSendTo3, fxSendTo4, fxSendTo5, fxSendTo6, fxSendTo7, fxSendTo8, fxSendTo9, fxSendTo10, fxSendTo11, fxSendTo12,
+    // MAX TIME: gemensamt tak för tidsknobbarna (volym ATTACK/DECAY/RELEASE, filter-DECAY, pitch-DECAY) och ENV-diagrammets tidsaxel. Val 0-5 (250 ms..10 s), standard 1 s = dagens tak. Registreras allra sist (addMaxTimeParam).
+    maxTime,
     count
 };
 
@@ -192,6 +194,32 @@ namespace ParamID
     // FX-matrisen: kanal 0..11 = FX1..FX12. Kickens motsvarighet är kickFxSendToIds (samma ordning).
     constexpr int numFxSendTargets = 12;
     inline InstrumentField fxSendToField (int channel) { return (InstrumentField) ((int) InstrumentField::fxSendTo1 + channel); }
+    // MAX TIME: de fem tidsknobbarnas tak = legacyMax * maxTimeMs / 1000. Standard (1 s) ger exakt dagens tak. APVTS-intervallet är alltid 10x legacyMax; knobbarna och modulationen begränsas till taket.
+    constexpr int numMaxTimeSteps = 6;
+    constexpr int maxTimeDefault = 2; // 1 s
+    inline float maxTimeMs (int step)
+    {
+        constexpr float steps[numMaxTimeSteps] { 250.0f, 500.0f, 1000.0f, 2000.0f, 5000.0f, 10000.0f };
+        return steps[step < 0 ? 0 : step >= numMaxTimeSteps ? numMaxTimeSteps - 1 : step];
+    }
+    struct TimeCapSpec { InstrumentField field; float legacyMax, min, centre; };
+    constexpr int numTimeCaps = 5;
+    inline const TimeCapSpec& timeCapSpec (int i)
+    {
+        static const TimeCapSpec specs[numTimeCaps] {
+            { InstrumentField::attack, 50.0f, 0.0f, 5.0f }, { InstrumentField::decay, 2000.0f, 5.0f, 200.0f },
+            { InstrumentField::release, 300.0f, 1.0f, 30.0f }, { InstrumentField::pitchEnvDecay, 1000.0f, 5.0f, 80.0f },
+            { InstrumentField::envDecay, 1000.0f, 5.0f, 150.0f } };
+        return specs[i];
+    }
+    inline float timeCapMs (const TimeCapSpec& spec, int step) { return spec.legacyMax * maxTimeMs (step) / 1000.0f; }
+    inline const TimeCapSpec* timeCapFor (InstrumentField field)
+    {
+        for (int i = 0; i < numTimeCaps; ++i)
+            if (timeCapSpec (i).field == field)
+                return &timeCapSpec (i);
+        return nullptr;
+    }
     juce::String bass (int layer, InstrumentField field);   // "bass1Cutoff" ...
     const char* instrumentFieldName (InstrumentField field);      // "Cutoff" ...
 }
@@ -214,6 +242,7 @@ namespace Params
     void addEngineTimingExtraParams (Layout& layout); // TIMING/LEVELS: DELAY MODE / LENGTH SYNC / antal per motor och lager; allra sist i instrumentets layout
     void addKickMixParam (Layout& layout); // kickens MIX (synt/sampling); allra sist i båda layouterna
     void addKickToggleParams (Layout& layout); // kickens SYNTH/SAMPLE på/av; läses av readKick, så FX-pluginet behöver dem också
+    void addMaxTimeParam (Layout& layout); // MAX TIME per instrument; allra sist i instrumentets layout
     void addFxMatrixParams (Layout& layout); // FX-matrisen (instrument + kick) och fxMute1..12: allra sist i layouten
 
     juce::StringArray keyNames();

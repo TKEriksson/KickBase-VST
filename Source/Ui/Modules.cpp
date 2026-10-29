@@ -1156,7 +1156,15 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
     fxSend = std::make_unique<FxSendControl> (p.apvts, id (F::fxChannel), id (F::fxAmount), id (F::fxSend), sendToIDs, "FX SEND", layerAccent);
     addAndMakeVisible (*fxSend);
     setHeaderFxSend (fxSend.get());
-    envelope.onBeforePaint = [this] { current = refs.readInstrument (layer, 36).withTempo (processor.transportStatus.bpm.load(), false); };
+    envelope.onBeforePaint = [this]
+    {
+        current = refs.readInstrument (layer, 36).withTempo (processor.transportStatus.bpm.load(), false);
+        const auto maxMs = ParamID::maxTimeMs (current.maxTimeStep);
+        envelope.setDisplaySeconds (0.5 * maxMs / 1000.0); // MAX-knappen: tidsaxeln följer (1 s = som förut)
+        maxTimeLabel.setText ("MAX " + (maxMs >= 1000 ? juce::String (maxMs / 1000) + " s" : juce::String (maxMs) + " ms"), juce::dontSendNotification);
+        maxTimeDown.setEnabled (current.maxTimeStep > 0);
+        maxTimeUp.setEnabled (current.maxTimeStep < ParamID::numMaxTimeSteps - 1);
+    };
 
     envelope.addCurve ({ [this] (double t) { return InstrumentSynth::filterEnvelopeAt (current, t) * current.envAmount / 8.0f; },
                          layerAccent, true, "FILTER" });
@@ -1165,24 +1173,24 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
     envelope.addHandle ({ [this] {
                               const auto t = current.pitchEnvDecayMs * 0.001 / 3.0;
                               return juce::Point<float> ((float) t, pitchValueAt (t)); },
-                          param (p, id (F::pitchEnvDecay)), nullptr, false, juce::Colour (0xffe6c23c) });
+                          param (p, id (F::pitchEnvDecay)), nullptr, false, juce::Colour (0xffe6c23c), {}, EnvelopeView::timeCapOf (p.apvts, layer, F::pitchEnvDecay) });
 
     envelope.addHandle ({ [this] { return juce::Point<float> (std::max (0.0015f, current.envAttackMs * 0.001f), current.envAmount / 8.0f); },
                           param (p, id (F::envAttack)), param (p, id (F::envAmount)), false, layerAccent });
     envelope.addHandle ({ [this] {
                               const auto t = current.envAttackMs * 0.001 + current.envDecayMs * 0.001 / 3.0;
                               return juce::Point<float> ((float) t, InstrumentSynth::filterEnvelopeAt (current, t) * current.envAmount / 8.0f); },
-                          param (p, id (F::envDecay)), nullptr, false, layerAccent });
+                          param (p, id (F::envDecay)), nullptr, false, layerAccent, {}, EnvelopeView::timeCapOf (p.apvts, layer, F::envDecay) });
 
     envelope.addHandle ({ [this] { return juce::Point<float> (current.attackMs * 0.001f, 1.0f); },
-                          param (p, id (F::attack)), nullptr, false, Theme::text });
+                          param (p, id (F::attack)), nullptr, false, Theme::text, {}, EnvelopeView::timeCapOf (p.apvts, layer, F::attack) });
     envelope.addHandle ({ [this] {
                               const auto t = (current.attackMs + current.decayMs * 0.5f) * 0.001;
                               return juce::Point<float> ((float) t, ampValueAt (t)); },
-                          param (p, id (F::decay)), param (p, id (F::sustain)), false, Theme::text });
+                          param (p, id (F::decay)), param (p, id (F::sustain)), false, Theme::text, {}, EnvelopeView::timeCapOf (p.apvts, layer, F::decay) });
     envelope.setNoteOff ([this] { return noteOffNow(); });
     envelope.addHandle ({ [this] { return juce::Point<float> ((float) noteOffNow().seconds + current.releaseMs * 0.001f, 0.0f); },
-                          param (p, id (F::release)), nullptr, false, Theme::text });
+                          param (p, id (F::release)), nullptr, false, Theme::text, {}, EnvelopeView::timeCapOf (p.apvts, layer, F::release) });
     instrPage.addAndMakeVisible (envelope);
     envelopeListen.setAccent (layerAccent);
     envelopeListen.setTooltip ("LISTEN - Hold to hear this instrument on the preview note (the PREVIEWS note at the top) for as long as you hold; it starts over if the sound "
@@ -1190,6 +1198,25 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
     envelopeListen.onStart = [this] { hold.start (PluginBase::heldLayerAudition (layer)); };
     envelopeListen.onStop = [this] { hold.stop(); };
     instrPage.addAndMakeVisible (envelopeListen);
+    maxTimeLabel.setJustificationType (juce::Justification::centred);
+    maxTimeLabel.setFont (Theme::font (12.0f, true));
+    maxTimeLabel.setTooltip ("MAX - The longest time this instrument's time knobs and the ENV diagram cover (attack, decay, release, pitch and filter decay). 1 s matches older presets; "
+                             "a longer MAX gives long pads and tails, a shorter one gives finer control of short sounds. The sound does not change when you press - or +.");
+    for (auto* button : { &maxTimeDown, &maxTimeUp })
+    {
+        const auto delta = button == &maxTimeDown ? -1 : 1;
+        button->setTooltip ("MAX time shorter (-) / longer (+).");
+        button->onClick = [this, delta]
+        {
+            auto* parameter = processor.apvts.getParameter (ParamID::bass (layer, F::maxTime));
+            const auto step = juce::jlimit (0, ParamID::numMaxTimeSteps - 1, (int) std::lround (parameter->convertFrom0to1 (parameter->getValue())) + delta);
+            parameter->beginChangeGesture();
+            parameter->setValueNotifyingHost (parameter->convertTo0to1 ((float) step));
+            parameter->endChangeGesture();
+        };
+        instrPage.addAndMakeVisible (*button);
+    }
+    instrPage.addAndMakeVisible (maxTimeLabel);
     HelpDialog::setupButton (instrHelpButton, *this, HelpDialog::Topic::instr, "the INSTR tab (envelopes, pitch, sub, noise, drive, phase)");
     instrPage.addAndMakeVisible (instrHelpButton);
     instrPage.addAndMakeVisible (subScope);
@@ -1226,8 +1253,8 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
     sources.addTab ("MIX", layerAccent, *mixPanel);
     timingPanel = std::make_unique<InstrTimingPanel> (p, layer, layerAccent);
     sources.addTab ("TIMING", layerAccent, *timingPanel);
-    instrTimeline = std::make_unique<TimelineChart> (p, layer, layerAccent, false); // skrivskyddad; klick hoppar till TIMING-fliken (nr 8)
-    instrTimeline->onSelect = [this] (int) { sources.setCurrentTab (8); };
+    instrTimeline = std::make_unique<TimelineChart> (p, layer, layerAccent, false); // skrivskyddad; enkelklick väljer motor, dubbelklick hoppar till TIMING-fliken (nr 8)
+    instrTimeline->onOpen = [this] (int) { sources.setCurrentTab (8); };
     instrPage.addAndMakeVisible (*instrTimeline);
 
     // B1: förhandsknapp i flikraden. OSC 1-3 och SAMPLE spelar bara sin källa, FILTER/FM/MIX hela instrumentet (INSTR har sin egen knapp i sidan).
@@ -2016,18 +2043,26 @@ void InstrumentModule::layoutInstrPage()
     // Envelopegrafen till vänster, rattraderna till höger (två rader, högst 100 px rattar; resten är frigjord yta).
     auto area = instrPage.getLocalBounds().reduced (0, 4);
     auto leftColumn = area.removeFromLeft (juce::jlimit (220, 340, area.getWidth() / 4));
-    envelope.setBounds (leftColumn.reduced (0, 2));
+    // Vänsterkolumnen delas lika: ENV-diagrammet överst, tidsdiagrammet under (Tobias 2026-10-29).
+    const auto leftHalf = leftColumn.getHeight() / 2;
+    envelope.setBounds (leftColumn.removeFromTop (leftHalf).reduced (0, 2));
+    instrTimeline->setBounds (leftColumn.reduced (0, 2));
     envelopeListen.setBounds (envelope.getRight() - 40, envelope.getY() + 4, 36, 24); // högtalaren i grafens övre högra hörn
     // HELP nere till vänster: tidsetiketterna ligger överst (EnvelopeView.cpp:95) och kurvnamnen nere till höger.
     instrHelpButton.setBounds (envelope.getX() + 10, envelope.getBottom() - 12 - 18, 40, 18);
     area.removeFromLeft (6);
-    // Divisorn +1 lämnar fri höjd under PHASE-raden; tidsdiagrammet får den plus PHASE-radens reserverade bredd.
     const auto rowHeight = juce::jlimit (40, 100, area.getHeight() / (groups.numRows() + 1) - ControlGroups::titleHeight - 3);
     groups.layout (area, rowHeight);
 
+    // MAX-knappen ( - ) MAX 1 s ( + ) i PHASE-radens reserverade yta, till höger om PHASE.
     const auto phase = groups.frameOf ("PHASE");
     if (! phase.isEmpty())
-        instrTimeline->setBounds (juce::Rectangle<int> (phase.getRight() + 4, phase.getY(), area.getRight() - phase.getRight() - 4, area.getBottom() - phase.getY()));
+    {
+        auto box = juce::Rectangle<int> (phase.getRight() + 8, phase.getY() + ControlGroups::titleHeight + 6, juce::jmin (150, area.getRight() - phase.getRight() - 8), 24);
+        maxTimeDown.setBounds (box.removeFromLeft (26));
+        maxTimeUp.setBounds (box.removeFromRight (26));
+        maxTimeLabel.setBounds (box);
+    }
 
     // Mini-oscilloskopen sitter i SUB-gruppens rubrikrad, till höger om rubriken.
     const auto sub = groups.frameOf ("SUB");

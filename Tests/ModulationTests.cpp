@@ -1,6 +1,7 @@
 // Tester för LFO:erna och moduleringen.
 
 #include "../Source/Core/Modulation.h"
+#include "../Source/Core/Params.h"
 #include "TestUtils.h"
 #include <cmath>
 
@@ -17,6 +18,7 @@ namespace
             Modulation::addParameters (layout);
             if (extraLfos)
                 Modulation::addExtraLfoParameters (layout); // LFO 4-10 som i instrumentet (FX saknar dem)
+            Params::addMaxTimeParam (layout);
             layout.add (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "bassCutoff", 1 }, "Cutoff",
                                                                      juce::NormalisableRange<float> (0.0f, 1000.0f), 500.0f));
             return layout;
@@ -494,6 +496,22 @@ namespace
     }
 }
 
+namespace
+{
+    // MAX-knappen (tidstak per instrument): standardvärdet ska ge exakt dagens tak, så att gamla presets låter och ser likadana ut.
+    void testMaxTimeDefault()
+    {
+        std::puts ("MAX-tid: standard 1 s ger de gamla taken");
+        DummyProcessor processor;
+        auto* maxTime = processor.apvts.getRawParameterValue (ParamID::bass (0, InstrumentField::maxTime));
+        check (maxTime != nullptr && (int) maxTime->load() == ParamID::maxTimeDefault, "maxTime har standardsteget");
+        check (ParamID::maxTimeMs (ParamID::maxTimeDefault) == 1000, "standardsteget är 1 s", (float) ParamID::maxTimeMs (ParamID::maxTimeDefault));
+        const float expected[] = { 50.0f, 2000.0f, 300.0f, 1000.0f, 1000.0f }; // attack, decay, release, pitch-env decay, filter-env decay
+        for (int i = 0; i < ParamID::numTimeCaps; ++i)
+            check (ParamID::timeCapMs (ParamID::timeCapSpec (i), ParamID::maxTimeDefault) == expected[i], "tidstaket vid standard = dagens max", ParamID::timeCapMs (ParamID::timeCapSpec (i), ParamID::maxTimeDefault));
+    }
+}
+
 void runModulationTests()
 {
     testShapes();
@@ -504,4 +522,5 @@ void runModulationTests()
     testExtraLfosLeaveFirstThree();
     testCodeSources();
     testBezierEnvelope();
+    testMaxTimeDefault();
 }

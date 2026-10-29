@@ -7,7 +7,7 @@
 // Tidsdiagrammet (l): en bana per motor (OSC 1-3, SAMPLE, NOISE, SUB, FM) på en gemensam tidsaxel och längst ner den gemensamma konturen
 // (volym-envelopen). Fasen syns som NUDGE (banornas start flyttas) och POLARITY (konturen vänds). Den valda motorns bana är högre och markerad;
 // i redigerbart läge flyttar drag i den banan POS DELAY (vänsterkanten) eller LENGTH (högerkanten), och ett klick på en annan bana väljer den motorn.
-// Skrivskyddat (INSTR): inga drag, klicket bara meddelar onSelect. Valet är UI-läge, ingen parameter.
+// Skrivskyddat (INSTR): inga drag; enkelklick väljer motor (visas störst), dubbelklick meddelar onOpen. Valet är UI-läge, ingen parameter.
 class TimelineChart : public juce::Component, private juce::Timer
 {
 public:
@@ -20,6 +20,7 @@ public:
 
     int selected = 0;                  // vald motor 0-6
     std::function<void (int)> onSelect; // anropas när användaren klickar på en bana
+    std::function<void (int)> onOpen;   // dubbelklick på en bana (INSTR: gå till TIMING)
 
     void setSelected (int engine)
     {
@@ -65,6 +66,13 @@ public:
         }
 
         paintPhaseMarks (g, xOf);
+    }
+
+    void mouseDoubleClick (const juce::MouseEvent& e) override
+    {
+        const auto engine = engineAt (e.position);
+        if (engine >= 0 && onOpen)
+            onOpen (engine);
     }
 
     void mouseDown (const juce::MouseEvent& e) override

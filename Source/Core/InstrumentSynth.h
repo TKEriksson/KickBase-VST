@@ -98,6 +98,7 @@ struct InstrumentParams
     float phaseDeg = 0.0f;        // fas PH: startfas i grader för OSC 1-3 och sub vid varje ny ton (läggs till OSC:ns egen PHASE)
     float pitchEnvSemis = 0.0f;  // tonhöjdsenvelope: så många halvtoner över (eller under) tonen i början av varje ton
     float pitchEnvDecayMs = 60.0f;
+    int maxTimeStep = 2;          // MAX TIME (0-5: 250 ms..10 s): bara för UI (ENV-diagrammets tidsaxel); ljudet läser tiderna direkt
 
     // fas S2: FM-källa (2 operatorer, sinus): modulatorn (ratio x frekvensen) fasmodulerar carriern. Av som standard = ljudet oförändrat.
     bool fmOn = false;

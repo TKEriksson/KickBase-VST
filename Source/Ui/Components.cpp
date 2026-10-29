@@ -89,8 +89,30 @@ KnobComponent::KnobComponent (juce::AudioProcessorValueTreeState& apvts, const j
         if (description.isEmpty())
             description = parameter->getName (64);
     }
+    for (int layer = 0; layer < ParamID::numInstrumentLayers && timeCap == nullptr; ++layer)
+        for (int i = 0; i < ParamID::numTimeCaps; ++i)
+            if (paramID == ParamID::bass (layer, ParamID::timeCapSpec (i).field))
+            {
+                timeCap = &ParamID::timeCapSpec (i);
+                maxTimeRaw = apvts.getRawParameterValue (ParamID::bass (layer, InstrumentField::maxTime));
+                break;
+            }
+    applyTimeCap (true);
     updateTooltip (-1);
     startVisualTimer (Settings::Visual::other, 30);
+}
+
+void KnobComponent::applyTimeCap (bool force)
+{
+    if (timeCap == nullptr || maxTimeRaw == nullptr)
+        return;
+    const auto step = juce::roundToInt (maxTimeRaw->load());
+    if (step == lastMaxStep && ! force)
+        return;
+    lastMaxStep = step;
+    juce::NormalisableRange<double> range (timeCap->min, ParamID::timeCapMs (*timeCap, step), 0.01);
+    range.setSkewForCentre (timeCap->centre);
+    slider.setNormalisableRange (range);
 }
 
 KnobComponent::~KnobComponent() = default;
@@ -178,6 +200,7 @@ int KnobComponent::ringAt (juce::Point<float> position) const
 void KnobComponent::timerCallback()
 {
     followVisualRate();
+    applyTimeCap (false);
     if (const auto text = slider.getTextFromValue (slider.getValue()); text != valueLabel.getText())
         valueLabel.setText (text, juce::dontSendNotification);
     auto* processor = findProcessor (*this);
