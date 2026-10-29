@@ -175,3 +175,10 @@ Obs: nya parametrar och modulationskällor sist (ENGINEERING.md). Stor punkt; Ar
 - Fyra kvadranter (olika saker under/bakom axlarna): senare, bara om det behövs; X/Y-tilldelning täcker det mesta.
 - Öppen fråga: ska plattan ligga bredvid rattarna eller ersätta filterdiagrammet när den visas?
 - Placering (Tobias): en knapp i övre högra hörnet på varje filterdel (FILTER 1 / FILTER 2) som öppnar XY-plattan. Svarar på frågan ovan: plattan öppnas via knappen, inte permanent bredvid rattarna.
+- Beslut (Tobias): inga fyra kvadranter; plattan är andra handtag på rattarna (rattarna rör sig med).
+
+### 0.5: MODIFIERS per instrument i INSTR-fliken (Tobias 29 okt)
+- Nytt avsnitt (arbetsnamn MODIFIERS) i INSTR-fliken med små effekter på hela instrumentet. Först ut: VIBRATO (RATE, DEPTH, DELAY/fade-in, SYNC).
+- Kandidater i samma kategori: TREMOLO, CHORUS, AUTO-PAN. Tobias väljer vilka som kommer med.
+- Varje modifier har ON och egna rattar med automation/LFO/makro som alla andra rattar. Nya parametrar sist (docs/ENGINEERING.md); default AV så gamla presets låter likadant.
+- Varning för bas: chorus/panorering kan förstöra monokompatibilitet och fas mellan kick och bas. Förslag: lågpass-skydd (wet filtreras bort under ca 150 Hz) och kollas i mix-rapporten.
