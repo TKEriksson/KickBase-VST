@@ -7,6 +7,7 @@
 #include "MixerPage.h"
 #include "PresetButton.h"
 #include "Scopes.h"
+#include "SidechainPage.h"
 
 // Lodrät mätare i dB.
 class LevelMeter : public juce::Component, private VisualTimer
@@ -26,8 +27,8 @@ private:
     juce::String label;
 };
 
-// Fliken MASTER: mixern (gain, panorering och mätare per ljudkälla) och maximizern (drive, clip,
-// tak, release och mätare).
+// Fliken MASTER: mixern (gain, panorering och mätare per ljudkälla), sidechainen (ducking, kurva) och
+// maximizern (drive, clip, tak, release och mätare). Mixern finns bara i instrumentet.
 class MasterPage : public juce::Component
 {
 public:
@@ -36,14 +37,17 @@ public:
     void resized() override;
 
 private:
-    void showView (bool mixer);
+    enum class View { mixer, sidechain, maximizer };
+    void showView (View);
 
     PresetButton presets;
+    SidechainPage sidechainPage;
     juce::TextButton helpButton;
-    juce::TextButton mixerTab { "MIXER" }, maximizerTab { "MAXIMIZER" };
+    juce::TextButton mixerTab { "MIXER" }, sidechainTab { "SIDECHAIN" }, maximizerTab { "MAXIMIZER" };
+    juce::Rectangle<int> crumbArea; // glasdisplayen MASTER > vy i flikraden
     std::unique_ptr<MixerView> mixerView;
     std::unique_ptr<SourceToggles> maxSources; // vilka källor som går genom maximizern
-    bool showingMixer = false;
+    View view = View::maximizer;
     juce::ToggleButton power;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> powerAttachment;
     std::vector<std::unique_ptr<KnobComponent>> knobs;

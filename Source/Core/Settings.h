@@ -77,6 +77,10 @@ namespace Settings
 
     // Minskade animationer: lägre bildhastighet för de flesta vyer och ingen glöd i loggan. Värdet minns programmet (det frågas ofta),
     // så ett fönster som redan är öppet följer med först när det öppnas igen (rubriken och spektrumet följer med direkt).
+    // Glödens styrka runt paneler och avdelare: 0 = av, 1 = svag (standard), 2 = stark. Användarinställning, inte projektparameter.
+    int glowLevel();
+    void setGlowLevel (int level);
+
     bool reduceAnimations();
     void setReduceAnimations (bool reduce);
     // ANALYZER > COLLISIONS: färgfältet över frekvens och takt (standard på). Av sparar ritning och data.

@@ -99,12 +99,12 @@ namespace Sidechain
 {
     juce::StringArray lengthNames()
     {
-        return { "Kick", "1/16", "1/8", "3/16", "1/4", "1/2" };
+        return { "Kick", "1/16", "1/8", "3/16", "1/4", "1/2", "1/32", "1/64" }; // 1/32 och 1/64 sist: gamla index skiftar inte
     }
 
     double lengthInQuarters (int index)
     {
-        constexpr double quarters[] { 0.0, 0.25, 0.5, 0.75, 1.0, 2.0 };
+        constexpr double quarters[] { 0.0, 0.25, 0.5, 0.75, 1.0, 2.0, 0.125, 0.0625 };
         return quarters[juce::jlimit (0, (int) std::size (quarters) - 1, index)];
     }
 

@@ -634,3 +634,69 @@ Steg 3 lägger sedan de 132 sändningsparametrarna efter dessa, så ordningen bl
 ## Låstest + FL-lista (28 okt, Arbetare 1, gren slice-roll)
 - `Tests/EngineTests.cpp` `testLockEditing`: klippbord, flytt, ångra (`rowFromValueTree`) och spara/ladda bär låsen. Debug all grön.
 - `docs/work/fl-testlista.md`: A1-raderna (sample AMP/PITCH, REVERSE, klick-lager, lane-UI) kortade till körbara Lemon-punkter; nya rader för skivrullen och Echo utan TIME MS.
+
+## Plan 0.4 (29 okt, Arbetare 1, gren slice-roll, main inmergad)
+Blocksizetest-felet var en testmiljöartefakt: 20-körningarna/ASan avbrutna (3/3 gröna). Ordning enligt projektledaren; en commit per steg, Debug all grön före varje commit, ingen push, inga ändrade parameter-ID/hash.
+1. **Rattmall** (g, i, j, m, n, o, rattstorlek ~48 px): `KnobComponent::resized` (`Components.cpp:104-110`) gör ratt + etiketter till ett block på ett ställe; SAMPLE AMP/PITCH/REVERSE som tre rutor (i); FILTER: strömbrytare i flikknappen, lika stora rattar, Filter 2-knapp minst 22 px (j); MIX kompaktare (m); översta raden högre (n); avdelare under huvudflikarna (o). Snapshot-kontroll av varje flik.
+2. **Delad diagramkomponent med banor** (l, f steg 1): en bana per motor + kontur, linjal i ms/takt; TIMING får FOCUS (redigerbar) och OVERVIEW (valet är UI-läge), INSTR skrivskyddad. Brödsmula (hela vägen, flikar anmäler namn uppåt), flikordning (`INSTR | OSC 1-3 SAMPLE FM | FILTER MIX TIMING`, kolla sparade flikindex/hjälp), HELP-knappen flyttas ur etikettraden.
+3. **Delad renderhjälp** (f steg 2, h, k, q): verklig vågform (zoom 50/200 ms/hela), OSC TABLE|OUTPUT, FM-diagram, BAKE TO OSC (bekräfta + ett ångra-steg).
+4. **Övrigt:** (p) FM-harmonics (läser först FM-koden), (r) tooltips + HELP i övertonsredigeraren (rör inte `HarmonicEditor.*` om Arbetare 2 äger den, kolla först), (t) JOG: TEST BPM-etikett + ratt, (u) exklusiv preview (lista först alla ljudstartare, en preview-ägare i processorn), (w) a: välj lane direkt + ta bort värde/lane, c: bezier, d: OTHER + dataformat (sist, gamla projekt måste öppnas), e: kopiera till DAW. (s) och (w) b tar Arbetare 2.
+Tillägg från projektledaren: (x) större SWING/HUMAN/DELAY, helst en per rad (`Modules.cpp:2464-2467, 2838`), i steg 1. (y) kick SYNTH: ta bort de två på/av-knapparna, MIX-knapp "Synth/Sample-mix" i menyraden längst till höger, till vänster om FX (befintligt mix-värde, annars ny parameter sist); ENVELOPE alltid överst i synthfliken; paneler flyttas ned och rattarna blir större, KEY/SAMPLE-text/hjälp får ny plats (visas för Tobias). (z) gemensam rad-/flikradsmall (högre rader, y-marginal, avdelare mot innehållet) för hela pluginet, även kickens menyrader och underraden PITCH/AMP/BEZIER, i steg 1 tillsammans med (n) och (o). Arbetare 2 gör (w) b först (data/motor); jag bygger UI mot hennes/hans API, och rör inte `Note::lock` före (d).
+Utvidgning av (z): gäller alla menyer i pluginet. Tre nivåer (huvudmeny, undermeny, underunderrad) ska skilja sig i höjd, bakgrund, avdelare och aktivt läge, och alla menyobjekt (flikar, radknappar, popupmenyer) får en hover-effekt. Allt via en gemensam komponent/mall i steg 1.
+(å) Diskret glöd runt kanter på paneler/kort och på avdelare, som en gemensam glödstil i mallen (g/z) som alla paneler använder. Ritas billigt: ingen blur per frame, utan förrenderad/cachad bild (t.ex. `juce::Image` per storlek och färg) så att CPU och omritning inte påverkas. Mäts med `uiprofile` före/efter.
+(ä) PREVIEWS-delen (beat-räknaren) får glasdisplay-design enligt `docs/work/skisser/previews-glas.png` (nuläge `previews-nu.png`): alla knappar där (preview, tonväljare, klocka, retur) som glasknapparna intill BPM/takt-displayen, OUT-ratten stor, glödstilen från (å). Skissen är riktning, inte exakt mått. Görs efter steg 1 (rad-/glödmallen).
+
+29 okt (A1), prioritetsändring: (å) `Theme::paintEdgeGlow`/`paintDividerGlow` (Theme.h, billiga inre linjer, inget blur) används av paintMetal; (z) hover på alla tre menynivåer (KickbaseLookAndFeel.cpp:218-), glödande avdelare under huvudmenyn (TabbedPanel.h); (ä) PREVIEWS som glasruta med rosa kantglöd (Modules.cpp:~769). Kvar: knapparna i PREVIEWS som glasknappar, stor OUT-ratt, tre nivåers höjd/bakgrund fullt ut, SAMPLE/FILTER. Bild: docs/work/skisser/glod-glas-menyer.png
+
+## 2026-10-28 glöd/menyer/glasknappar (A1)
+- Glöd starkare (Theme.h paintEdgeGlow/paintDividerGlow), menynivå 2 blåtonad, nivå 3 lägre+mörkare, avdelare under varje nivå; ListenButton som glasknapp (Theme::paintGlassButton); OUT-ratt 46 px; spacing-skala `Theme::Space` (TabbedPanel använder den; resten av GUI:t byts steg för steg).
+- SETTINGS: GLOW Av/Svag/Stark (Settings::glowLevel, användarinställning "glowLevel", standard Svag, env KB_GLOW för bildverktyget). Bilder: glod-glas-menyer-2.png, glod-svag.png, glod-stark.png.
+
+## 2026-10-28 kväll (A1)
+- Glöd: standard nu Av (Settings.cpp glowLevel), kod kvar. PREVIEWS glasdisplay, OUT-ratt upp till 64 px.
+- Menyluft: Theme::Space::menuPadY=5, menuGapX=12, menuButtonH=26 (Theme.h); används i TabbedPanel.h (headerHeight, extrasRowHeight, resized, tabGap). Debug all grön.
+- PL: inga fler bilder; (t) tagen av PL, (r)/(u) av A2.
+- (x) klar: SWING/HUMAN/DELAY en ratt per rad, Modules.cpp:2941-2951 (knobRowHeight 74). Kvar: SAMPLE/FILTER-ratt, (y) kick SYNTH-flik, steg 2-3, brödsmula, flikordning, HELP, (w) a/c/e.
+- Theme.h: Geminis hunkar inlagda (labelText/valueText, getHoverColour, paintConnectedContainer, glasdisplay ljusare/cyankant 0.45/inre skugga, glasknapp hover 0.6). Oanvända: labelText/valueText/getHoverColour/paintConnectedContainer.
+- FILTER klar (e2da265): FilterPanel.cpp:401 rattrad 74 px.
+- (y) klar (cc6a0ad): kick SYNTH/SAMPLE/ENVELOPE-flikar, SYNTH/SAMPLE-MIX i flikraden (Modules.cpp KickMixControl, Components.h HeaderControls), KEY i TUNING, kurvor ovanför.
+- (z) klar (50bc484): hover via Theme::getHoverColour på chip/subflik/pill/combobox (KickbaseLookAndFeel.cpp drawButtonBackground, drawComboBox), popupmeny med cyan hover och rundad bakgrund (drawPopupMenuBackground). Ingen ändring i TabbedPanel.h.
+- Granskningsfix (207a225): hjälpknappen på egen rad ovanför kurvorna (Modules.cpp ~1118), mixen krymper så att preset får minst 90 px (Components.h resized), mixetikett 100 px. applyTab anropar resized redan. Migrering av synthOn/sampleOn tas av Arbetare 2. Debug all grön.
+
+## 0.4-release-PDF (Arbetare 1, 2026-10-28)
+- `docs/releases/kickbase-0.4-testlista.pdf` (3 sidor, engelska, 0.3-upplägg): vad som ingår + Lemon-testlista. Underlag: release-0.4-utkast.md, fl-testlista.md, (y), (z).
+- Gjord av HTML via headless Edge. Inget från 0.5. Raden "gamla preset migreras" väntar på Arbetare 2:s migrering av kickSynthOn/kickSampleOn till MIX (finns inte i någon gren än).
+
+## instr-phase (INSTR: smal PHASE, NUDGE/START/POLARITY i tidsdiagrammet) – Debug + tester gröna, ej provad i Lemon
+Arbetare 1, branch `instr-phase` från release-0.4 (6e006a1).
+- `ControlGroups::addRow (row, reserveFraction)` (Components.h:199, Components.cpp:873): en rad kan lämna en andel tom till höger. PHASE reserverar 0.7 (Modules.cpp:1276) och är därmed ca 1/5 av bredden.
+- Tidsdiagrammet på INSTR flyttades från vänsterkolumnen till PHASE-radens reserverade yta + fri höjd under raden (Modules.cpp `layoutInstrPage`); envelopen fick hela vänsterkolumnen.
+- TimelineChart.h `paintPhaseMarks`: START som en period sinus med startpunkt i OSC 1-3 och SUB (vänds av POLARITY), NUDGE som pil + streckad nollinje (minst 14 px, förskjutningen är under en pixel), rubrikchips NUDGE/START/POLARITY (− inverted markerad). Gäller även TIMING-fliken (samma komponent).
+- Hittat fel: VOICES-varningen (Modules.cpp, `setWarning`) hamnade på NUDGE-ratten, eftersom `controls.back()` efter PHASE-raden är NUDGE. Nu hålls VOICES-ratten i en egen pekare.
+
+### instr-phase: MAX-tid, FM-modulator (Arbetare 1, 2026-10-29) – commits 94dc949, 39b3be5 + FM-commit; Debug + tester gröna, ej provad i Lemon
+- MAX-tid per instrument (`maxTime`, 250 ms..10 s, standard 1 s = dagens tak): tidsknobbarnas tak = legacyMax x MAX/1000 (Params.h `timeCapSpec`, Components.cpp `applyTimeCap`, Modulation.cpp `apply`). APVTS-intervallet är 10x; sparade värden orörda. Värdeläget vid värdautomation (normaliserat) flyttas: känd varning. Sänks MAX under ett sparat värde klipps knobbens visning, parametern kan ligga kvar över taket.
+- ENV- och tidsdiagram delar vänsterkolumnen 50/50; `( - ) MAX ms ( + )` i PHASE-raden. Tidslinjen: enkelklick väljer motor, dubbelklick öppnar TIMING.
+- Tillägg: FM ENV TIME följer MAX (tak 400 ms vid standard); WARP ENV oförändrad 2-150 ms (kort transient, skalning ger ingen nytta). FM INDEX OVER TIME har fast tidsaxel 400 ms x MAX/1000 (FmPanel.cpp). Blå filterhandtag göms när AMOUNT = 0 eller filtret är av (`Handle::visible`); knapparna AMOUNT/ATTACK/DECAY/VEL finns redan i FILTER ENVELOPE (Modules.cpp ~1296).
+- Nya standardvärden: cutoff 10 kHz (förut 300 Hz), SUB 0 % (förut 30 %). Bara nya instanser; sparade preset/projekt oförändrade. Inga tester byggde på de gamla. Resources/AGENT_GUIDE.md kan nämna de gamla standardvärdena (ej kontrollerat).
+- WARP FM-modulator (OSC 1): ny parameter `fmSource` sist (Params.h efter `maxTime`, registrerad i `addMaxTimeParam`), standard OSC 2 = som förut; OSC 3 valbar, ingen självkälla. Motorn: InstrumentSynth.cpp ~484-515 (`fmOn`, `fmFromC`; bNeeded/cNeeded/modInput; standardvägen oförändrad). UI: `fmBox` ersätter formknapparna när WARP = FM (OscPanel.cpp). Diagrammet ritar FM fortfarande torrt (OscRender.h) men visar text "FM: modulator OSC 2/3" och röd varning "OSC n is OFF - no FM" när modulatorn är av (OscPanel.cpp paintFm). Test: EngineTests `testFmModulatorSource`, ModulationTests `testFmSourceDefault`.
+
+## Uppgift D (Arbetare 1, 29 okt) - branch instr-phase i w1, fast-forwardad till release-0.4
+- D1: SYNC/rate-listor ner till 1/32 och 1/64, tillagda sist (index oförändrade), visas sorterade (Components.cpp displayOrder/ChoiceComponent). Params.cpp timingSyncNames, InstrumentSynth.cpp syncBars, Effects.cpp syncNames, Sidechain.cpp lengthNames, Modulation.cpp rateNames. Test: ModulationTests testSyncListsKeepOldIndexes.
+- D2: TIMING OVERVIEW: MODE i namnraden, DELAY/LENGTH/CURVE på en rad, diagrammet högre (InstrTimingPanel.cpp layoutCell). NUDGE/START/POLARITY ligger på INSTR (PHASE-gruppen), inte i TIMING.
+- D3: FILTER on/off flyttad in i flikknappen FILTER (Modules.cpp addPower, plan (j)(1)). Ej gjort: (j)(4) Filter 2 strömknapp 16x15 px (FilterPanel.cpp ~365), (j)(3) knobstorlek ej verifierad, (f) steg 2 riktig sammansatt våg med zoom på INSTR saknas. Oklart om fxAmount-knoppen läses någonstans (PluginBase.cpp:103, Effects.cpp:454).
+
+## Uppgift E (Arbetare 1, 29 okt)
+- Filter 2-strömknappen 22x22 px (FilterPanel.cpp:360-362); blocket 2 innehåll 6 px lägre. fxAmount läses fortfarande medvetet: InstrumentProcessor.cpp:1021/1050, UI Modules.cpp:1156; ingen bugg.
+
+## Uppgift F (Arbetare 1)
+- F1: `TimelineChart.h:170-201` paintPhaseMarks ritar nu START + källans egen fas (OSC 1-3 `phase`, SUB `subPhaseDeg`, FM `fmPhaseDeg`) på bana 0,1,2,5,6. Brus/sample ritar inget. Rubrikchippen visar fortfarande bara gemensamma START.
+- F2: SUB hörs i koden. Nivån i INSTR (`Modules.cpp:1296`) och MIX (`InstrMixPanel.cpp:16`) är samma parameter `F::sub`. Standard för DELAY/LENGTH är 0/0 = gate 1 (`InstrumentSynth.cpp:~250`, `engineGate` :264). Inget filter/engineGate dämpar den. Nytt test `testInstrumentSub` (EngineTests.cpp) renderar bara SUB (0,9) med alla fyra vågformer, filter på och av: ljud. Ingen kodändring i motorn.
+- Troliga orsaker hos Tobias: OCTAVE "-1 oct" (halva notens ton, `InstrumentSynth.cpp:683`), solo/lyssna-läge nollar sub (`InstrumentProcessor.cpp:547`), delay/length satt på bana SUB, eller ett lågt ton som högtalaren inte återger.
+
+## Uppgift G (Arbetare 1, 29 okt) - ingen Release-build
+- G1 MAX LENGTH: ruta med ram/rubrik (`ControlGroups::paintFrame`, Components.cpp:1004) till höger om FILTER ENVELOPE på sista raden; FILTER ENVELOPE flyttad dit från rad 1 (Modules.cpp, groups.addRow PHASE). Grupplista ENV 1/PITCH/FILTER ENV/FM, -/+, multiplikator "x0.25 ... x10" och "= A .. · D .. · R .." (`updateMaxLengthBox`, `stepMaxLength`). 30 s utgick, APVTS-intervallet oförändrat.
+- **Migrering av gamla projekt:** `maxTime` (ENV 1) är oförändrad. Nya params `maxTimePitch/Filter/Fm` ligger sist i enumen (efter `fmSource`) med värde 0 = "as ENV 1" som standard. Ett gammalt projekt/preset saknar dem och får 0, alltså följer alla grupper `maxTime` = exakt som förut. Ingen laddningskod behövs (`ParamID::resolveMaxStep`, Params.h:229). Tidsaxeln i ENV-grafen följer längsta av ENV 1/PITCH/FILTER ENV. Test: ModulationTests `testMaxTimeDefault`.
+- G2 PRESET-knappen på INSTR smalare (Components.h HeaderControls::resized). G3 HELP/LISTEN i grafens hörn (Modules.cpp layoutInstrPage). G4 SUB START: ingen bugg. G5 WARP ENV: kurva över tid i WARP ENV-gruppen (se nedan). G6 EDIT HARMONICS-knapp alltid synlig i hörnet (OscPanel.cpp), tvåradig text (KickbaseLookAndFeel.cpp).
+- G7 (SIDECHAIN till MASTER) tas av Arbetare 2, ej rört.
+- G5 WARP ENV-kurva: `InstrumentSynth::warpEnvSourceAt` (InstrumentSynth.cpp, samma matematik som motorn, testad i EngineTests.cpp testWarpEnvCurve), `WarpEnvCurve` (Modules.cpp, Modules.h) ritar OSC 1-warpen: streckad linje = WARP-ratten, topp = AMOUNT, fall = DIRECT DEC / vald envelope, vit spelhuvud från notePlayTime (även LISTEN). Gruppen fick en fjärde kontroll med vikt 2 via `layoutWeight` (Components.cpp ControlGroups::layout), så övriga rattar i raden blir ca 12 % smalare. Debug + tester gröna.

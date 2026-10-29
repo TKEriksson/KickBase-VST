@@ -6,6 +6,107 @@
 #include "../Core/Params.h"
 #include "../Core/UserChangeWatcher.h"
 
+// Ritar FM-ljudets form ur ratterna (samma formler som InstrumentSynth.cpp:610-618, utan ljudmotorn). Läser parametrarna 15 gånger i sekunden.
+class FmPanel::Diagram : public juce::Component, public juce::SettableTooltipClient, private juce::Timer
+{
+public:
+    enum class Kind { wave, indexOverTime };
+
+    Diagram (juce::AudioProcessorValueTreeState& apvtsIn, int layerIn, Kind kindIn, juce::Colour accentIn)
+        : apvts (apvtsIn), layer (layerIn), kind (kindIn), accent (accentIn)
+    {
+        using F = InstrumentField;
+        index = apvts.getRawParameterValue (ParamID::bass (layer, F::fmIndex));
+        envAmount = apvts.getRawParameterValue (ParamID::bass (layer, F::fmEnvAmount));
+        envMs = apvts.getRawParameterValue (ParamID::bass (layer, F::fmEnvTime));
+        maxTime = apvts.getRawParameterValue (ParamID::bass (layer, F::maxTime));
+        maxTimeFm = apvts.getRawParameterValue (ParamID::bass (layer, F::maxTimeFm));
+        ratio = apvts.getRawParameterValue (ParamID::bass (layer, F::fmRatio));
+        setTooltip (kind == Kind::wave ? "FM output at the start of a note: two periods, with RATIO and INDEX applied."
+                                       : "INDEX over time: it starts at INDEX and falls toward INDEX x (1 - ENV AMT) over ENV TIME (to -60 dB). The time axis is fixed (follows MAX), so the curve changes when ENV TIME is turned.");
+        startTimerHz (15);
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        auto box = getLocalBounds().toFloat();
+        g.setColour (juce::Colour (0xff0b0d18));
+        g.fillRoundedRectangle (box, 4.0f);
+        g.setColour (Theme::text.withAlpha (0.2f));
+        g.drawRoundedRectangle (box.reduced (0.5f), 4.0f, 1.0f);
+
+        g.setFont (Theme::font (10.0f));
+        g.setColour (Theme::textDim);
+        g.drawText (kind == Kind::wave ? "OUTPUT (2 periods)" : "INDEX OVER TIME", getLocalBounds().reduced (6, 3).removeFromTop (12), juce::Justification::topLeft);
+
+        auto plot = getLocalBounds().toFloat().reduced (6.0f, 6.0f).withTrimmedTop (14.0f).withTrimmedBottom (kind == Kind::indexOverTime ? 12.0f : 0.0f);
+        if (plot.getWidth() < 10.0f || plot.getHeight() < 10.0f)
+            return;
+        g.setColour (Theme::text.withAlpha (0.12f));
+        g.drawHorizontalLine ((int) plot.getCentreY(), plot.getX(), plot.getRight());
+
+        const auto idx = juce::jlimit (0.0f, 1.0f, index->load());
+        const auto amount = juce::jlimit (0.0f, 1.0f, envAmount->load());
+        juce::Path path;
+        const auto steps = juce::jmax (2, (int) plot.getWidth());
+        if (kind == Kind::wave)
+        {
+            const auto r = (double) juce::jlimit (0.25f, 8.0f, ratio->load());
+            const auto radians = 8.0 * idx * idx;
+            for (int i = 0; i <= steps; ++i)
+            {
+                const auto phase = 2.0 * (double) i / steps; // 0..2 perioder av bäraren
+                const auto v = (float) std::sin (juce::MathConstants<double>::twoPi * (phase + 0.0) + radians * std::sin (juce::MathConstants<double>::twoPi * phase * r));
+                const auto x = plot.getX() + plot.getWidth() * (float) i / (float) steps;
+                const auto y = plot.getCentreY() - v * plot.getHeight() * 0.5f;
+                i == 0 ? path.startNewSubPath (x, y) : path.lineTo (x, y);
+            }
+        }
+        else
+        {
+            const auto ms = juce::jmax (1.0f, envMs->load());
+            const auto axisMs = ParamID::timeCapMs (ParamID::timeCapSpec (5), ParamID::resolveMaxStep (3, maxTimeFm->load(), maxTime->load())); // fast axel: 400 ms vid MAX 1 s
+            for (int i = 0; i <= steps; ++i)
+            {
+                const auto t = axisMs * (float) i / (float) steps / ms; // i enheter av ENV TIME
+                const auto level = std::pow (0.001f, t);         // -60 dB vid t = 1, som motorns koefficient (InstrumentSynth.cpp:393)
+                const auto v = idx * (1.0f - amount + amount * level);
+                const auto x = plot.getX() + plot.getWidth() * (float) i / (float) steps;
+                const auto y = plot.getBottom() - v * plot.getHeight();
+                i == 0 ? path.startNewSubPath (x, y) : path.lineTo (x, y);
+            }
+            g.setColour (Theme::textDim);
+            g.drawText ("0", getLocalBounds().reduced (6, 2).removeFromBottom (11), juce::Justification::bottomLeft);
+            g.drawText (juce::String (juce::roundToInt (axisMs)) + " ms", getLocalBounds().reduced (6, 2).removeFromBottom (11), juce::Justification::bottomRight);
+        }
+        g.setColour (accent);
+        g.strokePath (path, juce::PathStrokeType (1.6f));
+    }
+
+private:
+    void timerCallback() override
+    {
+        const std::array<float, 6> now { index->load(), envAmount->load(), envMs->load(), ratio->load(), maxTime->load(), maxTimeFm->load() };
+        if (now != last)
+        {
+            last = now;
+            repaint();
+        }
+    }
+
+    juce::AudioProcessorValueTreeState& apvts;
+    const int layer;
+    const Kind kind;
+    juce::Colour accent;
+    std::atomic<float>* index = nullptr;
+    std::atomic<float>* envAmount = nullptr;
+    std::atomic<float>* envMs = nullptr;
+    std::atomic<float>* maxTime = nullptr;
+    std::atomic<float>* maxTimeFm = nullptr;
+    std::atomic<float>* ratio = nullptr;
+    std::array<float, 6> last {};
+};
+
 FmPanel::FmPanel (PluginBase& p, int layerIn, juce::Colour accentIn)
     : processor (p), layer (layerIn), accent (accentIn)
 {
@@ -45,6 +146,11 @@ FmPanel::FmPanel (PluginBase& p, int layerIn, juce::Colour accentIn)
     filterToggle.setColour (juce::ToggleButton::textColourId, Theme::textDim);
     addAndMakeVisible (filterToggle);
     filterAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (processor.apvts, id (F::fmFilter), filterToggle);
+
+    waveDiagram = std::make_unique<Diagram> (processor.apvts, layer, Diagram::Kind::wave, accent);
+    envDiagram = std::make_unique<Diagram> (processor.apvts, layer, Diagram::Kind::indexOverTime, accent);
+    addAndMakeVisible (*waveDiagram);
+    addAndMakeVisible (*envDiagram);
 
     HelpDialog::setupButton (helpButton, *this, HelpDialog::Topic::fm, "the FM engine (presets, ratio, index, envelope)");
     addAndMakeVisible (helpButton);
@@ -88,4 +194,18 @@ void FmPanel::resized()
     const auto width = juce::jmin (90, top.getWidth() / 6);
     for (auto* k : { level.get(), ratio.get(), index.get(), envAmount.get(), envTime.get(), semis.get() })
         k->setBounds (top.removeFromLeft (width));
+
+    // Under rattarna: vågformen och index över tid, sida vid sida.
+    area.removeFromTop (6);
+    if (area.getHeight() >= 40)
+    {
+        waveDiagram->setBounds (area.removeFromLeft (area.getWidth() / 2 - 3));
+        area.removeFromLeft (6);
+        envDiagram->setBounds (area);
+    }
+    else
+    {
+        waveDiagram->setBounds ({});
+        envDiagram->setBounds ({});
+    }
 }

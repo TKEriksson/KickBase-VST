@@ -1,6 +1,7 @@
 #include "OscPanel.h"
 #include "HarmonicEditor.h"
 #include "HelpDialog.h"
+#include "OscRender.h"
 
 WavetableView::WavetableView (PluginBase& p, int layerIn, int oscIn, juce::Colour accentIn)
     : processor (p), layer (layerIn), osc (oscIn), accent (accentIn)
@@ -29,18 +30,30 @@ void WavetableView::timerCallback()
     const auto table = (int) raw (InstrumentField::aTable);
     const auto warpMode = (int) raw (InstrumentField::aWarp);
     const auto warp = raw (InstrumentField::aWarpAmount);
+    const auto phase = raw (InstrumentField::aPhase), detune = raw (InstrumentField::aDetune), blend = raw (InstrumentField::aBlend);
+    const auto unison = (int) raw (InstrumentField::aUnison);
     const auto ready = table == Wavetables::userIndex() || Wavetables::isReady (table);
     const auto morph = processor.apvts.getRawParameterValue (ParamID::bass (layer, ParamID::oscMorphField (osc)))->load() >= 0.5f;
+    // OSC 1 med WARP = FM: vald modulator och om den är på (texten och varningen i bilden)
+    const auto fmInfo = osc == 0 && warpMode == (int) WarpMode::fm
+        ? 1 + (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, InstrumentField::fmSource))->load() * 2
+            + (processor.apvts.getRawParameterValue (ParamID::bass (layer, ParamID::oscField (processor.apvts.getRawParameterValue (ParamID::bass (layer, InstrumentField::fmSource))->load() >= 0.5f ? 2 : 1, InstrumentField::aOn)))->load() >= 0.5f ? 0 : 4)
+        : 0;
     const auto duckDb = processor.fundamentalDuckDb[(size_t) layer].load (std::memory_order_relaxed);
     const auto duckChanged = std::abs (duckDb - lastDuckDb) > 0.1f || ((duckDb > 0.05f) != (lastDuckDb > 0.05f));
-    if (duckChanged || position != lastPosition || table != lastTable || warpMode != lastWarpMode || warp != lastWarp || ready != lastReady || morph != lastMorph)
+    if (duckChanged || position != lastPosition || table != lastTable || warpMode != lastWarpMode || warp != lastWarp || phase != lastPhase || detune != lastDetune || blend != lastBlend || unison != lastUnison || ready != lastReady || morph != lastMorph || fmInfo != lastFmInfo)
     {
+        lastFmInfo = fmInfo;
         lastDuckDb = duckDb;
         lastMorph = morph;
         lastPosition = position;
         lastTable = table;
         lastWarpMode = warpMode;
         lastWarp = warp;
+        lastPhase = phase;
+        lastDetune = detune;
+        lastBlend = blend;
+        lastUnison = unison;
         lastReady = ready;
         repaint();
     }
@@ -68,8 +81,22 @@ void WavetableView::paint (juce::Graphics& g)
         g.drawText ("DUCK -" + juce::String (lastDuckDb, 1) + " dB", badge, juce::Justification::centred);
     };
 
+    // WARP = FM: bilden visar den torra vågen, så säg vilken modulator som används (och varna när den är av).
+    auto paintFm = [&]
+    {
+        if (lastFmInfo == 0)
+            return;
+        const auto fromC = ((lastFmInfo - 1) & 2) != 0, off = ((lastFmInfo - 1) & 4) != 0;
+        const auto name = juce::String (fromC ? "OSC 3" : "OSC 2");
+        const auto text = off ? "FM: " + name + " is OFF - no FM" : "FM: modulator " + name;
+        g.setFont (Theme::font (9.0f, true));
+        g.setColour (off ? Theme::kick : Theme::textDim);
+        g.drawText (text, bounds.reduced (6.0f, 4.0f).removeFromBottom (14.0f), juce::Justification::centredRight);
+    };
+
     if (display != Display::wave)
     {
+        paintFm();
         paintDuck();
         drawCurrent (g, table, bounds.reduced (8.0f, 18.0f));
         g.setFont (Theme::font (9.5f, true));
@@ -78,7 +105,7 @@ void WavetableView::paint (juce::Graphics& g)
         g.setColour (accent.withAlpha (0.25f));
         g.fillRoundedRectangle (modeRect(), 3.0f);
         g.setColour (Theme::text);
-        g.drawText (display == Display::scope ? "SCOPE" : "SPECTRUM", modeRect(), juce::Justification::centred);
+        g.drawText (display == Display::scope ? "OUTPUT" : "SPECTRUM", modeRect(), juce::Justification::centred);
         if (hover)
         {
             g.setColour (accent.withAlpha (0.75f));
@@ -147,6 +174,7 @@ void WavetableView::paint (juce::Graphics& g)
     g.setColour (Theme::textDim.withAlpha (0.7f));
     g.drawText ("WAVE", modeRect(), juce::Justification::centred);
     paintDuck();
+    paintFm();
 
     // Glöd när musen är över bilden (klicka för att lyssna).
     if (hover)
@@ -172,11 +200,23 @@ void WavetableView::drawCurrent (juce::Graphics& g, const Wavetable& table, juce
     juce::Path path;
     if (display == Display::scope)
     {
-        constexpr int points = 256;
-        for (int i = 0; i <= points; ++i) // två perioder, som en oscilloskopbild
+        // OUTPUT: motorns utsignal med warp, phase, unison och detune (OscRender). Två perioder; med unison fler, så att svävningen syns.
+        OscRender::Settings settings;
+        settings.position = position;
+        settings.morph = lastMorph;
+        settings.warp = mode;
+        settings.warpAmount = warpAmount;
+        settings.startPhase = std::max (0.0f, lastPhase);
+        settings.unison = std::max (1, lastUnison);
+        settings.detuneCents = std::max (0.0f, lastDetune);
+        settings.blend = std::max (0.0f, lastBlend);
+        std::vector<float> wave ((size_t) 512);
+        OscRender::render (table, settings, wave, settings.unison > 1 ? 24.0 : 2.0);
+        const auto points = (int) wave.size();
+        for (int i = 0; i < points; ++i)
         {
-            const auto x = area.getX() + area.getWidth() * (float) i / points;
-            const auto y = area.getCentreY() - current (std::fmod (2.0 * i / points, 1.0)) * area.getHeight() * 0.45f;
+            const auto x = area.getX() + area.getWidth() * (float) i / (points - 1);
+            const auto y = area.getCentreY() - wave[(size_t) i] * area.getHeight() * 0.45f;
             if (i == 0)
                 path.startNewSubPath (x, y);
             else
@@ -276,6 +316,13 @@ OscPanel::OscPanel (PluginBase& p, int layerIn, int oscIn, juce::Colour accentIn
     addAndMakeVisible (filterSendButton);
     HelpDialog::setupButton (helpButton, *this, HelpDialog::Topic::osc, "the OSCILLATORS (table, warp, unison, presets)");
     addAndMakeVisible (helpButton);
+    harmonicsButton.setTooltip ("EDIT HARMONICS - Opens the harmonics editor for this oscillator's table (same as right-clicking the wave view). "
+                                "Greyed out when there is nothing to edit, for example an empty User WAV slot.");
+    harmonicsButton.onClick = [this]
+    {
+        juce::CallOutBox::launchAsynchronously (std::make_unique<HarmonicEditor> (processor, layer, osc, accent), harmonicsButton.getScreenBounds(), nullptr);
+    };
+    addAndMakeVisible (harmonicsButton);
     filterSendAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
         p.apvts, ParamID::bass (layer, (InstrumentField) ((int) InstrumentField::filterOsc1 + osc)), filterSendButton);
 
@@ -319,6 +366,13 @@ OscPanel::OscPanel (PluginBase& p, int layerIn, int oscIn, juce::Colour accentIn
         ringAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
             p.apvts, ParamID::bass (layer, InstrumentField::ringSource), ringBox);
         addChildComponent (ringBox);
+
+        fmBox.addItemList ({ "FM: modulator OSC 2", "FM: modulator OSC 3" }, 1);
+        fmBox.setTooltip ("FM - which oscillator modulates OSC 1's phase: OSC 2 or OSC 3 (OSC 1 can't modulate itself; feedback FM is unstable). "
+                          "The chosen oscillator must be ON; its LEVEL only sets what you hear of it directly, the FM uses the full wave. AMOUNT sets the depth.");
+        fmAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
+            p.apvts, ParamID::bass (layer, InstrumentField::fmSource), fmBox);
+        addChildComponent (fmBox);
     }
     startTimerHz (10);
     timerCallback(); // tabellens namn syns direkt
@@ -364,16 +418,23 @@ void OscPanel::timerCallback()
         tableButton.setButtonText (name);
         for (size_t i = 0; i < shapeButtons.size(); ++i)
             shapeButtons[i].setToggleState (current == Wavetables::classicIndex ((int) i), juce::dontSendNotification);
+        std::vector<float> frames; // samma test som övertonsredigeraren: finns det en tabell att redigera?
+        auto steps = 0;
+        juce::String tableName;
+        harmonicsButton.setEnabled (processor.wavetableSource (layer, osc, frames, steps, tableName));
     }
     if (osc == 0)
     {
-        const auto ring = (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, ParamID::oscField (osc, InstrumentField::aWarp)))->load() == (int) WarpMode::ring;
-        if (ring != ringShown)
+        const auto mode = (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, ParamID::oscField (osc, InstrumentField::aWarp)))->load();
+        const auto ring = mode == (int) WarpMode::ring, fm = mode == (int) WarpMode::fm;
+        if (ring != ringShown || fm != fmShown)
         {
             ringShown = ring;
+            fmShown = fm;
             ringBox.setVisible (ring);
+            fmBox.setVisible (fm);
             for (auto& button : shapeButtons)
-                button.setVisible (! ring);
+                button.setVisible (! ring && ! fm);
         }
     }
 }
@@ -634,6 +695,7 @@ void OscPanel::resized()
     morphButton.setBounds (shapes.removeFromRight (shapes.getWidth() / 4 + 4).reduced (1, 0)); // längst till höger: MORPH är inte en vågform
     wavButton.setBounds (shapes.removeFromRight (shapes.getWidth() / 5 + 2).reduced (1, 0));
     ringBox.setBounds (shapes.reduced (1, 0));
+    fmBox.setBounds (shapes.reduced (1, 0));
     for (auto& button : shapeButtons)
         button.setBounds (shapes.removeFromLeft (shapes.getWidth() / ((int) shapeButtons.size() - (int) (&button - shapeButtons.data()))).reduced (1, 0));
     left.removeFromTop (4);
@@ -647,5 +709,7 @@ void OscPanel::resized()
         const auto width = rowArea.getWidth() / 6;
         for (int i = 0; i < 6 && (size_t) (row * 6 + i) < knobs.size(); ++i)
             knobs[(size_t) (row * 6 + i)]->setBounds (rowArea.removeFromLeft (width));
+        if (row == 1) // lediga cellen sist på rad 2 (11 rattar på 12 platser)
+            harmonicsButton.setBounds (rowArea.removeFromLeft (width).reduced (4, 6));
     }
 }

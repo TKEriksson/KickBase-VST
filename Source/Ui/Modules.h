@@ -115,6 +115,19 @@ private:
     std::unique_ptr<juce::FileChooser> chooser;
 };
 
+// Synth/sample-balansen (kickMix) som en vågrät reglage med etikett, för flikraden i kicken.
+class KickMixControl : public juce::Component
+{
+public:
+    KickMixControl (juce::AudioProcessorValueTreeState& apvts, juce::Colour accent);
+    void resized() override;
+
+private:
+    juce::Label label;
+    FxSendControl::AmountSlider slider;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> attachment;
+};
+
 // Kicken: vågformen med pitch- och volymnoder, rattar för kroppen, klicket och drive, och plats för en klicksampling.
 class KickModule : public ModulePanel, public juce::FileDragAndDropTarget, private juce::Timer
 {
@@ -151,6 +164,7 @@ private:
     std::vector<juce::Component*> sampleControls;
     juce::Label sampleHelp;
     std::unique_ptr<FxSendControl> fxSend;
+    std::unique_ptr<KickMixControl> mixControl; // flikraden: Synth/Sample-mix
 
     juce::ToggleButton synthToggle { "SYNTH" }, sampleToggle { "SAMPLE" }; // små på/av för äldre presets; balansen är MIX
     std::unique_ptr<juce::ButtonParameterAttachment> synthToggleAttachment, sampleToggleAttachment, sampleReverseAttachment;
@@ -214,6 +228,7 @@ class SamplePage : public juce::Component, private juce::Timer
 {
 public:
     SamplePage (PluginBase& processor, int layer, juce::Colour accent);
+    void paint (juce::Graphics&) override;
     void resized() override;
     void loadSample (const juce::File& file);
 
@@ -233,6 +248,7 @@ private:
     juce::ToggleButton sampleReverseToggle { "REVERSE" }, ampToggle { "AMP" }, pitchToggle { "PITCH" };
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> sampleReverseAttachment, ampAttachment, pitchAttachment;
     std::vector<std::unique_ptr<juce::Component>> ampControls, pitchControls; // AMP: TIME, SHAPE; PITCH: SEMIS, TIME, SHAPE
+    std::array<juce::Rectangle<int>, 3> editBoxes; // rutorna PITCH, AMP, REVERSE under vågformen
     juce::Label sliceCapNotice; // "Only the first 16 slices have rows" när samplingen har fler skivor än skivrader
     juce::ComboBox sliceModeBox;
     juce::TextButton createButton { "CREATE" }; // E2 steg 4: gör Grid/Auto-resultatet till egna gränser (Manual) som kan flyttas
@@ -267,12 +283,31 @@ private:
     bool sounding = false;
 };
 
+// Kurva över tid i WARP ENV-gruppen: warpen på OSC A (grundnivån WARP + AMOUNT x vald källa) från tonstart. Höjden följer AMOUNT, fallet
+// DIRECT DEC (källa Direct) eller vald envelope, och en spelhuvud rör sig medan lagret låter (LISTEN eller spelad ton).
+class WarpEnvCurve : public juce::Component, public juce::SettableTooltipClient, private juce::Timer
+{
+public:
+    WarpEnvCurve (PluginBase& processor, int layer, std::function<InstrumentParams()> readParams);
+    void paint (juce::Graphics&) override;
+
+private:
+    void timerCallback() override;
+
+    PluginBase& processor;
+    const int layer;
+    std::function<InstrumentParams()> readParams;
+    InstrumentParams params;
+    float signature = -1.0f, playhead = -1.0f;
+};
+
 // Ett baslager (bara instrumentet): källorna i flikar (OSC 1-3 och SAMPLE, var och en med av/på), filter- och
 // amplitud-envelope och rattar. En WAV kan släppas på sidan (eller laddas med LOAD på SAMPLE-fliken).
 class InstrumentModule : public ModulePanel, public juce::FileDragAndDropTarget
 {
 public:
     InstrumentModule (PluginBase& processor, int layer);
+    juce::String currentTabName() const { return sources.getCurrentTabName(); } // för brödsmulan: INSTR, OSC 2 ...
     void resized() override;
     void paintOverChildren (juce::Graphics&) override;
 
@@ -296,7 +331,12 @@ private:
     struct InstrPage : public juce::Component
     {
         explicit InstrPage (InstrumentModule& o) : owner (o) {}
-        void paint (juce::Graphics& g) override { owner.groups.paint (g, owner.getAccent()); }
+        void paint (juce::Graphics& g) override
+        {
+            owner.groups.paint (g, owner.getAccent());
+            if (! owner.maxFrame.isEmpty())
+                ControlGroups::paintFrame (g, owner.maxFrame, "MAX LENGTH", owner.getAccent());
+        }
         void resized() override { owner.layoutInstrPage(); }
         InstrumentModule& owner;
     };
@@ -309,13 +349,22 @@ private:
     EnvelopeView envelope { 0.5 };
     HoldAudition hold { processor };      // klick och håll på LISTEN: instrumentet spelas på förhandsvisningstonen
     ListenButton envelopeListen;          // högtalaren i hörnet av envelope-grafen
+    // MAX LENGTH-rutan (G1) till höger om PHASE: vald grupp (ENV 1, PITCH, FILTER ENV, FM), - / + för gruppens steg, multiplikator (x0.25 ... x10) och resulterande tider.
+    juce::ComboBox maxGroupBox;
+    juce::TextButton maxTimeDown { "-" }, maxTimeUp { "+" };
+    juce::Label maxTimeLabel, maxResultLabel;
+    int maxGroup = 0;                    // vald grupp i rutan (bara UI)
+    juce::Rectangle<int> maxFrame;       // rutans ram, ritas av InstrPage::paint
+    void stepMaxLength (int delta);
+    void updateMaxLengthBox();
     juce::TextButton instrHelpButton;     // HELP för INSTR-fliken, vid LISTEN i grafens hörn
     TabbedPanel sources;
     std::array<std::unique_ptr<OscPanel>, ParamID::oscsPerLayer> oscs;
     std::unique_ptr<SamplePage> samplePage;
     std::vector<std::unique_ptr<juce::Component>> controls;
     std::unique_ptr<FmPanel> fmPanel;                                     // FM-fliken (sist, så att fliknumren före den inte förskjuts)
-    std::unique_ptr<InstrTimingPanel> timingPanel;                        // TIMING-fliken: diagram + POS DELAY / LENGTH / SYNC / MODE per källa
+    std::unique_ptr<TimelineChart> instrTimeline;                         // INSTR-sidans lilla tidsdiagram (skrivskyddat)
+    std::unique_ptr<InstrTimingPanel> timingPanel;                       // TIMING-fliken: diagram + POS DELAY / LENGTH / SYNC / MODE per källa
     std::unique_ptr<InstrMixPanel> mixPanel;                              // MIX-fliken: nivå, pan och bredd per källa + sammanlagd vågform (efter FM av samma skäl)
     std::unique_ptr<FilterPage> filterPage;                             // FILTER-fliken: kurvan, Filter 1 och Filter 2
     ControlGroups groups; // PITCH, SUB, NOISE, FILTER ENV, VOLUME ENV, WARP ENV, DRIVE, OUT (ENV 2/3, VELOCITY, RANDOM: ENV-fliken)
@@ -337,6 +386,13 @@ public:
     void resized() override;
     void select (int layer);
     int getCurrent() const { return current; }
+    // Brödsmulans del under INSTRUMENT: instrumentets namn och den öppna underfliken ("INSTR 3 > OSC 2"). Tom om panelen inte är byggd än.
+    juce::String crumb() const
+    {
+        if (modules[(size_t) current] == nullptr)
+            return {};
+        return processor.getLayerName (current) + "  >  " + modules[(size_t) current]->currentTabName();
+    }
     void addInstrument(); // ADD INSTRUMENT i mönstret: lägger till och väljer det nya
     void mouseDown (const juce::MouseEvent& event) override;
 
@@ -363,6 +419,7 @@ private:
     std::array<juce::Component*, ParamID::numInstrumentLayers> extras {};
     std::array<juce::Component*, ParamID::numInstrumentLayers> powers {};
     int current = 0, lastCount = -1, lastNamesVersion = -1, lastStructureVersion = 0;
+    juce::String lastCrumb;
     bool confirmOpen = false;
     juce::Component::SafePointer<juce::AlertWindow> renameDialog;
 };

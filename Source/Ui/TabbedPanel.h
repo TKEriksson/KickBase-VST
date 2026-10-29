@@ -67,8 +67,8 @@ private:
 class TabbedPanel : public juce::Component, private juce::Timer
 {
 public:
-    static constexpr int headerHeight = 36;
-    static constexpr int extrasRowHeight = 36; // rad 2: sidans kontroller (väljare, på/av, preset) i remsa-stil
+    static constexpr int headerHeight = 3 + Theme::Space::menuButtonH + 2 * Theme::Space::menuPadY + 3;
+    static constexpr int extrasRowHeight = 44; // rad 2: sidans kontroller (väljare, på/av, preset) i remsa-stil
 
     // `rememberedTab` pekar på var den valda fliken sparas (t.ex. i processorn), så att
     // samma flik visas när fönstret öppnas igen.
@@ -158,7 +158,11 @@ public:
         startTimerHz (4);
     }
 
+    // En avdelare efter den senast tillagda fliken (o): ett tunt streck i flikraden som grupperar flikarna. Inga gruppnamn, det tar plats.
+    void addSeparator() { tabs.back().dividerAfter = true; }
+
     int getCurrentTab() const { return current; }
+    juce::String getCurrentTabName() const { return tabs.empty() ? juce::String() : tabs[(size_t) current].button->getButtonText(); }
 
     void setCurrentTab (int index)
     {
@@ -200,13 +204,17 @@ public:
         {
             // Mörk infälld remsa bakom underflikarna, med flikens namn som liten mono-etikett längst till höger.
             const auto strip = stripArea.toFloat();
-            g.setColour (Theme::insetStrip);
+            g.setColour (juce::Colour (0xff121b2e)); // nivå 2: blåtonad remsa
             g.fillRoundedRectangle (strip, 12.0f);
             g.setGradientFill (juce::ColourGradient (juce::Colours::black.withAlpha (0.6f), 0.0f, strip.getY(),
                                                      juce::Colours::transparentBlack, 0.0f, strip.getY() + 5.0f, false));
             g.fillRoundedRectangle (strip.reduced (1.0f, 1.0f), 11.0f);
             g.setColour (Theme::panelBorderDim);
             g.drawRoundedRectangle (strip.reduced (0.5f), 12.0f, 1.0f);
+
+            g.setColour (Theme::panelBorderDim);
+            for (const auto x : dividerXs)
+                g.drawLine ((float) x + 0.5f, strip.getY() + 7.0f, (float) x + 0.5f, strip.getBottom() - 7.0f, 1.0f);
 
             // Stjälk under den valda underfliken (skissen: .tab-stem / .tab-stem-inner), så att den binder till innehållet under remsan.
             const auto cx = currentTab.button->getBounds().toFloat().getCentreX();
@@ -218,13 +226,17 @@ public:
             g.fillPath (stem);
             g.setColour (Theme::panelAlt);
             g.fillPath (stemInner);
+            Theme::paintDividerGlow (g, juce::Rectangle<float> (10.0f, strip.getBottom() + 5.0f, (float) getWidth() - 20.0f, 1.0f), false);
         }
         else
         {
-            // Brödsmulan (KICKBASE > NAMN [> undersida]) som glasdisplay i rad 1 bredvid huvudmenyn ersätter den gamla 38 px-rubrikraden.
+            // Nivå 1 (huvudmeny) avgränsas från innehållet med en glödande avdelare (o, z).
+            Theme::paintDividerGlow (g, juce::Rectangle<float> (10.0f, (float) headerHeight - 2.0f, (float) getWidth() - 20.0f, 1.0f), false);
+
+            // Brödsmulan (> NAMN [> undersida ...]) som glasdisplay i rad 1 bredvid huvudmenyn ersätter den gamla 38 px-rubrikraden.
             if (crumbArea.getWidth() > 60)
             {
-                auto crumb = "KICKBASE  >  " + currentTab.button->getButtonText().toUpperCase();
+                auto crumb = ">  " +currentTab.button->getButtonText().toUpperCase();
                 if (crumbSuffix != nullptr)
                     if (const auto suffix = crumbSuffix(); suffix.isNotEmpty())
                         crumb << "  >  " << suffix.toUpperCase();
@@ -238,10 +250,11 @@ public:
             if (currentTab.headerExtras != nullptr)
             {
                 const auto strip = extrasRow.toFloat();
-                g.setColour (Theme::insetStrip);
-                g.fillRoundedRectangle (strip, 12.0f);
+                g.setColour (juce::Colour (0xff06080d)); // nivå 3: mörkare, lägre remsa
+                g.fillRoundedRectangle (strip, 10.0f);
                 g.setColour (Theme::panelBorderDim);
-                g.drawRoundedRectangle (strip.reduced (0.5f), 12.0f, 1.0f);
+                g.drawRoundedRectangle (strip.reduced (0.5f), 10.0f, 1.0f);
+                Theme::paintDividerGlow (g, juce::Rectangle<float> (10.0f, strip.getBottom() + 3.0f, (float) getWidth() - 20.0f, 1.0f), false);
             }
         }
     }
@@ -251,7 +264,7 @@ public:
 
     void resized() override
     {
-        auto header = getLocalBounds().removeFromTop (headerHeight).reduced (10, 4).withTrimmedTop (2);
+        auto header = juce::Rectangle<int> (10, 3 + Theme::Space::menuPadY, std::max (0, getWidth() - 20), Theme::Space::menuButtonH);
         if (previewButton != nullptr)
         {
             previewButton->setBounds (header.removeFromRight (previewWidth));
@@ -259,9 +272,10 @@ public:
         }
         // Knappens bredd = textbredd + 2 x 14 px (+ plats för LED/ström-knapp): texten krymper aldrig.
         const auto pillsLeft = header.getX();
-        const auto strip = header.expanded (4, 3);
+        const auto strip = header.expanded (4, Theme::Space::menuPadY);
         stripArea = strip;
         int usedWidth = 0;
+        dividerXs.clear();
         for (auto& tab : tabs)
         {
             const auto width = pillWidth (tab);
@@ -273,6 +287,12 @@ public:
             }
             header.removeFromLeft (tabGap);
             usedWidth += width + tabGap;
+            if (tab.dividerAfter)
+            {
+                dividerXs.push_back (header.getX() + dividerGap / 2);
+                header.removeFromLeft (dividerGap);
+                usedWidth += dividerGap;
+            }
         }
         const auto restArea = juce::Rectangle<int> (pillsLeft + usedWidth + 4, strip.getY(), std::max (0, header.getRight() + 4 - (pillsLeft + usedWidth + 4)), strip.getHeight());
         labelArea = subTabs ? restArea.withTrimmedRight (8) : juce::Rectangle<int>();
@@ -281,11 +301,11 @@ public:
         extrasRow = juce::Rectangle<int> (10, headerHeight + 2, std::max (0, getWidth() - 20), extrasRowHeight);
         for (auto& tab : tabs)
         {
-            auto content = getLocalBounds().reduced (10).withTrimmedTop (headerHeight - 4);
+            auto content = getLocalBounds().reduced (Theme::Space::panelPad).withTrimmedTop (headerHeight - 12);
             if (tab.headerExtras != nullptr)
             {
-                tab.headerExtras->setBounds (extrasRow.reduced (8, 2));
-                content.setTop (extrasRow.getBottom() + 6);
+                tab.headerExtras->setBounds (extrasRow.reduced (8, 4));
+                content.setTop (extrasRow.getBottom() + Theme::Space::md);
             }
             tab.page->setBounds (content);
         }
@@ -294,7 +314,8 @@ public:
 private:
     static constexpr int previewWidth = 30;
     static constexpr int powerSpace = 30; // plats för på/av-ikonen längst till höger på en flik
-    static constexpr int tabGap = 8;
+    static constexpr int tabGap = Theme::Space::menuGapX;
+    static constexpr int dividerGap = 12; // extra plats för en avdelare mellan två flikgrupper
 
     void updatePreviewButton()
     {
@@ -326,6 +347,7 @@ private:
         std::function<juce::String()> nameProvider;
         std::function<void()> previewStart, previewStop;
         juce::String previewTooltip;
+        bool dividerAfter = false;
     };
 
     // Samma typsnitt som KickbaseLookAndFeel::drawButtonText använder för "noshrink"-knappar (höjd 11, bold, kerning som i LookAndFeel).
@@ -345,6 +367,7 @@ private:
     int current = 0;
     bool subTabs = false;
     juce::Rectangle<int> stripArea, labelArea, crumbArea, extrasRow;
+    std::vector<int> dividerXs;
     juce::String stripLabel;
     int* remembered;
     int initialTab;

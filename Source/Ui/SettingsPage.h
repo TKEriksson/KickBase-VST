@@ -35,6 +35,7 @@ private:
     void chooseFolder (FolderRow& row);
     void setBridge (bool on);
     void updatePack();
+    void updateGlowButton();
     void showPanel (juce::Component* panel); // OPTIMIZATIONS eller ABOUT över hela sidan; nullptr = tillbaka
     bool panelShown() const { return optimizations.isVisible() || about.isVisible(); } // sidan under en panel gör ingenting
 
@@ -46,7 +47,7 @@ private:
 
     // FÖNSTER
     juce::Label scaleLabel, windowHint;
-    juce::TextButton optimizationsButton { "OPTIMIZATIONS..." }, aboutButton { "ABOUT" };
+    juce::TextButton optimizationsButton { "OPTIMIZATIONS..." }, aboutButton { "ABOUT" }, glowButton;
     juce::TextButton helpButton;
     OptimizationsPanel optimizations;
     AboutPanel about;

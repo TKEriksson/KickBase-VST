@@ -1,4 +1,5 @@
 #include "Modulation.h"
+#include "Params.h"
 
 namespace Modulation
 {
@@ -10,7 +11,7 @@ namespace Modulation
     juce::StringArray rateNames()
     {
         return { "1/32", "1/16 T", "1/16", "1/8 T", "1/8", "1/4 T", "1/4", "1/2", "1 bar", "2 bars", "4 bars",
-                 "3/16", "3/8", "3/4", "3 bars", "6 bars", "8 bars", "16 bars" };
+                 "3/16", "3/8", "3/4", "3 bars", "6 bars", "8 bars", "16 bars", "1/64" }; // 1/64 sist: gamla index skiftar inte
     }
 
     juce::StringArray syncTimeNames()
@@ -26,7 +27,7 @@ namespace Modulation
 
     double rateInQuarters (int index)
     {
-        constexpr double quarters[] { 0.125, 1.0 / 6.0, 0.25, 1.0 / 3.0, 0.5, 2.0 / 3.0, 1.0, 2.0, 4.0, 8.0, 16.0, 0.75, 1.5, 3.0, 12.0, 24.0, 32.0, 64.0 };
+        constexpr double quarters[] { 0.125, 1.0 / 6.0, 0.25, 1.0 / 3.0, 0.5, 2.0 / 3.0, 1.0, 2.0, 4.0, 8.0, 16.0, 0.75, 1.5, 3.0, 12.0, 24.0, 32.0, 64.0, 0.0625 };
         return quarters[juce::jlimit (0, (int) std::size (quarters) - 1, index)];
     }
 
@@ -263,6 +264,19 @@ Modulator::Modulator (juce::AudioProcessorValueTreeState& apvts, const ModRoutes
         parameters.push_back (ranged);
         raws.push_back (ranged != nullptr ? apvts.getRawParameterValue (ranged->getParameterID()) : nullptr);
     }
+    timeModSlot.assign (parameters.size(), -1);
+    for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
+        for (int i = 0; i < ParamID::numTimeCaps; ++i)
+        {
+            const auto& spec = ParamID::timeCapSpec (i);
+            const auto index = indexOf (ParamID::bass (layer, spec.field));
+            if (index < 0)
+                continue;
+            timeModSlot[(size_t) index] = (int) timeMods.size();
+            const auto group = ParamID::timeCapGroup (i);
+            timeMods.push_back ({ index, spec.min, spec.centre, spec.legacyMax, apvts.getRawParameterValue (ParamID::bass (layer, InstrumentField::maxTime)),
+                                  group > 0 ? apvts.getRawParameterValue (ParamID::bass (layer, ParamID::maxTimeGroupField (group))) : nullptr, group });
+        }
     offsets.assign (parameters.size(), 0.0f);
     displayOffsets = std::make_unique<std::atomic<float>[]> (parameters.size());
     for (size_t i = 0; i < parameters.size(); ++i)
@@ -326,7 +340,7 @@ void Modulator::update (double ppq, double bpm)
             const auto wanted = tempoFactor * hz;
             auto nearest = -1;
             auto nearestRelative = 1.0e9;
-            for (int k = 0; k < 18; ++k) // de 18 notvärdena (rateNames().size(); rateNames() allokerar och får inte anropas här)
+            for (int k = 0; k < 19; ++k) // de 19 notvärdena (rateNames().size(); rateNames() allokerar och får inte anropas här)
             {
                 const auto noteCycles = 1.0 / rateInQuarters (k);
                 const auto relative = std::abs (wanted - noteCycles) / noteCycles;
@@ -465,6 +479,17 @@ float Modulator::apply (int index, float valueIn) const
     auto* parameter = parameters[(size_t) index];
     if (parameter == nullptr)
         return valueIn;
+    if (const auto slot = timeModSlot[(size_t) index]; slot >= 0)
+    {
+        const auto& t = timeMods[(size_t) slot];
+        const auto step = t.maxRaw != nullptr ? ParamID::resolveMaxStep (t.group, t.ownRaw != nullptr ? t.ownRaw->load() : 0.0f, t.maxRaw->load()) : ParamID::maxTimeDefault;
+        const auto cap = t.legacyMax * ParamID::maxTimeMs (step) / 1000.0f;
+        if (valueIn > cap)
+            return valueIn; // värdet ligger ovanför taket (MAX sänkt): lämnas orört
+        juce::NormalisableRange<float> range (t.min, cap, 0.01f);
+        range.setSkewForCentre (t.centre);
+        return range.convertFrom0to1 (juce::jlimit (0.0f, 1.0f, range.convertTo0to1 (valueIn) + offsets[(size_t) index]));
+    }
     const auto normalised = juce::jlimit (0.0f, 1.0f, parameter->convertTo0to1 (valueIn) + offsets[(size_t) index]);
     return parameter->convertFrom0to1 (normalised);
 }

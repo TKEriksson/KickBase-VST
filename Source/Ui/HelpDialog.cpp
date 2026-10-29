@@ -173,14 +173,13 @@ Everything this layer plays, a few cycles after the note starts (110 Hz).
 - **Mouse wheel**: zoom in time. **Shift + wheel**: zoom the height.
 - **Middle button drag** or the **scroll bar**: move along the note.
 - **Double-click**: reset the view.
-- **WIDE**: give the waveform the full width (the knobs are hidden). **NARROW** brings them back.
 )";
 
     const char* timingText = R"(# TIMING
 The **TIMING** tab (next to MIX) shows the timing of every source in its own panel, with a plot of its level over time. The playhead follows the last note and a line marks when it was released.
 - **MODE**: GATE = the source runs silently and is let in after POS DELAY (as in earlier versions). SHIFT = the source also starts from scratch there (OSC 1-3 and FM restart their own envelopes too; the pitch envelope is shared and keeps running).
 - **POS DELAY**: the source is silent this long (0-4000 ms) after each note starts. A yellow warning appears when it is longer than the note's volume envelope.
-- **SYNC** (under POS DELAY): note values at the project tempo (1/16 to 4 bars) instead of milliseconds. With SYNC on, the knob is hidden and a **x** field sets how many note values (1-8). Fixed when the note starts.
+- **SYNC** (under POS DELAY): note values at the project tempo (1/64 to 4 bars) instead of milliseconds. With SYNC on, the knob is hidden and a **x** field sets how many note values (1-8). Fixed when the note starts.
 - **LENGTH**: how long the source sounds after its POS DELAY before it has faded out. 0 = the whole note. It has the same **SYNC** and **x** choices.
 - **CURVE**: the shape of that fade: 0 % = straight, above = fast first, below = slow first.
 - Everything is off by default, so existing sounds are unchanged.
@@ -278,7 +277,10 @@ Effects live on **FX channels** (FX1-FX11), like mixer sends. An instrument send
 )";
 
     const char* masterText = R"(# MASTER
-The last stage before the output. Two views: **MIXER** and **MAXIMIZER**.
+The last stage before the output. Three views: **MIXER**, **SIDECHAIN** and **MAXIMIZER** (the FX version has SIDECHAIN and MAXIMIZER). The display next to them shows where you are, e.g. MASTER > SIDECHAIN.
+
+## SIDECHAIN
+The kick ducks the other sounds. It has its own help button inside the view (see the SIDECHAIN topic).
 
 ## MIXER
 One strip per sound source: the kick, the instruments and the FX channels.
@@ -477,12 +479,41 @@ Each row is one view. The menu sets how many times per second it is redrawn (5 t
 If Kickbase feels heavy, try REDUCE ANIMATIONS first, then lower the ANALYZER rate and turn FILLED off.
 )";
 
+    const char* harmonicsText = R"(# HARMONIC EDITOR
+Shapes the sound of one oscillator by its harmonics. Open it from the oscillator's table menu.
+
+## What is a wavetable?
+A wavetable is a row of waveforms, called **frames**. POS on the oscillator moves along the row. Each frame is one cycle of a wave, and every wave is a sum of harmonics: harmonic 1 is the fundamental (the pitch you hear), 2 is an octave up, and so on.
+
+## Frames
+- **All frames**: your edit is applied to every frame of the table.
+- **Frame 1..n**: only that frame changes. The picture shows this frame.
+
+## The bars
+- The **dB** area has one bar per harmonic. The middle line is 0 dB (unchanged), up is louder (+12 dB at most), and a bar dragged to the bottom is removed.
+- The **PHASE** area moves where each harmonic starts, from -180 to +180 degrees.
+- The grey part is how it looked when the window opened.
+- **Remove the fundamental**: drag bar 1 in the dB area to the bottom. Useful when a kick already supplies the low note.
+- Double-click a bar to reset it. Double-click the waveform to reset everything.
+
+## Tools
+- **DRAW**, **LINE**, **SMOOTH**, **RANDOM**: how the mouse changes the bars.
+- **PRESET**: shapes the bars into a classic spectrum (saw, square, ...). You can keep editing afterwards.
+- **16 / 32 / 64 harmonics**: how many bars are shown. Ctrl + mouse wheel changes it too.
+
+## The phase
+Phase changes the shape of the wave, but each harmonic keeps its level, so a single note sounds almost the same. It matters when waves are layered (for example kick and bass) or when the wave is bent by the filter or warp.
+
+The result becomes the oscillator's User table.
+)";
+
     struct TopicInfo { HelpDialog::Topic topic; const char* tab; const char* text; };
     const TopicInfo topics[] = {
         { HelpDialog::Topic::pianoRoll, "PIANO ROLL", pianoRollText },
         { HelpDialog::Topic::liveCode, "LIVE CODE", liveCodeText },
         { HelpDialog::Topic::soundstage, "SOUNDSTAGE", soundstageText },
         { HelpDialog::Topic::osc, "OSC", oscText },
+        { HelpDialog::Topic::harmonics, "HARMONICS", harmonicsText },
         { HelpDialog::Topic::filter, "FILTER", filterText },
         { HelpDialog::Topic::fm, "FM", fmText },
         { HelpDialog::Topic::mix, "MIX", mixText },

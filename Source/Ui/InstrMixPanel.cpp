@@ -15,30 +15,12 @@ InstrMixPanel::InstrMixPanel (PluginBase& p, int layerIn, juce::Colour accentIn)
     addStrip ("NOISE", F::noise, &panNoise, &widthNoise, 0);
     addStrip ("SUB", F::sub, nullptr, nullptr, 0, &subPhase);
     addStrip ("FM", F::fmLevel, &panFm, &widthFm, 0, &fmPhase);
-    wideButton.setTooltip ("Give the combined waveform the full width of the panel (hides the knobs). Click again to bring them back.");
-    wideButton.onClick = [this] { setWide (! wide); };
     scrollBar.setAutoHide (false);
     scrollBar.addListener (this);
     HelpDialog::setupButton (helpButton, *this, HelpDialog::Topic::mix, "the MIX tab (levels, pan, width, meters, waveform zoom)");
-    addAndMakeVisible (wideButton);
     addAndMakeVisible (helpButton);
     addAndMakeVisible (scrollBar);
     startTimerHz (4);
-}
-
-void InstrMixPanel::setWide (bool on)
-{
-    wide = on;
-    wideButton.setButtonText (wide ? "NARROW" : "WIDE");
-    for (auto& strip : strips)
-    {
-        for (auto* knob : { strip->level.get(), strip->pan.get(), strip->width.get(), strip->phase.get() })
-            if (knob != nullptr)
-                knob->setVisible (! wide);
-    }
-    resized();
-    renderWave();
-    repaint();
 }
 
 void InstrMixPanel::updateScrollBar()
@@ -77,13 +59,12 @@ void InstrMixPanel::addStrip (const char* name, InstrumentField level, const Ins
 void InstrMixPanel::resized()
 {
     auto area = getLocalBounds().reduced (6, 4);
-    waveArea = wide ? area : area.removeFromLeft (juce::jmin (260, area.getWidth() / 3));
-    wideButton.setBounds (waveArea.getRight() - 56, waveArea.getY(), 56, 14);
-    helpButton.setBounds (waveArea.getRight() - 56 - 4 - 40, waveArea.getY(), 40, 14);
+    // Vågen är alltid full bredd överst men låg; ratterna ligger under.
+    const auto waveHeight = juce::jlimit (90, 140, area.getHeight() * 3 / 10);
+    waveArea = area.removeFromTop (juce::jmin (waveHeight, juce::jmax (50, area.getHeight() - 100))); // på en låg panel krymper vågen först, så att remsorna får höjd
+    helpButton.setBounds (waveArea.getRight() - 40, waveArea.getY(), 40, 14);
     scrollBar.setBounds (waveArea.getX(), waveArea.getBottom() - 28, waveArea.getWidth(), 12);
-    if (wide)
-        return;
-    area.removeFromLeft (8);
+    area.removeFromTop (6);
     // Två rader: OSC 1-3 + SAMPLE överst, NOISE, SUB och FM under.
     const auto rowHeight = area.getHeight() / 2;
     auto topRow = area.removeFromTop (rowHeight);
@@ -299,8 +280,6 @@ void InstrMixPanel::paint (juce::Graphics& g)
         g.drawVerticalLine ((int) px, mid - juce::jmin (limit, hi * (wave.getHeight() * 0.45f)), mid - juce::jmax (-limit, lo * (wave.getHeight() * 0.45f)) + 1.0f);
     }
 
-    if (wide)
-        return;
     for (const auto& strip : strips)
     {
         g.setColour (Theme::textDim.withAlpha (0.35f));

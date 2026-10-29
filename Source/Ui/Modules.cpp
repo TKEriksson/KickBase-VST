@@ -471,7 +471,8 @@ void HeaderBar::resized()
     // Till höger: mätare och lyssnarvolym längst ut, sedan tonart, sedan (instrumentet) en gemensam ruta för
     // PREVIEWS, LOOP, tempo/takt och JOG. Sätts först, så att vänstra delen kan krympa vid smal bredd.
     auto right = getLocalBounds().reduced (14, 0);
-    masterKnob.setBounds (right.removeFromRight (30).withSizeKeepingCentre (30, 30));
+    const auto outSize = std::min (height - 4, 64);
+    masterKnob.setBounds (right.removeFromRight (outSize).withSizeKeepingCentre (outSize, outSize)); // stor OUT-ratt (ä)
     right.removeFromRight (4);
     meterRect = right.removeFromRight (meterWidth).withSizeKeepingCentre (meterWidth, 28);
     right.removeFromRight (10);
@@ -766,10 +767,9 @@ void HeaderBar::paint (juce::Graphics& g)
     if (! transportGroup.isEmpty())
     {
         const auto group = transportGroup.toFloat();
-        g.setColour (Theme::pattern.withAlpha (0.07f));
-        g.fillRoundedRectangle (group, 6.0f);
-        g.setColour (Theme::pattern.withAlpha (0.75f));
-        g.drawRoundedRectangle (group.reduced (0.5f), 6.0f, 1.2f);
+        // Glasdisplay (ä): mörkt glas med ljusreflex, tunn kant i mönsterfärgen och gemensam kantglöd (å).
+        Theme::paintGlassDisplay (g, group, 9.0f);
+        Theme::paintEdgeGlow (g, group, 9.0f, Theme::pattern, 0.8f); // svag färgad glöd i stället för röd ram
         g.setFont (Theme::font (8.5f, true));
         g.setColour (Theme::pattern);
         g.drawText ("PREVIEWS", previewGroup.toFloat().withHeight (12.0f), juce::Justification::centredLeft);
@@ -829,6 +829,33 @@ void HeaderBar::paint (juce::Graphics& g)
 }
 
 //==============================================================================
+KickMixControl::KickMixControl (juce::AudioProcessorValueTreeState& apvts, juce::Colour accent)
+{
+    label.setText ("SYNTH / SAMPLE", juce::dontSendNotification);
+    label.setFont (Theme::font (11.0f));
+    label.setColour (juce::Label::textColourId, Theme::textDim);
+    label.setInterceptsMouseClicks (false, false);
+    addAndMakeVisible (label);
+
+    slider.parameter = apvts.getParameter (ParamID::kickMix);
+    slider.setSliderStyle (juce::Slider::LinearHorizontal);
+    slider.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+    slider.setColour (juce::Slider::trackColourId, accent);
+    slider.setColour (juce::Slider::thumbColourId, Theme::text);
+    slider.setPopupDisplayEnabled (true, true, nullptr);
+    slider.setTooltip ("MIX - Balance between the synth kick and the loaded sample. Left = synth only, middle = both at full level, right = sample only. With no sample, left to middle is the same.");
+    addAndMakeVisible (slider);
+    attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (apvts, ParamID::kickMix, slider);
+}
+
+void KickMixControl::resized()
+{
+    auto area = getLocalBounds();
+    label.setBounds (area.removeFromLeft (100));
+    slider.setBounds (area);
+}
+
+//==============================================================================
 KickModule::KickModule (PluginBase& p)
     : ModulePanel ("KICK", Theme::kick, &p.apvts, ParamID::kickOn), processor (p),
       keyMode (p.apvts, ParamID::kickKeyFollow, "KEY"),
@@ -845,6 +872,9 @@ KickModule::KickModule (PluginBase& p)
     fxSend = std::make_unique<FxSendControl> (p.apvts, ParamID::kickFxChannel, ParamID::kickFxAmount, ParamID::kickFxSend, juce::StringArray (ParamID::kickFxSendToIds, numEffectChannels), "FX SEND", Theme::kick);
     addAndMakeVisible (*fxSend);
     setHeaderFxSend (fxSend.get());
+    mixControl = std::make_unique<KickMixControl> (p.apvts, Theme::kick);
+    addAndMakeVisible (*mixControl);
+    setHeaderMix (mixControl.get(), 220);
     addAndMakeVisible (keyMode);
     addAndMakeVisible (display);
 
@@ -863,14 +893,14 @@ KickModule::KickModule (PluginBase& p)
 
     // I signalens ordning: stämning och form (envelopena ritas i displayen), kroppens övertoner,
     // klicket, drive och utgång.
-    groups.addRow ({ { "TUNING", { knob (ParamID::kickTune, "TUNE") } },
+    groups.addRow ({ { "TUNING", { knob (ParamID::kickTune, "TUNE"), &keyMode } },
                      { "ENVELOPES", { knob (ParamID::kickPitchAmount, "PITCH AMT"), knob (ParamID::kickLength, "LENGTH") } },
                      { "BODY", { knob (ParamID::kickPhase, "PHASE"), knob (ParamID::kickHarmonics, "HARMONICS"),
                                  knob (ParamID::kickHarmDecay, "H. DECAY"), knob (ParamID::kickHarmTilt, "H. TILT") } },
                      { "CLICK", { knob (ParamID::kickClick, "LEVEL"), knob (ParamID::kickClickLength, "LENGTH"),
                                   knob (ParamID::kickClickTone, "TONE") } },
                      { "DRIVE", { choice (ParamID::kickClipMode, "MODE"), knob (ParamID::kickDrive, "AMOUNT") } },
-                     { "OUT", { knob (ParamID::kickHighCut, "HIGH CUT"), knob (ParamID::kickMix, "MIX"), knob (ParamID::kickLevel, "LEVEL") } } });
+                     { "OUT", { knob (ParamID::kickHighCut, "HIGH CUT"), knob (ParamID::kickLevel, "LEVEL") } } });
 
     // SAMPLE-vyn: hur samplingen används (MODE, LEVEL, TUNE, OFFSET). Rattarna är desamma som förut, bara i en egen vy.
     sampleControls = { choice (ParamID::kickSampleMode, "MODE"), knob (ParamID::kickSampleLevel, "LEVEL"),
@@ -924,13 +954,11 @@ KickModule::KickModule (PluginBase& p)
     sampleToggle.setTooltip ("Kick SAMPLE on/off. Off = the loaded sample is ignored (it stays loaded) and the synth kick plays alone. Normally leave on and use MIX.");
     synthToggleAttachment = std::make_unique<juce::ButtonParameterAttachment> (*p.apvts.getParameter (ParamID::kickSynthOn), synthToggle);
     sampleToggleAttachment = std::make_unique<juce::ButtonParameterAttachment> (*p.apvts.getParameter (ParamID::kickSampleOn), sampleToggle);
-    addAndMakeVisible (synthToggle);
-    addAndMakeVisible (sampleToggle);
+    // Växlarna och hinten visas inte längre (balansen är MIX i flikraden); parametrarna finns kvar för äldre presets.
     balanceHint.setText ("MIX (SYNTH view) balances synth and sample: left = synth only, middle = both, right = sample only.  MODE (SAMPLE view) decides how the sample is used.", juce::dontSendNotification);
     balanceHint.setFont (Theme::font (10.5f));
     balanceHint.setColour (juce::Label::textColourId, Theme::textDim);
     balanceHint.setTooltip ("MIX in the middle: the synth kick plus the sample at full level, as before. Click = only the sample's first moments, Layer = the whole sample on top, Replace = the sample alone.");
-    addAndMakeVisible (balanceHint);
     HelpDialog::setupButton (helpButton, *this, HelpDialog::Topic::kick, "the kick (SYNTH and SAMPLE views)");
     addAndMakeVisible (helpButton);
 
@@ -980,7 +1008,9 @@ void KickModule::applyTab()
     const auto sample = sampleTabShown();
     const auto envelope = envelopeTabShown();
     viewTabs.select (processor.kickTab.load());
-    display.setVisible (envelope);
+    display.setVisible (envelope || ! sample); // i SYNTH visas den bara om det finns plats (se resized)
+    keyMode.setVisible (! (sample || envelope));
+    sampleLabel.setVisible (sample);
     sampleView.setVisible (sample);
     library.setVisible (sample);
     sampleHelp.setVisible (sample);
@@ -1055,31 +1085,21 @@ void KickModule::resized()
     }
     auto area = getContentBounds();
 
-    // Nedersta raden: KEY-väljaren (etikett + ruta) och klicksamplingen bredvid.
-    auto bottom = area.removeFromBottom (40);
-    keyMode.setBounds (bottom.removeFromLeft (110));
-    bottom.removeFromLeft (10);
-    auto sampleRow = bottom.removeFromBottom (24);
-    clearButton.setBounds (sampleRow.removeFromRight (24));
-    sampleRow.removeFromRight (4);
-    loadButton.setBounds (sampleRow.removeFromRight (50));
-    sampleRow.removeFromRight (10);
-    listenSampleButton.setBounds (sampleRow.removeFromRight (96));
-    sampleRow.removeFromRight (10);
-    sampleLabel.setBounds (sampleRow);
-    area.removeFromBottom (4);
-
-    auto sourceRow = area.removeFromBottom (22);
-    synthToggle.setBounds (sourceRow.removeFromLeft (70));
-    sampleToggle.setBounds (sourceRow.removeFromLeft (80));
-    helpButton.setBounds (sourceRow.removeFromRight (44));
-    sourceRow.removeFromRight (4);
-    sourceRow.removeFromLeft (8);
-    balanceHint.setBounds (sourceRow);
-    area.removeFromBottom (4);
-
     if (sampleTabShown())
     {
+        // Nedersta raden: samplingens namn, HEAR SAMPLE, LOAD, X och hjälpknappen.
+        auto sampleRow = area.removeFromBottom (24);
+        helpButton.setBounds (sampleRow.removeFromRight (44));
+        sampleRow.removeFromRight (10);
+        clearButton.setBounds (sampleRow.removeFromRight (24));
+        sampleRow.removeFromRight (4);
+        loadButton.setBounds (sampleRow.removeFromRight (50));
+        sampleRow.removeFromRight (10);
+        listenSampleButton.setBounds (sampleRow.removeFromRight (96));
+        sampleRow.removeFromRight (10);
+        sampleLabel.setBounds (sampleRow);
+        area.removeFromBottom (4);
+
         // SAMPLE: vågformen överst, under den biblioteket till vänster och hur samplingen används till höger.
         sampleView.setBounds (area.removeFromTop (juce::jlimit (90, 150, area.getHeight() / 3)));
         area.removeFromTop (6);
@@ -1094,16 +1114,25 @@ void KickModule::resized()
         return;
     }
 
+    // Hjälpknappen får en egen smal rad överst, så att den inte täcker kurvornas övre högra hörn.
+    helpButton.setBounds (area.removeFromTop (24).removeFromRight (44));
+    area.removeFromTop (4);
+
     if (envelopeTabShown())
     {
         display.setBounds (area); // ENVELOPE: kurvorna får hela ytan
         return;
     }
 
-    // SYNTH: bara kontrollerna.
-    const auto rowHeight = juce::jlimit (60, 100, area.getHeight() / (groups.numRows() + 1) - ControlGroups::titleHeight - 3);
+    // SYNTH: kontrollerna längst ner (48 px-rattar), envelopekurvorna ovanför om det finns plats.
+    const auto rowHeight = 74;
     const auto groupsHeight = groups.numRows() * (ControlGroups::titleHeight + rowHeight + 3);
     groups.layout (area.removeFromBottom (groupsHeight), rowHeight);
+    area.removeFromBottom (6);
+    const auto showDisplay = area.getHeight() >= 100;
+    display.setVisible (showDisplay);
+    if (showDisplay)
+        display.setBounds (area);
 }
 
 //==============================================================================
@@ -1127,7 +1156,14 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
     fxSend = std::make_unique<FxSendControl> (p.apvts, id (F::fxChannel), id (F::fxAmount), id (F::fxSend), sendToIDs, "FX SEND", layerAccent);
     addAndMakeVisible (*fxSend);
     setHeaderFxSend (fxSend.get());
-    envelope.onBeforePaint = [this] { current = refs.readInstrument (layer, 36).withTempo (processor.transportStatus.bpm.load(), false); };
+    envelope.onBeforePaint = [this]
+    {
+        current = refs.readInstrument (layer, 36).withTempo (processor.transportStatus.bpm.load(), false);
+        // Tidsaxeln följer den längsta av ENV 1, PITCH och FILTER ENV (1 s = som förut); FM har eget diagram.
+        const auto axisStep = std::max ({ current.maxTimeSteps[0], current.maxTimeSteps[1], current.maxTimeSteps[2] });
+        envelope.setDisplaySeconds (0.5 * ParamID::maxTimeMs (axisStep) / 1000.0);
+        updateMaxLengthBox();
+    };
 
     envelope.addCurve ({ [this] (double t) { return InstrumentSynth::filterEnvelopeAt (current, t) * current.envAmount / 8.0f; },
                          layerAccent, true, "FILTER" });
@@ -1136,24 +1172,24 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
     envelope.addHandle ({ [this] {
                               const auto t = current.pitchEnvDecayMs * 0.001 / 3.0;
                               return juce::Point<float> ((float) t, pitchValueAt (t)); },
-                          param (p, id (F::pitchEnvDecay)), nullptr, false, juce::Colour (0xffe6c23c) });
+                          param (p, id (F::pitchEnvDecay)), nullptr, false, juce::Colour (0xffe6c23c), {}, EnvelopeView::timeCapOf (p.apvts, layer, F::pitchEnvDecay) });
 
     envelope.addHandle ({ [this] { return juce::Point<float> (std::max (0.0015f, current.envAttackMs * 0.001f), current.envAmount / 8.0f); },
-                          param (p, id (F::envAttack)), param (p, id (F::envAmount)), false, layerAccent });
+                          param (p, id (F::envAttack)), param (p, id (F::envAmount)), false, layerAccent , {}, {}, [this] { return current.filterOn && current.envAmount > 0.0f; } });
     envelope.addHandle ({ [this] {
                               const auto t = current.envAttackMs * 0.001 + current.envDecayMs * 0.001 / 3.0;
                               return juce::Point<float> ((float) t, InstrumentSynth::filterEnvelopeAt (current, t) * current.envAmount / 8.0f); },
-                          param (p, id (F::envDecay)), nullptr, false, layerAccent });
+                          param (p, id (F::envDecay)), nullptr, false, layerAccent, {}, EnvelopeView::timeCapOf (p.apvts, layer, F::envDecay) , [this] { return current.filterOn && current.envAmount > 0.0f; } });
 
     envelope.addHandle ({ [this] { return juce::Point<float> (current.attackMs * 0.001f, 1.0f); },
-                          param (p, id (F::attack)), nullptr, false, Theme::text });
+                          param (p, id (F::attack)), nullptr, false, Theme::text, {}, EnvelopeView::timeCapOf (p.apvts, layer, F::attack) });
     envelope.addHandle ({ [this] {
                               const auto t = (current.attackMs + current.decayMs * 0.5f) * 0.001;
                               return juce::Point<float> ((float) t, ampValueAt (t)); },
-                          param (p, id (F::decay)), param (p, id (F::sustain)), false, Theme::text });
+                          param (p, id (F::decay)), param (p, id (F::sustain)), false, Theme::text, {}, EnvelopeView::timeCapOf (p.apvts, layer, F::decay) });
     envelope.setNoteOff ([this] { return noteOffNow(); });
     envelope.addHandle ({ [this] { return juce::Point<float> ((float) noteOffNow().seconds + current.releaseMs * 0.001f, 0.0f); },
-                          param (p, id (F::release)), nullptr, false, Theme::text });
+                          param (p, id (F::release)), nullptr, false, Theme::text, {}, EnvelopeView::timeCapOf (p.apvts, layer, F::release) });
     instrPage.addAndMakeVisible (envelope);
     envelopeListen.setAccent (layerAccent);
     envelopeListen.setTooltip ("LISTEN - Hold to hear this instrument on the preview note (the PREVIEWS note at the top) for as long as you hold; it starts over if the sound "
@@ -1161,6 +1197,27 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
     envelopeListen.onStart = [this] { hold.start (PluginBase::heldLayerAudition (layer)); };
     envelopeListen.onStop = [this] { hold.stop(); };
     instrPage.addAndMakeVisible (envelopeListen);
+    maxTimeLabel.setJustificationType (juce::Justification::centred);
+    maxTimeLabel.setFont (Theme::font (12.0f, true));
+    maxTimeLabel.setTooltip ("MAX LENGTH - A multiplier of the time knobs' range (x1 = the old range, x10 = ten times longer). Pick the group in the list: ENV 1 (attack, decay, release), "
+                             "PITCH, FILTER ENV or FM. PITCH, FILTER ENV and FM follow ENV 1 until you step them. The sound does not change when you press - or +.");
+    maxResultLabel.setFont (Theme::font (11.0f));
+    maxResultLabel.setColour (juce::Label::textColourId, Theme::textDim);
+    maxResultLabel.setMinimumHorizontalScale (0.7f);
+    maxResultLabel.setTooltip ("The longest value each time knob in the chosen group can reach with this MAX LENGTH (A = attack, D = decay, R = release).");
+    maxGroupBox.addItemList ({ "ENV 1", "PITCH", "FILTER ENV", "FM" }, 1);
+    maxGroupBox.setSelectedId (1, juce::dontSendNotification);
+    maxGroupBox.setTooltip ("Which group's MAX LENGTH the - / + buttons change. ENV 1 = attack, decay, release. The other groups follow ENV 1 until you give them their own step.");
+    maxGroupBox.onChange = [this] { maxGroup = juce::jmax (0, maxGroupBox.getSelectedId() - 1); updateMaxLengthBox(); };
+    instrPage.addAndMakeVisible (maxGroupBox);
+    for (auto* button : { &maxTimeDown, &maxTimeUp })
+    {
+        button->setTooltip ("MAX LENGTH shorter (-) / longer (+) for the chosen group. For PITCH, FILTER ENV and FM, one step below the shortest means 'as ENV 1'.");
+        button->onClick = [this, delta = button == &maxTimeDown ? -1 : 1] { stepMaxLength (delta); };
+        instrPage.addAndMakeVisible (*button);
+    }
+    instrPage.addAndMakeVisible (maxTimeLabel);
+    instrPage.addAndMakeVisible (maxResultLabel);
     HelpDialog::setupButton (instrHelpButton, *this, HelpDialog::Topic::instr, "the INSTR tab (envelopes, pitch, sub, noise, drive, phase)");
     instrPage.addAndMakeVisible (instrHelpButton);
     instrPage.addAndMakeVisible (subScope);
@@ -1171,9 +1228,10 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
     instrPage.addAndMakeVisible (noiseFilterButton);
     noiseFilterAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, ParamID::bass (layer, F::filterNoise), noiseFilterButton);
 
-    // Flikarna: INSTR (envelopen och rattarna), OSC 1-3 och SAMPLE med en på/av-knapp på fliken, och FILTER.
+    // Flikarna: INSTR | OSC 1-3, SAMPLE och FM med en på/av-knapp på fliken | FILTER, MIX och TIMING (avdelare efter INSTR och FM).
     sources.setSubTabs();
     sources.addTab ("INSTR", layerAccent, instrPage);
+    sources.addSeparator();
     for (int osc = 0; osc < ParamID::oscsPerLayer; ++osc)
         oscs[(size_t) osc] = std::make_unique<OscPanel> (p, layer, osc, layerAccent);
     samplePage = std::make_unique<SamplePage> (p, layer, layerAccent);
@@ -1185,16 +1243,22 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
     }
     sources.addTab ("SAMPLE", layerAccent, *samplePage);
     sources.addPower (1 + ParamID::oscsPerLayer, p.apvts, ParamID::bass (layer, F::sampleOn));
-    filterPage = std::make_unique<FilterPage> (p, layer, layerAccent);
-    sources.addTab ("FILTER", layerAccent, *filterPage);
     fmPanel = std::make_unique<FmPanel> (p, layer, layerAccent);
     sources.addTab ("FM", layerAccent, *fmPanel);
-    sources.addPower (3 + ParamID::oscsPerLayer, p.apvts, ParamID::bass (layer, F::fmOn),
-                      Help::forParameter (ParamID::bass (layer, F::fmOn))); // FM efter FILTER: fliknummer 3 + oscsPerLayer
+    sources.addPower (2 + ParamID::oscsPerLayer, p.apvts, ParamID::bass (layer, F::fmOn),
+                      Help::forParameter (ParamID::bass (layer, F::fmOn))); // FM efter SAMPLE: fliknummer 2 + oscsPerLayer
+    sources.addSeparator();
+    filterPage = std::make_unique<FilterPage> (p, layer, layerAccent);
+    sources.addTab ("FILTER", layerAccent, *filterPage);
+    sources.addPower (3 + ParamID::oscsPerLayer, p.apvts, ParamID::bass (layer, F::filterOn),
+                      "FILTER ON / OFF - Off: the whole instrument bypasses Filter 1 and Filter 2 (the amp envelope still works)."); // FILTER efter FM
     mixPanel = std::make_unique<InstrMixPanel> (p, layer, layerAccent);
     sources.addTab ("MIX", layerAccent, *mixPanel);
     timingPanel = std::make_unique<InstrTimingPanel> (p, layer, layerAccent);
     sources.addTab ("TIMING", layerAccent, *timingPanel);
+    instrTimeline = std::make_unique<TimelineChart> (p, layer, layerAccent, false); // skrivskyddad; enkelklick väljer motor, dubbelklick hoppar till TIMING-fliken (nr 8)
+    instrTimeline->onOpen = [this] (int) { sources.setCurrentTab (8); };
+    instrPage.addAndMakeVisible (*instrTimeline);
 
     // B1: förhandsknapp i flikraden. OSC 1-3 och SAMPLE spelar bara sin källa, FILTER/FM/MIX hela instrumentet (INSTR har sin egen knapp i sidan).
     for (int tab = 1; tab <= 8; ++tab)
@@ -1224,24 +1288,34 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
         return controls.back().get();
     };
 
+    auto* warpCurve = new WarpEnvCurve (p, layer, [this] { return refs.readInstrument (layer, 36).withTempo (processor.transportStatus.bpm.load(), false); });
+    warpCurve->getProperties().set ("layoutWeight", 2.0);
+    controls.emplace_back (warpCurve);
+    instrPage.addAndMakeVisible (*warpCurve);
+
+    constexpr auto phaseRowReserve = 0.42f; // andel av sista radens bredd som lämnas åt MAX LENGTH-rutan
     auto* warpEnvKnob = dynamic_cast<KnobComponent*> (knob (id (F::warpEnv), "AMOUNT"));
+    auto* voicesKnob = dynamic_cast<KnobComponent*> (knob (id (F::voices), "VOICES"));
     // Under källorna, i signalens ordning: tonhöjd, sub/brus, filtrets envelope (själva filtren: FILTER-fliken) -> volym och utgång.
     groups.addRow ({ { "PITCH", { knob (id (F::octave), "OCTAVE"), knob (id (F::tune), "TUNE"),
                                   knob (id (F::pitchEnvAmount), "ENV AMT"), knob (id (F::pitchEnvDecay), "ENV DEC") } },
                      { "SUB", { knob (id (F::sub), "LEVEL"), choice (id (F::subWave), "WAVE"), choice (id (F::subOctave), "OCTAVE") } },
-                     { "NOISE", { knob (id (F::noise), "LEVEL"), knob (id (F::noiseTone), "TONE"), choice (id (F::noiseType), "TYPE") } },
-                     { "FILTER ENVELOPE", { knob (id (F::envAmount), "AMOUNT"), knob (id (F::envAttack), "ATTACK"), knob (id (F::envDecay), "DECAY"),
-                                            knob (id (F::velToEnv), "VEL") } } });
+                     { "NOISE", { knob (id (F::noise), "LEVEL"), knob (id (F::noiseTone), "TONE"), choice (id (F::noiseType), "TYPE") } } });
     groups.addRow ({ { "VOLUME ENVELOPE", { knob (id (F::attack), "ATTACK"), knob (id (F::decay), "DECAY"),
                                             knob (id (F::sustain), "SUSTAIN"), knob (id (F::release), "RELEASE") } },
-                     { "WARP ENV", { warpEnvKnob, choice (id (F::warpEnvSource), "SOURCE"), knob (id (F::warpEnvDecay), "DIRECT DEC") } },
+                     { "WARP ENV", { warpEnvKnob, choice (id (F::warpEnvSource), "SOURCE"), knob (id (F::warpEnvDecay), "DIRECT DEC"), warpCurve } },
                      { "DRIVE", { knob (id (F::drive), "AMOUNT"), choice (id (F::driveMode), "MODE") } },
                      { "LAYER OUT", { knob (id (F::level), "LEVEL"), knob (id (F::duck), "DUCK"), knob (id (F::gate), "LENGTH"),
-                                      knob (id (F::voices), "VOICES") } } }); // (notlängden: GATE är hackrytmen; GLIDE har ingen ratt: parametern används inte)
+                                      voicesKnob } } }); // (notlängden: GATE är hackrytmen; GLIDE har ingen ratt: parametern används inte)
     // Fas PH: polaritet, startfas och nudge (tidsförskjutning ±2 ms) för att få kick och bas att summera rätt.
-    groups.addRow ({ { "PHASE", { choice (id (F::polarity), "POLARITY"), knob (id (F::phaseDeg), "START"), knob (id (F::nudgeMs), "NUDGE") } } });
+    // PHASE är smal (resten av raden reserveras åt tidsdiagrammet, se layoutInstrPage).
+    // FILTER ENVELOPE ligger här (flyttad från rad 1) så att MAX LENGTH-rutan får plats bredvid i den lediga ytan.
+    groups.addRow ({ { "PHASE", { choice (id (F::polarity), "POLARITY"), knob (id (F::phaseDeg), "START"), knob (id (F::nudgeMs), "NUDGE") } },
+                     { "FILTER ENVELOPE", { knob (id (F::envAmount), "AMOUNT"), knob (id (F::envAttack), "ATTACK"), knob (id (F::envDecay), "DECAY"),
+                                            knob (id (F::velToEnv), "VEL") } } },
+                   phaseRowReserve);
     // Fas P: varning när VOICES x unison (summan av de påslagna oscillatorernas stämmor) blir stort, eftersom varje röst kostar lika mycket CPU.
-    if (auto* voicesKnob = dynamic_cast<KnobComponent*> (controls.back().get()))
+    if (voicesKnob != nullptr)
         voicesKnob->setWarning ([this]() -> juce::String
         {
             auto value = [this] (F field) { return (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, field))->load(); };
@@ -1835,6 +1909,19 @@ void SamplePage::loadSample (const juce::File& file)
     updateLabel();
 }
 
+void SamplePage::paint (juce::Graphics& g)
+{
+    for (const auto& box : editBoxes)
+    {
+        if (box.isEmpty())
+            continue;
+        g.setColour (Theme::panelAlt);
+        g.fillRoundedRectangle (box.toFloat(), 5.0f);
+        g.setColour (Theme::panelBorder);
+        g.drawRoundedRectangle (box.toFloat().reduced (0.5f), 5.0f, 1.0f);
+    }
+}
+
 void SamplePage::resized()
 {
     auto area = getLocalBounds().reduced (4);
@@ -1856,18 +1943,31 @@ void SamplePage::resized()
 
     auto right = area.removeFromRight (juce::jlimit (240, 420, area.getWidth() * 2 / 5));
     area.removeFromRight (8);
-    // Sample-editorn under vågformen: REVERSE, sedan en rad för AMP och en för PITCH (växel + rattar).
-    auto editRow = [&] (juce::ToggleButton& toggle, std::vector<std::unique_ptr<juce::Component>>& knobs)
+    // Sample-editorn under vågformen: tre rutor PITCH, AMP och REVERSE. Varje ruta har sin växel överst och
+    // rattarna (~48 px) under, så de syns som en grupp.
     {
-        auto row = area.removeFromBottom (54);
-        toggle.setBounds (row.removeFromLeft (64).withSizeKeepingCentre (64, 22));
-        for (auto& knob : knobs)
-            knob->setBounds (row.removeFromLeft (70));
-    };
-    editRow (pitchToggle, pitchControls);
-    editRow (ampToggle, ampControls);
-    sampleReverseToggle.setBounds (area.removeFromBottom (22).removeFromLeft (110));
-    area.removeFromBottom (2);
+        auto band = area.removeFromBottom (juce::jlimit (96, 118, area.getHeight() / 3));
+        area.removeFromBottom (4);
+        const auto total = 3 + 2 + 1;
+        const auto unit = band.getWidth() / total;
+        const int widths[3] { unit * 3, unit * 2, band.getWidth() - unit * 5 };
+        juce::ToggleButton* toggles[3] { &pitchToggle, &ampToggle, &sampleReverseToggle };
+        std::vector<std::unique_ptr<juce::Component>>* knobSets[3] { &pitchControls, &ampControls, nullptr };
+        for (int i = 0; i < 3; ++i)
+        {
+            auto box = band.removeFromLeft (widths[i]);
+            band.removeFromLeft (i < 2 ? 4 : 0);
+            editBoxes[(size_t) i] = box;
+            auto inner = box.reduced (4, 3);
+            toggles[i]->setBounds (inner.removeFromTop (22));
+            if (knobSets[i] != nullptr)
+            {
+                const auto cell = inner.getWidth() / std::max (1, (int) knobSets[i]->size());
+                for (auto& knob : *knobSets[i])
+                    knob->setBounds (inner.removeFromLeft (cell));
+            }
+        }
+    }
     view.setBounds (area);
 
     auto knobsRow = right.removeFromTop (right.getHeight() * 2 / 5);
@@ -1947,17 +2047,84 @@ void InstrumentModule::resized()
     sources.setBounds (area);
 }
 
+// Vald grupps parameter: ENV 1 = maxTime (steg 0-5); de andra har 0 = som ENV 1, annars steg + 1 (0-6).
+void InstrumentModule::stepMaxLength (int delta)
+{
+    auto* parameter = processor.apvts.getParameter (ParamID::bass (layer, ParamID::maxTimeGroupField (maxGroup)));
+    const auto top = maxGroup == 0 ? ParamID::numMaxTimeSteps - 1 : ParamID::numMaxTimeSteps;
+    const auto value = juce::jlimit (0, top, (int) std::lround (parameter->convertFrom0to1 (parameter->getValue())) + delta);
+    parameter->beginChangeGesture();
+    parameter->setValueNotifyingHost (parameter->convertTo0to1 ((float) value));
+    parameter->endChangeGesture();
+}
+
+void InstrumentModule::updateMaxLengthBox()
+{
+    auto timeText = [] (float ms)
+    {
+        if (ms < 1000.0f)
+            return juce::String (juce::roundToInt (ms)) + " ms";
+        auto s = juce::String (ms / 1000.0f, 2);
+        while (s.endsWithChar ('0')) s = s.dropLastCharacters (1);
+        if (s.endsWithChar ('.')) s = s.dropLastCharacters (1);
+        return s + " s";
+    };
+    auto multiplier = [] (int step)
+    {
+        auto s = juce::String (ParamID::maxTimeMs (step) / 1000.0, 2);
+        while (s.endsWithChar ('0')) s = s.dropLastCharacters (1);
+        if (s.endsWithChar ('.')) s = s.dropLastCharacters (1);
+        return "x" + s;
+    };
+
+    const auto step = current.maxTimeSteps[maxGroup];
+    const auto follows = maxGroup > 0 && processor.apvts.getRawParameterValue (ParamID::bass (layer, ParamID::maxTimeGroupField (maxGroup)))->load() < 0.5f;
+    maxTimeLabel.setText (follows ? "ENV 1" : multiplier (step), juce::dontSendNotification);
+
+    juce::String result = multiplier (step) + " = ";
+    if (maxGroup == 0)
+        result << "A " << timeText (ParamID::timeCapMs (ParamID::timeCapSpec (0), step)) << " · D " << timeText (ParamID::timeCapMs (ParamID::timeCapSpec (1), step))
+               << " · R " << timeText (ParamID::timeCapMs (ParamID::timeCapSpec (2), step));
+    else
+        result << timeText (ParamID::timeCapMs (ParamID::timeCapSpec (maxGroup + 2), step));
+    maxResultLabel.setText (result, juce::dontSendNotification);
+
+    const auto raw = (int) std::lround (processor.apvts.getRawParameterValue (ParamID::bass (layer, ParamID::maxTimeGroupField (maxGroup)))->load());
+    maxTimeDown.setEnabled (raw > 0);
+    maxTimeUp.setEnabled (raw < (maxGroup == 0 ? ParamID::numMaxTimeSteps - 1 : ParamID::numMaxTimeSteps));
+}
+
 void InstrumentModule::layoutInstrPage()
 {
     // Envelopegrafen till vänster, rattraderna till höger (två rader, högst 100 px rattar; resten är frigjord yta).
     auto area = instrPage.getLocalBounds().reduced (0, 4);
     auto leftColumn = area.removeFromLeft (juce::jlimit (220, 340, area.getWidth() / 4));
-    envelope.setBounds (leftColumn.reduced (0, 2));
+    // Vänsterkolumnen delas lika: ENV-diagrammet överst, tidsdiagrammet under (Tobias 2026-10-29).
+    const auto leftHalf = leftColumn.getHeight() / 2;
+    envelope.setBounds (leftColumn.removeFromTop (leftHalf).reduced (0, 2));
+    instrTimeline->setBounds (leftColumn.reduced (0, 2));
     envelopeListen.setBounds (envelope.getRight() - 40, envelope.getY() + 4, 36, 24); // högtalaren i grafens övre högra hörn
-    instrHelpButton.setBounds (envelopeListen.getX() - 4 - 40, envelope.getY() + 8, 40, 16);
+    // HELP bredvid högtalaren i grafens övre högra hörn (nere ligger den i vägen för kurvorna), lite större än förut.
+    instrHelpButton.setBounds (envelope.getRight() - 40 - 4 - 52, envelope.getY() + 4, 52, 24);
     area.removeFromLeft (6);
-    const auto rowHeight = juce::jlimit (40, 100, area.getHeight() / groups.numRows() - ControlGroups::titleHeight - 3);
+    const auto rowHeight = juce::jlimit (40, 100, area.getHeight() / (groups.numRows() + 1) - ControlGroups::titleHeight - 3);
     groups.layout (area, rowHeight);
+
+    // MAX LENGTH-rutan i sista radens lediga yta, till höger om FILTER ENVELOPE: grupplista, - xN +, och resulterande tider under.
+    const auto filterEnv = groups.frameOf ("FILTER ENVELOPE");
+    maxFrame = {};
+    if (! filterEnv.isEmpty())
+    {
+        maxFrame = juce::Rectangle<int> (filterEnv.getRight() + 6, filterEnv.getY(), juce::jmin (260, area.getRight() - filterEnv.getRight() - 6), filterEnv.getHeight());
+        auto inner = maxFrame.reduced (8, 0).withTrimmedTop (ControlGroups::titleHeight + 4).withTrimmedBottom (4);
+        auto line1 = inner.removeFromTop (24);
+        maxGroupBox.setBounds (line1.removeFromLeft (juce::jmin (96, line1.getWidth() / 2)));
+        line1.removeFromLeft (6);
+        maxTimeDown.setBounds (line1.removeFromLeft (24));
+        maxTimeUp.setBounds (line1.removeFromRight (24));
+        maxTimeLabel.setBounds (line1);
+        maxResultLabel.setBounds (inner.removeFromTop (20));
+    }
 
     // Mini-oscilloskopen sitter i SUB-gruppens rubrikrad, till höger om rubriken.
     const auto sub = groups.frameOf ("SUB");
@@ -2044,6 +2211,118 @@ void SubScope::paint (juce::Graphics& g)
     }
     g.setColour (juce::Colour (0xffffffff).interpolatedWith (accent, 0.35f).withAlpha (0.35f + 0.65f * glow));
     g.strokePath (path, juce::PathStrokeType (1.2f));
+}
+
+//==============================================================================
+namespace
+{
+    // Tidsaxeln för WARP ENV-kurvan: tills källan fallit ungefär 45 dB (0,75 x decay-tiden). Returnerar också när ENV 2/3 släpps (-1 = aldrig).
+    struct WarpSpan { double seconds, noteOff; };
+
+    WarpSpan warpSpanOf (const InstrumentParams& p)
+    {
+        const auto fall = 0.75;
+        if (p.warpEnvSource == 1)
+            return { std::max (0.01, p.warpEnvDecayMs * 0.001 * fall), -1.0 };
+        if (p.warpEnvSource == 0)
+            return { std::max (0.01, p.envAttackMs * 0.001 + p.envDecayMs * 0.001 * fall), -1.0 };
+
+        const auto& e = p.warpEnvSource == 2 ? p.env2 : p.env3;
+        const auto held = e.attackMs * 0.001 + e.decayMs * 0.001 * fall;
+        if (e.sustain > 0.02f)
+            return { std::max (0.01, held + e.releaseMs * 0.001 * fall), held };
+        return { std::max (0.01, held), -1.0 };
+    }
+}
+
+WarpEnvCurve::WarpEnvCurve (PluginBase& p, int layerIn, std::function<InstrumentParams()> read) : processor (p), layer (layerIn), readParams (std::move (read))
+{
+    setInterceptsMouseClicks (true, false); // tooltip
+    setTooltip ("WARP ENV curve - Shows how the OSC 1 warp changes from the start of each note: the dashed line is the WARP knob, the peak is raised by AMOUNT, "
+                "and the curve follows the chosen SOURCE (DIRECT DEC sets the fall for Direct). The white line moves while a note plays (also on LISTEN).");
+    params = readParams();
+    startTimerHz (30);
+}
+
+void WarpEnvCurve::timerCallback()
+{
+    if (! isShowing())
+        return;
+
+    params = readParams();
+    const auto span = warpSpanOf (params);
+    auto sig = 0.0;
+    for (const auto v : { (double) params.warpEnv, (double) params.oscA.warpAmount, (double) params.warpEnvSource, (double) params.warpEnvDecayMs,
+                          (double) params.envAttackMs, (double) params.envDecayMs, (double) params.env2.attackMs, (double) params.env2.decayMs,
+                          (double) params.env2.sustain, (double) params.env2.releaseMs, (double) params.env2.on, (double) params.env3.attackMs,
+                          (double) params.env3.decayMs, (double) params.env3.sustain, (double) params.env3.releaseMs, (double) params.env3.on })
+        sig = sig * 1.0001 + v;
+
+    const auto playTime = processor.notePlayTime[(size_t) layer].load (std::memory_order_relaxed);
+    const auto newHead = playTime >= 0.0f && playTime <= (float) span.seconds ? playTime : -1.0f;
+    const auto changed = (float) sig != signature || newHead != playhead;
+    signature = (float) sig;
+    playhead = newHead;
+    if (changed)
+        repaint();
+}
+
+void WarpEnvCurve::paint (juce::Graphics& g)
+{
+    const auto accent = Theme::layerColour (layer);
+    const auto bounds = getLocalBounds().toFloat().reduced (2.0f, 1.0f);
+    g.setColour (juce::Colours::black.withAlpha (0.35f));
+    g.fillRoundedRectangle (bounds, 3.0f);
+    g.setColour (accent.withAlpha (0.3f));
+    g.drawRoundedRectangle (bounds, 3.0f, 1.0f);
+
+    const auto inner = bounds.reduced (4.0f, 4.0f);
+    const auto span = warpSpanOf (params);
+    const auto yOf = [&inner] (float v) { return inner.getBottom() - juce::jlimit (0.0f, 1.0f, v) * inner.getHeight(); };
+    const auto base = params.oscA.warpAmount;
+
+    // Grundnivån (WARP-ratten): streckad linje.
+    const float dashes[] = { 3.0f, 3.0f };
+    g.setColour (juce::Colours::white.withAlpha (0.25f));
+    g.drawDashedLine ({ inner.getX(), yOf (base), inner.getRight(), yOf (base) }, dashes, 2, 1.0f);
+
+    juce::Path line;
+    const auto points = std::max (2, (int) inner.getWidth());
+    for (int i = 0; i <= points; ++i)
+    {
+        const auto fraction = (double) i / (double) points;
+        const auto source = InstrumentSynth::warpEnvSourceAt (params, fraction * span.seconds, span.noteOff);
+        const auto x = inner.getX() + (float) fraction * inner.getWidth();
+        const auto y = yOf (base + params.warpEnv * source);
+        if (i == 0)
+            line.startNewSubPath (x, y);
+        else
+            line.lineTo (x, y);
+    }
+
+    auto fill = line;
+    fill.lineTo (inner.getRight(), inner.getBottom());
+    fill.lineTo (inner.getX(), inner.getBottom());
+    fill.closeSubPath();
+    g.setColour (accent.withAlpha (0.15f));
+    g.fillPath (fill);
+    g.setColour (accent.withAlpha (0.35f));
+    g.strokePath (line, juce::PathStrokeType (3.0f));
+    g.setColour (juce::Colour (0xffffffff).interpolatedWith (accent, 0.35f));
+    g.strokePath (line, juce::PathStrokeType (1.2f));
+
+    if (playhead >= 0.0f)
+    {
+        const auto x = inner.getX() + (float) (playhead / span.seconds) * inner.getWidth();
+        g.setColour (juce::Colours::white.withAlpha (0.8f));
+        g.drawLine (x, inner.getY(), x, inner.getBottom(), 1.0f);
+    }
+
+    static const char* const names[] = { "FILTER ENV", "DIRECT", "ENV 2", "ENV 3" };
+    g.setColour (Theme::textDim);
+    g.setFont (Theme::font (9.0f));
+    g.drawText (names[juce::jlimit (0, 3, params.warpEnvSource)], inner.toNearestInt(), juce::Justification::topLeft, false);
+    g.drawText (juce::String (juce::roundToInt (span.seconds * 1000.0)) + " ms", inner.toNearestInt(), juce::Justification::topRight, false);
 }
 
 //==============================================================================
@@ -2207,6 +2486,14 @@ void InstrumentHost::timerCallback()
 
     if (processor.activeInstruments() != lastCount || processor.layerNamesVersion.load() != lastNamesVersion)
         refresh();
+
+    // Brödsmulan i huvudflikraden ritas av TabbedPanel: be den rita om när instrument, namn eller underflik ändras.
+    if (const auto crumbNow = crumb(); crumbNow != lastCrumb)
+    {
+        lastCrumb = crumbNow;
+        if (auto* tabs = findParentComponentOfClass<TabbedPanel>())
+            tabs->repaint();
+    }
 }
 
 void InstrumentHost::showSelector()
@@ -2912,14 +3199,19 @@ void PatternModule::resized()
     // Instrumentets egen groove: SWING, HUMAN och DELAY (kickens rad ligger alltid på rutnätet).
     if (shownLayer >= 0 && shownLayer < (int) delays.size())
     {
-        auto groove = notesColumn.removeFromTop (50);
-        const auto third = groove.getWidth() / 3;
-        const auto swingBounds = groove.removeFromLeft (third), humanizeBounds = groove.removeFromLeft (third);
+        // (x) Riktiga rattshuvuden (knobRowHeight = 74 px med etiketter), men bara två rader så kolumnen inte blir för hög:
+        // SWING och HUMAN bredvid varandra, DELAY under, centrerad.
+        constexpr int grooveKnobHeight = 62; // lite mindre än övriga rattar (Tobias 29 okt)
+        auto swingHumanRow = notesColumn.removeFromTop (grooveKnobHeight);
+        const auto swingBounds = swingHumanRow.removeFromLeft (swingHumanRow.getWidth() / 2);
+        const auto humanizeBounds = swingHumanRow;
+        const auto delayRow = notesColumn.removeFromTop (grooveKnobHeight);
+        const auto delayBounds = delayRow.withSizeKeepingCentre (delayRow.getWidth() / 2, delayRow.getHeight());
         for (size_t i = 0; i < delays.size(); ++i)
         {
             swings[i]->setBounds (swingBounds);
             humanizes[i]->setBounds (humanizeBounds);
-            delays[i]->setBounds (groove);
+            delays[i]->setBounds (delayBounds);
         }
         notesColumn.removeFromTop (2);
     }

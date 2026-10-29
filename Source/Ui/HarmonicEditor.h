@@ -8,7 +8,7 @@
 // i vågformen nollställer allt. Grundtonen tas bort genom att dra stapel 1 längst ner.
 // Ändringen läggs på en fast utgångspunkt (tabellen när fönstret öppnades) och byggs om 100 ms efter sista ändringen; resultatet blir
 // oscillatorns User-tabell. Vågformsvyn räknas direkt på en frame, så den följer musen utan fördröjning.
-class HarmonicEditor : public juce::Component, private juce::Timer
+class HarmonicEditor : public juce::Component, public juce::TooltipClient, private juce::Timer
 {
 public:
     HarmonicEditor (PluginBase& processor, int layer, int osc, juce::Colour accent);
@@ -19,6 +19,7 @@ public:
     void mouseDrag (const juce::MouseEvent&) override;
     void mouseDoubleClick (const juce::MouseEvent&) override;
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
+    juce::String getTooltip() override; // beror på vilket fält musen är över
 
     static constexpr int shown = 64; // övertoner som går att ändra; zoomen visar 16, 32 eller 64 av dem
 
@@ -57,6 +58,7 @@ private:
 
     enum Brush { draw = 1, line, smooth, random };
     juce::ComboBox frameBox, brushBox, zoomBox, presetBox;
+    juce::TextButton helpButton;
     int visible = shown;     // antal visade övertoner (16 / 32 / 64)
     int seed = 1;            // RANDOM: nytt frö för varje drag, samma frö ger samma värden
     int anchorColumn = 0;    // LINE: där draget började

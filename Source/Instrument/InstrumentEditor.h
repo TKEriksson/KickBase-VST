@@ -13,7 +13,6 @@
 #include "../Ui/EnvPage.h"
 #include "../Ui/MatrixPage.h"
 #include "../Ui/SettingsPage.h"
-#include "../Ui/SidechainPage.h"
 #include "../Ui/SoundstagePage.h"
 #include "../Ui/AnalyzerPage.h"
 #include "../Ui/Modules.h"
@@ -55,7 +54,6 @@ private:
     HoldAudition holdPreview { processor }; // INSTRUMENT-flikens förhandsknapp (B1)
     TabbedPanel tools { &processor.selectedTab };
     EffectsPage effects { processor };
-    SidechainPage sidechain { processor };
     LfoPage lfo { processor };
     EnvPage env { processor };
     MatrixPage matrix { processor };

@@ -1,6 +1,9 @@
 // Tester för LFO:erna och moduleringen.
 
 #include "../Source/Core/Modulation.h"
+#include "../Source/Core/Params.h"
+#include "../Source/Core/Effects.h"
+#include "../Source/Core/Sidechain.h"
 #include "TestUtils.h"
 #include <cmath>
 
@@ -17,6 +20,9 @@ namespace
             Modulation::addParameters (layout);
             if (extraLfos)
                 Modulation::addExtraLfoParameters (layout); // LFO 4-10 som i instrumentet (FX saknar dem)
+            Params::addMaxTimeParam (layout);
+            if (extraLfos)
+                Params::addEngineTimingParams (layout), Params::addEngineTimingExtraParams (layout);
             layout.add (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { "bassCutoff", 1 }, "Cutoff",
                                                                      juce::NormalisableRange<float> (0.0f, 1000.0f), 500.0f));
             return layout;
@@ -213,7 +219,7 @@ namespace
         modulator.update (1.25, 120.0);
         check (modulator.snapNote[0].load() == -1, "Sync-läget har ingen SNAP");
 
-        check (Modulation::rateNames().size() == 18 && Modulation::rateInQuarters (17) == 64.0 && Modulation::rateInQuarters (11) == 0.75, "fler synkade hastigheter (3/16 ... 16 takter)");
+        check (Modulation::rateNames().size() == 19 && Modulation::rateInQuarters (17) == 64.0 && Modulation::rateInQuarters (11) == 0.75, "fler synkade hastigheter (3/16 ... 16 takter)");
         check (Modulation::shapeNames().size() == 7 && Modulation::shapeNames()[6] == "Custom", "formen Custom finns");
     }
 }
@@ -494,6 +500,85 @@ namespace
     }
 }
 
+namespace
+{
+    // MAX-knappen (tidstak per instrument): standardvärdet ska ge exakt dagens tak, så att gamla presets låter och ser likadana ut.
+    void testFmSourceDefault()
+    {
+        std::puts ("FM-modulator: standard OSC 2");
+        DummyProcessor processor;
+        auto* fmSource = processor.apvts.getRawParameterValue (ParamID::bass (0, InstrumentField::fmSource));
+        check (fmSource != nullptr && (int) fmSource->load() == 0, "fmSource har standard OSC 2");
+    }
+
+    // SYNC-listorna fick 1/32 och 1/64: de nya värdena ligger sist så att index i gamla projekt och presets betyder samma sak som förut.
+    void testSyncListsKeepOldIndexes()
+    {
+        std::puts ("SYNC-listor: gamla index oförändrade, 1/32 och 1/64 sist");
+        const char* oldTiming[] = { "Off", "1/16", "1/8", "1/4", "1/2", "1 bar", "2 bars", "4 bars" };
+        DummyProcessor processor (true);
+        auto found = 0;
+        for (int engine = 0; engine < ParamID::numTimingEngines; ++engine)
+            for (const auto field : { ParamID::timingField (engine, 1), ParamID::timingExtraField (engine, 1) })
+            {
+                auto* param = processor.apvts.getParameter (ParamID::bass (0, field));
+                check (param != nullptr, "TIMING-sync-parametern finns");
+                if (param == nullptr)
+                    continue;
+                const auto names = param->getAllValueStrings();
+                ++found;
+                check (names.size() == 10 && names[8] == "1/32" && names[9] == "1/64", "TIMING-sync har 1/32 och 1/64 sist");
+                for (int i = 0; i < 8; ++i)
+                    check (names[i] == oldTiming[i], "TIMING-sync: gammalt index oförändrat", (float) i);
+            }
+        check (found > 0, "hittade TIMING-sync-parametrar", (float) found);
+
+        const char* oldFx[] = { "1/32", "1/16 T", "1/16", "1/8 T", "1/8", "3/16", "1/4", "3/8", "1/2", "1 bar", "2 bars", "4 bars" };
+        const auto fx = Effects::syncNames();
+        check (fx.size() == 13 && fx[12] == "1/64", "FX-sync har 1/64 sist", (float) fx.size());
+        for (int i = 0; i < 12; ++i)
+            check (fx[i] == oldFx[i], "FX-sync: gammalt index oförändrat", (float) i);
+        check (std::abs (Effects::syncInQuarters (12) - 0.0625) < 1.0e-9, "FX-sync 1/64 = 1/16 fjärdedel");
+
+        const auto length = Sidechain::lengthNames();
+        const double oldLength[] = { 0.0, 0.25, 0.5, 0.75, 1.0, 2.0 };
+        check (length.size() == 8 && length[6] == "1/32" && length[7] == "1/64", "Sidechain-längd har 1/32 och 1/64 sist");
+        for (int i = 0; i < 6; ++i)
+            check (std::abs (Sidechain::lengthInQuarters (i) - oldLength[i]) < 1.0e-9, "Sidechain-längd: gammalt index oförändrat", (float) i);
+        check (std::abs (Sidechain::lengthInQuarters (7) - 0.0625) < 1.0e-9, "Sidechain 1/64 = 1/16 fjärdedel");
+
+        const auto rates = Modulation::rateNames();
+        const char* oldRates[] = { "1/32", "1/16 T", "1/16", "1/8 T", "1/8", "1/4 T", "1/4", "1/2", "1 bar", "2 bars", "4 bars", "3/16", "3/8", "3/4", "3 bars", "6 bars", "8 bars", "16 bars" };
+        check (rates.size() == 19 && rates[18] == "1/64", "LFO-rate har 1/64 sist", (float) rates.size());
+        for (int i = 0; i < 18; ++i)
+            check (rates[i] == oldRates[i], "LFO-rate: gammalt index oförändrat", (float) i);
+        check (std::abs (Modulation::rateInQuarters (18) - 0.0625) < 1.0e-9, "LFO 1/64 = 1/16 fjärdedel");
+    }
+
+    void testMaxTimeDefault()
+    {
+        std::puts ("MAX-tid: standard 1 s ger de gamla taken");
+        DummyProcessor processor;
+        auto* maxTime = processor.apvts.getRawParameterValue (ParamID::bass (0, InstrumentField::maxTime));
+        check (maxTime != nullptr && (int) maxTime->load() == ParamID::maxTimeDefault, "maxTime har standardsteget");
+        check (ParamID::maxTimeMs (ParamID::maxTimeDefault) == 1000, "standardsteget är 1 s", (float) ParamID::maxTimeMs (ParamID::maxTimeDefault));
+        const float expected[] = { 50.0f, 2000.0f, 300.0f, 1000.0f, 1000.0f, 400.0f }; // attack, decay, release, pitch-env decay, filter-env decay, FM env time
+        for (int i = 0; i < ParamID::numTimeCaps; ++i)
+            check (ParamID::timeCapMs (ParamID::timeCapSpec (i), ParamID::maxTimeDefault) == expected[i], "tidstaket vid standard = dagens max", ParamID::timeCapMs (ParamID::timeCapSpec (i), ParamID::maxTimeDefault));
+
+        // Gruppernas egna steg: 0 = som ENV 1 (gamla projekt och presets), annars steg + 1.
+        for (int group = 1; group < ParamID::numMaxTimeGroups; ++group)
+        {
+            auto* own = processor.apvts.getRawParameterValue (ParamID::bass (0, ParamID::maxTimeGroupField (group)));
+            check (own != nullptr && (int) own->load() == 0, "gruppens eget steg är som ENV 1 som standard");
+            check (ParamID::resolveMaxStep (group, 0.0f, 4.0f) == 4, "som ENV 1 följer maxTime");
+            check (ParamID::resolveMaxStep (group, 1.0f, 4.0f) == 0, "eget steg 1 = 250 ms");
+            check (ParamID::resolveMaxStep (group, 6.0f, 1.0f) == 5, "eget steg 6 = 10 s");
+        }
+        check (ParamID::resolveMaxStep (0, 3.0f, 2.0f) == 2, "ENV 1 ignorerar eget steg");
+    }
+}
+
 void runModulationTests()
 {
     testShapes();
@@ -504,4 +589,7 @@ void runModulationTests()
     testExtraLfosLeaveFirstThree();
     testCodeSources();
     testBezierEnvelope();
+    testMaxTimeDefault();
+    testFmSourceDefault();
+    testSyncListsKeepOldIndexes();
 }

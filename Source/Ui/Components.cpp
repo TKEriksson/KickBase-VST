@@ -89,8 +89,33 @@ KnobComponent::KnobComponent (juce::AudioProcessorValueTreeState& apvts, const j
         if (description.isEmpty())
             description = parameter->getName (64);
     }
+    for (int layer = 0; layer < ParamID::numInstrumentLayers && timeCap == nullptr; ++layer)
+        for (int i = 0; i < ParamID::numTimeCaps; ++i)
+            if (paramID == ParamID::bass (layer, ParamID::timeCapSpec (i).field))
+            {
+                timeCap = &ParamID::timeCapSpec (i);
+                maxTimeRaw = apvts.getRawParameterValue (ParamID::bass (layer, InstrumentField::maxTime));
+                timeGroup = ParamID::timeCapGroup (i);
+                if (timeGroup > 0)
+                    maxTimeOwnRaw = apvts.getRawParameterValue (ParamID::bass (layer, ParamID::maxTimeGroupField (timeGroup)));
+                break;
+            }
+    applyTimeCap (true);
     updateTooltip (-1);
     startVisualTimer (Settings::Visual::other, 30);
+}
+
+void KnobComponent::applyTimeCap (bool force)
+{
+    if (timeCap == nullptr || maxTimeRaw == nullptr)
+        return;
+    const auto step = ParamID::resolveMaxStep (timeGroup, maxTimeOwnRaw != nullptr ? maxTimeOwnRaw->load() : 0.0f, maxTimeRaw->load());
+    if (step == lastMaxStep && ! force)
+        return;
+    lastMaxStep = step;
+    juce::NormalisableRange<double> range (timeCap->min, ParamID::timeCapMs (*timeCap, step), 0.01);
+    range.setSkewForCentre (timeCap->centre);
+    slider.setNormalisableRange (range);
 }
 
 KnobComponent::~KnobComponent() = default;
@@ -101,12 +126,16 @@ void KnobComponent::setDescription (const juce::String& text)
     updateTooltip (-1);
 }
 
+namespace { constexpr int labelOverlap = 4; }
+
 void KnobComponent::resized()
 {
     auto area = getLocalBounds();
     valueLabel.setBounds (area.removeFromBottom (12));
     label.setBounds (labelAbove ? area.removeFromTop (14) : area.removeFromBottom (14));
-    slider.setBounds (area);
+    // Ratten har en tom ringmarginal (Theme::knobRingMargin) runt sig. Etiketterna får täcka en del av den, så att
+    // ratt och text blir ett block utan glapp. Ändras här, så ändras alla rattar.
+    slider.setBounds (labelAbove ? area.withTrimmedTop (-labelOverlap) : area.withTrimmedBottom (-labelOverlap));
 }
 
 juce::Point<float> KnobComponent::knobCentre() const
@@ -174,6 +203,7 @@ int KnobComponent::ringAt (juce::Point<float> position) const
 void KnobComponent::timerCallback()
 {
     followVisualRate();
+    applyTimeCap (false);
     if (const auto text = slider.getTextFromValue (slider.getValue()); text != valueLabel.getText())
         valueLabel.setText (text, juce::dontSendNotification);
     auto* processor = findProcessor (*this);
@@ -448,12 +478,62 @@ void KnobComponent::ModSlider::mouseExit (const juce::MouseEvent& e)
 }
 
 //==============================================================================
+namespace
+{
+    // Längden i fjärdedelar för ett notvärde ("1/16", "1/8 T", "3/16", "2 bars"); -1 för "Off", "Kick" och "0" (hamnar först); -2 om texten inte är ett notvärde.
+    double noteLengthKey (const juce::String& text)
+    {
+        const auto t = text.trim().toLowerCase();
+        if (t == "off" || t == "kick" || t == "0")
+            return -1.0;
+        if (t.endsWith (" bar") || t.endsWith (" bars"))
+            return t.upToFirstOccurrenceOf (" ", false, false).getDoubleValue() * 4.0;
+        const auto slash = t.indexOfChar ('/');
+        if (slash <= 0)
+            return -2.0;
+        const auto top = t.substring (0, slash).getIntValue();
+        const auto bottom = t.substring (slash + 1).getIntValue();
+        if (top <= 0 || bottom <= 0)
+            return -2.0;
+        const auto triplet = t.endsWith (" t"), dotted = t.endsWith (" d");
+        return 4.0 * top / bottom * (triplet ? 2.0 / 3.0 : dotted ? 1.5 : 1.0);
+    }
+
+    // Visningsordningen (parameterindex i den ordning de ska stå i menyn). Notvärdeslistor vars sista värden lades till i efterhand (1/32, 1/64) visas sorterade
+    // fast de ligger sist i parametern; alla andra listor behåller sin ordning.
+    std::vector<int> displayOrder (const juce::StringArray& names)
+    {
+        std::vector<int> order;
+        std::vector<double> keys;
+        for (int i = 0; i < names.size(); ++i)
+        {
+            order.push_back (i);
+            keys.push_back (noteLengthKey (names[i]));
+            if (keys.back() < -1.5)
+                return {}; // inte en notvärdeslista
+        }
+        std::stable_sort (order.begin(), order.end(), [&keys] (int a, int b) { return keys[(size_t) a] < keys[(size_t) b]; });
+        return order;
+    }
+}
+
 ChoiceComponent::ChoiceComponent (juce::AudioProcessorValueTreeState& apvts, const juce::String& paramID, const juce::String& name)
 {
     box.parameter = apvts.getParameter (paramID);
+    auto sorted = false;
     if (box.parameter != nullptr)
     {
-        box.addItemList (box.parameter->getAllValueStrings(), 1);
+        const auto names = box.parameter->getAllValueStrings();
+        const auto order = displayOrder (names);
+        // ComboBoxAttachment väljer på plats i menyn, inte på id; en omsorterad meny kopplas därför med en egen ParameterAttachment (id = index + 1).
+        for (size_t position = 0; position < order.size(); ++position)
+            if (order[position] != (int) position)
+                sorted = true;
+        if (sorted)
+            for (const auto index : order)
+                box.addItem (names[index], index + 1);
+        else
+            box.addItemList (names, 1);
         const auto help = Help::forParameter (paramID);
         box.setTooltip (name + " - " + (help.isNotEmpty() ? help : box.parameter->getName (64)));
     }
@@ -463,6 +543,21 @@ ChoiceComponent::ChoiceComponent (juce::AudioProcessorValueTreeState& apvts, con
     label.setFont (Theme::font (11.0f, true));
     label.setColour (juce::Label::textColourId, Theme::textDim);
     addAndMakeVisible (label);
+
+    if (sorted)
+    {
+        sortedAttachment = std::make_unique<juce::ParameterAttachment> (*box.parameter, [this] (float value)
+        {
+            box.setSelectedId (juce::roundToInt (value) + 1, juce::dontSendNotification);
+        }, apvts.undoManager);
+        sortedAttachment->sendInitialUpdate();
+        box.onChange = [this, name]
+        {
+            sortedAttachment->setValueAsCompleteGesture ((float) (box.getSelectedId() - 1));
+            if (auto* processor = findProcessor (*this)) processor->nameParameterGesture (name);
+        };
+        return;
+    }
 
     attachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (apvts, paramID, box);
     // Attachmenten startar steget; här får det sitt namn (onChange körs efter attachmentens lyssnare).
@@ -500,13 +595,16 @@ namespace
             : apvts (s), channelID (channelIDIn), amountID (amountIDIn), modeID (modeIDIn), sendToIDs (sendIDs), accent (accentIn)
         {
             addButton.setButtonText ("+ add FX channel");
-            addButton.setTooltip ("Adds an FX channel everywhere (all sources, the mixer and the FX page). The new send is 0. Channels are removed on the FX page.");
+            addButton.setTooltip ("Adds an FX channel everywhere (all sources, the mixer and the FX page). The new send is 0.");
+            removeButton.setTooltip ("Removes the last FX channel everywhere. Asks first if it has effects or sends; Ctrl+Z restores it.");
             addButton.onClick = [this]
             {
                 if (Effects::addChannel (apvts))
                     rebuild();
             };
             addAndMakeVisible (addButton);
+            removeButton.onClick = [this] { askRemoveLast(); };
+            addAndMakeVisible (removeButton);
             rebuild();
             startTimerHz (10);
         }
@@ -517,7 +615,10 @@ namespace
             for (auto& row : rows)
                 row->setBounds (area.removeFromTop (rowHeight));
             area.removeFromTop (2);
-            addButton.setBounds (area.removeFromTop (rowHeight));
+            auto buttons = area.removeFromTop (rowHeight);
+            removeButton.setBounds (buttons.removeFromRight (buttons.getWidth() / 2 - 2));
+            buttons.removeFromRight (4);
+            addButton.setBounds (buttons);
         }
 
     private:
@@ -583,7 +684,7 @@ namespace
             void resized() override
             {
                 auto area = getLocalBounds();
-                label.setBounds (area.removeFromLeft (34));
+                label.setBounds (area.removeFromLeft (label.getText().startsWith ("INS") ? 58 : 34));
                 onOff.setBounds (area.removeFromLeft (24));
                 if (extra != nullptr)
                     extra->setBounds (area.removeFromRight (42));
@@ -606,8 +707,40 @@ namespace
             return 0;
         }
 
+        // Tar bort sista kanalen. Har den sends eller effekter frågar vi först; steget går att ångra med Ctrl+Z (Effects::removeLastChannel).
+        void askRemoveLast()
+        {
+            const auto last = Effects::visibleChannels (apvts) - 1;
+            if (last < 1)
+                return;
+            auto remove = [safe = juce::Component::SafePointer<FxSendPopup> (this)]
+            {
+                if (safe != nullptr)
+                {
+                    Effects::removeLastChannel (safe->apvts);
+                    safe->rebuild();
+                }
+            };
+            if (! Effects::channelHasSends (apvts, last) && ! Effects::channelHasEffects (apvts, last))
+            {
+                remove();
+                return;
+            }
+            const auto label = Effects::channelLabel (last);
+            juce::AlertWindow::showAsync (juce::MessageBoxOptions()
+                                              .withIconType (juce::MessageBoxIconType::QuestionIcon)
+                                              .withTitle ("Remove " + label + "?")
+                                              .withMessage (label + " has effects or sends. Removing it resets its effects, EQ, compressor and level, "
+                                                            "and sets every send to it to 0. Ctrl+Z restores all of it.")
+                                              .withButton ("Remove")
+                                              .withButton ("Cancel"),
+                                          [remove] (int result) { if (result == 1) remove(); });
+        }
+
         void rebuild()
         {
+            removeButton.setButtonText ("- remove FX" + juce::String (juce::jmax (1, Effects::visibleChannels (apvts))));
+            removeButton.setEnabled (Effects::visibleChannels (apvts) > 1);
             rows.clear();
             legacyModeAttachment.reset();
             legacyMode.reset();
@@ -626,8 +759,9 @@ namespace
             legacyShownFor = legacyChannelNow();
             if (legacyShownFor > 0)
             {
-                auto row = std::make_unique<Row> (apvts, "FX" + juce::String (legacyShownFor), amountID,
-                                                  "FX SEND AMOUNT (old link) - " + Help::forParameter (amountID), accent);
+                // Gamla SEND-länkar flyttas till matrisen vid laddning; det som är kvar här är INSERT-länken (finns inte i matrisen).
+                auto row = std::make_unique<Row> (apvts, "INS FX" + juce::String (legacyShownFor), amountID,
+                                                  "FX INSERT AMOUNT (old link) - " + Help::forParameter (amountID), accent);
                 legacyMode = std::make_unique<juce::TextButton>();
                 legacyMode->setClickingTogglesState (true);
                 legacyMode->setColour (juce::TextButton::buttonColourId, Theme::panel);
@@ -666,7 +800,7 @@ namespace
         std::unique_ptr<juce::TextButton> legacyMode;
         std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> legacyModeAttachment;
         int legacyShownFor = 0, shownChannels = 0;
-        juce::TextButton addButton;
+        juce::TextButton addButton, removeButton;
     };
 }
 
@@ -702,7 +836,7 @@ void FxSendControl::timerCallback()
     updateSummary();
 }
 
-// "FX1 50%, FX3 30%" eller "None". Den gamla länken räknas med som en vanlig rad.
+// "None", "FX" eller "N x FX". Den gamla länken räknas med som en vanlig rad.
 void FxSendControl::updateSummary()
 {
     juce::StringArray parts;
@@ -720,13 +854,17 @@ void FxSendControl::updateSummary()
     if (auto* channel = apvts.getParameter (channelID))
         if (const int legacy = juce::roundToInt (channel->convertFrom0to1 (channel->getValue())); legacy > 0)
             if (const int pct = percentOf (amountID); pct > 0)
-                parts.add ("FX" + juce::String (legacy) + " " + juce::String (pct) + "%");
+                parts.add ((percentOf (modeID) > 0 ? "FX" : "INS FX") + juce::String (legacy) + " " + juce::String (pct) + "%");
 
-    const auto text = parts.isEmpty() ? juce::String ("None") : parts.joinIntoString (", ");
+    // Knappen är smal: bara antalet ("2 x FX"); vilka kanaler och hur mycket står i tipset.
+    const auto text = parts.isEmpty() ? juce::String ("None") : parts.size() == 1 ? juce::String ("FX") : juce::String (parts.size()) + " x FX";
     if (text != lastSummary)
     {
         lastSummary = text;
         button.setButtonText (text);
+        button.setTooltip ("FX SEND - " + (parts.isEmpty() ? juce::String ("no FX channel in use") : parts.joinIntoString (", ")) + ". "
+                           + Help::forParameter (sendToIDs.isEmpty() ? channelID : sendToIDs[0])
+                           + " Click to open the send matrix: one row per FX channel with on/off and amount, plus + add FX channel.");
     }
 }
 
@@ -820,17 +958,19 @@ void ControlGroups::layout (juce::Rectangle<int> area, int rowHeight)
     {
         if (const auto* choice = dynamic_cast<const ChoiceComponent*> (control))
             return choice->weight;
-        return 1.0f;
+        return (float) control->getProperties().getWithDefault ("layoutWeight", 1.0); // t.ex. kurvan i WARP ENV
     };
 
-    for (const auto& row : rows)
+    for (size_t rowIndex = 0; rowIndex < rows.size(); ++rowIndex)
     {
-        // Varje rad fyller hela bredden.
+        const auto& row = rows[rowIndex];
+        // Varje rad fyller hela bredden, minus den reserverade andelen till höger.
         auto total = 0.0f;
         for (const auto& group : row)
             for (auto* control : group.controls)
                 total += weightOf (control);
-        const auto cellWidth = (float) area.getWidth() / std::max (1.0f, total);
+        const auto usableWidth = (float) area.getWidth() * (1.0f - reserves[rowIndex]);
+        const auto cellWidth = usableWidth / std::max (1.0f, total);
 
         auto rowArea = area.removeFromTop (titleHeight + rowHeight);
         area.removeFromTop (3);
@@ -858,6 +998,11 @@ void ControlGroups::layout (juce::Rectangle<int> area, int rowHeight)
 void ControlGroups::paint (juce::Graphics& g, juce::Colour accent) const
 {
     for (const auto& [bounds, title] : frames)
+        paintFrame (g, bounds, title, accent);
+}
+
+void ControlGroups::paintFrame (juce::Graphics& g, juce::Rectangle<int> bounds, const juce::String& title, juce::Colour accent)
+{
     {
         const auto frame = bounds.toFloat();
 

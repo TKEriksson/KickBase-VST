@@ -39,8 +39,9 @@ private:
     const int layer, osc;
     juce::Colour accent;
     int positionIndex = -1;
-    float lastPosition = -1.0f, lastWarp = -1.0f;
-    int lastTable = -1, lastWarpMode = -1;
+    float lastPosition = -1.0f, lastWarp = -1.0f, lastPhase = -1.0f, lastDetune = -1.0f, lastBlend = -1.0f;
+    int lastUnison = -1;
+    int lastTable = -1, lastWarpMode = -1, lastFmInfo = 0; // lastFmInfo: 0 = ingen FM, annars 1 + källa*2 + (modulatorn av ? 4 : 0)
     bool lastMorph = true;
     float lastDuckDb = 0.0f; // FUNDAMENTAL DUCK: hur många dB motorns grundton dämpas nu (0 = ingen dämpning)
     bool lastReady = false; // tabellen var byggd vid förra ritningen (byggs den i bakgrunden ritas vyn om när den blir klar)
@@ -70,6 +71,7 @@ private:
     juce::TextButton prevPresetButton { "<" }, nextPresetButton { ">" }, presetButton { "PRESET" }, savePresetButton { "SAVE" }, resetOscButton { "RESET" };
     juce::File currentPreset;
     juce::TextButton helpButton;
+    juce::TextButton harmonicsButton { "EDIT\nHARMONICS" }; // G6: alltid synlig i hörnet under rattarna; samma redigerare som högerklicksmenyn
     juce::Component::SafePointer<juce::AlertWindow> saveDialog;
 
     PluginBase& processor;
@@ -89,6 +91,9 @@ private:
     juce::ComboBox ringBox;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> ringAttachment;
     bool ringShown = false;
+    juce::ComboBox fmBox;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> fmAttachment;
+    bool fmShown = false;
     int lastTable = -1;
     WavetableView view;
     std::vector<std::unique_ptr<KnobComponent>> knobs;

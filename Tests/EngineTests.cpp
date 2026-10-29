@@ -203,6 +203,40 @@ namespace
         }
     }
 
+    void testInstrumentSub()
+    {
+        std::puts("Bas: SUB ensam hörs (alla andra källor av), med och utan filter");
+        for (const auto filterOn : { true, false })
+            for (const auto wave : { 0, 1, 2, 3 })
+            {
+                InstrumentSynth bass;
+                bass.prepare (rate);
+                InstrumentParams p;
+                p.rootHz = 50.0f;
+                p.oscA.on = false;
+                p.oscB.on = false;
+                p.oscC.on = false;
+                p.oscA.level = p.oscB.level = p.oscC.level = 0.0f;
+                p.sampleOn = false;
+                p.fmOn = false;
+                p.noise = 0.0f;
+                p.sub = 0.9f;
+                p.subWave = wave;
+                p.filterOn = filterOn;
+                p.cutoffHz = 20000.0f;
+                p.envAmount = 0.0f;
+                p.drive = 0.0f;
+                p.sustain = 1.0f;
+                bass.setParams (p);
+                bass.reset();
+                bass.noteOn (0, 1.0f, (int) rate);
+                std::vector<float> audio ((size_t) (rate * 0.4));
+                for (auto& v : audio)
+                    v = bass.nextSample();
+                check (peakOf (audio, (size_t) (rate * 0.05), audio.size()) > 0.05f, "SUB ensam ger ljud", peakOf (audio, 0, audio.size()));
+            }
+    }
+
     void testInstrumentSample()
     {
         std::puts("Bas: sampling som ljudkälla (egen ton och följer noten)");
@@ -344,6 +378,43 @@ namespace
         check (peakOf (reversed, (size_t) (rate * 0.32), reversed.size()) < 1.0e-3f, "baklänges: tyst när samplingen är slut");
         p.sampleReverse = false;
         check (render() == forward, "av ger exakt det gamla ljudet");
+    }
+
+    // WARP = FM på OSC 1: standardkällan (OSC 2) låter som före parametern; OSC 3 som källa ger annat ljud, och OSC 3 räknas som "behövs" även med nivå 0.
+    void testFmModulatorSource()
+    {
+        std::puts ("Bas: FM-modulatorn (OSC 2 standard, OSC 3 valbar)");
+        check (InstrumentParams {}.oscA.fmSource == 0, "standardkällan är OSC 2");
+        auto render = [] (int source, bool cOn)
+        {
+            InstrumentSynth bass;
+            bass.prepare (rate);
+            InstrumentParams p;
+            p.oscA.warp = WarpMode::fm;
+            p.oscA.warpAmount = 0.6f;
+            p.oscA.fmSource = source;
+            p.oscB.on = true;
+            p.oscB.level = 0.0f;
+            p.oscB.semis = 12.0f;
+            p.oscC.on = cOn;
+            p.oscC.level = 0.0f;
+            p.oscC.semis = 19.0f;
+            p.sub = 0.0f;
+            p.cutoffHz = 20000.0f;
+            p.envAmount = 0.0f;
+            p.drive = 0.0f;
+            bass.setParams (p);
+            bass.noteOn (0, 1.0f, (int) (rate * 0.2));
+            std::vector<float> audio ((size_t) (rate * 0.1));
+            for (auto& s : audio)
+                s = bass.nextSample();
+            return audio;
+        };
+        const auto fromB = render (0, false), fromBWithC = render (0, true), fromC = render (1, true), fromOffC = render (1, false);
+        check (allFinite (fromB) && allFinite (fromC), "inga NaN");
+        check (fromB == fromBWithC, "OSC 2 som källa: OSC 3 påverkar inte");
+        check (fromB != fromC, "OSC 3 som källa låter annorlunda än OSC 2");
+        check (fromOffC != fromC, "avstängd OSC 3 ger ingen FM");
     }
 
     void testInstrumentPitchAndRelease()
@@ -1306,6 +1377,48 @@ namespace
     }
 }
 
+static void testKickSourceMigration()
+{
+    const auto run = [] (float synthOn, float sampleOn, std::map<std::string, float>& v)
+    {
+        v = { { ParamID::kickSynthOn, synthOn }, { ParamID::kickSampleOn, sampleOn }, { ParamID::kickMix, 0.3f }, { ParamID::kickSampleMode, 0.0f } };
+        return Params::migrateKickSources ([&] (const char* id, float fb) { return v.count (id) ? v[id] : fb; },
+                                           [&] (const char* id, float x) { v[id] = x; });
+    };
+    std::map<std::string, float> v;
+    check (! run (1.0f, 1.0f, v) && v[ParamID::kickMix] == 0.3f, "kickkällor: båda på lämnas orörda");
+    check (! run (0.0f, 0.0f, v) && v[ParamID::kickSynthOn] == 0.0f, "kickkällor: båda av lämnas orörda");
+    check (run (0.0f, 1.0f, v) && v[ParamID::kickMix] == 1.0f && v[ParamID::kickSampleMode] == 2.0f && v[ParamID::kickSynthOn] == 1.0f, "kickkällor: synth av blir MIX helt mot sample + Replace");
+    check (run (1.0f, 0.0f, v) && v[ParamID::kickMix] == 0.0f && v[ParamID::kickSampleOn] == 1.0f, "kickkällor: sample av blir MIX helt mot synth");
+}
+
+static void testWarpEnvCurve()
+{
+    InstrumentParams p;
+    p.envAttackMs = 10.0f;
+    p.envDecayMs = 200.0f;
+    p.warpEnvDecayMs = 30.0f;
+
+    p.warpEnvSource = 0;
+    check (std::abs (InstrumentSynth::warpEnvSourceAt (p, 0.010, -1.0) - 1.0f) < 1.0e-4f, "warp-kurva: filter-envelopen toppar efter attacken");
+    check (std::abs (InstrumentSynth::warpEnvSourceAt (p, 0.210, -1.0) - 0.001f) < 1.0e-4f, "warp-kurva: filter-envelopen är -60 dB efter decay");
+
+    p.warpEnvSource = 1;
+    check (std::abs (InstrumentSynth::warpEnvSourceAt (p, 0.0, -1.0) - 1.0f) < 1.0e-5f, "warp-kurva: Direct börjar på 1");
+    check (std::abs (InstrumentSynth::warpEnvSourceAt (p, 0.030, -1.0) - 0.001f) < 1.0e-4f, "warp-kurva: Direct är -60 dB efter DIRECT DEC");
+
+    p.warpEnvSource = 2;
+    p.env2.attackMs = 20.0f;
+    p.env2.decayMs = 100.0f;
+    p.env2.sustain = 0.5f;
+    p.env2.releaseMs = 50.0f;
+    check (std::abs (InstrumentSynth::warpEnvSourceAt (p, 0.010, -1.0) - 0.5f) < 1.0e-4f, "warp-kurva: ENV 2 stiger linjärt under attacken");
+    check (std::abs (InstrumentSynth::warpEnvSourceAt (p, 5.0, -1.0) - 0.5f) < 1.0e-3f, "warp-kurva: ENV 2 landar på sustain");
+    check (InstrumentSynth::warpEnvSourceAt (p, 0.5, 0.4) < 1.0e-3f, "warp-kurva: ENV 2 släpper efter note-off");
+    p.env2.on = false;
+    check (InstrumentSynth::warpEnvSourceAt (p, 0.05, -1.0) == 0.0f, "warp-kurva: ENV 2 av ger 0");
+}
+
 void runEngineTests()
 {
     testKeyMapping();
@@ -1313,13 +1426,17 @@ void runEngineTests()
     testKickRetriggerFades();
     testKickShapesAndSamples();
     testKickClickLayersAndSampleTools();
+    testInstrumentSub();
     testInstrumentSample();
     testSampleEditor();
     testSampleReverse();
     testInstrumentPitchAndRelease();
+    testFmModulatorSource();
     testInstrumentGlide();
     testInstrumentModulationSources();
     testInstrumentRetriggerWithoutClick();
+    testKickSourceMigration();
+    testWarpEnvCurve();
     testDuckerIsSmooth();
     testGate();
     testPatternTemplatesAndSaving();

@@ -44,7 +44,12 @@ InstrumentEditor::InstrumentEditor (InstrumentProcessor& p)
 
     tools.setSubTabs();
     tools.setStripLabel ("TOOLS");
-    synths.crumbSuffix = [this] { return synths.getCurrentTab() == 3 ? analyzer.currentViewName() : juce::String(); };
+    synths.crumbSuffix = [this]
+    {
+        if (synths.getCurrentTab() == 2)
+            return instruments.crumb(); // INSTRUMENT > INSTR 3 > OSC 2
+        return synths.getCurrentTab() == 3 ? analyzer.currentViewName() : juce::String();
+    };
     // B1: förhandsknapp per flik. Hela mönstret (PATTERN, ANALYZER, AI CHAT, LIVE CODE), bara kickraden (KICK), instrumentet utan mönster (INSTRUMENT).
     const auto wholePattern = [this] { processor.requestAudition (PluginBase::previewRequest (PluginBase::previewAllRows)); };
     const auto stopPattern = [this] { processor.requestAudition (PluginBase::previewStop); };
@@ -59,7 +64,6 @@ InstrumentEditor::InstrumentEditor (InstrumentProcessor& p)
     synths.setPreview (5, wholePattern, stopPattern, "LISTEN - Plays the whole pattern. Hold to play, double-click to latch.");
 
     tools.addTab ("EFFECTS", Theme::effects, effects);
-    tools.addTab ("SIDECHAIN", Theme::mix, sidechain);
     tools.addTab ("LFO", Theme::lfo, lfo);
     tools.addTab ("ENV", Theme::lfo, env);
     tools.addTab ("MATRIX", Theme::lfo, matrix);

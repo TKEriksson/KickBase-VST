@@ -367,7 +367,7 @@ void EffectsPage::askRemoveLastChannel()
                                       .withIconType (juce::MessageBoxIconType::QuestionIcon)
                                       .withTitle ("Remove " + label + "?")
                                       .withMessage (label + " has effects or sends. Removing it resets its effects, EQ, compressor and level, "
-                                                    "and sets every send to it to 0.")
+                                                    "and sets every send to it to 0. Ctrl+Z restores all of it.")
                                       .withButton ("Remove")
                                       .withButton ("Cancel")
                                       .withAssociatedComponent (this),

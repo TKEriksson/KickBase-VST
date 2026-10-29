@@ -120,3 +120,38 @@ Obs: nya parametrar och modulationskällor sist (ENGINEERING.md). Stor punkt; Ar
 (0.4-snittet, beslut Tobias 28 okt) 0.4 handlar om design och diagram. Med: allt ovan utom (p), (q) BAKE TO OSC och (w) pianorullens lanes. FX-punkt 2 (ta bort FX-kanal i send-popupen, f3b1df0) är med. FX-punkt 4 (lane-värde ersätter matris-send) och (w) skjuts till 0.5; Arbetare 2:s ocommittade ändringar för punkt 4 ligger kvar i KickBase-VST-w2 (se PROGRESS-w2.md).
 
 (Tobias 29 okt, till 0.5) Filterdiagrammet ska visa allpass-filtret: en tunn extra kurva för fas eller gruppfördröjning, så att AP FREQ och AP AMT syns som en puckel vid vald frekvens. Idag syns inget, eftersom diagrammet bara visar amplitud och allpass bara ändrar fas.
+
+(0.5, ny punkt, Tobias 28 okt) Riktig grafik: bakgrundstexturer (och senare ikoner/rattar) som bilder från Gemini i stället för enbart kodritat. Läggs in via BinaryData. Första steg: texturer bakom paneler/moduler; accent- och glödfärger ritas fortfarande i koden så att lagerfärgerna fungerar. SVG för ikoner, PNG i 2x för texturer. Licens: bilderna får användas fritt (AGPL). Underlag/brief till Gemini: docs/work/gemini-grafik-brief.md. Inget av detta ingår i 0.4.
+
+(0.5, ny punkt, Tobias 29 okt) GATE FX: en gate som effekt i FX-kanalerna, med en egen rad i mönstret ("GATE FX #1"). Raden har inget ritat mönster: gaten är på/av efter vad som markeras i pattern-fliken, styrs som dagens gate (djup, smooth). Före/efter reverb avgörs av placeringen i kanalens kedja, så GATE PRE/POST FX stryks. Dagens instrument-gate lämnas som den är. Att utreda först: om radregistret (RowRegistry) tål en rad som hör till en effekt. Obs: gaten klipper hela kanalens retur (även andra instrument som skickar dit); skriv det i hjälptexten.
+(0.5) Riktig FM-visning i OSC-diagrammet: rita vald modulators våg (OSC 2/3) i stället för torr våg (0.4 visar bara text och varning). Kontrollera Resources/AGENT_GUIDE.md för gamla standardvärden (cutoff 300 Hz, SUB 30 %).
+
+## Tillägg 29 okt kväll (Tobias, efter test)
+0.4:
+- MAX-rutan (TIMING, "MAX 10 s - +") ska se ut som övriga rutor: label ("MAX LENGTH"/"LENGTHS") och border; högre max (t.ex. 30 s). Flytta ner t.ex. FILTER ENVELOPE hellre än att placera MAX högst upp.
+- PRESET-knappen på INSTRUMENT-huvudfliken är orimligt bred (som kickens: smal) och menyn ska öppnas centrerad mot knappen, inte längst till vänster.
+- HELP-knappen i env-diagrammet (INSTR) ligger ivägen: flytta till hörnet/bredvid, gärna större.
+- SUB START i MIX-fliken ändrar knappt ljudet: undersök (sinus med fasförskjutning är nästan oförändrad; ev. OK).
+- WARP ENV: utred vad den gör, om den gör något, och hur den kan visualiseras.
+0.5: HOLD på ENV 1 och filter env, ATTACK på pitch, SUSTAIN på filter env; sammansatt våg med zoom på INSTR.
+
+### MAX LENGTH per sak (Tobias 29 okt kväll, 0.4, del av G1)
+- Dropdown i MAX LENGTH-rutan väljer vilken grupp man ändrar: ENV 1 (standard), PITCH, FILTER ENV, FM. Varje grupp får eget steg-param (nya parametrar sist, gamla projekt = nuvarande maxTime-värde).
+- Idag styr ett gemensamt steg sex knobbar (`Params.h:199-224`).
+- 30 s kräver ändrat APVTS-intervall (idag 10x legacyMax) och skiftar normaliserade värden: Arbetare 1 skriver kort plan och rapporterar före bygge.
+
+### EDIT HARMONICS-knapp (Tobias 29 okt kväll, 0.4, task G6)
+- Knappen "Edit harmonics..." ska alltid synas i OSC-flikarna, i det lediga hörnet nere (under PHASE/UNISON/RAND), högre knapp med EDIT på rad 1 och HARMONICS på rad 2.
+
+### MAX LENGTH visas som gånger (Tobias 29 okt kväll, ändrar G1)
+- Visa som multiplikator "x1" ... "x10" (max x10 räcker, 30 s utgår = ingen intervallrisk), plus resulterande längd bredvid/under med "=" (t.ex. "x2 = A 100 ms · D 4 s · R 0.6 s").
+- Dropdown per grupp kvarstår (ENV 1 standard).
+
+### AUTO FIX till 0.5 (Tobias 29 okt kväll)
+- Mätdelen (`AutoFix.cpp`) klar; UI, APPLY och koppling från analyskörning görs i 0.5 tillsammans med GATE FX. Arbetare 2:s oincheckade ändringar (FX punkt 4 m.m., worktree KickBase-VST-w2) följer med 0.5.
+
+### SIDECHAIN in i MASTER (Tobias 29 okt kväll, 0.5 om inte annat sägs)
+- SIDECHAIN blir en under-flik i MASTER, mellan MIXER och MAXIMIZER (MASTER har redan under-flikar). Huvudfliken SIDECHAIN tas bort i INSTR och FX (`InstrumentEditor.cpp:67`, `FxEditor.cpp:30`). Kolla hjälpavsnittet (`HelpDialog.cpp:524`), sparad flikstate och färg (Theme::mix → master).
+
+### SIDECHAIN i MASTER flyttas till 0.4 (Tobias 29 okt kväll, task G7)
+- Gäller punkten ovan, nu 0.4. Brödsmulan (sökvägen i displayen) ska stämma: MASTER > SIDECHAIN (jfr bdda107). Kontrollera i både INSTR och FX.

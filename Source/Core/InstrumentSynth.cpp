@@ -228,14 +228,14 @@ void InstrumentSynth::noteOn (int semitones, float newVelocity, int gateSamples,
 
 namespace
 {
-constexpr double syncBars[] { 0.0, 0.0625, 0.125, 0.25, 0.5, 1.0, 2.0, 4.0 }; // SYNC-valen 1/16 ... 4 bars i takter
+constexpr double syncBars[] { 0.0, 0.0625, 0.125, 0.25, 0.5, 1.0, 2.0, 4.0, 1.0 / 32.0, 1.0 / 64.0 }; // SYNC-valen 1/16 ... 4 bars, sedan 1/32 och 1/64, i takter (se Params::timingSyncNames)
 double barSeconds (double bpm) { return 4.0 * 60.0 / juce::jlimit (20.0, 400.0, bpm); }
 }
 
 double InstrumentSynth::engineDelaySeconds (const InstrumentParams& p, int engine, double bpm)
 {
     const auto e = (size_t) engine;
-    const auto sync = juce::jlimit (0, 7, p.delaySync[e]);
+    const auto sync = juce::jlimit (0, (int) std::size (syncBars) - 1, p.delaySync[e]);
     const auto seconds = sync > 0 ? (double) juce::jlimit (1, 8, p.delayCount[e]) * syncBars[sync] * barSeconds (bpm) : (double) p.delayMs[e] * 0.001;
     return std::max (0.0, seconds);
 }
@@ -243,7 +243,7 @@ double InstrumentSynth::engineDelaySeconds (const InstrumentParams& p, int engin
 double InstrumentSynth::engineLengthSeconds (const InstrumentParams& p, int engine, double bpm)
 {
     const auto e = (size_t) engine;
-    const auto sync = juce::jlimit (0, 7, p.lengthSync[e]);
+    const auto sync = juce::jlimit (0, (int) std::size (syncBars) - 1, p.lengthSync[e]);
     return std::max (0.0, sync > 0 ? (double) juce::jlimit (1, 8, p.lengthCount[e]) * syncBars[sync] * barSeconds (bpm) : (double) p.lengthMs[e] * 0.001);
 }
 
@@ -387,6 +387,35 @@ float InstrumentSynth::filterEnvelopeAt (const InstrumentParams& p, double secon
     return (float) std::exp (std::log (0.001) * (seconds - attack) / decay);
 }
 
+float InstrumentSynth::warpEnvSourceAt (const InstrumentParams& p, double seconds, double noteOffSeconds)
+{
+    // Samma matematik som ModEnv::next / warpDirect i next(), men som en funktion av tiden (för kurvan i WARP ENV-gruppen).
+    if (p.warpEnvSource == 0)
+        return filterEnvelopeAt (p, seconds);
+    if (p.warpEnvSource == 1)
+        return (float) std::exp (std::log (0.001) * seconds / (std::max (0.1, (double) p.warpEnvDecayMs) * 0.001));
+
+    const auto& e = p.warpEnvSource == 2 ? p.env2 : p.env3;
+    if (! e.on)
+        return 0.0f;
+
+    // Nivån på sekunden t medan tonen hålls (attack, sedan fall mot sustain).
+    const auto held = [&e] (double t)
+    {
+        const auto attack = std::max (0.05, (double) e.attackMs) * 0.001;
+        if (t < attack)
+            return t / attack;
+        const auto decay = std::max (0.1, (double) e.decayMs) * 0.001;
+        return (double) e.sustain + (1.0 - e.sustain) * std::exp (std::log (0.001) * (t - attack) / decay);
+    };
+
+    if (noteOffSeconds < 0.0 || seconds < noteOffSeconds)
+        return (float) held (seconds);
+
+    const auto release = std::max (0.1, (double) e.releaseMs) * 0.001;
+    return (float) (held (noteOffSeconds) * std::exp (std::log (0.001) * (seconds - noteOffSeconds) / release));
+}
+
 double InstrumentSynth::coefficientFor (double milliseconds, double rate)
 {
     // Andel av avståndet till målet per sample, så att -60 dB nås efter `milliseconds`.
@@ -482,8 +511,9 @@ InstrumentSynth::Output InstrumentSynth::next()
     const auto levelB = (params.oscB.on ? params.oscB.level : 0.0f) * engineGate (1);
     const auto levelC = (params.oscC.on ? params.oscC.level : 0.0f) * engineGate (2);
     const auto ringOn = params.oscA.warp == WarpMode::ring;
-    const auto bNeeded = params.oscB.on && (params.oscB.level > 0.0f || params.oscA.warp == WarpMode::fm || (ringOn && params.oscA.ringSource != 1));
-    const auto cNeeded = params.oscC.on && (params.oscC.level > 0.0f || (ringOn && params.oscA.ringSource != 0));
+    const auto fmOn = params.oscA.warp == WarpMode::fm, fmFromC = fmOn && params.oscA.fmSource == 1;
+    const auto bNeeded = params.oscB.on && (params.oscB.level > 0.0f || (fmOn && ! fmFromC) || (ringOn && params.oscA.ringSource != 1));
+    const auto cNeeded = params.oscC.on && (params.oscC.level > 0.0f || fmFromC || (ringOn && params.oscA.ringSource != 0));
     const auto bRaw = bNeeded ? oscB.next (params.oscB, frequency, sampleRate, params.oscB.warpAmount, 0.0f) : Stereo {};
     const auto bSide = 0.5f * (bRaw.left - bRaw.right) * params.bWidth;
     const auto b = params.bWidth == 1.0f ? bRaw : Stereo { bRaw.mid() + bSide, bRaw.mid() - bSide };
@@ -509,7 +539,7 @@ InstrumentSynth::Output InstrumentSynth::next()
     // OSC C före A, eftersom RING (B) kan multiplicera A med C. Av/tyst källa ger faktor 0 (inget hörs vid full RING).
     const auto c = widen (cNeeded ? oscC.next (params.oscC, frequency, sampleRate, params.oscC.warpAmount, 0.0f) : Stereo {}, params.cWidth);
     const auto bMid = params.oscB.on ? b.mid() : 0.0f, cMid = params.oscC.on ? c.mid() : 0.0f;
-    const auto modInput = ringOn ? (params.oscA.ringSource == 0 ? bMid : params.oscA.ringSource == 1 ? cMid : bMid * cMid) : b.mid();
+    const auto modInput = ringOn ? (params.oscA.ringSource == 0 ? bMid : params.oscA.ringSource == 1 ? cMid : bMid * cMid) : fmFromC ? cMid : b.mid();
     const auto a = widen (levelA > 0.0f ? oscA.next (params.oscA, frequency, sampleRate, warpA, modInput) : Stereo {}, params.aWidth);
 
     // Sub och brus ligger i mitten. Mitten och sidan filtreras var för sig (samma filter), och

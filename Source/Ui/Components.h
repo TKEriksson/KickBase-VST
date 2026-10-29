@@ -1,6 +1,7 @@
 #pragma once
 
 #include "VisualTimer.h"
+#include "../Core/Params.h"
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "Theme.h"
@@ -79,6 +80,7 @@ private:
     };
 
     void timerCallback() override;
+    void applyTimeCap (bool force); // MAX TIME: ratten spänner min..tak (tak = legacyMax * MAX/1 s); samma mittpunkt som parametern
     std::vector<Ring> rings() const;
     int parameterIndex() const;
     int ringAt (juce::Point<float> position) const; // index i rings(), eller -1
@@ -92,6 +94,11 @@ private:
     juce::Label valueLabel; // E1: avläsning under ratten
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> attachment;
     juce::RangedAudioParameter* parameter = nullptr;
+    const ParamID::TimeCapSpec* timeCap = nullptr; // satt för de fem tidsknobbarna som följer MAX TIME
+    std::atomic<float>* maxTimeRaw = nullptr;    // ENV 1:s MAX LENGTH
+    std::atomic<float>* maxTimeOwnRaw = nullptr; // gruppens egen (null för ENV 1); 0 = följ ENV 1
+    int timeGroup = 0;
+    int lastMaxStep = -1;
     juce::String name, description;
     juce::Colour accent;
     bool modulatable = false;
@@ -136,6 +143,7 @@ public:
 private:
     juce::Label label;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> attachment;
+    std::unique_ptr<juce::ParameterAttachment> sortedAttachment; // används i stället för attachment när notvärdeslistan visas sorterad (se konstruktorn)
 };
 
 // FX-send i synthens flikrad: "FX" och en knapp med ett sammandrag ("FX1 50%, FX3 30%" eller "None"). Knappen öppnar en popup med en rad per effektkanal
@@ -196,7 +204,12 @@ public:
         juce::String description; // visas när musen är över rubriken (via ägarens tooltip)
     };
 
-    void addRow (std::vector<Group> row) { rows.push_back (std::move (row)); }
+    // reserveFraction: andel av bredden som lämnas tom längst till höger i raden (för något som ägaren lägger där, t.ex. ett diagram).
+    void addRow (std::vector<Group> row, float reserveFraction = 0.0f)
+    {
+        rows.push_back (std::move (row));
+        reserves.push_back (reserveFraction);
+    }
     int numRows() const { return (int) rows.size(); }
 
     // Gruppens ram efter senaste layout (tom om titeln saknas), för den som lägger en liten visning i rubrikraden.
@@ -211,11 +224,13 @@ public:
     // Lägger ut raderna i `area` (uppifrån). Valrutor (ChoiceComponent) centreras på höjden.
     void layout (juce::Rectangle<int> area, int rowHeight);
     void paint (juce::Graphics& g, juce::Colour accent) const;
+    static void paintFrame (juce::Graphics& g, juce::Rectangle<int> bounds, const juce::String& title, juce::Colour accent); // en grupps ram och rubrik
 
     static constexpr int titleHeight = 12;
 
 private:
     std::vector<std::vector<Group>> rows;
+    std::vector<float> reserves; // en per rad: tom andel längst till höger
     std::vector<std::pair<juce::Rectangle<int>, juce::String>> frames; // beräknas i layout
 };
 
@@ -249,7 +264,7 @@ public:
     juce::Component* getPower() { return power.get(); }
     bool isEmbedded() const { return embedded; }
     // Bredden flikraden ska reservera för modulens kontroller i rubriken (på/av, vyflikar, preset, FX-send).
-    int headerExtrasWidth() const { return 380 + (headerTabs != nullptr ? headerTabsWidth + 8 : 0); }
+    int headerExtrasWidth() const { return 380 + (headerTabs != nullptr ? headerTabsWidth + 8 : 0) + (headerMix != nullptr ? headerMixWidth + 14 : 0); }
 
     // I en flikpanel: ingen egen rubrik (fliken heter likadant). På/av-knappen och presetknappen
     // flyttas till komponenten som returneras, som flikpanelen visar i flikraden.
@@ -265,6 +280,10 @@ public:
             headerControls.addAndMakeVisible (*headerPreset);
         if (headerFxSend != nullptr)
             headerControls.addAndMakeVisible (*headerFxSend);
+        if (headerMix != nullptr)
+            headerControls.addAndMakeVisible (*headerMix);
+        headerControls.mix = headerMix;
+        headerControls.mixWidth = headerMixWidth;
         headerControls.power = powerInControls ? power.get() : nullptr;
         headerControls.tabs = headerTabs;
         headerControls.tabsWidth = headerTabsWidth;
@@ -303,6 +322,9 @@ protected:
     // FX-send (kanal och mängd) som visas i flikraden, mellan på/av-knappen och presetknappen.
     void setHeaderFxSend (juce::Component* fxSend) { headerFxSend = fxSend; }
 
+    // Ett reglage (t.ex. kickens synth/sample-mix) längst till höger i flikraden, till vänster om FX-send.
+    void setHeaderMix (juce::Component* mix, int width) { headerMix = mix; headerMixWidth = width; }
+
     // Vyflikar (t.ex. SYNTH | SAMPLE) i flikraden, till vänster om presetknappen.
     void setHeaderTabs (juce::Component* tabs, int width) { headerTabs = tabs; headerTabsWidth = width; }
 
@@ -313,7 +335,9 @@ private:
         juce::Component* preset = nullptr;
         juce::Component* fxSend = nullptr;
         juce::Component* tabs = nullptr;
+        juce::Component* mix = nullptr;
         int tabsWidth = 0;
+        int mixWidth = 0;
 
         void resized() override
         {
@@ -333,8 +357,16 @@ private:
                 fxSend->setBounds (area.removeFromRight (206));
                 area.removeFromRight (14);
             }
+            if (mix != nullptr)
+            {
+                // Mixen krymper först så att presetväljaren alltid får minst 90 px.
+                const auto minPreset = tabs != nullptr ? 90 : 0;
+                const auto width = std::max (0, std::min (mixWidth, area.getWidth() - minPreset - 14));
+                mix->setBounds (area.removeFromRight (width));
+                area.removeFromRight (14);
+            }
             if (preset != nullptr)
-                preset->setBounds (tabs != nullptr ? area.removeFromLeft (std::min (area.getWidth(), 170)) : area); // smalare väljare när det finns vyflikar
+                preset->setBounds (tabs != nullptr || fxSend != nullptr ? area.removeFromLeft (std::min (area.getWidth(), 170)) : area); // smalare väljare när det finns vyflikar eller FX-send
         }
     };
 
@@ -342,7 +374,9 @@ private:
     juce::Component* headerPreset = nullptr;
     juce::Component* headerFxSend = nullptr;
     juce::Component* headerTabs = nullptr;
+    juce::Component* headerMix = nullptr;
     int headerTabsWidth = 0;
+    int headerMixWidth = 0;
     bool embedded = false;
     juce::String title;
     juce::Colour accent;

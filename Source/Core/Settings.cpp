@@ -331,6 +331,7 @@ namespace Settings
     {
         std::atomic<int> reduceState { -1 }; // -1 = inte läst än (filen tolkas inte vid varje fråga)
         std::atomic<int> analysisStepState { -1 };
+        std::atomic<int> glowState { -1 };
         std::array<std::atomic<int>, numVisuals> fpsStepStates {}, fillStates {}; // 0 = inte läst; steg 1-5; fyllning 1 = av, 2 = på
         std::atomic<int> visualChanges { 0 };
 
@@ -354,6 +355,26 @@ namespace Settings
     {
         reduceState = reduce ? 1 : 0;
         set ("reduceAnimations", reduce ? "1" : juce::String());
+        ++visualChanges;
+    }
+
+    int glowLevel()
+    {
+        auto level = glowState.load();
+        if (level < 0)
+        {
+            const auto forced = juce::SystemStats::getEnvironmentVariable ("KB_GLOW", {}); // för bildverktyget
+            level = juce::jlimit (0, 2, forced.isNotEmpty() ? forced.getIntValue() : get ("glowLevel").isEmpty() ? 0 : get ("glowLevel").getIntValue());
+            glowState = level;
+        }
+        return level;
+    }
+
+    void setGlowLevel (int level)
+    {
+        level = juce::jlimit (0, 2, level);
+        glowState = level;
+        set ("glowLevel", juce::String (level));
         ++visualChanges;
     }
 

@@ -1,4 +1,5 @@
 #include "HarmonicEditor.h"
+#include "HelpDialog.h"
 
 namespace
 {
@@ -46,6 +47,9 @@ HarmonicEditor::HarmonicEditor (PluginBase& p, int layerIn, int oscIn, juce::Col
     zoomBox.setTooltip ("How many harmonics are shown (bars get wider). Ctrl + mouse wheel changes it too.");
     addAndMakeVisible (zoomBox);
 
+    HelpDialog::setupButton (helpButton, *this, HelpDialog::Topic::harmonics, "the HARMONIC EDITOR");
+    addAndMakeVisible (helpButton);
+
     refreshBackdrop();
     refreshPreview();
     setSize (900, 580);
@@ -61,6 +65,20 @@ void HarmonicEditor::resized()
     brushBox.setBounds (top.removeFromRight (90));
     top.removeFromRight (6);
     presetBox.setBounds (top.removeFromRight (110));
+    top.removeFromRight (6);
+    helpButton.setBounds (top.removeFromRight (60));
+}
+
+juce::String HarmonicEditor::getTooltip()
+{
+    const auto position = getMouseXYRelative().toFloat();
+    if (waveArea().contains (position))
+        return "WAVEFORM - One cycle of the wave you are editing (the colour line). The grey line is how it looked when this window opened. It follows the mouse at once. Double-click here to reset all bars.";
+    if (ampLane().contains (position))
+        return "dB - One bar per harmonic (1 = the fundamental). The middle line is 0 dB (unchanged), the top is +12 dB, and a bar dragged to the bottom is removed. Grey shows the harmonic before your edit. Double-click a bar to reset it.";
+    if (phaseLane().contains (position))
+        return "PHASE - Shifts where each harmonic starts in its cycle, from -180 to +180 degrees (the middle is unchanged). It changes the shape of the wave, not much how it sounds on its own. Double-click a bar to reset it.";
+    return {};
 }
 
 // Sätter gainDb/phaseDeg så att spektrumet i vald frame blir det valda (1/k osv.), mätt mot den starkaste övertonen. Fasen följer sin (kx + p).

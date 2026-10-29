@@ -239,11 +239,7 @@ FilterPage::FilterPage (PluginBase& p, int layerIn, juce::Colour accentIn)
     routingNote.setInterceptsMouseClicks (false, false);
     addAndMakeVisible (routingNote);
 
-    filterOnButton.setTooltip ("FILTER ON / OFF - Off: the whole instrument bypasses Filter 1 and Filter 2 (the amp envelope still works).");
-    filterOnButton.setColour (juce::ToggleButton::tickColourId, accent);
-    filterOnButton.setColour (juce::ToggleButton::textColourId, Theme::text);
-    addAndMakeVisible (filterOnButton);
-    filterOnAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, ParamID::bass (layer, F::filterOn), filterOnButton);
+    // FILTER ON/OFF bor i flikknappen FILTER (Modules.cpp, addPower).
 
     sourcesButton.setTooltip ("SOURCES THROUGH FILTER - Click to choose which sources are filtered (ticked = through Filter 1 and 2, unticked = bypasses both). "
                               "The same switch is on each source's own tab (OSC 1-3, SAMPLE; NOISE on the INSTR tab).");
@@ -360,9 +356,10 @@ void FilterPage::refresh (Block& block, bool isSecond)
 void FilterPage::layoutBlock (Block& block, juce::Rectangle<int> area)
 {
     block.frame = area;
-    auto content = area.withTrimmedTop (ControlGroups::titleHeight + 2).reduced (4, 0);
+    // Strömknappen (22 px) räcker 5 px under titelraden: innehållet börjar 6 px lägre när blocket har en.
+    auto content = area.withTrimmedTop (ControlGroups::titleHeight + 2 + (block.power != nullptr ? 6 : 0)).reduced (4, 0);
     if (block.power != nullptr)
-        block.power->setBounds (area.getX() + 6, area.getY() - 1, 16, ControlGroups::titleHeight + 3);
+        block.power->setBounds (area.getX() + 6, area.getY() - 5, 22, 22); // minst 22 px hög, som övriga växlar (plan j.4)
 
     auto choices = content.removeFromLeft (104);
     const auto choiceHeight = juce::jmin (38, choices.getHeight() / 2);
@@ -391,14 +388,13 @@ void FilterPage::resized()
     area.removeFromRight (6);
     auto switchRow = area.removeFromTop (22);
     area.removeFromTop (2);
-    filterOnButton.setBounds (switchRow.removeFromLeft (104));
-    switchRow.removeFromLeft (10);
     switchCaption = switchRow.removeFromLeft (100);
     sourcesButton.setBounds (switchRow.removeFromLeft (juce::jmin (300, switchRow.getWidth())));
     switchRow.removeFromLeft (6);
     helpButton.setBounds (switchRow.removeFromLeft (juce::jmin (50, switchRow.getWidth())));
 
-    auto bottom = area.removeFromBottom (58);
+    // 74 px rad ger ett rattshuvud på ca 48 px (etiketter tar 26 px), samma mall som övriga flikar.
+    auto bottom = area.removeFromBottom (74);
     area.removeFromBottom (4);
     view.setBounds (area);
     allpassAmount->setBounds (bottom.removeFromRight (74));

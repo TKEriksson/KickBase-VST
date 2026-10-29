@@ -27,6 +27,7 @@ struct OscParams
     float blend = 0.5f;       // sidostämmornas nivå
     WarpMode warp = WarpMode::off;
     float warpAmount = 0.0f;  // 0..1
+    int fmSource = 0;         // bara OSC 1 med warp FM: modulator 0 = OSC 2, 1 = OSC 3
     int ringSource = 0;       // bara OSC 1 med warp RING (B): 0 = OSC 2, 1 = OSC 3, 2 = OSC 2 x OSC 3
     float phase = 0.0f;       // startfas 0..1
     float randomPhase = 0.0f; // 0 = samma fas varje ton (tight), 1 = slumpad
@@ -98,6 +99,8 @@ struct InstrumentParams
     float phaseDeg = 0.0f;        // fas PH: startfas i grader för OSC 1-3 och sub vid varje ny ton (läggs till OSC:ns egen PHASE)
     float pitchEnvSemis = 0.0f;  // tonhöjdsenvelope: så många halvtoner över (eller under) tonen i början av varje ton
     float pitchEnvDecayMs = 60.0f;
+    int maxTimeSteps[4] { 2, 2, 2, 2 }; // MAX LENGTH per grupp (ENV 1, PITCH, FILTER ENV, FM), uppslagna steg 0-5; bara för UI
+    int maxTimeStep = 2;         // MAX TIME (0-5: 250 ms..10 s): bara för UI (ENV-diagrammets tidsaxel); ljudet läser tiderna direkt
 
     // fas S2: FM-källa (2 operatorer, sinus): modulatorn (ratio x frekvensen) fasmodulerar carriern. Av som standard = ljudet oförändrat.
     bool fmOn = false;
@@ -229,6 +232,8 @@ public:
 
     // Filter-envelopens form (0..1) efter `seconds`. Används även av gränssnittet.
     static float filterEnvelopeAt (const InstrumentParams& p, double seconds);
+    // WARP ENV-källans nivå (0..1) `seconds` efter tonstart, för vald källa (warpEnvSource). noteOffSeconds < 0 = tonen hålls. ENV 2/3 ska ha tiderna i ms (withTempo).
+    static float warpEnvSourceAt (const InstrumentParams& p, double seconds, double noteOffSeconds);
 
     // Sample-editorns kurvform: `remaining` 1 -> 0 (kvar av kurvan), `shape` -1..1; 0 = linjär, + = snabbt fall först, - = långsamt fall först. Används även av gränssnittet.
     static float sampleCurve (float remaining, float shape) noexcept

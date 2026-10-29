@@ -27,6 +27,7 @@ public:
                        int buttonW, int buttonH, juce::ComboBox&) override;
     juce::Font getComboBoxFont (juce::ComboBox&) override { return Theme::font (13.0f); }
     void positionComboBoxText (juce::ComboBox&, juce::Label&) override;
+    void drawPopupMenuBackground (juce::Graphics&, int width, int height) override;
 
     juce::Font getPopupMenuFont() override { return Theme::font (14.0f); }
     juce::Font getTextButtonFont (juce::TextButton&, int) override { return Theme::font (12.0f, true); }

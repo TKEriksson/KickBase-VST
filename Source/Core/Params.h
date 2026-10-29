@@ -165,6 +165,12 @@ enum class InstrumentField
     subDelayMode, subLenSync, subDelayCount, subLenCount, fmDelayMode, fmLenSync, fmDelayCount, fmLenCount,
     // FX-matrisen: instrumentets send-belopp (0..1) till FX1..FX12, utöver fxChannel/fxAmount (läggs ihop). Registreras allra sist (addFxMatrixParams); fxSendToField (kanal).
     fxSendTo1, fxSendTo2, fxSendTo3, fxSendTo4, fxSendTo5, fxSendTo6, fxSendTo7, fxSendTo8, fxSendTo9, fxSendTo10, fxSendTo11, fxSendTo12,
+    // MAX TIME: gemensamt tak för tidsknobbarna (volym ATTACK/DECAY/RELEASE, filter-DECAY, pitch-DECAY) och ENV-diagrammets tidsaxel. Val 0-5 (250 ms..10 s), standard 1 s = dagens tak. Registreras allra sist (addMaxTimeParam).
+    maxTime,
+    // WARP = FM på OSC 1: vilken oscillator som är modulator (0 = OSC 2, standard = som förut, 1 = OSC 3). Registreras i addMaxTimeParam, allra sist.
+    fmSource,
+    // MAX LENGTH per grupp (G1): eget steg för PITCH, FILTER ENV och FM (ENV 1 = maxTime). Val 0 = "as ENV 1" (följer maxTime; standard, så gamla projekt och presets låter som förut), 1-6 = stegen. Registreras i addMaxTimeParam, allra sist.
+    maxTimePitch, maxTimeFilter, maxTimeFm,
     count
 };
 
@@ -192,6 +198,48 @@ namespace ParamID
     // FX-matrisen: kanal 0..11 = FX1..FX12. Kickens motsvarighet är kickFxSendToIds (samma ordning).
     constexpr int numFxSendTargets = 12;
     inline InstrumentField fxSendToField (int channel) { return (InstrumentField) ((int) InstrumentField::fxSendTo1 + channel); }
+    // MAX TIME: de fem tidsknobbarnas tak = legacyMax * maxTimeMs / 1000. Standard (1 s) ger exakt dagens tak. APVTS-intervallet är alltid 10x legacyMax; knobbarna och modulationen begränsas till taket.
+    constexpr int numMaxTimeSteps = 6;
+    constexpr int maxTimeDefault = 2; // 1 s
+    inline float maxTimeMs (int step)
+    {
+        constexpr float steps[numMaxTimeSteps] { 250.0f, 500.0f, 1000.0f, 2000.0f, 5000.0f, 10000.0f };
+        return steps[step < 0 ? 0 : step >= numMaxTimeSteps ? numMaxTimeSteps - 1 : step];
+    }
+    struct TimeCapSpec { InstrumentField field; float legacyMax, min, centre; };
+    constexpr int numTimeCaps = 6;
+    inline const TimeCapSpec& timeCapSpec (int i)
+    {
+        static const TimeCapSpec specs[numTimeCaps] {
+            { InstrumentField::attack, 50.0f, 0.0f, 5.0f }, { InstrumentField::decay, 2000.0f, 5.0f, 200.0f },
+            { InstrumentField::release, 300.0f, 1.0f, 30.0f }, { InstrumentField::pitchEnvDecay, 1000.0f, 5.0f, 80.0f },
+            { InstrumentField::envDecay, 1000.0f, 5.0f, 150.0f },
+            { InstrumentField::fmEnvTime, 400.0f, 1.0f, 60.0f } };
+        return specs[i];
+    }
+    inline float timeCapMs (const TimeCapSpec& spec, int step) { return spec.legacyMax * maxTimeMs (step) / 1000.0f; }
+    // MAX LENGTH per grupp: 0 = ENV 1 (attack/decay/release), 1 = PITCH, 2 = FILTER ENV, 3 = FM. Post i i timeCapSpec hör till gruppen timeCapGroup (i).
+    constexpr int numMaxTimeGroups = 4;
+    inline int timeCapGroup (int i) { return i < 3 ? 0 : i - 2; }
+    inline InstrumentField maxTimeGroupField (int group)
+    {
+        return group == 1 ? InstrumentField::maxTimePitch : group == 2 ? InstrumentField::maxTimeFilter : group == 3 ? InstrumentField::maxTimeFm : InstrumentField::maxTime;
+    }
+    // Gruppens steg: ENV 1 är maxTime (0-5). De andra har 0 = följ ENV 1, annars steg + 1.
+    inline int resolveMaxStep (int group, float ownRaw, float env1Raw)
+    {
+        const auto env1 = (int) (env1Raw + 0.5f);
+        const auto own = (int) (ownRaw + 0.5f);
+        const auto step = group == 0 || own <= 0 ? env1 : own - 1;
+        return step < 0 ? 0 : step >= numMaxTimeSteps ? numMaxTimeSteps - 1 : step;
+    }
+    inline const TimeCapSpec* timeCapFor (InstrumentField field)
+    {
+        for (int i = 0; i < numTimeCaps; ++i)
+            if (timeCapSpec (i).field == field)
+                return &timeCapSpec (i);
+        return nullptr;
+    }
     juce::String bass (int layer, InstrumentField field);   // "bass1Cutoff" ...
     const char* instrumentFieldName (InstrumentField field);      // "Cutoff" ...
 }
@@ -214,6 +262,7 @@ namespace Params
     void addEngineTimingExtraParams (Layout& layout); // TIMING/LEVELS: DELAY MODE / LENGTH SYNC / antal per motor och lager; allra sist i instrumentets layout
     void addKickMixParam (Layout& layout); // kickens MIX (synt/sampling); allra sist i båda layouterna
     void addKickToggleParams (Layout& layout); // kickens SYNTH/SAMPLE på/av; läses av readKick, så FX-pluginet behöver dem också
+    void addMaxTimeParam (Layout& layout); // MAX TIME per instrument; allra sist i instrumentets layout
     void addFxMatrixParams (Layout& layout); // FX-matrisen (instrument + kick) och fxMute1..12: allra sist i layouten
 
     juce::StringArray keyNames();
@@ -272,6 +321,34 @@ namespace Params
         for (int row = 0; row < numPatternRows; ++row)
             rows[(size_t) row] = rowBarsFromChoice ((int) std::lround (apvts.getRawParameterValue (ParamID::rowBars (row))->load()));
         pattern.applyLegacyLengths (barsFromChoice ((int) std::lround (apvts.getRawParameterValue (ParamID::patternBars)->load())), rows, onlyLayer);
+    }
+
+    // Gamla projekt och presets med kickens SYNTH- eller SAMPLE-knapp av: knapparna visas inte längre (MIX styr), så de översätts till MIX.
+    // Samma ljud som motorn gav (KickEngine::effectiveSampleMode, MIX-förstärkningarna i KickEngine.cpp):
+    //  - synten av = bara samplingen, i läget Replace  ->  MIX 1 (bara samplingen) och läge Replace
+    //  - samplingen av = som utan sampling  ->  MIX 0 (bara synten)
+    //  - båda av lämnas (tyst kick, som förut).
+    // get/set läser och skriver parametrarnas riktiga värden (bool 0/1, valindex, MIX 0-1); get ger andra argumentet när parametern saknas.
+    // Returnerar true om något ändrades.
+    inline bool migrateKickSources (const std::function<float (const char*, float)>& get, const std::function<void (const char*, float)>& set)
+    {
+        const auto synthOff = get (ParamID::kickSynthOn, 1.0f) < 0.5f;
+        const auto sampleOff = get (ParamID::kickSampleOn, 1.0f) < 0.5f;
+        if (synthOff == sampleOff)
+            return false;
+
+        if (synthOff)
+        {
+            set (ParamID::kickMix, 1.0f);
+            set (ParamID::kickSampleMode, 2.0f);
+            set (ParamID::kickSynthOn, 1.0f);
+        }
+        else
+        {
+            set (ParamID::kickMix, 0.0f);
+            set (ParamID::kickSampleOn, 1.0f);
+        }
+        return true;
     }
 }
 
