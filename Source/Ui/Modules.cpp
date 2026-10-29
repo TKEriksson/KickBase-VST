@@ -1249,6 +1249,8 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
     sources.addSeparator();
     filterPage = std::make_unique<FilterPage> (p, layer, layerAccent);
     sources.addTab ("FILTER", layerAccent, *filterPage);
+    sources.addPower (3 + ParamID::oscsPerLayer, p.apvts, ParamID::bass (layer, F::filterOn),
+                      "FILTER ON / OFF - Off: the whole instrument bypasses Filter 1 and Filter 2 (the amp envelope still works)."); // FILTER efter FM
     mixPanel = std::make_unique<InstrMixPanel> (p, layer, layerAccent);
     sources.addTab ("MIX", layerAccent, *mixPanel);
     timingPanel = std::make_unique<InstrTimingPanel> (p, layer, layerAccent);

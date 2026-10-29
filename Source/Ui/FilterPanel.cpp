@@ -239,11 +239,7 @@ FilterPage::FilterPage (PluginBase& p, int layerIn, juce::Colour accentIn)
     routingNote.setInterceptsMouseClicks (false, false);
     addAndMakeVisible (routingNote);
 
-    filterOnButton.setTooltip ("FILTER ON / OFF - Off: the whole instrument bypasses Filter 1 and Filter 2 (the amp envelope still works).");
-    filterOnButton.setColour (juce::ToggleButton::tickColourId, accent);
-    filterOnButton.setColour (juce::ToggleButton::textColourId, Theme::text);
-    addAndMakeVisible (filterOnButton);
-    filterOnAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, ParamID::bass (layer, F::filterOn), filterOnButton);
+    // FILTER ON/OFF bor i flikknappen FILTER (Modules.cpp, addPower).
 
     sourcesButton.setTooltip ("SOURCES THROUGH FILTER - Click to choose which sources are filtered (ticked = through Filter 1 and 2, unticked = bypasses both). "
                               "The same switch is on each source's own tab (OSC 1-3, SAMPLE; NOISE on the INSTR tab).");
@@ -391,8 +387,6 @@ void FilterPage::resized()
     area.removeFromRight (6);
     auto switchRow = area.removeFromTop (22);
     area.removeFromTop (2);
-    filterOnButton.setBounds (switchRow.removeFromLeft (104));
-    switchRow.removeFromLeft (10);
     switchCaption = switchRow.removeFromLeft (100);
     sourcesButton.setBounds (switchRow.removeFromLeft (juce::jmin (300, switchRow.getWidth())));
     switchRow.removeFromLeft (6);

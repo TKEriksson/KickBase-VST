@@ -78,8 +78,6 @@ private:
     void showSourcesMenu (int initiallySelected = 0);
     void updateSourcesText();
     static constexpr int numSources = 5; // OSC 1, OSC 2, OSC 3, SAMPLE, NOISE (i ordning med InstrumentField::filterOsc1 ...)
-    juce::ToggleButton filterOnButton { "FILTER ON" };
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> filterOnAttachment;
     juce::TextButton sourcesButton, helpButton;
     std::array<std::unique_ptr<juce::ParameterAttachment>, numSources> sourceAttachments;
     std::array<bool, numSources> sourceOn {};
