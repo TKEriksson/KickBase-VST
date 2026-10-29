@@ -49,7 +49,7 @@
     },
     {
       "name": "Saw Gate 2", "confidence": "low", "image": "bilder/gate-saw2.png",
-      "idea": "OFULLSTÄNDIG: som Saw Gate 1 med en andra, lägre tand (topp ca 0.8) mellan de höga; tänderna går 1/2 beat isär",
+      "image2": "bilder/gate-saw2-zoom.png", "idea": "OFULLSTÄNDIG (närbild sparad i gate-saw2-zoom.png, alla punkter markerade): tänder med period ca 0.5 beat; höga tänder startar på 1.0, en andra lägre tand startar på ca 0.87 mellan dem; varje tand faller linjärt till 0 och hoppar upp. Gröna punkter = hörn, orangea = kurvhandtag halvvägs på varje linje",
       "points": []
     },
     {

@@ -209,3 +209,6 @@ Båda rullistorna har samma val: Off, 1/4 beat, 1/2 beat, 1 beat, 2 beats, 4 bea
 
 ### Gross Beat: TNS = spänning på kurvsegmenten (29 okt)
 TNS-ratten är bipolär (tooltip "Volume envelope tension: -17%") och böjer alla kurvsegment i VOLUME-kurvan samtidigt, utan att flytta punkterna. Negativ = konvex (långsam start, snabb slut, som Sidechain/Fade Out In), positiv = konkav, 0 = rak linje. Så 'curve' i presetsen är en flagga, och själva böjen kommer från TNS (preset kan spara ett TNS-värde, t.ex. Fade Out In med TNS -17 %). ATT/REL jämnar ut kanterna på gaten (attack/release i ms).
+
+### Gross Beat: markera flera punkter (29 okt, Tobias)
+I kurvredigeraren ska man kunna markera flera punkter: klick-och-dra-ruta (select) och markera alla (Ctrl+A). Markerade punkter flyttas och ändras tillsammans (dra en = alla följer; Shift för att lägga till/ta bort en punkt i markeringen; Delete tar bort markerade). Gäller både VOLUME- och TIME-kurvan, och bör gå att återanvända i ENV-redigeraren.
