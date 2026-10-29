@@ -150,3 +150,6 @@ Obs: nya parametrar och modulationskällor sist (ENGINEERING.md). Stor punkt; Ar
 
 ### SIDECHAIN in i MASTER (Tobias 29 okt kväll, 0.5 om inte annat sägs)
 - SIDECHAIN blir en under-flik i MASTER, mellan MIXER och MAXIMIZER (MASTER har redan under-flikar). Huvudfliken SIDECHAIN tas bort i INSTR och FX (`InstrumentEditor.cpp:67`, `FxEditor.cpp:30`). Kolla hjälpavsnittet (`HelpDialog.cpp:524`), sparad flikstate och färg (Theme::mix → master).
+
+### SIDECHAIN i MASTER flyttas till 0.4 (Tobias 29 okt kväll, task G7)
+- Gäller punkten ovan, nu 0.4. Brödsmulan (sökvägen i displayen) ska stämma: MASTER > SIDECHAIN (jfr bdda107). Kontrollera i både INSTR och FX.
