@@ -119,7 +119,10 @@ InstrumentSynth::Stereo InstrumentSynth::Oscillator::next (const OscParams& p, d
 
         auto& phase = phases[(size_t) v];
         const auto warped = warpPhase (p.warp, warpAmount, phase, fmInput);
-        auto voice = gain * table.sample (p.position, warped, rate * 0.5 / std::max (1.0, hz), p.morph);
+        // CYCLES: framen sträcker sig över cyclesPerFrame perioder, så fasen går så många gånger långsammare och
+        // fler av frame-övertonerna ryms under Nyquist (frame-tonen är hz / cycles).
+        const auto frameHz = hz / (double) p.cyclesPerFrame;
+        auto voice = gain * table.sample (p.position, warped, rate * 0.5 / std::max (1.0, frameHz), p.morph);
         if (p.warp == WarpMode::am && warpAmount > 0.0f)
         {
             // AM: vågen multipliceras med en sinus en oktav upp (Serums AM-warp).
@@ -139,7 +142,7 @@ InstrumentSynth::Stereo InstrumentSynth::Oscillator::next (const OscParams& p, d
         sumRight += voice * (voicePan < 0.0f ? 1.0f + voicePan : 1.0f);
         gainSum += gain * gain;
 
-        phase = wrap (phase + hz / rate);
+        phase = wrap (phase + frameHz / rate);
     }
     const auto normal = 1.0f / std::sqrt (std::max (1.0f, gainSum));
     const auto pan = juce::jlimit (-1.0f, 1.0f, p.pan);

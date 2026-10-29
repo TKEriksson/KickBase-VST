@@ -390,6 +390,11 @@ OscPanel::OscPanel (PluginBase& p, int layerIn, int oscIn, juce::Colour accentIn
         knobs.push_back (std::make_unique<KnobComponent> (p.apvts, ParamID::bass (layer, ParamID::oscField (osc, field)), name, accent));
         addAndMakeVisible (*knobs.back());
     }
+    // CYCLES: hur många perioder av tonen en frame sträcker sig över; höj för långa vågor som låter som brus vid 1.
+    knobs.push_back (std::make_unique<KnobComponent> (p.apvts, ParamID::bass (layer, ParamID::oscCyclesField (osc)), "CYCLES", accent));
+    knobs.back()->setDescription ("CYCLES PER FRAME - how many periods of the note one wave frame spans (1 = one period, as before). "
+                              "Raise it for long, complex waves that sound like noise: a frame that holds 8 cycles plays right at 8x.");
+    addAndMakeVisible (*knobs.back());
     warpKnob = std::make_unique<KnobComponent> (p.apvts, ParamID::bass (layer, ParamID::oscField (osc, F::aWarpAmount)), "AMOUNT", accent);
     warpKnob->setLabelAbove (true); // som WARP-menyns rubrik: namnet ovanför
     // Fas S: på OSC 1 visar en lila ring hur långt WARP ENV driver mängden (grundmängden + WARP ENV AMOUNT); syns bara när WARP ENV är över noll.
@@ -694,6 +699,7 @@ void OscPanel::resized()
         savePresetButton.setBounds (strip.removeFromRight (42).reduced (1, 0));
         nextPresetButton.setBounds (strip.removeFromRight (22).reduced (1, 0));
         prevPresetButton.setBounds (strip.removeFromRight (22).reduced (1, 0));
+        harmonicsButton.setBounds (strip.removeFromRight (74).reduced (1, 0));
         presetButton.setBounds (strip.removeFromRight (juce::jmin (160, strip.getWidth())).reduced (1, 0));
     }
 
@@ -727,7 +733,5 @@ void OscPanel::resized()
         const auto width = rowArea.getWidth() / 6;
         for (int i = 0; i < 6 && (size_t) (row * 6 + i) < knobs.size(); ++i)
             knobs[(size_t) (row * 6 + i)]->setBounds (rowArea.removeFromLeft (width));
-        if (row == 1) // lediga cellen sist på rad 2 (11 rattar på 12 platser)
-            harmonicsButton.setBounds (rowArea.removeFromLeft (width).reduced (4, 6));
     }
 }

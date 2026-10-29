@@ -171,6 +171,8 @@ enum class InstrumentField
     fmSource,
     // MAX LENGTH per grupp (G1): eget steg för PITCH, FILTER ENV och FM (ENV 1 = maxTime). Val 0 = "as ENV 1" (följer maxTime; standard, så gamla projekt och presets låter som förut), 1-6 = stegen. Registreras i addMaxTimeParam, allra sist.
     maxTimePitch, maxTimeFilter, maxTimeFm,
+    // CYCLES per OSC (oscCyclesField): hur många perioder av tonen en frame sträcker sig över (1..32, standard 1 = som förut). Långa vågor med flera cykler per frame låter som brus vid 1. Registreras i addMaxTimeParam, allra sist.
+    aCycles, bCycles, cCycles,
     count
 };
 
@@ -184,6 +186,8 @@ namespace ParamID
     inline InstrumentField oscField (int osc, InstrumentField aField) { return (InstrumentField) ((int) aField + osc * oscFieldCount); }
     // Morph-fälten ligger sist i listan (så att gamla projekt är orörda) och följer inte oscField: OSC 1 (osc 0) = aMorph, OSC 2 = bMorph, OSC 3 = cMorph.
     inline InstrumentField oscMorphField (int osc) { return (InstrumentField) ((int) InstrumentField::aMorph + osc); }
+    // CYCLES (cycles per frame) ligger också sist: OSC 1 (osc 0) = aCycles, OSC 2 = bCycles, OSC 3 = cCycles.
+    inline InstrumentField oscCyclesField (int osc) { return (InstrumentField) ((int) InstrumentField::aCycles + osc); }
     // ENV 2 (env 0) och ENV 3 (env 1): Mode-fältet och tidens Sync-fält (which 0 = attack, 1 = decay, 2 = release).
     inline InstrumentField envModeField (int env) { return (InstrumentField) ((int) InstrumentField::env2Mode + env * 4); }
     inline InstrumentField envSyncField (int env, int which) { return (InstrumentField) ((int) envModeField (env) + 1 + which); }

@@ -118,7 +118,8 @@ namespace ParamID
                                      "SampleDelayMode", "SampleLenSync", "SampleDelayCount", "SampleLenCount", "NoiseDelayMode", "NoiseLenSync", "NoiseDelayCount", "NoiseLenCount",
                                      "SubDelayMode", "SubLenSync", "SubDelayCount", "SubLenCount", "FmDelayMode", "FmLenSync", "FmDelayCount", "FmLenCount",
                                      "FxSendTo1", "FxSendTo2", "FxSendTo3", "FxSendTo4", "FxSendTo5", "FxSendTo6", "FxSendTo7", "FxSendTo8", "FxSendTo9", "FxSendTo10", "FxSendTo11", "FxSendTo12",
-                                     "MaxTime", "FmSource", "MaxTimePitch", "MaxTimeFilter", "MaxTimeFm" };
+                                     "MaxTime", "FmSource", "MaxTimePitch", "MaxTimeFilter", "MaxTimeFm",
+                                     "ACycles", "BCycles", "CCycles" };
         static_assert (std::size (names) == (size_t) InstrumentField::count);
         return names[(size_t) field];
     }
@@ -594,6 +595,12 @@ namespace Params
                 layout.add (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { ParamID::bass (layer, ParamID::maxTimeGroupField (group)), 1 },
                                                                           "Instr " + juce::String (layer + 1) + " Max Length " + (group == 1 ? "Pitch" : group == 2 ? "Filter Env" : "FM"),
                                                                           juce::StringArray { "as ENV 1", "250 ms", "500 ms", "1 s", "2 s", "5 s", "10 s" }, 0));
+        // CYCLES per frame (OSC 1-3): standard 1 = en frame är en period, som förut. Logaritmisk ratt 1..32.
+        for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
+            for (int osc = 0; osc < ParamID::oscsPerLayer; ++osc)
+                layout.add (floatParam (ParamID::bass (layer, ParamID::oscCyclesField (osc)),
+                                        "Instr " + juce::String (layer + 1) + " Osc " + juce::String (osc + 1) + " Cycles per Frame",
+                                        skewed (1.0f, 32.0f, 4.0f, 0.01f), 1.0f, [] (float v) { return juce::String (v, 2) + "x"; }));
     }
 
     void addKickToggleParams (Layout& layout)
@@ -817,6 +824,7 @@ InstrumentParams ParamRefs::readInstrument (int layer, int rootMidiNote) const
         o.stereo = oget (F::aStereo);
         o.on = oget (F::aOn) >= 0.5f;
         o.morph = get (ParamID::oscMorphField (osc)) >= 0.5f;
+        o.cyclesPerFrame = std::max (1.0f, get (ParamID::oscCyclesField (osc)));
     }
     p.warpEnv    = get (F::warpEnv);
     p.noise      = get (F::noise);
