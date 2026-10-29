@@ -123,3 +123,12 @@ Obs: nya parametrar och modulationskällor sist (ENGINEERING.md). Stor punkt; Ar
 
 (0.5, ny punkt, Tobias 29 okt) GATE FX: en gate som effekt i FX-kanalerna, med en egen rad i mönstret ("GATE FX #1"). Raden har inget ritat mönster: gaten är på/av efter vad som markeras i pattern-fliken, styrs som dagens gate (djup, smooth). Före/efter reverb avgörs av placeringen i kanalens kedja, så GATE PRE/POST FX stryks. Dagens instrument-gate lämnas som den är. Att utreda först: om radregistret (RowRegistry) tål en rad som hör till en effekt. Obs: gaten klipper hela kanalens retur (även andra instrument som skickar dit); skriv det i hjälptexten.
 (0.5) Riktig FM-visning i OSC-diagrammet: rita vald modulators våg (OSC 2/3) i stället för torr våg (0.4 visar bara text och varning). Kontrollera Resources/AGENT_GUIDE.md för gamla standardvärden (cutoff 300 Hz, SUB 30 %).
+
+## Tillägg 29 okt kväll (Tobias, efter test)
+0.4:
+- MAX-rutan (TIMING, "MAX 10 s - +") ska se ut som övriga rutor: label ("MAX LENGTH"/"LENGTHS") och border; högre max (t.ex. 30 s). Flytta ner t.ex. FILTER ENVELOPE hellre än att placera MAX högst upp.
+- PRESET-knappen på INSTRUMENT-huvudfliken är orimligt bred (som kickens: smal) och menyn ska öppnas centrerad mot knappen, inte längst till vänster.
+- HELP-knappen i env-diagrammet (INSTR) ligger ivägen: flytta till hörnet/bredvid, gärna större.
+- SUB START i MIX-fliken ändrar knappt ljudet: undersök (sinus med fasförskjutning är nästan oförändrad; ev. OK).
+- WARP ENV: utred vad den gör, om den gör något, och hur den kan visualiseras.
+0.5: HOLD på ENV 1 och filter env, ATTACK på pitch, SUSTAIN på filter env; sammansatt våg med zoom på INSTR.
