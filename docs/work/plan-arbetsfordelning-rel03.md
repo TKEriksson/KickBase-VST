@@ -137,3 +137,6 @@ Obs: nya parametrar och modulationskällor sist (ENGINEERING.md). Stor punkt; Ar
 - Dropdown i MAX LENGTH-rutan väljer vilken grupp man ändrar: ENV 1 (standard), PITCH, FILTER ENV, FM. Varje grupp får eget steg-param (nya parametrar sist, gamla projekt = nuvarande maxTime-värde).
 - Idag styr ett gemensamt steg sex knobbar (`Params.h:199-224`).
 - 30 s kräver ändrat APVTS-intervall (idag 10x legacyMax) och skiftar normaliserade värden: Arbetare 1 skriver kort plan och rapporterar före bygge.
+
+### EDIT HARMONICS-knapp (Tobias 29 okt kväll, 0.4, task G6)
+- Knappen "Edit harmonics..." ska alltid synas i OSC-flikarna, i det lediga hörnet nere (under PHASE/UNISON/RAND), högre knapp med EDIT på rad 1 och HARMONICS på rad 2.
