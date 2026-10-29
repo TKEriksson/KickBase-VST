@@ -283,3 +283,20 @@ Lämnas: Generate (sampel till preset), Morpher/Animator, öppen routing, Mutato
 - Ett sub-preset av SAMPLE (och Copy/Paste av den sektionen) måste ta med själva ljudet, inte en filväg. Multisampling och wavetables sparas redan inbäddade (`MultiSample.cpp:413`, `PluginBase.cpp:445`); Arbetare 1 verifierar att SAMPLE-fliken gör likadant.
 - Storlek: ett sub-preset med sampel kan bli flera MB. Undersök 16 bitar/mono där det går, och varna om presetet blir stort.
 - Licens för medföljande sampel spelar roll först när presets delas.
+
+## Från Serum 2 (Tobias 29 okt: "lägg in det")
+
+Med i 0.5:
+1. **LFO-lägen Free / Retrig / Envelope.** Envelope kör LFO:n en gång per ton, som en ENV (bra för ett svep i en kick).
+2. **LFO-kontroller:** Rise, Delay, Smooth och Phase, plus Trip/Dot-synk. Rise och Delay är samma sak som fade-in från Massive XL, bygg dem en gång.
+3. **VELO och NOTE som egna källor med redigerbar kurva** (kurvritare). Ersätter Vel/KTR och Tracker-kurvorna ovan, bygg en gång.
+4. **Routing per källa och filter:** Filter / Main / Direct / None, med blendratt mellan FILTER 1 och 2. Direct går förbi filter och effekter (t.ex. SUB). None gör en oscillator till ren modulationskälla (jämför MOD OSC). Mönstret finns redan som Max-växlarna per källa i `MasterPage.cpp:101`.
+5. **SAMPLE-fliken:** loop-lägen (FWD, FWD/REV) och LS/LE-markörer.
+6. **Tooltip med modulationskällor:** håller man musen över en ratt står det vilka källor som styr den ("LFO 3, ENV 2"). Kompletterar markören under rattarna.
+7. **Init per modul** (nollställ en sektion till standardvärden) och Init för hela ljudet. Hör ihop med Copy/Paste och Randomize.
+
+Redan bestämt och Serum gör likadant: ENV med ATK/HOLD/DEC/SUS/REL, BPM/MS och zoom; macros med egna namn och antal mål; räknare för antal kopplingar på varje källflik; av/på stänger av en hel modul.
+
+Valfritt, inte med utan nytt besked: Chaos-LFO (Lorenz), två warp-platser per oscillator (Arbetare 1 jämför mot OSC/FM först), Voicing med Mono/Legato/Porta/Curve, LFO Host (följer DAW-positionen).
+
+Lämnas: Granular, Spectral, clip-sequencer, arpeggiator.
