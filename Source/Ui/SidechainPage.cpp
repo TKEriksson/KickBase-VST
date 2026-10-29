@@ -588,7 +588,7 @@ SidechainPage::SidechainPage (PluginBase& p)
                       "The coloured curves in from the top and bottom edges show how much each instrument is ducked.");
     for (auto* c : std::initializer_list<juce::Component*> { &presets, &mode, &length, &curve, &scope, &halftimeButton })
         addAndMakeVisible (c);
-    HelpDialog::setupButton (helpButton, *this, HelpDialog::Topic::sidechain, "the SIDECHAIN tab (ducking, curve, fundamental duck)");
+    HelpDialog::setupButton (helpButton, *this, HelpDialog::Topic::sidechain, "MASTER > SIDECHAIN (ducking, curve, fundamental duck)");
     addAndMakeVisible (helpButton);
     if (! p.isEffectVersion())
     {

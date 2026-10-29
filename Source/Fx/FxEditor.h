@@ -11,7 +11,6 @@
 #include "../Ui/MasterPage.h"
 #include "../Ui/MatrixPage.h"
 #include "../Ui/SettingsPage.h"
-#include "../Ui/SidechainPage.h"
 #include "../Ui/SoundstagePage.h"
 #include "../Ui/Modules.h"
 #include "../Ui/TabbedPanel.h"
@@ -43,7 +42,6 @@ private:
     LiveCodePage livePage { processor };
     TabbedPanel tools { &processor.selectedTab };
     EffectsPage effects { processor };
-    SidechainPage sidechain { processor };
     LfoPage lfo { processor };
     MatrixPage matrix { processor };
     SettingsPage settings { processor };

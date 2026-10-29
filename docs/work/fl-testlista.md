@@ -176,3 +176,5 @@ Format: **Gör så** → *förväntat resultat*. Bocka av `[ ]` när det stämme
   2. FM-flikens på/av-ikon ska styra FM (inte FILTER): slå av/på den och kolla att FM-sidan svarar.
   3. Brödsmulan uppe till höger i huvudraden ska visa `> INSTRUMENT > <instrumentnamn> > OSC 2` och följa med när du byter underflik eller instrument. Inget KICKBASE i den. Andra huvudflikar: `> KICK`, `> ANALYZER > SPECTRUM`.
   4. Raden med väljare/PREVIEW över instrumentets flikar är högre med luft över och under knapparna; inget klipps.
+  5. MASTER (instrument): tre flikar MIXER, SIDECHAIN, MAXIMIZER, och SIDECHAIN finns inte längre som huvudflik. I FX-versionen: SIDECHAIN och MAXIMIZER. Displayen bredvid ska visa `> MASTER > SIDECHAIN` (resp. MIXER/MAXIMIZER) och följa med när du byter vy.
+  6. SIDECHAIN i MASTER: sidan ryms utan klippning, ratt/kurva/presets/hjälpknapp fungerar som förut (instrument och FX).

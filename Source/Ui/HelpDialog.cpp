@@ -277,7 +277,10 @@ Effects live on **FX channels** (FX1-FX11), like mixer sends. An instrument send
 )";
 
     const char* masterText = R"(# MASTER
-The last stage before the output. Two views: **MIXER** and **MAXIMIZER**.
+The last stage before the output. Three views: **MIXER**, **SIDECHAIN** and **MAXIMIZER** (the FX version has SIDECHAIN and MAXIMIZER). The display next to them shows where you are, e.g. MASTER > SIDECHAIN.
+
+## SIDECHAIN
+The kick ducks the other sounds. It has its own help button inside the view (see the SIDECHAIN topic).
 
 ## MIXER
 One strip per sound source: the kick, the instruments and the FX channels.
