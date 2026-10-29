@@ -8,7 +8,7 @@
 
 // Filtrens frekvenssvar (fas D2/D3): Filter 1, Filter 2 och summan (som synten räknar den, Serial eller Parallel och MIX) som kurvor i en
 // logaritmisk frekvensaxel. Kurvorna räknas ur en egen uppsättning filter (aldrig ljudtrådens): en impuls med liten amplitud körs genom FilterUnit
-// med inställningarnas grundvärden (utan keytrack, envelope och modulering) och FFT:as på meddelandetråden, bara när något ändrats.
+// med inställningarnas värden inklusive LFO/ENV/MACRO-modulering (utan keytrack och filter-envelope) och FFT:as på meddelandetråden, bara när något ändrats.
 class FilterResponseView : public juce::Component, public juce::SettableTooltipClient, private VisualTimer
 {
 public:
@@ -22,7 +22,11 @@ private:
 
     void timerCallback() override;
     void recompute (const InstrumentParams& params);
+    void applyModulation (InstrumentParams& params) const; // lägger LFO/ENV/MACRO-förskjutningen på de modulerbara filterrattarna
     static std::vector<float> keyOf (const InstrumentParams& params);
+
+    struct Modulated { juce::RangedAudioParameter* parameter = nullptr; int index = -1; };
+    std::array<Modulated, 9> modulated {}; // cutoff, reso, P1, P2 (Filter 1), cutoff, reso, P1, P2 (Filter 2), MIX
 
     PluginBase& processor;
     const int layer;

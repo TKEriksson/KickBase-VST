@@ -183,6 +183,13 @@ Obs: nya parametrar och modulationskällor sist (ENGINEERING.md). Stor punkt; Ar
 - Varje modifier har ON och egna rattar med automation/LFO/makro som alla andra rattar. Nya parametrar sist (docs/ENGINEERING.md); default AV så gamla presets låter likadant.
 - Varning för bas: chorus/panorering kan förstöra monokompatibilitet och fas mellan kick och bas. Förslag: lågpass-skydd (wet filtreras bort under ca 150 Hz) och kollas i mix-rapporten.
 
+### 0.5: SPECTROGRAM-verktyg i ANALYZER (Tobias 29 okt, efter MiniMeters-bild)
+- Rullande spektrogram à la MiniMeters (lila→röd→vit, logaritmisk frekvensaxel, svart bakgrund). Ett verktyg i ANALYZER-fliken som öppnas i ett eget fönster.
+- Val av input: hela mixen, KICK, INSTRUMENT 1–10. Rullhastighet, frekvensområde och ljusstyrka ställbara.
+- Det viktiga (Tobias): man ska se om grundtonen (fundamental) saknas i en enskild baston, t.ex. första av tre toner i en rullande bas. Kräver hög upplösning i basen: lång FFT (minst 8192 vid 48 kHz, gärna 16384 under ca 300 Hz), logaritmisk axel och zoom på 20–500 Hz, så att grundtonens linje syns som egen linje och ett hål där den dämpats. Kan visa FUNDAMENTAL DUCK-fönstret som en markering.
+- Öppet (frågat): riktning (tid i sidled/lodrätt), låga toner nederst eller överst, frys, två inputs bredvid varandra.
+- Idag finns spektrogram bara som analysdata (AudioAnalysis.cpp), ingen levande vy.
+
 ### 0.5: START-fasvågorna i tidsdiagrammet (Tobias 29 okt)
 - De små sinusvågorna (TimelineChart.h:175-200) behålls: de visar källans startfas (START + PHASE/SUB/FM-fas, vänd av POLARITY) med en fuchsiaprick vid startpunkten.
 - Gör dem begripliga: etikett "START PHASE" med gradvärdet bredvid vågen, och tooltip som förklarar vågen och pricken.

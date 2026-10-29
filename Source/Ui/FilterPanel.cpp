@@ -35,7 +35,12 @@ FilterResponseView::FilterResponseView (PluginBase& p, int layerIn, juce::Colour
 {
     setTooltip ("FILTER RESPONSE - How the filters change the sound across the frequencies (low on the left, high on the right; the line in the middle is 0 dB, "
                 "= no change). The coloured line is FILTER 1, the orange line FILTER 2 and the filled shape what you get from both together. It shows the knob "
-                "settings as they are; the filter envelope, KEYTRK and modulation move the real filter around them.");
+                "settings including LFO, ENV and MACRO modulation, so it moves when a knob is modulated; the filter envelope and KEYTRK move the real filter around them.");
+    using F = InstrumentField;
+    const F fields[] { F::cutoff, F::resonance, F::filterP1, F::filterP2, F::filter2Cutoff, F::filter2Reso, F::filter2P1, F::filter2P2, F::filterMix };
+    for (size_t i = 0; i < modulated.size(); ++i)
+        if (auto* parameter = p.apvts.getParameter (ParamID::bass (layer, fields[i])))
+            modulated[i] = { dynamic_cast<juce::RangedAudioParameter*> (parameter), p.modulator.indexOf (ParamID::bass (layer, fields[i])) };
     const auto n = 1 << fftOrder;
     impulse.assign ((size_t) n, 0.0f);
     spectrum.assign ((size_t) n * 2, 0.0f);
@@ -55,13 +60,36 @@ std::vector<float> FilterResponseView::keyOf (const InstrumentParams& p)
 void FilterResponseView::timerCallback()
 {
     followVisualRate();
-    const auto params = refs.readInstrument (layer, 36);
+    auto params = refs.readInstrument (layer, 36);
+    applyModulation (params);
     const auto key = keyOf (params);
     if (key == lastKey)
         return;
     lastKey = key;
     recompute (params);
     repaint();
+}
+
+void FilterResponseView::applyModulation (InstrumentParams& p) const
+{
+    // Samma sak som ringen på en ratt: grundvärdet (0-1) + förskjutningen från modulatorn, sedan tillbaka till parameterns enhet.
+    auto value = [this] (size_t i, float base)
+    {
+        const auto& m = modulated[i];
+        if (m.parameter == nullptr || m.index < 0)
+            return base;
+        const auto offset = processor.modulator.currentOffset (m.index);
+        return offset == 0.0f ? base : m.parameter->convertFrom0to1 (juce::jlimit (0.0f, 1.0f, m.parameter->getValue() + offset));
+    };
+    p.cutoffHz = value (0, p.cutoffHz);
+    p.resonance = value (1, p.resonance);
+    p.filterP1 = value (2, p.filterP1);
+    p.filterP2 = value (3, p.filterP2);
+    p.filter2CutoffHz = value (4, p.filter2CutoffHz);
+    p.filter2Resonance = value (5, p.filter2Resonance);
+    p.filter2P1 = value (6, p.filter2P1);
+    p.filter2P2 = value (7, p.filter2P2);
+    p.filterMix = value (8, p.filterMix);
 }
 
 void FilterResponseView::recompute (const InstrumentParams& p)

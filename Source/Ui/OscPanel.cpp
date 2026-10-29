@@ -40,11 +40,26 @@ void WavetableView::timerCallback()
             + (processor.apvts.getRawParameterValue (ParamID::bass (layer, ParamID::oscField (processor.apvts.getRawParameterValue (ParamID::bass (layer, InstrumentField::fmSource))->load() >= 0.5f ? 2 : 1, InstrumentField::aOn)))->load() >= 0.5f ? 0 : 4)
         : 0;
     const auto duckDb = processor.fundamentalDuckDb[(size_t) layer].load (std::memory_order_relaxed);
-    const auto duckChanged = std::abs (duckDb - lastDuckDb) > 0.1f || ((duckDb > 0.05f) != (lastDuckDb > 0.05f));
+    const auto nowMs = juce::Time::getMillisecondCounter();
+    const auto prevShownDb = duckShownDb, prevAlpha = duckAlpha;
+    if (duckDb > 0.05f)
+    {
+        if (! duckActive)
+            duckShownDb = 0.0f; // ny dämpning: börja om på toppvärdet
+        duckShownDb = std::max (duckShownDb, duckDb);
+        duckLastActiveMs = nowMs;
+        duckActive = true;
+        duckAlpha = 1.0f;
+    }
+    else
+    {
+        duckActive = false;
+        duckAlpha = juce::jlimit (0.0f, 1.0f, 1.0f - (float) (nowMs - duckLastActiveMs) / 500.0f);
+    }
+    const auto duckChanged = duckAlpha != prevAlpha || duckShownDb != prevShownDb;
     if (duckChanged || position != lastPosition || table != lastTable || warpMode != lastWarpMode || warp != lastWarp || phase != lastPhase || detune != lastDetune || blend != lastBlend || unison != lastUnison || ready != lastReady || morph != lastMorph || fmInfo != lastFmInfo)
     {
         lastFmInfo = fmInfo;
-        lastDuckDb = duckDb;
         lastMorph = morph;
         lastPosition = position;
         lastTable = table;
@@ -71,14 +86,14 @@ void WavetableView::paint (juce::Graphics& g)
     // FUNDAMENTAL DUCK: markör nere till vänster medan motorns grundton dämpas (kicken tar botten).
     auto paintDuck = [&]
     {
-        if (lastDuckDb <= 0.05f)
+        if (duckAlpha <= 0.0f || duckShownDb <= 0.05f)
             return;
-        const auto badge = juce::Rectangle<float> (6.0f, bounds.getBottom() - 18.0f, 74.0f, 13.0f);
-        g.setColour (Theme::kick.withAlpha (0.35f));
-        g.fillRoundedRectangle (badge, 3.0f);
-        g.setFont (Theme::font (9.0f, true));
-        g.setColour (Theme::text);
-        g.drawText ("DUCK -" + juce::String (lastDuckDb, 1) + " dB", badge, juce::Justification::centred);
+        const auto badge = duckRect();
+        g.setColour (Theme::kick.withAlpha (0.55f * duckAlpha));
+        g.fillRoundedRectangle (badge, 5.0f);
+        g.setFont (Theme::font (17.0f, true));
+        g.setColour (Theme::text.withAlpha (duckAlpha));
+        g.drawText ("DUCK -" + juce::String (duckShownDb, 1) + " dB", badge, juce::Justification::centred);
     };
 
     // WARP = FM: bilden visar den torra vågen, så säg vilken modulator som används (och varna när den är av).
@@ -257,6 +272,11 @@ void WavetableView::mouseDown (const juce::MouseEvent& e)
     {
         display = display == Display::wave ? Display::scope : display == Display::scope ? Display::spectrum : Display::wave;
         repaint();
+        return;
+    }
+    if (duckAlpha > 0.0f && duckShownDb > 0.05f && duckRect().contains (e.position) && processor.openFundamentalDuckPage)
+    {
+        processor.openFundamentalDuckPage();
         return;
     }
     if (e.mods.isPopupMenu()) // PH2: högerklick öppnar övertonsredigeraren

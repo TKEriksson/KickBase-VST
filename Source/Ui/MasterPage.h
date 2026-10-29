@@ -35,6 +35,7 @@ public:
     explicit MasterPage (PluginBase& processor);
     void paint (juce::Graphics&) override;
     void resized() override;
+    void showSidechain() { showView (View::sidechain); }
 
 private:
     enum class View { mixer, sidechain, maximizer };

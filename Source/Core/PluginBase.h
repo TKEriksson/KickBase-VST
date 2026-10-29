@@ -524,6 +524,7 @@ public:
     // `applyEditorScale` så att inställningssidan kan ändra storleken på det öppna fönstret.
     float editorScale = 0.0f;
     std::function<void (float)> applyEditorScale;
+    std::function<void()> openFundamentalDuckPage; // sätts av editorn: öppnar MASTER > SIDECHAIN (FUNDAMENTAL DUCK-märket i OSC-bilden)
     void requestEditorScale (float scale)
     {
         editorScale = juce::jlimit (0.5f, 1.6f, scale);

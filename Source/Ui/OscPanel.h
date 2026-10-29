@@ -28,6 +28,7 @@ private:
 
     enum class Display { wave, scope, spectrum };
     juce::Rectangle<float> modeRect() const { return { (float) getWidth() - 62.0f, 3.0f, 58.0f, 14.0f }; }
+    juce::Rectangle<float> duckRect() const { return { 6.0f, (float) getHeight() - 38.0f, 150.0f, 28.0f }; } // FUNDAMENTAL DUCK-märket (klick öppnar MASTER > SIDECHAIN)
     void drawCurrent (juce::Graphics&, const Wavetable&, juce::Rectangle<float> area);
     Display display = Display::wave;
     juce::dsp::FFT fft { 9 };
@@ -43,7 +44,10 @@ private:
     int lastUnison = -1;
     int lastTable = -1, lastWarpMode = -1, lastFmInfo = 0; // lastFmInfo: 0 = ingen FM, annars 1 + källa*2 + (modulatorn av ? 4 : 0)
     bool lastMorph = true;
-    float lastDuckDb = 0.0f; // FUNDAMENTAL DUCK: hur många dB motorns grundton dämpas nu (0 = ingen dämpning)
+    // FUNDAMENTAL DUCK-märket: visar högsta dämpningen (dB) under den här dämpningen och tonar ut under 500 ms när den släpper
+    float duckShownDb = 0.0f, duckAlpha = 0.0f;
+    juce::uint32 duckLastActiveMs = 0;
+    bool duckActive = false;
     bool lastReady = false; // tabellen var byggd vid förra ritningen (byggs den i bakgrunden ritas vyn om när den blir klar)
 };
 

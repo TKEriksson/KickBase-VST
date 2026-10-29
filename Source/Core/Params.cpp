@@ -498,8 +498,8 @@ namespace Params
         sources.add ("Any");
 
         layout.add (std::make_unique<AudioParameterBool> (ParameterID { ParamID::fundamentalDuckOn, 1 }, "Fundamental Duck On", false));
-        layout.add (floatParam (ParamID::fundamentalDuckDepth, "Fundamental Duck Depth", NormalisableRange<float> (0.0f, 24.0f, 0.1f), 12.0f, dbText));
-        layout.add (floatParam (ParamID::fundamentalDuckWindow, "Fundamental Duck Window", NormalisableRange<float> (10.0f, 1200.0f, 1.0f), 200.0f, centsText));
+        layout.add (floatParam (ParamID::fundamentalDuckDepth, "Fundamental Duck Depth", NormalisableRange<float> (0.0f, 32.0f, 0.1f), 12.0f, dbText));
+        layout.add (floatParam (ParamID::fundamentalDuckWindow, "Fundamental Duck Window", NormalisableRange<float> (10.0f, 2400.0f, 1.0f), 200.0f, centsText));
         layout.add (std::make_unique<AudioParameterChoice> (ParameterID { ParamID::fundamentalDuckSource, 1 }, "Fundamental Duck Source", sources, 0));
 
         for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
@@ -508,8 +508,8 @@ namespace Params
             const auto id = [layer] (F field) { return ParamID::bass (layer, field); };
             layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::fundamentalDuckMode), 1 }, title + "Fundamental Duck Mode",
                                                                 StringArray { "Inherit", "Off", "Own" }, 0));
-            layout.add (floatParam (id (F::fundamentalDuckDepth), title + "Fundamental Duck Depth", NormalisableRange<float> (0.0f, 24.0f, 0.1f), 12.0f, dbText));
-            layout.add (floatParam (id (F::fundamentalDuckWindow), title + "Fundamental Duck Window", NormalisableRange<float> (10.0f, 1200.0f, 1.0f), 200.0f, centsText));
+            layout.add (floatParam (id (F::fundamentalDuckDepth), title + "Fundamental Duck Depth", NormalisableRange<float> (0.0f, 32.0f, 0.1f), 12.0f, dbText));
+            layout.add (floatParam (id (F::fundamentalDuckWindow), title + "Fundamental Duck Window", NormalisableRange<float> (10.0f, 2400.0f, 1.0f), 200.0f, centsText));
             layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (F::fundamentalDuckSource), 1 }, title + "Fundamental Duck Source", sources, 0));
         }
     }

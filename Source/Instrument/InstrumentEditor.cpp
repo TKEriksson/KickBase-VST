@@ -70,6 +70,11 @@ InstrumentEditor::InstrumentEditor (InstrumentProcessor& p)
     tools.addTab ("MASTER", Theme::master, masterPage);
     tools.addTab ("SOUNDSTAGE", Theme::mix, soundstage);
     tools.addTab ("SETTINGS", Theme::textDim, settings);
+    processor.openFundamentalDuckPage = [this]
+    {
+        masterPage.showSidechain();
+        tools.setCurrentTab (4); // MASTER
+    };
 
     keyboard.setOctaveForMiddleC (5); // samma tonnamn som FL Studio (mittens C = C5)
     keyboard.setKeyWidth (14.0f);
@@ -88,6 +93,7 @@ InstrumentEditor::InstrumentEditor (InstrumentProcessor& p)
 InstrumentEditor::~InstrumentEditor()
 {
     processor.applyEditorScale = nullptr;
+    processor.openFundamentalDuckPage = nullptr;
     if (sized && processor.editorScale > 0.0f)
         Settings::setUiScale (processor.editorScale); // storleken man dragit till gäller nästa gång
     setLookAndFeel (nullptr);
