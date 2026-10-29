@@ -132,3 +132,8 @@ Obs: nya parametrar och modulationskällor sist (ENGINEERING.md). Stor punkt; Ar
 - SUB START i MIX-fliken ändrar knappt ljudet: undersök (sinus med fasförskjutning är nästan oförändrad; ev. OK).
 - WARP ENV: utred vad den gör, om den gör något, och hur den kan visualiseras.
 0.5: HOLD på ENV 1 och filter env, ATTACK på pitch, SUSTAIN på filter env; sammansatt våg med zoom på INSTR.
+
+### MAX LENGTH per sak (Tobias 29 okt kväll, 0.4, del av G1)
+- Dropdown i MAX LENGTH-rutan väljer vilken grupp man ändrar: ENV 1 (standard), PITCH, FILTER ENV, FM. Varje grupp får eget steg-param (nya parametrar sist, gamla projekt = nuvarande maxTime-värde).
+- Idag styr ett gemensamt steg sex knobbar (`Params.h:199-224`).
+- 30 s kräver ändrat APVTS-intervall (idag 10x legacyMax) och skiftar normaliserade värden: Arbetare 1 skriver kort plan och rapporterar före bygge.
