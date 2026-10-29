@@ -164,3 +164,4 @@ Obs: nya parametrar och modulationskällor sist (ENGINEERING.md). Stor punkt; Ar
   - Dra en global ENV till mål: pekaren grön om släpp går, röd annars; rattar/grupper som tar emot ENV får grön border under drag. Släpp på INSTR-graf frågar vilken (AMP/PITCH/FILTER). Dra även till knobbgrupper (Arbetare 1 listar vilka grupper som kan ta emot ENV).
   - LFO/makro på ENV:ets egna rattar (automation), sist.
   - Öppna frågor till Tobias: kopia (föreslaget) eller live-länk; gamla per-instrument ENV 2/3 konverteras till globala vid laddning, gamla params kvar (nya sist, ENGINEERING.md); varje ton startar sin egen kopia av den globala ENV.
+  - KRAV: MAX LENGTH-inställningen (källa + xN) är en del av envelopen och följer med vid ALLA kopieringar/hämtningar/drag (INSTR<->GLOBAL, mellan instrument, GET TO AMP/PITCH/FILTER). Testa: kopiera ENV med x10, målet ska visa x10 och samma A/D/R.
