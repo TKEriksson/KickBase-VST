@@ -314,3 +314,7 @@ Med i 0.5:
 Ordning: 1 och 2 först, 3 och 4 när resten av 0.5 är klart.
 
 - Tobias 29 okt: letar själv upp wavetable-.wav-filer (Serum-format). Arbetare 1 testar importen mot filer han lämnar (t.ex. i en mapp `docs/work/wavetables-test/`, ej incheckade om licensen är oklar). Serum-presets (.fxp) stöds inte, bara .wav.
+
+- Wavetable-import, nuläge och tillägg (PL läste koden 29 okt, `Source/Core/Wavetable.cpp:693-753`, `fromAudio`): 2048-samples-cykler stöds redan, men hårdkodat. Filen delas i 2048-cykler, varje cykel halveras till 1024, **max 16 frames** väljs jämnt över filen (resten slängs), mono, DC-borttagning och normalisering sker alltid. Kortare filer än 2×2048 blir en enda cykel.
+  - **Auto-detektering (Tobias 29 okt: importen ska läsa av vad filen verkar vara):** (1) läs Serums `clm `-chunk i WAV-huvudet (innehåller frame-storleken, oftast 2048) – Arbetare 1 verifierar mot riktiga filer; (2) utan chunk: om längden går upp i 256/512/1024/2048/4096, välj den storlek som ger mjukast skarv mellan frames; (3) annars en enda cykel. Importen visar vad den hittade ("2048 × 64 frames, Serum") och låter Tobias ändra.
+  - Att utreda: fler än 16 frames (Serum har ofta 256), och om halveringen till 1024 kostar för mycket i höga övertoner.
