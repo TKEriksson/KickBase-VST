@@ -215,3 +215,10 @@ I kurvredigeraren ska man kunna markera flera punkter: klick-och-dra-ruta (selec
 
 ### Gross Beat: Bezier-kurvor (29 okt, Tobias fråga)
 Gross Beats orangea handtag är ett handtag per segment (böjer linjen, som tension), inte riktig Bezier. Förslag: 0.5 gör som Gross Beat, ett handtag per segment plus TNS som global böj. Riktig Bezier (två handtag per punkt, S-kurvor, mjuka övergångar) som tillval per punkt ("smooth") i samma redigerare, lagras som kontrollpunkter i presetfilen. Beslut av Tobias: bara ett handtag nu, eller full Bezier direkt?
+
+### Gross Beat: kurvredigerarens beteende, beslut (29 okt, Tobias)
+Beslut: full Bezier byggs som ett eget Bezier-läge. Standardläget är ett handtag per segment (räcker i de flesta fall). Bilder: `docs/work/grossbeat/bilder/editor-kurva-handtag.png`, `editor-saw-bygge.png`.
+- **Ny punkt:** högerklick i kurvan lägger till en punkt.
+- **Mellanpunkt/handtag:** mellan varje par punkter finns ett handtag (liten ring, halvvägs på linjen) som dras för att böja segmentet; ringen följer med när punkterna flyttas.
+- **Lodräta hopp:** två punkter på samma x (dra en punkt rakt upp/ner över en annan) ger hopp; så byggs sågtänder och gater för hand. Måste gå smidigt, det är hela syftet (Tobias bygger saw-presets själv).
+- **Flervals** (select/markera alla, se ovan) och TNS gäller i båda lägena.
