@@ -167,3 +167,10 @@ Obs: nya parametrar och modulationskällor sist (ENGINEERING.md). Stor punkt; Ar
   - KRAV: MAX LENGTH-inställningen (källa + xN) är en del av envelopen och följer med vid ALLA kopieringar/hämtningar/drag (INSTR<->GLOBAL, mellan instrument, GET TO AMP/PITCH/FILTER). Testa: kopiera ENV med x10, målet ska visa x10 och samma A/D/R.
   - KRAV: alla rattar i varje global ENV ska ha "Create automation clip" (högerklick, finns redan i Components.h:12) och "Link to controller", precis som övriga rattar. Gäller även MAX LENGTH-rattarna och multiplikatorn.
 - (Tobias 29 okt, till 0.5) PITCH och FILTER ENVELOPE får full ADSR + AMOUNT, så att globala ENV passar överallt. Idag: filter har attack/decay/amount (envAttack, envDecay, envAmount), pitch bara amount/decay (pitchEnvAmount, pitchEnvDecay, Params.h:127). Saknas: pitch attack/sustain/release, filter sustain/release (ersätter punkterna ATTACK på pitch och SUSTAIN på filter ovan). Nya params sist (docs/ENGINEERING.md); defaults så att gamla presets låter likadant (sustain 0, release som dagens beteende). Varje ratt får Create automation (se krav ovan).
+
+### 0.5: XY-platta per filter (Tobias 29 okt)
+- FILTER 1 och FILTER 2 får var sin XY-platta (som Fruity Philter). X och Y kan kopplas till valfri parameter via rullista; standard X = CUTOFF, Y = RESO.
+- Plattans X/Y är vanliga automatiserbara parametrar (nya parametrar sist, docs/ENGINEERING.md): "Create automation clip", "Link to controller", inspelning av automation och LFO/makro på X och Y (t.ex. LFO 1 på X, LFO 2 på Y) ska funka som på alla andra rattar.
+- Förslag: plattan är ett andra handtag på de två valda rattarna (rattarna rör sig med), inte en separat modulering ovanpå.
+- Fyra kvadranter (olika saker under/bakom axlarna): senare, bara om det behövs; X/Y-tilldelning täcker det mesta.
+- Öppen fråga: ska plattan ligga bredvid rattarna eller ersätta filterdiagrammet när den visas?
