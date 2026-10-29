@@ -773,7 +773,7 @@ namespace
                 mono.push_back (cycle == 0 ? 2.0f * (float) i / 2048.0f - 1.0f : (i < 1024 ? 1.0f : -1.0f));
 
         std::vector<float> frames;
-        auto table = Wavetables::fromAudio (mono, "test", frames);
+        auto table = Wavetables::fromAudio (mono, "test", frames, 2048); // fyrkanterna har inga släta skarvar att gissa längden ur
         check (table != nullptr && frames.size() == (size_t) (Wavetable::frameSize * Wavetable::numFrames), "tabellen byggs av 4 cykler");
         if (table == nullptr)
             return;

@@ -690,28 +690,80 @@ namespace Wavetables
         return table;
     }
 
-    std::unique_ptr<Wavetable> fromAudio (const std::vector<float>& mono, const juce::String& name, std::vector<float>& framesOut)
+    int detectCycleLength (const std::vector<float>& mono)
     {
-        constexpr int size = Wavetable::frameSize, numFrames = Wavetable::numFrames, cycle = 2 * size;
+        // Serum-filer saknar oftast clm-chunk, så frame-längden gissas ur skarvarna: rätt längd ger små hopp mellan
+        // slutet på en cykel och början på nästa, jämfört med hoppen mellan vanliga närliggande samples.
+        const auto length = (int) mono.size();
+        auto step = 0.0;
+        for (int i = 1; i < length; ++i)
+            step += std::abs (mono[(size_t) i] - mono[(size_t) i - 1]);
+        step = std::max (step / std::max (1, length - 1), 1.0e-9);
+
+        // Poängen: medelhoppet i skarvarna delat med medelhoppet mellan närliggande samples (1 = skarven syns inte).
+        auto seamScore = [&] (int n)
+        {
+            if (length % n != 0 || length / n < 2)
+                return 1.0e30;
+            auto jump = 0.0;
+            for (int k = 1; k < length / n; ++k)
+                jump += std::abs (mono[(size_t) k * n] - mono[(size_t) k * n - 1]);
+            return jump / (length / n - 1) / step;
+        };
+
+        // Serums 2048 är förval; andra längder prövas bara om 2048 inte går jämnt upp eller skarvarna är tydligt dåliga.
+        constexpr double seamLimit = 10.0;
+        const auto score2048 = seamScore (2048);
+        if (score2048 <= seamLimit)
+            return 2048;
+        auto bestLength = 2048;
+        auto best = score2048;
+        for (const auto n : { 4096, 1024, 512, 256 })
+            if (const auto score = seamScore (n); score < best * 0.5 && score < 2.0)
+                best = score, bestLength = n;
+        return bestLength;
+    }
+
+    std::unique_ptr<Wavetable> fromAudio (const std::vector<float>& mono, const juce::String& name, std::vector<float>& framesOut, int cycleHint)
+    {
+        constexpr int size = Wavetable::frameSize, numFrames = Wavetable::numFrames;
         const auto length = (int) mono.size();
         if (length < 16)
             return nullptr;
+        const auto cycle = cycleHint > 0 ? cycleHint : detectCycleLength (mono);
 
         framesOut.assign ((size_t) (size * numFrames), 0.0f);
         auto steps = 1; // en enda cykel: Morph av har bara en vågform att spela
 
         if (length >= 2 * cycle)
         {
-            // Cykler om 2048 samples (Serums format): frames väljs jämnt över filen och halveras till 1024.
+            // Cykler om `cycle` samples (Serum: 2048): frames väljs jämnt över filen och görs om till 1024 samples.
             const auto cycles = length / cycle;
             steps = std::min (numFrames, cycles);
+            const auto ratio = (double) cycle / size;
             for (int f = 0; f < numFrames; ++f)
             {
                 const auto source = (int) std::lround ((double) f * (cycles - 1) / (numFrames - 1));
+                const auto* base = mono.data() + (size_t) source * cycle;
                 for (int i = 0; i < size; ++i)
                 {
-                    const auto j = source * cycle + 2 * i;
-                    framesOut[(size_t) (f * size + i)] = 0.5f * (mono[(size_t) j] + mono[(size_t) j + 1]);
+                    float value;
+                    if (ratio >= 1.0)
+                    {
+                        // Medelvärde över ratio samples (halvering för 2048, fyrdelning för 4096).
+                        const auto first = (int) std::lround (i * ratio), last = std::max (first + 1, (int) std::lround ((i + 1) * ratio));
+                        auto sum = 0.0f;
+                        for (int j = first; j < last; ++j)
+                            sum += base[j];
+                        value = sum / (float) (last - first);
+                    }
+                    else
+                    {
+                        const auto position = i * ratio;
+                        const auto i0 = (int) position, i1 = (i0 + 1) % cycle;
+                        value = base[i0] + (base[i1] - base[i0]) * (float) (position - i0);
+                    }
+                    framesOut[(size_t) (f * size + i)] = value;
                 }
             }
         }

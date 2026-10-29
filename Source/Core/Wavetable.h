@@ -84,7 +84,7 @@ namespace Wavetables
     // En tabell av ljud (som i Serum): en fil med cykler om 2048 samples blir upp till 16 frames
     // som POS sveper igenom; en kort fil räknas som en enda cykel. `framesOut` får de 16 frames
     // (numFrames * frameSize) som tabellen byggdes av, så att den kan sparas i projektet.
-    std::unique_ptr<Wavetable> fromAudio (const std::vector<float>& mono, const juce::String& name, std::vector<float>& framesOut);
+    std::unique_ptr<Wavetable> fromAudio (const std::vector<float>& mono, const juce::String& name, std::vector<float>& framesOut, int cycleHint = 0); // cycleHint 0 = gissa cykellängd (256-4096) ur skarvarna
     std::unique_ptr<Wavetable> fromFrames (const juce::String& name, const std::vector<float>& frames, int steps = Wavetable::numFrames);
 }
 

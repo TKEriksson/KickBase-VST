@@ -231,11 +231,11 @@ bool PluginBase::loadUserTable (int layer, int osc, const juce::File& file)
             }
         }
     }
-    else if (! readMono (file, mono, 2048 * 256)) // högst 256 cykler om 2048 samples räcker för 16 frames
+    else if (! readMono (file, mono, 1 << 20)) // 1 Mi samples: 256 cykler om 4096 räcker för 16 frames
         return false;
 
     std::vector<float> frames;
-    auto table = Wavetables::fromAudio (mono, file.isDirectory() ? file.getFileName() : file.getFileNameWithoutExtension(), frames);
+    auto table = Wavetables::fromAudio (mono, file.isDirectory() ? file.getFileName() : file.getFileNameWithoutExtension(), frames, file.isDirectory() ? 2048 : 0);
     if (table == nullptr)
         return false;
 
