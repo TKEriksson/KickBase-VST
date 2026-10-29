@@ -93,3 +93,9 @@
 - Blockerar: blocksizetest slumpfel, orsak ej funnen (Arbetare 2 misstänker tabellbyggartråden `Wavetable.cpp:631-643`; i felkörningarna var ljuddiffen 0, så felet kan vara antal samples eller kontrollen "två gånger"). 20 körningar pågår hos båda.
 - Slarv loggat: lås-ljudet beställdes två gånger (LESSONS.md).
 - (28 okt, sen kväll) Theme: Gemini-varianten `Theme_Strict_Modifierad.h` granskad (diff mot Arbetare 1:s Theme.h) och skickad till Arbetare 1 att tillämpa som hunkar. JOG BPM-ratt (t) och FM-diagram (k) i pl-jog 3bfaaac, (m) MIX-fliken i c56eb89 (vågen full bredd överst, WIDE/NARROW borta). Alla bygger grönt i Debug, ej sedda i Lemon. Kvar: granska Arbetare 2:s TimelineChart.h, merga när Tobias testat.
+
+## 2026-10-29 – release 0.4 (PL)
+- Release-bygge + tester gröna (build-rel6.log). Main innehåller 0.4.
+- Ny public PDF: docs/releases/kickbase-0.4-testlista.pdf (4 sidor, engelska) med senare ändringar (SIDECHAIN i MASTER, MAX LENGTH, WARP FM-val, startfas per källa m.m.).
+- fl-testlista.md: breadcrumb-texten för MASTER rättad.
+- Väntar: Tobias installerar (installAll.bat Release Release från KickBase-VST-pl), testar i Lemon, rapporterar. Sedan pushar Tobias main själv.
