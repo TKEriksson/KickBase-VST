@@ -192,3 +192,8 @@ Obs: nya parametrar och modulationskällor sist (ENGINEERING.md). Stor punkt; Ar
 - Preset-byte med automation: en parameter "PATTERN" (val 1..N) som kan automatiseras; vid byte laddas mönstret på nästa taktgräns (inget klick). Mönstren sparas som data i preset/projekt, användarens egna med.
 - Utöka FX-kanalens effektkedja till 10 slots (idag: kolla antal i koden). Nya slots sist (docs/ENGINEERING.md), gamla presets oförändrade.
 - Ärva: Arbetare 2:s FX-punkt 4 och AUTO FIX hör ihop med FX-kedjan.
+- KORRIGERING (Tobias 29 okt, efter sökning om Gross Beat): effekten har TVÅ delar, inte bara volym.
+  - VOLUME: volymkurva över tid (gate, trance gate, tremolo, sidechain-känsla), 0-100 %, RELEASE 0-1000 ms, TENSION -100..100 %.
+  - TIME: ljudet spelas från en rullande buffert (2 takter). Kurvans lutning styr uppspelningen: lutning = normal fart, vågrät = paus/stutter/repeat, brantare = snabbare, negativ = baklänges, långsam lutning = tape stop/slow-down. Ger stutter, reverse, scratch, tape stop.
+  - Egna mönster-platser (36 time + 36 volume) som kan länkas ihop (Time N + Volume N) och väljas via MIDI-not eller automation. Klockratt för manuell scratch. Click reduction, smoothing och DC-borttagning.
+  - Mål: Kickbase ska kunna göra samma sak, i egen ruta, med vår kurvvy; rullande buffert i FX-kedjan.
