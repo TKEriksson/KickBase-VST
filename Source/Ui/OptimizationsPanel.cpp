@@ -55,7 +55,7 @@ OptimizationsPanel::OptimizationsPanel (PluginBase& processor, std::function<voi
 
     const Spec specs[] {
         { Settings::Visual::analyzer, "ANALYZER: live spectrum", "The live spectrum on the ANALYZER tab (while ANALYSER is on). It is the most expensive view.", true, true },
-        { Settings::Visual::sidechain, "SIDECHAIN: scope + meters", "The scope, the volume curve and the instruments' meters on the SIDECHAIN tab.", true, false },
+        { Settings::Visual::sidechain, "SIDECHAIN: scope + meters", "The scope, the volume curve and the instruments' meters in MASTER > SIDECHAIN.", true, false },
         { Settings::Visual::maximizer, "MASTER: maximizer", "The maximizer's scope, gain reduction and meters on the MASTER tab.", true, false },
         { Settings::Visual::soundstage, "SOUNDSTAGE: spectrum + stereo", "The spectrum and the stereo picture on the SOUNDSTAGE tab.", true, false },
         { Settings::Visual::effects, "EFFECTS: EQ + compressor", "The EQ's live spectrum and the compressor's scopes on the EFFECTS tab.", true, false },

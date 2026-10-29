@@ -43,6 +43,7 @@ void LevelMeter::paint (juce::Graphics& g)
 //==============================================================================
 MasterPage::MasterPage (PluginBase& p)
     : presets (p, Presets::Section::master, Theme::master),
+      sidechainPage (p),
       output ([&p] { return p.getMasterSection().outputPeakDb.load(); }, -36.0f, 0.0f, false, Theme::mix, "OUT"),
       reduction ([&p] { return p.getMasterSection().gainReductionDb.load(); }, -12.0f, 0.0f, true, Theme::master, "GR"),
       scope (p, { { &p.getMasterSection().inputTap, 2, juce::Colours::white.withAlpha (0.6f), false, "INTO LIMITER" },
@@ -81,7 +82,18 @@ MasterPage::MasterPage (PluginBase& p)
     addAndMakeVisible (output);
     addAndMakeVisible (reduction);
 
-    // Mixern finns bara i instrumentet; då väljer man mellan MIXER och MAXIMIZER.
+    // Tre vyer: MIXER (bara i instrumentet), SIDECHAIN och MAXIMIZER.
+    addChildComponent (sidechainPage);
+    sidechainTab.setTooltip ("SIDECHAIN - The kick ducks the other sounds: depth, curve, length and which sources are ducked.");
+    maximizerTab.setTooltip ("MAXIMIZER - Drive, clip and limiter on the whole mix."
+                             + juce::String (p.getMixer() != nullptr ? " Choose which sources go through it at the bottom." : ""));
+    sidechainTab.onClick = [this] { showView (View::sidechain); };
+    maximizerTab.onClick = [this] { showView (View::maximizer); };
+    for (auto* tab : { &mixerTab, &sidechainTab, &maximizerTab })
+        tab->setColour (juce::TextButton::buttonOnColourId, Theme::master.withAlpha (0.55f));
+    addAndMakeVisible (sidechainTab);
+    addAndMakeVisible (maximizerTab);
+
     if (p.getMixer() != nullptr)
     {
         mixerView = std::make_unique<MixerView> (p);
@@ -91,43 +103,51 @@ MasterPage::MasterPage (PluginBase& p)
 
         mixerTab.setTooltip ("MIXER - Gain, pan and level meter for every sound source (kick, instruments and FX channels), "
                              "plus SC (sidechain on/off) and MAX (through the maximizer or not) per source.");
-        maximizerTab.setTooltip ("MAXIMIZER - Drive, clip and limiter on the whole mix. Choose which sources go through it at the bottom.");
-        mixerTab.onClick = [this] { showView (true); };
-        maximizerTab.onClick = [this] { showView (false); };
-        mixerTab.setColour (juce::TextButton::buttonOnColourId, Theme::master.withAlpha (0.55f));
-        maximizerTab.setColour (juce::TextButton::buttonOnColourId, Theme::master.withAlpha (0.55f));
+        mixerTab.onClick = [this] { showView (View::mixer); };
         addAndMakeVisible (mixerTab);
-        addAndMakeVisible (maximizerTab);
-        showView (true);
+        showView (View::mixer);
+    }
+    else
+    {
+        showView (View::maximizer);
     }
 }
 
-void MasterPage::showView (bool mixer)
+void MasterPage::showView (View newView)
 {
-    showingMixer = mixer;
+    view = newView;
+    const auto mixer = view == View::mixer, maximizer = view == View::maximizer;
     mixerTab.setToggleState (mixer, juce::dontSendNotification);
-    maximizerTab.setToggleState (! mixer, juce::dontSendNotification);
-    mixerView->setVisible (mixer);
-    presets.setVisible (! mixer); // mixern har inget preset
-    maxSources->setVisible (! mixer);
+    sidechainTab.setToggleState (view == View::sidechain, juce::dontSendNotification);
+    maximizerTab.setToggleState (maximizer, juce::dontSendNotification);
+    if (mixerView != nullptr)
+        mixerView->setVisible (mixer);
+    sidechainPage.setVisible (view == View::sidechain);
+    presets.setVisible (maximizer); // mixern och sidechainen har egna preset (sidechainen i sin egen sida)
+    helpButton.setVisible (! (view == View::sidechain)); // sidechainsidan har sin egen hjälpknapp
+    if (maxSources != nullptr)
+        maxSources->setVisible (maximizer);
     for (auto& knob : knobs)
-        knob->setVisible (! mixer);
+        knob->setVisible (maximizer);
     for (auto* c : std::initializer_list<juce::Component*> { &output, &reduction, &scope, &gainScope })
-        c->setVisible (! mixer);
+        c->setVisible (maximizer);
     resized();
     repaint();
 }
 
 void MasterPage::paint (juce::Graphics& g)
 {
-    if (mixerView == nullptr)
+    // Brödsmulan MASTER > vy som glasdisplay i flikraden (samma stil som huvudmenyns).
+    if (crumbArea.getWidth() > 60)
     {
-        g.setFont (Theme::font (13.0f, true));
-        g.setColour (Theme::master);
-        g.drawText ("MAXIMIZER", getLocalBounds().withHeight (24).withTrimmedLeft (30), juce::Justification::centredLeft);
+        const auto name = view == View::mixer ? "MIXER" : view == View::sidechain ? "SIDECHAIN" : "MAXIMIZER";
+        const auto glass = crumbArea.toFloat();
+        Theme::paintGlassDisplay (g, glass);
+        Theme::drawGlowText (g, juce::String (">  MASTER  >  ") + name, glass.reduced (10.0f, 0.0f), Theme::monoFont (9.5f, false), 0.14f,
+                             juce::Justification::centredLeft, Theme::cyan.withAlpha (0.9f));
     }
 
-    if (showingMixer)
+    if (view != View::maximizer)
         return;
 
     g.setFont (Theme::font (10.0f));
@@ -150,14 +170,23 @@ void MasterPage::resized()
     {
         header.removeFromLeft (6);
         mixerTab.setBounds (header.removeFromLeft (90));
-        header.removeFromLeft (6);
-        maximizerTab.setBounds (header.removeFromLeft (110));
     }
+    header.removeFromLeft (6);
+    sidechainTab.setBounds (header.removeFromLeft (110));
+    header.removeFromLeft (6);
+    maximizerTab.setBounds (header.removeFromLeft (110));
+    header.removeFromLeft (10);
+    crumbArea = header.withTrimmedRight (6);
     area.removeFromTop (6);
 
-    if (mixerView != nullptr && showingMixer)
+    if (mixerView != nullptr && view == View::mixer)
     {
         mixerView->setBounds (area.withHeight (area.getHeight() + 16));
+        return;
+    }
+    if (view == View::sidechain)
+    {
+        sidechainPage.setBounds (area.withHeight (area.getHeight() + 16));
         return;
     }
     if (maxSources != nullptr)

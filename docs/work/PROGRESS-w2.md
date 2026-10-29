@@ -442,3 +442,11 @@ Ordning: 1, 3, 2, sedan 4 efter svar från Arbetare 1. Ljudkod (InstrumentProces
 - synthOn=av → `kickMix`=1 och `kickSampleMode`=2 (Replace; motorn gör redan Replace när synth är av, `KickEngine.h` `effectiveSampleMode`), sedan synthOn=på. sampleOn=av → `kickMix`=0, sedan sampleOn=på. Båda på eller båda av: orört.
 - Känd liten avvikelse: ett gammalt preset med MIX≠0.5 och en källa av ljöd annorlunda än det nya (MIX kapar nivån via `min(1, 2*mix)`), godtaget. Inga nya parametrar, inga ändrade ParamID.
 - Test: `testKickSourceMigration` (`EngineTests.cpp`). `Debug all` grön.
+
+## 0.4 – SIDECHAIN flyttad in i MASTER (G7, Arbetare 2, gren `sidechain-master`)
+- SIDECHAIN är inte längre en huvudflik. `MasterPage` har nu tre vyer (`View { mixer, sidechain, maximizer }`, `MasterPage.h`): MIXER (bara instrumentet), SIDECHAIN, MAXIMIZER. FX-versionen har SIDECHAIN + MAXIMIZER (startvy MAXIMIZER). `SidechainPage` ägs av `MasterPage`; flik, medlem och include borttagna i `InstrumentEditor` och `FxEditor`.
+- Sökvägen: `tools` är subTabs utan brödsmula (`TabbedPanel.h:299`), så `MasterPage::paint` ritar en egen glasdisplay `> MASTER > MIXER|SIDECHAIN|MAXIMIZER` bredvid flikarna. Flikfärg Theme::master.
+- Gammalt sparat flikläge: `selectedTab` sparas inte (bara i minnet, `PluginBase.h:511`) och TabbedPanel klampar index, så ingen migrering behövs.
+- Layout: SidechainPage lagd under flikraden (ca 30 px mindre höjd än förut); MASTERs hjälp/presets göms i SIDECHAIN-vyn eftersom sidan har egna. Passformen är inte provad visuellt.
+- Texter: hjälpavsnittet MASTER (tre vyer + SIDECHAIN-stycke, `HelpDialog.cpp`), `OptimizationsPanel.cpp:58`, `SidechainPage.cpp` hjälpknappens beskrivning, `MixAnalysis.cpp` två rekommendationstexter → "MASTER > SIDECHAIN".
+- Inga nya parametrar. `Debug all` grön ("Alla tester gick igenom"). Inte pushat, ingen Release-build.

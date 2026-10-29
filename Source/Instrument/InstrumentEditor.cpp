@@ -64,7 +64,6 @@ InstrumentEditor::InstrumentEditor (InstrumentProcessor& p)
     synths.setPreview (5, wholePattern, stopPattern, "LISTEN - Plays the whole pattern. Hold to play, double-click to latch.");
 
     tools.addTab ("EFFECTS", Theme::effects, effects);
-    tools.addTab ("SIDECHAIN", Theme::mix, sidechain);
     tools.addTab ("LFO", Theme::lfo, lfo);
     tools.addTab ("ENV", Theme::lfo, env);
     tools.addTab ("MATRIX", Theme::lfo, matrix);

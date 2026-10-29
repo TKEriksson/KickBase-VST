@@ -524,9 +524,9 @@ namespace MixAnalysis
             const auto depth = duck[(size_t) (instrument - firstInstrument)];
             const auto name = c.names[(size_t) instrument];
             if (depth < 3.0f)
-                return " " + name + " is barely ducked by the kick (" + juce::String (depth, 1) + " dB): raise its DUCK in the SIDECHAIN tab if it should get out of the way.";
+                return " " + name + " is barely ducked by the kick (" + juce::String (depth, 1) + " dB): raise its DUCK in MASTER > SIDECHAIN if it should get out of the way.";
             if (depth < 9.0f)
-                return " " + name + " is ducked " + juce::String (depth, 1) + " dB at the kick; a deeper DUCK or a faster release in the SIDECHAIN tab gives the kick more room.";
+                return " " + name + " is ducked " + juce::String (depth, 1) + " dB at the kick; a deeper DUCK or a faster release in MASTER > SIDECHAIN gives the kick more room.";
             return " " + name + " is already ducked " + juce::String (depth, 1) + " dB, so what collides is mostly its tail after the kick: shorten the sidechain release or EQ it.";
         };
 
