@@ -64,6 +64,12 @@ namespace
 
 namespace
 {
+    // SYNC-valen i TIMING (POS DELAY och LENGTH). 1/32 och 1/64 ligger sist så att sparade index behåller sin betydelse; menyn sorterar dem (ChoiceComponent).
+    juce::StringArray timingSyncNames()
+    {
+        return { "Off", "1/16", "1/8", "1/4", "1/2", "1 bar", "2 bars", "4 bars", "1/32", "1/64" };
+    }
+
     // "None", "FX1" ... "FX12": FX12 är sist så att sparade värden (index) behåller sin betydelse.
     juce::StringArray fxChannelChoices()
     {
@@ -525,7 +531,7 @@ namespace Params
                 const auto id = [layer, engine] (int which) { return ParamID::bass (layer, ParamID::timingField (engine, which)); };
                 layout.add (floatParam (id (0), name + "Pos Delay", delayRange, 0.0f, msText));
                 layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (1), 1 }, name + "Pos Delay Sync",
-                                                                    StringArray { "Off", "1/16", "1/8", "1/4", "1/2", "1 bar", "2 bars", "4 bars" }, 0));
+                                                                    timingSyncNames(), 0));
                 layout.add (floatParam (id (2), name + "Length", delayRange, 0.0f, msText));
                 layout.add (floatParam (id (3), name + "Curve", NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f, curveText));
             }
@@ -545,7 +551,7 @@ namespace Params
                 const auto id = [layer, engine] (int which) { return ParamID::bass (layer, ParamID::timingExtraField (engine, which)); };
                 layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (0), 1 }, name + "Delay Mode", StringArray { "Gate", "Shift" }, 0));
                 layout.add (std::make_unique<AudioParameterChoice> (ParameterID { id (1), 1 }, name + "Length Sync",
-                                                                    StringArray { "Off", "1/16", "1/8", "1/4", "1/2", "1 bar", "2 bars", "4 bars" }, 0));
+                                                                    timingSyncNames(), 0));
                 layout.add (std::make_unique<AudioParameterInt> (ParameterID { id (2), 1 }, name + "Delay Count", 1, 8, 1));
                 layout.add (std::make_unique<AudioParameterInt> (ParameterID { id (3), 1 }, name + "Length Count", 1, 8, 1));
             }

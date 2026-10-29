@@ -475,12 +475,62 @@ void KnobComponent::ModSlider::mouseExit (const juce::MouseEvent& e)
 }
 
 //==============================================================================
+namespace
+{
+    // Längden i fjärdedelar för ett notvärde ("1/16", "1/8 T", "3/16", "2 bars"); -1 för "Off", "Kick" och "0" (hamnar först); -2 om texten inte är ett notvärde.
+    double noteLengthKey (const juce::String& text)
+    {
+        const auto t = text.trim().toLowerCase();
+        if (t == "off" || t == "kick" || t == "0")
+            return -1.0;
+        if (t.endsWith (" bar") || t.endsWith (" bars"))
+            return t.upToFirstOccurrenceOf (" ", false, false).getDoubleValue() * 4.0;
+        const auto slash = t.indexOfChar ('/');
+        if (slash <= 0)
+            return -2.0;
+        const auto top = t.substring (0, slash).getIntValue();
+        const auto bottom = t.substring (slash + 1).getIntValue();
+        if (top <= 0 || bottom <= 0)
+            return -2.0;
+        const auto triplet = t.endsWith (" t"), dotted = t.endsWith (" d");
+        return 4.0 * top / bottom * (triplet ? 2.0 / 3.0 : dotted ? 1.5 : 1.0);
+    }
+
+    // Visningsordningen (parameterindex i den ordning de ska stå i menyn). Notvärdeslistor vars sista värden lades till i efterhand (1/32, 1/64) visas sorterade
+    // fast de ligger sist i parametern; alla andra listor behåller sin ordning.
+    std::vector<int> displayOrder (const juce::StringArray& names)
+    {
+        std::vector<int> order;
+        std::vector<double> keys;
+        for (int i = 0; i < names.size(); ++i)
+        {
+            order.push_back (i);
+            keys.push_back (noteLengthKey (names[i]));
+            if (keys.back() < -1.5)
+                return {}; // inte en notvärdeslista
+        }
+        std::stable_sort (order.begin(), order.end(), [&keys] (int a, int b) { return keys[(size_t) a] < keys[(size_t) b]; });
+        return order;
+    }
+}
+
 ChoiceComponent::ChoiceComponent (juce::AudioProcessorValueTreeState& apvts, const juce::String& paramID, const juce::String& name)
 {
     box.parameter = apvts.getParameter (paramID);
+    auto sorted = false;
     if (box.parameter != nullptr)
     {
-        box.addItemList (box.parameter->getAllValueStrings(), 1);
+        const auto names = box.parameter->getAllValueStrings();
+        const auto order = displayOrder (names);
+        // ComboBoxAttachment väljer på plats i menyn, inte på id; en omsorterad meny kopplas därför med en egen ParameterAttachment (id = index + 1).
+        for (size_t position = 0; position < order.size(); ++position)
+            if (order[position] != (int) position)
+                sorted = true;
+        if (sorted)
+            for (const auto index : order)
+                box.addItem (names[index], index + 1);
+        else
+            box.addItemList (names, 1);
         const auto help = Help::forParameter (paramID);
         box.setTooltip (name + " - " + (help.isNotEmpty() ? help : box.parameter->getName (64)));
     }
@@ -490,6 +540,21 @@ ChoiceComponent::ChoiceComponent (juce::AudioProcessorValueTreeState& apvts, con
     label.setFont (Theme::font (11.0f, true));
     label.setColour (juce::Label::textColourId, Theme::textDim);
     addAndMakeVisible (label);
+
+    if (sorted)
+    {
+        sortedAttachment = std::make_unique<juce::ParameterAttachment> (*box.parameter, [this] (float value)
+        {
+            box.setSelectedId (juce::roundToInt (value) + 1, juce::dontSendNotification);
+        }, apvts.undoManager);
+        sortedAttachment->sendInitialUpdate();
+        box.onChange = [this, name]
+        {
+            sortedAttachment->setValueAsCompleteGesture ((float) (box.getSelectedId() - 1));
+            if (auto* processor = findProcessor (*this)) processor->nameParameterGesture (name);
+        };
+        return;
+    }
 
     attachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (apvts, paramID, box);
     // Attachmenten startar steget; här får det sitt namn (onChange körs efter attachmentens lyssnare).

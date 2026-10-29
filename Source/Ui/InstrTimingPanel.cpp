@@ -168,10 +168,14 @@ void InstrTimingPanel::layoutCell (Cell& cell, bool withPlot)
         column (r, *cell.length, cell.lengthCount, cell.lengthSync.get());
         return;
     }
-    area.removeFromTop (headerHeight);
-    cell.plot = withPlot ? area.removeFromTop (juce::jmax (30, (int) (area.getHeight() * 0.34f))) : juce::Rectangle<int>();
+    // Översikten: namnet och MODE delar översta raden, så att all styrning ligger på två rader (MODE, sedan DELAY/LENGTH/CURVE) och diagrammet får resten.
+    auto header = area.removeFromTop (choiceHeight);
+    cell.mode->setBounds (header.removeFromRight (juce::jmin (110, juce::jmax (0, header.getWidth() - 56))));
     area.removeFromTop (2);
-    cell.mode->setBounds (area.removeFromTop (choiceHeight).withWidth (juce::jmin (area.getWidth(), 110)));
+    const auto controlsHeight = juce::jmin (area.getHeight() / 2, 74);
+    auto controls = area.removeFromBottom (controlsHeight);
+    cell.plot = area.getHeight() >= 20 ? area.withTrimmedBottom (2) : juce::Rectangle<int>();
+    area = controls;
     // tre kolumner: DELAY, LENGTH, CURVE; valrutan för SYNC sitter under ratten
     const auto colWidth = area.getWidth() / 3;
     const auto column = [&] (juce::Rectangle<int> r, KnobComponent& knob, juce::Slider& count, ChoiceComponent* sync)

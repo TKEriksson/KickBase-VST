@@ -228,14 +228,14 @@ void InstrumentSynth::noteOn (int semitones, float newVelocity, int gateSamples,
 
 namespace
 {
-constexpr double syncBars[] { 0.0, 0.0625, 0.125, 0.25, 0.5, 1.0, 2.0, 4.0 }; // SYNC-valen 1/16 ... 4 bars i takter
+constexpr double syncBars[] { 0.0, 0.0625, 0.125, 0.25, 0.5, 1.0, 2.0, 4.0, 1.0 / 32.0, 1.0 / 64.0 }; // SYNC-valen 1/16 ... 4 bars, sedan 1/32 och 1/64, i takter (se Params::timingSyncNames)
 double barSeconds (double bpm) { return 4.0 * 60.0 / juce::jlimit (20.0, 400.0, bpm); }
 }
 
 double InstrumentSynth::engineDelaySeconds (const InstrumentParams& p, int engine, double bpm)
 {
     const auto e = (size_t) engine;
-    const auto sync = juce::jlimit (0, 7, p.delaySync[e]);
+    const auto sync = juce::jlimit (0, (int) std::size (syncBars) - 1, p.delaySync[e]);
     const auto seconds = sync > 0 ? (double) juce::jlimit (1, 8, p.delayCount[e]) * syncBars[sync] * barSeconds (bpm) : (double) p.delayMs[e] * 0.001;
     return std::max (0.0, seconds);
 }
@@ -243,7 +243,7 @@ double InstrumentSynth::engineDelaySeconds (const InstrumentParams& p, int engin
 double InstrumentSynth::engineLengthSeconds (const InstrumentParams& p, int engine, double bpm)
 {
     const auto e = (size_t) engine;
-    const auto sync = juce::jlimit (0, 7, p.lengthSync[e]);
+    const auto sync = juce::jlimit (0, (int) std::size (syncBars) - 1, p.lengthSync[e]);
     return std::max (0.0, sync > 0 ? (double) juce::jlimit (1, 8, p.lengthCount[e]) * syncBars[sync] * barSeconds (bpm) : (double) p.lengthMs[e] * 0.001);
 }
 

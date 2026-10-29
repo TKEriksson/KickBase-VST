@@ -141,6 +141,7 @@ public:
 private:
     juce::Label label;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> attachment;
+    std::unique_ptr<juce::ParameterAttachment> sortedAttachment; // används i stället för attachment när notvärdeslistan visas sorterad (se konstruktorn)
 };
 
 // FX-send i synthens flikrad: "FX" och en knapp med ett sammandrag ("FX1 50%, FX3 30%" eller "None"). Knappen öppnar en popup med en rad per effektkanal

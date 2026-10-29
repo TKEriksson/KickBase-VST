@@ -333,12 +333,12 @@ namespace Effects
 
     StringArray syncNames()
     {
-        return { "1/32", "1/16 T", "1/16", "1/8 T", "1/8", "3/16", "1/4", "3/8", "1/2", "1 bar", "2 bars", "4 bars" };
+        return { "1/32", "1/16 T", "1/16", "1/8 T", "1/8", "3/16", "1/4", "3/8", "1/2", "1 bar", "2 bars", "4 bars", "1/64" }; // 1/64 sist: gamla index skiftar inte; menyn sorterar (ChoiceComponent)
     }
 
     double syncInQuarters (int index)
     {
-        constexpr double quarters[] { 0.125, 1.0 / 6.0, 0.25, 1.0 / 3.0, 0.5, 0.75, 1.0, 1.5, 2.0, 4.0, 8.0, 16.0 };
+        constexpr double quarters[] { 0.125, 1.0 / 6.0, 0.25, 1.0 / 3.0, 0.5, 0.75, 1.0, 1.5, 2.0, 4.0, 8.0, 16.0, 0.0625 };
         return quarters[jlimit (0, (int) std::size (quarters) - 1, index)];
     }
 
