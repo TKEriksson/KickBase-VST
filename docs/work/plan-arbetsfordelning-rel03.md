@@ -234,3 +234,11 @@ Kurvredigeraren ska ha snap: punkter och handtag låser sig till valfri del av t
 - ENV-vyn återanvänder kurvredigeraren från Gross Beat (punkter, mittpunkt, snap, flerval).
 - Senare, vid behov: en ENVELOPES-vy som visar alla lagers envelopes bredvid varandra.
 - Öppet: kolla hur det förhåller sig till ENV 2/3 och amp-envelopen på INSTR-fliken innan det byggs.
+
+## 10 globala ENV (29 okt, Tobias)
+
+- 10 globala envelopes som modulationskällor, samma upplägg som LFO 1-10 (dras till knobbar).
+- Startas av varje ton, eget tillstånd per stämma (full polyfoni). Mät CPU före release.
+- Lagrets egen volymenvelope (WAVE | ENV i OSC-fliken) är något annat än de 10 globala, men båda använder samma kurvredigerare.
+- Gamla ENV 2/3 konverteras till de första globala vid laddning.
+- Nya modulationskällor läggs sist (docs/ENGINEERING.md).
