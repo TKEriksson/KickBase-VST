@@ -8,7 +8,7 @@
 // Strudel: Copyright (C) Strudel contributors, AGPL-3.0-or-later, https://codeberg.org/uzu/strudel
 //
 // Aldrig på ljudtråden. Motorn är inte trådsäker: använd den från en tråd i taget.
-// 1 Strudel-cykel = 1 takt = 384 tick. Se docs/work/PROGRESS-lc.md för mappningen.
+// 1 Strudel-cykel = 1 takt = 384 tick. Se docs/work/arkiv/0.4/PROGRESS-lc.md för mappningen.
 class LiveCode
 {
 public:

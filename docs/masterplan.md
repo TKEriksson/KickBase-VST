@@ -2,7 +2,7 @@
 
 STATUS: GODKÄND av specialisten (kickbase-vst-b5) med ändringarna nedan inarbetade. Arbete kan delas ut.
 
-Bygger på: plan-v2.md (faser), HANDOFF-release.md, PROGRESS-copilot-2026-10-22.md, slicer-ui-spec.md, LESSONS.md, ENGINEERING.md och Tobias testlista `research/TEST2026-10-23/Testar appen 2027-10-23.txt` (T1-T15 nedan).
+Bygger på: plan-v2.md (faser), HANDOFF-release.md, arkiv/0.4/PROGRESS-copilot-2026-10-22.md, slicer-ui-spec.md, LESSONS.md, ENGINEERING.md och Tobias testlista `research/TEST2026-10-23/Testar appen 2027-10-23.txt` (T1-T15 nedan).
 Regler (oförändrade): Claude skriver all C++; varje agent egen worktree + egen `PROGRESS-*.md`; ingen push utan Tobias; bara projektledaren mergar till main, när allt är testat; Opus (specialisten) bara när Sonnet inte räcker; nya parametrar och modulationskällor sist; testregler enligt LESSONS.md (rätt delmängd, ingen onödig svit); slarvfel loggas i LESSONS.md.
 
 ## Arbetssätt (Tobias 27 okt, gäller tills han ändrar det)
@@ -57,7 +57,7 @@ FL-tester som krävs innan paketet mergas (Tobias/PL kör i FL):
 - B2 (T3) Meny: byt namn, New Project (med spara-fråga), Ctrl+S med synlig bekräftelse, projektnamn i rubrik, senaste 3, EXPORT in i menyn. Arbetare 2.
 - B3 (T12, T11) Highlight av spelande noter; tonnamn vid pitch-env-punkter + samma info i AI-tillståndet (`get_state`). Arbetare 1.
 - B4 (T1) Dropdown-fokus och piltangenter, enligt pianorollens fokusmönster. Arbetare 2.
-- B5 Småposter: HeaderBar-timern för `rollShown` triggar inte alltid så LISTEN PIANO ROLL-knappen kommer sent (PROGRESS-copilot p25). Arbetare 1.
+- B5 Småposter: HeaderBar-timern för `rollShown` triggar inte alltid så LISTEN PIANO ROLL-knappen kommer sent (arkiv/0.4/PROGRESS-copilot-2026-10-22.md p25). Arbetare 1.
 
 ## Fas C: Undo/redo (T14)
 Arkitektur (specialisten): EN gemensam `juce::UndoManager` i PluginBase.
@@ -98,7 +98,7 @@ Grenarna L, S och K finns inte. Enligt `git branch --no-merged main` i `-ai`:
 Projektledaren bedömer och mergar efter test. T15 (presets) är D7.
 
 ## Fas H: Städning efter Copilot-granskningen (prio efter A och B)
-Specialistens granskning (PROGRESS-specialist-2026-10-27.md): inga allvarliga fel, bara småsaker.
+Specialistens granskning (arkiv/0.4/PROGRESS-specialist-2026-10-27.md): inga allvarliga fel, bara småsaker.
 - H1 (C4, verifiera tidigt): Maximizer har MODE som knob 5 (Effects.cpp:506). Migreringen sätter inget standardvärde (Effects.cpp:528, PluginBase.cpp:1317), så gammal knob5 = 1.0 kan ge Smooth i stället för Classic. Test: ladda v2-projekt med maximizer och knob5 = 1.0.
 - H2 (C3): full noteAuditionFifo (32 platser, PluginBase.h) tappar note-off och tonen fastnar. Fix: all-notes-off för raden när rullen stängs. Koordinera med A1 (audition med rowOverride >= 0 får inte blockeras när värden spelar).
 - H3 (C5): InstrumentSynth.cpp:440-447 skriver fördröjningslinjen bara när width > 1, vilket ger klick när WIDTH dras upp från 1. Fix: skriv alltid line[pos] = x.

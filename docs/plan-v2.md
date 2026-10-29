@@ -322,7 +322,7 @@ Innan nya presets byggs: gå igenom med Tobias hur en preset byggs så att allt 
   - Reservplanen med egen mini-notation i C++ behövs inte.
   - Kvar till LC-fasens start: bunta Strudels transpiler (acorn; behövs för `$:`, `.p()` och slider med källposition) och testa i pluginets riktiga ljudtråd.
 
-- **Status 20 okt natt (detaljer: work/PROGRESS-lc.md; grenen content-lcui, worktree KickBase-VST-lcui):**
+- **Status 20 okt natt (detaljer: work/arkiv/0.4/PROGRESS-lc.md; grenen content-lcui, worktree KickBase-VST-lcui):**
   - Klart och granskat: A 59f5202 (`$:`/const-block, FEL-flik, LIVE av/på), B 43a7a40, C f1da542, D d13c209 (kod + locks sparas i Full-presets/state, `<LiveCode>` sist; LIVE/CODE ONLY/owned sparas aldrig). Stack (flera rader) funkar enligt Tobias.
   - Pågår: load-while-LIVE-fix (preset-laddning stoppar LIVE), inline-sliders (`host.slider`, egen commit).
   - **E** (`.LFO()`/`.ENV()` från kod; modulationskällor sist, inga parametrar mitt i listan, baslinjer 0 diff): design finns inte än, granskas före kod.
