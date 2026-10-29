@@ -278,3 +278,8 @@ Med i 0.5:
 7. **Fasmodulation mellan oscillatorer**: Arbetare 1 jämför mot FM-fliken innan en ny MOD OSC-flik byggs.
 
 Lämnas: Generate (sampel till preset), Morpher/Animator, öppen routing, Mutator som byter filtertyper, polyfonisk aftertouch.
+
+### Sub-presets och sampel (Tobias 29 okt)
+- Ett sub-preset av SAMPLE (och Copy/Paste av den sektionen) måste ta med själva ljudet, inte en filväg. Multisampling och wavetables sparas redan inbäddade (`MultiSample.cpp:413`, `PluginBase.cpp:445`); Arbetare 1 verifierar att SAMPLE-fliken gör likadant.
+- Storlek: ett sub-preset med sampel kan bli flera MB. Undersök 16 bitar/mono där det går, och varna om presetet blir stort.
+- Licens för medföljande sampel spelar roll först när presets delas.
