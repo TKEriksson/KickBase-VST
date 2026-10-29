@@ -137,16 +137,7 @@ void MasterPage::showView (View newView)
 
 void MasterPage::paint (juce::Graphics& g)
 {
-    // Brödsmulan MASTER > vy som glasdisplay i flikraden (samma stil som huvudmenyns).
-    if (crumbArea.getWidth() > 60)
-    {
-        const auto name = view == View::mixer ? "MIXER" : view == View::sidechain ? "SIDECHAIN" : "MAXIMIZER";
-        const auto glass = crumbArea.toFloat();
-        Theme::paintGlassDisplay (g, glass);
-        Theme::drawGlowText (g, juce::String (">  MASTER  >  ") + name, glass.reduced (10.0f, 0.0f), Theme::monoFont (9.5f, false), 0.14f,
-                             juce::Justification::centredLeft, Theme::cyan.withAlpha (0.9f));
-    }
-
+    // Ingen brödsmula i MASTER-flikraden (Tobias 29 okt); flikknapparna visar var man är.
     if (view != View::maximizer)
         return;
 
