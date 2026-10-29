@@ -2,10 +2,10 @@
  "_info": "GATE (VOLUME)-presets tolkade från Tobias skärmdumpar av Gross Beat (bilder/gate-*.png). Tolkade med ögat: x avrundat till 1/8 beat. Gross Beats egna preset-lista (alla namn) syns i bilderna; bara de som skickats är med här.",
  "_axes": {
   "x": "beats från mönstrets start, 0..4 (TRIG SYNC 4 beats = hela rutan)",
-  "y": "volym 0..1 (överkant = full volym, nederkant = tyst)"
+  "y": "volym 0..1 (överkant = full volym, nederkant = tyst) OBS: y-axeln i bilderna är märkt 0 till -8 (streck 0,-1..-7); nivå = (8+streck)/8, alltså -1 = 0.875, -3 = 0.625, -5 = 0.375. Om Gross Beats skala är dB eller linjär är inte verifierat."
  },
  "_points": "[x, y]. Två punkter med samma x = lodrätt hopp. Rak linje mellan punkter om inte 'curve' anges; 'curve' på en punkt = mjuk (konvex) kurva fram till den.",
- "_missing": "Inte skickade än: 1/3, 1/4, 1/6, 1/8 Bt Gate (bara knapparna syns, bilder/gate-knapprad-1-3.png; mönstret är samma som 1/2 Bt Gate fast med kortare period), Saw Gate 1-2 är grova, resten av listan (1st Step, 2 Step Gate, Off Beat, 1/4 Dynamic, 1/4 Swing, Gate Out/In, Spd Up/Slw Dn Gate, End Fade, End Gate, Tremelo Slw/Fst, Drum Loop, Copter, AM, Fade Out In, Mute).",
+ "_missing": "Inte skickade än: 1/3, 1/4, 1/6, 1/8 Bt Gate (bara knapparna syns, bilder/gate-knapprad-1-3.png; mönstret är samma som 1/2 Bt Gate fast med kortare period), resten av listan (1st Step, 2 Step Gate, Off Beat, 1/4 Dynamic, 1/4 Swing, Gate Out/In, Spd Up/Slw Dn Gate, End Fade, End Gate, Tremelo Slw/Fst, Drum Loop, Copter, AM, Fade Out In, Mute).",
  "presets": [
   {
    "name": "2 Beat Gate",
@@ -257,31 +257,899 @@
   },
   {
    "name": "Trance Gt 1",
-   "confidence": "low",
+   "confidence": "high",
    "image": "bilder/gate-trance1.png",
-   "idea": "OFULLSTÄNDIG: oregelbunden trance-gate med korta på-pulser (ca 1/8-1/16) i grupper; rita om från bilden eller exportera från FL",
-   "points": []
+   "idea": "period 1 beat: på 0-1/8, 2/8-3/8 och 4/8-7/8, av resten (hårda hopp). Avläst från pixelkanter, snappat till 1/8 (±0.01 beat).",
+   "points": [
+    [
+     0,
+     1.0
+    ],
+    [
+     0.125,
+     1.0
+    ],
+    [
+     0.125,
+     0
+    ],
+    [
+     0.25,
+     0
+    ],
+    [
+     0.25,
+     1.0
+    ],
+    [
+     0.375,
+     1.0
+    ],
+    [
+     0.375,
+     0
+    ],
+    [
+     0.5,
+     0
+    ],
+    [
+     0.5,
+     1.0
+    ],
+    [
+     0.875,
+     1.0
+    ],
+    [
+     0.875,
+     0
+    ],
+    [
+     1,
+     0
+    ],
+    [
+     1,
+     1.0
+    ],
+    [
+     1.125,
+     1.0
+    ],
+    [
+     1.125,
+     0
+    ],
+    [
+     1.25,
+     0
+    ],
+    [
+     1.25,
+     1.0
+    ],
+    [
+     1.375,
+     1.0
+    ],
+    [
+     1.375,
+     0
+    ],
+    [
+     1.5,
+     0
+    ],
+    [
+     1.5,
+     1.0
+    ],
+    [
+     1.875,
+     1.0
+    ],
+    [
+     1.875,
+     0
+    ],
+    [
+     2,
+     0
+    ],
+    [
+     2,
+     1.0
+    ],
+    [
+     2.125,
+     1.0
+    ],
+    [
+     2.125,
+     0
+    ],
+    [
+     2.25,
+     0
+    ],
+    [
+     2.25,
+     1.0
+    ],
+    [
+     2.375,
+     1.0
+    ],
+    [
+     2.375,
+     0
+    ],
+    [
+     2.5,
+     0
+    ],
+    [
+     2.5,
+     1.0
+    ],
+    [
+     2.875,
+     1.0
+    ],
+    [
+     2.875,
+     0
+    ],
+    [
+     3,
+     0
+    ],
+    [
+     3,
+     1.0
+    ],
+    [
+     3.125,
+     1.0
+    ],
+    [
+     3.125,
+     0
+    ],
+    [
+     3.25,
+     0
+    ],
+    [
+     3.25,
+     1.0
+    ],
+    [
+     3.375,
+     1.0
+    ],
+    [
+     3.375,
+     0
+    ],
+    [
+     3.5,
+     0
+    ],
+    [
+     3.5,
+     1.0
+    ],
+    [
+     3.875,
+     1.0
+    ],
+    [
+     3.875,
+     0
+    ],
+    [
+     4,
+     0
+    ]
+   ]
   },
   {
    "name": "Trance Gt 2",
-   "confidence": "low",
+   "confidence": "high",
    "image": "bilder/gate-trance2.png",
-   "idea": "OFULLSTÄNDIG: som Trance Gt 1 men glesare grupper och längre på-delar",
-   "points": []
+   "idea": "på 1/8-pulser (0, 2/8, 4/8), längre på-del 0.75-1.125, 1/8-pulser 1.25-1.875, på 2.0-2.375, på 2.5-2.875, 1/8-pulser 3.0-3.875. Avläst från pixelkanter, snappat till 1/8.",
+   "points": [
+    [
+     0,
+     1.0
+    ],
+    [
+     0.125,
+     1.0
+    ],
+    [
+     0.125,
+     0
+    ],
+    [
+     0.25,
+     0
+    ],
+    [
+     0.25,
+     1.0
+    ],
+    [
+     0.375,
+     1.0
+    ],
+    [
+     0.375,
+     0
+    ],
+    [
+     0.5,
+     0
+    ],
+    [
+     0.5,
+     1.0
+    ],
+    [
+     0.625,
+     1.0
+    ],
+    [
+     0.625,
+     0
+    ],
+    [
+     0.75,
+     0
+    ],
+    [
+     0.75,
+     1.0
+    ],
+    [
+     1.125,
+     1.0
+    ],
+    [
+     1.125,
+     0
+    ],
+    [
+     1.25,
+     0
+    ],
+    [
+     1.25,
+     1.0
+    ],
+    [
+     1.375,
+     1.0
+    ],
+    [
+     1.375,
+     0
+    ],
+    [
+     1.5,
+     0
+    ],
+    [
+     1.5,
+     1.0
+    ],
+    [
+     1.625,
+     1.0
+    ],
+    [
+     1.625,
+     0
+    ],
+    [
+     1.75,
+     0
+    ],
+    [
+     1.75,
+     1.0
+    ],
+    [
+     1.875,
+     1.0
+    ],
+    [
+     1.875,
+     0
+    ],
+    [
+     2.0,
+     0
+    ],
+    [
+     2.0,
+     1.0
+    ],
+    [
+     2.375,
+     1.0
+    ],
+    [
+     2.375,
+     0
+    ],
+    [
+     2.5,
+     0
+    ],
+    [
+     2.5,
+     1.0
+    ],
+    [
+     2.875,
+     1.0
+    ],
+    [
+     2.875,
+     0
+    ],
+    [
+     3,
+     0
+    ],
+    [
+     3,
+     1.0
+    ],
+    [
+     3.125,
+     1.0
+    ],
+    [
+     3.125,
+     0
+    ],
+    [
+     3.25,
+     0
+    ],
+    [
+     3.25,
+     1.0
+    ],
+    [
+     3.375,
+     1.0
+    ],
+    [
+     3.375,
+     0
+    ],
+    [
+     3.5,
+     0
+    ],
+    [
+     3.5,
+     1.0
+    ],
+    [
+     3.625,
+     1.0
+    ],
+    [
+     3.625,
+     0
+    ],
+    [
+     3.75,
+     0
+    ],
+    [
+     3.75,
+     1.0
+    ],
+    [
+     3.875,
+     1.0
+    ],
+    [
+     3.875,
+     0
+    ],
+    [
+     4,
+     0
+    ]
+   ]
   },
   {
    "name": "Trance Gt 3",
-   "confidence": "low",
+   "confidence": "high",
    "image": "bilder/gate-trance3.png",
-   "idea": "OFULLSTÄNDIG: täta pulser med oregelbundna luckor",
-   "points": []
+   "idea": "lång på-del 0.25-0.625 och 1/8-pulser därefter; 1/16-puls vid 2.3125-2.4375 (två smala hack). Avläst från pixelkanter, snappat till 1/8, 1/16 vid 2.31-2.44.",
+   "points": [
+    [
+     0,
+     1.0
+    ],
+    [
+     0.125,
+     1.0
+    ],
+    [
+     0.125,
+     0
+    ],
+    [
+     0.25,
+     0
+    ],
+    [
+     0.25,
+     1.0
+    ],
+    [
+     0.625,
+     1.0
+    ],
+    [
+     0.625,
+     0
+    ],
+    [
+     0.75,
+     0
+    ],
+    [
+     0.75,
+     1.0
+    ],
+    [
+     0.875,
+     1.0
+    ],
+    [
+     0.875,
+     0
+    ],
+    [
+     1,
+     0
+    ],
+    [
+     1,
+     1.0
+    ],
+    [
+     1.125,
+     1.0
+    ],
+    [
+     1.125,
+     0
+    ],
+    [
+     1.25,
+     0
+    ],
+    [
+     1.25,
+     1.0
+    ],
+    [
+     1.375,
+     1.0
+    ],
+    [
+     1.375,
+     0
+    ],
+    [
+     1.5,
+     0
+    ],
+    [
+     1.5,
+     1.0
+    ],
+    [
+     1.875,
+     1.0
+    ],
+    [
+     1.875,
+     0
+    ],
+    [
+     2,
+     0
+    ],
+    [
+     2,
+     1.0
+    ],
+    [
+     2.125,
+     1.0
+    ],
+    [
+     2.125,
+     0
+    ],
+    [
+     2.25,
+     0
+    ],
+    [
+     2.25,
+     1.0
+    ],
+    [
+     2.3125,
+     1.0
+    ],
+    [
+     2.3125,
+     0
+    ],
+    [
+     2.375,
+     0
+    ],
+    [
+     2.375,
+     1.0
+    ],
+    [
+     2.4375,
+     1.0
+    ],
+    [
+     2.4375,
+     0
+    ],
+    [
+     2.5,
+     0
+    ],
+    [
+     2.5,
+     1.0
+    ],
+    [
+     2.875,
+     1.0
+    ],
+    [
+     2.875,
+     0
+    ],
+    [
+     3,
+     0
+    ],
+    [
+     3,
+     1.0
+    ],
+    [
+     3.125,
+     1.0
+    ],
+    [
+     3.125,
+     0
+    ],
+    [
+     3.25,
+     0
+    ],
+    [
+     3.25,
+     1.0
+    ],
+    [
+     3.375,
+     1.0
+    ],
+    [
+     3.375,
+     0
+    ],
+    [
+     3.5,
+     0
+    ],
+    [
+     3.5,
+     1.0
+    ],
+    [
+     3.625,
+     1.0
+    ],
+    [
+     3.625,
+     0
+    ],
+    [
+     3.75,
+     0
+    ],
+    [
+     3.75,
+     1.0
+    ],
+    [
+     3.875,
+     1.0
+    ],
+    [
+     3.875,
+     0
+    ],
+    [
+     4,
+     0
+    ]
+   ]
   },
   {
    "name": "Trance Gt 4",
-   "confidence": "low",
+   "confidence": "medium",
    "image": "bilder/gate-trance4.png",
-   "idea": "OFULLSTÄNDIG: gate med olika nivåer (inte bara 0/1): ett par pulser på ca 0.7 och 0.4 samt tydlig fallande trappa i sista beaten, och en lång tystnad kring beat 2-2.5",
-   "points": []
+   "idea": "som Trance 1-3 men pulserna har olika nivåer: 1.0, 0.875, 0.625 och 0.375 (på y-axelns -1/-3/-5-streck, axeln går 0 till -8 så nivå = (8+streck)/8). Kanter snappade till 1/16. Nivåerna rimliga men inte exakt verifierade mot Gross Beats egen skala.",
+   "points": [
+    [
+     0,
+     1
+    ],
+    [
+     0.125,
+     1
+    ],
+    [
+     0.125,
+     0
+    ],
+    [
+     0.25,
+     0
+    ],
+    [
+     0.25,
+     0.625
+    ],
+    [
+     0.3125,
+     0.625
+    ],
+    [
+     0.3125,
+     0
+    ],
+    [
+     0.375,
+     0
+    ],
+    [
+     0.375,
+     0.875
+    ],
+    [
+     0.4375,
+     0.875
+    ],
+    [
+     0.4375,
+     0
+    ],
+    [
+     0.5,
+     0
+    ],
+    [
+     0.5,
+     1
+    ],
+    [
+     0.625,
+     1
+    ],
+    [
+     0.625,
+     0
+    ],
+    [
+     0.75,
+     0
+    ],
+    [
+     0.75,
+     0.875
+    ],
+    [
+     0.875,
+     0.875
+    ],
+    [
+     0.875,
+     0
+    ],
+    [
+     1,
+     0
+    ],
+    [
+     1,
+     1
+    ],
+    [
+     1.375,
+     1
+    ],
+    [
+     1.375,
+     0
+    ],
+    [
+     1.5,
+     0
+    ],
+    [
+     1.5,
+     0.875
+    ],
+    [
+     1.625,
+     0.875
+    ],
+    [
+     1.625,
+     0
+    ],
+    [
+     1.75,
+     0
+    ],
+    [
+     1.75,
+     1
+    ],
+    [
+     1.875,
+     1
+    ],
+    [
+     1.875,
+     0
+    ],
+    [
+     2.25,
+     0
+    ],
+    [
+     2.25,
+     0.875
+    ],
+    [
+     2.375,
+     0.875
+    ],
+    [
+     2.375,
+     0
+    ],
+    [
+     2.5,
+     0
+    ],
+    [
+     2.5,
+     1
+    ],
+    [
+     2.625,
+     1
+    ],
+    [
+     2.625,
+     0
+    ],
+    [
+     3,
+     0
+    ],
+    [
+     3,
+     1
+    ],
+    [
+     3.25,
+     1
+    ],
+    [
+     3.25,
+     0
+    ],
+    [
+     3.5,
+     0
+    ],
+    [
+     3.5,
+     1
+    ],
+    [
+     3.5625,
+     1
+    ],
+    [
+     3.5625,
+     0
+    ],
+    [
+     3.625,
+     0
+    ],
+    [
+     3.625,
+     0.875
+    ],
+    [
+     3.6875,
+     0.875
+    ],
+    [
+     3.6875,
+     0
+    ],
+    [
+     3.75,
+     0
+    ],
+    [
+     3.75,
+     0.625
+    ],
+    [
+     3.8125,
+     0.625
+    ],
+    [
+     3.8125,
+     0
+    ],
+    [
+     3.875,
+     0
+    ],
+    [
+     3.875,
+     0.375
+    ],
+    [
+     3.9375,
+     0.375
+    ],
+    [
+     3.9375,
+     0
+    ],
+    [
+     4,
+     0
+    ]
+   ]
   },
   {
    "name": "Saw Gate 1",
@@ -415,7 +1283,7 @@
    "name": "Saw Gate 2",
    "confidence": "high",
    "image": "bilder/gate-saw2-zoom.png",
-   "idea": "sågtänder på 1/4 beat som växlar mellan topp 1.0 och 0.87 (0.87 på udda kvartar), faller rakt till 0 och hoppar upp; sista kvarten (3.75-4.0) stiger från 0 till 1 utan hopp, så mönstret loopar mjukt. Avläst från markerade punkter i närbilden (pixelkluster, ±0.01 beat).",
+   "idea": "sågtänder på 1/4 beat som växlar mellan topp 1.0 och 0.875 (0.875 på udda kvartar), faller rakt till 0 och hoppar upp; sista kvarten (3.75-4.0) stiger från 0 till 1 utan hopp, så mönstret loopar mjukt. Avläst från markerade punkter i närbilden (pixelkluster, ±0.01 beat).",
    "points": [
     [
      0,
@@ -427,7 +1295,7 @@
     ],
     [
      0.25,
-     0.87
+     0.875
     ],
     [
      0.5,
@@ -443,7 +1311,7 @@
     ],
     [
      0.75,
-     0.87
+     0.875
     ],
     [
      1.0,
@@ -459,7 +1327,7 @@
     ],
     [
      1.25,
-     0.87
+     0.875
     ],
     [
      1.5,
@@ -475,7 +1343,7 @@
     ],
     [
      1.75,
-     0.87
+     0.875
     ],
     [
      2.0,
@@ -491,7 +1359,7 @@
     ],
     [
      2.25,
-     0.87
+     0.875
     ],
     [
      2.5,
@@ -507,7 +1375,7 @@
     ],
     [
      2.75,
-     0.87
+     0.875
     ],
     [
      3.0,
@@ -523,7 +1391,7 @@
     ],
     [
      3.25,
-     0.87
+     0.875
     ],
     [
      3.5,
