@@ -112,7 +112,7 @@ namespace ParamID
                                      "SampleDelayMode", "SampleLenSync", "SampleDelayCount", "SampleLenCount", "NoiseDelayMode", "NoiseLenSync", "NoiseDelayCount", "NoiseLenCount",
                                      "SubDelayMode", "SubLenSync", "SubDelayCount", "SubLenCount", "FmDelayMode", "FmLenSync", "FmDelayCount", "FmLenCount",
                                      "FxSendTo1", "FxSendTo2", "FxSendTo3", "FxSendTo4", "FxSendTo5", "FxSendTo6", "FxSendTo7", "FxSendTo8", "FxSendTo9", "FxSendTo10", "FxSendTo11", "FxSendTo12",
-                                     "MaxTime" };
+                                     "MaxTime", "FmSource" };
         static_assert (std::size (names) == (size_t) InstrumentField::count);
         return names[(size_t) field];
     }
@@ -577,6 +577,11 @@ namespace Params
             layout.add (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { ParamID::bass (layer, InstrumentField::maxTime), 1 },
                                                                       "Instr " + juce::String (layer + 1) + " Max Time",
                                                                       juce::StringArray { "250 ms", "500 ms", "1 s", "2 s", "5 s", "10 s" }, ParamID::maxTimeDefault));
+        // WARP = FM (OSC 1): modulatorn. Standard OSC 2 = som före parametern fanns. Ingen "själv"-källa (återkopplad FM är instabil).
+        for (int layer = 0; layer < ParamID::numInstrumentLayers; ++layer)
+            layout.add (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { ParamID::bass (layer, InstrumentField::fmSource), 1 },
+                                                                      "Instr " + juce::String (layer + 1) + " OSC 1 FM Modulator",
+                                                                      juce::StringArray { "OSC 2", "OSC 3" }, 0));
     }
 
     void addKickToggleParams (Layout& layout)
@@ -899,6 +904,7 @@ InstrumentParams ParamRefs::readInstrument (int layer, int rootMidiNote) const
     p.sampleWidth = get (F::sampleWidth);
     p.fmWidth = get (F::fmWidth);
     p.oscA.ringSource = (int) get (F::ringSource);
+    p.oscA.fmSource = (int) get (F::fmSource);
     p.sampleMulti = (int) get (F::sampleSource) == 1;
     p.sampleAmpOn = get (F::sampleAmpOn) > 0.5f;
     p.sampleAmpMs = get (F::sampleAmpMs);

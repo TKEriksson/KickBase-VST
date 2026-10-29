@@ -34,10 +34,16 @@ void WavetableView::timerCallback()
     const auto unison = (int) raw (InstrumentField::aUnison);
     const auto ready = table == Wavetables::userIndex() || Wavetables::isReady (table);
     const auto morph = processor.apvts.getRawParameterValue (ParamID::bass (layer, ParamID::oscMorphField (osc)))->load() >= 0.5f;
+    // OSC 1 med WARP = FM: vald modulator och om den är på (texten och varningen i bilden)
+    const auto fmInfo = osc == 0 && warpMode == (int) WarpMode::fm
+        ? 1 + (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, InstrumentField::fmSource))->load() * 2
+            + (processor.apvts.getRawParameterValue (ParamID::bass (layer, ParamID::oscField (processor.apvts.getRawParameterValue (ParamID::bass (layer, InstrumentField::fmSource))->load() >= 0.5f ? 2 : 1, InstrumentField::aOn)))->load() >= 0.5f ? 0 : 4)
+        : 0;
     const auto duckDb = processor.fundamentalDuckDb[(size_t) layer].load (std::memory_order_relaxed);
     const auto duckChanged = std::abs (duckDb - lastDuckDb) > 0.1f || ((duckDb > 0.05f) != (lastDuckDb > 0.05f));
-    if (duckChanged || position != lastPosition || table != lastTable || warpMode != lastWarpMode || warp != lastWarp || phase != lastPhase || detune != lastDetune || blend != lastBlend || unison != lastUnison || ready != lastReady || morph != lastMorph)
+    if (duckChanged || position != lastPosition || table != lastTable || warpMode != lastWarpMode || warp != lastWarp || phase != lastPhase || detune != lastDetune || blend != lastBlend || unison != lastUnison || ready != lastReady || morph != lastMorph || fmInfo != lastFmInfo)
     {
+        lastFmInfo = fmInfo;
         lastDuckDb = duckDb;
         lastMorph = morph;
         lastPosition = position;
@@ -75,8 +81,22 @@ void WavetableView::paint (juce::Graphics& g)
         g.drawText ("DUCK -" + juce::String (lastDuckDb, 1) + " dB", badge, juce::Justification::centred);
     };
 
+    // WARP = FM: bilden visar den torra vågen, så säg vilken modulator som används (och varna när den är av).
+    auto paintFm = [&]
+    {
+        if (lastFmInfo == 0)
+            return;
+        const auto fromC = ((lastFmInfo - 1) & 2) != 0, off = ((lastFmInfo - 1) & 4) != 0;
+        const auto name = juce::String (fromC ? "OSC 3" : "OSC 2");
+        const auto text = off ? "FM: " + name + " is OFF - no FM" : "FM: modulator " + name;
+        g.setFont (Theme::font (9.0f, true));
+        g.setColour (off ? Theme::kick : Theme::textDim);
+        g.drawText (text, bounds.reduced (6.0f, 4.0f).removeFromBottom (14.0f), juce::Justification::centredRight);
+    };
+
     if (display != Display::wave)
     {
+        paintFm();
         paintDuck();
         drawCurrent (g, table, bounds.reduced (8.0f, 18.0f));
         g.setFont (Theme::font (9.5f, true));
@@ -154,6 +174,7 @@ void WavetableView::paint (juce::Graphics& g)
     g.setColour (Theme::textDim.withAlpha (0.7f));
     g.drawText ("WAVE", modeRect(), juce::Justification::centred);
     paintDuck();
+    paintFm();
 
     // Glöd när musen är över bilden (klicka för att lyssna).
     if (hover)
@@ -338,6 +359,13 @@ OscPanel::OscPanel (PluginBase& p, int layerIn, int oscIn, juce::Colour accentIn
         ringAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
             p.apvts, ParamID::bass (layer, InstrumentField::ringSource), ringBox);
         addChildComponent (ringBox);
+
+        fmBox.addItemList ({ "FM: modulator OSC 2", "FM: modulator OSC 3" }, 1);
+        fmBox.setTooltip ("FM - which oscillator modulates OSC 1's phase: OSC 2 or OSC 3 (OSC 1 can't modulate itself; feedback FM is unstable). "
+                          "The chosen oscillator must be ON; its LEVEL only sets what you hear of it directly, the FM uses the full wave. AMOUNT sets the depth.");
+        fmAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
+            p.apvts, ParamID::bass (layer, InstrumentField::fmSource), fmBox);
+        addChildComponent (fmBox);
     }
     startTimerHz (10);
     timerCallback(); // tabellens namn syns direkt
@@ -386,13 +414,16 @@ void OscPanel::timerCallback()
     }
     if (osc == 0)
     {
-        const auto ring = (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, ParamID::oscField (osc, InstrumentField::aWarp)))->load() == (int) WarpMode::ring;
-        if (ring != ringShown)
+        const auto mode = (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, ParamID::oscField (osc, InstrumentField::aWarp)))->load();
+        const auto ring = mode == (int) WarpMode::ring, fm = mode == (int) WarpMode::fm;
+        if (ring != ringShown || fm != fmShown)
         {
             ringShown = ring;
+            fmShown = fm;
             ringBox.setVisible (ring);
+            fmBox.setVisible (fm);
             for (auto& button : shapeButtons)
-                button.setVisible (! ring);
+                button.setVisible (! ring && ! fm);
         }
     }
 }
@@ -653,6 +684,7 @@ void OscPanel::resized()
     morphButton.setBounds (shapes.removeFromRight (shapes.getWidth() / 4 + 4).reduced (1, 0)); // längst till höger: MORPH är inte en vågform
     wavButton.setBounds (shapes.removeFromRight (shapes.getWidth() / 5 + 2).reduced (1, 0));
     ringBox.setBounds (shapes.reduced (1, 0));
+    fmBox.setBounds (shapes.reduced (1, 0));
     for (auto& button : shapeButtons)
         button.setBounds (shapes.removeFromLeft (shapes.getWidth() / ((int) shapeButtons.size() - (int) (&button - shapeButtons.data()))).reduced (1, 0));
     left.removeFromTop (4);

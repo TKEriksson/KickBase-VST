@@ -499,6 +499,14 @@ namespace
 namespace
 {
     // MAX-knappen (tidstak per instrument): standardvärdet ska ge exakt dagens tak, så att gamla presets låter och ser likadana ut.
+    void testFmSourceDefault()
+    {
+        std::puts ("FM-modulator: standard OSC 2");
+        DummyProcessor processor;
+        auto* fmSource = processor.apvts.getRawParameterValue (ParamID::bass (0, InstrumentField::fmSource));
+        check (fmSource != nullptr && (int) fmSource->load() == 0, "fmSource har standard OSC 2");
+    }
+
     void testMaxTimeDefault()
     {
         std::puts ("MAX-tid: standard 1 s ger de gamla taken");
@@ -523,4 +531,5 @@ void runModulationTests()
     testCodeSources();
     testBezierEnvelope();
     testMaxTimeDefault();
+    testFmSourceDefault();
 }

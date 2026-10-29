@@ -346,6 +346,43 @@ namespace
         check (render() == forward, "av ger exakt det gamla ljudet");
     }
 
+    // WARP = FM på OSC 1: standardkällan (OSC 2) låter som före parametern; OSC 3 som källa ger annat ljud, och OSC 3 räknas som "behövs" även med nivå 0.
+    void testFmModulatorSource()
+    {
+        std::puts ("Bas: FM-modulatorn (OSC 2 standard, OSC 3 valbar)");
+        check (InstrumentParams {}.oscA.fmSource == 0, "standardkällan är OSC 2");
+        auto render = [] (int source, bool cOn)
+        {
+            InstrumentSynth bass;
+            bass.prepare (rate);
+            InstrumentParams p;
+            p.oscA.warp = WarpMode::fm;
+            p.oscA.warpAmount = 0.6f;
+            p.oscA.fmSource = source;
+            p.oscB.on = true;
+            p.oscB.level = 0.0f;
+            p.oscB.semis = 12.0f;
+            p.oscC.on = cOn;
+            p.oscC.level = 0.0f;
+            p.oscC.semis = 19.0f;
+            p.sub = 0.0f;
+            p.cutoffHz = 20000.0f;
+            p.envAmount = 0.0f;
+            p.drive = 0.0f;
+            bass.setParams (p);
+            bass.noteOn (0, 1.0f, (int) (rate * 0.2));
+            std::vector<float> audio ((size_t) (rate * 0.1));
+            for (auto& s : audio)
+                s = bass.nextSample();
+            return audio;
+        };
+        const auto fromB = render (0, false), fromBWithC = render (0, true), fromC = render (1, true), fromOffC = render (1, false);
+        check (allFinite (fromB) && allFinite (fromC), "inga NaN");
+        check (fromB == fromBWithC, "OSC 2 som källa: OSC 3 påverkar inte");
+        check (fromB != fromC, "OSC 3 som källa låter annorlunda än OSC 2");
+        check (fromOffC != fromC, "avstängd OSC 3 ger ingen FM");
+    }
+
     void testInstrumentPitchAndRelease()
     {
         std::puts ("Bas: rätt ton och tystnar efter gate + release");
@@ -1332,6 +1369,7 @@ void runEngineTests()
     testSampleEditor();
     testSampleReverse();
     testInstrumentPitchAndRelease();
+    testFmModulatorSource();
     testInstrumentGlide();
     testInstrumentModulationSources();
     testInstrumentRetriggerWithoutClick();

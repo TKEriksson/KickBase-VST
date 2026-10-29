@@ -167,6 +167,8 @@ enum class InstrumentField
     fxSendTo1, fxSendTo2, fxSendTo3, fxSendTo4, fxSendTo5, fxSendTo6, fxSendTo7, fxSendTo8, fxSendTo9, fxSendTo10, fxSendTo11, fxSendTo12,
     // MAX TIME: gemensamt tak för tidsknobbarna (volym ATTACK/DECAY/RELEASE, filter-DECAY, pitch-DECAY) och ENV-diagrammets tidsaxel. Val 0-5 (250 ms..10 s), standard 1 s = dagens tak. Registreras allra sist (addMaxTimeParam).
     maxTime,
+    // WARP = FM på OSC 1: vilken oscillator som är modulator (0 = OSC 2, standard = som förut, 1 = OSC 3). Registreras i addMaxTimeParam, allra sist.
+    fmSource,
     count
 };
 

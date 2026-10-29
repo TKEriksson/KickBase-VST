@@ -482,8 +482,9 @@ InstrumentSynth::Output InstrumentSynth::next()
     const auto levelB = (params.oscB.on ? params.oscB.level : 0.0f) * engineGate (1);
     const auto levelC = (params.oscC.on ? params.oscC.level : 0.0f) * engineGate (2);
     const auto ringOn = params.oscA.warp == WarpMode::ring;
-    const auto bNeeded = params.oscB.on && (params.oscB.level > 0.0f || params.oscA.warp == WarpMode::fm || (ringOn && params.oscA.ringSource != 1));
-    const auto cNeeded = params.oscC.on && (params.oscC.level > 0.0f || (ringOn && params.oscA.ringSource != 0));
+    const auto fmOn = params.oscA.warp == WarpMode::fm, fmFromC = fmOn && params.oscA.fmSource == 1;
+    const auto bNeeded = params.oscB.on && (params.oscB.level > 0.0f || (fmOn && ! fmFromC) || (ringOn && params.oscA.ringSource != 1));
+    const auto cNeeded = params.oscC.on && (params.oscC.level > 0.0f || fmFromC || (ringOn && params.oscA.ringSource != 0));
     const auto bRaw = bNeeded ? oscB.next (params.oscB, frequency, sampleRate, params.oscB.warpAmount, 0.0f) : Stereo {};
     const auto bSide = 0.5f * (bRaw.left - bRaw.right) * params.bWidth;
     const auto b = params.bWidth == 1.0f ? bRaw : Stereo { bRaw.mid() + bSide, bRaw.mid() - bSide };
@@ -509,7 +510,7 @@ InstrumentSynth::Output InstrumentSynth::next()
     // OSC C före A, eftersom RING (B) kan multiplicera A med C. Av/tyst källa ger faktor 0 (inget hörs vid full RING).
     const auto c = widen (cNeeded ? oscC.next (params.oscC, frequency, sampleRate, params.oscC.warpAmount, 0.0f) : Stereo {}, params.cWidth);
     const auto bMid = params.oscB.on ? b.mid() : 0.0f, cMid = params.oscC.on ? c.mid() : 0.0f;
-    const auto modInput = ringOn ? (params.oscA.ringSource == 0 ? bMid : params.oscA.ringSource == 1 ? cMid : bMid * cMid) : b.mid();
+    const auto modInput = ringOn ? (params.oscA.ringSource == 0 ? bMid : params.oscA.ringSource == 1 ? cMid : bMid * cMid) : fmFromC ? cMid : b.mid();
     const auto a = widen (levelA > 0.0f ? oscA.next (params.oscA, frequency, sampleRate, warpA, modInput) : Stereo {}, params.aWidth);
 
     // Sub och brus ligger i mitten. Mitten och sidan filtreras var för sig (samma filter), och

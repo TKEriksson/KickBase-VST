@@ -27,6 +27,7 @@ struct OscParams
     float blend = 0.5f;       // sidostämmornas nivå
     WarpMode warp = WarpMode::off;
     float warpAmount = 0.0f;  // 0..1
+    int fmSource = 0;         // bara OSC 1 med warp FM: modulator 0 = OSC 2, 1 = OSC 3
     int ringSource = 0;       // bara OSC 1 med warp RING (B): 0 = OSC 2, 1 = OSC 3, 2 = OSC 2 x OSC 3
     float phase = 0.0f;       // startfas 0..1
     float randomPhase = 0.0f; // 0 = samma fas varje ton (tight), 1 = slumpad
