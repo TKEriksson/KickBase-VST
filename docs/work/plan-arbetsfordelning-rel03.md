@@ -242,3 +242,10 @@ Kurvredigeraren ska ha snap: punkter och handtag låser sig till valfri del av t
 - Lagrets egen volymenvelope (WAVE | ENV i OSC-fliken) är något annat än de 10 globala, men båda använder samma kurvredigerare.
 - Gamla ENV 2/3 konverteras till de första globala vid laddning.
 - Nya modulationskällor läggs sist (docs/ENGINEERING.md).
+
+### ENV-redigeraren: tillägg från Sytrus (29 okt, Tobias)
+
+- Sustain- och decay-markörer på kurvan (var kurvan hålls medan tangenten är nere, och var den släpper).
+- ATT / DEC / SUS / REL-knobbar under kurvan för snabb envelope utan att rita.
+- TEMPO-läge: envelopen följer takten i stället för sekunder.
+- Vi kopierar inte Sytrus flikrutnät (parameter × källa). Dra-och-släpp av källor på knobbar behålls.
