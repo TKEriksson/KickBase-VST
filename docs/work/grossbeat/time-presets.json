@@ -1,0 +1,46 @@
+{
+  "_info": "TIME-presets tolkade från Tobias skärmdumpar av Gross Beat (bilder i bilder/). Tolkade med ögat, inte exporterade: x och y är avrundade till 1/8 beat, kontrollera mot bilden vid test.",
+  "_axes": {
+    "x": "beats från mönstrets start, 0..4 (TRIG SYNC 4 beats = hela rutan)",
+    "y": "uppspelningsposition relativt nu, i beats (0 = nu, -1 = en beat bakåt i bufferten)",
+    "reading": "lutning k per beat ger uppspelningshastighet 1+k: platt = normal fart, lutning -1 (den diagonala hjälplinjen i Gross Beat) = fryst, brantare än -1 = baklänges, mellan 0 och -1 = långsammare (tape stop). Lodrätt hopp = hopp i bufferten, t.ex. -0.25 hoppar en 1/4-beat bakåt = stutter."
+  },
+  "_points": "[x, y]. Två punkter med samma x = lodrätt hopp. Mellan punkter är linjen rak om inte 'curve' anges (jämn kurva, tension ungefär).",
+  "presets": [
+    {
+      "name": "Basic 1", "confidence": "high", "image": "bilder/time-basic1.png",
+      "idea": "1/4-beat-stutter i tre repetitioner, beat 1.25 till 2.0",
+      "points": [[0,0],[1.25,0],[1.25,-0.25],[1.5,-0.25],[1.5,-0.5],[1.75,-0.5],[1.75,-0.75],[2,-0.75],[2,0],[4,0]]
+    },
+    {
+      "name": "Basic 2", "confidence": "high", "image": "bilder/time-basic2.png",
+      "idea": "1/8-repetition på beat 0.5-1.0, sedan 1/4-trappa bakåt i slutet",
+      "points": [[0,0],[0.5,0],[0.5,-0.5],[1,-0.5],[1,0],[3.25,0],[3.25,-0.25],[3.5,-0.25],[3.5,-0.5],[3.75,-0.5],[3.75,-0.75],[4,-0.75]]
+    },
+    {
+      "name": "Basic 3", "confidence": "high", "image": "bilder/time-basic3.png",
+      "idea": "två korta repetitioner: en 1/4 vid 1.75 (0.75 bakåt) och en 1/4 vid 2.25 (1.25 bakåt)",
+      "points": [[0,0],[1.75,0],[1.75,-0.75],[2,-0.75],[2,0],[2.25,0],[2.25,-1.25],[2.5,-1.25],[2.5,0],[4,0]]
+    },
+    {
+      "name": "Complex 1", "confidence": "medium", "image": "bilder/time-complex1.png",
+      "idea": "trappa bakåt vid beat 1, kort paus, ny trappa vid 2.5, slutar 3/4 beat bakåt från 3.5",
+      "points": [[0,0],[1,0],[1,-0.125],[1.125,-0.125],[1.125,-0.25],[1.25,-0.25],[1.25,-0.5],[1.75,-0.5],[1.75,0],[2.5,0],[2.5,-1.5],[2.75,-1.5],[2.75,-1.75],[2.875,-1.75],[2.875,-1.875],[3,-1.875],[3,0],[3.5,0],[3.5,-0.75],[4,-0.75]]
+    },
+    {
+      "name": "Complex 3", "confidence": "medium", "image": "bilder/time-complex3.png",
+      "idea": "två 3/4-repetitioner, en finare trappa vid 2.6-3.0 och en svag nedåtgående kurva sista beaten",
+      "points": [[0,0],[0.75,0],[0.75,-0.75],[1,-0.75],[1,0],[1.75,0],[1.75,-0.75],[2.5,-0.75],[2.5,0],[2.625,0],[2.625,-0.25],[2.75,-0.25],[2.75,-0.375],[2.875,-0.375],[2.875,-0.5],[3,-0.5],[3,0],[4,-0.25,"curve"]]
+    },
+    {
+      "name": "Chaos 5", "confidence": "medium", "image": "bilder/time-chaos5.png",
+      "idea": "tape-stop-känsla första 2 beats (kurva 0 till -1), håll, hopp tillbaka, sedan baklänges-svep (lutning ca -2.7) sista 0.75 beat",
+      "points": [[0,0,"curve"],[2,-1],[2.5,-1],[2.5,0],[3.25,0],[4,-2]]
+    },
+    {
+      "name": "Chaos 8", "confidence": "low", "image": "bilder/time-chaos8.png",
+      "idea": "OFULLSTÄNDIG: svagt fallande ramper beat 0-1, hopp vid 1.0, flera små ramper/hopp mellan 2.5 och 4. Rita om från bilden eller exportera från FL.",
+      "points": [[0,0],[1,-0.45],[1,0],[2.5,0],[4,0]]
+    }
+  ]
+}

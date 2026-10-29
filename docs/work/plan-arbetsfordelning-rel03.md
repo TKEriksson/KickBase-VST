@@ -199,3 +199,7 @@ Obs: nya parametrar och modulationskällor sist (ENGINEERING.md). Stor punkt; Ar
   - Mål: Kickbase ska kunna göra samma sak, i egen ruta, med vår kurvvy; rullande buffert i FX-kedjan.
 - Gross Beat, kontroller (skärmbild 29 okt): TIME- och VOLUME-knapp (mängd), scratch-klocka, HOLD, preset-rutnät för TIME (Basic, Complex, Chaos) och VOLUME (gates, trance gate, saw gate, fades, sidechain, tremolo m.fl.), ATT / REL / TNS, zoom, rutnätsval vid kurvan (X, 1/16 .. 1/3), kurvverktyg, TRIG SYNC och POS SYNC (t.ex. 4 beats), HOLD av/på. Alternativmeny: Click reduction (Off / Low drums / High melodic), Smoothing attack compensation, Remove DC offset, HQ resampling, View scratching clock.
 - TIME-delen är VALFRI: av som standard, bufferten allokeras och körs bara när den slås på. Bygg VOLUME först, TIME efteråt. Mät CPU med TIME på innan den släpps.
+
+### Gross Beat: TIME-kurvan läses så här (rättelse, 29 okt)
+- Y-axeln är uppspelningsposition relativt nu (0 = nu, -1 = en beat bakåt i bufferten), X är 0..4 beats. Lutning k ger hastighet 1+k: platt = normal fart, lutning -1 (den diagonala hjälplinjen) = fryst, brantare = baklänges, svagare = tape stop. Lodrätt hopp bakåt = stutter. Det tidigare "platt = paus" stämde inte.
+- Tobias TIME-presets (Basic 1-3, Complex 1 och 3, Chaos 5, Chaos 8) är tolkade från skärmdumparna: `docs/work/grossbeat/time-presets.json`, bilder i `docs/work/grossbeat/bilder/`. Chaos 8 är ofullständig. GATE-presets kommer från Tobias.
