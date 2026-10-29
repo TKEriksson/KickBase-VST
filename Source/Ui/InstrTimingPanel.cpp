@@ -146,6 +146,28 @@ void InstrTimingPanel::timerCallback()
 void InstrTimingPanel::layoutCell (Cell& cell, bool withPlot)
 {
     auto area = cell.frame.reduced (4);
+    if (! withPlot)
+    {
+        // Fokusvyn: tre kolumner. 1: namn, MODE och CURVE. 2: DELAY med SYNC under. 3: LENGTH med SYNC under.
+        auto left = area.removeFromLeft (120);
+        left.removeFromTop (headerHeight + 2);
+        cell.plot = {};
+        cell.mode->setBounds (left.removeFromTop (choiceHeight).withWidth (juce::jmin (left.getWidth(), 110)));
+        left.removeFromTop (2);
+        cell.curve->setBounds (left.withWidth (juce::jmin (left.getWidth(), 110)));
+        const auto colWidth = area.getWidth() / 2;
+        const auto column = [&] (juce::Rectangle<int> r, KnobComponent& knob, juce::Slider& count, ChoiceComponent* sync)
+        {
+            r = r.reduced (4, 0);
+            sync->setBounds (r.removeFromBottom (choiceHeight).withSizeKeepingCentre (juce::jmin (r.getWidth(), 120), choiceHeight));
+            knob.setBounds (r);
+            count.setBounds (r.withSizeKeepingCentre (juce::jmin (r.getWidth(), 56), 22));
+        };
+        auto r = area;
+        column (r.removeFromLeft (colWidth), *cell.delay, cell.delayCount, cell.delaySync.get());
+        column (r, *cell.length, cell.lengthCount, cell.lengthSync.get());
+        return;
+    }
     area.removeFromTop (headerHeight);
     cell.plot = withPlot ? area.removeFromTop (juce::jmax (30, (int) (area.getHeight() * 0.34f))) : juce::Rectangle<int>();
     area.removeFromTop (2);
@@ -176,7 +198,8 @@ void InstrTimingPanel::resized()
         viewButton.setBounds (strip.removeFromLeft (90));
         helpButton.setBounds (strip.removeFromRight (70));
         area.removeFromTop (gap);
-        timeline.setBounds (area.removeFromTop ((int) (area.getHeight() * 0.55f)));
+        const auto controlsHeight = juce::jmin (area.getHeight() / 2, 150);
+        timeline.setBounds (area.removeFromTop (area.getHeight() - controlsHeight - gap));
         area.removeFromTop (gap);
         for (size_t e = 0; e < cells.size(); ++e)
         {
@@ -247,7 +270,7 @@ void InstrTimingPanel::paintPlot (juce::Graphics& g, const Cell& cell, size_t en
             g.drawVerticalLine ((int) x, y, juce::jmin (y + 2.0f, plot.getBottom() - 1.0f));
     }
     g.setColour (Theme::textDim);
-    g.setFont (Theme::font (9.0f));
+    g.setFont (Theme::font (12.0f));
     g.drawText (formatSeconds (spanSeconds), cell.plot.reduced (4, 1), juce::Justification::bottomRight);
 }
 

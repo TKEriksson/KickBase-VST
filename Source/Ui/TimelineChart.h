@@ -36,7 +36,7 @@ public:
 
         // Linjal: några jämna tider, resten av ytan får rutnätslinjer.
         const auto tickSeconds = niceTick (spanSeconds / 6.0);
-        g.setFont (Theme::font (9.0f));
+        g.setFont (Theme::font (12.0f));
         for (double t = 0.0; t <= spanSeconds; t += tickSeconds)
         {
             g.setColour (Theme::textDim.withAlpha (0.18f));
@@ -67,7 +67,7 @@ public:
         // Fasen i klartext så att man ser vad NUDGE och POLARITY gör.
         g.setColour (Theme::textDim);
         g.drawText ("NUDGE " + juce::String (nudgeMs, 2) + " ms" + (params.invertPolarity ? "   POLARITY -" : ""),
-                    getLocalBounds().reduced (6, 2).withHeight (12), juce::Justification::topRight);
+                    getLocalBounds().reduced (6, 2).withHeight (16), juce::Justification::topRight);
     }
 
     void mouseDown (const juce::MouseEvent& e) override
@@ -128,8 +128,8 @@ public:
 
 private:
     enum class Edge { none, delay, length };
-    static constexpr int rulerHeight = 12, contourHeight = 26, laneGap = 2;
-    static constexpr int labelWidth = 48;
+    static constexpr int rulerHeight = 16, contourHeight = 26, laneGap = 2;
+    static constexpr int labelWidth = 58;
 
     void timerCallback() override
     {
@@ -195,7 +195,7 @@ private:
             g.drawRoundedRectangle (laneF.withLeft (4.0f).reduced (0.5f), 3.0f, 1.2f);
         }
         g.setColour (isSelected ? Theme::text : Theme::textDim);
-        g.setFont (Theme::font (isSelected ? 10.5f : 9.0f, isSelected));
+        g.setFont (Theme::font (isSelected ? 12.5f : 11.5f, isSelected));
         g.drawText (names[engine], 6, lane.getY(), labelWidth - 4, lane.getHeight(), juce::Justification::centredLeft);
 
         const auto delay = delaySeconds (engine), length = lengthSeconds (engine);
@@ -233,7 +233,7 @@ private:
         g.setColour (Theme::insetStrip);
         g.fillRoundedRectangle (area.toFloat().withLeft (4.0f), 3.0f);
         g.setColour (Theme::textDim);
-        g.setFont (Theme::font (9.0f));
+        g.setFont (Theme::font (12.0f));
         g.drawText ("OUT", 6, area.getY(), labelWidth - 4, area.getHeight(), juce::Justification::centredLeft);
 
         const auto attack = params.attackMs / 1000.0, decay = params.decayMs / 1000.0, release = params.releaseMs / 1000.0;
