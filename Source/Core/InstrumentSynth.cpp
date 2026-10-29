@@ -387,6 +387,35 @@ float InstrumentSynth::filterEnvelopeAt (const InstrumentParams& p, double secon
     return (float) std::exp (std::log (0.001) * (seconds - attack) / decay);
 }
 
+float InstrumentSynth::warpEnvSourceAt (const InstrumentParams& p, double seconds, double noteOffSeconds)
+{
+    // Samma matematik som ModEnv::next / warpDirect i next(), men som en funktion av tiden (för kurvan i WARP ENV-gruppen).
+    if (p.warpEnvSource == 0)
+        return filterEnvelopeAt (p, seconds);
+    if (p.warpEnvSource == 1)
+        return (float) std::exp (std::log (0.001) * seconds / (std::max (0.1, (double) p.warpEnvDecayMs) * 0.001));
+
+    const auto& e = p.warpEnvSource == 2 ? p.env2 : p.env3;
+    if (! e.on)
+        return 0.0f;
+
+    // Nivån på sekunden t medan tonen hålls (attack, sedan fall mot sustain).
+    const auto held = [&e] (double t)
+    {
+        const auto attack = std::max (0.05, (double) e.attackMs) * 0.001;
+        if (t < attack)
+            return t / attack;
+        const auto decay = std::max (0.1, (double) e.decayMs) * 0.001;
+        return (double) e.sustain + (1.0 - e.sustain) * std::exp (std::log (0.001) * (t - attack) / decay);
+    };
+
+    if (noteOffSeconds < 0.0 || seconds < noteOffSeconds)
+        return (float) held (seconds);
+
+    const auto release = std::max (0.1, (double) e.releaseMs) * 0.001;
+    return (float) (held (noteOffSeconds) * std::exp (std::log (0.001) * (seconds - noteOffSeconds) / release));
+}
+
 double InstrumentSynth::coefficientFor (double milliseconds, double rate)
 {
     // Andel av avståndet till målet per sample, så att -60 dB nås efter `milliseconds`.

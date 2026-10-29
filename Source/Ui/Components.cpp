@@ -958,7 +958,7 @@ void ControlGroups::layout (juce::Rectangle<int> area, int rowHeight)
     {
         if (const auto* choice = dynamic_cast<const ChoiceComponent*> (control))
             return choice->weight;
-        return 1.0f;
+        return (float) control->getProperties().getWithDefault ("layoutWeight", 1.0); // t.ex. kurvan i WARP ENV
     };
 
     for (size_t rowIndex = 0; rowIndex < rows.size(); ++rowIndex)

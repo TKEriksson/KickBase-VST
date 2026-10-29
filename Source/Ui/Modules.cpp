@@ -1288,6 +1288,11 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
         return controls.back().get();
     };
 
+    auto* warpCurve = new WarpEnvCurve (p, layer, [this] { return refs.readInstrument (layer, 36).withTempo (processor.transportStatus.bpm.load(), false); });
+    warpCurve->getProperties().set ("layoutWeight", 2.0);
+    controls.emplace_back (warpCurve);
+    instrPage.addAndMakeVisible (*warpCurve);
+
     constexpr auto phaseRowReserve = 0.42f; // andel av sista radens bredd som lämnas åt MAX LENGTH-rutan
     auto* warpEnvKnob = dynamic_cast<KnobComponent*> (knob (id (F::warpEnv), "AMOUNT"));
     auto* voicesKnob = dynamic_cast<KnobComponent*> (knob (id (F::voices), "VOICES"));
@@ -1298,7 +1303,7 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
                      { "NOISE", { knob (id (F::noise), "LEVEL"), knob (id (F::noiseTone), "TONE"), choice (id (F::noiseType), "TYPE") } } });
     groups.addRow ({ { "VOLUME ENVELOPE", { knob (id (F::attack), "ATTACK"), knob (id (F::decay), "DECAY"),
                                             knob (id (F::sustain), "SUSTAIN"), knob (id (F::release), "RELEASE") } },
-                     { "WARP ENV", { warpEnvKnob, choice (id (F::warpEnvSource), "SOURCE"), knob (id (F::warpEnvDecay), "DIRECT DEC") } },
+                     { "WARP ENV", { warpEnvKnob, choice (id (F::warpEnvSource), "SOURCE"), knob (id (F::warpEnvDecay), "DIRECT DEC"), warpCurve } },
                      { "DRIVE", { knob (id (F::drive), "AMOUNT"), choice (id (F::driveMode), "MODE") } },
                      { "LAYER OUT", { knob (id (F::level), "LEVEL"), knob (id (F::duck), "DUCK"), knob (id (F::gate), "LENGTH"),
                                       voicesKnob } } }); // (notlängden: GATE är hackrytmen; GLIDE har ingen ratt: parametern används inte)
@@ -2206,6 +2211,118 @@ void SubScope::paint (juce::Graphics& g)
     }
     g.setColour (juce::Colour (0xffffffff).interpolatedWith (accent, 0.35f).withAlpha (0.35f + 0.65f * glow));
     g.strokePath (path, juce::PathStrokeType (1.2f));
+}
+
+//==============================================================================
+namespace
+{
+    // Tidsaxeln för WARP ENV-kurvan: tills källan fallit ungefär 45 dB (0,75 x decay-tiden). Returnerar också när ENV 2/3 släpps (-1 = aldrig).
+    struct WarpSpan { double seconds, noteOff; };
+
+    WarpSpan warpSpanOf (const InstrumentParams& p)
+    {
+        const auto fall = 0.75;
+        if (p.warpEnvSource == 1)
+            return { std::max (0.01, p.warpEnvDecayMs * 0.001 * fall), -1.0 };
+        if (p.warpEnvSource == 0)
+            return { std::max (0.01, p.envAttackMs * 0.001 + p.envDecayMs * 0.001 * fall), -1.0 };
+
+        const auto& e = p.warpEnvSource == 2 ? p.env2 : p.env3;
+        const auto held = e.attackMs * 0.001 + e.decayMs * 0.001 * fall;
+        if (e.sustain > 0.02f)
+            return { std::max (0.01, held + e.releaseMs * 0.001 * fall), held };
+        return { std::max (0.01, held), -1.0 };
+    }
+}
+
+WarpEnvCurve::WarpEnvCurve (PluginBase& p, int layerIn, std::function<InstrumentParams()> read) : processor (p), layer (layerIn), readParams (std::move (read))
+{
+    setInterceptsMouseClicks (true, false); // tooltip
+    setTooltip ("WARP ENV curve - Shows how the OSC 1 warp changes from the start of each note: the dashed line is the WARP knob, the peak is raised by AMOUNT, "
+                "and the curve follows the chosen SOURCE (DIRECT DEC sets the fall for Direct). The white line moves while a note plays (also on LISTEN).");
+    params = readParams();
+    startTimerHz (30);
+}
+
+void WarpEnvCurve::timerCallback()
+{
+    if (! isShowing())
+        return;
+
+    params = readParams();
+    const auto span = warpSpanOf (params);
+    auto sig = 0.0;
+    for (const auto v : { (double) params.warpEnv, (double) params.oscA.warpAmount, (double) params.warpEnvSource, (double) params.warpEnvDecayMs,
+                          (double) params.envAttackMs, (double) params.envDecayMs, (double) params.env2.attackMs, (double) params.env2.decayMs,
+                          (double) params.env2.sustain, (double) params.env2.releaseMs, (double) params.env2.on, (double) params.env3.attackMs,
+                          (double) params.env3.decayMs, (double) params.env3.sustain, (double) params.env3.releaseMs, (double) params.env3.on })
+        sig = sig * 1.0001 + v;
+
+    const auto playTime = processor.notePlayTime[(size_t) layer].load (std::memory_order_relaxed);
+    const auto newHead = playTime >= 0.0f && playTime <= (float) span.seconds ? playTime : -1.0f;
+    const auto changed = (float) sig != signature || newHead != playhead;
+    signature = (float) sig;
+    playhead = newHead;
+    if (changed)
+        repaint();
+}
+
+void WarpEnvCurve::paint (juce::Graphics& g)
+{
+    const auto accent = Theme::layerColour (layer);
+    const auto bounds = getLocalBounds().toFloat().reduced (2.0f, 1.0f);
+    g.setColour (juce::Colours::black.withAlpha (0.35f));
+    g.fillRoundedRectangle (bounds, 3.0f);
+    g.setColour (accent.withAlpha (0.3f));
+    g.drawRoundedRectangle (bounds, 3.0f, 1.0f);
+
+    const auto inner = bounds.reduced (4.0f, 4.0f);
+    const auto span = warpSpanOf (params);
+    const auto yOf = [&inner] (float v) { return inner.getBottom() - juce::jlimit (0.0f, 1.0f, v) * inner.getHeight(); };
+    const auto base = params.oscA.warpAmount;
+
+    // Grundnivån (WARP-ratten): streckad linje.
+    const float dashes[] = { 3.0f, 3.0f };
+    g.setColour (juce::Colours::white.withAlpha (0.25f));
+    g.drawDashedLine ({ inner.getX(), yOf (base), inner.getRight(), yOf (base) }, dashes, 2, 1.0f);
+
+    juce::Path line;
+    const auto points = std::max (2, (int) inner.getWidth());
+    for (int i = 0; i <= points; ++i)
+    {
+        const auto fraction = (double) i / (double) points;
+        const auto source = InstrumentSynth::warpEnvSourceAt (params, fraction * span.seconds, span.noteOff);
+        const auto x = inner.getX() + (float) fraction * inner.getWidth();
+        const auto y = yOf (base + params.warpEnv * source);
+        if (i == 0)
+            line.startNewSubPath (x, y);
+        else
+            line.lineTo (x, y);
+    }
+
+    auto fill = line;
+    fill.lineTo (inner.getRight(), inner.getBottom());
+    fill.lineTo (inner.getX(), inner.getBottom());
+    fill.closeSubPath();
+    g.setColour (accent.withAlpha (0.15f));
+    g.fillPath (fill);
+    g.setColour (accent.withAlpha (0.35f));
+    g.strokePath (line, juce::PathStrokeType (3.0f));
+    g.setColour (juce::Colour (0xffffffff).interpolatedWith (accent, 0.35f));
+    g.strokePath (line, juce::PathStrokeType (1.2f));
+
+    if (playhead >= 0.0f)
+    {
+        const auto x = inner.getX() + (float) (playhead / span.seconds) * inner.getWidth();
+        g.setColour (juce::Colours::white.withAlpha (0.8f));
+        g.drawLine (x, inner.getY(), x, inner.getBottom(), 1.0f);
+    }
+
+    static const char* const names[] = { "FILTER ENV", "DIRECT", "ENV 2", "ENV 3" };
+    g.setColour (Theme::textDim);
+    g.setFont (Theme::font (9.0f));
+    g.drawText (names[juce::jlimit (0, 3, params.warpEnvSource)], inner.toNearestInt(), juce::Justification::topLeft, false);
+    g.drawText (juce::String (juce::roundToInt (span.seconds * 1000.0)) + " ms", inner.toNearestInt(), juce::Justification::topRight, false);
 }
 
 //==============================================================================

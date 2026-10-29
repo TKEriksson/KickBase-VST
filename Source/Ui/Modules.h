@@ -283,6 +283,24 @@ private:
     bool sounding = false;
 };
 
+// Kurva över tid i WARP ENV-gruppen: warpen på OSC A (grundnivån WARP + AMOUNT x vald källa) från tonstart. Höjden följer AMOUNT, fallet
+// DIRECT DEC (källa Direct) eller vald envelope, och en spelhuvud rör sig medan lagret låter (LISTEN eller spelad ton).
+class WarpEnvCurve : public juce::Component, public juce::SettableTooltipClient, private juce::Timer
+{
+public:
+    WarpEnvCurve (PluginBase& processor, int layer, std::function<InstrumentParams()> readParams);
+    void paint (juce::Graphics&) override;
+
+private:
+    void timerCallback() override;
+
+    PluginBase& processor;
+    const int layer;
+    std::function<InstrumentParams()> readParams;
+    InstrumentParams params;
+    float signature = -1.0f, playhead = -1.0f;
+};
+
 // Ett baslager (bara instrumentet): källorna i flikar (OSC 1-3 och SAMPLE, var och en med av/på), filter- och
 // amplitud-envelope och rattar. En WAV kan släppas på sidan (eller laddas med LOAD på SAMPLE-fliken).
 class InstrumentModule : public ModulePanel, public juce::FileDragAndDropTarget

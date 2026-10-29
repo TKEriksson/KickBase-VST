@@ -1392,6 +1392,33 @@ static void testKickSourceMigration()
     check (run (1.0f, 0.0f, v) && v[ParamID::kickMix] == 0.0f && v[ParamID::kickSampleOn] == 1.0f, "kickkällor: sample av blir MIX helt mot synth");
 }
 
+static void testWarpEnvCurve()
+{
+    InstrumentParams p;
+    p.envAttackMs = 10.0f;
+    p.envDecayMs = 200.0f;
+    p.warpEnvDecayMs = 30.0f;
+
+    p.warpEnvSource = 0;
+    check (std::abs (InstrumentSynth::warpEnvSourceAt (p, 0.010, -1.0) - 1.0f) < 1.0e-4f, "warp-kurva: filter-envelopen toppar efter attacken");
+    check (std::abs (InstrumentSynth::warpEnvSourceAt (p, 0.210, -1.0) - 0.001f) < 1.0e-4f, "warp-kurva: filter-envelopen är -60 dB efter decay");
+
+    p.warpEnvSource = 1;
+    check (std::abs (InstrumentSynth::warpEnvSourceAt (p, 0.0, -1.0) - 1.0f) < 1.0e-5f, "warp-kurva: Direct börjar på 1");
+    check (std::abs (InstrumentSynth::warpEnvSourceAt (p, 0.030, -1.0) - 0.001f) < 1.0e-4f, "warp-kurva: Direct är -60 dB efter DIRECT DEC");
+
+    p.warpEnvSource = 2;
+    p.env2.attackMs = 20.0f;
+    p.env2.decayMs = 100.0f;
+    p.env2.sustain = 0.5f;
+    p.env2.releaseMs = 50.0f;
+    check (std::abs (InstrumentSynth::warpEnvSourceAt (p, 0.010, -1.0) - 0.5f) < 1.0e-4f, "warp-kurva: ENV 2 stiger linjärt under attacken");
+    check (std::abs (InstrumentSynth::warpEnvSourceAt (p, 5.0, -1.0) - 0.5f) < 1.0e-3f, "warp-kurva: ENV 2 landar på sustain");
+    check (InstrumentSynth::warpEnvSourceAt (p, 0.5, 0.4) < 1.0e-3f, "warp-kurva: ENV 2 släpper efter note-off");
+    p.env2.on = false;
+    check (InstrumentSynth::warpEnvSourceAt (p, 0.05, -1.0) == 0.0f, "warp-kurva: ENV 2 av ger 0");
+}
+
 void runEngineTests()
 {
     testKeyMapping();
@@ -1409,6 +1436,7 @@ void runEngineTests()
     testInstrumentModulationSources();
     testInstrumentRetriggerWithoutClick();
     testKickSourceMigration();
+    testWarpEnvCurve();
     testDuckerIsSmooth();
     testGate();
     testPatternTemplatesAndSaving();
