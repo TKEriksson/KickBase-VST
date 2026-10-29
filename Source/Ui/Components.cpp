@@ -870,14 +870,16 @@ void ControlGroups::layout (juce::Rectangle<int> area, int rowHeight)
         return 1.0f;
     };
 
-    for (const auto& row : rows)
+    for (size_t rowIndex = 0; rowIndex < rows.size(); ++rowIndex)
     {
-        // Varje rad fyller hela bredden.
+        const auto& row = rows[rowIndex];
+        // Varje rad fyller hela bredden, minus den reserverade andelen till höger.
         auto total = 0.0f;
         for (const auto& group : row)
             for (auto* control : group.controls)
                 total += weightOf (control);
-        const auto cellWidth = (float) area.getWidth() / std::max (1.0f, total);
+        const auto usableWidth = (float) area.getWidth() * (1.0f - reserves[rowIndex]);
+        const auto cellWidth = usableWidth / std::max (1.0f, total);
 
         auto rowArea = area.removeFromTop (titleHeight + rowHeight);
         area.removeFromTop (3);

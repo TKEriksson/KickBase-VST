@@ -1258,7 +1258,9 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
         return controls.back().get();
     };
 
+    constexpr auto phaseRowReserve = 0.7f; // andel av PHASE-radens bredd som lämnas åt tidsdiagrammet
     auto* warpEnvKnob = dynamic_cast<KnobComponent*> (knob (id (F::warpEnv), "AMOUNT"));
+    auto* voicesKnob = dynamic_cast<KnobComponent*> (knob (id (F::voices), "VOICES"));
     // Under källorna, i signalens ordning: tonhöjd, sub/brus, filtrets envelope (själva filtren: FILTER-fliken) -> volym och utgång.
     groups.addRow ({ { "PITCH", { knob (id (F::octave), "OCTAVE"), knob (id (F::tune), "TUNE"),
                                   knob (id (F::pitchEnvAmount), "ENV AMT"), knob (id (F::pitchEnvDecay), "ENV DEC") } },
@@ -1271,11 +1273,13 @@ InstrumentModule::InstrumentModule (PluginBase& p, int layerIn)
                      { "WARP ENV", { warpEnvKnob, choice (id (F::warpEnvSource), "SOURCE"), knob (id (F::warpEnvDecay), "DIRECT DEC") } },
                      { "DRIVE", { knob (id (F::drive), "AMOUNT"), choice (id (F::driveMode), "MODE") } },
                      { "LAYER OUT", { knob (id (F::level), "LEVEL"), knob (id (F::duck), "DUCK"), knob (id (F::gate), "LENGTH"),
-                                      knob (id (F::voices), "VOICES") } } }); // (notlängden: GATE är hackrytmen; GLIDE har ingen ratt: parametern används inte)
+                                      voicesKnob } } }); // (notlängden: GATE är hackrytmen; GLIDE har ingen ratt: parametern används inte)
     // Fas PH: polaritet, startfas och nudge (tidsförskjutning ±2 ms) för att få kick och bas att summera rätt.
-    groups.addRow ({ { "PHASE", { choice (id (F::polarity), "POLARITY"), knob (id (F::phaseDeg), "START"), knob (id (F::nudgeMs), "NUDGE") } } });
+    // PHASE är smal (resten av raden reserveras åt tidsdiagrammet, se layoutInstrPage).
+    groups.addRow ({ { "PHASE", { choice (id (F::polarity), "POLARITY"), knob (id (F::phaseDeg), "START"), knob (id (F::nudgeMs), "NUDGE") } } },
+                   phaseRowReserve);
     // Fas P: varning när VOICES x unison (summan av de påslagna oscillatorernas stämmor) blir stort, eftersom varje röst kostar lika mycket CPU.
-    if (auto* voicesKnob = dynamic_cast<KnobComponent*> (controls.back().get()))
+    if (voicesKnob != nullptr)
         voicesKnob->setWarning ([this]() -> juce::String
         {
             auto value = [this] (F field) { return (int) processor.apvts.getRawParameterValue (ParamID::bass (layer, field))->load(); };
@@ -2012,14 +2016,18 @@ void InstrumentModule::layoutInstrPage()
     // Envelopegrafen till vänster, rattraderna till höger (två rader, högst 100 px rattar; resten är frigjord yta).
     auto area = instrPage.getLocalBounds().reduced (0, 4);
     auto leftColumn = area.removeFromLeft (juce::jlimit (220, 340, area.getWidth() / 4));
-    instrTimeline->setBounds (leftColumn.removeFromBottom (leftColumn.getHeight() / 3).reduced (0, 2));
     envelope.setBounds (leftColumn.reduced (0, 2));
     envelopeListen.setBounds (envelope.getRight() - 40, envelope.getY() + 4, 36, 24); // högtalaren i grafens övre högra hörn
     // HELP nere till vänster: tidsetiketterna ligger överst (EnvelopeView.cpp:95) och kurvnamnen nere till höger.
     instrHelpButton.setBounds (envelope.getX() + 10, envelope.getBottom() - 12 - 18, 40, 18);
     area.removeFromLeft (6);
-    const auto rowHeight = juce::jlimit (40, 100, area.getHeight() / groups.numRows() - ControlGroups::titleHeight - 3);
+    // Divisorn +1 lämnar fri höjd under PHASE-raden; tidsdiagrammet får den plus PHASE-radens reserverade bredd.
+    const auto rowHeight = juce::jlimit (40, 100, area.getHeight() / (groups.numRows() + 1) - ControlGroups::titleHeight - 3);
     groups.layout (area, rowHeight);
+
+    const auto phase = groups.frameOf ("PHASE");
+    if (! phase.isEmpty())
+        instrTimeline->setBounds (juce::Rectangle<int> (phase.getRight() + 4, phase.getY(), area.getRight() - phase.getRight() - 4, area.getBottom() - phase.getY()));
 
     // Mini-oscilloskopen sitter i SUB-gruppens rubrikrad, till höger om rubriken.
     const auto sub = groups.frameOf ("SUB");

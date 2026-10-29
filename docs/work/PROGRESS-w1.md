@@ -666,3 +666,10 @@ Utvidgning av (z): gäller alla menyer i pluginet. Tre nivåer (huvudmeny, under
 ## 0.4-release-PDF (Arbetare 1, 2026-10-28)
 - `docs/releases/kickbase-0.4-testlista.pdf` (3 sidor, engelska, 0.3-upplägg): vad som ingår + Lemon-testlista. Underlag: release-0.4-utkast.md, fl-testlista.md, (y), (z).
 - Gjord av HTML via headless Edge. Inget från 0.5. Raden "gamla preset migreras" väntar på Arbetare 2:s migrering av kickSynthOn/kickSampleOn till MIX (finns inte i någon gren än).
+
+## instr-phase (INSTR: smal PHASE, NUDGE/START/POLARITY i tidsdiagrammet) – Debug + tester gröna, ej provad i Lemon
+Arbetare 1, branch `instr-phase` från release-0.4 (6e006a1).
+- `ControlGroups::addRow (row, reserveFraction)` (Components.h:199, Components.cpp:873): en rad kan lämna en andel tom till höger. PHASE reserverar 0.7 (Modules.cpp:1276) och är därmed ca 1/5 av bredden.
+- Tidsdiagrammet på INSTR flyttades från vänsterkolumnen till PHASE-radens reserverade yta + fri höjd under raden (Modules.cpp `layoutInstrPage`); envelopen fick hela vänsterkolumnen.
+- TimelineChart.h `paintPhaseMarks`: START som en period sinus med startpunkt i OSC 1-3 och SUB (vänds av POLARITY), NUDGE som pil + streckad nollinje (minst 14 px, förskjutningen är under en pixel), rubrikchips NUDGE/START/POLARITY (− inverted markerad). Gäller även TIMING-fliken (samma komponent).
+- Hittat fel: VOICES-varningen (Modules.cpp, `setWarning`) hamnade på NUDGE-ratten, eftersom `controls.back()` efter PHASE-raden är NUDGE. Nu hålls VOICES-ratten i en egen pekare.
